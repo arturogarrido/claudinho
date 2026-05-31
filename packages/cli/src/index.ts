@@ -2,9 +2,12 @@ import { Command } from 'commander';
 import { resolveConfig, type RawGlobalOpts } from './config';
 import { makeT } from './i18n';
 import {
+  cmdInitStatusline,
   cmdLive,
   cmdMatch,
   cmdNext,
+  cmdPrompt,
+  cmdRefresh,
   cmdTable,
   cmdToday,
 } from './commands';
@@ -96,5 +99,36 @@ program
       fail(e);
     }
   });
+
+program
+  .command('prompt')
+  .description('print a one-line status (Claude Code statusline, tmux, Starship, …)')
+  .action((_opts, cmd) => {
+    cmdPrompt(ctxFrom(cmd));
+  });
+
+program
+  .command('init-statusline')
+  .description('configure the Claude Code statusline to use claudinho')
+  .option('--print', 'print the settings snippet instead of writing it')
+  .action((opts, cmd) => {
+    try {
+      cmdInitStatusline(opts, ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
+  });
+
+// Internal: cold-path cache refresher, spawned detached by `prompt`.
+const refreshCmd = new Command('_refresh')
+  .description('(internal) refresh the statusline cache')
+  .action(async (_opts, cmd) => {
+    try {
+      await cmdRefresh(ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
+  });
+program.addCommand(refreshCmd, { hidden: true });
 
 program.parseAsync().catch(fail);

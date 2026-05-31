@@ -179,6 +179,12 @@ export interface EspnAdapterOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /**
+   * Enrich group-stage matches with their group letter via the standings
+   * endpoint (one extra request). Default true. Set false on the hot live-poll
+   * path, where group letters aren't needed and the extra call is wasteful.
+   */
+  enrichGroups?: boolean;
 }
 
 // Standings endpoint shapes (only what we read).
@@ -251,7 +257,8 @@ export class EspnAdapter implements ProviderAdapter {
     url.searchParams.set('limit', '300');
     if (dates) url.searchParams.set('dates', dates);
 
-    const groupByTeam = await this.fetchGroupMap();
+    const groupByTeam =
+      this.opts.enrichGroups === false ? {} : await this.fetchGroupMap();
     const data = (await this.get(url.toString())) as EspnScoreboard;
     return (data.events ?? []).map((ev) => mapEspnEvent(ev, { groupByTeam }));
   }

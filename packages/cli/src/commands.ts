@@ -27,6 +27,10 @@ import {
   makeAdapter,
   mergeLive,
 } from './data';
+import { readState } from './cache';
+import { renderPrompt } from './statusline';
+import { runRefresh, shouldRefresh, spawnRefresh } from './refresh';
+import { initStatusline } from './install';
 
 type Ctx = { cfg: CliConfig; t: Translator };
 
@@ -179,6 +183,43 @@ export async function cmdTable(group: string | undefined, { cfg, t }: Ctx): Prom
   }
   out();
   out(disclaimer(t, c));
+}
+
+/**
+ * `claudinho prompt` — the HOT PATH. Reads the cache, prints one line, and (if
+ * warranted) fires a detached refresher. Synchronous, no network, never throws.
+ */
+export function cmdPrompt({ cfg }: Ctx): void {
+  try {
+    const team = process.env.CLAUDINHO_TEAM;
+    const compact = !['0', 'false', 'no'].includes(
+      (process.env.CLAUDINHO_COMPACT ?? '').toLowerCase(),
+    );
+    const state = readState();
+    out(renderPrompt(state, { team, compact }));
+    if (shouldRefresh()) spawnRefresh(cfg.source);
+  } catch {
+    // The statusline must always succeed; print nothing rather than error.
+    out('');
+  }
+}
+
+/** `claudinho _refresh` — internal cold-path cache refresher. */
+export async function cmdRefresh({ cfg }: Ctx): Promise<void> {
+  await runRefresh({ source: cfg.source });
+}
+
+/** `claudinho init-statusline` — patch Claude Code settings.json. */
+export function cmdInitStatusline(opts: { print?: boolean }, { cfg }: Ctx): void {
+  const res = initStatusline({ print: opts.print });
+  const c = painterFor(cfg);
+  if (res.action === 'printed') {
+    out(res.message);
+    return;
+  }
+  const mark =
+    res.action === 'written' ? c.green('✓') : res.action === 'already' ? c.cyan('•') : c.yellow('!');
+  out(`${mark} ${res.message}`);
 }
 
 /** `claudinho match <id>` */
