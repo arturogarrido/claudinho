@@ -1,0 +1,227 @@
+import {
+  allFixtures,
+  computeStandings,
+  countdown,
+  fixturesByDate,
+  fixturesByGroup,
+  formatKickoff,
+  groups,
+  localDate,
+  nextFixtureForTeam,
+  scoreline,
+  type Match,
+} from '@claudinho/core';
+import Table from 'cli-table3';
+import type { CliConfig } from './config';
+import type { Translator } from './i18n';
+import {
+  disclaimer,
+  header,
+  matchLine,
+  painterFor,
+  statusToken,
+} from './format';
+import {
+  getLiveMatches,
+  getMatchesForDate,
+  makeAdapter,
+  mergeLive,
+} from './data';
+
+type Ctx = { cfg: CliConfig; t: Translator };
+
+function out(line = ''): void {
+  process.stdout.write(line + '\n');
+}
+
+function emitJson(data: unknown): void {
+  out(JSON.stringify(data, null, 2));
+}
+
+/** `claudinho today [date]` */
+export async function cmdToday(date: string | undefined, { cfg, t }: Ctx): Promise<void> {
+  const adapter = makeAdapter(cfg.source);
+  const targetDate = date ?? localDate(new Date().toISOString(), cfg.tz);
+  const { matches, degraded } = await getMatchesForDate(adapter, targetDate);
+  const todays = fixturesByDate(targetDate, matches);
+
+  if (cfg.json) {
+    emitJson({ date: targetDate, degraded, matches: todays });
+    return;
+  }
+
+  const c = painterFor(cfg);
+  out();
+  out(header(`${t('today.title')} · ${targetDate}`, c));
+  out();
+  if (todays.length === 0) {
+    out(c.dim('  ' + t('today.none')));
+  } else {
+    for (const m of todays) out(matchLine(m, cfg, t, c));
+  }
+  out();
+  out(disclaimer(t, c));
+}
+
+/** `claudinho live` */
+export async function cmdLive({ cfg, t }: Ctx): Promise<void> {
+  const adapter = makeAdapter(cfg.source);
+  const { matches, degraded } = await getLiveMatches(adapter);
+
+  if (cfg.json) {
+    emitJson({ degraded, matches });
+    return;
+  }
+
+  const c = painterFor(cfg);
+  out();
+  out(header(t('live.title'), c));
+  out();
+  if (matches.length === 0) {
+    out(c.dim('  ' + t('live.none')));
+  } else {
+    for (const m of matches) out(matchLine(m, cfg, t, c));
+  }
+  out();
+  out(disclaimer(t, c));
+}
+
+/** `claudinho next <team>` */
+export async function cmdNext(team: string, { cfg, t }: Ctx): Promise<void> {
+  const code = team.toUpperCase();
+  const fixture = nextFixtureForTeam(code);
+
+  if (cfg.json) {
+    emitJson({ team: code, fixture: fixture ?? null });
+    return;
+  }
+
+  const c = painterFor(cfg);
+  out();
+  if (!fixture) {
+    out(c.dim('  ' + t('next.none', { team: code })));
+    out();
+    out(disclaimer(t, c));
+    return;
+  }
+  out(header(t('next.label', { team: code }), c));
+  out();
+  out(matchLine(fixture, cfg, t, c));
+  out(
+    '  ' +
+      c.dim(
+        `${formatKickoff(fixture.kickoff, { tz: cfg.tz, locale: cfg.lang })} · ` +
+          t('next.in', { countdown: countdown(fixture.kickoff) }),
+      ),
+  );
+  out();
+  out(disclaimer(t, c));
+}
+
+/** `claudinho table [group]` */
+export async function cmdTable(group: string | undefined, { cfg, t }: Ctx): Promise<void> {
+  const adapter = makeAdapter(cfg.source);
+  // Overlay results so finished games count toward the live table.
+  let matches: Match[] = allFixtures();
+  try {
+    const live = await adapter.fetchByDate(localDate(new Date().toISOString(), cfg.tz));
+    matches = mergeLive(matches, live);
+  } catch {
+    /* fall back to static schedule */
+  }
+
+  const wanted = group ? [group.toUpperCase()] : groups(matches);
+
+  if (cfg.json) {
+    const tables = wanted.map((g) => ({
+      group: g,
+      standings: computeStandings(fixturesByGroup(g, matches)),
+    }));
+    emitJson(group ? tables[0] ?? null : tables);
+    return;
+  }
+
+  const c = painterFor(cfg);
+  for (const g of wanted) {
+    const rows = computeStandings(fixturesByGroup(g, matches));
+    if (rows.length === 0) {
+      out();
+      out(c.dim('  ' + t('table.none', { group: g })));
+      continue;
+    }
+    out();
+    out(header(t('table.title', { group: g }), c));
+    const table = new Table({
+      head: [
+        t('col.team'),
+        t('col.p'),
+        t('col.w'),
+        t('col.d'),
+        t('col.l'),
+        t('col.gd'),
+        t('col.pts'),
+      ],
+      colAligns: ['left', 'right', 'right', 'right', 'right', 'right', 'right'],
+      style: { head: cfg.color ? ['cyan'] : [], border: cfg.color ? ['gray'] : [] },
+    });
+    for (const r of rows) {
+      table.push([
+        `${r.team.flag} ${r.team.name}`,
+        r.played,
+        r.won,
+        r.drawn,
+        r.lost,
+        r.goalDiff > 0 ? `+${r.goalDiff}` : `${r.goalDiff}`,
+        cfg.color ? c.bold(`${r.points}`) : r.points,
+      ]);
+    }
+    out(table.toString());
+  }
+  out();
+  out(disclaimer(t, c));
+}
+
+/** `claudinho match <id>` */
+export async function cmdMatch(id: string, { cfg, t }: Ctx): Promise<void> {
+  const adapter = makeAdapter(cfg.source);
+  let match = allFixtures().find((m) => m.id === id);
+  try {
+    if (match) {
+      const live = await adapter.fetchByDate(match.kickoff.slice(0, 10));
+      match = live.find((m) => m.id === id) ?? match;
+    }
+  } catch {
+    /* keep static */
+  }
+
+  if (cfg.json) {
+    emitJson({ match: match ?? null });
+    return;
+  }
+
+  const c = painterFor(cfg);
+  out();
+  if (!match) {
+    out(c.dim('  ' + t('match.none', { id })));
+    out();
+    out(disclaimer(t, c));
+    return;
+  }
+  const stageLabel = match.group ? `${match.stage} ${match.group}` : match.stage;
+  out(header(`${match.home.name} ${scoreline(match)} ${match.away.name}`, c));
+  out('  ' + c.dim(`${stageLabel} · ${match.venue}`));
+  out(
+    '  ' +
+      c.dim(
+        `${formatKickoff(match.kickoff, { tz: cfg.tz, locale: cfg.lang })}  ${statusToken(match, t, c)}`.trimEnd(),
+      ),
+  );
+  if (match.events?.length) {
+    out();
+    for (const e of match.events) {
+      out(`  ${e.minute}'  ${e.type}  ${e.teamCode}${e.player ? ` — ${e.player}` : ''}`);
+    }
+  }
+  out();
+  out(disclaimer(t, c));
+}

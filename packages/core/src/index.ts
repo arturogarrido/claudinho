@@ -15,6 +15,9 @@ export {
   groups,
 } from './schedule';
 
+export { computeStandings } from './standings';
+export type { StandingRow } from './standings';
+
 export type { ProviderAdapter, ProviderCapabilities } from './adapters/types';
 export { EspnAdapter, mapEspnEvent } from './adapters/espn';
 export type { EspnAdapterOptions, MapContext } from './adapters/espn';
