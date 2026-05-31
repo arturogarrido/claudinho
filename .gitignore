@@ -19,3 +19,6 @@ coverage/
 
 # Claude Code local (keep shared settings, ignore local)
 .claude/settings.local.json
+
+# build output
+packages/*/dist/

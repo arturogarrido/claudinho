@@ -2,3 +2,12 @@ packages:
   - "packages/*"
   - "services/*"
   - "apps/*"
+
+allowBuilds:
+  esbuild: set this to true or false
+
+# Allow esbuild (pulled in by tsup + vitest) to run its postinstall, which
+# fetches the platform-native binary. Without this, pnpm 11 blocks the build
+# script and fails preflight on every script run.
+onlyBuiltDependencies:
+  - esbuild
