@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.turbo/
+
+# env / secrets
+.env
+.env.*
+.dev.vars
+.wrangler/
+
+# editor / OS
+.DS_Store
+*.log
+.idea/
+.vscode/
+
+# Claude Code local (keep shared settings, ignore local)
+.claude/settings.local.json
