@@ -29,12 +29,23 @@ import {
   makeAdapter,
   mergeLive,
 } from './data';
+import type { ProviderAdapter } from '@claudinho/core';
 import { readState } from './cache';
 import { renderPrompt } from './statusline';
 import { runRefresh, shouldRefresh, spawnRefresh } from './refresh';
 import { initStatusline } from './install';
 
-type Ctx = { cfg: CliConfig; t: Translator };
+/**
+ * Command context. `adapter` is an optional injection seam: production leaves
+ * it unset (commands build one from `cfg.source`), tests pass a fake so they
+ * never touch the network.
+ */
+type Ctx = { cfg: CliConfig; t: Translator; adapter?: ProviderAdapter };
+
+/** The injected adapter, or one constructed from the configured source. */
+function adapterFor({ cfg, adapter }: Ctx): ProviderAdapter {
+  return adapter ?? makeAdapter(cfg.source);
+}
 
 function out(line = ''): void {
   process.stdout.write(line + '\n');
@@ -63,9 +74,10 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
 }
 
 /** `claudinho today [date]` */
-export async function cmdToday(date: string | undefined, { cfg, t }: Ctx): Promise<void> {
+export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void> {
+  const { cfg, t } = ctx;
   precheck(cfg, t, date);
-  const adapter = makeAdapter(cfg.source);
+  const adapter = adapterFor(ctx);
   const targetDate = date ?? localDate(new Date().toISOString(), cfg.tz);
   const { matches, degraded } = await getMatchesForDate(adapter, targetDate);
   const todays = fixturesByDate(targetDate, matches);
@@ -89,9 +101,10 @@ export async function cmdToday(date: string | undefined, { cfg, t }: Ctx): Promi
 }
 
 /** `claudinho live` */
-export async function cmdLive({ cfg, t }: Ctx): Promise<void> {
+export async function cmdLive(ctx: Ctx): Promise<void> {
+  const { cfg, t } = ctx;
   precheck(cfg, t);
-  const adapter = makeAdapter(cfg.source);
+  const adapter = adapterFor(ctx);
   const { matches, degraded } = await getLiveMatches(adapter);
 
   if (cfg.json) {
@@ -146,9 +159,10 @@ export async function cmdNext(team: string, { cfg, t }: Ctx): Promise<void> {
 }
 
 /** `claudinho table [group]` */
-export async function cmdTable(group: string | undefined, { cfg, t }: Ctx): Promise<void> {
+export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<void> {
+  const { cfg, t } = ctx;
   precheck(cfg, t);
-  const adapter = makeAdapter(cfg.source);
+  const adapter = adapterFor(ctx);
   // Overlay results so finished games count toward the live table.
   let matches: Match[] = allFixtures();
   try {
@@ -247,9 +261,10 @@ export function cmdInitStatusline(opts: { print?: boolean }, { cfg }: Ctx): void
 }
 
 /** `claudinho match <id>` */
-export async function cmdMatch(id: string, { cfg, t }: Ctx): Promise<void> {
+export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
+  const { cfg, t } = ctx;
   precheck(cfg, t);
-  const adapter = makeAdapter(cfg.source);
+  const adapter = adapterFor(ctx);
   let match = allFixtures().find((m) => m.id === id);
   try {
     if (match) {

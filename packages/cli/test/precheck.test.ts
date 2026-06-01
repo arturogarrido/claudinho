@@ -2,11 +2,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdToday, cmdLive, InputError } from '../src/commands';
 import { makeT } from '../src/i18n';
 import type { CliConfig } from '../src/config';
+import type { Match, ProviderAdapter } from '@claudinho/core';
+
+/** A fake adapter so these tests never touch the network. */
+const fakeAdapter: ProviderAdapter = {
+  name: 'fake',
+  capabilities: { push: false, latencyHintSec: 0 },
+  async fetchByDate(): Promise<Match[]> {
+    return [];
+  },
+  async fetchLive(): Promise<Match[]> {
+    return [];
+  },
+};
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
   return { lang: 'en', tz: undefined, json: true, color: false, source: 'espn', ...over };
 }
-const ctx = (over: Partial<CliConfig> = {}) => ({ cfg: cfg(over), t: makeT('en') });
+const ctx = (over: Partial<CliConfig> = {}) => ({
+  cfg: cfg(over),
+  t: makeT('en'),
+  adapter: fakeAdapter,
+});
 
 // Keep stdout/stderr quiet and inspectable.
 const outSpy = vi.spyOn(process.stdout, 'write');
@@ -30,12 +47,14 @@ describe('date validation (L1)', () => {
   it('the InputError message names the bad value and the expected format', async () => {
     await expect(cmdToday('nope', ctx())).rejects.toThrowError(/Invalid date nope.*YYYY-MM-DD/);
   });
+
+  it('accepts a valid date (no throw)', async () => {
+    await expect(cmdToday('2026-06-11', ctx())).resolves.toBeUndefined();
+  });
 });
 
 describe('timezone warning (L2)', () => {
   it('warns to stderr on an invalid --tz but does not throw', async () => {
-    // cmdLive hits the network adapter; allow it to degrade gracefully (no live
-    // matches) — we only assert the warning fired.
     await cmdLive(ctx({ tz: 'Totally/Bogus' }));
     const warned = errSpy.mock.calls.some((c) => String(c[0]).includes('Unknown timezone'));
     expect(warned).toBe(true);
@@ -45,5 +64,12 @@ describe('timezone warning (L2)', () => {
     await cmdLive(ctx({ tz: 'America/Mexico_City' }));
     const warned = errSpy.mock.calls.some((c) => String(c[0]).includes('Unknown timezone'));
     expect(warned).toBe(false);
+  });
+
+  it('keeps the tz warning on stderr only — stdout stays clean JSON', async () => {
+    await cmdLive(ctx({ tz: 'Bogus/Zone', json: true }));
+    // Every stdout write must be parseable JSON (no warning leaked in).
+    const stdout = outSpy.mock.calls.map((c) => String(c[0])).join('');
+    expect(() => JSON.parse(stdout)).not.toThrow();
   });
 });
