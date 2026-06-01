@@ -5,6 +5,18 @@
   "type": "module",
   "license": "MIT",
   "author": "Arturo Garrido",
+  "homepage": "https://github.com/arturogarrido/claudinho#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arturogarrido/claudinho.git",
+    "directory": "packages/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/arturogarrido/claudinho/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "bin": {
     "claudinho-mcp": "./dist/index.js"
   },

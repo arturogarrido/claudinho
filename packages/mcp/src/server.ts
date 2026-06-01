@@ -61,6 +61,8 @@ export function buildServer(): McpServer {
         date: z.string().optional().describe('Date as YYYY-MM-DD (default: today)'),
         ...commonArgs,
       },
+      // Read-only; reaches an external data source (ESPN) for live overlay.
+      annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async (args) => toContent(await toolGetToday(args)),
   );
@@ -71,6 +73,7 @@ export function buildServer(): McpServer {
       title: 'Live matches',
       description: 'Matches currently in play, with score and minute.',
       inputSchema: { ...commonArgs },
+      annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async (args) => toContent(await toolGetLive(args)),
   );
@@ -81,6 +84,7 @@ export function buildServer(): McpServer {
       title: 'Match detail',
       description: 'A single match by its id, with live state if available.',
       inputSchema: { id: z.string().describe('Match id'), ...commonArgs },
+      annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async (args) => toContent(await toolGetMatch(args)),
   );
@@ -94,6 +98,7 @@ export function buildServer(): McpServer {
         group: z.string().optional().describe('Group letter A–L (omit for all)'),
         ...commonArgs,
       },
+      annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async (args) => toContent(await toolGetStandings(args)),
   );
@@ -104,6 +109,8 @@ export function buildServer(): McpServer {
       title: 'Next fixture for a team',
       description: "A team's next scheduled match. Use a 3-letter code, e.g. MEX, BRA, USA.",
       inputSchema: { team: z.string().describe('3-letter team code, e.g. MEX'), ...commonArgs },
+      // Read-only and served entirely from the bundled static schedule.
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async (args) => toContent(await toolGetNextFixture(args)),
   );

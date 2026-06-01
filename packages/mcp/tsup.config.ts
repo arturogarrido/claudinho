@@ -5,7 +5,8 @@ export default defineConfig({
   format: ['esm'],
   dts: false,
   clean: true,
-  sourcemap: true,
+  // No sourcemaps in the published server (smaller tarball; sources on GitHub).
+  sourcemap: false,
   target: 'node20',
   // Bundle our own core (with the inlined schedule) so the published server is
   // self-contained. Keep the MCP SDK + zod external (normal npm deps).

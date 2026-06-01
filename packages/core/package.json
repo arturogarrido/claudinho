@@ -5,6 +5,18 @@
   "type": "module",
   "license": "MIT",
   "author": "Arturo Garrido",
+  "homepage": "https://github.com/arturogarrido/claudinho#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arturogarrido/claudinho.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/arturogarrido/claudinho/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.js",
