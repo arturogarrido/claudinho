@@ -6,6 +6,8 @@ import {
   fixturesByGroup,
   formatKickoff,
   groups,
+  isValidDate,
+  isValidTimeZone,
   localDate,
   nextFixtureForTeam,
   scoreline,
@@ -42,8 +44,27 @@ function emitJson(data: unknown): void {
   out(JSON.stringify(data, null, 2));
 }
 
+/** A command refused input; the caller should stop and exit non-zero. */
+export class InputError extends Error {}
+
+/**
+ * Validate shared inputs before a command runs:
+ *  - an explicit `--tz` that's invalid → warn to stderr (non-fatal; core falls
+ *    back to the system zone anyway).
+ *  - an explicit date that isn't strict YYYY-MM-DD → throw InputError.
+ */
+function precheck(cfg: CliConfig, t: Translator, date?: string): void {
+  if (cfg.tz && !isValidTimeZone(cfg.tz)) {
+    process.stderr.write(t('warn.tz', { tz: cfg.tz }) + '\n');
+  }
+  if (date !== undefined && !isValidDate(date)) {
+    throw new InputError(t('err.date', { date }));
+  }
+}
+
 /** `claudinho today [date]` */
 export async function cmdToday(date: string | undefined, { cfg, t }: Ctx): Promise<void> {
+  precheck(cfg, t, date);
   const adapter = makeAdapter(cfg.source);
   const targetDate = date ?? localDate(new Date().toISOString(), cfg.tz);
   const { matches, degraded } = await getMatchesForDate(adapter, targetDate);
@@ -69,6 +90,7 @@ export async function cmdToday(date: string | undefined, { cfg, t }: Ctx): Promi
 
 /** `claudinho live` */
 export async function cmdLive({ cfg, t }: Ctx): Promise<void> {
+  precheck(cfg, t);
   const adapter = makeAdapter(cfg.source);
   const { matches, degraded } = await getLiveMatches(adapter);
 
@@ -92,6 +114,7 @@ export async function cmdLive({ cfg, t }: Ctx): Promise<void> {
 
 /** `claudinho next <team>` */
 export async function cmdNext(team: string, { cfg, t }: Ctx): Promise<void> {
+  precheck(cfg, t);
   const code = team.toUpperCase();
   const fixture = nextFixtureForTeam(code);
 
@@ -124,6 +147,7 @@ export async function cmdNext(team: string, { cfg, t }: Ctx): Promise<void> {
 
 /** `claudinho table [group]` */
 export async function cmdTable(group: string | undefined, { cfg, t }: Ctx): Promise<void> {
+  precheck(cfg, t);
   const adapter = makeAdapter(cfg.source);
   // Overlay results so finished games count toward the live table.
   let matches: Match[] = allFixtures();
@@ -224,6 +248,7 @@ export function cmdInitStatusline(opts: { print?: boolean }, { cfg }: Ctx): void
 
 /** `claudinho match <id>` */
 export async function cmdMatch(id: string, { cfg, t }: Ctx): Promise<void> {
+  precheck(cfg, t);
   const adapter = makeAdapter(cfg.source);
   let match = allFixtures().find((m) => m.id === id);
   try {

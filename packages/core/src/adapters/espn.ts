@@ -170,9 +170,13 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match {
   };
 }
 
-/** Convert "YYYY-MM-DD" or "YYYYMMDD" to ESPN's compact "YYYYMMDD". */
+/**
+ * Convert "YYYY-MM-DD" or "YYYYMMDD" to ESPN's compact "YYYYMMDD".
+ * Defensive: strips any non-digit so a stray value can't alter the query
+ * structure (callers validate dates up front; this is the last line).
+ */
 function toEspnDate(d: string): string {
-  return d.replace(/-/g, '').slice(0, 8);
+  return d.replace(/\D/g, '').slice(0, 8);
 }
 
 export interface EspnAdapterOptions {

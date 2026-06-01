@@ -2,6 +2,7 @@
  * Timezone-aware kickoff formatting and countdowns.
  * Pure Intl; no dependencies. Safe in Node and Workers.
  */
+import { isValidTimeZone } from './validate';
 
 function envTz(): string | undefined {
   if (typeof process !== 'undefined' && process.env && process.env.CLAUDINHO_TZ) {
@@ -10,19 +11,29 @@ function envTz(): string | undefined {
   return undefined;
 }
 
-/**
- * Resolve the effective timezone:
- * explicit arg > CLAUDINHO_TZ env > system zone.
- */
-export function resolveTz(explicit?: string): string | undefined {
-  if (explicit) return explicit;
-  const fromEnv = envTz();
-  if (fromEnv) return fromEnv;
+/** The runtime's system timezone, or undefined if it can't be resolved. */
+function systemTz(): string | undefined {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Resolve the effective timezone: explicit arg > CLAUDINHO_TZ env > system.
+ *
+ * Crucially, an *invalid* candidate is skipped rather than returned, so a bad
+ * `--tz`/CLAUDINHO_TZ can never reach an Intl call and throw. The worst case is
+ * a silent fall back to the system zone (or undefined → runtime default).
+ * Callers that want to *tell* the user it was invalid should check
+ * `isValidTimeZone` themselves (the CLI does).
+ */
+export function resolveTz(explicit?: string): string | undefined {
+  if (explicit && isValidTimeZone(explicit)) return explicit;
+  const fromEnv = envTz();
+  if (fromEnv && isValidTimeZone(fromEnv)) return fromEnv;
+  return systemTz();
 }
 
 export interface FormatOpts {

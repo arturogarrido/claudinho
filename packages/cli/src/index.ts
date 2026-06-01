@@ -10,6 +10,7 @@ import {
   cmdRefresh,
   cmdTable,
   cmdToday,
+  InputError,
 } from './commands';
 
 const VERSION = '0.0.0';
@@ -25,7 +26,9 @@ function ctxFrom(cmd: Command) {
 }
 
 function fail(err: unknown): never {
-  process.stderr.write(`claudinho: ${(err as Error).message}\n`);
+  // InputError is a clean, user-facing validation message (no prefix noise).
+  const prefix = err instanceof InputError ? '' : 'claudinho: ';
+  process.stderr.write(`${prefix}${(err as Error).message}\n`);
   process.exit(1);
 }
 

@@ -4,6 +4,7 @@ export type * from './types';
 export { flagEmoji, nationToFlag, nationToRegion } from './flags';
 export { resolveTz, formatKickoff, countdown, localDate } from './time';
 export type { FormatOpts } from './time';
+export { isValidTimeZone, isValidDate } from './validate';
 export { outcomeFromScore, isLive, isFinished, scoreline, byKickoff } from './normalize';
 
 export {

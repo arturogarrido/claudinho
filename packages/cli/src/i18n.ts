@@ -25,6 +25,8 @@ const EN: Dict = {
   'col.l': 'L',
   'col.gd': 'GD',
   'col.pts': 'Pts',
+  'err.date': 'Invalid date {date}. Use YYYY-MM-DD.',
+  'warn.tz': 'Unknown timezone {tz}; using system timezone.',
   disclaimer: 'Not affiliated with FIFA or Anthropic. Data: ESPN.',
 };
 
@@ -52,6 +54,8 @@ const ES: Dict = {
   'col.l': 'P',
   'col.gd': 'DG',
   'col.pts': 'Pts',
+  'err.date': 'Fecha inválida {date}. Usa AAAA-MM-DD.',
+  'warn.tz': 'Zona horaria desconocida {tz}; usando la del sistema.',
   disclaimer: 'No afiliado a FIFA ni Anthropic. Datos: ESPN.',
 };
 
@@ -79,6 +83,8 @@ const PT: Dict = {
   'col.l': 'D',
   'col.gd': 'SG',
   'col.pts': 'Pts',
+  'err.date': 'Data inválida {date}. Use AAAA-MM-DD.',
+  'warn.tz': 'Fuso horário desconhecido {tz}; usando o do sistema.',
   disclaimer: 'Não afiliado à FIFA nem à Anthropic. Dados: ESPN.',
 };
 
@@ -106,6 +112,8 @@ const FR: Dict = {
   'col.l': 'P',
   'col.gd': 'Diff',
   'col.pts': 'Pts',
+  'err.date': 'Date invalide {date}. Utilisez AAAA-MM-JJ.',
+  'warn.tz': 'Fuseau horaire inconnu {tz} ; utilisation du fuseau système.',
   disclaimer: 'Non affilié à la FIFA ni à Anthropic. Données : ESPN.',
 };
 
