@@ -20,7 +20,7 @@
   "bin": {
     "claudinho-mcp": "./dist/index.js"
   },
-  "files": ["dist"],
+  "files": ["dist", "README.md", "LICENSE"],
   "keywords": [
     "mcp",
     "model-context-protocol",
