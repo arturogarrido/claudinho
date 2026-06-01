@@ -21,3 +21,11 @@ export type { StandingRow } from './standings';
 export type { ProviderAdapter, ProviderCapabilities } from './adapters/types';
 export { EspnAdapter, mapEspnEvent } from './adapters/espn';
 export type { EspnAdapterOptions, MapContext } from './adapters/espn';
+
+export {
+  makeAdapter,
+  mergeLive,
+  getMatchesForDate,
+  getLiveMatches,
+} from './live';
+export type { LiveResult } from './live';
