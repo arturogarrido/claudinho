@@ -65,6 +65,9 @@ export class InputError extends Error {}
  *  - an explicit date that isn't strict YYYY-MM-DD → throw InputError.
  */
 function precheck(cfg: CliConfig, t: Translator, date?: string): void {
+  if (cfg.langRequestedUnsupported) {
+    process.stderr.write(t('warn.lang', { lang: cfg.langRequestedUnsupported }) + '\n');
+  }
   if (cfg.tz && !isValidTimeZone(cfg.tz)) {
     process.stderr.write(t('warn.tz', { tz: cfg.tz }) + '\n');
   }
@@ -88,8 +91,10 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   }
 
   const c = painterFor(cfg);
+  // "Today's matches" only when no explicit date was given; otherwise "Matches".
+  const title = date === undefined ? t('today.title') : t('today.on');
   out();
-  out(header(`${t('today.title')} · ${targetDate}`, c));
+  out(header(`${title} · ${targetDate}`, c));
   out();
   if (todays.length === 0) {
     out(c.dim('  ' + t('today.none')));

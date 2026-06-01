@@ -133,4 +133,11 @@ describe('toolGetStandings', () => {
     expect(data.tables.standings).toHaveLength(4);
     expect(r.text).toContain('Group A');
   });
+
+  it('reports a clean message for an unknown group (not an empty table)', async () => {
+    const r = await toolGetStandings({ group: 'Z', adapter: fakeAdapter({ throws: true }) });
+    expect(r.text).toContain('No group "Z"');
+    expect(r.text).not.toContain('P  W  D  L'); // no table header rendered
+    expect((r.data as { tables: null }).tables).toBeNull();
+  });
 });

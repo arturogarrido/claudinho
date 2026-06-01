@@ -3,6 +3,7 @@ type Dict = Record<string, string>;
 
 const EN: Dict = {
   'today.title': "Today's matches",
+  'today.on': 'Matches',
   'today.none': 'No matches scheduled for this date.',
   'live.title': 'Live now',
   'live.none': 'No matches in play right now.',
@@ -27,11 +28,13 @@ const EN: Dict = {
   'col.pts': 'Pts',
   'err.date': 'Invalid date {date}. Use YYYY-MM-DD.',
   'warn.tz': 'Unknown timezone {tz}; using system timezone.',
+  'warn.lang': 'Unsupported language {lang}; using English. (supported: en, es, pt, fr)',
   disclaimer: 'Not affiliated with FIFA or Anthropic. Data: ESPN.',
 };
 
 const ES: Dict = {
   'today.title': 'Partidos de hoy',
+  'today.on': 'Partidos',
   'today.none': 'No hay partidos para esta fecha.',
   'live.title': 'En vivo',
   'live.none': 'No hay partidos en juego ahora mismo.',
@@ -56,11 +59,13 @@ const ES: Dict = {
   'col.pts': 'Pts',
   'err.date': 'Fecha inválida {date}. Usa AAAA-MM-DD.',
   'warn.tz': 'Zona horaria desconocida {tz}; usando la del sistema.',
+  'warn.lang': 'Idioma no soportado {lang}; usando inglés. (disponibles: en, es, pt, fr)',
   disclaimer: 'No afiliado a FIFA ni Anthropic. Datos: ESPN.',
 };
 
 const PT: Dict = {
   'today.title': 'Jogos de hoje',
+  'today.on': 'Jogos',
   'today.none': 'Nenhum jogo para esta data.',
   'live.title': 'Ao vivo',
   'live.none': 'Nenhum jogo em andamento agora.',
@@ -85,11 +90,13 @@ const PT: Dict = {
   'col.pts': 'Pts',
   'err.date': 'Data inválida {date}. Use AAAA-MM-DD.',
   'warn.tz': 'Fuso horário desconhecido {tz}; usando o do sistema.',
+  'warn.lang': 'Idioma não suportado {lang}; usando inglês. (disponíveis: en, es, pt, fr)',
   disclaimer: 'Não afiliado à FIFA nem à Anthropic. Dados: ESPN.',
 };
 
 const FR: Dict = {
   'today.title': "Matchs d'aujourd'hui",
+  'today.on': 'Matchs',
   'today.none': 'Aucun match prévu pour cette date.',
   'live.title': 'En direct',
   'live.none': "Aucun match en cours pour l'instant.",
@@ -114,6 +121,7 @@ const FR: Dict = {
   'col.pts': 'Pts',
   'err.date': 'Date invalide {date}. Utilisez AAAA-MM-JJ.',
   'warn.tz': 'Fuseau horaire inconnu {tz} ; utilisation du fuseau système.',
+  'warn.lang': 'Langue non prise en charge {lang} ; utilisation de l’anglais. (disponibles : en, es, pt, fr)',
   disclaimer: 'Non affilié à la FIFA ni à Anthropic. Données : ESPN.',
 };
 

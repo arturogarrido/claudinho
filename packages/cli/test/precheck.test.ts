@@ -73,3 +73,17 @@ describe('timezone warning (L2)', () => {
     expect(() => JSON.parse(stdout)).not.toThrow();
   });
 });
+
+describe('language warning (consistency with tz)', () => {
+  it('warns to stderr when an explicit --lang is unsupported', async () => {
+    await cmdLive(ctx({ langRequestedUnsupported: 'de' }));
+    const warned = errSpy.mock.calls.some((c) => String(c[0]).includes('Unsupported language'));
+    expect(warned).toBe(true);
+  });
+
+  it('does not warn when lang is supported (flag unset)', async () => {
+    await cmdLive(ctx());
+    const warned = errSpy.mock.calls.some((c) => String(c[0]).includes('Unsupported language'));
+    expect(warned).toBe(false);
+  });
+});

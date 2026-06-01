@@ -108,7 +108,20 @@ export async function toolGetStandings(
     degraded = true;
   }
 
-  const wanted = args.group ? [args.group.toUpperCase()] : groups(matches);
+  const known = groups(matches); // present group letters, e.g. A..L
+  if (args.group) {
+    const g = args.group.toUpperCase();
+    if (!known.includes(g)) {
+      return {
+        text: withDisclaimer(
+          `No group "${g}". Groups are ${known.join(', ')}.`,
+        ),
+        data: { degraded, tables: null },
+      };
+    }
+  }
+
+  const wanted = args.group ? [args.group.toUpperCase()] : known;
   const tables = wanted.map((g) => ({
     group: g,
     standings: computeStandings(fixturesByGroup(g, matches)),

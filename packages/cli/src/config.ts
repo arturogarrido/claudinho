@@ -5,6 +5,8 @@ export interface CliConfig {
   json: boolean;
   color: boolean;
   source: string;
+  /** The user explicitly requested a `--lang` we don't support (for warnings). */
+  langRequestedUnsupported?: string;
 }
 
 export interface RawGlobalOpts {
@@ -39,12 +41,20 @@ function pickColor(explicit?: boolean): boolean {
   return true;
 }
 
+function isSupportedLang(s: string): boolean {
+  return SUPPORTED_LANGS.includes(s as (typeof SUPPORTED_LANGS)[number]);
+}
+
 export function resolveConfig(opts: RawGlobalOpts): CliConfig {
+  // Flag an explicit --lang we can't honor, so the command can warn (mirrors tz).
+  const langRequestedUnsupported =
+    opts.lang && !isSupportedLang(opts.lang) ? opts.lang : undefined;
   return {
     lang: pickLang(opts.lang),
     tz: opts.tz ?? process.env.CLAUDINHO_TZ ?? undefined,
     json: opts.json ?? false,
     color: pickColor(opts.color),
     source: opts.source ?? process.env.CLAUDINHO_SOURCE ?? 'espn',
+    langRequestedUnsupported,
   };
 }
