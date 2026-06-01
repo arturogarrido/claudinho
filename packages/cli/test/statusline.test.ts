@@ -69,6 +69,29 @@ describe('renderPrompt — live', () => {
     // Falls through to next-fixture countdown rather than a stale score.
     expect(renderPrompt(s, { now: NOW })).not.toContain('67');
   });
+
+  it('degrades to the countdown on a corrupt cache (regression: blank line)', () => {
+    // A corrupt cache where `live` isn't an array must NOT blank the statusline.
+    const cases: unknown[] = ['not-an-array', 42, { a: 1 }, null];
+    for (const bad of cases) {
+      const s = { updatedAt: NOW.toISOString(), live: bad, degraded: false, source: 'espn' };
+      const out = renderPrompt(s as never, { now: NOW });
+      expect(out.length).toBeGreaterThan(0); // never empty
+      expect(out).toContain('in '); // fell back to a countdown
+    }
+  });
+
+  it('skips malformed live entries (missing teams) instead of throwing', () => {
+    const s = {
+      updatedAt: NOW.toISOString(),
+      live: [{ status: 'LIVE' }, { status: 'LIVE', home: {}, away: {} }],
+      degraded: false,
+      source: 'espn',
+    };
+    const out = renderPrompt(s as never, { now: NOW });
+    expect(out.length).toBeGreaterThan(0);
+    expect(out).toContain('in '); // no valid live entry -> countdown
+  });
 });
 
 describe('renderPrompt — next fixture (static, no cache)', () => {

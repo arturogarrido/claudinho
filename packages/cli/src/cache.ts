@@ -76,35 +76,65 @@ export function ageMs(state: CacheState | undefined, now = Date.now()): number {
   return Number.isFinite(t) ? now - t : Infinity;
 }
 
-/** True if a refresher currently holds a fresh lock. */
-export function isLockFresh(now = Date.now()): boolean {
+/**
+ * Age of the lock in ms. Uses the timestamp written *inside* the lock
+ * (authoritative — survives copies/touch) and falls back to the file mtime.
+ * Returns Infinity if there's no lock.
+ */
+function lockAgeMs(now = Date.now()): number {
+  const lp = lockPath();
   try {
-    return now - statSync(lockPath()).mtimeMs < LOCK_STALE_MS;
+    const contents = readFileSync(lp, 'utf8');
+    const written = Number.parseInt(contents.split(/\s+/)[1] ?? '', 10);
+    if (Number.isFinite(written)) return now - written;
   } catch {
-    return false;
+    return Infinity; // no lock
+  }
+  // Lock exists but content is unparseable — fall back to mtime.
+  try {
+    return now - statSync(lp).mtimeMs;
+  } catch {
+    return Infinity;
   }
 }
 
+/** True if a refresher currently holds a non-stale lock. */
+export function isLockFresh(now = Date.now()): boolean {
+  return lockAgeMs(now) < LOCK_STALE_MS;
+}
+
 /** Acquire the refresh lock (atomic O_EXCL). Steals a stale lock. */
-export function acquireLock(): boolean {
+export function acquireLock(now = Date.now()): boolean {
   mkdirSync(cacheDir(), { recursive: true });
   const lp = lockPath();
   try {
     const fd = openSync(lp, 'wx'); // O_CREAT | O_EXCL
     try {
-      writeSync(fd, `${process.pid} ${Date.now()}`);
+      writeSync(fd, `${process.pid} ${now}`);
     } finally {
       closeSync(fd);
     }
     return true;
   } catch {
-    try {
-      if (Date.now() - statSync(lp).mtimeMs > LOCK_STALE_MS) {
+    // Lock exists. Steal it only if it's stale (by written timestamp / mtime).
+    if (lockAgeMs(now) > LOCK_STALE_MS) {
+      try {
         rmSync(lp, { force: true });
-        return acquireLock();
+      } catch {
+        return false; // lost the race to remove it
       }
-    } catch {
-      /* lost a race; treat as not acquired */
+      // One retry; if someone else grabbed it first, give up (no recursion loop).
+      try {
+        const fd = openSync(lp, 'wx');
+        try {
+          writeSync(fd, `${process.pid} ${now}`);
+        } finally {
+          closeSync(fd);
+        }
+        return true;
+      } catch {
+        return false;
+      }
     }
     return false;
   }

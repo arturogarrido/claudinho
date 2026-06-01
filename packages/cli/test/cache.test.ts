@@ -69,4 +69,25 @@ describe('refresh lock', () => {
     expect(acquireLock()).toBe(true); // free again
     releaseLock();
   });
+
+  it('steals a stale lock based on the written timestamp (regression)', () => {
+    // A leftover lock whose *content* timestamp is ancient (e.g. from a crashed
+    // refresher) must be stealable even if the file mtime is recent.
+    const lock = join(dir, 'claudinho', 'refresh.lock');
+    const fs = require('node:fs') as typeof import('node:fs');
+    fs.mkdirSync(join(dir, 'claudinho'), { recursive: true });
+    fs.writeFileSync(lock, `99999 ${Date.now() - 120_000}`); // 2 min old by content
+    expect(isLockFresh()).toBe(false); // recognized as stale despite fresh mtime
+    expect(acquireLock()).toBe(true); // stolen, not deadlocked
+    releaseLock();
+  });
+
+  it('does not steal a genuinely fresh lock held by another process', () => {
+    const lock = join(dir, 'claudinho', 'refresh.lock');
+    const fs = require('node:fs') as typeof import('node:fs');
+    fs.mkdirSync(join(dir, 'claudinho'), { recursive: true });
+    fs.writeFileSync(lock, `12345 ${Date.now()}`); // fresh by content
+    expect(isLockFresh()).toBe(true);
+    expect(acquireLock()).toBe(false); // must NOT steal
+  });
 });

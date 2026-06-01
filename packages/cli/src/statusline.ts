@@ -64,12 +64,19 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
   const compact = opts.compact ?? true;
   const team = opts.team?.toUpperCase();
 
-  // Live scores only if the cache is recent enough to trust.
+  // Live scores only if the cache is recent enough to trust. Guard against a
+  // corrupt cache where `live` isn't an array (?? only catches null/undefined),
+  // and against entries missing a status — so a malformed cache degrades to the
+  // static countdown instead of blanking the statusline.
   const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
-  const live = fresh ? (state?.live ?? []).filter((m) => isLive(m.status)) : [];
+  const liveArr = fresh && Array.isArray(state?.live) ? state!.live : [];
+  const live = liveArr.filter(
+    (m): m is Match =>
+      !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
+  );
 
   let pick: Match | undefined;
-  if (team) pick = live.find((m) => m.home.code === team || m.away.code === team);
+  if (team) pick = live.find((m) => m.home?.code === team || m.away?.code === team);
   if (!pick && !team) pick = live[0];
 
   if (pick) return liveLine(pick, compact, live.length - 1, team);
