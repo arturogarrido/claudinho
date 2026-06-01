@@ -105,6 +105,19 @@ describe('toolGetNextFixture (pure static)', () => {
   });
 });
 
+// Regression: every other tool test injects `adapter`, which masked an
+// infinite recursion in resolveAdapter() on the *production* (no-injection)
+// path — `args.adapter ?? resolveAdapter(args)` called itself instead of
+// makeAdapter(). This exercises a network tool WITHOUT an injected adapter so
+// the real resolveAdapter → makeAdapter path is covered. The fetch may
+// succeed or degrade; we only assert it returns (does not throw/recurse).
+describe('production adapter path (no injection)', () => {
+  it('toolGetStandings resolves a real adapter without recursing', async () => {
+    const r = await toolGetStandings({ group: 'A' });
+    expect(r.text).toContain('Group A');
+  }, 20000);
+});
+
 describe('toolGetStandings', () => {
   it('returns all 12 group tables (static fallback)', async () => {
     const r = await toolGetStandings({ adapter: fakeAdapter({ throws: true }) });

@@ -34,7 +34,7 @@ export interface CommonOpts {
 }
 
 function resolveAdapter(args: CommonOpts): ProviderAdapter {
-  return args.adapter ?? resolveAdapter(args);
+  return args.adapter ?? makeAdapter(args.source);
 }
 
 function withDisclaimer(text: string): string {
