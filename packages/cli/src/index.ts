@@ -2,6 +2,8 @@ import { Command } from 'commander';
 import { resolveConfig, type RawGlobalOpts } from './config';
 import { makeT } from './i18n';
 import {
+  cmdHook,
+  cmdInitHook,
   cmdInitStatusline,
   cmdLive,
   cmdMatch,
@@ -129,6 +131,25 @@ program
   .action((opts, cmd) => {
     try {
       cmdInitStatusline(opts, ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
+  });
+
+program
+  .command('hook')
+  .description('print live-score context for a Claude Code UserPromptSubmit hook (silent off-match)')
+  .action((_opts, cmd) => {
+    cmdHook(ctxFrom(cmd));
+  });
+
+program
+  .command('init-hook')
+  .description('wire the live-score hook into Claude Code (UserPromptSubmit)')
+  .option('--print', 'print the settings snippet instead of writing it')
+  .action((opts, cmd) => {
+    try {
+      cmdInitHook(opts, ctxFrom(cmd));
     } catch (e) {
       fail(e);
     }

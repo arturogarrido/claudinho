@@ -22,3 +22,6 @@ coverage/
 
 # build output
 packages/*/dist/
+
+# portable test bundle (local only)
+dist-portable/

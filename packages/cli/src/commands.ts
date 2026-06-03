@@ -32,8 +32,9 @@ import {
 import type { ProviderAdapter } from '@claudinho/core';
 import { readState } from './cache';
 import { renderPrompt } from './statusline';
+import { hookContext } from './hook';
 import { runRefresh, shouldRefresh, spawnRefresh } from './refresh';
-import { initStatusline } from './install';
+import { initHook, initStatusline } from './install';
 
 /**
  * Command context. `adapter` is an optional injection seam: production leaves
@@ -247,6 +248,23 @@ export function cmdPrompt({ cfg }: Ctx): void {
   }
 }
 
+/**
+ * `claudinho hook` — UserPromptSubmit hook. Prints live-score context (only
+ * during matches) for Claude Code to inject; silent otherwise. Like the
+ * statusline, it reads the cache only and triggers a background refresh, and
+ * MUST never fail (a non-zero exit could block the user's prompt).
+ */
+export function cmdHook({ cfg }: Ctx): void {
+  try {
+    const team = process.env.CLAUDINHO_TEAM;
+    const ctx = hookContext({ team });
+    if (ctx) out(ctx);
+    if (shouldRefresh()) spawnRefresh(cfg.source);
+  } catch {
+    // Never block the prompt — emit nothing on any error.
+  }
+}
+
 /** `claudinho _refresh` — internal cold-path cache refresher. */
 export async function cmdRefresh({ cfg }: Ctx): Promise<void> {
   await runRefresh({ source: cfg.source });
@@ -255,6 +273,19 @@ export async function cmdRefresh({ cfg }: Ctx): Promise<void> {
 /** `claudinho init-statusline` — patch Claude Code settings.json. */
 export function cmdInitStatusline(opts: { print?: boolean }, { cfg }: Ctx): void {
   const res = initStatusline({ print: opts.print });
+  const c = painterFor(cfg);
+  if (res.action === 'printed') {
+    out(res.message);
+    return;
+  }
+  const mark =
+    res.action === 'written' ? c.green('✓') : res.action === 'already' ? c.cyan('•') : c.yellow('!');
+  out(`${mark} ${res.message}`);
+}
+
+/** `claudinho init-hook` — wire the live-score UserPromptSubmit hook. */
+export function cmdInitHook(opts: { print?: boolean }, { cfg }: Ctx): void {
+  const res = initHook({ print: opts.print });
   const c = painterFor(cfg);
   if (res.action === 'printed') {
     out(res.message);

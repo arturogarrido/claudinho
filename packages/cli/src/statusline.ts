@@ -58,22 +58,31 @@ function liveLine(m: Match, compact: boolean, others: number, team?: string): st
  * Render the one-line status. Pure: given a cache snapshot and options, returns
  * the string. Never throws on bad input.
  */
+/**
+ * The live matches we can trust from a cache snapshot: cache must be recent,
+ * `live` must be an array, and each entry must be a well-formed match. Guards
+ * against a corrupt cache (?? only catches null/undefined) so callers never
+ * throw on bad input. Returns [] when there's nothing trustworthy/live.
+ */
+export function liveMatchesFromCache(
+  state: CacheState | undefined,
+  nowMs = Date.now(),
+): Match[] {
+  const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
+  const liveArr = fresh && Array.isArray(state?.live) ? state!.live : [];
+  return liveArr.filter(
+    (m): m is Match =>
+      !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
+  );
+}
+
 export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {}): string {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
   const compact = opts.compact ?? true;
   const team = opts.team?.toUpperCase();
 
-  // Live scores only if the cache is recent enough to trust. Guard against a
-  // corrupt cache where `live` isn't an array (?? only catches null/undefined),
-  // and against entries missing a status — so a malformed cache degrades to the
-  // static countdown instead of blanking the statusline.
-  const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
-  const liveArr = fresh && Array.isArray(state?.live) ? state!.live : [];
-  const live = liveArr.filter(
-    (m): m is Match =>
-      !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
-  );
+  const live = liveMatchesFromCache(state, nowMs);
 
   let pick: Match | undefined;
   if (team) pick = live.find((m) => m.home?.code === team || m.away?.code === team);
