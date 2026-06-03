@@ -120,3 +120,33 @@ describe('initHook', () => {
     expect(readFileSync(path, 'utf8')).toBe('{ broken');
   });
 });
+
+describe('backup is the pristine original across multiple init- commands', () => {
+  it('keeps the FIRST backup after init-statusline THEN init-hook', () => {
+    const original = { theme: 'dark', model: 'opus' };
+    writeFileSync(path, JSON.stringify(original));
+
+    initStatusline({ path }); // backs up pristine original, adds statusLine
+    initHook({ path }); // must NOT overwrite the backup with the modified file
+
+    const bak = JSON.parse(readFileSync(`${path}.claudinho.bak`, 'utf8'));
+    expect(bak).toEqual(original); // pristine: no statusLine, no hooks
+    expect(bak.statusLine).toBeUndefined();
+    expect(bak.hooks).toBeUndefined();
+
+    // And the live file has BOTH claudinho edits.
+    const live = JSON.parse(readFileSync(path, 'utf8'));
+    expect(live.statusLine.command).toBe('claudinho prompt');
+    expect(live.hooks.UserPromptSubmit[0].hooks[0].command).toBe('claudinho hook');
+    expect(live.theme).toBe('dark'); // original keys preserved
+  });
+
+  it('keeps the FIRST backup regardless of init- order (hook then statusline)', () => {
+    const original = { permissions: { allow: ['x'] } };
+    writeFileSync(path, JSON.stringify(original));
+    initHook({ path });
+    initStatusline({ path });
+    const bak = JSON.parse(readFileSync(`${path}.claudinho.bak`, 'utf8'));
+    expect(bak).toEqual(original);
+  });
+});

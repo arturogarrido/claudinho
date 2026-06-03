@@ -29,6 +29,18 @@ export function claudeSettingsPath(): string {
   return join(homedir(), '.claude', 'settings.json');
 }
 
+/**
+ * Back up the settings file to `<path>.claudinho.bak`, but only if no claudinho
+ * backup exists yet. This makes the FIRST claudinho edit's backup authoritative
+ * — so the .bak always holds the user's pristine original, even if they later
+ * run a second `init-` command (whose write would otherwise capture our own
+ * earlier edit and clobber the real backup).
+ */
+function backupOnce(path: string): void {
+  const bak = `${path}.claudinho.bak`;
+  if (existsSync(path) && !existsSync(bak)) copyFileSync(path, bak);
+}
+
 export interface InitOpts {
   print?: boolean;
   command?: string;
@@ -64,7 +76,7 @@ export function initStatusline(opts: InitOpts = {}): InitResult {
     return { action: 'already', path, message: `Statusline already uses claudinho (${path}).` };
   }
 
-  if (existsSync(path)) copyFileSync(path, `${path}.claudinho.bak`);
+  backupOnce(path);
   settings.statusLine = sl;
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(settings, null, 2) + '\n', 'utf8');
@@ -132,7 +144,7 @@ export function initHook(opts: InitOpts = {}): InitResult {
     return { action: 'already', path, message: `UserPromptSubmit hook already uses claudinho (${path}).` };
   }
 
-  if (existsSync(path)) copyFileSync(path, `${path}.claudinho.bak`);
+  backupOnce(path);
   matchers.push({ hooks: [{ type: 'command', command }] });
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(settings, null, 2) + '\n', 'utf8');
