@@ -3,17 +3,36 @@
  * provider state is merged over it by match id. Used by every client (CLI, MCP,
  * notifier) so the overlay logic lives in exactly one place.
  */
-import { EspnAdapter } from './adapters/espn';
+import { competitionBase, DEFAULT_COMPETITION, EspnAdapter } from './adapters/espn';
 import type { ProviderAdapter } from './adapters/types';
 import { allFixtures } from './schedule';
 import type { Match } from './types';
+
+/**
+ * The ESPN competition slug to fetch live state from. Defaults to the 2026
+ * World Cup (`fifa.world`); override with CLAUDINHO_COMPETITION (e.g.
+ * `fifa.friendly` to follow international friendlies during pre-tournament
+ * testing). Only affects the *live* fetch — the bundled static schedule is
+ * always the World Cup.
+ */
+export function resolveCompetition(explicit?: string): string {
+  if (explicit) return explicit;
+  if (typeof process !== 'undefined' && process.env?.CLAUDINHO_COMPETITION) {
+    return process.env.CLAUDINHO_COMPETITION;
+  }
+  return DEFAULT_COMPETITION;
+}
 
 /** Construct a provider adapter for a `--source` name (default: espn). */
 export function makeAdapter(source = 'espn'): ProviderAdapter {
   switch (source) {
     case 'espn':
-    default:
-      return new EspnAdapter();
+    default: {
+      const competition = resolveCompetition();
+      const baseUrl =
+        competition === DEFAULT_COMPETITION ? undefined : competitionBase(competition);
+      return new EspnAdapter({ baseUrl });
+    }
   }
 }
 

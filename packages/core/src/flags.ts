@@ -94,6 +94,9 @@ const ALIASES: ReadonlyArray<readonly [string, string]> = [
   ['Cabo Verde', 'CV'], ['Congo DR', 'CD'], ['Democratic Republic of the Congo', 'CD'],
   ['IR Iran', 'IR'], ['Curaçao', 'CW'], ['Holland', 'NL'],
   ['Republic of Ireland', 'IE'], ['UAE', 'AE'],
+  // Names where Intl's English label differs from the common short form.
+  ['Hong Kong', 'HK'], ['Myanmar', 'MM'], ['Palestine', 'PS'],
+  ['Burma', 'MM'], ['Cape Verde', 'CV'],
 ];
 
 const BY_NATION: Record<string, string> = Object.fromEntries(
@@ -117,19 +120,58 @@ const BY_CODE: Record<string, string> = {
 /**
  * Resolve a flag emoji from a nation name or code.
  * Tries the name table first (ESPN reliably provides display names),
- * then the 3-letter code table. Falls back to the neutral flag.
+ * then the 3-letter code table, then a programmatic Intl reverse-lookup.
+ * Falls back to the neutral flag.
  */
 export function nationToFlag(nameOrCode: string | undefined | null): string {
-  if (!nameOrCode) return NEUTRAL;
-  const byName = BY_NATION[norm(nameOrCode)];
-  if (byName) return flagEmoji(byName);
-  const byCode = BY_CODE[nameOrCode.trim().toUpperCase()];
-  if (byCode) return flagEmoji(byCode);
-  return NEUTRAL;
+  const region = nationToRegion(nameOrCode);
+  return region ? flagEmoji(region) : NEUTRAL;
 }
 
-/** Resolve a region code (alpha-2 / subdivision) from a nation name or code. */
+/**
+ * Lazily-built map of normalized English country name -> ISO alpha-2 region,
+ * derived from Intl.DisplayNames across all assigned 2-letter codes. This
+ * covers virtually every nation (incl. ones outside the World Cup field) with
+ * no hand-maintained table. Built once on first use.
+ */
+let INTL_BY_NAME: Record<string, string> | undefined;
+function intlNameMap(): Record<string, string> {
+  if (INTL_BY_NAME) return INTL_BY_NAME;
+  const map: Record<string, string> = {};
+  try {
+    const dn = new Intl.DisplayNames(['en'], { type: 'region' });
+    for (let a = 65; a <= 90; a++) {
+      for (let b = 65; b <= 90; b++) {
+        const code = String.fromCharCode(a, b);
+        let name: string | undefined;
+        try {
+          name = dn.of(code);
+        } catch {
+          name = undefined;
+        }
+        // Intl returns the code itself for unassigned regions — skip those.
+        if (name && name !== code) {
+          const key = norm(name);
+          if (!(key in map)) map[key] = code;
+        }
+      }
+    }
+  } catch {
+    // Intl.DisplayNames unavailable — leave the map empty.
+  }
+  INTL_BY_NAME = map;
+  return map;
+}
+
+/**
+ * Resolve a region code (alpha-2 / subdivision) from a nation name or code.
+ * Order: curated name table → 3-letter code table → Intl reverse-lookup.
+ */
 export function nationToRegion(nameOrCode: string | undefined | null): string | undefined {
   if (!nameOrCode) return undefined;
-  return BY_NATION[norm(nameOrCode)] ?? BY_CODE[nameOrCode.trim().toUpperCase()];
+  const byName = BY_NATION[norm(nameOrCode)];
+  if (byName) return byName;
+  const byCode = BY_CODE[nameOrCode.trim().toUpperCase()];
+  if (byCode) return byCode;
+  return intlNameMap()[norm(nameOrCode)];
 }

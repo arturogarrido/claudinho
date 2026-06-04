@@ -59,3 +59,25 @@ describe('nationToRegion', () => {
     expect(nationToRegion('nope')).toBeUndefined();
   });
 });
+
+describe('nationToFlag — Intl reverse-lookup fallback (non-WC nations)', () => {
+  it('resolves nations outside the curated World Cup table', () => {
+    // None of these are in the hand-maintained NATIONS list; they come from
+    // the Intl.DisplayNames reverse map.
+    expect(nationToFlag('Maldives')).toBe('🇲🇻');
+    expect(nationToFlag('Andorra')).toBe('🇦🇩');
+    expect(nationToFlag('Kazakhstan')).toBe('🇰🇿');
+    expect(nationToFlag('Luxembourg')).toBe('🇱🇺');
+  });
+
+  it('handles names whose Intl label differs, via aliases', () => {
+    expect(nationToFlag('Hong Kong')).toBe('🇭🇰');
+    expect(nationToFlag('Myanmar')).toBe('🇲🇲');
+    expect(nationToFlag('Palestine')).toBe('🇵🇸');
+  });
+
+  it('still returns the neutral flag for genuine non-countries', () => {
+    expect(nationToFlag('Wakanda')).toBe('🏳️');
+    expect(nationToFlag('Round of 32 1 Winner')).toBe('🏳️');
+  });
+});

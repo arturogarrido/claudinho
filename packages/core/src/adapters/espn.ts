@@ -13,10 +13,17 @@ import type { Match, Stage, Status, Team } from '../types';
 import type { ProviderAdapter, ProviderCapabilities } from './types';
 import { nationToFlag } from '../flags';
 
-const DEFAULT_BASE =
-  'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world';
+const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
+/** Default competition slug (the 2026 World Cup). */
+export const DEFAULT_COMPETITION = 'fifa.world';
+const DEFAULT_BASE = `${ESPN_SOCCER}/${DEFAULT_COMPETITION}`;
 const USER_AGENT =
   'claudinho/0.0 (+https://github.com/arturogarrido/claudinho)';
+
+/** Build an ESPN soccer base URL for a competition slug (e.g. "fifa.friendly"). */
+export function competitionBase(slug: string): string {
+  return `${ESPN_SOCCER}/${slug}`;
+}
 
 // ---- ESPN response shapes (only the fields we read) ----
 interface EspnStatusType {
@@ -107,7 +114,13 @@ const SLUG_TO_STAGE: Record<string, Stage> = {
 };
 
 function stageFromSlug(slug?: string): Stage {
-  return (slug && SLUG_TO_STAGE[slug]) || 'GROUP';
+  if (slug && SLUG_TO_STAGE[slug]) return SLUG_TO_STAGE[slug]!;
+  // A recognized World Cup phase falls in the table above. Anything else is a
+  // non-tournament fixture (e.g. "2026-international-friendly") — label it
+  // FRIENDLY so it never gets a fake group/stage. Missing slug → GROUP (the WC
+  // scoreboard occasionally omits it for group games).
+  if (!slug) return 'GROUP';
+  return 'FRIENDLY';
 }
 
 function toInt(s?: string): number | undefined {

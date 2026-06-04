@@ -34,6 +34,7 @@ export function stageName(stage: Match['stage']): string {
     case 'SF': return 'Semi-final';
     case '3P': return 'Third-place play-off';
     case 'F': return 'Final';
+    case 'FRIENDLY': return 'Friendly';
   }
 }
 

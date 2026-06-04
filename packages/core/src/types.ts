@@ -13,8 +13,12 @@ export interface Team {
   flag: string;
 }
 
-/** Tournament stage. "3P" is the third-place play-off. */
-export type Stage = 'GROUP' | 'R32' | 'R16' | 'QF' | 'SF' | '3P' | 'F';
+/**
+ * Tournament stage. "3P" is the third-place play-off. "FRIENDLY" is used for
+ * non-tournament fixtures (e.g. international friendlies) surfaced when the
+ * adapter points at a non-World-Cup competition.
+ */
+export type Stage = 'GROUP' | 'R32' | 'R16' | 'QF' | 'SF' | '3P' | 'F' | 'FRIENDLY';
 
 /** Normalized match status across all providers. */
 export type Status =
