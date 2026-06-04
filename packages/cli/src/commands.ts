@@ -239,8 +239,10 @@ export function cmdPrompt({ cfg }: Ctx): void {
     const compact = !['0', 'false', 'no'].includes(
       (process.env.CLAUDINHO_COMPACT ?? '').toLowerCase(),
     );
+    const maxRaw = Number.parseInt(process.env.CLAUDINHO_MAX ?? '', 10);
+    const max = Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : undefined;
     const state = readState();
-    out(renderPrompt(state, { team, compact }));
+    out(renderPrompt(state, { team, compact, max }));
     if (shouldRefresh()) spawnRefresh(cfg.source);
   } catch {
     // The statusline must always succeed; print nothing rather than error.

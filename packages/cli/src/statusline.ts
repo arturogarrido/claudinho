@@ -38,20 +38,24 @@ function nextOverall(now: number, fixtures: Match[] = allFixtures()): Match | un
 }
 
 export interface PromptOpts {
-  /** Preferred team code (e.g. "MEX"); prioritizes that team's match. */
+  /** Preferred team code (e.g. "MEX"); when set, shows only that team's match. */
   team?: string;
   /** Compact (flags + score only). When false, includes 3-letter codes. */
   compact?: boolean;
+  /**
+   * Max live matches to show inline before collapsing the rest into "+N".
+   * Default: show all. (CLAUDINHO_MAX caps it for busy days.)
+   */
+  max?: number;
   now?: Date;
 }
 
-function liveLine(m: Match, compact: boolean, others: number, team?: string): string {
+/** One match as a segment (no leading icon), e.g. "🇪🇸 1–1 🇮🇶 87'". */
+function matchSegment(m: Match, compact: boolean): string {
   const minute = m.status === 'HT' ? 'HT' : m.minute ? `${m.minute}'` : 'LIVE';
   const home = compact ? m.home.flag : `${m.home.flag} ${m.home.code}`;
   const away = compact ? m.away.flag : `${m.away.code} ${m.away.flag}`;
-  let s = `⚽ ${home} ${scoreline(m)} ${away} ${minute}`;
-  if (!team && others > 0) s += ` +${others}`;
-  return s;
+  return `${home} ${scoreline(m)} ${away} ${minute}`;
 }
 
 /**
@@ -84,11 +88,20 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
 
   const live = liveMatchesFromCache(state, nowMs);
 
-  let pick: Match | undefined;
-  if (team) pick = live.find((m) => m.home?.code === team || m.away?.code === team);
-  if (!pick && !team) pick = live[0];
-
-  if (pick) return liveLine(pick, compact, live.length - 1, team);
+  // With a team filter, show only that team's live match.
+  if (team) {
+    const mine = live.find((m) => m.home?.code === team || m.away?.code === team);
+    if (mine) return `⚽ ${matchSegment(mine, compact)}`;
+  } else if (live.length > 0) {
+    // No filter → show all live matches inline, separated by " · ".
+    // CLAUDINHO_MAX caps how many render before the rest collapse to "+N".
+    const max = opts.max && opts.max > 0 ? opts.max : live.length;
+    const shown = live.slice(0, max);
+    let line = '⚽ ' + shown.map((m) => matchSegment(m, compact)).join(' · ');
+    const overflow = live.length - shown.length;
+    if (overflow > 0) line += ` +${overflow}`;
+    return line;
+  }
 
   // Nothing (relevant) live → next-fixture countdown (pure static).
   const next = team ? nextFixtureForTeam(team, { from: now }) : nextOverall(nowMs);

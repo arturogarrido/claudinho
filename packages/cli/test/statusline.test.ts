@@ -53,12 +53,24 @@ describe('renderPrompt — live', () => {
     expect(renderPrompt(s, { now: NOW, team: 'BRA' })).toBe("⚽ 🇧🇷 2–1 🇲🇦 70'");
   });
 
-  it('appends +N for other concurrent matches when no team is set', () => {
+  it('shows ALL live matches inline (no team filter), joined by " · "', () => {
     const s = state([
       m('1', ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], { minute: 30, score: { home: 0, away: 0 } }),
       m('2', ['BRA', '🇧🇷'], ['MAR', '🇲🇦'], { minute: 70, score: { home: 2, away: 1 } }),
     ]);
-    expect(renderPrompt(s, { now: NOW })).toBe("⚽ 🇲🇽 0–0 🇿🇦 30' +1");
+    expect(renderPrompt(s, { now: NOW })).toBe("⚽ 🇲🇽 0–0 🇿🇦 30' · 🇧🇷 2–1 🇲🇦 70'");
+  });
+
+  it('caps inline matches at `max` and collapses the rest into +N', () => {
+    const s = state([
+      m('1', ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], { minute: 30, score: { home: 0, away: 0 } }),
+      m('2', ['BRA', '🇧🇷'], ['MAR', '🇲🇦'], { minute: 70, score: { home: 2, away: 1 } }),
+      m('3', ['FRA', '🇫🇷'], ['CIV', '🇨🇮'], { minute: 55, score: { home: 1, away: 1 } }),
+    ]);
+    expect(renderPrompt(s, { now: NOW, max: 2 })).toBe(
+      "⚽ 🇲🇽 0–0 🇿🇦 30' · 🇧🇷 2–1 🇲🇦 70' +1",
+    );
+    expect(renderPrompt(s, { now: NOW, max: 1 })).toBe("⚽ 🇲🇽 0–0 🇿🇦 30' +2");
   });
 
   it('ignores live scores from a stale cache', () => {
