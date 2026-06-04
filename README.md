@@ -2,7 +2,7 @@
 
 **The 2026 football tournament, right in your dev environment.**
 
-Live scores, fixtures, and group tables in your terminal, your Claude Code statusline, and any MCP client — installed in one line. Plus an AI pundit that makes public predictions and keeps an honest scorecard.
+Live scores, fixtures, and group tables in your terminal, your Claude Code statusline, and any MCP client — installed in one line.
 
 > ⚠️ **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.**
 > Claudinho is an independent, open-source fan project. It displays factual match data
@@ -16,10 +16,11 @@ During a month-long global tournament, checking scores means breaking flow. Clau
 ## Surfaces
 
 - **CLI** — `claudinho today`, `claudinho live`, `claudinho next MEX`, `claudinho table`
-- **Claude Code statusline** — a live score line while you code
+- **Claude Code statusline** — all live scores inline while you code
 - **MCP server** — ask your agent about matches mid-task (Claude Code, Cursor, Codex, Windsurf, Zed, …)
-- **Notifier** — desktop notifications on goals, kickoffs, full-time
-- **AI pundit** — daily predictions with a public, running accuracy scorecard
+- **Score-aware Claude** — a `UserPromptSubmit` hook that drops the live score into Claude's context during matches
+
+_Planned:_ a desktop **notifier** (goal/kickoff/FT alerts) and an **AI pundit** (daily predictions with a public accuracy scorecard).
 
 ## Install
 

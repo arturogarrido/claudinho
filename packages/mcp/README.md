@@ -50,6 +50,13 @@ includes both human-readable text and structured JSON.
 - Resources: `standings://{group}` (e.g. `standings://A`), `fixtures://{date}` (e.g. `fixtures://2026-06-11`)
 - Prompts: `tournament_today`, `my_team`
 
+## Other competitions
+
+By default the server follows the 2026 World Cup. Set the `CLAUDINHO_COMPETITION`
+env var (e.g. `fifa.friendly`) to point the live tools at another ESPN
+competition — useful for testing before the tournament. In Claude Code, add it
+to the `env` block of your MCP server entry.
+
 ## How it works
 
 The fixture list ships bundled in the package; only live state hits the network
