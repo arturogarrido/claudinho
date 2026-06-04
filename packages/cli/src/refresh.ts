@@ -5,7 +5,14 @@
  * and only here, never on the statusline hot path.
  */
 import { spawn } from 'node:child_process';
-import { EspnAdapter, type Match } from '@claudinho/core';
+import {
+  DEFAULT_COMPETITION,
+  EspnAdapter,
+  makeAdapter,
+  resolveCompetition,
+  type Match,
+  type ProviderAdapter,
+} from '@claudinho/core';
 import {
   acquireLock,
   ageMs,
@@ -18,6 +25,30 @@ import { inLiveWindow, LIVE_TTL_MS } from './statusline';
 
 /** Don't re-fetch if the cache is younger than this (anti-stampede). */
 const MIN_REFRESH_MS = 12_000;
+
+/**
+ * Whether to attempt a live fetch right now.
+ *
+ * For the World Cup we gate on the bundled static schedule (no pointless polling
+ * 23h/day). But that schedule only knows World Cup fixtures — so when a
+ * different competition is selected (e.g. CLAUDINHO_COMPETITION=fifa.friendly),
+ * we can't know its windows statically and simply always allow the fetch.
+ */
+function liveWindowActive(nowMs: number): boolean {
+  if (resolveCompetition() !== DEFAULT_COMPETITION) return true;
+  return inLiveWindow(nowMs);
+}
+
+/** The live-fetch adapter, honoring CLAUDINHO_COMPETITION (group enrichment off). */
+function liveAdapter(): ProviderAdapter {
+  const competition = resolveCompetition();
+  if (competition === DEFAULT_COMPETITION) {
+    // Default WC path: skip the standings request the statusline doesn't need.
+    return new EspnAdapter({ enrichGroups: false });
+  }
+  // Non-default competition: build via makeAdapter so the slug is applied.
+  return makeAdapter('espn');
+}
 
 export interface RefreshOpts {
   source?: string;
@@ -36,12 +67,9 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
     let live: Match[] = [];
     let degraded = false;
 
-    if (inLiveWindow(now.getTime())) {
+    if (liveWindowActive(now.getTime())) {
       try {
-        // Skip group enrichment: the statusline doesn't need group letters,
-        // so we avoid the extra standings request on this hot loop.
-        const adapter = new EspnAdapter({ enrichGroups: false });
-        live = await adapter.fetchLive();
+        live = await liveAdapter().fetchLive();
       } catch {
         degraded = true;
       }
@@ -58,7 +86,7 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
  * nobody already refreshing).
  */
 export function shouldRefresh(now = Date.now()): boolean {
-  if (!inLiveWindow(now)) return false;
+  if (!liveWindowActive(now)) return false;
   if (isLockFresh(now)) return false;
   return ageMs(readState(), now) > LIVE_TTL_MS;
 }
