@@ -1,10 +1,13 @@
 {
   "name": "@claudinho/cli",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Claudinho CLI — the 2026 football tournament in your terminal. Live scores, fixtures, group tables. Not affiliated with FIFA or Anthropic.",
   "type": "module",
   "license": "MIT",
   "author": "Arturo Garrido",
+  "publishConfig": {
+    "access": "public"
+  },
   "homepage": "https://github.com/arturogarrido/claudinho#readme",
   "repository": {
     "type": "git",
@@ -38,12 +41,12 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@claudinho/core": "workspace:*",
     "cli-table3": "^0.6.5",
     "commander": "^12.1.0",
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
+    "@claudinho/core": "workspace:*",
     "@types/node": "^22.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",

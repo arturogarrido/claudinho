@@ -1,10 +1,13 @@
 {
   "name": "@claudinho/mcp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Claudinho MCP server — ask your agent about the 2026 football tournament. Live scores, fixtures, standings. Not affiliated with FIFA or Anthropic.",
   "type": "module",
   "license": "MIT",
   "author": "Arturo Garrido",
+  "publishConfig": {
+    "access": "public"
+  },
   "homepage": "https://github.com/arturogarrido/claudinho#readme",
   "repository": {
     "type": "git",
@@ -38,11 +41,11 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@claudinho/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.21.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@claudinho/core": "workspace:*",
     "@types/node": "^22.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
