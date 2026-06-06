@@ -28,6 +28,14 @@ args = ["-y", "@claudinho/mcp"]
 ```
 (or `codex mcp add claudinho -- npx -y @claudinho/mcp`)
 
+**Claude Desktop** — edit `claude_desktop_config.json` (Settings → Developer →
+Edit Config), then restart Claude Desktop:
+```json
+{ "mcpServers": { "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] } } }
+```
+Config location: macOS `~/Library/Application Support/Claude/claude_desktop_config.json`,
+Windows `%APPDATA%\Claude\claude_desktop_config.json`.
+
 Transport is stdio, so the same package works in Windsurf, Zed, VS Code, and
 any other MCP client with no changes.
 
