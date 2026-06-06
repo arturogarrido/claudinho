@@ -1,6 +1,6 @@
 {
   "name": "@claudinho/mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Claudinho MCP server — ask your agent about the 2026 football tournament. Live scores, fixtures, standings. Not affiliated with FIFA or Anthropic.",
   "type": "module",
   "license": "MIT",
@@ -23,7 +23,11 @@
   "bin": {
     "claudinho-mcp": "./dist/index.js"
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "keywords": [
     "mcp",
     "model-context-protocol",

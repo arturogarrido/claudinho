@@ -29,7 +29,7 @@ const EN: Dict = {
   'err.date': 'Invalid date {date}. Use YYYY-MM-DD.',
   'warn.tz': 'Unknown timezone {tz}; using system timezone.',
   'warn.lang': 'Unsupported language {lang}; using English. (supported: en, es, pt, fr)',
-  disclaimer: 'Not affiliated with FIFA or Anthropic. Data: ESPN.',
+  disclaimer: 'Not affiliated with FIFA or Anthropic.',
 };
 
 const ES: Dict = {
@@ -60,7 +60,7 @@ const ES: Dict = {
   'err.date': 'Fecha inválida {date}. Usa AAAA-MM-DD.',
   'warn.tz': 'Zona horaria desconocida {tz}; usando la del sistema.',
   'warn.lang': 'Idioma no soportado {lang}; usando inglés. (disponibles: en, es, pt, fr)',
-  disclaimer: 'No afiliado a FIFA ni Anthropic. Datos: ESPN.',
+  disclaimer: 'No afiliado a FIFA ni Anthropic.',
 };
 
 const PT: Dict = {
@@ -91,7 +91,7 @@ const PT: Dict = {
   'err.date': 'Data inválida {date}. Use AAAA-MM-DD.',
   'warn.tz': 'Fuso horário desconhecido {tz}; usando o do sistema.',
   'warn.lang': 'Idioma não suportado {lang}; usando inglês. (disponíveis: en, es, pt, fr)',
-  disclaimer: 'Não afiliado à FIFA nem à Anthropic. Dados: ESPN.',
+  disclaimer: 'Não afiliado à FIFA nem à Anthropic.',
 };
 
 const FR: Dict = {
@@ -122,7 +122,7 @@ const FR: Dict = {
   'err.date': 'Date invalide {date}. Utilisez AAAA-MM-JJ.',
   'warn.tz': 'Fuseau horaire inconnu {tz} ; utilisation du fuseau système.',
   'warn.lang': 'Langue non prise en charge {lang} ; utilisation de l’anglais. (disponibles : en, es, pt, fr)',
-  disclaimer: 'Non affilié à la FIFA ni à Anthropic. Données : ESPN.',
+  disclaimer: 'Non affilié à la FIFA ni à Anthropic.',
 };
 
 const CATALOGS: Record<string, Dict> = { en: EN, es: ES, pt: PT, fr: FR };

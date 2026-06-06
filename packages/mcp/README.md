@@ -53,14 +53,14 @@ includes both human-readable text and structured JSON.
 ## Other competitions
 
 By default the server follows the 2026 World Cup. Set the `CLAUDINHO_COMPETITION`
-env var (e.g. `fifa.friendly`) to point the live tools at another ESPN
+env var (e.g. `fifa.friendly`) to point the live tools at another
 competition — useful for testing before the tournament. In Claude Code, add it
 to the `env` block of your MCP server entry.
 
 ## How it works
 
 The fixture list ships bundled in the package; only live state hits the network
-(ESPN by default, via a swappable adapter). The server writes nothing to stdout
+(via a swappable data provider). The server writes nothing to stdout
 except the MCP protocol; diagnostics go to stderr.
 
 ## License

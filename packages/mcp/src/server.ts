@@ -23,7 +23,7 @@ import {
 } from './tools';
 
 export const SERVER_NAME = 'claudinho';
-export const SERVER_VERSION = '0.1.0';
+export const SERVER_VERSION = '0.1.1';
 
 const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and group standings for the 2026 men's football tournament.
 Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team (3-letter code, e.g. MEX), and get_standings for group tables.
@@ -61,7 +61,7 @@ export function buildServer(): McpServer {
         date: z.string().optional().describe('Date as YYYY-MM-DD (default: today)'),
         ...commonArgs,
       },
-      // Read-only; reaches an external data source (ESPN) for live overlay.
+      // Read-only; reaches an external data provider for the live overlay.
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async (args) => toContent(await toolGetToday(args)),

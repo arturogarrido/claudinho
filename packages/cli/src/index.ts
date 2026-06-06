@@ -27,7 +27,7 @@ function handlePipeError(stream: NodeJS.WriteStream): void {
 handlePipeError(process.stdout);
 handlePipeError(process.stderr);
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 const DISCLAIMER =
   'Claudinho is an independent fan project. Not affiliated with or endorsed by FIFA or Anthropic.';
 
@@ -56,7 +56,7 @@ program
   .option('--tz <zone>', 'IANA timezone, e.g. America/Mexico_City')
   .option('--json', 'output JSON (for scripting)')
   .option('--no-color', 'disable ANSI colors')
-  .option('--source <name>', 'data source (default: espn)');
+  .option('--source <name>', 'live data provider (advanced)');
 
 program
   .command('today')

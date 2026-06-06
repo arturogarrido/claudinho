@@ -1,6 +1,6 @@
 {
   "name": "@claudinho/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Claudinho CLI — the 2026 football tournament in your terminal. Live scores, fixtures, group tables. Not affiliated with FIFA or Anthropic.",
   "type": "module",
   "license": "MIT",
@@ -23,7 +23,11 @@
   "bin": {
     "claudinho": "./dist/index.js"
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "keywords": [
     "football",
     "soccer",

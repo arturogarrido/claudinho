@@ -77,4 +77,4 @@ function pad(n: number): string {
 
 /** The persistent legal disclaimer appended to responses. */
 export const DISCLAIMER =
-  'Claudinho is an independent fan project — not affiliated with or endorsed by FIFA or Anthropic. Data: ESPN.';
+  'Claudinho is an independent fan project — not affiliated with or endorsed by FIFA or Anthropic.';

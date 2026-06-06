@@ -46,7 +46,7 @@ claudinho live --json | jq '.matches[].status'
 | `--tz <zone>` | IANA timezone, e.g. `America/Mexico_City` (also `CLAUDINHO_TZ`; default: system) |
 | `--json` | machine-readable output for scripting |
 | `--no-color` | disable ANSI color (also honors `NO_COLOR`; auto-off when piped) |
-| `--source <name>` | data source (default: `espn`) |
+| `--source <name>` | live data provider (advanced; sensible default) |
 
 Team codes are 3-letter (FIFA/IOC-style): `MEX`, `BRA`, `USA`, `ENG`, …
 
@@ -80,7 +80,7 @@ off-match it's silent (zero added tokens). Restart Claude Code to activate.
 
 ## Other competitions
 
-By default Claudinho follows the 2026 World Cup. To follow a different ESPN
+By default Claudinho follows the 2026 World Cup. To follow a different
 competition (e.g. international friendlies before the tournament starts):
 
 ```bash
@@ -95,8 +95,8 @@ Only the live fetch changes; the bundled schedule is always the World Cup.
 
 The full fixture list (104 matches, groups, venues, kickoffs) ships **bundled**
 in the package, so the common path is offline and instant. Only live match
-state hits the network. Scores come from a swappable data adapter (ESPN by
-default); attribution and rate limits are respected.
+state hits the network. Scores come from a swappable data provider; provider
+attribution and rate limits are respected.
 
 ## License
 
