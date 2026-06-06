@@ -25,3 +25,6 @@ packages/*/dist/
 
 # portable test bundle (local only)
 dist-portable/
+
+# Desktop Extension build artifact
+*.mcpb

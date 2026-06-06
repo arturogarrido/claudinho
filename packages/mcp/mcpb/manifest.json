@@ -1,0 +1,35 @@
+{
+  "manifest_version": "0.3",
+  "name": "claudinho",
+  "display_name": "Claudinho ⚽",
+  "version": "0.1.1",
+  "description": "Live scores, fixtures, and group standings for the 2026 men's football tournament. Not affiliated with FIFA or Anthropic.",
+  "long_description": "Ask Claude about the 2026 men's football tournament — live scores, today's fixtures, a team's next match, and group standings. Facts and emoji flags only; no logos, crests, or footage. An independent, open-source fan project. Not affiliated with or endorsed by FIFA or Anthropic.",
+  "author": {
+    "name": "Arturo Garrido",
+    "url": "https://github.com/arturogarrido/claudinho"
+  },
+  "homepage": "https://github.com/arturogarrido/claudinho#readme",
+  "documentation": "https://github.com/arturogarrido/claudinho#readme",
+  "support": "https://github.com/arturogarrido/claudinho/issues",
+  "license": "MIT",
+  "keywords": ["football", "soccer", "world-cup", "2026", "live-scores"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"]
+    }
+  },
+  "tools": [
+    { "name": "get_today", "description": "Fixtures for a date (default: today), with live scores overlaid." },
+    { "name": "get_live", "description": "Matches currently in play, with score and minute." },
+    { "name": "get_match", "description": "A single match by its id, with live state if available." },
+    { "name": "get_standings", "description": "Group table(s) — one group A–L, or all." },
+    { "name": "get_next_fixture", "description": "A team's next scheduled match (3-letter code, e.g. MEX)." }
+  ],
+  "compatibility": {
+    "runtimes": { "node": ">=20" }
+  }
+}
