@@ -24,7 +24,7 @@ _Planned:_ a desktop **notifier** (goal/kickoff/FT alerts) and an **AI pundit** 
 
 ## Install
 
-> 🚧 **Pre-launch.** Packages publish at tournament kickoff — **June 11, 2026**.
+> ✅ **Live on npm** — [`@claudinho/cli`](https://www.npmjs.com/package/@claudinho/cli) · [`@claudinho/mcp`](https://www.npmjs.com/package/@claudinho/mcp)
 
 ```bash
 # MCP (Claude Code) — also works in Cursor (.cursor/mcp.json) & Codex (~/.codex/config.toml)
