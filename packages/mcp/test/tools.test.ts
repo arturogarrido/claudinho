@@ -88,6 +88,7 @@ describe('toolGetToday', () => {
   it('overlays live state onto the static schedule for the opener date', async () => {
     const r = await toolGetToday({
       date: '2026-06-11',
+      tz: 'UTC', // pin grouping tz so the test is independent of the runner's zone
       adapter: fakeAdapter({ byDate: [liveMatch()] }),
     });
     const data = r.data as { date: string; count: number; matches: Match[] };
@@ -101,6 +102,7 @@ describe('toolGetToday', () => {
   it('falls back to the static schedule when the provider throws', async () => {
     const r = await toolGetToday({
       date: '2026-06-11',
+      tz: 'UTC',
       adapter: fakeAdapter({ throws: true }),
     });
     const data = r.data as { degraded: boolean; count: number };

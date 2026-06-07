@@ -43,7 +43,7 @@ any other MCP client with no changes.
 
 | Tool | What it does |
 |---|---|
-| `get_today` | fixtures for a date (default: today), live scores overlaid |
+| `get_today` | fixtures for a date (default: today), grouped in the caller's `tz`, live scores overlaid |
 | `get_live` | matches in play right now |
 | `get_match` | a single match by id |
 | `get_standings` | group table(s) — one group `A`–`L`, or all |

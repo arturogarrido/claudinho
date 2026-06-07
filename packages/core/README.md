@@ -16,12 +16,12 @@ npm i @claudinho/core
 
 ## What's inside
 
-- **Domain model** — `Match`, `Team`, `Stage`, `Status`, `PunditPick`, `LedgerRow`
+- **Domain model** — `Match` (incl. `venue`/`city`/`country`), `Team`, `Stage`, `Status`, `PunditPick`, `LedgerRow`
 - **`ProviderAdapter`** — the swappable data-vendor interface; `EspnAdapter` included
-- **Static schedule** — all 104 fixtures (groups, venues, kickoffs) bundled; query with `allFixtures`, `fixturesByDate`, `fixturesByTeam`, `fixturesByGroup`, `nextFixtureForTeam`, `groups`
+- **Static schedule** — all 104 fixtures (groups, venues, host cities, kickoffs) bundled; query with `allFixtures`, `fixturesByDate` (groups by your timezone), `fixturesByTeam`, `fixturesByGroup`, `nextFixtureForTeam`, `groups`
 - **Live overlay** — `makeAdapter`, `getMatchesForDate`, `getLiveMatches`, `mergeLive` (static base + live state, with graceful degradation)
 - **Standings** — `computeStandings` (points / GD / GF tiebreak)
-- **Helpers** — emoji flags (`nationToFlag`), TZ-aware time (`formatKickoff`, `countdown`, `localDate`), validators (`isValidDate`, `isValidTimeZone`)
+- **Helpers** — emoji flags (`nationToFlag`), TZ-aware time (`formatKickoff`, `countdown`, `localDate`), location strings (`matchLocation`), localized commentary flair (`matchFlavor` / `FlavorLevel`), validators (`isValidDate`, `isValidTimeZone`)
 
 ## Example
 

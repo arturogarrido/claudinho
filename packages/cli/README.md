@@ -18,7 +18,7 @@ npx @claudinho/cli today
 ## Commands
 
 ```bash
-claudinho today [date]      # a day's fixtures (default: today), live scores inline
+claudinho today [date]      # a day's fixtures in your timezone (default: today), live scores inline
 claudinho live              # matches in play right now
 claudinho next <TEAM>       # a team's next fixture + countdown   (e.g. next MEX)
 claudinho table [GROUP]     # group standings (default: all groups)
@@ -45,7 +45,7 @@ claudinho today --flavor off               # just the facts, no commentary
 | Flag | Description |
 |---|---|
 | `--lang <code>` | `en`, `es`, `pt`, `fr` (also via `CLAUDINHO_LANG`; falls back to `$LANG`) |
-| `--tz <zone>` | IANA timezone, e.g. `America/Mexico_City` (also `CLAUDINHO_TZ`; default: system) |
+| `--tz <zone>` | IANA timezone, e.g. `America/Mexico_City` (also `CLAUDINHO_TZ`; default: system). Kickoff times **and** which day a fixture falls on are computed in this zone — a late-night-UTC match shows on the day you actually watch it. |
 | `--json` | machine-readable output for scripting |
 | `--no-color` | disable ANSI color (also honors `NO_COLOR`; auto-off when piped) |
 | `--source <name>` | live data provider (advanced; sensible default) |
@@ -107,7 +107,7 @@ Only the live fetch changes; the bundled schedule is always the World Cup.
 
 ## How it works
 
-The full fixture list (104 matches, groups, venues, kickoffs) ships **bundled**
+The full fixture list (104 matches, groups, venues, host cities, kickoffs) ships **bundled**
 in the package, so the common path is offline and instant. Only live match
 state hits the network. Scores come from a swappable data provider; provider
 attribution and rate limits are respected.

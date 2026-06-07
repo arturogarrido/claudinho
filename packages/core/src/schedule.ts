@@ -7,6 +7,7 @@
 import scheduleData from './data/schedule.2026.json';
 import type { Match } from './types';
 import { byKickoff } from './normalize';
+import { localDate } from './time';
 
 const SCHEDULE = scheduleData as unknown as Match[];
 
@@ -15,10 +16,23 @@ export function allFixtures(): Match[] {
   return SCHEDULE;
 }
 
-/** Fixtures on a given UTC date ("YYYY-MM-DD"). For local-date filtering, pass a date computed in the caller's timezone. */
-export function fixturesByDate(dateISO: string, fixtures: Match[] = SCHEDULE): Match[] {
+/**
+ * Fixtures on a given calendar date ("YYYY-MM-DD"), grouped in the caller's
+ * timezone (`tz`; defaults to env/system via `resolveTz`).
+ *
+ * Grouping uses the *local* date — the same zone the UI shows the weekday in —
+ * so a late-UTC kickoff (e.g. `01:00Z`, which is the previous evening in the
+ * Americas) lands on the day the user actually experiences it. Filtering on the
+ * raw UTC date instead would put it under a header whose weekday contradicts the
+ * one rendered for the match (e.g. a Friday match shown under Saturday's date).
+ */
+export function fixturesByDate(
+  dateISO: string,
+  fixtures: Match[] = SCHEDULE,
+  tz?: string,
+): Match[] {
   const day = dateISO.slice(0, 10);
-  return fixtures.filter((m) => m.kickoff.slice(0, 10) === day).sort(byKickoff);
+  return fixtures.filter((m) => localDate(m.kickoff, tz) === day).sort(byKickoff);
 }
 
 /** All fixtures involving a team code (case-insensitive). */

@@ -86,7 +86,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   const adapter = adapterFor(ctx);
   const targetDate = date ?? localDate(new Date().toISOString(), cfg.tz);
   const { matches, degraded } = await getMatchesForDate(adapter, targetDate);
-  const todays = fixturesByDate(targetDate, matches);
+  const todays = fixturesByDate(targetDate, matches, cfg.tz);
 
   if (cfg.json) {
     emitJson({ date: targetDate, degraded, matches: todays });

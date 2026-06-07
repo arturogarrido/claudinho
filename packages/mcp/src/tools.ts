@@ -60,7 +60,7 @@ export async function toolGetToday(
   const adapter = resolveAdapter(args);
   const date = args.date ?? localDate(new Date().toISOString(), args.tz);
   const { matches, degraded } = await getMatchesForDate(adapter, date);
-  const todays = fixturesByDate(date, matches);
+  const todays = fixturesByDate(date, matches, args.tz);
   const opts = fmtOpts(args);
   const text = `Matches on ${date}:\n${matchList(todays, 'No matches scheduled.', opts)}`;
   return {
