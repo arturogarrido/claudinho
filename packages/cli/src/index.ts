@@ -28,7 +28,9 @@ function handlePipeError(stream: NodeJS.WriteStream): void {
 handlePipeError(process.stdout);
 handlePipeError(process.stderr);
 
-const VERSION = '0.2.0';
+// Injected from package.json at build time (tsup `define`); falls back when run
+// unbuilt (e.g. tests). Single source of truth: packages/cli/package.json.
+const VERSION = process.env.CLAUDINHO_VERSION ?? '0.0.0-dev';
 const DISCLAIMER =
   'Claudinho is an independent fan project. Not affiliated with or endorsed by FIFA or Anthropic.';
 

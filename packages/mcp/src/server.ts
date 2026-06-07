@@ -25,7 +25,9 @@ import {
 } from './tools';
 
 export const SERVER_NAME = 'claudinho';
-export const SERVER_VERSION = '0.2.0';
+// Injected from package.json at build time (tsup `define`); falls back when run
+// unbuilt (e.g. tests). Single source of truth: packages/mcp/package.json.
+export const SERVER_VERSION = process.env.CLAUDINHO_VERSION ?? '0.0.0-dev';
 
 // Default-on commentary voice. Gated by CLAUDINHO_FLAVOR (off|subtle|full).
 const VOICE =
