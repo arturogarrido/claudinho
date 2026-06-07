@@ -27,6 +27,7 @@ claudinho prompt            # one compact status line (for statusline/tmux/Stars
 claudinho init-statusline   # wire it into the Claude Code statusline
 claudinho hook              # live-score context for a Claude Code hook (silent off-match)
 claudinho init-hook         # make Claude itself score-aware (UserPromptSubmit)
+claudinho vibe              # a matchday-coder one-liner (#VibingLaVidaLoca)
 ```
 
 ### Examples
