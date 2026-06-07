@@ -174,6 +174,8 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match {
     group,
     kickoff: ev.date,
     venue: comp?.venue?.fullName ?? '',
+    city: comp?.venue?.address?.city || undefined,
+    country: comp?.venue?.address?.country || undefined,
     home,
     away,
     score: hasScore ? { home: hs, away: as } : undefined,

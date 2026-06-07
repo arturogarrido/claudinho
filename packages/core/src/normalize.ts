@@ -23,6 +23,16 @@ export function scoreline(match: Match): string {
   return `${match.score.home}–${match.score.away}`;
 }
 
+/**
+ * Human-readable location: venue plus city/country when the provider supplies
+ * them, e.g. "Estadio Banorte, Mexico City, Mexico". Keeping this in one place
+ * means the CLI and MCP surfaces stay consistent — and gives the model an
+ * unambiguous city so it never has to guess one.
+ */
+export function matchLocation(match: Match): string {
+  return [match.venue, match.city, match.country].filter(Boolean).join(', ');
+}
+
 /** Sort comparator by kickoff time, ascending. */
 export function byKickoff(a: Match, b: Match): number {
   return a.kickoff.localeCompare(b.kickoff);

@@ -9,6 +9,7 @@ import {
   isValidDate,
   isValidTimeZone,
   localDate,
+  matchLocation,
   nextFixtureForTeam,
   scoreline,
   type Match,
@@ -328,7 +329,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   }
   const stageLabel = match.group ? `${match.stage} ${match.group}` : match.stage;
   out(header(`${match.home.name} ${scoreline(match)} ${match.away.name}`, c));
-  out('  ' + c.dim(`${stageLabel} · ${match.venue}`));
+  out('  ' + c.dim(`${stageLabel} · ${matchLocation(match)}`));
   out(
     '  ' +
       c.dim(

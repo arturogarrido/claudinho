@@ -6,6 +6,7 @@
 import {
   countdown,
   formatKickoff,
+  matchLocation,
   scoreline,
   type Match,
   type StandingRow,
@@ -50,7 +51,7 @@ export function matchLine(m: Match, opts: FmtOpts = {}): string {
   } else {
     tail = STATUS_LABEL[m.status];
   }
-  return `${head} — ${tail} · ${stage} · ${m.venue}`.trimEnd();
+  return `${head} — ${tail} · ${stage} · ${matchLocation(m)}`.trimEnd();
 }
 
 /** A list of matches as a text block (or an empty-state message). */

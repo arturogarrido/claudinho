@@ -14,6 +14,8 @@ function liveMatch(over: Partial<Match> = {}): Match {
     group: 'A',
     kickoff: '2026-06-11T19:00Z',
     venue: 'Estadio Banorte',
+    city: 'Mexico City',
+    country: 'Mexico',
     home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
     away: { code: 'RSA', name: 'South Africa', flag: '🇿🇦' },
     status: 'LIVE',
@@ -49,8 +51,12 @@ describe('toolGetLive', () => {
     const r = await toolGetLive({ adapter: fakeAdapter({ live: [liveMatch()] }) });
     expect(r.text).toContain('🇲🇽 Mexico 1–0 South Africa 🇿🇦');
     expect(r.text).toContain("LIVE 67'");
+    // City + country travel with the venue so the model never guesses a city.
+    expect(r.text).toContain('Estadio Banorte, Mexico City, Mexico');
     expect(r.text).toContain('not affiliated');
     expect((r.data as { count: number }).count).toBe(1);
+    // Structured payload carries the city too.
+    expect((r.data as { matches: Match[] }).matches[0]?.city).toBe('Mexico City');
   });
 
   it('reports the empty state with no live matches', async () => {

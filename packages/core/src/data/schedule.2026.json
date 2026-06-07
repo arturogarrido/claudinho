@@ -5,6 +5,8 @@
     "group": "A",
     "kickoff": "2026-06-11T19:00Z",
     "venue": "Estadio Banorte",
+    "city": "Mexico City",
+    "country": "Mexico",
     "home": {
       "code": "MEX",
       "name": "Mexico",
@@ -16,7 +18,7 @@
       "flag": "🇿🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.559Z"
+    "updatedAt": "2026-06-07T07:52:54.333Z"
   },
   {
     "id": "760414",
@@ -24,6 +26,8 @@
     "group": "A",
     "kickoff": "2026-06-12T02:00Z",
     "venue": "Estadio Akron",
+    "city": "Guadalajara",
+    "country": "Mexico",
     "home": {
       "code": "KOR",
       "name": "South Korea",
@@ -35,7 +39,7 @@
       "flag": "🇨🇿"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760416",
@@ -43,6 +47,8 @@
     "group": "B",
     "kickoff": "2026-06-12T19:00Z",
     "venue": "BMO Field",
+    "city": "Toronto",
+    "country": "Canada",
     "home": {
       "code": "CAN",
       "name": "Canada",
@@ -54,7 +60,7 @@
       "flag": "🇧🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760417",
@@ -62,6 +68,8 @@
     "group": "D",
     "kickoff": "2026-06-13T01:00Z",
     "venue": "SoFi Stadium",
+    "city": "Inglewood, California",
+    "country": "USA",
     "home": {
       "code": "USA",
       "name": "United States",
@@ -73,7 +81,7 @@
       "flag": "🇵🇾"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760420",
@@ -81,6 +89,8 @@
     "group": "B",
     "kickoff": "2026-06-13T19:00Z",
     "venue": "Levi's Stadium",
+    "city": "Santa Clara, California",
+    "country": "USA",
     "home": {
       "code": "QAT",
       "name": "Qatar",
@@ -92,7 +102,7 @@
       "flag": "🇨🇭"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760419",
@@ -100,6 +110,8 @@
     "group": "C",
     "kickoff": "2026-06-13T22:00Z",
     "venue": "MetLife Stadium",
+    "city": "East Rutherford, New Jersey",
+    "country": "USA",
     "home": {
       "code": "BRA",
       "name": "Brazil",
@@ -111,7 +123,7 @@
       "flag": "🇲🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760418",
@@ -119,6 +131,8 @@
     "group": "C",
     "kickoff": "2026-06-14T01:00Z",
     "venue": "Gillette Stadium",
+    "city": "Foxborough, Massachusetts",
+    "country": "USA",
     "home": {
       "code": "HAI",
       "name": "Haiti",
@@ -130,7 +144,7 @@
       "flag": "🏴󠁧󠁢󠁳󠁣󠁴󠁿"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760421",
@@ -138,6 +152,8 @@
     "group": "D",
     "kickoff": "2026-06-14T04:00Z",
     "venue": "BC Place",
+    "city": "Vancouver",
+    "country": "Canada",
     "home": {
       "code": "AUS",
       "name": "Australia",
@@ -149,7 +165,7 @@
       "flag": "🇹🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760422",
@@ -157,6 +173,8 @@
     "group": "E",
     "kickoff": "2026-06-14T17:00Z",
     "venue": "NRG Stadium",
+    "city": "Houston, Texas",
+    "country": "USA",
     "home": {
       "code": "GER",
       "name": "Germany",
@@ -164,11 +182,11 @@
     },
     "away": {
       "code": "CUW",
-      "name": "Curacao",
+      "name": "Curaçao",
       "flag": "🇨🇼"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760425",
@@ -176,6 +194,8 @@
     "group": "F",
     "kickoff": "2026-06-14T20:00Z",
     "venue": "AT&T Stadium",
+    "city": "Arlington, Texas",
+    "country": "USA",
     "home": {
       "code": "NED",
       "name": "Netherlands",
@@ -187,7 +207,7 @@
       "flag": "🇯🇵"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760423",
@@ -195,6 +215,8 @@
     "group": "E",
     "kickoff": "2026-06-14T23:00Z",
     "venue": "Lincoln Financial Field",
+    "city": "Philadelphia, Pennsylvania",
+    "country": "USA",
     "home": {
       "code": "CIV",
       "name": "Ivory Coast",
@@ -206,7 +228,7 @@
       "flag": "🇪🇨"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760424",
@@ -214,6 +236,8 @@
     "group": "F",
     "kickoff": "2026-06-15T02:00Z",
     "venue": "Estadio BBVA",
+    "city": "Guadalupe",
+    "country": "Mexico",
     "home": {
       "code": "SWE",
       "name": "Sweden",
@@ -225,7 +249,7 @@
       "flag": "🇹🇳"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760428",
@@ -233,6 +257,8 @@
     "group": "H",
     "kickoff": "2026-06-15T16:00Z",
     "venue": "Mercedes-Benz Stadium",
+    "city": "Atlanta, Georgia",
+    "country": "USA",
     "home": {
       "code": "ESP",
       "name": "Spain",
@@ -244,7 +270,7 @@
       "flag": "🇨🇻"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760426",
@@ -252,6 +278,8 @@
     "group": "G",
     "kickoff": "2026-06-15T19:00Z",
     "venue": "Lumen Field",
+    "city": "Seattle, Washington",
+    "country": "USA",
     "home": {
       "code": "BEL",
       "name": "Belgium",
@@ -263,7 +291,7 @@
       "flag": "🇪🇬"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760429",
@@ -271,6 +299,8 @@
     "group": "H",
     "kickoff": "2026-06-15T22:00Z",
     "venue": "Hard Rock Stadium",
+    "city": "Miami Gardens, Florida",
+    "country": "USA",
     "home": {
       "code": "KSA",
       "name": "Saudi Arabia",
@@ -282,7 +312,7 @@
       "flag": "🇺🇾"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760427",
@@ -290,6 +320,8 @@
     "group": "G",
     "kickoff": "2026-06-16T01:00Z",
     "venue": "SoFi Stadium",
+    "city": "Inglewood, California",
+    "country": "USA",
     "home": {
       "code": "IRN",
       "name": "Iran",
@@ -301,7 +333,7 @@
       "flag": "🇳🇿"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760432",
@@ -309,6 +341,8 @@
     "group": "I",
     "kickoff": "2026-06-16T19:00Z",
     "venue": "MetLife Stadium",
+    "city": "East Rutherford, New Jersey",
+    "country": "USA",
     "home": {
       "code": "FRA",
       "name": "France",
@@ -320,7 +354,7 @@
       "flag": "🇸🇳"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760430",
@@ -328,6 +362,8 @@
     "group": "I",
     "kickoff": "2026-06-16T22:00Z",
     "venue": "Gillette Stadium",
+    "city": "Foxborough, Massachusetts",
+    "country": "USA",
     "home": {
       "code": "IRQ",
       "name": "Iraq",
@@ -339,7 +375,7 @@
       "flag": "🇳🇴"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760433",
@@ -347,6 +383,8 @@
     "group": "J",
     "kickoff": "2026-06-17T01:00Z",
     "venue": "GEHA Field at Arrowhead Stadium",
+    "city": "Kansas City, Missouri",
+    "country": "USA",
     "home": {
       "code": "ARG",
       "name": "Argentina",
@@ -358,7 +396,7 @@
       "flag": "🇩🇿"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760431",
@@ -366,6 +404,8 @@
     "group": "J",
     "kickoff": "2026-06-17T04:00Z",
     "venue": "Levi's Stadium",
+    "city": "Santa Clara, California",
+    "country": "USA",
     "home": {
       "code": "AUT",
       "name": "Austria",
@@ -377,7 +417,7 @@
       "flag": "🇯🇴"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760435",
@@ -385,6 +425,8 @@
     "group": "K",
     "kickoff": "2026-06-17T17:00Z",
     "venue": "NRG Stadium",
+    "city": "Houston, Texas",
+    "country": "USA",
     "home": {
       "code": "POR",
       "name": "Portugal",
@@ -396,7 +438,7 @@
       "flag": "🇨🇩"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760437",
@@ -404,6 +446,8 @@
     "group": "L",
     "kickoff": "2026-06-17T20:00Z",
     "venue": "AT&T Stadium",
+    "city": "Arlington, Texas",
+    "country": "USA",
     "home": {
       "code": "ENG",
       "name": "England",
@@ -415,7 +459,7 @@
       "flag": "🇭🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760434",
@@ -423,6 +467,8 @@
     "group": "L",
     "kickoff": "2026-06-17T23:00Z",
     "venue": "BMO Field",
+    "city": "Toronto",
+    "country": "Canada",
     "home": {
       "code": "GHA",
       "name": "Ghana",
@@ -434,7 +480,7 @@
       "flag": "🇵🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760436",
@@ -442,6 +488,8 @@
     "group": "K",
     "kickoff": "2026-06-18T02:00Z",
     "venue": "Estadio Banorte",
+    "city": "Mexico City",
+    "country": "Mexico",
     "home": {
       "code": "UZB",
       "name": "Uzbekistan",
@@ -453,7 +501,7 @@
       "flag": "🇨🇴"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.560Z"
+    "updatedAt": "2026-06-07T07:52:54.337Z"
   },
   {
     "id": "760438",
@@ -461,6 +509,8 @@
     "group": "A",
     "kickoff": "2026-06-18T16:00Z",
     "venue": "Mercedes-Benz Stadium",
+    "city": "Atlanta, Georgia",
+    "country": "USA",
     "home": {
       "code": "CZE",
       "name": "Czechia",
@@ -472,7 +522,7 @@
       "flag": "🇿🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760439",
@@ -480,6 +530,8 @@
     "group": "B",
     "kickoff": "2026-06-18T19:00Z",
     "venue": "SoFi Stadium",
+    "city": "Inglewood, California",
+    "country": "USA",
     "home": {
       "code": "SUI",
       "name": "Switzerland",
@@ -491,7 +543,7 @@
       "flag": "🇧🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760440",
@@ -499,6 +551,8 @@
     "group": "B",
     "kickoff": "2026-06-18T22:00Z",
     "venue": "BC Place",
+    "city": "Vancouver",
+    "country": "Canada",
     "home": {
       "code": "CAN",
       "name": "Canada",
@@ -510,7 +564,7 @@
       "flag": "🇶🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760441",
@@ -518,6 +572,8 @@
     "group": "A",
     "kickoff": "2026-06-19T01:00Z",
     "venue": "Estadio Akron",
+    "city": "Guadalajara",
+    "country": "Mexico",
     "home": {
       "code": "MEX",
       "name": "Mexico",
@@ -529,7 +585,7 @@
       "flag": "🇰🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760442",
@@ -537,6 +593,8 @@
     "group": "D",
     "kickoff": "2026-06-19T19:00Z",
     "venue": "Lumen Field",
+    "city": "Seattle, Washington",
+    "country": "USA",
     "home": {
       "code": "USA",
       "name": "United States",
@@ -548,7 +606,7 @@
       "flag": "🇦🇺"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760445",
@@ -556,6 +614,8 @@
     "group": "C",
     "kickoff": "2026-06-19T22:00Z",
     "venue": "Gillette Stadium",
+    "city": "Foxborough, Massachusetts",
+    "country": "USA",
     "home": {
       "code": "SCO",
       "name": "Scotland",
@@ -567,7 +627,7 @@
       "flag": "🇲🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760444",
@@ -575,6 +635,8 @@
     "group": "C",
     "kickoff": "2026-06-20T00:30Z",
     "venue": "Lincoln Financial Field",
+    "city": "Philadelphia, Pennsylvania",
+    "country": "USA",
     "home": {
       "code": "BRA",
       "name": "Brazil",
@@ -586,7 +648,7 @@
       "flag": "🇭🇹"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760443",
@@ -594,6 +656,8 @@
     "group": "D",
     "kickoff": "2026-06-20T03:00Z",
     "venue": "Levi's Stadium",
+    "city": "Santa Clara, California",
+    "country": "USA",
     "home": {
       "code": "TUR",
       "name": "Türkiye",
@@ -605,7 +669,7 @@
       "flag": "🇵🇾"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760447",
@@ -613,6 +677,8 @@
     "group": "F",
     "kickoff": "2026-06-20T17:00Z",
     "venue": "NRG Stadium",
+    "city": "Houston, Texas",
+    "country": "USA",
     "home": {
       "code": "NED",
       "name": "Netherlands",
@@ -624,7 +690,7 @@
       "flag": "🇸🇪"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760448",
@@ -632,6 +698,8 @@
     "group": "E",
     "kickoff": "2026-06-20T20:00Z",
     "venue": "BMO Field",
+    "city": "Toronto",
+    "country": "Canada",
     "home": {
       "code": "GER",
       "name": "Germany",
@@ -643,7 +711,7 @@
       "flag": "🇨🇮"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760446",
@@ -651,6 +719,8 @@
     "group": "E",
     "kickoff": "2026-06-21T00:00Z",
     "venue": "GEHA Field at Arrowhead Stadium",
+    "city": "Kansas City, Missouri",
+    "country": "USA",
     "home": {
       "code": "ECU",
       "name": "Ecuador",
@@ -658,11 +728,11 @@
     },
     "away": {
       "code": "CUW",
-      "name": "Curacao",
+      "name": "Curaçao",
       "flag": "🇨🇼"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760449",
@@ -670,6 +740,8 @@
     "group": "F",
     "kickoff": "2026-06-21T04:00Z",
     "venue": "Estadio BBVA",
+    "city": "Guadalupe",
+    "country": "Mexico",
     "home": {
       "code": "TUN",
       "name": "Tunisia",
@@ -681,7 +753,7 @@
       "flag": "🇯🇵"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760453",
@@ -689,6 +761,8 @@
     "group": "H",
     "kickoff": "2026-06-21T16:00Z",
     "venue": "Mercedes-Benz Stadium",
+    "city": "Atlanta, Georgia",
+    "country": "USA",
     "home": {
       "code": "ESP",
       "name": "Spain",
@@ -700,7 +774,7 @@
       "flag": "🇸🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760451",
@@ -708,6 +782,8 @@
     "group": "G",
     "kickoff": "2026-06-21T19:00Z",
     "venue": "SoFi Stadium",
+    "city": "Inglewood, California",
+    "country": "USA",
     "home": {
       "code": "BEL",
       "name": "Belgium",
@@ -719,7 +795,7 @@
       "flag": "🇮🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760450",
@@ -727,6 +803,8 @@
     "group": "H",
     "kickoff": "2026-06-21T22:00Z",
     "venue": "Hard Rock Stadium",
+    "city": "Miami Gardens, Florida",
+    "country": "USA",
     "home": {
       "code": "URU",
       "name": "Uruguay",
@@ -738,7 +816,7 @@
       "flag": "🇨🇻"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760452",
@@ -746,6 +824,8 @@
     "group": "G",
     "kickoff": "2026-06-22T01:00Z",
     "venue": "BC Place",
+    "city": "Vancouver",
+    "country": "Canada",
     "home": {
       "code": "NZL",
       "name": "New Zealand",
@@ -757,7 +837,7 @@
       "flag": "🇪🇬"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760456",
@@ -765,6 +845,8 @@
     "group": "J",
     "kickoff": "2026-06-22T17:00Z",
     "venue": "AT&T Stadium",
+    "city": "Arlington, Texas",
+    "country": "USA",
     "home": {
       "code": "ARG",
       "name": "Argentina",
@@ -776,7 +858,7 @@
       "flag": "🇦🇹"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760457",
@@ -784,6 +866,8 @@
     "group": "I",
     "kickoff": "2026-06-22T21:00Z",
     "venue": "Lincoln Financial Field",
+    "city": "Philadelphia, Pennsylvania",
+    "country": "USA",
     "home": {
       "code": "FRA",
       "name": "France",
@@ -795,7 +879,7 @@
       "flag": "🇮🇶"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760454",
@@ -803,6 +887,8 @@
     "group": "I",
     "kickoff": "2026-06-23T00:00Z",
     "venue": "MetLife Stadium",
+    "city": "East Rutherford, New Jersey",
+    "country": "USA",
     "home": {
       "code": "NOR",
       "name": "Norway",
@@ -814,7 +900,7 @@
       "flag": "🇸🇳"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760455",
@@ -822,6 +908,8 @@
     "group": "J",
     "kickoff": "2026-06-23T03:00Z",
     "venue": "Levi's Stadium",
+    "city": "Santa Clara, California",
+    "country": "USA",
     "home": {
       "code": "JOR",
       "name": "Jordan",
@@ -833,7 +921,7 @@
       "flag": "🇩🇿"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760461",
@@ -841,6 +929,8 @@
     "group": "K",
     "kickoff": "2026-06-23T17:00Z",
     "venue": "NRG Stadium",
+    "city": "Houston, Texas",
+    "country": "USA",
     "home": {
       "code": "POR",
       "name": "Portugal",
@@ -852,7 +942,7 @@
       "flag": "🇺🇿"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760458",
@@ -860,6 +950,8 @@
     "group": "L",
     "kickoff": "2026-06-23T20:00Z",
     "venue": "Gillette Stadium",
+    "city": "Foxborough, Massachusetts",
+    "country": "USA",
     "home": {
       "code": "ENG",
       "name": "England",
@@ -871,7 +963,7 @@
       "flag": "🇬🇭"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.624Z"
+    "updatedAt": "2026-06-07T07:52:54.418Z"
   },
   {
     "id": "760460",
@@ -879,6 +971,8 @@
     "group": "L",
     "kickoff": "2026-06-23T23:00Z",
     "venue": "BMO Field",
+    "city": "Toronto",
+    "country": "Canada",
     "home": {
       "code": "PAN",
       "name": "Panama",
@@ -890,7 +984,7 @@
       "flag": "🇭🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.625Z"
+    "updatedAt": "2026-06-07T07:52:54.419Z"
   },
   {
     "id": "760459",
@@ -898,6 +992,8 @@
     "group": "K",
     "kickoff": "2026-06-24T02:00Z",
     "venue": "Estadio Akron",
+    "city": "Guadalajara",
+    "country": "Mexico",
     "home": {
       "code": "COL",
       "name": "Colombia",
@@ -909,7 +1005,7 @@
       "flag": "🇨🇩"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.625Z"
+    "updatedAt": "2026-06-07T07:52:54.419Z"
   },
   {
     "id": "760462",
@@ -917,6 +1013,8 @@
     "group": "B",
     "kickoff": "2026-06-24T19:00Z",
     "venue": "Lumen Field",
+    "city": "Seattle, Washington",
+    "country": "USA",
     "home": {
       "code": "BIH",
       "name": "Bosnia-Herzegovina",
@@ -928,7 +1026,7 @@
       "flag": "🇶🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.625Z"
+    "updatedAt": "2026-06-07T07:52:54.419Z"
   },
   {
     "id": "760463",
@@ -936,6 +1034,8 @@
     "group": "B",
     "kickoff": "2026-06-24T19:00Z",
     "venue": "BC Place",
+    "city": "Vancouver",
+    "country": "Canada",
     "home": {
       "code": "SUI",
       "name": "Switzerland",
@@ -947,7 +1047,7 @@
       "flag": "🇨🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.625Z"
+    "updatedAt": "2026-06-07T07:52:54.419Z"
   },
   {
     "id": "760464",
@@ -955,6 +1055,8 @@
     "group": "C",
     "kickoff": "2026-06-24T22:00Z",
     "venue": "Mercedes-Benz Stadium",
+    "city": "Atlanta, Georgia",
+    "country": "USA",
     "home": {
       "code": "MAR",
       "name": "Morocco",
@@ -966,7 +1068,7 @@
       "flag": "🇭🇹"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.625Z"
+    "updatedAt": "2026-06-07T07:52:54.419Z"
   },
   {
     "id": "760465",
@@ -974,6 +1076,8 @@
     "group": "C",
     "kickoff": "2026-06-24T22:00Z",
     "venue": "Hard Rock Stadium",
+    "city": "Miami Gardens, Florida",
+    "country": "USA",
     "home": {
       "code": "SCO",
       "name": "Scotland",
@@ -985,7 +1089,7 @@
       "flag": "🇧🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.625Z"
+    "updatedAt": "2026-06-07T07:52:54.419Z"
   },
   {
     "id": "760467",
@@ -993,6 +1097,8 @@
     "group": "A",
     "kickoff": "2026-06-25T01:00Z",
     "venue": "Estadio Banorte",
+    "city": "Mexico City",
+    "country": "Mexico",
     "home": {
       "code": "CZE",
       "name": "Czechia",
@@ -1004,7 +1110,7 @@
       "flag": "🇲🇽"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.625Z"
+    "updatedAt": "2026-06-07T07:52:54.419Z"
   },
   {
     "id": "760466",
@@ -1012,6 +1118,8 @@
     "group": "A",
     "kickoff": "2026-06-25T01:00Z",
     "venue": "Estadio BBVA",
+    "city": "Guadalupe",
+    "country": "Mexico",
     "home": {
       "code": "RSA",
       "name": "South Africa",
@@ -1023,7 +1131,7 @@
       "flag": "🇰🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.625Z"
+    "updatedAt": "2026-06-07T07:52:54.419Z"
   },
   {
     "id": "760473",
@@ -1031,9 +1139,11 @@
     "group": "E",
     "kickoff": "2026-06-25T20:00Z",
     "venue": "Lincoln Financial Field",
+    "city": "Philadelphia, Pennsylvania",
+    "country": "USA",
     "home": {
       "code": "CUW",
-      "name": "Curacao",
+      "name": "Curaçao",
       "flag": "🇨🇼"
     },
     "away": {
@@ -1042,7 +1152,7 @@
       "flag": "🇨🇮"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.511Z"
   },
   {
     "id": "760468",
@@ -1050,6 +1160,8 @@
     "group": "E",
     "kickoff": "2026-06-25T20:00Z",
     "venue": "MetLife Stadium",
+    "city": "East Rutherford, New Jersey",
+    "country": "USA",
     "home": {
       "code": "ECU",
       "name": "Ecuador",
@@ -1061,7 +1173,7 @@
       "flag": "🇩🇪"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.511Z"
   },
   {
     "id": "760471",
@@ -1069,6 +1181,8 @@
     "group": "F",
     "kickoff": "2026-06-25T23:00Z",
     "venue": "AT&T Stadium",
+    "city": "Arlington, Texas",
+    "country": "USA",
     "home": {
       "code": "JPN",
       "name": "Japan",
@@ -1080,7 +1194,7 @@
       "flag": "🇸🇪"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.511Z"
   },
   {
     "id": "760472",
@@ -1088,6 +1202,8 @@
     "group": "F",
     "kickoff": "2026-06-25T23:00Z",
     "venue": "GEHA Field at Arrowhead Stadium",
+    "city": "Kansas City, Missouri",
+    "country": "USA",
     "home": {
       "code": "TUN",
       "name": "Tunisia",
@@ -1099,7 +1215,7 @@
       "flag": "🇳🇱"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.511Z"
   },
   {
     "id": "760469",
@@ -1107,6 +1223,8 @@
     "group": "D",
     "kickoff": "2026-06-26T02:00Z",
     "venue": "Levi's Stadium",
+    "city": "Santa Clara, California",
+    "country": "USA",
     "home": {
       "code": "PAR",
       "name": "Paraguay",
@@ -1118,7 +1236,7 @@
       "flag": "🇦🇺"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.511Z"
   },
   {
     "id": "760470",
@@ -1126,6 +1244,8 @@
     "group": "D",
     "kickoff": "2026-06-26T02:00Z",
     "venue": "SoFi Stadium",
+    "city": "Inglewood, California",
+    "country": "USA",
     "home": {
       "code": "TUR",
       "name": "Türkiye",
@@ -1137,7 +1257,7 @@
       "flag": "🇺🇸"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.511Z"
   },
   {
     "id": "760475",
@@ -1145,6 +1265,8 @@
     "group": "I",
     "kickoff": "2026-06-26T19:00Z",
     "venue": "Gillette Stadium",
+    "city": "Foxborough, Massachusetts",
+    "country": "USA",
     "home": {
       "code": "NOR",
       "name": "Norway",
@@ -1156,7 +1278,7 @@
       "flag": "🇫🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.511Z"
   },
   {
     "id": "760474",
@@ -1164,6 +1286,8 @@
     "group": "I",
     "kickoff": "2026-06-26T19:00Z",
     "venue": "BMO Field",
+    "city": "Toronto",
+    "country": "Canada",
     "home": {
       "code": "SEN",
       "name": "Senegal",
@@ -1175,7 +1299,7 @@
       "flag": "🇮🇶"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.511Z"
   },
   {
     "id": "760478",
@@ -1183,6 +1307,8 @@
     "group": "H",
     "kickoff": "2026-06-27T00:00Z",
     "venue": "NRG Stadium",
+    "city": "Houston, Texas",
+    "country": "USA",
     "home": {
       "code": "CPV",
       "name": "Cape Verde",
@@ -1194,7 +1320,7 @@
       "flag": "🇸🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.511Z"
   },
   {
     "id": "760479",
@@ -1202,6 +1328,8 @@
     "group": "H",
     "kickoff": "2026-06-27T00:00Z",
     "venue": "Estadio Akron",
+    "city": "Guadalajara",
+    "country": "Mexico",
     "home": {
       "code": "URU",
       "name": "Uruguay",
@@ -1213,7 +1341,7 @@
       "flag": "🇪🇸"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.511Z"
   },
   {
     "id": "760476",
@@ -1221,6 +1349,8 @@
     "group": "G",
     "kickoff": "2026-06-27T03:00Z",
     "venue": "Lumen Field",
+    "city": "Seattle, Washington",
+    "country": "USA",
     "home": {
       "code": "EGY",
       "name": "Egypt",
@@ -1232,7 +1362,7 @@
       "flag": "🇮🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.511Z"
   },
   {
     "id": "760477",
@@ -1240,6 +1370,8 @@
     "group": "G",
     "kickoff": "2026-06-27T03:00Z",
     "venue": "BC Place",
+    "city": "Vancouver",
+    "country": "Canada",
     "home": {
       "code": "NZL",
       "name": "New Zealand",
@@ -1251,7 +1383,7 @@
       "flag": "🇧🇪"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.511Z"
   },
   {
     "id": "760480",
@@ -1259,6 +1391,8 @@
     "group": "L",
     "kickoff": "2026-06-27T21:00Z",
     "venue": "Lincoln Financial Field",
+    "city": "Philadelphia, Pennsylvania",
+    "country": "USA",
     "home": {
       "code": "CRO",
       "name": "Croatia",
@@ -1270,7 +1404,7 @@
       "flag": "🇬🇭"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.512Z"
   },
   {
     "id": "760485",
@@ -1278,6 +1412,8 @@
     "group": "L",
     "kickoff": "2026-06-27T21:00Z",
     "venue": "MetLife Stadium",
+    "city": "East Rutherford, New Jersey",
+    "country": "USA",
     "home": {
       "code": "PAN",
       "name": "Panama",
@@ -1289,7 +1425,7 @@
       "flag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.512Z"
   },
   {
     "id": "760481",
@@ -1297,6 +1433,8 @@
     "group": "K",
     "kickoff": "2026-06-27T23:30Z",
     "venue": "Hard Rock Stadium",
+    "city": "Miami Gardens, Florida",
+    "country": "USA",
     "home": {
       "code": "COL",
       "name": "Colombia",
@@ -1308,7 +1446,7 @@
       "flag": "🇵🇹"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.512Z"
   },
   {
     "id": "760482",
@@ -1316,6 +1454,8 @@
     "group": "K",
     "kickoff": "2026-06-27T23:30Z",
     "venue": "Mercedes-Benz Stadium",
+    "city": "Atlanta, Georgia",
+    "country": "USA",
     "home": {
       "code": "COD",
       "name": "Congo DR",
@@ -1327,7 +1467,7 @@
       "flag": "🇺🇿"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.512Z"
   },
   {
     "id": "760484",
@@ -1335,6 +1475,8 @@
     "group": "J",
     "kickoff": "2026-06-28T02:00Z",
     "venue": "GEHA Field at Arrowhead Stadium",
+    "city": "Kansas City, Missouri",
+    "country": "USA",
     "home": {
       "code": "ALG",
       "name": "Algeria",
@@ -1346,7 +1488,7 @@
       "flag": "🇦🇹"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.512Z"
   },
   {
     "id": "760483",
@@ -1354,6 +1496,8 @@
     "group": "J",
     "kickoff": "2026-06-28T02:00Z",
     "venue": "AT&T Stadium",
+    "city": "Arlington, Texas",
+    "country": "USA",
     "home": {
       "code": "JOR",
       "name": "Jordan",
@@ -1365,13 +1509,15 @@
       "flag": "🇦🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.512Z"
   },
   {
     "id": "760486",
     "stage": "R32",
     "kickoff": "2026-06-28T19:00Z",
     "venue": "SoFi Stadium",
+    "city": "Inglewood, California",
+    "country": "USA",
     "home": {
       "code": "2A",
       "name": "Group A 2nd Place",
@@ -1383,13 +1529,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.540Z"
   },
   {
     "id": "760487",
     "stage": "R32",
     "kickoff": "2026-06-29T17:00Z",
     "venue": "NRG Stadium",
+    "city": "Houston, Texas",
+    "country": "USA",
     "home": {
       "code": "1C",
       "name": "Group C Winner",
@@ -1401,13 +1549,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.540Z"
   },
   {
     "id": "760489",
     "stage": "R32",
     "kickoff": "2026-06-29T20:30Z",
     "venue": "Gillette Stadium",
+    "city": "Foxborough, Massachusetts",
+    "country": "USA",
     "home": {
       "code": "1E",
       "name": "Group E Winner",
@@ -1419,13 +1569,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.540Z"
   },
   {
     "id": "760488",
     "stage": "R32",
     "kickoff": "2026-06-30T01:00Z",
     "venue": "Estadio BBVA",
+    "city": "Guadalupe",
+    "country": "Mexico",
     "home": {
       "code": "1F",
       "name": "Group F Winner",
@@ -1437,13 +1589,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.540Z"
   },
   {
     "id": "760490",
     "stage": "R32",
     "kickoff": "2026-06-30T17:00Z",
     "venue": "AT&T Stadium",
+    "city": "Arlington, Texas",
+    "country": "USA",
     "home": {
       "code": "2E",
       "name": "Group E 2nd Place",
@@ -1455,13 +1609,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.540Z"
   },
   {
     "id": "760492",
     "stage": "R32",
     "kickoff": "2026-06-30T21:00Z",
     "venue": "MetLife Stadium",
+    "city": "East Rutherford, New Jersey",
+    "country": "USA",
     "home": {
       "code": "1I",
       "name": "Group I Winner",
@@ -1473,13 +1629,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.541Z"
   },
   {
     "id": "760491",
     "stage": "R32",
     "kickoff": "2026-07-01T01:00Z",
     "venue": "Estadio Banorte",
+    "city": "Mexico City",
+    "country": "Mexico",
     "home": {
       "code": "1A",
       "name": "Group A Winner",
@@ -1491,13 +1649,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.541Z"
   },
   {
     "id": "760495",
     "stage": "R32",
     "kickoff": "2026-07-01T16:00Z",
     "venue": "Mercedes-Benz Stadium",
+    "city": "Atlanta, Georgia",
+    "country": "USA",
     "home": {
       "code": "1L",
       "name": "Group L Winner",
@@ -1509,13 +1669,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.541Z"
   },
   {
     "id": "760493",
     "stage": "R32",
     "kickoff": "2026-07-01T20:00Z",
     "venue": "Lumen Field",
+    "city": "Seattle, Washington",
+    "country": "USA",
     "home": {
       "code": "1G",
       "name": "Group G Winner",
@@ -1527,13 +1689,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.682Z"
+    "updatedAt": "2026-06-07T07:52:54.541Z"
   },
   {
     "id": "760494",
     "stage": "R32",
     "kickoff": "2026-07-02T00:00Z",
     "venue": "Levi's Stadium",
+    "city": "Santa Clara, California",
+    "country": "USA",
     "home": {
       "code": "1D",
       "name": "Group D Winner",
@@ -1545,13 +1709,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.683Z"
+    "updatedAt": "2026-06-07T07:52:54.541Z"
   },
   {
     "id": "760497",
     "stage": "R32",
     "kickoff": "2026-07-02T19:00Z",
     "venue": "SoFi Stadium",
+    "city": "Inglewood, California",
+    "country": "USA",
     "home": {
       "code": "1H",
       "name": "Group H Winner",
@@ -1563,13 +1729,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760496",
     "stage": "R32",
     "kickoff": "2026-07-02T23:00Z",
     "venue": "BMO Field",
+    "city": "Toronto",
+    "country": "Canada",
     "home": {
       "code": "2K",
       "name": "Group K 2nd Place",
@@ -1581,13 +1749,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760498",
     "stage": "R32",
     "kickoff": "2026-07-03T03:00Z",
     "venue": "BC Place",
+    "city": "Vancouver",
+    "country": "Canada",
     "home": {
       "code": "1B",
       "name": "Group B Winner",
@@ -1599,13 +1769,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760499",
     "stage": "R32",
     "kickoff": "2026-07-03T18:00Z",
     "venue": "AT&T Stadium",
+    "city": "Arlington, Texas",
+    "country": "USA",
     "home": {
       "code": "2D",
       "name": "Group D 2nd Place",
@@ -1617,13 +1789,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760500",
     "stage": "R32",
     "kickoff": "2026-07-03T22:00Z",
     "venue": "Hard Rock Stadium",
+    "city": "Miami Gardens, Florida",
+    "country": "USA",
     "home": {
       "code": "1J",
       "name": "Group J Winner",
@@ -1635,13 +1809,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760501",
     "stage": "R32",
     "kickoff": "2026-07-04T01:30Z",
     "venue": "GEHA Field at Arrowhead Stadium",
+    "city": "Kansas City, Missouri",
+    "country": "USA",
     "home": {
       "code": "1K",
       "name": "Group K Winner",
@@ -1653,13 +1829,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760502",
     "stage": "R16",
     "kickoff": "2026-07-04T17:00Z",
     "venue": "NRG Stadium",
+    "city": "Houston, Texas",
+    "country": "USA",
     "home": {
       "code": "RD32",
       "name": "Round of 32 1 Winner",
@@ -1671,13 +1849,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760503",
     "stage": "R16",
     "kickoff": "2026-07-04T21:00Z",
     "venue": "Lincoln Financial Field",
+    "city": "Philadelphia, Pennsylvania",
+    "country": "USA",
     "home": {
       "code": "RD32",
       "name": "Round of 32 2 Winner",
@@ -1689,13 +1869,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760504",
     "stage": "R16",
     "kickoff": "2026-07-05T20:00Z",
     "venue": "MetLife Stadium",
+    "city": "East Rutherford, New Jersey",
+    "country": "USA",
     "home": {
       "code": "RD32",
       "name": "Round of 32 4 Winner",
@@ -1707,13 +1889,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760505",
     "stage": "R16",
     "kickoff": "2026-07-06T00:00Z",
     "venue": "Estadio Banorte",
+    "city": "Mexico City",
+    "country": "Mexico",
     "home": {
       "code": "RD32",
       "name": "Round of 32 7 Winner",
@@ -1725,13 +1909,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760506",
     "stage": "R16",
     "kickoff": "2026-07-06T19:00Z",
     "venue": "AT&T Stadium",
+    "city": "Arlington, Texas",
+    "country": "USA",
     "home": {
       "code": "RD32",
       "name": "Round of 32 11 Winner",
@@ -1743,13 +1929,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760507",
     "stage": "R16",
     "kickoff": "2026-07-07T00:00Z",
     "venue": "Lumen Field",
+    "city": "Seattle, Washington",
+    "country": "USA",
     "home": {
       "code": "RD32",
       "name": "Round of 32 9 Winner",
@@ -1761,13 +1949,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760509",
     "stage": "R16",
     "kickoff": "2026-07-07T16:00Z",
     "venue": "Mercedes-Benz Stadium",
+    "city": "Atlanta, Georgia",
+    "country": "USA",
     "home": {
       "code": "RD32",
       "name": "Round of 32 14 Winner",
@@ -1779,13 +1969,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760508",
     "stage": "R16",
     "kickoff": "2026-07-07T20:00Z",
     "venue": "BC Place",
+    "city": "Vancouver",
+    "country": "Canada",
     "home": {
       "code": "RD32",
       "name": "Round of 32 13 Winner",
@@ -1797,13 +1989,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.746Z"
+    "updatedAt": "2026-06-07T07:52:54.616Z"
   },
   {
     "id": "760510",
     "stage": "QF",
     "kickoff": "2026-07-09T20:00Z",
     "venue": "Gillette Stadium",
+    "city": "Foxborough, Massachusetts",
+    "country": "USA",
     "home": {
       "code": "RD16 W1",
       "name": "Round of 16 1 Winner",
@@ -1815,13 +2009,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.806Z"
+    "updatedAt": "2026-06-07T07:52:54.684Z"
   },
   {
     "id": "760511",
     "stage": "QF",
     "kickoff": "2026-07-10T19:00Z",
     "venue": "SoFi Stadium",
+    "city": "Inglewood, California",
+    "country": "USA",
     "home": {
       "code": "RD16 W5",
       "name": "Round of 16 5 Winner",
@@ -1833,13 +2029,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.806Z"
+    "updatedAt": "2026-06-07T07:52:54.684Z"
   },
   {
     "id": "760512",
     "stage": "QF",
     "kickoff": "2026-07-11T21:00Z",
     "venue": "Hard Rock Stadium",
+    "city": "Miami Gardens, Florida",
+    "country": "USA",
     "home": {
       "code": "RD16 W3",
       "name": "Round of 16 3 Winner",
@@ -1851,13 +2049,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.806Z"
+    "updatedAt": "2026-06-07T07:52:54.684Z"
   },
   {
     "id": "760513",
     "stage": "QF",
     "kickoff": "2026-07-12T01:00Z",
     "venue": "GEHA Field at Arrowhead Stadium",
+    "city": "Kansas City, Missouri",
+    "country": "USA",
     "home": {
       "code": "RD16 W7",
       "name": "Round of 16 7 Winner",
@@ -1869,13 +2069,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.806Z"
+    "updatedAt": "2026-06-07T07:52:54.684Z"
   },
   {
     "id": "760514",
     "stage": "SF",
     "kickoff": "2026-07-14T19:00Z",
     "venue": "AT&T Stadium",
+    "city": "Arlington, Texas",
+    "country": "USA",
     "home": {
       "code": "QFW1",
       "name": "Quarterfinal 1 Winner",
@@ -1887,13 +2089,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.806Z"
+    "updatedAt": "2026-06-07T07:52:54.684Z"
   },
   {
     "id": "760515",
     "stage": "SF",
     "kickoff": "2026-07-15T19:00Z",
     "venue": "Mercedes-Benz Stadium",
+    "city": "Atlanta, Georgia",
+    "country": "USA",
     "home": {
       "code": "QFW3",
       "name": "Quarterfinal 3 Winner",
@@ -1905,13 +2109,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.806Z"
+    "updatedAt": "2026-06-07T07:52:54.684Z"
   },
   {
     "id": "760516",
     "stage": "3P",
     "kickoff": "2026-07-18T21:00Z",
     "venue": "Hard Rock Stadium",
+    "city": "Miami Gardens, Florida",
+    "country": "USA",
     "home": {
       "code": "SF L1",
       "name": "Semifinal 1 Loser",
@@ -1923,13 +2129,15 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.923Z"
+    "updatedAt": "2026-06-07T07:52:54.772Z"
   },
   {
     "id": "760517",
     "stage": "F",
     "kickoff": "2026-07-19T19:00Z",
     "venue": "MetLife Stadium",
+    "city": "East Rutherford, New Jersey",
+    "country": "USA",
     "home": {
       "code": "SFW1",
       "name": "Semifinal 1 Winner",
@@ -1941,6 +2149,6 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-05-31T08:32:53.924Z"
+    "updatedAt": "2026-06-07T07:52:54.772Z"
   }
 ]

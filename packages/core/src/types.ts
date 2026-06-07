@@ -50,6 +50,10 @@ export interface Match {
   /** Kickoff time, ISO 8601 in UTC (always ends in "Z"). */
   kickoff: string;
   venue: string;
+  /** Host city (e.g. "Mexico City"). Present when the provider supplies it. */
+  city?: string;
+  /** Host country (e.g. "Mexico"). Present when the provider supplies it. */
+  country?: string;
   home: Team;
   away: Team;
   /** Present once the match is no longer purely SCHEDULED. */

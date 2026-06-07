@@ -84,6 +84,8 @@ describe('mapEspnEvent', () => {
     expect(m.stage).toBe('GROUP');
     expect(m.group).toBe('A');
     expect(m.venue).toBe('Estadio Banorte');
+    expect(m.city).toBe('Mexico City');
+    expect(m.country).toBe('Mexico');
     expect(m.home).toEqual({ code: 'MEX', name: 'Mexico', flag: '🇲🇽' });
     expect(m.away).toEqual({ code: 'RSA', name: 'South Africa', flag: '🇿🇦' });
     expect(m.score).toBeUndefined();
@@ -98,6 +100,9 @@ describe('mapEspnEvent', () => {
     expect(m.group).toBe('C');
     expect(m.home.flag).toBe('🇧🇷');
     expect(m.away.flag).toBe('🇲🇦');
+    // This fixture's venue has no address block → city/country stay undefined.
+    expect(m.city).toBeUndefined();
+    expect(m.country).toBeUndefined();
   });
 
   it('maps a finished fixture (FT + final score, no minute)', () => {
