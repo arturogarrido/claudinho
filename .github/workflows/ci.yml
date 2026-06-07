@@ -25,9 +25,9 @@ jobs:
         # — that floor is verified by the `runtime-node20` job below.
         node: [22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4 # reads pnpm version from package.json "packageManager"
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6 # reads pnpm version from package.json "packageManager"
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
@@ -44,10 +44,10 @@ jobs:
     name: runtime smoke (Node 20 engines floor)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
       # Build with a pnpm-supported Node...
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -56,7 +56,7 @@ jobs:
       # ...then run the built artifacts under Node 20 to confirm the shipped
       # code actually works on the version we advertise (engines.node >= 20).
       # Uses offline-only commands (bundled schedule, no network).
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
       - name: Exercise the built CLI on Node 20
@@ -71,9 +71,9 @@ jobs:
     name: audit (shipped deps)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
