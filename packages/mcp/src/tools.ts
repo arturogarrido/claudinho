@@ -107,18 +107,12 @@ export async function toolGetMatch(
 export async function toolGetStandings(
   args: { group?: string } & CommonOpts,
 ): Promise<ToolResult> {
-  // Overlay today's results so finished games count.
-  let matches: Match[] = allFixtures();
-  let degraded = false;
-  try {
-    const adapter = resolveAdapter(args);
-    const live = await adapter.fetchByDate(localDate(new Date().toISOString(), args.tz));
-    const byId = new Map(matches.map((m) => [m.id, m]));
-    for (const m of live) byId.set(m.id, m);
-    matches = [...byId.values()];
-  } catch {
-    degraded = true;
-  }
+  // Overlay today's results so finished games count. getMatchesForDate fetches
+  // the UTC window spanning the local day, so a late-UTC result still overlays.
+  const { matches, degraded } = await getMatchesForDate(
+    resolveAdapter(args),
+    localDate(new Date().toISOString(), args.tz),
+  );
 
   const known = groups(matches); // present group letters, e.g. A..L
   if (args.group) {

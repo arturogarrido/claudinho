@@ -12,6 +12,7 @@ import {
   fixturesByDate,
   fixturesByGroup,
   groups,
+  isValidDate,
 } from '@claudinho/core';
 import { DISCLAIMER, matchList, standingsTable } from './format';
 import {
@@ -36,14 +37,24 @@ const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and group standing
 Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team (3-letter code, e.g. MEX), and get_standings for group tables.${VOICE}
 ${DISCLAIMER}`;
 
+// Tightened, reusable input schemas (exported for tests). Rejecting bad input
+// at the schema boundary gives clients accurate hints and avoids silent
+// fallback to defaults for invalid values.
+export const dateArg = z
+  .string()
+  .refine(isValidDate, 'must be a real calendar date in YYYY-MM-DD form');
+export const groupArg = z.string().regex(/^[A-La-l]$/, 'a group letter A–L');
+export const teamArg = z.string().regex(/^[A-Za-z]{3}$/, 'a 3-letter team code, e.g. MEX');
+export const flavorArg = z.enum(['off', 'subtle', 'full']);
+
 // Shared optional args every tool accepts.
 const commonArgs = {
   tz: z.string().optional().describe('IANA timezone for kickoff times, e.g. America/Mexico_City'),
-  lang: z.string().optional().describe('Locale for formatting, e.g. en, es, pt, fr'),
-  flavor: z
+  lang: z
     .string()
     .optional()
-    .describe('Commentary flair: off, subtle, full (default: full)'),
+    .describe('Locale for formatting: en, es, pt, fr (other locales fall back to en)'),
+  flavor: flavorArg.optional().describe('Commentary flair: off, subtle, full (default: full)'),
 };
 
 /** Wrap a ToolResult into the MCP tool response shape. */
@@ -69,7 +80,7 @@ export function buildServer(): McpServer {
       title: "Today's matches",
       description: "Fixtures for a given date (default: today), with live scores overlaid.",
       inputSchema: {
-        date: z.string().optional().describe('Date as YYYY-MM-DD (default: today)'),
+        date: dateArg.optional().describe('Date as YYYY-MM-DD (default: today)'),
         ...commonArgs,
       },
       // Read-only; reaches an external data provider for the live overlay.
@@ -106,7 +117,7 @@ export function buildServer(): McpServer {
       title: 'Group standings',
       description: 'Group table(s). Pass a group letter A–L, or omit for all groups.',
       inputSchema: {
-        group: z.string().optional().describe('Group letter A–L (omit for all)'),
+        group: groupArg.optional().describe('Group letter A–L (omit for all)'),
         ...commonArgs,
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -119,7 +130,7 @@ export function buildServer(): McpServer {
     {
       title: 'Next fixture for a team',
       description: "A team's next scheduled match. Use a 3-letter code, e.g. MEX, BRA, USA.",
-      inputSchema: { team: z.string().describe('3-letter team code, e.g. MEX'), ...commonArgs },
+      inputSchema: { team: teamArg.describe('3-letter team code, e.g. MEX'), ...commonArgs },
       // Read-only and served entirely from the bundled static schedule.
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -150,12 +161,14 @@ export function buildServer(): McpServer {
     new ResourceTemplate('fixtures://{date}', { list: undefined }),
     {
       title: 'Fixtures by date',
-      description: 'Static fixture list for a date (YYYY-MM-DD).',
+      // A resource URI has no timezone, so group by UTC for a stable, machine-
+      // independent result. (The get_today tool groups by the caller's tz.)
+      description: 'Static fixture list for a UTC date (YYYY-MM-DD).',
       mimeType: 'text/plain',
     },
     async (uri, variables) => {
       const date = String(variables.date ?? '');
-      const text = matchList(fixturesByDate(date), `No matches on ${date}.`);
+      const text = matchList(fixturesByDate(date, undefined, 'UTC'), `No matches on ${date}.`);
       return { contents: [{ uri: uri.href, mimeType: 'text/plain', text }] };
     },
   );
@@ -185,7 +198,7 @@ export function buildServer(): McpServer {
     {
       title: 'My team',
       description: "Focus on one team's next match and group situation.",
-      argsSchema: { team: z.string().describe('3-letter team code, e.g. MEX') },
+      argsSchema: { team: teamArg.describe('3-letter team code, e.g. MEX') },
     },
     ({ team }) => ({
       messages: [

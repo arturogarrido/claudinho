@@ -61,12 +61,28 @@ export async function getMatchesForDate(
   dateISO: string,
 ): Promise<LiveResult> {
   const base = allFixtures();
+  const day = dateISO.slice(0, 10);
   try {
-    const live = await adapter.fetchByDate(dateISO);
+    // A local calendar day can straddle two adjacent UTC dates (a 01:00Z
+    // kickoff is the previous evening in the Americas). Callers group by the
+    // *local* date, so fetch a ±1-day UTC window — one request, since ESPN
+    // takes a date range — and merge by id. Fetching only `day` would leave a
+    // boundary match showing from the static schedule with no live score.
+    const live = adapter.fetchWindow
+      ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
+      : await adapter.fetchByDate(day);
     return { matches: mergeLive(base, live), degraded: false };
   } catch {
     return { matches: base, degraded: true };
   }
+}
+
+/** Shift a "YYYY-MM-DD" date by whole UTC days, returning "YYYY-MM-DD". */
+function shiftUtcDate(dateISO: string, days: number): string {
+  const [y, m, d] = dateISO.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days))
+    .toISOString()
+    .slice(0, 10);
 }
 
 /** Currently-live matches; empty + degraded on error. */

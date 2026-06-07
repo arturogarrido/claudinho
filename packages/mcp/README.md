@@ -56,7 +56,7 @@ text and structured JSON.
 
 ## Resources & prompts
 
-- Resources: `standings://{group}` (e.g. `standings://A`), `fixtures://{date}` (e.g. `fixtures://2026-06-11`)
+- Resources: `standings://{group}` (e.g. `standings://A`), `fixtures://{date}` (UTC date, e.g. `fixtures://2026-06-11`)
 - Prompts: `tournament_today`, `my_team`
 
 ## Commentary flair

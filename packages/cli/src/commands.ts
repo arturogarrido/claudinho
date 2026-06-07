@@ -29,7 +29,6 @@ import {
   getLiveMatches,
   getMatchesForDate,
   makeAdapter,
-  mergeLive,
 } from './data';
 import type { ProviderAdapter } from '@claudinho/core';
 import { readState } from './cache';
@@ -171,14 +170,13 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
   const { cfg, t } = ctx;
   precheck(cfg, t);
   const adapter = adapterFor(ctx);
-  // Overlay results so finished games count toward the live table.
-  let matches: Match[] = allFixtures();
-  try {
-    const live = await adapter.fetchByDate(localDate(new Date().toISOString(), cfg.tz));
-    matches = mergeLive(matches, live);
-  } catch {
-    /* fall back to static schedule */
-  }
+  // Overlay results so finished games count toward the live table. Group by the
+  // user's local "today"; getMatchesForDate fetches the spanning UTC window so a
+  // late-UTC result still overlays. Falls back to the static schedule on error.
+  const { matches } = await getMatchesForDate(
+    adapter,
+    localDate(new Date().toISOString(), cfg.tz),
+  );
 
   const wanted = group ? [group.toUpperCase()] : groups(matches);
 
