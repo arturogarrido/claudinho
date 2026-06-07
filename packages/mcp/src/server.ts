@@ -25,7 +25,7 @@ import {
 } from './tools';
 
 export const SERVER_NAME = 'claudinho';
-export const SERVER_VERSION = '0.1.1';
+export const SERVER_VERSION = '0.2.0';
 
 // Default-on commentary voice. Gated by CLAUDINHO_FLAVOR (off|subtle|full).
 const VOICE =

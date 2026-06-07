@@ -1,0 +1,58 @@
+name: Publish
+
+# Publishes @claudinho/{core,cli,mcp} to npm with provenance.
+#
+# Trigger: push a version tag — `git tag v0.2.0 && git push origin v0.2.0`
+#          (or run manually from the Actions tab via "Run workflow").
+#
+# Prerequisites:
+#   - Repo secret NPM_TOKEN: an npm "Automation" access token with publish rights
+#     (Account → Access Tokens → Generate → Automation).
+#   - The repository must be PUBLIC — npm provenance attestations require a
+#     publicly verifiable source; pnpm refuses provenance for a private package.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # OIDC token used to sign the npm provenance attestation
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org # writes the auth .npmrc
+
+      - run: pnpm install --frozen-lockfile
+
+      # Don't ship a broken release — build first (cli/mcp resolve @claudinho/core
+      # from its dist), then the same gates CI runs.
+      - run: pnpm -r build
+      - run: pnpm -r typecheck
+      - run: pnpm -r test
+      - run: pnpm lint
+
+      # On a tag push, refuse to publish if the tag and package version disagree.
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          PKG=$(node -p "require('./packages/cli/package.json').version")
+          TAG=${GITHUB_REF_NAME#v}
+          [ "$PKG" = "$TAG" ] || { echo "::error::tag $GITHUB_REF_NAME != package version $PKG"; exit 1; }
+
+      # Publish core → cli → mcp. pnpm orders by workspace deps, rewrites
+      # workspace:* to the real version, and skips versions already on npm.
+      # --provenance attaches a signed build attestation (needs id-token: write).
+      - name: Publish to npm with provenance
+        run: pnpm -r publish --provenance --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

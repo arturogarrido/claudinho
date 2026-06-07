@@ -28,7 +28,7 @@ function handlePipeError(stream: NodeJS.WriteStream): void {
 handlePipeError(process.stdout);
 handlePipeError(process.stderr);
 
-const VERSION = '0.1.1';
+const VERSION = '0.2.0';
 const DISCLAIMER =
   'Claudinho is an independent fan project. Not affiliated with or endorsed by FIFA or Anthropic.';
 
