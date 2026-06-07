@@ -3,11 +3,19 @@ packages:
   - "services/*"
   - "apps/*"
 
-allowBuilds:
-  esbuild: set this to true or false
+# Force vulnerable transitive dev tooling up to patched versions
+# (GHSA path-traversal in vite; esbuild dev-server request leak).
+# vitest 4 otherwise happily reuses the older vite 5 / esbuild 0.21.
+overrides:
+  vite: "^6.4.2"
+  esbuild: ">=0.25.0"
 
-# Allow esbuild (pulled in by tsup + vitest) to run its postinstall, which
-# fetches the platform-native binary. Without this, pnpm 11 blocks the build
-# script and fails preflight on every script run.
-onlyBuiltDependencies:
-  - esbuild
+# esbuild (via tsup + vitest) ships its native binary through the
+# @esbuild/<platform> optional dependency, so its own postinstall (node
+# install.js) isn't needed. Decline the build script explicitly (pnpm 11's
+# allowBuilds map) so install stops prompting/warning, and turn off the pre-run
+# deps check that would otherwise escalate the skipped build to a hard error and
+# block every script (even a pure-tsc typecheck).
+allowBuilds:
+  esbuild: false
+verifyDepsBeforeRun: false
