@@ -1,0 +1,29 @@
+# Dependabot **version updates** (routine bump PRs).
+#
+# This is separate from Dependabot **security alerts**, which are enabled in the
+# GitHub UI (Security tab) and already flag vulnerable deps. This file opens the
+# regular update PRs that keep the toolchain current.
+version: 2
+updates:
+  # npm / pnpm workspace (root lockfile covers all packages/*).
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # Group the noisy minor/patch bumps; majors still come as individual PRs so
+    # they get a deliberate review.
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+      prod-dependencies:
+        dependency-type: production
+        update-types: [minor, patch]
+
+  # Keep the GitHub Actions used in CI up to date.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

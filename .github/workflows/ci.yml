@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: build · typecheck · test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm/action-setup reads the pinned version from package.json's
+      # "packageManager" field (pnpm@11.5.0).
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Build first, in topological order — cli/mcp import @claudinho/core from
+      # its built dist, so typecheck/test need it present.
+      - run: pnpm -r build
+      - run: pnpm -r typecheck
+      - run: pnpm -r test
+      - run: pnpm -r --if-present lint
+
+  audit:
+    name: audit (shipped deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Gate the build only on vulnerabilities in *shipped* (production) deps —
+      # dev-toolchain CVEs are caught by Dependabot but shouldn't block CI.
+      - name: Audit production dependencies
+        run: pnpm audit --prod
+
+      # Surface dev-toolchain advisories for visibility, without failing.
+      - name: Audit all dependencies (non-blocking)
+        run: pnpm audit || true
