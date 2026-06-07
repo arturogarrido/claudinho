@@ -3,6 +3,11 @@
 # This is separate from Dependabot **security alerts**, which are enabled in the
 # GitHub UI (Security tab) and already flag vulnerable deps. This file opens the
 # regular update PRs that keep the toolchain current.
+#
+# NOTE: opening PRs also requires the repo setting Settings -> Actions -> General
+# -> "Allow GitHub Actions to create and approve pull requests" to be ON. With it
+# OFF, Dependabot pushes update branches but silently fails to open the PR (you
+# get orphan dependabot/* branches and no PRs).
 version: 2
 updates:
   # npm / pnpm workspace (root lockfile covers all packages/*).
