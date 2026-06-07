@@ -34,14 +34,6 @@ claude mcp add claudinho -- npx -y @claudinho/mcp
 npm i -g @claudinho/cli   # then: claudinho today
 ```
 
-## How it scales
-
-Thin, open-source clients talk to a small edge gateway that polls a live data feed **once for everyone** and fans results out over a CDN. The schedule (fixtures, groups, venues, kickoffs) is static and bundled in the client; only live match state hits the network. Cost stays flat from one user to millions.
-
-## Status
-
-In active development ahead of the **June 11, 2026** kickoff. See **[docs/PRD.md](docs/PRD.md)** for the full product + technical spec.
-
 ## License
 
 MIT © 2026 Arturo Garrido

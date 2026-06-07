@@ -28,3 +28,10 @@ dist-portable/
 
 # Desktop Extension build artifact
 *.mcpb
+
+# internal working docs / dev specs — kept local, never published
+docs/
+
+# agent guides — kept local, never published
+AGENTS.md
+CLAUDE.md
