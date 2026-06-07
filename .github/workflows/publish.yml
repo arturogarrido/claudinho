@@ -5,11 +5,16 @@ name: Publish
 # Trigger: push a version tag — `git tag v0.2.0 && git push origin v0.2.0`
 #          (or run manually from the Actions tab via "Run workflow").
 #
+# Auth: npm trusted publishing (OIDC) — NO token. The `id-token: write`
+#   permission below lets npm mint a short-lived, workflow-scoped credential, so
+#   there's no NPM_TOKEN secret to manage or rotate. A trusted publisher must be
+#   configured on npmjs for each package (repo + workflow `publish.yml`).
+#   See https://docs.npmjs.com/trusted-publishers.
+#
 # Prerequisites:
-#   - Repo secret NPM_TOKEN: an npm "Automation" access token with publish rights
-#     (Account → Access Tokens → Generate → Automation).
-#   - The repository must be PUBLIC — npm provenance attestations require a
-#     publicly verifiable source; pnpm refuses provenance for a private package.
+#   - The repository must be PUBLIC — trusted publishing and provenance both
+#     require a publicly verifiable source; pnpm refuses provenance for a
+#     private package.
 
 on:
   push:
@@ -30,7 +35,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: https://registry.npmjs.org # writes the auth .npmrc
+          registry-url: https://registry.npmjs.org # target the public registry (OIDC supplies auth)
 
       - run: pnpm install --frozen-lockfile
 
@@ -54,5 +59,3 @@ jobs:
       # --provenance attaches a signed build attestation (needs id-token: write).
       - name: Publish to npm with provenance
         run: pnpm -r publish --provenance --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
