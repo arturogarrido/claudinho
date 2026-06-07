@@ -36,3 +36,7 @@ console.log(next?.home.flag, 'vs', next?.away.flag,
 ## License
 
 MIT © 2026 Arturo Garrido · [source & issues](https://github.com/arturogarrido/claudinho)
+
+---
+
+_Built while watching the games._ **#VibingLaVidaLoca** ⚽

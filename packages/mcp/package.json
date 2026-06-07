@@ -35,7 +35,8 @@
     "soccer",
     "world-cup",
     "2026",
-    "live-scores"
+    "live-scores",
+    "vibinglavidaloca"
   ],
   "scripts": {
     "build": "tsup",

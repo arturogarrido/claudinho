@@ -35,7 +35,8 @@
     "2026",
     "cli",
     "live-scores",
-    "terminal"
+    "terminal",
+    "vibinglavidaloca"
   ],
   "scripts": {
     "build": "tsup",

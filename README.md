@@ -1,5 +1,7 @@
 # Claudinho ⚽
 
+[![#VibingLaVidaLoca](https://img.shields.io/badge/%23VibingLaVidaLoca-⚽-ff5a5f)](https://github.com/arturogarrido/claudinho)
+
 **The 2026 football tournament, right in your dev environment.**
 
 Live scores, fixtures, and group tables in your terminal, your Claude Code statusline, and any MCP client — installed in one line.
@@ -15,7 +17,7 @@ During a month-long global tournament, checking scores means breaking flow. Clau
 
 ## Surfaces
 
-- **CLI** — `claudinho today`, `claudinho live`, `claudinho next MEX`, `claudinho table`
+- **CLI** — `claudinho today`, `claudinho live`, `claudinho next MEX`, `claudinho table` (and `claudinho vibe` 😎)
 - **Claude Code statusline** — all live scores inline while you code
 - **MCP server** — ask your agent about matches mid-task (Claude Code, Cursor, Codex, Windsurf, Zed, …)
 - **Score-aware Claude** — a `UserPromptSubmit` hook that drops the live score into Claude's context during matches
@@ -37,3 +39,7 @@ npm i -g @claudinho/cli   # then: claudinho today
 ## License
 
 MIT © 2026 Arturo Garrido
+
+---
+
+_Built while watching the games._ **#VibingLaVidaLoca** ⚽

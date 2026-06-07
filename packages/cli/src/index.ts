@@ -12,6 +12,7 @@ import {
   cmdRefresh,
   cmdTable,
   cmdToday,
+  cmdVibe,
   InputError,
 } from './commands';
 
@@ -57,6 +58,8 @@ program
   .option('--json', 'output JSON (for scripting)')
   .option('--no-color', 'disable ANSI colors')
   .option('--source <name>', 'live data provider (advanced)');
+
+program.addHelpText('after', '\n#VibingLaVidaLoca ⚽');
 
 program
   .command('today')
@@ -153,6 +156,13 @@ program
     } catch (e) {
       fail(e);
     }
+  });
+
+program
+  .command('vibe')
+  .description('print a matchday-coder one-liner (#VibingLaVidaLoca)')
+  .action((_opts, cmd) => {
+    cmdVibe(ctxFrom(cmd));
   });
 
 // Internal: cold-path cache refresher, spawned detached by `prompt`.

@@ -101,3 +101,7 @@ attribution and rate limits are respected.
 ## License
 
 MIT © 2026 Arturo Garrido · [source & issues](https://github.com/arturogarrido/claudinho)
+
+---
+
+_Built while watching the games._ **#VibingLaVidaLoca** ⚽

@@ -344,3 +344,33 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   out();
   out(disclaimer(t, c));
 }
+
+/**
+ * `vibe` — a tiny, offline easter egg. Prints a random matchday-coder one-liner
+ * signed with the project's social tag. No network, no cache, no i18n: the
+ * Spanglish is the joke. #VibingLaVidaLoca
+ */
+const VIBES = [
+  'Shipping code, watching goals.',
+  'Green tests, green pitch.',
+  'Pelota al pie, manos al teclado.',
+  'Refactoring through the group stage.',
+  'Merge conflicts can wait — it’s matchday.',
+  'One feed for the world, one vibe for the dev.',
+  'Stoppage time and a clean stack trace.',
+  'Coding into extra time.',
+];
+
+export function cmdVibe(ctx: Ctx): void {
+  const { cfg } = ctx;
+  const line = VIBES[Math.floor(Math.random() * VIBES.length)];
+  if (cfg.json) {
+    emitJson({ vibe: line, tag: '#VibingLaVidaLoca' });
+    return;
+  }
+  const c = painterFor(cfg);
+  out();
+  out('  ⚽ ' + c.bold(line));
+  out('  ' + c.cyan('#VibingLaVidaLoca'));
+  out();
+}
