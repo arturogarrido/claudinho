@@ -20,19 +20,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [20, 22]
+        # pnpm 11.5 (our pinned packageManager) requires Node >= 22.13, so the
+        # toolchain runs on 22/24. The published packages still target Node >= 20
+        # — that floor is verified by the `runtime-node20` job below.
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
-
-      # pnpm/action-setup reads the pinned version from package.json's
-      # "packageManager" field (pnpm@11.5.0).
-      - uses: pnpm/action-setup@v4
-
+      - uses: pnpm/action-setup@v4 # reads pnpm version from package.json "packageManager"
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
-
       - run: pnpm install --frozen-lockfile
 
       # Build first, in topological order — cli/mcp import @claudinho/core from
@@ -41,6 +39,33 @@ jobs:
       - run: pnpm -r typecheck
       - run: pnpm -r test
       - run: pnpm -r --if-present lint
+
+  runtime-node20:
+    name: runtime smoke (Node 20 engines floor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      # Build with a pnpm-supported Node...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      # ...then run the built artifacts under Node 20 to confirm the shipped
+      # code actually works on the version we advertise (engines.node >= 20).
+      # Uses offline-only commands (bundled schedule, no network).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Exercise the built CLI on Node 20
+        run: |
+          node --version
+          node packages/cli/dist/index.js next MEX
+          node packages/cli/dist/index.js table A
+          node packages/cli/dist/index.js vibe
+          echo "Node 20 runtime OK"
 
   audit:
     name: audit (shipped deps)
