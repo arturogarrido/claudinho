@@ -21,7 +21,7 @@ function m(home: [string, string], away: [string, string], over: Partial<Match> 
 }
 
 function state(live: Match[], updatedAt = '2026-06-11T19:59:50Z'): CacheState {
-  return { updatedAt, live, degraded: false, source: 'espn' };
+  return { updatedAt, live, degraded: false, source: 'espn', competition: 'fifa.world' };
 }
 
 describe('renderHook', () => {

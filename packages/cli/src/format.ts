@@ -1,6 +1,5 @@
 import pc from 'picocolors';
 import {
-  countdown,
   formatKickoff,
   isLive,
   matchFlavor,
@@ -54,7 +53,6 @@ export function statusToken(m: Match, t: Translator, c: Painter): string {
       return c.red(t('status.postponed'));
     case 'CANCELLED':
       return c.red(t('status.cancelled'));
-    case 'SCHEDULED':
     default:
       return '';
   }

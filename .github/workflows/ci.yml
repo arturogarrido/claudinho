@@ -38,7 +38,7 @@ jobs:
       - run: pnpm -r build
       - run: pnpm -r typecheck
       - run: pnpm -r test
-      - run: pnpm -r --if-present lint
+      - run: pnpm lint # Biome (real linter, replaces the former no-op)
 
   runtime-node20:
     name: runtime smoke (Node 20 engines floor)

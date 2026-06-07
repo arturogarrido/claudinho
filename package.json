@@ -13,8 +13,11 @@
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "lint": "pnpm -r --if-present lint",
+    "lint": "biome lint .",
     "typecheck": "pnpm -r typecheck",
     "dev": "pnpm -r --parallel dev"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.16"
   }
 }

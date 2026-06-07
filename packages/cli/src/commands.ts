@@ -12,8 +12,8 @@ import {
   matchFlavor,
   matchLocation,
   nextFixtureForTeam,
+  resolveCompetition,
   scoreline,
-  type Match,
 } from '@claudinho/core';
 import Table from 'cli-table3';
 import type { CliConfig } from './config';
@@ -31,9 +31,9 @@ import {
   makeAdapter,
 } from './data';
 import type { ProviderAdapter } from '@claudinho/core';
-import { readState } from './cache';
+import { readCurrentState } from './cache';
 import { renderPrompt } from './statusline';
-import { hookContext } from './hook';
+import { renderHook } from './hook';
 import { runRefresh, shouldRefresh, spawnRefresh } from './refresh';
 import { initHook, initStatusline } from './install';
 
@@ -241,9 +241,10 @@ export function cmdPrompt({ cfg }: Ctx): void {
     );
     const maxRaw = Number.parseInt(process.env.CLAUDINHO_MAX ?? '', 10);
     const max = Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : undefined;
-    const state = readState();
+    // Only trust a snapshot fetched for the current source + competition.
+    const state = readCurrentState(cfg.source, resolveCompetition());
     out(renderPrompt(state, { team, compact, max }));
-    if (shouldRefresh()) spawnRefresh(cfg.source);
+    if (!state || shouldRefresh()) spawnRefresh(cfg.source);
   } catch {
     // The statusline must always succeed; print nothing rather than error.
     out('');
@@ -259,9 +260,11 @@ export function cmdPrompt({ cfg }: Ctx): void {
 export function cmdHook({ cfg }: Ctx): void {
   try {
     const team = process.env.CLAUDINHO_TEAM;
-    const ctx = hookContext({ team });
+    // Only trust a snapshot fetched for the current source + competition.
+    const state = readCurrentState(cfg.source, resolveCompetition());
+    const ctx = renderHook(state, { team });
     if (ctx) out(ctx);
-    if (shouldRefresh()) spawnRefresh(cfg.source);
+    if (!state || shouldRefresh()) spawnRefresh(cfg.source);
   } catch {
     // Never block the prompt — emit nothing on any error.
   }

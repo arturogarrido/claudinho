@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { matchFlavor, type Match, type ProviderAdapter } from '@claudinho/core';
 import {
   toolGetLive,
@@ -133,10 +133,18 @@ describe('toolGetNextFixture (pure static)', () => {
 // the real resolveAdapter → makeAdapter path is covered. The fetch may
 // succeed or degrade; we only assert it returns (does not throw/recurse).
 describe('production adapter path (no injection)', () => {
+  // Stub the network so the real makeAdapter() path runs hermetically: the
+  // adapter is built (proving resolveAdapter doesn't recurse) and degrades to
+  // the static schedule — no live fetch, no flaky CI timeout.
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline (test)'))));
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
   it('toolGetStandings resolves a real adapter without recursing', async () => {
     const r = await toolGetStandings({ group: 'A' });
-    expect(r.text).toContain('Group A');
-  }, 20000);
+    expect(r.text).toContain('Group A'); // static fallback rendered
+  });
 });
 
 describe('toolGetStandings', () => {

@@ -28,6 +28,13 @@ describe('formatKickoff', () => {
     // Mexico City is UTC-6 in June -> 13:00
     expect(s).toMatch(/13/);
   });
+  it('falls back to English for a malformed locale instead of throwing (RangeError)', () => {
+    const iso = '2026-06-11T19:00:00Z';
+    expect(() => formatKickoff(iso, { tz: 'UTC', locale: '%%%' })).not.toThrow();
+    expect(formatKickoff(iso, { tz: 'UTC', locale: '%%%' })).toBe(
+      formatKickoff(iso, { tz: 'UTC', locale: 'en' }),
+    );
+  });
 });
 
 describe('localDate', () => {

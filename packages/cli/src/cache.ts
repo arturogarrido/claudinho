@@ -24,6 +24,8 @@ export interface CacheState {
   live: Match[];
   degraded: boolean;
   source: string;
+  /** Competition slug the live data was fetched for (e.g. "fifa.world"). */
+  competition: string;
 }
 
 const LOCK_STALE_MS = 60_000;
@@ -48,6 +50,19 @@ export function readState(): CacheState | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Read the cache only if it was produced for the *current* source + competition.
+ * A snapshot fetched under a different `CLAUDINHO_COMPETITION` (e.g. friendlies)
+ * must never bleed into a World-Cup statusline/hook, even while it's fresh.
+ */
+export function readCurrentState(
+  source: string,
+  competition: string,
+): CacheState | undefined {
+  const s = readState();
+  return s && s.source === source && s.competition === competition ? s : undefined;
 }
 
 /** Atomically write the cached state. */

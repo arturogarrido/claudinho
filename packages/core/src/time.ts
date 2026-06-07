@@ -41,10 +41,26 @@ export interface FormatOpts {
   locale?: string;
 }
 
+/**
+ * A locale tag `Intl` will accept. A structurally-invalid tag (e.g. "%%%")
+ * makes `Intl.DateTimeFormat` throw `RangeError`, so guard it and fall back to
+ * English — a bad `locale` (incl. the MCP `lang` arg) must never crash
+ * formatting.
+ */
+function safeLocale(locale?: string): string {
+  if (!locale) return 'en';
+  try {
+    Intl.getCanonicalLocales(locale);
+    return locale;
+  } catch {
+    return 'en';
+  }
+}
+
 /** Format a kickoff like "Thu 19:00" in the target timezone/locale. */
 export function formatKickoff(iso: string, opts: FormatOpts = {}): string {
   const tz = resolveTz(opts.tz);
-  const locale = opts.locale || 'en';
+  const locale = safeLocale(opts.locale);
   return new Intl.DateTimeFormat(locale, {
     weekday: 'short',
     hour: '2-digit',

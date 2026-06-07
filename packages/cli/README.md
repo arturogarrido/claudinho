@@ -103,7 +103,9 @@ claudinho live      # live friendlies
 unset CLAUDINHO_COMPETITION   # back to the World Cup
 ```
 
-Only the live fetch changes; the bundled schedule is always the World Cup.
+Only the live fetch changes; the bundled schedule is always the World Cup. The
+statusline/hook cache is keyed to the active competition, so switching with
+`CLAUDINHO_COMPETITION` never surfaces stale scores from the other competition.
 
 ## How it works
 

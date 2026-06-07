@@ -7,6 +7,7 @@ import {
   ageMs,
   cachePath,
   isLockFresh,
+  readCurrentState,
   readState,
   releaseLock,
   writeState,
@@ -31,6 +32,7 @@ const sample: CacheState = {
   live: [],
   degraded: false,
   source: 'espn',
+  competition: 'fifa.world',
 };
 
 describe('cache state', () => {
@@ -42,6 +44,18 @@ describe('cache state', () => {
     writeState(sample);
     expect(cachePath().startsWith(dir)).toBe(true);
     expect(readState()).toEqual(sample);
+  });
+
+  it('readCurrentState only returns a snapshot for the matching source + competition', () => {
+    writeState(sample); // source 'espn', competition 'fifa.world'
+    expect(readCurrentState('espn', 'fifa.world')).toEqual(sample);
+    // A friendly snapshot must never bleed into a World-Cup view.
+    expect(readCurrentState('espn', 'fifa.friendly')).toBeUndefined();
+    expect(readCurrentState('other', 'fifa.world')).toBeUndefined();
+  });
+
+  it('readCurrentState returns undefined when no cache exists', () => {
+    expect(readCurrentState('espn', 'fifa.world')).toBeUndefined();
   });
 
   it('returns undefined on corrupt JSON (never throws)', () => {

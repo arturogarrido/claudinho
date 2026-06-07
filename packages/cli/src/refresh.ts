@@ -59,9 +59,19 @@ export interface RefreshOpts {
 export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
   const now = opts.now ?? new Date();
   const source = opts.source ?? 'espn';
+  const competition = resolveCompetition();
 
-  // Skip if a recent refresh already produced fresh data.
-  if (ageMs(readState(), now.getTime()) < MIN_REFRESH_MS) return;
+  // Skip only if a recent refresh already produced fresh data *for this same
+  // source + competition*; otherwise re-fetch (e.g. the competition changed).
+  const cached = readState();
+  if (
+    cached &&
+    cached.source === source &&
+    cached.competition === competition &&
+    ageMs(cached, now.getTime()) < MIN_REFRESH_MS
+  ) {
+    return;
+  }
   if (!acquireLock()) return;
   try {
     let live: Match[] = [];
@@ -75,7 +85,7 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
       }
     }
 
-    writeState({ updatedAt: now.toISOString(), live, degraded, source });
+    writeState({ updatedAt: now.toISOString(), live, degraded, source, competition });
   } finally {
     releaseLock();
   }

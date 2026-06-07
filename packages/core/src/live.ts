@@ -26,7 +26,6 @@ export function resolveCompetition(explicit?: string): string {
 /** Construct a provider adapter for a `--source` name (default: espn). */
 export function makeAdapter(source = 'espn'): ProviderAdapter {
   switch (source) {
-    case 'espn':
     default: {
       const competition = resolveCompetition();
       const baseUrl =

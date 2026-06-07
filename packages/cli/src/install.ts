@@ -133,8 +133,10 @@ export function initHook(opts: InitOpts = {}): InitResult {
     }
   }
 
-  const hooks = (settings.hooks ??= {}) as Record<string, HookMatcher[]>;
-  const matchers = (hooks[HOOK_EVENT] ??= []) as HookMatcher[];
+  settings.hooks ??= {};
+  const hooks = settings.hooks as Record<string, HookMatcher[]>;
+  hooks[HOOK_EVENT] ??= [];
+  const matchers = hooks[HOOK_EVENT] as HookMatcher[];
 
   // Idempotent: bail if any existing entry already runs a claudinho hook.
   const already = matchers.some((m) =>

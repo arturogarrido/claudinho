@@ -26,7 +26,7 @@ function m(
 const NOW = new Date('2026-06-11T20:00:00Z'); // opener is live (KO 19:00Z)
 
 function state(live: Match[], updatedAt = '2026-06-11T19:59:50Z'): CacheState {
-  return { updatedAt, live, degraded: false, source: 'espn' };
+  return { updatedAt, live, degraded: false, source: 'espn', competition: 'fifa.world' };
 }
 
 describe('renderPrompt — live', () => {

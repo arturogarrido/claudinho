@@ -16,7 +16,6 @@ import {
   localDate,
   makeAdapter,
   nextFixtureForTeam,
-  type Match,
   type ProviderAdapter,
 } from '@claudinho/core';
 import { DISCLAIMER, matchLine, matchList, standingsTable } from './format';

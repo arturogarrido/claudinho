@@ -11,7 +11,7 @@
  * caller always exits 0.
  */
 import { scoreline, type Match } from '@claudinho/core';
-import { readState } from './cache';
+import type { readState } from './cache';
 import { liveMatchesFromCache } from './statusline';
 
 export interface HookOpts {
@@ -53,9 +53,4 @@ export function renderHook(
   // Labelled as live context so the model treats it as ambient info, not an
   // instruction. Kept terse to minimise token cost.
   return `[Claudinho — live football scores right now]\n${lines}`;
-}
-
-/** Read the cache and render the hook context (the runtime entry). */
-export function hookContext(opts: HookOpts = {}): string {
-  return renderHook(readState(), opts);
 }
