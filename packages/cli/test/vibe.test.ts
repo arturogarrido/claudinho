@@ -4,7 +4,7 @@ import { makeT } from '../src/i18n';
 import type { CliConfig } from '../src/config';
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: undefined, json: false, color: false, source: 'espn', ...over };
+  return { lang: 'en', tz: undefined, json: false, color: false, source: 'espn', flavor: 'full', ...over };
 }
 const ctx = (over: Partial<CliConfig> = {}) => ({ cfg: cfg(over), t: makeT('en') });
 

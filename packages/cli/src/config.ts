@@ -1,3 +1,5 @@
+import { asFlavorLevel, type FlavorLevel } from '@claudinho/core';
+
 /** Resolved global options, derived from flags + env + system defaults. */
 export interface CliConfig {
   lang: string;
@@ -5,6 +7,8 @@ export interface CliConfig {
   json: boolean;
   color: boolean;
   source: string;
+  /** Commentary flair intensity (default: full). */
+  flavor: FlavorLevel;
   /** The user explicitly requested a `--lang` we don't support (for warnings). */
   langRequestedUnsupported?: string;
 }
@@ -15,6 +19,7 @@ export interface RawGlobalOpts {
   json?: boolean;
   color?: boolean;
   source?: string;
+  flavor?: string;
 }
 
 const SUPPORTED_LANGS = ['en', 'es', 'pt', 'fr'] as const;
@@ -55,6 +60,7 @@ export function resolveConfig(opts: RawGlobalOpts): CliConfig {
     json: opts.json ?? false,
     color: pickColor(opts.color),
     source: opts.source ?? process.env.CLAUDINHO_SOURCE ?? 'espn',
+    flavor: asFlavorLevel(opts.flavor ?? process.env.CLAUDINHO_FLAVOR),
     langRequestedUnsupported,
   };
 }

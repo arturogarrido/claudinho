@@ -9,6 +9,7 @@ import {
   isValidDate,
   isValidTimeZone,
   localDate,
+  matchFlavor,
   matchLocation,
   nextFixtureForTeam,
   scoreline,
@@ -336,6 +337,8 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
         `${formatKickoff(match.kickoff, { tz: cfg.tz, locale: cfg.lang })}  ${statusToken(match, t, c)}`.trimEnd(),
       ),
   );
+  const flair = matchFlavor(match, { level: cfg.flavor, locale: cfg.lang });
+  if (flair) out('  ' + c.cyan(flair));
   if (match.events?.length) {
     out();
     for (const e of match.events) {

@@ -57,7 +57,8 @@ program
   .option('--tz <zone>', 'IANA timezone, e.g. America/Mexico_City')
   .option('--json', 'output JSON (for scripting)')
   .option('--no-color', 'disable ANSI colors')
-  .option('--source <name>', 'live data provider (advanced)');
+  .option('--source <name>', 'live data provider (advanced)')
+  .option('--flavor <level>', 'commentary flair: off, subtle, full (default: full)');
 
 program.addHelpText('after', '\n#VibingLaVidaLoca ⚽');
 

@@ -17,7 +17,7 @@ const fakeAdapter: ProviderAdapter = {
 };
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: undefined, json: true, color: false, source: 'espn', ...over };
+  return { lang: 'en', tz: undefined, json: true, color: false, source: 'espn', flavor: 'full', ...over };
 }
 const ctx = (over: Partial<CliConfig> = {}) => ({
   cfg: cfg(over),

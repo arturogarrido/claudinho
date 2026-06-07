@@ -6,8 +6,10 @@
 import {
   countdown,
   formatKickoff,
+  matchFlavor,
   matchLocation,
   scoreline,
+  type FlavorLevel,
   type Match,
   type StandingRow,
 } from '@claudinho/core';
@@ -24,6 +26,7 @@ const STATUS_LABEL: Record<Match['status'], string> = {
 export interface FmtOpts {
   tz?: string;
   locale?: string;
+  flavor?: FlavorLevel;
 }
 
 export function stageName(stage: Match['stage']): string {
@@ -51,7 +54,9 @@ export function matchLine(m: Match, opts: FmtOpts = {}): string {
   } else {
     tail = STATUS_LABEL[m.status];
   }
-  return `${head} — ${tail} · ${stage} · ${matchLocation(m)}`.trimEnd();
+  const flair = matchFlavor(m, { level: opts.flavor, locale: opts.locale });
+  const base = `${head} — ${tail} · ${stage} · ${matchLocation(m)}`;
+  return (flair ? `${base} — ${flair}` : base).trimEnd();
 }
 
 /** A list of matches as a text block (or an empty-state message). */

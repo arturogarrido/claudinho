@@ -7,6 +7,7 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import { z } from 'zod';
 import {
   allFixtures,
+  asFlavorLevel,
   computeStandings,
   fixturesByDate,
   fixturesByGroup,
@@ -25,14 +26,24 @@ import {
 export const SERVER_NAME = 'claudinho';
 export const SERVER_VERSION = '0.1.1';
 
+// Default-on commentary voice. Gated by CLAUDINHO_FLAVOR (off|subtle|full).
+const VOICE =
+  asFlavorLevel(process.env.CLAUDINHO_FLAVOR) === 'off'
+    ? ''
+    : `\nVoice: when relaying scores, narrate with lively, regionally-appropriate football-commentary energy in the user's language. Each match line may end with a short exclamation ("— ¡GOOOOL!") — use it as a tone cue. Keep every fact exact; never invent details and never impersonate or name a real commentator.`;
+
 const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and group standings for the 2026 men's football tournament.
-Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team (3-letter code, e.g. MEX), and get_standings for group tables.
+Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team (3-letter code, e.g. MEX), and get_standings for group tables.${VOICE}
 ${DISCLAIMER}`;
 
 // Shared optional args every tool accepts.
 const commonArgs = {
   tz: z.string().optional().describe('IANA timezone for kickoff times, e.g. America/Mexico_City'),
   lang: z.string().optional().describe('Locale for formatting, e.g. en, es, pt, fr'),
+  flavor: z
+    .string()
+    .optional()
+    .describe('Commentary flair: off, subtle, full (default: full)'),
 };
 
 /** Wrap a ToolResult into the MCP tool response shape. */

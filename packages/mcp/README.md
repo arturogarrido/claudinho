@@ -50,13 +50,33 @@ any other MCP client with no changes.
 | `get_next_fixture` | a team's next match (3-letter code, e.g. `MEX`) |
 
 All tools are **read-only** (annotated `readOnlyHint`) and accept optional
-`tz` (IANA timezone) and `lang` (`en`/`es`/`pt`/`fr`) arguments. Each response
-includes both human-readable text and structured JSON.
+`tz` (IANA timezone), `lang` (`en`/`es`/`pt`/`fr`), and `flavor`
+(`off`/`subtle`/`full`) arguments. Each response includes both human-readable
+text and structured JSON.
 
 ## Resources & prompts
 
 - Resources: `standings://{group}` (e.g. `standings://A`), `fixtures://{date}` (e.g. `fixtures://2026-06-11`)
 - Prompts: `tournament_today`, `my_team`
+
+## Commentary flair
+
+By default the server adds a light, localized football-commentary voice: each
+match line in the text ends with a short genre-style exclamation (`— ¡GOOOOL!`),
+and the server instructions nudge the model to narrate scores with matching
+energy. The phrases are generic — no real commentator is quoted or impersonated —
+and they never touch the structured JSON, so the facts stay clean.
+
+Control it with `CLAUDINHO_FLAVOR` (`off` | `subtle` | `full`, default `full`),
+or per call via the `flavor` tool argument. In Claude Code, add it to the `env`
+block of your server entry:
+
+```json
+{ "mcpServers": { "claudinho": {
+  "command": "npx", "args": ["-y", "@claudinho/mcp"],
+  "env": { "CLAUDINHO_FLAVOR": "subtle" }
+} } }
+```
 
 ## Other competitions
 

@@ -3,6 +3,7 @@ import {
   countdown,
   formatKickoff,
   isLive,
+  matchFlavor,
   scoreline,
   type Match,
 } from '@claudinho/core';
@@ -86,7 +87,9 @@ export function matchLine(
   } else {
     right = statusToken(m, t, c);
   }
-  return `  ${left}   ${right}`.trimEnd();
+  const flair = matchFlavor(m, { level: cfg.flavor, locale: cfg.lang });
+  const tail = flair ? `   ${c.dim(flair)}` : '';
+  return `  ${left}   ${right}${tail}`.trimEnd();
 }
 
 /** A section header. */

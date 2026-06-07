@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Match, ProviderAdapter } from '@claudinho/core';
+import { matchFlavor, type Match, type ProviderAdapter } from '@claudinho/core';
 import {
   toolGetLive,
   toolGetNextFixture,
@@ -63,6 +63,19 @@ describe('toolGetLive', () => {
     const r = await toolGetLive({ adapter: fakeAdapter({ live: [] }) });
     expect(r.text).toContain('No matches in play');
     expect((r.data as { count: number }).count).toBe(0);
+  });
+
+  it('appends commentary flair at flavor=full and omits it at flavor=off', async () => {
+    const flair = matchFlavor(liveMatch(), { level: 'full' }); // goal moment, en
+    expect(flair).not.toBe('');
+
+    const full = await toolGetLive({ adapter: fakeAdapter({ live: [liveMatch()] }), flavor: 'full' });
+    expect(full.text).toContain(`— ${flair}`);
+
+    const off = await toolGetLive({ adapter: fakeAdapter({ live: [liveMatch()] }), flavor: 'off' });
+    expect(off.text).not.toContain(flair);
+    // Structured data is unaffected by flavor — facts stay clean.
+    expect((off.data as { matches: Match[] }).matches[0]?.score).toEqual({ home: 1, away: 0 });
   });
 
   it('flags degraded when the provider throws', async () => {

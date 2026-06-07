@@ -6,6 +6,7 @@
  */
 import {
   allFixtures,
+  asFlavorLevel,
   computeStandings,
   fixturesByDate,
   fixturesByGroup,
@@ -29,12 +30,23 @@ export interface CommonOpts {
   tz?: string;
   lang?: string;
   source?: string;
+  /** Commentary flair level: 'off' | 'subtle' | 'full' (default: full). */
+  flavor?: string;
   /** Injected adapter (tests). Defaults to makeAdapter(source). */
   adapter?: ProviderAdapter;
 }
 
 function resolveAdapter(args: CommonOpts): ProviderAdapter {
   return args.adapter ?? makeAdapter(args.source);
+}
+
+/** Flavor from the call arg, else the server env, else the default (full). */
+function fmtOpts(args: CommonOpts) {
+  return {
+    tz: args.tz,
+    locale: args.lang,
+    flavor: asFlavorLevel(args.flavor ?? process.env.CLAUDINHO_FLAVOR),
+  };
 }
 
 function withDisclaimer(text: string): string {
@@ -49,7 +61,7 @@ export async function toolGetToday(
   const date = args.date ?? localDate(new Date().toISOString(), args.tz);
   const { matches, degraded } = await getMatchesForDate(adapter, date);
   const todays = fixturesByDate(date, matches);
-  const opts = { tz: args.tz, locale: args.lang };
+  const opts = fmtOpts(args);
   const text = `Matches on ${date}:\n${matchList(todays, 'No matches scheduled.', opts)}`;
   return {
     text: withDisclaimer(text),
@@ -61,7 +73,7 @@ export async function toolGetToday(
 export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
   const { matches, degraded } = await getLiveMatches(adapter);
-  const opts = { tz: args.tz, locale: args.lang };
+  const opts = fmtOpts(args);
   const text = `Live now:\n${matchList(matches, 'No matches in play right now.', opts)}`;
   return {
     text: withDisclaimer(text),
@@ -87,7 +99,7 @@ export async function toolGetMatch(
   if (!match) {
     return { text: withDisclaimer(`No match found with id ${args.id}.`), data: { match: null } };
   }
-  const opts = { tz: args.tz, locale: args.lang };
+  const opts = fmtOpts(args);
   return { text: withDisclaimer(matchLine(match, opts)), data: { degraded, match } };
 }
 
@@ -147,7 +159,7 @@ export async function toolGetNextFixture(
       data: { team: code, fixture: null },
     };
   }
-  const opts = { tz: args.tz, locale: args.lang };
+  const opts = fmtOpts(args);
   return {
     text: withDisclaimer(`Next up for ${code}:\n${matchLine(fixture, opts)}`),
     data: { team: code, fixture },

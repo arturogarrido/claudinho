@@ -22,6 +22,8 @@ During a month-long global tournament, checking scores means breaking flow. Clau
 - **MCP server** — ask your agent about matches mid-task (Claude Code, Cursor, Codex, Windsurf, Zed, …)
 - **Score-aware Claude** — a `UserPromptSubmit` hook that drops the live score into Claude's context during matches
 
+Speaks `en` / `es` / `pt` / `fr`, with optional localized commentary flair (`¡GOOOOL!`) you can dial down or off.
+
 _Planned:_ a desktop **notifier** (goal/kickoff/FT alerts) and an **AI pundit** (daily predictions with a public accuracy scorecard).
 
 ## Install

@@ -6,6 +6,14 @@ export { resolveTz, formatKickoff, countdown, localDate } from './time';
 export type { FormatOpts } from './time';
 export { isValidTimeZone, isValidDate } from './validate';
 export { outcomeFromScore, isLive, isFinished, scoreline, matchLocation, byKickoff } from './normalize';
+export {
+  matchFlavor,
+  asFlavorLevel,
+  isFlavorLevel,
+  DEFAULT_FLAVOR,
+  FLAVOR_LEVELS,
+} from './flavor';
+export type { FlavorLevel } from './flavor';
 
 export {
   allFixtures,

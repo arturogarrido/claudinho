@@ -37,6 +37,7 @@ claudinho today --tz America/Mexico_City --lang es
 claudinho next BRA --tz America/Sao_Paulo --lang pt
 claudinho table A
 claudinho live --json | jq '.matches[].status'
+claudinho today --flavor off               # just the facts, no commentary
 ```
 
 ## Global options
@@ -48,8 +49,20 @@ claudinho live --json | jq '.matches[].status'
 | `--json` | machine-readable output for scripting |
 | `--no-color` | disable ANSI color (also honors `NO_COLOR`; auto-off when piped) |
 | `--source <name>` | live data provider (advanced; sensible default) |
+| `--flavor <level>` | commentary flair: `off`, `subtle`, `full` (default: `full`; also `CLAUDINHO_FLAVOR`) |
 
 Team codes are 3-letter (FIFA/IOC-style): `MEX`, `BRA`, `USA`, `ENG`, …
+
+### Commentary flair
+
+By default Claudinho narrates with a bit of localized football-broadcast energy —
+`¡GOOOOL!` on a goal, `¡a cancha llena!` before kickoff. These are generic,
+genre-style exclamations (no real commentator is quoted or impersonated),
+localized per `--lang`, and they never affect `--json` output.
+
+- `--flavor full` *(default)* — flair on fixtures, live play, goals, and full-time
+- `--flavor subtle` — only goals and full-time
+- `--flavor off` — just the facts
 
 ## Statusline (Claude Code)
 
