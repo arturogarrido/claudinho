@@ -14,6 +14,11 @@ MCP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 STAGE="$(mktemp -d)"
 OUT="$MCP_DIR/claudinho.mcpb"
 
+# Pin the packer for reproducible bundles (bump deliberately). The canonical,
+# lockfile-pinned release artifacts are the npm packages; this .mcpb is a
+# convenience bundle whose runtime deps track @claudinho/mcp's declared ranges.
+MCPB_VERSION="2.1.2"
+
 echo "→ building server bundle"
 ( cd "$MCP_DIR" && ./node_modules/.bin/tsup >/dev/null 2>&1 )
 
@@ -45,8 +50,8 @@ EOF
 echo "→ installing production deps into the bundle"
 ( cd "$STAGE" && npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1 )
 
-echo "→ packing with mcpb"
-( cd "$STAGE" && npx -y @anthropic-ai/mcpb pack . "$OUT" )
+echo "→ packing with mcpb@$MCPB_VERSION"
+( cd "$STAGE" && npx -y "@anthropic-ai/mcpb@$MCPB_VERSION" pack . "$OUT" )
 
 rm -rf "$STAGE"
 echo "✓ built $OUT"

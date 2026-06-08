@@ -17,6 +17,7 @@ import {
 import { DISCLAIMER, matchList, standingsTable } from './format';
 import {
   toolGetLive,
+  toolGetMarketSignal,
   toolGetMatch,
   toolGetNextFixture,
   toolGetStandings,
@@ -36,7 +37,8 @@ const VOICE =
     : `\nVoice: when relaying scores, narrate with lively, regionally-appropriate football-commentary energy in the user's language. Each match line may end with a short exclamation ("— ¡GOOOOL!") — use it as a tone cue. Keep every fact exact; never invent details and never impersonate or name a real commentator.`;
 
 const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and group standings for the 2026 men's football tournament.
-Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team (3-letter code, e.g. MEX), and get_standings for group tables.${VOICE}
+Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team (3-letter code, e.g. MEX), and get_standings for group tables.
+Use get_market_signal for read-only prediction-market odds (a match, a team's next fixture, or a date). Market data is informational only — relay the percentages factually and never frame it as betting or trading advice.${VOICE}
 ${DISCLAIMER}`;
 
 // Tightened, reusable input schemas (exported for tests). Rejecting bad input
@@ -137,6 +139,28 @@ export function buildServer(): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async (args) => toContent(await toolGetNextFixture(args)),
+  );
+
+  server.registerTool(
+    'get_market_signal',
+    {
+      title: 'Prediction-market signal',
+      description:
+        "Read-only prediction-market odds for a match (by id), a team's next fixture, or a date (default: today). Returns market-implied percentages with attribution. Informational only — relay the numbers factually; do not add betting, trading, or 'value' advice, and do not invent links.",
+      inputSchema: {
+        matchId: z.string().optional().describe('Match id (most specific)'),
+        team: teamArg
+          .optional()
+          .describe("3-letter team code for that team's next fixture, e.g. MEX"),
+        date: dateArg
+          .optional()
+          .describe("Date as YYYY-MM-DD (default: today) for all that day's signals"),
+        ...commonArgs,
+      },
+      // Read-only; reaches an external prediction-market data provider.
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async (args) => toContent(await toolGetMarketSignal(args)),
   );
 
   // ---- Resources ----

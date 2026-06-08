@@ -1,0 +1,359 @@
+/**
+ * Polymarket public-data adapter — read-only prediction-market signals.
+ *
+ * STRICT read-only by design: it touches only the public Gamma events/markets
+ * data endpoint. No auth, no wallet, no CLOB/order endpoints, no trading, and no
+ * outbound links (sourceMarketId is opaque, never a URL). Any network/parse/host
+ * error degrades to "no signal" — it never throws.
+ *
+ * Payload model (verified against the live Gamma API, see
+ * docs/POLYMARKET_MARKET_PREDICTIONS.md): a World Cup match is a Gamma EVENT
+ * (`fifwc-{home}-{away}-{date}`) whose payload carries the three moneyline
+ * BINARY markets — home win / draw / away win. Each is `outcomes: ["Yes","No"]`
+ * and the outcome's probability is its "Yes" price.
+ *
+ * Mapping is by event slug, which is deterministic — so by default the slug is
+ * DERIVED from the fixture (team codes + UTC date) and every match attempts
+ * enrichment. A hand-curated entry in mapping.2026.json overrides the derived
+ * slug for the rare fixture whose slug doesn't follow the pattern. Because the
+ * slug is a guess, validation FAILS CLOSED: the returned event must match the
+ * requested slug, line up on kickoff, expose the right moneyline markets, and
+ * resolve in regular time — otherwise no signal is produced.
+ */
+import type { Match } from '../types';
+import mappingJson from './mapping.2026.json';
+import { buildMarketSignal } from './normalize';
+import type {
+  MarketOutcome,
+  MarketOutcomeKind,
+  MarketProvider,
+  MarketSignal,
+  MarketSignalOptions,
+  MarketSignalsResult,
+} from './types';
+
+const DEFAULT_BASE = 'https://gamma-api.polymarket.com';
+const ALLOWED_HOSTS = new Set(['gamma-api.polymarket.com']);
+const USER_AGENT = 'claudinho/0.0 (+https://github.com/arturogarrido/claudinho)';
+const DEFAULT_TIMEOUT_MS = 8000;
+const WC_SERIES_SLUG = 'soccer-fifwc';
+const WC_SPORT = 'fifwc';
+/** Kickoff must line up with the fixture within this window (catches mis-maps). */
+const KICKOFF_TOLERANCE_MS = 6 * 60 * 60_000;
+/** A market whose rule resolves outside 90' regular time is NOT a clean 1X2. */
+const NON_REGULAR_TIME = /extra time|penalt|to advance|to qualif|win the (group|tournament|cup|title)/i;
+
+/**
+ * Optional override of the derived event slug for a fixture whose Polymarket
+ * slug doesn't follow `fifwc-{home}-{away}-{date}` (e.g. an abbreviation that
+ * differs from the FIFA code). Most matches need no entry — the slug is derived.
+ */
+export interface MarketMapping {
+  /** Gamma event slug, e.g. "fifwc-mex-rsa-2026-06-11". */
+  eventSlug: string;
+  /** Optional Gamma event id (diagnostics; the slug is the lookup key). */
+  eventId?: string;
+}
+
+export type MarketMappingTable = Record<string, MarketMapping>;
+
+interface MappingFile {
+  version: number;
+  note?: string;
+  markets: MarketMappingTable;
+}
+
+const BUNDLED_MAPPING = (mappingJson as unknown as MappingFile).markets;
+
+// Gamma shapes — only the fields we read (verified against the live API).
+interface GammaMarket {
+  id?: string;
+  slug?: string;
+  groupItemTitle?: string;
+  sportsMarketType?: string;
+  description?: string;
+  outcomes?: unknown;
+  outcomePrices?: unknown;
+  liquidityNum?: unknown;
+  liquidity?: unknown;
+  active?: boolean;
+  closed?: boolean;
+  updatedAt?: string;
+}
+interface GammaEvent {
+  id?: string;
+  slug?: string;
+  title?: string;
+  active?: boolean;
+  closed?: boolean;
+  seriesSlug?: string;
+  sport?: { sport?: string };
+  startTime?: string;
+  markets?: GammaMarket[];
+  updatedAt?: string;
+}
+
+export interface PolymarketProviderOptions {
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  /** Base URL; must resolve to an allow-listed host. */
+  baseUrl?: string;
+  /** Override the bundled mapping table (tests / future gateway). */
+  mapping?: MarketMappingTable;
+  now?: Date;
+  maxAgeMs?: number;
+}
+
+export class PolymarketProvider implements MarketProvider {
+  readonly name = 'polymarket';
+
+  constructor(private readonly opts: PolymarketProviderOptions = {}) {}
+
+  async findSignal(
+    match: Match,
+    options?: MarketSignalOptions,
+  ): Promise<MarketSignal | undefined> {
+    return (await this.resolveOne(match, options)).signal;
+  }
+
+  async findSignals(
+    matches: Match[],
+    options?: MarketSignalOptions,
+  ): Promise<MarketSignalsResult> {
+    const signals = new Map<string, MarketSignal>();
+    const checked = new Set<string>();
+    // Total enrichment deadline: optional odds must never block core output.
+    const deadline =
+      options?.deadlineMs != null ? Date.now() + options.deadlineMs : Number.POSITIVE_INFINITY;
+    for (const m of matches) {
+      if (Date.now() >= deadline) break; // skipped (not checked) → retry next time
+      const r = await this.resolveOne(m, options);
+      if (r.checked) checked.add(m.id);
+      if (r.signal) signals.set(m.id, r.signal);
+    }
+    return { signals, checked };
+  }
+
+  /**
+   * Resolve one match. `checked` distinguishes a DEFINITIVE result (reached the
+   * source and found no usable market, or the fixture is unmappable) from a
+   * provider/network error — so transient failures are retried, not
+   * negative-cached.
+   */
+  private async resolveOne(
+    match: Match,
+    options?: MarketSignalOptions,
+  ): Promise<{ signal?: MarketSignal; checked: boolean }> {
+    const entry = (this.opts.mapping ?? BUNDLED_MAPPING)[match.id];
+    const eventSlug = entry?.eventSlug ?? deriveEventSlug(match);
+    if (!eventSlug) return { checked: true }; // definitively unmappable → no market
+    try {
+      const event = await this.fetchEvent(eventSlug, options?.timeoutMs);
+      const signal = event ? this.toSignal(match, eventSlug, event, options) : undefined;
+      return { signal, checked: true }; // reached the source and resolved
+    } catch {
+      return { checked: false }; // provider/network error → retry, don't cache
+    }
+  }
+
+  private async fetchEvent(slug: string, timeoutMs?: number): Promise<GammaEvent | undefined> {
+    const base = this.opts.baseUrl ?? DEFAULT_BASE;
+    assertAllowedHost(base);
+    const url = `${base}/events?slug=${encodeURIComponent(slug)}`;
+    const doFetch = this.opts.fetchImpl ?? fetch;
+    const res = await doFetch(url, {
+      signal: AbortSignal.timeout(timeoutMs ?? this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+    });
+    if (res.status === 404) return undefined; // no such event → no market (not an error)
+    if (!res.ok) {
+      throw new Error(`Polymarket request failed: ${res.status} ${res.statusText}`);
+    }
+    const data = (await res.json()) as unknown;
+    const event = Array.isArray(data) ? data[0] : data;
+    return event && typeof event === 'object' ? (event as GammaEvent) : undefined;
+  }
+
+  private toSignal(
+    match: Match,
+    eventSlug: string,
+    event: GammaEvent,
+    options?: MarketSignalOptions,
+  ): MarketSignal | undefined {
+    // ---- fail-closed event validation ----
+    if (event.active === false || event.closed === true) return undefined;
+    if (
+      event.seriesSlug != null &&
+      event.seriesSlug !== WC_SERIES_SLUG &&
+      event.sport?.sport !== WC_SPORT
+    ) {
+      return undefined;
+    }
+    // We guessed/looked-up the slug — confirm the API returned that exact event.
+    if (event.slug != null && event.slug !== eventSlug) return undefined;
+    // Kickoff must line up with the Claudinho fixture (when the event states it).
+    const start = event.startTime ? Date.parse(event.startTime) : Number.NaN;
+    const kick = Date.parse(match.kickoff);
+    if (
+      Number.isFinite(start) &&
+      Number.isFinite(kick) &&
+      Math.abs(start - kick) > KICKOFF_TOLERANCE_MS
+    ) {
+      return undefined;
+    }
+
+    // Only moneyline (match-result) markets; map each to a result kind by team.
+    const moneyline = (event.markets ?? []).filter(
+      (m) => (m.sportsMarketType ?? 'moneyline') === 'moneyline',
+    );
+    const homeMarket = pickMarket(moneyline, match.home.code, match.home.name);
+    const awayMarket = pickMarket(moneyline, match.away.code, match.away.name);
+    const drawMarket = pickDraw(moneyline);
+    if (!homeMarket || !awayMarket) return undefined; // need both result legs
+
+    // Reject a degenerate payload where two legs collapse to the same market.
+    const legIds = [homeMarket, awayMarket, drawMarket]
+      .filter((m): m is GammaMarket => m != null)
+      .map((m) => m.id ?? m.slug ?? '');
+    if (new Set(legIds).size !== legIds.length) return undefined;
+
+    const legs: Array<[MarketOutcomeKind, GammaMarket | undefined, string | undefined, string]> = [
+      ['home', homeMarket, match.home.code, match.home.name],
+      ['draw', drawMarket, undefined, 'Draw'],
+      ['away', awayMarket, match.away.code, match.away.name],
+    ];
+
+    const outcomes: MarketOutcome[] = [];
+    let asOf = event.updatedAt;
+    let liquidity: number | undefined;
+    for (const [kind, market, teamCode, label] of legs) {
+      if (!market) continue; // draw may be absent for a two-way knockout line
+      if (market.closed === true || market.active === false) return undefined;
+      // Regular-time (90') resolution only — reject extra-time/advance markets.
+      if (market.description && NON_REGULAR_TIME.test(market.description)) return undefined;
+      const yes = yesPrice(market);
+      if (yes == null) return undefined;
+      outcomes.push({ kind, teamCode, label, probability: yes });
+      if (market.updatedAt && (!asOf || market.updatedAt < asOf)) asOf = market.updatedAt;
+      const liq = numberish(market.liquidityNum ?? market.liquidity);
+      if (liq != null) liquidity = liquidity == null ? liq : Math.min(liquidity, liq);
+    }
+
+    // The raw "Yes" probabilities should form a coherent 1X2 before normalizing;
+    // a sum well outside ~1 means we grabbed the wrong markets.
+    const rawSum = outcomes.reduce((s, o) => s + o.probability, 0);
+    if (rawSum < 0.9 || rawSum > 1.15) return undefined;
+
+    const signal = buildMarketSignal({
+      match,
+      source: 'polymarket',
+      sourceMarketId: event.id ?? eventSlug,
+      asOf: asOf ?? new Date().toISOString(),
+      outcomes,
+      liquidity,
+      now: options?.now ?? this.opts.now,
+      maxAgeMs: options?.maxAgeMs ?? this.opts.maxAgeMs,
+    });
+    // Adapter contract: a cleanly-mapped signal or nothing. An ambiguous result
+    // (e.g. a group match missing its draw leg) is dropped here.
+    return signal.ambiguous ? undefined : signal;
+  }
+}
+
+/**
+ * Derive the Gamma event slug from a fixture: `fifwc-{home}-{away}-{utcDate}`.
+ * Returns undefined for placeholder/unresolved fixtures (non-3-letter or TBD
+ * codes) so we never query garbage slugs.
+ */
+function deriveEventSlug(match: Match): string | undefined {
+  const home = match.home.code.toLowerCase();
+  const away = match.away.code.toLowerCase();
+  if (home === away || home === 'tbd' || away === 'tbd') return undefined;
+  if (!/^[a-z]{3}$/.test(home) || !/^[a-z]{3}$/.test(away)) return undefined;
+  const date = match.kickoff.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return undefined;
+  return `fifwc-${home}-${away}-${date}`;
+}
+
+/** Last dash-segment of a market slug — the outcome token (`mex`/`draw`/`rsa`). */
+function slugToken(m: GammaMarket): string {
+  return (m.slug ?? '').toLowerCase().split('-').pop() ?? '';
+}
+
+/** Is this the draw market? (slug token `draw`, or a "Draw (...)" group title.) */
+function isDrawMarket(m: GammaMarket): boolean {
+  return slugToken(m) === 'draw' || (m.groupItemTitle ?? '').trim().toLowerCase().startsWith('draw');
+}
+
+/**
+ * Find a team's moneyline market by slug token (team code), then by an EXACT
+ * normalized group title. Draw markets are excluded so a "Draw (Mexico vs. …)"
+ * title can never be mislabeled as a team's market, and the title fallback is
+ * exact (not a substring) for the same reason.
+ */
+function pickMarket(
+  markets: GammaMarket[],
+  teamCode: string,
+  teamName: string,
+): GammaMarket | undefined {
+  const code = teamCode.toLowerCase();
+  const name = teamName.trim().toLowerCase();
+  const teamMarkets = markets.filter((m) => !isDrawMarket(m));
+  const bySlug = teamMarkets.find((m) => slugToken(m) === code);
+  if (bySlug) return bySlug;
+  return teamMarkets.find((m) => (m.groupItemTitle ?? '').trim().toLowerCase() === name);
+}
+
+function pickDraw(markets: GammaMarket[]): GammaMarket | undefined {
+  return markets.find(isDrawMarket);
+}
+
+function assertAllowedHost(base: string): void {
+  let host: string;
+  try {
+    host = new URL(base).host;
+  } catch {
+    throw new Error(`Invalid Polymarket base URL: ${base}`);
+  }
+  if (!ALLOWED_HOSTS.has(host)) {
+    throw new Error(`Polymarket host not allow-listed: ${host}`);
+  }
+}
+
+/**
+ * The "Yes" price of a binary Gamma market = the outcome's implied probability.
+ * Returns undefined for a market that isn't a clean priced Yes/No.
+ */
+function yesPrice(market: GammaMarket): number | undefined {
+  const labels = parseJsonArray(market.outcomes);
+  const prices = parseJsonArray(market.outcomePrices).map((p) => Number(p));
+  if (labels.length === 0 || labels.length !== prices.length) return undefined;
+  const i = labels.findIndex((l) => l.trim().toLowerCase() === 'yes');
+  if (i < 0) return undefined;
+  const p = prices[i];
+  return typeof p === 'number' && Number.isFinite(p) && p > 0 && p <= 1 ? p : undefined;
+}
+
+/** Parse a value that may be an array or a JSON-encoded string array. */
+function parseJsonArray(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map((x) => String(x));
+  if (typeof v === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed.map((x) => String(x)) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/** Coerce a number or numeric string to a finite number, else undefined. */
+function numberish(v: unknown): number | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v === 'string') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}

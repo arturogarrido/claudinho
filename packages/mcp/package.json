@@ -1,7 +1,7 @@
 {
   "name": "@claudinho/mcp",
-  "version": "0.2.0",
-  "description": "Claudinho MCP server — ask your agent about the 2026 football tournament. Live scores, fixtures, standings. Not affiliated with FIFA or Anthropic.",
+  "version": "0.3.0",
+  "description": "Claudinho MCP server — ask your agent about the 2026 men's football tournament: live scores, fixtures, standings, prediction-market odds. Not affiliated with FIFA or Anthropic.",
   "type": "module",
   "license": "MIT",
   "author": "Arturo Garrido",

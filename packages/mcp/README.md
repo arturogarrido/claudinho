@@ -1,8 +1,8 @@
 # @claudinho/mcp ⚽
 
 **An MCP server for the 2026 men's football tournament.** Ask your agent about
-live scores, fixtures, and group standings — in Claude Code, Cursor, Codex, and
-any other MCP client.
+live scores, fixtures, group standings, and prediction-market odds — in Claude
+Code, Cursor, Codex, and any other MCP client.
 
 > ⚠️ **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.**
 > Claudinho is an independent, open-source fan project. Factual match data with
@@ -48,11 +48,21 @@ any other MCP client with no changes.
 | `get_match` | a single match by id |
 | `get_standings` | group table(s) — one group `A`–`L`, or all |
 | `get_next_fixture` | a team's next match (3-letter code, e.g. `MEX`) |
+| `get_market_signal` | read-only prediction-market odds for a match, a team's next fixture, or a date — informational only |
 
 All tools are **read-only** (annotated `readOnlyHint`) and accept optional
 `tz` (IANA timezone), `lang` (`en`/`es`/`pt`/`fr`), and `flavor`
 (`off`/`subtle`/`full`) arguments. Each response includes both human-readable
 text and structured JSON.
+
+`get_today` and `get_match` also include reliable prediction-market context when a
+market is available. Match→market event slugs are derived automatically, so no
+mapping is needed. Market data is **read-only and informational only — not betting
+advice** (market-implied percentages with attribution, never links or trade
+calls), sourced from Polymarket public data and shown only when a market maps
+cleanly to the result. Disable it with `CLAUDINHO_MARKETS=off`; set
+`CLAUDINHO_MARKETS_SOURCE=fake` (in the server `env`) for a network-free synthetic
+preview.
 
 ## Resources & prompts
 
@@ -87,9 +97,10 @@ to the `env` block of your MCP server entry.
 
 ## How it works
 
-The fixture list ships bundled in the package; only live state hits the network
-(via a swappable data provider). The server writes nothing to stdout
-except the MCP protocol; diagnostics go to stderr.
+The fixture list ships bundled in the package; only live state hits the network —
+live scores from **ESPN's** public scoreboard (a swappable provider, attributed
+in the `source` field and text) and market odds from Polymarket. The server writes
+nothing to stdout except the MCP protocol; diagnostics go to stderr.
 
 ## License
 

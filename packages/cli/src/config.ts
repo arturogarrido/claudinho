@@ -9,6 +9,12 @@ export interface CliConfig {
   source: string;
   /** Commentary flair intensity (default: full). */
   flavor: FlavorLevel;
+  /**
+   * Prediction-market signals in default views (today/match). On unless
+   * `--no-markets` or CLAUDINHO_MARKETS=off. Optional so test fixtures may omit
+   * it (undefined is treated as on); resolveConfig always sets a boolean.
+   */
+  markets?: boolean;
   /** The user explicitly requested a `--lang` we don't support (for warnings). */
   langRequestedUnsupported?: string;
 }
@@ -20,6 +26,8 @@ export interface RawGlobalOpts {
   color?: boolean;
   source?: string;
   flavor?: string;
+  /** false when --no-markets is passed (commander negatable option). */
+  markets?: boolean;
 }
 
 const SUPPORTED_LANGS = ['en', 'es', 'pt', 'fr'] as const;
@@ -50,6 +58,13 @@ function isSupportedLang(s: string): boolean {
   return SUPPORTED_LANGS.includes(s as (typeof SUPPORTED_LANGS)[number]);
 }
 
+/** Prediction-market signals default on; off via --no-markets or CLAUDINHO_MARKETS=off. */
+function pickMarkets(explicit?: boolean): boolean {
+  if (explicit === false) return false; // --no-markets
+  if ((process.env.CLAUDINHO_MARKETS ?? '').toLowerCase() === 'off') return false;
+  return true;
+}
+
 export function resolveConfig(opts: RawGlobalOpts): CliConfig {
   // Flag an explicit --lang we can't honor, so the command can warn (mirrors tz).
   const langRequestedUnsupported =
@@ -61,6 +76,7 @@ export function resolveConfig(opts: RawGlobalOpts): CliConfig {
     color: pickColor(opts.color),
     source: opts.source ?? process.env.CLAUDINHO_SOURCE ?? 'espn',
     flavor: asFlavorLevel(opts.flavor ?? process.env.CLAUDINHO_FLAVOR),
+    markets: pickMarkets(opts.markets),
     langRequestedUnsupported,
   };
 }
