@@ -88,9 +88,12 @@ only when the market maps cleanly to the result and is fresh.
 Opt out with `--no-markets` (per command) or `CLAUDINHO_MARKETS=off` (global). The
 statusline and hook **never** show market data — it stays off the hot path.
 
-> **Preview locally:** no markets are mapped yet, so the default (Polymarket)
-> shows none. Set `CLAUDINHO_MARKETS_SOURCE=fake` to render clearly-labeled
-> synthetic **"demo data"** odds and try the command + annotations end to end.
+> **How matches are matched:** event slugs are derived automatically from each
+> fixture (`fifwc-{home}-{away}-{date}`), so real odds appear for any match with a
+> live Polymarket market — no mapping needed (`mapping.2026.json` is for slug
+> *overrides* only). Matching fails closed, so an unmatched fixture simply shows
+> nothing. For an offline preview, set `CLAUDINHO_MARKETS_SOURCE=fake` to render
+> clearly-labeled synthetic **"demo data"** odds.
 
 ## Statusline (Claude Code)
 
