@@ -1,6 +1,6 @@
 # @claudinho/cli ⚽
 
-**The 2026 men's football tournament, right in your terminal.** Live scores, fixtures, and group tables — TZ-aware, localized, scriptable.
+**The 2026 men's football tournament, right in your terminal.** Live scores, fixtures, group tables, and market odds — TZ-aware, localized, scriptable.
 
 > ⚠️ **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.**
 > Claudinho is an independent, open-source fan project. It shows factual match

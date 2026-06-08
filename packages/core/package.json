@@ -1,7 +1,7 @@
 {
   "name": "@claudinho/core",
   "version": "0.3.0",
-  "description": "Domain model, data-provider adapters, and helpers for Claudinho — the 2026 football tournament in your dev environment.",
+  "description": "Domain model, provider adapters, standings, and a read-only market-signal sidecar for Claudinho — the 2026 men's football tournament. Not affiliated with FIFA or Anthropic.",
   "type": "module",
   "license": "MIT",
   "author": "Arturo Garrido",

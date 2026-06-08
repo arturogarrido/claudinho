@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml/badge.svg)](https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml) [![#VibingLaVidaLoca](https://img.shields.io/badge/%23VibingLaVidaLoca-⚽-ff5a5f)](https://github.com/arturogarrido/claudinho)
 
-**The 2026 football tournament, right in your dev environment.**
+**The 2026 men's football tournament, right in your dev environment.**
 
-Live scores, fixtures, and group tables in your terminal, your Claude Code statusline, and any MCP client — installed in one line.
+Live scores, fixtures, group tables, and prediction-market odds — in your terminal, your Claude Code statusline, and any MCP client. Installed in one line.
 
 > ⚠️ **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.**
 > Claudinho is an independent, open-source fan project. It displays factual match data

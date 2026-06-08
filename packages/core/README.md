@@ -1,8 +1,9 @@
 # @claudinho/core ⚽
 
-Shared domain model, data-provider adapters, and helpers for **Claudinho** —
-the 2026 men's football tournament in your dev environment. This is the engine
-behind [`@claudinho/cli`](https://www.npmjs.com/package/@claudinho/cli) and
+Shared domain model, data-provider adapters, a read-only market-signal sidecar,
+and helpers for **Claudinho** — the 2026 men's football tournament in your dev
+environment. This is the engine behind
+[`@claudinho/cli`](https://www.npmjs.com/package/@claudinho/cli) and
 [`@claudinho/mcp`](https://www.npmjs.com/package/@claudinho/mcp).
 
 > ⚠️ **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.**

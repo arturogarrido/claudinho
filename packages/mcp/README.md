@@ -1,8 +1,8 @@
 # @claudinho/mcp ⚽
 
 **An MCP server for the 2026 men's football tournament.** Ask your agent about
-live scores, fixtures, and group standings — in Claude Code, Cursor, Codex, and
-any other MCP client.
+live scores, fixtures, group standings, and prediction-market odds — in Claude
+Code, Cursor, Codex, and any other MCP client.
 
 > ⚠️ **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.**
 > Claudinho is an independent, open-source fan project. Factual match data with
