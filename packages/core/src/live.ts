@@ -49,6 +49,18 @@ export interface LiveResult {
   matches: Match[];
   /** True when the provider call failed and we fell back to static data. */
   degraded: boolean;
+  /**
+   * The live-data provider that served this result (e.g. "espn"), for
+   * attribution. Absent when `degraded` — the bundled static schedule, served
+   * by no live provider, must not be attributed to one.
+   */
+  source?: string;
+}
+
+/** Human label for a live-data provider name (attribution). Text only. */
+export function liveSourceLabel(source: string): string {
+  const known: Record<string, string> = { espn: 'ESPN' };
+  return known[source] ?? source.charAt(0).toUpperCase() + source.slice(1);
 }
 
 /**
@@ -70,7 +82,7 @@ export async function getMatchesForDate(
     const live = adapter.fetchWindow
       ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
       : await adapter.fetchByDate(day);
-    return { matches: mergeLive(base, live), degraded: false };
+    return { matches: mergeLive(base, live), degraded: false, source: adapter.name };
   } catch {
     return { matches: base, degraded: true };
   }
@@ -87,7 +99,7 @@ function shiftUtcDate(dateISO: string, days: number): string {
 /** Currently-live matches; empty + degraded on error. */
 export async function getLiveMatches(adapter: ProviderAdapter): Promise<LiveResult> {
   try {
-    return { matches: await adapter.fetchLive(), degraded: false };
+    return { matches: await adapter.fetchLive(), degraded: false, source: adapter.name };
   } catch {
     return { matches: [], degraded: true };
   }

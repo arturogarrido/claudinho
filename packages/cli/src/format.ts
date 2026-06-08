@@ -2,6 +2,7 @@ import pc from 'picocolors';
 import {
   formatKickoff,
   isLive,
+  liveSourceLabel,
   matchFlavor,
   scoreline,
   type Match,
@@ -98,4 +99,12 @@ export function header(text: string, c: Painter): string {
 /** The persistent legal disclaimer line. */
 export function disclaimer(t: Translator, c: Painter): string {
   return c.dim(t('disclaimer'));
+}
+
+/**
+ * Attribution for the live-data provider, e.g. "Live data: ESPN". Empty string
+ * when there's no live source (static-only output) so callers can skip it.
+ */
+export function dataSource(source: string | undefined, c: Painter): string {
+  return source ? c.dim(`Live data: ${liveSourceLabel(source)}`) : '';
 }

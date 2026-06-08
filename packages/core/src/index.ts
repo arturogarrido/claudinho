@@ -37,6 +37,7 @@ export {
   getMatchesForDate,
   getLiveMatches,
   resolveCompetition,
+  liveSourceLabel,
 } from './live';
 export type { LiveResult } from './live';
 export { DEFAULT_COMPETITION, competitionBase } from './adapters/espn';

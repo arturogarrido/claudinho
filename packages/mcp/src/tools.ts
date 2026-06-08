@@ -17,6 +17,7 @@ import {
   groups,
   hasSaneDistribution,
   isReliableMarketSignal,
+  liveSourceLabel,
   localDate,
   makeAdapter,
   makeMarketProvider,
@@ -176,8 +177,10 @@ function fmtOpts(args: CommonOpts) {
   };
 }
 
-function withDisclaimer(text: string): string {
-  return `${text}\n\n${DISCLAIMER}`;
+function withDisclaimer(text: string, source?: string): string {
+  // Attribute the live-data provider when live data actually served the result.
+  const live = source ? `\nLive data: ${liveSourceLabel(source)}` : '';
+  return `${text}${live}\n\n${DISCLAIMER}`;
 }
 
 /** today: fixtures for a date (default: today), with live overlay. */
@@ -186,16 +189,17 @@ export async function toolGetToday(
 ): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
   const date = args.date ?? localDate(new Date().toISOString(), args.tz);
-  const { matches, degraded } = await getMatchesForDate(adapter, date);
+  const { matches, degraded, source } = await getMatchesForDate(adapter, date);
   const todays = fixturesByDate(date, matches, args.tz);
   const opts = fmtOpts(args);
   const text = `Matches on ${date}:\n${matchList(todays, 'No matches scheduled.', opts)}`;
   const marketSignals = await reliableMarketData(args, todays);
   return {
-    text: withDisclaimer(text),
+    text: withDisclaimer(text, source),
     data: {
       date,
       degraded,
+      source: source ?? null,
       count: todays.length,
       matches: todays,
       ...(marketSignals ? { marketSignals } : {}),
@@ -206,12 +210,12 @@ export async function toolGetToday(
 /** live: in-progress matches right now. */
 export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
-  const { matches, degraded } = await getLiveMatches(adapter);
+  const { matches, degraded, source } = await getLiveMatches(adapter);
   const opts = fmtOpts(args);
   const text = `Live now:\n${matchList(matches, 'No matches in play right now.', opts)}`;
   return {
-    text: withDisclaimer(text),
-    data: { degraded, count: matches.length, matches },
+    text: withDisclaimer(text, source),
+    data: { degraded, source: source ?? null, count: matches.length, matches },
   };
 }
 
@@ -221,11 +225,13 @@ export async function toolGetMatch(
 ): Promise<ToolResult> {
   let match = allFixtures().find((m) => m.id === args.id);
   let degraded = false;
+  let liveSource: string | undefined;
   if (match) {
     try {
       const adapter = resolveAdapter(args);
       const live = await adapter.fetchByDate(match.kickoff.slice(0, 10));
       match = live.find((m) => m.id === args.id) ?? match;
+      liveSource = adapter.name;
     } catch {
       degraded = true;
     }
@@ -242,8 +248,13 @@ export async function toolGetMatch(
   const base = matchLine(match, opts);
   const text = marketSignal ? `${base}\n${marketBlock(marketSignal, match).join('\n')}` : base;
   return {
-    text: withDisclaimer(text),
-    data: { degraded, match, marketSignal: marketSignal ? marketData(marketSignal) : null },
+    text: withDisclaimer(text, liveSource),
+    data: {
+      degraded,
+      source: liveSource ?? null,
+      match,
+      marketSignal: marketSignal ? marketData(marketSignal) : null,
+    },
   };
 }
 
@@ -253,7 +264,7 @@ export async function toolGetStandings(
 ): Promise<ToolResult> {
   // Overlay today's results so finished games count. getMatchesForDate fetches
   // the UTC window spanning the local day, so a late-UTC result still overlays.
-  const { matches, degraded } = await getMatchesForDate(
+  const { matches, degraded, source } = await getMatchesForDate(
     resolveAdapter(args),
     localDate(new Date().toISOString(), args.tz),
   );
@@ -263,10 +274,8 @@ export async function toolGetStandings(
     const g = args.group.toUpperCase();
     if (!known.includes(g)) {
       return {
-        text: withDisclaimer(
-          `No group "${g}". Groups are ${known.join(', ')}.`,
-        ),
-        data: { degraded, tables: null },
+        text: withDisclaimer(`No group "${g}". Groups are ${known.join(', ')}.`, source),
+        data: { degraded, source: source ?? null, tables: null },
       };
     }
   }
@@ -280,8 +289,8 @@ export async function toolGetStandings(
     .map((t) => standingsTable(t.group, t.standings))
     .join('\n\n');
   return {
-    text: withDisclaimer(text || `No group found.`),
-    data: { degraded, tables: args.group ? (tables[0] ?? null) : tables },
+    text: withDisclaimer(text || `No group found.`, source),
+    data: { degraded, source: source ?? null, tables: args.group ? (tables[0] ?? null) : tables },
   };
 }
 

@@ -26,6 +26,7 @@ import Table from 'cli-table3';
 import type { CliConfig } from './config';
 import type { Translator } from './i18n';
 import {
+  dataSource,
   disclaimer,
   header,
   matchLine,
@@ -162,7 +163,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   precheck(cfg, t, date);
   const adapter = adapterFor(ctx);
   const targetDate = date ?? localDate(new Date().toISOString(), cfg.tz);
-  const { matches, degraded } = await getMatchesForDate(adapter, targetDate);
+  const { matches, degraded, source } = await getMatchesForDate(adapter, targetDate);
   const todays = fixturesByDate(targetDate, matches, cfg.tz);
   const signals = await reliableMarketSignals(ctx, todays);
 
@@ -170,6 +171,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
     emitJson({
       date: targetDate,
       degraded,
+      source: source ?? null,
       matches: todays,
       marketSignals: Object.fromEntries(signals),
     });
@@ -192,6 +194,8 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
     }
   }
   out();
+  const src = dataSource(source, c);
+  if (src) out(src);
   out(disclaimer(t, c));
 }
 
@@ -200,10 +204,10 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   const { cfg, t } = ctx;
   precheck(cfg, t);
   const adapter = adapterFor(ctx);
-  const { matches, degraded } = await getLiveMatches(adapter);
+  const { matches, degraded, source } = await getLiveMatches(adapter);
 
   if (cfg.json) {
-    emitJson({ degraded, matches });
+    emitJson({ degraded, source: source ?? null, matches });
     return;
   }
 
@@ -217,6 +221,8 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
     for (const m of matches) out(matchLine(m, cfg, t, c));
   }
   out();
+  const src = dataSource(source, c);
+  if (src) out(src);
   out(disclaimer(t, c));
 }
 
@@ -261,7 +267,7 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
   // Overlay results so finished games count toward the live table. Group by the
   // user's local "today"; getMatchesForDate fetches the spanning UTC window so a
   // late-UTC result still overlays. Falls back to the static schedule on error.
-  const { matches } = await getMatchesForDate(
+  const { matches, source } = await getMatchesForDate(
     adapter,
     localDate(new Date().toISOString(), cfg.tz),
   );
@@ -314,6 +320,8 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
     out(table.toString());
   }
   out();
+  const src = dataSource(source, c);
+  if (src) out(src);
   out(disclaimer(t, c));
 }
 
@@ -395,10 +403,12 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   precheck(cfg, t);
   const adapter = adapterFor(ctx);
   let match = allFixtures().find((m) => m.id === id);
+  let liveSource: string | undefined;
   try {
     if (match) {
       const live = await adapter.fetchByDate(match.kickoff.slice(0, 10));
       match = live.find((m) => m.id === id) ?? match;
+      liveSource = adapter.name;
     }
   } catch {
     /* keep static */
@@ -407,7 +417,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   const marketSignal = match ? await reliableMarketSignalFor(ctx, match) : undefined;
 
   if (cfg.json) {
-    emitJson({ match: match ?? null, marketSignal: marketSignal ?? null });
+    emitJson({ match: match ?? null, source: liveSource ?? null, marketSignal: marketSignal ?? null });
     return;
   }
 
@@ -441,6 +451,8 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
     for (const mline of marketBlock(marketSignal, match)) out('  ' + c.dim(mline));
   }
   out();
+  const src = dataSource(liveSource, c);
+  if (src) out(src);
   out(disclaimer(t, c));
 }
 

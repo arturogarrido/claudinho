@@ -97,9 +97,10 @@ to the `env` block of your MCP server entry.
 
 ## How it works
 
-The fixture list ships bundled in the package; only live state hits the network
-(via a swappable data provider). The server writes nothing to stdout
-except the MCP protocol; diagnostics go to stderr.
+The fixture list ships bundled in the package; only live state hits the network —
+live scores from **ESPN's** public scoreboard (a swappable provider, attributed
+in the `source` field and text) and market odds from Polymarket. The server writes
+nothing to stdout except the MCP protocol; diagnostics go to stderr.
 
 ## License
 

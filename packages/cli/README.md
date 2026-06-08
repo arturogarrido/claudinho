@@ -142,8 +142,9 @@ statusline/hook cache is keyed to the active competition, so switching with
 
 The full fixture list (104 matches, groups, venues, host cities, kickoffs) ships **bundled**
 in the package, so the common path is offline and instant. Only live match
-state hits the network. Scores come from a swappable data provider; provider
-attribution and rate limits are respected.
+state hits the network. Live scores come from **ESPN's** public scoreboard (a
+swappable provider, attributed in output as `Live data: ESPN`) and market odds
+from Polymarket; provider attribution and rate limits are respected.
 
 ## License
 
