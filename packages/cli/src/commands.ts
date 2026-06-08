@@ -267,7 +267,7 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
   // Overlay results so finished games count toward the live table. Group by the
   // user's local "today"; getMatchesForDate fetches the spanning UTC window so a
   // late-UTC result still overlays. Falls back to the static schedule on error.
-  const { matches, source } = await getMatchesForDate(
+  const { matches, degraded, source } = await getMatchesForDate(
     adapter,
     localDate(new Date().toISOString(), cfg.tz),
   );
@@ -279,7 +279,12 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
       group: g,
       standings: computeStandings(fixturesByGroup(g, matches)),
     }));
-    emitJson(group ? tables[0] ?? null : tables);
+    // Wrap with attribution to match today/live/match + MCP get_standings.
+    emitJson({
+      degraded,
+      source: source ?? null,
+      tables: group ? (tables[0] ?? null) : tables,
+    });
     return;
   }
 
