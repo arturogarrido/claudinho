@@ -1,21 +1,29 @@
 /**
  * Polymarket public-data adapter — read-only prediction-market signals.
  *
- * STRICT read-only by design: it touches only the public Gamma markets data
+ * STRICT read-only by design: it touches only the public Gamma "markets" data
  * endpoint. No auth, no wallet, no CLOB/order endpoints, no trading, and no
  * outbound links (sourceMarketId is opaque, never a URL). Any network/parse/host
  * error degrades to "no signal" — it never throws.
  *
- * Matches are mapped to markets via a hand-curated table (mapping.2026.json),
- * not fuzzy discovery: football market titles and rules are ambiguous, and a
- * wrong mapping would mislabel an outcome. The bundled table is empty for the
- * beta — populate it per docs/POLYMARKET_MARKET_PREDICTIONS.md.
+ * Payload model (verified against the live Gamma API): Polymarket markets are
+ * BINARY (`outcomes: ["Yes","No"]`); a multi-outcome question is a negRisk
+ * EVENT composed of one binary market per outcome. So a football 1X2 result is
+ * up to three binary markets — home win / draw / away win — and each outcome's
+ * probability is that market's "Yes" price. The hand-curated mapping therefore
+ * points each result kind at a Gamma binary-market id (see mapping.2026.json).
+ *
+ * Matches are mapped by hand, not via fuzzy discovery: football market titles
+ * and rules are ambiguous and a wrong mapping would mislabel an outcome. The
+ * bundled table is empty for the beta — populate it per
+ * docs/POLYMARKET_MARKET_PREDICTIONS.md.
  */
 import type { Match } from '../types';
 import mappingJson from './mapping.2026.json';
 import { buildMarketSignal } from './normalize';
 import type {
   MarketOutcome,
+  MarketOutcomeKind,
   MarketProvider,
   MarketSignal,
   MarketSignalOptions,
@@ -26,14 +34,20 @@ const ALLOWED_HOSTS = new Set(['gamma-api.polymarket.com']);
 const USER_AGENT = 'claudinho/0.0 (+https://github.com/arturogarrido/claudinho)';
 const DEFAULT_TIMEOUT_MS = 8000;
 
-/** One match's manual mapping to a Polymarket market (group-stage beta only). */
+/**
+ * One match's manual mapping. Each result kind points at a Gamma BINARY market
+ * id whose "Yes" price is that outcome's probability. `draw` is required for a
+ * group-stage 90' result and omitted for a two-way knockout line.
+ */
 export interface MarketMapping {
-  /** Gamma market id. */
-  marketId: string;
   /** Documents the matched market rule, e.g. "match-result-90". */
   ruleType: string;
-  /** Map Polymarket outcome labels to our result kinds. */
-  tokens: { home: string; draw?: string; away: string };
+  /** Binary-market id: "Yes" price = home-win probability. */
+  home: string;
+  /** Binary-market id: "Yes" price = draw probability (group stage). */
+  draw?: string;
+  /** Binary-market id: "Yes" price = away-win probability. */
+  away: string;
 }
 
 export type MarketMappingTable = Record<string, MarketMapping>;
@@ -47,10 +61,10 @@ interface MappingFile {
 const BUNDLED_MAPPING = (mappingJson as unknown as MappingFile).markets;
 
 // Gamma market shape — only the fields we read. `outcomes`/`outcomePrices` come
-// back as JSON-encoded string arrays; `liquidity`/`volume` as numeric strings.
+// back as JSON-encoded string arrays; `liquidity`/`volume` as numeric strings
+// (with parallel `*Num` numeric fields).
 interface GammaMarket {
   id?: string;
-  question?: string;
   closed?: boolean;
   active?: boolean;
   outcomes?: unknown;
@@ -60,7 +74,6 @@ interface GammaMarket {
   volume?: unknown;
   volumeNum?: unknown;
   updatedAt?: string;
-  endDate?: string;
 }
 
 export interface PolymarketProviderOptions {
@@ -86,8 +99,7 @@ export class PolymarketProvider implements MarketProvider {
     const entry = (this.opts.mapping ?? BUNDLED_MAPPING)[match.id];
     if (!entry) return undefined; // not mapped → no signal (safe default)
     try {
-      const market = await this.fetchMarket(entry.marketId);
-      return this.toSignal(match, entry, market, options);
+      return await this.toSignal(match, entry, options);
     } catch {
       return undefined; // network/parse/host error → degrade silently
     }
@@ -106,6 +118,52 @@ export class PolymarketProvider implements MarketProvider {
     return out;
   }
 
+  private async toSignal(
+    match: Match,
+    entry: MarketMapping,
+    options?: MarketSignalOptions,
+  ): Promise<MarketSignal | undefined> {
+    // Each result kind is its own binary market; the "Yes" price is the
+    // outcome's probability. home/away are required; draw is optional (knockout).
+    const legs: Array<[MarketOutcomeKind, string | undefined, string | undefined, string]> = [
+      ['home', entry.home, match.home.code, match.home.name],
+      ['draw', entry.draw, undefined, 'Draw'],
+      ['away', entry.away, match.away.code, match.away.name],
+    ];
+
+    const outcomes: MarketOutcome[] = [];
+    let asOf: string | undefined;
+    let liquidity: number | undefined;
+
+    for (const [kind, marketId, teamCode, label] of legs) {
+      if (!marketId) continue; // optional leg (e.g. no draw on a knockout line)
+      const market = await this.fetchMarket(marketId);
+      if (market.closed === true || market.active === false) return undefined;
+      const yes = yesPrice(market);
+      if (yes == null) return undefined; // can't price this leg → drop the signal
+      outcomes.push({ kind, teamCode, label, probability: yes });
+      // Oldest leg wins for asOf (most conservative for staleness); weakest leg
+      // for liquidity (the signal is only as fresh/liquid as its thinnest market).
+      if (market.updatedAt && (!asOf || market.updatedAt < asOf)) asOf = market.updatedAt;
+      const liq = numberish(market.liquidityNum ?? market.liquidity);
+      if (liq != null) liquidity = liquidity == null ? liq : Math.min(liquidity, liq);
+    }
+
+    const signal = buildMarketSignal({
+      match,
+      source: 'polymarket',
+      sourceMarketId: entry.home,
+      asOf: asOf ?? new Date().toISOString(),
+      outcomes,
+      liquidity,
+      now: options?.now ?? this.opts.now,
+      maxAgeMs: options?.maxAgeMs ?? this.opts.maxAgeMs,
+    });
+    // Adapter contract: a cleanly-mapped signal or nothing. An ambiguous result
+    // (e.g. a group match missing its draw leg) is dropped here.
+    return signal.ambiguous ? undefined : signal;
+  }
+
   private async fetchMarket(marketId: string): Promise<GammaMarket> {
     const base = this.opts.baseUrl ?? DEFAULT_BASE;
     assertAllowedHost(base);
@@ -120,59 +178,6 @@ export class PolymarketProvider implements MarketProvider {
     }
     return (await res.json()) as GammaMarket;
   }
-
-  private toSignal(
-    match: Match,
-    entry: MarketMapping,
-    market: GammaMarket,
-    options?: MarketSignalOptions,
-  ): MarketSignal | undefined {
-    // Reject closed/inactive markets outright.
-    if (market.closed === true || market.active === false) return undefined;
-
-    const labels = parseJsonArray(market.outcomes);
-    const prices = parseJsonArray(market.outcomePrices).map((p) => Number(p));
-    if (labels.length === 0 || labels.length !== prices.length) return undefined;
-
-    const priceByLabel = new Map<string, number>();
-    labels.forEach((label, i) => {
-      const p = prices[i];
-      if (typeof p === 'number' && Number.isFinite(p)) priceByLabel.set(label, p);
-    });
-
-    const home = priceByLabel.get(entry.tokens.home);
-    const away = priceByLabel.get(entry.tokens.away);
-    if (home == null || away == null) return undefined; // can't map a clean result
-
-    const outcomes: MarketOutcome[] = [
-      { kind: 'home', teamCode: match.home.code, label: match.home.name, probability: home },
-    ];
-    if (entry.tokens.draw) {
-      const draw = priceByLabel.get(entry.tokens.draw);
-      if (draw != null) outcomes.push({ kind: 'draw', label: 'Draw', probability: draw });
-    }
-    outcomes.push({
-      kind: 'away',
-      teamCode: match.away.code,
-      label: match.away.name,
-      probability: away,
-    });
-
-    const signal = buildMarketSignal({
-      match,
-      source: 'polymarket',
-      sourceMarketId: entry.marketId,
-      asOf: market.updatedAt ?? new Date().toISOString(),
-      outcomes,
-      liquidity: numberish(market.liquidityNum ?? market.liquidity),
-      volume24h: numberish(market.volumeNum ?? market.volume),
-      now: options?.now ?? this.opts.now,
-      maxAgeMs: options?.maxAgeMs ?? this.opts.maxAgeMs,
-    });
-    // Adapter contract: a cleanly-mapped signal or nothing. An ambiguous result
-    // (e.g. a group market that priced no draw) is dropped here.
-    return signal.ambiguous ? undefined : signal;
-  }
 }
 
 function assertAllowedHost(base: string): void {
@@ -185,6 +190,21 @@ function assertAllowedHost(base: string): void {
   if (!ALLOWED_HOSTS.has(host)) {
     throw new Error(`Polymarket host not allow-listed: ${host}`);
   }
+}
+
+/**
+ * The "Yes" price of a binary Gamma market = the outcome's implied probability.
+ * Returns undefined when the market isn't a clean priced Yes/No (missing prices,
+ * no "Yes" label, or an out-of-range value).
+ */
+function yesPrice(market: GammaMarket): number | undefined {
+  const labels = parseJsonArray(market.outcomes);
+  const prices = parseJsonArray(market.outcomePrices).map((p) => Number(p));
+  if (labels.length === 0 || labels.length !== prices.length) return undefined;
+  const i = labels.findIndex((l) => l.trim().toLowerCase() === 'yes');
+  if (i < 0) return undefined;
+  const p = prices[i];
+  return typeof p === 'number' && Number.isFinite(p) && p > 0 && p <= 1 ? p : undefined;
 }
 
 /** Parse a value that may be an array or a JSON-encoded string array. */

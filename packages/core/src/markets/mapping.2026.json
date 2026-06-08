@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "note": "Manual matchId -> Polymarket market mapping for the beta. Group-stage 90-minute result markets only. Intentionally empty until real 2026 World Cup Gamma market ids are confirmed; populate via the confidence ladder in docs/POLYMARKET_MARKET_PREDICTIONS.md. Each entry: { marketId, ruleType, tokens: { home, draw?, away } }.",
+  "note": "Manual matchId -> Polymarket binary-market mapping for the beta. Polymarket markets are BINARY (Yes/No); a 1X2 result is three binary markets, so each result kind maps to a Gamma binary-market id whose 'Yes' price is that outcome's probability. Group-stage 90' result only. Intentionally empty until real 2026 World Cup market ids are confirmed; populate via the confidence ladder in docs/POLYMARKET_MARKET_PREDICTIONS.md. Entry: { ruleType, home, draw?, away } where home/draw/away are Gamma market ids.",
   "markets": {}
 }
