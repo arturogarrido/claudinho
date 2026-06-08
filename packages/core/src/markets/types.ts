@@ -87,6 +87,18 @@ export interface MarketSignalOptions {
 }
 
 /**
+ * Result of a batch lookup. `checked` is the set of match ids the provider
+ * DEFINITIVELY resolved (reached the source and found no usable market, or the
+ * fixture is unmappable) — distinct from matches that errored or were skipped by
+ * the deadline. Callers negative-cache only `checked` ids, so a transient
+ * provider/network failure never suppresses a valid signal.
+ */
+export interface MarketSignalsResult {
+  signals: Map<string, MarketSignal>;
+  checked: Set<string>;
+}
+
+/**
  * A prediction-market provider. A *separate* swap-point from ProviderAdapter
  * (which supplies match data): different cadence, reliability, and legal
  * posture. Implementations fetch public market data only.
@@ -95,9 +107,6 @@ export interface MarketProvider {
   readonly name: string;
   /** Signal for one match, or undefined when nothing maps cleanly. */
   findSignal(match: Match, options?: MarketSignalOptions): Promise<MarketSignal | undefined>;
-  /** Batch form; a map keyed by matchId, holding only matches that have a signal. */
-  findSignals(
-    matches: Match[],
-    options?: MarketSignalOptions,
-  ): Promise<Map<string, MarketSignal>>;
+  /** Batch form; signals plus the set of definitively-checked ids. */
+  findSignals(matches: Match[], options?: MarketSignalOptions): Promise<MarketSignalsResult>;
 }

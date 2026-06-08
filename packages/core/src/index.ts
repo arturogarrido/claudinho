@@ -45,6 +45,7 @@ export { DEFAULT_COMPETITION, competitionBase } from './adapters/espn';
 export type {
   MarketProvider,
   MarketSignal,
+  MarketSignalsResult,
   MarketOutcome,
   MarketOutcomeKind,
   MarketFavorite,

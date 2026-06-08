@@ -202,7 +202,32 @@ describe('PolymarketProvider — fail-closed validation', () => {
   });
 });
 
-describe('PolymarketProvider — batch + deadline', () => {
+describe('PolymarketProvider — team-market mapping (no draw mislabel)', () => {
+  it('uses an exact title match and never picks the draw market for a team', async () => {
+    // Home market's slug token ('mexico') differs from the FIFA code ('mex'),
+    // forcing the title fallback; the draw title contains "Mexico" but must NOT match.
+    const ev = event({}, [
+      market('mexico', 'Mexico', 0.685),
+      market('draw', 'Draw (Mexico vs. South Africa)', 0.205),
+      market('rsa', 'South Africa', 0.105),
+    ]);
+    const sig = await derived(fetchFor(SLUG, ev)).findSignal(match());
+    expect(sig?.favorite).toMatchObject({ kind: 'home', teamCode: 'MEX', strength: 'clear' });
+    const home = sig?.outcomes.find((o) => o.kind === 'home');
+    expect(home?.probability).toBeCloseTo(0.685 / (0.685 + 0.205 + 0.105), 4);
+  });
+
+  it('rejects a payload where two legs share a market id', async () => {
+    const ev = event({}, [
+      market('mex', 'Mexico', 0.5, { id: 'DUP' }),
+      market('draw', 'Draw', 0.2),
+      market('rsa', 'South Africa', 0.3, { id: 'DUP' }),
+    ]);
+    expect(await derived(fetchFor(SLUG, ev)).findSignal(match())).toBeUndefined();
+  });
+});
+
+describe('PolymarketProvider — batch + deadline + checked semantics', () => {
   it('stops fetching at the total deadline', async () => {
     let calls = 0;
     const counting: typeof fetch = (async () => {
@@ -211,16 +236,34 @@ describe('PolymarketProvider — batch + deadline', () => {
     }) as unknown as typeof fetch;
     const p = new PolymarketProvider({ fetchImpl: counting, now: NOW });
     const out = await p.findSignals([match(), match({ id: 'b' })], { deadlineMs: 0 });
-    expect(out.size).toBe(0);
+    expect(out.signals.size).toBe(0);
     expect(calls).toBe(0);
   });
 
-  it('findSignals returns a map of resolvable matches only', async () => {
+  it('returns signals + the set of resolvable matches', async () => {
     const p = derived(fetchFor(SLUG, event()));
     const other = match({ id: 'x', home: { code: 'AAA', name: 'A', flag: '' }, away: { code: 'BBB', name: 'B', flag: '' } });
-    const m = await p.findSignals([match(), other]);
-    expect(m.size).toBe(1);
-    expect(m.get('760415')?.source).toBe('polymarket');
+    const { signals, checked } = await p.findSignals([match(), other]);
+    expect(signals.size).toBe(1);
+    expect(signals.get('760415')?.source).toBe('polymarket');
+    expect(checked.has('760415')).toBe(true);
+    expect(checked.has('x')).toBe(true);
+  });
+
+  it('marks no-event / 404 / unmappable as checked, but a provider error as NOT checked', async () => {
+    const empty: typeof fetch = (async () => ({ ok: true, status: 200, statusText: 'OK', json: async () => [] })) as unknown as typeof fetch;
+    expect((await derived(empty).findSignals([match()])).checked.has('760415')).toBe(true);
+
+    const notFound: typeof fetch = (async () => ({ ok: false, status: 404, statusText: 'NF', json: async () => ({}) })) as unknown as typeof fetch;
+    expect((await derived(notFound).findSignals([match()])).checked.has('760415')).toBe(true);
+
+    const boom: typeof fetch = (async () => {
+      throw new Error('dns');
+    }) as unknown as typeof fetch;
+    expect((await derived(boom).findSignals([match()])).checked.has('760415')).toBe(false);
+
+    const tbd = match({ id: 'tbd1', home: { code: 'TBD', name: 'TBD', flag: '' } });
+    expect((await derived(boom).findSignals([tbd])).checked.has('tbd1')).toBe(true);
   });
 });
 

@@ -11,6 +11,7 @@ import type {
   MarketProvider,
   MarketSignal,
   MarketSignalOptions,
+  MarketSignalsResult,
 } from './types';
 
 export interface FakeMarketProviderOptions {
@@ -40,13 +41,15 @@ export class FakeMarketProvider implements MarketProvider {
   async findSignals(
     matches: Match[],
     options?: MarketSignalOptions,
-  ): Promise<Map<string, MarketSignal>> {
-    const out = new Map<string, MarketSignal>();
+  ): Promise<MarketSignalsResult> {
+    const signals = new Map<string, MarketSignal>();
+    const checked = new Set<string>();
     for (const m of matches) {
+      checked.add(m.id); // the fake provider never errors → always definitive
       const s = await this.findSignal(m, options);
-      if (s) out.set(m.id, s);
+      if (s) signals.set(m.id, s);
     }
-    return out;
+    return { signals, checked };
   }
 
   private synthesize(match: Match, options?: MarketSignalOptions): MarketSignal {

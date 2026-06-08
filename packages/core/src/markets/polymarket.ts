@@ -29,6 +29,7 @@ import type {
   MarketProvider,
   MarketSignal,
   MarketSignalOptions,
+  MarketSignalsResult,
 } from './types';
 
 const DEFAULT_BASE = 'https://gamma-api.polymarket.com';
@@ -112,31 +113,47 @@ export class PolymarketProvider implements MarketProvider {
     match: Match,
     options?: MarketSignalOptions,
   ): Promise<MarketSignal | undefined> {
-    const entry = (this.opts.mapping ?? BUNDLED_MAPPING)[match.id];
-    const eventSlug = entry?.eventSlug ?? deriveEventSlug(match);
-    if (!eventSlug) return undefined; // unmappable fixture (e.g. TBD knockout)
-    try {
-      const event = await this.fetchEvent(eventSlug, options?.timeoutMs);
-      return event ? this.toSignal(match, eventSlug, event, options) : undefined;
-    } catch {
-      return undefined; // network/parse/host error → degrade silently
-    }
+    return (await this.resolveOne(match, options)).signal;
   }
 
   async findSignals(
     matches: Match[],
     options?: MarketSignalOptions,
-  ): Promise<Map<string, MarketSignal>> {
-    const out = new Map<string, MarketSignal>();
+  ): Promise<MarketSignalsResult> {
+    const signals = new Map<string, MarketSignal>();
+    const checked = new Set<string>();
     // Total enrichment deadline: optional odds must never block core output.
     const deadline =
       options?.deadlineMs != null ? Date.now() + options.deadlineMs : Number.POSITIVE_INFINITY;
     for (const m of matches) {
-      if (Date.now() >= deadline) break;
-      const s = await this.findSignal(m, options);
-      if (s) out.set(m.id, s);
+      if (Date.now() >= deadline) break; // skipped (not checked) → retry next time
+      const r = await this.resolveOne(m, options);
+      if (r.checked) checked.add(m.id);
+      if (r.signal) signals.set(m.id, r.signal);
     }
-    return out;
+    return { signals, checked };
+  }
+
+  /**
+   * Resolve one match. `checked` distinguishes a DEFINITIVE result (reached the
+   * source and found no usable market, or the fixture is unmappable) from a
+   * provider/network error — so transient failures are retried, not
+   * negative-cached.
+   */
+  private async resolveOne(
+    match: Match,
+    options?: MarketSignalOptions,
+  ): Promise<{ signal?: MarketSignal; checked: boolean }> {
+    const entry = (this.opts.mapping ?? BUNDLED_MAPPING)[match.id];
+    const eventSlug = entry?.eventSlug ?? deriveEventSlug(match);
+    if (!eventSlug) return { checked: true }; // definitively unmappable → no market
+    try {
+      const event = await this.fetchEvent(eventSlug, options?.timeoutMs);
+      const signal = event ? this.toSignal(match, eventSlug, event, options) : undefined;
+      return { signal, checked: true }; // reached the source and resolved
+    } catch {
+      return { checked: false }; // provider/network error → retry, don't cache
+    }
   }
 
   private async fetchEvent(slug: string, timeoutMs?: number): Promise<GammaEvent | undefined> {
@@ -148,6 +165,7 @@ export class PolymarketProvider implements MarketProvider {
       signal: AbortSignal.timeout(timeoutMs ?? this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
       headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
     });
+    if (res.status === 404) return undefined; // no such event → no market (not an error)
     if (!res.ok) {
       throw new Error(`Polymarket request failed: ${res.status} ${res.statusText}`);
     }
@@ -192,6 +210,12 @@ export class PolymarketProvider implements MarketProvider {
     const awayMarket = pickMarket(moneyline, match.away.code, match.away.name);
     const drawMarket = pickDraw(moneyline);
     if (!homeMarket || !awayMarket) return undefined; // need both result legs
+
+    // Reject a degenerate payload where two legs collapse to the same market.
+    const legIds = [homeMarket, awayMarket, drawMarket]
+      .filter((m): m is GammaMarket => m != null)
+      .map((m) => m.id ?? m.slug ?? '');
+    if (new Set(legIds).size !== legIds.length) return undefined;
 
     const legs: Array<[MarketOutcomeKind, GammaMarket | undefined, string | undefined, string]> = [
       ['home', homeMarket, match.home.code, match.home.name],
@@ -256,23 +280,32 @@ function slugToken(m: GammaMarket): string {
   return (m.slug ?? '').toLowerCase().split('-').pop() ?? '';
 }
 
-/** Find a team's moneyline market by slug token (team code), then by title. */
+/** Is this the draw market? (slug token `draw`, or a "Draw (...)" group title.) */
+function isDrawMarket(m: GammaMarket): boolean {
+  return slugToken(m) === 'draw' || (m.groupItemTitle ?? '').trim().toLowerCase().startsWith('draw');
+}
+
+/**
+ * Find a team's moneyline market by slug token (team code), then by an EXACT
+ * normalized group title. Draw markets are excluded so a "Draw (Mexico vs. …)"
+ * title can never be mislabeled as a team's market, and the title fallback is
+ * exact (not a substring) for the same reason.
+ */
 function pickMarket(
   markets: GammaMarket[],
   teamCode: string,
   teamName: string,
 ): GammaMarket | undefined {
   const code = teamCode.toLowerCase();
-  const bySlug = markets.find((m) => slugToken(m) === code);
+  const name = teamName.trim().toLowerCase();
+  const teamMarkets = markets.filter((m) => !isDrawMarket(m));
+  const bySlug = teamMarkets.find((m) => slugToken(m) === code);
   if (bySlug) return bySlug;
-  const name = teamName.toLowerCase();
-  return markets.find((m) => (m.groupItemTitle ?? '').toLowerCase().includes(name));
+  return teamMarkets.find((m) => (m.groupItemTitle ?? '').trim().toLowerCase() === name);
 }
 
 function pickDraw(markets: GammaMarket[]): GammaMarket | undefined {
-  return markets.find(
-    (m) => slugToken(m) === 'draw' || (m.groupItemTitle ?? '').toLowerCase().startsWith('draw'),
-  );
+  return markets.find(isDrawMarket);
 }
 
 function assertAllowedHost(base: string): void {

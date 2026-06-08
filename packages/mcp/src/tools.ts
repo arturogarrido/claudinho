@@ -117,10 +117,11 @@ async function cachedMarketSignals(
   args: CommonOpts,
   matches: Match[],
 ): Promise<Map<string, MarketSignal>> {
-  if (args.marketProvider) return getMarketSignals(args.marketProvider, matches);
+  if (args.marketProvider) return (await getMarketSignals(args.marketProvider, matches)).signals;
   const source = resolveMarketSource();
   if (source !== 'polymarket') {
-    return getMarketSignals(makeMarketProvider(source), matches, DEFAULT_ON_MARKET_OPTS);
+    return (await getMarketSignals(makeMarketProvider(source), matches, DEFAULT_ON_MARKET_OPTS))
+      .signals;
   }
   const competition = resolveCompetition();
   const now = Date.now();
@@ -136,16 +137,16 @@ async function cachedMarketSignals(
     }
   }
   if (miss.length > 0) {
-    const fetched = await getMarketSignals(
+    const { signals: fetched, checked } = await getMarketSignals(
       makeMarketProvider('polymarket'),
       miss,
       DEFAULT_ON_MARKET_OPTS,
     );
-    for (const m of miss) {
-      const s = fetched.get(m.id) ?? null;
-      marketMem.set(memKey(competition, m.id), { at: now, signal: s });
-      if (s) result.set(m.id, s);
+    // Cache only DEFINITIVELY-checked ids; errored/skipped matches are retried.
+    for (const id of checked) {
+      marketMem.set(memKey(competition, id), { at: now, signal: fetched.get(id) ?? null });
     }
+    for (const [id, s] of fetched) result.set(id, s);
   }
   return result;
 }
@@ -359,7 +360,7 @@ export async function toolGetMarketSignal(
   const date = args.date ?? localDate(new Date().toISOString(), args.tz);
   const { matches } = await getMatchesForDate(resolveAdapter(args), date);
   const todays = fixturesByDate(date, matches, args.tz);
-  const signals = await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS);
+  const { signals } = await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS);
   const shown = todays
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
     .filter(

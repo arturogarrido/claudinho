@@ -6,7 +6,12 @@
 import type { Match } from '../types';
 import { FakeMarketProvider } from './fake';
 import { PolymarketProvider } from './polymarket';
-import type { MarketProvider, MarketSignal, MarketSignalOptions } from './types';
+import type {
+  MarketProvider,
+  MarketSignal,
+  MarketSignalOptions,
+  MarketSignalsResult,
+} from './types';
 
 /**
  * Resolve the market-data source: explicit arg > CLAUDINHO_MARKETS_SOURCE env >
@@ -51,15 +56,15 @@ export async function getMarketSignal(
   }
 }
 
-/** Batch fetch keyed by matchId; never throws — empty map on any error. */
+/** Batch fetch; never throws — empty result (nothing checked) on any error. */
 export async function getMarketSignals(
   provider: MarketProvider,
   matches: Match[],
   options?: MarketSignalOptions,
-): Promise<Map<string, MarketSignal>> {
+): Promise<MarketSignalsResult> {
   try {
     return await provider.findSignals(matches, options);
   } catch {
-    return new Map();
+    return { signals: new Map(), checked: new Set() };
   }
 }

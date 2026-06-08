@@ -259,11 +259,12 @@ describe('FakeMarketProvider', () => {
     expect(sum).toBeCloseTo(1, 6);
   });
 
-  it('findSignals returns a map keyed by matchId', async () => {
+  it('findSignals returns signals + the checked set', async () => {
     const p = new FakeMarketProvider({ synthesize: true, now: NOW });
-    const m = await p.findSignals([match(), match({ id: 'zzz' })]);
-    expect(m.size).toBe(2);
-    expect(m.get('760415')?.matchId).toBe('760415');
+    const { signals, checked } = await p.findSignals([match(), match({ id: 'zzz' })]);
+    expect(signals.size).toBe(2);
+    expect(signals.get('760415')?.matchId).toBe('760415');
+    expect(checked.has('760415')).toBe(true);
   });
 });
 
@@ -282,7 +283,9 @@ describe('graceful degradation', () => {
     expect(await getMarketSignal(boom, match())).toBeUndefined();
   });
 
-  it('getMarketSignals swallows errors → empty map', async () => {
-    expect((await getMarketSignals(boom, [match()])).size).toBe(0);
+  it('getMarketSignals swallows errors → empty result (nothing checked)', async () => {
+    const { signals, checked } = await getMarketSignals(boom, [match()]);
+    expect(signals.size).toBe(0);
+    expect(checked.size).toBe(0); // error → not checked → not negative-cached
   });
 });

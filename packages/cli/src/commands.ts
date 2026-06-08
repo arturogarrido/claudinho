@@ -81,29 +81,30 @@ async function marketSignalsFor(
   matches: Match[],
   opts: MarketFetchOpts = {},
 ): Promise<Map<string, MarketSignal>> {
-  if (ctx.marketProvider) return getMarketSignals(ctx.marketProvider, matches, opts);
+  if (ctx.marketProvider) return (await getMarketSignals(ctx.marketProvider, matches, opts)).signals;
   const source = resolveMarketSource();
   // Dev/demo/no-op providers ('fake'/'none') are free — skip the on-disk cache.
   if (source !== 'polymarket') {
-    return getMarketSignals(makeMarketProvider(source), matches, opts);
+    return (await getMarketSignals(makeMarketProvider(source), matches, opts)).signals;
   }
   const competition = resolveCompetition();
-  const { signals: cached, checked } = readMarketCache('polymarket', competition);
+  const { signals: cached, checked: cachedIds } = readMarketCache('polymarket', competition);
   const result = new Map<string, MarketSignal>();
   const miss: Match[] = [];
   for (const m of matches) {
     const hit = cached.get(m.id);
     if (hit) result.set(m.id, hit);
-    else if (!checked.has(m.id)) miss.push(m); // negative-cached → skip re-fetch
+    else if (!cachedIds.has(m.id)) miss.push(m); // negative-cached → skip re-fetch
   }
   if (miss.length > 0) {
-    const fetched = await getMarketSignals(makeMarketProvider('polymarket'), miss, opts);
-    writeMarketCache(
-      'polymarket',
-      competition,
-      miss.map((m) => m.id),
-      fetched,
+    const { signals: fetched, checked } = await getMarketSignals(
+      makeMarketProvider('polymarket'),
+      miss,
+      opts,
     );
+    // Negative-cache only DEFINITIVELY-checked ids; errored/deadline-skipped
+    // matches are omitted so a transient failure doesn't suppress a real signal.
+    writeMarketCache('polymarket', competition, [...checked], fetched);
     for (const [id, s] of fetched) result.set(id, s);
   }
   return result;
