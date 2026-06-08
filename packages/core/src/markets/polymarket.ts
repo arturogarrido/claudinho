@@ -1,22 +1,20 @@
 /**
  * Polymarket public-data adapter — read-only prediction-market signals.
  *
- * STRICT read-only by design: it touches only the public Gamma "markets" data
- * endpoint. No auth, no wallet, no CLOB/order endpoints, no trading, and no
+ * STRICT read-only by design: it touches only the public Gamma events/markets
+ * data endpoint. No auth, no wallet, no CLOB/order endpoints, no trading, and no
  * outbound links (sourceMarketId is opaque, never a URL). Any network/parse/host
  * error degrades to "no signal" — it never throws.
  *
- * Payload model (verified against the live Gamma API): Polymarket markets are
- * BINARY (`outcomes: ["Yes","No"]`); a multi-outcome question is a negRisk
- * EVENT composed of one binary market per outcome. So a football 1X2 result is
- * up to three binary markets — home win / draw / away win — and each outcome's
- * probability is that market's "Yes" price. The hand-curated mapping therefore
- * points each result kind at a Gamma binary-market id (see mapping.2026.json).
+ * Payload model (verified against the live Gamma API, see
+ * docs/POLYMARKET_MARKET_PREDICTIONS.md): a World Cup match is a Gamma EVENT
+ * (`fifwc-{home}-{away}-{date}`) whose payload carries the three moneyline
+ * BINARY markets — home win / draw / away win — in one response. Each market is
+ * `outcomes: ["Yes","No"]`, and the outcome's probability is its "Yes" price.
  *
- * Matches are mapped by hand, not via fuzzy discovery: football market titles
- * and rules are ambiguous and a wrong mapping would mislabel an outcome. The
- * bundled table is empty for the beta — populate it per
- * docs/POLYMARKET_MARKET_PREDICTIONS.md.
+ * Matches are mapped by hand (matchId → event slug), not via fuzzy discovery:
+ * football titles/rules are ambiguous and a wrong mapping would mislabel an
+ * outcome. The bundled table is empty for the beta — populate it per the doc.
  */
 import type { Match } from '../types';
 import mappingJson from './mapping.2026.json';
@@ -33,21 +31,18 @@ const DEFAULT_BASE = 'https://gamma-api.polymarket.com';
 const ALLOWED_HOSTS = new Set(['gamma-api.polymarket.com']);
 const USER_AGENT = 'claudinho/0.0 (+https://github.com/arturogarrido/claudinho)';
 const DEFAULT_TIMEOUT_MS = 8000;
+const WC_SERIES_SLUG = 'soccer-fifwc';
+const WC_SPORT = 'fifwc';
 
 /**
- * One match's manual mapping. Each result kind points at a Gamma BINARY market
- * id whose "Yes" price is that outcome's probability. `draw` is required for a
- * group-stage 90' result and omitted for a two-way knockout line.
+ * One match's mapping: the Gamma EVENT it lives in. The event payload carries
+ * the three moneyline (home/draw/away) binary markets in a single response.
  */
 export interface MarketMapping {
-  /** Documents the matched market rule, e.g. "match-result-90". */
-  ruleType: string;
-  /** Binary-market id: "Yes" price = home-win probability. */
-  home: string;
-  /** Binary-market id: "Yes" price = draw probability (group stage). */
-  draw?: string;
-  /** Binary-market id: "Yes" price = away-win probability. */
-  away: string;
+  /** Gamma event slug, e.g. "fifwc-mex-rsa-2026-06-11". */
+  eventSlug: string;
+  /** Optional Gamma event id (diagnostics; the slug is the lookup key). */
+  eventId?: string;
 }
 
 export type MarketMappingTable = Record<string, MarketMapping>;
@@ -60,19 +55,30 @@ interface MappingFile {
 
 const BUNDLED_MAPPING = (mappingJson as unknown as MappingFile).markets;
 
-// Gamma market shape — only the fields we read. `outcomes`/`outcomePrices` come
-// back as JSON-encoded string arrays; `liquidity`/`volume` as numeric strings
-// (with parallel `*Num` numeric fields).
+// Gamma shapes — only the fields we read (verified against the live API).
+// outcomes/outcomePrices are JSON-encoded string arrays; liquidity is numeric.
 interface GammaMarket {
   id?: string;
-  closed?: boolean;
-  active?: boolean;
+  slug?: string;
+  groupItemTitle?: string;
+  sportsMarketType?: string;
   outcomes?: unknown;
   outcomePrices?: unknown;
-  liquidity?: unknown;
   liquidityNum?: unknown;
-  volume?: unknown;
-  volumeNum?: unknown;
+  liquidity?: unknown;
+  active?: boolean;
+  closed?: boolean;
+  updatedAt?: string;
+}
+interface GammaEvent {
+  id?: string;
+  slug?: string;
+  title?: string;
+  active?: boolean;
+  closed?: boolean;
+  seriesSlug?: string;
+  sport?: { sport?: string };
+  markets?: GammaMarket[];
   updatedAt?: string;
 }
 
@@ -99,7 +105,8 @@ export class PolymarketProvider implements MarketProvider {
     const entry = (this.opts.mapping ?? BUNDLED_MAPPING)[match.id];
     if (!entry) return undefined; // not mapped → no signal (safe default)
     try {
-      return await this.toSignal(match, entry, options);
+      const event = await this.fetchEvent(entry.eventSlug);
+      return event ? this.toSignal(match, entry, event, options) : undefined;
     } catch {
       return undefined; // network/parse/host error → degrade silently
     }
@@ -118,41 +125,77 @@ export class PolymarketProvider implements MarketProvider {
     return out;
   }
 
-  private async toSignal(
+  private async fetchEvent(slug: string): Promise<GammaEvent | undefined> {
+    const base = this.opts.baseUrl ?? DEFAULT_BASE;
+    assertAllowedHost(base);
+    const url = `${base}/events?slug=${encodeURIComponent(slug)}`;
+    const doFetch = this.opts.fetchImpl ?? fetch;
+    const res = await doFetch(url, {
+      signal: AbortSignal.timeout(this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+    });
+    if (!res.ok) {
+      throw new Error(`Polymarket request failed: ${res.status} ${res.statusText}`);
+    }
+    const data = (await res.json()) as unknown;
+    const event = Array.isArray(data) ? data[0] : data;
+    return event && typeof event === 'object' ? (event as GammaEvent) : undefined;
+  }
+
+  private toSignal(
     match: Match,
     entry: MarketMapping,
+    event: GammaEvent,
     options?: MarketSignalOptions,
-  ): Promise<MarketSignal | undefined> {
-    // Each result kind is its own binary market; the "Yes" price is the
-    // outcome's probability. home/away are required; draw is optional (knockout).
-    const legs: Array<[MarketOutcomeKind, string | undefined, string | undefined, string]> = [
-      ['home', entry.home, match.home.code, match.home.name],
-      ['draw', entry.draw, undefined, 'Draw'],
-      ['away', entry.away, match.away.code, match.away.name],
+  ): MarketSignal | undefined {
+    // Event must be live and, when typed, the World Cup match series.
+    if (event.active === false || event.closed === true) return undefined;
+    if (
+      event.seriesSlug != null &&
+      event.seriesSlug !== WC_SERIES_SLUG &&
+      event.sport?.sport !== WC_SPORT
+    ) {
+      return undefined;
+    }
+
+    // Only moneyline (match-result) markets; map each to a result kind by team.
+    const moneyline = (event.markets ?? []).filter(
+      (m) => (m.sportsMarketType ?? 'moneyline') === 'moneyline',
+    );
+    const homeMarket = pickMarket(moneyline, match.home.code, match.home.name);
+    const awayMarket = pickMarket(moneyline, match.away.code, match.away.name);
+    const drawMarket = pickDraw(moneyline);
+    if (!homeMarket || !awayMarket) return undefined; // need both result legs
+
+    const legs: Array<[MarketOutcomeKind, GammaMarket | undefined, string | undefined, string]> = [
+      ['home', homeMarket, match.home.code, match.home.name],
+      ['draw', drawMarket, undefined, 'Draw'],
+      ['away', awayMarket, match.away.code, match.away.name],
     ];
 
     const outcomes: MarketOutcome[] = [];
-    let asOf: string | undefined;
+    let asOf = event.updatedAt;
     let liquidity: number | undefined;
-
-    for (const [kind, marketId, teamCode, label] of legs) {
-      if (!marketId) continue; // optional leg (e.g. no draw on a knockout line)
-      const market = await this.fetchMarket(marketId);
+    for (const [kind, market, teamCode, label] of legs) {
+      if (!market) continue; // draw may be absent for a two-way knockout line
       if (market.closed === true || market.active === false) return undefined;
       const yes = yesPrice(market);
-      if (yes == null) return undefined; // can't price this leg → drop the signal
+      if (yes == null) return undefined;
       outcomes.push({ kind, teamCode, label, probability: yes });
-      // Oldest leg wins for asOf (most conservative for staleness); weakest leg
-      // for liquidity (the signal is only as fresh/liquid as its thinnest market).
       if (market.updatedAt && (!asOf || market.updatedAt < asOf)) asOf = market.updatedAt;
       const liq = numberish(market.liquidityNum ?? market.liquidity);
       if (liq != null) liquidity = liquidity == null ? liq : Math.min(liquidity, liq);
     }
 
+    // The raw "Yes" probabilities should form a coherent 1X2 before normalizing;
+    // a sum well outside ~1 means we grabbed the wrong markets.
+    const rawSum = outcomes.reduce((s, o) => s + o.probability, 0);
+    if (rawSum < 0.9 || rawSum > 1.15) return undefined;
+
     const signal = buildMarketSignal({
       match,
       source: 'polymarket',
-      sourceMarketId: entry.home,
+      sourceMarketId: entry.eventId ?? event.id ?? entry.eventSlug,
       asOf: asOf ?? new Date().toISOString(),
       outcomes,
       liquidity,
@@ -163,21 +206,30 @@ export class PolymarketProvider implements MarketProvider {
     // (e.g. a group match missing its draw leg) is dropped here.
     return signal.ambiguous ? undefined : signal;
   }
+}
 
-  private async fetchMarket(marketId: string): Promise<GammaMarket> {
-    const base = this.opts.baseUrl ?? DEFAULT_BASE;
-    assertAllowedHost(base);
-    const url = `${base}/markets/${encodeURIComponent(marketId)}`;
-    const doFetch = this.opts.fetchImpl ?? fetch;
-    const res = await doFetch(url, {
-      signal: AbortSignal.timeout(this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
-    });
-    if (!res.ok) {
-      throw new Error(`Polymarket request failed: ${res.status} ${res.statusText}`);
-    }
-    return (await res.json()) as GammaMarket;
-  }
+/** Last dash-segment of a market slug — the outcome token (`mex`/`draw`/`rsa`). */
+function slugToken(m: GammaMarket): string {
+  return (m.slug ?? '').toLowerCase().split('-').pop() ?? '';
+}
+
+/** Find a team's moneyline market by slug token (team code), then by title. */
+function pickMarket(
+  markets: GammaMarket[],
+  teamCode: string,
+  teamName: string,
+): GammaMarket | undefined {
+  const code = teamCode.toLowerCase();
+  const bySlug = markets.find((m) => slugToken(m) === code);
+  if (bySlug) return bySlug;
+  const name = teamName.toLowerCase();
+  return markets.find((m) => (m.groupItemTitle ?? '').toLowerCase().includes(name));
+}
+
+function pickDraw(markets: GammaMarket[]): GammaMarket | undefined {
+  return markets.find(
+    (m) => slugToken(m) === 'draw' || (m.groupItemTitle ?? '').toLowerCase().startsWith('draw'),
+  );
 }
 
 function assertAllowedHost(base: string): void {
@@ -194,8 +246,7 @@ function assertAllowedHost(base: string): void {
 
 /**
  * The "Yes" price of a binary Gamma market = the outcome's implied probability.
- * Returns undefined when the market isn't a clean priced Yes/No (missing prices,
- * no "Yes" label, or an out-of-range value).
+ * Returns undefined for a market that isn't a clean priced Yes/No.
  */
 function yesPrice(market: GammaMarket): number | undefined {
   const labels = parseJsonArray(market.outcomes);
