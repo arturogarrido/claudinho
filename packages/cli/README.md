@@ -82,7 +82,7 @@ claudinho markets today --json    # structured sidecar output
 A short market line is also added under `claudinho today` and `claudinho match`
 when a reliable market is available. It's **informational only — not betting
 advice:** market-implied percentages with attribution, no trading, no links. Data
-comes from [Polymarket](https://polymarket.com) public market data and is shown
+comes from Polymarket public market data and is shown
 only when the market maps cleanly to the result and is fresh.
 
 Opt out with `--no-markets` (per command) or `CLAUDINHO_MARKETS=off` (global). The

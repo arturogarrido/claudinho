@@ -26,6 +26,8 @@ import {
   type MarketSignal,
   nextFixtureForTeam,
   type ProviderAdapter,
+  resolveCompetition,
+  resolveMarketSource,
 } from '@claudinho/core';
 import { DISCLAIMER, matchLine, matchList, standingsTable } from './format';
 
@@ -89,13 +91,72 @@ function marketsEnabled(): boolean {
   return (process.env.CLAUDINHO_MARKETS ?? '').toLowerCase() !== 'off';
 }
 
+// In-process positive/negative cache — the MCP server is long-running, so this
+// avoids re-fetching the same matches (incl. the many with no market) on every
+// get_today/get_match. Injected providers (tests) bypass it.
+interface MarketMemEntry {
+  at: number;
+  signal: MarketSignal | null;
+}
+const marketMem = new Map<string, MarketMemEntry>();
+const MEM_POSITIVE_TTL = 10 * 60_000;
+const MEM_NEGATIVE_TTL = 3 * 60_000;
+// Default-on surfaces must never block; the dedicated tool may wait longer.
+const DEFAULT_ON_MARKET_OPTS = { deadlineMs: 2000, timeoutMs: 2500 };
+const MARKETS_TOOL_OPTS = { deadlineMs: 12000, timeoutMs: 6000 };
+
+function memKey(competition: string, id: string): string {
+  return `polymarket:${competition}:${id}`;
+}
+
+/**
+ * Market signals with an in-process cache + fetch deadline so optional
+ * enrichment never slows get_today/get_match. Injected providers bypass it.
+ */
+async function cachedMarketSignals(
+  args: CommonOpts,
+  matches: Match[],
+): Promise<Map<string, MarketSignal>> {
+  if (args.marketProvider) return getMarketSignals(args.marketProvider, matches);
+  const source = resolveMarketSource();
+  if (source !== 'polymarket') {
+    return getMarketSignals(makeMarketProvider(source), matches, DEFAULT_ON_MARKET_OPTS);
+  }
+  const competition = resolveCompetition();
+  const now = Date.now();
+  const result = new Map<string, MarketSignal>();
+  const miss: Match[] = [];
+  for (const m of matches) {
+    const e = marketMem.get(memKey(competition, m.id));
+    const ttl = e?.signal ? MEM_POSITIVE_TTL : MEM_NEGATIVE_TTL;
+    if (e && now - e.at <= ttl) {
+      if (e.signal) result.set(m.id, e.signal);
+    } else {
+      miss.push(m);
+    }
+  }
+  if (miss.length > 0) {
+    const fetched = await getMarketSignals(
+      makeMarketProvider('polymarket'),
+      miss,
+      DEFAULT_ON_MARKET_OPTS,
+    );
+    for (const m of miss) {
+      const s = fetched.get(m.id) ?? null;
+      marketMem.set(memKey(competition, m.id), { at: now, signal: s });
+      if (s) result.set(m.id, s);
+    }
+  }
+  return result;
+}
+
 /** Strict-gated market payloads keyed by matchId, or undefined when none/off. */
 async function reliableMarketData(
   args: CommonOpts,
   matches: Match[],
 ): Promise<Record<string, ReturnType<typeof marketData>> | undefined> {
   if (!marketsEnabled()) return undefined;
-  const signals = await getMarketSignals(resolveMarketProvider(args), matches);
+  const signals = await cachedMarketSignals(args, matches);
   const now = new Date();
   const out: Record<string, ReturnType<typeof marketData>> = {};
   for (const m of matches) {
@@ -174,7 +235,7 @@ export async function toolGetMatch(
   const opts = fmtOpts(args);
   let marketSignal: MarketSignal | undefined;
   if (marketsEnabled()) {
-    const s = await getMarketSignal(resolveMarketProvider(args), match);
+    const s = (await cachedMarketSignals(args, [match])).get(match.id);
     if (s && isReliableMarketSignal(s, { now: new Date() })) marketSignal = s;
   }
   const base = matchLine(match, opts);
@@ -298,7 +359,7 @@ export async function toolGetMarketSignal(
   const date = args.date ?? localDate(new Date().toISOString(), args.tz);
   const { matches } = await getMatchesForDate(resolveAdapter(args), date);
   const todays = fixturesByDate(date, matches, args.tz);
-  const signals = await getMarketSignals(provider, todays);
+  const signals = await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS);
   const shown = todays
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
     .filter(

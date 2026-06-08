@@ -5,7 +5,6 @@ import {
   fixturesByDate,
   fixturesByGroup,
   formatKickoff,
-  getMarketSignal,
   getMarketSignals,
   groups,
   hasSaneDistribution,
@@ -64,36 +63,47 @@ function adapterFor({ cfg, adapter }: Ctx): ProviderAdapter {
   return adapter ?? makeAdapter(cfg.source);
 }
 
-/** The injected market provider, or the default constructed provider. */
-function marketProviderFor({ marketProvider }: Ctx): MarketProvider {
-  return marketProvider ?? makeMarketProvider();
-}
+/** Per-fetch budgets so optional market enrichment never blocks core output. */
+type MarketFetchOpts = { deadlineMs?: number; timeoutMs?: number };
+// Default-on annotation (today/match): tight — must not block render.
+const DEFAULT_ON_MARKET_OPTS: MarketFetchOpts = { deadlineMs: 2000, timeoutMs: 2500 };
+// The dedicated `markets` command: the user is explicitly waiting, so allow more.
+const MARKETS_CMD_OPTS: MarketFetchOpts = { deadlineMs: 12000, timeoutMs: 6000 };
 
 /**
  * Market signals for a set of matches. With an injected provider (tests), use it
- * directly. Otherwise read through a short on-disk cache around the default
- * provider so repeated cold commands don't re-hit the data source. This path is
- * NEVER reached from the statusline/hook hot path.
+ * directly. Otherwise read through a short on-disk cache (positive AND negative)
+ * around the default provider so repeated cold commands don't re-hit the data
+ * source. NEVER reached from the statusline/hook hot path.
  */
-async function marketSignalsFor(ctx: Ctx, matches: Match[]): Promise<Map<string, MarketSignal>> {
-  if (ctx.marketProvider) return getMarketSignals(ctx.marketProvider, matches);
+async function marketSignalsFor(
+  ctx: Ctx,
+  matches: Match[],
+  opts: MarketFetchOpts = {},
+): Promise<Map<string, MarketSignal>> {
+  if (ctx.marketProvider) return getMarketSignals(ctx.marketProvider, matches, opts);
   const source = resolveMarketSource();
-  // Dev/demo providers (e.g. 'fake') are deterministic and free — skip the cache.
+  // Dev/demo/no-op providers ('fake'/'none') are free — skip the on-disk cache.
   if (source !== 'polymarket') {
-    return getMarketSignals(makeMarketProvider(source), matches);
+    return getMarketSignals(makeMarketProvider(source), matches, opts);
   }
   const competition = resolveCompetition();
-  const cached = readMarketCache('polymarket', competition);
+  const { signals: cached, checked } = readMarketCache('polymarket', competition);
   const result = new Map<string, MarketSignal>();
   const miss: Match[] = [];
   for (const m of matches) {
     const hit = cached.get(m.id);
     if (hit) result.set(m.id, hit);
-    else miss.push(m);
+    else if (!checked.has(m.id)) miss.push(m); // negative-cached → skip re-fetch
   }
   if (miss.length > 0) {
-    const fetched = await getMarketSignals(makeMarketProvider('polymarket'), miss);
-    writeMarketCache('polymarket', competition, fetched);
+    const fetched = await getMarketSignals(makeMarketProvider('polymarket'), miss, opts);
+    writeMarketCache(
+      'polymarket',
+      competition,
+      miss.map((m) => m.id),
+      fetched,
+    );
     for (const [id, s] of fetched) result.set(id, s);
   }
   return result;
@@ -105,7 +115,7 @@ async function reliableMarketSignals(
   matches: Match[],
 ): Promise<Map<string, MarketSignal>> {
   if (ctx.cfg.markets === false) return new Map();
-  const raw = await marketSignalsFor(ctx, matches);
+  const raw = await marketSignalsFor(ctx, matches, DEFAULT_ON_MARKET_OPTS);
   const now = new Date();
   const out = new Map<string, MarketSignal>();
   for (const [id, s] of raw) if (isReliableMarketSignal(s, { now })) out.set(id, s);
@@ -466,7 +476,6 @@ export async function cmdMarkets(
   ctx: Ctx,
 ): Promise<void> {
   const { cfg, t } = ctx;
-  const provider = marketProviderFor(ctx);
 
   // markets next <team>
   if (target === 'next') {
@@ -474,7 +483,9 @@ export async function cmdMarkets(
     if (!team) throw new InputError('Usage: claudinho markets next <team>');
     const code = team.toUpperCase();
     const fixture = nextFixtureForTeam(code);
-    const sig = fixture ? await getMarketSignal(provider, fixture) : undefined;
+    const sig = fixture
+      ? (await marketSignalsFor(ctx, [fixture], MARKETS_CMD_OPTS)).get(fixture.id)
+      : undefined;
     const shown = sig && marketDisplayable(sig) ? sig : undefined;
     if (cfg.json) {
       emitJson({
@@ -505,7 +516,9 @@ export async function cmdMarkets(
   if (target && target !== 'today' && !isValidDate(target)) {
     precheck(cfg, t);
     const match = allFixtures().find((m) => m.id === target);
-    const sig = match ? await getMarketSignal(provider, match) : undefined;
+    const sig = match
+      ? (await marketSignalsFor(ctx, [match], MARKETS_CMD_OPTS)).get(match.id)
+      : undefined;
     const shown = sig && marketDisplayable(sig) ? sig : undefined;
     if (cfg.json) {
       emitJson({ matchId: target, informationalOnly: true, signal: shown ?? null });
@@ -533,7 +546,7 @@ export async function cmdMarkets(
   const date = explicitDate ?? localDate(new Date().toISOString(), cfg.tz);
   const { matches } = await getMatchesForDate(adapterFor(ctx), date);
   const todays = fixturesByDate(date, matches, cfg.tz);
-  const signals = await getMarketSignals(provider, todays);
+  const signals = await marketSignalsFor(ctx, todays, MARKETS_CMD_OPTS);
   const rows = todays
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
     .filter(

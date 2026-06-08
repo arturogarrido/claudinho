@@ -23,13 +23,16 @@ export function resolveMarketSource(explicit?: string): string {
 
 /**
  * Construct a market-signal provider. Defaults to the Polymarket public-data
- * adapter; honors CLAUDINHO_MARKETS_SOURCE (e.g. 'fake' for the network-free
- * synthesizing provider used in local demos). Tests usually inject directly.
+ * adapter; honors CLAUDINHO_MARKETS_SOURCE ('fake' = network-free synthetic
+ * demo data; 'none'/'off' = network-free no-op). Tests usually inject directly.
  */
 export function makeMarketProvider(source?: string): MarketProvider {
   switch (resolveMarketSource(source)) {
     case 'fake':
       return new FakeMarketProvider({ synthesize: true });
+    case 'none':
+    case 'off':
+      return new FakeMarketProvider(); // no synth → yields no signals, no network
     default:
       return new PolymarketProvider();
   }

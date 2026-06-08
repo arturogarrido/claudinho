@@ -77,6 +77,13 @@ export interface MarketSignalOptions {
    * may show a thin/stale market *with a caveat*. Default surfaces never set this.
    */
   includeUnreliable?: boolean;
+  /**
+   * Max total wall-clock (ms) for a batch `findSignals` before it stops early.
+   * Keeps optional market enrichment from blocking core fixture output.
+   */
+  deadlineMs?: number;
+  /** Per-request fetch timeout (ms) override for the provider. */
+  timeoutMs?: number;
 }
 
 /**

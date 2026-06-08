@@ -58,7 +58,7 @@ text and structured JSON.
 `get_today` and `get_match` also include reliable prediction-market context when a
 market is available. Market data is **read-only and informational only — not
 betting advice** (market-implied percentages with attribution, never links or
-trade calls), sourced from [Polymarket](https://polymarket.com) public data and
+trade calls), sourced from Polymarket public data and
 shown only when a market maps cleanly to the result. Disable it with
 `CLAUDINHO_MARKETS=off`.
 

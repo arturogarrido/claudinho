@@ -9,12 +9,16 @@
  * Payload model (verified against the live Gamma API, see
  * docs/POLYMARKET_MARKET_PREDICTIONS.md): a World Cup match is a Gamma EVENT
  * (`fifwc-{home}-{away}-{date}`) whose payload carries the three moneyline
- * BINARY markets — home win / draw / away win — in one response. Each market is
- * `outcomes: ["Yes","No"]`, and the outcome's probability is its "Yes" price.
+ * BINARY markets — home win / draw / away win. Each is `outcomes: ["Yes","No"]`
+ * and the outcome's probability is its "Yes" price.
  *
- * Matches are mapped by hand (matchId → event slug), not via fuzzy discovery:
- * football titles/rules are ambiguous and a wrong mapping would mislabel an
- * outcome. The bundled table is empty for the beta — populate it per the doc.
+ * Mapping is by event slug, which is deterministic — so by default the slug is
+ * DERIVED from the fixture (team codes + UTC date) and every match attempts
+ * enrichment. A hand-curated entry in mapping.2026.json overrides the derived
+ * slug for the rare fixture whose slug doesn't follow the pattern. Because the
+ * slug is a guess, validation FAILS CLOSED: the returned event must match the
+ * requested slug, line up on kickoff, expose the right moneyline markets, and
+ * resolve in regular time — otherwise no signal is produced.
  */
 import type { Match } from '../types';
 import mappingJson from './mapping.2026.json';
@@ -33,10 +37,15 @@ const USER_AGENT = 'claudinho/0.0 (+https://github.com/arturogarrido/claudinho)'
 const DEFAULT_TIMEOUT_MS = 8000;
 const WC_SERIES_SLUG = 'soccer-fifwc';
 const WC_SPORT = 'fifwc';
+/** Kickoff must line up with the fixture within this window (catches mis-maps). */
+const KICKOFF_TOLERANCE_MS = 6 * 60 * 60_000;
+/** A market whose rule resolves outside 90' regular time is NOT a clean 1X2. */
+const NON_REGULAR_TIME = /extra time|penalt|to advance|to qualif|win the (group|tournament|cup|title)/i;
 
 /**
- * One match's mapping: the Gamma EVENT it lives in. The event payload carries
- * the three moneyline (home/draw/away) binary markets in a single response.
+ * Optional override of the derived event slug for a fixture whose Polymarket
+ * slug doesn't follow `fifwc-{home}-{away}-{date}` (e.g. an abbreviation that
+ * differs from the FIFA code). Most matches need no entry — the slug is derived.
  */
 export interface MarketMapping {
   /** Gamma event slug, e.g. "fifwc-mex-rsa-2026-06-11". */
@@ -56,12 +65,12 @@ interface MappingFile {
 const BUNDLED_MAPPING = (mappingJson as unknown as MappingFile).markets;
 
 // Gamma shapes — only the fields we read (verified against the live API).
-// outcomes/outcomePrices are JSON-encoded string arrays; liquidity is numeric.
 interface GammaMarket {
   id?: string;
   slug?: string;
   groupItemTitle?: string;
   sportsMarketType?: string;
+  description?: string;
   outcomes?: unknown;
   outcomePrices?: unknown;
   liquidityNum?: unknown;
@@ -78,6 +87,7 @@ interface GammaEvent {
   closed?: boolean;
   seriesSlug?: string;
   sport?: { sport?: string };
+  startTime?: string;
   markets?: GammaMarket[];
   updatedAt?: string;
 }
@@ -103,10 +113,11 @@ export class PolymarketProvider implements MarketProvider {
     options?: MarketSignalOptions,
   ): Promise<MarketSignal | undefined> {
     const entry = (this.opts.mapping ?? BUNDLED_MAPPING)[match.id];
-    if (!entry) return undefined; // not mapped → no signal (safe default)
+    const eventSlug = entry?.eventSlug ?? deriveEventSlug(match);
+    if (!eventSlug) return undefined; // unmappable fixture (e.g. TBD knockout)
     try {
-      const event = await this.fetchEvent(entry.eventSlug);
-      return event ? this.toSignal(match, entry, event, options) : undefined;
+      const event = await this.fetchEvent(eventSlug, options?.timeoutMs);
+      return event ? this.toSignal(match, eventSlug, event, options) : undefined;
     } catch {
       return undefined; // network/parse/host error → degrade silently
     }
@@ -117,21 +128,24 @@ export class PolymarketProvider implements MarketProvider {
     options?: MarketSignalOptions,
   ): Promise<Map<string, MarketSignal>> {
     const out = new Map<string, MarketSignal>();
-    // Sequential: the mapped beta set is small, and this respects rate limits.
+    // Total enrichment deadline: optional odds must never block core output.
+    const deadline =
+      options?.deadlineMs != null ? Date.now() + options.deadlineMs : Number.POSITIVE_INFINITY;
     for (const m of matches) {
+      if (Date.now() >= deadline) break;
       const s = await this.findSignal(m, options);
       if (s) out.set(m.id, s);
     }
     return out;
   }
 
-  private async fetchEvent(slug: string): Promise<GammaEvent | undefined> {
+  private async fetchEvent(slug: string, timeoutMs?: number): Promise<GammaEvent | undefined> {
     const base = this.opts.baseUrl ?? DEFAULT_BASE;
     assertAllowedHost(base);
     const url = `${base}/events?slug=${encodeURIComponent(slug)}`;
     const doFetch = this.opts.fetchImpl ?? fetch;
     const res = await doFetch(url, {
-      signal: AbortSignal.timeout(this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs ?? this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
       headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
     });
     if (!res.ok) {
@@ -144,16 +158,28 @@ export class PolymarketProvider implements MarketProvider {
 
   private toSignal(
     match: Match,
-    entry: MarketMapping,
+    eventSlug: string,
     event: GammaEvent,
     options?: MarketSignalOptions,
   ): MarketSignal | undefined {
-    // Event must be live and, when typed, the World Cup match series.
+    // ---- fail-closed event validation ----
     if (event.active === false || event.closed === true) return undefined;
     if (
       event.seriesSlug != null &&
       event.seriesSlug !== WC_SERIES_SLUG &&
       event.sport?.sport !== WC_SPORT
+    ) {
+      return undefined;
+    }
+    // We guessed/looked-up the slug — confirm the API returned that exact event.
+    if (event.slug != null && event.slug !== eventSlug) return undefined;
+    // Kickoff must line up with the Claudinho fixture (when the event states it).
+    const start = event.startTime ? Date.parse(event.startTime) : Number.NaN;
+    const kick = Date.parse(match.kickoff);
+    if (
+      Number.isFinite(start) &&
+      Number.isFinite(kick) &&
+      Math.abs(start - kick) > KICKOFF_TOLERANCE_MS
     ) {
       return undefined;
     }
@@ -179,6 +205,8 @@ export class PolymarketProvider implements MarketProvider {
     for (const [kind, market, teamCode, label] of legs) {
       if (!market) continue; // draw may be absent for a two-way knockout line
       if (market.closed === true || market.active === false) return undefined;
+      // Regular-time (90') resolution only — reject extra-time/advance markets.
+      if (market.description && NON_REGULAR_TIME.test(market.description)) return undefined;
       const yes = yesPrice(market);
       if (yes == null) return undefined;
       outcomes.push({ kind, teamCode, label, probability: yes });
@@ -195,7 +223,7 @@ export class PolymarketProvider implements MarketProvider {
     const signal = buildMarketSignal({
       match,
       source: 'polymarket',
-      sourceMarketId: entry.eventId ?? event.id ?? entry.eventSlug,
+      sourceMarketId: event.id ?? eventSlug,
       asOf: asOf ?? new Date().toISOString(),
       outcomes,
       liquidity,
@@ -206,6 +234,21 @@ export class PolymarketProvider implements MarketProvider {
     // (e.g. a group match missing its draw leg) is dropped here.
     return signal.ambiguous ? undefined : signal;
   }
+}
+
+/**
+ * Derive the Gamma event slug from a fixture: `fifwc-{home}-{away}-{utcDate}`.
+ * Returns undefined for placeholder/unresolved fixtures (non-3-letter or TBD
+ * codes) so we never query garbage slugs.
+ */
+function deriveEventSlug(match: Match): string | undefined {
+  const home = match.home.code.toLowerCase();
+  const away = match.away.code.toLowerCase();
+  if (home === away || home === 'tbd' || away === 'tbd') return undefined;
+  if (!/^[a-z]{3}$/.test(home) || !/^[a-z]{3}$/.test(away)) return undefined;
+  const date = match.kickoff.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return undefined;
+  return `fifwc-${home}-${away}-${date}`;
 }
 
 /** Last dash-segment of a market slug — the outcome token (`mex`/`draw`/`rsa`). */

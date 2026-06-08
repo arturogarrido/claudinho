@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "note": "Manual matchId -> Polymarket EVENT mapping for the beta. Each entry maps a Claudinho match id to a Gamma event slug (pattern fifwc-{home}-{away}-YYYY-MM-DD, e.g. fifwc-mex-rsa-2026-06-11). The event payload carries the three moneyline (home/draw/away) binary markets; each outcome's probability is its 'Yes' price. Group-stage 90' result only. Intentionally empty until confirmed; populate per docs/POLYMARKET_MARKET_PREDICTIONS.md. Entry: { eventSlug, eventId? }.",
+  "note": "Optional matchId -> Polymarket EVENT-slug OVERRIDES. By default the slug is DERIVED from each fixture (fifwc-{home}-{away}-{UTC-date}, e.g. fifwc-mex-rsa-2026-06-11), so most matches need NO entry here. Add an entry only for a fixture whose real Polymarket slug differs (e.g. a team abbreviation that isn't the FIFA code, or a tz-shifted date). The event payload carries the three moneyline binary markets; each outcome's probability is its 'Yes' price; validation fails closed. Entry: { eventSlug, eventId? }.",
   "markets": {}
 }

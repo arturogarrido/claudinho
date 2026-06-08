@@ -35,31 +35,47 @@ afterEach(() => {
 });
 
 describe('market-signals cache', () => {
-  it('round-trips fresh signals', () => {
-    writeMarketCache('polymarket', 'fifa.world', new Map([['760415', signal]]), NOW);
-    const got = readMarketCache('polymarket', 'fifa.world', NOW + 60_000);
-    expect(got.get('760415')?.source).toBe('polymarket');
-    expect(got.get('760415')?.favorite?.teamCode).toBe('MEX');
+  it('round-trips a fresh positive signal', () => {
+    writeMarketCache('polymarket', 'fifa.world', ['760415'], new Map([['760415', signal]]), NOW);
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW + 60_000);
+    expect(signals.get('760415')?.favorite?.teamCode).toBe('MEX');
+    expect(checked.has('760415')).toBe(true);
   });
 
-  it('expires entries past the TTL', () => {
-    writeMarketCache('polymarket', 'fifa.world', new Map([['760415', signal]]), NOW);
-    const got = readMarketCache('polymarket', 'fifa.world', NOW + 11 * 60_000);
-    expect(got.size).toBe(0);
+  it('negatively caches a checked-but-empty match', () => {
+    writeMarketCache('polymarket', 'fifa.world', ['999'], new Map(), NOW); // attempted, no signal
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW + 60_000);
+    expect(signals.has('999')).toBe(false);
+    expect(checked.has('999')).toBe(true); // known → skip re-fetch
   });
 
-  it('does not bleed across a different source or competition', () => {
-    writeMarketCache('polymarket', 'fifa.world', new Map([['760415', signal]]), NOW);
-    expect(readMarketCache('polymarket', 'fifa.friendly', NOW).size).toBe(0);
-    expect(readMarketCache('other', 'fifa.world', NOW).size).toBe(0);
+  it('expires positive entries after the positive TTL', () => {
+    writeMarketCache('polymarket', 'fifa.world', ['760415'], new Map([['760415', signal]]), NOW);
+    expect(readMarketCache('polymarket', 'fifa.world', NOW + 11 * 60_000).checked.has('760415')).toBe(false);
   });
 
-  it('reads empty when the cache is absent (never throws)', () => {
-    expect(readMarketCache('polymarket', 'fifa.world', NOW).size).toBe(0);
+  it('expires negative entries sooner than positive', () => {
+    writeMarketCache('polymarket', 'fifa.world', ['999'], new Map(), NOW);
+    // 5 minutes later: the negative entry (3m TTL) is gone, so we'd re-check.
+    expect(readMarketCache('polymarket', 'fifa.world', NOW + 5 * 60_000).checked.has('999')).toBe(false);
   });
 
-  it('ignores an empty write', () => {
-    writeMarketCache('polymarket', 'fifa.world', new Map(), NOW);
-    expect(readMarketCache('polymarket', 'fifa.world', NOW).size).toBe(0);
+  it('does not bleed across source or competition', () => {
+    writeMarketCache('polymarket', 'fifa.world', ['760415'], new Map([['760415', signal]]), NOW);
+    expect(readMarketCache('polymarket', 'fifa.friendly', NOW).checked.size).toBe(0);
+    expect(readMarketCache('other', 'fifa.world', NOW).checked.size).toBe(0);
+  });
+
+  it('ignores an empty attempt list and reads empty when absent', () => {
+    writeMarketCache('polymarket', 'fifa.world', [], new Map(), NOW);
+    expect(readMarketCache('polymarket', 'fifa.world', NOW).checked.size).toBe(0);
+  });
+
+  it('merges a later attempt into the existing cache', () => {
+    writeMarketCache('polymarket', 'fifa.world', ['760415'], new Map([['760415', signal]]), NOW);
+    writeMarketCache('polymarket', 'fifa.world', ['888'], new Map(), NOW + 1000);
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW + 60_000);
+    expect(signals.has('760415')).toBe(true);
+    expect(checked.has('888')).toBe(true);
   });
 });
