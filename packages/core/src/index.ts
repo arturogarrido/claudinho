@@ -40,3 +40,48 @@ export {
 } from './live';
 export type { LiveResult } from './live';
 export { DEFAULT_COMPETITION, competitionBase } from './adapters/espn';
+
+// Prediction-market signals (read-only sidecar; never embedded in Match).
+export type {
+  MarketProvider,
+  MarketSignal,
+  MarketOutcome,
+  MarketOutcomeKind,
+  MarketFavorite,
+  FavoriteStrength,
+  MarketSignalOptions,
+} from './markets/types';
+export {
+  normalizeOutcomes,
+  deriveFavorite,
+  favoriteStrength,
+  mapsCleanly,
+  hasSaneDistribution,
+  isStaleSignal,
+  isReliableMarketSignal,
+  buildMarketSignal,
+  DEFAULT_MAX_AGE_MS,
+} from './markets/normalize';
+export type { BuildSignalInput } from './markets/normalize';
+export {
+  marketFavoriteText,
+  marketProbabilityText,
+  marketAttributionText,
+  marketSourceLabel,
+  marketLine,
+  marketBlock,
+} from './markets/format';
+export {
+  makeMarketProvider,
+  resolveMarketSource,
+  getMarketSignal,
+  getMarketSignals,
+} from './markets/provider';
+export { FakeMarketProvider } from './markets/fake';
+export type { FakeMarketProviderOptions } from './markets/fake';
+export { PolymarketProvider } from './markets/polymarket';
+export type {
+  PolymarketProviderOptions,
+  MarketMapping,
+  MarketMappingTable,
+} from './markets/polymarket';

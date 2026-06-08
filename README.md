@@ -17,10 +17,11 @@ During a month-long global tournament, checking scores means breaking flow. Clau
 
 ## Surfaces
 
-- **CLI** — `claudinho today`, `claudinho live`, `claudinho next MEX`, `claudinho table` (and `claudinho vibe` 😎)
+- **CLI** — `claudinho today`, `claudinho live`, `claudinho next MEX`, `claudinho table`, `claudinho markets` (and `claudinho vibe` 😎)
 - **Claude Code statusline** — all live scores inline while you code
 - **MCP server** — ask your agent about matches mid-task (Claude Code, Cursor, Codex, Windsurf, Zed, …)
 - **Score-aware Claude** — a `UserPromptSubmit` hook that drops the live score into Claude's context during matches
+- **Prediction-market signals** — read-only "who's favored" odds (via [Polymarket](https://polymarket.com)), shown when a reliable market is available. **Informational only — not betting advice;** opt out with `--no-markets` / `CLAUDINHO_MARKETS=off`
 
 Speaks `en` / `es` / `pt` / `fr`, with optional localized commentary flair (`¡GOOOOL!`) you can dial down or off.
 

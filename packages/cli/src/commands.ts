@@ -5,14 +5,22 @@ import {
   fixturesByDate,
   fixturesByGroup,
   formatKickoff,
+  getMarketSignal,
+  getMarketSignals,
   groups,
+  hasSaneDistribution,
+  isReliableMarketSignal,
   isValidDate,
   isValidTimeZone,
   localDate,
+  makeMarketProvider,
+  marketBlock,
+  marketLine,
   matchFlavor,
   matchLocation,
   nextFixtureForTeam,
   resolveCompetition,
+  resolveMarketSource,
   scoreline,
 } from '@claudinho/core';
 import Table from 'cli-table3';
@@ -22,6 +30,7 @@ import {
   disclaimer,
   header,
   matchLine,
+  type Painter,
   painterFor,
   statusToken,
 } from './format';
@@ -30,7 +39,8 @@ import {
   getMatchesForDate,
   makeAdapter,
 } from './data';
-import type { ProviderAdapter } from '@claudinho/core';
+import { readMarketCache, writeMarketCache } from './marketCache';
+import type { Match, MarketProvider, MarketSignal, ProviderAdapter } from '@claudinho/core';
 import { readCurrentState } from './cache';
 import { renderPrompt } from './statusline';
 import { renderHook } from './hook';
@@ -42,11 +52,68 @@ import { initHook, initStatusline } from './install';
  * it unset (commands build one from `cfg.source`), tests pass a fake so they
  * never touch the network.
  */
-type Ctx = { cfg: CliConfig; t: Translator; adapter?: ProviderAdapter };
+type Ctx = {
+  cfg: CliConfig;
+  t: Translator;
+  adapter?: ProviderAdapter;
+  marketProvider?: MarketProvider;
+};
 
 /** The injected adapter, or one constructed from the configured source. */
 function adapterFor({ cfg, adapter }: Ctx): ProviderAdapter {
   return adapter ?? makeAdapter(cfg.source);
+}
+
+/** The injected market provider, or the default constructed provider. */
+function marketProviderFor({ marketProvider }: Ctx): MarketProvider {
+  return marketProvider ?? makeMarketProvider();
+}
+
+/**
+ * Market signals for a set of matches. With an injected provider (tests), use it
+ * directly. Otherwise read through a short on-disk cache around the default
+ * provider so repeated cold commands don't re-hit the data source. This path is
+ * NEVER reached from the statusline/hook hot path.
+ */
+async function marketSignalsFor(ctx: Ctx, matches: Match[]): Promise<Map<string, MarketSignal>> {
+  if (ctx.marketProvider) return getMarketSignals(ctx.marketProvider, matches);
+  const source = resolveMarketSource();
+  // Dev/demo providers (e.g. 'fake') are deterministic and free — skip the cache.
+  if (source !== 'polymarket') {
+    return getMarketSignals(makeMarketProvider(source), matches);
+  }
+  const competition = resolveCompetition();
+  const cached = readMarketCache('polymarket', competition);
+  const result = new Map<string, MarketSignal>();
+  const miss: Match[] = [];
+  for (const m of matches) {
+    const hit = cached.get(m.id);
+    if (hit) result.set(m.id, hit);
+    else miss.push(m);
+  }
+  if (miss.length > 0) {
+    const fetched = await getMarketSignals(makeMarketProvider('polymarket'), miss);
+    writeMarketCache('polymarket', competition, fetched);
+    for (const [id, s] of fetched) result.set(id, s);
+  }
+  return result;
+}
+
+/** Strict-gated signals for the default-on annotation; empty when markets are off. */
+async function reliableMarketSignals(
+  ctx: Ctx,
+  matches: Match[],
+): Promise<Map<string, MarketSignal>> {
+  if (ctx.cfg.markets === false) return new Map();
+  const raw = await marketSignalsFor(ctx, matches);
+  const now = new Date();
+  const out = new Map<string, MarketSignal>();
+  for (const [id, s] of raw) if (isReliableMarketSignal(s, { now })) out.set(id, s);
+  return out;
+}
+
+async function reliableMarketSignalFor(ctx: Ctx, match: Match): Promise<MarketSignal | undefined> {
+  return (await reliableMarketSignals(ctx, [match])).get(match.id);
 }
 
 function out(line = ''): void {
@@ -86,9 +153,15 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   const targetDate = date ?? localDate(new Date().toISOString(), cfg.tz);
   const { matches, degraded } = await getMatchesForDate(adapter, targetDate);
   const todays = fixturesByDate(targetDate, matches, cfg.tz);
+  const signals = await reliableMarketSignals(ctx, todays);
 
   if (cfg.json) {
-    emitJson({ date: targetDate, degraded, matches: todays });
+    emitJson({
+      date: targetDate,
+      degraded,
+      matches: todays,
+      marketSignals: Object.fromEntries(signals),
+    });
     return;
   }
 
@@ -101,7 +174,11 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   if (todays.length === 0) {
     out(c.dim('  ' + t('today.none')));
   } else {
-    for (const m of todays) out(matchLine(m, cfg, t, c));
+    for (const m of todays) {
+      out(matchLine(m, cfg, t, c));
+      const s = signals.get(m.id);
+      if (s) out('    ' + c.dim(marketLine(s, m)));
+    }
   }
   out();
   out(disclaimer(t, c));
@@ -316,8 +393,10 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
     /* keep static */
   }
 
+  const marketSignal = match ? await reliableMarketSignalFor(ctx, match) : undefined;
+
   if (cfg.json) {
-    emitJson({ match: match ?? null });
+    emitJson({ match: match ?? null, marketSignal: marketSignal ?? null });
     return;
   }
 
@@ -346,8 +425,144 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
       out(`  ${e.minute}'  ${e.type}  ${e.teamCode}${e.player ? ` — ${e.player}` : ''}`);
     }
   }
+  if (marketSignal) {
+    out();
+    for (const mline of marketBlock(marketSignal, match)) out('  ' + c.dim(mline));
+  }
   out();
   out(disclaimer(t, c));
+}
+
+// Market copy is English-only in v1 (the approved legal copy bank); the base
+// FIFA/Anthropic disclaimer stays localized via t('disclaimer').
+const MARKET_INFO = 'Prediction-market data is informational only.';
+
+/** Show a signal only if it maps cleanly and has a determinable favorite. */
+function marketDisplayable(sig: MarketSignal): boolean {
+  return !sig.ambiguous && sig.favorite != null && hasSaneDistribution(sig.outcomes);
+}
+
+function marketHeaderLine(m: Match): string {
+  return `${m.home.flag} ${m.home.name} vs ${m.away.name} ${m.away.flag}`;
+}
+
+function printMarketBlock(m: Match, sig: MarketSignal, c: Painter): void {
+  for (const line of marketBlock(sig, m)) out('    ' + c.dim(line));
+}
+
+/**
+ * `claudinho markets [target] [team]` — read-only prediction-market signals.
+ *   markets              → today's signals
+ *   markets today        → today's signals
+ *   markets 2026-06-11   → that date's signals
+ *   markets 760415       → one match's signal
+ *   markets next MEX     → a team's next fixture
+ * This dedicated surface is always opt-in, so it shows any cleanly-mapped signal
+ * (with a stale caveat when applicable) rather than the strict default-on gate.
+ */
+export async function cmdMarkets(
+  target: string | undefined,
+  team: string | undefined,
+  ctx: Ctx,
+): Promise<void> {
+  const { cfg, t } = ctx;
+  const provider = marketProviderFor(ctx);
+
+  // markets next <team>
+  if (target === 'next') {
+    precheck(cfg, t);
+    if (!team) throw new InputError('Usage: claudinho markets next <team>');
+    const code = team.toUpperCase();
+    const fixture = nextFixtureForTeam(code);
+    const sig = fixture ? await getMarketSignal(provider, fixture) : undefined;
+    const shown = sig && marketDisplayable(sig) ? sig : undefined;
+    if (cfg.json) {
+      emitJson({
+        team: code,
+        matchId: fixture?.id ?? null,
+        informationalOnly: true,
+        signal: shown ?? null,
+      });
+      return;
+    }
+    const c = painterFor(cfg);
+    out();
+    if (!fixture) {
+      out(c.dim('  ' + t('next.none', { team: code })));
+    } else {
+      out(header(marketHeaderLine(fixture), c));
+      out();
+      if (shown) printMarketBlock(fixture, shown, c);
+      else out(c.dim('    No market signal for this match.'));
+    }
+    out();
+    out(disclaimer(t, c));
+    out(c.dim(MARKET_INFO));
+    return;
+  }
+
+  // markets <id>  (anything that isn't a date or the "today" keyword)
+  if (target && target !== 'today' && !isValidDate(target)) {
+    precheck(cfg, t);
+    const match = allFixtures().find((m) => m.id === target);
+    const sig = match ? await getMarketSignal(provider, match) : undefined;
+    const shown = sig && marketDisplayable(sig) ? sig : undefined;
+    if (cfg.json) {
+      emitJson({ matchId: target, informationalOnly: true, signal: shown ?? null });
+      return;
+    }
+    const c = painterFor(cfg);
+    out();
+    if (!match) {
+      out(c.dim('  ' + t('match.none', { id: target })));
+    } else {
+      out(header(marketHeaderLine(match), c));
+      out();
+      if (shown) printMarketBlock(match, shown, c);
+      else out(c.dim('    No market signal for this match.'));
+    }
+    out();
+    out(disclaimer(t, c));
+    out(c.dim(MARKET_INFO));
+    return;
+  }
+
+  // markets [today | <date>]
+  const explicitDate = target && target !== 'today' ? target : undefined;
+  precheck(cfg, t, explicitDate);
+  const date = explicitDate ?? localDate(new Date().toISOString(), cfg.tz);
+  const { matches } = await getMatchesForDate(adapterFor(ctx), date);
+  const todays = fixturesByDate(date, matches, cfg.tz);
+  const signals = await getMarketSignals(provider, todays);
+  const rows = todays
+    .map((m) => ({ match: m, signal: signals.get(m.id) }))
+    .filter(
+      (r): r is { match: Match; signal: MarketSignal } =>
+        !!r.signal && marketDisplayable(r.signal),
+    );
+
+  if (cfg.json) {
+    const marketSignals: Record<string, MarketSignal> = {};
+    for (const r of rows) marketSignals[r.match.id] = r.signal;
+    emitJson({ date, informationalOnly: true, marketSignals });
+    return;
+  }
+
+  const c = painterFor(cfg);
+  out();
+  out(header(`Market signals · ${date}`, c));
+  out();
+  if (rows.length === 0) {
+    out(c.dim(`  No market signals available for ${date}.`));
+  } else {
+    for (const { match, signal } of rows) {
+      out('  ' + c.bold(marketHeaderLine(match)));
+      printMarketBlock(match, signal, c);
+      out();
+    }
+  }
+  out(disclaimer(t, c));
+  out(c.dim(MARKET_INFO));
 }
 
 /**

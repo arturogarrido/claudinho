@@ -6,6 +6,7 @@ import {
   cmdInitHook,
   cmdInitStatusline,
   cmdLive,
+  cmdMarkets,
   cmdMatch,
   cmdNext,
   cmdPrompt,
@@ -60,7 +61,8 @@ program
   .option('--json', 'output JSON (for scripting)')
   .option('--no-color', 'disable ANSI colors')
   .option('--source <name>', 'live data provider (advanced)')
-  .option('--flavor <level>', 'commentary flair: off, subtle, full (default: full)');
+  .option('--flavor <level>', 'commentary flair: off, subtle, full (default: full)')
+  .option('--no-markets', 'hide prediction-market signals (informational odds)');
 
 program.addHelpText('after', '\n#VibingLaVidaLoca ⚽');
 
@@ -118,6 +120,19 @@ program
   .action(async (id, _opts, cmd) => {
     try {
       await cmdMatch(id, ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
+  });
+
+program
+  .command('markets')
+  .description('show prediction-market signals (read-only, informational only)')
+  .argument('[target]', 'date (YYYY-MM-DD), match id, "today", or "next"')
+  .argument('[team]', 'team code when target is "next" (e.g. MEX)')
+  .action(async (target, team, _opts, cmd) => {
+    try {
+      await cmdMarkets(target, team, ctxFrom(cmd));
     } catch (e) {
       fail(e);
     }

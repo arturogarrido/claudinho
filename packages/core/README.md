@@ -22,6 +22,7 @@ npm i @claudinho/core
 - **Live overlay** — `makeAdapter`, `getMatchesForDate`, `getLiveMatches`, `mergeLive` (static base + live state, with graceful degradation)
 - **Standings** — `computeStandings` (points / GD / GF tiebreak)
 - **Helpers** — emoji flags (`nationToFlag`), TZ-aware time (`formatKickoff`, `countdown`, `localDate`), location strings (`matchLocation`), localized commentary flair (`matchFlavor` / `FlavorLevel`), validators (`isValidDate`, `isValidTimeZone`)
+- **Prediction-market signals (sidecar)** — read-only market odds kept *separate* from `Match`: the `MarketSignal` / `MarketProvider` model, the `PolymarketProvider` (public Gamma data only — no auth/trading/links), a `FakeMarketProvider`, `getMarketSignal` / `getMarketSignals`, the `isReliableMarketSignal` gate, and approved-copy formatters (`marketFavoriteText`, `marketProbabilityText`, `marketBlock`). Informational only — never betting advice.
 
 ## Example
 

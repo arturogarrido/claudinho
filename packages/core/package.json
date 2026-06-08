@@ -1,6 +1,6 @@
 {
   "name": "@claudinho/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Domain model, data-provider adapters, and helpers for Claudinho — the 2026 football tournament in your dev environment.",
   "type": "module",
   "license": "MIT",

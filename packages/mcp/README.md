@@ -48,11 +48,19 @@ any other MCP client with no changes.
 | `get_match` | a single match by id |
 | `get_standings` | group table(s) — one group `A`–`L`, or all |
 | `get_next_fixture` | a team's next match (3-letter code, e.g. `MEX`) |
+| `get_market_signal` | read-only prediction-market odds for a match, a team's next fixture, or a date — informational only |
 
 All tools are **read-only** (annotated `readOnlyHint`) and accept optional
 `tz` (IANA timezone), `lang` (`en`/`es`/`pt`/`fr`), and `flavor`
 (`off`/`subtle`/`full`) arguments. Each response includes both human-readable
 text and structured JSON.
+
+`get_today` and `get_match` also include reliable prediction-market context when a
+market is available. Market data is **read-only and informational only — not
+betting advice** (market-implied percentages with attribution, never links or
+trade calls), sourced from [Polymarket](https://polymarket.com) public data and
+shown only when a market maps cleanly to the result. Disable it with
+`CLAUDINHO_MARKETS=off`.
 
 ## Resources & prompts
 
