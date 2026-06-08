@@ -56,11 +56,13 @@ All tools are **read-only** (annotated `readOnlyHint`) and accept optional
 text and structured JSON.
 
 `get_today` and `get_match` also include reliable prediction-market context when a
-market is available. Market data is **read-only and informational only — not
-betting advice** (market-implied percentages with attribution, never links or
-trade calls), sourced from Polymarket public data and
-shown only when a market maps cleanly to the result. Disable it with
-`CLAUDINHO_MARKETS=off`.
+market is available. Match→market event slugs are derived automatically, so no
+mapping is needed. Market data is **read-only and informational only — not betting
+advice** (market-implied percentages with attribution, never links or trade
+calls), sourced from Polymarket public data and shown only when a market maps
+cleanly to the result. Disable it with `CLAUDINHO_MARKETS=off`; set
+`CLAUDINHO_MARKETS_SOURCE=fake` (in the server `env`) for a network-free synthetic
+preview.
 
 ## Resources & prompts
 
