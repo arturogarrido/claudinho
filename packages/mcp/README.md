@@ -49,6 +49,7 @@ any other MCP client with no changes.
 | `get_standings` | group table(s) — one group `A`–`L`, or all |
 | `get_next_fixture` | a team's next match (3-letter code, e.g. `MEX`) |
 | `get_market_signal` | read-only prediction-market odds for a match, a team's next fixture, or a date — informational only |
+| `get_share_snippet` | a copy-pasteable match-card snippet for a match, a team's next fixture, a date, or live — plain text, ready to paste |
 
 All tools are **read-only** (annotated `readOnlyHint`) and accept optional
 `tz` (IANA timezone), `lang` (`en`/`es`/`pt`/`fr`), and `flavor`
@@ -63,6 +64,12 @@ calls), sourced from Polymarket public data and shown only when a market maps
 cleanly to the result. Disable it with `CLAUDINHO_MARKETS=off`; set
 `CLAUDINHO_MARKETS_SOURCE=fake` (in the server `env`) for a network-free synthetic
 preview.
+
+`get_share_snippet` returns a polished, **copy-pasteable** match card (the same
+artifact as the CLI's `claudinho share`) for a match, a team's next fixture, a
+date, or live matches — plain text, no links, with the non-affiliation disclaimer
+baked in. Hand the returned `snippet` to the user as-is. `style` picks `social`
+(default) or `compact`; market lines (when reliable) stay **informational only**.
 
 ## Resources & prompts
 

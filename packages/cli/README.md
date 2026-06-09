@@ -24,6 +24,7 @@ claudinho next <TEAM>       # a team's next fixture + countdown   (e.g. next MEX
 claudinho table [GROUP]     # group standings (default: all groups)
 claudinho match <id>        # a single match's detail
 claudinho markets [target]  # prediction-market odds: today | <date> | <id> | next <TEAM>
+claudinho share [target]    # copy-pasteable match snippet: today | live | <date> | <id> | next <TEAM>
 claudinho prompt            # one compact status line (for statusline/tmux/Starship)
 claudinho init-statusline   # wire it into the Claude Code statusline
 claudinho hook              # live-score context for a Claude Code hook (silent off-match)
@@ -39,6 +40,7 @@ claudinho next BRA --tz America/Sao_Paulo --lang pt
 claudinho table A
 claudinho live --json | jq '.matches[].status'
 claudinho today --flavor off               # just the facts, no commentary
+claudinho share next MEX --copy            # a shareable card, copied to your clipboard
 ```
 
 ## Global options
@@ -94,6 +96,71 @@ statusline and hook **never** show market data — it stays off the hot path.
 > *overrides* only). Matching fails closed, so an unmatched fixture simply shows
 > nothing. For an offline preview, set `CLAUDINHO_MARKETS_SOURCE=fake` to render
 > clearly-labeled synthetic **"demo data"** odds.
+
+## Shareable snippets
+
+`claudinho share` prints a polished, **copy-pasteable** match card for chats,
+social posts, READMEs, and issue comments — your terminal football, ready to post:
+
+```bash
+claudinho share                   # today's matches
+claudinho share live              # matches in play
+claudinho share next MEX          # a team's next fixture (+ market read, when reliable)
+claudinho share 760415            # one match by id
+claudinho share next MEX --copy   # …and copy it straight to the clipboard
+```
+
+```text
+Next up for Mexico
+
+🇲🇽 Mexico vs South Africa 🇿🇦
+Jun 11 · 13:00 America/Mexico_City
+Estadio Banorte, Mexico City, Mexico
+
+Prediction markets slightly favor Mexico.
+Mexico 56% · Draw 25% · South Africa 19%
+Source: Polymarket · informational only
+
+#VibingLaVidaLoca · Independent fan project · not affiliated with FIFA or Anthropic.
+Try it: npx @claudinho/cli next MEX
+```
+
+Snippets are **plain text** (no color codes — they paste cleanly everywhere) and
+carry the non-affiliation disclaimer on every paste. The market line uses the
+same reliable gate as `today`/`match` (**informational only — never betting
+advice**) and disappears when no reliable market exists. Per-command options:
+
+| Flag | Description |
+|---|---|
+| `--style <social\|compact>` | `social` (default) is the full card; `compact` is one terse line per match |
+| `--copy` | also copy the snippet to the clipboard (best-effort: `pbcopy`/`clip`/`wl-copy`/`xclip`/`xsel`) |
+| `--no-hashtag` | omit the `#VibingLaVidaLoca` tag |
+| `--no-install-line` | omit the `Try it: …` run cue |
+
+`--json` returns the structured snippet (`{ kind, snippet, matches, marketSignals, … }`)
+for scripts and future reuse. No clipboard tool? `claudinho share … | pbcopy` works too.
+
+### Want an image?
+
+The snippet is plain text, so a **screenshot is your share card** — the disclaimer
+and emoji flags come along automatically. Grab it with your OS screenshot tool, or
+render a crisp terminal image with an existing tool (no Claudinho dependency, no
+account):
+
+```bash
+# capture the command's output directly (charmbracelet/freeze)
+freeze --execute "claudinho share next MEX" -o card.png
+
+# …or pipe the text into freeze / silicon
+claudinho share next MEX | freeze --language text -o card.png
+claudinho share next MEX | silicon -l txt -o card.png
+
+# …or paste it into a web tool like carbon.now.sh or ray.so
+```
+
+Claudinho stays text-first — it doesn't ship an image renderer, so there's nothing
+extra to install in the CLI and no fonts/licensing to worry about: whatever your
+terminal or the screenshot tool already draws (including the flags) is what you get.
 
 ## Statusline (Claude Code)
 

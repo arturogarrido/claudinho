@@ -4,7 +4,9 @@ import {
   countdown,
   fixturesByDate,
   fixturesByGroup,
+  formatDate,
   formatKickoff,
+  formatShareSnippet,
   getMarketSignals,
   groups,
   hasSaneDistribution,
@@ -40,7 +42,16 @@ import {
   makeAdapter,
 } from './data';
 import { readMarketCache, writeMarketCache } from './marketCache';
-import type { Match, MarketProvider, MarketSignal, ProviderAdapter } from '@claudinho/core';
+import { copyToClipboard } from './clipboard';
+import type {
+  Match,
+  MarketProvider,
+  MarketSignal,
+  ProviderAdapter,
+  ShareSnippetInput,
+  ShareSnippetOptions,
+  ShareStyle,
+} from '@claudinho/core';
 import { readCurrentState } from './cache';
 import { renderPrompt } from './statusline';
 import { renderHook } from './hook';
@@ -57,6 +68,8 @@ type Ctx = {
   t: Translator;
   adapter?: ProviderAdapter;
   marketProvider?: MarketProvider;
+  /** Injection seam for `share --copy` so tests never touch the real clipboard. */
+  copy?: (text: string) => boolean;
 };
 
 /** The injected adapter, or one constructed from the configured source. */
@@ -594,6 +607,236 @@ export async function cmdMarkets(
   }
   out(disclaimer(t, c));
   out(c.dim(MARKET_INFO));
+}
+
+/* ──────────────────────────── share ──────────────────────────── */
+
+type ShareCliOpts = {
+  style?: string;
+  /** false when --no-hashtag is passed (commander negatable). */
+  hashtag?: boolean;
+  /** false when --no-install-line is passed (commander negatable). */
+  installLine?: boolean;
+  /** true when --copy is passed. */
+  copy?: boolean;
+};
+
+/** Only `social`/`compact` ship in v1; anything else falls back to `social`. */
+function pickShareStyle(v: string | undefined): ShareStyle {
+  return v === 'compact' ? 'compact' : 'social';
+}
+
+/**
+ * Reliable signals for a shareable snippet. Snippets are public artifacts, so
+ * this fails closed via the strict default-on gate (`reliableMarketSignals`,
+ * which also honors `--no-markets`). The `marketDisplayable` pass is a defensive
+ * re-assert — the reliability gate already implies it (unambiguous + has a
+ * favorite + sane distribution) — kept so the two gates can diverge safely.
+ */
+async function reliableShareSignals(
+  ctx: Ctx,
+  matches: Match[],
+): Promise<Map<string, MarketSignal>> {
+  const raw = await reliableMarketSignals(ctx, matches);
+  const out = new Map<string, MarketSignal>();
+  for (const [id, s] of raw) if (marketDisplayable(s)) out.set(id, s);
+  return out;
+}
+
+type ShareEmit = {
+  kind: 'today' | 'live' | 'next' | 'match';
+  target: string;
+  team?: string;
+  input: ShareSnippetInput;
+  options: ShareSnippetOptions;
+};
+
+/** Render + emit a snippet (text or JSON), then best-effort copy to clipboard. */
+function emitShare(ctx: Ctx, e: ShareEmit, copy: boolean): void {
+  const snippet = formatShareSnippet(e.input, e.options);
+  if (ctx.cfg.json) {
+    emitJson({
+      kind: e.kind,
+      target: e.target,
+      ...(e.team ? { team: e.team } : {}),
+      source: e.input.source ?? null,
+      informationalOnly: true,
+      style: e.options.style ?? 'social',
+      snippet,
+      matches: e.input.matches,
+      marketSignals: Object.fromEntries(e.input.marketSignals ?? new Map()),
+    });
+  } else {
+    out(snippet);
+  }
+  // Clipboard is additive and orthogonal to the output mode; its status goes to
+  // stderr so stdout stays a clean, pasteable artifact (and clean JSON).
+  if (copy) {
+    const ok = (ctx.copy ?? copyToClipboard)(snippet);
+    process.stderr.write(
+      (ok
+        ? 'Copied share snippet to clipboard.'
+        : 'Clipboard unavailable; printed snippet instead.') + '\n',
+    );
+  }
+}
+
+/**
+ * `claudinho share [target] [team]` — a polished, copy-pasteable match snippet
+ * for chats, social posts, READMEs, and issues.
+ *   share / share today      → today's fixtures
+ *   share live               → matches in play
+ *   share 2026-06-11         → that date's fixtures
+ *   share 760415             → one match
+ *   share next MEX           → a team's next fixture
+ * Market lines come from the approved copy bank and use the same reliable gate
+ * as default views; the non-affiliation disclaimer is always included. Snippets
+ * are plain text (no ANSI) so they paste cleanly everywhere.
+ */
+export async function cmdShare(
+  target: string | undefined,
+  team: string | undefined,
+  opts: ShareCliOpts,
+  ctx: Ctx,
+): Promise<void> {
+  const { cfg, t } = ctx;
+  const baseOptions: ShareSnippetOptions = {
+    style: pickShareStyle(opts.style),
+    includeMarkets: cfg.markets !== false,
+    includeHashtag: opts.hashtag !== false,
+    includeInstallLine: opts.installLine !== false,
+  };
+  const copy = opts.copy === true;
+
+  // share live
+  if (target === 'live') {
+    precheck(cfg, t);
+    const { matches, source } = await getLiveMatches(adapterFor(ctx));
+    emitShare(
+      ctx,
+      {
+        kind: 'live',
+        target: 'live',
+        input: {
+          title: 'Live match pulse',
+          matches,
+          source,
+          emptyNote: 'No matches in play right now.',
+          installLine: 'npx @claudinho/cli live',
+          tz: cfg.tz,
+          locale: cfg.lang,
+        },
+        // Live snippets stay lean: no market enrichment (and no extra fetch).
+        options: { ...baseOptions, includeMarkets: false },
+      },
+      copy,
+    );
+    return;
+  }
+
+  // share next <team>
+  if (target === 'next') {
+    precheck(cfg, t);
+    if (!team) throw new InputError('Usage: claudinho share next <team>');
+    const code = team.toUpperCase();
+    const fixture = nextFixtureForTeam(code);
+    const matches = fixture ? [fixture] : [];
+    const signals = await reliableShareSignals(ctx, matches);
+    const teamName = fixture
+      ? fixture.home.code === code
+        ? fixture.home.name
+        : fixture.away.name
+      : code;
+    emitShare(
+      ctx,
+      {
+        kind: 'next',
+        target: 'next',
+        team: code,
+        input: {
+          title: `Next up for ${teamName}`,
+          matches,
+          marketSignals: signals,
+          emptyNote: `No upcoming fixture found for ${code}.`,
+          installLine: `npx @claudinho/cli next ${code}`,
+          tz: cfg.tz,
+          locale: cfg.lang,
+        },
+        options: baseOptions,
+      },
+      copy,
+    );
+    return;
+  }
+
+  // share <id>  (anything that isn't a date or the "today" keyword)
+  if (target && target !== 'today' && !isValidDate(target)) {
+    precheck(cfg, t);
+    const adapter = adapterFor(ctx);
+    let match = allFixtures().find((m) => m.id === target);
+    let source: string | undefined;
+    try {
+      if (match) {
+        const live = await adapter.fetchByDate(match.kickoff.slice(0, 10));
+        match = live.find((m) => m.id === target) ?? match;
+        source = adapter.name;
+      }
+    } catch {
+      /* keep static */
+    }
+    const matches = match ? [match] : [];
+    const signals = await reliableShareSignals(ctx, matches);
+    emitShare(
+      ctx,
+      {
+        kind: 'match',
+        target,
+        input: {
+          title: 'Match pulse',
+          matches,
+          marketSignals: signals,
+          source,
+          emptyNote: `No match found with id ${target}.`,
+          installLine: `npx @claudinho/cli match ${target}`,
+          tz: cfg.tz,
+          locale: cfg.lang,
+        },
+        options: baseOptions,
+      },
+      copy,
+    );
+    return;
+  }
+
+  // share [today | <date>]
+  const explicitDate = target && target !== 'today' ? target : undefined;
+  precheck(cfg, t, explicitDate);
+  const date = explicitDate ?? localDate(new Date().toISOString(), cfg.tz);
+  const { matches: all, source } = await getMatchesForDate(adapterFor(ctx), date);
+  const todays = fixturesByDate(date, all, cfg.tz);
+  const signals = await reliableShareSignals(ctx, todays);
+  // Human date label from a stable midday-UTC instant (avoids tz day flips).
+  const human = formatDate(`${date}T12:00:00.000Z`, { tz: cfg.tz, locale: cfg.lang });
+  const title = explicitDate ? `Matches · ${human}` : `Today's matches · ${human}`;
+  emitShare(
+    ctx,
+    {
+      kind: 'today',
+      target: date,
+      input: {
+        title,
+        matches: todays,
+        marketSignals: signals,
+        source,
+        emptyNote: `No matches scheduled for ${human}.`,
+        installLine: 'npx @claudinho/cli today',
+        tz: cfg.tz,
+        locale: cfg.lang,
+      },
+      options: baseOptions,
+    },
+    copy,
+  );
 }
 
 /**

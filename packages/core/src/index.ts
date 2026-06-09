@@ -2,7 +2,7 @@
 export type * from './types';
 
 export { flagEmoji, nationToFlag, nationToRegion } from './flags';
-export { resolveTz, formatKickoff, countdown, localDate } from './time';
+export { resolveTz, formatKickoff, formatDate, formatTime, countdown, localDate } from './time';
 export type { FormatOpts } from './time';
 export { isValidTimeZone, isValidDate } from './validate';
 export { outcomeFromScore, isLive, isFinished, scoreline, matchLocation, byKickoff } from './normalize';
@@ -87,3 +87,8 @@ export type {
   MarketMapping,
   MarketMappingTable,
 } from './markets/polymarket';
+
+// Shareable terminal snippets (pure text artifacts; composes Match + the market
+// copy bank). The non-affiliation disclaimer is non-optional in every snippet.
+export { formatShareSnippet, SHARE_HASHTAG, SHARE_DISCLAIMER } from './share/format';
+export type { ShareStyle, ShareSnippetInput, ShareSnippetOptions } from './share/format';

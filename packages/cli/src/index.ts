@@ -11,6 +11,7 @@ import {
   cmdNext,
   cmdPrompt,
   cmdRefresh,
+  cmdShare,
   cmdTable,
   cmdToday,
   cmdVibe,
@@ -133,6 +134,23 @@ program
   .action(async (target, team, _opts, cmd) => {
     try {
       await cmdMarkets(target, team, ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
+  });
+
+program
+  .command('share')
+  .description('print a shareable, copy-pasteable match snippet (#VibingLaVidaLoca)')
+  .argument('[target]', '"today" (default), "live", a date, a match id, or "next"')
+  .argument('[team]', 'team code when target is "next" (e.g. MEX)')
+  .option('--style <style>', 'snippet style: social (default) or compact')
+  .option('--copy', 'also copy the snippet to the clipboard (best-effort)')
+  .option('--no-hashtag', 'omit the #VibingLaVidaLoca tag')
+  .option('--no-install-line', 'omit the install/run cue')
+  .action(async (target, team, opts, cmd) => {
+    try {
+      await cmdShare(target, team, opts, ctxFrom(cmd));
     } catch (e) {
       fail(e);
     }

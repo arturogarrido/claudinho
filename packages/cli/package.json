@@ -1,6 +1,6 @@
 {
   "name": "@claudinho/cli",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Claudinho CLI — the 2026 men's football tournament in your terminal: live scores, fixtures, group tables, prediction-market odds. Not affiliated with FIFA or Anthropic.",
   "type": "module",
   "license": "MIT",

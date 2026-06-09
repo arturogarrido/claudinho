@@ -20,6 +20,7 @@ import {
   toolGetMarketSignal,
   toolGetMatch,
   toolGetNextFixture,
+  toolGetShareSnippet,
   toolGetStandings,
   toolGetToday,
   type ToolResult,
@@ -38,7 +39,8 @@ const VOICE =
 
 const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and group standings for the 2026 men's football tournament.
 Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team (3-letter code, e.g. MEX), and get_standings for group tables.
-Use get_market_signal for read-only prediction-market odds (a match, a team's next fixture, or a date). Market data is informational only — relay the percentages factually and never frame it as betting or trading advice.${VOICE}
+Use get_market_signal for read-only prediction-market odds (a match, a team's next fixture, or a date). Market data is informational only — relay the percentages factually and never frame it as betting or trading advice.
+Use get_share_snippet to produce a ready-to-paste match card (for a match, a team's next fixture, a date, or live matches) — hand the user the returned snippet text verbatim.${VOICE}
 ${DISCLAIMER}`;
 
 // Tightened, reusable input schemas (exported for tests). Rejecting bad input
@@ -161,6 +163,37 @@ export function buildServer(): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async (args) => toContent(await toolGetMarketSignal(args)),
+  );
+
+  server.registerTool(
+    'get_share_snippet',
+    {
+      title: 'Shareable match snippet',
+      description:
+        "A polished, copy-pasteable match card (plain text) for a match (matchId), a team's next fixture (team), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
+      inputSchema: {
+        matchId: z.string().optional().describe('Match id (most specific)'),
+        team: teamArg
+          .optional()
+          .describe("3-letter team code for that team's next fixture, e.g. MEX"),
+        date: dateArg.optional().describe('Date as YYYY-MM-DD (default: today)'),
+        live: z.boolean().optional().describe('Snapshot of matches in play right now'),
+        style: z
+          .enum(['social', 'compact'])
+          .optional()
+          .describe('social (default, full card) or compact (one line per match)'),
+        includeHashtag: z.boolean().optional().describe('Include the #VibingLaVidaLoca tag (default true)'),
+        includeInstallLine: z.boolean().optional().describe('Include the "Try it: …" run cue (default true)'),
+        includeMarkets: z
+          .boolean()
+          .optional()
+          .describe('Include the reliable market line when available (default true)'),
+        ...commonArgs,
+      },
+      // Read-only; may reach the live/market data providers (live/today/match).
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async (args) => toContent(await toolGetShareSnippet(args)),
   );
 
   // ---- Resources ----

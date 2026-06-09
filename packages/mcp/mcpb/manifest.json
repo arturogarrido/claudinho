@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "claudinho",
   "display_name": "Claudinho ⚽",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Live scores, fixtures, and group standings for the 2026 men's football tournament. Not affiliated with FIFA or Anthropic.",
   "long_description": "Ask Claude about the 2026 men's football tournament — live scores, today's fixtures, a team's next match, group standings, and read-only prediction-market odds (informational only, not betting advice). Facts and emoji flags only; no logos, crests, or footage. An independent, open-source fan project. Not affiliated with or endorsed by FIFA or Anthropic.",
   "author": {
@@ -28,7 +28,8 @@
     { "name": "get_match", "description": "A single match by its id, with live state if available." },
     { "name": "get_standings", "description": "Group table(s) — one group A–L, or all." },
     { "name": "get_next_fixture", "description": "A team's next scheduled match (3-letter code, e.g. MEX)." },
-    { "name": "get_market_signal", "description": "Read-only prediction-market odds for a match, a team's next fixture, or a date. Informational only; no links." }
+    { "name": "get_market_signal", "description": "Read-only prediction-market odds for a match, a team's next fixture, or a date. Informational only; no links." },
+    { "name": "get_share_snippet", "description": "A copy-pasteable match-card snippet for a match, a team's next fixture, a date, or live. Plain text; carries the disclaimer." }
   ],
   "compatibility": {
     "runtimes": { "node": ">=20" }
