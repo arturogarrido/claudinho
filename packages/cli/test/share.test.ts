@@ -127,6 +127,13 @@ describe('cmdShare — routing & JSON', () => {
     await expect(cmdShare('next', undefined, {}, ctx())).rejects.toBeInstanceOf(InputError);
   });
 
+  it('renders a clear empty state for an unknown team (not a void card)', async () => {
+    await cmdShare('next', 'ZZZ', {}, ctx());
+    const o = text();
+    expect(o).toContain('No upcoming fixture found for ZZZ.');
+    expect(o).toContain(DISCLAIMER);
+  });
+
   it('share <date> renders a titled card with the disclaimer', async () => {
     await cmdShare('2026-06-13', undefined, {}, ctx());
     const o = text();

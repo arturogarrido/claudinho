@@ -61,6 +61,11 @@ export interface ShareSnippetInput {
   marketSignals?: Map<string, MarketSignal>;
   /** Live-data provider name (e.g. "espn") for attribution; omit when static/degraded. */
   source?: string;
+  /**
+   * Body line shown when `matches` is empty (e.g. "No upcoming fixture found for
+   * ZZZ."), so an unknown/empty target yields a clear card instead of a void.
+   */
+  emptyNote?: string;
   /** Exact run cue to advertise, e.g. "npx @claudinho/cli next MEX". */
   installLine?: string;
   /** Timezone for kickoff date/time (date/time only — copy stays English). */
@@ -150,9 +155,11 @@ export function formatShareSnippet(
 
   const blocks: string[] = [input.title];
 
-  if (style === 'compact') {
-    const rows = input.matches.map((m) => compactLine(m, input, single));
-    if (rows.length > 0) blocks.push(rows.join('\n'));
+  if (input.matches.length === 0) {
+    // No matches → a clear empty-state line (when provided) instead of a void.
+    if (input.emptyNote) blocks.push(input.emptyNote);
+  } else if (style === 'compact') {
+    blocks.push(input.matches.map((m) => compactLine(m, input, single)).join('\n'));
   } else {
     for (const m of input.matches) {
       const card = socialCard(m, input);

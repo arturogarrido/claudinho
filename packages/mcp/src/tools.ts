@@ -473,6 +473,11 @@ function shareResult(
  */
 export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> {
   const options = shareOptions(args);
+  // Per-call opt-out: `includeMarkets: false` skips the provider ENTIRELY (no
+  // fetch) and yields no market data — not merely suppressed rendering. The env
+  // opt-out (CLAUDINHO_MARKETS=off) is handled inside reliableSignalMap.
+  const signalsFor = (ms: Match[]): Promise<Map<string, MarketSignal>> =>
+    args.includeMarkets === false ? Promise.resolve(new Map()) : reliableSignalMap(args, ms);
 
   // live: matches in play right now (no market enrichment, matching the CLI).
   if (args.live) {
@@ -485,6 +490,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         title: 'Live match pulse',
         matches,
         source,
+        emptyNote: 'No matches in play right now.',
         installLine: 'npx @claudinho/cli live',
         tz: args.tz,
         locale: args.lang,
@@ -515,8 +521,9 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       {
         title: 'Match pulse',
         matches,
-        marketSignals: await reliableSignalMap(args, matches),
+        marketSignals: await signalsFor(matches),
         source,
+        emptyNote: `No match found with id ${args.matchId}.`,
         installLine: `npx @claudinho/cli match ${args.matchId}`,
         tz: args.tz,
         locale: args.lang,
@@ -542,7 +549,8 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       {
         title: `Next up for ${teamName}`,
         matches,
-        marketSignals: await reliableSignalMap(args, matches),
+        marketSignals: await signalsFor(matches),
+        emptyNote: `No upcoming fixture found for ${code}.`,
         installLine: `npx @claudinho/cli next ${code}`,
         tz: args.tz,
         locale: args.lang,
@@ -563,8 +571,9 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     {
       title: args.date ? `Matches · ${human}` : `Today's matches · ${human}`,
       matches: todays,
-      marketSignals: await reliableSignalMap(args, todays),
+      marketSignals: await signalsFor(todays),
       source,
+      emptyNote: `No matches scheduled for ${human}.`,
       installLine: 'npx @claudinho/cli today',
       tz: args.tz,
       locale: args.lang,

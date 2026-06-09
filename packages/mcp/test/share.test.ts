@@ -77,6 +77,12 @@ describe('toolGetShareSnippet', () => {
     expect(r.text).toContain(`Try it: npx @claudinho/cli next ${team}`);
   });
 
+  it('renders a clear empty state for an unknown team (not a void card)', async () => {
+    const r = await toolGetShareSnippet({ team: 'ZZZ', adapter: fakeAdapter, marketProvider: synth() });
+    expect(r.text).toContain('No upcoming fixture found for ZZZ.');
+    expect(r.text).toContain(DISCLAIMER);
+  });
+
   it('resolves a single match by id', async () => {
     const id = allFixtures()[0]!.id;
     const r = await toolGetShareSnippet({ matchId: id, marketProvider: synth(), adapter: fakeAdapter });
@@ -127,6 +133,31 @@ describe('toolGetShareSnippet', () => {
       if (prev === undefined) delete process.env.CLAUDINHO_MARKETS;
       else process.env.CLAUDINHO_MARKETS = prev;
     }
+  });
+
+  it('includeMarkets:false skips the provider entirely and emits no market data', async () => {
+    let called = false;
+    const tripwire: MarketProvider = {
+      name: 'tripwire',
+      findSignal: async () => {
+        called = true;
+        throw new Error('should not be called');
+      },
+      findSignals: async () => {
+        called = true;
+        throw new Error('should not be called');
+      },
+    };
+    const r = await toolGetShareSnippet({
+      date: '2026-06-13',
+      tz: 'UTC',
+      includeMarkets: false,
+      adapter: fakeAdapter,
+      marketProvider: tripwire,
+    });
+    expect(called).toBe(false); // no fetch
+    expect(Object.keys((r.data as ShareData).marketSignals)).toHaveLength(0);
+    expect(r.text).not.toContain('informational only');
   });
 
   it('still renders a snippet when the market provider throws', async () => {

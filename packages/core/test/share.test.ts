@@ -187,4 +187,18 @@ describe('formatShareSnippet — live + empty', () => {
     expect(out).toContain('Live match pulse');
     expect(out).toContain(SHARE_DISCLAIMER);
   });
+
+  it('renders the emptyNote as the body when there are no matches (no void card)', () => {
+    const out = formatShareSnippet(
+      {
+        title: 'Next up for ZZZ',
+        matches: [],
+        emptyNote: 'No upcoming fixture found for ZZZ.',
+        installLine: 'npx @claudinho/cli next ZZZ',
+      },
+      { style: 'social' },
+    );
+    expect(out).toContain('No upcoming fixture found for ZZZ.');
+    expect(out).toContain(SHARE_DISCLAIMER);
+  });
 });
