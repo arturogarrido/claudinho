@@ -114,8 +114,8 @@ claudinho share next MEX --copy   # …and copy it straight to the clipboard
 Next up for Mexico
 
 🇲🇽 Mexico vs South Africa 🇿🇦
-Jun 11 · 19:00 America/Mexico_City
-Estadio Azteca, Mexico City
+Jun 11 · 13:00 America/Mexico_City
+Estadio Banorte, Mexico City, Mexico
 
 Prediction markets slightly favor Mexico.
 Mexico 56% · Draw 25% · South Africa 19%
