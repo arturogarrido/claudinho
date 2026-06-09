@@ -256,7 +256,7 @@ export function buildServer(): McpServer {
     'my_team',
     {
       title: 'My team',
-      description: "Focus on one team's next match and group situation.",
+      description: "Focus on one team's next match, group situation, and the prediction-market read.",
       argsSchema: { team: teamArg.describe('3-letter team code, e.g. MEX') },
     },
     ({ team }) => ({
@@ -265,7 +265,7 @@ export function buildServer(): McpServer {
           role: 'user',
           content: {
             type: 'text',
-            text: `Using get_next_fixture and get_standings, tell me about ${team}'s next match in the 2026 tournament and their current group standing.`,
+            text: `Using get_next_fixture, get_standings, and get_market_signal, tell me about ${team}'s next match in the 2026 tournament, their current group standing, and what prediction markets currently say about that match. Treat the market percentages as informational context only — relay them factually, never as betting or trading advice.`,
           },
         },
       ],
