@@ -10,6 +10,8 @@ import {
   computeStandings,
   fixturesByDate,
   fixturesByGroup,
+  formatDate,
+  formatShareSnippet,
   getLiveMatches,
   getMarketSignal,
   getMarketSignals,
@@ -29,6 +31,8 @@ import {
   type ProviderAdapter,
   resolveCompetition,
   resolveMarketSource,
+  type ShareSnippetInput,
+  type ShareSnippetOptions,
 } from '@claudinho/core';
 import { DISCLAIMER, matchLine, matchList, standingsTable } from './format';
 
@@ -389,4 +393,182 @@ export async function toolGetMarketSignal(
       signals: shown.map(({ signal }) => marketData(signal)),
     },
   };
+}
+
+/** Reliable, displayable signals keyed by id for a share snippet. Off → empty. */
+async function reliableSignalMap(
+  args: CommonOpts,
+  matches: Match[],
+): Promise<Map<string, MarketSignal>> {
+  if (!marketsEnabled()) return new Map();
+  const signals = await cachedMarketSignals(args, matches);
+  const now = new Date();
+  const out = new Map<string, MarketSignal>();
+  for (const m of matches) {
+    const s = signals.get(m.id);
+    if (s && isReliableMarketSignal(s, { now }) && marketDisplayable(s)) out.set(m.id, s);
+  }
+  return out;
+}
+
+interface ShareArgs extends CommonOpts {
+  matchId?: string;
+  team?: string;
+  date?: string;
+  live?: boolean;
+  style?: 'social' | 'compact';
+  includeHashtag?: boolean;
+  includeInstallLine?: boolean;
+  includeMarkets?: boolean;
+}
+
+function shareOptions(args: ShareArgs): ShareSnippetOptions {
+  return {
+    style: args.style === 'compact' ? 'compact' : 'social',
+    includeMarkets: marketsEnabled() && args.includeMarkets !== false,
+    includeHashtag: args.includeHashtag !== false,
+    includeInstallLine: args.includeInstallLine !== false,
+  };
+}
+
+function shareResult(
+  kind: 'today' | 'live' | 'next' | 'match',
+  target: string,
+  team: string | undefined,
+  input: ShareSnippetInput,
+  options: ShareSnippetOptions,
+): ToolResult {
+  const snippet = formatShareSnippet(input, options);
+  return {
+    // The snippet is self-contained: it carries its own non-affiliation
+    // disclaimer (and, for any market line, the "informational only" caveat +
+    // attribution), so it is deliberately NOT wrapped with withDisclaimer —
+    // that would duplicate the disclaimer inside a paste-ready artifact.
+    text: snippet,
+    data: {
+      kind,
+      target,
+      ...(team ? { team } : {}),
+      source: input.source ?? null,
+      informationalOnly: true,
+      style: options.style ?? 'social',
+      snippet,
+      matches: input.matches,
+      marketSignals: Object.fromEntries(
+        [...(input.marketSignals ?? new Map<string, MarketSignal>())].map(([id, s]) => [
+          id,
+          marketData(s),
+        ]),
+      ),
+    },
+  };
+}
+
+/**
+ * share_snippet: a polished, copy-pasteable match card — the same artifact as the
+ * CLI `claudinho share`. Routing precedence: live > matchId > team > date
+ * (default today). Plain text, no links; the non-affiliation disclaimer and any
+ * market caveat are baked into the snippet, so the model can hand `text` to the
+ * user verbatim.
+ */
+export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> {
+  const options = shareOptions(args);
+
+  // live: matches in play right now (no market enrichment, matching the CLI).
+  if (args.live) {
+    const { matches, source } = await getLiveMatches(resolveAdapter(args));
+    return shareResult(
+      'live',
+      'live',
+      undefined,
+      {
+        title: 'Live match pulse',
+        matches,
+        source,
+        installLine: 'npx @claudinho/cli live',
+        tz: args.tz,
+        locale: args.lang,
+      },
+      { ...options, includeMarkets: false },
+    );
+  }
+
+  // a single match by id, with live overlay for that day.
+  if (args.matchId) {
+    let match = allFixtures().find((m) => m.id === args.matchId);
+    let source: string | undefined;
+    if (match) {
+      try {
+        const adapter = resolveAdapter(args);
+        const live = await adapter.fetchByDate(match.kickoff.slice(0, 10));
+        match = live.find((m) => m.id === args.matchId) ?? match;
+        source = adapter.name;
+      } catch {
+        /* keep static */
+      }
+    }
+    const matches = match ? [match] : [];
+    return shareResult(
+      'match',
+      args.matchId,
+      undefined,
+      {
+        title: 'Match pulse',
+        matches,
+        marketSignals: await reliableSignalMap(args, matches),
+        source,
+        installLine: `npx @claudinho/cli match ${args.matchId}`,
+        tz: args.tz,
+        locale: args.lang,
+      },
+      options,
+    );
+  }
+
+  // a team's next fixture (static schedule + reliable market read).
+  if (args.team) {
+    const code = args.team.toUpperCase();
+    const fixture = nextFixtureForTeam(code);
+    const matches = fixture ? [fixture] : [];
+    const teamName = fixture
+      ? fixture.home.code === code
+        ? fixture.home.name
+        : fixture.away.name
+      : code;
+    return shareResult(
+      'next',
+      'next',
+      code,
+      {
+        title: `Next up for ${teamName}`,
+        matches,
+        marketSignals: await reliableSignalMap(args, matches),
+        installLine: `npx @claudinho/cli next ${code}`,
+        tz: args.tz,
+        locale: args.lang,
+      },
+      options,
+    );
+  }
+
+  // a date's matches (default: today).
+  const date = args.date ?? localDate(new Date().toISOString(), args.tz);
+  const { matches: all, source } = await getMatchesForDate(resolveAdapter(args), date);
+  const todays = fixturesByDate(date, all, args.tz);
+  const human = formatDate(`${date}T12:00:00.000Z`, { tz: args.tz, locale: args.lang });
+  return shareResult(
+    'today',
+    date,
+    undefined,
+    {
+      title: args.date ? `Matches · ${human}` : `Today's matches · ${human}`,
+      matches: todays,
+      marketSignals: await reliableSignalMap(args, todays),
+      source,
+      installLine: 'npx @claudinho/cli today',
+      tz: args.tz,
+      locale: args.lang,
+    },
+    options,
+  );
 }

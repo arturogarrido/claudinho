@@ -98,5 +98,8 @@ describe('hot path never consults market data', () => {
     const o = writes.join('');
     expect(o).toContain('🇲🇽'); // the live match did render
     expect(o).not.toMatch(/prediction markets|informational only|polymarket|%/i);
+    // Share-only copy (hashtag, install cue, snippet disclaimer) must never
+    // leak onto the statusline/hook hot path either.
+    expect(o).not.toMatch(/#VibingLaVidaLoca|Try it:|Independent fan project/i);
   });
 });

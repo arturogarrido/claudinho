@@ -70,6 +70,29 @@ export function formatKickoff(iso: string, opts: FormatOpts = {}): string {
   }).format(new Date(iso));
 }
 
+/** A short calendar date like "Jun 11" in the target timezone/locale. */
+export function formatDate(iso: string, opts: FormatOpts = {}): string {
+  const tz = resolveTz(opts.tz);
+  const locale = safeLocale(opts.locale);
+  return new Intl.DateTimeFormat(locale, {
+    month: 'short',
+    day: 'numeric',
+    timeZone: tz,
+  }).format(new Date(iso));
+}
+
+/** Time of day like "19:00" (24-hour) in the target timezone/locale. */
+export function formatTime(iso: string, opts: FormatOpts = {}): string {
+  const tz = resolveTz(opts.tz);
+  const locale = safeLocale(opts.locale);
+  return new Intl.DateTimeFormat(locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: tz,
+  }).format(new Date(iso));
+}
+
 /** Compact human countdown until kickoff: "3d4h", "2h10m", "45m", or "now". */
 export function countdown(iso: string, from: Date = new Date()): string {
   const ms = new Date(iso).getTime() - from.getTime();
