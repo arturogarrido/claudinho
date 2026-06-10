@@ -1,7 +1,8 @@
 {
   "name": "@claudinho/mcp",
-  "version": "0.4.1",
-  "description": "Claudinho MCP server — ask your agent about the 2026 men's football tournament: live scores, fixtures, standings, prediction-market odds. Not affiliated with FIFA or Anthropic.",
+  "version": "0.4.2",
+  "mcpName": "io.github.arturogarrido/claudinho",
+  "description": "MCP server for the 2026 men's football tournament — live scores, fixtures, standings, read-only prediction-market signals, and paste-ready match cards. Works with Claude Code, Cursor, Codex, Windsurf, Zed. Not affiliated with FIFA or Anthropic.",
   "type": "module",
   "license": "MIT",
   "author": "Arturo Garrido",
@@ -30,12 +31,18 @@
   ],
   "keywords": [
     "mcp",
+    "mcp-server",
     "model-context-protocol",
+    "claude-code",
+    "cursor",
+    "world-cup",
+    "world-cup-2026",
     "football",
     "soccer",
-    "world-cup",
-    "2026",
     "live-scores",
+    "fixtures",
+    "standings",
+    "2026",
     "vibinglavidaloca"
   ],
   "scripts": {
