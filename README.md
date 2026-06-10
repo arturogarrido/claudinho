@@ -10,10 +10,10 @@
 **Live scores for the 2026 men's football tournament — in your terminal, your Claude Code statusline, and any MCP client.** No API key, no signup; all 104 fixtures ship bundled, so the schedule works offline.
 
 <p align="center">
-  <img src=".github/assets/today.png" alt="claudinho today — the day's fixtures with emoji flags, kickoff times, and commentary flair in a dark terminal" width="800">
+  <img src=".github/assets/hero.gif" alt="claudinho next, today, and vibe — live fixtures with emoji flags and commentary flair in a dark terminal" width="800">
 </p>
-<!-- HERO upgrade: swap the image above for .github/assets/hero.gif (the statusline
-     flipping on a live score) once it's captured during a live match. -->
+<!-- HERO upgrade: re-capture this GIF during a live match (statusline flipping on a
+     real score change) and swap it in — content above is the interim countdown cut. -->
 
 ```bash
 npx @claudinho/cli today      # try it in 10 seconds — no install, no key
