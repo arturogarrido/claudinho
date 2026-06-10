@@ -1,0 +1,47 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.arturogarrido/claudinho",
+  "description": "Live 2026 World Cup scores, fixtures & standings for your AI agent. No keys. Unofficial fan project.",
+  "repository": {
+    "url": "https://github.com/arturogarrido/claudinho",
+    "source": "github",
+    "subfolder": "packages/mcp"
+  },
+  "version": "0.4.2",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@claudinho/mcp",
+      "version": "0.4.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "description": "UI language: en, es, pt, or fr (optional; default en)",
+          "isRequired": false,
+          "format": "string",
+          "name": "CLAUDINHO_LANG"
+        },
+        {
+          "description": "IANA timezone for kickoff times, e.g. America/Mexico_City (optional; default system)",
+          "isRequired": false,
+          "format": "string",
+          "name": "CLAUDINHO_TZ"
+        },
+        {
+          "description": "Commentary flair: off, subtle, or full (optional; default full)",
+          "isRequired": false,
+          "format": "string",
+          "name": "CLAUDINHO_FLAVOR"
+        },
+        {
+          "description": "Set to 'off' to hide read-only prediction-market signals (optional; informational only)",
+          "isRequired": false,
+          "format": "string",
+          "name": "CLAUDINHO_MARKETS"
+        }
+      ]
+    }
+  ]
+}
