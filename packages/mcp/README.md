@@ -95,13 +95,6 @@ block of your server entry:
 } } }
 ```
 
-## Other competitions
-
-By default the server follows the 2026 World Cup. Set the `CLAUDINHO_COMPETITION`
-env var (e.g. `fifa.friendly`) to point the live tools at another
-competition — useful for testing before the tournament. In Claude Code, add it
-to the `env` block of your MCP server entry.
-
 ## How it works
 
 The fixture list ships bundled in the package; only live state hits the network —

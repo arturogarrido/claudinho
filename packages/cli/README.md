@@ -190,21 +190,6 @@ Wires `claudinho hook` into Claude Code's `UserPromptSubmit`. During a match,
 the live score is injected into Claude's context so it can mention it naturally;
 off-match it's silent (zero added tokens). Restart Claude Code to activate.
 
-## Other competitions
-
-By default Claudinho follows the 2026 World Cup. To follow a different
-competition (e.g. international friendlies before the tournament starts):
-
-```bash
-export CLAUDINHO_COMPETITION=fifa.friendly
-claudinho live      # live friendlies
-unset CLAUDINHO_COMPETITION   # back to the World Cup
-```
-
-Only the live fetch changes; the bundled schedule is always the World Cup. The
-statusline/hook cache is keyed to the active competition, so switching with
-`CLAUDINHO_COMPETITION` never surfaces stale scores from the other competition.
-
 ## How it works
 
 The full fixture list (104 matches, groups, venues, host cities, kickoffs) ships **bundled**
