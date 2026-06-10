@@ -1,6 +1,6 @@
 # @claudinho/cli ⚽
 
-**The 2026 men's football tournament, right in your terminal.** Live scores, fixtures, group tables, and market odds — TZ-aware, localized, scriptable.
+**The 2026 men's football tournament, right in your terminal.** Live scores, fixtures, group tables, and market signals — TZ-aware, localized, scriptable.
 
 > ⚠️ **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.**
 > Claudinho is an independent, open-source fan project. It shows factual match
@@ -23,7 +23,7 @@ claudinho live              # matches in play right now
 claudinho next <TEAM>       # a team's next fixture + countdown   (e.g. next MEX)
 claudinho table [GROUP]     # group standings (default: all groups)
 claudinho match <id>        # a single match's detail
-claudinho markets [target]  # prediction-market odds: today | <date> | <id> | next <TEAM>
+claudinho markets [target]  # prediction-market signals: today | <date> | <id> | next <TEAM>
 claudinho share [target]    # copy-pasteable match snippet: today | live | <date> | <id> | next <TEAM>
 claudinho prompt            # one compact status line (for statusline/tmux/Starship)
 claudinho init-statusline   # wire it into the Claude Code statusline
@@ -70,7 +70,7 @@ localized per `--lang`, and they never affect `--json` output.
 
 ## Prediction-market signals
 
-`claudinho markets` shows **read-only** prediction-market odds — "who's favored" as
+`claudinho markets` shows **read-only** prediction-market signals — "who's favored" as
 market-implied percentages — for a date, a match, or a team's next fixture:
 
 ```bash
@@ -110,6 +110,9 @@ claudinho share 760415            # one match by id
 claudinho share next MEX --copy   # …and copy it straight to the clipboard
 ```
 
+<!-- DEMO CARD: verbatim output of `claudinho share next MEX --tz America/Mexico_City`.
+     REGENERATE immediately before merging — the market block is gate-conditional
+     and the numbers drift. Never hand-edit. -->
 ```text
 Next up for Mexico
 
@@ -117,9 +120,9 @@ Next up for Mexico
 Jun 11 · 13:00 America/Mexico_City
 Estadio Banorte, Mexico City, Mexico
 
-Prediction markets slightly favor Mexico.
-Mexico 56% · Draw 25% · South Africa 19%
-Source: Polymarket · informational only
+Prediction markets favor Mexico.
+Mexico 69% · Draw 20% · South Africa 10%
+Source: Polymarket · updated 07:54 UTC · informational only
 
 #VibingLaVidaLoca · Independent fan project · not affiliated with FIFA or Anthropic.
 Try it: npx @claudinho/cli next MEX
@@ -142,25 +145,10 @@ for scripts and future reuse. No clipboard tool? `claudinho share … | pbcopy` 
 
 ### Want an image?
 
-The snippet is plain text, so a **screenshot is your share card** — the disclaimer
-and emoji flags come along automatically. Grab it with your OS screenshot tool, or
-render a crisp terminal image with an existing tool (no Claudinho dependency, no
-account):
-
-```bash
-# capture the command's output directly (charmbracelet/freeze)
-freeze --execute "claudinho share next MEX" -o card.png
-
-# …or pipe the text into freeze / silicon
-claudinho share next MEX | freeze --language text -o card.png
-claudinho share next MEX | silicon -l txt -o card.png
-
-# …or paste it into a web tool like carbon.now.sh or ray.so
-```
-
-Claudinho stays text-first — it doesn't ship an image renderer, so there's nothing
-extra to install in the CLI and no fonts/licensing to worry about: whatever your
-terminal or the screenshot tool already draws (including the flags) is what you get.
+The snippet is plain text, so a screenshot *is* your share card — or render one with an
+existing tool, e.g. `freeze --execute "claudinho share next MEX" -o card.png`
+(charmbracelet/freeze), `silicon`, or carbon.now.sh. Claudinho stays text-first:
+no bundled image renderer, no fonts or licensing to worry about.
 
 ## Statusline (Claude Code)
 
@@ -171,7 +159,7 @@ claudinho init-statusline --print  # just print the snippet
 
 The statusline reads from a local micro-cache and **never blocks on the
 network** (<150ms). When several matches are live it shows them all inline:
-`⚽ 🇪🇸 1–1 🇮🇶 87' · 🇫🇷 1–2 🇨🇮 86'`. Customize via env:
+`⚽ 🇳🇴 1–1 🇫🇷 87' · 🇸🇳 1–2 🇮🇶 86'`. Customize via env:
 
 - `CLAUDINHO_TEAM=MEX` — show only your team's match
 - `CLAUDINHO_MAX=2` — cap how many live matches show inline (rest collapse to `+N`; default: all)
@@ -195,7 +183,7 @@ off-match it's silent (zero added tokens). Restart Claude Code to activate.
 The full fixture list (104 matches, groups, venues, host cities, kickoffs) ships **bundled**
 in the package, so the common path is offline and instant. Only live match
 state hits the network. Live scores come from **ESPN's** public scoreboard (a
-swappable provider, attributed in output as `Live data: ESPN`) and market odds
+swappable provider, attributed in output as `Live data: ESPN`) and market signals
 from Polymarket; provider attribution and rate limits are respected.
 
 ## License
