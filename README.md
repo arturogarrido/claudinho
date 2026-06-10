@@ -39,7 +39,7 @@ Estadio Banorte, Mexico City, Mexico
 
 Prediction markets favor Mexico.
 Mexico 69% · Draw 20% · South Africa 10%
-Source: Polymarket · updated 07:54 UTC · informational only
+Source: Polymarket · updated 08:15 UTC · informational only
 
 #VibingLaVidaLoca · Independent fan project · not affiliated with FIFA or Anthropic.
 Try it: npx @claudinho/cli next MEX
