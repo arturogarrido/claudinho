@@ -55,7 +55,10 @@ const program = new Command();
 
 program
   .name('claudinho')
-  .description('The 2026 football tournament in your terminal.\n' + DISCLAIMER)
+  .description(
+    'The 2026 men’s football tournament in your terminal, your Claude Code statusline, and any MCP client.\n' +
+      DISCLAIMER,
+  )
   .version(VERSION, '-v, --version')
   .option('--lang <code>', 'language: en, es, pt, fr')
   .option('--tz <zone>', 'IANA timezone, e.g. America/Mexico_City')
@@ -63,7 +66,7 @@ program
   .option('--no-color', 'disable ANSI colors')
   .option('--source <name>', 'live data provider (advanced)')
   .option('--flavor <level>', 'commentary flair: off, subtle, full (default: full)')
-  .option('--no-markets', 'hide prediction-market signals (informational odds)');
+  .option('--no-markets', 'hide prediction-market signals (informational only)');
 
 program.addHelpText('after', '\n#VibingLaVidaLoca ⚽');
 
@@ -93,7 +96,7 @@ program
 program
   .command('next')
   .description("show a team's next fixture")
-  .argument('<team>', 'team code, e.g. MEX')
+  .argument('[team]', 'team code, e.g. MEX (default: $CLAUDINHO_TEAM)')
   .action(async (team, _opts, cmd) => {
     try {
       await cmdNext(team, ctxFrom(cmd));
@@ -130,7 +133,7 @@ program
   .command('markets')
   .description('show prediction-market signals (read-only, informational only)')
   .argument('[target]', 'date (YYYY-MM-DD), match id, "today", or "next"')
-  .argument('[team]', 'team code when target is "next" (e.g. MEX)')
+  .argument('[team]', 'team code when target is "next" (default: $CLAUDINHO_TEAM)')
   .action(async (target, team, _opts, cmd) => {
     try {
       await cmdMarkets(target, team, ctxFrom(cmd));
@@ -143,7 +146,7 @@ program
   .command('share')
   .description('print a shareable, copy-pasteable match snippet (#VibingLaVidaLoca)')
   .argument('[target]', '"today" (default), "live", a date, a match id, or "next"')
-  .argument('[team]', 'team code when target is "next" (e.g. MEX)')
+  .argument('[team]', 'team code when target is "next" (default: $CLAUDINHO_TEAM)')
   .option('--style <style>', 'snippet style: social (default) or compact')
   .option('--copy', 'also copy the snippet to the clipboard (best-effort)')
   .option('--no-hashtag', 'omit the #VibingLaVidaLoca tag')

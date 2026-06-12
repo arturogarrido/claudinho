@@ -21,6 +21,9 @@ export {
   fixturesByTeam,
   fixturesByGroup,
   nextFixtureForTeam,
+  currentOrNextFixtureForTeam,
+  fixturesInLiveWindow,
+  LIVE_WINDOW_MS,
   groups,
 } from './schedule';
 
@@ -36,10 +39,12 @@ export {
   mergeLive,
   getMatchesForDate,
   getLiveMatches,
+  getMatchById,
+  marketFixtureForTeam,
   resolveCompetition,
   liveSourceLabel,
 } from './live';
-export type { LiveResult } from './live';
+export type { LiveResult, MatchByIdResult } from './live';
 export { DEFAULT_COMPETITION, competitionBase } from './adapters/espn';
 
 // Prediction-market signals (read-only sidecar; never embedded in Match).
@@ -61,6 +66,7 @@ export {
   hasSaneDistribution,
   isStaleSignal,
   isReliableMarketSignal,
+  marketRelevant,
   buildMarketSignal,
   DEFAULT_MAX_AGE_MS,
 } from './markets/normalize';

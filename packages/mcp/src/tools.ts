@@ -5,7 +5,6 @@
  * payload embedded as JSON for agents that want to parse it.
  */
 import {
-  allFixtures,
   asFlavorLevel,
   computeStandings,
   fixturesByDate,
@@ -15,15 +14,19 @@ import {
   getLiveMatches,
   getMarketSignal,
   getMarketSignals,
+  getMatchById,
   getMatchesForDate,
   groups,
   hasSaneDistribution,
   isReliableMarketSignal,
+  isFinished,
   liveSourceLabel,
   localDate,
   makeAdapter,
   makeMarketProvider,
   marketBlock,
+  marketFixtureForTeam,
+  marketRelevant,
   type Match,
   type MarketProvider,
   type MarketSignal,
@@ -51,6 +54,8 @@ export interface CommonOpts {
   adapter?: ProviderAdapter;
   /** Injected market provider (tests). Defaults to makeMarketProvider(). */
   marketProvider?: MarketProvider;
+  /** Injected clock (tests) for time-dependent gates (live windows, relevance). */
+  now?: Date;
 }
 
 function resolveAdapter(args: CommonOpts): ProviderAdapter {
@@ -66,12 +71,27 @@ function marketDisplayable(sig: MarketSignal): boolean {
   return !sig.ambiguous && sig.favorite != null && hasSaneDistribution(sig.outcomes);
 }
 
-function marketHeader(m: Match): string {
-  return `${m.home.flag} ${m.home.name} vs ${m.away.name} ${m.away.flag}`;
+/**
+ * Header for a market read, dated. The date is agent UX: "South Korea (Jun 18)"
+ * is the one token that stops a model conflating a future fixture's read (or
+ * its null) with the match being played right now — they skim like we do.
+ */
+function marketHeader(m: Match, args: CommonOpts): string {
+  const when = formatDate(m.kickoff, { tz: args.tz, locale: args.lang });
+  return `${m.home.flag} ${m.home.name} vs ${m.away.name} ${m.away.flag} (${when})`;
 }
 
-function marketText(m: Match, sig: MarketSignal): string {
-  return `${marketHeader(m)}\n${marketBlock(sig, m).join('\n')}`;
+function marketText(m: Match, sig: MarketSignal, args: CommonOpts): string {
+  return `${marketHeader(m, args)}\n${marketBlock(sig, m).join('\n')}`;
+}
+
+/** Null/suppressed-signal text, specific about WHY when the match is finished. */
+function noSignalText(m: Match, args: CommonOpts, now: Date): string {
+  if (marketRelevant(m, now)) return `No reliable market signal for ${marketHeader(m, args)}.`;
+  // "has finished" only when a live overlay confirmed it; a static fixture
+  // whose window merely lapsed gets the honest, hedged variant.
+  const verb = isFinished(m.status) ? 'has finished' : 'appears to have finished';
+  return `${marketHeader(m, args)} ${verb} — market signals are pre-match and in-play reads.`;
 }
 
 /** Structured, link-free market payload. `url` is always null in v1. */
@@ -162,10 +182,14 @@ async function reliableMarketData(
   matches: Match[],
 ): Promise<Record<string, ReturnType<typeof marketData>> | undefined> {
   if (!marketsEnabled()) return undefined;
-  const signals = await cachedMarketSignals(args, matches);
-  const now = new Date();
+  const now = args.now ?? new Date();
+  // Market reads are pre-match/in-play artifacts — never fetch/show for
+  // finished matches (a resolved "favorite" reads as a bug, not information).
+  const relevant = matches.filter((m) => marketRelevant(m, now));
+  if (relevant.length === 0) return undefined;
+  const signals = await cachedMarketSignals(args, relevant);
   const out: Record<string, ReturnType<typeof marketData>> = {};
-  for (const m of matches) {
+  for (const m of relevant) {
     const s = signals.get(m.id);
     if (s && isReliableMarketSignal(s, { now })) out[m.id] = marketData(s);
   }
@@ -227,27 +251,19 @@ export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
 export async function toolGetMatch(
   args: { id: string } & CommonOpts,
 ): Promise<ToolResult> {
-  let match = allFixtures().find((m) => m.id === args.id);
-  let degraded = false;
-  let liveSource: string | undefined;
-  if (match) {
-    try {
-      const adapter = resolveAdapter(args);
-      const live = await adapter.fetchByDate(match.kickoff.slice(0, 10));
-      match = live.find((m) => m.id === args.id) ?? match;
-      liveSource = adapter.name;
-    } catch {
-      degraded = true;
-    }
-  }
+  // ±1-day window fetch: the provider buckets scoreboard days in its own zone
+  // (ESPN: US/Eastern), so fetching only the fixture's UTC date can miss its
+  // live/final state and silently render the match as still scheduled.
+  const { match, degraded, source: liveSource } = await getMatchById(resolveAdapter(args), args.id);
   if (!match) {
     return { text: withDisclaimer(`No match found with id ${args.id}.`), data: { match: null } };
   }
   const opts = fmtOpts(args);
+  const now = args.now ?? new Date();
   let marketSignal: MarketSignal | undefined;
-  if (marketsEnabled()) {
+  if (marketsEnabled() && marketRelevant(match, now)) {
     const s = (await cachedMarketSignals(args, [match])).get(match.id);
-    if (s && isReliableMarketSignal(s, { now: new Date() })) marketSignal = s;
+    if (s && isReliableMarketSignal(s, { now })) marketSignal = s;
   }
   const base = matchLine(match, opts);
   const text = marketSignal ? `${base}\n${marketBlock(marketSignal, match).join('\n')}` : base;
@@ -318,7 +334,7 @@ export async function toolGetNextFixture(
 }
 
 /**
- * market_signal: read-only prediction-market odds for a single match (by id), a
+ * market_signal: read-only prediction-market signals for a single match (by id), a
  * team's next fixture, or all of a date's matches (default: today). Returns
  * market-implied percentages with attribution; never links, never advice.
  */
@@ -326,17 +342,20 @@ export async function toolGetMarketSignal(
   args: { matchId?: string; team?: string; date?: string } & CommonOpts,
 ): Promise<ToolResult> {
   const provider = resolveMarketProvider(args);
+  const now = args.now ?? new Date();
 
-  // Most specific: a single match by id.
+  // Most specific: a single match by id — with live overlay so FT gates the
+  // resolved market correctly (the static fixture's status never changes).
   if (args.matchId) {
-    const match = allFixtures().find((m) => m.id === args.matchId);
-    const sig = match ? await getMarketSignal(provider, match) : undefined;
+    const { match } = await getMatchById(resolveAdapter(args), args.matchId);
+    const relevant = match ? marketRelevant(match, now) : false;
+    const sig = match && relevant ? await getMarketSignal(provider, match) : undefined;
     const shown = match && sig && marketDisplayable(sig) ? sig : undefined;
     const text = !match
       ? `No match found with id ${args.matchId}.`
       : shown
-        ? marketText(match, shown)
-        : `No reliable market signal for ${marketHeader(match)}.`;
+        ? marketText(match, shown, args)
+        : noSignalText(match, args, now);
     return {
       text: withDisclaimer(text),
       data: {
@@ -347,17 +366,22 @@ export async function toolGetMarketSignal(
     };
   }
 
-  // A team's next fixture.
+  // A team's current-or-next fixture. Mid-match, a team query means the match
+  // being played — `nextFixtureForTeam` alone would skip it the moment kickoff
+  // passed and silently answer about a future fixture's (often gated) market.
   if (args.team) {
     const code = args.team.toUpperCase();
-    const fixture = nextFixtureForTeam(code);
-    const sig = fixture ? await getMarketSignal(provider, fixture) : undefined;
+    // Live-confirmed selection: handles extra time past the static window AND
+    // early FTs inside it (the static fixture's status is forever SCHEDULED).
+    const { match: fixture } = await marketFixtureForTeam(resolveAdapter(args), code, now);
+    const relevant = fixture ? marketRelevant(fixture, now) : false;
+    const sig = fixture && relevant ? await getMarketSignal(provider, fixture) : undefined;
     const shown = fixture && sig && marketDisplayable(sig) ? sig : undefined;
     const text = !fixture
       ? `No upcoming fixture found for ${code}.`
       : shown
-        ? marketText(fixture, shown)
-        : `No reliable market signal for ${code}'s next fixture.`;
+        ? marketText(fixture, shown, args)
+        : noSignalText(fixture, args, now);
     return {
       text: withDisclaimer(text),
       data: {
@@ -370,9 +394,9 @@ export async function toolGetMarketSignal(
   }
 
   // A date's matches (default: today).
-  const date = args.date ?? localDate(new Date().toISOString(), args.tz);
+  const date = args.date ?? localDate(now.toISOString(), args.tz);
   const { matches } = await getMatchesForDate(resolveAdapter(args), date);
-  const todays = fixturesByDate(date, matches, args.tz);
+  const todays = fixturesByDate(date, matches, args.tz).filter((m) => marketRelevant(m, now));
   const { signals } = await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS);
   const shown = todays
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
@@ -382,7 +406,7 @@ export async function toolGetMarketSignal(
     );
   const text = shown.length
     ? `Market signals on ${date}:\n${shown
-        .map(({ match, signal }) => marketText(match, signal))
+        .map(({ match, signal }) => marketText(match, signal, args))
         .join('\n\n')}`
     : `No reliable market signals on ${date}.`;
   return {
@@ -401,10 +425,12 @@ async function reliableSignalMap(
   matches: Match[],
 ): Promise<Map<string, MarketSignal>> {
   if (!marketsEnabled()) return new Map();
-  const signals = await cachedMarketSignals(args, matches);
-  const now = new Date();
+  const now = args.now ?? new Date();
+  const relevant = matches.filter((m) => marketRelevant(m, now));
+  if (relevant.length === 0) return new Map();
+  const signals = await cachedMarketSignals(args, relevant);
   const out = new Map<string, MarketSignal>();
-  for (const m of matches) {
+  for (const m of relevant) {
     const s = signals.get(m.id);
     if (s && isReliableMarketSignal(s, { now }) && marketDisplayable(s)) out.set(m.id, s);
   }
@@ -499,20 +525,9 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     );
   }
 
-  // a single match by id, with live overlay for that day.
+  // a single match by id, with live overlay (±1-day window — see toolGetMatch).
   if (args.matchId) {
-    let match = allFixtures().find((m) => m.id === args.matchId);
-    let source: string | undefined;
-    if (match) {
-      try {
-        const adapter = resolveAdapter(args);
-        const live = await adapter.fetchByDate(match.kickoff.slice(0, 10));
-        match = live.find((m) => m.id === args.matchId) ?? match;
-        source = adapter.name;
-      } catch {
-        /* keep static */
-      }
-    }
+    const { match, source } = await getMatchById(resolveAdapter(args), args.matchId);
     const matches = match ? [match] : [];
     return shareResult(
       'match',

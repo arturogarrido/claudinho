@@ -126,3 +126,34 @@ describe('inLiveWindow', () => {
     expect(inLiveWindow(new Date('2026-06-01T00:00:00Z').getTime())).toBe(false);
   });
 });
+
+describe('renderPrompt — live window, cold/stale cache → "syncing"', () => {
+  // NOW sits inside the real opener\'s live window (KO 2026-06-11T19:00Z).
+  it('says "live · syncing" instead of a countdown when the cache is missing', () => {
+    const line = renderPrompt(undefined, { now: NOW });
+    expect(line).toContain('live · syncing');
+    expect(line).not.toContain(' in ');
+  });
+
+  it('says "syncing" when the cache is STALE during the window', () => {
+    const s = state([], '2026-06-11T19:30:00Z'); // 30 min old → stale
+    expect(renderPrompt(s, { now: NOW })).toContain('live · syncing');
+  });
+
+  it('trusts a FRESH empty cache (feed says nothing live) → countdown', () => {
+    const s = state([]); // fresh timestamp, no live matches
+    expect(renderPrompt(s, { now: NOW })).toContain(' in ');
+  });
+
+  it('does NOT trust a fresh DEGRADED snapshot — syncing, not countdown', () => {
+    // The refresher writes { live: [], degraded: true } with a fresh timestamp
+    // when the fetch fails; that means "fetch failed", not "feed said empty".
+    const s = { ...state([]), degraded: true };
+    expect(renderPrompt(s, { now: NOW })).toContain('live · syncing');
+  });
+
+  it('applies the team filter: syncing only for a team in a window', () => {
+    expect(renderPrompt(undefined, { now: NOW, team: 'MEX' })).toContain('live · syncing');
+    expect(renderPrompt(undefined, { now: NOW, team: 'BRA' })).toContain(' in ');
+  });
+});

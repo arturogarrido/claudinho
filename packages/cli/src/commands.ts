@@ -2,21 +2,26 @@ import {
   allFixtures,
   computeStandings,
   countdown,
+  DEFAULT_COMPETITION,
   fixturesByDate,
   fixturesByGroup,
   formatDate,
   formatKickoff,
   formatShareSnippet,
   getMarketSignals,
+  getMatchById,
   groups,
   hasSaneDistribution,
+  isFinished,
   isReliableMarketSignal,
   isValidDate,
   isValidTimeZone,
   localDate,
   makeMarketProvider,
   marketBlock,
+  marketFixtureForTeam,
   marketLine,
+  marketRelevant,
   matchFlavor,
   matchLocation,
   nextFixtureForTeam,
@@ -53,7 +58,7 @@ import type {
   ShareStyle,
 } from '@claudinho/core';
 import { readCurrentState } from './cache';
-import { renderPrompt } from './statusline';
+import { liveMatchesFromCache, renderPrompt } from './statusline';
 import { renderHook } from './hook';
 import { runRefresh, shouldRefresh, spawnRefresh } from './refresh';
 import { initHook, initStatusline } from './install';
@@ -70,6 +75,8 @@ type Ctx = {
   marketProvider?: MarketProvider;
   /** Injection seam for `share --copy` so tests never touch the real clipboard. */
   copy?: (text: string) => boolean;
+  /** Injection seam for time-dependent gates (market relevance, live windows). */
+  now?: Date;
 };
 
 /** The injected adapter, or one constructed from the configured source. */
@@ -130,8 +137,12 @@ async function reliableMarketSignals(
   matches: Match[],
 ): Promise<Map<string, MarketSignal>> {
   if (ctx.cfg.markets === false) return new Map();
-  const raw = await marketSignalsFor(ctx, matches, DEFAULT_ON_MARKET_OPTS);
-  const now = new Date();
+  const now = ctx.now ?? new Date();
+  // Market reads are pre-match/in-play artifacts: never fetch (or show) them
+  // for finished matches — "markets favor X" after full time reads as a bug.
+  const relevant = matches.filter((m) => marketRelevant(m, now));
+  if (relevant.length === 0) return new Map();
+  const raw = await marketSignalsFor(ctx, relevant, DEFAULT_ON_MARKET_OPTS);
   const out = new Map<string, MarketSignal>();
   for (const [id, s] of raw) if (isReliableMarketSignal(s, { now })) out.set(id, s);
   return out;
@@ -165,9 +176,30 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
   if (cfg.tz && !isValidTimeZone(cfg.tz)) {
     process.stderr.write(t('warn.tz', { tz: cfg.tz }) + '\n');
   }
+  // Config-drift guard: a leftover CLAUDINHO_COMPETITION (e.g. from
+  // pre-tournament testing) silently points the live fetch at a different
+  // competition than the bundled schedule — fixtures render, scores never
+  // arrive. Warn loudly on user-facing commands; never on the statusline/hook
+  // hot path (those must stay single-line and silent).
+  const competition = resolveCompetition();
+  if (competition !== DEFAULT_COMPETITION) {
+    process.stderr.write(
+      `claudinho: CLAUDINHO_COMPETITION=${competition} — live data follows a different competition than the bundled 2026 schedule.\n`,
+    );
+  }
   if (date !== undefined && !isValidDate(date)) {
     throw new InputError(t('err.date', { date }));
   }
+}
+
+/**
+ * Resolve an optional team argument, falling back to CLAUDINHO_TEAM — the same
+ * env the statusline/hook already honor, so "my team" is configured once.
+ */
+function resolveTeamArg(team: string | undefined, usage: string): string {
+  const code = team ?? process.env.CLAUDINHO_TEAM;
+  if (!code) throw new InputError(usage);
+  return code.toUpperCase();
 }
 
 /** `claudinho today [date]` */
@@ -239,10 +271,10 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   out(disclaimer(t, c));
 }
 
-/** `claudinho next <team>` */
-export async function cmdNext(team: string, { cfg, t }: Ctx): Promise<void> {
+/** `claudinho next [team]` (team defaults to CLAUDINHO_TEAM) */
+export async function cmdNext(team: string | undefined, { cfg, t }: Ctx): Promise<void> {
   precheck(cfg, t);
-  const code = team.toUpperCase();
+  const code = resolveTeamArg(team, 'Usage: claudinho next <team> (or set CLAUDINHO_TEAM)');
   const fixture = nextFixtureForTeam(code);
 
   if (cfg.json) {
@@ -419,23 +451,19 @@ export function cmdInitHook(opts: { print?: boolean }, { cfg }: Ctx): void {
 export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   const { cfg, t } = ctx;
   precheck(cfg, t);
-  const adapter = adapterFor(ctx);
-  let match = allFixtures().find((m) => m.id === id);
-  let liveSource: string | undefined;
-  try {
-    if (match) {
-      const live = await adapter.fetchByDate(match.kickoff.slice(0, 10));
-      match = live.find((m) => m.id === id) ?? match;
-      liveSource = adapter.name;
-    }
-  } catch {
-    /* keep static */
-  }
+  // ±1-day window fetch: the provider buckets scoreboard days in its own zone,
+  // so fetching only the fixture's UTC date can miss its live/final state.
+  const { match, degraded, source: liveSource } = await getMatchById(adapterFor(ctx), id);
 
   const marketSignal = match ? await reliableMarketSignalFor(ctx, match) : undefined;
 
   if (cfg.json) {
-    emitJson({ match: match ?? null, source: liveSource ?? null, marketSignal: marketSignal ?? null });
+    emitJson({
+      degraded,
+      match: match ?? null,
+      source: liveSource ?? null,
+      marketSignal: marketSignal ?? null,
+    });
     return;
   }
 
@@ -483,8 +511,25 @@ function marketDisplayable(sig: MarketSignal): boolean {
   return !sig.ambiguous && sig.favorite != null && hasSaneDistribution(sig.outcomes);
 }
 
-function marketHeaderLine(m: Match): string {
-  return `${m.home.flag} ${m.home.name} vs ${m.away.name} ${m.away.flag}`;
+/**
+ * Header for a market read. Includes the kickoff date — "South Korea (Jun 18)"
+ * and "South Africa (today)" are one skim apart, and a dated header is what
+ * stops a reader (or an agent) conflating a future fixture's read with the
+ * match being played right now.
+ */
+function marketHeaderLine(m: Match, cfg: CliConfig): string {
+  const when = formatDate(m.kickoff, { tz: cfg.tz, locale: cfg.lang });
+  return `${m.home.flag} ${m.home.name} vs ${m.away.name} ${m.away.flag} · ${when}`;
+}
+
+/** Null-signal line, specific about finished matches (market reads are pre-match). */
+function noSignalLine(m: Match, now: Date): string {
+  if (marketRelevant(m, now)) return 'No market signal for this match.';
+  // "has finished" only when a live overlay confirmed it; a static fixture
+  // whose window merely lapsed gets the honest, hedged variant.
+  return isFinished(m.status)
+    ? 'Match has finished — market signals are pre-match and in-play reads.'
+    : 'Match appears to have finished — market signals are pre-match and in-play reads.';
 }
 
 function printMarketBlock(m: Match, sig: MarketSignal, c: Painter): void {
@@ -508,15 +553,20 @@ export async function cmdMarkets(
 ): Promise<void> {
   const { cfg, t } = ctx;
 
-  // markets next <team>
+  // markets next <team> — prefers the team's IN-PLAY match when one is live:
+  // mid-match, "what do markets say about MEX" means the match being played,
+  // not next week's (whose thin market would gate to an empty answer).
   if (target === 'next') {
     precheck(cfg, t);
-    if (!team) throw new InputError('Usage: claudinho markets next <team>');
-    const code = team.toUpperCase();
-    const fixture = nextFixtureForTeam(code);
-    const sig = fixture
-      ? (await marketSignalsFor(ctx, [fixture], MARKETS_CMD_OPTS)).get(fixture.id)
-      : undefined;
+    const code = resolveTeamArg(team, 'Usage: claudinho markets next <team> (or set CLAUDINHO_TEAM)');
+    const now = ctx.now ?? new Date();
+    // Live-confirmed selection: handles extra time past the static window AND
+    // early FTs inside it (the static fixture's status is forever SCHEDULED).
+    const { match: fixture } = await marketFixtureForTeam(adapterFor(ctx), code, now);
+    const sig =
+      fixture && marketRelevant(fixture, now)
+        ? (await marketSignalsFor(ctx, [fixture], MARKETS_CMD_OPTS)).get(fixture.id)
+        : undefined;
     const shown = sig && marketDisplayable(sig) ? sig : undefined;
     if (cfg.json) {
       emitJson({
@@ -532,10 +582,10 @@ export async function cmdMarkets(
     if (!fixture) {
       out(c.dim('  ' + t('next.none', { team: code })));
     } else {
-      out(header(marketHeaderLine(fixture), c));
+      out(header(marketHeaderLine(fixture, cfg), c));
       out();
       if (shown) printMarketBlock(fixture, shown, c);
-      else out(c.dim('    No market signal for this match.'));
+      else out(c.dim('    ' + noSignalLine(fixture, now)));
     }
     out();
     out(disclaimer(t, c));
@@ -546,10 +596,13 @@ export async function cmdMarkets(
   // markets <id>  (anything that isn't a date or the "today" keyword)
   if (target && target !== 'today' && !isValidDate(target)) {
     precheck(cfg, t);
-    const match = allFixtures().find((m) => m.id === target);
-    const sig = match
-      ? (await marketSignalsFor(ctx, [match], MARKETS_CMD_OPTS)).get(match.id)
-      : undefined;
+    const now = ctx.now ?? new Date();
+    // Live overlay (±1-day window) so FT gates the resolved market correctly.
+    const { match } = await getMatchById(adapterFor(ctx), target);
+    const sig =
+      match && marketRelevant(match, now)
+        ? (await marketSignalsFor(ctx, [match], MARKETS_CMD_OPTS)).get(match.id)
+        : undefined;
     const shown = sig && marketDisplayable(sig) ? sig : undefined;
     if (cfg.json) {
       emitJson({ matchId: target, informationalOnly: true, signal: shown ?? null });
@@ -560,10 +613,10 @@ export async function cmdMarkets(
     if (!match) {
       out(c.dim('  ' + t('match.none', { id: target })));
     } else {
-      out(header(marketHeaderLine(match), c));
+      out(header(marketHeaderLine(match, cfg), c));
       out();
       if (shown) printMarketBlock(match, shown, c);
-      else out(c.dim('    No market signal for this match.'));
+      else out(c.dim('    ' + noSignalLine(match, now)));
     }
     out();
     out(disclaimer(t, c));
@@ -574,11 +627,13 @@ export async function cmdMarkets(
   // markets [today | <date>]
   const explicitDate = target && target !== 'today' ? target : undefined;
   precheck(cfg, t, explicitDate);
-  const date = explicitDate ?? localDate(new Date().toISOString(), cfg.tz);
+  const now = ctx.now ?? new Date();
+  const date = explicitDate ?? localDate(now.toISOString(), cfg.tz);
   const { matches } = await getMatchesForDate(adapterFor(ctx), date);
   const todays = fixturesByDate(date, matches, cfg.tz);
-  const signals = await marketSignalsFor(ctx, todays, MARKETS_CMD_OPTS);
-  const rows = todays
+  const relevant = todays.filter((m) => marketRelevant(m, now));
+  const signals = await marketSignalsFor(ctx, relevant, MARKETS_CMD_OPTS);
+  const rows = relevant
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
     .filter(
       (r): r is { match: Match; signal: MarketSignal } =>
@@ -600,7 +655,7 @@ export async function cmdMarkets(
     out(c.dim(`  No market signals available for ${date}.`));
   } else {
     for (const { match, signal } of rows) {
-      out('  ' + c.bold(marketHeaderLine(match)));
+      out('  ' + c.bold(marketHeaderLine(match, cfg)));
       printMarketBlock(match, signal, c);
       out();
     }
@@ -737,8 +792,7 @@ export async function cmdShare(
   // share next <team>
   if (target === 'next') {
     precheck(cfg, t);
-    if (!team) throw new InputError('Usage: claudinho share next <team>');
-    const code = team.toUpperCase();
+    const code = resolveTeamArg(team, 'Usage: claudinho share next <team> (or set CLAUDINHO_TEAM)');
     const fixture = nextFixtureForTeam(code);
     const matches = fixture ? [fixture] : [];
     const signals = await reliableShareSignals(ctx, matches);
@@ -772,18 +826,9 @@ export async function cmdShare(
   // share <id>  (anything that isn't a date or the "today" keyword)
   if (target && target !== 'today' && !isValidDate(target)) {
     precheck(cfg, t);
-    const adapter = adapterFor(ctx);
-    let match = allFixtures().find((m) => m.id === target);
-    let source: string | undefined;
-    try {
-      if (match) {
-        const live = await adapter.fetchByDate(match.kickoff.slice(0, 10));
-        match = live.find((m) => m.id === target) ?? match;
-        source = adapter.name;
-      }
-    } catch {
-      /* keep static */
-    }
+    // ±1-day window fetch (see cmdMatch): the provider's scoreboard day can
+    // differ from the fixture's UTC date.
+    const { match, source } = await getMatchById(adapterFor(ctx), target);
     const matches = match ? [match] : [];
     const signals = await reliableShareSignals(ctx, matches);
     emitShare(
@@ -840,9 +885,11 @@ export async function cmdShare(
 }
 
 /**
- * `vibe` — a tiny, offline easter egg. Prints a random matchday-coder one-liner
- * signed with the project's social tag. No network, no cache, no i18n: the
- * Spanglish is the joke. #VibingLaVidaLoca
+ * `vibe` — a tiny easter egg. Prints a random matchday-coder one-liner signed
+ * with the project's social tag. No network and no i18n (the Spanglish is the
+ * joke); a best-effort COLD cache read (never the hot path) lets the line nod
+ * to a live score, and the static schedule flavors opening/final day.
+ * #VibingLaVidaLoca
  */
 const VIBES = [
   'Shipping code, watching goals.',
@@ -854,17 +901,64 @@ const VIBES = [
   'Stoppage time and a clean stack trace.',
   'Coding into extra time.',
 ];
+const VIBES_OPENER = [
+  'Day one of the tournament. Save your work — it’s about to get loud.',
+  'Opening day: fresh bracket, fresh branch.',
+];
+const VIBES_FINAL = [
+  'Final day. One last build, one last whistle.',
+  'Ship it before the trophy does.',
+];
+
+/**
+ * The live-score segment for a vibe line, e.g. "🇰🇷 1–1 🇨🇿 69'". Prefers the
+ * CLAUDINHO_TEAM match, else the first live match; undefined when nothing is
+ * live. Pure — exported for tests.
+ */
+export function vibeLiveSegment(live: Match[], team?: string): string | undefined {
+  const code = team?.toUpperCase();
+  const pick =
+    (code && live.find((m) => m.home.code === code || m.away.code === code)) ?? live[0];
+  if (!pick) return undefined;
+  const minute = pick.status === 'HT' ? 'HT' : pick.minute ? `${pick.minute}'` : 'LIVE';
+  return `${pick.home.flag} ${scoreline(pick)} ${pick.away.flag} ${minute}`;
+}
+
+/** The vibe pool for a local date: opener/final days mix in themed lines. */
+export function vibePool(todayLocal: string, fixtures: Match[] = allFixtures()): string[] {
+  let first: string | undefined;
+  let last: string | undefined;
+  for (const m of fixtures) {
+    const d = m.kickoff.slice(0, 10);
+    if (!first || d < first) first = d;
+    if (!last || d > last) last = d;
+  }
+  if (todayLocal === first) return [...VIBES, ...VIBES_OPENER];
+  if (todayLocal === last) return [...VIBES, ...VIBES_FINAL];
+  return VIBES;
+}
 
 export function cmdVibe(ctx: Ctx): void {
   const { cfg } = ctx;
-  const line = VIBES[Math.floor(Math.random() * VIBES.length)];
+  const pool = vibePool(localDate((ctx.now ?? new Date()).toISOString(), cfg.tz));
+  const line = pool[Math.floor(Math.random() * pool.length)];
+  let liveSeg: string | undefined;
+  try {
+    const state = readCurrentState(cfg.source, resolveCompetition());
+    liveSeg = vibeLiveSegment(
+      liveMatchesFromCache(state, (ctx.now ?? new Date()).getTime()),
+      process.env.CLAUDINHO_TEAM,
+    );
+  } catch {
+    // The easter egg stays harmless: any cache problem → plain vibe.
+  }
   if (cfg.json) {
-    emitJson({ vibe: line, tag: '#VibingLaVidaLoca' });
+    emitJson({ vibe: line, tag: '#VibingLaVidaLoca', ...(liveSeg ? { live: liveSeg } : {}) });
     return;
   }
   const c = painterFor(cfg);
   out();
-  out('  ⚽ ' + c.bold(line));
+  out('  ⚽ ' + (liveSeg ? `${liveSeg} — ` : '') + c.bold(line ?? ''));
   out('  ' + c.cyan('#VibingLaVidaLoca'));
   out();
 }

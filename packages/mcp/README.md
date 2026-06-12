@@ -37,7 +37,7 @@ Developer → Edit Config, then restart. Codex config file: `~/.codex/config.tom
 | `get_match` | a single match by id |
 | `get_standings` | group table(s) — one group `A`–`L`, or all |
 | `get_next_fixture` | a team's next match (3-letter code, e.g. `MEX`) — fully offline |
-| `get_market_signal` | read-only prediction-market signal for a match, a team's next fixture, or a date — informational only |
+| `get_market_signal` | read-only prediction-market signal for a match, a team's current-or-next fixture (in-play preferred while live), or a date — informational only |
 | `get_share_snippet` | a copy-pasteable plain-text match card — hand the returned snippet to the user as-is |
 
 All tools are **read-only** (`readOnlyHint`) and accept optional `tz`, `lang`
@@ -50,6 +50,7 @@ the prediction-market read).
 
 ## Market signals
 
+Market signals are pre-match and in-play reads — finished matches never show one.
 `get_today` / `get_match` include a short market line when a reliable market exists
 (slugs are auto-derived per fixture; matching fails closed). **Read-only and
 informational only — not betting advice:** market-implied percentages with Polymarket

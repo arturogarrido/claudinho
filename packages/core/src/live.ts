@@ -5,7 +5,8 @@
  */
 import { competitionBase, DEFAULT_COMPETITION, EspnAdapter } from './adapters/espn';
 import type { ProviderAdapter } from './adapters/types';
-import { allFixtures } from './schedule';
+import { isFinished } from './normalize';
+import { allFixtures, fixturesByTeam, LIVE_WINDOW_MS, nextFixtureForTeam } from './schedule';
 import type { Match } from './types';
 
 /**
@@ -94,6 +95,82 @@ function shiftUtcDate(dateISO: string, days: number): string {
   return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days))
     .toISOString()
     .slice(0, 10);
+}
+
+export interface MatchByIdResult {
+  match?: Match;
+  degraded: boolean;
+  source?: string;
+}
+
+/**
+ * Extra slack past the static live window for team-query candidate selection:
+ * a knockout match in extra time + penalties runs to ~kickoff + 180 min, well
+ * past LIVE_WINDOW_MS (140). The slack only widens which fixture we *check*
+ * with a live overlay — the overlay's status, not the clock, then decides.
+ */
+const EXTRA_TIME_SLACK_MS = 60 * 60_000;
+
+/**
+ * The fixture a team-scoped MARKET query should be about, live-confirmed.
+ * Static window math alone fails twice at the edges: a match in extra time
+ * (now > kickoff + 140min, still LIVE) would be skipped for next week's
+ * fixture, and a just-finished match (inside the window, already FT) would be
+ * selected over the next one. So: pick the in-window candidate using a widened
+ * window, overlay live state, and fall through to the next fixture when the
+ * overlay says the candidate is finished. Degraded fetches keep the static
+ * candidate (fail-closed: the market-relevance gate then errs toward showing
+ * nothing rather than something wrong).
+ */
+export async function marketFixtureForTeam(
+  adapter: ProviderAdapter,
+  code: string,
+  now: Date = new Date(),
+): Promise<MatchByIdResult> {
+  const nowMs = now.getTime();
+  const candidate = fixturesByTeam(code).find((m) => {
+    const k = Date.parse(m.kickoff);
+    return nowMs >= k && nowMs <= k + LIVE_WINDOW_MS + EXTRA_TIME_SLACK_MS;
+  });
+  if (candidate) {
+    const r = await getMatchById(adapter, candidate.id);
+    const m = r.match ?? candidate;
+    if (!isFinished(m.status)) return { ...r, match: m };
+    // Confirmed finished → the team's market story has moved on.
+  }
+  const next = nextFixtureForTeam(code, { from: now });
+  return { match: next, degraded: false };
+}
+
+/**
+ * A single match by id, with live overlay. The provider's scoreboard buckets
+ * days in its own zone (ESPN: US/Eastern), so a fixture's UTC date can differ
+ * from the scoreboard day it's filed under — a 02:00Z kickoff belongs to the
+ * previous ET evening, and fetching only the UTC date silently misses its live
+ * state (the match then renders from the static schedule as if scheduled).
+ * Fetch the ±1-day window around the fixture's UTC date instead — the same
+ * trick `getMatchesForDate` uses — and fall back to the static fixture on any
+ * provider error.
+ */
+export async function getMatchById(
+  adapter: ProviderAdapter,
+  id: string,
+): Promise<MatchByIdResult> {
+  const base = allFixtures().find((m) => m.id === id);
+  if (!base) return { match: undefined, degraded: false };
+  const day = base.kickoff.slice(0, 10);
+  try {
+    const live = adapter.fetchWindow
+      ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
+      : await adapter.fetchByDate(day);
+    const hit = live.find((m) => m.id === id);
+    // Attribute the provider only when live data actually served the match —
+    // a static fixture rendered after a successful-but-missing fetch is not
+    // "Live data: ESPN".
+    return { match: hit ?? base, degraded: false, source: hit ? adapter.name : undefined };
+  } catch {
+    return { match: base, degraded: true };
+  }
 }
 
 /** Currently-live matches; empty + degraded on error. */

@@ -20,8 +20,18 @@ const fakeAdapter: ProviderAdapter = {
   },
 };
 
-const synth = () =>
-  new FakeMarketProvider({ synthesize: true, now: new Date('2026-06-13T12:00:00Z') });
+/**
+ * Fixed clock for time-dependent gates (relevance, live windows, freshness) —
+ * deterministic forever, including after the tournament when every fixture's
+ * window is in the real past.
+ */
+const TEST_NOW = new Date('2026-06-13T12:00:00Z');
+
+const synth = () => new FakeMarketProvider({ synthesize: true, now: TEST_NOW });
+
+/** A fixture still upcoming at TEST_NOW (its market read is relevant). */
+const upcoming = (): Match =>
+  allFixtures().find((m) => Date.parse(m.kickoff) > TEST_NOW.getTime())!;
 
 type MarketData = {
   market: { url: null };
@@ -31,8 +41,13 @@ type MarketData = {
 
 describe('toolGetMarketSignal', () => {
   it('returns a link-free, informational signal for a match id', async () => {
-    const id = allFixtures()[0]!.id;
-    const r = await toolGetMarketSignal({ matchId: id, marketProvider: synth() });
+    const id = upcoming().id;
+    const r = await toolGetMarketSignal({
+      matchId: id,
+      adapter: fakeAdapter,
+      marketProvider: synth(),
+      now: TEST_NOW,
+    });
     const data = r.data as { matchId: string; signal: MarketData | null };
     expect(data.matchId).toBe(id);
     expect(data.signal).not.toBeNull();
@@ -44,17 +59,55 @@ describe('toolGetMarketSignal', () => {
   });
 
   it('returns a null signal for an unknown match id', async () => {
-    const r = await toolGetMarketSignal({ matchId: 'nope', marketProvider: synth() });
+    const r = await toolGetMarketSignal({ matchId: 'nope', adapter: fakeAdapter, marketProvider: synth() });
     expect((r.data as { signal: null }).signal).toBeNull();
     expect(r.text).toContain('No match found');
   });
 
-  it("resolves a team's next fixture", async () => {
-    const team = allFixtures()[0]!.home.code;
-    const r = await toolGetMarketSignal({ team, marketProvider: synth() });
+  it("resolves a team's current-or-next fixture", async () => {
+    const team = upcoming().home.code;
+    const r = await toolGetMarketSignal({ team, adapter: fakeAdapter, marketProvider: synth(), now: TEST_NOW });
     const data = r.data as { team: string; informationalOnly: boolean };
     expect(data.team).toBe(team);
     expect(data.informationalOnly).toBe(true);
+  });
+
+  it("prefers the team's IN-PLAY match over their next fixture", async () => {
+    // Mid-opener clock: the first fixture is being played right now. A plain
+    // "next fixture" lookup would skip it and answer about a future match.
+    const opener = allFixtures()[0]!;
+    const during = new Date(Date.parse(opener.kickoff) + 30 * 60_000);
+    const r = await toolGetMarketSignal({
+      team: opener.home.code,
+      adapter: fakeAdapter,
+      marketProvider: synth(),
+      now: during,
+    });
+    expect((r.data as { matchId: string }).matchId).toBe(opener.id);
+  });
+
+  it('suppresses the signal for a finished match (market reads are pre-match)', async () => {
+    const opener = allFixtures()[0]!;
+    const after = new Date(Date.parse(opener.kickoff) + 6 * 60 * 60_000);
+    const r = await toolGetMarketSignal({
+      matchId: opener.id,
+      adapter: fakeAdapter,
+      marketProvider: synth(),
+      now: after,
+    });
+    expect((r.data as { signal: unknown }).signal).toBeNull();
+    expect(r.text).toContain('market signals are pre-match and in-play reads');
+  });
+
+  it('dates the fixture in the null-signal text (agents skim)', async () => {
+    const r = await toolGetMarketSignal({
+      matchId: upcoming().id,
+      adapter: fakeAdapter,
+      marketProvider: new FakeMarketProvider(), // synthesize off → no signal
+      now: TEST_NOW,
+    });
+    expect(r.text).toContain('No reliable market signal for');
+    expect(r.text).toMatch(/\(.+\)/); // the "(Jun 18)"-style date disambiguator
   });
 
   it('lists a date of signals (default branch)', async () => {
@@ -63,6 +116,7 @@ describe('toolGetMarketSignal', () => {
       tz: 'UTC',
       adapter: fakeAdapter,
       marketProvider: synth(),
+      now: TEST_NOW,
     });
     const data = r.data as { date: string; signals: MarketData[] };
     expect(data.date).toBe('2026-06-13');
@@ -85,6 +139,7 @@ describe('toolGetMarketSignal', () => {
       tz: 'UTC',
       adapter: fakeAdapter,
       marketProvider: boom,
+      now: TEST_NOW,
     });
     expect((r.data as { signals: unknown[] }).signals).toEqual([]);
   });
@@ -97,6 +152,7 @@ describe('default-on market context', () => {
       tz: 'UTC',
       adapter: fakeAdapter,
       marketProvider: synth(),
+      now: TEST_NOW,
     });
     const data = r.data as { marketSignals?: Record<string, MarketData> };
     expect(data.marketSignals).toBeDefined();
@@ -104,8 +160,8 @@ describe('default-on market context', () => {
   });
 
   it('get_match appends a reliable market block', async () => {
-    const id = allFixtures()[0]!.id;
-    const r = await toolGetMatch({ id, adapter: fakeAdapter, marketProvider: synth() });
+    const id = upcoming().id;
+    const r = await toolGetMatch({ id, adapter: fakeAdapter, marketProvider: synth(), now: TEST_NOW });
     const data = r.data as { marketSignal: MarketData | null };
     expect(data.marketSignal).not.toBeNull();
     expect(r.text).toContain('Prediction markets');

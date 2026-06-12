@@ -60,6 +60,42 @@ export function nextFixtureForTeam(
   );
 }
 
+/** A fixture is potentially live from kickoff until ~kickoff + 140 min. */
+export const LIVE_WINDOW_MS = 140 * 60_000;
+
+/** Fixtures whose live window contains `now` (cheap, static — no network). */
+export function fixturesInLiveWindow(
+  now = Date.now(),
+  fixtures: Match[] = SCHEDULE,
+): Match[] {
+  return fixtures
+    .filter((m) => {
+      const k = Date.parse(m.kickoff);
+      return now >= k && now <= k + LIVE_WINDOW_MS;
+    })
+    .sort(byKickoff);
+}
+
+/**
+ * The team's in-play fixture when one is inside its live window, else the next
+ * upcoming fixture. This is "the match that matters for <team> right now":
+ * mid-match, a user (or an agent) asking about a team almost always means the
+ * one being played — `nextFixtureForTeam` alone would skip it the moment the
+ * kickoff is in the past and silently answer about next week.
+ */
+export function currentOrNextFixtureForTeam(
+  code: string,
+  opts: { from?: Date; fixtures?: Match[] } = {},
+): Match | undefined {
+  const from = opts.from ?? new Date();
+  const nowMs = from.getTime();
+  const inPlay = fixturesByTeam(code, opts.fixtures ?? SCHEDULE).find((m) => {
+    const k = Date.parse(m.kickoff);
+    return nowMs >= k && nowMs <= k + LIVE_WINDOW_MS;
+  });
+  return inPlay ?? nextFixtureForTeam(code, opts);
+}
+
 /** Sorted list of distinct group letters present in the schedule. */
 export function groups(fixtures: Match[] = SCHEDULE): string[] {
   const set = new Set<string>();
