@@ -110,22 +110,18 @@ claudinho share 760415            # one match by id
 claudinho share next MEX --copy   # …and copy it straight to the clipboard
 ```
 
-<!-- DEMO CARD: verbatim output of `claudinho share next MEX --tz America/Mexico_City`.
+<!-- DEMO CARD: verbatim output of `claudinho share next USA --tz America/Los_Angeles`.
      REGENERATE immediately before merging — the market block is gate-conditional
      and the numbers drift. Never hand-edit. -->
 ```text
-Next up for Mexico
+Next up for United States
 
-🇲🇽 Mexico vs South Africa 🇿🇦
-Jun 11 · 13:00 America/Mexico_City
-Estadio Banorte, Mexico City, Mexico
-
-Prediction markets favor Mexico.
-Mexico 69% · Draw 20% · South Africa 10%
-Source: Polymarket · updated 08:15 UTC · informational only
+🇺🇸 United States vs Paraguay 🇵🇾
+Jun 12 · 18:00 America/Los_Angeles
+SoFi Stadium, Inglewood, California, USA
 
 #VibingLaVidaLoca · Independent fan project · not affiliated with FIFA or Anthropic.
-Try it: npx @claudinho/cli next MEX
+Try it: npx @claudinho/cli next USA
 ```
 
 Snippets are **plain text** (no color codes — they paste cleanly everywhere) and
