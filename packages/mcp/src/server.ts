@@ -268,7 +268,7 @@ export function buildServer(): McpServer {
           role: 'user',
           content: {
             type: 'text',
-            text: `Using get_next_fixture, get_standings, and get_market_signal, tell me about ${team}'s next match in the 2026 tournament, their current group standing, and what prediction markets currently say about that match. Treat the market percentages as informational context only — relay them factually, never as betting or trading advice.`,
+            text: `Using get_next_fixture, get_standings, and get_market_signal, tell me about ${team}'s next match in the 2026 tournament, their current group standing, and what prediction markets currently say about that match. Always state each fixture's date so a market read is never mistaken for a different match. Treat the market percentages as informational context only — relay them factually, never as betting or trading advice.`,
           },
         },
       ],

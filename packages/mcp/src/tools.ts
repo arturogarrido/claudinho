@@ -21,6 +21,7 @@ import {
   groups,
   hasSaneDistribution,
   isReliableMarketSignal,
+  isFinished,
   liveSourceLabel,
   localDate,
   makeAdapter,
@@ -87,9 +88,11 @@ function marketText(m: Match, sig: MarketSignal, args: CommonOpts): string {
 
 /** Null/suppressed-signal text, specific about WHY when the match is finished. */
 function noSignalText(m: Match, args: CommonOpts, now: Date): string {
-  return marketRelevant(m, now)
-    ? `No reliable market signal for ${marketHeader(m, args)}.`
-    : `${marketHeader(m, args)} has finished — market signals are pre-match and in-play reads.`;
+  if (marketRelevant(m, now)) return `No reliable market signal for ${marketHeader(m, args)}.`;
+  // "has finished" only when a live overlay confirmed it; a static fixture
+  // whose window merely lapsed gets the honest, hedged variant.
+  const verb = isFinished(m.status) ? 'has finished' : 'appears to have finished';
+  return `${marketHeader(m, args)} ${verb} — market signals are pre-match and in-play reads.`;
 }
 
 /** Structured, link-free market payload. `url` is always null in v1. */
@@ -332,7 +335,7 @@ export async function toolGetNextFixture(
 }
 
 /**
- * market_signal: read-only prediction-market odds for a single match (by id), a
+ * market_signal: read-only prediction-market signals for a single match (by id), a
  * team's next fixture, or all of a date's matches (default: today). Returns
  * market-implied percentages with attribution; never links, never advice.
  */
@@ -342,9 +345,10 @@ export async function toolGetMarketSignal(
   const provider = resolveMarketProvider(args);
   const now = args.now ?? new Date();
 
-  // Most specific: a single match by id.
+  // Most specific: a single match by id — with live overlay so FT gates the
+  // resolved market correctly (the static fixture's status never changes).
   if (args.matchId) {
-    const match = allFixtures().find((m) => m.id === args.matchId);
+    const { match } = await getMatchById(resolveAdapter(args), args.matchId);
     const relevant = match ? marketRelevant(match, now) : false;
     const sig = match && relevant ? await getMarketSignal(provider, match) : undefined;
     const shown = match && sig && marketDisplayable(sig) ? sig : undefined;
@@ -368,7 +372,11 @@ export async function toolGetMarketSignal(
   // passed and silently answer about a future fixture's (often gated) market.
   if (args.team) {
     const code = args.team.toUpperCase();
-    const fixture = currentOrNextFixtureForTeam(code, { from: now });
+    const base = currentOrNextFixtureForTeam(code, { from: now });
+    // Live overlay: an early FT ends relevance; extra time extends it.
+    const fixture = base
+      ? ((await getMatchById(resolveAdapter(args), base.id)).match ?? base)
+      : undefined;
     const relevant = fixture ? marketRelevant(fixture, now) : false;
     const sig = fixture && relevant ? await getMarketSignal(provider, fixture) : undefined;
     const shown = fixture && sig && marketDisplayable(sig) ? sig : undefined;

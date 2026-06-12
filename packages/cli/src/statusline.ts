@@ -104,10 +104,13 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
 
   // Cold/stale cache during a live window: a countdown here is actively
   // misleading — a match is on, and the static schedule alone tells us that.
-  // Say "live · syncing" until the refresher lands a snapshot. A FRESH snapshot
-  // with no live matches is trusted as-is (per the feed nothing is in play —
-  // early FT, delay, postponement) and falls through to the countdown.
-  const cacheFresh = !!state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
+  // Say "live · syncing" until the refresher lands a snapshot. A FRESH,
+  // NON-DEGRADED snapshot with no live matches is trusted as-is (per the feed
+  // nothing is in play — early FT, delay, postponement) and falls through to
+  // the countdown; a degraded snapshot means "the fetch failed", not "the
+  // feed said empty", so it must not bring the countdown back mid-match.
+  const cacheFresh =
+    !!state && state.degraded !== true && ageMs(state, nowMs) < DISPLAY_STALE_MS;
   if (!cacheFresh) {
     const win = fixturesInLiveWindow(nowMs).filter(
       (m) => !team || m.home.code === team || m.away.code === team,

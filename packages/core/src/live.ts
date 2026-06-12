@@ -123,11 +123,11 @@ export async function getMatchById(
     const live = adapter.fetchWindow
       ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
       : await adapter.fetchByDate(day);
-    return {
-      match: live.find((m) => m.id === id) ?? base,
-      degraded: false,
-      source: adapter.name,
-    };
+    const hit = live.find((m) => m.id === id);
+    // Attribute the provider only when live data actually served the match —
+    // a static fixture rendered after a successful-but-missing fetch is not
+    // "Live data: ESPN".
+    return { match: hit ?? base, degraded: false, source: hit ? adapter.name : undefined };
   } catch {
     return { match: base, degraded: true };
   }

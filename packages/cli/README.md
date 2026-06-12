@@ -20,10 +20,11 @@ npx @claudinho/cli today
 ```bash
 claudinho today [date]      # a day's fixtures in your timezone (default: today), live scores inline
 claudinho live              # matches in play right now
-claudinho next <TEAM>       # a team's next fixture + countdown   (e.g. next MEX)
+claudinho next [TEAM]       # a team's next fixture + countdown (default: $CLAUDINHO_TEAM)
 claudinho table [GROUP]     # group standings (default: all groups)
 claudinho match <id>        # a single match's detail
 claudinho markets [target]  # prediction-market signals: today | <date> | <id> | next <TEAM>
+                            #   (next prefers the team's IN-PLAY match while one is live)
 claudinho share [target]    # copy-pasteable match snippet: today | live | <date> | <id> | next <TEAM>
 claudinho prompt            # one compact status line (for statusline/tmux/Starship)
 claudinho init-statusline   # wire it into the Claude Code statusline
@@ -77,7 +78,7 @@ market-implied percentages — for a date, a match, or a team's next fixture:
 claudinho markets                 # today's signals
 claudinho markets 2026-06-11      # a specific date
 claudinho markets 760415          # one match by id
-claudinho markets next MEX        # a team's next fixture
+claudinho markets next MEX        # a team's current-or-next fixture (in-play preferred)
 claudinho markets today --json    # structured sidecar output
 ```
 
@@ -91,11 +92,12 @@ Opt out with `--no-markets` (per command) or `CLAUDINHO_MARKETS=off` (global). T
 statusline and hook **never** show market data — it stays off the hot path.
 
 > **How matches are matched:** event slugs are derived automatically from each
-> fixture (`fifwc-{home}-{away}-{date}`), so real odds appear for any match with a
+> fixture (`fifwc-{home}-{away}-{date}`), so real signals appear for any match with a
 > live Polymarket market — no mapping needed (`mapping.2026.json` is for slug
 > *overrides* only). Matching fails closed, so an unmatched fixture simply shows
-> nothing. For an offline preview, set `CLAUDINHO_MARKETS_SOURCE=fake` to render
-> clearly-labeled synthetic **"demo data"** odds.
+> nothing — and finished matches never show one (market signals are pre-match
+> and in-play reads). For an offline preview, set `CLAUDINHO_MARKETS_SOURCE=fake`
+> to render clearly-labeled synthetic **"demo data"** signals.
 
 ## Shareable snippets
 
@@ -157,7 +159,7 @@ The statusline reads from a local micro-cache and **never blocks on the
 network** (<150ms). When several matches are live it shows them all inline:
 `⚽ 🇳🇴 1–1 🇫🇷 87' · 🇸🇳 1–2 🇮🇶 86'`. Customize via env:
 
-- `CLAUDINHO_TEAM=MEX` — show only your team's match
+- `CLAUDINHO_TEAM=MEX` — show only your team's match; also the default team for `next`, `markets next`, and `share next` when the argument is omitted
 - `CLAUDINHO_MAX=2` — cap how many live matches show inline (rest collapse to `+N`; default: all)
 - `CLAUDINHO_COMPACT=0` — show 3-letter codes alongside flags
 

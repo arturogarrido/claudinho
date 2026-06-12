@@ -13,6 +13,7 @@ import {
   getMatchById,
   groups,
   hasSaneDistribution,
+  isFinished,
   isReliableMarketSignal,
   isValidDate,
   isValidTimeZone,
@@ -452,12 +453,17 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   precheck(cfg, t);
   // ±1-day window fetch: the provider buckets scoreboard days in its own zone,
   // so fetching only the fixture's UTC date can miss its live/final state.
-  const { match, source: liveSource } = await getMatchById(adapterFor(ctx), id);
+  const { match, degraded, source: liveSource } = await getMatchById(adapterFor(ctx), id);
 
   const marketSignal = match ? await reliableMarketSignalFor(ctx, match) : undefined;
 
   if (cfg.json) {
-    emitJson({ match: match ?? null, source: liveSource ?? null, marketSignal: marketSignal ?? null });
+    emitJson({
+      degraded,
+      match: match ?? null,
+      source: liveSource ?? null,
+      marketSignal: marketSignal ?? null,
+    });
     return;
   }
 
@@ -518,9 +524,12 @@ function marketHeaderLine(m: Match, cfg: CliConfig): string {
 
 /** Null-signal line, specific about finished matches (market reads are pre-match). */
 function noSignalLine(m: Match, now: Date): string {
-  return marketRelevant(m, now)
-    ? 'No market signal for this match.'
-    : 'Match has finished — market signals are pre-match and in-play reads.';
+  if (marketRelevant(m, now)) return 'No market signal for this match.';
+  // "has finished" only when a live overlay confirmed it; a static fixture
+  // whose window merely lapsed gets the honest, hedged variant.
+  return isFinished(m.status)
+    ? 'Match has finished — market signals are pre-match and in-play reads.'
+    : 'Match appears to have finished — market signals are pre-match and in-play reads.';
 }
 
 function printMarketBlock(m: Match, sig: MarketSignal, c: Painter): void {
@@ -551,7 +560,10 @@ export async function cmdMarkets(
     precheck(cfg, t);
     const code = resolveTeamArg(team, 'Usage: claudinho markets next <team> (or set CLAUDINHO_TEAM)');
     const now = ctx.now ?? new Date();
-    const fixture = currentOrNextFixtureForTeam(code, { from: now });
+    const base = currentOrNextFixtureForTeam(code, { from: now });
+    // Live overlay so an early FT ends relevance (and extra time extends it) —
+    // the static fixture's status is forever SCHEDULED.
+    const fixture = base ? ((await getMatchById(adapterFor(ctx), base.id)).match ?? base) : undefined;
     const sig =
       fixture && marketRelevant(fixture, now)
         ? (await marketSignalsFor(ctx, [fixture], MARKETS_CMD_OPTS)).get(fixture.id)
@@ -586,7 +598,8 @@ export async function cmdMarkets(
   if (target && target !== 'today' && !isValidDate(target)) {
     precheck(cfg, t);
     const now = ctx.now ?? new Date();
-    const match = allFixtures().find((m) => m.id === target);
+    // Live overlay (±1-day window) so FT gates the resolved market correctly.
+    const { match } = await getMatchById(adapterFor(ctx), target);
     const sig =
       match && marketRelevant(match, now)
         ? (await marketSignalsFor(ctx, [match], MARKETS_CMD_OPTS)).get(match.id)
@@ -615,10 +628,10 @@ export async function cmdMarkets(
   // markets [today | <date>]
   const explicitDate = target && target !== 'today' ? target : undefined;
   precheck(cfg, t, explicitDate);
-  const date = explicitDate ?? localDate(new Date().toISOString(), cfg.tz);
+  const now = ctx.now ?? new Date();
+  const date = explicitDate ?? localDate(now.toISOString(), cfg.tz);
   const { matches } = await getMatchesForDate(adapterFor(ctx), date);
   const todays = fixturesByDate(date, matches, cfg.tz);
-  const now = ctx.now ?? new Date();
   const relevant = todays.filter((m) => marketRelevant(m, now));
   const signals = await marketSignalsFor(ctx, relevant, MARKETS_CMD_OPTS);
   const rows = relevant

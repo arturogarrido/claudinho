@@ -3,7 +3,7 @@
  * the single primitive every default-on surface keys off: "show only when
  * reliable, otherwise omit silently."
  */
-import { isFinished } from '../normalize';
+import { isFinished, isLive } from '../normalize';
 import { LIVE_WINDOW_MS } from '../schedule';
 import type { Match } from '../types';
 import type {
@@ -25,6 +25,10 @@ export const DEFAULT_MAX_AGE_MS = 15 * 60_000;
  * An unparseable kickoff fails open (the reliability gate still applies).
  */
 export function marketRelevant(match: Match, now: Date = new Date()): boolean {
+  // A live overlay outranks the time window in BOTH directions: a match in
+  // extra time runs past kickoff+140min and its in-play read stays legitimate,
+  // while an early FT ends relevance before the window does.
+  if (isLive(match.status)) return true;
   if (isFinished(match.status)) return false;
   const k = Date.parse(match.kickoff);
   return !Number.isFinite(k) || now.getTime() <= k + LIVE_WINDOW_MS;

@@ -145,6 +145,13 @@ describe('renderPrompt — live window, cold/stale cache → "syncing"', () => {
     expect(renderPrompt(s, { now: NOW })).toContain(' in ');
   });
 
+  it('does NOT trust a fresh DEGRADED snapshot — syncing, not countdown', () => {
+    // The refresher writes { live: [], degraded: true } with a fresh timestamp
+    // when the fetch fails; that means "fetch failed", not "feed said empty".
+    const s = { ...state([]), degraded: true };
+    expect(renderPrompt(s, { now: NOW })).toContain('live · syncing');
+  });
+
   it('applies the team filter: syncing only for a team in a window', () => {
     expect(renderPrompt(undefined, { now: NOW, team: 'MEX' })).toContain('live · syncing');
     expect(renderPrompt(undefined, { now: NOW, team: 'BRA' })).toContain(' in ');

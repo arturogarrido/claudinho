@@ -72,6 +72,17 @@ describe('marketRelevant', () => {
   it('fails open on an unparseable kickoff (the reliability gate still applies)', () => {
     expect(marketRelevant(fx('bad', 'not-a-date'), new Date())).toBe(true);
   });
+
+  it('stays relevant for a LIVE overlay past the window (extra time, knockouts)', () => {
+    const et = fx('et', a.kickoff, { status: 'LIVE', minute: 117 });
+    const deepIntoEt = new Date(Date.parse(a.kickoff) + LIVE_WINDOW_MS + 20 * 60_000);
+    expect(marketRelevant(et, deepIntoEt)).toBe(true);
+  });
+
+  it('ends relevance on an EARLY live FT even inside the window', () => {
+    const earlyFt = fx('eft', a.kickoff, { status: 'FT', score: { home: 1, away: 0 } });
+    expect(marketRelevant(earlyFt, new Date(Date.parse(a.kickoff) + 100 * 60_000))).toBe(false);
+  });
 });
 
 describe('getMatchById', () => {
