@@ -22,18 +22,29 @@ const fakeAdapter: ProviderAdapter = {
   },
 };
 
-/** A synthesizing market provider with a fixed clock (deterministic). */
-const synth = () =>
-  new FakeMarketProvider({ synthesize: true, now: new Date('2026-06-13T12:00:00Z') });
+/**
+ * Fixed clock for every time-dependent gate (market relevance, live windows) —
+ * keeps the suite deterministic forever, including after the tournament ends
+ * (when every fixture's live window is in the real past).
+ */
+const TEST_NOW = new Date('2026-06-13T12:00:00Z');
+
+/** A synthesizing market provider with the same fixed clock (deterministic). */
+const synth = () => new FakeMarketProvider({ synthesize: true, now: TEST_NOW });
+
+/** A fixture still upcoming at TEST_NOW (its market read is relevant). */
+const upcoming = (): Match =>
+  allFixtures().find((m) => Date.parse(m.kickoff) > TEST_NOW.getTime())!;
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
   return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', flavor: 'off', ...over };
 }
-const ctx = (over: Partial<CliConfig>, marketProvider: MarketProvider) => ({
+const ctx = (over: Partial<CliConfig>, marketProvider: MarketProvider, now: Date = TEST_NOW) => ({
   cfg: cfg(over),
   t: makeT('en'),
   adapter: fakeAdapter,
   marketProvider,
+  now,
 });
 
 const outSpy = vi.spyOn(process.stdout, 'write');
@@ -98,7 +109,7 @@ describe('cmdMarkets — date listing', () => {
 
 describe('cmdMarkets — single match', () => {
   it('returns the signal for a known match id', async () => {
-    const id = allFixtures()[0]!.id;
+    const id = upcoming().id;
     await cmdMarkets(id, undefined, ctx({ json: true }, synth()));
     const data = json() as { matchId: string; signal: { source: string; matchId: string } | null };
     expect(data.matchId).toBe(id);
@@ -110,20 +121,57 @@ describe('cmdMarkets — single match', () => {
     await cmdMarkets('does-not-exist', undefined, ctx({ json: true }, synth()));
     expect(json().signal).toBeNull();
   });
+
+  it('suppresses the signal for a finished match (market reads are pre-match)', async () => {
+    // The tournament opener is long past at this clock.
+    const opener = allFixtures()[0]!;
+    const after = new Date(Date.parse(opener.kickoff) + 6 * 60 * 60_000);
+    await cmdMarkets(opener.id, undefined, ctx({ json: true }, synth(), after));
+    expect(json().signal).toBeNull();
+
+    await cmdMarkets(opener.id, undefined, ctx({ json: false }, synth(), after));
+    expect(text()).toContain('market signals are pre-match and in-play reads');
+  });
 });
 
 describe('cmdMarkets — next <team>', () => {
-  it('throws InputError when the team is missing', async () => {
-    await expect(cmdMarkets('next', undefined, ctx({}, synth()))).rejects.toBeInstanceOf(
-      InputError,
-    );
+  it('throws InputError when the team is missing and CLAUDINHO_TEAM is unset', async () => {
+    const prev = process.env.CLAUDINHO_TEAM;
+    delete process.env.CLAUDINHO_TEAM;
+    try {
+      await expect(cmdMarkets('next', undefined, ctx({}, synth()))).rejects.toBeInstanceOf(
+        InputError,
+      );
+    } finally {
+      if (prev !== undefined) process.env.CLAUDINHO_TEAM = prev;
+    }
+  });
+
+  it('falls back to CLAUDINHO_TEAM when the team argument is omitted', async () => {
+    const prev = process.env.CLAUDINHO_TEAM;
+    process.env.CLAUDINHO_TEAM = upcoming().home.code.toLowerCase();
+    try {
+      await cmdMarkets('next', undefined, ctx({ json: true }, synth()));
+      expect((json() as { team: string }).team).toBe(upcoming().home.code.toUpperCase());
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDINHO_TEAM;
+      else process.env.CLAUDINHO_TEAM = prev;
+    }
   });
 
   it('echoes the team and an informational-only flag', async () => {
-    const team = allFixtures()[0]!.home.code;
+    const team = upcoming().home.code;
     await cmdMarkets('next', team, ctx({ json: true }, synth()));
     const data = json() as { team: string; informationalOnly: boolean };
     expect(data.team).toBe(team);
     expect(data.informationalOnly).toBe(true);
+  });
+
+  it("prefers the team's IN-PLAY match over their next fixture", async () => {
+    // Mid-opener clock: the first fixture is being played right now.
+    const opener = allFixtures()[0]!;
+    const during = new Date(Date.parse(opener.kickoff) + 30 * 60_000);
+    await cmdMarkets('next', opener.home.code, ctx({ json: true }, synth(), during));
+    expect((json() as { matchId: string }).matchId).toBe(opener.id);
   });
 });

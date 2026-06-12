@@ -9,15 +9,18 @@ import {
   allFixtures,
   byKickoff,
   countdown,
+  fixturesInLiveWindow,
   isLive,
+  LIVE_WINDOW_MS,
   nextFixtureForTeam,
   scoreline,
   type Match,
 } from '@claudinho/core';
 import { ageMs, type CacheState } from './cache';
 
-/** A fixture is potentially live from kickoff until ~kickoff + 140 min. */
-export const LIVE_WINDOW_MS = 140 * 60_000;
+// The live-window constant lives in core (shared with the market-relevance
+// gate); re-exported here so existing call sites keep importing from this file.
+export { LIVE_WINDOW_MS };
 /** Don't display cached live scores older than this (avoid stale scores). */
 export const DISPLAY_STALE_MS = 5 * 60_000;
 /** Refresh the cache when it's older than this during a live window. */
@@ -25,11 +28,7 @@ export const LIVE_TTL_MS = 15_000;
 
 /** Are we inside a potential live window for any fixture? (cheap, static) */
 export function inLiveWindow(now = Date.now(), fixtures: Match[] = allFixtures()): boolean {
-  for (const m of fixtures) {
-    const k = Date.parse(m.kickoff);
-    if (now >= k && now <= k + LIVE_WINDOW_MS) return true;
-  }
-  return false;
+  return fixturesInLiveWindow(now, fixtures).length > 0;
 }
 
 /** The soonest upcoming fixture across the whole tournament. */
@@ -101,6 +100,26 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
     const overflow = live.length - shown.length;
     if (overflow > 0) line += ` +${overflow}`;
     return line;
+  }
+
+  // Cold/stale cache during a live window: a countdown here is actively
+  // misleading — a match is on, and the static schedule alone tells us that.
+  // Say "live · syncing" until the refresher lands a snapshot. A FRESH snapshot
+  // with no live matches is trusted as-is (per the feed nothing is in play —
+  // early FT, delay, postponement) and falls through to the countdown.
+  const cacheFresh = !!state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
+  if (!cacheFresh) {
+    const win = fixturesInLiveWindow(nowMs).filter(
+      (m) => !team || m.home.code === team || m.away.code === team,
+    );
+    const first = win[0];
+    if (first) {
+      const more = win.length - 1;
+      return (
+        `⚽ ${first.home.flag} vs ${first.away.flag} live · syncing…` +
+        (more > 0 ? ` +${more}` : '')
+      );
+    }
   }
 
   // Nothing (relevant) live → next-fixture countdown (pure static).

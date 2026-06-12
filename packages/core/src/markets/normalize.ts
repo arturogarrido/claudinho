@@ -3,6 +3,8 @@
  * the single primitive every default-on surface keys off: "show only when
  * reliable, otherwise omit silently."
  */
+import { isFinished } from '../normalize';
+import { LIVE_WINDOW_MS } from '../schedule';
 import type { Match } from '../types';
 import type {
   FavoriteStrength,
@@ -14,6 +16,19 @@ import type {
 
 /** Default freshness window: a signal older than this is stale (15 minutes). */
 export const DEFAULT_MAX_AGE_MS = 15 * 60_000;
+
+/**
+ * Market signals are pre-match and in-play reads. Once a match has finished —
+ * status `FT`, or (for static fixtures that never get a live overlay) once its
+ * live window has long passed — a "favorite" is resolved history: showing
+ * "markets favor X 100%" after full time reads as a bug, not information.
+ * An unparseable kickoff fails open (the reliability gate still applies).
+ */
+export function marketRelevant(match: Match, now: Date = new Date()): boolean {
+  if (isFinished(match.status)) return false;
+  const k = Date.parse(match.kickoff);
+  return !Number.isFinite(k) || now.getTime() <= k + LIVE_WINDOW_MS;
+}
 
 /**
  * Re-scale outcome probabilities so the positive ones sum to 1. This removes

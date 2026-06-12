@@ -39,7 +39,7 @@ const VOICE =
 
 const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and group standings for the 2026 men's football tournament.
 Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team (3-letter code, e.g. MEX), and get_standings for group tables.
-Use get_market_signal for read-only prediction-market odds (a match, a team's next fixture, or a date). Market data is informational only — relay the percentages factually and never frame it as betting or trading advice.
+Use get_market_signal for read-only prediction-market signals (a match, a team's current-or-next fixture, or a date). Market data is informational only — relay the percentages factually and never frame it as betting or trading advice.
 Use get_share_snippet to produce a ready-to-paste match card (for a match, a team's next fixture, a date, or live matches) — hand the user the returned snippet text verbatim.${VOICE}
 ${DISCLAIMER}`;
 
@@ -135,7 +135,8 @@ export function buildServer(): McpServer {
     'get_next_fixture',
     {
       title: 'Next fixture for a team',
-      description: "A team's next scheduled match. Use a 3-letter code, e.g. MEX, BRA, USA.",
+      description:
+        "A team's next scheduled match. Use a 3-letter code, e.g. MEX, BRA, USA. Instant and offline — answered from the bundled schedule, no network.",
       inputSchema: { team: teamArg.describe('3-letter team code, e.g. MEX'), ...commonArgs },
       // Read-only and served entirely from the bundled static schedule.
       annotations: { readOnlyHint: true, openWorldHint: false },
@@ -148,12 +149,14 @@ export function buildServer(): McpServer {
     {
       title: 'Prediction-market signal',
       description:
-        "Read-only prediction-market odds for a match (by id), a team's next fixture, or a date (default: today). Returns market-implied percentages with attribution. Informational only — relay the numbers factually; do not add betting, trading, or 'value' advice, and do not invent links.",
+        "Read-only prediction-market signals for a match (by id), a team's current-or-next fixture, or a date (default: today). Returns market-implied percentages with attribution. Shown only before and during a match — finished matches have no market read. Informational only — relay the numbers factually; do not add betting, trading, or 'value' advice, and do not invent links.",
       inputSchema: {
         matchId: z.string().optional().describe('Match id (most specific)'),
         team: teamArg
           .optional()
-          .describe("3-letter team code for that team's next fixture, e.g. MEX"),
+          .describe(
+            "3-letter team code, e.g. MEX — resolves to the team's in-play match when one is live, else their next fixture",
+          ),
         date: dateArg
           .optional()
           .describe("Date as YYYY-MM-DD (default: today) for all that day's signals"),

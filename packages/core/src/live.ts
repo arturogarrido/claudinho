@@ -96,6 +96,43 @@ function shiftUtcDate(dateISO: string, days: number): string {
     .slice(0, 10);
 }
 
+export interface MatchByIdResult {
+  match?: Match;
+  degraded: boolean;
+  source?: string;
+}
+
+/**
+ * A single match by id, with live overlay. The provider's scoreboard buckets
+ * days in its own zone (ESPN: US/Eastern), so a fixture's UTC date can differ
+ * from the scoreboard day it's filed under — a 02:00Z kickoff belongs to the
+ * previous ET evening, and fetching only the UTC date silently misses its live
+ * state (the match then renders from the static schedule as if scheduled).
+ * Fetch the ±1-day window around the fixture's UTC date instead — the same
+ * trick `getMatchesForDate` uses — and fall back to the static fixture on any
+ * provider error.
+ */
+export async function getMatchById(
+  adapter: ProviderAdapter,
+  id: string,
+): Promise<MatchByIdResult> {
+  const base = allFixtures().find((m) => m.id === id);
+  if (!base) return { match: undefined, degraded: false };
+  const day = base.kickoff.slice(0, 10);
+  try {
+    const live = adapter.fetchWindow
+      ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
+      : await adapter.fetchByDate(day);
+    return {
+      match: live.find((m) => m.id === id) ?? base,
+      degraded: false,
+      source: adapter.name,
+    };
+  } catch {
+    return { match: base, degraded: true };
+  }
+}
+
 /** Currently-live matches; empty + degraded on error. */
 export async function getLiveMatches(adapter: ProviderAdapter): Promise<LiveResult> {
   try {
