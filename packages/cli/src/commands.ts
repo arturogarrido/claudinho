@@ -2,7 +2,6 @@ import {
   allFixtures,
   computeStandings,
   countdown,
-  currentOrNextFixtureForTeam,
   DEFAULT_COMPETITION,
   fixturesByDate,
   fixturesByGroup,
@@ -20,6 +19,7 @@ import {
   localDate,
   makeMarketProvider,
   marketBlock,
+  marketFixtureForTeam,
   marketLine,
   marketRelevant,
   matchFlavor,
@@ -560,10 +560,9 @@ export async function cmdMarkets(
     precheck(cfg, t);
     const code = resolveTeamArg(team, 'Usage: claudinho markets next <team> (or set CLAUDINHO_TEAM)');
     const now = ctx.now ?? new Date();
-    const base = currentOrNextFixtureForTeam(code, { from: now });
-    // Live overlay so an early FT ends relevance (and extra time extends it) —
-    // the static fixture's status is forever SCHEDULED.
-    const fixture = base ? ((await getMatchById(adapterFor(ctx), base.id)).match ?? base) : undefined;
+    // Live-confirmed selection: handles extra time past the static window AND
+    // early FTs inside it (the static fixture's status is forever SCHEDULED).
+    const { match: fixture } = await marketFixtureForTeam(adapterFor(ctx), code, now);
     const sig =
       fixture && marketRelevant(fixture, now)
         ? (await marketSignalsFor(ctx, [fixture], MARKETS_CMD_OPTS)).get(fixture.id)

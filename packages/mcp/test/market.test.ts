@@ -42,7 +42,12 @@ type MarketData = {
 describe('toolGetMarketSignal', () => {
   it('returns a link-free, informational signal for a match id', async () => {
     const id = upcoming().id;
-    const r = await toolGetMarketSignal({ matchId: id, marketProvider: synth(), now: TEST_NOW });
+    const r = await toolGetMarketSignal({
+      matchId: id,
+      adapter: fakeAdapter,
+      marketProvider: synth(),
+      now: TEST_NOW,
+    });
     const data = r.data as { matchId: string; signal: MarketData | null };
     expect(data.matchId).toBe(id);
     expect(data.signal).not.toBeNull();
@@ -54,14 +59,14 @@ describe('toolGetMarketSignal', () => {
   });
 
   it('returns a null signal for an unknown match id', async () => {
-    const r = await toolGetMarketSignal({ matchId: 'nope', marketProvider: synth() });
+    const r = await toolGetMarketSignal({ matchId: 'nope', adapter: fakeAdapter, marketProvider: synth() });
     expect((r.data as { signal: null }).signal).toBeNull();
     expect(r.text).toContain('No match found');
   });
 
   it("resolves a team's current-or-next fixture", async () => {
     const team = upcoming().home.code;
-    const r = await toolGetMarketSignal({ team, marketProvider: synth(), now: TEST_NOW });
+    const r = await toolGetMarketSignal({ team, adapter: fakeAdapter, marketProvider: synth(), now: TEST_NOW });
     const data = r.data as { team: string; informationalOnly: boolean };
     expect(data.team).toBe(team);
     expect(data.informationalOnly).toBe(true);
@@ -74,6 +79,7 @@ describe('toolGetMarketSignal', () => {
     const during = new Date(Date.parse(opener.kickoff) + 30 * 60_000);
     const r = await toolGetMarketSignal({
       team: opener.home.code,
+      adapter: fakeAdapter,
       marketProvider: synth(),
       now: during,
     });
@@ -85,6 +91,7 @@ describe('toolGetMarketSignal', () => {
     const after = new Date(Date.parse(opener.kickoff) + 6 * 60 * 60_000);
     const r = await toolGetMarketSignal({
       matchId: opener.id,
+      adapter: fakeAdapter,
       marketProvider: synth(),
       now: after,
     });
@@ -95,6 +102,7 @@ describe('toolGetMarketSignal', () => {
   it('dates the fixture in the null-signal text (agents skim)', async () => {
     const r = await toolGetMarketSignal({
       matchId: upcoming().id,
+      adapter: fakeAdapter,
       marketProvider: new FakeMarketProvider(), // synthesize off → no signal
       now: TEST_NOW,
     });

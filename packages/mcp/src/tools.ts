@@ -5,10 +5,8 @@
  * payload embedded as JSON for agents that want to parse it.
  */
 import {
-  allFixtures,
   asFlavorLevel,
   computeStandings,
-  currentOrNextFixtureForTeam,
   fixturesByDate,
   fixturesByGroup,
   formatDate,
@@ -27,6 +25,7 @@ import {
   makeAdapter,
   makeMarketProvider,
   marketBlock,
+  marketFixtureForTeam,
   marketRelevant,
   type Match,
   type MarketProvider,
@@ -372,11 +371,9 @@ export async function toolGetMarketSignal(
   // passed and silently answer about a future fixture's (often gated) market.
   if (args.team) {
     const code = args.team.toUpperCase();
-    const base = currentOrNextFixtureForTeam(code, { from: now });
-    // Live overlay: an early FT ends relevance; extra time extends it.
-    const fixture = base
-      ? ((await getMatchById(resolveAdapter(args), base.id)).match ?? base)
-      : undefined;
+    // Live-confirmed selection: handles extra time past the static window AND
+    // early FTs inside it (the static fixture's status is forever SCHEDULED).
+    const { match: fixture } = await marketFixtureForTeam(resolveAdapter(args), code, now);
     const relevant = fixture ? marketRelevant(fixture, now) : false;
     const sig = fixture && relevant ? await getMarketSignal(provider, fixture) : undefined;
     const shown = fixture && sig && marketDisplayable(sig) ? sig : undefined;

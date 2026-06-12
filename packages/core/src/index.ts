@@ -40,6 +40,7 @@ export {
   getMatchesForDate,
   getLiveMatches,
   getMatchById,
+  marketFixtureForTeam,
   resolveCompetition,
   liveSourceLabel,
 } from './live';

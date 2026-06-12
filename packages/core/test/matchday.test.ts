@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  allFixtures,
   currentOrNextFixtureForTeam,
   fixturesInLiveWindow,
   getMatchById,
   LIVE_WINDOW_MS,
+  marketFixtureForTeam,
   marketRelevant,
   type Match,
   type ProviderAdapter,
@@ -158,5 +160,58 @@ describe('getMatchById', () => {
     const r = await getMatchById(adapter, 'nope');
     expect(r.match).toBeUndefined();
     expect(called).toBe(false);
+  });
+});
+
+describe('marketFixtureForTeam (live-confirmed selection)', () => {
+  // Uses the real bundled schedule: the opener + the home team's later fixture.
+  const opener = allFixtures()[0]!;
+  const team = opener.home.code;
+
+  function adapterReturning(overlay: Match[] | 'throw'): ProviderAdapter {
+    return {
+      name: 'fake',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate() {
+        if (overlay === 'throw') throw new Error('down');
+        return overlay;
+      },
+      async fetchWindow() {
+        if (overlay === 'throw') throw new Error('down');
+        return overlay;
+      },
+      async fetchLive() {
+        return [];
+      },
+    };
+  }
+
+  it('keeps an extra-time LIVE match even past the 140-minute window', async () => {
+    const deepEt = new Date(Date.parse(opener.kickoff) + LIVE_WINDOW_MS + 20 * 60_000);
+    const live = { ...opener, status: 'LIVE' as const, minute: 117, score: { home: 1, away: 1 } };
+    const r = await marketFixtureForTeam(adapterReturning([live]), team, deepEt);
+    expect(r.match?.id).toBe(opener.id);
+    expect(r.match?.status).toBe('LIVE');
+  });
+
+  it('falls through to the NEXT fixture when the candidate is confirmed FT', async () => {
+    const during = new Date(Date.parse(opener.kickoff) + 110 * 60_000);
+    const ft = { ...opener, status: 'FT' as const, score: { home: 2, away: 0 } };
+    const r = await marketFixtureForTeam(adapterReturning([ft]), team, during);
+    expect(r.match?.id).not.toBe(opener.id);
+    expect(r.match).toBeDefined(); // the team's next fixture
+  });
+
+  it('keeps the static candidate on a degraded fetch (fail closed downstream)', async () => {
+    const during = new Date(Date.parse(opener.kickoff) + 30 * 60_000);
+    const r = await marketFixtureForTeam(adapterReturning('throw'), team, during);
+    expect(r.match?.id).toBe(opener.id);
+    expect(r.degraded).toBe(true);
+  });
+
+  it('is simply the next fixture outside any window', async () => {
+    const before = new Date(Date.parse(opener.kickoff) - 24 * 60 * 60_000);
+    const r = await marketFixtureForTeam(adapterReturning([]), team, before);
+    expect(r.match?.id).toBe(opener.id);
   });
 });
