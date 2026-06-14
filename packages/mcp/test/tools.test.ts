@@ -7,6 +7,11 @@ import {
   toolGetToday,
 } from '../src/tools';
 
+// Fixed in-tournament clock — pin it on calls whose result is "now"-relative
+// (e.g. a team's next fixture), so they don't rot as real time passes a team's
+// last known fixture (knockouts are placeholders, so resolution goes null).
+const TEST_NOW = new Date('2026-06-13T12:00:00Z');
+
 function liveMatch(over: Partial<Match> = {}): Match {
   return {
     id: '760415',
@@ -113,7 +118,7 @@ describe('toolGetToday', () => {
 
 describe('toolGetNextFixture (pure static)', () => {
   it('returns the next fixture for a team code', async () => {
-    const r = await toolGetNextFixture({ team: 'bra' });
+    const r = await toolGetNextFixture({ team: 'bra', now: TEST_NOW });
     const data = r.data as { team: string; fixture: Match | null };
     expect(data.team).toBe('BRA');
     expect(data.fixture).toBeTruthy();

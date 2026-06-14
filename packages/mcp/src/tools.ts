@@ -319,7 +319,10 @@ export async function toolGetNextFixture(
   args: { team: string } & CommonOpts,
 ): Promise<ToolResult> {
   const code = args.team.toUpperCase();
-  const fixture = nextFixtureForTeam(code);
+  // Thread the caller's clock so "next fixture" is deterministic in tests and
+  // doesn't silently resolve against the real wall-clock (which goes null once a
+  // team's last *known* fixture passes — knockouts are placeholders).
+  const fixture = nextFixtureForTeam(code, { from: args.now ?? new Date() });
   if (!fixture) {
     return {
       text: withDisclaimer(`No upcoming fixture found for ${code}.`),
@@ -550,7 +553,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
   // a team's next fixture (static schedule + reliable market read).
   if (args.team) {
     const code = args.team.toUpperCase();
-    const fixture = nextFixtureForTeam(code);
+    const fixture = nextFixtureForTeam(code, { from: args.now ?? new Date() });
     const matches = fixture ? [fixture] : [];
     const teamName = fixture
       ? fixture.home.code === code

@@ -272,10 +272,10 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
 }
 
 /** `claudinho next [team]` (team defaults to CLAUDINHO_TEAM) */
-export async function cmdNext(team: string | undefined, { cfg, t }: Ctx): Promise<void> {
+export async function cmdNext(team: string | undefined, { cfg, t, now }: Ctx): Promise<void> {
   precheck(cfg, t);
   const code = resolveTeamArg(team, 'Usage: claudinho next <team> (or set CLAUDINHO_TEAM)');
-  const fixture = nextFixtureForTeam(code);
+  const fixture = nextFixtureForTeam(code, { from: now ?? new Date() });
 
   if (cfg.json) {
     emitJson({ team: code, fixture: fixture ?? null });
@@ -793,7 +793,7 @@ export async function cmdShare(
   if (target === 'next') {
     precheck(cfg, t);
     const code = resolveTeamArg(team, 'Usage: claudinho share next <team> (or set CLAUDINHO_TEAM)');
-    const fixture = nextFixtureForTeam(code);
+    const fixture = nextFixtureForTeam(code, { from: ctx.now ?? new Date() });
     const matches = fixture ? [fixture] : [];
     const signals = await reliableShareSignals(ctx, matches);
     const teamName = fixture

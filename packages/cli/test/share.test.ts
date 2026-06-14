@@ -22,12 +22,17 @@ const fakeAdapter: ProviderAdapter = {
   },
 };
 
+// Fixed in-tournament clock. Pins BOTH the share command's fixture resolution
+// (via ctx.now) AND the synthesized signal's freshness, so the suite stays
+// deterministic after these fixtures fall into the real past.
+const TEST_NOW = new Date('2026-06-13T12:00:00Z');
+
 /** A fresh, cleanly-mapped, reliable signal for a given match. */
 const freshSig = (m: Match): MarketSignal => ({
   matchId: m.id,
   source: 'polymarket',
-  asOf: new Date().toISOString(),
-  fetchedAt: new Date().toISOString(),
+  asOf: TEST_NOW.toISOString(),
+  fetchedAt: TEST_NOW.toISOString(),
   outcomes: [
     { kind: 'home', teamCode: m.home.code, label: m.home.name, probability: 0.56 },
     { kind: 'draw', label: 'Draw', probability: 0.25 },
@@ -64,6 +69,7 @@ const ctx = (over: Over = {}, marketProvider: MarketProvider = provider(), copy?
   adapter: fakeAdapter,
   marketProvider,
   copy,
+  now: TEST_NOW,
 });
 
 const outSpy = vi.spyOn(process.stdout, 'write');
