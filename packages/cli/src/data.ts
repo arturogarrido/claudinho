@@ -8,5 +8,7 @@ export {
   mergeLive,
   getMatchesForDate,
   getLiveMatches,
+  getStandings,
   type LiveResult,
+  type StandingsResult,
 } from '@claudinho/core';

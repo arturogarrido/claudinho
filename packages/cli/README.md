@@ -21,11 +21,11 @@ npx @claudinho/cli today
 claudinho today [date]      # a day's fixtures in your timezone (default: today), live scores inline
 claudinho live              # matches in play right now
 claudinho next [TEAM]       # a team's next fixture + countdown (default: $CLAUDINHO_TEAM)
-claudinho table [GROUP]     # group standings (default: all groups)
+claudinho table [GROUP]     # live cumulative group standings (default: all groups)
 claudinho match <id>        # a single match's detail
 claudinho markets [target]  # prediction-market signals: today | <date> | <id> | next <TEAM>
                             #   (next prefers the team's IN-PLAY match while one is live)
-claudinho share [target]    # copy-pasteable match snippet: today | live | <date> | <id> | next <TEAM>
+claudinho share [target]    # copy-pasteable snippet: today | live | <date> | <id> | next <TEAM> | table <GROUP>
 claudinho prompt            # one compact status line (for statusline/tmux/Starship)
 claudinho init-statusline   # wire it into the Claude Code statusline
 claudinho hook              # live-score context for a Claude Code hook (silent off-match)
@@ -108,6 +108,7 @@ social posts, READMEs, and issue comments — your terminal football, ready to p
 claudinho share                   # today's matches
 claudinho share live              # matches in play
 claudinho share next MEX          # a team's next fixture (+ market read, when reliable)
+claudinho share table A           # a group's standings card (facts only, no market line)
 claudinho share 760415            # one match by id
 claudinho share next MEX --copy   # …and copy it straight to the clipboard
 ```

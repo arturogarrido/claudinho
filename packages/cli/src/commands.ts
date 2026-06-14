@@ -1,16 +1,14 @@
 import {
   allFixtures,
-  computeStandings,
   countdown,
   DEFAULT_COMPETITION,
   fixturesByDate,
-  fixturesByGroup,
   formatDate,
   formatKickoff,
   formatShareSnippet,
+  formatShareTable,
   getMarketSignals,
   getMatchById,
-  groups,
   hasSaneDistribution,
   isFinished,
   isReliableMarketSignal,
@@ -44,11 +42,13 @@ import {
 import {
   getLiveMatches,
   getMatchesForDate,
+  getStandings,
   makeAdapter,
 } from './data';
 import { readMarketCache, writeMarketCache } from './marketCache';
 import { copyToClipboard } from './clipboard';
 import type {
+  GroupStandings,
   Match,
   MarketProvider,
   MarketSignal,
@@ -308,39 +308,32 @@ export async function cmdNext(team: string | undefined, { cfg, t, now }: Ctx): P
 export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<void> {
   const { cfg, t } = ctx;
   precheck(cfg, t);
-  const adapter = adapterFor(ctx);
-  // Overlay results so finished games count toward the live table. Group by the
-  // user's local "today"; getMatchesForDate fetches the spanning UTC window so a
-  // late-UTC result still overlays. Falls back to the static schedule on error.
-  const { matches, degraded, source } = await getMatchesForDate(
-    adapter,
-    localDate(new Date().toISOString(), cfg.tz),
-  );
-
-  const wanted = group ? [group.toUpperCase()] : groups(matches);
+  // Authoritative, cumulative standings from the provider. Fails closed to a
+  // roster-at-zero (degraded) rather than a wrong table computed from a single
+  // day's window — see core getStandings.
+  const { tables, degraded, source } = await getStandings(adapterFor(ctx), group);
 
   if (cfg.json) {
-    const tables = wanted.map((g) => ({
-      group: g,
-      standings: computeStandings(fixturesByGroup(g, matches)),
-    }));
-    // Wrap with attribution to match today/live/match + MCP get_standings.
+    // Preserve the prior JSON shape: { group, standings: StandingRow[] } per table.
+    const json = tables.map((tb) => ({ group: tb.group, standings: tb.rows }));
     emitJson({
       degraded,
       source: source ?? null,
-      tables: group ? (tables[0] ?? null) : tables,
+      tables: group ? (json[0] ?? null) : json,
     });
     return;
   }
 
   const c = painterFor(cfg);
-  for (const g of wanted) {
-    const rows = computeStandings(fixturesByGroup(g, matches));
-    if (rows.length === 0) {
-      out();
-      out(c.dim('  ' + t('table.none', { group: g })));
-      continue;
-    }
+  if (tables.length === 0) {
+    out();
+    out(c.dim('  ' + t('table.none', { group: (group ?? '').toUpperCase() })));
+    out();
+    if (degraded) out(c.dim('  ' + t('table.degraded')));
+    out(disclaimer(t, c));
+    return;
+  }
+  for (const { group: g, rows } of tables) {
     out();
     out(header(t('table.title', { group: g }), c));
     const table = new Table({
@@ -370,6 +363,8 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
     out(table.toString());
   }
   out();
+  // Degraded ⇒ rows are a static roster, not real results — say so, don't imply zeros are live.
+  if (degraded) out(c.dim('  ' + t('table.degraded')));
   const src = dataSource(source, c);
   if (src) out(src);
   out(disclaimer(t, c));
@@ -736,6 +731,46 @@ function emitShare(ctx: Ctx, e: ShareEmit, copy: boolean): void {
   }
 }
 
+interface ShareTableEmit {
+  group?: string;
+  tables: GroupStandings[];
+  source?: string;
+  degraded: boolean;
+  installLine: string;
+  emptyNote: string;
+  options: ShareSnippetOptions;
+}
+
+/** Emit a `share table` snippet — mirrors {@link emitShare} for the table path. */
+function emitShareTable(ctx: Ctx, e: ShareTableEmit, copy: boolean): void {
+  const snippet = formatShareTable(
+    { tables: e.tables, source: e.source, installLine: e.installLine, emptyNote: e.emptyNote },
+    e.options,
+  );
+  if (ctx.cfg.json) {
+    emitJson({
+      kind: 'table',
+      target: 'table',
+      ...(e.group ? { group: e.group } : {}),
+      source: e.source ?? null,
+      degraded: e.degraded,
+      informationalOnly: true,
+      snippet,
+      tables: e.tables.map((tb) => ({ group: tb.group, standings: tb.rows })),
+    });
+  } else {
+    out(snippet);
+  }
+  if (copy) {
+    const ok = (ctx.copy ?? copyToClipboard)(snippet);
+    process.stderr.write(
+      (ok
+        ? 'Copied share snippet to clipboard.'
+        : 'Clipboard unavailable; printed snippet instead.') + '\n',
+    );
+  }
+}
+
 /**
  * `claudinho share [target] [team]` — a polished, copy-pasteable match snippet
  * for chats, social posts, READMEs, and issues.
@@ -783,6 +818,28 @@ export async function cmdShare(
         },
         // Live snippets stay lean: no market enrichment (and no extra fetch).
         options: { ...baseOptions, includeMarkets: false },
+      },
+      copy,
+    );
+    return;
+  }
+
+  // share table [group] — a standings card (facts only; no market lines)
+  if (target === 'table') {
+    precheck(cfg, t);
+    const group = team?.toUpperCase();
+    const { tables, degraded, source } = await getStandings(adapterFor(ctx), group);
+    emitShareTable(
+      ctx,
+      {
+        group,
+        tables,
+        // Degraded ⇒ a static roster, served by no live provider: no attribution.
+        source: degraded ? undefined : source,
+        degraded,
+        installLine: group ? `npx @claudinho/cli table ${group}` : 'npx @claudinho/cli table',
+        emptyNote: group ? `No group ${group}.` : 'No standings available.',
+        options: baseOptions,
       },
       copy,
     );

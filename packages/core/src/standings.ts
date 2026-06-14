@@ -14,6 +14,12 @@ export interface StandingRow {
   points: number;
 }
 
+/** A group's table: the group letter ("A".."L") and its rows in standings order. */
+export interface GroupStandings {
+  group: string;
+  rows: StandingRow[];
+}
+
 function blankRow(team: Team): StandingRow {
   return {
     team,

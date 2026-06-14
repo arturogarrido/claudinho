@@ -8,11 +8,11 @@ import { z } from 'zod';
 import {
   allFixtures,
   asFlavorLevel,
-  computeStandings,
   fixturesByDate,
-  fixturesByGroup,
+  getStandings,
   groups,
   isValidDate,
+  makeAdapter,
 } from '@claudinho/core';
 import { DISCLAIMER, matchList, standingsTable } from './format';
 import {
@@ -173,12 +173,13 @@ export function buildServer(): McpServer {
     {
       title: 'Shareable match snippet',
       description:
-        "A polished, copy-pasteable match card (plain text) for a match (matchId), a team's next fixture (team), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
+        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), a group's standings table (group, e.g. \"A\"), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
       inputSchema: {
         matchId: z.string().optional().describe('Match id (most specific)'),
         team: teamArg
           .optional()
           .describe("3-letter team code for that team's next fixture, e.g. MEX"),
+        group: groupArg.optional().describe('Group letter A–L for a standings card, e.g. A'),
         date: dateArg.optional().describe('Date as YYYY-MM-DD (default: today)'),
         live: z.boolean().optional().describe('Snapshot of matches in play right now'),
         style: z
@@ -206,13 +207,16 @@ export function buildServer(): McpServer {
     new ResourceTemplate('standings://{group}', { list: undefined }),
     {
       title: 'Group standings',
-      description: 'Static group table for a group letter A–L.',
+      description: 'Live group table for a group letter A–L.',
       mimeType: 'text/plain',
     },
     async (uri, variables) => {
       const group = String(variables.group ?? '').toUpperCase();
-      const rows = computeStandings(fixturesByGroup(group));
-      const text = rows.length ? standingsTable(group, rows) : `No group ${group}.`;
+      // Authoritative live standings; fails closed to a degraded roster.
+      const { tables, degraded } = await getStandings(makeAdapter(), group);
+      const tb = tables[0];
+      let text = tb ? standingsTable(tb.group, tb.rows) : `No group ${group}.`;
+      if (degraded && tb) text += '\n\n(Live standings unavailable — showing the group roster.)';
       return { contents: [{ uri: uri.href, mimeType: 'text/plain', text }] };
     },
   );

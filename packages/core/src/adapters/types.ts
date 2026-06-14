@@ -1,3 +1,4 @@
+import type { GroupStandings } from '../standings';
 import type { Match } from '../types';
 
 /** Capabilities a provider advertises so callers can pick a strategy. */
@@ -25,6 +26,14 @@ export interface ProviderAdapter {
 
   /** Optional inclusive date-range fetch (used for schedule generation). */
   fetchWindow?(startDate: string, endDate: string): Promise<Match[]>;
+
+  /**
+   * Optional authoritative group tables (cumulative across the group stage).
+   * Returned in standings order per group. Providers that can't supply a real
+   * table omit this; callers then fall back (degraded) to a roster at zero —
+   * never a wrong, partial table computed from a narrow live window.
+   */
+  fetchStandings?(): Promise<GroupStandings[]>;
 
   /** Optional push subscription (websocket/SSE providers). Returns an unsubscribe fn. */
   subscribe?(onBatch: (matches: Match[]) => void): () => void;

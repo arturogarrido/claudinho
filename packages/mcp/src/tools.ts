@@ -6,17 +6,16 @@
  */
 import {
   asFlavorLevel,
-  computeStandings,
   fixturesByDate,
-  fixturesByGroup,
   formatDate,
   formatShareSnippet,
+  formatShareTable,
   getLiveMatches,
   getMarketSignal,
   getMarketSignals,
   getMatchById,
   getMatchesForDate,
-  groups,
+  getStandings,
   hasSaneDistribution,
   isReliableMarketSignal,
   isFinished,
@@ -282,35 +281,27 @@ export async function toolGetMatch(
 export async function toolGetStandings(
   args: { group?: string } & CommonOpts,
 ): Promise<ToolResult> {
-  // Overlay today's results so finished games count. getMatchesForDate fetches
-  // the UTC window spanning the local day, so a late-UTC result still overlays.
-  const { matches, degraded, source } = await getMatchesForDate(
-    resolveAdapter(args),
-    localDate(new Date().toISOString(), args.tz),
-  );
+  // Authoritative cumulative standings from the provider; fails closed to a
+  // roster-at-zero (degraded) rather than a wrong, single-day-window table.
+  const { tables, degraded, source } = await getStandings(resolveAdapter(args), args.group);
 
-  const known = groups(matches); // present group letters, e.g. A..L
-  if (args.group) {
-    const g = args.group.toUpperCase();
-    if (!known.includes(g)) {
-      return {
-        text: withDisclaimer(`No group "${g}". Groups are ${known.join(', ')}.`, source),
-        data: { degraded, source: source ?? null, tables: null },
-      };
-    }
+  // Preserve the structured shape: { group, standings: StandingRow[] }.
+  const shaped = tables.map((tb) => ({ group: tb.group, standings: tb.rows }));
+
+  if (shaped.length === 0) {
+    const g = args.group?.toUpperCase();
+    const msg = g ? `No group "${g}". Groups are A–L.` : 'No standings available.';
+    return {
+      text: withDisclaimer(degraded ? `${msg} (Live standings unavailable.)` : msg, source),
+      data: { degraded, source: source ?? null, tables: args.group ? null : [] },
+    };
   }
 
-  const wanted = args.group ? [args.group.toUpperCase()] : known;
-  const tables = wanted.map((g) => ({
-    group: g,
-    standings: computeStandings(fixturesByGroup(g, matches)),
-  }));
-  const text = tables
-    .map((t) => standingsTable(t.group, t.standings))
-    .join('\n\n');
+  let text = shaped.map((t) => standingsTable(t.group, t.standings)).join('\n\n');
+  if (degraded) text += '\n\n(Live standings unavailable — showing the group roster.)';
   return {
-    text: withDisclaimer(text || `No group found.`, source),
-    data: { degraded, source: source ?? null, tables: args.group ? (tables[0] ?? null) : tables },
+    text: withDisclaimer(text, source),
+    data: { degraded, source: source ?? null, tables: args.group ? (shaped[0] ?? null) : shaped },
   };
 }
 
@@ -445,6 +436,7 @@ interface ShareArgs extends CommonOpts {
   team?: string;
   date?: string;
   live?: boolean;
+  group?: string;
   style?: 'social' | 'compact';
   includeHashtag?: boolean;
   includeInstallLine?: boolean;
@@ -526,6 +518,35 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       },
       { ...options, includeMarkets: false },
     );
+  }
+
+  // a group's standings table (facts only; no market lines).
+  if (args.group) {
+    const group = args.group.toUpperCase();
+    const { tables, degraded, source } = await getStandings(resolveAdapter(args), group);
+    const snippet = formatShareTable(
+      {
+        tables,
+        // Degraded ⇒ static roster, no live provider: don't attribute one.
+        source: degraded ? undefined : source,
+        installLine: `npx @claudinho/cli table ${group}`,
+        emptyNote: `No group ${group}.`,
+      },
+      options,
+    );
+    return {
+      text: snippet,
+      data: {
+        kind: 'table',
+        target: 'table',
+        group,
+        source: degraded ? null : (source ?? null),
+        degraded,
+        informationalOnly: true,
+        snippet,
+        tables: tables.map((tb) => ({ group: tb.group, standings: tb.rows })),
+      },
+    };
   }
 
   // a single match by id, with live overlay (±1-day window — see toolGetMatch).

@@ -9,6 +9,7 @@
  * verified against live data; the in-play minute/score path is best-effort and
  * should be re-verified during an actual live match.
  */
+import type { GroupStandings, StandingRow } from '../standings';
 import type { Match, Stage, Status, Team } from '../types';
 import type { ProviderAdapter, ProviderCapabilities } from './types';
 import { nationToFlag } from '../flags';
@@ -207,8 +208,13 @@ export interface EspnAdapterOptions {
 }
 
 // Standings endpoint shapes (only what we read).
+interface EspnStandingsStat {
+  name?: string;
+  value?: number; // numeric (a float, e.g. 3.0)
+}
 interface EspnStandingsEntry {
-  team?: { abbreviation?: string; displayName?: string };
+  team?: EspnTeam;
+  stats?: EspnStandingsStat[];
 }
 interface EspnStandingsChild {
   name?: string; // e.g. "Group A"
@@ -217,6 +223,64 @@ interface EspnStandingsChild {
 }
 interface EspnStandings {
   children?: EspnStandingsChild[];
+}
+
+/** Read one numeric stat by name; missing/non-finite → 0. ESPN values are floats. */
+function statVal(stats: EspnStandingsStat[] | undefined, name: string): number {
+  const v = stats?.find((s) => s.name === name)?.value;
+  return typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : 0;
+}
+
+/** Project an ESPN standings entry onto our StandingRow (goals = soccer "points"). */
+function entryToRow(e: EspnStandingsEntry): StandingRow {
+  return {
+    team: toTeam(e.team),
+    played: statVal(e.stats, 'gamesPlayed'),
+    won: statVal(e.stats, 'wins'),
+    drawn: statVal(e.stats, 'ties'),
+    lost: statVal(e.stats, 'losses'),
+    goalsFor: statVal(e.stats, 'pointsFor'),
+    goalsAgainst: statVal(e.stats, 'pointsAgainst'),
+    goalDiff: statVal(e.stats, 'pointDifferential'),
+    points: statVal(e.stats, 'points'),
+  };
+}
+
+/**
+ * Parse the standings payload into group tables. Pure (exported for tests).
+ *
+ * Two non-obvious robustness points, both verified against the live response:
+ *  - ESPN's `entries` array is NOT in rank order, so we sort by the `rank` stat
+ *    (falling back to points → GD → GF → code when rank is absent).
+ *  - Non-group `children` (knockout brackets) are skipped by the "Group X" name
+ *    test, so this stays correct once the bracket phase begins.
+ */
+export function parseStandings(data: EspnStandings): GroupStandings[] {
+  const out: GroupStandings[] = [];
+  for (const child of data.children ?? []) {
+    const letter = (child.name ?? child.abbreviation ?? '')
+      .match(/Group\s+([A-L])/i)?.[1]
+      ?.toUpperCase();
+    if (!letter) continue;
+    const ranked = (child.standings?.entries ?? []).map((e) => ({
+      row: entryToRow(e),
+      rank: statVal(e.stats, 'rank'),
+    }));
+    ranked.sort((a, b) => {
+      if (a.rank && b.rank && a.rank !== b.rank) return a.rank - b.rank;
+      const r = a.row;
+      const s = b.row;
+      return (
+        s.points - r.points ||
+        s.goalDiff - r.goalDiff ||
+        s.goalsFor - r.goalsFor ||
+        r.team.code.localeCompare(s.team.code)
+      );
+    });
+    out.push({ group: letter, rows: ranked.map((x) => x.row) });
+  }
+  out.sort((a, b) => a.group.localeCompare(b.group));
+  return out;
 }
 
 export class EspnAdapter implements ProviderAdapter {
@@ -241,28 +305,32 @@ export class EspnAdapter implements ProviderAdapter {
     return today.filter((m) => m.status === 'LIVE' || m.status === 'HT');
   }
 
+  /** Standings endpoint URL (lives under apis/v2, not site/v2; derived from base). */
+  private standingsUrl(): string {
+    const base = this.opts.baseUrl ?? DEFAULT_BASE;
+    return `${base.replace('/apis/site/v2/', '/apis/v2/')}/standings`;
+  }
+
+  /**
+   * Authoritative, cumulative group tables from the standings endpoint. Throws
+   * on fetch/parse failure (the caller decides the fallback). Group-stage only:
+   * non-group `children` are filtered out by {@link parseStandings}.
+   */
+  async fetchStandings(): Promise<GroupStandings[]> {
+    return parseStandings((await this.get(this.standingsUrl())) as EspnStandings);
+  }
+
   /**
    * Build (and cache) a team-code -> group-letter map from the standings
-   * endpoint. Best-effort: returns {} if standings are unavailable.
+   * endpoint. Best-effort: returns {} if standings are unavailable. Reuses the
+   * same parse as {@link fetchStandings}, so the two never drift.
    */
   async fetchGroupMap(force = false): Promise<Record<string, string>> {
     if (this.groupMap && !force) return this.groupMap;
-    const base = this.opts.baseUrl ?? DEFAULT_BASE;
-    // Standings live under apis/v2 (not site/v2); derive from the configured base.
-    const standingsUrl = `${base.replace('/apis/site/v2/', '/apis/v2/')}/standings`;
     const map: Record<string, string> = {};
     try {
-      const data = (await this.get(standingsUrl)) as EspnStandings;
-      for (const child of data.children ?? []) {
-        const letter = (child.name ?? child.abbreviation ?? '')
-          .match(/Group\s+([A-L])/i)?.[1]
-          ?.toUpperCase();
-        if (!letter) continue;
-        for (const e of child.standings?.entries ?? []) {
-          const code = e.team?.abbreviation?.toUpperCase();
-          if (code) map[code] = letter;
-        }
-      }
+      const tables = parseStandings((await this.get(this.standingsUrl())) as EspnStandings);
+      for (const t of tables) for (const r of t.rows) map[r.team.code] = t.group;
     } catch {
       // standings optional — group letters will simply be absent
     }

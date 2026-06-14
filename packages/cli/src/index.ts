@@ -145,8 +145,11 @@ program
 program
   .command('share')
   .description('print a shareable, copy-pasteable match snippet (#VibingLaVidaLoca)')
-  .argument('[target]', '"today" (default), "live", a date, a match id, or "next"')
-  .argument('[team]', 'team code when target is "next" (default: $CLAUDINHO_TEAM)')
+  .argument('[target]', '"today" (default), "live", a date, a match id, "next", or "table"')
+  .argument(
+    '[team]',
+    'team code for "next", or group letter for "table" (default: $CLAUDINHO_TEAM)',
+  )
   .option('--style <style>', 'snippet style: social (default) or compact')
   .option('--copy', 'also copy the snippet to the clipboard (best-effort)')
   .option('--no-hashtag', 'omit the #VibingLaVidaLoca tag')

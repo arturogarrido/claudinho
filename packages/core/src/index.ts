@@ -28,10 +28,10 @@ export {
 } from './schedule';
 
 export { computeStandings } from './standings';
-export type { StandingRow } from './standings';
+export type { StandingRow, GroupStandings } from './standings';
 
 export type { ProviderAdapter, ProviderCapabilities } from './adapters/types';
-export { EspnAdapter, mapEspnEvent } from './adapters/espn';
+export { EspnAdapter, mapEspnEvent, parseStandings } from './adapters/espn';
 export type { EspnAdapterOptions, MapContext } from './adapters/espn';
 
 export {
@@ -40,11 +40,12 @@ export {
   getMatchesForDate,
   getLiveMatches,
   getMatchById,
+  getStandings,
   marketFixtureForTeam,
   resolveCompetition,
   liveSourceLabel,
 } from './live';
-export type { LiveResult, MatchByIdResult } from './live';
+export type { LiveResult, MatchByIdResult, StandingsResult } from './live';
 export { DEFAULT_COMPETITION, competitionBase } from './adapters/espn';
 
 // Prediction-market signals (read-only sidecar; never embedded in Match).
@@ -96,5 +97,10 @@ export type {
 
 // Shareable terminal snippets (pure text artifacts; composes Match + the market
 // copy bank). The non-affiliation disclaimer is non-optional in every snippet.
-export { formatShareSnippet, SHARE_HASHTAG, SHARE_DISCLAIMER } from './share/format';
-export type { ShareStyle, ShareSnippetInput, ShareSnippetOptions } from './share/format';
+export { formatShareSnippet, formatShareTable, SHARE_HASHTAG, SHARE_DISCLAIMER } from './share/format';
+export type {
+  ShareStyle,
+  ShareSnippetInput,
+  ShareSnippetOptions,
+  ShareTableInput,
+} from './share/format';

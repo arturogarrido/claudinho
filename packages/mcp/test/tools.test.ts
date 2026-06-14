@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { matchFlavor, type Match, type ProviderAdapter } from '@claudinho/core';
+import {
+  matchFlavor,
+  type GroupStandings,
+  type Match,
+  type ProviderAdapter,
+} from '@claudinho/core';
 import {
   toolGetLive,
   toolGetNextFixture,
@@ -36,6 +41,7 @@ function fakeAdapter(opts: {
   live?: Match[];
   byDate?: Match[];
   throws?: boolean;
+  standings?: GroupStandings[];
 }): ProviderAdapter {
   return {
     name: 'fake',
@@ -48,8 +54,26 @@ function fakeAdapter(opts: {
       if (opts.throws) throw new Error('network down');
       return opts.live ?? [];
     },
+    // Only advertise fetchStandings when given tables — so the no-standings
+    // tests exercise the degraded fallback, and these exercise the live path.
+    ...(opts.standings
+      ? {
+          async fetchStandings() {
+            if (opts.throws) throw new Error('network down');
+            return opts.standings as GroupStandings[];
+          },
+        }
+      : {}),
   };
 }
+
+const A_TABLE: GroupStandings = {
+  group: 'A',
+  rows: [
+    { team: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' }, played: 1, won: 1, drawn: 0, lost: 0, goalsFor: 2, goalsAgainst: 0, goalDiff: 2, points: 3 },
+    { team: { code: 'KOR', name: 'South Korea', flag: '🇰🇷' }, played: 1, won: 1, drawn: 0, lost: 0, goalsFor: 2, goalsAgainst: 1, goalDiff: 1, points: 3 },
+  ],
+};
 
 describe('toolGetLive', () => {
   it('formats live matches with score and minute + structured data', async () => {
@@ -173,5 +197,21 @@ describe('toolGetStandings', () => {
     expect(r.text).toContain('No group "Z"');
     expect(r.text).not.toContain('P  W  D  L'); // no table header rendered
     expect((r.data as { tables: null }).tables).toBeNull();
+  });
+
+  it('renders the authoritative table (not degraded) with attribution', async () => {
+    const r = await toolGetStandings({ group: 'A', adapter: fakeAdapter({ standings: [A_TABLE] }) });
+    const data = r.data as {
+      degraded: boolean;
+      source: string | null;
+      tables: { group: string; standings: Array<{ team: { code: string }; points: number }> };
+    };
+    expect(data.degraded).toBe(false);
+    expect(data.source).toBe('fake');
+    expect(data.tables.group).toBe('A');
+    expect(data.tables.standings[0]?.team.code).toBe('MEX');
+    expect(data.tables.standings[0]?.points).toBe(3);
+    expect(r.text).toContain('Group A');
+    expect(r.text).not.toContain('Live standings unavailable');
   });
 });
