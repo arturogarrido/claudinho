@@ -1,6 +1,6 @@
 {
   "name": "@claudinho/core",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "Domain model, provider adapters (ESPN), standings, bundled schedule, and the read-only Polymarket market-signal sidecar powering Claudinho. Not affiliated with FIFA or Anthropic.",
   "type": "module",
   "license": "MIT",
