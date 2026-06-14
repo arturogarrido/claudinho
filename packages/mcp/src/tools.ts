@@ -6,17 +6,16 @@
  */
 import {
   asFlavorLevel,
-  computeStandings,
   fixturesByDate,
-  fixturesByGroup,
   formatDate,
   formatShareSnippet,
+  formatShareTable,
   getLiveMatches,
   getMarketSignal,
   getMarketSignals,
   getMatchById,
   getMatchesForDate,
-  groups,
+  getStandings,
   hasSaneDistribution,
   isReliableMarketSignal,
   isFinished,
@@ -282,36 +281,46 @@ export async function toolGetMatch(
 export async function toolGetStandings(
   args: { group?: string } & CommonOpts,
 ): Promise<ToolResult> {
-  // Overlay today's results so finished games count. getMatchesForDate fetches
-  // the UTC window spanning the local day, so a late-UTC result still overlays.
-  const { matches, degraded, source } = await getMatchesForDate(
-    resolveAdapter(args),
-    localDate(new Date().toISOString(), args.tz),
-  );
+  // Authoritative cumulative standings from the provider; fails closed to a
+  // roster-at-zero (degraded) rather than a wrong, single-day-window table.
+  const { tables, degraded, source } = await getStandings(resolveAdapter(args), args.group);
 
-  const known = groups(matches); // present group letters, e.g. A..L
-  if (args.group) {
-    const g = args.group.toUpperCase();
-    if (!known.includes(g)) {
-      return {
-        text: withDisclaimer(`No group "${g}". Groups are ${known.join(', ')}.`, source),
-        data: { degraded, source: source ?? null, tables: null },
-      };
-    }
+  // Preserve the structured shape: { group, standings: StandingRow[] }.
+  const shaped = tables.map((tb) => ({ group: tb.group, standings: tb.rows }));
+
+  if (shaped.length === 0) {
+    const g = args.group?.toUpperCase();
+    const msg = g ? `No group "${g}". Groups are A–L.` : 'No standings available.';
+    return {
+      text: withDisclaimer(degraded ? `${msg} (Live standings unavailable.)` : msg, source),
+      data: { degraded, source: source ?? null, tables: args.group ? null : [] },
+    };
   }
 
-  const wanted = args.group ? [args.group.toUpperCase()] : known;
-  const tables = wanted.map((g) => ({
-    group: g,
-    standings: computeStandings(fixturesByGroup(g, matches)),
-  }));
-  const text = tables
-    .map((t) => standingsTable(t.group, t.standings))
-    .join('\n\n');
+  let text = shaped.map((t) => standingsTable(t.group, t.standings)).join('\n\n');
+  if (degraded) text += '\n\n(Live standings unavailable — showing the group roster.)';
   return {
-    text: withDisclaimer(text || `No group found.`, source),
-    data: { degraded, source: source ?? null, tables: args.group ? (tables[0] ?? null) : tables },
+    text: withDisclaimer(text, source),
+    data: { degraded, source: source ?? null, tables: args.group ? (shaped[0] ?? null) : shaped },
   };
+}
+
+/**
+ * Text body for the `standings://{group}` resource. Shares the `get_standings`
+ * path so it carries the SAME provider attribution + disclaimer — a resource that
+ * served live ESPN data must still say `Live data: ESPN` (provider-attribution
+ * constraint). Pure given an adapter, so it's unit-testable.
+ */
+export async function standingsResourceText(
+  group: string,
+  adapter: ProviderAdapter,
+): Promise<string> {
+  const g = group.toUpperCase();
+  const { tables, degraded, source } = await getStandings(adapter, g);
+  const tb = tables[0];
+  let text = tb ? standingsTable(tb.group, tb.rows) : `No group ${g}.`;
+  if (degraded && tb) text += '\n\n(Live standings unavailable — showing the group roster.)';
+  return withDisclaimer(text, source);
 }
 
 /** next_fixture: a team's next match (static schedule). */
@@ -319,7 +328,10 @@ export async function toolGetNextFixture(
   args: { team: string } & CommonOpts,
 ): Promise<ToolResult> {
   const code = args.team.toUpperCase();
-  const fixture = nextFixtureForTeam(code);
+  // Thread the caller's clock so "next fixture" is deterministic in tests and
+  // doesn't silently resolve against the real wall-clock (which goes null once a
+  // team's last *known* fixture passes — knockouts are placeholders).
+  const fixture = nextFixtureForTeam(code, { from: args.now ?? new Date() });
   if (!fixture) {
     return {
       text: withDisclaimer(`No upcoming fixture found for ${code}.`),
@@ -442,6 +454,7 @@ interface ShareArgs extends CommonOpts {
   team?: string;
   date?: string;
   live?: boolean;
+  group?: string;
   style?: 'social' | 'compact';
   includeHashtag?: boolean;
   includeInstallLine?: boolean;
@@ -491,11 +504,11 @@ function shareResult(
 }
 
 /**
- * share_snippet: a polished, copy-pasteable match card — the same artifact as the
- * CLI `claudinho share`. Routing precedence: live > matchId > team > date
- * (default today). Plain text, no links; the non-affiliation disclaimer and any
- * market caveat are baked into the snippet, so the model can hand `text` to the
- * user verbatim.
+ * share_snippet: a polished, copy-pasteable card — the same artifact as the CLI
+ * `claudinho share`. Routing precedence: live > group (standings) > matchId >
+ * team > date (default today). Plain text, no links; the non-affiliation
+ * disclaimer and any market caveat are baked into the snippet, so the model can
+ * hand `text` to the user verbatim.
  */
 export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> {
   const options = shareOptions(args);
@@ -525,6 +538,37 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     );
   }
 
+  // a group's standings table (facts only; no market lines).
+  if (args.group) {
+    const group = args.group.toUpperCase();
+    const { tables, degraded, source } = await getStandings(resolveAdapter(args), group);
+    const snippet = formatShareTable(
+      {
+        tables,
+        // Degraded ⇒ static roster, no live provider: don't attribute one, and
+        // surface the not-live notice (the card gets pasted publicly).
+        source: degraded ? undefined : source,
+        installLine: `npx @claudinho/cli table ${group}`,
+        emptyNote: `No group ${group}.`,
+        degraded,
+      },
+      options,
+    );
+    return {
+      text: snippet,
+      data: {
+        kind: 'table',
+        target: 'table',
+        group,
+        source: degraded ? null : (source ?? null),
+        degraded,
+        informationalOnly: true,
+        snippet,
+        tables: tables.map((tb) => ({ group: tb.group, standings: tb.rows })),
+      },
+    };
+  }
+
   // a single match by id, with live overlay (±1-day window — see toolGetMatch).
   if (args.matchId) {
     const { match, source } = await getMatchById(resolveAdapter(args), args.matchId);
@@ -550,7 +594,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
   // a team's next fixture (static schedule + reliable market read).
   if (args.team) {
     const code = args.team.toUpperCase();
-    const fixture = nextFixtureForTeam(code);
+    const fixture = nextFixtureForTeam(code, { from: args.now ?? new Date() });
     const matches = fixture ? [fixture] : [];
     const teamName = fixture
       ? fixture.home.code === code

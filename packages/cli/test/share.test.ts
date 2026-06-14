@@ -1,5 +1,6 @@
 import {
   allFixtures,
+  type GroupStandings,
   type Match,
   type MarketProvider,
   type MarketSignal,
@@ -22,12 +23,17 @@ const fakeAdapter: ProviderAdapter = {
   },
 };
 
+// Fixed in-tournament clock. Pins BOTH the share command's fixture resolution
+// (via ctx.now) AND the synthesized signal's freshness, so the suite stays
+// deterministic after these fixtures fall into the real past.
+const TEST_NOW = new Date('2026-06-13T12:00:00Z');
+
 /** A fresh, cleanly-mapped, reliable signal for a given match. */
 const freshSig = (m: Match): MarketSignal => ({
   matchId: m.id,
   source: 'polymarket',
-  asOf: new Date().toISOString(),
-  fetchedAt: new Date().toISOString(),
+  asOf: TEST_NOW.toISOString(),
+  fetchedAt: TEST_NOW.toISOString(),
   outcomes: [
     { kind: 'home', teamCode: m.home.code, label: m.home.name, probability: 0.56 },
     { kind: 'draw', label: 'Draw', probability: 0.25 },
@@ -64,6 +70,7 @@ const ctx = (over: Over = {}, marketProvider: MarketProvider = provider(), copy?
   adapter: fakeAdapter,
   marketProvider,
   copy,
+  now: TEST_NOW,
 });
 
 const outSpy = vi.spyOn(process.stdout, 'write');
@@ -212,5 +219,72 @@ describe('cmdShare — clipboard', () => {
     expect(errs.join('')).toContain('Clipboard unavailable; printed snippet instead.');
     // The snippet still reached stdout, so nothing is lost.
     expect(text()).toContain(HASHTAG);
+  });
+});
+
+describe('cmdShare table — standings card', () => {
+  const standingsAdapter: ProviderAdapter = {
+    name: 'espn',
+    capabilities: { push: false, latencyHintSec: 0 },
+    async fetchByDate() {
+      return [];
+    },
+    async fetchLive() {
+      return [];
+    },
+    async fetchStandings(): Promise<GroupStandings[]> {
+      return [
+        {
+          group: 'A',
+          rows: [
+            { team: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' }, played: 1, won: 1, drawn: 0, lost: 0, goalsFor: 2, goalsAgainst: 0, goalDiff: 2, points: 3 },
+            { team: { code: 'RSA', name: 'South Africa', flag: '🇿🇦' }, played: 1, won: 0, drawn: 0, lost: 1, goalsFor: 0, goalsAgainst: 2, goalDiff: -2, points: 0 },
+          ],
+        },
+      ];
+    },
+  };
+  const tableCtx = (adapter: ProviderAdapter) => ({
+    cfg: cfg(),
+    t: makeT('en'),
+    adapter,
+    marketProvider: provider(),
+    now: TEST_NOW,
+  });
+
+  it('renders a standings card with disclaimer + install line, no market lines', async () => {
+    await cmdShare('table', 'A', {}, tableCtx(standingsAdapter));
+    const o = text();
+    expect(o).toContain('Group A · standings');
+    expect(o).toContain('1. 🇲🇽 MEX  3 pts · 1-0-0 · +2');
+    expect(o).toContain('Live data: ESPN');
+    expect(o).toContain(HASHTAG);
+    expect(o).toContain(DISCLAIMER);
+    expect(o).toContain('Try it: npx @claudinho/cli table A');
+    expect(o).not.toContain('informational only');
+  });
+
+  it('JSON payload carries kind=table + standings rows', async () => {
+    await cmdShare('table', 'A', {}, { ...tableCtx(standingsAdapter), cfg: cfg({ json: true }) });
+    const d = json() as { kind: string; group: string; degraded: boolean; tables: Array<{ group: string; standings: unknown[] }> };
+    expect(d.kind).toBe('table');
+    expect(d.group).toBe('A');
+    expect(d.degraded).toBe(false);
+    expect(d.tables[0]?.standings).toHaveLength(2);
+  });
+
+  it('fails closed to a degraded roster (no fetchStandings), with a not-live notice', async () => {
+    await cmdShare('table', 'A', {}, tableCtx(fakeAdapter));
+    const o = text();
+    expect(o).toContain('Group A · standings');
+    expect(o).not.toContain('Live data:');
+    expect(o).toContain('Live standings unavailable — group roster, not live results.');
+    expect(o).toContain(DISCLAIMER);
+  });
+
+  it('unknown group renders a clear empty state', async () => {
+    await cmdShare('table', 'Z', {}, tableCtx(standingsAdapter));
+    expect(text()).toContain('No group Z.');
+    expect(text()).toContain(DISCLAIMER);
   });
 });

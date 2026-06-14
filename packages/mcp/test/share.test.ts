@@ -1,6 +1,7 @@
 import {
   allFixtures,
   FakeMarketProvider,
+  type GroupStandings,
   type Match,
   type MarketProvider,
   type ProviderAdapter,
@@ -17,6 +18,22 @@ const fakeAdapter: ProviderAdapter = {
   },
   async fetchLive(): Promise<Match[]> {
     return [];
+  },
+};
+
+/** A match adapter that also serves an authoritative Group A table. */
+const standingsAdapter: ProviderAdapter = {
+  ...fakeAdapter,
+  async fetchStandings(): Promise<GroupStandings[]> {
+    return [
+      {
+        group: 'A',
+        rows: [
+          { team: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' }, played: 1, won: 1, drawn: 0, lost: 0, goalsFor: 2, goalsAgainst: 0, goalDiff: 2, points: 3 },
+          { team: { code: 'KOR', name: 'South Korea', flag: '🇰🇷' }, played: 1, won: 1, drawn: 0, lost: 0, goalsFor: 2, goalsAgainst: 1, goalDiff: 1, points: 3 },
+        ],
+      },
+    ];
   },
 };
 
@@ -182,5 +199,48 @@ describe('toolGetShareSnippet', () => {
     });
     expect(r.text).toContain(HASHTAG); // degraded gracefully — card still renders
     expect(Object.keys((r.data as ShareData).marketSignals)).toHaveLength(0);
+  });
+});
+
+describe('toolGetShareSnippet — group standings table', () => {
+  it('renders a standings card from the authoritative table', async () => {
+    const r = await toolGetShareSnippet({ group: 'a', adapter: standingsAdapter, marketProvider: synth() });
+    const data = r.data as {
+      kind: string;
+      group: string;
+      degraded: boolean;
+      source: string | null;
+      tables: Array<{ group: string; standings: unknown[] }>;
+    };
+    expect(data.kind).toBe('table');
+    expect(data.group).toBe('A');
+    expect(data.degraded).toBe(false);
+    expect(data.source).toBe('fake');
+    expect(data.tables[0]?.standings).toHaveLength(2);
+    // text IS the pasteable snippet, self-contained.
+    expect(r.text).toContain('Group A · standings');
+    expect(r.text).toContain('1. 🇲🇽 MEX');
+    expect(r.text).toContain(DISCLAIMER);
+    expect(r.text).toContain('Try it: npx @claudinho/cli table A');
+    // Standings are facts only — never a market line.
+    expect(r.text).not.toContain('informational only');
+    expect(r.text).not.toMatch(BANNED);
+  });
+
+  it('fails closed to a degraded roster (no fetchStandings) with a not-live notice', async () => {
+    const r = await toolGetShareSnippet({ group: 'A', adapter: fakeAdapter, marketProvider: synth() });
+    const data = r.data as { degraded: boolean; source: string | null };
+    expect(data.degraded).toBe(true);
+    expect(data.source).toBeNull(); // degraded ⇒ no provider attribution
+    expect(r.text).toContain('Group A · standings');
+    expect(r.text).not.toContain('Live data:');
+    expect(r.text).toContain('Live standings unavailable — group roster, not live results.');
+    expect(r.text).toContain(DISCLAIMER);
+  });
+
+  it('renders an empty-state card for an unknown group', async () => {
+    const r = await toolGetShareSnippet({ group: 'Z', adapter: standingsAdapter, marketProvider: synth() });
+    expect(r.text).toContain('No group Z.');
+    expect(r.text).toContain(DISCLAIMER);
   });
 });

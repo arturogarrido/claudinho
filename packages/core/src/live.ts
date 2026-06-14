@@ -6,7 +6,15 @@
 import { competitionBase, DEFAULT_COMPETITION, EspnAdapter } from './adapters/espn';
 import type { ProviderAdapter } from './adapters/types';
 import { isFinished } from './normalize';
-import { allFixtures, fixturesByTeam, LIVE_WINDOW_MS, nextFixtureForTeam } from './schedule';
+import {
+  allFixtures,
+  fixturesByGroup,
+  groups,
+  fixturesByTeam,
+  LIVE_WINDOW_MS,
+  nextFixtureForTeam,
+} from './schedule';
+import { computeStandings, type GroupStandings } from './standings';
 import type { Match } from './types';
 
 /**
@@ -87,6 +95,50 @@ export async function getMatchesForDate(
   } catch {
     return { matches: base, degraded: true };
   }
+}
+
+export interface StandingsResult {
+  /** Group tables in group-letter order; each table's rows in standings order. */
+  tables: GroupStandings[];
+  /** True when no authoritative table was available and rows are a static roster. */
+  degraded: boolean;
+  /** The provider that served a real table (absent when degraded). */
+  source?: string;
+}
+
+/**
+ * Authoritative group tables, preferring the provider's cumulative standings and
+ * FAILING CLOSED to a roster-at-zero (degraded) when none is available.
+ *
+ * Deliberately does NOT compute a table from a live-match window: that silently
+ * drops earlier matchdays and reports a wrong, partial table (e.g. all-zeros for
+ * a group not playing today) — the bug this replaced. A degraded roster is
+ * honestly empty; a confidently-wrong table is the failure mode we refuse.
+ *
+ * An empty `tables` with `degraded: false` means the fetch succeeded but the
+ * asked-for group isn't in it (caller renders "no such group").
+ */
+export async function getStandings(
+  adapter: ProviderAdapter,
+  group?: string,
+): Promise<StandingsResult> {
+  const want = group?.toUpperCase();
+  if (adapter.fetchStandings) {
+    try {
+      const all = await adapter.fetchStandings();
+      const tables = (want ? all.filter((t) => t.group === want) : all).sort((a, b) =>
+        a.group.localeCompare(b.group),
+      );
+      return { tables, degraded: false, source: adapter.name };
+    } catch {
+      // fall through to the degraded roster
+    }
+  }
+  const letters = want ? [want] : groups();
+  const tables = letters
+    .map((g) => ({ group: g, rows: computeStandings(fixturesByGroup(g)) }))
+    .filter((t) => t.rows.length > 0);
+  return { tables, degraded: true };
 }
 
 /** Shift a "YYYY-MM-DD" date by whole UTC days, returning "YYYY-MM-DD". */

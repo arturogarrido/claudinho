@@ -8,14 +8,14 @@ import { z } from 'zod';
 import {
   allFixtures,
   asFlavorLevel,
-  computeStandings,
   fixturesByDate,
-  fixturesByGroup,
   groups,
   isValidDate,
+  makeAdapter,
 } from '@claudinho/core';
-import { DISCLAIMER, matchList, standingsTable } from './format';
+import { DISCLAIMER, matchList } from './format';
 import {
+  standingsResourceText,
   toolGetLive,
   toolGetMarketSignal,
   toolGetMatch,
@@ -84,7 +84,8 @@ export function buildServer(): McpServer {
     'get_today',
     {
       title: "Today's matches",
-      description: "Fixtures for a given date (default: today), with live scores overlaid.",
+      description:
+        "All fixtures for a date (default: today), with live score and minute overlaid on any match in play. Use this for a whole day's card; for only in-play matches use get_live, for one team's match use get_next_fixture, for a single match's detail use get_match. Kickoffs render in tz; lang localizes text (en/es/pt/fr); flavor sets commentary tone.",
       inputSchema: {
         date: dateArg.optional().describe('Date as YYYY-MM-DD (default: today)'),
         ...commonArgs,
@@ -99,7 +100,8 @@ export function buildServer(): McpServer {
     'get_live',
     {
       title: 'Live matches',
-      description: 'Matches currently in play, with score and minute.',
+      description:
+        'Only matches in play right now — each with current score and minute (empty when nothing is live). Use during matches for in-play state; for a full day\'s schedule including upcoming and finished, use get_today. tz/lang/flavor affect formatting only.',
       inputSchema: { ...commonArgs },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
@@ -110,7 +112,8 @@ export function buildServer(): McpServer {
     'get_match',
     {
       title: 'Match detail',
-      description: 'A single match by its id, with live state if available.',
+      description:
+        "One match by its id, with live score/minute overlaid when it's in play. Get the id from get_today or get_live; to find a team's match without an id, use get_next_fixture. tz/lang/flavor affect formatting.",
       inputSchema: { id: z.string().describe('Match id'), ...commonArgs },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
@@ -121,7 +124,8 @@ export function buildServer(): McpServer {
     'get_standings',
     {
       title: 'Group standings',
-      description: 'Group table(s). Pass a group letter A–L, or omit for all groups.',
+      description:
+        'Live cumulative group standings — pass a group letter A–L, or omit for all 12. Returns ranked rows (team, played, W/D/L, goal difference, points). Use get_today for fixtures/scores and get_next_fixture for one team. Falls back to a roster at zero (flagged degraded) if live standings are unavailable.',
       inputSchema: {
         group: groupArg.optional().describe('Group letter A–L (omit for all)'),
         ...commonArgs,
@@ -173,12 +177,13 @@ export function buildServer(): McpServer {
     {
       title: 'Shareable match snippet',
       description:
-        "A polished, copy-pasteable match card (plain text) for a match (matchId), a team's next fixture (team), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
+        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), a group's standings table (group, e.g. \"A\"), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
       inputSchema: {
         matchId: z.string().optional().describe('Match id (most specific)'),
         team: teamArg
           .optional()
           .describe("3-letter team code for that team's next fixture, e.g. MEX"),
+        group: groupArg.optional().describe('Group letter A–L for a standings card, e.g. A'),
         date: dateArg.optional().describe('Date as YYYY-MM-DD (default: today)'),
         live: z.boolean().optional().describe('Snapshot of matches in play right now'),
         style: z
@@ -206,13 +211,14 @@ export function buildServer(): McpServer {
     new ResourceTemplate('standings://{group}', { list: undefined }),
     {
       title: 'Group standings',
-      description: 'Static group table for a group letter A–L.',
+      description: 'Live group table for a group letter A–L.',
       mimeType: 'text/plain',
     },
     async (uri, variables) => {
-      const group = String(variables.group ?? '').toUpperCase();
-      const rows = computeStandings(fixturesByGroup(group));
-      const text = rows.length ? standingsTable(group, rows) : `No group ${group}.`;
+      const group = String(variables.group ?? '');
+      // Shares the get_standings path → live standings, fail-closed roster, and
+      // the SAME provider attribution + disclaimer.
+      const text = await standingsResourceText(group, makeAdapter());
       return { contents: [{ uri: uri.href, mimeType: 'text/plain', text }] };
     },
   );

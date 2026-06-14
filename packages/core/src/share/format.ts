@@ -23,6 +23,7 @@ import { liveSourceLabel } from '../live';
 import { marketBlock, marketLine } from '../markets/format';
 import type { MarketSignal } from '../markets/types';
 import { isLive, matchLocation, scoreline } from '../normalize';
+import type { StandingRow } from '../standings';
 import { formatDate, formatTime } from '../time';
 import type { Match } from '../types';
 
@@ -174,12 +175,92 @@ export function formatShareSnippet(
     }
   }
 
-  const footer: string[] = [];
-  if (input.source) footer.push(`Live data: ${liveSourceLabel(input.source)}`);
-  // Hashtag and disclaimer share a line; the disclaimer is always present.
-  footer.push([includeHashtag ? SHARE_HASHTAG : '', SHARE_DISCLAIMER].filter(Boolean).join(' · '));
-  if (includeInstall && input.installLine) footer.push(`Try it: ${input.installLine}`);
-  blocks.push(footer.join('\n'));
+  blocks.push(
+    shareFooter({
+      source: input.source,
+      installLine: input.installLine,
+      includeHashtag,
+      includeInstall,
+    }),
+  );
 
+  return blocks.join('\n\n');
+}
+
+/**
+ * The shared footer block: optional attribution, the (always-present) disclaimer
+ * with an optional hashtag, and an optional run cue. One definition so the legal
+ * disclaimer can never be accidentally dropped from a new snippet type.
+ */
+function shareFooter(opts: {
+  source?: string;
+  installLine?: string;
+  includeHashtag: boolean;
+  includeInstall: boolean;
+}): string {
+  const footer: string[] = [];
+  if (opts.source) footer.push(`Live data: ${liveSourceLabel(opts.source)}`);
+  footer.push(
+    [opts.includeHashtag ? SHARE_HASHTAG : '', SHARE_DISCLAIMER].filter(Boolean).join(' · '),
+  );
+  if (opts.includeInstall && opts.installLine) footer.push(`Try it: ${opts.installLine}`);
+  return footer.join('\n');
+}
+
+/** Signed goal difference, e.g. +2 / 0 / -3. */
+function gd(n: number): string {
+  return n > 0 ? `+${n}` : `${n}`;
+}
+
+/** One standings line: "1. 🇲🇽 MEX  3 pts · 1-0-0 · +2" (rank · record W-D-L · GD). */
+function tableRow(r: StandingRow, rank: number): string {
+  return `${rank}. ${r.team.flag} ${r.team.code}  ${r.points} pts · ${r.won}-${r.drawn}-${r.lost} · ${gd(r.goalDiff)}`;
+}
+
+export interface ShareTableInput {
+  /** Group tables to render (1..n); each in standings order. */
+  tables: { group: string; rows: StandingRow[] }[];
+  /** Live-data provider name for attribution; omit when degraded/static. */
+  source?: string;
+  /** Exact run cue, e.g. "npx @claudinho/cli table A". */
+  installLine?: string;
+  /** Body line when there are no tables (e.g. "No group Z."). */
+  emptyNote?: string;
+  /**
+   * True when the rows are a static roster (no live results), not an
+   * authoritative table. A shared card is pasted into public/social, so this
+   * MUST be surfaced — otherwise a roster-at-zero reads as a real "nobody has
+   * played yet" table. The card then carries an explicit not-live notice.
+   */
+  degraded?: boolean;
+}
+
+/**
+ * Render a shareable group-standings card. Pure, plain-text, deterministic. Like
+ * {@link formatShareSnippet} but for tables: facts + emoji flags only, no market
+ * lines (standings carry no market read), disclaimer non-optional, hashtag and
+ * run cue toggleable via {@link ShareSnippetOptions}.
+ */
+export function formatShareTable(input: ShareTableInput, options: ShareSnippetOptions = {}): string {
+  const includeHashtag = options.includeHashtag !== false;
+  const includeInstall = options.includeInstallLine !== false;
+
+  const blocks: string[] = [];
+  if (input.tables.length === 0) {
+    blocks.push(input.emptyNote ?? 'No standings available.');
+  } else {
+    for (const { group, rows } of input.tables) {
+      blocks.push(
+        [`Group ${group} · standings`, '', ...rows.map((r, i) => tableRow(r, i + 1))].join('\n'),
+      );
+    }
+    // Never let a static roster paste as if it were live results.
+    if (input.degraded) {
+      blocks.push('(Live standings unavailable — group roster, not live results.)');
+    }
+  }
+  blocks.push(
+    shareFooter({ source: input.source, installLine: input.installLine, includeHashtag, includeInstall }),
+  );
   return blocks.join('\n\n');
 }

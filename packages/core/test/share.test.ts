@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatShareSnippet, SHARE_DISCLAIMER, SHARE_HASHTAG } from '../src/index';
+import { formatShareSnippet, formatShareTable, SHARE_DISCLAIMER, SHARE_HASHTAG } from '../src/index';
 import type { Match, MarketSignal } from '../src/index';
 
 const scheduled: Match = {
@@ -200,5 +200,60 @@ describe('formatShareSnippet — live + empty', () => {
     );
     expect(out).toContain('No upcoming fixture found for ZZZ.');
     expect(out).toContain(SHARE_DISCLAIMER);
+  });
+});
+
+describe('formatShareTable', () => {
+  const rows = [
+    { team: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' }, played: 1, won: 1, drawn: 0, lost: 0, goalsFor: 2, goalsAgainst: 0, goalDiff: 2, points: 3 },
+    { team: { code: 'KOR', name: 'South Korea', flag: '🇰🇷' }, played: 1, won: 0, drawn: 1, lost: 0, goalsFor: 1, goalsAgainst: 1, goalDiff: 0, points: 1 },
+    { team: { code: 'CZE', name: 'Czechia', flag: '🇨🇿' }, played: 1, won: 0, drawn: 0, lost: 1, goalsFor: 0, goalsAgainst: 2, goalDiff: -2, points: 0 },
+  ];
+  const tables = [{ group: 'A', rows }];
+
+  it('renders a titled, rank-numbered, plain-text card with the disclaimer', () => {
+    const out = formatShareTable({ tables, source: 'espn', installLine: 'npx @claudinho/cli table A' });
+    expect(out).toContain('Group A · standings');
+    expect(out).toContain('1. 🇲🇽 MEX  3 pts · 1-0-0 · +2');
+    expect(out).toContain('2. 🇰🇷 KOR  1 pts · 0-1-0 · 0');
+    expect(out).toContain('3. 🇨🇿 CZE  0 pts · 0-0-1 · -2');
+    expect(out).toContain('Live data: ESPN');
+    expect(out).toContain(SHARE_HASHTAG);
+    expect(out).toContain(SHARE_DISCLAIMER);
+    expect(out).toContain('Try it: npx @claudinho/cli table A');
+    // Facts only: no market language ever appears on a standings card.
+    expect(out).not.toMatch(/informational only|Prediction markets|Polymarket/);
+    // Plain text: no ANSI escapes (snippets get pasted).
+    expect(out).not.toContain(ESC);
+  });
+
+  it('disclaimer is non-optional; hashtag and install line are toggleable', () => {
+    const out = formatShareTable(
+      { tables },
+      { includeHashtag: false, includeInstallLine: false },
+    );
+    expect(out).not.toContain(SHARE_HASHTAG);
+    expect(out).not.toContain('Try it:');
+    expect(out).toContain(SHARE_DISCLAIMER); // always present
+  });
+
+  it('surfaces a not-live notice and drops attribution when degraded', () => {
+    const out = formatShareTable({ tables, degraded: true, installLine: 'npx @claudinho/cli table A' });
+    expect(out).not.toContain('Live data:');
+    // The card gets pasted publicly — a roster-at-zero must never read as real.
+    expect(out).toContain('Live standings unavailable — group roster, not live results.');
+    expect(out).toContain(SHARE_DISCLAIMER);
+  });
+
+  it('renders a clear empty state (no void card)', () => {
+    const out = formatShareTable({ tables: [], emptyNote: 'No group Z.' });
+    expect(out).toContain('No group Z.');
+    expect(out).toContain(SHARE_DISCLAIMER);
+  });
+
+  it('renders multiple groups as separate blocks', () => {
+    const out = formatShareTable({ tables: [{ group: 'A', rows }, { group: 'B', rows }] });
+    expect(out).toContain('Group A · standings');
+    expect(out).toContain('Group B · standings');
   });
 });
