@@ -9,13 +9,13 @@ import {
   allFixtures,
   asFlavorLevel,
   fixturesByDate,
-  getStandings,
   groups,
   isValidDate,
   makeAdapter,
 } from '@claudinho/core';
-import { DISCLAIMER, matchList, standingsTable } from './format';
+import { DISCLAIMER, matchList } from './format';
 import {
+  standingsResourceText,
   toolGetLive,
   toolGetMarketSignal,
   toolGetMatch,
@@ -215,12 +215,10 @@ export function buildServer(): McpServer {
       mimeType: 'text/plain',
     },
     async (uri, variables) => {
-      const group = String(variables.group ?? '').toUpperCase();
-      // Authoritative live standings; fails closed to a degraded roster.
-      const { tables, degraded } = await getStandings(makeAdapter(), group);
-      const tb = tables[0];
-      let text = tb ? standingsTable(tb.group, tb.rows) : `No group ${group}.`;
-      if (degraded && tb) text += '\n\n(Live standings unavailable — showing the group roster.)';
+      const group = String(variables.group ?? '');
+      // Shares the get_standings path → live standings, fail-closed roster, and
+      // the SAME provider attribution + disclaimer.
+      const text = await standingsResourceText(group, makeAdapter());
       return { contents: [{ uri: uri.href, mimeType: 'text/plain', text }] };
     },
   );

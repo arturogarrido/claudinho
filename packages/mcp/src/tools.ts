@@ -305,6 +305,24 @@ export async function toolGetStandings(
   };
 }
 
+/**
+ * Text body for the `standings://{group}` resource. Shares the `get_standings`
+ * path so it carries the SAME provider attribution + disclaimer — a resource that
+ * served live ESPN data must still say `Live data: ESPN` (provider-attribution
+ * constraint). Pure given an adapter, so it's unit-testable.
+ */
+export async function standingsResourceText(
+  group: string,
+  adapter: ProviderAdapter,
+): Promise<string> {
+  const g = group.toUpperCase();
+  const { tables, degraded, source } = await getStandings(adapter, g);
+  const tb = tables[0];
+  let text = tb ? standingsTable(tb.group, tb.rows) : `No group ${g}.`;
+  if (degraded && tb) text += '\n\n(Live standings unavailable — showing the group roster.)';
+  return withDisclaimer(text, source);
+}
+
 /** next_fixture: a team's next match (static schedule). */
 export async function toolGetNextFixture(
   args: { team: string } & CommonOpts,

@@ -148,7 +148,7 @@ program
   .argument('[target]', '"today" (default), "live", a date, a match id, "next", or "table"')
   .argument(
     '[team]',
-    'team code for "next", or group letter for "table" (default: $CLAUDINHO_TEAM)',
+    'team code for "next" (default: $CLAUDINHO_TEAM), or group letter for "table" (omit for all groups)',
   )
   .option('--style <style>', 'snippet style: social (default) or compact')
   .option('--copy', 'also copy the snippet to the clipboard (best-effort)')

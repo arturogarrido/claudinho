@@ -6,6 +6,7 @@ import {
   type ProviderAdapter,
 } from '@claudinho/core';
 import {
+  standingsResourceText,
   toolGetLive,
   toolGetNextFixture,
   toolGetStandings,
@@ -213,5 +214,31 @@ describe('toolGetStandings', () => {
     expect(data.tables.standings[0]?.points).toBe(3);
     expect(r.text).toContain('Group A');
     expect(r.text).not.toContain('Live standings unavailable');
+  });
+});
+
+describe('standingsResourceText (standings:// resource)', () => {
+  const DISCLAIMER = 'not affiliated'; // matches the get_standings tool path
+
+  it('attributes the live provider on an authoritative table', async () => {
+    const text = await standingsResourceText('a', fakeAdapter({ standings: [A_TABLE] }));
+    expect(text).toContain('Group A');
+    expect(text).toContain('Mexico');
+    // The provider-attribution constraint: live data MUST say where it came from.
+    expect(text).toContain('Live data:');
+    expect(text).toContain(DISCLAIMER);
+  });
+
+  it('drops attribution but keeps the disclaimer + notice when degraded', async () => {
+    const text = await standingsResourceText('A', fakeAdapter({ throws: true }));
+    expect(text).not.toContain('Live data:'); // no live provider served it
+    expect(text).toContain('Live standings unavailable');
+    expect(text).toContain(DISCLAIMER);
+  });
+
+  it('renders a clean message for an unknown group', async () => {
+    const text = await standingsResourceText('Z', fakeAdapter({ standings: [A_TABLE] }));
+    expect(text).toContain('No group Z.');
+    expect(text).toContain(DISCLAIMER);
   });
 });
