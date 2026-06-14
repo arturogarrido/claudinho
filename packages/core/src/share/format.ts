@@ -226,6 +226,13 @@ export interface ShareTableInput {
   installLine?: string;
   /** Body line when there are no tables (e.g. "No group Z."). */
   emptyNote?: string;
+  /**
+   * True when the rows are a static roster (no live results), not an
+   * authoritative table. A shared card is pasted into public/social, so this
+   * MUST be surfaced — otherwise a roster-at-zero reads as a real "nobody has
+   * played yet" table. The card then carries an explicit not-live notice.
+   */
+  degraded?: boolean;
 }
 
 /**
@@ -246,6 +253,10 @@ export function formatShareTable(input: ShareTableInput, options: ShareSnippetOp
       blocks.push(
         [`Group ${group} · standings`, '', ...rows.map((r, i) => tableRow(r, i + 1))].join('\n'),
       );
+    }
+    // Never let a static roster paste as if it were live results.
+    if (input.degraded) {
+      blocks.push('(Live standings unavailable — group roster, not live results.)');
     }
   }
   blocks.push(

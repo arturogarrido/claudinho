@@ -486,11 +486,11 @@ function shareResult(
 }
 
 /**
- * share_snippet: a polished, copy-pasteable match card — the same artifact as the
- * CLI `claudinho share`. Routing precedence: live > matchId > team > date
- * (default today). Plain text, no links; the non-affiliation disclaimer and any
- * market caveat are baked into the snippet, so the model can hand `text` to the
- * user verbatim.
+ * share_snippet: a polished, copy-pasteable card — the same artifact as the CLI
+ * `claudinho share`. Routing precedence: live > group (standings) > matchId >
+ * team > date (default today). Plain text, no links; the non-affiliation
+ * disclaimer and any market caveat are baked into the snippet, so the model can
+ * hand `text` to the user verbatim.
  */
 export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> {
   const options = shareOptions(args);
@@ -527,10 +527,12 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     const snippet = formatShareTable(
       {
         tables,
-        // Degraded ⇒ static roster, no live provider: don't attribute one.
+        // Degraded ⇒ static roster, no live provider: don't attribute one, and
+        // surface the not-live notice (the card gets pasted publicly).
         source: degraded ? undefined : source,
         installLine: `npx @claudinho/cli table ${group}`,
         emptyNote: `No group ${group}.`,
+        degraded,
       },
       options,
     );

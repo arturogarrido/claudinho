@@ -327,7 +327,13 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
   const c = painterFor(cfg);
   if (tables.length === 0) {
     out();
-    out(c.dim('  ' + t('table.none', { group: (group ?? '').toUpperCase() })));
+    // A specific group that isn't there → "no group X"; no group asked (e.g. the
+    // group stage is over and only knockout brackets remain) → "no standings".
+    out(
+      c.dim(
+        '  ' + (group ? t('table.none', { group: group.toUpperCase() }) : t('table.empty')),
+      ),
+    );
     out();
     if (degraded) out(c.dim('  ' + t('table.degraded')));
     out(disclaimer(t, c));
@@ -744,7 +750,13 @@ interface ShareTableEmit {
 /** Emit a `share table` snippet — mirrors {@link emitShare} for the table path. */
 function emitShareTable(ctx: Ctx, e: ShareTableEmit, copy: boolean): void {
   const snippet = formatShareTable(
-    { tables: e.tables, source: e.source, installLine: e.installLine, emptyNote: e.emptyNote },
+    {
+      tables: e.tables,
+      source: e.source,
+      installLine: e.installLine,
+      emptyNote: e.emptyNote,
+      degraded: e.degraded,
+    },
     e.options,
   );
   if (ctx.cfg.json) {

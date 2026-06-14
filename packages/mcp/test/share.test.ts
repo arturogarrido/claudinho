@@ -227,13 +227,14 @@ describe('toolGetShareSnippet — group standings table', () => {
     expect(r.text).not.toMatch(BANNED);
   });
 
-  it('fails closed to a degraded roster (no fetchStandings) without attribution', async () => {
+  it('fails closed to a degraded roster (no fetchStandings) with a not-live notice', async () => {
     const r = await toolGetShareSnippet({ group: 'A', adapter: fakeAdapter, marketProvider: synth() });
     const data = r.data as { degraded: boolean; source: string | null };
     expect(data.degraded).toBe(true);
     expect(data.source).toBeNull(); // degraded ⇒ no provider attribution
     expect(r.text).toContain('Group A · standings');
     expect(r.text).not.toContain('Live data:');
+    expect(r.text).toContain('Live standings unavailable — group roster, not live results.');
     expect(r.text).toContain(DISCLAIMER);
   });
 

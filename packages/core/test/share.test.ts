@@ -237,9 +237,11 @@ describe('formatShareTable', () => {
     expect(out).toContain(SHARE_DISCLAIMER); // always present
   });
 
-  it('omits attribution when source is absent (degraded)', () => {
-    const out = formatShareTable({ tables, installLine: 'npx @claudinho/cli table A' });
+  it('surfaces a not-live notice and drops attribution when degraded', () => {
+    const out = formatShareTable({ tables, degraded: true, installLine: 'npx @claudinho/cli table A' });
     expect(out).not.toContain('Live data:');
+    // The card gets pasted publicly — a roster-at-zero must never read as real.
+    expect(out).toContain('Live standings unavailable — group roster, not live results.');
     expect(out).toContain(SHARE_DISCLAIMER);
   });
 

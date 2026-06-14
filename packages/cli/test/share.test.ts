@@ -273,11 +273,12 @@ describe('cmdShare table — standings card', () => {
     expect(d.tables[0]?.standings).toHaveLength(2);
   });
 
-  it('fails closed to a degraded roster (no fetchStandings), no attribution', async () => {
+  it('fails closed to a degraded roster (no fetchStandings), with a not-live notice', async () => {
     await cmdShare('table', 'A', {}, tableCtx(fakeAdapter));
     const o = text();
     expect(o).toContain('Group A · standings');
     expect(o).not.toContain('Live data:');
+    expect(o).toContain('Live standings unavailable — group roster, not live results.');
     expect(o).toContain(DISCLAIMER);
   });
 
