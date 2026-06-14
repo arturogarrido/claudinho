@@ -84,7 +84,8 @@ export function buildServer(): McpServer {
     'get_today',
     {
       title: "Today's matches",
-      description: "Fixtures for a given date (default: today), with live scores overlaid.",
+      description:
+        "All fixtures for a date (default: today), with live score and minute overlaid on any match in play. Use this for a whole day's card; for only in-play matches use get_live, for one team's match use get_next_fixture, for a single match's detail use get_match. Kickoffs render in tz; lang localizes text (en/es/pt/fr); flavor sets commentary tone.",
       inputSchema: {
         date: dateArg.optional().describe('Date as YYYY-MM-DD (default: today)'),
         ...commonArgs,
@@ -99,7 +100,8 @@ export function buildServer(): McpServer {
     'get_live',
     {
       title: 'Live matches',
-      description: 'Matches currently in play, with score and minute.',
+      description:
+        'Only matches in play right now — each with current score and minute (empty when nothing is live). Use during matches for in-play state; for a full day\'s schedule including upcoming and finished, use get_today. tz/lang/flavor affect formatting only.',
       inputSchema: { ...commonArgs },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
@@ -110,7 +112,8 @@ export function buildServer(): McpServer {
     'get_match',
     {
       title: 'Match detail',
-      description: 'A single match by its id, with live state if available.',
+      description:
+        "One match by its id, with live score/minute overlaid when it's in play. Get the id from get_today or get_live; to find a team's match without an id, use get_next_fixture. tz/lang/flavor affect formatting.",
       inputSchema: { id: z.string().describe('Match id'), ...commonArgs },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
