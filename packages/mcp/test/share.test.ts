@@ -20,9 +20,12 @@ const fakeAdapter: ProviderAdapter = {
   },
 };
 
-// A future-dated clock (during the tournament) so synth signals read as fresh.
-const synth = () =>
-  new FakeMarketProvider({ synthesize: true, now: new Date('2026-06-13T12:00:00Z') });
+// A fixed in-tournament clock. It pins BOTH the synth provider's freshness AND the
+// tool's market-relevance gate (which is "now"-relative): without passing this `now`
+// to the tool, a date snippet's market block silently drops once these fixtures fall
+// into the real past — which is exactly how this suite rotted on 2026-06-13.
+const TEST_NOW = new Date('2026-06-13T12:00:00Z');
+const synth = () => new FakeMarketProvider({ synthesize: true, now: TEST_NOW });
 
 const HASHTAG = '#VibingLaVidaLoca';
 const DISCLAIMER = 'not affiliated with FIFA or Anthropic';
@@ -46,6 +49,7 @@ describe('toolGetShareSnippet', () => {
       tz: 'UTC',
       adapter: fakeAdapter,
       marketProvider: synth(),
+      now: TEST_NOW,
     });
     const data = r.data as ShareData;
     expect(data.kind).toBe('today');
