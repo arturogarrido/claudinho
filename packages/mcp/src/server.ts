@@ -121,7 +121,8 @@ export function buildServer(): McpServer {
     'get_standings',
     {
       title: 'Group standings',
-      description: 'Group table(s). Pass a group letter A–L, or omit for all groups.',
+      description:
+        'Live cumulative group standings — pass a group letter A–L, or omit for all 12. Returns ranked rows (team, played, W/D/L, goal difference, points). Use get_today for fixtures/scores and get_next_fixture for one team. Falls back to a roster at zero (flagged degraded) if live standings are unavailable.',
       inputSchema: {
         group: groupArg.optional().describe('Group letter A–L (omit for all)'),
         ...commonArgs,
