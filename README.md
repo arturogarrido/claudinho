@@ -27,18 +27,21 @@ While matches are live, your Claude Code statusline reads:
 
 And `claudinho share` prints a card made for the group chat:
 
-<!-- DEMO CARD: verbatim output of `claudinho share next USA --tz America/Los_Angeles`.
-     REGENERATE immediately before merging — the market block is gate-conditional
-     and the numbers drift. Never hand-edit. -->
+<!-- DEMO CARD: verbatim output of `claudinho share table A`. Chosen over a single
+     match card because it has no fixed date to go stale (a played-and-passed fixture
+     reads as abandoned). Standings still drift across matchdays — REGENERATE
+     periodically, especially before any conversion-sensitive moment. Never hand-edit. -->
 ```text
-Next up for United States
+Group A · standings
 
-🇺🇸 United States vs Paraguay 🇵🇾
-Jun 12 · 18:00 America/Los_Angeles
-SoFi Stadium, Inglewood, California, USA
+1. 🇲🇽 MEX  3 pts · 1-0-0 · +2
+2. 🇰🇷 KOR  3 pts · 1-0-0 · +1
+3. 🇨🇿 CZE  0 pts · 0-0-1 · -1
+4. 🇿🇦 RSA  0 pts · 0-0-1 · -2
 
+Live data: ESPN
 #VibingLaVidaLoca · Independent fan project · not affiliated with FIFA or Anthropic.
-Try it: npx @claudinho/cli next USA
+Try it: npx @claudinho/cli table A
 ```
 
 > ⚠️ **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.**
