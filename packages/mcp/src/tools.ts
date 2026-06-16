@@ -219,7 +219,9 @@ export async function toolGetToday(
   const { matches, degraded, source } = await getMatchesForDate(adapter, date);
   const todays = fixturesByDate(date, matches, args.tz);
   const opts = fmtOpts(args);
-  const text = `Matches on ${date}:\n${matchList(todays, 'No matches scheduled.', opts)}`;
+  let text = `Matches on ${date}:\n${matchList(todays, 'No matches scheduled.', opts)}`;
+  // Degraded ⇒ the live overlay failed; these are static fixtures with no live scores.
+  if (degraded) text += '\n\n(Live scores unavailable — showing the bundled schedule.)';
   const marketSignals = await reliableMarketData(args, todays);
   return {
     text: withDisclaimer(text, source),
@@ -239,7 +241,11 @@ export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
   const { matches, degraded, source } = await getLiveMatches(adapter);
   const opts = fmtOpts(args);
-  const text = `Live now:\n${matchList(matches, 'No matches in play right now.', opts)}`;
+  // Degraded ⇒ the live feed failed, NOT "nothing is on". Distinguish them so the
+  // agent doesn't tell the user no matches are live when the provider is unreachable.
+  const text = degraded
+    ? 'Live scores unavailable right now — could not reach the data provider.'
+    : `Live now:\n${matchList(matches, 'No matches in play right now.', opts)}`;
   return {
     text: withDisclaimer(text, source),
     data: { degraded, source: source ?? null, count: matches.length, matches },
@@ -265,7 +271,9 @@ export async function toolGetMatch(
     if (s && isReliableMarketSignal(s, { now })) marketSignal = s;
   }
   const base = matchLine(match, opts);
-  const text = marketSignal ? `${base}\n${marketBlock(marketSignal, match).join('\n')}` : base;
+  let text = marketSignal ? `${base}\n${marketBlock(marketSignal, match).join('\n')}` : base;
+  // Degraded ⇒ the live overlay failed; this is the static fixture, no live state.
+  if (degraded) text += '\n\n(Live state unavailable — showing the scheduled fixture.)';
   return {
     text: withDisclaimer(text, liveSource),
     data: {

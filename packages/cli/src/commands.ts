@@ -239,6 +239,8 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
     }
   }
   out();
+  // Live overlay failed → these are static fixtures with no live scores. Say so.
+  if (degraded) out(c.dim('  ' + t('feed.degraded')));
   const src = dataSource(source, c);
   if (src) out(src);
   out(disclaimer(t, c));
@@ -260,7 +262,11 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   out();
   out(header(t('live.title'), c));
   out();
-  if (matches.length === 0) {
+  // Degraded ⇒ the live feed failed, NOT "nothing is on". Say so, so the empty
+  // state can't be mistaken for "no matches in play right now".
+  if (degraded) {
+    out(c.dim('  ' + t('live.degraded')));
+  } else if (matches.length === 0) {
     out(c.dim('  ' + t('live.none')));
   } else {
     for (const m of matches) out(matchLine(m, cfg, t, c));
@@ -498,6 +504,8 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
     for (const mline of marketBlock(marketSignal, match)) out('  ' + c.dim(mline));
   }
   out();
+  // Live overlay failed → this is the static fixture with no live state. Say so.
+  if (degraded) out(c.dim('  ' + t('feed.degraded')));
   const src = dataSource(liveSource, c);
   if (src) out(src);
   out(disclaimer(t, c));
