@@ -28,8 +28,10 @@ claudinho markets [target]  # prediction-market signals: today | <date> | <id> |
 claudinho share [target]    # copy-pasteable snippet: today | live | <date> | <id> | next <TEAM> | table <GROUP>
 claudinho prompt            # one compact status line (for statusline/tmux/Starship)
 claudinho init-statusline   # wire it into the Claude Code statusline
+claudinho init-cursor-statusline  # wire it into the Cursor CLI statusline
 claudinho hook              # live-score context for a Claude Code hook (silent off-match)
 claudinho init-hook         # make Claude itself score-aware (UserPromptSubmit)
+claudinho init-cursor-hook  # Cursor CLI beforeSubmitPrompt hook
 claudinho vibe              # a matchday-coder one-liner (#VibingLaVidaLoca)
 ```
 
@@ -176,6 +178,37 @@ claudinho init-hook                # patches ~/.claude/settings.json (backs up f
 Wires `claudinho hook` into Claude Code's `UserPromptSubmit`. During a match,
 the live score is injected into Claude's context so it can mention it naturally;
 off-match it's silent (zero added tokens). Restart Claude Code to activate.
+
+## Statusline (Cursor CLI)
+
+```bash
+claudinho init-cursor-statusline          # patches ~/.cursor/cli-config.json (backs up first)
+claudinho init-cursor-statusline --print  # just print the snippet
+```
+
+Uses the same `claudinho prompt` hot path as Claude Code. Cursor-specific tuning
+is applied automatically (`updateIntervalMs: 1000`, `timeoutMs: 1500`).
+
+Optional second line with session meta (model, context %, worktree, vim mode):
+
+```bash
+export CLAUDINHO_CURSOR_META=auto   # recommended for Cursor CLI
+```
+
+Custom command (local dev or monorepo checkout):
+
+```bash
+claudinho init-cursor-statusline --command "node ./packages/cli/dist/index.js prompt"
+```
+
+### Score-aware Cursor CLI (hook)
+
+```bash
+claudinho init-cursor-hook                # patches ~/.cursor/hooks.json (backs up first)
+```
+
+Wires `claudinho hook` into Cursor's `beforeSubmitPrompt`. Context injection
+depends on Cursor hook support — the hook is ready when the runner surfaces it.
 
 ## How it works
 

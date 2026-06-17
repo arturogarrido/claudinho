@@ -3,6 +3,8 @@ import { resolveConfig, type RawGlobalOpts } from './config';
 import { makeT } from './i18n';
 import {
   cmdHook,
+  cmdInitCursorHook,
+  cmdInitCursorStatusline,
   cmdInitHook,
   cmdInitStatusline,
   cmdLive,
@@ -56,7 +58,7 @@ const program = new Command();
 program
   .name('claudinho')
   .description(
-    'The 2026 men’s football tournament in your terminal, your Claude Code statusline, and any MCP client.\n' +
+    'The 2026 men’s football tournament in your terminal, your Claude Code / Cursor CLI statusline, and any MCP client.\n' +
       DISCLAIMER,
   )
   .version(VERSION, '-v, --version')
@@ -164,7 +166,7 @@ program
 
 program
   .command('prompt')
-  .description('print a one-line status (Claude Code statusline, tmux, Starship, …)')
+  .description('print a status line (Claude Code / Cursor CLI statusline, tmux, Starship, …)')
   .action((_opts, cmd) => {
     cmdPrompt(ctxFrom(cmd));
   });
@@ -173,9 +175,23 @@ program
   .command('init-statusline')
   .description('configure the Claude Code statusline to use claudinho')
   .option('--print', 'print the settings snippet instead of writing it')
+  .option('--command <cmd>', 'command to run (default: claudinho prompt)')
   .action((opts, cmd) => {
     try {
       cmdInitStatusline(opts, ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
+  });
+
+program
+  .command('init-cursor-statusline')
+  .description('configure the Cursor CLI statusline to use claudinho')
+  .option('--print', 'print the settings snippet instead of writing it')
+  .option('--command <cmd>', 'command to run (default: claudinho prompt)')
+  .action((opts, cmd) => {
+    try {
+      cmdInitCursorStatusline(opts, ctxFrom(cmd));
     } catch (e) {
       fail(e);
     }
@@ -192,9 +208,23 @@ program
   .command('init-hook')
   .description('wire the live-score hook into Claude Code (UserPromptSubmit)')
   .option('--print', 'print the settings snippet instead of writing it')
+  .option('--command <cmd>', 'command to run (default: claudinho hook)')
   .action((opts, cmd) => {
     try {
       cmdInitHook(opts, ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
+  });
+
+program
+  .command('init-cursor-hook')
+  .description('wire the live-score hook into Cursor CLI (beforeSubmitPrompt)')
+  .option('--print', 'print the settings snippet instead of writing it')
+  .option('--command <cmd>', 'command to run (default: claudinho hook)')
+  .action((opts, cmd) => {
+    try {
+      cmdInitCursorHook(opts, ctxFrom(cmd));
     } catch (e) {
       fail(e);
     }
