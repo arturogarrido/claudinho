@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Match, MarketProvider } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as cursorPayload from '../src/cursorPayload';
 import { writeState } from '../src/cache';
 import { cmdHook, cmdPrompt } from '../src/commands';
 import type { CliConfig } from '../src/config';
@@ -49,7 +50,8 @@ let dir: string;
 const origCache = process.env.XDG_CACHE_HOME;
 const origComp = process.env.CLAUDINHO_COMPETITION;
 const origTeam = process.env.CLAUDINHO_TEAM;
-const outSpy = vi.spyOn(process.stdout, 'write');
+const origMeta = process.env.CLAUDINHO_CURSOR_META;
+let outSpy: ReturnType<typeof vi.spyOn>;
 let writes: string[] = [];
 
 beforeEach(() => {
@@ -57,12 +59,12 @@ beforeEach(() => {
   process.env.XDG_CACHE_HOME = dir;
   delete process.env.CLAUDINHO_COMPETITION;
   delete process.env.CLAUDINHO_TEAM;
+  process.env.CLAUDINHO_CURSOR_META = 'auto';
   writes = [];
-  outSpy.mockImplementation((c: unknown) => {
+  outSpy = vi.spyOn(process.stdout, 'write').mockImplementation((c: unknown) => {
     writes.push(String(c));
     return true;
   });
-  // Fresh cache so the hot path renders without spawning a refresher.
   writeState({
     updatedAt: new Date().toISOString(),
     live: [liveMatch()],
@@ -72,13 +74,15 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
-  outSpy.mockReset();
+  outSpy.mockRestore();
   if (origCache === undefined) delete process.env.XDG_CACHE_HOME;
   else process.env.XDG_CACHE_HOME = origCache;
   if (origComp === undefined) delete process.env.CLAUDINHO_COMPETITION;
   else process.env.CLAUDINHO_COMPETITION = origComp;
   if (origTeam === undefined) delete process.env.CLAUDINHO_TEAM;
   else process.env.CLAUDINHO_TEAM = origTeam;
+  if (origMeta === undefined) delete process.env.CLAUDINHO_CURSOR_META;
+  else process.env.CLAUDINHO_CURSOR_META = origMeta;
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -96,10 +100,21 @@ describe('hot path never consults market data', () => {
     cmdPrompt({ cfg: cfg(), t: makeT('en') });
     cmdHook({ cfg: cfg(), t: makeT('en') });
     const o = writes.join('');
-    expect(o).toContain('🇲🇽'); // the live match did render
+    expect(o).toContain('🇲🇽');
     expect(o).not.toMatch(/prediction markets|informational only|polymarket|%/i);
-    // Share-only copy (hashtag, install cue, snippet disclaimer) must never
-    // leak onto the statusline/hook hot path either.
     expect(o).not.toMatch(/#VibingLaVidaLoca|Try it:|Independent fan project/i);
+  });
+
+  it('cmdPrompt renders score first when a Cursor payload is present', () => {
+    vi.spyOn(cursorPayload, 'readCursorPayload').mockReturnValue({
+      model: { display_name: 'Composer 2.5' },
+      context_window: { used_percentage: 12 },
+    });
+    cmdPrompt({ cfg: cfg(), t: makeT('en') });
+    const lines = writes.join('').trimEnd().split('\n');
+    expect(lines[0]).toContain('🇲🇽');
+    expect(lines[1]).toContain('Composer 2.5');
+    expect(lines[1]).toContain('ctx 12%');
+    vi.mocked(cursorPayload.readCursorPayload).mockRestore();
   });
 });

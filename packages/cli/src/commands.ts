@@ -61,7 +61,8 @@ import { readCurrentState } from './cache';
 import { liveMatchesFromCache, renderPrompt } from './statusline';
 import { renderHook } from './hook';
 import { runRefresh, shouldRefresh, spawnRefresh } from './refresh';
-import { initHook, initStatusline } from './install';
+import { readCursorPayload, renderPromptOutput } from './cursorPayload';
+import { type InitResult, initCursorStatusline, initHook, initStatusline } from './install';
 
 /**
  * Command context. `adapter` is an optional injection seam: production leaves
@@ -388,6 +389,8 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
  */
 export function cmdPrompt({ cfg }: Ctx): void {
   try {
+    // Always drain stdin so Cursor's statusline pipe never blocks (meta optional).
+    const payload = readCursorPayload();
     const team = process.env.CLAUDINHO_TEAM;
     const compact = !['0', 'false', 'no'].includes(
       (process.env.CLAUDINHO_COMPACT ?? '').toLowerCase(),
@@ -396,7 +399,8 @@ export function cmdPrompt({ cfg }: Ctx): void {
     const max = Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : undefined;
     // Only trust a snapshot fetched for the current source + competition.
     const state = readCurrentState(cfg.source, resolveCompetition());
-    out(renderPrompt(state, { team, compact, max }));
+    const scoreLine = renderPrompt(state, { team, compact, max });
+    out(renderPromptOutput(scoreLine, payload));
     if (!state || shouldRefresh()) spawnRefresh(cfg.source);
   } catch {
     // The statusline must always succeed; print nothing rather than error.
@@ -428,9 +432,7 @@ export async function cmdRefresh({ cfg }: Ctx): Promise<void> {
   await runRefresh({ source: cfg.source });
 }
 
-/** `claudinho init-statusline` — patch Claude Code settings.json. */
-export function cmdInitStatusline(opts: { print?: boolean }, { cfg }: Ctx): void {
-  const res = initStatusline({ print: opts.print });
+function printInitResult(res: InitResult, cfg: CliConfig): void {
   const c = painterFor(cfg);
   if (res.action === 'printed') {
     out(res.message);
@@ -441,17 +443,25 @@ export function cmdInitStatusline(opts: { print?: boolean }, { cfg }: Ctx): void
   out(`${mark} ${res.message}`);
 }
 
+/** `claudinho init-statusline` — patch Claude Code settings.json. */
+export function cmdInitStatusline(
+  opts: { print?: boolean; command?: string },
+  { cfg }: Ctx,
+): void {
+  printInitResult(initStatusline({ print: opts.print, command: opts.command }), cfg);
+}
+
 /** `claudinho init-hook` — wire the live-score UserPromptSubmit hook. */
-export function cmdInitHook(opts: { print?: boolean }, { cfg }: Ctx): void {
-  const res = initHook({ print: opts.print });
-  const c = painterFor(cfg);
-  if (res.action === 'printed') {
-    out(res.message);
-    return;
-  }
-  const mark =
-    res.action === 'written' ? c.green('✓') : res.action === 'already' ? c.cyan('•') : c.yellow('!');
-  out(`${mark} ${res.message}`);
+export function cmdInitHook(opts: { print?: boolean; command?: string }, { cfg }: Ctx): void {
+  printInitResult(initHook({ print: opts.print, command: opts.command }), cfg);
+}
+
+/** `claudinho init-cursor-statusline` — patch ~/.cursor/cli-config.json. */
+export function cmdInitCursorStatusline(
+  opts: { print?: boolean; command?: string },
+  { cfg }: Ctx,
+): void {
+  printInitResult(initCursorStatusline({ print: opts.print, command: opts.command }), cfg);
 }
 
 /** `claudinho match <id>` */

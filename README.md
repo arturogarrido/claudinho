@@ -7,7 +7,7 @@
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![#VibingLaVidaLoca](https://img.shields.io/badge/%23VibingLaVidaLoca-⚽-ff5a5f)](https://github.com/arturogarrido/claudinho)
 
-**Live scores for the 2026 men's football tournament — in your terminal, your Claude Code statusline, and any MCP client.** No API key, no signup; all 104 fixtures ship bundled, so the schedule works offline.
+**Live scores for the 2026 men's football tournament — in your terminal, your Claude Code / Cursor CLI statusline, and any MCP client.** No API key, no signup; all 104 fixtures ship bundled, so the schedule works offline.
 
 <p align="center">
   <img src=".github/assets/hero.gif" alt="A Claude Code statusline flipping to a live World Cup score — South Korea 2–1 Czechia — while tests run in the terminal" width="800">
@@ -71,7 +71,34 @@ claude mcp add claudinho -- npx -y @claudinho/mcp
 Both `init-*` commands back up `~/.claude/settings.json` first and are idempotent.
 Restart Claude Code to activate.
 
-### Other MCP clients — Cursor, Codex, Claude Desktop, Windsurf, Zed, VS Code
+### Cursor CLI — statusline
+
+```bash
+npm i -g @claudinho/cli
+claudinho init-cursor-statusline   # live scores above the Cursor CLI prompt
+```
+
+`init-cursor-statusline` backs up `~/.cursor/cli-config.json` first and is idempotent.
+Restart Cursor CLI to activate.
+
+> **Note:** Cursor's `beforeSubmitPrompt` hook does not yet reliably inject
+> `claudinho hook` context into the model (raw stdout ≠ `additional_context`).
+> Score-aware hooks remain Claude Code only for now.
+
+Optional: show model + context usage below the score line:
+
+```bash
+export CLAUDINHO_CURSOR_META=auto   # on when Cursor pipes a payload (recommended)
+# export CLAUDINHO_CURSOR_META=1    # always on when stdin is piped
+```
+
+Local dev install with a custom command path:
+
+```bash
+claudinho init-cursor-statusline --command "node /path/to/claudinho/packages/cli/dist/index.js prompt"
+```
+
+### Other MCP clients — Codex, Claude Desktop, Windsurf, Zed, VS Code
 
 ```bash
 codex mcp add claudinho -- npx -y @claudinho/mcp    # Codex CLI
@@ -86,7 +113,7 @@ Everything else takes the standard stdio config:
 ## Surfaces
 
 - **CLI** — `today`, `live`, `next MEX`, `table`, `match <id>`, `markets`, `share` (and `vibe` 😎). `--json` on everything; TZ-aware via `--tz`.
-- **Claude Code statusline** — every live score inline; reads a local micro-cache, never blocks on the network. Also works in tmux/Starship via `claudinho prompt`.
+- **Claude Code statusline** — every live score inline; reads a local micro-cache, never blocks on the network. Also works in **Cursor CLI** (`init-cursor-statusline`), tmux, and Starship via `claudinho prompt`.
 - **Score-aware Claude** — a `UserPromptSubmit` hook that drops the live score into Claude's context during matches; zero tokens off-match.
 - **MCP server** — 7 read-only tools (`get_today`, `get_live`, `get_match`, `get_next_fixture`, `get_standings`, `get_market_signal`, `get_share_snippet`) plus `my_team` / `tournament_today` prompts.
 - **Prediction-market signals** — a read-only "who's favored" line (market-implied percentages, Source: Polymarket), shown only when a reliable market exists. **Informational only — not betting advice.** Opt out: `--no-markets` / `CLAUDINHO_MARKETS=off`.
