@@ -69,6 +69,14 @@ export interface ShareSnippetInput {
   emptyNote?: string;
   /** Exact run cue to advertise, e.g. "npx @claudinho/cli next MEX". */
   installLine?: string;
+  /**
+   * True when the live fetch failed and these are static fixtures (no live
+   * scores). A pasted card must say so — otherwise a "no matches" / scheduled
+   * card reads as authoritative when the feed is actually down. When set with
+   * matches present, a not-live notice is appended; for the empty case the
+   * caller picks a feed-down `emptyNote`.
+   */
+  degraded?: boolean;
   /** Timezone for kickoff date/time (date/time only — copy stays English). */
   tz?: string;
   /** Locale for kickoff date/time. */
@@ -173,6 +181,13 @@ export function formatShareSnippet(
       }
       blocks.push(card.join('\n'));
     }
+  }
+
+  // Degraded with matches present ⇒ these are static fixtures, no live scores.
+  // (For the empty case the caller picks a feed-down emptyNote.) Never let a
+  // pasted card imply live data when the feed was unreachable.
+  if (input.degraded && input.matches.length > 0) {
+    blocks.push('(Live data unavailable — showing the bundled schedule, not live scores.)');
   }
 
   blocks.push(

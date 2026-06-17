@@ -108,9 +108,12 @@ describe('toolGetLive', () => {
     expect((off.data as { matches: Match[] }).matches[0]?.score).toEqual({ home: 1, away: 0 });
   });
 
-  it('flags degraded when the provider throws', async () => {
+  it('flags degraded AND says the feed is down (not "no matches in play")', async () => {
     const r = await toolGetLive({ adapter: fakeAdapter({ throws: true }) });
     expect((r.data as { degraded: boolean }).degraded).toBe(true);
+    // The honesty fix: degraded must NOT read as "nothing is on".
+    expect(r.text).toContain('Live scores unavailable');
+    expect(r.text).not.toContain('No matches in play');
   });
 });
 
@@ -138,6 +141,7 @@ describe('toolGetToday', () => {
     const data = r.data as { degraded: boolean; count: number };
     expect(data.degraded).toBe(true);
     expect(data.count).toBeGreaterThan(0); // static fixtures still present
+    expect(r.text).toContain('Live scores unavailable'); // and it says so
   });
 });
 

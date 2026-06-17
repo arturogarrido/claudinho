@@ -3,12 +3,18 @@ packages:
   - "services/*"
   - "apps/*"
 
-# Force vulnerable transitive dev tooling up to patched versions
-# (GHSA path-traversal in vite; esbuild dev-server request leak).
-# vitest 4 otherwise happily reuses the older vite 5 / esbuild 0.21.
+# Force vulnerable transitive dependencies up to patched versions.
+# - vite/esbuild: dev tooling (GHSA path-traversal in vite; esbuild dev-server
+#   request leak). vitest 4 otherwise reuses the older vite 5 / esbuild 0.21.
+# - hono: a *shipped* transitive dep of @modelcontextprotocol/sdk (the sdk
+#   allows ^4.11.4, which resolved to the vulnerable 4.12.23). The advisories
+#   are all HTTP-server features (CORS, serve-static, Lambda adapter,
+#   body-limit) that our stdio MCP server never exercises, but `pnpm audit
+#   --prod` gates on them; 4.12.25 patches all four and satisfies the sdk range.
 overrides:
   vite: "^6.4.2"
   esbuild: ">=0.25.0"
+  "hono@<4.12.25": ">=4.12.25"
 
 # esbuild (via tsup + vitest) ships its native binary through the
 # @esbuild/<platform> optional dependency, so its own postinstall (node

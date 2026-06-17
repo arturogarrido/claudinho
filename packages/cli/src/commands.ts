@@ -239,6 +239,8 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
     }
   }
   out();
+  // Live overlay failed → these are static fixtures with no live scores. Say so.
+  if (degraded) out(c.dim('  ' + t('feed.degraded')));
   const src = dataSource(source, c);
   if (src) out(src);
   out(disclaimer(t, c));
@@ -260,7 +262,11 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   out();
   out(header(t('live.title'), c));
   out();
-  if (matches.length === 0) {
+  // Degraded ⇒ the live feed failed, NOT "nothing is on". Say so, so the empty
+  // state can't be mistaken for "no matches in play right now".
+  if (degraded) {
+    out(c.dim('  ' + t('live.degraded')));
+  } else if (matches.length === 0) {
     out(c.dim('  ' + t('live.none')));
   } else {
     for (const m of matches) out(matchLine(m, cfg, t, c));
@@ -498,6 +504,8 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
     for (const mline of marketBlock(marketSignal, match)) out('  ' + c.dim(mline));
   }
   out();
+  // Live overlay failed → this is the static fixture with no live state. Say so.
+  if (degraded) out(c.dim('  ' + t('feed.degraded')));
   const src = dataSource(liveSource, c);
   if (src) out(src);
   out(disclaimer(t, c));
@@ -716,6 +724,7 @@ function emitShare(ctx: Ctx, e: ShareEmit, copy: boolean): void {
       target: e.target,
       ...(e.team ? { team: e.team } : {}),
       source: e.input.source ?? null,
+      degraded: e.input.degraded ?? false,
       informationalOnly: true,
       style: e.options.style ?? 'social',
       snippet,
@@ -813,7 +822,7 @@ export async function cmdShare(
   // share live
   if (target === 'live') {
     precheck(cfg, t);
-    const { matches, source } = await getLiveMatches(adapterFor(ctx));
+    const { matches, degraded, source } = await getLiveMatches(adapterFor(ctx));
     emitShare(
       ctx,
       {
@@ -823,7 +832,11 @@ export async function cmdShare(
           title: 'Live match pulse',
           matches,
           source,
-          emptyNote: 'No matches in play right now.',
+          degraded,
+          // Degraded ⇒ feed down, not "nothing's on" — say so on the public card.
+          emptyNote: degraded
+            ? "Live scores unavailable right now — couldn't reach the data provider."
+            : 'No matches in play right now.',
           installLine: 'npx @claudinho/cli live',
           tz: cfg.tz,
           locale: cfg.lang,
@@ -897,7 +910,7 @@ export async function cmdShare(
     precheck(cfg, t);
     // ±1-day window fetch (see cmdMatch): the provider's scoreboard day can
     // differ from the fixture's UTC date.
-    const { match, source } = await getMatchById(adapterFor(ctx), target);
+    const { match, degraded, source } = await getMatchById(adapterFor(ctx), target);
     const matches = match ? [match] : [];
     const signals = await reliableShareSignals(ctx, matches);
     emitShare(
@@ -910,6 +923,7 @@ export async function cmdShare(
           matches,
           marketSignals: signals,
           source,
+          degraded,
           emptyNote: `No match found with id ${target}.`,
           installLine: `npx @claudinho/cli match ${target}`,
           tz: cfg.tz,
@@ -926,7 +940,7 @@ export async function cmdShare(
   const explicitDate = target && target !== 'today' ? target : undefined;
   precheck(cfg, t, explicitDate);
   const date = explicitDate ?? localDate(new Date().toISOString(), cfg.tz);
-  const { matches: all, source } = await getMatchesForDate(adapterFor(ctx), date);
+  const { matches: all, degraded, source } = await getMatchesForDate(adapterFor(ctx), date);
   const todays = fixturesByDate(date, all, cfg.tz);
   const signals = await reliableShareSignals(ctx, todays);
   // Human date label from a stable midday-UTC instant (avoids tz day flips).
@@ -942,6 +956,7 @@ export async function cmdShare(
         matches: todays,
         marketSignals: signals,
         source,
+        degraded,
         emptyNote: `No matches scheduled for ${human}.`,
         installLine: 'npx @claudinho/cli today',
         tz: cfg.tz,

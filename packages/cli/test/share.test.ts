@@ -23,6 +23,22 @@ const fakeAdapter: ProviderAdapter = {
   },
 };
 
+/**
+ * Feed DOWN (e.g. an ESPN 403 from a sandboxed environment) → every share path
+ * degrades. Distinct from `fakeAdapter` (reachable but empty): a thrown fetch
+ * must NOT paste as an authoritative "nothing's on" / scheduled card.
+ */
+const downAdapter: ProviderAdapter = {
+  name: 'espn',
+  capabilities: { push: false, latencyHintSec: 0 },
+  async fetchByDate(): Promise<Match[]> {
+    throw new Error('ESPN 403');
+  },
+  async fetchLive(): Promise<Match[]> {
+    throw new Error('ESPN 403');
+  },
+};
+
 // Fixed in-tournament clock. Pins BOTH the share command's fixture resolution
 // (via ctx.now) AND the synthesized signal's freshness, so the suite stays
 // deterministic after these fixtures fall into the real past.
@@ -286,5 +302,45 @@ describe('cmdShare table — standings card', () => {
     await cmdShare('table', 'Z', {}, tableCtx(standingsAdapter));
     expect(text()).toContain('No group Z.');
     expect(text()).toContain(DISCLAIMER);
+  });
+});
+
+describe('cmdShare — degraded honesty (feed down)', () => {
+  // A throwing adapter on the live/match/date paths — the bug the 3rd-party
+  // review caught: these dropped `degraded` and always rendered the reachable-
+  // but-empty copy, so a feed outage pasted as an authoritative card.
+  const downCtx = (over: Over = {}) => ({ ...ctx(over), adapter: downAdapter });
+
+  it('share live says the feed is down — NOT "no matches in play"', async () => {
+    await cmdShare('live', undefined, {}, downCtx());
+    const o = text();
+    expect(o).toContain('Live scores unavailable');
+    expect(o).not.toContain('No matches in play');
+    expect(o).not.toContain('Live data:'); // no attribution when no provider served it
+    expect(o).toContain(DISCLAIMER);
+  });
+
+  it('share live JSON flags degraded with a null source', async () => {
+    await cmdShare('live', undefined, {}, downCtx({ json: true }));
+    const d = json() as { degraded: boolean; source: string | null };
+    expect(d.degraded).toBe(true);
+    expect(d.source).toBeNull();
+  });
+
+  it('share <matchId> marks a static fixture as not-live when the feed is down', async () => {
+    const id = allFixtures()[0]!.id;
+    await cmdShare(id, undefined, {}, downCtx());
+    const o = text();
+    expect(o).toContain('Live data unavailable — showing the bundled schedule, not live scores.');
+    expect(o).not.toContain('Live data:'); // no provider attribution
+    expect(o).toContain(DISCLAIMER);
+  });
+
+  it('share <date> marks static fixtures as not-live when the feed is down', async () => {
+    await cmdShare('2026-06-13', undefined, {}, downCtx());
+    const o = text();
+    expect(o).toContain('Jun 13');
+    expect(o).toContain('Live data unavailable — showing the bundled schedule, not live scores.');
+    expect(o).not.toContain('Live data:');
   });
 });
