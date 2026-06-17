@@ -62,7 +62,7 @@ import { liveMatchesFromCache, renderPrompt } from './statusline';
 import { renderHook } from './hook';
 import { runRefresh, shouldRefresh, spawnRefresh } from './refresh';
 import { readCursorPayload, renderPromptOutput } from './cursorPayload';
-import { type InitResult, initCursorHook, initCursorStatusline, initHook, initStatusline } from './install';
+import { type InitResult, initCursorStatusline, initHook, initStatusline } from './install';
 
 /**
  * Command context. `adapter` is an optional injection seam: production leaves
@@ -462,14 +462,6 @@ export function cmdInitCursorStatusline(
   { cfg }: Ctx,
 ): void {
   printInitResult(initCursorStatusline({ print: opts.print, command: opts.command }), cfg);
-}
-
-/** `claudinho init-cursor-hook` — wire beforeSubmitPrompt in ~/.cursor/hooks.json. */
-export function cmdInitCursorHook(
-  opts: { print?: boolean; command?: string },
-  { cfg }: Ctx,
-): void {
-  printInitResult(initCursorHook({ print: opts.print, command: opts.command }), cfg);
 }
 
 /** `claudinho match <id>` */

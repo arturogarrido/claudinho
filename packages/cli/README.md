@@ -31,7 +31,6 @@ claudinho init-statusline   # wire it into the Claude Code statusline
 claudinho init-cursor-statusline  # wire it into the Cursor CLI statusline
 claudinho hook              # live-score context for a Claude Code hook (silent off-match)
 claudinho init-hook         # make Claude itself score-aware (UserPromptSubmit)
-claudinho init-cursor-hook  # Cursor CLI beforeSubmitPrompt hook
 claudinho vibe              # a matchday-coder one-liner (#VibingLaVidaLoca)
 ```
 
@@ -189,7 +188,7 @@ claudinho init-cursor-statusline --print  # just print the snippet
 Uses the same `claudinho prompt` hot path as Claude Code. Cursor-specific tuning
 is applied automatically (`updateIntervalMs: 1000`, `timeoutMs: 1500`).
 
-Optional second line with session meta (model, context %, worktree, vim mode):
+Optional second line with session meta (model, context %, worktree, vim mode) **below** the score:
 
 ```bash
 export CLAUDINHO_CURSOR_META=auto   # recommended for Cursor CLI
@@ -201,14 +200,9 @@ Custom command (local dev or monorepo checkout):
 claudinho init-cursor-statusline --command "node ./packages/cli/dist/index.js prompt"
 ```
 
-### Score-aware Cursor CLI (hook)
-
-```bash
-claudinho init-cursor-hook                # patches ~/.cursor/hooks.json (backs up first)
-```
-
-Wires `claudinho hook` into Cursor's `beforeSubmitPrompt`. Context injection
-depends on Cursor hook support — the hook is ready when the runner surfaces it.
+> Cursor's `beforeSubmitPrompt` hook does not yet reliably inject live-score
+> context into the model. Use `init-hook` for Claude Code; Cursor CLI is
+> statusline-only until hook injection lands.
 
 ## How it works
 

@@ -2,9 +2,20 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   cursorMetaEnabled,
   looksLikeCursorPayload,
+  parseCursorPayload,
   renderCursorMetaLine,
   renderPromptOutput,
 } from '../src/cursorPayload';
+
+describe('parseCursorPayload', () => {
+  it('parses valid JSON and returns undefined for empty or invalid input', () => {
+    expect(parseCursorPayload('{"model":{"display_name":"Opus"}}')?.model?.display_name).toBe(
+      'Opus',
+    );
+    expect(parseCursorPayload('')).toBeUndefined();
+    expect(parseCursorPayload('{ bad')).toBeUndefined();
+  });
+});
 
 describe('cursorMetaEnabled', () => {
   const prev = process.env.CLAUDINHO_CURSOR_META;
@@ -33,11 +44,6 @@ describe('cursorMetaEnabled', () => {
     expect(cursorMetaEnabled(payload)).toBe(true);
     expect(cursorMetaEnabled({})).toBe(false);
   });
-
-  it('is off for CLAUDINHO_CURSOR_META=auto with empty payload fields', () => {
-    process.env.CLAUDINHO_CURSOR_META = 'auto';
-    expect(cursorMetaEnabled({ worktree: {} })).toBe(false);
-  });
 });
 
 describe('looksLikeCursorPayload', () => {
@@ -45,8 +51,6 @@ describe('looksLikeCursorPayload', () => {
     expect(looksLikeCursorPayload({ model: { display_name: 'X' } })).toBe(true);
     expect(looksLikeCursorPayload({ context_window: { used_percentage: 1 } })).toBe(true);
     expect(looksLikeCursorPayload({ render_width_chars: 80 })).toBe(true);
-    expect(looksLikeCursorPayload({ worktree: { name: 'wt' } })).toBe(true);
-    expect(looksLikeCursorPayload({ vim: { mode: 'NORMAL' } })).toBe(true);
     expect(looksLikeCursorPayload({})).toBe(false);
   });
 });
@@ -60,20 +64,6 @@ describe('renderCursorMetaLine', () => {
     expect(line).toContain('Composer 2.5 (Fast)');
     expect(line).toContain('ctx 34%');
     expect(line?.startsWith('\x1b[90m')).toBe(true);
-  });
-
-  it('includes worktree and vim mode when present', () => {
-    const line = renderCursorMetaLine({
-      model: { display_name: 'Opus' },
-      worktree: { name: 'my-feature' },
-      vim: { mode: 'NORMAL' },
-    });
-    expect(line).toContain('wt my-feature');
-    expect(line).toContain('NORMAL');
-  });
-
-  it('returns undefined when there is nothing to show', () => {
-    expect(renderCursorMetaLine({})).toBeUndefined();
   });
 });
 
@@ -95,28 +85,20 @@ describe('renderPromptOutput', () => {
     expect(out).toBe('⚽ 1–0');
   });
 
-  it('prepends a meta line when CLAUDINHO_CURSOR_META is on', () => {
+  it('puts the score line first, meta second', () => {
     const out = renderPromptOutput('⚽ 1–0', {
       model: { display_name: 'Opus' },
       context_window: { used_percentage: 10 },
     });
-    expect(out.split('\n')).toHaveLength(2);
-    expect(out).toContain('Opus');
-    expect(out).toContain('⚽ 1–0');
+    const lines = out.split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe('⚽ 1–0');
+    expect(lines[1]).toContain('Opus');
   });
 
-  it('prepends meta under CLAUDINHO_CURSOR_META=auto', () => {
-    process.env.CLAUDINHO_CURSOR_META = 'auto';
-    const out = renderPromptOutput('⚽ 1–0', {
-      model: { display_name: 'Opus' },
-    });
-    expect(out.split('\n')).toHaveLength(2);
-  });
-
-  it('truncates the score line to render_width_chars', () => {
-    const long = 'GOAL ' + 'x'.repeat(40);
-    const out = renderPromptOutput(long, { render_width_chars: 10 });
-    expect(out).toBe('GOAL xxxx…');
-    expect(out.length).toBe(10);
+  it('does not truncate emoji score lines (Cursor clips its own pane)', () => {
+    const score = '⚽ 🇲🇽 1–0 🇿🇦 67\'';
+    const out = renderPromptOutput(score, { render_width_chars: 6 });
+    expect(out).toBe(score);
   });
 });

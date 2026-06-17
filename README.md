@@ -71,18 +71,21 @@ claude mcp add claudinho -- npx -y @claudinho/mcp
 Both `init-*` commands back up `~/.claude/settings.json` first and are idempotent.
 Restart Claude Code to activate.
 
-### Cursor CLI — statusline, score-aware hook
+### Cursor CLI — statusline
 
 ```bash
 npm i -g @claudinho/cli
 claudinho init-cursor-statusline   # live scores above the Cursor CLI prompt
-claudinho init-cursor-hook         # beforeSubmitPrompt hook (when Cursor supports injection)
 ```
 
-Both `init-cursor-*` commands back up `~/.cursor/cli-config.json` / `~/.cursor/hooks.json`
-first and are idempotent. Restart Cursor CLI to activate.
+`init-cursor-statusline` backs up `~/.cursor/cli-config.json` first and is idempotent.
+Restart Cursor CLI to activate.
 
-Optional: show model + context usage on a second line above the score:
+> **Note:** Cursor's `beforeSubmitPrompt` hook does not yet reliably inject
+> `claudinho hook` context into the model (raw stdout ≠ `additional_context`).
+> Score-aware hooks remain Claude Code only for now.
+
+Optional: show model + context usage below the score line:
 
 ```bash
 export CLAUDINHO_CURSOR_META=auto   # on when Cursor pipes a payload (recommended)
@@ -111,7 +114,7 @@ Everything else takes the standard stdio config:
 
 - **CLI** — `today`, `live`, `next MEX`, `table`, `match <id>`, `markets`, `share` (and `vibe` 😎). `--json` on everything; TZ-aware via `--tz`.
 - **Claude Code statusline** — every live score inline; reads a local micro-cache, never blocks on the network. Also works in **Cursor CLI** (`init-cursor-statusline`), tmux, and Starship via `claudinho prompt`.
-- **Score-aware Claude** — a `UserPromptSubmit` hook that drops the live score into Claude's context during matches; zero tokens off-match. Cursor CLI: `init-cursor-hook` (`beforeSubmitPrompt`).
+- **Score-aware Claude** — a `UserPromptSubmit` hook that drops the live score into Claude's context during matches; zero tokens off-match.
 - **MCP server** — 7 read-only tools (`get_today`, `get_live`, `get_match`, `get_next_fixture`, `get_standings`, `get_market_signal`, `get_share_snippet`) plus `my_team` / `tournament_today` prompts.
 - **Prediction-market signals** — a read-only "who's favored" line (market-implied percentages, Source: Polymarket), shown only when a reliable market exists. **Informational only — not betting advice.** Opt out: `--no-markets` / `CLAUDINHO_MARKETS=off`.
 - **Shareable cards** — `claudinho share next MEX --copy` puts a plain-text match card on your clipboard; `claudinho share table A` does the same for a group's live standings.

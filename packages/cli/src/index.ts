@@ -3,7 +3,6 @@ import { resolveConfig, type RawGlobalOpts } from './config';
 import { makeT } from './i18n';
 import {
   cmdHook,
-  cmdInitCursorHook,
   cmdInitCursorStatusline,
   cmdInitHook,
   cmdInitStatusline,
@@ -212,19 +211,6 @@ program
   .action((opts, cmd) => {
     try {
       cmdInitHook(opts, ctxFrom(cmd));
-    } catch (e) {
-      fail(e);
-    }
-  });
-
-program
-  .command('init-cursor-hook')
-  .description('wire the live-score hook into Cursor CLI (beforeSubmitPrompt)')
-  .option('--print', 'print the settings snippet instead of writing it')
-  .option('--command <cmd>', 'command to run (default: claudinho hook)')
-  .action((opts, cmd) => {
-    try {
-      cmdInitCursorHook(opts, ctxFrom(cmd));
     } catch (e) {
       fail(e);
     }

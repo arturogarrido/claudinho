@@ -1,5 +1,5 @@
 /**
- * Cursor CLI statusline stdin payload — optional meta line above the score.
+ * Cursor CLI statusline stdin payload — optional meta line below the score.
  * The hot path always drains stdin (even when meta is off) so the pipe never
  * blocks. Meta rendering is gated on CLAUDINHO_CURSOR_META.
  */
@@ -13,13 +13,22 @@ export interface CursorStatusLinePayload {
   render_width_chars?: number;
 }
 
+/** Parse a Cursor statusline JSON string. Never throws. */
+export function parseCursorPayload(raw: string): CursorStatusLinePayload | undefined {
+  try {
+    const trimmed = raw.trim();
+    if (!trimmed) return undefined;
+    return JSON.parse(trimmed) as CursorStatusLinePayload;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Read and parse the Cursor statusline JSON from stdin. Never throws. */
 export function readCursorPayload(): CursorStatusLinePayload | undefined {
   try {
     if (process.stdin.isTTY) return undefined;
-    const raw = readFileSync(0, 'utf8').trim();
-    if (!raw) return undefined;
-    return JSON.parse(raw) as CursorStatusLinePayload;
+    return parseCursorPayload(readFileSync(0, 'utf8'));
   } catch {
     return undefined;
   }
@@ -37,9 +46,9 @@ export function looksLikeCursorPayload(payload: CursorStatusLinePayload): boolea
 }
 
 /**
- * True when a session meta line should render above scores.
+ * True when a session meta line should render below scores.
  * - `1` / `true` / `yes` — always on when a payload is present
- * - `auto` — on when stdin looks like Cursor's payload (default for piped stdin)
+ * - `auto` — on when stdin looks like Cursor's payload
  * - unset / `0` — off (tmux, Starship, manual runs)
  */
 export function cursorMetaEnabled(payload?: CursorStatusLinePayload): boolean {
@@ -69,23 +78,17 @@ export function renderCursorMetaLine(payload: CursorStatusLinePayload): string |
   return `\x1b[90m${parts.join('  ')}\x1b[0m`;
 }
 
-function truncateLine(line: string, maxWidth: number | undefined): string {
-  if (!maxWidth || maxWidth <= 0 || line.length <= maxWidth) return line;
-  if (maxWidth <= 1) return '…';
-  return `${line.slice(0, maxWidth - 1)}…`;
-}
-
 /**
- * Combine an optional Cursor meta line with the score line. Truncates the score
- * line to `render_width_chars` when Cursor provides it.
+ * Combine the score line with an optional Cursor meta line (score first so a
+ * single-line render still shows the match). Width truncation is intentionally
+ * omitted — Cursor clips its own pane and naive slice() corrupts emoji flags.
  */
 export function renderPromptOutput(
   scoreLine: string,
   payload: CursorStatusLinePayload | undefined,
 ): string {
-  const line = truncateLine(scoreLine, payload?.render_width_chars);
   const meta =
     payload && cursorMetaEnabled(payload) ? renderCursorMetaLine(payload) : undefined;
-  if (meta) return `${meta}\n${line}`;
-  return line;
+  if (meta) return `${scoreLine}\n${meta}`;
+  return scoreLine;
 }

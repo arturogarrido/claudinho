@@ -14,7 +14,6 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 export type StatuslineTarget = 'claude' | 'cursor';
-export type HookTarget = 'claude' | 'cursor';
 
 export interface StatusLineConfig {
   type: 'command';
@@ -38,13 +37,9 @@ export function cursorCliConfigPath(): string {
   return join(homedir(), '.cursor', 'cli-config.json');
 }
 
-export function cursorHooksPath(): string {
-  return join(homedir(), '.cursor', 'hooks.json');
-}
-
-/** True when a config command already runs claudinho prompt or hook. */
-export function isClaudinhoCommand(command: string): boolean {
-  return /\bclaudinho\s+(prompt|hook)\b/.test(command);
+/** True when the configured command matches the one being installed (exact). */
+export function isSameCommand(configured: string | undefined, requested: string): boolean {
+  return configured === requested;
 }
 
 /**
@@ -79,11 +74,6 @@ const CURSOR_STATUSLINE_DEFAULTS = {
 function configPathFor(target: StatuslineTarget, override?: string): string {
   if (override) return override;
   return target === 'cursor' ? cursorCliConfigPath() : claudeSettingsPath();
-}
-
-function hookPathFor(target: HookTarget, override?: string): string {
-  if (override) return override;
-  return target === 'cursor' ? cursorHooksPath() : claudeSettingsPath();
 }
 
 function defaultStatusLineConfig(
@@ -140,9 +130,9 @@ export function initStatuslineFor(
   const settings = parsed;
 
   const existing = settings.statusLine as StatusLineConfig | undefined;
-  if (existing?.command && isClaudinhoCommand(existing.command)) {
+  if (isSameCommand(existing?.command, command)) {
     const label = target === 'cursor' ? 'Cursor CLI statusline' : 'Statusline';
-    return { action: 'already', path, message: `${label} already uses claudinho (${path}).` };
+    return { action: 'already', path, message: `${label} already configured (${path}).` };
   }
 
   backupOnce(path);
@@ -167,7 +157,7 @@ export function initCursorStatusline(opts: InitOpts = {}): InitResult {
   return initStatuslineFor('cursor', opts);
 }
 
-// ---- Hooks (Claude UserPromptSubmit / Cursor beforeSubmitPrompt) ----
+// ---- Claude Code UserPromptSubmit hook ----
 
 interface ClaudeHookCommand {
   type: 'command';
@@ -179,80 +169,30 @@ interface ClaudeHookMatcher {
   [k: string]: unknown;
 }
 
-interface CursorHookEntry {
-  command: string;
-  [k: string]: unknown;
-}
-
 const CLAUDE_HOOK_EVENT = 'UserPromptSubmit';
-const CURSOR_HOOK_EVENT = 'beforeSubmitPrompt';
-const CURSOR_HOOKS_VERSION = 1;
 
-function hookSnippet(target: HookTarget, command: string): string {
-  if (target === 'claude') {
-    return JSON.stringify(
-      { hooks: { [CLAUDE_HOOK_EVENT]: [{ hooks: [{ type: 'command', command }] }] } },
-      null,
-      2,
-    );
-  }
-  return JSON.stringify(
-    { version: CURSOR_HOOKS_VERSION, hooks: { [CURSOR_HOOK_EVENT]: [{ command }] } },
-    null,
-    2,
+function claudeHookCommands(settings: Record<string, unknown>): string[] {
+  const hooks = settings.hooks as Record<string, ClaudeHookMatcher[]> | undefined;
+  const matchers = hooks?.[CLAUDE_HOOK_EVENT] ?? [];
+  return matchers.flatMap((m) =>
+    (m.hooks ?? [])
+      .map((h) => h.command)
+      .filter((c): c is string => typeof c === 'string'),
   );
 }
 
-function hookAlreadyConfigured(settings: Record<string, unknown>, target: HookTarget): boolean {
-  const hooks = settings.hooks as Record<string, unknown> | undefined;
-  if (!hooks) return false;
-  if (target === 'claude') {
-    const matchers = (hooks[CLAUDE_HOOK_EVENT] ?? []) as ClaudeHookMatcher[];
-    return matchers.some((m) =>
-      (m.hooks ?? []).some(
-        (h) => typeof h.command === 'string' && isClaudinhoCommand(h.command),
-      ),
-    );
-  }
-  const entries = (hooks[CURSOR_HOOK_EVENT] ?? []) as CursorHookEntry[];
-  return entries.some((e) => typeof e.command === 'string' && isClaudinhoCommand(e.command));
-}
-
-function installHook(settings: Record<string, unknown>, target: HookTarget, command: string): void {
-  settings.hooks ??= {};
-  const hooks = settings.hooks as Record<string, unknown>;
-  if (target === 'claude') {
-    hooks[CLAUDE_HOOK_EVENT] ??= [];
-    (hooks[CLAUDE_HOOK_EVENT] as ClaudeHookMatcher[]).push({
-      hooks: [{ type: 'command', command }],
-    });
-    return;
-  }
-  settings.version ??= CURSOR_HOOKS_VERSION;
-  hooks[CURSOR_HOOK_EVENT] ??= [];
-  (hooks[CURSOR_HOOK_EVENT] as CursorHookEntry[]).push({ command });
-}
-
-function hookWrittenMessage(target: HookTarget, path: string): string {
-  if (target === 'cursor') {
-    return `Live-score hook configured in ${path}. Restart Cursor CLI; during matches, claudinho hook runs on each prompt (context injection depends on Cursor hook support).`;
-  }
-  return `Live-score hook configured in ${path}. Restart Claude Code; during matches, the score is injected into context on each prompt.`;
-}
-
-function hookAlreadyMessage(target: HookTarget, path: string): string {
-  const event = target === 'cursor' ? 'beforeSubmitPrompt' : 'UserPromptSubmit';
-  return `${event} hook already uses claudinho (${path}).`;
-}
-
 /**
- * Wire `claudinho hook` into Claude Code or Cursor CLI hooks.
- * Idempotent; backs up first; refuses to clobber unparseable files.
+ * Wire `claudinho hook` into Claude Code's UserPromptSubmit so the live score
+ * is injected into the model's context on each prompt.
  */
-export function initHookFor(target: HookTarget, opts: InitOpts = {}): InitResult {
-  const path = hookPathFor(target, opts.path);
+export function initHook(opts: InitOpts = {}): InitResult {
+  const path = opts.path ?? claudeSettingsPath();
   const command = opts.command ?? HOOK_COMMAND;
-  const snippet = hookSnippet(target, command);
+  const snippet = JSON.stringify(
+    { hooks: { [CLAUDE_HOOK_EVENT]: [{ hooks: [{ type: 'command', command }] }] } },
+    null,
+    2,
+  );
 
   if (opts.print) return { action: 'printed', path, message: snippet };
 
@@ -260,23 +200,24 @@ export function initHookFor(target: HookTarget, opts: InitOpts = {}): InitResult
   if (isInitResult(parsed)) return parsed;
   const settings = parsed;
 
-  if (hookAlreadyConfigured(settings, target)) {
-    return { action: 'already', path, message: hookAlreadyMessage(target, path) };
+  if (claudeHookCommands(settings).some((c) => isSameCommand(c, command))) {
+    return {
+      action: 'already',
+      path,
+      message: `UserPromptSubmit hook already configured (${path}).`,
+    };
   }
 
   backupOnce(path);
-  installHook(settings, target, command);
+  settings.hooks ??= {};
+  const hooks = settings.hooks as Record<string, ClaudeHookMatcher[]>;
+  hooks[CLAUDE_HOOK_EVENT] ??= [];
+  hooks[CLAUDE_HOOK_EVENT].push({ hooks: [{ type: 'command', command }] });
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(settings, null, 2) + '\n', 'utf8');
-  return { action: 'written', path, message: hookWrittenMessage(target, path) };
-}
-
-/** Wire claudinho into Claude Code's UserPromptSubmit hook. */
-export function initHook(opts: InitOpts = {}): InitResult {
-  return initHookFor('claude', opts);
-}
-
-/** Wire claudinho into Cursor's beforeSubmitPrompt hook. */
-export function initCursorHook(opts: InitOpts = {}): InitResult {
-  return initHookFor('cursor', opts);
+  return {
+    action: 'written',
+    path,
+    message: `Live-score hook configured in ${path}. Restart Claude Code; during matches, the score is injected into context on each prompt.`,
+  };
 }

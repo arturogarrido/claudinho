@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { initCursorHook, initCursorStatusline, initHook, initStatusline, isClaudinhoCommand } from '../src/install';
+import { initCursorStatusline, initHook, initStatusline, isSameCommand } from '../src/install';
 
 let dir: string;
 let path: string;
@@ -15,12 +15,11 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe('isClaudinhoCommand', () => {
-  it('matches claudinho prompt and hook invocations', () => {
-    expect(isClaudinhoCommand('claudinho prompt')).toBe(true);
-    expect(isClaudinhoCommand('node /x/claudinho hook')).toBe(true);
-    expect(isClaudinhoCommand('~/.cursor/claudinho-dev-prompt.sh')).toBe(false);
-    expect(isClaudinhoCommand('other-tool')).toBe(false);
+describe('isSameCommand', () => {
+  it('matches only exact command strings', () => {
+    expect(isSameCommand('claudinho prompt', 'claudinho prompt')).toBe(true);
+    expect(isSameCommand('node /x/claudinho prompt', 'claudinho prompt')).toBe(false);
+    expect(isSameCommand(undefined, 'claudinho prompt')).toBe(false);
   });
 });
 
@@ -55,6 +54,15 @@ describe('initStatusline', () => {
     expect(res.action).toBe('already');
   });
 
+  it('is idempotent with a custom --command path', () => {
+    const custom = 'node /path/to/claudinho/packages/cli/dist/index.js prompt';
+    initCursorStatusline({ path, command: custom });
+    const res = initCursorStatusline({ path, command: custom });
+    expect(res.action).toBe('already');
+    const written = JSON.parse(readFileSync(path, 'utf8'));
+    expect(written.statusLine.command).toBe(custom);
+  });
+
   it('backs up before overwriting a different statusline', () => {
     writeFileSync(path, JSON.stringify({ statusLine: { type: 'command', command: 'other-tool' } }));
     const res = initStatusline({ path });
@@ -68,7 +76,7 @@ describe('initStatusline', () => {
     writeFileSync(path, '{ broken');
     const res = initStatusline({ path });
     expect(res.action).toBe('manual');
-    expect(readFileSync(path, 'utf8')).toBe('{ broken'); // untouched
+    expect(readFileSync(path, 'utf8')).toBe('{ broken');
   });
 });
 
@@ -96,7 +104,7 @@ describe('initHook', () => {
     initHook({ path });
     const w = JSON.parse(readFileSync(path, 'utf8'));
     expect(w.theme).toBe('dark');
-    expect(w.hooks.Stop[0].hooks[0].command).toBe('other'); // untouched
+    expect(w.hooks.Stop[0].hooks[0].command).toBe('other');
     expect(w.hooks.UserPromptSubmit[0].hooks[0].command).toBe('claudinho hook');
   });
 
@@ -119,7 +127,17 @@ describe('initHook', () => {
     const res = initHook({ path });
     expect(res.action).toBe('already');
     const w = JSON.parse(readFileSync(path, 'utf8'));
-    expect(w.hooks.UserPromptSubmit).toHaveLength(1); // not duplicated
+    expect(w.hooks.UserPromptSubmit).toHaveLength(1);
+  });
+
+  it('is idempotent with a custom --command path', () => {
+    const custom = 'node /path/to/claudinho/packages/cli/dist/index.js hook';
+    initHook({ path, command: custom });
+    const res = initHook({ path, command: custom });
+    expect(res.action).toBe('already');
+    const w = JSON.parse(readFileSync(path, 'utf8'));
+    expect(w.hooks.UserPromptSubmit).toHaveLength(1);
+    expect(w.hooks.UserPromptSubmit[0].hooks[0].command).toBe(custom);
   });
 
   it('refuses to clobber unparseable JSON', () => {
@@ -135,19 +153,16 @@ describe('backup is the pristine original across multiple init- commands', () =>
     const original = { theme: 'dark', model: 'opus' };
     writeFileSync(path, JSON.stringify(original));
 
-    initStatusline({ path }); // backs up pristine original, adds statusLine
-    initHook({ path }); // must NOT overwrite the backup with the modified file
+    initStatusline({ path });
+    initHook({ path });
 
     const bak = JSON.parse(readFileSync(`${path}.claudinho.bak`, 'utf8'));
-    expect(bak).toEqual(original); // pristine: no statusLine, no hooks
-    expect(bak.statusLine).toBeUndefined();
-    expect(bak.hooks).toBeUndefined();
+    expect(bak).toEqual(original);
 
-    // And the live file has BOTH claudinho edits.
     const live = JSON.parse(readFileSync(path, 'utf8'));
     expect(live.statusLine.command).toBe('claudinho prompt');
     expect(live.hooks.UserPromptSubmit[0].hooks[0].command).toBe('claudinho hook');
-    expect(live.theme).toBe('dark'); // original keys preserved
+    expect(live.theme).toBe('dark');
   });
 
   it('keeps the FIRST backup regardless of init- order (hook then statusline)', () => {
@@ -210,63 +225,5 @@ describe('initCursorStatusline', () => {
     initCursorStatusline({ path, command: custom });
     const written = JSON.parse(readFileSync(path, 'utf8'));
     expect(written.statusLine.command).toBe(custom);
-  });
-});
-
-describe('initCursorHook', () => {
-  it('prints the Cursor hooks snippet without writing when print=true', () => {
-    const res = initCursorHook({ print: true, path });
-    expect(res.action).toBe('printed');
-    expect(res.message).toContain('beforeSubmitPrompt');
-    expect(res.message).toContain('claudinho hook');
-    expect(existsSync(path)).toBe(false);
-  });
-
-  it('writes a fresh beforeSubmitPrompt hook', () => {
-    const res = initCursorHook({ path });
-    expect(res.action).toBe('written');
-    const w = JSON.parse(readFileSync(path, 'utf8'));
-    expect(w.version).toBe(1);
-    expect(w.hooks.beforeSubmitPrompt[0]).toEqual({ command: 'claudinho hook' });
-  });
-
-  it('merges alongside a pre-existing non-claudinho hook', () => {
-    writeFileSync(
-      path,
-      JSON.stringify({
-        version: 1,
-        hooks: { beforeSubmitPrompt: [{ command: 'lint-check' }] },
-      }),
-    );
-    initCursorHook({ path });
-    const w = JSON.parse(readFileSync(path, 'utf8'));
-    const cmds = w.hooks.beforeSubmitPrompt.map((e: { command: string }) => e.command);
-    expect(cmds).toContain('lint-check');
-    expect(cmds).toContain('claudinho hook');
-  });
-
-  it('is idempotent (already configured)', () => {
-    initCursorHook({ path });
-    const res = initCursorHook({ path });
-    expect(res.action).toBe('already');
-    const w = JSON.parse(readFileSync(path, 'utf8'));
-    expect(w.hooks.beforeSubmitPrompt).toHaveLength(1);
-  });
-
-  it('refuses to clobber unparseable JSON', () => {
-    writeFileSync(path, '{ broken');
-    const res = initCursorHook({ path });
-    expect(res.action).toBe('manual');
-    expect(readFileSync(path, 'utf8')).toBe('{ broken');
-  });
-
-  it('backs up before adding a hook to an existing hooks file', () => {
-    writeFileSync(path, JSON.stringify({ version: 1, hooks: { afterFileEdit: [{ command: 'fmt' }] } }));
-    const res = initCursorHook({ path });
-    expect(res.action).toBe('written');
-    expect(existsSync(`${path}.claudinho.bak`)).toBe(true);
-    const bak = JSON.parse(readFileSync(`${path}.claudinho.bak`, 'utf8'));
-    expect(bak.hooks.afterFileEdit[0].command).toBe('fmt');
-    expect(bak.hooks.beforeSubmitPrompt).toBeUndefined();
   });
 });
