@@ -724,6 +724,7 @@ function emitShare(ctx: Ctx, e: ShareEmit, copy: boolean): void {
       target: e.target,
       ...(e.team ? { team: e.team } : {}),
       source: e.input.source ?? null,
+      degraded: e.input.degraded ?? false,
       informationalOnly: true,
       style: e.options.style ?? 'social',
       snippet,
@@ -821,7 +822,7 @@ export async function cmdShare(
   // share live
   if (target === 'live') {
     precheck(cfg, t);
-    const { matches, source } = await getLiveMatches(adapterFor(ctx));
+    const { matches, degraded, source } = await getLiveMatches(adapterFor(ctx));
     emitShare(
       ctx,
       {
@@ -831,7 +832,11 @@ export async function cmdShare(
           title: 'Live match pulse',
           matches,
           source,
-          emptyNote: 'No matches in play right now.',
+          degraded,
+          // Degraded ⇒ feed down, not "nothing's on" — say so on the public card.
+          emptyNote: degraded
+            ? "Live scores unavailable right now — couldn't reach the data provider."
+            : 'No matches in play right now.',
           installLine: 'npx @claudinho/cli live',
           tz: cfg.tz,
           locale: cfg.lang,
@@ -905,7 +910,7 @@ export async function cmdShare(
     precheck(cfg, t);
     // ±1-day window fetch (see cmdMatch): the provider's scoreboard day can
     // differ from the fixture's UTC date.
-    const { match, source } = await getMatchById(adapterFor(ctx), target);
+    const { match, degraded, source } = await getMatchById(adapterFor(ctx), target);
     const matches = match ? [match] : [];
     const signals = await reliableShareSignals(ctx, matches);
     emitShare(
@@ -918,6 +923,7 @@ export async function cmdShare(
           matches,
           marketSignals: signals,
           source,
+          degraded,
           emptyNote: `No match found with id ${target}.`,
           installLine: `npx @claudinho/cli match ${target}`,
           tz: cfg.tz,
@@ -934,7 +940,7 @@ export async function cmdShare(
   const explicitDate = target && target !== 'today' ? target : undefined;
   precheck(cfg, t, explicitDate);
   const date = explicitDate ?? localDate(new Date().toISOString(), cfg.tz);
-  const { matches: all, source } = await getMatchesForDate(adapterFor(ctx), date);
+  const { matches: all, degraded, source } = await getMatchesForDate(adapterFor(ctx), date);
   const todays = fixturesByDate(date, all, cfg.tz);
   const signals = await reliableShareSignals(ctx, todays);
   // Human date label from a stable midday-UTC instant (avoids tz day flips).
@@ -950,6 +956,7 @@ export async function cmdShare(
         matches: todays,
         marketSignals: signals,
         source,
+        degraded,
         emptyNote: `No matches scheduled for ${human}.`,
         installLine: 'npx @claudinho/cli today',
         tz: cfg.tz,

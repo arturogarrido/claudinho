@@ -497,6 +497,7 @@ function shareResult(
       target,
       ...(team ? { team } : {}),
       source: input.source ?? null,
+      degraded: input.degraded ?? false,
       informationalOnly: true,
       style: options.style ?? 'social',
       snippet,
@@ -528,7 +529,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
 
   // live: matches in play right now (no market enrichment, matching the CLI).
   if (args.live) {
-    const { matches, source } = await getLiveMatches(resolveAdapter(args));
+    const { matches, degraded, source } = await getLiveMatches(resolveAdapter(args));
     return shareResult(
       'live',
       'live',
@@ -537,7 +538,11 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         title: 'Live match pulse',
         matches,
         source,
-        emptyNote: 'No matches in play right now.',
+        degraded,
+        // Feed down ⇒ don't let an empty card read as "nothing is on".
+        emptyNote: degraded
+          ? "Live scores unavailable right now — couldn't reach the data provider."
+          : 'No matches in play right now.',
         installLine: 'npx @claudinho/cli live',
         tz: args.tz,
         locale: args.lang,
@@ -579,7 +584,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
 
   // a single match by id, with live overlay (±1-day window — see toolGetMatch).
   if (args.matchId) {
-    const { match, source } = await getMatchById(resolveAdapter(args), args.matchId);
+    const { match, degraded, source } = await getMatchById(resolveAdapter(args), args.matchId);
     const matches = match ? [match] : [];
     return shareResult(
       'match',
@@ -590,6 +595,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         matches,
         marketSignals: await signalsFor(matches),
         source,
+        degraded,
         emptyNote: `No match found with id ${args.matchId}.`,
         installLine: `npx @claudinho/cli match ${args.matchId}`,
         tz: args.tz,
@@ -628,7 +634,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
 
   // a date's matches (default: today).
   const date = args.date ?? localDate(new Date().toISOString(), args.tz);
-  const { matches: all, source } = await getMatchesForDate(resolveAdapter(args), date);
+  const { matches: all, degraded, source } = await getMatchesForDate(resolveAdapter(args), date);
   const todays = fixturesByDate(date, all, args.tz);
   const human = formatDate(`${date}T12:00:00.000Z`, { tz: args.tz, locale: args.lang });
   return shareResult(
@@ -640,6 +646,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       matches: todays,
       marketSignals: await signalsFor(todays),
       source,
+      degraded,
       emptyNote: `No matches scheduled for ${human}.`,
       installLine: 'npx @claudinho/cli today',
       tz: args.tz,

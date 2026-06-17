@@ -21,6 +21,22 @@ const fakeAdapter: ProviderAdapter = {
   },
 };
 
+/**
+ * Feed DOWN (e.g. an ESPN 403 from a sandbox) → every share path degrades.
+ * Distinct from `fakeAdapter` (reachable but empty): a thrown fetch must NOT
+ * paste as an authoritative "nothing's on" / scheduled card.
+ */
+const downAdapter: ProviderAdapter = {
+  name: 'espn',
+  capabilities: { push: false, latencyHintSec: 0 },
+  async fetchByDate(): Promise<Match[]> {
+    throw new Error('ESPN 403');
+  },
+  async fetchLive(): Promise<Match[]> {
+    throw new Error('ESPN 403');
+  },
+};
+
 /** A match adapter that also serves an authoritative Group A table. */
 const standingsAdapter: ProviderAdapter = {
   ...fakeAdapter,
@@ -241,6 +257,49 @@ describe('toolGetShareSnippet — group standings table', () => {
   it('renders an empty-state card for an unknown group', async () => {
     const r = await toolGetShareSnippet({ group: 'Z', adapter: standingsAdapter, marketProvider: synth() });
     expect(r.text).toContain('No group Z.');
+    expect(r.text).toContain(DISCLAIMER);
+  });
+});
+
+describe('toolGetShareSnippet — degraded honesty (feed down)', () => {
+  // The bug the 3rd-party review caught: live/match/date dropped `degraded`, so a
+  // feed outage pasted as an authoritative empty/scheduled card. Each path must
+  // now flag degraded, drop attribution, and say the data is not live.
+  it('live: says the feed is down — NOT "no matches in play"', async () => {
+    const r = await toolGetShareSnippet({ live: true, adapter: downAdapter, marketProvider: synth() });
+    const data = r.data as { degraded: boolean; source: string | null };
+    expect(data.degraded).toBe(true);
+    expect(data.source).toBeNull();
+    expect(r.text).toContain('Live scores unavailable');
+    expect(r.text).not.toContain('No matches in play');
+    expect(r.text).not.toContain('Live data:'); // no attribution when degraded
+    expect(r.text).toContain(DISCLAIMER);
+  });
+
+  it('match: marks a static fixture as not-live when the feed is down', async () => {
+    const id = allFixtures()[0]!.id;
+    const r = await toolGetShareSnippet({ matchId: id, adapter: downAdapter, marketProvider: synth() });
+    const data = r.data as { degraded: boolean; source: string | null };
+    expect(data.degraded).toBe(true);
+    expect(data.source).toBeNull();
+    expect(r.text).toContain('Live data unavailable — showing the bundled schedule, not live scores.');
+    expect(r.text).not.toContain('Live data:');
+    expect(r.text).toContain(DISCLAIMER);
+  });
+
+  it('date: marks static fixtures as not-live when the feed is down', async () => {
+    const r = await toolGetShareSnippet({
+      date: '2026-06-13',
+      tz: 'UTC',
+      adapter: downAdapter,
+      marketProvider: synth(),
+      now: TEST_NOW,
+    });
+    const data = r.data as { degraded: boolean; source: string | null };
+    expect(data.degraded).toBe(true);
+    expect(data.source).toBeNull();
+    expect(r.text).toContain('Live data unavailable — showing the bundled schedule, not live scores.');
+    expect(r.text).not.toContain('Live data:');
     expect(r.text).toContain(DISCLAIMER);
   });
 });
