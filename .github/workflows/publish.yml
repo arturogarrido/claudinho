@@ -47,8 +47,8 @@ jobs:
       - run: pnpm lint
 
       # On a tag push, refuse to publish unless the tag matches EVERY published
-      # package version (the workflow publishes all three). The .mcpb manifest is
-      # checked against mcp/package.json by the vitest guard in `pnpm -r test` above.
+      # package version (the workflow publishes all three). The .mcpb manifest and
+      # MCP Registry server.json are checked against mcp/package.json by vitest.
       - name: Verify tag matches all package versions
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
