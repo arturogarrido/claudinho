@@ -13,6 +13,7 @@ import type { GroupStandings, StandingRow } from '../standings';
 import type { Match, Stage, Status, Team } from '../types';
 import type { ProviderAdapter, ProviderCapabilities } from './types';
 import { nationToFlag } from '../flags';
+import { isLive } from '../normalize';
 
 const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 /** Default competition slug (the 2026 World Cup). */
@@ -300,9 +301,15 @@ export class EspnAdapter implements ProviderAdapter {
     return this.fetchScoreboard(`${toEspnDate(startDate)}-${toEspnDate(endDate)}`);
   }
 
+  /**
+   * In-play matches from ESPN's DEFAULT scoreboard bucket only (no `dates`). This
+   * single bucket misses a late kickoff ESPN files under an adjacent day, so it
+   * is a fallback for window-less callers — the domain `getLiveMatches` wraps a
+   * ±1-day window around this to catch boundary-crossing matches. Prefer it.
+   */
   async fetchLive(): Promise<Match[]> {
     const today = await this.fetchScoreboard();
-    return today.filter((m) => m.status === 'LIVE' || m.status === 'HT');
+    return today.filter((m) => isLive(m.status));
   }
 
   /** Standings endpoint URL (lives under apis/v2, not site/v2; derived from base). */

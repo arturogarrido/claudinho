@@ -5,7 +5,7 @@
  */
 import { competitionBase, DEFAULT_COMPETITION, EspnAdapter } from './adapters/espn';
 import type { ProviderAdapter } from './adapters/types';
-import { isFinished } from './normalize';
+import { isFinished, isLive } from './normalize';
 import {
   allFixtures,
   fixturesByGroup,
@@ -225,10 +225,31 @@ export async function getMatchById(
   }
 }
 
-/** Currently-live matches; empty + degraded on error. */
-export async function getLiveMatches(adapter: ProviderAdapter): Promise<LiveResult> {
+/**
+ * Currently-live matches; empty + degraded on error.
+ *
+ * The provider buckets its scoreboard by its own day (ESPN: US/Eastern), so a
+ * late kickoff that crossed the day boundary lands in an ADJACENT bucket — a
+ * 04:00Z match still live at 76' while the provider's default "today" bucket
+ * already shows the prior, all-FT day. A bare `adapter.fetchLive()` reads only
+ * that single default bucket, so it silently MISSES such a match and `live` /
+ * the statusline / the hook show "nothing live" mid-match. Fetch the ±1-day UTC
+ * window around `now` instead — the same trick {@link getMatchesForDate} and
+ * {@link getMatchById} use — and filter to in-play, so no live match can hide in
+ * an adjacent bucket. Adapters without a window fetch fall back to `fetchLive()`.
+ */
+export async function getLiveMatches(
+  adapter: ProviderAdapter,
+  now: Date = new Date(),
+): Promise<LiveResult> {
   try {
-    return { matches: await adapter.fetchLive(), degraded: false, source: adapter.name };
+    const day = now.toISOString().slice(0, 10);
+    const matches = adapter.fetchWindow
+      ? (await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))).filter((m) =>
+          isLive(m.status),
+        )
+      : await adapter.fetchLive();
+    return { matches, degraded: false, source: adapter.name };
   } catch {
     return { matches: [], degraded: true };
   }

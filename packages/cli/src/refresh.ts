@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import {
   DEFAULT_COMPETITION,
   EspnAdapter,
+  getLiveMatches,
   makeAdapter,
   resolveCompetition,
   type Match,
@@ -78,8 +79,16 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
     let degraded = false;
 
     if (liveWindowActive(now.getTime())) {
+      // Use the domain helper, not adapter.fetchLive() directly: it fetches a
+      // ±1-day window around `now` so a late kickoff filed under the provider's
+      // adjacent day bucket is still detected (see core getLiveMatches). Without
+      // this the statusline cache reads empty mid-match and shows a countdown.
+      // getLiveMatches fails closed internally; the try also guards adapter
+      // construction so any error degrades rather than skipping the cache write.
       try {
-        live = await liveAdapter().fetchLive();
+        const r = await getLiveMatches(liveAdapter(), now);
+        live = r.matches;
+        degraded = r.degraded;
       } catch {
         degraded = true;
       }
