@@ -19,7 +19,7 @@
 npx @claudinho/cli today      # try it in 10 seconds — no install, no key
 ```
 
-While matches are live, your Claude Code statusline reads:
+While matches are live, your Claude Code or Cursor CLI statusline reads:
 
 ```text
 ⚽ 🇳🇴 1–1 🇫🇷 87' · 🇸🇳 1–2 🇮🇶 86'
