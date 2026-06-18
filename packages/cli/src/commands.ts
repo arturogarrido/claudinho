@@ -464,8 +464,12 @@ export function cmdInitCursorStatusline(
   printInitResult(initCursorStatusline({ print: opts.print, command: opts.command }), cfg);
 }
 
-/** MCP config for Cursor — a paste (Cursor has no `mcp add` CLI, unlike Claude Code). */
-const CURSOR_MCP_SNIPPET = `{
+/**
+ * MCP config for Cursor — a paste (Cursor has no `mcp add` CLI, unlike Claude
+ * Code). Exported so a test can pin it to the same `npx -y @claudinho/mcp`
+ * command as the plugin's root `mcp.json` (drift guard — see init.test.ts).
+ */
+export const CURSOR_MCP_SNIPPET = `{
   "mcpServers": {
     "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] }
   }

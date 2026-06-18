@@ -1,5 +1,8 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cmdInitClaude, cmdInitCursor } from '../src/commands';
+import { CURSOR_MCP_SNIPPET, cmdInitClaude, cmdInitCursor } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 
@@ -53,5 +56,56 @@ describe('cmdInitClaude --print', () => {
     expect(o).toContain('claude mcp add claudinho -- npx -y @claudinho/mcp');
     // Claude statusline has no Cursor-only tuning.
     expect(o).not.toContain('updateIntervalMs');
+  });
+});
+
+describe('CURSOR_MCP_SNIPPET', () => {
+  it('pins the same command as the plugin mcp.json (drift guard)', () => {
+    const parsed = JSON.parse(CURSOR_MCP_SNIPPET) as {
+      mcpServers: { claudinho: { command: string; args: string[] } };
+    };
+    expect(parsed.mcpServers.claudinho).toEqual({ command: 'npx', args: ['-y', '@claudinho/mcp'] });
+  });
+});
+
+// Write-path integration: `init claude` must write BOTH the statusline and the
+// hook to settings.json (parity bundle), and stay idempotent. Isolated via $HOME
+// so it never touches the real ~/.claude (os.homedir() reads $HOME on POSIX).
+describe('cmdInitClaude — write path (isolated HOME)', () => {
+  let dir: string;
+  const ORIG_HOME = process.env.HOME;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'claudinho-init-'));
+    process.env.HOME = dir;
+  });
+  afterEach(() => {
+    if (ORIG_HOME === undefined) delete process.env.HOME;
+    else process.env.HOME = ORIG_HOME;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const settings = () =>
+    JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8')) as {
+      statusLine?: { command?: string };
+      hooks?: { UserPromptSubmit?: { hooks?: { command?: string }[] }[] };
+    };
+
+  it('writes statusline + hook in one go and prints the MCP one-liner', () => {
+    cmdInitClaude({}, ctx());
+    const s = settings();
+    expect(s.statusLine?.command).toContain('claudinho prompt');
+    expect((s.hooks?.UserPromptSubmit ?? []).length).toBeGreaterThan(0);
+    expect(text()).toContain('claude mcp add claudinho -- npx -y @claudinho/mcp');
+  });
+
+  it('is idempotent — a second run reports already-configured, no duplicate hook', () => {
+    cmdInitClaude({}, ctx());
+    writes = [];
+    cmdInitClaude({}, ctx());
+    expect(text()).toContain('already configured');
+    const claudinhoHooks = (settings().hooks?.UserPromptSubmit ?? [])
+      .flatMap((m) => m.hooks ?? [])
+      .filter((h) => String(h.command).includes('claudinho'));
+    expect(claudinhoHooks).toHaveLength(1);
   });
 });

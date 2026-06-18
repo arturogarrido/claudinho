@@ -119,6 +119,11 @@ claude mcp add claudinho -- npx -y @claudinho/mcp
 
 Restart Claude Code to activate.
 
+> **Monorepo / local dev?** The `init cursor` / `init claude` aliases wire the global
+> `claudinho`. To point a statusline or hook at a local build, use the granular commands
+> with `--command`, e.g. `claudinho init-cursor-statusline --command "node ./packages/cli/dist/index.js prompt"`
+> (and `init-statusline` / `init-hook` for Claude Code).
+
 ### Other MCP clients — Codex, Claude Desktop, Windsurf, Zed, VS Code
 
 ```bash
