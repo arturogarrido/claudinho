@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "claudinho": {
+      "command": "npx",
+      "args": ["-y", "@claudinho/mcp"]
+    }
+  }
+}
