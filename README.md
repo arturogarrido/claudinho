@@ -59,44 +59,65 @@ claudinho today
 claudinho next MEX --tz America/Mexico_City --lang es
 ```
 
+### Cursor CLI — statusline + MCP
+
+One command wires the live-score statusline and prints the MCP config to paste:
+
+```bash
+npm i -g @claudinho/cli
+claudinho init cursor          # statusline → ~/.cursor/cli-config.json (+ the MCP paste)
+```
+
+<p align="center">
+  <img src=".github/assets/cursor-cli-statusline.png" alt="A live World Cup score in a Cursor CLI statusline — Uzbekistan 0–1 Colombia, 42' — with a model and context line below it" width="520">
+</p>
+
+Restart your agent session to see it. Prefer to paste it yourself? `claudinho init cursor --print`
+emits the snippets, or copy them straight from here:
+
+**Statusline** — `~/.cursor/cli-config.json`:
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "claudinho prompt",
+    "padding": 0,
+    "updateIntervalMs": 1000,
+    "timeoutMs": 1500
+  }
+}
+```
+
+**MCP tools** — `~/.cursor/mcp.json` (global) or a project `.cursor/mcp.json`:
+```json
+{ "mcpServers": { "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] } } }
+```
+
+**Optional env** — a model + context line below the score, or scope to your team:
+```bash
+export CLAUDINHO_CURSOR_META=auto   # model + context % line under the score (recommended)
+export CLAUDINHO_TEAM=MEX           # show only your team's match
+```
+
+> **Note:** Cursor's `beforeSubmitPrompt` hook doesn't yet reliably inject context into the
+> model, so the score-aware *hook* stays Claude Code-only for now — the statusline and MCP
+> server work great in Cursor.
+
 ### Claude Code — statusline, score-aware hook, MCP
 
 ```bash
 npm i -g @claudinho/cli
-claudinho init-statusline    # live scores inline while you code (<150ms, cache-only)
-claudinho init-hook          # Claude knows the score during matches (silent off-match)
+claudinho init claude          # statusline + live-score hook, then the MCP one-liner
+```
+
+`init claude` backs up `~/.claude/settings.json` first and is idempotent. Prefer the pieces
+à la carte? Run `init-statusline`, `init-hook`, and:
+
+```bash
 claude mcp add claudinho -- npx -y @claudinho/mcp
 ```
 
-Both `init-*` commands back up `~/.claude/settings.json` first and are idempotent.
 Restart Claude Code to activate.
-
-### Cursor CLI — statusline
-
-```bash
-npm i -g @claudinho/cli
-claudinho init-cursor-statusline   # live scores above the Cursor CLI prompt
-```
-
-`init-cursor-statusline` backs up `~/.cursor/cli-config.json` first and is idempotent.
-Restart Cursor CLI to activate.
-
-> **Note:** Cursor's `beforeSubmitPrompt` hook does not yet reliably inject
-> `claudinho hook` context into the model (raw stdout ≠ `additional_context`).
-> Score-aware hooks remain Claude Code only for now.
-
-Optional: show model + context usage below the score line:
-
-```bash
-export CLAUDINHO_CURSOR_META=auto   # on when Cursor pipes a payload (recommended)
-# export CLAUDINHO_CURSOR_META=1    # always on when stdin is piped
-```
-
-Local dev install with a custom command path:
-
-```bash
-claudinho init-cursor-statusline --command "node /path/to/claudinho/packages/cli/dist/index.js prompt"
-```
 
 ### Other MCP clients — Codex, Claude Desktop, Windsurf, Zed, VS Code
 

@@ -27,10 +27,12 @@ claudinho markets [target]  # prediction-market signals: today | <date> | <id> |
                             #   (next prefers the team's IN-PLAY match while one is live)
 claudinho share [target]    # copy-pasteable snippet: today | live | <date> | <id> | next <TEAM> | table <GROUP>
 claudinho prompt            # one compact status line (for statusline/tmux/Starship)
-claudinho init-statusline   # wire it into the Claude Code statusline
-claudinho init-cursor-statusline  # wire it into the Cursor CLI statusline
+claudinho init cursor       # one-step Cursor setup: statusline + MCP paste (--print for snippets)
+claudinho init claude       # one-step Claude Code setup: statusline + hook + MCP one-liner
+claudinho init-statusline   # (granular) wire just the Claude Code statusline
+claudinho init-cursor-statusline  # (granular) wire just the Cursor CLI statusline
 claudinho hook              # live-score context for a Claude Code hook (silent off-match)
-claudinho init-hook         # make Claude itself score-aware (UserPromptSubmit)
+claudinho init-hook         # (granular) make Claude itself score-aware (UserPromptSubmit)
 claudinho vibe              # a matchday-coder one-liner (#VibingLaVidaLoca)
 ```
 

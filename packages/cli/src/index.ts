@@ -3,6 +3,8 @@ import { resolveConfig, type RawGlobalOpts } from './config';
 import { makeT } from './i18n';
 import {
   cmdHook,
+  cmdInitClaude,
+  cmdInitCursor,
   cmdInitCursorStatusline,
   cmdInitHook,
   cmdInitStatusline,
@@ -38,8 +40,11 @@ const DISCLAIMER =
   'Claudinho is an independent fan project. Not affiliated with or endorsed by FIFA or Anthropic.';
 
 function ctxFrom(cmd: Command) {
-  // Global opts live on the root program.
-  const root = cmd.parent ?? cmd;
+  // Global opts live on the root program. Walk all the way up — a nested
+  // subcommand (e.g. `init cursor`) has its group command (`init`) as parent,
+  // not the root, so a single `.parent` would read the wrong opts.
+  let root: Command = cmd;
+  while (root.parent) root = root.parent;
   const opts = root.opts<RawGlobalOpts>();
   const cfg = resolveConfig(opts);
   return { cfg, t: makeT(cfg.lang) };
@@ -168,6 +173,36 @@ program
   .description('print a status line (Claude Code / Cursor CLI statusline, tmux, Starship, …)')
   .action((_opts, cmd) => {
     cmdPrompt(ctxFrom(cmd));
+  });
+
+// One-step setup aliases. `init cursor` / `init claude` compose the granular
+// init-* commands into a single command per agent (statusline + hook + MCP).
+const init = program
+  .command('init')
+  .description('one-step setup for your agent: `init cursor` or `init claude`');
+
+init
+  .command('cursor')
+  .description('set up claudinho for the Cursor CLI (statusline + MCP config)')
+  .option('--print', 'print the config snippets for manual install instead of writing them')
+  .action((opts, cmd) => {
+    try {
+      cmdInitCursor(opts, ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
+  });
+
+init
+  .command('claude')
+  .description('set up claudinho for Claude Code (statusline + hook + MCP)')
+  .option('--print', 'print the config snippets for manual install instead of writing them')
+  .action((opts, cmd) => {
+    try {
+      cmdInitClaude(opts, ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
   });
 
 program

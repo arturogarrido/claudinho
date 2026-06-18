@@ -464,6 +464,66 @@ export function cmdInitCursorStatusline(
   printInitResult(initCursorStatusline({ print: opts.print, command: opts.command }), cfg);
 }
 
+/** MCP config for Cursor — a paste (Cursor has no `mcp add` CLI, unlike Claude Code). */
+const CURSOR_MCP_SNIPPET = `{
+  "mcpServers": {
+    "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] }
+  }
+}`;
+
+/** The Claude Code MCP install one-liner (the `claude` CLI writes the config). */
+const CLAUDE_MCP_ONELINER = 'claude mcp add claudinho -- npx -y @claudinho/mcp';
+
+/**
+ * `claudinho init cursor` — one-step Cursor CLI setup: wire the statusline, then
+ * surface the MCP config (a paste — Cursor has no `mcp add`) and the restart cue.
+ * `--print` emits the raw snippets only (manual install, no file writes).
+ */
+export function cmdInitCursor(opts: { print?: boolean }, { cfg }: Ctx): void {
+  if (opts.print) {
+    out('# 1) Cursor CLI statusline  →  ~/.cursor/cli-config.json');
+    printInitResult(initCursorStatusline({ print: true }), cfg);
+    out('');
+    out('# 2) MCP tools (optional)  →  ~/.cursor/mcp.json  (or project .cursor/mcp.json)');
+    out(CURSOR_MCP_SNIPPET);
+    return;
+  }
+  printInitResult(initCursorStatusline(), cfg);
+  out('');
+  out('Optional — live MCP tools in Cursor: add to ~/.cursor/mcp.json (or project .cursor/mcp.json):');
+  out(CURSOR_MCP_SNIPPET);
+  out('');
+  out('Tip: export CLAUDINHO_CURSOR_META=auto for a model + context line below the score.');
+  out('');
+  out('→ Restart your agent session to see it.');
+}
+
+/**
+ * `claudinho init claude` — one-step Claude Code setup, parity with `init cursor`:
+ * wire the statusline AND the live-score hook, then print the MCP add one-liner.
+ * `--print` emits the raw snippets + the one-liner only (no file writes).
+ */
+export function cmdInitClaude(opts: { print?: boolean }, { cfg }: Ctx): void {
+  if (opts.print) {
+    out('# 1) Claude Code statusline  →  ~/.claude/settings.json');
+    printInitResult(initStatusline({ print: true }), cfg);
+    out('');
+    out('# 2) Live-score hook  →  ~/.claude/settings.json');
+    printInitResult(initHook({ print: true }), cfg);
+    out('');
+    out('# 3) MCP tools (run this):');
+    out(CLAUDE_MCP_ONELINER);
+    return;
+  }
+  printInitResult(initStatusline(), cfg);
+  printInitResult(initHook(), cfg);
+  out('');
+  out('Next — add the MCP server:');
+  out(`  ${CLAUDE_MCP_ONELINER}`);
+  out('');
+  out('→ Restart Claude Code to see it.');
+}
+
 /** `claudinho match <id>` */
 export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   const { cfg, t } = ctx;
