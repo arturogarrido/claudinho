@@ -45,7 +45,11 @@
     "claude-code",
     "cursor-cli",
     "2026",
-    "vibinglavidaloca"
+    "vibinglavidaloca",
+    "cursor",
+    "cursor-agent",
+    "mcp",
+    "agent"
   ],
   "scripts": {
     "build": "tsup",

@@ -43,7 +43,10 @@
     "fixtures",
     "standings",
     "2026",
-    "vibinglavidaloca"
+    "vibinglavidaloca",
+    "cursor-cli",
+    "cursor-agent",
+    "agent"
   ],
   "scripts": {
     "build": "tsup",

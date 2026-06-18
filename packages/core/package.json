@@ -41,7 +41,12 @@
     "standings",
     "polymarket",
     "typescript",
-    "2026"
+    "2026",
+    "cursor",
+    "cursor-cli",
+    "cursor-agent",
+    "mcp",
+    "agent"
   ],
   "scripts": {
     "build": "tsup",
