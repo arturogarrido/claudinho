@@ -1,6 +1,7 @@
 name: Publish
 
-# Publishes @claudinho/{core,cli,mcp} to npm with provenance.
+# Publishes @claudinho/{core,cli,mcp} to npm with provenance, then creates the
+# matching GitHub Release (so the repo's "Latest release" tracks npm).
 #
 # Trigger: push a version tag — `git tag v0.2.0 && git push origin v0.2.0`
 #          (or run manually from the Actions tab via "Run workflow").
@@ -22,7 +23,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # create the GitHub Release for the tag (the "Latest" marker)
   id-token: write # OIDC token used to sign the npm provenance attestation
 
 jobs:
@@ -64,3 +65,19 @@ jobs:
       # --provenance attaches a signed build attestation (needs id-token: write).
       - name: Publish to npm with provenance
         run: pnpm -r publish --provenance --access public --no-git-checks
+
+      # Create the GitHub Release for this tag so the repo's "Latest release"
+      # tracks npm (this used to be a manual step and silently lapsed after
+      # v0.5.0). Idempotent — skips if the release already exists (re-runs);
+      # --generate-notes lists the merged PRs since the previous release.
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME already exists — skipping"
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --latest \
+              --title "$GITHUB_REF_NAME" --generate-notes
+          fi
