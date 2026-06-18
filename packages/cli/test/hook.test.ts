@@ -42,6 +42,13 @@ describe('renderHook', () => {
     expect(out).toContain("(67')");
   });
 
+  it('drops flag emoji (names only) when flags are off', () => {
+    const s = state([m(['MEX', '🇲🇽'], ['RSA', '🇿🇦'], { minute: 67, score: { home: 1, away: 0 } })]);
+    const out = renderHook(s, { now: NOW, flags: false });
+    expect(out).toContain('MEX 1–0 RSA');
+    expect(out).not.toMatch(/\uD83C[\uDDE6-\uDDFF]/); // no regional-indicator flag
+  });
+
   it('renders half-time as a word, not a minute', () => {
     const s = state([m(['MEX', '🇲🇽'], ['RSA', '🇿🇦'], { status: 'HT', score: { home: 0, away: 0 } })]);
     expect(renderHook(s, { now: NOW })).toContain('(half-time)');

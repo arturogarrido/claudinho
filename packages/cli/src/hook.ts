@@ -17,12 +17,16 @@ import { liveMatchesFromCache } from './statusline';
 export interface HookOpts {
   /** Preferred team code (e.g. "MEX") — listed first. */
   team?: string;
+  /** Render emoji flags (default true); false → names only, for flagless terminals. */
+  flags?: boolean;
   now?: Date;
 }
 
-function line(m: Match): string {
+function line(m: Match, flags: boolean): string {
   const minute = m.status === 'HT' ? 'half-time' : m.minute ? `${m.minute}'` : 'live';
-  return `${m.home.flag} ${m.home.name} ${scoreline(m)} ${m.away.name} ${m.away.flag} (${minute})`;
+  const home = flags ? `${m.home.flag} ${m.home.name}` : m.home.name;
+  const away = flags ? `${m.away.name} ${m.away.flag}` : m.away.name;
+  return `${home} ${scoreline(m)} ${away} (${minute})`;
 }
 
 /**
@@ -36,6 +40,7 @@ export function renderHook(
 ): string {
   const now = opts.now ?? new Date();
   const team = opts.team?.toUpperCase();
+  const flags = opts.flags ?? true;
 
   let live = liveMatchesFromCache(state, now.getTime());
   if (live.length === 0) return '';
@@ -49,7 +54,7 @@ export function renderHook(
     });
   }
 
-  const lines = live.map(line).join('\n');
+  const lines = live.map((mm) => line(mm, flags)).join('\n');
   // Labelled as live context so the model treats it as ambient info, not an
   // instruction. Kept terse to minimise token cost.
   return `[Claudinho — live football scores right now]\n${lines}`;

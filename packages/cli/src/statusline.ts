@@ -23,6 +23,26 @@ import { ageMs, type CacheState } from './cache';
 export { LIVE_WINDOW_MS };
 /** Don't display cached live scores older than this (avoid stale scores). */
 export const DISPLAY_STALE_MS = 5 * 60_000;
+
+/**
+ * Terminals whose renderer doesn't compose regional-indicator pairs into flag
+ * emoji — they show the boxed letters instead (🇨🇭 → "CH", 🇧🇦 → "BA"), which is
+ * noisier than the plain 3-letter code. We default these to codes.
+ */
+const FLAGLESS_TERMINALS = new Set(['WarpTerminal']);
+
+/**
+ * Whether to render emoji flags in the statusline/hook. Explicit CLAUDINHO_FLAGS
+ * wins (on/off); otherwise auto — off on a terminal known not to render flag
+ * emoji (e.g. Warp), on everywhere else. Pure given an env snapshot so callers
+ * resolve it once and pass the boolean into the (env-free) render functions.
+ */
+export function flagsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = (env.CLAUDINHO_FLAGS ?? '').trim().toLowerCase();
+  if (v === 'off' || v === '0' || v === 'no' || v === 'false') return false;
+  if (v === 'on' || v === '1' || v === 'yes' || v === 'true') return true;
+  return !FLAGLESS_TERMINALS.has(env.TERM_PROGRAM ?? '');
+}
 /** Refresh the cache when it's older than this during a live window. */
 export const LIVE_TTL_MS = 15_000;
 
@@ -46,12 +66,25 @@ export interface PromptOpts {
    * Default: show all. (CLAUDINHO_MAX caps it for busy days.)
    */
   max?: number;
+  /** Render emoji flags (default true); false → 3-letter codes (flagless terminals). */
+  flags?: boolean;
   now?: Date;
 }
 
+/** A team's compact token: emoji flag, or its 3-letter code when flags are off. */
+function teamTok(t: { code: string; flag: string }, flags: boolean): string {
+  return flags ? t.flag : t.code;
+}
+
 /** One match as a segment (no leading icon), e.g. "🇪🇸 1–1 🇮🇶 87'". */
-function matchSegment(m: Match, compact: boolean): string {
+function matchSegment(m: Match, compact: boolean, flags: boolean): string {
   const minute = m.status === 'HT' ? 'HT' : m.minute ? `${m.minute}'` : 'LIVE';
+  if (!flags) {
+    // Codes only — a flagless terminal would render the flag as boxed letters,
+    // so the code already carries that info without the noise. Compact and
+    // non-compact converge here (the code is the whole token).
+    return `${m.home.code} ${scoreline(m)} ${m.away.code} ${minute}`;
+  }
   const home = compact ? m.home.flag : `${m.home.flag} ${m.home.code}`;
   const away = compact ? m.away.flag : `${m.away.code} ${m.away.flag}`;
   return `${home} ${scoreline(m)} ${away} ${minute}`;
@@ -83,6 +116,7 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
   const compact = opts.compact ?? true;
+  const flags = opts.flags ?? true;
   const team = opts.team?.toUpperCase();
 
   const live = liveMatchesFromCache(state, nowMs);
@@ -90,13 +124,13 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
   // With a team filter, show only that team's live match.
   if (team) {
     const mine = live.find((m) => m.home?.code === team || m.away?.code === team);
-    if (mine) return `⚽ ${matchSegment(mine, compact)}`;
+    if (mine) return `⚽ ${matchSegment(mine, compact, flags)}`;
   } else if (live.length > 0) {
     // No filter → show all live matches inline, separated by " · ".
     // CLAUDINHO_MAX caps how many render before the rest collapse to "+N".
     const max = opts.max && opts.max > 0 ? opts.max : live.length;
     const shown = live.slice(0, max);
-    let line = '⚽ ' + shown.map((m) => matchSegment(m, compact)).join(' · ');
+    let line = '⚽ ' + shown.map((m) => matchSegment(m, compact, flags)).join(' · ');
     const overflow = live.length - shown.length;
     if (overflow > 0) line += ` +${overflow}`;
     return line;
@@ -119,7 +153,7 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
     if (first) {
       const more = win.length - 1;
       return (
-        `⚽ ${first.home.flag} vs ${first.away.flag} live · syncing…` +
+        `⚽ ${teamTok(first.home, flags)} vs ${teamTok(first.away, flags)} live · syncing…` +
         (more > 0 ? ` +${more}` : '')
       );
     }
@@ -128,7 +162,7 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
   // Nothing (relevant) live → next-fixture countdown (pure static).
   const next = team ? nextFixtureForTeam(team, { from: now }) : nextOverall(nowMs);
   if (next) {
-    return `${next.home.flag} vs ${next.away.flag} in ${countdown(next.kickoff, now)}`;
+    return `${teamTok(next.home, flags)} vs ${teamTok(next.away, flags)} in ${countdown(next.kickoff, now)}`;
   }
   return '⚽ —';
 }

@@ -58,7 +58,7 @@ import type {
   ShareStyle,
 } from '@claudinho/core';
 import { readCurrentState } from './cache';
-import { liveMatchesFromCache, renderPrompt } from './statusline';
+import { flagsEnabled, liveMatchesFromCache, renderPrompt } from './statusline';
 import { renderHook } from './hook';
 import { runRefresh, shouldRefresh, spawnRefresh } from './refresh';
 import { readCursorPayload, renderPromptOutput } from './cursorPayload';
@@ -399,7 +399,7 @@ export function cmdPrompt({ cfg }: Ctx): void {
     const max = Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : undefined;
     // Only trust a snapshot fetched for the current source + competition.
     const state = readCurrentState(cfg.source, resolveCompetition());
-    const scoreLine = renderPrompt(state, { team, compact, max });
+    const scoreLine = renderPrompt(state, { team, compact, max, flags: flagsEnabled() });
     out(renderPromptOutput(scoreLine, payload));
     if (!state || shouldRefresh()) spawnRefresh(cfg.source);
   } catch {
@@ -419,7 +419,7 @@ export function cmdHook({ cfg }: Ctx): void {
     const team = process.env.CLAUDINHO_TEAM;
     // Only trust a snapshot fetched for the current source + competition.
     const state = readCurrentState(cfg.source, resolveCompetition());
-    const ctx = renderHook(state, { team });
+    const ctx = renderHook(state, { team, flags: flagsEnabled() });
     if (ctx) out(ctx);
     if (!state || shouldRefresh()) spawnRefresh(cfg.source);
   } catch {
