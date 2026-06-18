@@ -3,6 +3,7 @@
 [![CI](https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml/badge.svg)](https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml)
 [![npm: @claudinho/cli](https://img.shields.io/npm/v/@claudinho/cli?label=%40claudinho%2Fcli&color=cb3837)](https://www.npmjs.com/package/@claudinho/cli)
 [![npm: @claudinho/mcp](https://img.shields.io/npm/v/@claudinho/mcp?label=%40claudinho%2Fmcp&color=cb3837)](https://www.npmjs.com/package/@claudinho/mcp)
+[![cursor.directory](https://img.shields.io/badge/cursor.directory-claudinho-0b0b0b)](https://cursor.directory/plugins/claudinho)
 [![node](https://img.shields.io/node/v/@claudinho/cli?color=5fa04e)](https://nodejs.org)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![#VibingLaVidaLoca](https://img.shields.io/badge/%23VibingLaVidaLoca-⚽-ff5a5f)](https://github.com/arturogarrido/claudinho)
