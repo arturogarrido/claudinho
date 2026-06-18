@@ -187,8 +187,10 @@ claudinho init-cursor-statusline          # patches ~/.cursor/cli-config.json (b
 claudinho init-cursor-statusline --print  # just print the snippet
 ```
 
-Uses the same `claudinho prompt` hot path as Claude Code. Cursor-specific tuning
-is applied automatically (`updateIntervalMs: 1000`, `timeoutMs: 1500`).
+Uses the same `claudinho prompt` hot path as Claude Code — so the same
+`CLAUDINHO_TEAM` / `CLAUDINHO_MAX` / `CLAUDINHO_COMPACT` customizations above apply
+here too. Cursor-specific tuning is applied automatically (`updateIntervalMs: 1000`,
+`timeoutMs: 1500`).
 
 Optional second line with session meta (model, context %, worktree, vim mode) **below** the score:
 
