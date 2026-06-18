@@ -15,18 +15,21 @@ Cursor, Codex, Claude Desktop, Windsurf, Zed, VS Code, or any MCP client (stdio)
 claude mcp add claudinho -- npx -y @claudinho/mcp
 ```
 
+**Cursor** — add to `~/.cursor/mcp.json` (global) or a project `.cursor/mcp.json`:
+```json
+{ "mcpServers": { "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] } } }
+```
+> Bonus: `claudinho init-cursor-statusline` (from `@claudinho/cli`) also puts the live score
+> in your Cursor CLI statusline — or run `claudinho init cursor` to do both at once.
+
 **Codex CLI**
 ```bash
 codex mcp add claudinho -- npx -y @claudinho/mcp
 ```
 
-**Cursor / Claude Desktop / Windsurf / Zed / VS Code** — standard stdio config:
-```json
-{ "mcpServers": { "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] } } }
-```
-Cursor: `.cursor/mcp.json` (or `~/.cursor/mcp.json`). Claude Desktop: Settings →
-Developer → Edit Config, then restart. Codex config file: `~/.codex/config.toml`
-(`[mcp_servers.claudinho]`, `command = "npx"`, `args = ["-y", "@claudinho/mcp"]`).
+**Claude Desktop / Windsurf / Zed / VS Code** — standard stdio config (same JSON as Cursor):
+Claude Desktop: Settings → Developer → Edit Config, then restart. Codex config file:
+`~/.codex/config.toml` (`[mcp_servers.claudinho]`, `command = "npx"`, `args = ["-y", "@claudinho/mcp"]`).
 
 ## Tools
 
