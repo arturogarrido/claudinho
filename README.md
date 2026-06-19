@@ -35,10 +35,10 @@ And `claudinho share` prints a card made for the group chat:
 ```text
 Group A · standings
 
-1. 🇲🇽 MEX  3 pts · 1-0-0 · +2
-2. 🇰🇷 KOR  3 pts · 1-0-0 · +1
-3. 🇨🇿 CZE  0 pts · 0-0-1 · -1
-4. 🇿🇦 RSA  0 pts · 0-0-1 · -2
+1. 🇲🇽 MEX  6 pts · 2-0-0 · +3
+2. 🇰🇷 KOR  3 pts · 1-0-1 · 0
+3. 🇨🇿 CZE  1 pts · 0-1-1 · -1
+4. 🇿🇦 RSA  1 pts · 0-1-1 · -2
 
 Live data: ESPN
 #VibingLaVidaLoca · Independent fan project · not affiliated with FIFA or Anthropic.
