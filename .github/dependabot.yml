@@ -25,6 +25,12 @@ updates:
       prod-dependencies:
         dependency-type: production
         update-types: [minor, patch]
+    # @types/node tracks the Node version we support (engines floor: Node 20),
+    # not the newest Node major. Skip major-version PRs (e.g. 22 -> 25): a newer
+    # major types APIs that may not exist on our floor. Minor/patch still flow.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   # Keep the GitHub Actions used in CI up to date.
   - package-ecosystem: github-actions
