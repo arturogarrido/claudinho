@@ -98,7 +98,7 @@ emits the snippets, or copy them straight from here:
 ```bash
 export CLAUDINHO_CURSOR_META=auto   # model + context % line under the score (recommended)
 export CLAUDINHO_TEAM=MEX           # show only your team's match
-export CLAUDINHO_FLAGS=off          # 3-letter codes instead of flag emoji (auto-on for Warp)
+export CLAUDINHO_FLAGS=off          # 3-letter codes instead of flag emoji (already automatic in Warp)
 ```
 
 > **Note:** Cursor's `beforeSubmitPrompt` hook doesn't yet reliably inject context into the
@@ -165,8 +165,9 @@ _Planned (not shipped yet):_ a desktop notifier and an AI pundit with a public a
 
 **Flags show as boxed letters (`CH`, `BA`)?** Some terminals — notably Warp — don't compose
 the regional-indicator pairs into flag glyphs, so 🇨🇭 renders as a boxed `CH`. claudinho
-auto-detects Warp and falls back to 3-letter codes (`MEX 1–0 RSA 67'`) on the statusline and
-hook. Force it anywhere with `CLAUDINHO_FLAGS=off`, or keep flags with `CLAUDINHO_FLAGS=on`.
+auto-detects Warp and drops the flags: **3-letter codes on the statusline** (`MEX 1–0 RSA 67'`)
+and **plain team names in the hook**. Force it anywhere with `CLAUDINHO_FLAGS=off`, or keep flags
+with `CLAUDINHO_FLAGS=on`.
 
 **Windows?** Works, but flag emoji rendering varies by terminal — best on macOS/Linux. See the
 flags note above; `CLAUDINHO_FLAGS=off` gives clean codes on any terminal that can't render them.

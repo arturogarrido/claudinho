@@ -166,6 +166,7 @@ network** (<150ms). When several matches are live it shows them all inline:
 - `CLAUDINHO_TEAM=MEX` — show only your team's match; also the default team for `next`, `markets next`, and `share next` when the argument is omitted
 - `CLAUDINHO_MAX=2` — cap how many live matches show inline (rest collapse to `+N`; default: all)
 - `CLAUDINHO_COMPACT=0` — show 3-letter codes alongside flags
+- `CLAUDINHO_FLAGS=off` — drop emoji flags for 3-letter codes (statusline) / plain names (hook); already automatic on terminals that can't render flag emoji, e.g. Warp
 
 Use the same `claudinho prompt` in **tmux** (`set -g status-right '#(claudinho prompt)'`)
 or a **Starship** custom command — it works in any shell.
