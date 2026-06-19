@@ -51,6 +51,7 @@ const origCache = process.env.XDG_CACHE_HOME;
 const origComp = process.env.CLAUDINHO_COMPETITION;
 const origTeam = process.env.CLAUDINHO_TEAM;
 const origMeta = process.env.CLAUDINHO_CURSOR_META;
+const origFlags = process.env.CLAUDINHO_FLAGS;
 let outSpy: ReturnType<typeof vi.spyOn>;
 let writes: string[] = [];
 
@@ -60,6 +61,9 @@ beforeEach(() => {
   delete process.env.CLAUDINHO_COMPETITION;
   delete process.env.CLAUDINHO_TEAM;
   process.env.CLAUDINHO_CURSOR_META = 'auto';
+  // Pin flags on so these assertions hold regardless of the host terminal
+  // (the flag auto-detect would otherwise switch to codes under e.g. Warp).
+  process.env.CLAUDINHO_FLAGS = 'on';
   writes = [];
   outSpy = vi.spyOn(process.stdout, 'write').mockImplementation((c: unknown) => {
     writes.push(String(c));
@@ -83,6 +87,8 @@ afterEach(() => {
   else process.env.CLAUDINHO_TEAM = origTeam;
   if (origMeta === undefined) delete process.env.CLAUDINHO_CURSOR_META;
   else process.env.CLAUDINHO_CURSOR_META = origMeta;
+  if (origFlags === undefined) delete process.env.CLAUDINHO_FLAGS;
+  else process.env.CLAUDINHO_FLAGS = origFlags;
   rmSync(dir, { recursive: true, force: true });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inLiveWindow, renderPrompt } from '../src/statusline';
+import { flagsEnabled, inLiveWindow, renderPrompt } from '../src/statusline';
 import type { CacheState } from '../src/cache';
 import type { Match } from '@claudinho/core';
 
@@ -117,6 +117,48 @@ describe('renderPrompt — next fixture (static, no cache)', () => {
   it('shows a specific team next fixture when configured', () => {
     const line = renderPrompt(undefined, { now: PRE, team: 'BRA' });
     expect(line.startsWith('🇧🇷 vs 🇲🇦 in ')).toBe(true); // Brazil v Morocco
+  });
+});
+
+describe('flagsEnabled', () => {
+  it('honors an explicit off/on (any common spelling)', () => {
+    for (const v of ['off', '0', 'no', 'false', 'OFF']) {
+      expect(flagsEnabled({ CLAUDINHO_FLAGS: v })).toBe(false);
+    }
+    for (const v of ['on', '1', 'yes', 'true', 'ON']) {
+      expect(flagsEnabled({ CLAUDINHO_FLAGS: v })).toBe(true);
+    }
+  });
+
+  it('auto-detects a flagless terminal (Warp) when unset', () => {
+    expect(flagsEnabled({ TERM_PROGRAM: 'WarpTerminal' })).toBe(false);
+  });
+
+  it('defaults to flags-on for other terminals / no hint', () => {
+    expect(flagsEnabled({ TERM_PROGRAM: 'iTerm.app' })).toBe(true);
+    expect(flagsEnabled({})).toBe(true);
+  });
+
+  it('lets an explicit setting override the Warp auto-detect', () => {
+    expect(flagsEnabled({ TERM_PROGRAM: 'WarpTerminal', CLAUDINHO_FLAGS: 'on' })).toBe(true);
+  });
+});
+
+describe('renderPrompt — flags off (codes instead of emoji)', () => {
+  it('renders 3-letter codes and no flag emoji for a live match', () => {
+    const s = state([m('1', ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], { minute: 67, score: { home: 1, away: 0 } })]);
+    expect(renderPrompt(s, { now: NOW, flags: false })).toBe("⚽ MEX 1–0 RSA 67'");
+  });
+
+  it('uses codes in the countdown fallback too', () => {
+    const PRE = new Date('2026-06-01T00:00:00Z');
+    const line = renderPrompt(undefined, { now: PRE, flags: false });
+    expect(line.startsWith('MEX vs RSA in ')).toBe(true);
+    expect(line).not.toMatch(/\uD83C[\uDDE6-\uDDFF]/); // no regional-indicator flag
+  });
+
+  it('uses codes in the "syncing" line during a cold live window', () => {
+    expect(renderPrompt(undefined, { now: NOW, flags: false })).toContain('MEX vs RSA live · syncing');
   });
 });
 
