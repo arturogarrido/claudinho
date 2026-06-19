@@ -25,7 +25,7 @@ jobs:
         # — that floor is verified by the `runtime-node20` job below.
         node: [22, 24]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6 # reads pnpm version from package.json "packageManager"
       - uses: actions/setup-node@v6
         with:
@@ -44,7 +44,7 @@ jobs:
     name: runtime smoke (Node 20 engines floor)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       # Build with a pnpm-supported Node...
       - uses: actions/setup-node@v6
@@ -71,7 +71,7 @@ jobs:
     name: audit (shipped deps)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
