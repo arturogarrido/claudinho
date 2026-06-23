@@ -4,13 +4,15 @@
  *   pnpm -F @claudinho/core gen:schedule
  *
  * Fetches the full tournament window in weekly chunks, dedupes by id, sorts by
- * kickoff, and writes src/data/schedule.2026.json. Re-run as the bracket fills
- * in (knockout fixtures resolve from TBD to real teams).
+ * kickoff, and writes src/data/schedule.2026.json. Live scores and final
+ * results are stripped — the bundle is a resultless skeleton; only team names,
+ * kickoffs, venues, and bracket structure ship in the package.
  */
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EspnAdapter } from '../src/adapters/espn';
+import { sanitizeBundledFixture } from '../src/schedule';
 import type { Match } from '../src/types';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -40,9 +42,17 @@ async function main(): Promise<void> {
     }
   }
 
-  const all = [...byId.values()].sort((a, b) => a.kickoff.localeCompare(b.kickoff));
+  const all = [...byId.values()]
+    .map(sanitizeBundledFixture)
+    .sort((a, b) => a.kickoff.localeCompare(b.kickoff));
 
-  // ---- sanity checks: fail loudly rather than write garbage ----
+  const problems: string[] = [];
+  const withResults = all.filter((m) => m.status !== 'SCHEDULED' || m.score != null);
+  if (withResults.length > 0) {
+    problems.push(
+      `bundled schedule must be resultless: ${withResults.length} fixture(s) still carry status/score after sanitize`,
+    );
+  }
   const stageCounts = all.reduce<Record<string, number>>((acc, m) => {
     acc[m.stage] = (acc[m.stage] ?? 0) + 1;
     return acc;
@@ -52,7 +62,6 @@ async function main(): Promise<void> {
     GROUP: 72, R32: 16, R16: 8, QF: 4, SF: 2, '3P': 1, F: 1,
   };
 
-  const problems: string[] = [];
   if (all.length !== 104) problems.push(`expected 104 fixtures, got ${all.length}`);
   if (groupLetters.size !== 12) {
     problems.push(`expected 12 groups, got ${groupLetters.size} (${[...groupLetters].sort().join(',')})`);

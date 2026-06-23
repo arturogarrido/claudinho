@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fixturesByDate, type Match } from '../src/index';
+import { fixturesByDate, sanitizeBundledFixture, type Match } from '../src/index';
 
 function fx(id: string, kickoff: string): Match {
   return {
@@ -42,5 +42,22 @@ describe('fixturesByDate — local-date grouping', () => {
       });
       expect(wd).toBe('Saturday');
     }
+  });
+});
+
+describe('sanitizeBundledFixture', () => {
+  it('strips live/final state so the bundled schedule stays resultless', () => {
+    const raw: Match = {
+      ...fx('live', '2026-06-13T19:00Z'),
+      status: 'FT',
+      score: { home: 2, away: 0 },
+      minute: 90,
+    };
+    const clean = sanitizeBundledFixture(raw);
+    expect(clean.status).toBe('SCHEDULED');
+    expect(clean.score).toBeUndefined();
+    expect(clean.minute).toBeUndefined();
+    expect(clean.id).toBe(raw.id);
+    expect(clean.home).toEqual(raw.home);
   });
 });

@@ -204,8 +204,6 @@ describe('marketFixtureForTeam (live-confirmed selection)', () => {
   });
 
   it('keeps the static candidate on a degraded fetch (fail closed downstream)', async () => {
-    // Pick an in-window fixture that isn't already FT in the bundle — the
-    // schedule is refreshed from ESPN and may carry final scores for past games.
     const candidate =
       fixturesByTeam(team).find((m) => m.status !== 'FT') ?? opener;
     const during = new Date(Date.parse(candidate.kickoff) + 30 * 60_000);

@@ -46,4 +46,8 @@ describe('stageLabel', () => {
     expect(stageLabel(match({ stage: 'R16', group: undefined }))).toBe('Round of 16');
     expect(stageLabel(match({ stage: 'F', group: undefined }))).toBe('Final');
   });
+
+  it('returns an empty string for an unknown stage', () => {
+    expect(stageLabel(match({ stage: 'UNKNOWN' as Match['stage'], group: undefined }))).toBe('');
+  });
 });

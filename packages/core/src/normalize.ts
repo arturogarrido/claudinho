@@ -58,5 +58,7 @@ export function stageLabel(m: Pick<Match, 'stage' | 'group'>): string {
       return 'Final';
     case 'FRIENDLY':
       return 'Friendly';
+    default:
+      return '';
   }
 }

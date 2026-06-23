@@ -153,8 +153,8 @@ describe('getStandings', () => {
     expect(r.degraded).toBe(true);
     expect(r.source).toBeUndefined();
     expect(r.tables[0]?.group).toBe('A');
-    // Roster from the static schedule (may include FT results baked into the bundle).
     expect(r.tables[0]?.rows.length).toBe(4);
+    expect(r.tables[0]?.rows.every((row) => row.played === 0 && row.points === 0)).toBe(true);
     expect(r.tables[0]?.rows.map((row) => row.team.code).sort()).toEqual([
       'CZE',
       'KOR',
@@ -170,5 +170,6 @@ describe('getStandings', () => {
     const r = await getStandings(boom, 'A');
     expect(r.degraded).toBe(true);
     expect(r.tables[0]?.rows.length).toBe(4);
+    expect(r.tables[0]?.rows.every((row) => row.played === 0 && row.points === 0)).toBe(true);
   });
 });

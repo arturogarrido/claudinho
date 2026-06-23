@@ -33,6 +33,7 @@ export {
   fixturesInLiveWindow,
   LIVE_WINDOW_MS,
   groups,
+  sanitizeBundledFixture,
 } from './schedule';
 
 export { computeStandings } from './standings';
