@@ -9,6 +9,7 @@ import {
   matchFlavor,
   matchLocation,
   scoreline,
+  stageLabel,
   type FlavorLevel,
   type Match,
   type StandingRow,
@@ -29,23 +30,9 @@ export interface FmtOpts {
   flavor?: FlavorLevel;
 }
 
-export function stageName(stage: Match['stage']): string {
-  switch (stage) {
-    case 'GROUP': return 'Group stage';
-    case 'R32': return 'Round of 32';
-    case 'R16': return 'Round of 16';
-    case 'QF': return 'Quarter-final';
-    case 'SF': return 'Semi-final';
-    case '3P': return 'Third-place play-off';
-    case 'F': return 'Final';
-    case 'FRIENDLY': return 'Friendly';
-  }
-}
-
-/** One match as a single readable line. */
 export function matchLine(m: Match, opts: FmtOpts = {}): string {
   const head = `${m.home.flag} ${m.home.name} ${scoreline(m)} ${m.away.name} ${m.away.flag}`;
-  const stage = m.group ? `Group ${m.group}` : stageName(m.stage);
+  const stage = stageLabel(m);
   let tail: string;
   if (m.status === 'SCHEDULED') {
     tail = `${formatKickoff(m.kickoff, opts)} (in ${countdown(m.kickoff)})`;

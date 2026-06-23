@@ -17,8 +17,12 @@
       "name": "South Africa",
       "flag": "🇿🇦"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.333Z"
+    "score": {
+      "home": 2,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.385Z"
   },
   {
     "id": "760414",
@@ -38,8 +42,12 @@
       "name": "Czechia",
       "flag": "🇨🇿"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 2,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760416",
@@ -59,8 +67,12 @@
       "name": "Bosnia-Herzegovina",
       "flag": "🇧🇦"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 1,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760417",
@@ -80,8 +92,12 @@
       "name": "Paraguay",
       "flag": "🇵🇾"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 4,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760420",
@@ -101,8 +117,12 @@
       "name": "Switzerland",
       "flag": "🇨🇭"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 1,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760419",
@@ -122,8 +142,12 @@
       "name": "Morocco",
       "flag": "🇲🇦"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 1,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760418",
@@ -143,8 +167,12 @@
       "name": "Scotland",
       "flag": "🏴󠁧󠁢󠁳󠁣󠁴󠁿"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 0,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760421",
@@ -164,8 +192,12 @@
       "name": "Türkiye",
       "flag": "🇹🇷"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 2,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760422",
@@ -185,8 +217,12 @@
       "name": "Curaçao",
       "flag": "🇨🇼"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 7,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760425",
@@ -206,8 +242,12 @@
       "name": "Japan",
       "flag": "🇯🇵"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 2,
+      "away": 2
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760423",
@@ -227,8 +267,12 @@
       "name": "Ecuador",
       "flag": "🇪🇨"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 1,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760424",
@@ -248,8 +292,12 @@
       "name": "Tunisia",
       "flag": "🇹🇳"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 5,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760428",
@@ -269,8 +317,12 @@
       "name": "Cape Verde",
       "flag": "🇨🇻"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 0,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760426",
@@ -290,8 +342,12 @@
       "name": "Egypt",
       "flag": "🇪🇬"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 1,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760429",
@@ -311,8 +367,12 @@
       "name": "Uruguay",
       "flag": "🇺🇾"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 1,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760427",
@@ -332,8 +392,12 @@
       "name": "New Zealand",
       "flag": "🇳🇿"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 2,
+      "away": 2
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760432",
@@ -353,8 +417,12 @@
       "name": "Senegal",
       "flag": "🇸🇳"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 3,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760430",
@@ -374,8 +442,12 @@
       "name": "Norway",
       "flag": "🇳🇴"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 1,
+      "away": 4
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760433",
@@ -395,8 +467,12 @@
       "name": "Algeria",
       "flag": "🇩🇿"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 3,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760431",
@@ -416,8 +492,12 @@
       "name": "Jordan",
       "flag": "🇯🇴"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 3,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760435",
@@ -437,8 +517,12 @@
       "name": "Congo DR",
       "flag": "🇨🇩"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 1,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760437",
@@ -458,8 +542,12 @@
       "name": "Croatia",
       "flag": "🇭🇷"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 4,
+      "away": 2
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760434",
@@ -479,8 +567,12 @@
       "name": "Panama",
       "flag": "🇵🇦"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 1,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760436",
@@ -500,8 +592,12 @@
       "name": "Colombia",
       "flag": "🇨🇴"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.337Z"
+    "score": {
+      "home": 1,
+      "away": 3
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.386Z"
   },
   {
     "id": "760438",
@@ -521,8 +617,12 @@
       "name": "South Africa",
       "flag": "🇿🇦"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 1,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760439",
@@ -542,8 +642,12 @@
       "name": "Bosnia-Herzegovina",
       "flag": "🇧🇦"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 4,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760440",
@@ -563,8 +667,12 @@
       "name": "Qatar",
       "flag": "🇶🇦"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 6,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760441",
@@ -584,8 +692,12 @@
       "name": "South Korea",
       "flag": "🇰🇷"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 1,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760442",
@@ -605,8 +717,12 @@
       "name": "Australia",
       "flag": "🇦🇺"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 2,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760445",
@@ -626,8 +742,12 @@
       "name": "Morocco",
       "flag": "🇲🇦"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 0,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760444",
@@ -647,8 +767,12 @@
       "name": "Haiti",
       "flag": "🇭🇹"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 3,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760443",
@@ -668,8 +792,12 @@
       "name": "Paraguay",
       "flag": "🇵🇾"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 0,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760447",
@@ -689,8 +817,12 @@
       "name": "Sweden",
       "flag": "🇸🇪"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 5,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760448",
@@ -710,8 +842,12 @@
       "name": "Ivory Coast",
       "flag": "🇨🇮"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 2,
+      "away": 1
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760446",
@@ -731,8 +867,12 @@
       "name": "Curaçao",
       "flag": "🇨🇼"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 0,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760449",
@@ -752,8 +892,12 @@
       "name": "Japan",
       "flag": "🇯🇵"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 0,
+      "away": 4
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760453",
@@ -773,8 +917,12 @@
       "name": "Saudi Arabia",
       "flag": "🇸🇦"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 4,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760451",
@@ -794,8 +942,12 @@
       "name": "Iran",
       "flag": "🇮🇷"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 0,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760450",
@@ -815,8 +967,12 @@
       "name": "Cape Verde",
       "flag": "🇨🇻"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 2,
+      "away": 2
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760452",
@@ -836,8 +992,12 @@
       "name": "Egypt",
       "flag": "🇪🇬"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 1,
+      "away": 3
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760456",
@@ -857,8 +1017,12 @@
       "name": "Austria",
       "flag": "🇦🇹"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 2,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760457",
@@ -878,8 +1042,12 @@
       "name": "Iraq",
       "flag": "🇮🇶"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 3,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760454",
@@ -899,8 +1067,12 @@
       "name": "Senegal",
       "flag": "🇸🇳"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 3,
+      "away": 2
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760455",
@@ -920,8 +1092,12 @@
       "name": "Algeria",
       "flag": "🇩🇿"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 1,
+      "away": 2
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760461",
@@ -941,8 +1117,12 @@
       "name": "Uzbekistan",
       "flag": "🇺🇿"
     },
-    "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "score": {
+      "home": 5,
+      "away": 0
+    },
+    "status": "FT",
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760458",
@@ -963,7 +1143,7 @@
       "flag": "🇬🇭"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.418Z"
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760460",
@@ -984,7 +1164,7 @@
       "flag": "🇭🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.419Z"
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760459",
@@ -1005,7 +1185,7 @@
       "flag": "🇨🇩"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.419Z"
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760462",
@@ -1026,7 +1206,7 @@
       "flag": "🇶🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.419Z"
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760463",
@@ -1047,7 +1227,7 @@
       "flag": "🇨🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.419Z"
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760464",
@@ -1068,7 +1248,7 @@
       "flag": "🇭🇹"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.419Z"
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760465",
@@ -1089,7 +1269,7 @@
       "flag": "🇧🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.419Z"
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760467",
@@ -1110,7 +1290,7 @@
       "flag": "🇲🇽"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.419Z"
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760466",
@@ -1131,7 +1311,7 @@
       "flag": "🇰🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.419Z"
+    "updatedAt": "2026-06-23T21:51:08.490Z"
   },
   {
     "id": "760473",
@@ -1152,7 +1332,7 @@
       "flag": "🇨🇮"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.511Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760468",
@@ -1173,7 +1353,7 @@
       "flag": "🇩🇪"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.511Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760471",
@@ -1194,7 +1374,7 @@
       "flag": "🇸🇪"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.511Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760472",
@@ -1215,7 +1395,7 @@
       "flag": "🇳🇱"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.511Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760469",
@@ -1236,7 +1416,7 @@
       "flag": "🇦🇺"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.511Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760470",
@@ -1257,7 +1437,7 @@
       "flag": "🇺🇸"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.511Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760475",
@@ -1278,7 +1458,7 @@
       "flag": "🇫🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.511Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760474",
@@ -1299,7 +1479,7 @@
       "flag": "🇮🇶"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.511Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760478",
@@ -1320,7 +1500,7 @@
       "flag": "🇸🇦"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.511Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760479",
@@ -1341,7 +1521,7 @@
       "flag": "🇪🇸"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.511Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760476",
@@ -1362,7 +1542,7 @@
       "flag": "🇮🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.511Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760477",
@@ -1383,7 +1563,7 @@
       "flag": "🇧🇪"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.511Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760480",
@@ -1404,7 +1584,7 @@
       "flag": "🇬🇭"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.512Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760485",
@@ -1425,7 +1605,7 @@
       "flag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.512Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760481",
@@ -1446,7 +1626,7 @@
       "flag": "🇵🇹"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.512Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760482",
@@ -1467,7 +1647,7 @@
       "flag": "🇺🇿"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.512Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760484",
@@ -1488,7 +1668,7 @@
       "flag": "🇦🇹"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.512Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760483",
@@ -1509,7 +1689,7 @@
       "flag": "🇦🇷"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.512Z"
+    "updatedAt": "2026-06-23T21:51:08.575Z"
   },
   {
     "id": "760486",
@@ -1529,7 +1709,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.540Z"
+    "updatedAt": "2026-06-23T21:51:08.585Z"
   },
   {
     "id": "760487",
@@ -1549,7 +1729,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.540Z"
+    "updatedAt": "2026-06-23T21:51:08.585Z"
   },
   {
     "id": "760489",
@@ -1559,9 +1739,9 @@
     "city": "Foxborough, Massachusetts",
     "country": "USA",
     "home": {
-      "code": "1E",
-      "name": "Group E Winner",
-      "flag": "🏳️"
+      "code": "GER",
+      "name": "Germany",
+      "flag": "🇩🇪"
     },
     "away": {
       "code": "3RD",
@@ -1569,7 +1749,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.540Z"
+    "updatedAt": "2026-06-23T21:51:08.585Z"
   },
   {
     "id": "760488",
@@ -1589,7 +1769,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.540Z"
+    "updatedAt": "2026-06-23T21:51:08.585Z"
   },
   {
     "id": "760490",
@@ -1609,7 +1789,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.540Z"
+    "updatedAt": "2026-06-23T21:51:08.585Z"
   },
   {
     "id": "760492",
@@ -1629,7 +1809,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.541Z"
+    "updatedAt": "2026-06-23T21:51:08.585Z"
   },
   {
     "id": "760491",
@@ -1639,9 +1819,9 @@
     "city": "Mexico City",
     "country": "Mexico",
     "home": {
-      "code": "1A",
-      "name": "Group A Winner",
-      "flag": "🏳️"
+      "code": "MEX",
+      "name": "Mexico",
+      "flag": "🇲🇽"
     },
     "away": {
       "code": "3RD",
@@ -1649,7 +1829,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.541Z"
+    "updatedAt": "2026-06-23T21:51:08.585Z"
   },
   {
     "id": "760495",
@@ -1669,7 +1849,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.541Z"
+    "updatedAt": "2026-06-23T21:51:08.585Z"
   },
   {
     "id": "760493",
@@ -1689,7 +1869,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.541Z"
+    "updatedAt": "2026-06-23T21:51:08.585Z"
   },
   {
     "id": "760494",
@@ -1699,9 +1879,9 @@
     "city": "Santa Clara, California",
     "country": "USA",
     "home": {
-      "code": "1D",
-      "name": "Group D Winner",
-      "flag": "🏳️"
+      "code": "USA",
+      "name": "United States",
+      "flag": "🇺🇸"
     },
     "away": {
       "code": "3RD",
@@ -1709,7 +1889,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.541Z"
+    "updatedAt": "2026-06-23T21:51:08.585Z"
   },
   {
     "id": "760497",
@@ -1729,7 +1909,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760496",
@@ -1749,7 +1929,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760498",
@@ -1769,7 +1949,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760499",
@@ -1789,7 +1969,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760500",
@@ -1799,9 +1979,9 @@
     "city": "Miami Gardens, Florida",
     "country": "USA",
     "home": {
-      "code": "1J",
-      "name": "Group J Winner",
-      "flag": "🏳️"
+      "code": "ARG",
+      "name": "Argentina",
+      "flag": "🇦🇷"
     },
     "away": {
       "code": "2H",
@@ -1809,7 +1989,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760501",
@@ -1829,7 +2009,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760502",
@@ -1849,7 +2029,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760503",
@@ -1869,7 +2049,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760504",
@@ -1889,7 +2069,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760505",
@@ -1909,7 +2089,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760506",
@@ -1929,7 +2109,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760507",
@@ -1949,7 +2129,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760509",
@@ -1969,7 +2149,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760508",
@@ -1989,7 +2169,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.616Z"
+    "updatedAt": "2026-06-23T21:51:08.664Z"
   },
   {
     "id": "760510",
@@ -2009,7 +2189,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.684Z"
+    "updatedAt": "2026-06-23T21:51:08.747Z"
   },
   {
     "id": "760511",
@@ -2029,7 +2209,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.684Z"
+    "updatedAt": "2026-06-23T21:51:08.747Z"
   },
   {
     "id": "760512",
@@ -2049,7 +2229,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.684Z"
+    "updatedAt": "2026-06-23T21:51:08.747Z"
   },
   {
     "id": "760513",
@@ -2069,7 +2249,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.684Z"
+    "updatedAt": "2026-06-23T21:51:08.747Z"
   },
   {
     "id": "760514",
@@ -2089,7 +2269,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.684Z"
+    "updatedAt": "2026-06-23T21:51:08.747Z"
   },
   {
     "id": "760515",
@@ -2109,7 +2289,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.684Z"
+    "updatedAt": "2026-06-23T21:51:08.747Z"
   },
   {
     "id": "760516",
@@ -2129,7 +2309,7 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.772Z"
+    "updatedAt": "2026-06-23T21:51:08.830Z"
   },
   {
     "id": "760517",
@@ -2149,6 +2329,6 @@
       "flag": "🏳️"
     },
     "status": "SCHEDULED",
-    "updatedAt": "2026-06-07T07:52:54.772Z"
+    "updatedAt": "2026-06-23T21:51:08.830Z"
   }
 ]

@@ -60,6 +60,13 @@ const standingsAdapter: ProviderAdapter = {
 const TEST_NOW = new Date('2026-06-13T12:00:00Z');
 const synth = () => new FakeMarketProvider({ synthesize: true, now: TEST_NOW });
 
+const upcoming = (): Match =>
+  allFixtures().find(
+    (m) => m.status === 'SCHEDULED' && Date.parse(m.kickoff) > TEST_NOW.getTime(),
+  )!;
+
+const upcomingDate = () => upcoming().kickoff.slice(0, 10);
+
 const HASHTAG = '#VibingLaVidaLoca';
 const DISCLAIMER = 'not affiliated with FIFA or Anthropic';
 const BANNED = /\b(bet|betting|wager|gambling|value pick|edge|lock)\b/i;
@@ -78,7 +85,7 @@ type ShareData = {
 describe('toolGetShareSnippet', () => {
   it('a date snippet carries the card, hashtag, disclaimer, and link-free market data', async () => {
     const r = await toolGetShareSnippet({
-      date: '2026-06-13',
+      date: upcomingDate(),
       tz: 'UTC',
       adapter: fakeAdapter,
       marketProvider: synth(),
@@ -140,12 +147,13 @@ describe('toolGetShareSnippet', () => {
 
   it('compact style and toggles are honored', async () => {
     const r = await toolGetShareSnippet({
-      date: '2026-06-13',
+      date: upcomingDate(),
       tz: 'UTC',
       style: 'compact',
       includeHashtag: false,
       adapter: fakeAdapter,
       marketProvider: synth(),
+      now: TEST_NOW,
     });
     const data = r.data as ShareData;
     expect(data.style).toBe('compact');

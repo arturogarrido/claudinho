@@ -37,6 +37,11 @@ function paint(enabled: boolean) {
 
 export type Painter = ReturnType<typeof paint>;
 
+/** Team cell for standings tables. */
+export function tableTeamCell(team: { flag: string; name: string }, flags: boolean): string {
+  return flags ? `${team.flag} ${team.name}` : team.name;
+}
+
 export function painterFor(cfg: CliConfig): Painter {
   return paint(cfg.color);
 }
@@ -69,9 +74,10 @@ export function matchLine(
   cfg: CliConfig,
   t: Translator,
   c: Painter,
+  flags = true,
 ): string {
-  const home = `${m.home.flag} ${m.home.name}`;
-  const away = `${m.away.name} ${m.away.flag}`;
+  const home = flags ? `${m.home.flag} ${m.home.name}` : m.home.name;
+  const away = flags ? `${m.away.name} ${m.away.flag}` : m.away.name;
   const mid = isLive(m.status) || m.status === 'FT'
     ? c.bold(scoreline(m))
     : c.dim('vs');

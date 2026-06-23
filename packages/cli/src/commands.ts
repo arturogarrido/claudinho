@@ -26,6 +26,7 @@ import {
   resolveCompetition,
   resolveMarketSource,
   scoreline,
+  stageLabel,
 } from '@claudinho/core';
 import Table from 'cli-table3';
 import type { CliConfig } from './config';
@@ -38,6 +39,7 @@ import {
   type Painter,
   painterFor,
   statusToken,
+  tableTeamCell,
 } from './format';
 import {
   getLiveMatches,
@@ -225,6 +227,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   }
 
   const c = painterFor(cfg);
+  const flags = flagsEnabled();
   // "Today's matches" only when no explicit date was given; otherwise "Matches".
   const title = date === undefined ? t('today.title') : t('today.on');
   out();
@@ -234,7 +237,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
     out(c.dim('  ' + t('today.none')));
   } else {
     for (const m of todays) {
-      out(matchLine(m, cfg, t, c));
+      out(matchLine(m, cfg, t, c, flags));
       const s = signals.get(m.id);
       if (s) out('    ' + c.dim(marketLine(s, m)));
     }
@@ -260,6 +263,7 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   }
 
   const c = painterFor(cfg);
+  const flags = flagsEnabled();
   out();
   out(header(t('live.title'), c));
   out();
@@ -270,7 +274,7 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   } else if (matches.length === 0) {
     out(c.dim('  ' + t('live.none')));
   } else {
-    for (const m of matches) out(matchLine(m, cfg, t, c));
+    for (const m of matches) out(matchLine(m, cfg, t, c, flags));
   }
   out();
   const src = dataSource(source, c);
@@ -290,6 +294,7 @@ export async function cmdNext(team: string | undefined, { cfg, t, now }: Ctx): P
   }
 
   const c = painterFor(cfg);
+  const flags = flagsEnabled();
   out();
   if (!fixture) {
     out(c.dim('  ' + t('next.none', { team: code })));
@@ -299,11 +304,12 @@ export async function cmdNext(team: string | undefined, { cfg, t, now }: Ctx): P
   }
   out(header(t('next.label', { team: code }), c));
   out();
-  out(matchLine(fixture, cfg, t, c));
+  out(matchLine(fixture, cfg, t, c, flags));
+  const stage = fixture.stage !== 'GROUP' ? `${stageLabel(fixture)} · ` : '';
   out(
     '  ' +
       c.dim(
-        `${formatKickoff(fixture.kickoff, { tz: cfg.tz, locale: cfg.lang })} · ` +
+        `${stage}${formatKickoff(fixture.kickoff, { tz: cfg.tz, locale: cfg.lang })} · ` +
           t('next.in', { countdown: countdown(fixture.kickoff) }),
       ),
   );
@@ -332,6 +338,7 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
   }
 
   const c = painterFor(cfg);
+  const flags = flagsEnabled();
   if (tables.length === 0) {
     out();
     // A specific group that isn't there → "no group X"; no group asked (e.g. the
@@ -364,7 +371,7 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
     });
     for (const r of rows) {
       table.push([
-        `${r.team.flag} ${r.team.name}`,
+        tableTeamCell(r.team, flags),
         r.played,
         r.won,
         r.drawn,
@@ -556,9 +563,9 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
     out(disclaimer(t, c));
     return;
   }
-  const stageLabel = match.group ? `${match.stage} ${match.group}` : match.stage;
+  const stageLabelText = stageLabel(match);
   out(header(`${match.home.name} ${scoreline(match)} ${match.away.name}`, c));
-  out('  ' + c.dim(`${stageLabel} · ${matchLocation(match)}`));
+  out('  ' + c.dim(`${stageLabelText} · ${matchLocation(match)}`));
   out(
     '  ' +
       c.dim(
