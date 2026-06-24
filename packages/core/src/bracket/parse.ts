@@ -1,6 +1,6 @@
 import type { Team } from '../types';
 import type { SlotRef } from './types';
-import { isResolvedNation } from './placeholders';
+import { isResolvedNation, NATION_AS_GROUP_WINNER } from './placeholders';
 
 const PLACEHOLDER_FLAG = '🏳️';
 
@@ -37,6 +37,8 @@ export function parseTeamSlot(team: Team): SlotRef | null {
   if (m) return { kind: 'loser', stage: 'SF', index: Number(m[1]) };
 
   if (isResolvedNation(team)) {
+    const group = NATION_AS_GROUP_WINNER[team.name];
+    if (group) return { kind: 'group', position: 1, group };
     return { kind: 'seed', label: team.name, code: 'TBD' };
   }
 

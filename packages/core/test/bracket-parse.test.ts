@@ -5,10 +5,33 @@ import type { Team } from '../src/types';
 const T = (name: string, code: string, flag = '🏳️'): Team => ({ name, code, flag });
 
 describe('parseTeamSlot', () => {
-  it('maps ESPN pre-draw nations to seed slots (never confirmed team)', () => {
+  it('maps ESPN pre-draw host nations to group-winner slots', () => {
     expect(parseTeamSlot(T('Mexico', 'MEX', '🇲🇽'))).toEqual({
+      kind: 'group',
+      position: 1,
+      group: 'A',
+    });
+    expect(parseTeamSlot(T('Germany', 'GER', '🇩🇪'))).toEqual({
+      kind: 'group',
+      position: 1,
+      group: 'E',
+    });
+    expect(parseTeamSlot(T('United States', 'USA', '🇺🇸'))).toEqual({
+      kind: 'group',
+      position: 1,
+      group: 'D',
+    });
+    expect(parseTeamSlot(T('Argentina', 'ARG', '🇦🇷'))).toEqual({
+      kind: 'group',
+      position: 1,
+      group: 'J',
+    });
+  });
+
+  it('maps other ESPN pre-draw nations to generic seed slots', () => {
+    expect(parseTeamSlot(T('France', 'FRA', '🇫🇷'))).toEqual({
       kind: 'seed',
-      label: 'Mexico',
+      label: 'France',
       code: 'TBD',
     });
   });
