@@ -33,6 +33,15 @@ describe('formatBracketMatchLine', () => {
     expect(line).not.toMatch(/🇲🇽 Mexico/);
   });
 
+  it('formatShareBracket social style honors tz for kickoff times', () => {
+    const stages = [{ stage: 'R32' as const, label: 'Round of 32', matches: [view] }];
+    const card = formatShareBracket(
+      { view: { stages, degraded: true, standingsDegraded: false } },
+      { locale: 'en', tz: 'UTC' },
+    );
+    expect(card).toContain('Sat 17:00');
+  });
+
   it('formatShareBracket compact style uses one line per match with kickoff day', () => {
     const stages = [{ stage: 'R32' as const, label: 'Round of 32', matches: [view] }];
     const card = formatShareBracket(

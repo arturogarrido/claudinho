@@ -155,7 +155,7 @@ export function formatShareBracket(
       blocks.push(`(${t(locale, 'bracket.standingsDegraded')})`);
     }
   } else {
-    blocks.push(formatBracketList(input.view, { footer: false, locale }));
+    blocks.push(formatBracketList(input.view, { footer: false, locale, tz: options.tz }));
     if (input.view.degraded) {
       blocks.push(`(${t(locale, 'bracket.degraded')})`);
     } else if (input.view.standingsDegraded) {
