@@ -30,6 +30,8 @@ import {
   resolveMarketSource,
   scoreline,
   stageLabel,
+  t as i18n,
+  stageLabelI18n,
   type Stage,
 } from '@claudinho/core';
 import Table from 'cli-table3';
@@ -407,11 +409,11 @@ export async function cmdBracket(
   precheck(cfg, t);
   const filter = stage?.toUpperCase();
   if (filter && !BRACKET_STAGES.has(filter)) {
-    throw new InputError('Stage must be one of: R32, R16, QF, SF, 3P, F');
+    throw new InputError(i18n(cfg.lang, 'bracket.invalidStage'));
   }
   const { view, degraded, standingsDegraded, source } = await getBracket(
     adapterFor(ctx),
-    filter ? { stage: filter as Stage } : {},
+    filter ? { stage: filter as Stage, lang: cfg.lang } : { lang: cfg.lang },
   );
 
   if (cfg.json) {
@@ -436,18 +438,23 @@ export async function cmdBracket(
     body = tree ?? formatBracketList(view, formatOpts);
     if (!tree) {
       out();
-      out(c.dim(`  ${t('bracket.treeFallback')}`));
+      out(c.dim(`  ${i18n(cfg.lang, 'bracket.treeFallback')}`));
     }
   } else {
     body = formatBracketList(view, formatOpts);
   }
 
   out();
-  out(header(filter ? t('bracket.stage', { stage: filter }) : t('bracket.title'), c));
+  out(header(
+    filter
+      ? i18n(cfg.lang, 'bracket.stageTitle', { stage: stageLabelI18n(cfg.lang, filter) })
+      : i18n(cfg.lang, 'bracket.title'),
+    c,
+  ));
   out(body);
   out();
-  if (degraded) out(c.dim('  ' + t('bracket.degraded')));
-  else if (standingsDegraded) out(c.dim('  ' + t('bracket.standingsDegraded')));
+  if (degraded) out(c.dim(`  ${i18n(cfg.lang, 'bracket.degraded')}`));
+  else if (standingsDegraded) out(c.dim(`  ${i18n(cfg.lang, 'bracket.standingsDegraded')}`));
   const src = dataSource(source, c);
   if (src) out(src);
   out(disclaimer(t, c));
@@ -1064,11 +1071,13 @@ export async function cmdShare(
     precheck(cfg, t);
     const stageFilter = team?.toUpperCase();
     if (stageFilter && !BRACKET_STAGES.has(stageFilter)) {
-      throw new InputError('Stage must be one of: R32, R16, QF, SF, 3P, F');
+      throw new InputError(i18n(cfg.lang, 'bracket.invalidStage'));
     }
     const { view, degraded, source } = await getBracket(
       adapterFor(ctx),
-      stageFilter ? { stage: stageFilter as Stage } : {},
+      stageFilter
+        ? { stage: stageFilter as Stage, lang: cfg.lang }
+        : { lang: cfg.lang },
     );
     emitShareBracket(
       ctx,
@@ -1080,8 +1089,8 @@ export async function cmdShare(
         installLine: stageFilter
           ? `npx @claudinho/cli bracket ${stageFilter}`
           : 'npx @claudinho/cli bracket',
-        emptyNote: 'No bracket matches available.',
-        options: { ...baseOptions, includeMarkets: false },
+        emptyNote: i18n(cfg.lang, 'bracket.empty'),
+        options: { ...baseOptions, includeMarkets: false, locale: cfg.lang },
       },
       copy,
     );

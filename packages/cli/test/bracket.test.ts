@@ -48,6 +48,18 @@ describe('cmdBracket', () => {
     expect(out).not.toContain('Live data:');
   });
 
+  it('renders localized bracket copy in Spanish', async () => {
+    await cmdBracket(undefined, {}, {
+      cfg: cfg({ lang: 'es' }),
+      t: makeT('es'),
+      adapter: downAdapter,
+    });
+    const out = writes.join('');
+    expect(out).toContain('Cuadro de eliminatorias');
+    expect(out).toContain('Dieciseisavos de final');
+    expect(out).toContain('Marcadores en vivo no disponibles');
+  });
+
   it('rejects an unknown stage filter', async () => {
     await expect(cmdBracket('ROUND64', {}, ctx(downAdapter))).rejects.toThrow(/Stage must be one of/);
   });

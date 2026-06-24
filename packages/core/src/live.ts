@@ -154,7 +154,7 @@ const KNOCKOUT_WINDOW_END = '20260719';
  */
 export async function getBracket(
   adapter: ProviderAdapter,
-  opts: { stage?: Stage } = {},
+  opts: { stage?: Stage; lang?: string } = {},
 ): Promise<BracketResult> {
   const topology = loadBracketTopology();
   const base = allFixtures().filter((m) => m.stage !== 'GROUP' && m.stage !== 'FRIENDLY');
@@ -186,6 +186,7 @@ export async function getBracket(
     standings.degraded,
     liveDegraded,
     opts.stage,
+    opts.lang,
   );
   if (source) view.source = source;
 

@@ -2,6 +2,8 @@
 export type * from './types';
 
 export { flagEmoji, nationToFlag, nationToRegion } from './flags';
+export { t, normalizeLang, stageLabelI18n } from './i18n';
+export type { Lang } from './i18n';
 export { resolveTz, formatKickoff, formatDate, formatTime, countdown, localDate } from './time';
 export type { FormatOpts } from './time';
 export { isValidTimeZone, isValidDate } from './validate';

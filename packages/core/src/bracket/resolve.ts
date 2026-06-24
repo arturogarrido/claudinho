@@ -1,4 +1,5 @@
-import { isFinished, outcomeFromScore, stageLabel } from '../normalize';
+import { t, stageLabelI18n } from '../i18n';
+import { isFinished, outcomeFromScore } from '../normalize';
 import type { GroupStandings } from '../standings';
 import type { Match, Team } from '../types';
 import { matchKey } from './build';
@@ -19,6 +20,7 @@ interface ResolveContext {
   matchesById: Map<string, Match>;
   tables: GroupStandings[];
   standingsDegraded: boolean;
+  lang?: string;
 }
 
 function isGroupComplete(group: string, tables: GroupStandings[], standingsDegraded: boolean): boolean {
@@ -74,8 +76,11 @@ function tbd(label: string): ResolvedParticipant {
   return { label, flag: '🏳️', status: 'tbd' };
 }
 
-function winnerLabel(stage: string, index: number): string {
-  return `${stage}-${index} winner`;
+function winnerLabel(ctx: ResolveContext, stage: string, index: number): string {
+  return t(ctx.lang, 'bracket.slot.winner', {
+    stage: stageLabelI18n(ctx.lang, stage),
+    n: String(index),
+  });
 }
 
 function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
@@ -88,11 +93,13 @@ function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
         if (team) return participant(team, 'projected');
       }
       const label =
-        ref.position === 1 ? `Group ${ref.group} winner` : `Group ${ref.group} 2nd`;
+        ref.position === 1
+          ? t(ctx.lang, 'bracket.slot.groupWinner', { group: ref.group })
+          : t(ctx.lang, 'bracket.slot.groupSecond', { group: ref.group });
       return tbd(label);
     }
     case 'third':
-      return tbd(`3rd (${ref.groups.join('/')})`);
+      return tbd(t(ctx.lang, 'bracket.slot.third', { groups: ref.groups.join('/') }));
     case 'winner': {
       const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
       const match = node ? ctx.matchesById.get(node.matchId) : undefined;
@@ -100,7 +107,7 @@ function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
         const winner = resolveWinner(match);
         if (winner) return participant(winner, 'confirmed');
       }
-      return tbd(winnerLabel(ref.stage, ref.index));
+      return tbd(winnerLabel(ctx, ref.stage, ref.index));
     }
     case 'loser': {
       const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
@@ -109,10 +116,15 @@ function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
         const loser = resolveLoser(match);
         if (loser) return participant(loser, 'confirmed');
       }
-      return tbd(`${ref.stage}-${ref.index} loser`);
+      return tbd(
+        t(ctx.lang, 'bracket.slot.loser', {
+          stage: stageLabelI18n(ctx.lang, ref.stage),
+          n: String(ref.index),
+        }),
+      );
     }
     default:
-      return tbd('TBD');
+      return tbd(t(ctx.lang, 'bracket.slot.tbd'));
   }
 }
 
@@ -128,11 +140,12 @@ export function buildBracketView(
   standingsDegraded: boolean,
   liveDegraded: boolean,
   filterStage?: string,
+  lang?: string,
 ): BracketView {
   const knockout = matches.filter((m) => m.stage !== 'GROUP' && m.stage !== 'FRIENDLY');
   const matchesById = new Map(knockout.map((m) => [m.id, m]));
   const nodesByKey = new Map(topology.matches.map((n) => [matchKey(n.stage, n.index), n]));
-  const ctx: ResolveContext = { nodesByKey, matchesById, tables, standingsDegraded };
+  const ctx: ResolveContext = { nodesByKey, matchesById, tables, standingsDegraded, lang };
 
   const want = filterStage?.toUpperCase();
   const stages: BracketStageView[] = [];
@@ -165,7 +178,7 @@ export function buildBracketView(
     });
     stages.push({
       stage,
-      label: stageLabel({ stage, group: undefined }),
+      label: stageLabelI18n(lang, stage),
       matches: matchViews,
     });
   }

@@ -1,4 +1,5 @@
-import { isFinished, isLive, scoreline, stageLabel } from '../normalize';
+import { isFinished, isLive, scoreline } from '../normalize';
+import { t, stageLabelI18n } from '../i18n';
 import { formatKickoff, formatTime } from '../time';
 import { SHARE_DISCLAIMER, SHARE_HASHTAG } from '../share/format';
 import { liveSourceLabel } from '../live';
@@ -11,8 +12,8 @@ export interface BracketFormatOpts {
   locale?: string;
 }
 
-function formatParticipant(p: ResolvedParticipant, flags: boolean): string {
-  const suffix = p.status === 'projected' ? ' (proj.)' : '';
+function formatParticipant(p: ResolvedParticipant, flags: boolean, locale?: string): string {
+  const suffix = p.status === 'projected' ? ` ${t(locale, 'bracket.projected')}` : '';
   if (flags && p.flag !== '🏳️') return `${p.flag} ${p.label}${suffix}`;
   if (p.code) return `${p.code}${suffix}`;
   return `${p.label}${suffix}`;
@@ -29,8 +30,8 @@ function statusTail(m: BracketMatchView['match']): string {
 /** One bracket match line for list or tree output. */
 export function formatBracketMatchLine(mv: BracketMatchView, opts: BracketFormatOpts = {}): string {
   const flags = opts.flags !== false;
-  const home = formatParticipant(mv.home, flags);
-  const away = formatParticipant(mv.away, flags);
+  const home = formatParticipant(mv.home, flags, opts.locale);
+  const away = formatParticipant(mv.away, flags, opts.locale);
   const m = mv.match;
   if (isFinished(m.status) || isLive(m.status)) {
     return `  ${home}  ${scoreline(m)}  ${away}${statusTail(m)}`;
@@ -56,11 +57,13 @@ export function formatBracketList(
   }
   if (opts.footer !== false) {
     if (view.degraded) {
-      blocks.push('(Live scores unavailable — bracket structure only, no confirmed advancement.)');
+      blocks.push(`(${t(opts.locale, 'bracket.degraded')})`);
     } else if (view.standingsDegraded) {
-      blocks.push('(Live standings unavailable — group slots stay TBD until groups finish.)');
+      blocks.push(`(${t(opts.locale, 'bracket.standingsDegraded')})`);
     }
-    if (view.source) blocks.push(`Live data: ${liveSourceLabel(view.source)}`);
+    if (view.source) {
+      blocks.push(t(opts.locale, 'live.data', { source: liveSourceLabel(view.source) }));
+    }
   }
   return blocks.join('\n').trimEnd();
 }
@@ -93,9 +96,13 @@ export function formatBracketTree(
   }
   if (opts.footer !== false) {
     if (view.degraded) {
-      blocks.push('(Live scores unavailable — bracket structure only, no confirmed advancement.)');
+      blocks.push(`(${t(opts.locale, 'bracket.degraded')})`);
+    } else if (view.standingsDegraded) {
+      blocks.push(`(${t(opts.locale, 'bracket.standingsDegraded')})`);
     }
-    if (view.source) blocks.push(`Live data: ${liveSourceLabel(view.source)}`);
+    if (view.source) {
+      blocks.push(t(opts.locale, 'live.data', { source: liveSourceLabel(view.source) }));
+    }
   }
   return blocks.join('\n').trimEnd();
 }
@@ -111,6 +118,7 @@ export interface ShareBracketOptions {
   includeHashtag?: boolean;
   includeInstallLine?: boolean;
   stage?: Stage;
+  locale?: string;
 }
 
 /** Plain-text share card for the knockout bracket. */
@@ -120,26 +128,29 @@ export function formatShareBracket(
 ): string {
   const includeHashtag = options.includeHashtag !== false;
   const includeInstall = options.includeInstallLine !== false;
-  const blocks: string[] = ['Knockout bracket · 2026', ''];
+  const locale = options.locale;
+  const blocks: string[] = [t(locale, 'bracket.shareTitle'), ''];
 
   if (input.view.stages.length === 0) {
-    blocks.push(input.emptyNote ?? 'No bracket matches available.');
+    blocks.push(input.emptyNote ?? t(locale, 'bracket.empty'));
   } else {
-    blocks.push(formatBracketList(input.view, { footer: false }));
+    blocks.push(formatBracketList(input.view, { footer: false, locale }));
     if (input.view.degraded) {
-      blocks.push('(Live scores unavailable — bracket structure only, no confirmed advancement.)');
+      blocks.push(`(${t(locale, 'bracket.degraded')})`);
     } else if (input.view.standingsDegraded) {
-      blocks.push('(Live standings unavailable — group slots stay TBD until groups finish.)');
+      blocks.push(`(${t(locale, 'bracket.standingsDegraded')})`);
     }
   }
 
   const footer: string[] = [];
   const src = input.source ?? input.view.source;
-  if (src) footer.push(`Live data: ${liveSourceLabel(src)}`);
+  if (src) footer.push(t(locale, 'live.data', { source: liveSourceLabel(src) }));
   footer.push(
     [includeHashtag ? SHARE_HASHTAG : '', SHARE_DISCLAIMER].filter(Boolean).join(' · '),
   );
-  if (includeInstall && input.installLine) footer.push(`Try it: ${input.installLine}`);
+  if (includeInstall && input.installLine) {
+    footer.push(t(locale, 'share.tryIt', { line: input.installLine }));
+  }
   blocks.push('', footer.join('\n'));
   return blocks.join('\n');
 }
@@ -154,5 +165,5 @@ export function formatBracketCompactLine(mv: BracketMatchView, opts: BracketForm
   const tail = m.status === 'SCHEDULED' && mv.kickoff
     ? ` · ${formatTime(mv.kickoff, { tz: opts.tz, locale: opts.locale })}`
     : statusTail(m);
-  return `${stageLabel({ stage: mv.stage, group: undefined })} · ${home} ${mid} ${away}${tail}`;
+  return `${stageLabelI18n(opts.locale, mv.stage)} · ${home} ${mid} ${away}${tail}`;
 }

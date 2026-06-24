@@ -36,6 +36,7 @@ import {
   type ProviderAdapter,
   resolveCompetition,
   resolveMarketSource,
+  t,
   type ShareSnippetInput,
   type ShareSnippetOptions,
   type Stage,
@@ -208,9 +209,11 @@ function fmtOpts(args: CommonOpts) {
   };
 }
 
-function withDisclaimer(text: string, source?: string): string {
+function withDisclaimer(text: string, source?: string, lang?: string): string {
   // Attribute the live-data provider when live data actually served the result.
-  const live = source ? `\nLive data: ${liveSourceLabel(source)}` : '';
+  const live = source
+    ? `\n${t(lang, 'live.data', { source: liveSourceLabel(source) })}`
+    : '';
   return `${text}${live}\n\n${DISCLAIMER}`;
 }
 
@@ -326,22 +329,26 @@ export async function toolGetBracket(
   const filter = args.stage?.toUpperCase();
   if (filter && !BRACKET_STAGES.has(filter)) {
     return {
-      text: withDisclaimer(`Unknown stage "${args.stage}". Use R32, R16, QF, SF, 3P, or F.`),
+      text: withDisclaimer(
+        t(args.lang, 'bracket.unknownStage', { stage: args.stage ?? '' }),
+        undefined,
+        args.lang,
+      ),
       data: { view: null },
     };
   }
   const { view, degraded, standingsDegraded, source } = await getBracket(
     resolveAdapter(args),
-    filter ? { stage: filter as Stage } : {},
+    filter ? { stage: filter as Stage, lang: args.lang } : { lang: args.lang },
   );
-  let text = formatBracketList(view, { footer: false });
+  let text = formatBracketList(view, { footer: false, locale: args.lang });
   if (degraded) {
-    text += '\n\n(Live scores unavailable — bracket structure only, no confirmed advancement.)';
+    text += `\n\n(${t(args.lang, 'bracket.degraded')})`;
   } else if (standingsDegraded) {
-    text += '\n\n(Live standings unavailable — group slots stay TBD until groups finish.)';
+    text += `\n\n(${t(args.lang, 'bracket.standingsDegraded')})`;
   }
   return {
-    text: withDisclaimer(text, source),
+    text: withDisclaimer(text, source, args.lang),
     data: { degraded, standingsDegraded, source: source ?? null, view },
   };
 }
@@ -622,13 +629,19 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     const stageFilter = args.knockoutStage?.toUpperCase();
     if (stageFilter && !BRACKET_STAGES.has(stageFilter)) {
       return {
-        text: withDisclaimer(`Unknown stage "${args.knockoutStage}". Use R32, R16, QF, SF, 3P, or F.`),
+        text: withDisclaimer(
+          t(args.lang, 'bracket.unknownStage', { stage: args.knockoutStage ?? '' }),
+          undefined,
+          args.lang,
+        ),
         data: { kind: 'bracket', view: null },
       };
     }
     const { view, degraded, source } = await getBracket(
       resolveAdapter(args),
-      stageFilter ? { stage: stageFilter as Stage } : {},
+      stageFilter
+        ? { stage: stageFilter as Stage, lang: args.lang }
+        : { lang: args.lang },
     );
     const snippet = formatShareBracket(
       {
@@ -637,9 +650,9 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         installLine: stageFilter
           ? `npx @claudinho/cli bracket ${stageFilter}`
           : 'npx @claudinho/cli bracket',
-        emptyNote: 'No bracket matches available.',
+        emptyNote: t(args.lang, 'bracket.empty'),
       },
-      options,
+      { ...options, locale: args.lang },
     );
     return {
       text: snippet,

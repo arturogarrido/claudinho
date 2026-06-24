@@ -238,6 +238,12 @@ describe('toolGetBracket', () => {
     expect(r.text).not.toContain('Live data:');
   });
 
+  it('localizes bracket output when lang is es', async () => {
+    const r = await toolGetBracket({ lang: 'es', adapter: fakeAdapter({ throws: true }) });
+    expect(r.text).toContain('Dieciseisavos de final');
+    expect(r.text).toContain('Marcadores en vivo no disponibles');
+  });
+
   it('filters to a single stage', async () => {
     const r = await toolGetBracket({ stage: 'F', adapter: fakeAdapter({ throws: true }) });
     const data = r.data as { view: { stages: Array<{ stage: string; matches: unknown[] }> } };
