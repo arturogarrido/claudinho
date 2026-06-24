@@ -35,6 +35,12 @@ describe('formatKickoff', () => {
       formatKickoff(iso, { tz: 'UTC', locale: 'en' }),
     );
   });
+  it('includes month and day when date is set', () => {
+    const s = formatKickoff('2026-07-04T17:00:00Z', { tz: 'UTC', locale: 'en', date: true });
+    expect(s).toMatch(/Jul/);
+    expect(s).toMatch(/4/);
+    expect(s).toMatch(/17/);
+  });
 });
 
 describe('localDate', () => {

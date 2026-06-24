@@ -35,6 +35,10 @@ function statusTail(m: BracketMatchView['match']): string {
   return '';
 }
 
+function formatBracketKickoff(iso: string, opts: BracketFormatOpts): string {
+  return formatKickoff(iso, { tz: opts.tz, locale: opts.locale, date: true });
+}
+
 /** One bracket match line for list or tree output. */
 export function formatBracketMatchLine(mv: BracketMatchView, opts: BracketFormatOpts = {}): string {
   const flags = opts.flags !== false;
@@ -45,7 +49,7 @@ export function formatBracketMatchLine(mv: BracketMatchView, opts: BracketFormat
     return `  ${home}  ${scoreline(m)}  ${away}${statusTail(m)}`;
   }
   const kickoff = mv.kickoff
-    ? formatKickoff(mv.kickoff, { tz: opts.tz, locale: opts.locale })
+    ? formatBracketKickoff(mv.kickoff, opts)
     : '';
   return `  ${home} vs ${away}${kickoff ? ` · ${kickoff}` : ''}`;
 }
@@ -184,7 +188,7 @@ export function formatBracketCompactLine(mv: BracketMatchView, opts: BracketForm
   const m = mv.match;
   const mid = isFinished(m.status) || isLive(m.status) ? scoreline(m) : 'vs';
   const tail = m.status === 'SCHEDULED' && mv.kickoff
-    ? ` · ${formatKickoff(mv.kickoff, { tz: opts.tz, locale: opts.locale })}`
+    ? ` · ${formatBracketKickoff(mv.kickoff, opts)}`
     : statusTail(m);
   return `${stageLabelI18n(opts.locale, mv.stage)} · ${home} ${mid} ${away}${tail}`;
 }
