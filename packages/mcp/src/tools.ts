@@ -652,7 +652,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
           : 'npx @claudinho/cli bracket',
         emptyNote: t(args.lang, 'bracket.empty'),
       },
-      { ...options, locale: args.lang },
+      { ...options, locale: args.lang, tz: args.tz },
     );
     return {
       text: snippet,

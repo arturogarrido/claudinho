@@ -1095,6 +1095,8 @@ export async function cmdShare(
           includeHashtag: baseOptions.includeHashtag,
           includeInstallLine: baseOptions.includeInstallLine,
           locale: cfg.lang,
+          style: baseOptions.style,
+          tz: cfg.tz,
         },
       },
       copy,

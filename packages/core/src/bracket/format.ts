@@ -1,7 +1,7 @@
 import { isFinished, isLive, scoreline } from '../normalize';
 import { t, stageLabelI18n } from '../i18n';
 import { formatKickoff, formatTime } from '../time';
-import { SHARE_DISCLAIMER, SHARE_HASHTAG } from '../share/format';
+import { SHARE_DISCLAIMER, SHARE_HASHTAG, type ShareStyle } from '../share/format';
 import { liveSourceLabel } from '../live';
 import type { Stage } from '../types';
 import type { BracketMatchView, BracketView, ResolvedParticipant } from './types';
@@ -127,6 +127,8 @@ export interface ShareBracketOptions {
   includeInstallLine?: boolean;
   stage?: Stage;
   locale?: string;
+  tz?: string;
+  style?: ShareStyle;
 }
 
 /** Plain-text share card for the knockout bracket. */
@@ -141,6 +143,17 @@ export function formatShareBracket(
 
   if (input.view.stages.length === 0) {
     blocks.push(input.emptyNote ?? t(locale, 'bracket.empty'));
+  } else if ((options.style ?? 'social') === 'compact') {
+    const fmtOpts = { locale, tz: options.tz };
+    const lines = input.view.stages.flatMap((stage) =>
+      stage.matches.map((mv) => formatBracketCompactLine(mv, fmtOpts)),
+    );
+    blocks.push(lines.join('\n'));
+    if (input.view.degraded) {
+      blocks.push(`(${t(locale, 'bracket.degraded')})`);
+    } else if (input.view.standingsDegraded) {
+      blocks.push(`(${t(locale, 'bracket.standingsDegraded')})`);
+    }
   } else {
     blocks.push(formatBracketList(input.view, { footer: false, locale }));
     if (input.view.degraded) {

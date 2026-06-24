@@ -126,6 +126,7 @@ export {
   formatBracketList,
   formatBracketTree,
   formatBracketMatchLine,
+  formatBracketCompactLine,
   formatShareBracket,
 } from './bracket/format';
 export type {
