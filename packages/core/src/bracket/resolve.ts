@@ -1,3 +1,4 @@
+import { isResolvedNation } from './placeholders';
 import { t, stageLabelI18n } from '../i18n';
 import { isFinished, outcomeFromScore } from '../normalize';
 import type { GroupStandings } from '../standings';
@@ -83,10 +84,20 @@ function winnerLabel(ctx: ResolveContext, stage: string, index: number): string 
   });
 }
 
-function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
+function resolveSlot(
+  ref: SlotRef,
+  ctx: ResolveContext,
+  match: Match,
+  side: 'home' | 'away',
+): ResolvedParticipant {
   switch (ref.kind) {
-    case 'seed':
+    case 'seed': {
+      const team = side === 'home' ? match.home : match.away;
+      if (team.name === ref.label && isResolvedNation(team)) {
+        return participant(team, 'confirmed');
+      }
       return tbd(ref.label);
+    }
     case 'group': {
       if (isGroupComplete(ref.group, ctx.tables, ctx.standingsDegraded)) {
         const team = teamFromStandings(ref.group, ref.position, ctx.tables);
@@ -171,8 +182,8 @@ export function buildBracketView(
         stage: node.stage,
         index: node.index,
         kickoff: match.kickoff,
-        home: resolveSlot(node.home, ctx),
-        away: resolveSlot(node.away, ctx),
+        home: resolveSlot(node.home, ctx, match, 'home'),
+        away: resolveSlot(node.away, ctx, match, 'away'),
         match,
       };
     });

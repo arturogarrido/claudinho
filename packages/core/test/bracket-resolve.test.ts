@@ -77,6 +77,28 @@ describe('buildBracketView', () => {
     expect(seeds.every((p) => p.status === 'tbd')).toBe(true);
   });
 
+  it('confirms seed slots when live overlay carries a real nation flag', () => {
+    const seedIds = new Map([
+      ['760489', 'Germany'],
+      ['760491', 'Mexico'],
+      ['760494', 'United States'],
+      ['760500', 'Argentina'],
+    ]);
+    const merged = baseKo.map((m) => {
+      const label = seedIds.get(m.id);
+      if (!label) return m;
+      return {
+        ...m,
+        home: { code: label.slice(0, 3).toUpperCase(), name: label, flag: '🇩🇪' },
+      };
+    });
+    const view = buildBracketView(topology, merged, [], true, false);
+    const r32 = view.stages.find((s) => s.stage === 'R32')!;
+    const germany = r32.matches.find((m) => m.matchId === '760489')?.home;
+    expect(germany?.status).toBe('confirmed');
+    expect(germany?.flag).toBe('🇩🇪');
+  });
+
   it('projects a group slot only when the group is fully played', () => {
     const tables: GroupStandings[] = [
       {
