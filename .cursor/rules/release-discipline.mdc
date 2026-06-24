@@ -9,13 +9,20 @@ alwaysApply: true
 
 - **One user-facing feature → one minor.** Stack review fixes (tz, dates, guards) into the **same PR** before merge when they belong to the same feature.
 - Do **not** tag npm until CI is green **and** `pnpm release:qa` passes (tripwires at the end must be 0 failed).
-- Before tagging: `git diff main` must not include accidental internal docs (`docs/`), `.env`, or agent guides (`AGENTS.md`/`CLAUDE.md`).
+- Before tagging: `git diff main` must not include accidental private paths (`docs/`, `CLAUDE.local.md`, `.env`).
 
-## Gitignored paths (never publish)
+## Commit attribution
 
-`docs/`, `AGENTS.md`, and `CLAUDE.md` are **local-only**.
+Every commit produced with an AI agent: follow **`AGENTS.md` § Commit attribution** — trailer names the agent **and** model in use (e.g. `Co-Authored-By: Cursor (Composer 2.5) <cursoragent@cursor.com>`).
 
-- Doc reviews → update **tracked** surfaces: `README`, MCP tool descriptions, `.cursor/rules/`.
+## Public vs private docs
+
+**Tracked (public engineering guides):** `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, README, MCP tool descriptions.
+
+**Gitignored (maintainer-local):** `docs/` (e.g. `docs/AGENTS.internal.md` notebook), `CLAUDE.local.md`.
+
+- Engineering process → update the **public** guides above.
+- Candid history, strategy, or release post-mortems → `docs/` notebook only.
 - **Never** add `!docs/…` exceptions to `.gitignore` without explicit maintainer approval.
 
 ## Bracket / live-formatting ship checklist
