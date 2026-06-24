@@ -64,6 +64,7 @@ import type {
   ProviderAdapter,
   ShareSnippetInput,
   ShareSnippetOptions,
+  ShareBracketOptions,
   ShareStyle,
 } from '@claudinho/core';
 import { readCurrentState } from './cache';
@@ -949,7 +950,7 @@ interface ShareBracketEmit {
   degraded: boolean;
   installLine: string;
   emptyNote: string;
-  options: ShareSnippetOptions;
+  options: ShareBracketOptions;
 }
 
 /** Emit a `share bracket` snippet. */
@@ -1090,7 +1091,11 @@ export async function cmdShare(
           ? `npx @claudinho/cli bracket ${stageFilter}`
           : 'npx @claudinho/cli bracket',
         emptyNote: i18n(cfg.lang, 'bracket.empty'),
-        options: { ...baseOptions, includeMarkets: false, locale: cfg.lang },
+        options: {
+          includeHashtag: baseOptions.includeHashtag,
+          includeInstallLine: baseOptions.includeInstallLine,
+          locale: cfg.lang,
+        },
       },
       copy,
     );
