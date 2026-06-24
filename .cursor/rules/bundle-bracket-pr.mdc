@@ -33,6 +33,11 @@ Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r
 - When knockout fetch fails but standings succeed: set `source` from standings provider.
 - Share/MCP: inner `formatBracketList({ footer: false })`, outer layer adds attribution/notices **once**.
 - CLI/MCP wrappers: option types must match the formatter (`ShareBracketOptions`, not `ShareSnippetOptions`).
+- **Surface parity:** see `.cursor/rules/surface-parity.mdc` — every bracket formatter path passes `tz` + `locale`.
+
+## Pre-merge QA
+
+After `pnpm -r build`, run **`pnpm release:qa`** (`scripts/release-qa.sh`). Eyeball every section; tripwires at the end encode the 0.8.x bracket regressions (calendar month, tz threading, share disclaimer).
 
 ## Adversarial tests (add when touching bracket/schedule)
 
@@ -42,4 +47,8 @@ Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r
 | `fetchWindow` throws, standings OK | Projected groups + `source` set |
 | Bundle-only bracket | No real flags in R32+ slots |
 | Group at 0 games played | Slots stay `tbd`, no `(proj.)` |
+| Group at 2/3 played, standings live | Leaders show flags + `(proj.)` |
+| `toolGetBracket` `tz: UTC` vs `America/Mexico_City` | Calendar date/time differs on cross-midnight kickoff |
+| Knockout kickoffs span >1 week | Output includes month + day (not weekday-only) |
+| `formatShareBracket` social + compact | Same date format as CLI list |
 | `formatShareBracket` / `toolGetBracket` | Each disclaimer line once |

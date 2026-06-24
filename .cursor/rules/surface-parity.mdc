@@ -1,0 +1,38 @@
+---
+description: CLI, MCP, and share must pass the same format opts (tz, locale, flags)
+globs: packages/{cli,mcp,core}/**/*
+alwaysApply: false
+---
+
+# Surface parity (CLI / MCP / share)
+
+Any user-visible formatter change must land on **all three surfaces** before merge:
+
+| Surface | Verify |
+|---------|--------|
+| CLI | `packages/cli` command + `packages/cli/test/` |
+| MCP | `toolGet*` in `packages/mcp/src/tools.ts` + `packages/mcp/test/tools.test.ts` |
+| Share | `formatShare*` + `packages/mcp/test/share.test.ts` |
+
+`scripts/release-qa.sh` exercises CLI + share rendering across locales and timezones; MCP arg threading is **not** rendered there — guard it with unit tests.
+
+## Format opts invariant
+
+If a core formatter accepts `tz`, `locale`, `flags`, or `date`, **every wrapper** passes them from `CliConfig` / `CommonOpts`.
+
+```typescript
+// ❌ BAD — locale only; tz silently drops to server local
+formatBracketList(view, { footer: false, locale: args.lang });
+
+// ✅ GOOD
+formatBracketList(view, { footer: false, locale: args.lang, tz: args.tz });
+// or reuse fmtOpts(args) where shapes align
+```
+
+## Regression tests
+
+When adding a format option (e.g. `date: true` on `formatKickoff`):
+
+- Add a **core** unit test for the option.
+- Add an **MCP tool test** proving `tz` changes output (e.g. UTC vs `America/Mexico_City` on a cross-midnight kickoff).
+- Update share tests if `formatShareBracket` / compact lines are affected.

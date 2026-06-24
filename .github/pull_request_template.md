@@ -18,6 +18,18 @@
 - [ ] Bracket index ↔ ESPN winner refs verified (guard test if assumption can't be live-checked)
 - [ ] Provider `source` set on every hybrid live path (knockout + standings)
 - [ ] Share/MCP/CLI user-visible text: attribution and degraded notices appear once
+- [ ] **Surface parity:** MCP tools pass `tz` / `locale` to core formatters (see `.cursor/rules/surface-parity.mdc`)
+- [ ] Adversarial cases from `.cursor/rules/bundle-bracket-pr.mdc` covered by tests where applicable
+
+### Bracket / formatting PRs — release QA (after build)
+
+- [ ] `pnpm release:qa` — all tripwires pass (calendar month on kickoffs, tz differs UTC vs Asia/Tokyo, share disclaimer present)
+- [ ] `packages/mcp/test/tools.test.ts` green for any MCP tool you touched (esp. `toolGetBracket` tz)
+
+### Release / docs
+
+- [ ] No gitignored paths committed (`docs/`, `AGENTS.md`, `CLAUDE.md`) — update README / MCP descriptions / cursor rules instead
+- [ ] Review fixes for the same feature batched in this PR (avoid follow-up patch releases)
 
 ### Assumptions
 
