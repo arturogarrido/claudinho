@@ -1,7 +1,7 @@
 import { isFinished, isLive, scoreline } from '../normalize';
 import { t, stageLabelI18n } from '../i18n';
-import { formatKickoff, formatTime } from '../time';
-import { SHARE_DISCLAIMER, SHARE_HASHTAG } from '../share/format';
+import { formatKickoff } from '../time';
+import { SHARE_DISCLAIMER, SHARE_HASHTAG, type ShareStyle } from '../share/format';
 import { liveSourceLabel } from '../live';
 import type { Stage } from '../types';
 import type { BracketMatchView, BracketView, ResolvedParticipant } from './types';
@@ -12,11 +12,19 @@ export interface BracketFormatOpts {
   locale?: string;
 }
 
-function formatParticipant(p: ResolvedParticipant, flags: boolean, locale?: string): string {
+function formatParticipant(
+  p: ResolvedParticipant,
+  side: 'home' | 'away',
+  flags: boolean,
+  locale?: string,
+): string {
   const suffix = p.status === 'projected' ? ` ${t(locale, 'bracket.projected')}` : '';
-  if (flags && p.flag !== '🏳️') return `${p.flag} ${p.label}${suffix}`;
-  if (p.code) return `${p.code}${suffix}`;
-  return `${p.label}${suffix}`;
+  if (!flags || p.flag === '🏳️') {
+    if (p.code && p.code !== 'TBD') return `${p.code}${suffix}`;
+    return `${p.label}${suffix}`;
+  }
+  if (side === 'home') return `${p.flag} ${p.label}${suffix}`;
+  return `${p.label}${suffix} ${p.flag}`;
 }
 
 function statusTail(m: BracketMatchView['match']): string {
@@ -30,8 +38,8 @@ function statusTail(m: BracketMatchView['match']): string {
 /** One bracket match line for list or tree output. */
 export function formatBracketMatchLine(mv: BracketMatchView, opts: BracketFormatOpts = {}): string {
   const flags = opts.flags !== false;
-  const home = formatParticipant(mv.home, flags, opts.locale);
-  const away = formatParticipant(mv.away, flags, opts.locale);
+  const home = formatParticipant(mv.home, 'home', flags, opts.locale);
+  const away = formatParticipant(mv.away, 'away', flags, opts.locale);
   const m = mv.match;
   if (isFinished(m.status) || isLive(m.status)) {
     return `  ${home}  ${scoreline(m)}  ${away}${statusTail(m)}`;
@@ -119,6 +127,8 @@ export interface ShareBracketOptions {
   includeInstallLine?: boolean;
   stage?: Stage;
   locale?: string;
+  tz?: string;
+  style?: ShareStyle;
 }
 
 /** Plain-text share card for the knockout bracket. */
@@ -133,8 +143,19 @@ export function formatShareBracket(
 
   if (input.view.stages.length === 0) {
     blocks.push(input.emptyNote ?? t(locale, 'bracket.empty'));
+  } else if ((options.style ?? 'social') === 'compact') {
+    const fmtOpts = { locale, tz: options.tz };
+    const lines = input.view.stages.flatMap((stage) =>
+      stage.matches.map((mv) => formatBracketCompactLine(mv, fmtOpts)),
+    );
+    blocks.push(lines.join('\n'));
+    if (input.view.degraded) {
+      blocks.push(`(${t(locale, 'bracket.degraded')})`);
+    } else if (input.view.standingsDegraded) {
+      blocks.push(`(${t(locale, 'bracket.standingsDegraded')})`);
+    }
   } else {
-    blocks.push(formatBracketList(input.view, { footer: false, locale }));
+    blocks.push(formatBracketList(input.view, { footer: false, locale, tz: options.tz }));
     if (input.view.degraded) {
       blocks.push(`(${t(locale, 'bracket.degraded')})`);
     } else if (input.view.standingsDegraded) {
@@ -158,12 +179,12 @@ export function formatShareBracket(
 /** Compact one-line-per-match bracket for narrow share contexts. */
 export function formatBracketCompactLine(mv: BracketMatchView, opts: BracketFormatOpts = {}): string {
   const flags = opts.flags !== false;
-  const home = flags && mv.home.code ? `${mv.home.flag} ${mv.home.code}` : mv.home.label;
-  const away = flags && mv.away.code ? `${mv.away.code} ${mv.away.flag}` : mv.away.label;
+  const home = formatParticipant(mv.home, 'home', flags, opts.locale);
+  const away = formatParticipant(mv.away, 'away', flags, opts.locale);
   const m = mv.match;
   const mid = isFinished(m.status) || isLive(m.status) ? scoreline(m) : 'vs';
   const tail = m.status === 'SCHEDULED' && mv.kickoff
-    ? ` · ${formatTime(mv.kickoff, { tz: opts.tz, locale: opts.locale })}`
+    ? ` · ${formatKickoff(mv.kickoff, { tz: opts.tz, locale: opts.locale })}`
     : statusTail(m);
   return `${stageLabelI18n(opts.locale, mv.stage)} · ${home} ${mid} ${away}${tail}`;
 }
