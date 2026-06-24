@@ -6,7 +6,7 @@
 
 ## Test plan
 
-- [ ] `pnpm lint && pnpm test && pnpm build` all green locally
+- [ ] `pnpm lint && pnpm -r typecheck && pnpm test && pnpm build` all green locally
 - [ ] New/changed behavior covered by tests (not only happy path)
 
 ### Data-heavy / bracket / schedule PRs

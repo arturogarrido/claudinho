@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Bundle & bracket PR readiness
 
-Before marking a data-heavy feature merge-ready, run **`pnpm lint && pnpm test && pnpm build`** (mirror CI — never ship after test/build only).
+Before marking a data-heavy feature merge-ready, run **`pnpm lint && pnpm -r typecheck && pnpm test && pnpm build`** (mirror CI — `build` alone does not typecheck; never ship after test/build only).
 
 ## Bundled schedule invariant
 
@@ -31,6 +31,7 @@ Before marking a data-heavy feature merge-ready, run **`pnpm lint && pnpm test &
 
 - When knockout fetch fails but standings succeed: set `source` from standings provider.
 - Share/MCP: inner `formatBracketList({ footer: false })`, outer layer adds attribution/notices **once**.
+- CLI/MCP wrappers: option types must match the formatter (`ShareBracketOptions`, not `ShareSnippetOptions`).
 
 ## Adversarial tests (add when touching bracket/schedule)
 
