@@ -66,6 +66,26 @@ To cut a release:
 - Account 2FA set to "Authorization and writes" forces an OTP that CI can't supply; trusted
   publishing (OIDC) sidesteps it entirely.
 
+## Commit attribution (all agents)
+
+This repo is worked on by multiple AI coding agents. Commits produced with one are
+**co-authored by the agent and the model** that wrote them, so `git log` (and the GitHub
+contributors view) shows which agent — and which model — did the work. Add a trailer in the
+**last paragraph** of the commit message, and credit the same in the PR body:
+
+```
+Co-Authored-By: <Agent> (<Model>) <agent-no-reply-email>
+```
+
+Use the model **actually in use**, not a hardcoded one. Examples, one per agent (Claude Code
+uses Anthropic's no-reply address; Cursor and Codex follow the same pattern with their own):
+
+```
+Co-Authored-By: Claude Code (Opus 4.8) <noreply@anthropic.com>
+Co-Authored-By: Cursor (Composer 2.5) <...>
+Co-Authored-By: Codex (GPT 5.5) <...>
+```
+
 ## Conventions
 
 - Shared domain types live in `@claudinho/core` — never duplicate them.
