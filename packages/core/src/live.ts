@@ -150,7 +150,7 @@ const KNOCKOUT_WINDOW_END = '20260719';
 
 /**
  * Knockout bracket with hybrid slot resolution: confirmed FT winners/losers from
- * the live overlay; group slots project only when the group is fully played.
+ * the live overlay; group slots project from live standings once a group has started.
  */
 export async function getBracket(
   adapter: ProviderAdapter,
