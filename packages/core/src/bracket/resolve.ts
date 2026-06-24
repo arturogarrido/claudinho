@@ -23,13 +23,6 @@ interface ResolveContext {
   lang?: string;
 }
 
-function isGroupComplete(group: string, tables: GroupStandings[], standingsDegraded: boolean): boolean {
-  if (standingsDegraded) return false;
-  const table = tables.find((t) => t.group === group);
-  if (!table?.rows.length || table.rows.length !== 4) return false;
-  return table.rows.every((r) => r.played >= 3);
-}
-
 function teamFromStandings(group: string, position: 1 | 2, tables: GroupStandings[]): Team | undefined {
   const table = tables.find((t) => t.group === group);
   if (!table) return undefined;
@@ -88,7 +81,7 @@ function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
     case 'seed':
       return tbd(ref.label);
     case 'group': {
-      if (isGroupComplete(ref.group, ctx.tables, ctx.standingsDegraded)) {
+      if (!ctx.standingsDegraded) {
         const team = teamFromStandings(ref.group, ref.position, ctx.tables);
         if (team) return participant(team, 'projected');
       }
@@ -130,7 +123,7 @@ function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
 
 /**
  * Resolve the bundled topology against merged knockout matches and standings.
- * Group slots project only when the group is fully played; winner/loser slots
+ * Group slots project from live standings when available; winner/loser slots
  * require a confirmed FT result on the source match.
  */
 export function buildBracketView(

@@ -141,7 +141,7 @@ export function buildServer(): McpServer {
     {
       title: 'Knockout bracket',
       description:
-        'Knockout bracket from the Round of 32 through the final, with live scores overlaid. Group slots project only when a group is fully played; winner slots need a confirmed FT result. Pass an optional stage (R32, R16, QF, SF, 3P, F) to filter one round. Falls back to structure-only when live data is unavailable.',
+        'Knockout bracket from the Round of 32 through the final, with live scores overlaid. Group slots project from live standings when available; winner slots need a confirmed FT result. Pass an optional stage (R32, R16, QF, SF, 3P, F) to filter one round. Falls back to structure-only when live data is unavailable.',
       inputSchema: {
         stage: z
           .enum(['R32', 'R16', 'QF', 'SF', '3P', 'F'])
