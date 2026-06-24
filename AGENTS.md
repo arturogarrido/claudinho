@@ -83,7 +83,7 @@ uses Anthropic's no-reply address; Cursor and Codex follow the same pattern with
 ```
 Co-Authored-By: Claude Code (Opus 4.8) <noreply@anthropic.com>
 Co-Authored-By: Cursor (Composer 2.5) <...>
-Co-Authored-By: Codex (GPT-5) <...>
+Co-Authored-By: Codex (GPT-5) <noreply@openai.com>
 ```
 
 ## Codex / GPT specifics
