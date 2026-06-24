@@ -39,6 +39,8 @@ export function resolveTz(explicit?: string): string | undefined {
 export interface FormatOpts {
   tz?: string;
   locale?: string;
+  /** Include month and day (for multi-week schedules like the knockout bracket). */
+  date?: boolean;
 }
 
 /**
@@ -57,12 +59,13 @@ function safeLocale(locale?: string): string {
   }
 }
 
-/** Format a kickoff like "Thu 19:00" in the target timezone/locale. */
+/** Format a kickoff like "Thu 19:00", or "Sat, Jul 4, 17:00" when `date` is set. */
 export function formatKickoff(iso: string, opts: FormatOpts = {}): string {
   const tz = resolveTz(opts.tz);
   const locale = safeLocale(opts.locale);
   return new Intl.DateTimeFormat(locale, {
     weekday: 'short',
+    ...(opts.date ? { month: 'short', day: 'numeric' } : {}),
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,

@@ -251,6 +251,17 @@ describe('toolGetBracket', () => {
     expect(data.view.stages[0]?.stage).toBe('F');
     expect(data.view.stages[0]?.matches).toHaveLength(1);
   });
+
+  it('honors tz for kickoff calendar dates', async () => {
+    const utc = await toolGetBracket({ tz: 'UTC', adapter: fakeAdapter({ throws: true }) });
+    const mx = await toolGetBracket({
+      tz: 'America/Mexico_City',
+      adapter: fakeAdapter({ throws: true }),
+    });
+    // R32 760501 kicks off 2026-07-04T01:30Z — Jul 4 UTC, Jul 3 in Mexico City.
+    expect(utc.text).toContain('Jul 4, 01:30');
+    expect(mx.text).toContain('Jul 3, 19:30');
+  });
 });
 
 describe('standingsResourceText (standings:// resource)', () => {
