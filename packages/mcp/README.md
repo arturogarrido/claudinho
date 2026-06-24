@@ -39,9 +39,10 @@ Claude Desktop: Settings → Developer → Edit Config, then restart. Codex conf
 | `get_live` | matches in play right now |
 | `get_match` | a single match by id |
 | `get_standings` | live cumulative group table(s) — one group `A`–`L`, or all |
+| `get_bracket` | knockout bracket from the Round of 32 through the final — optional `stage` filter (`R32`, `R16`, `QF`, `SF`, `3P`, `F`) |
 | `get_next_fixture` | a team's next match (3-letter code, e.g. `MEX`) — fully offline |
 | `get_market_signal` | read-only prediction-market signal for a match, a team's current-or-next fixture (in-play preferred while live), or a date — informational only |
-| `get_share_snippet` | a copy-pasteable plain-text card — for a match, a team's next fixture, a group's standings table (`group`), a date, or live — hand the returned snippet to the user as-is |
+| `get_share_snippet` | a copy-pasteable plain-text card — for a match, a team's next fixture, a group's standings table (`group`), the knockout bracket (`bracket: true`, optional `knockoutStage`), a date, or live — hand the returned snippet to the user as-is |
 
 All tools are **read-only** (`readOnlyHint`) and accept optional `tz`, `lang`
 (`en`/`es`/`pt`/`fr`), and `flavor` (`off`/`subtle`/`full`). Every response carries

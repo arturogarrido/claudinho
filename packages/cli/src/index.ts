@@ -16,6 +16,7 @@ import {
   cmdRefresh,
   cmdShare,
   cmdTable,
+  cmdBracket,
   cmdToday,
   cmdVibe,
   InputError,
@@ -124,6 +125,19 @@ program
   });
 
 program
+  .command('bracket')
+  .description('show the knockout bracket (default: all rounds)')
+  .argument('[stage]', 'filter by stage: R32, R16, QF, SF, 3P, F')
+  .option('--tree', 'ASCII tree view (falls back to list when terminal is narrow)')
+  .action(async (stage, opts, cmd) => {
+    try {
+      await cmdBracket(stage, opts, ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
+  });
+
+program
   .command('match')
   .description('show a single match by id')
   .argument('<id>', 'match id')
@@ -151,10 +165,10 @@ program
 program
   .command('share')
   .description('print a shareable, copy-pasteable match snippet (#VibingLaVidaLoca)')
-  .argument('[target]', '"today" (default), "live", a date, a match id, "next", or "table"')
+  .argument('[target]', '"today" (default), "live", a date, a match id, "next", "table", or "bracket"')
   .argument(
     '[team]',
-    'team code for "next" (default: $CLAUDINHO_TEAM), or group letter for "table" (omit for all groups)',
+    'team code for "next" (default: $CLAUDINHO_TEAM), group letter for "table", or stage for "bracket"',
   )
   .option('--style <style>', 'snippet style: social (default) or compact')
   .option('--copy', 'also copy the snippet to the clipboard (best-effort)')

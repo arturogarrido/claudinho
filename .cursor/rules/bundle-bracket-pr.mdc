@@ -1,0 +1,43 @@
+---
+description: Bundle, bracket, and live-data invariants before opening a PR
+globs: packages/core/**/*
+alwaysApply: false
+---
+
+# Bundle & bracket PR readiness
+
+Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint`** (mirror CI — build first because cli/mcp import `@claudinho/core` from dist; `build` alone does not typecheck).
+
+## Bundled schedule invariant
+
+`schedule.*.json` is a **resultless skeleton**: no scores/status, no confirmed nations in knockout slots.
+
+- `sanitizeBundledFixture` must restore topology placeholders for KO home/away.
+- `gen:schedule` must **fail** if any knockout fixture carries a real nation flag.
+- Test degraded `getBracket()` on the bundle: seed/winner slots stay `tbd`, never `confirmed`.
+
+## Knockout resolution
+
+- Advance winners from **score OR `winnerCode`** (ESPN `competitor.winner` for penalties).
+- Always test FT draw + `winnerCode` — routine in knockouts.
+
+## Topology indexing
+
+- Bracket node index must match ESPN winner refs (e.g. "Round of 32 3 Winner"), not kickoff sort order.
+- If live post-round data is unavailable, add a **guard test** against bundled `matchId` ↔ index and document the assumption.
+- **Spot-check when R32 starts (2026-06-28):** confirm ESPN's "Round of 32 N Winner" refs align with ascending event id.
+
+## Live hybrid paths
+
+- When knockout fetch fails but standings succeed: set `source` from standings provider.
+- Share/MCP: inner `formatBracketList({ footer: false })`, outer layer adds attribution/notices **once**.
+- CLI/MCP wrappers: option types must match the formatter (`ShareBracketOptions`, not `ShareSnippetOptions`).
+
+## Adversarial tests (add when touching bracket/schedule)
+
+| Scenario | Assert |
+|----------|--------|
+| FT level + `winnerCode` | Winner advances |
+| `fetchWindow` throws, standings OK | Projected groups + `source` set |
+| Bundle-only bracket | No real flags in R32+ slots |
+| `formatShareBracket` / `toolGetBracket` | Each disclaimer line once |

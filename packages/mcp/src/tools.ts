@@ -10,6 +10,9 @@ import {
   formatDate,
   formatShareSnippet,
   formatShareTable,
+  formatShareBracket,
+  formatBracketList,
+  getBracket,
   getLiveMatches,
   getMarketSignal,
   getMarketSignals,
@@ -33,8 +36,10 @@ import {
   type ProviderAdapter,
   resolveCompetition,
   resolveMarketSource,
+  t,
   type ShareSnippetInput,
   type ShareSnippetOptions,
+  type Stage,
 } from '@claudinho/core';
 import { DISCLAIMER, matchLine, matchList, standingsTable } from './format';
 
@@ -204,9 +209,11 @@ function fmtOpts(args: CommonOpts) {
   };
 }
 
-function withDisclaimer(text: string, source?: string): string {
+function withDisclaimer(text: string, source?: string, lang?: string): string {
   // Attribute the live-data provider when live data actually served the result.
-  const live = source ? `\nLive data: ${liveSourceLabel(source)}` : '';
+  const live = source
+    ? `\n${t(lang, 'live.data', { source: liveSourceLabel(source) })}`
+    : '';
   return `${text}${live}\n\n${DISCLAIMER}`;
 }
 
@@ -310,6 +317,39 @@ export async function toolGetStandings(
   return {
     text: withDisclaimer(text, source),
     data: { degraded, source: source ?? null, tables: args.group ? (shaped[0] ?? null) : shaped },
+  };
+}
+
+const BRACKET_STAGES = new Set(['R32', 'R16', 'QF', 'SF', '3P', 'F']);
+
+/** bracket: knockout tree with hybrid slot resolution. */
+export async function toolGetBracket(
+  args: { stage?: string } & CommonOpts,
+): Promise<ToolResult> {
+  const filter = args.stage?.toUpperCase();
+  if (filter && !BRACKET_STAGES.has(filter)) {
+    return {
+      text: withDisclaimer(
+        t(args.lang, 'bracket.unknownStage', { stage: args.stage ?? '' }),
+        undefined,
+        args.lang,
+      ),
+      data: { view: null },
+    };
+  }
+  const { view, degraded, standingsDegraded, source } = await getBracket(
+    resolveAdapter(args),
+    filter ? { stage: filter as Stage, lang: args.lang } : { lang: args.lang },
+  );
+  let text = formatBracketList(view, { footer: false, locale: args.lang });
+  if (degraded) {
+    text += `\n\n(${t(args.lang, 'bracket.degraded')})`;
+  } else if (standingsDegraded) {
+    text += `\n\n(${t(args.lang, 'bracket.standingsDegraded')})`;
+  }
+  return {
+    text: withDisclaimer(text, source, args.lang),
+    data: { degraded, standingsDegraded, source: source ?? null, view },
   };
 }
 
@@ -463,6 +503,8 @@ interface ShareArgs extends CommonOpts {
   date?: string;
   live?: boolean;
   group?: string;
+  bracket?: boolean;
+  knockoutStage?: string;
   style?: 'social' | 'compact';
   includeHashtag?: boolean;
   includeInstallLine?: boolean;
@@ -578,6 +620,51 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         informationalOnly: true,
         snippet,
         tables: tables.map((tb) => ({ group: tb.group, standings: tb.rows })),
+      },
+    };
+  }
+
+  // knockout bracket card (facts only; no market lines).
+  if (args.bracket) {
+    const stageFilter = args.knockoutStage?.toUpperCase();
+    if (stageFilter && !BRACKET_STAGES.has(stageFilter)) {
+      return {
+        text: withDisclaimer(
+          t(args.lang, 'bracket.unknownStage', { stage: args.knockoutStage ?? '' }),
+          undefined,
+          args.lang,
+        ),
+        data: { kind: 'bracket', view: null },
+      };
+    }
+    const { view, degraded, source } = await getBracket(
+      resolveAdapter(args),
+      stageFilter
+        ? { stage: stageFilter as Stage, lang: args.lang }
+        : { lang: args.lang },
+    );
+    const snippet = formatShareBracket(
+      {
+        view,
+        source: degraded ? undefined : source,
+        installLine: stageFilter
+          ? `npx @claudinho/cli bracket ${stageFilter}`
+          : 'npx @claudinho/cli bracket',
+        emptyNote: t(args.lang, 'bracket.empty'),
+      },
+      { ...options, locale: args.lang },
+    );
+    return {
+      text: snippet,
+      data: {
+        kind: 'bracket',
+        target: 'bracket',
+        ...(stageFilter ? { stage: stageFilter } : {}),
+        source: degraded ? null : (source ?? null),
+        degraded,
+        informationalOnly: true,
+        snippet,
+        view,
       },
     };
   }

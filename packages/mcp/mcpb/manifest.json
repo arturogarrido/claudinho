@@ -27,9 +27,10 @@
     { "name": "get_live", "description": "Matches in play right now, with score and minute (empty when none are live)." },
     { "name": "get_match", "description": "A single match by id, with live score/minute when in play." },
     { "name": "get_standings", "description": "Live cumulative group table(s) — one group A–L, or all." },
+    { "name": "get_bracket", "description": "Knockout bracket from the Round of 32 through the final, with live scores overlaid." },
     { "name": "get_next_fixture", "description": "A team's next scheduled match (3-letter code, e.g. MEX)." },
     { "name": "get_market_signal", "description": "Read-only prediction-market signals for a match, a team's next fixture, or a date. Informational only; no links." },
-    { "name": "get_share_snippet", "description": "A copy-pasteable snippet for a match, a team's next fixture, a group's standings table (group), a date, or live. Plain text; carries the disclaimer." }
+    { "name": "get_share_snippet", "description": "A copy-pasteable snippet for a match, a team's next fixture, a group's standings table (group), the knockout bracket, a date, or live. Plain text; carries the disclaimer." }
   ],
   "compatibility": {
     "runtimes": { "node": ">=20" }

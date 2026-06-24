@@ -22,6 +22,7 @@ import {
   toolGetNextFixture,
   toolGetShareSnippet,
   toolGetStandings,
+  toolGetBracket,
   toolGetToday,
   type ToolResult,
 } from './tools';
@@ -38,7 +39,7 @@ const VOICE =
     : `\nVoice: when relaying scores, narrate with lively, regionally-appropriate football-commentary energy in the user's language. Each match line may end with a short exclamation ("— ¡GOOOOL!") — use it as a tone cue. Keep every fact exact; never invent details and never impersonate or name a real commentator.`;
 
 const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and group standings for the 2026 men's football tournament.
-Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team (3-letter code, e.g. MEX), and get_standings for group tables.
+Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team (3-letter code, e.g. MEX), get_standings for group tables, and get_bracket for the knockout tree.
 Use get_market_signal for read-only prediction-market signals (a match, a team's current-or-next fixture, or a date). Market data is informational only — relay the percentages factually and never frame it as betting or trading advice.
 Use get_share_snippet to produce a ready-to-paste match card (for a match, a team's next fixture, a date, or live matches) — hand the user the returned snippet text verbatim.${VOICE}
 ${DISCLAIMER}`;
@@ -136,6 +137,24 @@ export function buildServer(): McpServer {
   );
 
   server.registerTool(
+    'get_bracket',
+    {
+      title: 'Knockout bracket',
+      description:
+        'Knockout bracket from the Round of 32 through the final, with live scores overlaid. Group slots project only when a group is fully played; winner slots need a confirmed FT result. Pass an optional stage (R32, R16, QF, SF, 3P, F) to filter one round. Falls back to structure-only when live data is unavailable.',
+      inputSchema: {
+        stage: z
+          .enum(['R32', 'R16', 'QF', 'SF', '3P', 'F'])
+          .optional()
+          .describe('Knockout round to show (omit for the full bracket)'),
+        ...commonArgs,
+      },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async (args) => toContent(await toolGetBracket(args)),
+  );
+
+  server.registerTool(
     'get_next_fixture',
     {
       title: 'Next fixture for a team',
@@ -177,13 +196,18 @@ export function buildServer(): McpServer {
     {
       title: 'Shareable match snippet',
       description:
-        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), a group's standings table (group, e.g. \"A\"), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
+        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), a group's standings table (group, e.g. \"A\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
       inputSchema: {
         matchId: z.string().optional().describe('Match id (most specific)'),
         team: teamArg
           .optional()
           .describe("3-letter team code for that team's next fixture, e.g. MEX"),
         group: groupArg.optional().describe('Group letter A–L for a standings card, e.g. A'),
+        bracket: z.boolean().optional().describe('Knockout bracket card (use with optional knockoutStage)'),
+        knockoutStage: z
+          .enum(['R32', 'R16', 'QF', 'SF', '3P', 'F'])
+          .optional()
+          .describe('Filter the bracket card to one round'),
         date: dateArg.optional().describe('Date as YYYY-MM-DD (default: today)'),
         live: z.boolean().optional().describe('Snapshot of matches in play right now'),
         style: z

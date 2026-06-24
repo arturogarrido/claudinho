@@ -5,6 +5,8 @@
  * state needs the network.
  */
 import scheduleData from './data/schedule.2026.json';
+import type { BracketMatchNode } from './bracket/types';
+import { slotRefToTeam } from './bracket/placeholders';
 import type { Match } from './types';
 import { byKickoff } from './normalize';
 import { localDate } from './time';
@@ -17,8 +19,8 @@ const SCHEDULE = scheduleData as unknown as Match[];
  * results. Live scores come from the provider overlay; degraded standings use
  * roster-at-zero, not a stale snapshot table.
  */
-export function sanitizeBundledFixture(m: Match): Match {
-  return {
+export function sanitizeBundledFixture(m: Match, node?: BracketMatchNode): Match {
+  const base: Match = {
     id: m.id,
     stage: m.stage,
     group: m.group,
@@ -31,6 +33,14 @@ export function sanitizeBundledFixture(m: Match): Match {
     status: 'SCHEDULED',
     updatedAt: m.updatedAt,
   };
+  if (node && m.stage !== 'GROUP' && m.stage !== 'FRIENDLY') {
+    return {
+      ...base,
+      home: slotRefToTeam(node.home),
+      away: slotRefToTeam(node.away),
+    };
+  }
+  return base;
 }
 
 /** The full bundled fixture list. */

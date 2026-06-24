@@ -13,7 +13,7 @@ import type { GroupStandings, StandingRow } from '../standings';
 import type { Match, Stage, Status, Team } from '../types';
 import type { ProviderAdapter, ProviderCapabilities } from './types';
 import { nationToFlag } from '../flags';
-import { isLive } from '../normalize';
+import { isFinished, isLive } from '../normalize';
 
 const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 /** Default competition slug (the 2026 World Cup). */
@@ -170,6 +170,12 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match {
   const as = toInt(awayC?.score);
   const hasScore = status !== 'SCHEDULED' && hs !== undefined && as !== undefined;
 
+  let winnerCode: string | undefined;
+  if (isFinished(status)) {
+    if (homeC?.winner) winnerCode = home.code;
+    else if (awayC?.winner) winnerCode = away.code;
+  }
+
   return {
     id: ev.id,
     stage,
@@ -183,6 +189,7 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match {
     score: hasScore ? { home: hs, away: as } : undefined,
     minute: parseMinute(ev.status ?? comp?.status),
     status,
+    winnerCode,
     updatedAt: new Date().toISOString(),
   };
 }

@@ -2,6 +2,8 @@
 export type * from './types';
 
 export { flagEmoji, nationToFlag, nationToRegion } from './flags';
+export { t, normalizeLang, stageLabelI18n } from './i18n';
+export type { Lang } from './i18n';
 export { resolveTz, formatKickoff, formatDate, formatTime, countdown, localDate } from './time';
 export type { FormatOpts } from './time';
 export { isValidTimeZone, isValidDate } from './validate';
@@ -50,11 +52,13 @@ export {
   getLiveMatches,
   getMatchById,
   getStandings,
+  getBracket,
   marketFixtureForTeam,
   resolveCompetition,
   liveSourceLabel,
 } from './live';
 export type { LiveResult, MatchByIdResult, StandingsResult } from './live';
+export type { BracketResult, BracketView } from './bracket/types';
 export { DEFAULT_COMPETITION, competitionBase } from './adapters/espn';
 
 // Prediction-market signals (read-only sidecar; never embedded in Match).
@@ -113,3 +117,23 @@ export type {
   ShareSnippetOptions,
   ShareTableInput,
 } from './share/format';
+
+export { buildBracketTopology, matchKey } from './bracket/build';
+export { parseTeamSlot } from './bracket/parse';
+export { buildBracketView } from './bracket/resolve';
+export { loadBracketTopology } from './bracket/topology';
+export {
+  formatBracketList,
+  formatBracketTree,
+  formatBracketMatchLine,
+  formatShareBracket,
+} from './bracket/format';
+export type {
+  BracketTopology,
+  BracketMatchNode,
+  SlotRef,
+  ResolvedParticipant,
+  BracketMatchView,
+} from './bracket/types';
+export { BRACKET_STAGE_ORDER } from './bracket/types';
+export type { BracketFormatOpts, ShareBracketInput, ShareBracketOptions } from './bracket/format';

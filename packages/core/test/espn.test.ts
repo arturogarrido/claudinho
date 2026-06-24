@@ -113,6 +113,24 @@ describe('mapEspnEvent', () => {
     expect(m.group).toBe('E');
   });
 
+  it('maps winnerCode from ESPN competitor.winner (e.g. penalties)', () => {
+    const pens = {
+      ...finished,
+      competitions: [
+        {
+          ...finished.competitions[0],
+          competitors: [
+            { homeAway: 'home', score: '1', winner: true, team: { abbreviation: 'NED', displayName: 'Netherlands' } },
+            { homeAway: 'away', score: '1', team: { abbreviation: 'BRA', displayName: 'Brazil' } },
+          ],
+        },
+      ],
+    };
+    const m = mapEspnEvent(pens as never, { groupByTeam: GROUP_MAP });
+    expect(m.score).toEqual({ home: 1, away: 1 });
+    expect(m.winnerCode).toBe('NED');
+  });
+
   it('maps a knockout fixture from the slug, with no group letter', () => {
     const m = mapEspnEvent(knockout as never, { groupByTeam: GROUP_MAP });
     expect(m.stage).toBe('R16');
