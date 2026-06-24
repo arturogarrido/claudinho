@@ -37,3 +37,28 @@ export function matchLocation(match: Match): string {
 export function byKickoff(a: Match, b: Match): number {
   return a.kickoff.localeCompare(b.kickoff);
 }
+
+/** Human-readable stage for display (group letter when applicable). */
+export function stageLabel(m: Pick<Match, 'stage' | 'group'>): string {
+  if (m.group) return `Group ${m.group}`;
+  switch (m.stage) {
+    case 'GROUP':
+      return 'Group stage';
+    case 'R32':
+      return 'Round of 32';
+    case 'R16':
+      return 'Round of 16';
+    case 'QF':
+      return 'Quarter-final';
+    case 'SF':
+      return 'Semi-final';
+    case '3P':
+      return 'Third-place play-off';
+    case 'F':
+      return 'Final';
+    case 'FRIENDLY':
+      return 'Friendly';
+    default:
+      return '';
+  }
+}

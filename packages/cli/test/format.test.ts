@@ -45,4 +45,11 @@ describe('matchLine — flavor wiring', () => {
     const es = render(cfg({ flavor: 'full', lang: 'es' }));
     expect(es).toContain(matchFlavor(liveMatch(), { level: 'full', locale: 'es' }));
   });
+
+  it('drops flag emoji when flags are off (names only)', () => {
+    const line = matchLine(liveMatch(), cfg(), makeT('en'), painterFor(cfg()), false);
+    expect(line).toContain('Mexico');
+    expect(line).toContain('South Africa');
+    expect(line).not.toMatch(/\uD83C[\uDDE6-\uDDFF]/);
+  });
 });

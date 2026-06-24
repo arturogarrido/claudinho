@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   allFixtures,
   currentOrNextFixtureForTeam,
+  fixturesByTeam,
   fixturesInLiveWindow,
   getMatchById,
   LIVE_WINDOW_MS,
@@ -203,9 +204,11 @@ describe('marketFixtureForTeam (live-confirmed selection)', () => {
   });
 
   it('keeps the static candidate on a degraded fetch (fail closed downstream)', async () => {
-    const during = new Date(Date.parse(opener.kickoff) + 30 * 60_000);
+    const candidate =
+      fixturesByTeam(team).find((m) => m.status !== 'FT') ?? opener;
+    const during = new Date(Date.parse(candidate.kickoff) + 30 * 60_000);
     const r = await marketFixtureForTeam(adapterReturning('throw'), team, during);
-    expect(r.match?.id).toBe(opener.id);
+    expect(r.match?.id).toBe(candidate.id);
     expect(r.degraded).toBe(true);
   });
 

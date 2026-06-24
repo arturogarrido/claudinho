@@ -18,6 +18,7 @@
 
 ```bash
 npx @claudinho/cli today      # try it in 10 seconds — no install, no key
+npx @claudinho/cli live       # what's on right now (during match windows)
 ```
 
 While matches are live, your Claude Code or Cursor CLI statusline reads:
@@ -166,7 +167,7 @@ _Planned (not shipped yet):_ a desktop notifier and an AI pundit with a public a
 **Flags show as boxed letters (`CH`, `BA`)?** Some terminals — notably Warp — don't compose
 the regional-indicator pairs into flag glyphs, so 🇨🇭 renders as a boxed `CH`. claudinho
 auto-detects Warp and drops the flags: **3-letter codes on the statusline** (`MEX 1–0 RSA 67'`)
-and **plain team names in the hook**. Force it anywhere with `CLAUDINHO_FLAGS=off`, or keep flags
+and **plain team names in the hook**, `today` / `live` / `table`, and `next`. Force it anywhere with `CLAUDINHO_FLAGS=off`, or keep flags
 with `CLAUDINHO_FLAGS=on`.
 
 **Windows?** Works, but flag emoji rendering varies by terminal — best on macOS/Linux. See the

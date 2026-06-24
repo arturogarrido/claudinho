@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeStandings } from '../src/standings';
+import { computeStandings, rosterAtZero } from '../src/standings';
 import type { Match, Team } from '../src/types';
 
 const T = (code: string): Team => ({ code, name: code, flag: '🏳️' });
@@ -63,5 +63,16 @@ describe('computeStandings', () => {
     const mex = table.find((r) => r.team.code === 'MEX')!;
     expect(mex.played).toBe(1);
     expect(mex.points).toBe(3);
+  });
+});
+
+describe('rosterAtZero', () => {
+  it('lists every team at zero even when input matches carry FT scores', () => {
+    const table = rosterAtZero([
+      fixture('MEX', 'RSA', [2, 0]),
+      fixture('KOR', 'CZE', [1, 1]),
+    ]);
+    expect(table).toHaveLength(4);
+    expect(table.every((r) => r.played === 0 && r.points === 0)).toBe(true);
   });
 });

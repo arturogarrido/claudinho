@@ -93,3 +93,19 @@ export function computeStandings(matches: Match[]): StandingRow[] {
       a.team.name.localeCompare(b.team.name),
   );
 }
+
+/**
+ * Group roster at zero — the degraded-standings fallback. Lists every team that
+ * appears in the group's fixtures with played/W/D/L/points all at 0, regardless
+ * of any scores that might be present on the input matches.
+ */
+export function rosterAtZero(matches: Match[]): StandingRow[] {
+  const teams = new Map<string, Team>();
+  for (const m of matches) {
+    teams.set(m.home.code, m.home);
+    teams.set(m.away.code, m.away);
+  }
+  return [...teams.values()]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(blankRow);
+}

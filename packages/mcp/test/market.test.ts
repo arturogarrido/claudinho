@@ -31,7 +31,11 @@ const synth = () => new FakeMarketProvider({ synthesize: true, now: TEST_NOW });
 
 /** A fixture still upcoming at TEST_NOW (its market read is relevant). */
 const upcoming = (): Match =>
-  allFixtures().find((m) => Date.parse(m.kickoff) > TEST_NOW.getTime())!;
+  allFixtures().find(
+    (m) => m.status === 'SCHEDULED' && Date.parse(m.kickoff) > TEST_NOW.getTime(),
+  )!;
+
+const upcomingDate = () => upcoming().kickoff.slice(0, 10);
 
 type MarketData = {
   market: { url: null };
@@ -73,17 +77,15 @@ describe('toolGetMarketSignal', () => {
   });
 
   it("prefers the team's IN-PLAY match over their next fixture", async () => {
-    // Mid-opener clock: the first fixture is being played right now. A plain
-    // "next fixture" lookup would skip it and answer about a future match.
-    const opener = allFixtures()[0]!;
-    const during = new Date(Date.parse(opener.kickoff) + 30 * 60_000);
+    const fixture = upcoming();
+    const during = new Date(Date.parse(fixture.kickoff) + 30 * 60_000);
     const r = await toolGetMarketSignal({
-      team: opener.home.code,
+      team: fixture.home.code,
       adapter: fakeAdapter,
       marketProvider: synth(),
       now: during,
     });
-    expect((r.data as { matchId: string }).matchId).toBe(opener.id);
+    expect((r.data as { matchId: string }).matchId).toBe(fixture.id);
   });
 
   it('suppresses the signal for a finished match (market reads are pre-match)', async () => {
@@ -111,15 +113,16 @@ describe('toolGetMarketSignal', () => {
   });
 
   it('lists a date of signals (default branch)', async () => {
+    const date = upcomingDate();
     const r = await toolGetMarketSignal({
-      date: '2026-06-13',
+      date,
       tz: 'UTC',
       adapter: fakeAdapter,
       marketProvider: synth(),
       now: TEST_NOW,
     });
     const data = r.data as { date: string; signals: MarketData[] };
-    expect(data.date).toBe('2026-06-13');
+    expect(data.date).toBe(date);
     expect(data.signals.length).toBeGreaterThan(0);
     expect(data.signals.every((s) => s.market.url === null)).toBe(true);
   });
@@ -148,7 +151,7 @@ describe('toolGetMarketSignal', () => {
 describe('default-on market context', () => {
   it('get_today attaches reliable, link-free market signals', async () => {
     const r = await toolGetToday({
-      date: '2026-06-13',
+      date: upcomingDate(),
       tz: 'UTC',
       adapter: fakeAdapter,
       marketProvider: synth(),

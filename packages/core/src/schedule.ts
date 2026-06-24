@@ -11,6 +11,28 @@ import { localDate } from './time';
 
 const SCHEDULE = scheduleData as unknown as Match[];
 
+/**
+ * Strip live/final state from a fixture for the bundled skeleton schedule.
+ * The JSON ships kickoffs, teams, venues, and bracket structure only — never
+ * results. Live scores come from the provider overlay; degraded standings use
+ * roster-at-zero, not a stale snapshot table.
+ */
+export function sanitizeBundledFixture(m: Match): Match {
+  return {
+    id: m.id,
+    stage: m.stage,
+    group: m.group,
+    kickoff: m.kickoff,
+    venue: m.venue,
+    city: m.city,
+    country: m.country,
+    home: m.home,
+    away: m.away,
+    status: 'SCHEDULED',
+    updatedAt: m.updatedAt,
+  };
+}
+
 /** The full bundled fixture list. */
 export function allFixtures(): Match[] {
   return SCHEDULE;

@@ -14,7 +14,7 @@ import {
   LIVE_WINDOW_MS,
   nextFixtureForTeam,
 } from './schedule';
-import { computeStandings, type GroupStandings } from './standings';
+import { rosterAtZero, type GroupStandings } from './standings';
 import type { Match } from './types';
 
 /**
@@ -136,7 +136,7 @@ export async function getStandings(
   }
   const letters = want ? [want] : groups();
   const tables = letters
-    .map((g) => ({ group: g, rows: computeStandings(fixturesByGroup(g)) }))
+    .map((g) => ({ group: g, rows: rosterAtZero(fixturesByGroup(g)) }))
     .filter((t) => t.rows.length > 0);
   return { tables, degraded: true };
 }

@@ -22,7 +22,7 @@
 import { liveSourceLabel } from '../live';
 import { marketBlock, marketLine } from '../markets/format';
 import type { MarketSignal } from '../markets/types';
-import { isLive, matchLocation, scoreline } from '../normalize';
+import { isLive, matchLocation, scoreline, stageLabel } from '../normalize';
 import type { StandingRow } from '../standings';
 import { formatDate, formatTime } from '../time';
 import type { Match } from '../types';
@@ -143,6 +143,7 @@ function socialCard(m: Match, input: ShareSnippetInput): string[] {
   }
   const loc = matchLocation(m);
   if (loc) lines.push(loc);
+  if (m.stage !== 'GROUP') lines.push(stageLabel(m));
   return lines;
 }
 

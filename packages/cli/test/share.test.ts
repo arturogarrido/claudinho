@@ -44,6 +44,13 @@ const downAdapter: ProviderAdapter = {
 // deterministic after these fixtures fall into the real past.
 const TEST_NOW = new Date('2026-06-13T12:00:00Z');
 
+const upcoming = (): Match =>
+  allFixtures().find(
+    (m) => m.status === 'SCHEDULED' && Date.parse(m.kickoff) > TEST_NOW.getTime(),
+  )!;
+
+const upcomingDate = () => upcoming().kickoff.slice(0, 10);
+
 /** A fresh, cleanly-mapped, reliable signal for a given match. */
 const freshSig = (m: Match): MarketSignal => ({
   matchId: m.id,
@@ -115,7 +122,7 @@ const json = () => JSON.parse(writes.join(''));
 const HASHTAG = '#VibingLaVidaLoca';
 const DISCLAIMER = 'not affiliated with FIFA or Anthropic';
 const BANNED = /\b(bet|betting|wager|gambling|edge|lock|value pick)\b/i;
-const aTeam = () => allFixtures()[0]!.home.code;
+const aTeam = () => upcoming().home.code;
 
 describe('cmdShare — routing & JSON', () => {
   it('share next <team> --json carries the structured shape', async () => {
@@ -180,7 +187,7 @@ describe('cmdShare — toggles & styles', () => {
   });
 
   it('--style compact uses 3-letter codes and no venue', async () => {
-    await cmdShare('2026-06-13', undefined, { style: 'compact' }, ctx());
+    await cmdShare(upcomingDate(), undefined, { style: 'compact' }, ctx());
     const o = text();
     expect(o).toMatch(/[A-Z]{3} vs [A-Z]{3}/);
     expect(o).not.toContain('Estadio');
@@ -190,7 +197,17 @@ describe('cmdShare — toggles & styles', () => {
 
 describe('cmdShare — market gating (fail closed)', () => {
   it('includes a reliable market block', async () => {
-    await cmdShare('next', aTeam(), {}, ctx({}, provider(freshSig)));
+    const fixture = upcoming();
+    const before = new Date(Date.parse(fixture.kickoff) - 3_600_000);
+    const sig = (m: Match): MarketSignal => ({
+      ...freshSig(m),
+      asOf: before.toISOString(),
+      fetchedAt: before.toISOString(),
+    });
+    await cmdShare('next', fixture.home.code, {}, {
+      ...ctx({}, provider((m) => (m.id === fixture.id ? sig(m) : undefined))),
+      now: before,
+    });
     expect(text()).toContain('informational only');
   });
 

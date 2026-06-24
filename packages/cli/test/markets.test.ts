@@ -34,7 +34,11 @@ const synth = () => new FakeMarketProvider({ synthesize: true, now: TEST_NOW });
 
 /** A fixture still upcoming at TEST_NOW (its market read is relevant). */
 const upcoming = (): Match =>
-  allFixtures().find((m) => Date.parse(m.kickoff) > TEST_NOW.getTime())!;
+  allFixtures().find(
+    (m) => m.status === 'SCHEDULED' && Date.parse(m.kickoff) > TEST_NOW.getTime(),
+  )!;
+
+const upcomingDate = () => upcoming().kickoff.slice(0, 10);
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
   return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', flavor: 'off', ...over };
@@ -63,13 +67,13 @@ const text = () => writes.join('');
 
 describe('cmdMarkets — date listing', () => {
   it('emits a sidecar JSON shape keyed by matchId', async () => {
-    await cmdMarkets('2026-06-13', undefined, ctx({ json: true }, synth()));
+    await cmdMarkets(upcomingDate(), undefined, ctx({ json: true }, synth()));
     const data = json() as {
       date: string;
       informationalOnly: boolean;
       marketSignals: Record<string, { source: string; matchId: string }>;
     };
-    expect(data.date).toBe('2026-06-13');
+    expect(data.date).toBe(upcomingDate());
     expect(data.informationalOnly).toBe(true);
     const ids = Object.keys(data.marketSignals);
     expect(ids.length).toBeGreaterThan(0);
@@ -78,9 +82,9 @@ describe('cmdMarkets — date listing', () => {
   });
 
   it('renders attribution + dual disclaimers and no betting language', async () => {
-    await cmdMarkets('2026-06-13', undefined, ctx({ json: false }, synth()));
+    await cmdMarkets(upcomingDate(), undefined, ctx({ json: false }, synth()));
     const o = text();
-    expect(o).toContain('Market signals · 2026-06-13');
+    expect(o).toContain(`Market signals · ${upcomingDate()}`);
     expect(o).toContain('informational only');
     expect(o).toContain('Not affiliated with FIFA or Anthropic.');
     expect(o).toContain('Prediction-market data is informational only.');
@@ -168,10 +172,9 @@ describe('cmdMarkets — next <team>', () => {
   });
 
   it("prefers the team's IN-PLAY match over their next fixture", async () => {
-    // Mid-opener clock: the first fixture is being played right now.
-    const opener = allFixtures()[0]!;
-    const during = new Date(Date.parse(opener.kickoff) + 30 * 60_000);
-    await cmdMarkets('next', opener.home.code, ctx({ json: true }, synth(), during));
-    expect((json() as { matchId: string }).matchId).toBe(opener.id);
+    const fixture = upcoming();
+    const during = new Date(Date.parse(fixture.kickoff) + 30 * 60_000);
+    await cmdMarkets('next', fixture.home.code, ctx({ json: true }, synth(), during));
+    expect((json() as { matchId: string }).matchId).toBe(fixture.id);
   });
 });

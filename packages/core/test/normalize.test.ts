@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchLocation, type Match } from '../src/index';
+import { matchLocation, stageLabel, type Match } from '../src/index';
 
 function match(over: Partial<Match> = {}): Match {
   return {
@@ -34,5 +34,20 @@ describe('matchLocation', () => {
     expect(matchLocation(match({ city: 'Toronto', country: undefined }))).toBe(
       'Estadio Banorte, Toronto',
     );
+  });
+});
+
+describe('stageLabel', () => {
+  it('uses the group letter during the group stage', () => {
+    expect(stageLabel(match())).toBe('Group A');
+  });
+
+  it('names knockout rounds without a group letter', () => {
+    expect(stageLabel(match({ stage: 'R16', group: undefined }))).toBe('Round of 16');
+    expect(stageLabel(match({ stage: 'F', group: undefined }))).toBe('Final');
+  });
+
+  it('returns an empty string for an unknown stage', () => {
+    expect(stageLabel(match({ stage: 'UNKNOWN' as Match['stage'], group: undefined }))).toBe('');
   });
 });

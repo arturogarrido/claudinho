@@ -89,6 +89,15 @@ describe('formatShareSnippet — social card', () => {
     expect(out).not.toContain(ESC); // must paste cleanly everywhere
     expect(out).not.toMatch(BANNED);
   });
+
+  it('includes the knockout stage on social cards (not group fixtures)', () => {
+    const ko = { ...scheduled, stage: 'R16' as const, group: undefined };
+    const card = formatShareSnippet(
+      { ...base, matches: [ko], title: 'Next up for Mexico' },
+      { style: 'social' },
+    );
+    expect(card).toContain('Round of 16');
+  });
 });
 
 describe('formatShareSnippet — toggles', () => {
