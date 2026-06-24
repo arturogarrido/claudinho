@@ -30,7 +30,7 @@
     { "name": "get_bracket", "description": "Knockout bracket from the Round of 32 through the final, with live scores overlaid." },
     { "name": "get_next_fixture", "description": "A team's next scheduled match (3-letter code, e.g. MEX)." },
     { "name": "get_market_signal", "description": "Read-only prediction-market signals for a match, a team's next fixture, or a date. Informational only; no links." },
-    { "name": "get_share_snippet", "description": "A copy-pasteable snippet for a match, a team's next fixture, a group's standings table (group), a date, or live. Plain text; carries the disclaimer." }
+    { "name": "get_share_snippet", "description": "A copy-pasteable snippet for a match, a team's next fixture, a group's standings table (group), the knockout bracket, a date, or live. Plain text; carries the disclaimer." }
   ],
   "compatibility": {
     "runtimes": { "node": ">=20" }

@@ -9,18 +9,19 @@ package is [`@claudinho/mcp`](https://www.npmjs.com/package/@claudinho/mcp).
 | Shipped in plugin | Not shipped (by design) |
 |-------------------|-------------------------|
 | MCP server via `../mcp.json` → `npx -y @claudinho/mcp` | Cursor CLI **statusline** (separate: `@claudinho/cli`) |
-| 7 read-only tools (see below) | **Hook** / score-aware prompt injection (Cursor `beforeSubmitPrompt` unreliable) |
+| 8 read-only tools (see below) | **Hook** / score-aware prompt injection (Cursor `beforeSubmitPrompt` unreliable) |
 | Resources + prompts | Betting links or trade calls |
 
-## MCP tools (7)
+## MCP tools (8)
 
 - `get_today` — fixtures for a date (default today), live overlay
 - `get_live` — matches in play now
 - `get_match` — one match by id
 - `get_standings` — group table(s) A–L or all
+- `get_bracket` — knockout tree (optional stage filter)
 - `get_next_fixture` — team's next match (offline schedule)
 - `get_market_signal` — read-only market-implied % (informational only)
-- `get_share_snippet` — copy-paste plain-text card
+- `get_share_snippet` — copy-paste plain-text card (match, standings, bracket, …)
 
 All tools: `readOnlyHint`, optional `tz` / `lang` / `flavor`. No API keys.
 
@@ -30,7 +31,7 @@ All tools: `readOnlyHint`, optional `tz` / `lang` / `flavor`. No API keys.
 git clone https://github.com/arturogarrido/claudinho.git
 cp -R claudinho ~/.cursor/plugins/local/claudinho
 # Cursor → Developer: Reload Window
-# Settings → MCP → confirm `claudinho` lists 7 tools
+# Settings → MCP → confirm `claudinho` lists 8 tools
 ```
 
 Or run the server directly:

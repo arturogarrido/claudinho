@@ -25,6 +25,7 @@ Before marking a data-heavy feature merge-ready, run **`pnpm lint && pnpm test &
 
 - Bracket node index must match ESPN winner refs (e.g. "Round of 32 3 Winner"), not kickoff sort order.
 - If live post-round data is unavailable, add a **guard test** against bundled `matchId` ↔ index and document the assumption.
+- **Spot-check when R32 starts (2026-06-28):** confirm ESPN's "Round of 32 N Winner" refs align with ascending event id.
 
 ## Live hybrid paths
 
