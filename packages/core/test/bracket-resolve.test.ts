@@ -38,7 +38,7 @@ describe('buildBracketView', () => {
     expect(view.degraded).toBe(true);
   });
 
-  it('confirms an R32 winner into the R16 tree when live overlay has FT', () => {
+  it('confirms an R32 winner into the R16 tree when live overlay has FT', async () => {
     const r32node = topology.matches.find((n) => n.stage === 'R32' && n.index === 1)!;
     const merged = baseKo.map((m) =>
       m.id === r32node.matchId ? fx(m.id, 'R32', 'MEX', 'RSA', [2, 0]) : m,
@@ -48,6 +48,33 @@ describe('buildBracketView', () => {
     const first = r16.matches[0]!;
     const confirmed = [first.home, first.away].find((p) => p.code === 'MEX');
     expect(confirmed?.status).toBe('confirmed');
+  });
+
+  it('advances the winner on a level score when ESPN supplies winnerCode (penalties)', () => {
+    const r32node = topology.matches.find((n) => n.stage === 'R32' && n.index === 1)!;
+    const merged = baseKo.map((m) =>
+      m.id === r32node.matchId
+        ? {
+            ...fx(m.id, 'R32', 'MEX', 'RSA', [1, 1]),
+            winnerCode: 'MEX',
+          }
+        : m,
+    );
+    const view = buildBracketView(topology, merged, [], true, false);
+    const r16 = view.stages.find((s) => s.stage === 'R16')!;
+    const first = r16.matches[0]!;
+    const confirmed = [first.home, first.away].find((p) => p.code === 'MEX');
+    expect(confirmed?.status).toBe('confirmed');
+  });
+
+  it('never confirms seed slots from the static bundle', () => {
+    const view = buildBracketView(topology, baseKo, [], true, true);
+    const r32 = view.stages.find((s) => s.stage === 'R32')!;
+    const seeds = r32.matches
+      .flatMap((m) => [m.home, m.away])
+      .filter((p) => ['Germany', 'Mexico', 'United States', 'Argentina'].includes(p.label));
+    expect(seeds.length).toBeGreaterThan(0);
+    expect(seeds.every((p) => p.status === 'tbd')).toBe(true);
   });
 
   it('projects a group slot only when the group is fully played', () => {

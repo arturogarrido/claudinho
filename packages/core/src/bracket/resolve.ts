@@ -24,7 +24,7 @@ interface ResolveContext {
 function isGroupComplete(group: string, tables: GroupStandings[], standingsDegraded: boolean): boolean {
   if (standingsDegraded) return false;
   const table = tables.find((t) => t.group === group);
-  if (!table || table.rows.length !== 4) return false;
+  if (!table?.rows.length || table.rows.length !== 4) return false;
   return table.rows.every((r) => r.played >= 3);
 }
 
@@ -36,7 +36,12 @@ function teamFromStandings(group: string, position: 1 | 2, tables: GroupStanding
 }
 
 function resolveWinner(match: Match): Team | undefined {
-  if (!isFinished(match.status) || !match.score) return undefined;
+  if (!isFinished(match.status)) return undefined;
+  if (match.winnerCode) {
+    const w = teamFromMatch(match, match.winnerCode);
+    if (w && w.flag !== '🏳️') return w;
+  }
+  if (!match.score) return undefined;
   const outcome = outcomeFromScore(match.score.home, match.score.away);
   if (outcome === 'H') return match.home.flag !== '🏳️' ? match.home : undefined;
   if (outcome === 'A') return match.away.flag !== '🏳️' ? match.away : undefined;
@@ -44,7 +49,17 @@ function resolveWinner(match: Match): Team | undefined {
 }
 
 function resolveLoser(match: Match): Team | undefined {
-  if (!isFinished(match.status) || !match.score) return undefined;
+  if (!isFinished(match.status)) return undefined;
+  if (match.winnerCode) {
+    const winner = teamFromMatch(match, match.winnerCode);
+    if (winner?.code === match.home.code) {
+      return match.away.flag !== '🏳️' ? match.away : undefined;
+    }
+    if (winner?.code === match.away.code) {
+      return match.home.flag !== '🏳️' ? match.home : undefined;
+    }
+  }
+  if (!match.score) return undefined;
   const outcome = outcomeFromScore(match.score.home, match.score.away);
   if (outcome === 'H') return match.away.flag !== '🏳️' ? match.away : undefined;
   if (outcome === 'A') return match.home.flag !== '🏳️' ? match.home : undefined;
@@ -65,13 +80,8 @@ function winnerLabel(stage: string, index: number): string {
 
 function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
   switch (ref.kind) {
-    case 'team': {
-      for (const match of ctx.matchesById.values()) {
-        const team = teamFromMatch(match, ref.code);
-        if (team && team.flag !== '🏳️') return participant(team, 'confirmed');
-      }
-      return tbd(ref.code);
-    }
+    case 'seed':
+      return tbd(ref.label);
     case 'group': {
       if (isGroupComplete(ref.group, ctx.tables, ctx.standingsDegraded)) {
         const team = teamFromStandings(ref.group, ref.position, ctx.tables);

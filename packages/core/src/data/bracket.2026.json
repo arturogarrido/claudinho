@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-24T00:24:18.084Z",
+  "generatedAt": "2026-06-24T01:20:06.749Z",
   "stages": [
     "R32",
     "R16",
@@ -40,12 +40,28 @@
       }
     },
     {
-      "matchId": "760489",
+      "matchId": "760488",
       "stage": "R32",
       "index": 3,
       "home": {
-        "kind": "team",
-        "code": "GER"
+        "kind": "group",
+        "position": 1,
+        "group": "F"
+      },
+      "away": {
+        "kind": "group",
+        "position": 2,
+        "group": "C"
+      }
+    },
+    {
+      "matchId": "760489",
+      "stage": "R32",
+      "index": 4,
+      "home": {
+        "kind": "seed",
+        "label": "Germany",
+        "code": "TBD"
       },
       "away": {
         "kind": "third",
@@ -56,21 +72,6 @@
           "D",
           "F"
         ]
-      }
-    },
-    {
-      "matchId": "760488",
-      "stage": "R32",
-      "index": 4,
-      "home": {
-        "kind": "group",
-        "position": 1,
-        "group": "F"
-      },
-      "away": {
-        "kind": "group",
-        "position": 2,
-        "group": "C"
       }
     },
     {
@@ -89,9 +90,29 @@
       }
     },
     {
-      "matchId": "760492",
+      "matchId": "760491",
       "stage": "R32",
       "index": 6,
+      "home": {
+        "kind": "seed",
+        "label": "Mexico",
+        "code": "TBD"
+      },
+      "away": {
+        "kind": "third",
+        "groups": [
+          "C",
+          "E",
+          "F",
+          "H",
+          "I"
+        ]
+      }
+    },
+    {
+      "matchId": "760492",
+      "stage": "R32",
+      "index": 7,
       "home": {
         "kind": "group",
         "position": 1,
@@ -109,48 +130,9 @@
       }
     },
     {
-      "matchId": "760491",
-      "stage": "R32",
-      "index": 7,
-      "home": {
-        "kind": "team",
-        "code": "MEX"
-      },
-      "away": {
-        "kind": "third",
-        "groups": [
-          "C",
-          "E",
-          "F",
-          "H",
-          "I"
-        ]
-      }
-    },
-    {
-      "matchId": "760495",
-      "stage": "R32",
-      "index": 8,
-      "home": {
-        "kind": "group",
-        "position": 1,
-        "group": "L"
-      },
-      "away": {
-        "kind": "third",
-        "groups": [
-          "E",
-          "H",
-          "I",
-          "J",
-          "K"
-        ]
-      }
-    },
-    {
       "matchId": "760493",
       "stage": "R32",
-      "index": 9,
+      "index": 8,
       "home": {
         "kind": "group",
         "position": 1,
@@ -170,10 +152,11 @@
     {
       "matchId": "760494",
       "stage": "R32",
-      "index": 10,
+      "index": 9,
       "home": {
-        "kind": "team",
-        "code": "USA"
+        "kind": "seed",
+        "label": "United States",
+        "code": "TBD"
       },
       "away": {
         "kind": "third",
@@ -187,24 +170,29 @@
       }
     },
     {
-      "matchId": "760497",
+      "matchId": "760495",
       "stage": "R32",
-      "index": 11,
+      "index": 10,
       "home": {
         "kind": "group",
         "position": 1,
-        "group": "H"
+        "group": "L"
       },
       "away": {
-        "kind": "group",
-        "position": 2,
-        "group": "J"
+        "kind": "third",
+        "groups": [
+          "E",
+          "H",
+          "I",
+          "J",
+          "K"
+        ]
       }
     },
     {
       "matchId": "760496",
       "stage": "R32",
-      "index": 12,
+      "index": 11,
       "home": {
         "kind": "group",
         "position": 2,
@@ -214,6 +202,21 @@
         "kind": "group",
         "position": 2,
         "group": "L"
+      }
+    },
+    {
+      "matchId": "760497",
+      "stage": "R32",
+      "index": 12,
+      "home": {
+        "kind": "group",
+        "position": 1,
+        "group": "H"
+      },
+      "away": {
+        "kind": "group",
+        "position": 2,
+        "group": "J"
       }
     },
     {
@@ -256,8 +259,9 @@
       "stage": "R32",
       "index": 15,
       "home": {
-        "kind": "team",
-        "code": "ARG"
+        "kind": "seed",
+        "label": "Argentina",
+        "code": "TBD"
       },
       "away": {
         "kind": "group",
@@ -376,24 +380,9 @@
       }
     },
     {
-      "matchId": "760509",
-      "stage": "R16",
-      "index": 7,
-      "home": {
-        "kind": "winner",
-        "stage": "R32",
-        "index": 14
-      },
-      "away": {
-        "kind": "winner",
-        "stage": "R32",
-        "index": 16
-      }
-    },
-    {
       "matchId": "760508",
       "stage": "R16",
-      "index": 8,
+      "index": 7,
       "home": {
         "kind": "winner",
         "stage": "R32",
@@ -403,6 +392,21 @@
         "kind": "winner",
         "stage": "R32",
         "index": 15
+      }
+    },
+    {
+      "matchId": "760509",
+      "stage": "R16",
+      "index": 8,
+      "home": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 14
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 16
       }
     },
     {

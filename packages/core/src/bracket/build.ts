@@ -1,4 +1,3 @@
-import { byKickoff } from '../normalize';
 import type { Match, Stage } from '../types';
 import { parseTeamSlot } from './parse';
 import {
@@ -14,6 +13,15 @@ export function matchKey(stage: Stage, index: number): string {
 }
 
 /**
+ * ESPN bracket slot numbers within a round follow ascending event id, not kickoff
+ * time (R32/R16 kickoff order diverges from id order). Winner-placeholder refs
+ * ("Round of 32 3 Winner") use this id-based index — see validateBracketIndexing.
+ */
+export function orderByBracketIndex(matches: Match[]): Match[] {
+  return [...matches].sort((a, b) => Number(a.id) - Number(b.id));
+}
+
+/**
  * Build and validate bracket topology from knockout fixtures.
  * Throws when ESPN introduces an unparsed placeholder or the graph is inconsistent.
  */
@@ -23,7 +31,7 @@ export function buildBracketTopology(matches: Match[], generatedAt: string): Bra
   const nodes: BracketMatchNode[] = [];
 
   for (const stage of BRACKET_STAGE_ORDER) {
-    const stageMatches = knockout.filter((m) => m.stage === stage).sort(byKickoff);
+    const stageMatches = orderByBracketIndex(knockout.filter((m) => m.stage === stage));
     const expected = EXPECTED_KNOCKOUT_COUNTS[stage];
     if (expected != null && stageMatches.length !== expected) {
       problems.push(`stage ${stage}: expected ${expected}, got ${stageMatches.length}`);
@@ -50,6 +58,7 @@ export function buildBracketTopology(matches: Match[], generatedAt: string): Bra
 
   validateWinnerChain(nodes, problems);
   validateThirdPlace(nodes, problems);
+  validateBracketIndexing(knockout, nodes, problems);
 
   if (problems.length > 0) {
     throw new Error(
@@ -58,6 +67,49 @@ export function buildBracketTopology(matches: Match[], generatedAt: string): Bra
   }
 
   return { generatedAt, stages: [...BRACKET_STAGE_ORDER], matches: nodes };
+}
+
+/** Guard: id-based index must differ from kickoff rank when ESPN diverges (R32/R16). */
+function validateBracketIndexing(
+  knockout: Match[],
+  nodes: BracketMatchNode[],
+  problems: string[],
+): void {
+  for (const stage of ['R32', 'R16'] as const) {
+    const byKickoff = [...knockout.filter((m) => m.stage === stage)].sort((a, b) =>
+      a.kickoff.localeCompare(b.kickoff),
+    );
+    const byId = orderByBracketIndex(knockout.filter((m) => m.stage === stage));
+    const kickoffIds = byKickoff.map((m) => m.id).join(',');
+    const idIds = byId.map((m) => m.id).join(',');
+    if (kickoffIds !== idIds) {
+      // Document the assumption: when orders diverge, topology keys by id (ESPN slot #).
+      const diverged = byKickoff
+        .map((m, i) => ({ kickoffRank: i + 1, idRank: byId.findIndex((x) => x.id === m.id) + 1, id: m.id }))
+        .filter((x) => x.kickoffRank !== x.idRank);
+      if (diverged.length > 0 && stage === 'R32') {
+        // R16 winner refs cite id-rank indices — sanity: R32-1 and R32-3 must be id-ranked slots.
+        const r32ById = new Map(nodes.filter((n) => n.stage === 'R32').map((n) => [n.index, n.matchId]));
+        const r16First = nodes.find((n) => n.stage === 'R16' && n.index === 1);
+        if (r16First) {
+          const home = r16First.home;
+          const away = r16First.away;
+          if (home.kind === 'winner' && home.stage === 'R32') {
+            const expectedId = r32ById.get(home.index);
+            if (!expectedId) {
+              problems.push(`R32 index ${home.index} missing for R16-1 home ref`);
+            }
+          }
+          if (away.kind === 'winner' && away.stage === 'R32') {
+            const expectedId = r32ById.get(away.index);
+            if (!expectedId) {
+              problems.push(`R32 index ${away.index} missing for R16-1 away ref`);
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 function validateWinnerChain(nodes: BracketMatchNode[], problems: string[]): void {

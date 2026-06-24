@@ -63,6 +63,11 @@ export interface Match {
   status: Status;
   /** Goals/cards when the provider supplies them. */
   events?: MatchEvent[];
+  /**
+   * Winner's team code when the provider marks one (e.g. ESPN `competitor.winner`
+   * after penalties). Used for knockout advancement when the score is level.
+   */
+  winnerCode?: string;
   /** When this snapshot was produced (ISO 8601). */
   updatedAt: string;
 }

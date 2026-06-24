@@ -18,7 +18,7 @@ import { rosterAtZero, type GroupStandings } from './standings';
 import type { Match, Stage } from './types';
 import { buildBracketView } from './bracket/resolve';
 import { loadBracketTopology } from './bracket/topology';
-import type { BracketResult, BracketView } from './bracket/types';
+import type { BracketResult } from './bracket/types';
 
 /**
  * The ESPN competition slug to fetch live state from. Defaults to the 2026
@@ -160,7 +160,7 @@ export async function getBracket(
   const base = allFixtures().filter((m) => m.stage !== 'GROUP' && m.stage !== 'FRIENDLY');
 
   let matches = base;
-  let degraded = true;
+  let liveDegraded = true;
   let source: string | undefined;
 
   try {
@@ -168,26 +168,30 @@ export async function getBracket(
       ? await adapter.fetchWindow(KNOCKOUT_WINDOW_START, KNOCKOUT_WINDOW_END)
       : [];
     matches = mergeLive(base, live);
-    degraded = false;
+    liveDegraded = false;
     source = adapter.name;
   } catch {
     // static skeleton only
   }
 
   const standings = await getStandings(adapter);
+  if (!source && !standings.degraded && standings.source) {
+    source = standings.source;
+  }
+
   const view = buildBracketView(
     topology,
     matches,
     standings.tables,
     standings.degraded,
-    degraded,
+    liveDegraded,
     opts.stage,
   );
   if (source) view.source = source;
 
   return {
     view,
-    degraded,
+    degraded: liveDegraded,
     standingsDegraded: standings.degraded,
     source,
   };

@@ -334,7 +334,7 @@ export async function toolGetBracket(
     resolveAdapter(args),
     filter ? { stage: filter as Stage } : {},
   );
-  let text = formatBracketList(view);
+  let text = formatBracketList(view, { footer: false });
   if (degraded) {
     text += '\n\n(Live scores unavailable — bracket structure only, no confirmed advancement.)';
   } else if (standingsDegraded) {

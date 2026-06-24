@@ -125,11 +125,17 @@ export function formatShareBracket(
   if (input.view.stages.length === 0) {
     blocks.push(input.emptyNote ?? 'No bracket matches available.');
   } else {
-    blocks.push(formatBracketList(input.view, { footer: true }));
+    blocks.push(formatBracketList(input.view, { footer: false }));
+    if (input.view.degraded) {
+      blocks.push('(Live scores unavailable — bracket structure only, no confirmed advancement.)');
+    } else if (input.view.standingsDegraded) {
+      blocks.push('(Live standings unavailable — group slots stay TBD until groups finish.)');
+    }
   }
 
   const footer: string[] = [];
-  if (input.source) footer.push(`Live data: ${liveSourceLabel(input.source)}`);
+  const src = input.source ?? input.view.source;
+  if (src) footer.push(`Live data: ${liveSourceLabel(src)}`);
   footer.push(
     [includeHashtag ? SHARE_HASHTAG : '', SHARE_DISCLAIMER].filter(Boolean).join(' · '),
   );

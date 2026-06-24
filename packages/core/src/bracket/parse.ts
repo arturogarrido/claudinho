@@ -1,17 +1,15 @@
 import type { Team } from '../types';
 import type { SlotRef } from './types';
+import { isResolvedNation } from './placeholders';
 
 const PLACEHOLDER_FLAG = '🏳️';
 
 /**
- * Parse an ESPN home/away team into a bracket slot reference.
- * Returns null when the name is unrecognized — gen:schedule must fail loudly.
+ * Parse an ESPN home/away label into a bracket slot reference (name patterns only).
+ * Real nation flags are mapped to `seed` — never `team` — so the bundled schedule
+ * cannot treat ESPN pre-draw labels as confirmed participants.
  */
 export function parseTeamSlot(team: Team): SlotRef | null {
-  if (team.flag !== PLACEHOLDER_FLAG) {
-    return { kind: 'team', code: team.code };
-  }
-
   const name = team.name;
 
   let m = name.match(/^Group ([A-L]) Winner$/);
@@ -37,6 +35,15 @@ export function parseTeamSlot(team: Team): SlotRef | null {
 
   m = name.match(/^Semifinal (\d+) Loser$/);
   if (m) return { kind: 'loser', stage: 'SF', index: Number(m[1]) };
+
+  if (isResolvedNation(team)) {
+    return { kind: 'seed', label: team.name, code: 'TBD' };
+  }
+
+  // Restored bundled knockout placeholder (post-sanitize seed label).
+  if (team.flag === PLACEHOLDER_FLAG && team.code === 'TBD') {
+    return { kind: 'seed', label: team.name, code: 'TBD' };
+  }
 
   return null;
 }

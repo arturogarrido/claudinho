@@ -13,6 +13,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EspnAdapter } from '../src/adapters/espn';
 import { buildBracketTopology } from '../src/bracket/build';
+import type { BracketTopology } from '../src/bracket/types';
+import { isResolvedNation } from '../src/bracket/placeholders';
 import { sanitizeBundledFixture } from '../src/schedule';
 import type { Match } from '../src/types';
 
@@ -44,8 +46,21 @@ async function main(): Promise<void> {
     }
   }
 
-  const all = [...byId.values()]
-    .map(sanitizeBundledFixture)
+  const raw = [...byId.values()];
+  const generatedAt = new Date().toISOString();
+  let topology: BracketTopology;
+  try {
+    topology = buildBracketTopology(raw, generatedAt);
+  } catch (err) {
+    console.error('\n⚠️  bracket topology FAILED:');
+    console.error(`   ${(err as Error).message}`);
+    console.error('Not writing files. Update bracket parsers in src/bracket/parse.ts.');
+    process.exit(1);
+  }
+
+  const nodeById = new Map(topology.matches.map((n) => [n.matchId, n]));
+  const all = raw
+    .map((m) => sanitizeBundledFixture(m, nodeById.get(m.id)))
     .sort((a, b) => a.kickoff.localeCompare(b.kickoff));
 
   const problems: string[] = [];
@@ -53,6 +68,17 @@ async function main(): Promise<void> {
   if (withResults.length > 0) {
     problems.push(
       `bundled schedule must be resultless: ${withResults.length} fixture(s) still carry status/score after sanitize`,
+    );
+  }
+  const knockoutLeaks = all.filter(
+    (m) =>
+      m.stage !== 'GROUP' &&
+      m.stage !== 'FRIENDLY' &&
+      (isResolvedNation(m.home) || isResolvedNation(m.away)),
+  );
+  if (knockoutLeaks.length > 0) {
+    problems.push(
+      `knockout bundle must be placeholder-only: ${knockoutLeaks.length} fixture(s) still carry real nation flags`,
     );
   }
   const stageCounts = all.reduce<Record<string, number>>((acc, m) => {
@@ -81,17 +107,6 @@ async function main(): Promise<void> {
     console.error('\n⚠️  schedule validation FAILED:');
     for (const p of problems) console.error(`   - ${p}`);
     console.error('Not writing the file. Re-check the ESPN feed / mapping.');
-    process.exit(1);
-  }
-
-  const generatedAt = new Date().toISOString();
-  let topology;
-  try {
-    topology = buildBracketTopology(all, generatedAt);
-  } catch (err) {
-    console.error('\n⚠️  bracket topology FAILED:');
-    console.error(`   ${(err as Error).message}`);
-    console.error('Not writing files. Update bracket parsers in src/bracket/parse.ts.');
     process.exit(1);
   }
 

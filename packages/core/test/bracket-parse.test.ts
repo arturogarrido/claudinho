@@ -5,8 +5,12 @@ import type { Team } from '../src/types';
 const T = (name: string, code: string, flag = '🏳️'): Team => ({ name, code, flag });
 
 describe('parseTeamSlot', () => {
-  it('parses resolved teams by flag', () => {
-    expect(parseTeamSlot(T('Mexico', 'MEX', '🇲🇽'))).toEqual({ kind: 'team', code: 'MEX' });
+  it('maps ESPN pre-draw nations to seed slots (never confirmed team)', () => {
+    expect(parseTeamSlot(T('Mexico', 'MEX', '🇲🇽'))).toEqual({
+      kind: 'seed',
+      label: 'Mexico',
+      code: 'TBD',
+    });
   });
 
   it('parses group winner and runner-up slots', () => {

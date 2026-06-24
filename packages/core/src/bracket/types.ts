@@ -2,11 +2,12 @@ import type { Match, Stage, Team } from '../types';
 
 /** A participant slot in the bundled bracket topology (pre-resolution). */
 export type SlotRef =
-  | { kind: 'team'; code: string }
   | { kind: 'group'; position: 1 | 2; group: string }
   | { kind: 'third'; groups: string[] }
   | { kind: 'winner'; stage: Stage; index: number }
-  | { kind: 'loser'; stage: Stage; index: number };
+  | { kind: 'loser'; stage: Stage; index: number }
+  /** ESPN pre-draw nation label — display only; never confirmed from the bundled schedule. */
+  | { kind: 'seed'; label: string; code: string };
 
 export interface BracketMatchNode {
   matchId: string;
