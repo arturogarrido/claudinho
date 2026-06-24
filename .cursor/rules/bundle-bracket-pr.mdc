@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Bundle & bracket PR readiness
 
-Before marking a data-heavy feature merge-ready, run **`pnpm lint && pnpm -r typecheck && pnpm test && pnpm build`** (mirror CI — `build` alone does not typecheck; never ship after test/build only).
+Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint`** (mirror CI — build first because cli/mcp import `@claudinho/core` from dist; `build` alone does not typecheck).
 
 ## Bundled schedule invariant
 

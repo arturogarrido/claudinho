@@ -6,7 +6,7 @@
 
 ## Test plan
 
-- [ ] `pnpm lint && pnpm -r typecheck && pnpm test && pnpm build` all green locally
+- [ ] `pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint` all green locally (same order as CI — build first)
 - [ ] New/changed behavior covered by tests (not only happy path)
 
 ### Data-heavy / bracket / schedule PRs
