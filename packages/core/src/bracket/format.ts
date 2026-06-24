@@ -1,6 +1,6 @@
 import { isFinished, isLive, scoreline } from '../normalize';
 import { t, stageLabelI18n } from '../i18n';
-import { formatKickoff, formatTime } from '../time';
+import { formatKickoff } from '../time';
 import { SHARE_DISCLAIMER, SHARE_HASHTAG, type ShareStyle } from '../share/format';
 import { liveSourceLabel } from '../live';
 import type { Stage } from '../types';
@@ -184,7 +184,7 @@ export function formatBracketCompactLine(mv: BracketMatchView, opts: BracketForm
   const m = mv.match;
   const mid = isFinished(m.status) || isLive(m.status) ? scoreline(m) : 'vs';
   const tail = m.status === 'SCHEDULED' && mv.kickoff
-    ? ` · ${formatTime(mv.kickoff, { tz: opts.tz, locale: opts.locale })}`
+    ? ` · ${formatKickoff(mv.kickoff, { tz: opts.tz, locale: opts.locale })}`
     : statusTail(m);
   return `${stageLabelI18n(opts.locale, mv.stage)} · ${home} ${mid} ${away}${tail}`;
 }

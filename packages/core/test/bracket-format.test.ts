@@ -33,13 +33,14 @@ describe('formatBracketMatchLine', () => {
     expect(line).not.toMatch(/🇲🇽 Mexico/);
   });
 
-  it('formatShareBracket compact style uses one line per match', () => {
+  it('formatShareBracket compact style uses one line per match with kickoff day', () => {
     const stages = [{ stage: 'R32' as const, label: 'Round of 32', matches: [view] }];
     const card = formatShareBracket(
       { view: { stages, degraded: true, standingsDegraded: false } },
-      { style: 'compact', locale: 'en' },
+      { style: 'compact', locale: 'en', tz: 'UTC' },
     );
     expect(card).toContain('Round of 32 · 🇨🇿 Czechia vs Mexico 🇲🇽');
+    expect(card).toContain('Sat 17:00');
     expect(card.split('\n').filter((l) => l.includes('vs')).length).toBe(1);
   });
 });
