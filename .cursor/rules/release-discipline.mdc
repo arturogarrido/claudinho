@@ -1,0 +1,27 @@
+---
+description: Release batching, gitignore policy, and pre-tag checks
+alwaysApply: true
+---
+
+# Release discipline
+
+## One feature, one release
+
+- **One user-facing feature → one minor.** Stack review fixes (tz, dates, guards) into the **same PR** before merge when they belong to the same feature.
+- Do **not** tag npm until CI is green **and** `pnpm release:qa` passes (tripwires at the end must be 0 failed).
+- Before tagging: `git diff main` must not include accidental `docs/PRD.md`, `.env`, or agent guides.
+
+## Gitignored paths (never publish)
+
+`docs/`, `AGENTS.md`, and `CLAUDE.md` are **local-only**.
+
+- Doc reviews → update **tracked** surfaces: `README`, MCP tool descriptions, `.cursor/rules/`.
+- **Never** add `!docs/…` exceptions to `.gitignore` without explicit maintainer approval.
+
+## Bracket / live-formatting ship checklist
+
+Before merge **or** release of bracket or kickoff-formatting work:
+
+1. Adversarial tests: 0 games, mid-tournament (2/3 played), degraded standings.
+2. **Surface parity:** CLI `bracket` + MCP `get_bracket` + `share bracket` all pass `tz` and show calendar dates on multi-week knockouts.
+3. After `pnpm -r build`, run **`pnpm release:qa`** and eyeball the rendered sections; keep `packages/mcp/test/tools.test.ts` green for MCP arg threading.

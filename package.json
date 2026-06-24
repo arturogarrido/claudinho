@@ -15,7 +15,8 @@
     "test": "pnpm -r test",
     "lint": "biome lint .",
     "typecheck": "pnpm -r typecheck",
-    "dev": "pnpm -r --parallel dev"
+    "dev": "pnpm -r --parallel dev",
+    "release:qa": "bash scripts/release-qa.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.0"
