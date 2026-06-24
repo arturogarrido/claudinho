@@ -83,8 +83,27 @@ uses Anthropic's no-reply address; Cursor and Codex follow the same pattern with
 ```
 Co-Authored-By: Claude Code (Opus 4.8) <noreply@anthropic.com>
 Co-Authored-By: Cursor (Composer 2.5) <...>
-Co-Authored-By: Codex (GPT 5.5) <...>
+Co-Authored-By: Codex (GPT-5) <noreply@openai.com>
 ```
+
+## Reviewing PRs (all agents)
+
+- For PR reviews, first verify the local checkout matches the PR head before running gates:
+  `gh pr view <n> --json headRefOid,headRefName` and `git rev-parse HEAD`. If they differ,
+  check out or fast-forward the PR branch before reviewing.
+- Review-only tasks are read-only unless the user explicitly asks for fixes. Lead with findings,
+  classify them P1/P2/P3, and include tight file/line references. If there are no findings, say
+  that plainly and list the checks run plus any residual risk.
+- Do not treat a previous review, memory, or local branch name as current truth. Re-check the PR
+  SHA, merge state, and CI status at the end of the review.
+
+## Codex / GPT specifics
+
+- Codex has no separate sidecar guide in this repo; `AGENTS.md` is its source of truth. Follow
+  the shared sections here: "Reviewing PRs", "Pre-PR self-review", "Release readiness", and
+  "Commit attribution".
+- If Codex makes a commit, use the actual GPT model in the `Co-Authored-By` trailer; the example
+  above is illustrative, not a hardcoded model name.
 
 ## Conventions
 
