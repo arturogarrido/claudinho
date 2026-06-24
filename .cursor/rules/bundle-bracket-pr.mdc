@@ -20,6 +20,7 @@ Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r
 
 - Advance winners from **score OR `winnerCode`** (ESPN `competitor.winner` for penalties).
 - Always test FT draw + `winnerCode` — routine in knockouts.
+- Group slots project from live standings once **≥1 match played** in the group (`hasGroupStarted`); stay TBD at 0 games or when standings are degraded. Mark projected slots `(proj.)`.
 
 ## Topology indexing
 
@@ -40,4 +41,5 @@ Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r
 | FT level + `winnerCode` | Winner advances |
 | `fetchWindow` throws, standings OK | Projected groups + `source` set |
 | Bundle-only bracket | No real flags in R32+ slots |
+| Group at 0 games played | Slots stay `tbd`, no `(proj.)` |
 | `formatShareBracket` / `toolGetBracket` | Each disclaimer line once |

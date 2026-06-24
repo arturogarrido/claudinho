@@ -30,7 +30,8 @@ dist-portable/
 *.mcpb
 
 # internal working docs / dev specs — kept local, never published
-docs/
+docs/*
+!docs/PRD.md
 
 # agent guides — kept local, never published
 AGENTS.md

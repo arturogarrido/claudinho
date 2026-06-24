@@ -160,4 +160,23 @@ describe('buildBracketView', () => {
     expect(groupWinner?.flag).toBe('🇩🇪');
     expect(groupWinner?.status).toBe('projected');
   });
+
+  it('does not project a group slot before the group has started', () => {
+    const tables: GroupStandings[] = [
+      {
+        group: 'C',
+        rows: [
+          { team: { code: 'GER', name: 'Germany', flag: '🇩🇪' }, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0 },
+          { team: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' }, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0 },
+          { team: { code: 'CIV', name: 'Ivory Coast', flag: '🇨🇮' }, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0 },
+          { team: { code: 'CUW', name: 'Curaçao', flag: '🇨🇼' }, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0 },
+        ],
+      },
+    ];
+    const view = buildBracketView(topology, baseKo, tables, false, false);
+    const r32 = view.stages.find((s) => s.stage === 'R32')!;
+    const groupWinner = r32.matches.find((m) => m.index === 2)?.home;
+    expect(groupWinner?.status).toBe('tbd');
+    expect(groupWinner?.flag).toBe('🏳️');
+  });
 });

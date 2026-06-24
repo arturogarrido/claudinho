@@ -30,6 +30,12 @@ function teamFromStandings(group: string, position: 1 | 2, tables: GroupStanding
   return row?.team;
 }
 
+function hasGroupStarted(group: string, tables: GroupStandings[]): boolean {
+  const table = tables.find((t) => t.group === group);
+  if (!table?.rows.length) return false;
+  return table.rows.some((r) => r.played > 0);
+}
+
 function resolveWinner(match: Match): Team | undefined {
   if (!isFinished(match.status)) return undefined;
   if (match.winnerCode) {
@@ -81,7 +87,7 @@ function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
     case 'seed':
       return tbd(ref.label);
     case 'group': {
-      if (!ctx.standingsDegraded) {
+      if (!ctx.standingsDegraded && hasGroupStarted(ref.group, ctx.tables)) {
         const team = teamFromStandings(ref.group, ref.position, ctx.tables);
         if (team) return participant(team, 'projected');
       }
@@ -123,7 +129,7 @@ function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
 
 /**
  * Resolve the bundled topology against merged knockout matches and standings.
- * Group slots project from live standings when available; winner/loser slots
+ * Group slots project from live standings once a group has started; winner/loser slots
  * require a confirmed FT result on the source match.
  */
 export function buildBracketView(
