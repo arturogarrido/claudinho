@@ -9,7 +9,7 @@ alwaysApply: true
 
 - **One user-facing feature → one minor.** Stack review fixes (tz, dates, guards) into the **same PR** before merge when they belong to the same feature.
 - Do **not** tag npm until CI is green **and** `pnpm release:qa` passes (tripwires at the end must be 0 failed).
-- Before tagging: `git diff main` must not include accidental `docs/PRD.md`, `.env`, or agent guides.
+- Before tagging: `git diff main` must not include accidental internal docs (`docs/`), `.env`, or agent guides (`AGENTS.md`/`CLAUDE.md`).
 
 ## Gitignored paths (never publish)
 
