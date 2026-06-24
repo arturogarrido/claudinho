@@ -341,7 +341,7 @@ export async function toolGetBracket(
     resolveAdapter(args),
     filter ? { stage: filter as Stage, lang: args.lang } : { lang: args.lang },
   );
-  let text = formatBracketList(view, { footer: false, locale: args.lang });
+  let text = formatBracketList(view, { footer: false, locale: args.lang, tz: args.tz });
   if (degraded) {
     text += `\n\n(${t(args.lang, 'bracket.degraded')})`;
   } else if (standingsDegraded) {
