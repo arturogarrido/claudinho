@@ -28,7 +28,7 @@
 
 ### Release / docs
 
-- [ ] No gitignored paths committed (`docs/`, `AGENTS.md`, `CLAUDE.md`) — update README / MCP descriptions / cursor rules instead
+- [ ] No **private** paths committed (`docs/`, `CLAUDE.local.md`, `.env`) — engineering updates go in `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, README, or MCP descriptions
 - [ ] Review fixes for the same feature batched in this PR (avoid follow-up patch releases)
 
 ### Assumptions
