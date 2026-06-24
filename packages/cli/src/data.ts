@@ -9,6 +9,8 @@ export {
   getMatchesForDate,
   getLiveMatches,
   getStandings,
+  getBracket,
   type LiveResult,
   type StandingsResult,
+  type BracketResult,
 } from '@claudinho/core';

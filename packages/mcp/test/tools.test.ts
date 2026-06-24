@@ -10,6 +10,7 @@ import {
   toolGetLive,
   toolGetNextFixture,
   toolGetStandings,
+  toolGetBracket,
   toolGetToday,
 } from '../src/tools';
 
@@ -41,6 +42,7 @@ function liveMatch(over: Partial<Match> = {}): Match {
 function fakeAdapter(opts: {
   live?: Match[];
   byDate?: Match[];
+  window?: Match[];
   throws?: boolean;
   standings?: GroupStandings[];
 }): ProviderAdapter {
@@ -54,6 +56,10 @@ function fakeAdapter(opts: {
     async fetchLive() {
       if (opts.throws) throw new Error('network down');
       return opts.live ?? [];
+    },
+    async fetchWindow() {
+      if (opts.throws) throw new Error('network down');
+      return opts.window ?? opts.live ?? opts.byDate ?? [];
     },
     // Only advertise fetchStandings when given tables — so the no-standings
     // tests exercise the degraded fallback, and these exercise the live path.
@@ -218,6 +224,26 @@ describe('toolGetStandings', () => {
     expect(data.tables.standings[0]?.points).toBe(3);
     expect(r.text).toContain('Group A');
     expect(r.text).not.toContain('Live standings unavailable');
+  });
+});
+
+describe('toolGetBracket', () => {
+  it('returns structure-only bracket when live fetch fails', async () => {
+    const r = await toolGetBracket({ adapter: fakeAdapter({ throws: true }) });
+    const data = r.data as { degraded: boolean; view: { stages: unknown[] } };
+    expect(data.degraded).toBe(true);
+    expect(data.view.stages.length).toBeGreaterThan(0);
+    expect(r.text).toContain('Round of 32');
+    expect(r.text).toContain('Live scores unavailable');
+    expect(r.text).not.toContain('Live data:');
+  });
+
+  it('filters to a single stage', async () => {
+    const r = await toolGetBracket({ stage: 'F', adapter: fakeAdapter({ throws: true }) });
+    const data = r.data as { view: { stages: Array<{ stage: string; matches: unknown[] }> } };
+    expect(data.view.stages).toHaveLength(1);
+    expect(data.view.stages[0]?.stage).toBe('F');
+    expect(data.view.stages[0]?.matches).toHaveLength(1);
   });
 });
 

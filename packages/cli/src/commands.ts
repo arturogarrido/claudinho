@@ -7,6 +7,9 @@ import {
   formatKickoff,
   formatShareSnippet,
   formatShareTable,
+  formatShareBracket,
+  formatBracketList,
+  formatBracketTree,
   getMarketSignals,
   getMatchById,
   hasSaneDistribution,
@@ -27,6 +30,7 @@ import {
   resolveMarketSource,
   scoreline,
   stageLabel,
+  type Stage,
 } from '@claudinho/core';
 import Table from 'cli-table3';
 import type { CliConfig } from './config';
@@ -45,6 +49,7 @@ import {
   getLiveMatches,
   getMatchesForDate,
   getStandings,
+  getBracket,
   makeAdapter,
 } from './data';
 import { readMarketCache, writeMarketCache } from './marketCache';
@@ -385,6 +390,64 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
   out();
   // Degraded ⇒ rows are a static roster, not real results — say so, don't imply zeros are live.
   if (degraded) out(c.dim('  ' + t('table.degraded')));
+  const src = dataSource(source, c);
+  if (src) out(src);
+  out(disclaimer(t, c));
+}
+
+const BRACKET_STAGES = new Set(['R32', 'R16', 'QF', 'SF', '3P', 'F']);
+
+/** `claudinho bracket [stage]` */
+export async function cmdBracket(
+  stage: string | undefined,
+  opts: { tree?: boolean },
+  ctx: Ctx,
+): Promise<void> {
+  const { cfg, t } = ctx;
+  precheck(cfg, t);
+  const filter = stage?.toUpperCase();
+  if (filter && !BRACKET_STAGES.has(filter)) {
+    throw new InputError('Stage must be one of: R32, R16, QF, SF, 3P, F');
+  }
+  const { view, degraded, standingsDegraded, source } = await getBracket(
+    adapterFor(ctx),
+    filter ? { stage: filter as Stage } : {},
+  );
+
+  if (cfg.json) {
+    emitJson({
+      degraded,
+      standingsDegraded,
+      source: source ?? null,
+      view,
+    });
+    return;
+  }
+
+  const c = painterFor(cfg);
+  const flags = flagsEnabled();
+  const formatOpts = { flags, tz: cfg.tz, locale: cfg.lang, footer: false };
+  let body: string;
+  if (opts.tree) {
+    const tree = formatBracketTree(view, {
+      ...formatOpts,
+      width: process.stdout.columns ?? 80,
+    });
+    body = tree ?? formatBracketList(view, formatOpts);
+    if (!tree) {
+      out();
+      out(c.dim(`  ${t('bracket.treeFallback')}`));
+    }
+  } else {
+    body = formatBracketList(view, formatOpts);
+  }
+
+  out();
+  out(header(filter ? t('bracket.stage', { stage: filter }) : t('bracket.title'), c));
+  out(body);
+  out();
+  if (degraded) out(c.dim('  ' + t('bracket.degraded')));
+  else if (standingsDegraded) out(c.dim('  ' + t('bracket.standingsDegraded')));
   const src = dataSource(source, c);
   if (src) out(src);
   out(disclaimer(t, c));
@@ -837,7 +900,6 @@ interface ShareTableEmit {
   options: ShareSnippetOptions;
 }
 
-/** Emit a `share table` snippet — mirrors {@link emitShare} for the table path. */
 function emitShareTable(ctx: Ctx, e: ShareTableEmit, copy: boolean): void {
   const snippet = formatShareTable(
     {
@@ -859,6 +921,51 @@ function emitShareTable(ctx: Ctx, e: ShareTableEmit, copy: boolean): void {
       informationalOnly: true,
       snippet,
       tables: e.tables.map((tb) => ({ group: tb.group, standings: tb.rows })),
+    });
+  } else {
+    out(snippet);
+  }
+  if (copy) {
+    const ok = (ctx.copy ?? copyToClipboard)(snippet);
+    process.stderr.write(
+      (ok
+        ? 'Copied share snippet to clipboard.'
+        : 'Clipboard unavailable; printed snippet instead.') + '\n',
+    );
+  }
+}
+
+interface ShareBracketEmit {
+  stage?: string;
+  view: import('@claudinho/core').BracketView;
+  source?: string;
+  degraded: boolean;
+  installLine: string;
+  emptyNote: string;
+  options: ShareSnippetOptions;
+}
+
+/** Emit a `share bracket` snippet. */
+function emitShareBracket(ctx: Ctx, e: ShareBracketEmit, copy: boolean): void {
+  const snippet = formatShareBracket(
+    {
+      view: e.view,
+      source: e.source,
+      installLine: e.installLine,
+      emptyNote: e.emptyNote,
+    },
+    e.options,
+  );
+  if (ctx.cfg.json) {
+    emitJson({
+      kind: 'bracket',
+      target: 'bracket',
+      ...(e.stage ? { stage: e.stage } : {}),
+      source: e.source ?? null,
+      degraded: e.degraded,
+      informationalOnly: true,
+      snippet,
+      view: e.view,
     });
   } else {
     out(snippet);
@@ -946,6 +1053,35 @@ export async function cmdShare(
         installLine: group ? `npx @claudinho/cli table ${group}` : 'npx @claudinho/cli table',
         emptyNote: group ? `No group ${group}.` : 'No standings available.',
         options: baseOptions,
+      },
+      copy,
+    );
+    return;
+  }
+
+  // share bracket [stage] — knockout bracket card
+  if (target === 'bracket') {
+    precheck(cfg, t);
+    const stageFilter = team?.toUpperCase();
+    if (stageFilter && !BRACKET_STAGES.has(stageFilter)) {
+      throw new InputError('Stage must be one of: R32, R16, QF, SF, 3P, F');
+    }
+    const { view, degraded, source } = await getBracket(
+      adapterFor(ctx),
+      stageFilter ? { stage: stageFilter as Stage } : {},
+    );
+    emitShareBracket(
+      ctx,
+      {
+        stage: stageFilter,
+        view,
+        source: degraded ? undefined : source,
+        degraded,
+        installLine: stageFilter
+          ? `npx @claudinho/cli bracket ${stageFilter}`
+          : 'npx @claudinho/cli bracket',
+        emptyNote: 'No bracket matches available.',
+        options: { ...baseOptions, includeMarkets: false },
       },
       copy,
     );

@@ -4,19 +4,21 @@
  *   pnpm -F @claudinho/core gen:schedule
  *
  * Fetches the full tournament window in weekly chunks, dedupes by id, sorts by
- * kickoff, and writes src/data/schedule.2026.json. Live scores and final
- * results are stripped — the bundle is a resultless skeleton; only team names,
- * kickoffs, venues, and bracket structure ship in the package.
+ * kickoff, and writes src/data/schedule.2026.json and src/data/bracket.2026.json.
+ * Live scores and final results are stripped — the bundle is a resultless skeleton;
+ * only team names, kickoffs, venues, and bracket structure ship in the package.
  */
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EspnAdapter } from '../src/adapters/espn';
+import { buildBracketTopology } from '../src/bracket/build';
 import { sanitizeBundledFixture } from '../src/schedule';
 import type { Match } from '../src/types';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, '..', 'src', 'data', 'schedule.2026.json');
+const BRACKET_OUT = join(here, '..', 'src', 'data', 'bracket.2026.json');
 
 // Tournament runs 2026-06-11 .. 2026-07-19; fetch in ~weekly windows.
 const WINDOWS: ReadonlyArray<readonly [string, string]> = [
@@ -82,8 +84,21 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const generatedAt = new Date().toISOString();
+  let topology;
+  try {
+    topology = buildBracketTopology(all, generatedAt);
+  } catch (err) {
+    console.error('\n⚠️  bracket topology FAILED:');
+    console.error(`   ${(err as Error).message}`);
+    console.error('Not writing files. Update bracket parsers in src/bracket/parse.ts.');
+    process.exit(1);
+  }
+
   writeFileSync(OUT, JSON.stringify(all, null, 2) + '\n');
+  writeFileSync(BRACKET_OUT, JSON.stringify(topology, null, 2) + '\n');
   console.log(`\n✓ wrote ${all.length} fixtures -> ${OUT}`);
+  console.log(`✓ wrote ${topology.matches.length} bracket nodes -> ${BRACKET_OUT}`);
   for (const m of all.slice(0, 3)) {
     const g = m.group ? ` [${m.group}]` : '';
     console.log(`  e.g. ${m.kickoff}${g}  ${m.home.flag} ${m.home.name} vs ${m.away.name} ${m.away.flag}  @ ${m.venue}`);

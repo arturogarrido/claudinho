@@ -1,0 +1,529 @@
+{
+  "generatedAt": "2026-06-24T00:24:18.084Z",
+  "stages": [
+    "R32",
+    "R16",
+    "QF",
+    "SF",
+    "3P",
+    "F"
+  ],
+  "matches": [
+    {
+      "matchId": "760486",
+      "stage": "R32",
+      "index": 1,
+      "home": {
+        "kind": "group",
+        "position": 2,
+        "group": "A"
+      },
+      "away": {
+        "kind": "group",
+        "position": 2,
+        "group": "B"
+      }
+    },
+    {
+      "matchId": "760487",
+      "stage": "R32",
+      "index": 2,
+      "home": {
+        "kind": "group",
+        "position": 1,
+        "group": "C"
+      },
+      "away": {
+        "kind": "group",
+        "position": 2,
+        "group": "F"
+      }
+    },
+    {
+      "matchId": "760489",
+      "stage": "R32",
+      "index": 3,
+      "home": {
+        "kind": "team",
+        "code": "GER"
+      },
+      "away": {
+        "kind": "third",
+        "groups": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "F"
+        ]
+      }
+    },
+    {
+      "matchId": "760488",
+      "stage": "R32",
+      "index": 4,
+      "home": {
+        "kind": "group",
+        "position": 1,
+        "group": "F"
+      },
+      "away": {
+        "kind": "group",
+        "position": 2,
+        "group": "C"
+      }
+    },
+    {
+      "matchId": "760490",
+      "stage": "R32",
+      "index": 5,
+      "home": {
+        "kind": "group",
+        "position": 2,
+        "group": "E"
+      },
+      "away": {
+        "kind": "group",
+        "position": 2,
+        "group": "I"
+      }
+    },
+    {
+      "matchId": "760492",
+      "stage": "R32",
+      "index": 6,
+      "home": {
+        "kind": "group",
+        "position": 1,
+        "group": "I"
+      },
+      "away": {
+        "kind": "third",
+        "groups": [
+          "C",
+          "D",
+          "F",
+          "G",
+          "H"
+        ]
+      }
+    },
+    {
+      "matchId": "760491",
+      "stage": "R32",
+      "index": 7,
+      "home": {
+        "kind": "team",
+        "code": "MEX"
+      },
+      "away": {
+        "kind": "third",
+        "groups": [
+          "C",
+          "E",
+          "F",
+          "H",
+          "I"
+        ]
+      }
+    },
+    {
+      "matchId": "760495",
+      "stage": "R32",
+      "index": 8,
+      "home": {
+        "kind": "group",
+        "position": 1,
+        "group": "L"
+      },
+      "away": {
+        "kind": "third",
+        "groups": [
+          "E",
+          "H",
+          "I",
+          "J",
+          "K"
+        ]
+      }
+    },
+    {
+      "matchId": "760493",
+      "stage": "R32",
+      "index": 9,
+      "home": {
+        "kind": "group",
+        "position": 1,
+        "group": "G"
+      },
+      "away": {
+        "kind": "third",
+        "groups": [
+          "A",
+          "E",
+          "H",
+          "I",
+          "J"
+        ]
+      }
+    },
+    {
+      "matchId": "760494",
+      "stage": "R32",
+      "index": 10,
+      "home": {
+        "kind": "team",
+        "code": "USA"
+      },
+      "away": {
+        "kind": "third",
+        "groups": [
+          "B",
+          "E",
+          "F",
+          "I",
+          "J"
+        ]
+      }
+    },
+    {
+      "matchId": "760497",
+      "stage": "R32",
+      "index": 11,
+      "home": {
+        "kind": "group",
+        "position": 1,
+        "group": "H"
+      },
+      "away": {
+        "kind": "group",
+        "position": 2,
+        "group": "J"
+      }
+    },
+    {
+      "matchId": "760496",
+      "stage": "R32",
+      "index": 12,
+      "home": {
+        "kind": "group",
+        "position": 2,
+        "group": "K"
+      },
+      "away": {
+        "kind": "group",
+        "position": 2,
+        "group": "L"
+      }
+    },
+    {
+      "matchId": "760498",
+      "stage": "R32",
+      "index": 13,
+      "home": {
+        "kind": "group",
+        "position": 1,
+        "group": "B"
+      },
+      "away": {
+        "kind": "third",
+        "groups": [
+          "E",
+          "F",
+          "G",
+          "I",
+          "J"
+        ]
+      }
+    },
+    {
+      "matchId": "760499",
+      "stage": "R32",
+      "index": 14,
+      "home": {
+        "kind": "group",
+        "position": 2,
+        "group": "D"
+      },
+      "away": {
+        "kind": "group",
+        "position": 2,
+        "group": "G"
+      }
+    },
+    {
+      "matchId": "760500",
+      "stage": "R32",
+      "index": 15,
+      "home": {
+        "kind": "team",
+        "code": "ARG"
+      },
+      "away": {
+        "kind": "group",
+        "position": 2,
+        "group": "H"
+      }
+    },
+    {
+      "matchId": "760501",
+      "stage": "R32",
+      "index": 16,
+      "home": {
+        "kind": "group",
+        "position": 1,
+        "group": "K"
+      },
+      "away": {
+        "kind": "third",
+        "groups": [
+          "D",
+          "E",
+          "I",
+          "J",
+          "L"
+        ]
+      }
+    },
+    {
+      "matchId": "760502",
+      "stage": "R16",
+      "index": 1,
+      "home": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 1
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 3
+      }
+    },
+    {
+      "matchId": "760503",
+      "stage": "R16",
+      "index": 2,
+      "home": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 2
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 5
+      }
+    },
+    {
+      "matchId": "760504",
+      "stage": "R16",
+      "index": 3,
+      "home": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 4
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 6
+      }
+    },
+    {
+      "matchId": "760505",
+      "stage": "R16",
+      "index": 4,
+      "home": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 7
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 8
+      }
+    },
+    {
+      "matchId": "760506",
+      "stage": "R16",
+      "index": 5,
+      "home": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 11
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 12
+      }
+    },
+    {
+      "matchId": "760507",
+      "stage": "R16",
+      "index": 6,
+      "home": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 9
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 10
+      }
+    },
+    {
+      "matchId": "760509",
+      "stage": "R16",
+      "index": 7,
+      "home": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 14
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 16
+      }
+    },
+    {
+      "matchId": "760508",
+      "stage": "R16",
+      "index": 8,
+      "home": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 13
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "R32",
+        "index": 15
+      }
+    },
+    {
+      "matchId": "760510",
+      "stage": "QF",
+      "index": 1,
+      "home": {
+        "kind": "winner",
+        "stage": "R16",
+        "index": 1
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "R16",
+        "index": 2
+      }
+    },
+    {
+      "matchId": "760511",
+      "stage": "QF",
+      "index": 2,
+      "home": {
+        "kind": "winner",
+        "stage": "R16",
+        "index": 5
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "R16",
+        "index": 6
+      }
+    },
+    {
+      "matchId": "760512",
+      "stage": "QF",
+      "index": 3,
+      "home": {
+        "kind": "winner",
+        "stage": "R16",
+        "index": 3
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "R16",
+        "index": 4
+      }
+    },
+    {
+      "matchId": "760513",
+      "stage": "QF",
+      "index": 4,
+      "home": {
+        "kind": "winner",
+        "stage": "R16",
+        "index": 7
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "R16",
+        "index": 8
+      }
+    },
+    {
+      "matchId": "760514",
+      "stage": "SF",
+      "index": 1,
+      "home": {
+        "kind": "winner",
+        "stage": "QF",
+        "index": 1
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "QF",
+        "index": 2
+      }
+    },
+    {
+      "matchId": "760515",
+      "stage": "SF",
+      "index": 2,
+      "home": {
+        "kind": "winner",
+        "stage": "QF",
+        "index": 3
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "QF",
+        "index": 4
+      }
+    },
+    {
+      "matchId": "760516",
+      "stage": "3P",
+      "index": 1,
+      "home": {
+        "kind": "loser",
+        "stage": "SF",
+        "index": 1
+      },
+      "away": {
+        "kind": "loser",
+        "stage": "SF",
+        "index": 2
+      }
+    },
+    {
+      "matchId": "760517",
+      "stage": "F",
+      "index": 1,
+      "home": {
+        "kind": "winner",
+        "stage": "SF",
+        "index": 1
+      },
+      "away": {
+        "kind": "winner",
+        "stage": "SF",
+        "index": 2
+      }
+    }
+  ]
+}

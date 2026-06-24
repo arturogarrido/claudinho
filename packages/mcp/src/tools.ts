@@ -10,6 +10,9 @@ import {
   formatDate,
   formatShareSnippet,
   formatShareTable,
+  formatShareBracket,
+  formatBracketList,
+  getBracket,
   getLiveMatches,
   getMarketSignal,
   getMarketSignals,
@@ -35,6 +38,7 @@ import {
   resolveMarketSource,
   type ShareSnippetInput,
   type ShareSnippetOptions,
+  type Stage,
 } from '@claudinho/core';
 import { DISCLAIMER, matchLine, matchList, standingsTable } from './format';
 
@@ -313,6 +317,35 @@ export async function toolGetStandings(
   };
 }
 
+const BRACKET_STAGES = new Set(['R32', 'R16', 'QF', 'SF', '3P', 'F']);
+
+/** bracket: knockout tree with hybrid slot resolution. */
+export async function toolGetBracket(
+  args: { stage?: string } & CommonOpts,
+): Promise<ToolResult> {
+  const filter = args.stage?.toUpperCase();
+  if (filter && !BRACKET_STAGES.has(filter)) {
+    return {
+      text: withDisclaimer(`Unknown stage "${args.stage}". Use R32, R16, QF, SF, 3P, or F.`),
+      data: { view: null },
+    };
+  }
+  const { view, degraded, standingsDegraded, source } = await getBracket(
+    resolveAdapter(args),
+    filter ? { stage: filter as Stage } : {},
+  );
+  let text = formatBracketList(view);
+  if (degraded) {
+    text += '\n\n(Live scores unavailable — bracket structure only, no confirmed advancement.)';
+  } else if (standingsDegraded) {
+    text += '\n\n(Live standings unavailable — group slots stay TBD until groups finish.)';
+  }
+  return {
+    text: withDisclaimer(text, source),
+    data: { degraded, standingsDegraded, source: source ?? null, view },
+  };
+}
+
 /**
  * Text body for the `standings://{group}` resource. Shares the `get_standings`
  * path so it carries the SAME provider attribution + disclaimer — a resource that
@@ -463,6 +496,8 @@ interface ShareArgs extends CommonOpts {
   date?: string;
   live?: boolean;
   group?: string;
+  bracket?: boolean;
+  knockoutStage?: string;
   style?: 'social' | 'compact';
   includeHashtag?: boolean;
   includeInstallLine?: boolean;
@@ -578,6 +613,45 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         informationalOnly: true,
         snippet,
         tables: tables.map((tb) => ({ group: tb.group, standings: tb.rows })),
+      },
+    };
+  }
+
+  // knockout bracket card (facts only; no market lines).
+  if (args.bracket) {
+    const stageFilter = args.knockoutStage?.toUpperCase();
+    if (stageFilter && !BRACKET_STAGES.has(stageFilter)) {
+      return {
+        text: withDisclaimer(`Unknown stage "${args.knockoutStage}". Use R32, R16, QF, SF, 3P, or F.`),
+        data: { kind: 'bracket', view: null },
+      };
+    }
+    const { view, degraded, source } = await getBracket(
+      resolveAdapter(args),
+      stageFilter ? { stage: stageFilter as Stage } : {},
+    );
+    const snippet = formatShareBracket(
+      {
+        view,
+        source: degraded ? undefined : source,
+        installLine: stageFilter
+          ? `npx @claudinho/cli bracket ${stageFilter}`
+          : 'npx @claudinho/cli bracket',
+        emptyNote: 'No bracket matches available.',
+      },
+      options,
+    );
+    return {
+      text: snippet,
+      data: {
+        kind: 'bracket',
+        target: 'bracket',
+        ...(stageFilter ? { stage: stageFilter } : {}),
+        source: degraded ? null : (source ?? null),
+        degraded,
+        informationalOnly: true,
+        snippet,
+        view,
       },
     };
   }

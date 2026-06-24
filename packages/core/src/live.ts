@@ -15,7 +15,10 @@ import {
   nextFixtureForTeam,
 } from './schedule';
 import { rosterAtZero, type GroupStandings } from './standings';
-import type { Match } from './types';
+import type { Match, Stage } from './types';
+import { buildBracketView } from './bracket/resolve';
+import { loadBracketTopology } from './bracket/topology';
+import type { BracketResult, BracketView } from './bracket/types';
 
 /**
  * The ESPN competition slug to fetch live state from. Defaults to the 2026
@@ -139,6 +142,55 @@ export async function getStandings(
     .map((g) => ({ group: g, rows: rosterAtZero(fixturesByGroup(g)) }))
     .filter((t) => t.rows.length > 0);
   return { tables, degraded: true };
+}
+
+/** Knockout-phase UTC window for a single live overlay fetch (R32 through the final). */
+const KNOCKOUT_WINDOW_START = '20260628';
+const KNOCKOUT_WINDOW_END = '20260719';
+
+/**
+ * Knockout bracket with hybrid slot resolution: confirmed FT winners/losers from
+ * the live overlay; group slots project only when the group is fully played.
+ */
+export async function getBracket(
+  adapter: ProviderAdapter,
+  opts: { stage?: Stage } = {},
+): Promise<BracketResult> {
+  const topology = loadBracketTopology();
+  const base = allFixtures().filter((m) => m.stage !== 'GROUP' && m.stage !== 'FRIENDLY');
+
+  let matches = base;
+  let degraded = true;
+  let source: string | undefined;
+
+  try {
+    const live = adapter.fetchWindow
+      ? await adapter.fetchWindow(KNOCKOUT_WINDOW_START, KNOCKOUT_WINDOW_END)
+      : [];
+    matches = mergeLive(base, live);
+    degraded = false;
+    source = adapter.name;
+  } catch {
+    // static skeleton only
+  }
+
+  const standings = await getStandings(adapter);
+  const view = buildBracketView(
+    topology,
+    matches,
+    standings.tables,
+    standings.degraded,
+    degraded,
+    opts.stage,
+  );
+  if (source) view.source = source;
+
+  return {
+    view,
+    degraded,
+    standingsDegraded: standings.degraded,
+    source,
+  };
 }
 
 /** Shift a "YYYY-MM-DD" date by whole UTC days, returning "YYYY-MM-DD". */
