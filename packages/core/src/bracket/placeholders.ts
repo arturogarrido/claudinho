@@ -3,6 +3,18 @@ import type { SlotRef } from './types';
 
 const PLACEHOLDER_FLAG = '🏳️';
 
+/**
+ * ESPN labels some R32 slots with a nation name (pre-draw host/path assignment).
+ * Topology keys them as group-winner refs so they resolve from standings when the
+ * group finishes — not frozen seed labels.
+ */
+export const NATION_AS_GROUP_WINNER: Readonly<Record<string, string>> = {
+  Mexico: 'A',
+  Germany: 'E',
+  'United States': 'D',
+  Argentina: 'J',
+};
+
 function winnerName(stage: Stage, index: number): string {
   switch (stage) {
     case 'R32':

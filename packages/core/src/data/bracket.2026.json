@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-24T01:20:06.749Z",
+  "generatedAt": "2026-06-24T03:57:24.994Z",
   "stages": [
     "R32",
     "R16",
@@ -59,9 +59,9 @@
       "stage": "R32",
       "index": 4,
       "home": {
-        "kind": "seed",
-        "label": "Germany",
-        "code": "TBD"
+        "kind": "group",
+        "position": 1,
+        "group": "E"
       },
       "away": {
         "kind": "third",
@@ -94,9 +94,9 @@
       "stage": "R32",
       "index": 6,
       "home": {
-        "kind": "seed",
-        "label": "Mexico",
-        "code": "TBD"
+        "kind": "group",
+        "position": 1,
+        "group": "A"
       },
       "away": {
         "kind": "third",
@@ -154,9 +154,9 @@
       "stage": "R32",
       "index": 9,
       "home": {
-        "kind": "seed",
-        "label": "United States",
-        "code": "TBD"
+        "kind": "group",
+        "position": 1,
+        "group": "D"
       },
       "away": {
         "kind": "third",
@@ -259,9 +259,9 @@
       "stage": "R32",
       "index": 15,
       "home": {
-        "kind": "seed",
-        "label": "Argentina",
-        "code": "TBD"
+        "kind": "group",
+        "position": 1,
+        "group": "J"
       },
       "away": {
         "kind": "group",
