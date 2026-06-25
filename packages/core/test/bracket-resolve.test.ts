@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBracketView } from '../src/bracket/resolve';
+import { buildBracketView, isGroupStandingsComplete } from '../src/bracket/resolve';
 import { loadBracketTopology } from '../src/bracket/topology';
 import { allFixtures } from '../src/schedule';
 import type { Match } from '../src/types';
@@ -101,7 +101,7 @@ describe('buildBracketView', () => {
     });
   });
 
-  it('projects a host group-winner slot when the group is fully played', () => {
+  it('confirms a host group-winner slot when the group is fully played', () => {
     const tables: GroupStandings[] = [
       {
         group: 'A',
@@ -119,10 +119,10 @@ describe('buildBracketView', () => {
       ?.matches.find((m) => m.matchId === '760491')?.home;
     expect(mexicoSlot?.code).toBe('MEX');
     expect(mexicoSlot?.flag).toBe('🇲🇽');
-    expect(mexicoSlot?.status).toBe('projected');
+    expect(mexicoSlot?.status).toBe('confirmed');
   });
 
-  it('projects a group slot from standings when the group is fully played', () => {
+  it('confirms group winner and runner-up when the group is fully played', () => {
     const tables: GroupStandings[] = [
       {
         group: 'C',
@@ -138,7 +138,47 @@ describe('buildBracketView', () => {
     const r32 = view.stages.find((s) => s.stage === 'R32')!;
     const groupWinner = r32.matches.find((m) => m.index === 2)?.home;
     expect(groupWinner?.code).toBe('GER');
-    expect(groupWinner?.status).toBe('projected');
+    expect(groupWinner?.status).toBe('confirmed');
+  });
+
+  it('confirms group runner-up when the group is fully played', () => {
+    const tables: GroupStandings[] = [
+      {
+        group: 'A',
+        rows: [
+          { team: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' }, played: 3, won: 3, drawn: 0, lost: 0, goalsFor: 5, goalsAgainst: 1, goalDiff: 4, points: 9 },
+          { team: { code: 'RSA', name: 'South Africa', flag: '🇿🇦' }, played: 3, won: 1, drawn: 1, lost: 1, goalsFor: 2, goalsAgainst: 3, goalDiff: -1, points: 4 },
+          { team: { code: 'KOR', name: 'South Korea', flag: '🇰🇷' }, played: 3, won: 1, drawn: 0, lost: 2, goalsFor: 2, goalsAgainst: 4, goalDiff: -2, points: 3 },
+          { team: { code: 'CZE', name: 'Czechia', flag: '🇨🇿' }, played: 3, won: 0, drawn: 1, lost: 2, goalsFor: 2, goalsAgainst: 3, goalDiff: -1, points: 1 },
+        ],
+      },
+    ];
+    const view = buildBracketView(topology, baseKo, tables, false, false);
+    const r32 = view.stages.find((s) => s.stage === 'R32')!;
+    const secondPlace = r32.matches.find((m) => m.index === 1)?.home;
+    expect(secondPlace?.code).toBe('RSA');
+    expect(secondPlace?.status).toBe('confirmed');
+  });
+
+  it('confirms group slots when a non-4-team group finishes round-robin', () => {
+    const rows = Array.from({ length: 8 }, (_, i) => ({
+      team: { code: `T${i}`, name: `Team ${i}`, flag: '🏳️' },
+      played: 7,
+      won: i === 0 ? 7 : 0,
+      drawn: 0,
+      lost: i === 0 ? 0 : 7,
+      goalsFor: i === 0 ? 14 : 0,
+      goalsAgainst: i === 0 ? 0 : 2,
+      goalDiff: i === 0 ? 14 : -2,
+      points: i === 0 ? 21 : 0,
+    }));
+    const tables: GroupStandings[] = [{ group: 'Z', rows }];
+    expect(isGroupStandingsComplete(tables[0])).toBe(true);
+    const incomplete: GroupStandings = {
+      group: 'Z',
+      rows: rows.map((r, i) => ({ ...r, played: i === 0 ? 7 : 6 })),
+    };
+    expect(isGroupStandingsComplete(incomplete)).toBe(false);
   });
 
   it('projects the current group leader mid-tournament from live standings', () => {
