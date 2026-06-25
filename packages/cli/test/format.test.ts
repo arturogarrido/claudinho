@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { matchFlavor, type Match } from '@claudinho/core';
-import { matchLine, painterFor } from '../src/format';
+import { dataSource, matchLine, painterFor } from '../src/format';
 import { makeT } from '../src/i18n';
 import type { CliConfig } from '../src/config';
 
@@ -51,5 +51,17 @@ describe('matchLine — flavor wiring', () => {
     expect(line).toContain('Mexico');
     expect(line).toContain('South Africa');
     expect(line).not.toMatch(/\uD83C[\uDDE6-\uDDFF]/);
+  });
+});
+
+describe('dataSource — localized live-data attribution', () => {
+  const c = painterFor(cfg()); // color: false → plain text
+  it('localizes the live-data prefix via core i18n', () => {
+    expect(dataSource('espn', 'es', c)).toBe('Datos en vivo: ESPN');
+    expect(dataSource('espn', 'pt', c)).toBe('Dados ao vivo: ESPN');
+    expect(dataSource('espn', 'en', c)).toBe('Live data: ESPN');
+  });
+  it('returns an empty string when there is no live source', () => {
+    expect(dataSource(undefined, 'es', c)).toBe('');
   });
 });

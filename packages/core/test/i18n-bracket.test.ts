@@ -41,4 +41,18 @@ describe('bracket i18n', () => {
     expect(text).toContain('Scores en direct indisponibles');
     expect(text).toContain('Seizièmes de finale');
   });
+
+  it('uses period-free Spanish ordinals (3º) and localizes the live-data attribution', () => {
+    // ES drops the period (maintainer preference); pt keeps "3.º" (correct Portuguese), fr "3e".
+    expect(t('es', 'bracket.slot.third', { groups: 'C/E/F' })).toBe('3º (C/E/F)');
+    expect(t('es', 'bracket.slot.third', { groups: 'C/E/F' })).not.toContain('3.º');
+    expect(t('es', 'bracket.slot.groupSecond', { group: 'A' })).toBe('2º del grupo A');
+    expect(t('pt', 'bracket.slot.third', { groups: 'C/E/F' })).toBe('3.º (C/E/F)');
+    expect(t('fr', 'bracket.slot.third', { groups: 'C/E/F' })).toBe('3e (C/E/F)');
+    // The "Live data:" attribution line is localized (was English-only before).
+    expect(t('es', 'live.data', { source: 'ESPN' })).toBe('Datos en vivo: ESPN');
+    expect(t('pt', 'live.data', { source: 'ESPN' })).toBe('Dados ao vivo: ESPN');
+    expect(t('fr', 'live.data', { source: 'ESPN' })).toBe('Données en direct : ESPN');
+    expect(t('en', 'live.data', { source: 'ESPN' })).toBe('Live data: ESPN');
+  });
 });
