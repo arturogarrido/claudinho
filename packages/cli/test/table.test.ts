@@ -96,6 +96,14 @@ describe('cmdTable --json (authoritative live standings)', () => {
   });
 });
 
+describe('cmdTable — localized live-data attribution (text)', () => {
+  it('localizes the attribution under --lang es (wires cfg.lang → dataSource)', async () => {
+    await cmdTable('A', { cfg: cfg({ lang: 'es', json: false }), t: makeT('es'), adapter: liveAdapter });
+    expect(text()).toContain('Datos en vivo: ESPN');
+    expect(text()).not.toContain('Live data:');
+  });
+});
+
 describe('cmdTable — fail closed', () => {
   it('JSON: degrades with null source when the provider has no fetchStandings', async () => {
     await cmdTable('A', ctx(bareAdapter));
