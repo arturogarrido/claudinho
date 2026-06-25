@@ -36,10 +36,21 @@ function hasGroupStarted(group: string, tables: GroupStandings[]): boolean {
   return table.rows.some((r) => r.played > 0);
 }
 
+/** Round-robin group stage: each team plays every other team once. */
+function matchesPerTeamInGroup(teamCount: number): number {
+  return Math.max(0, teamCount - 1);
+}
+
+/** True when every team in the table has played a full round-robin. */
+export function isGroupStandingsComplete(table: GroupStandings | undefined): boolean {
+  const n = table?.rows.length ?? 0;
+  if (n < 2) return false;
+  const required = matchesPerTeamInGroup(n);
+  return table!.rows.every((r) => r.played >= required);
+}
+
 function isGroupComplete(group: string, tables: GroupStandings[]): boolean {
-  const table = tables.find((t) => t.group === group);
-  if (!table?.rows.length || table.rows.length !== 4) return false;
-  return table.rows.every((r) => r.played >= 3);
+  return isGroupStandingsComplete(tables.find((t) => t.group === group));
 }
 
 function resolveWinner(match: Match): Team | undefined {

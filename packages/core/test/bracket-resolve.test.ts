@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBracketView } from '../src/bracket/resolve';
+import { buildBracketView, isGroupStandingsComplete } from '../src/bracket/resolve';
 import { loadBracketTopology } from '../src/bracket/topology';
 import { allFixtures } from '../src/schedule';
 import type { Match } from '../src/types';
@@ -158,6 +158,27 @@ describe('buildBracketView', () => {
     const secondPlace = r32.matches.find((m) => m.index === 1)?.home;
     expect(secondPlace?.code).toBe('RSA');
     expect(secondPlace?.status).toBe('confirmed');
+  });
+
+  it('confirms group slots when a non-4-team group finishes round-robin', () => {
+    const rows = Array.from({ length: 8 }, (_, i) => ({
+      team: { code: `T${i}`, name: `Team ${i}`, flag: '🏳️' },
+      played: 7,
+      won: i === 0 ? 7 : 0,
+      drawn: 0,
+      lost: i === 0 ? 0 : 7,
+      goalsFor: i === 0 ? 14 : 0,
+      goalsAgainst: i === 0 ? 0 : 2,
+      goalDiff: i === 0 ? 14 : -2,
+      points: i === 0 ? 21 : 0,
+    }));
+    const tables: GroupStandings[] = [{ group: 'Z', rows }];
+    expect(isGroupStandingsComplete(tables[0])).toBe(true);
+    const incomplete: GroupStandings = {
+      group: 'Z',
+      rows: rows.map((r, i) => ({ ...r, played: i === 0 ? 7 : 6 })),
+    };
+    expect(isGroupStandingsComplete(incomplete)).toBe(false);
   });
 
   it('projects the current group leader mid-tournament from live standings', () => {

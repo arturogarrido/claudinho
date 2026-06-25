@@ -20,7 +20,7 @@ Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r
 
 - Advance winners from **score OR `winnerCode`** (ESPN `competitor.winner` for penalties).
 - Always test FT draw + `winnerCode` — routine in knockouts.
-- Group slots project from live standings once **≥1 match played** (`hasGroupStarted`); **`confirmed`** when all four teams have played 3 (`isGroupComplete`); **`(proj.)`** only mid-group. TBD at 0 games or when standings are degraded.
+- Group slots project from live standings once **≥1 match played** (`hasGroupStarted`); **`confirmed`** when every team has played a full round-robin (`played >= n - 1` for `n` teams); **`(proj.)`** only mid-group. TBD at 0 games or when standings are degraded.
 
 ## Topology indexing
 
@@ -48,7 +48,7 @@ After `pnpm -r build`, run **`pnpm release:qa`** (`scripts/release-qa.sh`). Eyeb
 | Bundle-only bracket | No real flags in R32+ slots |
 | Group at 0 games played | Slots stay `tbd`, no `(proj.)` |
 | Group at 2/3 played, standings live | Leaders show flags + `(proj.)` |
-| Group fully played (3/3 each) | Winner + runner-up `confirmed`, no `(proj.)` |
+| Group fully played (round-robin complete) | Winner + runner-up `confirmed`, no `(proj.)` |
 | `toolGetBracket` `tz: UTC` vs `America/Mexico_City` | Calendar date/time differs on cross-midnight kickoff |
 | Knockout kickoffs span >1 week | Output includes month + day (not weekday-only) |
 | `formatShareBracket` social + compact | Same date format as CLI list |
