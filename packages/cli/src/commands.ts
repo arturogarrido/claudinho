@@ -25,7 +25,6 @@ import {
   marketRelevant,
   matchFlavor,
   matchLocation,
-  nextFixtureForTeam,
   resolveCompetition,
   resolveMarketSource,
   scoreline,
@@ -50,6 +49,7 @@ import {
 import {
   getLiveMatches,
   getMatchesForDate,
+  getNextFixtureForTeam,
   getStandings,
   getBracket,
   makeAdapter,
@@ -291,13 +291,21 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
 }
 
 /** `claudinho next [team]` (team defaults to CLAUDINHO_TEAM) */
-export async function cmdNext(team: string | undefined, { cfg, t, now }: Ctx): Promise<void> {
+export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void> {
+  const { cfg, t, now } = ctx;
   precheck(cfg, t);
   const code = resolveTeamArg(team, 'Usage: claudinho next <team> (or set CLAUDINHO_TEAM)');
-  const fixture = nextFixtureForTeam(code, { from: now ?? new Date() });
+  // Live-resolved: the bundled knockout slots are resultless placeholders, so a
+  // static lookup goes blind once a team's group games pass — overlay the live
+  // knockout window so a confirmed R32+ tie (e.g. MEX vs ECU) surfaces here too.
+  const { fixture, degraded, source } = await getNextFixtureForTeam(
+    adapterFor(ctx),
+    code,
+    now ?? new Date(),
+  );
 
   if (cfg.json) {
-    emitJson({ team: code, fixture: fixture ?? null });
+    emitJson({ team: code, fixture: fixture ?? null, degraded, source: source ?? null });
     return;
   }
 
@@ -305,7 +313,9 @@ export async function cmdNext(team: string | undefined, { cfg, t, now }: Ctx): P
   const flags = flagsEnabled();
   out();
   if (!fixture) {
-    out(c.dim('  ' + t('next.none', { team: code })));
+    // Fail-closed honesty: a feed outage must read as "couldn't reach the
+    // provider", never as "this team has no upcoming fixture" (= eliminated).
+    out(c.dim('  ' + (degraded ? t('live.degraded') : t('next.none', { team: code }))));
     out();
     out(disclaimer(t, c));
     return;
@@ -322,6 +332,10 @@ export async function cmdNext(team: string | undefined, { cfg, t, now }: Ctx): P
       ),
   );
   out();
+  // Attribute the provider when the live overlay resolved the fixture (a
+  // knockout tie); a static group fixture carries no source.
+  const src = dataSource(source, cfg.lang, c);
+  if (src) out(src);
   out(disclaimer(t, c));
 }
 
@@ -1108,7 +1122,13 @@ export async function cmdShare(
   if (target === 'next') {
     precheck(cfg, t);
     const code = resolveTeamArg(team, 'Usage: claudinho share next <team> (or set CLAUDINHO_TEAM)');
-    const fixture = nextFixtureForTeam(code, { from: ctx.now ?? new Date() });
+    // Live-resolved (see cmdNext): overlay the knockout window so a confirmed
+    // R32+ tie pastes here too, not just group games.
+    const { fixture, degraded, source } = await getNextFixtureForTeam(
+      adapterFor(ctx),
+      code,
+      ctx.now ?? new Date(),
+    );
     const matches = fixture ? [fixture] : [];
     const signals = await reliableShareSignals(ctx, matches);
     const teamName = fixture
@@ -1126,7 +1146,14 @@ export async function cmdShare(
           title: `Next up for ${teamName}`,
           matches,
           marketSignals: signals,
-          emptyNote: `No upcoming fixture found for ${code}.`,
+          // Attribute the provider when the overlay resolved the tie (knockout);
+          // undefined for a static group fixture — parity with CLI `next`.
+          source,
+          degraded,
+          // Fail-closed: an outage must never paste as "no fixture" (eliminated).
+          emptyNote: degraded
+            ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
+            : `No upcoming fixture found for ${code}.`,
           installLine: `npx @claudinho/cli next ${code}`,
           tz: cfg.tz,
           locale: cfg.lang,

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { getLiveMatches, getMatchesForDate, type Match, type ProviderAdapter } from '../src/index';
+import {
+  getLiveMatches,
+  getMatchesForDate,
+  getNextFixtureForTeam,
+  type Match,
+  type ProviderAdapter,
+} from '../src/index';
 
 function fx(id: string, kickoff: string, over: Partial<Match> = {}): Match {
   return {
@@ -168,5 +174,81 @@ describe('getLiveMatches — windowed in-play detection (P1)', () => {
     const { matches, degraded } = await getLiveMatches(adapter, new Date('2026-06-17T05:00:00Z'));
     expect(degraded).toBe(true);
     expect(matches).toEqual([]);
+  });
+});
+
+describe('getNextFixtureForTeam — live-resolved across the knockout phase', () => {
+  // After the group stage the bundled knockout slots are placeholders (codes
+  // like 2A/2B, flag 🏳️), so a static lookup is blind. The live overlay carries
+  // the real pairing once ESPN assigns it.
+  const KNOCKOUT_NOW = new Date('2026-06-28T12:00:00Z'); // R32 day, group stage done
+
+  it('resolves a confirmed Round-of-32 tie from the live overlay (the bug)', async () => {
+    // Overlay the bundled R32 id 760486 (a 2A-vs-2B placeholder) with the
+    // confirmed Mexico vs Ecuador pairing ESPN has filed.
+    const r32 = fx('760486', '2026-06-30T18:00Z', {
+      stage: 'R32',
+      group: undefined,
+      home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+      away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
+    });
+    const { adapter, calls } = windowAdapter([r32]);
+
+    const { fixture, degraded, source } = await getNextFixtureForTeam(adapter, 'MEX', KNOCKOUT_NOW);
+
+    expect(degraded).toBe(false);
+    expect(calls).toEqual([['20260628', '20260719']]); // the knockout window
+    expect(fixture?.id).toBe('760486');
+    expect(fixture?.away.code).toBe('ECU');
+    // Live overlay served this fixture → attribute the provider.
+    expect(source).toBe('win');
+  });
+
+  it('case-insensitive team code', async () => {
+    const r32 = fx('760486', '2026-06-30T18:00Z', {
+      stage: 'R32',
+      group: undefined,
+      home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+      away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
+    });
+    const { adapter } = windowAdapter([r32]);
+    const { fixture } = await getNextFixtureForTeam(adapter, 'mex', KNOCKOUT_NOW);
+    expect(fixture?.id).toBe('760486');
+  });
+
+  it('mid-group: the next GROUP fixture still wins and is NOT attributed to the overlay', async () => {
+    // Empty knockout window; the team's next group game comes from the static
+    // bundle, so it must not carry a live-provider attribution.
+    const { adapter } = windowAdapter([]);
+    const { fixture, degraded, source } = await getNextFixtureForTeam(
+      adapter,
+      'MEX',
+      new Date('2026-06-13T12:00:00Z'),
+    );
+    expect(degraded).toBe(false);
+    expect(fixture?.stage).toBe('GROUP');
+    expect(source).toBeUndefined();
+  });
+
+  it('fails closed on a provider error: degraded, no invented knockout pairing', async () => {
+    const adapter: ProviderAdapter = {
+      name: 'boom',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate() {
+        return [];
+      },
+      async fetchLive() {
+        return [];
+      },
+      async fetchWindow() {
+        throw new Error('down');
+      },
+    };
+    const { fixture, degraded, source } = await getNextFixtureForTeam(adapter, 'MEX', KNOCKOUT_NOW);
+    expect(degraded).toBe(true);
+    // The static skeleton has only a placeholder R32 slot for MEX, never a real
+    // pairing — so no fixture, rather than a confidently-wrong one.
+    expect(fixture).toBeUndefined();
+    expect(source).toBeUndefined();
   });
 });

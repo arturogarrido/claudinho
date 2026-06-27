@@ -151,17 +151,64 @@ describe('toolGetToday', () => {
   });
 });
 
-describe('toolGetNextFixture (pure static)', () => {
-  it('returns the next fixture for a team code', async () => {
-    const r = await toolGetNextFixture({ team: 'bra', now: TEST_NOW });
+describe('toolGetNextFixture (live-resolved knockout)', () => {
+  // A confirmed R32 tie ESPN has filed over the bundled placeholder slot.
+  function r32MexEcu(): Match {
+    return {
+      id: '760486',
+      stage: 'R32',
+      kickoff: '2026-06-30T18:00Z',
+      venue: 'SoFi Stadium',
+      home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+      away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
+      status: 'SCHEDULED',
+      updatedAt: '2026-06-28T00:00Z',
+    };
+  }
+
+  it('returns the next group fixture mid-group (from the static bundle)', async () => {
+    const r = await toolGetNextFixture({
+      team: 'bra',
+      now: TEST_NOW, // 2026-06-13 — group stage
+      adapter: fakeAdapter({ window: [] }),
+    });
     const data = r.data as { team: string; fixture: Match | null };
     expect(data.team).toBe('BRA');
     expect(data.fixture).toBeTruthy();
     expect(r.text).toContain('Next up for BRA');
   });
 
+  it('resolves a confirmed knockout tie from the live overlay (the bug)', async () => {
+    const r = await toolGetNextFixture({
+      team: 'MEX',
+      now: new Date('2026-06-28T12:00:00Z'), // group stage done; R32 day
+      adapter: fakeAdapter({ window: [r32MexEcu()] }),
+    });
+    const data = r.data as { fixture: Match | null; degraded: boolean };
+    expect(data.fixture?.away.code).toBe('ECU');
+    expect(data.degraded).toBe(false);
+    expect(r.text).toContain('Next up for MEX');
+    expect(r.text).toContain('Ecuador');
+  });
+
+  it('fails closed on a feed outage (degraded note, no invented pairing)', async () => {
+    const r = await toolGetNextFixture({
+      team: 'MEX',
+      now: new Date('2026-06-28T12:00:00Z'),
+      adapter: fakeAdapter({ throws: true }),
+    });
+    const data = r.data as { fixture: Match | null; degraded: boolean };
+    expect(data.degraded).toBe(true);
+    expect(data.fixture).toBeNull(); // only a placeholder slot statically → null
+    expect(r.text).toContain("Couldn't reach the data provider");
+  });
+
   it('handles an unknown team gracefully', async () => {
-    const r = await toolGetNextFixture({ team: 'ZZZ' });
+    const r = await toolGetNextFixture({
+      team: 'ZZZ',
+      now: TEST_NOW,
+      adapter: fakeAdapter({ window: [] }),
+    });
     expect((r.data as { fixture: null }).fixture).toBeNull();
   });
 });

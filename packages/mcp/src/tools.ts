@@ -18,6 +18,7 @@ import {
   getMarketSignals,
   getMatchById,
   getMatchesForDate,
+  getNextFixtureForTeam,
   getStandings,
   hasSaneDistribution,
   isReliableMarketSignal,
@@ -32,7 +33,6 @@ import {
   type Match,
   type MarketProvider,
   type MarketSignal,
-  nextFixtureForTeam,
   type ProviderAdapter,
   resolveCompetition,
   resolveMarketSource,
@@ -371,25 +371,34 @@ export async function standingsResourceText(
   return withDisclaimer(text, source);
 }
 
-/** next_fixture: a team's next match (static schedule). */
+/** next_fixture: a team's next match, live-resolved across the knockout phase. */
 export async function toolGetNextFixture(
   args: { team: string } & CommonOpts,
 ): Promise<ToolResult> {
   const code = args.team.toUpperCase();
-  // Thread the caller's clock so "next fixture" is deterministic in tests and
-  // doesn't silently resolve against the real wall-clock (which goes null once a
-  // team's last *known* fixture passes — knockouts are placeholders).
-  const fixture = nextFixtureForTeam(code, { from: args.now ?? new Date() });
+  // Overlay the live knockout window so a confirmed R32+ tie resolves: the
+  // bundled knockout slots are placeholders, so a static lookup goes blind once
+  // a team's group games pass (it would answer "no upcoming fixture" even after
+  // ESPN confirmed the tie). Fails closed to the static result on a feed outage.
+  // The caller's clock is still threaded for deterministic tests.
+  const { fixture, degraded, source } = await getNextFixtureForTeam(
+    resolveAdapter(args),
+    code,
+    args.now ?? new Date(),
+  );
   if (!fixture) {
+    const msg = degraded
+      ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
+      : `No upcoming fixture found for ${code}.`;
     return {
-      text: withDisclaimer(`No upcoming fixture found for ${code}.`),
-      data: { team: code, fixture: null },
+      text: withDisclaimer(msg, undefined, args.lang),
+      data: { team: code, fixture: null, degraded },
     };
   }
   const opts = fmtOpts(args);
   return {
-    text: withDisclaimer(`Next up for ${code}:\n${matchLine(fixture, opts)}`),
-    data: { team: code, fixture },
+    text: withDisclaimer(`Next up for ${code}:\n${matchLine(fixture, opts)}`, source, args.lang),
+    data: { team: code, fixture, degraded },
   };
 }
 
@@ -692,10 +701,16 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     );
   }
 
-  // a team's next fixture (static schedule + reliable market read).
+  // a team's next fixture, live-resolved across the knockout phase (+ market read).
   if (args.team) {
     const code = args.team.toUpperCase();
-    const fixture = nextFixtureForTeam(code, { from: args.now ?? new Date() });
+    // Overlay the live knockout window so a confirmed R32+ tie pastes too (see
+    // getNextFixtureForTeam / toolGetNextFixture); fail closed on an outage.
+    const { fixture, degraded, source } = await getNextFixtureForTeam(
+      resolveAdapter(args),
+      code,
+      args.now ?? new Date(),
+    );
     const matches = fixture ? [fixture] : [];
     const teamName = fixture
       ? fixture.home.code === code
@@ -710,7 +725,13 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         title: `Next up for ${teamName}`,
         matches,
         marketSignals: await signalsFor(matches),
-        emptyNote: `No upcoming fixture found for ${code}.`,
+        // Attribute the provider only when the overlay resolved the tie; parity
+        // with get_next_fixture (a static group fixture carries no source).
+        source,
+        degraded,
+        emptyNote: degraded
+          ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
+          : `No upcoming fixture found for ${code}.`,
         installLine: `npx @claudinho/cli next ${code}`,
         tz: args.tz,
         locale: args.lang,

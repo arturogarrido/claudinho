@@ -110,15 +110,64 @@ describe('toolGetShareSnippet', () => {
 
   it("resolves a team's next fixture", async () => {
     const team = allFixtures()[0]!.home.code;
-    const r = await toolGetShareSnippet({ team, marketProvider: synth(), adapter: fakeAdapter });
+    // Pin a group-stage clock so the static path deterministically finds a real
+    // fixture (the title is always "Next up for …", so a real now could rot into
+    // exercising the empty path while still passing — see rule 6 / rule 1).
+    const r = await toolGetShareSnippet({
+      team,
+      now: TEST_NOW,
+      marketProvider: synth(),
+      adapter: fakeAdapter,
+    });
     const data = r.data as ShareData;
     expect(data.kind).toBe('next');
     expect(data.team).toBe(team);
+    expect(data.matches.length).toBe(1); // a real fixture, not the empty card
     expect(data.informationalOnly).toBe(true);
     expect(r.text).toContain(`Next up for`);
     expect(r.text).toContain(HASHTAG);
     expect(r.text).toContain(DISCLAIMER);
     expect(r.text).toContain(`Try it: npx @claudinho/cli next ${team}`);
+  });
+
+  it("resolves a team's confirmed knockout tie from the live overlay", async () => {
+    // Overlay the bundled R32 placeholder (id 760486) with Mexico vs Ecuador.
+    const r32: Match = {
+      id: '760486',
+      stage: 'R32',
+      kickoff: '2026-06-30T18:00Z',
+      venue: 'SoFi Stadium',
+      home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+      away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
+      status: 'SCHEDULED',
+      updatedAt: '2026-06-28T00:00Z',
+    };
+    const koAdapter: ProviderAdapter = {
+      name: 'espn',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate() {
+        return [];
+      },
+      async fetchLive() {
+        return [];
+      },
+      async fetchWindow() {
+        return [r32];
+      },
+    };
+    const r = await toolGetShareSnippet({
+      team: 'MEX',
+      now: new Date('2026-06-28T12:00:00Z'), // group stage done
+      marketProvider: synth(),
+      adapter: koAdapter,
+    });
+    const data = r.data as ShareData & { source: string | null };
+    expect(data.kind).toBe('next');
+    expect(data.matches[0]?.away.code).toBe('ECU');
+    expect(r.text).toContain('Ecuador');
+    // Overlay resolved the tie ⇒ attribute the provider (parity with get_next_fixture).
+    expect(data.source).toBe('espn');
+    expect(r.text).toContain('Live data: ESPN');
   });
 
   it('renders a clear empty state for an unknown team (not a void card)', async () => {
@@ -307,6 +356,36 @@ describe('toolGetShareSnippet — degraded honesty (feed down)', () => {
     expect(data.degraded).toBe(true);
     expect(data.source).toBeNull();
     expect(r.text).toContain('Live data unavailable — showing the bundled schedule, not live scores.');
+    expect(r.text).not.toContain('Live data:');
+    expect(r.text).toContain(DISCLAIMER);
+  });
+
+  it('next: says the provider is unreachable — never pastes as "no fixture" (eliminated)', async () => {
+    // Knockout-window fetch throws ⇒ a post-group-stage team has only a static
+    // placeholder slot, so the card must read "couldn't reach the provider", not
+    // a flat "no upcoming fixture" (which scans as the team being out).
+    const windowDown: ProviderAdapter = {
+      name: 'espn',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate() {
+        throw new Error('ESPN 403');
+      },
+      async fetchLive() {
+        throw new Error('ESPN 403');
+      },
+      async fetchWindow() {
+        throw new Error('ESPN 403');
+      },
+    };
+    const r = await toolGetShareSnippet({
+      team: 'MEX',
+      now: new Date('2026-06-28T12:00:00Z'),
+      adapter: windowDown,
+      marketProvider: synth(),
+    });
+    const data = r.data as { degraded: boolean };
+    expect(data.degraded).toBe(true);
+    expect(r.text).toContain("Couldn't reach the data provider");
     expect(r.text).not.toContain('Live data:');
     expect(r.text).toContain(DISCLAIMER);
   });

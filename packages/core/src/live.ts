@@ -251,6 +251,60 @@ export async function marketFixtureForTeam(
   return { match: next, degraded: false };
 }
 
+export interface NextFixtureResult {
+  fixture?: Match;
+  /** True when the live overlay fetch failed and only the static skeleton was used. */
+  degraded: boolean;
+  /** The provider that served the live overlay (absent when degraded). */
+  source?: string;
+}
+
+/**
+ * A team's next UPCOMING fixture, LIVE-RESOLVED across the knockout phase.
+ *
+ * The bundled schedule's knockout slots are resultless placeholders (home/away
+ * are slot refs like "Group A winner", never a nation — see
+ * {@link sanitizeBundledFixture}), so a purely static lookup goes blind the
+ * moment a team's last GROUP game passes: `next MEX` answers "no upcoming
+ * fixture" even after ESPN has confirmed Mexico's Round-of-32 tie. Overlay the
+ * live knockout window (the SAME single fetch {@link getBracket} uses) so the
+ * merged set carries the resolved nations, then pick the team's next fixture
+ * with kickoff ≥ now. (Strictly upcoming — the in-play match is `getLiveMatches`'
+ * job, preserving the pre-overlay `next` semantics.)
+ *
+ * Fails closed: on any provider error it falls back to the static result
+ * (`degraded: true`), so a feed outage degrades to "no fixture" rather than
+ * inventing one — advancement is never read from the static skeleton.
+ */
+export async function getNextFixtureForTeam(
+  adapter: ProviderAdapter,
+  code: string,
+  now: Date = new Date(),
+): Promise<NextFixtureResult> {
+  const base = allFixtures();
+  let matches = base;
+  let degraded = true;
+  let liveById: Set<string> | undefined;
+  try {
+    const live = adapter.fetchWindow
+      ? await adapter.fetchWindow(KNOCKOUT_WINDOW_START, KNOCKOUT_WINDOW_END)
+      : [];
+    matches = mergeLive(base, live);
+    degraded = false;
+    liveById = new Set(live.map((m) => m.id));
+  } catch {
+    // Static skeleton only — fail closed; never invent a knockout pairing.
+  }
+  // Strictly the next UPCOMING fixture (kickoff ≥ now), preserving the pre-overlay
+  // `next` semantics — the in-play match is `live`'s job, not `next`'s.
+  const fixture = nextFixtureForTeam(code, { from: now, fixtures: matches });
+  // Attribute the provider only when the live overlay actually served the chosen
+  // fixture — a static group game (not in the knockout-window fetch) is not
+  // "Live data: ESPN". Mirrors getMatchById's hit-based attribution.
+  const source = fixture && liveById?.has(fixture.id) ? adapter.name : undefined;
+  return { fixture, degraded, source };
+}
+
 /**
  * A single match by id, with live overlay. The provider's scoreboard buckets
  * days in its own zone (ESPN: US/Eastern), so a fixture's UTC date can differ

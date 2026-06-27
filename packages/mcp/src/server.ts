@@ -159,10 +159,10 @@ export function buildServer(): McpServer {
     {
       title: 'Next fixture for a team',
       description:
-        "A team's next scheduled match. Use a 3-letter code, e.g. MEX, BRA, USA. Instant and offline — answered from the bundled schedule, no network.",
+        "A team's next match, live-resolved: a confirmed knockout tie (Round of 32 onward) is read from the live overlay, group fixtures from the bundled schedule. Use a 3-letter code, e.g. MEX, BRA, USA. Falls back to the bundled schedule if the provider is unreachable.",
       inputSchema: { team: teamArg.describe('3-letter team code, e.g. MEX'), ...commonArgs },
-      // Read-only and served entirely from the bundled static schedule.
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      // Read-only; overlays live provider data for knockout pairings, so open-world.
+      annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async (args) => toContent(await toolGetNextFixture(args)),
   );
