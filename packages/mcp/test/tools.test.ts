@@ -227,6 +227,34 @@ describe('toolGetStandings', () => {
   });
 });
 
+describe('MCP live-data attribution localizes with lang (PR #43 review fix)', () => {
+  it('localizes the attribution line for today + standings when lang is set', async () => {
+    const esStandings = await toolGetStandings({
+      group: 'A',
+      lang: 'es',
+      adapter: fakeAdapter({ standings: [A_TABLE] }),
+    });
+    expect(esStandings.text).toContain('Datos en vivo:');
+    expect(esStandings.text).not.toContain('Live data:');
+
+    const esToday = await toolGetToday({
+      date: '2026-06-11',
+      tz: 'UTC',
+      lang: 'es',
+      adapter: fakeAdapter({ byDate: [liveMatch()] }),
+    });
+    expect(esToday.text).toContain('Datos en vivo:');
+
+    // en path is unchanged.
+    const enStandings = await toolGetStandings({
+      group: 'A',
+      lang: 'en',
+      adapter: fakeAdapter({ standings: [A_TABLE] }),
+    });
+    expect(enStandings.text).toContain('Live data:');
+  });
+});
+
 describe('toolGetBracket', () => {
   it('returns structure-only bracket when live fetch fails', async () => {
     const r = await toolGetBracket({ adapter: fakeAdapter({ throws: true }) });

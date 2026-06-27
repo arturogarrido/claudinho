@@ -5,6 +5,7 @@ import {
   liveSourceLabel,
   matchFlavor,
   scoreline,
+  t as i18n,
   type Match,
 } from '@claudinho/core';
 import type { CliConfig } from './config';
@@ -108,9 +109,10 @@ export function disclaimer(t: Translator, c: Painter): string {
 }
 
 /**
- * Attribution for the live-data provider, e.g. "Live data: ESPN". Empty string
- * when there's no live source (static-only output) so callers can skip it.
+ * Attribution for the live-data provider, e.g. "Live data: ESPN" (localized via the
+ * `live.data` key, so es → "Datos en vivo: ESPN"). Empty string when there's no live
+ * source (static-only output) so callers can skip it.
  */
-export function dataSource(source: string | undefined, c: Painter): string {
-  return source ? c.dim(`Live data: ${liveSourceLabel(source)}`) : '';
+export function dataSource(source: string | undefined, lang: string, c: Painter): string {
+  return source ? c.dim(i18n(lang, 'live.data', { source: liveSourceLabel(source) })) : '';
 }

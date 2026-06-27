@@ -231,7 +231,7 @@ export async function toolGetToday(
   if (degraded) text += '\n\n(Live scores unavailable — showing the bundled schedule.)';
   const marketSignals = await reliableMarketData(args, todays);
   return {
-    text: withDisclaimer(text, source),
+    text: withDisclaimer(text, source, args.lang),
     data: {
       date,
       degraded,
@@ -254,7 +254,7 @@ export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
     ? 'Live scores unavailable right now — could not reach the data provider.'
     : `Live now:\n${matchList(matches, 'No matches in play right now.', opts)}`;
   return {
-    text: withDisclaimer(text, source),
+    text: withDisclaimer(text, source, args.lang),
     data: { degraded, source: source ?? null, count: matches.length, matches },
   };
 }
@@ -282,7 +282,7 @@ export async function toolGetMatch(
   // Degraded ⇒ the live overlay failed; this is the static fixture, no live state.
   if (degraded) text += '\n\n(Live state unavailable — showing the scheduled fixture.)';
   return {
-    text: withDisclaimer(text, liveSource),
+    text: withDisclaimer(text, liveSource, args.lang),
     data: {
       degraded,
       source: liveSource ?? null,
@@ -307,7 +307,7 @@ export async function toolGetStandings(
     const g = args.group?.toUpperCase();
     const msg = g ? `No group "${g}". Groups are A–L.` : 'No standings available.';
     return {
-      text: withDisclaimer(degraded ? `${msg} (Live standings unavailable.)` : msg, source),
+      text: withDisclaimer(degraded ? `${msg} (Live standings unavailable.)` : msg, source, args.lang),
       data: { degraded, source: source ?? null, tables: args.group ? null : [] },
     };
   }
@@ -315,7 +315,7 @@ export async function toolGetStandings(
   let text = shaped.map((t) => standingsTable(t.group, t.standings)).join('\n\n');
   if (degraded) text += '\n\n(Live standings unavailable — showing the group roster.)';
   return {
-    text: withDisclaimer(text, source),
+    text: withDisclaimer(text, source, args.lang),
     data: { degraded, source: source ?? null, tables: args.group ? (shaped[0] ?? null) : shaped },
   };
 }

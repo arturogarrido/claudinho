@@ -253,7 +253,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   out();
   // Live overlay failed → these are static fixtures with no live scores. Say so.
   if (degraded) out(c.dim('  ' + t('feed.degraded')));
-  const src = dataSource(source, c);
+  const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
 }
@@ -285,7 +285,7 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
     for (const m of matches) out(matchLine(m, cfg, t, c, flags));
   }
   out();
-  const src = dataSource(source, c);
+  const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
 }
@@ -393,7 +393,7 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
   out();
   // Degraded ⇒ rows are a static roster, not real results — say so, don't imply zeros are live.
   if (degraded) out(c.dim('  ' + t('table.degraded')));
-  const src = dataSource(source, c);
+  const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
 }
@@ -456,7 +456,7 @@ export async function cmdBracket(
   out();
   if (degraded) out(c.dim(`  ${i18n(cfg.lang, 'bracket.degraded')}`));
   else if (standingsDegraded) out(c.dim(`  ${i18n(cfg.lang, 'bracket.standingsDegraded')}`));
-  const src = dataSource(source, c);
+  const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
 }
@@ -658,7 +658,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   out();
   // Live overlay failed → this is the static fixture with no live state. Say so.
   if (degraded) out(c.dim('  ' + t('feed.degraded')));
-  const src = dataSource(liveSource, c);
+  const src = dataSource(liveSource, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
 }
