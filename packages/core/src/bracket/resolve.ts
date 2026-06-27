@@ -92,6 +92,11 @@ function tbd(label: string): ResolvedParticipant {
   return { label, flag: '🏳️', status: 'tbd' };
 }
 
+function confirmedLiveParticipant(team: Team | undefined): ResolvedParticipant | undefined {
+  if (!team || team.flag === '🏳️') return undefined;
+  return participant(team, 'confirmed');
+}
+
 function winnerLabel(ctx: ResolveContext, stage: string, index: number): string {
   return t(ctx.lang, 'bracket.slot.winner', {
     stage: stageLabelI18n(ctx.lang, stage),
@@ -99,11 +104,19 @@ function winnerLabel(ctx: ResolveContext, stage: string, index: number): string 
   });
 }
 
-function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
+function resolveSlot(
+  ref: SlotRef,
+  ctx: ResolveContext,
+  liveTeam?: Team,
+): ResolvedParticipant {
+  const liveParticipant = confirmedLiveParticipant(liveTeam);
+
   switch (ref.kind) {
     case 'seed':
+      if (liveParticipant) return liveParticipant;
       return tbd(ref.label);
     case 'group': {
+      if (liveParticipant) return liveParticipant;
       if (!ctx.standingsDegraded && hasGroupStarted(ref.group, ctx.tables)) {
         const team = teamFromStandings(ref.group, ref.position, ctx.tables);
         if (team) {
@@ -120,6 +133,7 @@ function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
       return tbd(label);
     }
     case 'third':
+      if (liveParticipant) return liveParticipant;
       return tbd(t(ctx.lang, 'bracket.slot.third', { groups: ref.groups.join('/') }));
     case 'winner': {
       const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
@@ -128,6 +142,7 @@ function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
         const winner = resolveWinner(match);
         if (winner) return participant(winner, 'confirmed');
       }
+      if (liveParticipant) return liveParticipant;
       return tbd(winnerLabel(ctx, ref.stage, ref.index));
     }
     case 'loser': {
@@ -137,6 +152,7 @@ function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
         const loser = resolveLoser(match);
         if (loser) return participant(loser, 'confirmed');
       }
+      if (liveParticipant) return liveParticipant;
       return tbd(
         t(ctx.lang, 'bracket.slot.loser', {
           stage: stageLabelI18n(ctx.lang, ref.stage),
@@ -192,8 +208,8 @@ export function buildBracketView(
         stage: node.stage,
         index: node.index,
         kickoff: match.kickoff,
-        home: resolveSlot(node.home, ctx),
-        away: resolveSlot(node.away, ctx),
+        home: resolveSlot(node.home, ctx, match.home),
+        away: resolveSlot(node.away, ctx, match.away),
         match,
       };
     });

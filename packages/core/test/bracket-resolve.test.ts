@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { buildBracketView, isGroupStandingsComplete } from '../src/bracket/resolve';
 import { loadBracketTopology } from '../src/bracket/topology';
 import { allFixtures } from '../src/schedule';
-import type { Match } from '../src/types';
+import type { Match, Team } from '../src/types';
 import type { GroupStandings } from '../src/standings';
+
+function team(code: string, name: string, flag: string): Team {
+  return { code, name, flag };
+}
 
 function fx(
   id: string,
@@ -99,6 +103,50 @@ describe('buildBracketView', () => {
       position: 1,
       group: 'J',
     });
+  });
+
+  it('confirms a resolved live participant in a third-place slot', () => {
+    const node = topology.matches.find((n) => n.matchId === '760489')!;
+    expect(node.away).toEqual({
+      kind: 'third',
+      groups: ['A', 'B', 'C', 'D', 'F'],
+    });
+    const merged = baseKo.map((m) =>
+      m.id === node.matchId
+        ? {
+            ...m,
+            home: team('GER', 'Germany', '🇩🇪'),
+            away: team('PAR', 'Paraguay', '🇵🇾'),
+          }
+        : m,
+    );
+
+    const view = buildBracketView(topology, merged, [], true, false);
+    const match = view.stages
+      .find((s) => s.stage === 'R32')
+      ?.matches.find((m) => m.matchId === node.matchId);
+    expect(match?.home).toMatchObject({ code: 'GER', label: 'Germany', status: 'confirmed' });
+    expect(match?.away).toMatchObject({ code: 'PAR', label: 'Paraguay', status: 'confirmed' });
+  });
+
+  it('keeps third-place slots unresolved when the live event still has a placeholder', () => {
+    const node = topology.matches.find((n) => n.matchId === '760491')!;
+    const merged = baseKo.map((m) =>
+      m.id === node.matchId
+        ? {
+            ...m,
+            home: team('MEX', 'Mexico', '🇲🇽'),
+            away: team('3RD', 'Third Place Group C/E/F/H/I', '🏳️'),
+          }
+        : m,
+    );
+
+    const view = buildBracketView(topology, merged, [], true, false);
+    const match = view.stages
+      .find((s) => s.stage === 'R32')
+      ?.matches.find((m) => m.matchId === node.matchId);
+    expect(match?.home).toMatchObject({ code: 'MEX', label: 'Mexico', status: 'confirmed' });
+    expect(match?.away).toMatchObject({ label: '3rd (C/E/F/H/I)', status: 'tbd' });
   });
 
   it('confirms a host group-winner slot when the group is fully played', () => {
