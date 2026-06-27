@@ -3,6 +3,11 @@ import { isFinished, outcomeFromScore } from '../normalize';
 import type { GroupStandings } from '../standings';
 import type { Match, Team } from '../types';
 import { matchKey } from './build';
+import { isResolvedNation } from './placeholders';
+import {
+  thirdPlaceGroupForTeam,
+  thirdPlaceTeamFromStandings,
+} from './third-place';
 import type {
   BracketMatchNode,
   BracketMatchView,
@@ -99,7 +104,25 @@ function winnerLabel(ctx: ResolveContext, stage: string, index: number): string 
   });
 }
 
-function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
+interface ResolveSlotOpts {
+  /** Merged live match team for this side (when available). */
+  overlayTeam?: Team;
+  /** Opposing group-winner letter when resolving an away third-place slot. */
+  opposingGroupWinner?: string;
+}
+
+function thirdPlaceStatus(team: Team, tables: GroupStandings[]): SlotStatus {
+  const group = thirdPlaceGroupForTeam(team, tables);
+  if (!group) return 'projected';
+  const table = tables.find((t) => t.group === group);
+  return table && isGroupStandingsComplete(table) ? 'confirmed' : 'projected';
+}
+
+function resolveSlot(
+  ref: SlotRef,
+  ctx: ResolveContext,
+  opts: ResolveSlotOpts = {},
+): ResolvedParticipant {
   switch (ref.kind) {
     case 'seed':
       return tbd(ref.label);
@@ -119,8 +142,25 @@ function resolveSlot(ref: SlotRef, ctx: ResolveContext): ResolvedParticipant {
           : t(ctx.lang, 'bracket.slot.groupSecond', { group: ref.group });
       return tbd(label);
     }
-    case 'third':
+    case 'third': {
+      if (!ctx.standingsDegraded) {
+        const { overlayTeam, opposingGroupWinner } = opts;
+        if (overlayTeam && isResolvedNation(overlayTeam)) {
+          return participant(overlayTeam, thirdPlaceStatus(overlayTeam, ctx.tables));
+        }
+        if (opposingGroupWinner) {
+          const team = thirdPlaceTeamFromStandings(
+            ref.groups,
+            opposingGroupWinner,
+            ctx.tables,
+          );
+          if (team) {
+            return participant(team, 'confirmed');
+          }
+        }
+      }
       return tbd(t(ctx.lang, 'bracket.slot.third', { groups: ref.groups.join('/') }));
+    }
     case 'winner': {
       const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
       const match = node ? ctx.matchesById.get(node.matchId) : undefined;
@@ -193,7 +233,15 @@ export function buildBracketView(
         index: node.index,
         kickoff: match.kickoff,
         home: resolveSlot(node.home, ctx),
-        away: resolveSlot(node.away, ctx),
+        away: resolveSlot(node.away, ctx, {
+          overlayTeam: match.away,
+          opposingGroupWinner:
+            node.away.kind === 'third' &&
+            node.home.kind === 'group' &&
+            node.home.position === 1
+              ? node.home.group
+              : undefined,
+        }),
         match,
       };
     });

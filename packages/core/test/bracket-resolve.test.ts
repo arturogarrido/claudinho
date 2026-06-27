@@ -219,4 +219,43 @@ describe('buildBracketView', () => {
     expect(groupWinner?.status).toBe('tbd');
     expect(groupWinner?.flag).toBe('🏳️');
   });
+
+  it('resolves a third-place slot from the live overlay when ESPN assigns the team', () => {
+    const merged = baseKo.map((m) =>
+      m.id === '760489'
+        ? {
+            ...m,
+            home: { code: 'GER', name: 'Germany', flag: '🇩🇪' },
+            away: { code: 'PAR', name: 'Paraguay', flag: '🇵🇾' },
+          }
+        : m,
+    );
+    const tables: GroupStandings[] = [
+      {
+        group: 'D',
+        rows: [
+          { team: { code: 'USA', name: 'United States', flag: '🇺🇸' }, played: 3, won: 2, drawn: 0, lost: 1, goalsFor: 6, goalsAgainst: 2, goalDiff: 4, points: 6 },
+          { team: { code: 'AUS', name: 'Australia', flag: '🇦🇺' }, played: 3, won: 1, drawn: 1, lost: 1, goalsFor: 3, goalsAgainst: 3, goalDiff: 0, points: 4 },
+          { team: { code: 'PAR', name: 'Paraguay', flag: '🇵🇾' }, played: 3, won: 1, drawn: 1, lost: 1, goalsFor: 2, goalsAgainst: 4, goalDiff: -2, points: 4 },
+          { team: { code: 'TUR', name: 'Türkiye', flag: '🇹🇷' }, played: 3, won: 1, drawn: 0, lost: 2, goalsFor: 2, goalsAgainst: 4, goalDiff: -2, points: 3 },
+        ],
+      },
+    ];
+    const view = buildBracketView(topology, merged, tables, false, false);
+    const germanyMatch = view.stages
+      .find((s) => s.stage === 'R32')
+      ?.matches.find((m) => m.matchId === '760489');
+    expect(germanyMatch?.away.code).toBe('PAR');
+    expect(germanyMatch?.away.flag).toBe('🇵🇾');
+    expect(germanyMatch?.away.status).toBe('confirmed');
+  });
+
+  it('keeps third-place placeholders on the static bundle without live overlay', () => {
+    const view = buildBracketView(topology, baseKo, [], true, true);
+    const germanyMatch = view.stages
+      .find((s) => s.stage === 'R32')
+      ?.matches.find((m) => m.matchId === '760489');
+    expect(germanyMatch?.away.status).toBe('tbd');
+    expect(germanyMatch?.away.label).toContain('3rd');
+  });
 });
