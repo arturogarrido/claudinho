@@ -1,6 +1,6 @@
 {
   "name": "@claudinho/cli",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "description": "Live scores, fixtures, group tables, and read-only prediction-market signals for the 2026 men's football tournament — in your terminal, Claude Code, and Cursor CLI statusline. No API keys. Not affiliated with FIFA or Anthropic.",
   "type": "module",
   "license": "MIT",
