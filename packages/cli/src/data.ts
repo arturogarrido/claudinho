@@ -10,7 +10,9 @@ export {
   getLiveMatches,
   getStandings,
   getBracket,
+  getNextFixtureForTeam,
   type LiveResult,
+  type NextFixtureResult,
   type StandingsResult,
   type BracketResult,
 } from '@claudinho/core';

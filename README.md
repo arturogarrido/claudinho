@@ -156,7 +156,7 @@ _Planned (not shipped yet):_ a desktop notifier and an AI pundit with a public a
 
 **Do I need an API key or account?** No. Nothing to sign up for; `npx` and done.
 
-**Does it work offline?** The schedule, `next`, group skeletons, and knockout bracket structure do — all 104 fixtures are bundled. Only live scores hit the network.
+**Does it work offline?** The bundled data does — the full schedule, group fixtures, and the knockout bracket *structure* (all 104 fixtures ship bundled, no key). Anything *live* hits the network: scores, group standings, and a team's resolved knockout opponent (`next` once the draw fills in).
 
 **Where does the data come from?** Live scores from ESPN's public scoreboard (attributed in output as `Live data: ESPN`); market signals from Polymarket public data. Rate limits respected.
 

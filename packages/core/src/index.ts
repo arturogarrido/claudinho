@@ -53,11 +53,12 @@ export {
   getMatchById,
   getStandings,
   getBracket,
+  getNextFixtureForTeam,
   marketFixtureForTeam,
   resolveCompetition,
   liveSourceLabel,
 } from './live';
-export type { LiveResult, MatchByIdResult, StandingsResult } from './live';
+export type { LiveResult, MatchByIdResult, NextFixtureResult, StandingsResult } from './live';
 export type { BracketResult, BracketView } from './bracket/types';
 export { DEFAULT_COMPETITION, competitionBase } from './adapters/espn';
 
