@@ -14,10 +14,10 @@
  * stops live-resolving, this fails. See `.cursor/rules/surface-parity.mdc` and
  * AGENTS.md "Knockout surfaces live-resolve".
  *
- * The statusline is the one surface that CANNOT live-fetch (hot path, <150ms,
- * cache-only) — its contract is the opposite: it must FAIL CLOSED (never leak a
- * placeholder/wrong team) until the refresher caches resolved knockout fixtures
- * (tracked follow-up). That contract is asserted at the bottom.
+ * The statusline can't live-fetch (hot path, <150ms, cache-only), so it
+ * live-resolves INDIRECTLY: the refresher caches resolved knockout fixtures and
+ * the statusline reads them, failing closed to "⚽ —" (never a placeholder leak)
+ * when the cache lacks the pairing. Both contracts are asserted at the bottom.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Match, ProviderAdapter } from '@claudinho/core';

@@ -177,6 +177,40 @@ describe('knockout fixtures cadence (statusline countdown across the knockouts)'
     expect(shouldRefreshFixtures(KO_NOW)).toBe(false);
   });
 
+  it('re-polls an EMPTY successful fetch on a SHORT TTL (boundary), long TTL once filled', () => {
+    const base = {
+      updatedAt: '2026-06-28T11:00:00Z',
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+    };
+    const resolved: Match = {
+      id: '760491',
+      stage: 'R32',
+      kickoff: '2026-06-30T18:00Z',
+      venue: 'X',
+      home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+      away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
+      status: 'SCHEDULED',
+      updatedAt: '2026-06-28T00:00Z',
+    };
+    const stamp = (ms: number) => new Date(KO_NOW - ms).toISOString();
+    // Empty fixtures (ESPN hasn't filed pairings) stamped 90s ago → short
+    // (60s) TTL exceeded → re-poll, so the statusline can't sit on "⚽ —".
+    expect(
+      shouldRefreshFixtures(KO_NOW, { ...base, fixtures: [], fixturesUpdatedAt: stamp(90_000) }),
+    ).toBe(true);
+    // Empty, but only 30s ago → within the short TTL → don't stampede.
+    expect(
+      shouldRefreshFixtures(KO_NOW, { ...base, fixtures: [], fixturesUpdatedAt: stamp(30_000) }),
+    ).toBe(false);
+    // Once filled, the same 90s age is well within the long (15min) TTL.
+    expect(
+      shouldRefreshFixtures(KO_NOW, { ...base, fixtures: [resolved], fixturesUpdatedAt: stamp(90_000) }),
+    ).toBe(false);
+  });
+
   it('runRefresh caches the resolved knockout fixtures (no live match on now)', async () => {
     vi.stubGlobal(
       'fetch',
@@ -188,6 +222,26 @@ describe('knockout fixtures cadence (statusline countdown across the knockouts)'
       expect((state?.fixtures ?? []).map((m) => m.id)).toEqual(['760491']);
       expect(state?.fixtures?.[0]?.away.code).toBe('ECU');
       expect(state?.fixturesUpdatedAt).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('runRefresh re-polls an EMPTY fixtures cache only after the short TTL', async () => {
+    // ESPN hasn't filed pairings yet → empty success. No live match at 12:00, so
+    // every fetch here is a fixtures fetch — count them across three cycles.
+    const fetchSpy = vi.fn(async () => ({ ok: true, json: async () => ({ day: {}, events: [] }) }));
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      await runRefresh({ now: new Date(KO_NOW), source: 'espn' }); // fetch #1 → empty
+      expect(readState()?.fixtures).toEqual([]);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+      await runRefresh({ now: new Date(KO_NOW + 30_000), source: 'espn' }); // within 60s → no fetch
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+      await runRefresh({ now: new Date(KO_NOW + 90_000), source: 'espn' }); // past 60s → refetch
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
     } finally {
       vi.unstubAllGlobals();
     }

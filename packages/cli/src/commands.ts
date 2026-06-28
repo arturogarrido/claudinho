@@ -518,7 +518,11 @@ export function cmdHook({ cfg }: Ctx): void {
     const state = readCurrentState(cfg.source, resolveCompetition());
     const ctx = renderHook(state, { team, flags: flagsEnabled() });
     if (ctx) out(ctx);
-    if (!state || shouldRefresh()) spawnRefresh(cfg.source);
+    // Warm the same cache the statusline reads, for parity (the hook itself shows
+    // only live scores). Spawn for live OR stale knockout fixtures.
+    if (!state || shouldRefresh() || shouldRefreshFixtures(Date.now(), state)) {
+      spawnRefresh(cfg.source);
+    }
   } catch {
     // Never block the prompt — emit nothing on any error.
   }

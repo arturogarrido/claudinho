@@ -172,6 +172,46 @@ describe('renderPrompt — knockout next fixture from cached resolved fixtures',
   });
 });
 
+describe('renderPrompt — stale cache during a knockout match (live · syncing)', () => {
+  // The bundled R32 760486 kicks off 19:00Z as a 🏳️ placeholder. With a STALE
+  // cache (>5min) it hits the "live · syncing" branch from the static skeleton.
+  const DURING_KO = new Date('2026-06-28T19:30:00Z'); // inside 760486's live window
+  const staleBase = (over: Partial<CacheState> = {}): CacheState => ({
+    updatedAt: '2026-06-28T19:20:00Z', // 10min stale → cacheFresh false
+    live: [],
+    degraded: false,
+    source: 'espn',
+    competition: 'fifa.world',
+    ...over,
+  });
+
+  it('does NOT leak "🏳️ vs 🏳️" — drops the matchup when unresolved', () => {
+    const line = renderPrompt(staleBase(), { now: DURING_KO });
+    expect(line).toContain('live · syncing');
+    expect(line).not.toContain('🏳️');
+  });
+
+  it('shows the real teams when the cache carries the resolved pairing', () => {
+    const resolved: Match = {
+      id: '760486',
+      stage: 'R32',
+      kickoff: '2026-06-28T19:00Z',
+      venue: 'X',
+      home: { code: 'RSA', name: 'RSA', flag: '🇿🇦' },
+      away: { code: 'CAN', name: 'CAN', flag: '🇨🇦' },
+      status: 'SCHEDULED',
+      updatedAt: '2026-06-28T19:00Z',
+    };
+    const line = renderPrompt(
+      staleBase({ fixtures: [resolved], fixturesUpdatedAt: '2026-06-28T19:00:00Z' }),
+      { now: DURING_KO },
+    );
+    expect(line).toContain('🇿🇦');
+    expect(line).toContain('live · syncing');
+    expect(line).not.toContain('🏳️');
+  });
+});
+
 describe('flagsEnabled', () => {
   it('honors an explicit off/on (any common spelling)', () => {
     for (const v of ['off', '0', 'no', 'false', 'OFF']) {
