@@ -33,7 +33,7 @@ Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r
 - When knockout fetch fails but standings succeed: set `source` from standings provider.
 - Share/MCP: inner `formatBracketList({ footer: false })`, outer layer adds attribution/notices **once**.
 - CLI/MCP wrappers: option types must match the formatter (`ShareBracketOptions`, not `ShareSnippetOptions`).
-- **Surface parity:** see `.cursor/rules/surface-parity.mdc` — every bracket formatter path passes `tz` + `locale`.
+- **Surface parity:** see `.cursor/rules/surface-parity.mdc` — every bracket formatter path passes `tz` + `locale`; statusline knockouts indirect-resolve via cached `getKnockoutFixtures` (hot path fail-closed).
 
 ## Pre-merge QA
 
@@ -53,3 +53,6 @@ After `pnpm -r build`, run **`pnpm release:qa`** (`scripts/release-qa.sh`). Eyeb
 | Knockout kickoffs span >1 week | Output includes month + day (not weekday-only) |
 | `formatShareBracket` social + compact | Same date format as CLI list |
 | `formatShareBracket` / `toolGetBracket` | Each disclaimer line once |
+| Statusline knockout countdown (cached fixtures) | Real nations or `⚽ —`; never `🏳️` |
+| Statusline stale cache during live KO | `live · syncing…` without `🏳️`; resolved pairing when cache has it |
+| Empty fixtures cache at phase boundary | Re-polls after short TTL (~60s), not 15min |
