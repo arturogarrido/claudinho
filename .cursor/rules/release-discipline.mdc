@@ -31,4 +31,5 @@ Before merge **or** release of bracket or kickoff-formatting work:
 
 1. Adversarial tests: 0 games, mid-tournament (2/3 played), degraded standings.
 2. **Surface parity:** CLI `bracket` + MCP `get_bracket` + `share bracket` all pass `tz` and show calendar dates on multi-week knockouts.
-3. After `pnpm -r build`, run **`pnpm release:qa`** and eyeball the rendered sections; keep `packages/mcp/test/tools.test.ts` green for MCP arg threading.
+3. **Statusline knockouts (if touched):** indirect-resolve via cached `getKnockoutFixtures` — hot path fail-closed (no 🏳️ on countdown or `live · syncing…`); empty-cache short TTL; `knockout-surface-coverage.test.ts` + `statusline.test.ts` / `refresh.test.ts` green. See `.cursor/rules/surface-parity.mdc`.
+4. After `pnpm -r build`, run **`pnpm release:qa`** and eyeball the rendered sections; keep `packages/mcp/test/tools.test.ts` green for MCP arg threading.

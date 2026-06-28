@@ -18,13 +18,15 @@ Any user-visible formatter change must land on **all three surfaces** before mer
 
 ## Knockout surfaces live-resolve — never read the skeleton (the #1 recurring bug)
 
-The bundled schedule's knockout slots are **resultless placeholders** (codes like `2A`/`2B`, flag `🏳️`). So a team-facing surface that reads the static bundle is **silently** blind to a confirmed knockout tie — no crash, no wrong data, just a stale placeholder. This exact bug shipped THREE times in different surfaces:
+The bundled schedule's knockout slots are **resultless placeholders** (codes like `2A`/`2B`, flag `🏳️`). So a team-facing surface that reads the static bundle is **silently** blind to a confirmed knockout tie — no crash, no wrong data, just a stale placeholder. **Knockout live-resolve regressions** shipped repeatedly in different surfaces (root cause: skeleton reads, cache gaps, or both):
 
 - v0.8.2 — R32 pre-draw seeds rendered static, didn't live-resolve.
 - v0.8.6 — bracket third-place slots never read the merged live `match.home/away`.
 - v0.8.7 — `next` / `share next` / MCP next-fixture resolvers read only the static bundle.
+- v0.8.8 — statusline next-match countdown read the static bundle (`🏳️ vs 🏳️` / `⚽ —` in knockouts).
+- v0.8.9 — empty fixtures cache stamped the full 15min TTL at phase boundaries; stale-cache `live · syncing…` still read the skeleton.
 
-**Rule:** every team-facing surface must reach the live overlay (`getBracket` / `getNextFixtureForTeam` — the same `fetchWindow` the bracket uses), fail closed on outage, and attribute the provider only when the overlay served the chosen fixture.
+**Rule:** every team-facing surface must reach the live overlay (`getBracket` / `getNextFixtureForTeam` — the same `fetchWindow` the bracket uses), fail closed on outage, and attribute the provider only when the overlay served the chosen fixture. **Exception — statusline:** hot path cannot fetch; the cold-path refresher calls `getKnockoutFixtures` and caches to `CacheState.fixtures`; `renderPrompt` merges that slice over the bundle (countdown **and** `live · syncing…`), never leaking 🏳️.
 
 | Surface | Entry point | Must |
 |---------|-------------|------|
@@ -32,9 +34,9 @@ The bundled schedule's knockout slots are **resultless placeholders** (codes lik
 | CLI `share bracket` / `share next` | `cmdShare` | same |
 | MCP `get_bracket` / `get_next_fixture` | `toolGetBracket` / `toolGetNextFixture` | same |
 | MCP `get_share_snippet{bracket,next}` | `toolGetShareSnippet` | same |
-| **statusline** | `renderPrompt` | hot path, NO network — live-resolves *indirectly*: the refresher caches `getKnockoutFixtures` → `CacheState.fixtures`, `renderPrompt` reads them, **failing closed to `⚽ —`** (never a 🏳️ leak) when the cache lacks the pairing |
+| **statusline** | `renderPrompt` + `runRefresh` | hot path, NO network — indirect: refresher caches `getKnockoutFixtures` → `CacheState.fixtures`; `renderPrompt` merges them, **failing closed to `⚽ —`** when the cache lacks the pairing; unresolved placeholders dropped in syncing (never 🏳️). Empty successful fetch uses a **short TTL** (~60s); provider errors keep prior cache. **`cmdPrompt` and `cmdHook`** both spawn fixtures refresh in knockout phase. |
 
-**Executable guard:** `packages/{cli,mcp}/test/knockout-surface-coverage.test.ts` pins one fake resolved tie (Mexico vs Ecuador) and asserts every surface renders the real nations, not `🏳️`. **Adding a team-facing surface? Add it to that test and this table.**
+**Executable guard:** `packages/{cli,mcp}/test/knockout-surface-coverage.test.ts` pins one fake resolved tie (Mexico vs Ecuador) and asserts every surface renders the real nations, not `🏳️` (statusline from a seeded cache). **`statusline.test.ts` / `refresh.test.ts`** cover syncing + empty-cache TTL. **Adding a team-facing surface? Add it to that test and this table.**
 
 ## Format opts invariant
 
