@@ -18,6 +18,7 @@
 - [ ] Bracket index ↔ ESPN winner refs verified (guard test if assumption can't be live-checked)
 - [ ] Provider `source` set on every hybrid live path (knockout + standings)
 - [ ] Share/MCP/CLI user-visible text: attribution and degraded notices appear once
+- [ ] **Knockout surfaces live-resolve, never the skeleton:** any team-facing surface (bracket / next / share / each MCP tool) reaches the live overlay and renders real nations, not `🏳️` placeholders — covered by `packages/{cli,mcp}/test/knockout-surface-coverage.test.ts` (a NEW surface is added to that test). Statusline stays hot-path/fail-closed. See `.cursor/rules/surface-parity.mdc`.
 - [ ] **Surface parity:** MCP tools pass `tz` / `locale` to core formatters (see `.cursor/rules/surface-parity.mdc`)
 - [ ] Adversarial cases from `.cursor/rules/bundle-bracket-pr.mdc` covered by tests where applicable
 
