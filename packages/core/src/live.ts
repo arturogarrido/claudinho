@@ -5,7 +5,7 @@
  */
 import { competitionBase, DEFAULT_COMPETITION, EspnAdapter } from './adapters/espn';
 import type { ProviderAdapter } from './adapters/types';
-import { isFinished, isLive } from './normalize';
+import { byKickoff, isFinished, isLive } from './normalize';
 import {
   allFixtures,
   fixturesByGroup,
@@ -16,6 +16,7 @@ import {
 } from './schedule';
 import { rosterAtZero, type GroupStandings } from './standings';
 import type { Match, Stage } from './types';
+import { isResolvedNation } from './bracket/placeholders';
 import { buildBracketView } from './bracket/resolve';
 import { loadBracketTopology } from './bracket/topology';
 import type { BracketResult } from './bracket/types';
@@ -303,6 +304,51 @@ export async function getNextFixtureForTeam(
   // "Live data: ESPN". Mirrors getMatchById's hit-based attribution.
   const source = fixture && liveById?.has(fixture.id) ? adapter.name : undefined;
   return { fixture, degraded, source };
+}
+
+export interface KnockoutFixturesResult {
+  /** Resolved (both nations known) upcoming knockout fixtures, sorted by kickoff. */
+  fixtures: Match[];
+  /** True when the overlay fetch failed — caller must NOT cache this as "none". */
+  degraded: boolean;
+}
+
+/**
+ * The RESOLVED upcoming knockout fixtures from the live overlay — the data the
+ * hot-path statusline can't fetch itself but needs to show a real next-match
+ * countdown (e.g. "🇲🇽 vs 🇪🇨 in 2d") instead of a 🏳️ placeholder. The cold-path
+ * refresher calls this and caches the result; the statusline reads the cache.
+ *
+ * Returns only fixtures where BOTH nations are resolved (flag ≠ 🏳️) and kickoff
+ * ≥ now, so a slot ESPN hasn't filled yet is simply absent (the statusline then
+ * fails closed to "⚽ —", never a placeholder). **Fails closed with
+ * `degraded: true` on a provider error** — the caller must keep its prior cached
+ * fixtures rather than cache an empty list as a real "no knockouts" (a transient
+ * outage must never read as "your team is out").
+ */
+export async function getKnockoutFixtures(
+  adapter: ProviderAdapter,
+  now: Date = new Date(),
+): Promise<KnockoutFixturesResult> {
+  if (!adapter.fetchWindow) return { fixtures: [], degraded: true };
+  let live: Match[];
+  try {
+    live = await adapter.fetchWindow(KNOCKOUT_WINDOW_START, KNOCKOUT_WINDOW_END);
+  } catch {
+    return { fixtures: [], degraded: true };
+  }
+  const nowMs = now.getTime();
+  const fixtures = live
+    .filter(
+      (m) =>
+        m.stage !== 'GROUP' &&
+        m.stage !== 'FRIENDLY' &&
+        Date.parse(m.kickoff) >= nowMs &&
+        isResolvedNation(m.home) &&
+        isResolvedNation(m.away),
+    )
+    .sort(byKickoff);
+  return { fixtures, degraded: false };
 }
 
 /**

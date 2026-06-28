@@ -54,11 +54,18 @@ export {
   getStandings,
   getBracket,
   getNextFixtureForTeam,
+  getKnockoutFixtures,
   marketFixtureForTeam,
   resolveCompetition,
   liveSourceLabel,
 } from './live';
-export type { LiveResult, MatchByIdResult, NextFixtureResult, StandingsResult } from './live';
+export type {
+  LiveResult,
+  MatchByIdResult,
+  NextFixtureResult,
+  KnockoutFixturesResult,
+  StandingsResult,
+} from './live';
 export type { BracketResult, BracketView } from './bracket/types';
 export { DEFAULT_COMPETITION, competitionBase } from './adapters/espn';
 
@@ -122,6 +129,7 @@ export type {
 export { buildBracketTopology, matchKey } from './bracket/build';
 export { parseTeamSlot } from './bracket/parse';
 export { buildBracketView } from './bracket/resolve';
+export { isResolvedNation } from './bracket/placeholders';
 export { loadBracketTopology } from './bracket/topology';
 export {
   formatBracketList,

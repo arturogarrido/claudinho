@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getKnockoutFixtures,
   getLiveMatches,
   getMatchesForDate,
   getNextFixtureForTeam,
@@ -250,5 +251,76 @@ describe('getNextFixtureForTeam — live-resolved across the knockout phase', ()
     // pairing — so no fixture, rather than a confidently-wrong one.
     expect(fixture).toBeUndefined();
     expect(source).toBeUndefined();
+  });
+});
+
+describe('getKnockoutFixtures — resolved upcoming knockouts for the statusline cache', () => {
+  const KO_NOW = new Date('2026-06-28T12:00:00Z');
+  const ko = (id: string, kickoff: string, over: Partial<Match> = {}): Match =>
+    fx(id, kickoff, { stage: 'R32', group: undefined, ...over });
+  const placeholder = { code: '2A', name: 'Group A 2nd Place', flag: '🏳️' };
+
+  it('returns only resolved, upcoming knockout fixtures, sorted by kickoff', async () => {
+    const mexEcu = ko('760491', '2026-06-30T18:00Z', {
+      home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+      away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
+    });
+    const gerPar = ko('760489', '2026-06-29T13:30Z', {
+      home: { code: 'GER', name: 'Germany', flag: '🇩🇪' },
+      away: { code: 'PAR', name: 'Paraguay', flag: '🇵🇾' },
+    });
+    const { adapter } = windowAdapter([mexEcu, gerPar]);
+    const { fixtures, degraded } = await getKnockoutFixtures(adapter, KO_NOW);
+    expect(degraded).toBe(false);
+    // Sorted by kickoff: Germany (Jun 29) before Mexico (Jun 30).
+    expect(fixtures.map((m) => m.id)).toEqual(['760489', '760491']);
+  });
+
+  it('excludes unresolved placeholders, group games, and past fixtures', async () => {
+    const unresolved = ko('760486', '2026-06-30T18:00Z', { home: placeholder, away: placeholder });
+    const group = fx('760400', '2026-06-30T18:00Z'); // stage GROUP
+    const past = ko('760488', '2026-06-27T18:00Z', {
+      home: { code: 'BRA', name: 'Brazil', flag: '🇧🇷' },
+      away: { code: 'JPN', name: 'Japan', flag: '🇯🇵' },
+    });
+    const { adapter } = windowAdapter([unresolved, group, past]);
+    const { fixtures, degraded } = await getKnockoutFixtures(adapter, KO_NOW);
+    expect(degraded).toBe(false);
+    expect(fixtures).toEqual([]);
+  });
+
+  it('fails closed (degraded) on a provider error — caller must keep prior cache', async () => {
+    const adapter: ProviderAdapter = {
+      name: 'boom',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate() {
+        return [];
+      },
+      async fetchLive() {
+        return [];
+      },
+      async fetchWindow() {
+        throw new Error('down');
+      },
+    };
+    const { fixtures, degraded } = await getKnockoutFixtures(adapter, KO_NOW);
+    expect(degraded).toBe(true);
+    expect(fixtures).toEqual([]);
+  });
+
+  it('degraded when the adapter has no window fetch (can never read the overlay)', async () => {
+    const adapter: ProviderAdapter = {
+      name: 'nowindow',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate() {
+        return [];
+      },
+      async fetchLive() {
+        return [];
+      },
+    };
+    const { fixtures, degraded } = await getKnockoutFixtures(adapter, KO_NOW);
+    expect(degraded).toBe(true);
+    expect(fixtures).toEqual([]);
   });
 });

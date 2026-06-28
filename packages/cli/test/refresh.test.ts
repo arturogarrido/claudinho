@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readState } from '../src/cache';
-import { runRefresh, shouldRefresh } from '../src/refresh';
+import type { Match } from '@claudinho/core';
+import { readState, writeState } from '../src/cache';
+import { inKnockoutPhase, runRefresh, shouldRefresh, shouldRefreshFixtures } from '../src/refresh';
 
 // A time well outside any World Cup window (tournament starts 2026-06-11).
 const PRE_WC = new Date('2026-06-04T16:00:00Z').getTime();
@@ -103,5 +104,92 @@ describe('runRefresh — windowed live detection (statusline regression)', () =>
     // Only the in-play match — the FT one in the default bucket is filtered out.
     expect((state?.live ?? []).map((m) => m.id)).toEqual(['760431']);
     expect((state?.live ?? [])[0]?.status).toBe('LIVE');
+  });
+
+  it('preserves cached knockout fixtures across a live-only refresh', async () => {
+    // Pre-seed a fresh fixtures slice + a STALE live slice, then refresh during a
+    // GROUP-stage live window (not knockout phase → fixtures not refetched). The
+    // live write must NOT clobber the carried-over fixtures.
+    const cachedFixture: Match = {
+      id: '760491',
+      stage: 'R32',
+      kickoff: '2026-06-30T18:00Z',
+      venue: 'X',
+      home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+      away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
+      status: 'SCHEDULED',
+      updatedAt: '2026-06-28T00:00Z',
+    };
+    writeState({
+      updatedAt: '2026-06-17T04:00:00Z', // stale → live will refetch
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+      fixtures: [cachedFixture],
+      fixturesUpdatedAt: '2026-06-17T04:55:00Z',
+    });
+    await runRefresh({ now: DURING, source: 'espn' });
+    const state = readState();
+    expect((state?.live ?? []).map((m) => m.id)).toEqual(['760431']); // live refreshed
+    expect((state?.fixtures ?? []).map((m) => m.id)).toEqual(['760491']); // fixtures kept
+  });
+});
+
+// A SCHEDULED Round-of-32 fixture with both nations resolved (slug → R32 stage).
+const KO_SCOREBOARD = {
+  day: { date: '2026-06-30' },
+  events: [
+    {
+      id: '760491',
+      date: '2026-06-30T18:00Z',
+      name: 'Ecuador at Mexico',
+      season: { year: 2026, slug: 'round-of-32' },
+      status: { type: { name: 'STATUS_SCHEDULED', state: 'pre', completed: false } },
+      competitions: [
+        {
+          venue: { fullName: 'Estadio Banorte' },
+          competitors: [
+            { homeAway: 'home', score: '0', team: { abbreviation: 'MEX', displayName: 'Mexico' } },
+            { homeAway: 'away', score: '0', team: { abbreviation: 'ECU', displayName: 'Ecuador' } },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+describe('knockout fixtures cadence (statusline countdown across the knockouts)', () => {
+  // After the group stage, the next static fixture is a knockout → knockout phase.
+  const KO_NOW = new Date('2026-06-28T12:00:00Z').getTime();
+
+  it('inKnockoutPhase / shouldRefreshFixtures gate on the phase, not a live window', () => {
+    expect(inKnockoutPhase(PRE_WC)).toBe(false); // group stage hasn't even started
+    expect(inKnockoutPhase(KO_NOW)).toBe(true); // next static fixture is the R32
+    // Empty cache in the knockout phase → fixtures are stale → should refresh.
+    expect(shouldRefreshFixtures(KO_NOW)).toBe(true);
+    expect(shouldRefreshFixtures(PRE_WC)).toBe(false); // not knockout phase
+  });
+
+  it('does not chase a bundled bracket for a non-default competition', () => {
+    process.env.CLAUDINHO_COMPETITION = 'fifa.friendly';
+    expect(inKnockoutPhase(KO_NOW)).toBe(false);
+    expect(shouldRefreshFixtures(KO_NOW)).toBe(false);
+  });
+
+  it('runRefresh caches the resolved knockout fixtures (no live match on now)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => KO_SCOREBOARD })),
+    );
+    try {
+      await runRefresh({ now: new Date(KO_NOW), source: 'espn' });
+      const state = readState();
+      expect((state?.fixtures ?? []).map((m) => m.id)).toEqual(['760491']);
+      expect(state?.fixtures?.[0]?.away.code).toBe('ECU');
+      expect(state?.fixturesUpdatedAt).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

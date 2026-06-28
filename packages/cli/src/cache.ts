@@ -26,6 +26,16 @@ export interface CacheState {
   source: string;
   /** Competition slug the live data was fetched for (e.g. "fifa.world"). */
   competition: string;
+  /**
+   * RESOLVED upcoming knockout fixtures (both nations known), so the hot-path
+   * statusline can show a real next-match countdown the static bundle can't
+   * provide (its KO slots are placeholders). Refreshed on a SEPARATE, slower
+   * cadence than `live` (pairings change only when a match finishes), tracked by
+   * `fixturesUpdatedAt`. Absent until the refresher first populates it.
+   */
+  fixtures?: Match[];
+  /** ISO 8601 timestamp of the last successful `fixtures` fetch. */
+  fixturesUpdatedAt?: string;
 }
 
 const LOCK_STALE_MS = 60_000;
@@ -88,6 +98,17 @@ function writeFileSync_(path: string, data: string): void {
 export function ageMs(state: CacheState | undefined, now = Date.now()): number {
   if (!state) return Infinity;
   const t = Date.parse(state.updatedAt);
+  return Number.isFinite(t) ? now - t : Infinity;
+}
+
+/**
+ * Age of the cached knockout `fixtures` in ms (Infinity if never fetched). Its
+ * own clock — `fixtures` refreshes on a slower cadence than `live`, so a fresh
+ * live write must not make stale fixtures look fresh (or vice-versa).
+ */
+export function fixturesAgeMs(state: CacheState | undefined, now = Date.now()): number {
+  if (!state?.fixturesUpdatedAt) return Infinity;
+  const t = Date.parse(state.fixturesUpdatedAt);
   return Number.isFinite(t) ? now - t : Infinity;
 }
 
