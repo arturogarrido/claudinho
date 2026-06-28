@@ -11,7 +11,9 @@ import {
   countdown,
   fixturesInLiveWindow,
   isLive,
+  isResolvedNation,
   LIVE_WINDOW_MS,
+  mergeLive,
   nextFixtureForTeam,
   scoreline,
   type Match,
@@ -51,9 +53,20 @@ export function inLiveWindow(now = Date.now(), fixtures: Match[] = allFixtures()
   return fixturesInLiveWindow(now, fixtures).length > 0;
 }
 
-/** The soonest upcoming fixture across the whole tournament. */
+/** Both nations known — i.e. not an unresolved bracket placeholder (🏳️). */
+function isResolvedFixture(m: Match): boolean {
+  return isResolvedNation(m.home) && isResolvedNation(m.away);
+}
+
+/**
+ * The soonest upcoming RESOLVED fixture. Skips unresolved knockout placeholders
+ * so the no-team statusline fails closed to "⚽ —" rather than leaking
+ * "🏳️ vs 🏳️" once the group stage ends and every static fixture is a placeholder.
+ */
 function nextOverall(now: number, fixtures: Match[] = allFixtures()): Match | undefined {
-  return [...fixtures].sort(byKickoff).find((m) => Date.parse(m.kickoff) >= now);
+  return [...fixtures]
+    .sort(byKickoff)
+    .find((m) => Date.parse(m.kickoff) >= now && isResolvedFixture(m));
 }
 
 export interface PromptOpts {
@@ -159,9 +172,18 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
     }
   }
 
-  // Nothing (relevant) live → next-fixture countdown (pure static).
-  const next = team ? nextFixtureForTeam(team, { from: now }) : nextOverall(nowMs);
-  if (next) {
+  // Nothing (relevant) live → next-fixture countdown. Resolve over the static
+  // bundle MERGED with the refresher's cached resolved knockout fixtures, so a
+  // confirmed pairing (e.g. 🇲🇽 vs 🇪🇨) shows here too — the bundle's KO slots are
+  // 🏳️ placeholders the hot path can't resolve itself. Still NETWORK-FREE: reads
+  // only the cache. Unresolved slots stay placeholders and are skipped, so this
+  // fails closed to "⚽ —", never "🏳️ vs 🏳️".
+  const cachedFixtures = Array.isArray(state?.fixtures) ? (state!.fixtures as Match[]) : [];
+  const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;
+  const next = team
+    ? nextFixtureForTeam(team, { from: now, fixtures: schedule })
+    : nextOverall(nowMs, schedule);
+  if (next && isResolvedFixture(next)) {
     return `${teamTok(next.home, flags)} vs ${teamTok(next.away, flags)} in ${countdown(next.kickoff, now)}`;
   }
   return '⚽ —';

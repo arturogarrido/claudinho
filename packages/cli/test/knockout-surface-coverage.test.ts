@@ -128,23 +128,31 @@ describe('knockout surface coverage — every team-facing CLI surface live-resol
   });
 });
 
-describe('statusline hot-path contract — fail closed, never leak a placeholder', () => {
-  // The statusline reads a cache (live matches only) and NEVER fetches on the
-  // hot path. Today it has no resolved knockout fixture to show, so for a team
-  // between its group finish and its knockout game it must fail closed (no
-  // placeholder team, no wrong opponent) — currently `⚽ —`.
-  it('does not leak a 🏳️ placeholder or a wrong opponent for a knockout-bound team', () => {
-    const cache: CacheState = {
-      updatedAt: KNOCKOUT_NOW.toISOString(),
-      live: [],
-      degraded: false,
-      source: 'espn',
-      competition: 'fifa.world',
-    };
+describe('statusline hot-path contract — live-resolve from cache, else fail closed', () => {
+  // The statusline NEVER fetches on the hot path; it reads the cache the
+  // refresher fills. When the cache carries the resolved knockout fixture it
+  // shows it (real flags); when it doesn't, it fails closed to `⚽ —` — never a
+  // 🏳️ placeholder leak.
+  const baseCache = (over: Partial<CacheState> = {}): CacheState => ({
+    updatedAt: KNOCKOUT_NOW.toISOString(),
+    live: [],
+    degraded: false,
+    source: 'espn',
+    competition: 'fifa.world',
+    ...over,
+  });
+
+  it('shows the resolved tie (real flags) when the refresher cached it', () => {
+    const cache = baseCache({ fixtures: [r32MexEcu()], fixturesUpdatedAt: KNOCKOUT_NOW.toISOString() });
     const line = renderPrompt(cache, { team: 'MEX', now: KNOCKOUT_NOW });
+    expect(line).toContain('🇲🇽'); // resolved home
+    expect(line).toContain('🇪🇨'); // resolved away
     expect(line).not.toContain(PLACEHOLDER_FLAG);
-    expect(line).not.toContain('Ecuador'); // cache can't carry it yet — must not invent it
-    // TODO(statusline-knockout-cache): once the refresher caches resolved
-    // knockout fixtures, upgrade this to assert the line SHOWS "Ecuador".
+  });
+
+  it('fails closed to "⚽ —" (no 🏳️ leak) when the cache lacks the fixture', () => {
+    const line = renderPrompt(baseCache(), { team: 'MEX', now: KNOCKOUT_NOW });
+    expect(line).toBe('⚽ —');
+    expect(renderPrompt(baseCache(), { now: KNOCKOUT_NOW })).toBe('⚽ —'); // no-team too
   });
 });

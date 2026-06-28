@@ -120,6 +120,58 @@ describe('renderPrompt — next fixture (static, no cache)', () => {
   });
 });
 
+describe('renderPrompt — knockout next fixture from cached resolved fixtures', () => {
+  // Group stage done; every static fixture left is a 🏳️ placeholder.
+  const KO_NOW = new Date('2026-06-28T12:00:00Z');
+  const koFx = (id: string, kickoff: string, home: [string, string], away: [string, string]): Match => ({
+    id,
+    stage: 'R32',
+    kickoff,
+    venue: 'X',
+    home: { code: home[0], name: home[0], flag: home[1] },
+    away: { code: away[0], name: away[0], flag: away[1] },
+    status: 'SCHEDULED',
+    updatedAt: KO_NOW.toISOString(),
+  });
+  // Cache carries resolved pairings the refresher fetched; live is empty.
+  const withFixtures = (fixtures: Match[]): CacheState => ({
+    updatedAt: KO_NOW.toISOString(),
+    live: [],
+    degraded: false,
+    source: 'espn',
+    competition: 'fifa.world',
+    fixtures,
+    fixturesUpdatedAt: KO_NOW.toISOString(),
+  });
+  const GER_PAR = koFx('760489', '2026-06-29T13:30Z', ['GER', '🇩🇪'], ['PAR', '🇵🇾']);
+  const MEX_ECU = koFx('760491', '2026-06-30T18:00Z', ['MEX', '🇲🇽'], ['ECU', '🇪🇨']);
+
+  it('no team → soonest RESOLVED knockout countdown (not a 🏳️ placeholder)', () => {
+    const line = renderPrompt(withFixtures([MEX_ECU, GER_PAR]), { now: KO_NOW });
+    expect(line.startsWith('🇩🇪 vs 🇵🇾 in ')).toBe(true); // Germany (Jun 29) is soonest
+    expect(line).not.toContain('🏳️');
+  });
+
+  it('team filter → that team’s resolved knockout countdown', () => {
+    const line = renderPrompt(withFixtures([MEX_ECU, GER_PAR]), { now: KO_NOW, team: 'MEX' });
+    expect(line.startsWith('🇲🇽 vs 🇪🇨 in ')).toBe(true);
+  });
+
+  it('FAILS CLOSED with no cached fixtures: "⚽ —", never "🏳️ vs 🏳️" (the leak fix)', () => {
+    const noFixtures: CacheState = {
+      updatedAt: KO_NOW.toISOString(),
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+    };
+    expect(renderPrompt(noFixtures, { now: KO_NOW })).toBe('⚽ —'); // no-team
+    expect(renderPrompt(noFixtures, { now: KO_NOW, team: 'MEX' })).toBe('⚽ —'); // team
+    // And with NO cache at all (undefined) — still no placeholder leak.
+    expect(renderPrompt(undefined, { now: KO_NOW })).toBe('⚽ —');
+  });
+});
+
 describe('flagsEnabled', () => {
   it('honors an explicit off/on (any common spelling)', () => {
     for (const v of ['off', '0', 'no', 'false', 'OFF']) {

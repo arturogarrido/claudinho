@@ -32,7 +32,7 @@ The bundled schedule's knockout slots are **resultless placeholders** (codes lik
 | CLI `share bracket` / `share next` | `cmdShare` | same |
 | MCP `get_bracket` / `get_next_fixture` | `toolGetBracket` / `toolGetNextFixture` | same |
 | MCP `get_share_snippet{bracket,next}` | `toolGetShareSnippet` | same |
-| **statusline** | `renderPrompt` | **EXCEPTION** — hot path, cache-only, NO network; must **fail closed** (never leak a placeholder/wrong team) |
+| **statusline** | `renderPrompt` | hot path, NO network — live-resolves *indirectly*: the refresher caches `getKnockoutFixtures` → `CacheState.fixtures`, `renderPrompt` reads them, **failing closed to `⚽ —`** (never a 🏳️ leak) when the cache lacks the pairing |
 
 **Executable guard:** `packages/{cli,mcp}/test/knockout-surface-coverage.test.ts` pins one fake resolved tie (Mexico vs Ecuador) and asserts every surface renders the real nations, not `🏳️`. **Adding a team-facing surface? Add it to that test and this table.**
 

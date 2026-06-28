@@ -70,7 +70,7 @@ import type {
 import { readCurrentState } from './cache';
 import { flagsEnabled, liveMatchesFromCache, renderPrompt } from './statusline';
 import { renderHook } from './hook';
-import { runRefresh, shouldRefresh, spawnRefresh } from './refresh';
+import { runRefresh, shouldRefresh, shouldRefreshFixtures, spawnRefresh } from './refresh';
 import { readCursorPayload, renderPromptOutput } from './cursorPayload';
 import { type InitResult, initCursorStatusline, initHook, initStatusline } from './install';
 
@@ -493,7 +493,12 @@ export function cmdPrompt({ cfg }: Ctx): void {
     const state = readCurrentState(cfg.source, resolveCompetition());
     const scoreLine = renderPrompt(state, { team, compact, max, flags: flagsEnabled() });
     out(renderPromptOutput(scoreLine, payload));
-    if (!state || shouldRefresh()) spawnRefresh(cfg.source);
+    // Spawn a background refresh for live scores OR stale knockout fixtures (the
+    // latter keeps the next-match countdown live outside live windows). Pass the
+    // already-read state so the fixtures check adds no extra cache read.
+    if (!state || shouldRefresh() || shouldRefreshFixtures(Date.now(), state)) {
+      spawnRefresh(cfg.source);
+    }
   } catch {
     // The statusline must always succeed; print nothing rather than error.
     out('');

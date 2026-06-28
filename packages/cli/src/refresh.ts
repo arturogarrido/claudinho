@@ -6,8 +6,11 @@
  */
 import { spawn } from 'node:child_process';
 import {
+  allFixtures,
+  byKickoff,
   DEFAULT_COMPETITION,
   EspnAdapter,
+  getKnockoutFixtures,
   getLiveMatches,
   makeAdapter,
   resolveCompetition,
@@ -17,6 +20,8 @@ import {
 import {
   acquireLock,
   ageMs,
+  type CacheState,
+  fixturesAgeMs,
   isLockFresh,
   readState,
   releaseLock,
@@ -26,6 +31,30 @@ import { inLiveWindow, LIVE_TTL_MS } from './statusline';
 
 /** Don't re-fetch if the cache is younger than this (anti-stampede). */
 const MIN_REFRESH_MS = 12_000;
+
+/**
+ * Knockout pairings change only when a match finishes, so the cached resolved
+ * `fixtures` refresh on a much slower cadence than live scores — a few-minute lag
+ * on a multi-day countdown is invisible, and this bounds the off-live-window
+ * polling the statusline triggers to ~4 fetches/hour.
+ */
+const FIXTURES_TTL_MS = 15 * 60_000;
+
+/** The soonest upcoming static fixture (cheap; bundle is in memory). */
+function nextStaticUpcoming(nowMs: number): Match | undefined {
+  return [...allFixtures()].sort(byKickoff).find((m) => Date.parse(m.kickoff) >= nowMs);
+}
+
+/**
+ * We're in the knockout phase (and on the default competition, the only one with
+ * a bundled bracket) when the next upcoming fixture is a knockout — that's
+ * exactly when the statusline needs live-resolved pairings the bundle lacks.
+ */
+export function inKnockoutPhase(nowMs: number): boolean {
+  if (resolveCompetition() !== DEFAULT_COMPETITION) return false;
+  const next = nextStaticUpcoming(nowMs);
+  return !!next && next.stage !== 'GROUP' && next.stage !== 'FRIENDLY';
+}
 
 /**
  * Whether to attempt a live fetch right now.
@@ -59,26 +88,38 @@ export interface RefreshOpts {
 /** Perform one refresh cycle (idempotent, lock-guarded). */
 export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
   const now = opts.now ?? new Date();
+  const nowMs = now.getTime();
   const source = opts.source ?? 'espn';
   const competition = resolveCompetition();
 
-  // Skip only if a recent refresh already produced fresh data *for this same
-  // source + competition*; otherwise re-fetch (e.g. the competition changed).
   const cached = readState();
-  if (
-    cached &&
-    cached.source === source &&
-    cached.competition === competition &&
-    ageMs(cached, now.getTime()) < MIN_REFRESH_MS
-  ) {
-    return;
-  }
+  // A snapshot from a different source/competition can't be reused — start fresh
+  // (and refetch both parts) so e.g. a friendlies cache never bleeds into the WC.
+  const sameScope =
+    !!cached && cached.source === source && cached.competition === competition;
+  const base: CacheState | undefined = sameScope ? cached : undefined;
+
+  // Two INDEPENDENT cadences: live scores (~12s, only in a live window) and
+  // resolved knockout fixtures (~15min, only in the knockout phase). Each part
+  // skips if its own slice is still fresh — a live write must not block a due
+  // fixtures fetch, or vice-versa.
+  const needLive =
+    liveWindowActive(nowMs) && (!base || ageMs(base, nowMs) >= MIN_REFRESH_MS);
+  const needFixtures =
+    inKnockoutPhase(nowMs) && (!base || fixturesAgeMs(base, nowMs) >= FIXTURES_TTL_MS);
+  if (!needLive && !needFixtures) return;
+
   if (!acquireLock()) return;
   try {
-    let live: Match[] = [];
-    let degraded = false;
+    // Carry the slice we're NOT refreshing this cycle so a fixtures-only refresh
+    // doesn't drop live (and vice-versa).
+    let live: Match[] = base?.live ?? [];
+    let degraded = base?.degraded ?? false;
+    let updatedAt = base?.updatedAt ?? now.toISOString();
+    let fixtures = base?.fixtures;
+    let fixturesUpdatedAt = base?.fixturesUpdatedAt;
 
-    if (liveWindowActive(now.getTime())) {
+    if (needLive) {
       // Use the domain helper, not adapter.fetchLive() directly: it fetches a
       // ±1-day window around `now` so a late kickoff filed under the provider's
       // adjacent day bucket is still detected (see core getLiveMatches). Without
@@ -92,9 +133,34 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
       } catch {
         degraded = true;
       }
+      updatedAt = now.toISOString();
     }
 
-    writeState({ updatedAt: now.toISOString(), live, degraded, source, competition });
+    if (needFixtures) {
+      // Fail closed: getKnockoutFixtures returns degraded on a provider error —
+      // KEEP the prior cached fixtures + timestamp rather than caching an empty
+      // list as a real "no knockouts" (a transient outage must never read as
+      // "your team is out"). Only a SUCCESSFUL fetch updates the slice + clock.
+      try {
+        const r = await getKnockoutFixtures(liveAdapter(), now);
+        if (!r.degraded) {
+          fixtures = r.fixtures;
+          fixturesUpdatedAt = now.toISOString();
+        }
+      } catch {
+        /* keep prior fixtures + timestamp; retry next cycle */
+      }
+    }
+
+    writeState({
+      updatedAt,
+      live,
+      degraded,
+      source,
+      competition,
+      ...(fixtures ? { fixtures } : {}),
+      ...(fixturesUpdatedAt ? { fixturesUpdatedAt } : {}),
+    });
   } finally {
     releaseLock();
   }
@@ -108,6 +174,22 @@ export function shouldRefresh(now = Date.now()): boolean {
   if (!liveWindowActive(now)) return false;
   if (isLockFresh(now)) return false;
   return ageMs(readState(), now) > LIVE_TTL_MS;
+}
+
+/**
+ * Decide whether to refresh the cached knockout `fixtures` — the trigger that
+ * keeps the statusline's next-match countdown live OUTSIDE live windows (when
+ * `shouldRefresh` is false). True only in the knockout phase, when the cached
+ * fixtures are stale, and nobody's already refreshing. Pass the already-read
+ * `state` to avoid a second cache read on the hot path.
+ */
+export function shouldRefreshFixtures(
+  now = Date.now(),
+  state: CacheState | undefined = readState(),
+): boolean {
+  if (!inKnockoutPhase(now)) return false;
+  if (isLockFresh(now)) return false;
+  return fixturesAgeMs(state, now) > FIXTURES_TTL_MS;
 }
 
 /**
