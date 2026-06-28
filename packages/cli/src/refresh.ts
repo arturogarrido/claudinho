@@ -57,7 +57,7 @@ const FIXTURES_EMPTY_TTL_MS = 60_000;
  */
 function fixturesStale(state: CacheState | undefined, now: number): boolean {
   const ttl = (state?.fixtures?.length ?? 0) > 0 ? FIXTURES_TTL_MS : FIXTURES_EMPTY_TTL_MS;
-  return fixturesAgeMs(state, now) >= ttl;
+  return fixturesAgeMs(state, now) > ttl; // `>` to match shouldRefresh's LIVE_TTL boundary
 }
 
 /** The soonest upcoming static fixture (cheap; bundle is in memory). */
