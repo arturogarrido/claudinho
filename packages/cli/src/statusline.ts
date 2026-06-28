@@ -134,6 +134,14 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
 
   const live = liveMatchesFromCache(state, nowMs);
 
+  // The static bundle MERGED with the refresher's cached resolved knockout
+  // fixtures — the bundle's KO slots are 🏳️ placeholders the hot path can't
+  // resolve itself, so this overlay is how the statusline shows real pairings
+  // (still NETWORK-FREE: reads only the cache). Used by both the syncing and
+  // next-fixture branches below.
+  const cachedFixtures = Array.isArray(state?.fixtures) ? (state!.fixtures as Match[]) : [];
+  const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;
+
   // With a team filter, show only that team's live match.
   if (team) {
     const mine = live.find((m) => m.home?.code === team || m.away?.code === team);
@@ -159,27 +167,25 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
   const cacheFresh =
     !!state && state.degraded !== true && ageMs(state, nowMs) < DISPLAY_STALE_MS;
   if (!cacheFresh) {
-    const win = fixturesInLiveWindow(nowMs).filter(
+    const win = fixturesInLiveWindow(nowMs, schedule).filter(
       (m) => !team || m.home.code === team || m.away.code === team,
     );
     const first = win[0];
     if (first) {
       const more = win.length - 1;
-      return (
-        `⚽ ${teamTok(first.home, flags)} vs ${teamTok(first.away, flags)} live · syncing…` +
-        (more > 0 ? ` +${more}` : '')
-      );
+      // Drop the matchup when the in-window fixture is still a 🏳️ placeholder
+      // (a knockout the overlay hasn't resolved) — never paste "🏳️ vs 🏳️"; just
+      // say a match is on and we're syncing.
+      const matchup = isResolvedFixture(first)
+        ? `${teamTok(first.home, flags)} vs ${teamTok(first.away, flags)} `
+        : '';
+      return `⚽ ${matchup}live · syncing…` + (more > 0 ? ` +${more}` : '');
     }
   }
 
-  // Nothing (relevant) live → next-fixture countdown. Resolve over the static
-  // bundle MERGED with the refresher's cached resolved knockout fixtures, so a
-  // confirmed pairing (e.g. 🇲🇽 vs 🇪🇨) shows here too — the bundle's KO slots are
-  // 🏳️ placeholders the hot path can't resolve itself. Still NETWORK-FREE: reads
-  // only the cache. Unresolved slots stay placeholders and are skipped, so this
-  // fails closed to "⚽ —", never "🏳️ vs 🏳️".
-  const cachedFixtures = Array.isArray(state?.fixtures) ? (state!.fixtures as Match[]) : [];
-  const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;
+  // Nothing (relevant) live → next-fixture countdown over the merged schedule
+  // (resolved knockout pairings show; unresolved 🏳️ slots are skipped, so this
+  // fails closed to "⚽ —", never "🏳️ vs 🏳️").
   const next = team
     ? nextFixtureForTeam(team, { from: now, fixtures: schedule })
     : nextOverall(nowMs, schedule);

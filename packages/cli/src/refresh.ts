@@ -40,6 +40,26 @@ const MIN_REFRESH_MS = 12_000;
  */
 const FIXTURES_TTL_MS = 15 * 60_000;
 
+/**
+ * BUT a successful fetch that returns ZERO resolved fixtures (ESPN hasn't filed
+ * the pairings yet — the phase boundary, or the first poll as knockouts lock in)
+ * must NOT suppress re-polling for the full 15min, or the statusline sits on
+ * "⚽ —" long after the pairings appear. So an empty result is trusted only
+ * briefly. (A provider ERROR is different — handled fail-closed by keeping the
+ * prior cache; this is about a real-but-empty success.)
+ */
+const FIXTURES_EMPTY_TTL_MS = 60_000;
+
+/**
+ * Whether the cached knockout `fixtures` are stale enough to refetch. Uses the
+ * short empty-TTL when the cache holds no resolved fixtures (re-poll soon at the
+ * boundary), the long TTL once it holds some (pairings are stable).
+ */
+function fixturesStale(state: CacheState | undefined, now: number): boolean {
+  const ttl = (state?.fixtures?.length ?? 0) > 0 ? FIXTURES_TTL_MS : FIXTURES_EMPTY_TTL_MS;
+  return fixturesAgeMs(state, now) >= ttl;
+}
+
 /** The soonest upcoming static fixture (cheap; bundle is in memory). */
 function nextStaticUpcoming(nowMs: number): Match | undefined {
   return [...allFixtures()].sort(byKickoff).find((m) => Date.parse(m.kickoff) >= nowMs);
@@ -105,8 +125,7 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
   // fixtures fetch, or vice-versa.
   const needLive =
     liveWindowActive(nowMs) && (!base || ageMs(base, nowMs) >= MIN_REFRESH_MS);
-  const needFixtures =
-    inKnockoutPhase(nowMs) && (!base || fixturesAgeMs(base, nowMs) >= FIXTURES_TTL_MS);
+  const needFixtures = inKnockoutPhase(nowMs) && fixturesStale(base, nowMs);
   if (!needLive && !needFixtures) return;
 
   if (!acquireLock()) return;
@@ -189,7 +208,7 @@ export function shouldRefreshFixtures(
 ): boolean {
   if (!inKnockoutPhase(now)) return false;
   if (isLockFresh(now)) return false;
-  return fixturesAgeMs(state, now) > FIXTURES_TTL_MS;
+  return fixturesStale(state, now);
 }
 
 /**

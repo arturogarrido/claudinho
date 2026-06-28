@@ -177,6 +177,40 @@ describe('knockout fixtures cadence (statusline countdown across the knockouts)'
     expect(shouldRefreshFixtures(KO_NOW)).toBe(false);
   });
 
+  it('re-polls an EMPTY successful fetch on a SHORT TTL (boundary), long TTL once filled', () => {
+    const base = {
+      updatedAt: '2026-06-28T11:00:00Z',
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+    };
+    const resolved: Match = {
+      id: '760491',
+      stage: 'R32',
+      kickoff: '2026-06-30T18:00Z',
+      venue: 'X',
+      home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+      away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
+      status: 'SCHEDULED',
+      updatedAt: '2026-06-28T00:00Z',
+    };
+    const stamp = (ms: number) => new Date(KO_NOW - ms).toISOString();
+    // Empty fixtures (ESPN hasn't filed pairings) stamped 90s ago → short
+    // (60s) TTL exceeded → re-poll, so the statusline can't sit on "⚽ —".
+    expect(
+      shouldRefreshFixtures(KO_NOW, { ...base, fixtures: [], fixturesUpdatedAt: stamp(90_000) }),
+    ).toBe(true);
+    // Empty, but only 30s ago → within the short TTL → don't stampede.
+    expect(
+      shouldRefreshFixtures(KO_NOW, { ...base, fixtures: [], fixturesUpdatedAt: stamp(30_000) }),
+    ).toBe(false);
+    // Once filled, the same 90s age is well within the long (15min) TTL.
+    expect(
+      shouldRefreshFixtures(KO_NOW, { ...base, fixtures: [resolved], fixturesUpdatedAt: stamp(90_000) }),
+    ).toBe(false);
+  });
+
   it('runRefresh caches the resolved knockout fixtures (no live match on now)', async () => {
     vi.stubGlobal(
       'fetch',
