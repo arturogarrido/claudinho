@@ -7,12 +7,12 @@
     "source": "github",
     "subfolder": "packages/mcp"
   },
-  "version": "0.8.11",
+  "version": "0.8.12",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@claudinho/mcp",
-      "version": "0.8.11",
+      "version": "0.8.12",
       "transport": {
         "type": "stdio"
       },
