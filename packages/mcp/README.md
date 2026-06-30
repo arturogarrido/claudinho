@@ -3,10 +3,7 @@
 **An MCP server for the 2026 men's football tournament.** Ask your agent about live
 scores, fixtures, group standings, and the prediction-market read — in Claude Code,
 Cursor, Codex, Claude Desktop, Windsurf, Zed, VS Code, or any MCP client (stdio).
-
-> ⚠️ **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.**
-> Claudinho is an independent, open-source fan project. Factual match data with
-> emoji flags only — no logos, crests, kits, footage, or player likenesses.
+No API key, no signup — all 104 fixtures ship bundled; only live scores (and optional, read-only Polymarket signals) hit the network.
 
 ## Install
 
@@ -31,6 +28,11 @@ codex mcp add claudinho -- npx -y @claudinho/mcp
 Claude Desktop: Settings → Developer → Edit Config, then restart. Codex config file:
 `~/.codex/config.toml` (`[mcp_servers.claudinho]`, `command = "npx"`, `args = ["-y", "@claudinho/mcp"]`).
 
+Then just ask your agent naturally — it picks the right tool and answers with live data:
+
+> "What matches are on today?" · "Show me the live scores" · "What's Mexico's next game?"
+> "Group A standings" · "Show the knockout bracket" · "Make me a shareable card for today"
+
 ## Tools
 
 | Tool | What it does |
@@ -40,7 +42,7 @@ Claude Desktop: Settings → Developer → Edit Config, then restart. Codex conf
 | `get_match` | a single match by id |
 | `get_standings` | live cumulative group table(s) — one group `A`–`L`, or all |
 | `get_bracket` | knockout bracket from the Round of 32 through the final — optional `stage` filter (`R32`, `R16`, `QF`, `SF`, `3P`, `F`) |
-| `get_next_fixture` | a team's next match (3-letter code, e.g. `MEX`) — fully offline |
+| `get_next_fixture` | a team's next match (3-letter code, e.g. `MEX`) — live-resolves a confirmed knockout tie from the feed; group fixtures offline, fails back to the bundled schedule if the feed is down |
 | `get_market_signal` | read-only prediction-market signal for a match, a team's current-or-next fixture (in-play preferred while live), or a date — informational only |
 | `get_share_snippet` | a copy-pasteable plain-text card — for a match, a team's next fixture, a group's standings table (`group`), the knockout bracket (`bracket: true`, optional `knockoutStage`), a date, or live — hand the returned snippet to the user as-is |
 
@@ -79,6 +81,10 @@ diagnostics go to stderr.
 ## License
 
 MIT © 2026 Arturo Garrido · [source & issues](https://github.com/arturogarrido/claudinho)
+
+> **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.** An independent,
+> open-source fan project showing factual match data with emoji flags only — no logos, crests,
+> kits, broadcast footage, or player likenesses.
 
 ---
 
