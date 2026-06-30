@@ -20,6 +20,7 @@
  * requested slug, line up on kickoff, expose the right moneyline markets, and
  * resolve in regular time — otherwise no signal is produced.
  */
+import { shiftUtcDate } from '../time';
 import type { Match } from '../types';
 import mappingJson from './mapping.2026.json';
 import { buildMarketSignal } from './normalize';
@@ -145,12 +146,17 @@ export class PolymarketProvider implements MarketProvider {
     options?: MarketSignalOptions,
   ): Promise<{ signal?: MarketSignal; checked: boolean }> {
     const entry = (this.opts.mapping ?? BUNDLED_MAPPING)[match.id];
-    const eventSlug = entry?.eventSlug ?? deriveEventSlug(match);
-    if (!eventSlug) return { checked: true }; // definitively unmappable → no market
+    // A hand-curated override is authoritative (single slug); otherwise try the
+    // derived candidates (UTC date, then the prior day — see deriveEventSlugs).
+    const slugs = entry?.eventSlug ? [entry.eventSlug] : deriveEventSlugs(match);
+    if (slugs.length === 0) return { checked: true }; // definitively unmappable → no market
     try {
-      const event = await this.fetchEvent(eventSlug, options?.timeoutMs);
-      const signal = event ? this.toSignal(match, eventSlug, event, options) : undefined;
-      return { signal, checked: true }; // reached the source and resolved
+      for (const slug of slugs) {
+        const event = await this.fetchEvent(slug, options?.timeoutMs);
+        const signal = event ? this.toSignal(match, slug, event, options) : undefined;
+        if (signal) return { signal, checked: true }; // first candidate that validates wins
+      }
+      return { checked: true }; // reached the source, no usable market on any candidate
     } catch {
       return { checked: false }; // provider/network error → retry, don't cache
     }
@@ -261,18 +267,29 @@ export class PolymarketProvider implements MarketProvider {
 }
 
 /**
- * Derive the Gamma event slug from a fixture: `fifwc-{home}-{away}-{utcDate}`.
- * Returns undefined for placeholder/unresolved fixtures (non-3-letter or TBD
- * codes) so we never query garbage slugs.
+ * Candidate Gamma event slugs for a fixture: `fifwc-{home}-{away}-{date}`.
+ * Returns [] for placeholder/unresolved fixtures (non-3-letter or TBD codes) so
+ * we never query garbage slugs.
+ *
+ * Polymarket slugs a match by its HOST-LOCAL date, which for the Americas-hosted
+ * 2026 WC is the UTC date OR the day before — a late-evening kickoff crosses into
+ * the next UTC day (e.g. MEX–ECU at 01:00Z is Jun 30 in the Americas, slugged
+ * `…-06-30`, not `…-07-01`). The Americas are always behind UTC, so we only need
+ * the UTC date and the prior day. We try the UTC date first; `toSignal`'s
+ * kickoff line-up + exact-slug checks reject a wrong-day event, so the prior-day
+ * fallback stays fail-closed.
  */
-function deriveEventSlug(match: Match): string | undefined {
+function deriveEventSlugs(match: Match): string[] {
   const home = match.home.code.toLowerCase();
   const away = match.away.code.toLowerCase();
-  if (home === away || home === 'tbd' || away === 'tbd') return undefined;
-  if (!/^[a-z]{3}$/.test(home) || !/^[a-z]{3}$/.test(away)) return undefined;
-  const date = match.kickoff.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return undefined;
-  return `fifwc-${home}-${away}-${date}`;
+  if (home === away || home === 'tbd' || away === 'tbd') return [];
+  if (!/^[a-z]{3}$/.test(home) || !/^[a-z]{3}$/.test(away)) return [];
+  const utcDate = match.kickoff.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(utcDate)) return [];
+  return [
+    `fifwc-${home}-${away}-${utcDate}`,
+    `fifwc-${home}-${away}-${shiftUtcDate(utcDate, -1)}`,
+  ];
 }
 
 /** Last dash-segment of a market slug — the outcome token (`mex`/`draw`/`rsa`). */

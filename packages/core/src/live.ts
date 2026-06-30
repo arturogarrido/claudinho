@@ -15,6 +15,7 @@ import {
   nextFixtureForTeam,
 } from './schedule';
 import { rosterAtZero, type GroupStandings } from './standings';
+import { shiftUtcDate } from './time';
 import type { Match, Stage } from './types';
 import { isResolvedNation } from './bracket/placeholders';
 import { buildBracketView } from './bracket/resolve';
@@ -199,13 +200,6 @@ export async function getBracket(
   };
 }
 
-/** Shift a "YYYY-MM-DD" date by whole UTC days, returning "YYYY-MM-DD". */
-function shiftUtcDate(dateISO: string, days: number): string {
-  const [y, m, d] = dateISO.slice(0, 10).split('-').map(Number);
-  return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days))
-    .toISOString()
-    .slice(0, 10);
-}
 
 export interface MatchByIdResult {
   match?: Match;
@@ -238,7 +232,20 @@ export async function marketFixtureForTeam(
   now: Date = new Date(),
 ): Promise<MatchByIdResult> {
   const nowMs = now.getTime();
-  const candidate = fixturesByTeam(code).find((m) => {
+  // Overlay the live knockout window so a knockout team's fixtures RESOLVE — the
+  // bundle's KO slots are 🏳️ placeholders, so a purely static lookup answers "no
+  // upcoming fixture" for a team past its group stage (same root cause as
+  // getNextFixtureForTeam). Fail closed to the static skeleton on a provider error.
+  let fixtures = allFixtures();
+  let overlayFailed = false;
+  try {
+    if (adapter.fetchWindow) {
+      fixtures = mergeLive(fixtures, await adapter.fetchWindow(KNOCKOUT_WINDOW_START, KNOCKOUT_WINDOW_END));
+    }
+  } catch {
+    overlayFailed = true; // KO overlay unavailable — a knockout tie may be unresolvable
+  }
+  const candidate = fixturesByTeam(code, fixtures).find((m) => {
     const k = Date.parse(m.kickoff);
     return nowMs >= k && nowMs <= k + LIVE_WINDOW_MS + EXTRA_TIME_SLACK_MS;
   });
@@ -248,8 +255,11 @@ export async function marketFixtureForTeam(
     if (!isFinished(m.status)) return { ...r, match: m };
     // Confirmed finished → the team's market story has moved on.
   }
-  const next = nextFixtureForTeam(code, { from: now });
-  return { match: next, degraded: false };
+  const next = nextFixtureForTeam(code, { from: now, fixtures });
+  // When the overlay fetch failed the static skeleton can't resolve a knockout
+  // tie, so flag degraded — lets a caller say "feed unavailable" rather than the
+  // misleading "no upcoming fixture" for a team past its group stage.
+  return { match: next, degraded: overlayFailed };
 }
 
 export interface NextFixtureResult {

@@ -30,6 +30,7 @@ import {
   marketBlock,
   marketFixtureForTeam,
   marketRelevant,
+  marketSignalRendersFor,
   type Match,
   type MarketProvider,
   type MarketSignal,
@@ -70,9 +71,19 @@ function resolveMarketProvider(args: CommonOpts): MarketProvider {
   return args.marketProvider ?? makeMarketProvider();
 }
 
-/** Show a signal only if it maps cleanly and has a determinable favorite. */
-function marketDisplayable(sig: MarketSignal): boolean {
-  return !sig.ambiguous && sig.favorite != null && hasSaneDistribution(sig.outcomes);
+/**
+ * Show a signal only if it maps cleanly, has a determinable favorite, AND still
+ * matches the fixture being rendered — the last check (`marketSignalRendersFor`)
+ * re-validates a cached signal against the current Match so it can't print
+ * against a degraded knockout placeholder (display labels come from the Match).
+ */
+function marketDisplayable(match: Match, sig: MarketSignal): boolean {
+  return (
+    marketSignalRendersFor(match, sig) &&
+    !sig.ambiguous &&
+    sig.favorite != null &&
+    hasSaneDistribution(sig.outcomes)
+  );
 }
 
 /**
@@ -195,7 +206,9 @@ async function reliableMarketData(
   const out: Record<string, ReturnType<typeof marketData>> = {};
   for (const m of relevant) {
     const s = signals.get(m.id);
-    if (s && isReliableMarketSignal(s, { now })) out[m.id] = marketData(s);
+    if (s && isReliableMarketSignal(s, { now }) && marketSignalRendersFor(m, s)) {
+      out[m.id] = marketData(s);
+    }
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -275,7 +288,7 @@ export async function toolGetMatch(
   let marketSignal: MarketSignal | undefined;
   if (marketsEnabled() && marketRelevant(match, now)) {
     const s = (await cachedMarketSignals(args, [match])).get(match.id);
-    if (s && isReliableMarketSignal(s, { now })) marketSignal = s;
+    if (s && isReliableMarketSignal(s, { now }) && marketSignalRendersFor(match, s)) marketSignal = s;
   }
   const base = matchLine(match, opts);
   let text = marketSignal ? `${base}\n${marketBlock(marketSignal, match).join('\n')}` : base;
@@ -419,7 +432,7 @@ export async function toolGetMarketSignal(
     const { match } = await getMatchById(resolveAdapter(args), args.matchId);
     const relevant = match ? marketRelevant(match, now) : false;
     const sig = match && relevant ? await getMarketSignal(provider, match) : undefined;
-    const shown = match && sig && marketDisplayable(sig) ? sig : undefined;
+    const shown = match && sig && marketDisplayable(match, sig) ? sig : undefined;
     const text = !match
       ? `No match found with id ${args.matchId}.`
       : shown
@@ -442,12 +455,14 @@ export async function toolGetMarketSignal(
     const code = args.team.toUpperCase();
     // Live-confirmed selection: handles extra time past the static window AND
     // early FTs inside it (the static fixture's status is forever SCHEDULED).
-    const { match: fixture } = await marketFixtureForTeam(resolveAdapter(args), code, now);
+    const { match: fixture, degraded } = await marketFixtureForTeam(resolveAdapter(args), code, now);
     const relevant = fixture ? marketRelevant(fixture, now) : false;
     const sig = fixture && relevant ? await getMarketSignal(provider, fixture) : undefined;
-    const shown = fixture && sig && marketDisplayable(sig) ? sig : undefined;
+    const shown = fixture && sig && marketDisplayable(fixture, sig) ? sig : undefined;
     const text = !fixture
-      ? `No upcoming fixture found for ${code}.`
+      ? degraded
+        ? `Live feed unavailable — can't resolve ${code}'s next fixture right now.`
+        : `No upcoming fixture found for ${code}.`
       : shown
         ? marketText(fixture, shown, args)
         : noSignalText(fixture, args, now);
@@ -456,6 +471,7 @@ export async function toolGetMarketSignal(
       data: {
         team: code,
         matchId: fixture?.id ?? null,
+        degraded,
         informationalOnly: true,
         signal: shown ? marketData(shown) : null,
       },
@@ -471,7 +487,7 @@ export async function toolGetMarketSignal(
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
     .filter(
       (r): r is { match: Match; signal: MarketSignal } =>
-        !!r.signal && marketDisplayable(r.signal),
+        !!r.signal && marketDisplayable(r.match, r.signal),
     );
   const text = shown.length
     ? `Market signals on ${date}:\n${shown
@@ -501,7 +517,7 @@ async function reliableSignalMap(
   const out = new Map<string, MarketSignal>();
   for (const m of relevant) {
     const s = signals.get(m.id);
-    if (s && isReliableMarketSignal(s, { now }) && marketDisplayable(s)) out.set(m.id, s);
+    if (s && isReliableMarketSignal(s, { now }) && marketDisplayable(m, s)) out.set(m.id, s);
   }
   return out;
 }
