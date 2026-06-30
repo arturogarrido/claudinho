@@ -17,6 +17,7 @@ import {
   cmdShare,
   cmdTable,
   cmdBracket,
+  cmdStar,
   cmdToday,
   cmdVibe,
   InputError,
@@ -270,6 +271,13 @@ program
   .description('print a matchday-coder one-liner (#VibingLaVidaLoca)')
   .action((_opts, cmd) => {
     cmdVibe(ctxFrom(cmd));
+  });
+
+program
+  .command('star')
+  .description('how to support Claudinho — star the repo ⭐')
+  .action((_opts, cmd) => {
+    cmdStar(ctxFrom(cmd));
   });
 
 // Internal: cold-path cache refresher, spawned detached by `prompt`.

@@ -56,6 +56,7 @@ import {
   makeAdapter,
 } from './data';
 import { readMarketCache, writeMarketCache } from './marketCache';
+import { bumpRunCount, REPO_URL, shouldNudge } from './starNudge';
 import { copyToClipboard } from './clipboard';
 import type {
   GroupStandings,
@@ -262,6 +263,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
+  maybeStarNudge(ctx);
 }
 
 /** `claudinho live` */
@@ -294,6 +296,7 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
+  maybeStarNudge(ctx);
 }
 
 /** `claudinho next [team]` (team defaults to CLAUDINHO_TEAM) */
@@ -343,6 +346,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
+  maybeStarNudge(ctx);
 }
 
 /** `claudinho table [group]` */
@@ -416,6 +420,7 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
+  maybeStarNudge(ctx);
 }
 
 const BRACKET_STAGES = new Set(['R32', 'R16', 'QF', 'SF', '3P', 'F']);
@@ -479,6 +484,7 @@ export async function cmdBracket(
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
+  maybeStarNudge(ctx);
 }
 
 /**
@@ -555,12 +561,16 @@ export function cmdInitStatusline(
   opts: { print?: boolean; command?: string },
   { cfg }: Ctx,
 ): void {
-  printInitResult(initStatusline({ print: opts.print, command: opts.command }), cfg);
+  const res = initStatusline({ print: opts.print, command: opts.command });
+  printInitResult(res, cfg);
+  if (!opts.print && res.action === 'written') printInitStarCta(cfg);
 }
 
 /** `claudinho init-hook` — wire the live-score UserPromptSubmit hook. */
 export function cmdInitHook(opts: { print?: boolean; command?: string }, { cfg }: Ctx): void {
-  printInitResult(initHook({ print: opts.print, command: opts.command }), cfg);
+  const res = initHook({ print: opts.print, command: opts.command });
+  printInitResult(res, cfg);
+  if (!opts.print && res.action === 'written') printInitStarCta(cfg);
 }
 
 /** `claudinho init-cursor-statusline` — patch ~/.cursor/cli-config.json. */
@@ -568,7 +578,9 @@ export function cmdInitCursorStatusline(
   opts: { print?: boolean; command?: string },
   { cfg }: Ctx,
 ): void {
-  printInitResult(initCursorStatusline({ print: opts.print, command: opts.command }), cfg);
+  const res = initCursorStatusline({ print: opts.print, command: opts.command });
+  printInitResult(res, cfg);
+  if (!opts.print && res.action === 'written') printInitStarCta(cfg);
 }
 
 /**
@@ -607,6 +619,7 @@ export function cmdInitCursor(opts: { print?: boolean }, { cfg }: Ctx): void {
   out('Tip: export CLAUDINHO_CURSOR_META=auto for a model + context line below the score.');
   out('');
   out('→ Restart your agent session to see it.');
+  printInitStarCta(cfg);
 }
 
 /**
@@ -633,6 +646,7 @@ export function cmdInitClaude(opts: { print?: boolean }, { cfg }: Ctx): void {
   out(`  ${CLAUDE_MCP_ONELINER}`);
   out('');
   out('→ Restart Claude Code to see it.');
+  printInitStarCta(cfg);
 }
 
 /** `claudinho match <id>` */
@@ -690,6 +704,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   const src = dataSource(liveSource, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
+  maybeStarNudge(ctx);
 }
 
 // Market copy is English-only in v1 (the approved legal copy bank); the base
@@ -1310,6 +1325,48 @@ export function vibePool(todayLocal: string, fixtures: Match[] = allFixtures()):
   if (todayLocal === first) return [...VIBES, ...VIBES_OPENER];
   if (todayLocal === last) return [...VIBES, ...VIBES_FINAL];
   return VIBES;
+}
+
+/**
+ * `claudinho star` — how to support the project. Pure copy + a link, no network.
+ * The interactive commands also surface a one-line nudge occasionally (see
+ * `maybeStarNudge`); this is the explicit, always-available version.
+ */
+export function cmdStar(ctx: Ctx): void {
+  const { cfg } = ctx;
+  if (cfg.json) {
+    emitJson({ repo: REPO_URL, hashtag: '#VibingLaVidaLoca' });
+    return;
+  }
+  const c = painterFor(cfg);
+  out();
+  out('  ' + c.bold('⭐ Star Claudinho on GitHub'));
+  out('  ' + c.cyan(REPO_URL));
+  out();
+  out('  ' + c.dim('Built for devs & fans · #VibingLaVidaLoca ⚽'));
+  out('  ' + c.dim('Live World Cup scores in your terminal, Claude Code & Cursor — no API keys.'));
+  out();
+}
+
+/**
+ * A one-line, color-dimmed star nudge appended to interactive human commands on
+ * every Nth TTY run. NEVER on the hot path (statusline/hook never call this), in
+ * `--json`, when piped (not a TTY), or when CLAUDINHO_NO_STAR is set.
+ */
+function maybeStarNudge(ctx: Ctx): void {
+  if (ctx.cfg.json || !process.stdout.isTTY || process.env.CLAUDINHO_NO_STAR) return;
+  const n = bumpRunCount();
+  if (n === undefined || !shouldNudge(n)) return;
+  const c = painterFor(ctx.cfg);
+  out();
+  out(c.dim(`  ⭐ Enjoying Claudinho? Star it → ${REPO_URL}   (claudinho star)`));
+}
+
+/** Star CTA after a successful interactive init — the highest-intent moment. */
+function printInitStarCta(cfg: CliConfig): void {
+  const c = painterFor(cfg);
+  out('');
+  out(c.dim(`⭐ If this keeps you in the flow during the match, star the repo → ${REPO_URL}`));
 }
 
 export function cmdVibe(ctx: Ctx): void {
