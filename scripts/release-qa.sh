@@ -166,8 +166,8 @@ const sig = buildMarketSignal({ match: resolved, source:'fake', asOf:'2026-06-30
   outcomes: normalizeOutcomes([{kind:'home',teamCode:'MEX',label:'Mexico',probability:0.45},
     {kind:'draw',label:'Draw',probability:0.32},{kind:'away',teamCode:'ECU',label:'Ecuador',probability:0.23}]),
   now: new Date('2026-06-30T11:55Z') });
-const placeholder = { ...resolved, home:{code:'1A',name:'Group A Winner',flag:'🏳️'},
-  away:{code:'2B',name:'Group B Runner-up',flag:'🏳️'} };
+const placeholder = { ...resolved, home:{code:'2A',name:'Group A 2nd Place',flag:'🏳️'},
+  away:{code:'2B',name:'Group B 2nd Place',flag:'🏳️'} };
 const ok = marketSignalRendersFor(resolved, sig) === true && marketSignalRendersFor(placeholder, sig) === false;
 process.stdout.write(ok ? 'GATE-OK' : 'GATE-LEAK');
 " 2>/dev/null)"

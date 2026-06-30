@@ -34,11 +34,14 @@ function mexEcu(over: Partial<Match> = {}): Match {
   };
 }
 
-/** The bundle placeholder the feed degrades back to — same id, unresolved teams. */
+/**
+ * The bundle placeholder the feed degrades back to — same id, unresolved teams.
+ * Mirrors the real bundled slot 760486 (`2A`/`2B`, "Group A/B 2nd Place", 🏳️).
+ */
 function placeholder(): Match {
   return mexEcu({
-    home: { code: '1A', name: 'Group A Winner', flag: '🏳️' },
-    away: { code: '2B', name: 'Group B Runner-up', flag: '🏳️' },
+    home: { code: '2A', name: 'Group A 2nd Place', flag: '🏳️' },
+    away: { code: '2B', name: 'Group B 2nd Place', flag: '🏳️' },
   });
 }
 

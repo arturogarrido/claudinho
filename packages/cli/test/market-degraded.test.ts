@@ -42,11 +42,14 @@ function mexEcu(over: Partial<Match> = {}): Match {
   };
 }
 
-/** The bundle placeholder the feed degrades back to — same id, unresolved teams. */
+/**
+ * The bundle placeholder the feed degrades back to — same id, unresolved teams.
+ * Mirrors the real bundled slot 760486 (`2A`/`2B`, "Group A/B 2nd Place", 🏳️).
+ */
 function placeholder(): Match {
   return mexEcu({
-    home: { code: '1A', name: 'Group A Winner', flag: '🏳️' },
-    away: { code: '2B', name: 'Group B Runner-up', flag: '🏳️' },
+    home: { code: '2A', name: 'Group A 2nd Place', flag: '🏳️' },
+    away: { code: '2B', name: 'Group B 2nd Place', flag: '🏳️' },
   });
 }
 
@@ -111,7 +114,7 @@ describe('CLI market gate — cached signal must not render against a degraded p
   it('today: SUPPRESSES the inherited market when the fixture degraded to a placeholder', async () => {
     await cmdToday('2026-06-30', ctx([placeholder()]));
     const o = text();
-    expect(o).toContain('Group A Winner'); // the placeholder fixture itself still renders
+    expect(o).toContain('Group A 2nd Place'); // the placeholder fixture itself still renders
     expect(o).not.toContain('45%'); // its inherited market percentages do NOT leak
     expect(o).not.toContain('32%');
   });
@@ -126,5 +129,10 @@ describe('CLI market gate — cached signal must not render against a degraded p
   it('markets <date>: drops the mismatched signal from the listing', async () => {
     await cmdMarkets('2026-06-30', undefined, ctx([placeholder()]));
     expect(text()).not.toContain('45%');
+  });
+
+  it('markets <date>: lists it when the fixture is resolved (positive control)', async () => {
+    await cmdMarkets('2026-06-30', undefined, ctx([mexEcu()]));
+    expect(text()).toContain('45%');
   });
 });
