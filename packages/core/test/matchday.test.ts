@@ -217,4 +217,23 @@ describe('marketFixtureForTeam (live-confirmed selection)', () => {
     const r = await marketFixtureForTeam(adapterReturning([]), team, before);
     expect(r.match?.id).toBe(opener.id);
   });
+
+  it('resolves a knockout team via the live overlay (not the static skeleton)', async () => {
+    // A team past its group stage has only 🏳️ placeholder KO slots in the bundle,
+    // so a static lookup answers "no fixture". The overlay carries the resolved tie.
+    const r32: Match = {
+      id: '760491',
+      stage: 'R32',
+      kickoff: '2026-07-01T01:00Z',
+      venue: 'X',
+      home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+      away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
+      status: 'SCHEDULED',
+      updatedAt: '2026-06-30T00:00Z',
+    };
+    const before = new Date('2026-06-30T12:00:00Z'); // group stage done, before the R32
+    const r = await marketFixtureForTeam(adapterReturning([r32]), 'MEX', before);
+    expect(r.match?.id).toBe('760491');
+    expect(r.match?.away.code).toBe('ECU');
+  });
 });

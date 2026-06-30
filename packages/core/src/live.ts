@@ -238,7 +238,19 @@ export async function marketFixtureForTeam(
   now: Date = new Date(),
 ): Promise<MatchByIdResult> {
   const nowMs = now.getTime();
-  const candidate = fixturesByTeam(code).find((m) => {
+  // Overlay the live knockout window so a knockout team's fixtures RESOLVE — the
+  // bundle's KO slots are 🏳️ placeholders, so a purely static lookup answers "no
+  // upcoming fixture" for a team past its group stage (same root cause as
+  // getNextFixtureForTeam). Fail closed to the static skeleton on a provider error.
+  let fixtures = allFixtures();
+  try {
+    if (adapter.fetchWindow) {
+      fixtures = mergeLive(fixtures, await adapter.fetchWindow(KNOCKOUT_WINDOW_START, KNOCKOUT_WINDOW_END));
+    }
+  } catch {
+    // static skeleton only — a knockout team then resolves to no fixture (fail closed)
+  }
+  const candidate = fixturesByTeam(code, fixtures).find((m) => {
     const k = Date.parse(m.kickoff);
     return nowMs >= k && nowMs <= k + LIVE_WINDOW_MS + EXTRA_TIME_SLACK_MS;
   });
@@ -248,7 +260,7 @@ export async function marketFixtureForTeam(
     if (!isFinished(m.status)) return { ...r, match: m };
     // Confirmed finished → the team's market story has moved on.
   }
-  const next = nextFixtureForTeam(code, { from: now });
+  const next = nextFixtureForTeam(code, { from: now, fixtures });
   return { match: next, degraded: false };
 }
 
