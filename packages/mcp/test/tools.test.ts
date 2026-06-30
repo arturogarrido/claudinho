@@ -149,6 +149,20 @@ describe('toolGetToday', () => {
     expect(data.count).toBeGreaterThan(0); // static fixtures still present
     expect(r.text).toContain('Live scores unavailable'); // and it says so
   });
+
+  it('renders a penalty shootout score in the day card (surface inherits scoreline)', async () => {
+    // FT match (not "live"), so today — not get_live — is the surface that shows it.
+    const pens = liveMatch({
+      status: 'FT',
+      minute: undefined,
+      score: { home: 1, away: 1 },
+      shootout: { home: 3, away: 4 },
+    });
+    const r = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: fakeAdapter({ byDate: [pens] }) });
+    expect(r.text).toContain('1(3)–1(4)');
+    const opener = (r.data as { matches: Match[] }).matches.find((m) => m.id === '760415');
+    expect(opener?.shootout).toEqual({ home: 3, away: 4 });
+  });
 });
 
 describe('toolGetNextFixture (live-resolved knockout)', () => {

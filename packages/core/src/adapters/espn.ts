@@ -50,6 +50,8 @@ interface EspnTeam {
 interface EspnCompetitor {
   homeAway?: 'home' | 'away';
   score?: string;
+  /** Penalty-shootout tally, present only on shootout matches (ESPN sends a number). */
+  shootoutScore?: number | string;
   winner?: boolean;
   team?: EspnTeam;
 }
@@ -125,9 +127,9 @@ function stageFromSlug(slug?: string): Stage {
   return 'FRIENDLY';
 }
 
-function toInt(s?: string): number | undefined {
+function toInt(s?: string | number): number | undefined {
   if (s == null || s === '') return undefined;
-  const n = parseInt(s, 10);
+  const n = parseInt(String(s), 10);
   return Number.isFinite(n) ? n : undefined;
 }
 
@@ -176,6 +178,18 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match {
     else if (awayC?.winner) winnerCode = away.code;
   }
 
+  // Penalty shootout: ESPN carries `shootoutScore` on BOTH competitors only for
+  // matches decided on penalties (absent otherwise). Gate on `hasScore` too, so a
+  // shootout never rides without the regulation `score` it parenthesizes — the
+  // structured payload can't surface an impossible { score: undefined, shootout }
+  // (the scoreline already hides that, but `--json`/MCP `data` would expose it).
+  // `hasScore` (not `isFinished`) so a live in-progress shootout still shows.
+  const hShoot = toInt(homeC?.shootoutScore);
+  const aShoot = toInt(awayC?.shootoutScore);
+  const shootout = hasScore && hShoot !== undefined && aShoot !== undefined
+    ? { home: hShoot, away: aShoot }
+    : undefined;
+
   return {
     id: ev.id,
     stage,
@@ -187,6 +201,7 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match {
     home,
     away,
     score: hasScore ? { home: hs, away: as } : undefined,
+    shootout,
     minute: parseMinute(ev.status ?? comp?.status),
     status,
     winnerCode,

@@ -52,6 +52,16 @@ describe('matchLine — flavor wiring', () => {
     expect(line).toContain('South Africa');
     expect(line).not.toMatch(/\uD83C[\uDDE6-\uDDFF]/);
   });
+
+  it('renders the penalty shootout score in the line (surface inherits scoreline)', () => {
+    const pens = liveMatch({
+      status: 'FT',
+      minute: undefined,
+      score: { home: 1, away: 1 },
+      shootout: { home: 3, away: 4 },
+    });
+    expect(matchLine(pens, cfg(), makeT('en'), painterFor(cfg()))).toContain('1(3)–1(4)');
+  });
 });
 
 describe('dataSource — localized live-data attribution', () => {

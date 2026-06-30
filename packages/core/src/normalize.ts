@@ -17,10 +17,19 @@ export function isFinished(status: Status): boolean {
   return status === 'FT';
 }
 
-/** Compact scoreline string, e.g. "1–0" (en dash) or "vs" when unscored. */
+/**
+ * Compact scoreline string, e.g. "1–0" (en dash), or "vs" when unscored. A
+ * knockout decided on penalties appends each side's shootout score in parens —
+ * "1(3)–1(4)" — so the level regulation result still reads while showing who
+ * advanced.
+ */
 export function scoreline(match: Match): string {
   if (!match.score) return 'vs';
-  return `${match.score.home}–${match.score.away}`;
+  const { home, away } = match.score;
+  if (match.shootout) {
+    return `${home}(${match.shootout.home})–${away}(${match.shootout.away})`;
+  }
+  return `${home}–${away}`;
 }
 
 /**

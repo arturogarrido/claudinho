@@ -58,6 +58,13 @@ export interface Match {
   away: Team;
   /** Present once the match is no longer purely SCHEDULED. */
   score?: { home: number; away: number };
+  /**
+   * Penalty-shootout score for a knockout decided on penalties (ESPN
+   * `competitor.shootoutScore`; status detail "FT-Pens"). Present ONLY for
+   * shootout matches — `score` stays the level regulation/extra-time result, and
+   * `scoreline` renders e.g. "1(3)–1(4)". Live-only, never in the bundle.
+   */
+  shootout?: { home: number; away: number };
   /** Live match minute when in progress. */
   minute?: number;
   status: Status;
