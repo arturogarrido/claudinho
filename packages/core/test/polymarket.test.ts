@@ -133,6 +133,41 @@ describe('PolymarketProvider — slug derivation', () => {
     // Without the override, the derived slug wouldn't match the served event.
     expect(await derived(fetchFor(custom, event({ slug: custom }))).findSignal(match())).toBeUndefined();
   });
+
+  it('resolves a day-boundary kickoff via the prior-day slug (UTC date misses)', async () => {
+    // MEX–ECU kicks off 01:00Z = Jun 30 evening in the Americas; Polymarket slugs
+    // it `…-06-30`, but the UTC date is 07-01. The provider must try the UTC date
+    // (miss) then the prior day (hit). Regression for the missing-market bug.
+    const ko = match({
+      id: '760491',
+      stage: 'R32',
+      group: undefined,
+      kickoff: '2026-07-01T01:00Z',
+      home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+      away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
+    });
+    const upd = '2026-07-01T00:25:00Z';
+    const ev = event({
+      slug: 'fifwc-mex-ecu-2026-06-30',
+      title: 'Mexico vs. Ecuador',
+      startTime: '2026-07-01T01:00:00Z',
+      updatedAt: upd,
+      markets: [
+        market('mex', 'Mexico', 0.45, { updatedAt: upd }),
+        market('draw', 'Draw (regular time)', 0.32, { updatedAt: upd }),
+        market('ecu', 'Ecuador', 0.23, { updatedAt: upd }),
+      ],
+    });
+    // Only the prior-day slug serves the event; the UTC-date slug returns [].
+    const p = new PolymarketProvider({
+      fetchImpl: fetchFor('fifwc-mex-ecu-2026-06-30', ev),
+      now: new Date('2026-07-01T00:30:00Z'),
+    });
+    const sig = await p.findSignal(ko);
+    expect(sig?.source).toBe('polymarket');
+    expect(sig?.outcomes.map((o) => o.kind)).toEqual(['home', 'draw', 'away']);
+    expect(sig?.favorite).toMatchObject({ kind: 'home', teamCode: 'MEX' });
+  });
 });
 
 describe('PolymarketProvider — fail-closed validation', () => {
