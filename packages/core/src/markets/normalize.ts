@@ -98,6 +98,20 @@ export function mapsCleanly(match: Match, outcomes: MarketOutcome[]): boolean {
   return true;
 }
 
+/**
+ * Is a (possibly cached/looked-up) signal safe to RENDER for THIS fixture? A
+ * signal is keyed and stored by match id, but display labels are taken from the
+ * *current* Match — so a cached signal must be re-checked against the fixture
+ * actually being shown. The guard: same match id AND the outcomes still map to
+ * the fixture's real teams. This fails closed when a knockout slot the feed
+ * resolved earlier later degrades back to a 🏳️ placeholder (the signal's own
+ * `ambiguous` flag was decided at fetch time, against the resolved match, so it
+ * can't catch this on its own).
+ */
+export function marketSignalRendersFor(match: Match, signal: MarketSignal): boolean {
+  return signal.matchId === match.id && mapsCleanly(match, signal.outcomes);
+}
+
 /** Sanity check: ≥2 priced outcomes whose probabilities sum to ~1. */
 export function hasSaneDistribution(outcomes: MarketOutcome[]): boolean {
   const priced = outcomes.filter((o) => Number.isFinite(o.probability) && o.probability > 0);

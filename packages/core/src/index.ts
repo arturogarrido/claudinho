@@ -85,6 +85,7 @@ export {
   deriveFavorite,
   favoriteStrength,
   mapsCleanly,
+  marketSignalRendersFor,
   hasSaneDistribution,
   isStaleSignal,
   isReliableMarketSignal,

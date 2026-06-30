@@ -22,6 +22,7 @@ import {
   marketBlock,
   marketFixtureForTeam,
   marketLine,
+  marketSignalRendersFor,
   marketRelevant,
   matchFlavor,
   matchLocation,
@@ -155,7 +156,12 @@ async function reliableMarketSignals(
   if (relevant.length === 0) return new Map();
   const raw = await marketSignalsFor(ctx, relevant, DEFAULT_ON_MARKET_OPTS);
   const out = new Map<string, MarketSignal>();
-  for (const [id, s] of raw) if (isReliableMarketSignal(s, { now })) out.set(id, s);
+  for (const [id, s] of raw) {
+    const m = relevant.find((x) => x.id === id);
+    // Re-check against the fixture being shown: a cached signal must not render
+    // against a degraded placeholder that inherited its id (fail closed).
+    if (m && isReliableMarketSignal(s, { now }) && marketSignalRendersFor(m, s)) out.set(id, s);
+  }
   return out;
 }
 
@@ -690,9 +696,19 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
 // FIFA/Anthropic disclaimer stays localized via t('disclaimer').
 const MARKET_INFO = 'Prediction-market data is informational only.';
 
-/** Show a signal only if it maps cleanly and has a determinable favorite. */
-function marketDisplayable(sig: MarketSignal): boolean {
-  return !sig.ambiguous && sig.favorite != null && hasSaneDistribution(sig.outcomes);
+/**
+ * Show a signal only if it maps cleanly, has a determinable favorite, AND still
+ * matches the fixture being rendered — the last check (`marketSignalRendersFor`)
+ * re-validates a cached signal against the current Match so it can't print
+ * against a degraded knockout placeholder (display labels come from the Match).
+ */
+function marketDisplayable(match: Match, sig: MarketSignal): boolean {
+  return (
+    marketSignalRendersFor(match, sig) &&
+    !sig.ambiguous &&
+    sig.favorite != null &&
+    hasSaneDistribution(sig.outcomes)
+  );
 }
 
 /**
@@ -746,16 +762,17 @@ export async function cmdMarkets(
     const now = ctx.now ?? new Date();
     // Live-confirmed selection: handles extra time past the static window AND
     // early FTs inside it (the static fixture's status is forever SCHEDULED).
-    const { match: fixture } = await marketFixtureForTeam(adapterFor(ctx), code, now);
+    const { match: fixture, degraded } = await marketFixtureForTeam(adapterFor(ctx), code, now);
     const sig =
       fixture && marketRelevant(fixture, now)
         ? (await marketSignalsFor(ctx, [fixture], MARKETS_CMD_OPTS)).get(fixture.id)
         : undefined;
-    const shown = sig && marketDisplayable(sig) ? sig : undefined;
+    const shown = fixture && sig && marketDisplayable(fixture, sig) ? sig : undefined;
     if (cfg.json) {
       emitJson({
         team: code,
         matchId: fixture?.id ?? null,
+        degraded,
         informationalOnly: true,
         signal: shown ?? null,
       });
@@ -764,7 +781,8 @@ export async function cmdMarkets(
     const c = painterFor(cfg);
     out();
     if (!fixture) {
-      out(c.dim('  ' + t('next.none', { team: code })));
+      // Feed unavailable can't resolve a knockout tie — say so, vs "no fixture".
+      out(c.dim('  ' + (degraded ? t('live.degraded') : t('next.none', { team: code }))));
     } else {
       out(header(marketHeaderLine(fixture, cfg), c));
       out();
@@ -787,7 +805,7 @@ export async function cmdMarkets(
       match && marketRelevant(match, now)
         ? (await marketSignalsFor(ctx, [match], MARKETS_CMD_OPTS)).get(match.id)
         : undefined;
-    const shown = sig && marketDisplayable(sig) ? sig : undefined;
+    const shown = match && sig && marketDisplayable(match, sig) ? sig : undefined;
     if (cfg.json) {
       emitJson({ matchId: target, informationalOnly: true, signal: shown ?? null });
       return;
@@ -821,7 +839,7 @@ export async function cmdMarkets(
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
     .filter(
       (r): r is { match: Match; signal: MarketSignal } =>
-        !!r.signal && marketDisplayable(r.signal),
+        !!r.signal && marketDisplayable(r.match, r.signal),
     );
 
   if (cfg.json) {
@@ -878,7 +896,10 @@ async function reliableShareSignals(
 ): Promise<Map<string, MarketSignal>> {
   const raw = await reliableMarketSignals(ctx, matches);
   const out = new Map<string, MarketSignal>();
-  for (const [id, s] of raw) if (marketDisplayable(s)) out.set(id, s);
+  for (const [id, s] of raw) {
+    const m = matches.find((x) => x.id === id);
+    if (m && marketDisplayable(m, s)) out.set(id, s);
+  }
   return out;
 }
 

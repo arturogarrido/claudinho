@@ -236,4 +236,13 @@ describe('marketFixtureForTeam (live-confirmed selection)', () => {
     expect(r.match?.id).toBe('760491');
     expect(r.match?.away.code).toBe('ECU');
   });
+
+  it('flags degraded when the overlay fails and a knockout tie cannot resolve', async () => {
+    // MEX past its group stage, ESPN down → no static knockout fixture. Honest
+    // "feed unavailable", not a misleading "no upcoming fixture".
+    const before = new Date('2026-06-30T12:00:00Z');
+    const r = await marketFixtureForTeam(adapterReturning('throw'), 'MEX', before);
+    expect(r.match).toBeUndefined();
+    expect(r.degraded).toBe(true);
+  });
 });

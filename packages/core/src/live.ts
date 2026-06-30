@@ -243,12 +243,13 @@ export async function marketFixtureForTeam(
   // upcoming fixture" for a team past its group stage (same root cause as
   // getNextFixtureForTeam). Fail closed to the static skeleton on a provider error.
   let fixtures = allFixtures();
+  let overlayFailed = false;
   try {
     if (adapter.fetchWindow) {
       fixtures = mergeLive(fixtures, await adapter.fetchWindow(KNOCKOUT_WINDOW_START, KNOCKOUT_WINDOW_END));
     }
   } catch {
-    // static skeleton only — a knockout team then resolves to no fixture (fail closed)
+    overlayFailed = true; // KO overlay unavailable — a knockout tie may be unresolvable
   }
   const candidate = fixturesByTeam(code, fixtures).find((m) => {
     const k = Date.parse(m.kickoff);
@@ -261,7 +262,10 @@ export async function marketFixtureForTeam(
     // Confirmed finished → the team's market story has moved on.
   }
   const next = nextFixtureForTeam(code, { from: now, fixtures });
-  return { match: next, degraded: false };
+  // When the overlay fetch failed the static skeleton can't resolve a knockout
+  // tie, so flag degraded — lets a caller say "feed unavailable" rather than the
+  // misleading "no upcoming fixture" for a team past its group stage.
+  return { match: next, degraded: overlayFailed };
 }
 
 export interface NextFixtureResult {

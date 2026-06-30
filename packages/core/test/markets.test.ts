@@ -18,6 +18,7 @@ import {
   marketFavoriteText,
   marketLine,
   marketProbabilityText,
+  marketSignalRendersFor,
   normalizeOutcomes,
 } from '../src/index';
 
@@ -139,6 +140,30 @@ describe('mapsCleanly / ambiguity', () => {
     ];
     expect(mapsCleanly(match(), withOther)).toBe(false);
     expect(build(withOther).ambiguous).toBe(true);
+  });
+});
+
+describe('marketSignalRendersFor (re-check a cached signal vs the rendered fixture)', () => {
+  const sig = build(hda(0.56, 0.25, 0.19)); // matchId 760415, MEX/RSA outcomes
+
+  it('renders for the fixture it was built for', () => {
+    expect(marketSignalRendersFor(match(), sig)).toBe(true);
+  });
+
+  it('does NOT render against a degraded placeholder (same id, unresolved teams)', () => {
+    // The bundle KO slot keeps the id but degrades to placeholder codes/flags —
+    // a cached MEX/RSA signal must not print "Group A Winner 56% · …".
+    const placeholder = match({
+      stage: 'R32',
+      group: undefined,
+      home: { code: '1A', name: 'Group A Winner', flag: '🏳️' },
+      away: { code: '2B', name: 'Group B Runner-up', flag: '🏳️' },
+    });
+    expect(marketSignalRendersFor(placeholder, sig)).toBe(false);
+  });
+
+  it('does NOT render when the signal is for a different match id', () => {
+    expect(marketSignalRendersFor(match({ id: '999999' }), sig)).toBe(false);
   });
 });
 
