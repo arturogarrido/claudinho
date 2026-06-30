@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchLocation, stageLabel, type Match } from '../src/index';
+import { matchLocation, scoreline, stageLabel, type Match } from '../src/index';
 
 function match(over: Partial<Match> = {}): Match {
   return {
@@ -34,6 +34,30 @@ describe('matchLocation', () => {
     expect(matchLocation(match({ city: 'Toronto', country: undefined }))).toBe(
       'Estadio Banorte, Toronto',
     );
+  });
+});
+
+describe('scoreline', () => {
+  it('renders "vs" when the match is unscored', () => {
+    expect(scoreline(match())).toBe('vs');
+  });
+
+  it('renders a plain scoreline with an en dash', () => {
+    expect(scoreline(match({ status: 'FT', score: { home: 2, away: 1 } }))).toBe('2–1');
+  });
+
+  it('appends each side\'s shootout score for a penalty knockout', () => {
+    expect(
+      scoreline(
+        match({
+          stage: 'R32',
+          group: undefined,
+          status: 'FT',
+          score: { home: 1, away: 1 },
+          shootout: { home: 3, away: 4 },
+        }),
+      ),
+    ).toBe('1(3)–1(4)');
   });
 });
 

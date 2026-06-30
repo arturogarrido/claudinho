@@ -131,6 +131,31 @@ describe('mapEspnEvent', () => {
     expect(m.winnerCode).toBe('NED');
   });
 
+  it('maps the penalty shootout score when ESPN sends shootoutScore on both sides', () => {
+    const pens = {
+      ...finished,
+      competitions: [
+        {
+          ...finished.competitions[0],
+          competitors: [
+            // ESPN sends shootoutScore as a NUMBER, score as a string.
+            { homeAway: 'home', score: '1', shootoutScore: 3, team: { abbreviation: 'GER', displayName: 'Germany' } },
+            { homeAway: 'away', score: '1', shootoutScore: 4, winner: true, team: { abbreviation: 'PAR', displayName: 'Paraguay' } },
+          ],
+        },
+      ],
+    };
+    const m = mapEspnEvent(pens as never, { groupByTeam: GROUP_MAP });
+    expect(m.score).toEqual({ home: 1, away: 1 }); // regulation result preserved
+    expect(m.shootout).toEqual({ home: 3, away: 4 });
+    expect(m.winnerCode).toBe('PAR');
+  });
+
+  it('leaves shootout undefined for a regular finished match (no phantom parens)', () => {
+    const m = mapEspnEvent(finished as never, { groupByTeam: GROUP_MAP });
+    expect(m.shootout).toBeUndefined();
+  });
+
   it('maps a knockout fixture from the slug, with no group letter', () => {
     const m = mapEspnEvent(knockout as never, { groupByTeam: GROUP_MAP });
     expect(m.stage).toBe('R16');
