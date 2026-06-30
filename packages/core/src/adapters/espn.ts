@@ -50,6 +50,8 @@ interface EspnTeam {
 interface EspnCompetitor {
   homeAway?: 'home' | 'away';
   score?: string;
+  /** Penalty-shootout goals when ESPN status is STATUS_FINAL_PEN. */
+  shootoutScore?: number;
   winner?: boolean;
   team?: EspnTeam;
 }
@@ -169,6 +171,14 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match {
   const hs = toInt(homeC?.score);
   const as = toInt(awayC?.score);
   const hasScore = status !== 'SCHEDULED' && hs !== undefined && as !== undefined;
+  const homePens =
+    typeof homeC?.shootoutScore === 'number' ? homeC.shootoutScore : undefined;
+  const awayPens =
+    typeof awayC?.shootoutScore === 'number' ? awayC.shootoutScore : undefined;
+  const pens =
+    homePens !== undefined && awayPens !== undefined
+      ? { home: homePens, away: awayPens }
+      : undefined;
 
   let winnerCode: string | undefined;
   if (isFinished(status)) {
@@ -186,7 +196,7 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match {
     country: comp?.venue?.address?.country || undefined,
     home,
     away,
-    score: hasScore ? { home: hs, away: as } : undefined,
+    score: hasScore ? { home: hs, away: as, ...(pens ? { pens } : {}) } : undefined,
     minute: parseMinute(ev.status ?? comp?.status),
     status,
     winnerCode,

@@ -56,8 +56,12 @@ export interface Match {
   country?: string;
   home: Team;
   away: Team;
-  /** Present once the match is no longer purely SCHEDULED. */
-  score?: { home: number; away: number };
+  /**
+   * Present once the match is no longer purely SCHEDULED.
+   * `home`/`away` are regulation (+ extra time) goals; `pens` holds the
+   * shootout tally when the provider supplies it.
+   */
+  score?: { home: number; away: number; pens?: { home: number; away: number } };
   /** Live match minute when in progress. */
   minute?: number;
   status: Status;

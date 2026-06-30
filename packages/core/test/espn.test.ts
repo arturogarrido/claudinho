@@ -113,7 +113,7 @@ describe('mapEspnEvent', () => {
     expect(m.group).toBe('E');
   });
 
-  it('maps winnerCode from ESPN competitor.winner (e.g. penalties)', () => {
+  it('maps winnerCode from ESPN competitor.winner when pens are absent', () => {
     const pens = {
       ...finished,
       competitions: [
@@ -129,6 +129,36 @@ describe('mapEspnEvent', () => {
     const m = mapEspnEvent(pens as never, { groupByTeam: GROUP_MAP });
     expect(m.score).toEqual({ home: 1, away: 1 });
     expect(m.winnerCode).toBe('NED');
+  });
+
+  it('maps winnerCode and shootout scores from ESPN (penalties)', () => {
+    const pens = {
+      ...finished,
+      status: { type: { name: 'STATUS_FINAL_PEN', state: 'post', completed: true } },
+      competitions: [
+        {
+          ...finished.competitions[0],
+          competitors: [
+            {
+              homeAway: 'home',
+              score: '1',
+              shootoutScore: 3,
+              team: { abbreviation: 'GER', displayName: 'Germany' },
+            },
+            {
+              homeAway: 'away',
+              score: '1',
+              shootoutScore: 4,
+              winner: true,
+              team: { abbreviation: 'PAR', displayName: 'Paraguay' },
+            },
+          ],
+        },
+      ],
+    };
+    const m = mapEspnEvent(pens as never);
+    expect(m.score).toEqual({ home: 1, away: 1, pens: { home: 3, away: 4 } });
+    expect(m.winnerCode).toBe('PAR');
   });
 
   it('maps a knockout fixture from the slug, with no group letter', () => {

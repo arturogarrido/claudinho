@@ -17,10 +17,12 @@ export function isFinished(status: Status): boolean {
   return status === 'FT';
 }
 
-/** Compact scoreline string, e.g. "1–0" (en dash) or "vs" when unscored. */
+/** Compact scoreline string, e.g. "1–0" or "1(3)–1(4)" after penalties; "vs" when unscored. */
 export function scoreline(match: Match): string {
   if (!match.score) return 'vs';
-  return `${match.score.home}–${match.score.away}`;
+  const { home, away, pens } = match.score;
+  if (pens) return `${home}(${pens.home})–${away}(${pens.away})`;
+  return `${home}–${away}`;
 }
 
 /**
