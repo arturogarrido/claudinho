@@ -179,11 +179,14 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match {
   }
 
   // Penalty shootout: ESPN carries `shootoutScore` on BOTH competitors only for
-  // matches decided on penalties (absent otherwise). Keep it strictly when both
-  // are present so a regular result never grows phantom parens.
+  // matches decided on penalties (absent otherwise). Gate on `hasScore` too, so a
+  // shootout never rides without the regulation `score` it parenthesizes — the
+  // structured payload can't surface an impossible { score: undefined, shootout }
+  // (the scoreline already hides that, but `--json`/MCP `data` would expose it).
+  // `hasScore` (not `isFinished`) so a live in-progress shootout still shows.
   const hShoot = toInt(homeC?.shootoutScore);
   const aShoot = toInt(awayC?.shootoutScore);
-  const shootout = hShoot !== undefined && aShoot !== undefined
+  const shootout = hasScore && hShoot !== undefined && aShoot !== undefined
     ? { home: hShoot, away: aShoot }
     : undefined;
 

@@ -156,6 +156,26 @@ describe('mapEspnEvent', () => {
     expect(m.shootout).toBeUndefined();
   });
 
+  it('never sets shootout without a regulation score (no impossible { score: undefined, shootout })', () => {
+    // Defensive: shootoutScore present but score absent → both omitted, so the
+    // structured payload (--json / MCP data) can't surface an inconsistent state.
+    const orphan = {
+      ...finished,
+      competitions: [
+        {
+          ...finished.competitions[0],
+          competitors: [
+            { homeAway: 'home', score: '', shootoutScore: 3, team: { abbreviation: 'GER', displayName: 'Germany' } },
+            { homeAway: 'away', score: '', shootoutScore: 4, team: { abbreviation: 'PAR', displayName: 'Paraguay' } },
+          ],
+        },
+      ],
+    };
+    const m = mapEspnEvent(orphan as never, { groupByTeam: GROUP_MAP });
+    expect(m.score).toBeUndefined();
+    expect(m.shootout).toBeUndefined();
+  });
+
   it('maps a knockout fixture from the slug, with no group letter', () => {
     const m = mapEspnEvent(knockout as never, { groupByTeam: GROUP_MAP });
     expect(m.stage).toBe('R16');
