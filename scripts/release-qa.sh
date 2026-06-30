@@ -123,7 +123,14 @@ fi
 # formatter (core `formatShareSnippet`, which every card routes through `scoreline`)
 # so this regression class is proven even when the live feed degrades to SKIP above
 # — the exact gap that hid the live penalty render in one review env. (v0.8.10)
-if [ -f "$CORE_DIST" ]; then
+# NOTE: this renders the LOCAL repo core formatter (what's about to ship via the
+# normal `pnpm -r build && pnpm release:qa` path). In `CLI=claudinho` mode you're
+# testing an already-published global, whose bundled formatter we can't import —
+# so SKIP rather than claim a PASS that doesn't reflect the global install.
+if [ -n "${CLI:-}" ]; then
+  printf '  \033[33m⚠ SKIP\033[0m  penalty render check (CLI override tests a global install; tripwire renders the local core formatter)\n'
+  SKIP=$((SKIP+1))
+elif [ -f "$CORE_DIST" ]; then
   PENS="$(node --input-type=module -e "
 import { formatShareSnippet } from 'file://$CORE_DIST';
 const m = { id:'pk', stage:'R32', kickoff:'2026-06-30T18:00Z', venue:'X',
