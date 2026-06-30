@@ -1,6 +1,7 @@
 /**
  * Star CTA plumbing — the npm→GitHub conversion nudge. STRICTLY off the hot path:
- * the statusline (`prompt`) and hook never import this. The footer nudge is shown
+ * the statusline (`prompt`) and hook code paths never CALL this (commands.ts
+ * imports it, but only the interactive commands invoke it). The footer nudge is shown
  * only on interactive, TTY, non-JSON runs, on every Nth invocation, and is
  * suppressible with CLAUDINHO_NO_STAR. Everything here is best-effort and never
  * throws — a CTA must never break or slow a command.
