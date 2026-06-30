@@ -1,11 +1,6 @@
 # @claudinho/cli ⚽
 
-**The 2026 men's football tournament, right in your terminal.** Live scores, fixtures, group tables, and market signals — TZ-aware, localized, scriptable.
-
-> ⚠️ **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.**
-> Claudinho is an independent, open-source fan project. It shows factual match
-> data (scores, fixtures, standings) with emoji flags only — no logos, crests,
-> kits, broadcast footage, or player likenesses.
+**The 2026 men's football tournament, right in your terminal.** Live scores, fixtures, group tables, and market signals — TZ-aware, localized, scriptable. No API key, no signup.
 
 ## Install
 
@@ -14,6 +9,24 @@ npm i -g @claudinho/cli      # installs the `claudinho` binary
 # or run without installing:
 npx @claudinho/cli today
 ```
+
+`claudinho today` on a knockout night — penalty shootouts and all:
+
+<!-- DEMO: verbatim `claudinho today <date>` from a knockout matchday. Shootouts render
+     as 1(3)–1(4). REGENERATE per matchday (capture after the day's games finish, so the
+     scores are live and current). Never hand-edit. -->
+```text
+Matches · 2026-06-29
+
+  🇧🇷 Brazil            2–1  Japan 🇯🇵   FT   into the history books!
+  🇩🇪 Germany           1(3)–1(4)  Paraguay 🇵🇾   FT   it's all over!
+  🇳🇱 Netherlands       1(2)–1(3)  Morocco 🇲🇦   FT   the final whistle blows!
+
+Live data: ESPN
+Not affiliated with FIFA or Anthropic.
+```
+
+All 104 fixtures ship bundled, so the schedule works offline; only live scores hit the network.
 
 ## Commands
 
@@ -120,18 +133,20 @@ claudinho share 760415            # one match by id
 claudinho share next MEX --copy   # …and copy it straight to the clipboard
 ```
 
-<!-- DEMO CARD: verbatim output of `claudinho share next USA --tz America/Los_Angeles`.
-     REGENERATE immediately before merging — the market block is gate-conditional
-     and the numbers drift. Never hand-edit. -->
+<!-- DEMO CARD: verbatim output of `claudinho share next MEX --tz America/Los_Angeles`.
+     REGENERATE before release — the matchup advances each round and any market block
+     drifts. Never hand-edit. -->
 ```text
-Next up for United States
+Next up for Mexico
 
-🇺🇸 United States vs Paraguay 🇵🇾
-Jun 12 · 18:00 America/Los_Angeles
-SoFi Stadium, Inglewood, California, USA
+🇲🇽 Mexico vs Ecuador 🇪🇨
+Jun 30 · 18:00 America/Los_Angeles
+Estadio Banorte, Mexico City, Mexico
+Round of 32
 
+Live data: ESPN
 #VibingLaVidaLoca · Independent fan project · not affiliated with FIFA or Anthropic.
-Try it: npx @claudinho/cli next USA
+Try it: npx @claudinho/cli next MEX
 ```
 
 Snippets are **plain text** (no color codes — they paste cleanly everywhere) and
@@ -224,6 +239,10 @@ from Polymarket; provider attribution and rate limits are respected.
 ## License
 
 MIT © 2026 Arturo Garrido · [source & issues](https://github.com/arturogarrido/claudinho)
+
+> **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.** An independent,
+> open-source fan project showing factual match data (scores, fixtures, standings) with emoji
+> flags only — no logos, crests, kits, broadcast footage, or player likenesses.
 
 ---
 
