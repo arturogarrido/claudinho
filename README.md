@@ -143,10 +143,10 @@ Everything else takes the standard stdio config:
 { "mcpServers": { "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] } } }
 ```
 
-Then just ask, mid-task — the agent calls the MCP server and answers with the live score:
+Then just ask, mid-task — the agent calls the MCP server and answers with the score:
 
 <p align="center">
-  <img src=".github/assets/mcp-aha.gif" alt="An AI coding agent asked 'who's winning the Mexico game?' mid-task, calling the Claudinho MCP server and answering with a live score — Mexico 2–1 Ecuador, 78'" width="720">
+  <img src=".github/assets/mcp-aha.gif" alt="An AI coding agent asked 'did Germany get through?' mid-task — it calls the Claudinho MCP server and answers with the result: Germany 1(3)–1(4) Paraguay, FT (Paraguay won on penalties)" width="720">
 </p>
 
 ## Surfaces
