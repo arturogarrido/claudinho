@@ -3,7 +3,7 @@
 **An MCP server for the 2026 men's football tournament.** Ask your agent about live
 scores, fixtures, group standings, and the prediction-market read — in Claude Code,
 Cursor, Codex, Claude Desktop, Windsurf, Zed, VS Code, or any MCP client (stdio).
-No API key, no signup — all 104 fixtures ship bundled; only live state hits the network.
+No API key, no signup — all 104 fixtures ship bundled; only live scores (and optional, read-only Polymarket signals) hit the network.
 
 ## Install
 
