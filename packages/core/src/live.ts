@@ -15,6 +15,7 @@ import {
   nextFixtureForTeam,
 } from './schedule';
 import { rosterAtZero, type GroupStandings } from './standings';
+import { shiftUtcDate } from './time';
 import type { Match, Stage } from './types';
 import { isResolvedNation } from './bracket/placeholders';
 import { buildBracketView } from './bracket/resolve';
@@ -199,13 +200,6 @@ export async function getBracket(
   };
 }
 
-/** Shift a "YYYY-MM-DD" date by whole UTC days, returning "YYYY-MM-DD". */
-function shiftUtcDate(dateISO: string, days: number): string {
-  const [y, m, d] = dateISO.slice(0, 10).split('-').map(Number);
-  return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days))
-    .toISOString()
-    .slice(0, 10);
-}
 
 export interface MatchByIdResult {
   match?: Match;

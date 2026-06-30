@@ -120,3 +120,15 @@ export function localDate(iso: string, tz?: string): string {
     timeZone: zone,
   }).format(new Date(iso));
 }
+
+/**
+ * Shift a date by whole **UTC** days, returning `YYYY-MM-DD`. Accepts a full ISO
+ * timestamp or a bare date (only the date part is read). Used to build ±1-day
+ * fetch windows (live.ts) and adjacent-day market slugs (markets/polymarket.ts).
+ */
+export function shiftUtcDate(dateISO: string, days: number): string {
+  const [y, m, d] = dateISO.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days))
+    .toISOString()
+    .slice(0, 10);
+}

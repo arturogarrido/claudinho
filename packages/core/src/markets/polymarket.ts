@@ -20,6 +20,7 @@
  * requested slug, line up on kickoff, expose the right moneyline markets, and
  * resolve in regular time — otherwise no signal is produced.
  */
+import { shiftUtcDate } from '../time';
 import type { Match } from '../types';
 import mappingJson from './mapping.2026.json';
 import { buildMarketSignal } from './normalize';
@@ -265,12 +266,6 @@ export class PolymarketProvider implements MarketProvider {
   }
 }
 
-/** Shift a "YYYY-MM-DD" date by whole days (UTC), returning "YYYY-MM-DD". */
-function shiftDay(date: string, days: number): string {
-  const [y, m, d] = date.split('-').map(Number);
-  return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days)).toISOString().slice(0, 10);
-}
-
 /**
  * Candidate Gamma event slugs for a fixture: `fifwc-{home}-{away}-{date}`.
  * Returns [] for placeholder/unresolved fixtures (non-3-letter or TBD codes) so
@@ -293,7 +288,7 @@ function deriveEventSlugs(match: Match): string[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(utcDate)) return [];
   return [
     `fifwc-${home}-${away}-${utcDate}`,
-    `fifwc-${home}-${away}-${shiftDay(utcDate, -1)}`,
+    `fifwc-${home}-${away}-${shiftUtcDate(utcDate, -1)}`,
   ];
 }
 

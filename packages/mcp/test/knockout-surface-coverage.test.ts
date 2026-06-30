@@ -10,8 +10,13 @@
  * `.cursor/rules/surface-parity.mdc` and AGENTS.md "Knockout surfaces live-resolve".
  */
 import { describe, expect, it } from 'vitest';
-import type { Match, ProviderAdapter } from '@claudinho/core';
-import { toolGetBracket, toolGetNextFixture, toolGetShareSnippet } from '../src/tools';
+import { FakeMarketProvider, type Match, type ProviderAdapter } from '@claudinho/core';
+import {
+  toolGetBracket,
+  toolGetMarketSignal,
+  toolGetNextFixture,
+  toolGetShareSnippet,
+} from '../src/tools';
 
 const RESOLVED_R32_ID = '760486'; // bundle: "Group A 2nd" vs "Group B 2nd" (both 🏳️)
 function r32MexEcu(): Match {
@@ -73,5 +78,20 @@ describe('knockout surface coverage — every team-facing MCP tool live-resolves
     });
     expect(r.text).toContain('Mexico');
     expect(r.text).toContain('Ecuador');
+  });
+
+  it('get_market_signal { team } resolves the opponent, not the placeholder', async () => {
+    // marketFixtureForTeam must live-resolve the KO tie (offline fake provider
+    // keeps the market fetch off the network — we only assert nation resolution).
+    const r = await toolGetMarketSignal({
+      team: 'MEX',
+      now: KNOCKOUT_NOW,
+      adapter: overlayAdapter,
+      marketProvider: new FakeMarketProvider(),
+    });
+    expect(r.text).toContain('Mexico');
+    expect(r.text).toContain('Ecuador');
+    expect(r.text).not.toContain(PLACEHOLDER_FLAG);
+    expect((r.data as { matchId: string | null }).matchId).toBe(RESOLVED_R32_ID);
   });
 });

@@ -20,8 +20,8 @@
  * when the cache lacks the pairing. Both contracts are asserted at the bottom.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Match, ProviderAdapter } from '@claudinho/core';
-import { cmdBracket, cmdNext, cmdShare } from '../src/commands';
+import { FakeMarketProvider, type Match, type ProviderAdapter } from '@claudinho/core';
+import { cmdBracket, cmdMarkets, cmdNext, cmdShare } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 import type { CacheState } from '../src/cache';
@@ -125,6 +125,16 @@ describe('knockout surface coverage — every team-facing CLI surface live-resol
     const t = text();
     expect(t).toContain('Mexico');
     expect(t).toContain('Ecuador');
+  });
+
+  it('`markets next <team>` resolves the opponent, not the placeholder', async () => {
+    // marketFixtureForTeam must live-resolve the KO tie (offline fake provider
+    // keeps the market fetch off the network — we only assert nation resolution).
+    await cmdMarkets('next', 'MEX', { ...ctx(), marketProvider: new FakeMarketProvider() });
+    const t = text();
+    expect(t).toContain('Mexico');
+    expect(t).toContain('Ecuador');
+    expect(t).not.toContain(PLACEHOLDER_FLAG);
   });
 });
 
