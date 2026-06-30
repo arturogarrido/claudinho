@@ -146,6 +146,39 @@ else
   SKIP=$((SKIP+1))
 fi
 
+# T6 — DETERMINISTIC, feed-independent: the market gate must NOT render a cached
+# signal against a degraded knockout placeholder. Market signals are cached by
+# match id but display labels come from the CURRENT fixture, so when the feed
+# degrades and a KO slot falls back to the bundle's 🏳️ placeholder (same id), a
+# cached MEX/ECU signal could print "Group A Winner 43% · …". `marketSignalRendersFor`
+# (matchId + mapsCleanly) is the chokepoint; assert it suppresses the mismatch
+# and still passes the resolved fixture (positive control). (v0.8.12 review P1.)
+if [ -n "${CLI:-}" ]; then
+  printf '  \033[33m⚠ SKIP\033[0m  market-gate degraded check (CLI override tests a global install; tripwire imports the local core)\n'
+  SKIP=$((SKIP+1))
+elif [ -f "$CORE_DIST" ]; then
+  GATE="$(node --input-type=module -e "
+import { marketSignalRendersFor, buildMarketSignal, normalizeOutcomes } from 'file://$CORE_DIST';
+const resolved = { id:'g', stage:'R32', kickoff:'2026-06-30T18:00Z', venue:'X',
+  home:{code:'MEX',name:'Mexico',flag:'🇲🇽'}, away:{code:'ECU',name:'Ecuador',flag:'🇪🇨'},
+  status:'SCHEDULED', updatedAt:'2026-06-30T00:00Z' };
+const sig = buildMarketSignal({ match: resolved, source:'fake', asOf:'2026-06-30T11:55Z',
+  outcomes: normalizeOutcomes([{kind:'home',teamCode:'MEX',label:'Mexico',probability:0.45},
+    {kind:'draw',label:'Draw',probability:0.32},{kind:'away',teamCode:'ECU',label:'Ecuador',probability:0.23}]),
+  now: new Date('2026-06-30T11:55Z') });
+const placeholder = { ...resolved, home:{code:'2A',name:'Group A 2nd Place',flag:'🏳️'},
+  away:{code:'2B',name:'Group B 2nd Place',flag:'🏳️'} };
+const ok = marketSignalRendersFor(resolved, sig) === true && marketSignalRendersFor(placeholder, sig) === false;
+process.stdout.write(ok ? 'GATE-OK' : 'GATE-LEAK');
+" 2>/dev/null)"
+  [ "$GATE" = "GATE-OK" ] \
+    && check ok  "market gate suppresses a cached signal on a degraded placeholder (deterministic)" \
+    || check no  "market gate suppresses a cached signal on a degraded placeholder (deterministic)"
+else
+  printf '  \033[33m⚠ SKIP\033[0m  market-gate degraded check (core dist not built — run pnpm -r build)\n'
+  SKIP=$((SKIP+1))
+fi
+
 echo
 bold "tripwires: $PASS passed · $FAIL failed · $SKIP skipped"
 echo "NOTE: this covers CLI/share rendering. MCP arg-threading (tz/lang on get_bracket"
