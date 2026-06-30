@@ -3,10 +3,12 @@
 [![CI](https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml/badge.svg)](https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml)
 [![npm: @claudinho/cli](https://img.shields.io/npm/v/@claudinho/cli?label=%40claudinho%2Fcli&color=cb3837)](https://www.npmjs.com/package/@claudinho/cli)
 [![npm: @claudinho/mcp](https://img.shields.io/npm/v/@claudinho/mcp?label=%40claudinho%2Fmcp&color=cb3837)](https://www.npmjs.com/package/@claudinho/mcp)
+[![npm downloads](https://img.shields.io/npm/dm/@claudinho/cli?label=downloads&color=cb3837)](https://www.npmjs.com/package/@claudinho/cli)
 [![cursor.directory](https://img.shields.io/badge/cursor.directory-claudinho-0b0b0b)](https://cursor.directory/plugins/claudinho)
 [![node](https://img.shields.io/node/v/@claudinho/cli?color=5fa04e)](https://nodejs.org)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![#VibingLaVidaLoca](https://img.shields.io/badge/%23VibingLaVidaLoca-⚽-ff5a5f)](https://github.com/arturogarrido/claudinho)
+[![GitHub stars](https://img.shields.io/github/stars/arturogarrido/claudinho?style=social)](https://github.com/arturogarrido/claudinho)
 
 **Live scores for the 2026 men's football tournament — in your terminal, your Claude Code / Cursor CLI statusline, and any MCP client.** No API key, no signup; all 104 fixtures ship bundled, so the schedule works offline.
 
@@ -20,6 +22,8 @@
 npx @claudinho/cli today      # try it in 10 seconds — no install, no key
 npx @claudinho/cli live       # what's on right now (during match windows)
 ```
+
+> ⭐ **Like it?** [Star the repo](https://github.com/arturogarrido/claudinho) — a fan project's only scoreboard is its stars. (`claudinho star` shows you how anytime.)
 
 While matches are live, your Claude Code or Cursor CLI statusline reads:
 
@@ -139,9 +143,15 @@ Everything else takes the standard stdio config:
 { "mcpServers": { "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] } } }
 ```
 
+Then just ask, mid-task — the agent calls the MCP server and answers with the live score:
+
+<p align="center">
+  <img src=".github/assets/mcp-aha.gif" alt="An AI coding agent asked 'who's winning the Mexico game?' mid-task, calling the Claudinho MCP server and answering with a live score — Mexico 2–1 Ecuador, 78'" width="720">
+</p>
+
 ## Surfaces
 
-- **CLI** — `today`, `live`, `next MEX`, `table`, `match <id>`, `bracket`, `markets`, `share` (and `vibe` 😎). `--json` on everything; TZ-aware via `--tz`.
+- **CLI** — `today`, `live`, `next MEX`, `table`, `match <id>`, `bracket`, `markets`, `share` (plus `vibe` 😎 and `star` ⭐). `--json` on everything; TZ-aware via `--tz`.
 - **Live statusline — Claude Code & Cursor CLI** — every live score inline; reads a local micro-cache, never blocks on the network. One command per agent: `claudinho init claude` / `claudinho init cursor` (also tmux & Starship via `claudinho prompt`).
 - **Score-aware hook (Claude Code)** — a `UserPromptSubmit` hook that drops the live score into the model's context during matches; zero tokens off-match. (Cursor parity pending — its hook can't reliably inject context yet.)
 - **MCP server** — 8 read-only tools (`get_today`, `get_live`, `get_match`, `get_next_fixture`, `get_standings`, `get_bracket`, `get_market_signal`, `get_share_snippet`) plus `my_team` / `tournament_today` prompts.
@@ -172,6 +182,16 @@ with `CLAUDINHO_FLAGS=on`.
 
 **Windows?** Works, but flag emoji rendering varies by terminal — best on macOS/Linux. See the
 flags note above; `CLAUDINHO_FLAGS=off` gives clean codes on any terminal that can't render them.
+
+## Why star?
+
+Claudinho is a solo, $0, organic fan project — a GitHub star is the only signal that it's worth maintaining, and the nudge to keep shipping through the final. A star also:
+
+- surfaces it for other devs hunting live scores during the tournament,
+- puts new releases in your feed — a desktop **notifier**, an AI pundit, and **other tournaments** are on the roadmap,
+- takes one click → **[⭐ star Claudinho](https://github.com/arturogarrido/claudinho)**.
+
+New here? [`CONTRIBUTING.md`](CONTRIBUTING.md) has the layout, the dev loop, and good first issues.
 
 ## License
 

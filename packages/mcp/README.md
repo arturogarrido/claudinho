@@ -5,6 +5,12 @@ scores, fixtures, group standings, and the prediction-market read — in Claude 
 Cursor, Codex, Claude Desktop, Windsurf, Zed, VS Code, or any MCP client (stdio).
 No API key, no signup — all 104 fixtures ship bundled; only live scores (and optional, read-only Polymarket signals) hit the network.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/arturogarrido/claudinho/main/.github/assets/mcp-aha.gif" alt="An AI coding agent mid-task: asked 'who's winning the Mexico game?', it calls the Claudinho MCP server and answers with the live score — 🇲🇽 Mexico 2–1 Ecuador 🇪🇨, 78'" width="760">
+</p>
+
+> ⭐ Added via `npx` or your MCP config? **[Star the repo](https://github.com/arturogarrido/claudinho)** — a fan project runs on stars.
+
 ## Install
 
 **Claude Code**

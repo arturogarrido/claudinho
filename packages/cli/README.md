@@ -2,6 +2,8 @@
 
 **The 2026 men's football tournament, right in your terminal.** Live scores, fixtures, group tables, and market signals — TZ-aware, localized, scriptable. No API key, no signup.
 
+> ⭐ Installing via `npx` or globally? **[Star the repo](https://github.com/arturogarrido/claudinho)** — a fan project runs on stars. (`claudinho star` shows you how anytime.)
+
 ## Install
 
 ```bash
@@ -48,6 +50,7 @@ claudinho init-cursor-statusline  # (granular) wire just the Cursor CLI statusli
 claudinho hook              # live-score context for a Claude Code hook (silent off-match)
 claudinho init-hook         # (granular) make Claude itself score-aware (UserPromptSubmit)
 claudinho vibe              # a matchday-coder one-liner (#VibingLaVidaLoca)
+claudinho star              # how to support the project (star the repo ⭐)
 ```
 
 ### Examples
