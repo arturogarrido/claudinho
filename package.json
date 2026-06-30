@@ -19,6 +19,6 @@
     "release:qa": "bash scripts/release-qa.sh"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.0"
+    "@biomejs/biome": "^2.5.1"
   }
 }
