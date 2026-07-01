@@ -93,8 +93,12 @@ export function matchLine(
   } else {
     right = statusToken(m, t, c);
   }
-  const flair = matchFlavor(m, { level: cfg.flavor, locale: cfg.lang });
-  const tail = flair ? `   ${c.dim(flair)}` : '';
+  // Mexico's viral 2026 rally cry ("¿Y si sí?") takes the flair slot whenever MEX
+  // is playing — all locales, a fan flourish, not translated. Still silenced by
+  // --flavor off. Green so it pops past the usual dimmed commentary.
+  const mexRally = (m.home.code === 'MEX' || m.away.code === 'MEX') && cfg.flavor !== 'off';
+  const flair = mexRally ? '¿Y si sí?' : matchFlavor(m, { level: cfg.flavor, locale: cfg.lang });
+  const tail = flair ? `   ${mexRally ? c.green(flair) : c.dim(flair)}` : '';
   return `  ${left}   ${right}${tail}`.trimEnd();
 }
 

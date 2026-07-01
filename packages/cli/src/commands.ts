@@ -221,19 +221,6 @@ function resolveTeamArg(team: string | undefined, usage: string): string {
 }
 
 /** `claudinho today [date]` */
-/**
- * Viral 2026 Mexico rally cry ("¿Y si sí?"). Shown in ALL locales on `today` and
- * `next` whenever MEX is in the match — a fan flourish, not translated. Text-only
- * flair: suppressed by `--flavor off` and never in `--json` (both commands return
- * early on json). Returns the styled phrase or undefined; the caller adds indent.
- */
-const MEX_RALLY = '¿Y si sí?';
-function mexRally(m: Match, cfg: CliConfig, c: ReturnType<typeof painterFor>): string | undefined {
-  if (cfg.flavor === 'off') return undefined;
-  if (m.home.code !== 'MEX' && m.away.code !== 'MEX') return undefined;
-  return c.green(MEX_RALLY);
-}
-
 export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void> {
   const { cfg, t } = ctx;
   precheck(cfg, t, date);
@@ -268,8 +255,6 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
       out(matchLine(m, cfg, t, c, flags));
       const s = signals.get(m.id);
       if (s) out('    ' + c.dim(marketLine(s, m)));
-      const rally = mexRally(m, cfg, c);
-      if (rally) out('    ' + rally);
     }
   }
   out();
@@ -355,8 +340,6 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
           t('next.in', { countdown: countdown(fixture.kickoff) }),
       ),
   );
-  const rally = mexRally(fixture, cfg, c);
-  if (rally) out('  ' + rally);
   out();
   // Attribute the provider when the live overlay resolved the fixture (a
   // knockout tie); a static group fixture carries no source.

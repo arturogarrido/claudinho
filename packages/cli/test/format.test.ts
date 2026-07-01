@@ -26,24 +26,29 @@ function liveMatch(over: Partial<Match> = {}): Match {
   };
 }
 
-const render = (c: CliConfig) => matchLine(liveMatch(), c, makeT(c.lang), painterFor(c));
+// Generic-flair wiring is tested on a NON-MEX match: MEX intentionally overrides
+// the genre flair with its "¿Y si sí?" rally cry (see matchLine), so it can't be
+// used to verify that the ordinary localized commentary flows through.
+const liveNonMex = (over: Partial<Match> = {}): Match =>
+  liveMatch({ home: { code: 'BRA', name: 'Brazil', flag: '🇧🇷' }, ...over });
+const render = (c: CliConfig) => matchLine(liveNonMex(), c, makeT(c.lang), painterFor(c));
 
 describe('matchLine — flavor wiring', () => {
   it('appends the localized flair at flavor=full', () => {
     const c = cfg({ flavor: 'full' });
-    const flair = matchFlavor(liveMatch(), { level: 'full', locale: 'en' });
+    const flair = matchFlavor(liveNonMex(), { level: 'full', locale: 'en' });
     expect(flair).not.toBe('');
     expect(render(c)).toContain(flair);
   });
 
   it('omits flair at flavor=off', () => {
-    const flair = matchFlavor(liveMatch(), { level: 'full', locale: 'en' });
+    const flair = matchFlavor(liveNonMex(), { level: 'full', locale: 'en' });
     expect(render(cfg({ flavor: 'off' }))).not.toContain(flair);
   });
 
   it('localizes the flair to the configured language', () => {
     const es = render(cfg({ flavor: 'full', lang: 'es' }));
-    expect(es).toContain(matchFlavor(liveMatch(), { level: 'full', locale: 'es' }));
+    expect(es).toContain(matchFlavor(liveNonMex(), { level: 'full', locale: 'es' }));
   });
 
   it('drops flag emoji when flags are off (names only)', () => {
