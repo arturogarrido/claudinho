@@ -58,6 +58,13 @@ To cut a release:
 **MCP-affecting releases** (anything that changes a tool's shape or description) also bump
 `packages/mcp/server.json` and re-publish to the MCP Registry (`mcp-publisher publish`).
 
+**Smithery (`.mcpb`) re-publish** — optional, and only when you want the Smithery listing to
+track a new version: `pnpm -F @claudinho/mcp build:mcpb` (stages `mcpb/manifest.json` + the tsup
+server + its external deps, smoke-tests it, then `mcpb pack` → `packages/mcp/dist/claudinho-<v>.mcpb`),
+then `smithery mcp publish <that .mcpb> -n arturogarrido/claudinho`. The bundle pins the server at
+that version (it runs the bundled code, not `npx`-latest), so the listing is a snapshot until you
+re-publish.
+
 **Lessons (learned the hard way):**
 - npm deprecated classic "Automation" tokens — use **trusted publishing**, not a token.
 - A brand-new package can't have a trusted publisher pre-configured; its **first** publish must be
