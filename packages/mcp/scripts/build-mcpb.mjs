@@ -97,8 +97,13 @@ try {
   const declaredByName = Object.fromEntries((manifest.tools ?? []).map((t) => [t.name, t]));
   manifest.tools = serverTools.map((t) => ({
     name: t.name,
+    ...(t.title ? { title: t.title } : {}),
     description: declaredByName[t.name]?.description ?? t.description,
     inputSchema: t.inputSchema,
+    // Carry the server's real annotations (readOnlyHint/openWorldHint) into the
+    // manifest — Smithery scores the bundled manifest, so without these it reports
+    // "Annotations 0/8" even though every tool declares them.
+    ...(t.annotations ? { annotations: t.annotations } : {}),
   }));
   writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 
