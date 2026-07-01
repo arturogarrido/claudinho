@@ -50,6 +50,7 @@
   ],
   "scripts": {
     "build": "tsup",
+    "build:mcpb": "pnpm run build && node scripts/build-mcpb.mjs",
     "dev": "tsup --watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
