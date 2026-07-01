@@ -13,9 +13,12 @@ export function matchKey(stage: Stage, index: number): string {
 }
 
 /**
- * ESPN bracket slot numbers within a round follow ascending event id, not kickoff
- * time (R32/R16 kickoff order diverges from id order). Winner-placeholder refs
- * ("Round of 32 3 Winner") use this id-based index — see validateBracketIndexing.
+ * The topology indexes knockout NODES within a round by ascending ESPN event id
+ * (kickoff order diverges from id order — see validateBracketIndexing). NOTE: the
+ * winner-placeholder refs parsed from ESPN's labels ("Round of 32 3 Winner") are
+ * stored as-is and do NOT reliably line up with these id-based node indices, so
+ * bracket rendering trusts the team ESPN seats in the live fixture rather than the
+ * ref projection (see resolve.ts); the ref is a degraded-only fallback.
  */
 export function orderByBracketIndex(matches: Match[]): Match[] {
   return [...matches].sort((a, b) => Number(a.id) - Number(b.id));

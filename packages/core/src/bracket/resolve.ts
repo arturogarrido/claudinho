@@ -108,6 +108,7 @@ function resolveSlot(
   ref: SlotRef,
   ctx: ResolveContext,
   liveTeam?: Team,
+  fixtureInMergedSet = false,
 ): ResolvedParticipant {
   const liveParticipant = confirmedLiveParticipant(liveTeam);
 
@@ -136,23 +137,36 @@ function resolveSlot(
       if (liveParticipant) return liveParticipant;
       return tbd(t(ctx.lang, 'bracket.slot.third', { groups: ref.groups.join('/') }));
     case 'winner': {
-      const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
-      const match = node ? ctx.matchesById.get(node.matchId) : undefined;
-      if (match) {
-        const winner = resolveWinner(match);
-        if (winner) return participant(winner, 'confirmed');
-      }
+      // ESPN's own fixture is authoritative for the pairing: prefer the resolved
+      // team it seats in THIS slot over projecting a winner from the bundled feeder
+      // topology. The bundled winner-ref indices (parsed from ESPN's placeholder
+      // slot labels at generation time) do NOT reliably correspond to ESPN's actual
+      // R32→R16 feeder assignment, so projecting from them rendered wrong R16
+      // pairings (v0.8.16 P1: "Paraguay vs Mexico" instead of the real ties). Fall
+      // back to the feeder ref only when this fixture is absent from the merged set
+      // (degraded feed), where no live result exists to resolve anyway — so it stays
+      // fail-closed.
       if (liveParticipant) return liveParticipant;
+      if (!fixtureInMergedSet) {
+        const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
+        const match = node ? ctx.matchesById.get(node.matchId) : undefined;
+        if (match) {
+          const winner = resolveWinner(match);
+          if (winner) return participant(winner, 'confirmed');
+        }
+      }
       return tbd(winnerLabel(ctx, ref.stage, ref.index));
     }
     case 'loser': {
-      const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
-      const match = node ? ctx.matchesById.get(node.matchId) : undefined;
-      if (match) {
-        const loser = resolveLoser(match);
-        if (loser) return participant(loser, 'confirmed');
-      }
       if (liveParticipant) return liveParticipant;
+      if (!fixtureInMergedSet) {
+        const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
+        const match = node ? ctx.matchesById.get(node.matchId) : undefined;
+        if (match) {
+          const loser = resolveLoser(match);
+          if (loser) return participant(loser, 'confirmed');
+        }
+      }
       return tbd(
         t(ctx.lang, 'bracket.slot.loser', {
           stage: stageLabelI18n(ctx.lang, ref.stage),
@@ -191,6 +205,11 @@ export function buildBracketView(
     if (want && stage !== want) continue;
     const nodes = topology.matches.filter((n) => n.stage === stage);
     const matchViews: BracketMatchView[] = nodes.map((node) => {
+      // Whether this knockout fixture is in the merged set (live overlay merged
+      // over the bundled skeleton) vs a synthesized TBD. When present, its
+      // home/away are authoritative (ESPN's resolved team or a genuine TBD); only
+      // when it's missing entirely do we fall back to the static feeder topology.
+      const fixtureInMergedSet = matchesById.has(node.matchId);
       const match =
         matchesById.get(node.matchId) ??
         ({
@@ -208,8 +227,8 @@ export function buildBracketView(
         stage: node.stage,
         index: node.index,
         kickoff: match.kickoff,
-        home: resolveSlot(node.home, ctx, match.home),
-        away: resolveSlot(node.away, ctx, match.away),
+        home: resolveSlot(node.home, ctx, match.home, fixtureInMergedSet),
+        away: resolveSlot(node.away, ctx, match.away, fixtureInMergedSet),
         match,
       };
     });
