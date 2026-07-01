@@ -66,9 +66,11 @@ afterEach(() => outSpy.mockReset());
 const text = () => writes.join('');
 
 describe('¿Y si sí? — Mexico rally cry on today/next', () => {
-  it('today: shows it for a MEX match (even in English)', async () => {
+  it('today: shows it INLINE on the MEX match line, not a separate line (even in English)', async () => {
     await cmdToday('2026-07-01', ctx([m()], { lang: 'en' }));
-    expect(text()).toContain(RALLY);
+    // It takes the flair slot: same line as the match, after the kickoff/status.
+    const mexLine = text().split('\n').find((l) => l.includes('Mexico'));
+    expect(mexLine).toContain(RALLY);
   });
 
   it('today: shows it exactly once, only for the MEX match', async () => {
