@@ -56,10 +56,10 @@ describe('buildBracketView', () => {
   });
 
   it("P1 GUARD: ESPN's R16 fixture overrides a disagreeing static feeder ref", () => {
-    // The bug: bundled winner-ref indices (ESPN kickoff-order slot #) don't match
-    // our id-order node indices, so projecting a feeder winner into R16 rendered
-    // WRONG pairings (e.g. Mexico shown against the wrong opponent). Here the
-    // feeder R32-1 finishes as a GER win, but ESPN's actual R16-1 fixture seats
+    // The bug: the bundled feeder projection can disagree with the team ESPN
+    // actually seats in the live fixture, so projecting a feeder winner into R16
+    // rendered WRONG pairings (e.g. Mexico shown against the wrong opponent). Here
+    // the feeder R32-1 finishes as a GER win, but ESPN's actual R16-1 fixture seats
     // MEX — the render must follow ESPN, never the feeder projection.
     const r32node = topology.matches.find((n) => n.stage === 'R32' && n.index === 1)!;
     const r16node = topology.matches.find((n) => n.stage === 'R16' && n.index === 1)!;
