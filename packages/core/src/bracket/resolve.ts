@@ -108,7 +108,7 @@ function resolveSlot(
   ref: SlotRef,
   ctx: ResolveContext,
   liveTeam?: Team,
-  liveFixturePresent = false,
+  fixtureInMergedSet = false,
 ): ResolvedParticipant {
   const liveParticipant = confirmedLiveParticipant(liveTeam);
 
@@ -138,14 +138,16 @@ function resolveSlot(
       return tbd(t(ctx.lang, 'bracket.slot.third', { groups: ref.groups.join('/') }));
     case 'winner': {
       // ESPN's own fixture is authoritative for the pairing: prefer the resolved
-      // team it puts in THIS slot over projecting a winner from the static feeder
-      // topology. The bundled winner-ref indices (ESPN's kickoff-order slot #) do
-      // NOT match our id-order node indices, so projecting from them rendered wrong
-      // R16 pairings (e.g. "Paraguay vs Mexico" instead of ESPN's real ties). Only
-      // fall back to the feeder ref when the live fixture is absent (degraded feed),
-      // where no live result exists to resolve anyway — so it stays fail-closed.
+      // team it seats in THIS slot over projecting a winner from the bundled feeder
+      // topology. The bundled winner-ref indices (parsed from ESPN's placeholder
+      // slot labels at generation time) do NOT reliably correspond to ESPN's actual
+      // R32→R16 feeder assignment, so projecting from them rendered wrong R16
+      // pairings (v0.8.16 P1: "Paraguay vs Mexico" instead of the real ties). Fall
+      // back to the feeder ref only when this fixture is absent from the merged set
+      // (degraded feed), where no live result exists to resolve anyway — so it stays
+      // fail-closed.
       if (liveParticipant) return liveParticipant;
-      if (!liveFixturePresent) {
+      if (!fixtureInMergedSet) {
         const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
         const match = node ? ctx.matchesById.get(node.matchId) : undefined;
         if (match) {
@@ -157,7 +159,7 @@ function resolveSlot(
     }
     case 'loser': {
       if (liveParticipant) return liveParticipant;
-      if (!liveFixturePresent) {
+      if (!fixtureInMergedSet) {
         const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
         const match = node ? ctx.matchesById.get(node.matchId) : undefined;
         if (match) {
@@ -203,10 +205,11 @@ export function buildBracketView(
     if (want && stage !== want) continue;
     const nodes = topology.matches.filter((n) => n.stage === stage);
     const matchViews: BracketMatchView[] = nodes.map((node) => {
-      // Whether ESPN served THIS knockout fixture in the live overlay. When it
-      // did, its home/away are authoritative (resolved team or genuine TBD); when
-      // it didn't (degraded feed), we fall back to the static feeder topology.
-      const liveFixturePresent = matchesById.has(node.matchId);
+      // Whether this knockout fixture is in the merged set (live overlay merged
+      // over the bundled skeleton) vs a synthesized TBD. When present, its
+      // home/away are authoritative (ESPN's resolved team or a genuine TBD); only
+      // when it's missing entirely do we fall back to the static feeder topology.
+      const fixtureInMergedSet = matchesById.has(node.matchId);
       const match =
         matchesById.get(node.matchId) ??
         ({
@@ -224,8 +227,8 @@ export function buildBracketView(
         stage: node.stage,
         index: node.index,
         kickoff: match.kickoff,
-        home: resolveSlot(node.home, ctx, match.home, liveFixturePresent),
-        away: resolveSlot(node.away, ctx, match.away, liveFixturePresent),
+        home: resolveSlot(node.home, ctx, match.home, fixtureInMergedSet),
+        away: resolveSlot(node.away, ctx, match.away, fixtureInMergedSet),
         match,
       };
     });
