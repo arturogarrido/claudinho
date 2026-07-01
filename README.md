@@ -6,11 +6,11 @@
 [![npm downloads](https://img.shields.io/npm/dm/@claudinho/cli?label=downloads&color=cb3837)](https://www.npmjs.com/package/@claudinho/cli)
 [![cursor.directory](https://img.shields.io/badge/cursor.directory-claudinho-0b0b0b)](https://cursor.directory/plugins/claudinho)
 [![smithery badge](https://smithery.ai/badge/arturogarrido/claudinho)](https://smithery.ai/servers/arturogarrido/claudinho)
-[![Glama](https://glama.ai/mcp/servers/arturogarrido/claudinho/badge)](https://glama.ai/mcp/servers/arturogarrido/claudinho)
+[![Glama: A](https://img.shields.io/badge/Glama-A-2ea043)](https://glama.ai/mcp/servers/arturogarrido/claudinho)
 [![node](https://img.shields.io/node/v/@claudinho/cli?color=5fa04e)](https://nodejs.org)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![#VibingLaVidaLoca](https://img.shields.io/badge/%23VibingLaVidaLoca-⚽-ff5a5f)](https://github.com/arturogarrido/claudinho)
-[![GitHub stars](https://img.shields.io/github/stars/arturogarrido/claudinho?style=social)](https://github.com/arturogarrido/claudinho)
+[![GitHub stars](https://img.shields.io/github/stars/arturogarrido/claudinho?style=flat&logo=github&label=stars&color=f5c518)](https://github.com/arturogarrido/claudinho)
 
 **Live scores for the 2026 men's football tournament — in your terminal, your Claude Code / Cursor CLI statusline, and any MCP client.** No API key, no signup; all 104 fixtures ship bundled, so the schedule works offline.
 
