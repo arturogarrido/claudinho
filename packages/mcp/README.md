@@ -54,7 +54,8 @@ Then just ask your agent naturally — it picks the right tool and answers with 
 
 All tools are **read-only** (`readOnlyHint`) and accept optional `tz`, `lang`
 (`en`/`es`/`pt`/`fr`), and `flavor` (`off`/`subtle`/`full`). Every response carries
-human-readable text **and** structured JSON.
+human-readable text **and** structured content, validated against each tool's
+declared `outputSchema`.
 
 Resources: `standings://{group}`, `fixtures://{date}`. Prompts: `tournament_today`,
 and `my_team` (give it a 3-letter team code; combines next fixture, standings, and

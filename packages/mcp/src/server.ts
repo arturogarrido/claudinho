@@ -64,13 +64,110 @@ const commonArgs = {
   flavor: flavorArg.optional().describe('Commentary flair: off, subtle, full (default: full)'),
 };
 
-/** Wrap a ToolResult into the MCP tool response shape. */
+// ---- Output schemas (structured tool output) --------------------------------
+// Declared per tool so clients know each tool's return shape (and the .mcpb
+// manifest carries it). Deliberately PERMISSIVE: `.passthrough()` on objects so
+// no field is stripped and forward-compatible additions never break validation;
+// every branch-specific key is optional. Domain types live in @claudinho/core as
+// TS interfaces, so these are hand-mirrored (kept loose on purpose).
+const teamRef = z.object({ code: z.string(), name: z.string(), flag: z.string() }).partial().passthrough();
+const scorePair = z.object({ home: z.number(), away: z.number() }).partial().passthrough();
+const matchOut = z
+  .object({
+    id: z.string(),
+    stage: z.string().optional(),
+    group: z.string().nullable().optional(),
+    kickoff: z.string().optional(),
+    venue: z.string().optional(),
+    home: teamRef.optional(),
+    away: teamRef.optional(),
+    score: scorePair.nullable().optional(),
+    shootout: scorePair.optional(),
+    status: z.string().optional(),
+    minute: z.number().nullable().optional(),
+    winnerCode: z.string().optional(),
+  })
+  .passthrough();
+const anyObj = z.object({}).passthrough();
+const src = z.string().nullable();
+
+const todayOut = {
+  date: z.string(),
+  degraded: z.boolean(),
+  source: src,
+  count: z.number(),
+  matches: z.array(matchOut),
+  marketSignals: z.record(anyObj).optional(),
+};
+const liveOut = { degraded: z.boolean(), source: src, count: z.number(), matches: z.array(matchOut) };
+const matchDetailOut = {
+  match: matchOut.nullable(),
+  degraded: z.boolean().optional(),
+  source: src.optional(),
+  marketSignal: anyObj.nullable().optional(),
+};
+const standingsOut = {
+  degraded: z.boolean(),
+  source: src,
+  tables: z.union([anyObj, z.array(anyObj), z.null()]),
+};
+const bracketOut = {
+  view: anyObj.nullable(),
+  degraded: z.boolean().optional(),
+  standingsDegraded: z.boolean().optional(),
+  source: src.optional(),
+};
+const nextOut = { team: z.string(), fixture: matchOut.nullable(), degraded: z.boolean() };
+const marketOut = {
+  matchId: z.string().nullable().optional(),
+  team: z.string().optional(),
+  date: z.string().optional(),
+  degraded: z.boolean().optional(),
+  informationalOnly: z.boolean(),
+  signal: anyObj.nullable().optional(),
+  signals: z.array(anyObj).optional(),
+};
+const shareOut = {
+  kind: z.string(),
+  target: z.string().optional(),
+  snippet: z.string().optional(), // absent on the bracket "unknown stage" error branch
+  source: src.optional(),
+  informationalOnly: z.boolean().optional(),
+  degraded: z.boolean().optional(),
+  style: z.string().optional(),
+  team: z.string().optional(),
+  group: z.string().optional(),
+  stage: z.string().optional(),
+  tables: z.union([anyObj, z.array(anyObj), z.null()]).optional(),
+  view: anyObj.nullable().optional(),
+  matches: z.array(matchOut).optional(),
+  marketSignals: z.record(anyObj).optional(),
+};
+
+/**
+ * The per-tool output shapes, keyed by tool name (exported so a test can
+ * validate that every handler's `data` — healthy AND degraded — parses against
+ * the schema the tool advertises). Keep in lockstep with the registerTool calls.
+ */
+export const OUTPUT_SCHEMAS = {
+  get_today: todayOut,
+  get_live: liveOut,
+  get_match: matchDetailOut,
+  get_standings: standingsOut,
+  get_bracket: bracketOut,
+  get_next_fixture: nextOut,
+  get_market_signal: marketOut,
+  get_share_snippet: shareOut,
+} as const;
+
+/** Wrap a ToolResult into the MCP tool response shape (text + structured). */
 function toContent(r: ToolResult) {
   return {
     content: [
       { type: 'text' as const, text: r.text },
       { type: 'text' as const, text: '```json\n' + JSON.stringify(r.data, null, 2) + '\n```' },
     ],
+    structuredContent: r.data as Record<string, unknown>,
   };
 }
 
@@ -93,6 +190,7 @@ export function buildServer(): McpServer {
       },
       // Read-only; reaches an external data provider for the live overlay.
       annotations: { readOnlyHint: true, openWorldHint: true },
+      outputSchema: todayOut,
     },
     async (args) => toContent(await toolGetToday(args)),
   );
@@ -105,6 +203,7 @@ export function buildServer(): McpServer {
         'Only matches in play right now — each with current score and minute (empty when nothing is live). Use during matches for in-play state; for a full day\'s schedule including upcoming and finished, use get_today. tz/lang/flavor affect formatting only.',
       inputSchema: { ...commonArgs },
       annotations: { readOnlyHint: true, openWorldHint: true },
+      outputSchema: liveOut,
     },
     async (args) => toContent(await toolGetLive(args)),
   );
@@ -117,6 +216,7 @@ export function buildServer(): McpServer {
         "One match by its id, with live score/minute overlaid when it's in play. Get the id from get_today or get_live; to find a team's match without an id, use get_next_fixture. tz/lang/flavor affect formatting.",
       inputSchema: { id: z.string().describe('Match id'), ...commonArgs },
       annotations: { readOnlyHint: true, openWorldHint: true },
+      outputSchema: matchDetailOut,
     },
     async (args) => toContent(await toolGetMatch(args)),
   );
@@ -132,6 +232,7 @@ export function buildServer(): McpServer {
         ...commonArgs,
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
+      outputSchema: standingsOut,
     },
     async (args) => toContent(await toolGetStandings(args)),
   );
@@ -150,6 +251,7 @@ export function buildServer(): McpServer {
         ...commonArgs,
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
+      outputSchema: bracketOut,
     },
     async (args) => toContent(await toolGetBracket(args)),
   );
@@ -163,6 +265,7 @@ export function buildServer(): McpServer {
       inputSchema: { team: teamArg.describe('3-letter team code, e.g. MEX'), ...commonArgs },
       // Read-only; overlays live provider data for knockout pairings, so open-world.
       annotations: { readOnlyHint: true, openWorldHint: true },
+      outputSchema: nextOut,
     },
     async (args) => toContent(await toolGetNextFixture(args)),
   );
@@ -187,6 +290,7 @@ export function buildServer(): McpServer {
       },
       // Read-only; reaches an external prediction-market data provider.
       annotations: { readOnlyHint: true, openWorldHint: true },
+      outputSchema: marketOut,
     },
     async (args) => toContent(await toolGetMarketSignal(args)),
   );
@@ -224,6 +328,7 @@ export function buildServer(): McpServer {
       },
       // Read-only; may reach the live/market data providers (live/today/match).
       annotations: { readOnlyHint: true, openWorldHint: true },
+      outputSchema: shareOut,
     },
     async (args) => toContent(await toolGetShareSnippet(args)),
   );

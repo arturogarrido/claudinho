@@ -100,6 +100,10 @@ try {
     ...(t.title ? { title: t.title } : {}),
     description: declaredByName[t.name]?.description ?? t.description,
     inputSchema: t.inputSchema,
+    // Carry the server's live outputSchema too — Smithery scores the bundled
+    // manifest, so a tool that declares one in-process still reports "Output
+    // schemas 0/8" unless the manifest itself carries it.
+    ...(t.outputSchema ? { outputSchema: t.outputSchema } : {}),
     // Carry the server's real annotations (readOnlyHint/openWorldHint) into the
     // manifest — Smithery scores the bundled manifest, so without these it reports
     // "Annotations 0/8" even though every tool declares them.
