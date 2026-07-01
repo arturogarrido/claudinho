@@ -267,6 +267,35 @@ export class PolymarketProvider implements MarketProvider {
 }
 
 /**
+ * Polymarket abbreviates some nations differently from their FIFA 3-letter code —
+ * mostly ISO-3166 alpha-3, plus a couple of its own (DR Congo `cdr`, Cabo Verde
+ * `cvi`). BOTH the event slug (`fifwc-{home}-{away}-{date}`) and each outcome
+ * market's slug token use these, so a fixture with one of these teams resolves to
+ * no market unless we map the code. Keyed by our uppercase FIFA code → Polymarket's
+ * lowercase token. VERIFIED 1:1 against live Gamma events (2026-07-01); every
+ * lookup is still fail-closed (exact slug + kickoff + coherent 1X2), so a stale or
+ * wrong entry degrades to "no market", never a wrong one. (Curaçao is intentionally
+ * absent — Polymarket's data mislabels it under the `kor` token, so we fail closed
+ * rather than risk showing South Korea's odds.)
+ */
+const POLYMARKET_TOKEN: Record<string, string> = {
+  SUI: 'che', // Switzerland
+  NED: 'nld', // Netherlands
+  URU: 'ury', // Uruguay
+  POR: 'prt', // Portugal
+  CRO: 'hrv', // Croatia
+  COD: 'cdr', // DR Congo
+  CPV: 'cvi', // Cabo Verde
+};
+
+/** Polymarket slug token(s) for a team: its alias (canonical) first, then the FIFA code. */
+function pmTokens(code: string): string[] {
+  const c = code.toLowerCase();
+  const alias = POLYMARKET_TOKEN[code.toUpperCase()];
+  return alias && alias !== c ? [alias, c] : [c];
+}
+
+/**
  * Candidate Gamma event slugs for a fixture: `fifwc-{home}-{away}-{date}`.
  * Returns [] for placeholder/unresolved fixtures (non-3-letter or TBD codes) so
  * we never query garbage slugs.
@@ -277,7 +306,8 @@ export class PolymarketProvider implements MarketProvider {
  * `…-06-30`, not `…-07-01`). The Americas are always behind UTC, so we only need
  * the UTC date and the prior day. We try the UTC date first; `toSignal`'s
  * kickoff line-up + exact-slug checks reject a wrong-day event, so the prior-day
- * fallback stays fail-closed.
+ * fallback stays fail-closed. The home/away tokens fold in the Polymarket alias
+ * (above) so ISO-vs-FIFA teams (e.g. NED→nld, COD→cdr) resolve too.
  */
 function deriveEventSlugs(match: Match): string[] {
   const home = match.home.code.toLowerCase();
@@ -286,10 +316,18 @@ function deriveEventSlugs(match: Match): string[] {
   if (!/^[a-z]{3}$/.test(home) || !/^[a-z]{3}$/.test(away)) return [];
   const utcDate = match.kickoff.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(utcDate)) return [];
-  return [
-    `fifwc-${home}-${away}-${utcDate}`,
-    `fifwc-${home}-${away}-${shiftUtcDate(utcDate, -1)}`,
-  ];
+  const dates = [utcDate, shiftUtcDate(utcDate, -1)];
+  const homeToks = pmTokens(match.home.code);
+  const awayToks = pmTokens(match.away.code);
+  const slugs: string[] = [];
+  for (const d of dates) {
+    for (const h of homeToks) {
+      for (const a of awayToks) {
+        slugs.push(`fifwc-${h}-${a}-${d}`);
+      }
+    }
+  }
+  return [...new Set(slugs)];
 }
 
 /** Last dash-segment of a market slug — the outcome token (`mex`/`draw`/`rsa`). */
@@ -313,10 +351,13 @@ function pickMarket(
   teamCode: string,
   teamName: string,
 ): GammaMarket | undefined {
-  const code = teamCode.toLowerCase();
+  // Match the outcome market's slug token against the team's Polymarket token(s):
+  // the alias (e.g. `cdr` for DR Congo) or the FIFA code. Without the alias the
+  // away leg of an ISO-vs-FIFA fixture is never found → no signal.
+  const tokens = pmTokens(teamCode);
   const name = teamName.trim().toLowerCase();
   const teamMarkets = markets.filter((m) => !isDrawMarket(m));
-  const bySlug = teamMarkets.find((m) => slugToken(m) === code);
+  const bySlug = teamMarkets.find((m) => tokens.includes(slugToken(m)));
   if (bySlug) return bySlug;
   return teamMarkets.find((m) => (m.groupItemTitle ?? '').trim().toLowerCase() === name);
 }

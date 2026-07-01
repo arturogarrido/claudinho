@@ -121,6 +121,43 @@ describe('PolymarketProvider — slug derivation', () => {
     expect(await p.findSignal(tbd)).toBeUndefined();
   });
 
+  it('resolves via the Polymarket team-code alias (COD→cdr) for both the slug and the outcome market', async () => {
+    // Polymarket abbreviates DR Congo `cdr`, not FIFA `COD` — for the event slug
+    // AND each outcome market's slug token. The event is served ONLY at the aliased
+    // slug with a `cdr` away leg, so a signal proves the alias drove both the slug
+    // derivation and pickMarket (pre-fix: derived `…-eng-cod-…` → miss; and even a
+    // resolved event's `cdr` leg wouldn't match the `cod` code → no away market).
+    const engCod = match({
+      id: '760495',
+      kickoff: '2026-07-01T16:00Z',
+      home: { code: 'ENG', name: 'England', flag: '🏴' },
+      away: { code: 'COD', name: 'DR Congo', flag: '🇨🇩' },
+    });
+    const ev = event(
+      {
+        id: 'ev-eng-cdr',
+        slug: 'fifwc-eng-cdr-2026-07-01',
+        title: 'England vs. DR Congo',
+        startTime: '2026-07-01T16:00:00Z',
+        updatedAt: '2026-07-01T15:00:00Z',
+      },
+      [
+        market('eng', 'England', 0.76, { updatedAt: '2026-07-01T15:00:00Z' }),
+        market('draw', 'Draw (England vs. DR Congo)', 0.18, { updatedAt: '2026-07-01T15:00:00Z' }),
+        market('cdr', 'DR Congo', 0.05, { updatedAt: '2026-07-01T15:00:00Z' }),
+      ],
+    );
+    const p = new PolymarketProvider({
+      fetchImpl: fetchFor('fifwc-eng-cdr-2026-07-01', ev),
+      now: new Date('2026-07-01T12:00:00Z'),
+    });
+    const sig = await p.findSignal(engCod);
+    expect(sig?.source).toBe('polymarket');
+    expect(sig?.outcomes.map((o) => o.kind)).toEqual(['home', 'draw', 'away']);
+    expect(sig?.outcomes.find((o) => o.kind === 'away')?.teamCode).toBe('COD');
+    expect(sig?.favorite).toMatchObject({ kind: 'home', teamCode: 'ENG' });
+  });
+
   it('honors an explicit mapping override of the derived slug', async () => {
     const custom = 'fifwc-custom-2026-06-11';
     const mapping: MarketMappingTable = { '760415': { eventSlug: custom } };
