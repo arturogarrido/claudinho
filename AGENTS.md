@@ -56,7 +56,9 @@ To cut a release:
    npm are skipped) and auto-creates the GitHub Release (`gh release create --generate-notes`).
 
 **MCP-affecting releases** (anything that changes a tool's shape or description) also bump
-`packages/mcp/server.json` and re-publish to the MCP Registry (`mcp-publisher publish`).
+`packages/mcp/server.json` and re-publish to the MCP Registry — from the repo root, pass the path
+(`mcp-publisher publish packages/mcp/server.json`), since `mcp-publisher` defaults to `./server.json`
+in the cwd and ours isn't at the root.
 
 **Adding or changing an MCP tool:** every tool declares an `outputSchema` and returns
 `structuredContent` (`packages/mcp/src/server.ts`). A **new** tool must be added to
