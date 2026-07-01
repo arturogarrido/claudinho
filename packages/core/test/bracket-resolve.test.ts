@@ -42,31 +42,52 @@ describe('buildBracketView', () => {
     expect(view.degraded).toBe(true);
   });
 
-  it('confirms an R32 winner into the R16 tree when live overlay has FT', async () => {
-    const r32node = topology.matches.find((n) => n.stage === 'R32' && n.index === 1)!;
+  it("confirms a live-resolved participant from ESPN's R16 fixture (fixture is authoritative)", () => {
+    // ESPN seats the resolved team directly in the R16 fixture as feeders finish;
+    // that live fixture — not the static feeder ref — is the source of truth.
+    const r16node = topology.matches.find((n) => n.stage === 'R16' && n.index === 1)!;
     const merged = baseKo.map((m) =>
-      m.id === r32node.matchId ? fx(m.id, 'R32', 'MEX', 'RSA', [2, 0]) : m,
+      m.id === r16node.matchId ? { ...m, home: team('MEX', 'Mexico', '🇲🇽') } : m,
     );
     const view = buildBracketView(topology, merged, [], true, false);
-    const r16 = view.stages.find((s) => s.stage === 'R16')!;
-    const first = r16.matches[0]!;
+    const first = view.stages.find((s) => s.stage === 'R16')!.matches[0]!;
     const confirmed = [first.home, first.away].find((p) => p.code === 'MEX');
     expect(confirmed?.status).toBe('confirmed');
   });
 
-  it('advances the winner on a level score when ESPN supplies winnerCode (penalties)', () => {
+  it("P1 GUARD: ESPN's R16 fixture overrides a disagreeing static feeder ref", () => {
+    // The bug: bundled winner-ref indices (ESPN kickoff-order slot #) don't match
+    // our id-order node indices, so projecting a feeder winner into R16 rendered
+    // WRONG pairings (e.g. Mexico shown against the wrong opponent). Here the
+    // feeder R32-1 finishes as a GER win, but ESPN's actual R16-1 fixture seats
+    // MEX — the render must follow ESPN, never the feeder projection.
     const r32node = topology.matches.find((n) => n.stage === 'R32' && n.index === 1)!;
-    const merged = baseKo.map((m) =>
-      m.id === r32node.matchId
-        ? {
-            ...fx(m.id, 'R32', 'MEX', 'RSA', [1, 1]),
-            winnerCode: 'MEX',
-          }
-        : m,
-    );
+    const r16node = topology.matches.find((n) => n.stage === 'R16' && n.index === 1)!;
+    const merged = baseKo.map((m) => {
+      if (m.id === r32node.matchId) return fx(m.id, 'R32', 'GER', 'RSA', [2, 0]);
+      if (m.id === r16node.matchId) return { ...m, home: team('MEX', 'Mexico', '🇲🇽') };
+      return m;
+    });
     const view = buildBracketView(topology, merged, [], true, false);
-    const r16 = view.stages.find((s) => s.stage === 'R16')!;
-    const first = r16.matches[0]!;
+    const first = view.stages.find((s) => s.stage === 'R16')!.matches[0]!;
+    expect(first.home.code).toBe('MEX'); // ESPN's fixture wins
+    expect(first.home.status).toBe('confirmed');
+    expect(first.home.code).not.toBe('GER'); // NOT the disagreeing feeder ref
+  });
+
+  it('advances via winnerCode in the feeder fallback when no live R16 fixture exists', () => {
+    // Degraded/narrow-window fallback: with only R32 fixtures present, the static
+    // feeder ref resolves the R16 slot, reading winnerCode for a penalty result.
+    const r32node = topology.matches.find((n) => n.stage === 'R32' && n.index === 1)!;
+    const merged = baseKo
+      .filter((m) => m.stage === 'R32')
+      .map((m) =>
+        m.id === r32node.matchId
+          ? { ...fx(m.id, 'R32', 'MEX', 'RSA', [1, 1]), winnerCode: 'MEX' }
+          : m,
+      );
+    const view = buildBracketView(topology, merged, [], true, false);
+    const first = view.stages.find((s) => s.stage === 'R16')!.matches[0]!;
     const confirmed = [first.home, first.away].find((p) => p.code === 'MEX');
     expect(confirmed?.status).toBe('confirmed');
   });

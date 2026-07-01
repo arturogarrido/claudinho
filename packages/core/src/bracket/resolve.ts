@@ -108,6 +108,7 @@ function resolveSlot(
   ref: SlotRef,
   ctx: ResolveContext,
   liveTeam?: Team,
+  liveFixturePresent = false,
 ): ResolvedParticipant {
   const liveParticipant = confirmedLiveParticipant(liveTeam);
 
@@ -136,23 +137,34 @@ function resolveSlot(
       if (liveParticipant) return liveParticipant;
       return tbd(t(ctx.lang, 'bracket.slot.third', { groups: ref.groups.join('/') }));
     case 'winner': {
-      const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
-      const match = node ? ctx.matchesById.get(node.matchId) : undefined;
-      if (match) {
-        const winner = resolveWinner(match);
-        if (winner) return participant(winner, 'confirmed');
-      }
+      // ESPN's own fixture is authoritative for the pairing: prefer the resolved
+      // team it puts in THIS slot over projecting a winner from the static feeder
+      // topology. The bundled winner-ref indices (ESPN's kickoff-order slot #) do
+      // NOT match our id-order node indices, so projecting from them rendered wrong
+      // R16 pairings (e.g. "Paraguay vs Mexico" instead of ESPN's real ties). Only
+      // fall back to the feeder ref when the live fixture is absent (degraded feed),
+      // where no live result exists to resolve anyway — so it stays fail-closed.
       if (liveParticipant) return liveParticipant;
+      if (!liveFixturePresent) {
+        const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
+        const match = node ? ctx.matchesById.get(node.matchId) : undefined;
+        if (match) {
+          const winner = resolveWinner(match);
+          if (winner) return participant(winner, 'confirmed');
+        }
+      }
       return tbd(winnerLabel(ctx, ref.stage, ref.index));
     }
     case 'loser': {
-      const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
-      const match = node ? ctx.matchesById.get(node.matchId) : undefined;
-      if (match) {
-        const loser = resolveLoser(match);
-        if (loser) return participant(loser, 'confirmed');
-      }
       if (liveParticipant) return liveParticipant;
+      if (!liveFixturePresent) {
+        const node = ctx.nodesByKey.get(matchKey(ref.stage, ref.index));
+        const match = node ? ctx.matchesById.get(node.matchId) : undefined;
+        if (match) {
+          const loser = resolveLoser(match);
+          if (loser) return participant(loser, 'confirmed');
+        }
+      }
       return tbd(
         t(ctx.lang, 'bracket.slot.loser', {
           stage: stageLabelI18n(ctx.lang, ref.stage),
@@ -191,6 +203,10 @@ export function buildBracketView(
     if (want && stage !== want) continue;
     const nodes = topology.matches.filter((n) => n.stage === stage);
     const matchViews: BracketMatchView[] = nodes.map((node) => {
+      // Whether ESPN served THIS knockout fixture in the live overlay. When it
+      // did, its home/away are authoritative (resolved team or genuine TBD); when
+      // it didn't (degraded feed), we fall back to the static feeder topology.
+      const liveFixturePresent = matchesById.has(node.matchId);
       const match =
         matchesById.get(node.matchId) ??
         ({
@@ -208,8 +224,8 @@ export function buildBracketView(
         stage: node.stage,
         index: node.index,
         kickoff: match.kickoff,
-        home: resolveSlot(node.home, ctx, match.home),
-        away: resolveSlot(node.away, ctx, match.away),
+        home: resolveSlot(node.home, ctx, match.home, liveFixturePresent),
+        away: resolveSlot(node.away, ctx, match.away, liveFixturePresent),
         match,
       };
     });
