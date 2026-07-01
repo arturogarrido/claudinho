@@ -114,7 +114,9 @@ export class PolymarketProvider implements MarketProvider {
     match: Match,
     options?: MarketSignalOptions,
   ): Promise<MarketSignal | undefined> {
-    return (await this.resolveOne(match, options)).signal;
+    const deadline =
+      options?.deadlineMs != null ? Date.now() + options.deadlineMs : Number.POSITIVE_INFINITY;
+    return (await this.resolveOne(match, options, deadline)).signal;
   }
 
   async findSignals(
@@ -128,7 +130,7 @@ export class PolymarketProvider implements MarketProvider {
       options?.deadlineMs != null ? Date.now() + options.deadlineMs : Number.POSITIVE_INFINITY;
     for (const m of matches) {
       if (Date.now() >= deadline) break; // skipped (not checked) → retry next time
-      const r = await this.resolveOne(m, options);
+      const r = await this.resolveOne(m, options, deadline);
       if (r.checked) checked.add(m.id);
       if (r.signal) signals.set(m.id, r.signal);
     }
@@ -144,15 +146,24 @@ export class PolymarketProvider implements MarketProvider {
   private async resolveOne(
     match: Match,
     options?: MarketSignalOptions,
+    deadline = Number.POSITIVE_INFINITY,
   ): Promise<{ signal?: MarketSignal; checked: boolean }> {
     const entry = (this.opts.mapping ?? BUNDLED_MAPPING)[match.id];
     // A hand-curated override is authoritative (single slug); otherwise try the
     // derived candidates (UTC date, then the prior day — see deriveEventSlugs).
     const slugs = entry?.eventSlug ? [entry.eventSlug] : deriveEventSlugs(match);
     if (slugs.length === 0) return { checked: true }; // definitively unmappable → no market
+    const configured = options?.timeoutMs ?? this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     try {
       for (const slug of slugs) {
-        const event = await this.fetchEvent(slug, options?.timeoutMs);
+        // Enforce the enrichment deadline BETWEEN candidate slugs, not just between
+        // fixtures: with team aliases a match can have up to 8 candidates, and
+        // default-on rendering must never block. Bound each fetch to the remaining
+        // budget too. A deadline abort is NOT "checked" — we didn't finish, so it's
+        // retried next time rather than negative-cached as "no market".
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return { checked: false };
+        const event = await this.fetchEvent(slug, Math.min(configured, remaining));
         const signal = event ? this.toSignal(match, slug, event, options) : undefined;
         if (signal) return { signal, checked: true }; // first candidate that validates wins
       }
