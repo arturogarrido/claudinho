@@ -121,6 +121,102 @@ describe('PolymarketProvider — slug derivation', () => {
     expect(await p.findSignal(tbd)).toBeUndefined();
   });
 
+  it('resolves via the Polymarket team-code alias (COD→cdr) for both the slug and the outcome market', async () => {
+    // Polymarket abbreviates DR Congo `cdr`, not FIFA `COD` — for the event slug
+    // AND each outcome market's slug token. The event is served ONLY at the aliased
+    // slug with a `cdr` away leg, so a signal proves the alias drove both the slug
+    // derivation and pickMarket (pre-fix: derived `…-eng-cod-…` → miss; and even a
+    // resolved event's `cdr` leg wouldn't match the `cod` code → no away market).
+    const engCod = match({
+      id: '760495',
+      kickoff: '2026-07-01T16:00Z',
+      home: { code: 'ENG', name: 'England', flag: '🏴' },
+      away: { code: 'COD', name: 'DR Congo', flag: '🇨🇩' },
+    });
+    const ev = event(
+      {
+        id: 'ev-eng-cdr',
+        slug: 'fifwc-eng-cdr-2026-07-01',
+        title: 'England vs. DR Congo',
+        startTime: '2026-07-01T16:00:00Z',
+        updatedAt: '2026-07-01T15:00:00Z',
+      },
+      [
+        market('eng', 'England', 0.76, { updatedAt: '2026-07-01T15:00:00Z' }),
+        market('draw', 'Draw (England vs. DR Congo)', 0.18, { updatedAt: '2026-07-01T15:00:00Z' }),
+        market('cdr', 'DR Congo', 0.05, { updatedAt: '2026-07-01T15:00:00Z' }),
+      ],
+    );
+    const p = new PolymarketProvider({
+      fetchImpl: fetchFor('fifwc-eng-cdr-2026-07-01', ev),
+      now: new Date('2026-07-01T12:00:00Z'),
+    });
+    const sig = await p.findSignal(engCod);
+    expect(sig?.source).toBe('polymarket');
+    expect(sig?.outcomes.map((o) => o.kind)).toEqual(['home', 'draw', 'away']);
+    expect(sig?.outcomes.find((o) => o.kind === 'away')?.teamCode).toBe('COD');
+    expect(sig?.favorite).toMatchObject({ kind: 'home', teamCode: 'ENG' });
+  });
+
+  it('resolves a home-side alias team too (NED→nld)', async () => {
+    // Belt-and-suspenders: the COD case exercises the AWAY alias; this covers the
+    // HOME slot going through the alias in both the slug and the outcome match.
+    const nedSwe = match({
+      id: '760xxx',
+      kickoff: '2026-06-20T16:00Z',
+      home: { code: 'NED', name: 'Netherlands', flag: '🇳🇱' },
+      away: { code: 'SWE', name: 'Sweden', flag: '🇸🇪' },
+    });
+    const ev = event(
+      {
+        id: 'ev-nld-swe',
+        slug: 'fifwc-nld-swe-2026-06-20',
+        title: 'Netherlands vs. Sweden',
+        startTime: '2026-06-20T16:00:00Z',
+        updatedAt: '2026-06-20T15:00:00Z',
+      },
+      [
+        market('nld', 'Netherlands', 0.6, { updatedAt: '2026-06-20T15:00:00Z' }),
+        market('draw', 'Draw (Netherlands vs. Sweden)', 0.25, { updatedAt: '2026-06-20T15:00:00Z' }),
+        market('swe', 'Sweden', 0.15, { updatedAt: '2026-06-20T15:00:00Z' }),
+      ],
+    );
+    const p = new PolymarketProvider({
+      fetchImpl: fetchFor('fifwc-nld-swe-2026-06-20', ev),
+      now: new Date('2026-06-20T12:00:00Z'),
+    });
+    const sig = await p.findSignal(nedSwe);
+    expect(sig?.outcomes.find((o) => o.kind === 'home')?.teamCode).toBe('NED');
+    expect(sig?.favorite).toMatchObject({ kind: 'home', teamCode: 'NED' });
+  });
+
+  it('enforces the enrichment deadline across a fixture’s alias candidate slugs (never blocks)', async () => {
+    // ENG-COD derives up to 4 candidate slugs (2 dates × 2 away tokens). A slow,
+    // always-empty feed must NOT fire all 4 — the per-fixture deadline (checked
+    // between candidates, not just between fixtures) caps it. Regression for the
+    // alias-expansion latency P2.
+    let calls = 0;
+    const slowEmpty = (async () => {
+      calls++;
+      await new Promise((r) => setTimeout(r, 50));
+      return { ok: true, status: 200, statusText: 'OK', json: async () => [] };
+    }) as unknown as typeof fetch;
+    const engCod = match({
+      id: '760495',
+      kickoff: '2026-07-01T16:00Z',
+      home: { code: 'ENG', name: 'England', flag: '🏴' },
+      away: { code: 'COD', name: 'DR Congo', flag: '🇨🇩' },
+    });
+    const p = new PolymarketProvider({ fetchImpl: slowEmpty, now: new Date('2026-07-01T12:00:00Z') });
+    const start = Date.now();
+    const { signals, checked } = await p.findSignals([engCod], { deadlineMs: 10 });
+    const elapsed = Date.now() - start;
+    expect(signals.size).toBe(0);
+    expect(checked.has('760495')).toBe(false); // deadline-aborted → retried, not cached
+    expect(calls).toBeLessThan(4); // did NOT fetch every candidate
+    expect(elapsed).toBeLessThan(200); // bounded, not 4×(per-fetch delay)
+  });
+
   it('honors an explicit mapping override of the derived slug', async () => {
     const custom = 'fifwc-custom-2026-06-11';
     const mapping: MarketMappingTable = { '760415': { eventSlug: custom } };

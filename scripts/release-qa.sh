@@ -179,6 +179,42 @@ else
   SKIP=$((SKIP+1))
 fi
 
+# T7 — DETERMINISTIC, feed-independent: a fixture whose Polymarket token differs
+# from its FIFA code (e.g. DR Congo COD→cdr) must still resolve — Polymarket uses
+# its own abbreviations in BOTH the event slug and each outcome market's slug. The
+# provider gets a fake feed serving the event ONLY at the aliased slug with a `cdr`
+# away leg, so a signal proves the POLYMARKET_TOKEN alias drives both the slug
+# derivation and pickMarket (regression for the missing-market bug). (v0.8.17)
+if [ -n "${CLI:-}" ]; then
+  printf '  \033[33m⚠ SKIP\033[0m  market alias check (CLI override tests a global install; tripwire imports the local core)\n'
+  SKIP=$((SKIP+1))
+elif [ -f "$CORE_DIST" ]; then
+  ALIAS="$(node --input-type=module -e "
+import { PolymarketProvider } from 'file://$CORE_DIST';
+const mkt = (slug, title, yes) => ({ id:slug, slug, groupItemTitle:title, sportsMarketType:'moneyline',
+  outcomes:JSON.stringify(['Yes','No']), outcomePrices:JSON.stringify([String(yes),String(1-yes)]),
+  active:true, closed:false, updatedAt:'2026-07-01T15:00Z' });
+const ev = { id:'ev', slug:'fifwc-eng-cdr-2026-07-01', title:'England vs. DR Congo',
+  startTime:'2026-07-01T16:00:00Z', active:true, closed:false, seriesSlug:'soccer-fifwc',
+  sport:{sport:'fifwc'}, updatedAt:'2026-07-01T15:00Z',
+  markets:[ mkt('x-eng','England',0.76), mkt('x-draw','Draw (England vs. DR Congo)',0.18), mkt('x-cdr','DR Congo',0.05) ] };
+const fetchImpl = async (url) => ({ ok:true, status:200, statusText:'OK',
+  json: async () => (new URL(String(url)).searchParams.get('slug')==='fifwc-eng-cdr-2026-07-01' ? [ev] : []) });
+const p = new PolymarketProvider({ fetchImpl, now:new Date('2026-07-01T12:00Z') });
+const sig = await p.findSignal({ id:'760495', stage:'R32', kickoff:'2026-07-01T16:00Z', venue:'X',
+  home:{code:'ENG',name:'England',flag:'🏴'}, away:{code:'COD',name:'DR Congo',flag:'🇨🇩'},
+  status:'SCHEDULED', updatedAt:'2026-07-01T00:00Z' });
+const away = sig && sig.outcomes.find((o) => o.kind==='away');
+process.stdout.write(sig && away && away.teamCode==='COD' ? 'ALIAS-OK' : 'ALIAS-MISS');
+" 2>/dev/null)"
+  [ "$ALIAS" = "ALIAS-OK" ] \
+    && check ok  "market resolves a Polymarket team-code alias (COD→cdr, deterministic)" \
+    || check no  "market resolves a Polymarket team-code alias (COD→cdr, deterministic)"
+else
+  printf '  \033[33m⚠ SKIP\033[0m  market alias check (core dist not built — run pnpm -r build)\n'
+  SKIP=$((SKIP+1))
+fi
+
 echo
 bold "tripwires: $PASS passed · $FAIL failed · $SKIP skipped"
 echo "NOTE: this covers CLI/share rendering. MCP arg-threading (tz/lang on get_bracket"
