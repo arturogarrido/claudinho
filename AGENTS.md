@@ -58,6 +58,14 @@ To cut a release:
 **MCP-affecting releases** (anything that changes a tool's shape or description) also bump
 `packages/mcp/server.json` and re-publish to the MCP Registry (`mcp-publisher publish`).
 
+**Adding or changing an MCP tool:** every tool declares an `outputSchema` and returns
+`structuredContent` (`packages/mcp/src/server.ts`). A **new** tool must be added to
+`OUTPUT_SCHEMAS` *and* to `packages/mcp/test/output-schema.test.ts` (which parses each handler's
+`data` — healthy **and** degraded — against its schema). The output schemas are **hand-mirrored**
+from the `@claudinho/core` types and kept permissive (`.passthrough()` on nested objects); the
+`.strict()` top-level guard test is the safety net that catches schema/handler drift, so keep it
+green. `build:mcpb` injects these schemas into the Smithery-scored `.mcpb` manifest.
+
 **Smithery (`.mcpb`) re-publish** — optional, and only when you want the Smithery listing to
 track a new version: `pnpm -F @claudinho/mcp build:mcpb` (stages `mcpb/manifest.json` + the tsup
 server + its external deps, smoke-tests it, then `mcpb pack` → `packages/mcp/dist/claudinho-<v>.mcpb`),

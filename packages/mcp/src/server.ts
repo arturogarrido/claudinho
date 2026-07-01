@@ -160,7 +160,17 @@ export const OUTPUT_SCHEMAS = {
   get_share_snippet: shareOut,
 } as const;
 
-/** Wrap a ToolResult into the MCP tool response shape (text + structured). */
+/**
+ * Wrap a ToolResult into the MCP tool response shape.
+ *
+ * We emit the payload BOTH as `structuredContent` (schema-validated, for clients
+ * that support it) AND as a JSON block inside `content` — deliberately, not by
+ * oversight. MCP's backwards-compat guidance is that a tool with an outputSchema
+ * SHOULD still serialize the same data into a text block, so clients that don't
+ * read `structuredContent` (older/simple ones) still get the structured data.
+ * The redundancy costs a few tokens for agents that read both; dropping the text
+ * block would silently blind those older clients to everything but the prose.
+ */
 function toContent(r: ToolResult) {
   return {
     content: [
