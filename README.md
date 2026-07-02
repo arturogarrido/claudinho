@@ -153,10 +153,10 @@ Then just ask, mid-task — the agent calls the MCP server and answers with the 
 
 ## Surfaces
 
-- **CLI** — `today`, `live`, `next MEX`, `table`, `match <id>`, `bracket`, `markets`, `share` (plus `vibe` 😎 and `star` ⭐). `--json` on everything; TZ-aware via `--tz`.
+- **CLI** — `today`, `live`, `next MEX`, `table`, `match <id>`, `bracket`, `markets`, `share`, `team` (name → code, e.g. `team "DR Congo"`) (plus `vibe` 😎 and `star` ⭐). `--json` on everything; TZ-aware via `--tz`.
 - **Live statusline — Claude Code & Cursor CLI** — every live score inline; reads a local micro-cache, never blocks on the network. One command per agent: `claudinho init claude` / `claudinho init cursor` (also tmux & Starship via `claudinho prompt`).
 - **Score-aware hook (Claude Code)** — a `UserPromptSubmit` hook that drops the live score into the model's context during matches; zero tokens off-match. (Cursor parity pending — its hook can't reliably inject context yet.)
-- **MCP server** — 8 read-only tools (`get_today`, `get_live`, `get_match`, `get_next_fixture`, `get_standings`, `get_bracket`, `get_market_signal`, `get_share_snippet`) plus `my_team` / `tournament_today` prompts.
+- **MCP server** — 9 read-only tools (`get_today`, `get_live`, `get_match`, `get_next_fixture`, `get_standings`, `get_bracket`, `get_market_signal`, `get_share_snippet`, `get_team`) plus `my_team` / `tournament_today` prompts.
 - **Prediction-market signals** — a read-only "who's favored" line (market-implied percentages, Source: Polymarket), shown only when a reliable market exists. **Informational only — not betting advice.** Opt out: `--no-markets` / `CLAUDINHO_MARKETS=off`.
 - **Shareable cards** — `claudinho share next MEX --copy` puts a plain-text match card on your clipboard; `claudinho share table A` does the same for a group's live standings; `claudinho share bracket` for the knockout tree.
 

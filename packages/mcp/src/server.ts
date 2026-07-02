@@ -23,6 +23,7 @@ import {
   toolGetShareSnippet,
   toolGetStandings,
   toolGetBracket,
+  toolGetTeam,
   toolGetToday,
   type ToolResult,
 } from './tools';
@@ -143,6 +144,16 @@ const shareOut = {
   matches: z.array(matchOut).optional(),
   marketSignals: z.record(anyObj).optional(),
 };
+const teamInfo = z
+  .object({ code: z.string(), name: z.string(), flag: z.string(), group: z.string() })
+  .partial()
+  .passthrough();
+const teamOut = {
+  query: z.string(),
+  team: teamInfo.nullable(),
+  matches: z.array(teamInfo),
+  count: z.number(),
+};
 
 /**
  * The per-tool output shapes, keyed by tool name (exported so a test can
@@ -158,6 +169,7 @@ export const OUTPUT_SCHEMAS = {
   get_next_fixture: nextOut,
   get_market_signal: marketOut,
   get_share_snippet: shareOut,
+  get_team: teamOut,
 } as const;
 
 /**
@@ -341,6 +353,22 @@ export function buildServer(): McpServer {
       outputSchema: shareOut,
     },
     async (args) => toContent(await toolGetShareSnippet(args)),
+  );
+
+  server.registerTool(
+    'get_team',
+    {
+      title: 'Resolve a team',
+      description:
+        "Resolve a nation name or 3-letter code to its FIFA code, flag, and group. Fuzzy and forgiving: accepts \"Mexico\", \"mex\", \"USA\", \"DR Congo\", \"Türkiye\"/\"Turkey\", \"Holland\", etc. Use this FIRST to turn a user's team name into the code the other tools need (get_next_fixture, get_standings, get_market_signal, get_share_snippet). Returns the single confident match (team), plus candidates (matches) when the query is ambiguous (e.g. \"south\" → South Africa, South Korea). Offline — reads the bundled roster, never the network.",
+      inputSchema: {
+        query: z.string().describe('Team name or 3-letter code, e.g. "Mexico", "MEX", "DR Congo"'),
+      },
+      // Read-only AND offline — resolves against the bundled roster, no provider call.
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      outputSchema: teamOut,
+    },
+    async (args) => toContent(toolGetTeam(args)),
   );
 
   // ---- Resources ----

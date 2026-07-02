@@ -18,6 +18,7 @@ import {
   isValidDate,
   isValidTimeZone,
   localDate,
+  lookupTeam,
   makeMarketProvider,
   marketBlock,
   marketFixtureForTeam,
@@ -345,6 +346,41 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   // knockout tie); a static group fixture carries no source.
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
+  out(disclaimer(t, c));
+  maybeStarNudge(ctx);
+}
+
+/** `claudinho team <name|code>` — resolve a nation name/code to its FIFA code (offline). */
+export function cmdTeam(query: string | undefined, ctx: Ctx): void {
+  const { cfg, t } = ctx;
+  precheck(cfg, t);
+  const q = (query ?? '').trim();
+  const { team, matches } = lookupTeam(q);
+
+  if (cfg.json) {
+    emitJson({ query: q, team: team ?? null, matches, count: matches.length });
+    return;
+  }
+
+  const c = painterFor(cfg);
+  const flags = flagsEnabled();
+  const label = (tm: { code: string; name: string; flag: string; group?: string }) => {
+    const flag = flags ? `${tm.flag} ` : '';
+    const grp = tm.group ? ` · ${t('team.group', { group: tm.group })}` : '';
+    return `  ${flag}${c.bold(tm.name)}  ${c.dim(tm.code + grp)}`;
+  };
+  out();
+  if (!q) {
+    out('  ' + c.dim(t('team.usage')));
+  } else if (team) {
+    out(label(team));
+  } else if (matches.length > 0) {
+    out('  ' + c.dim(t('team.ambiguous', { query: q })));
+    for (const m of matches) out(label(m));
+  } else {
+    out('  ' + c.dim(t('team.none', { query: q })));
+  }
+  out();
   out(disclaimer(t, c));
   maybeStarNudge(ctx);
 }

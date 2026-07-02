@@ -16,6 +16,7 @@ import {
   cmdRefresh,
   cmdShare,
   cmdTable,
+  cmdTeam,
   cmdBracket,
   cmdStar,
   cmdToday,
@@ -108,6 +109,18 @@ program
   .action(async (team, _opts, cmd) => {
     try {
       await cmdNext(team, ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
+  });
+
+program
+  .command('team')
+  .description('resolve a nation name or code to its FIFA code, flag, and group')
+  .argument('<query>', 'team name or 3-letter code, e.g. Mexico, MEX, "DR Congo"')
+  .action((query, _opts, cmd) => {
+    try {
+      cmdTeam(query, ctxFrom(cmd));
     } catch (e) {
       fail(e);
     }

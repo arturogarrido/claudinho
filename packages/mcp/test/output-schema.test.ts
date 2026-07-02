@@ -28,6 +28,7 @@ import {
   toolGetNextFixture,
   toolGetShareSnippet,
   toolGetStandings,
+  toolGetTeam,
   toolGetToday,
 } from '../src/tools';
 import { OUTPUT_SCHEMAS } from '../src/server';
@@ -116,7 +117,7 @@ function expectValid(tool: keyof typeof OUTPUT_SCHEMAS, data: unknown) {
 }
 
 describe('MCP tool output schemas', () => {
-  it('OUTPUT_SCHEMAS covers exactly the eight tools', () => {
+  it('OUTPUT_SCHEMAS covers exactly the nine tools', () => {
     expect(Object.keys(OUTPUT_SCHEMAS).sort()).toEqual(
       [
         'get_bracket',
@@ -126,6 +127,7 @@ describe('MCP tool output schemas', () => {
         'get_next_fixture',
         'get_share_snippet',
         'get_standings',
+        'get_team',
         'get_today',
       ].sort(),
     );
@@ -330,5 +332,14 @@ describe('MCP tool output schemas', () => {
       });
       expectValid('get_share_snippet', r.data);
     });
+  });
+
+  describe('get_team', () => {
+    it('exact code', () => expectValid('get_team', toolGetTeam({ query: 'MEX' }).data));
+    it('exact name', () => expectValid('get_team', toolGetTeam({ query: 'Mexico' }).data));
+    it('alias', () => expectValid('get_team', toolGetTeam({ query: 'Turkey' }).data));
+    it('ambiguous (multiple candidates, team null)', () =>
+      expectValid('get_team', toolGetTeam({ query: 'south' }).data));
+    it('no match (empty)', () => expectValid('get_team', toolGetTeam({ query: 'zzz' }).data));
   });
 });

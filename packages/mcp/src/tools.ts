@@ -25,6 +25,7 @@ import {
   isFinished,
   liveSourceLabel,
   localDate,
+  lookupTeam,
   makeAdapter,
   makeMarketProvider,
   marketBlock,
@@ -413,6 +414,27 @@ export async function toolGetNextFixture(
     text: withDisclaimer(`Next up for ${code}:\n${matchLine(fixture, opts)}`, source, args.lang),
     data: { team: code, fixture, degraded },
   };
+}
+
+/**
+ * team: resolve a nation name or code to its FIFA code, flag, and group. Pure and
+ * OFFLINE (bundled roster) — the name→code resolver agents call before the tools
+ * that need a 3-letter code. Returns the confident match plus any candidates.
+ */
+export function toolGetTeam(args: { query: string }): ToolResult {
+  const { team, matches } = lookupTeam(args.query ?? '');
+  const data = { query: args.query ?? '', team: team ?? null, matches, count: matches.length };
+  let text: string;
+  if (team) {
+    text = `${team.code} — ${team.flag} ${team.name}${team.group ? ` · Group ${team.group}` : ''}`;
+  } else if (matches.length > 0) {
+    text = `"${args.query}" is ambiguous. Did you mean: ${matches
+      .map((t) => `${t.name} (${t.code})`)
+      .join(', ')}?`;
+  } else {
+    text = `No team found for "${args.query}". Use a nation name or 3-letter code (e.g. Mexico, MEX).`;
+  }
+  return { text: withDisclaimer(text), data };
 }
 
 /**
