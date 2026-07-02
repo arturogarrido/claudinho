@@ -16,7 +16,9 @@
     "lint": "biome lint .",
     "typecheck": "pnpm -r typecheck",
     "dev": "pnpm -r --parallel dev",
-    "release:qa": "bash scripts/release-qa.sh"
+    "release:qa": "bash scripts/release-qa.sh",
+    "check:pack": "node scripts/check-pack.mjs",
+    "smoke:statusline": "node scripts/smoke-statusline.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.1"
