@@ -105,7 +105,7 @@ program
 program
   .command('next')
   .description("show a team's next fixture")
-  .argument('[team]', 'team code, e.g. MEX (default: $CLAUDINHO_TEAM)')
+  .argument('[team]', 'team name or code, e.g. Mexico or MEX (default: $CLAUDINHO_TEAM)')
   .action(async (team, _opts, cmd) => {
     try {
       await cmdNext(team, ctxFrom(cmd));

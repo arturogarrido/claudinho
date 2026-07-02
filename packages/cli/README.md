@@ -35,7 +35,7 @@ All 104 fixtures ship bundled, so the schedule works offline; only live scores h
 ```bash
 claudinho today [date]      # a day's fixtures in your timezone (default: today), live scores inline
 claudinho live              # matches in play right now
-claudinho next [TEAM]       # a team's next fixture + countdown (default: $CLAUDINHO_TEAM)
+claudinho next [TEAM]       # a team's next fixture + countdown — TEAM is a name OR code (Mexico | MEX | "DR Congo"); default $CLAUDINHO_TEAM
 claudinho table [GROUP]     # live cumulative group standings (default: all groups)
 claudinho bracket [STAGE]   # knockout bracket (R32, R16, QF, SF, 3P, F); --tree for ASCII tree
 claudinho match <id>        # a single match's detail

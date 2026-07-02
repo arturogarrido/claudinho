@@ -212,13 +212,29 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
 }
 
 /**
- * Resolve an optional team argument, falling back to CLAUDINHO_TEAM — the same
- * env the statusline/hook already honor, so "my team" is configured once.
+ * Resolve an optional team argument to a FIFA code, falling back to CLAUDINHO_TEAM
+ * (the same env the statusline/hook honor, so "my team" is configured once).
+ *
+ * Accepts a nation NAME as well as a code — "mexico" / "DR Congo" / "Türkiye" all
+ * resolve via {@link lookupTeam}, so `claudinho next mexico` just works. An exact
+ * code resolves directly; an ambiguous name errors with the candidates rather than
+ * guessing; a raw 3-letter code not in the bundled roster still passes through
+ * uppercased (the escape hatch for CLAUDINHO_COMPETITION / other feeds).
  */
 function resolveTeamArg(team: string | undefined, usage: string): string {
-  const code = team ?? process.env.CLAUDINHO_TEAM;
-  if (!code) throw new InputError(usage);
-  return code.toUpperCase();
+  const raw = team ?? process.env.CLAUDINHO_TEAM;
+  if (!raw) throw new InputError(usage);
+  const { team: hit, matches } = lookupTeam(raw);
+  if (hit) return hit.code;
+  if (matches.length > 1) {
+    throw new InputError(
+      `"${raw}" is ambiguous — did you mean ${matches
+        .map((m) => `${m.name} (${m.code})`)
+        .join(', ')}? Use the 3-letter code.`,
+    );
+  }
+  if (/^[A-Za-z]{3}$/.test(raw)) return raw.toUpperCase();
+  throw new InputError(`No team found for "${raw}". Use a nation name or 3-letter code (e.g. Mexico, MEX).`);
 }
 
 /** `claudinho today [date]` */

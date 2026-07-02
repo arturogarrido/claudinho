@@ -60,3 +60,28 @@ describe('CLAUDINHO_TEAM fallback (next / share next)', () => {
     expect((json() as { team: string }).team).toBe(TEAM.toUpperCase());
   });
 });
+
+describe('team-arg name resolution (next / share next accept names, not just codes)', () => {
+  it('resolves a nation name to its code', async () => {
+    await cmdNext('mexico', ctx());
+    expect((json() as { team: string }).team).toBe('MEX');
+  });
+
+  it('resolves an alias (Holland → NED) via share next too', async () => {
+    await cmdShare('next', 'holland', {}, ctx());
+    expect((json() as { team: string }).team).toBe('NED');
+  });
+
+  it('still accepts a raw 3-letter code (backward compatible)', async () => {
+    await cmdNext('mex', ctx());
+    expect((json() as { team: string }).team).toBe('MEX');
+  });
+
+  it('errors (with candidates) on an ambiguous name rather than guessing', async () => {
+    await expect(cmdNext('south', ctx())).rejects.toBeInstanceOf(InputError);
+  });
+
+  it('errors on an unknown non-code query', async () => {
+    await expect(cmdNext('zzzzz', ctx())).rejects.toBeInstanceOf(InputError);
+  });
+});
