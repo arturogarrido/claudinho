@@ -109,3 +109,59 @@ describe('cmdInitClaude — write path (isolated HOME)', () => {
     expect(claudinhoHooks).toHaveLength(1);
   });
 });
+
+// I18N-5: the post-init star CTA honors the documented CTA gates (TTY +
+// CLAUDINHO_NO_STAR) and fires only on a `written` result.
+describe('printInitStarCta gating (via cmdInitClaude, isolated HOME)', () => {
+  let dir: string;
+  const ORIG_HOME = process.env.HOME;
+  const ORIG_NO_STAR = process.env.CLAUDINHO_NO_STAR;
+  const ORIG_TTY = process.stdout.isTTY;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'claudinho-cta-'));
+    process.env.HOME = dir;
+    delete process.env.CLAUDINHO_NO_STAR;
+  });
+  afterEach(() => {
+    if (ORIG_HOME === undefined) delete process.env.HOME;
+    else process.env.HOME = ORIG_HOME;
+    if (ORIG_NO_STAR === undefined) delete process.env.CLAUDINHO_NO_STAR;
+    else process.env.CLAUDINHO_NO_STAR = ORIG_NO_STAR;
+    process.stdout.isTTY = ORIG_TTY;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('emits the CTA on a written result on a TTY', () => {
+    process.stdout.isTTY = true;
+    cmdInitClaude({}, ctx());
+    expect(text()).toContain('⭐');
+  });
+
+  it('emits NO CTA when piped (not a TTY), even on a written result', () => {
+    process.stdout.isTTY = false as never;
+    cmdInitClaude({}, ctx());
+    expect(text()).not.toContain('⭐');
+  });
+
+  it('emits NO CTA when CLAUDINHO_NO_STAR is set', () => {
+    process.stdout.isTTY = true;
+    process.env.CLAUDINHO_NO_STAR = '1';
+    cmdInitClaude({}, ctx());
+    expect(text()).not.toContain('⭐');
+  });
+
+  it('emits NO CTA on an already-configured (non-written) result', () => {
+    process.stdout.isTTY = true;
+    cmdInitClaude({}, ctx()); // first run writes
+    writes = [];
+    cmdInitClaude({}, ctx()); // second run: already
+    expect(text()).toContain('already configured');
+    expect(text()).not.toContain('⭐');
+  });
+
+  it('emits NO CTA in --print mode', () => {
+    process.stdout.isTTY = true;
+    cmdInitClaude({ print: true }, ctx());
+    expect(text()).not.toContain('⭐');
+  });
+});

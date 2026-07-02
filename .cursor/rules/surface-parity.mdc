@@ -26,7 +26,7 @@ The bundled schedule's knockout slots are **resultless placeholders** (codes lik
 - v0.8.8 — statusline next-match countdown read the static bundle (`🏳️ vs 🏳️` / `⚽ —` in knockouts).
 - v0.8.9 — empty fixtures cache stamped the full 15min TTL at phase boundaries; stale-cache `live · syncing…` still read the skeleton.
 
-**Rule:** every team-facing surface must reach the live overlay (`getBracket` / `getNextFixtureForTeam` — the same `fetchWindow` the bracket uses), fail closed on outage, and attribute the provider only when the overlay served the chosen fixture. **Exception — statusline:** hot path cannot fetch; the cold-path refresher calls `getKnockoutFixtures` and caches to `CacheState.fixtures`; `renderPrompt` merges that slice over the bundle (countdown **and** `live · syncing…`), never leaking 🏳️.
+**Rule:** every team-facing surface must reach the live overlay (`getBracket` / `getNextFixtureForTeam` — the same `fetchWindow` the bracket uses), fail closed on outage, and attribute the provider only when the overlay served the chosen fixture. **Exception — statusline:** hot path cannot fetch; the cold-path refresher calls `getKnockoutFixtures` and caches to `CacheState.fixtures`; `renderPrompt` merges that slice over the bundle (countdown **and** `live · syncing…`), never leaking 🏳️. **Exception — MCP `fixtures://{date}` resource:** deliberately static ("Static fixture list"; a resource URI carries no tz and gets no live overlay) — do not "fix" it to live-resolve without a maintainer decision; agents use `get_today`/`get_bracket` for resolved pairings.
 
 | Surface | Entry point | Must |
 |---------|-------------|------|

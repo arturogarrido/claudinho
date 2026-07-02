@@ -406,13 +406,15 @@ export async function toolGetNextFixture(
       : `No upcoming fixture found for ${code}.`;
     return {
       text: withDisclaimer(msg, undefined, args.lang),
-      data: { team: code, fixture: null, degraded },
+      data: { team: code, fixture: null, degraded, source: source ?? null },
     };
   }
   const opts = fmtOpts(args);
   return {
+    // `source` in data mirrors the text's "Live data: …" attribution (parity
+    // with CLI `next --json`); null for a static group fixture (no live source).
     text: withDisclaimer(`Next up for ${code}:\n${matchLine(fixture, opts)}`, source, args.lang),
-    data: { team: code, fixture, degraded },
+    data: { team: code, fixture, degraded, source: source ?? null },
   };
 }
 

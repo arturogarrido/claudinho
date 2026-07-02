@@ -8,6 +8,7 @@ import {
   formatKickoff,
   matchFlavor,
   matchLocation,
+  padVisible,
   scoreline,
   stageLabel,
   type FlavorLevel,
@@ -55,17 +56,24 @@ export function matchList(matches: Match[], empty: string, opts: FmtOpts = {}): 
 /** A group table as a monospace-friendly text block. */
 export function standingsTable(group: string, rows: StandingRow[]): string {
   const header = `Group ${group}`;
-  const cols = 'Team                     P  W  D  L   GD  Pts';
-  const lines = rows.map((r) => {
-    const name = `${r.team.flag} ${r.team.name}`.padEnd(24).slice(0, 24);
-    const gd = (r.goalDiff > 0 ? `+${r.goalDiff}` : `${r.goalDiff}`).padStart(3);
-    return `${name} ${pad(r.played)} ${pad(r.won)} ${pad(r.drawn)} ${pad(r.lost)} ${gd}  ${pad(r.points)}`;
-  });
+  // One template for the column header AND the data rows so they can't drift.
+  // Display-width padding (a tag-sequence flag like England's is 14 UTF-16
+  // units but 2 columns), and no truncation — never cut a nation mid-name.
+  const line = (team: string, p: string, w: string, d: string, l: string, gd: string, pts: string) =>
+    `${padVisible(team, 24)} ${p.padStart(2)} ${w.padStart(2)} ${d.padStart(2)} ${l.padStart(2)} ${gd.padStart(3)} ${pts.padStart(3)}`;
+  const cols = line('Team', 'P', 'W', 'D', 'L', 'GD', 'Pts');
+  const lines = rows.map((r) =>
+    line(
+      `${r.team.flag} ${r.team.name}`,
+      String(r.played),
+      String(r.won),
+      String(r.drawn),
+      String(r.lost),
+      r.goalDiff > 0 ? `+${r.goalDiff}` : String(r.goalDiff),
+      String(r.points),
+    ),
+  );
   return [header, cols, ...lines].join('\n');
-}
-
-function pad(n: number): string {
-  return `${n}`.padStart(2);
 }
 
 /** The persistent legal disclaimer appended to responses. */

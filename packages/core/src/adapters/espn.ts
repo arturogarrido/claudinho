@@ -14,6 +14,7 @@ import type { Match, Stage, Status, Team } from '../types';
 import type { ProviderAdapter, ProviderCapabilities } from './types';
 import { nationToFlag } from '../flags';
 import { isFinished, isLive } from '../normalize';
+import { sanitizeFeedText } from '../sanitize';
 
 const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 /** Default competition slug (the 2026 World Cup). */
@@ -21,6 +22,15 @@ export const DEFAULT_COMPETITION = 'fifa.world';
 const DEFAULT_BASE = `${ESPN_SOCCER}/${DEFAULT_COMPETITION}`;
 const USER_AGENT =
   'claudinho/0.0 (+https://github.com/arturogarrido/claudinho)';
+/**
+ * Reject declared response bodies past this before JSON.parse — a hijacked
+ * endpoint must not be able to balloon the refresher's memory every ~15s.
+ * (Real scoreboard payloads are well under 1MB.) Shared by the Polymarket
+ * provider. Known residual risk, accepted: a body WITHOUT a content-length
+ * header (chunked) bypasses the cap — a streaming byte-count cap is
+ * gateway-era work; the timeout still bounds how long such a body can flow.
+ */
+export const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 
 /** Build an ESPN soccer base URL for a competition slug (e.g. "fifa.friendly"). */
 export function competitionBase(slug: string): string {
@@ -134,10 +144,17 @@ function toInt(s?: string | number): number | undefined {
 }
 
 function toTeam(t?: EspnTeam): Team {
-  const name =
-    t?.displayName ?? t?.name ?? t?.location ?? t?.shortDisplayName ?? 'TBD';
-  const code = (t?.abbreviation ?? name.slice(0, 3)).toUpperCase();
-  return { code, name, flag: nationToFlag(t?.displayName ?? t?.abbreviation ?? name) };
+  // Sanitize at the feed boundary: these strings reach terminals, share cards,
+  // and (via the hook) Claude's context — strip controls/ESC and cap length.
+  const name = sanitizeFeedText(
+    t?.displayName ?? t?.name ?? t?.location ?? t?.shortDisplayName ?? 'TBD',
+  );
+  const code = sanitizeFeedText(t?.abbreviation ?? name.slice(0, 3)).toUpperCase();
+  return {
+    code,
+    name,
+    flag: nationToFlag(sanitizeFeedText(t?.displayName ?? t?.abbreviation ?? name)),
+  };
 }
 
 /** Optional context to enrich mapping (authoritative team->group letter). */
@@ -195,9 +212,9 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match {
     stage,
     group,
     kickoff: ev.date,
-    venue: comp?.venue?.fullName ?? '',
-    city: comp?.venue?.address?.city || undefined,
-    country: comp?.venue?.address?.country || undefined,
+    venue: sanitizeFeedText(comp?.venue?.fullName ?? ''),
+    city: sanitizeFeedText(comp?.venue?.address?.city ?? '') || undefined,
+    country: sanitizeFeedText(comp?.venue?.address?.country ?? '') || undefined,
     home,
     away,
     score: hasScore ? { home: hs, away: as } : undefined,
@@ -389,10 +406,18 @@ export class EspnAdapter implements ProviderAdapter {
     try {
       const res = await doFetch(url, {
         signal: controller.signal,
+        // ESPN never legitimately redirects; following one would sidestep the
+        // fixed-host guarantee, so treat any redirect as a failure (degraded).
+        redirect: 'error',
         headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
       });
       if (!res.ok) {
         throw new Error(`ESPN request failed: ${res.status} ${res.statusText}`);
+      }
+      // Size cap BEFORE parsing (optional chaining: test fakes omit headers).
+      const length = Number(res.headers?.get?.('content-length'));
+      if (Number.isFinite(length) && length > MAX_RESPONSE_BYTES) {
+        throw new Error(`ESPN response too large: ${length} bytes`);
       }
       return await res.json();
     } finally {

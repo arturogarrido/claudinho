@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Match, ProviderAdapter } from '@claudinho/core';
-import { cmdNext, cmdShare } from '../src/commands';
+import { cmdMatch, cmdNext, cmdShare } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 
@@ -147,5 +147,37 @@ describe('cmdShare next — live-resolved knockout fixture', () => {
     const t = text();
     expect(t).toContain("Couldn't reach the data provider");
     expect(t).not.toContain('Live data:'); // no attribution on degraded
+  });
+});
+
+describe('cmdNext / cmdMatch — localized stage labels (I18N-1)', () => {
+  const LABELS: Record<string, string> = {
+    es: 'Dieciseisavos de final',
+    pt: 'Fase de 32 equipes',
+    fr: 'Seizièmes de finale',
+  };
+
+  for (const [lang, label] of Object.entries(LABELS)) {
+    it(`next renders the ${lang} R32 label (${label})`, async () => {
+      await cmdNext('MEX', {
+        cfg: cfg({ json: false, lang }),
+        t: makeT(lang),
+        adapter: windowAdapter([r32MexEcu()]),
+        now: KNOCKOUT_NOW,
+      });
+      expect(text()).toContain(label);
+      expect(text()).not.toContain('Round of 32');
+    });
+  }
+
+  it('match detail renders the localized stage too (es)', async () => {
+    await cmdMatch('760486', {
+      cfg: cfg({ json: false, lang: 'es' }),
+      t: makeT('es'),
+      adapter: windowAdapter([r32MexEcu()]),
+      now: KNOCKOUT_NOW,
+    });
+    expect(text()).toContain('Dieciseisavos de final');
+    expect(text()).not.toContain('Round of 32');
   });
 });

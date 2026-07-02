@@ -378,3 +378,46 @@ describe('standingsResourceText (standings:// resource)', () => {
     expect(text).toContain(DISCLAIMER);
   });
 });
+
+describe('toolGetNextFixture — structured `source` parity with the text attribution (ARCH-7)', () => {
+  const r32MexEcu = (): Match => ({
+    id: '760486',
+    stage: 'R32',
+    kickoff: '2026-06-30T18:00Z',
+    venue: 'SoFi Stadium',
+    home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+    away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
+    status: 'SCHEDULED',
+    updatedAt: '2026-06-28T00:00Z',
+  });
+
+  it('overlay-resolved fixture → data.source names the provider (like the text)', async () => {
+    const r = await toolGetNextFixture({
+      team: 'MEX',
+      now: new Date('2026-06-28T12:00:00Z'),
+      adapter: fakeAdapter({ window: [r32MexEcu()] }),
+    });
+    const data = r.data as { source: string | null };
+    expect(data.source).toBe('fake');
+    expect(r.text).toContain('Live data:');
+  });
+
+  it('static group fixture → data.source is null (no live attribution)', async () => {
+    const r = await toolGetNextFixture({
+      team: 'BRA',
+      now: TEST_NOW,
+      adapter: fakeAdapter({ window: [] }),
+    });
+    expect((r.data as { source: string | null }).source).toBeNull();
+    expect(r.text).not.toContain('Live data:');
+  });
+
+  it('degraded → data.source is null', async () => {
+    const r = await toolGetNextFixture({
+      team: 'MEX',
+      now: new Date('2026-06-28T12:00:00Z'),
+      adapter: fakeAdapter({ throws: true }),
+    });
+    expect((r.data as { source: string | null }).source).toBeNull();
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchFlavor, type Match } from '@claudinho/core';
+import { displayWidth, matchFlavor, type Match } from '@claudinho/core';
 import { dataSource, matchLine, painterFor } from '../src/format';
 import { makeT } from '../src/i18n';
 import type { CliConfig } from '../src/config';
@@ -78,5 +78,22 @@ describe('dataSource — localized live-data attribution', () => {
   });
   it('returns an empty string when there is no live source', () => {
     expect(dataSource(undefined, 'es', c)).toBe('');
+  });
+});
+
+describe('matchLine — display-width alignment (tag-sequence flags)', () => {
+  const ENGLAND_FLAG = '🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}';
+
+  it("England's score column lines up with a regional-flag row", () => {
+    const c = cfg({ flavor: 'off' });
+    const mex = matchLine(liveMatch(), c, makeT('en'), painterFor(c));
+    const eng = matchLine(
+      liveMatch({ home: { code: 'ENG', name: 'England', flag: ENGLAND_FLAG } }),
+      c,
+      makeT('en'),
+      painterFor(c),
+    );
+    const widthBefore = (line: string) => displayWidth(line.slice(0, line.indexOf('1–0')));
+    expect(widthBefore(eng)).toBe(widthBefore(mex));
   });
 });

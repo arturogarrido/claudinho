@@ -15,6 +15,7 @@ import {
   LIVE_WINDOW_MS,
   mergeLive,
   nextFixtureForTeam,
+  sanitizeMatchStrings,
   scoreline,
   type Match,
 } from '@claudinho/core';
@@ -56,6 +57,25 @@ export function inLiveWindow(now = Date.now(), fixtures: Match[] = allFixtures()
 /** Both nations known — i.e. not an unresolved bracket placeholder (🏳️). */
 function isResolvedFixture(m: Match): boolean {
   return isResolvedNation(m.home) && isResolvedNation(m.away);
+}
+
+/**
+ * Minimal Match shape the render paths rely on: `id` (mergeLive keying),
+ * `kickoff` string (byKickoff sorts with localeCompare — a missing kickoff
+ * throws), and both team codes. A cached element failing this is DROPPED, so a
+ * partially-poisoned cache degrades to "that fixture is missing" instead of
+ * throwing the whole statusline blank.
+ */
+function isMatchShaped(m: unknown): m is Match {
+  const x = m as Match | null | undefined;
+  return (
+    !!x &&
+    typeof x === 'object' &&
+    typeof x.id === 'string' &&
+    typeof x.kickoff === 'string' &&
+    !!x.home?.code &&
+    !!x.away?.code
+  );
 }
 
 /**
@@ -119,10 +139,15 @@ export function liveMatchesFromCache(
 ): Match[] {
   const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
   const liveArr = fresh && Array.isArray(state?.live) ? state!.live : [];
-  return liveArr.filter(
-    (m): m is Match =>
-      !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
-  );
+  return liveArr
+    .filter(
+      (m): m is Match =>
+        !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
+    )
+    // Mirror of the adapter's feed sanitizer: the statusline/hook render these
+    // strings on every prompt, so a poisoned CACHE FILE (not just a poisoned
+    // feed) must not inject ANSI/newlines into the terminal or Claude's context.
+    .map(sanitizeMatchStrings);
 }
 
 export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {}): string {
@@ -139,7 +164,13 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
   // resolve itself, so this overlay is how the statusline shows real pairings
   // (still NETWORK-FREE: reads only the cache). Used by both the syncing and
   // next-fixture branches below.
-  const cachedFixtures = Array.isArray(state?.fixtures) ? (state!.fixtures as Match[]) : [];
+  // Sanitized like the live slice above — cached fixtures render on the
+  // countdown/syncing lines, so they get the same poisoned-cache defense.
+  // Malformed entries (null, {}, missing kickoff/teams) are dropped, never
+  // allowed to throw the whole statusline blank downstream.
+  const cachedFixtures = Array.isArray(state?.fixtures)
+    ? (state!.fixtures as unknown[]).filter(isMatchShaped).map(sanitizeMatchStrings)
+    : [];
   const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;
 
   // With a team filter, show only that team's live match.

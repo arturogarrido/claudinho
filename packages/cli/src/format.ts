@@ -4,6 +4,7 @@ import {
   isLive,
   liveSourceLabel,
   matchFlavor,
+  padVisible,
   scoreline,
   t as i18n,
   type Match,
@@ -83,7 +84,9 @@ export function matchLine(
     ? c.bold(scoreline(m))
     : c.dim('vs');
 
-  const left = `${home.padEnd(22)} ${mid.padStart(3)}  ${away}`;
+  // Display-width padding: a tag-sequence flag (England 🏴󠁧󠁢󠁥󠁮󠁧󠁿) is 14 UTF-16
+  // units but 2 columns — padEnd would push its score ~10 columns out of line.
+  const left = `${padVisible(home, 22)} ${mid.padStart(3)}  ${away}`;
 
   let right = '';
   if (m.status === 'SCHEDULED') {

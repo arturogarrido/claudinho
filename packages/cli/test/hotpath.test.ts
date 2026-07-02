@@ -5,7 +5,7 @@ import type { Match, MarketProvider } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as cursorPayload from '../src/cursorPayload';
 import { writeState } from '../src/cache';
-import { cmdHook, cmdPrompt } from '../src/commands';
+import { cmdHook, cmdPrompt, cmdVibe } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 
@@ -122,5 +122,75 @@ describe('hot path never consults market data', () => {
     expect(lines[1]).toContain('Composer 2.5');
     expect(lines[1]).toContain('ctx 12%');
     vi.mocked(cursorPayload.readCursorPayload).mockRestore();
+  });
+});
+
+describe('CLAUDINHO_TEAM accepts a nation name on the statusline/hook (offline lookup)', () => {
+  function braLive(): Match {
+    return {
+      id: '760420',
+      stage: 'GROUP',
+      group: 'C',
+      kickoff: '2026-06-11T19:00Z',
+      venue: 'MetLife Stadium',
+      home: { code: 'BRA', name: 'Brazil', flag: '🇧🇷' },
+      away: { code: 'MAR', name: 'Morocco', flag: '🇲🇦' },
+      status: 'LIVE',
+      minute: 12,
+      score: { home: 0, away: 0 },
+      updatedAt: '2026-06-11T20:07Z',
+    };
+  }
+
+  it('cmdPrompt filters to the resolved team (CLAUDINHO_TEAM=mexico → MEX)', () => {
+    writeState({
+      updatedAt: new Date().toISOString(),
+      live: [liveMatch(), braLive()],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+    });
+    process.env.CLAUDINHO_TEAM = 'mexico';
+    cmdPrompt({ cfg: cfg(), t: makeT('en') });
+    const o = writes.join('');
+    expect(o).toContain('🇲🇽');
+    expect(o).not.toContain('🇧🇷');
+  });
+
+  it('cmdHook lists the resolved team first (CLAUDINHO_TEAM=mexico)', () => {
+    writeState({
+      updatedAt: new Date().toISOString(),
+      live: [braLive(), liveMatch()],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+    });
+    process.env.CLAUDINHO_TEAM = 'mexico';
+    cmdHook({ cfg: cfg(), t: makeT('en') });
+    const lines = writes.join('').trimEnd().split('\n');
+    expect(lines[1]).toContain('Mexico');
+    expect(lines[2]).toContain('Brazil');
+  });
+
+  it('cmdVibe live segment honors a resolved team name too (CLAUDINHO_TEAM=mexico)', () => {
+    writeState({
+      updatedAt: new Date().toISOString(),
+      live: [braLive(), liveMatch()],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+    });
+    process.env.CLAUDINHO_TEAM = 'mexico';
+    cmdVibe({ cfg: cfg({ json: true }), t: makeT('en') });
+    const data = JSON.parse(writes.join('')) as { live?: string };
+    expect(data.live).toContain('🇲🇽');
+    expect(data.live).not.toContain('🇧🇷');
+  });
+
+  it('an unknown 3-letter value still passes through as a code (escape hatch)', () => {
+    process.env.CLAUDINHO_TEAM = 'zzz'; // not in the roster → filter finds nothing
+    cmdPrompt({ cfg: cfg(), t: makeT('en') });
+    const o = writes.join('');
+    expect(o).not.toContain('🇲🇽'); // filtered out — the code was honored, not dropped
   });
 });

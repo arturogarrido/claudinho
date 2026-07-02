@@ -10,7 +10,7 @@
  * only, no network) and must NEVER fail in a way that blocks the prompt. The
  * caller always exits 0.
  */
-import { scoreline, type Match } from '@claudinho/core';
+import { lookupTeam, scoreline, type Match, type Team } from '@claudinho/core';
 import type { readState } from './cache';
 import { liveMatchesFromCache } from './statusline';
 
@@ -22,10 +22,25 @@ export interface HookOpts {
   now?: Date;
 }
 
+/**
+ * The team as rendered INTO CLAUDE'S CONTEXT. When the code resolves against
+ * the bundled roster (every real tournament team), the name and flag are
+ * pinned to the STATIC roster — feed/cache text can then never smuggle prose
+ * (e.g. "ignore previous instructions" as a "team name") into the model's
+ * context. Unknown codes (other competitions) fall back to the sanitized feed
+ * name — control characters and newlines are already stripped upstream.
+ */
+function rosterPinned(t: Team): Team {
+  const { team } = lookupTeam(t.code);
+  return team ? { ...t, name: team.name, flag: team.flag } : t;
+}
+
 function line(m: Match, flags: boolean): string {
   const minute = m.status === 'HT' ? 'half-time' : m.minute ? `${m.minute}'` : 'live';
-  const home = flags ? `${m.home.flag} ${m.home.name}` : m.home.name;
-  const away = flags ? `${m.away.name} ${m.away.flag}` : m.away.name;
+  const h = rosterPinned(m.home);
+  const a = rosterPinned(m.away);
+  const home = flags ? `${h.flag} ${h.name}` : h.name;
+  const away = flags ? `${a.name} ${a.flag}` : a.name;
   return `${home} ${scoreline(m)} ${away} (${minute})`;
 }
 

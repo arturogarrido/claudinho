@@ -20,6 +20,7 @@
  * requested slug, line up on kickoff, expose the right moneyline markets, and
  * resolve in regular time — otherwise no signal is produced.
  */
+import { MAX_RESPONSE_BYTES } from '../adapters/espn';
 import { shiftUtcDate } from '../time';
 import type { Match } from '../types';
 import mappingJson from './mapping.2026.json';
@@ -180,11 +181,21 @@ export class PolymarketProvider implements MarketProvider {
     const doFetch = this.opts.fetchImpl ?? fetch;
     const res = await doFetch(url, {
       signal: AbortSignal.timeout(timeoutMs ?? this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+      // Gamma never legitimately redirects; following one would sidestep the
+      // host allow-list (it only validates the base URL), so reject redirects.
+      redirect: 'error',
       headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
     });
     if (res.status === 404) return undefined; // no such event → no market (not an error)
     if (!res.ok) {
       throw new Error(`Polymarket request failed: ${res.status} ${res.statusText}`);
+    }
+    // Size cap BEFORE parsing (optional chaining: test fakes omit headers).
+    // Declared bodies only — see MAX_RESPONSE_BYTES for the accepted residual
+    // risk on chunked responses.
+    const length = Number(res.headers?.get?.('content-length'));
+    if (Number.isFinite(length) && length > MAX_RESPONSE_BYTES) {
+      throw new Error(`Polymarket response too large: ${length} bytes`);
     }
     const data = (await res.json()) as unknown;
     const event = Array.isArray(data) ? data[0] : data;

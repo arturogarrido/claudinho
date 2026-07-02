@@ -62,7 +62,9 @@ const commonArgs = {
   lang: z
     .string()
     .optional()
-    .describe('Locale for formatting: en, es, pt, fr (other locales fall back to en)'),
+    .describe(
+      'Locale for dates, provider attribution, and commentary: en, es, pt, fr (the summary scaffold stays English; other locales fall back to en)',
+    ),
   flavor: flavorArg.optional().describe('Commentary flair: off, subtle, full (default: full)'),
 };
 
@@ -119,7 +121,12 @@ const bracketOut = {
   standingsDegraded: z.boolean().optional(),
   source: src.optional(),
 };
-const nextOut = { team: z.string(), fixture: matchOut.nullable(), degraded: z.boolean() };
+const nextOut = {
+  team: z.string(),
+  fixture: matchOut.nullable(),
+  degraded: z.boolean(),
+  source: src,
+};
 const marketOut = {
   matchId: z.string().nullable().optional(),
   team: z.string().optional(),
@@ -206,7 +213,7 @@ export function buildServer(): McpServer {
     {
       title: "Today's matches",
       description:
-        "All fixtures for a date (default: today), with live score and minute overlaid on any match in play. Use this for a whole day's card; for only in-play matches use get_live, for one team's match use get_next_fixture, for a single match's detail use get_match. Kickoffs render in tz; lang localizes text (en/es/pt/fr); flavor sets commentary tone.",
+        "All fixtures for a date (default: today), with live score and minute overlaid on any match in play. Use this for a whole day's card; for only in-play matches use get_live, for one team's match use get_next_fixture, for a single match's detail use get_match. Kickoffs render in tz; lang localizes dates, attribution, and commentary (en/es/pt/fr); flavor sets commentary tone.",
       inputSchema: {
         date: dateArg.optional().describe('Date as YYYY-MM-DD (default: today)'),
         ...commonArgs,
