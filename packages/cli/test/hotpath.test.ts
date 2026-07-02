@@ -64,6 +64,13 @@ beforeEach(() => {
   // Pin flags on so these assertions hold regardless of the host terminal
   // (the flag auto-detect would otherwise switch to codes under e.g. Warp).
   process.env.CLAUDINHO_FLAGS = 'on';
+  // Never touch real stdin from in-process cmdPrompt calls: readFileSync(0)
+  // blocks FOREVER on Windows when the vitest worker's stdin is an open,
+  // writerless pipe (froze the first windows-latest CI leg for an hour). The
+  // real stdin drain is exercised by the built-binary run in
+  // hotpath-latency.test.ts, which provides an explicit EOF. The Cursor-payload
+  // test below re-mocks this with its own payload.
+  vi.spyOn(cursorPayload, 'readCursorPayload').mockReturnValue(undefined);
   writes = [];
   outSpy = vi.spyOn(process.stdout, 'write').mockImplementation((c: unknown) => {
     writes.push(String(c));

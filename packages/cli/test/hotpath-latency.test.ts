@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeState } from '../src/cache';
 import { cmdHook, cmdPrompt } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import * as cursorPayload from '../src/cursorPayload';
 import { makeT } from '../src/i18n';
 
 // Only `spawn` is stubbed — `execFileSync` (used to run the real binary below)
@@ -86,6 +87,10 @@ beforeEach(() => {
   delete process.env.CLAUDINHO_COMPETITION;
   delete process.env.CLAUDINHO_TEAM;
   process.env.CLAUDINHO_FLAGS = 'on';
+  // In-process cmdPrompt must never read real stdin — readFileSync(0) hangs on
+  // Windows workers (open writerless pipe). The spawned-binary test below
+  // exercises the real drain with an explicit EOF (`input: ''`).
+  vi.spyOn(cursorPayload, 'readCursorPayload').mockReturnValue(undefined);
   vi.mocked(spawn).mockClear();
 });
 afterEach(() => {

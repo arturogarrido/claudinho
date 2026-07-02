@@ -22,6 +22,7 @@ jobs:
   build-test:
     name: build · typecheck · test (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # a hung test must fail in minutes, not burn the 6h default
     strategy:
       fail-fast: false
       matrix:
@@ -59,6 +60,7 @@ jobs:
   runtime-node20:
     name: runtime smoke (Node 20 engines floor)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
@@ -95,6 +97,9 @@ jobs:
     # refresher spawn, and ~/.claude writes are all platform-sensitive.
     name: build · test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # The first windows leg hung for an hour on a blocking stdin read — cap the
+    # blast radius of any future platform hang.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -124,6 +129,7 @@ jobs:
     # rendered"). Thresholds are a deliberate non-goal for now.
     name: coverage (non-gating)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     continue-on-error: true
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -147,6 +153,7 @@ jobs:
   audit:
     name: audit (shipped deps)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
