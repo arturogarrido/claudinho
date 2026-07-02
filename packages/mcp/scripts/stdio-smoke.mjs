@@ -15,7 +15,9 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const pkgDir = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
-const entry = join(pkgDir, 'dist', 'index.js');
+// argv[2] overrides the server entry — used to verify this guard itself trips
+// (e.g. against a wrapper that pollutes stdout before delegating to the dist).
+const entry = process.argv[2] ? resolve(process.argv[2]) : join(pkgDir, 'dist', 'index.js');
 const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'));
 
 if (!existsSync(entry)) {
@@ -42,22 +44,42 @@ try {
   out = String(e.stdout ?? ''); // stdin EOF may exit non-zero after the replies were written
 }
 
-const byId = {};
-for (const line of out.split('\n')) {
-  const trimmed = line.trim();
-  if (!trimmed) continue;
-  try {
-    const msg = JSON.parse(trimmed);
-    if (msg.id !== undefined) byId[msg.id] = msg;
-  } catch {
-    /* non-JSON noise on stdout would itself be a protocol bug — caught below by absence */
-  }
-}
-
 const fail = (msg) => {
   console.error(`✗ stdio smoke: ${msg}`);
   process.exit(1);
 };
+
+// stdout of a stdio MCP server must be PURE JSON-RPC — any other line (a boot
+// banner, a stray console.log) breaks strict clients. Logs belong on stderr
+// (the server's "ready" banner correctly goes there). Fail loudly on any
+// non-empty stdout line that isn't a JSON-RPC 2.0 message, instead of
+// swallowing it and passing on the replies that happened to parse.
+const byId = {};
+const garbage = [];
+for (const line of out.split('\n')) {
+  const trimmed = line.trim();
+  if (!trimmed) continue;
+  let msg;
+  try {
+    msg = JSON.parse(trimmed);
+  } catch {
+    garbage.push(trimmed);
+    continue;
+  }
+  if (msg?.jsonrpc !== '2.0') {
+    garbage.push(trimmed);
+    continue;
+  }
+  if (msg.id !== undefined) byId[msg.id] = msg;
+}
+if (garbage.length) {
+  fail(
+    `stdout is not pure JSON-RPC — a stdio MCP server must keep stdout protocol-clean (log to stderr). Offending line(s):\n   ${garbage
+      .slice(0, 5)
+      .map((l) => l.slice(0, 200))
+      .join('\n   ')}`,
+  );
+}
 
 const init = byId[1]?.result;
 if (!init) fail('no initialize response over stdio');

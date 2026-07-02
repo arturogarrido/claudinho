@@ -9,7 +9,13 @@ import { closeSync, mkdirSync, openSync, renameSync, writeSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-/** `$XDG_CACHE_HOME/claudinho`, falling back to `~/.cache/claudinho`. */
+/**
+ * `$XDG_CACHE_HOME/claudinho`, falling back to `~/.cache/claudinho`.
+ *
+ * Windows deliberately gets the same `~/.cache` fallback (not %LOCALAPPDATA%):
+ * switching would relocate existing installs' caches mid-tournament. Revisit
+ * once the Windows CI leg is established (with a read-old-location fallback).
+ */
 export function cacheDir(): string {
   const base = process.env.XDG_CACHE_HOME || join(homedir(), '.cache');
   return join(base, 'claudinho');
