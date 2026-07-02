@@ -110,3 +110,50 @@ describe('sanitizeMatchStrings (statusline cache mirror)', () => {
     expect(clean.away).toEqual({ code: '', name: '', flag: '' });
   });
 });
+
+describe('sanitizeMatchStrings — numeric fields (score/shootout/minute)', () => {
+  const base = {
+    id: 'x',
+    stage: 'GROUP',
+    kickoff: '2026-06-11T19:00Z',
+    venue: 'V',
+    home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+    away: { code: 'RSA', name: 'South Africa', flag: '🇿🇦' },
+    status: 'LIVE',
+    updatedAt: '2026-06-11T20:00Z',
+  };
+
+  it('keeps real numbers untouched', () => {
+    const clean = sanitizeMatchStrings({
+      ...base,
+      score: { home: 1, away: 0 },
+      shootout: { home: 3, away: 4 },
+      minute: 67,
+    } as Match);
+    expect(clean.score).toEqual({ home: 1, away: 0 });
+    expect(clean.shootout).toEqual({ home: 3, away: 4 });
+    expect(clean.minute).toBe(67);
+  });
+
+  it('drops strings smuggled into numeric slots (they would print verbatim)', () => {
+    const clean = sanitizeMatchStrings({
+      ...base,
+      score: { home: '1\nFAKE_SCORE', away: 0 },
+      minute: '67\nFAKE_MINUTE',
+    } as unknown as Match);
+    expect(clean.score).toBeUndefined();
+    expect(clean.minute).toBeUndefined();
+  });
+
+  it('drops NaN/Infinity and a shootout whose score was dropped', () => {
+    const clean = sanitizeMatchStrings({
+      ...base,
+      score: { home: Number.NaN, away: 0 },
+      shootout: { home: 3, away: 4 },
+      minute: Number.POSITIVE_INFINITY,
+    } as Match);
+    expect(clean.score).toBeUndefined();
+    expect(clean.shootout).toBeUndefined(); // never a shootout without its score
+    expect(clean.minute).toBeUndefined();
+  });
+});

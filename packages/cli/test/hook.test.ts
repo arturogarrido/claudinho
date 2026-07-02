@@ -103,3 +103,18 @@ describe('renderHook', () => {
     expect(renderHook(bad as never, { now: NOW })).toBe('');
   });
 });
+
+describe('renderHook — poisoned numeric cache fields', () => {
+  it('drops string score/minute instead of printing them into the context', () => {
+    const s = state([
+      m(['MEX', '🇲🇽'], ['RSA', '🇿🇦'], {
+        score: { home: '2\nFAKE_SCORE', away: 1 } as unknown as Match['score'],
+        minute: '88\nFAKE_MINUTE' as unknown as number,
+      }),
+    ]);
+    const out = renderHook(s, { now: NOW });
+    expect(out).not.toContain('FAKE');
+    expect(out.split('\n')).toHaveLength(2);
+    expect(out).toContain('Mexico vs South Africa'); // scoreline degrades to "vs"
+  });
+});

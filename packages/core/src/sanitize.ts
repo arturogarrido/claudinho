@@ -42,12 +42,33 @@ function sanitizeTeam(t: Team | undefined): Team {
   };
 }
 
+/** A finite NUMBER, else undefined — a poisoned cache can hold strings here. */
+function finiteOrUndefined(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
 /**
- * Sanitized copy of every display string on a Match. Used on cache reads (the
+ * A valid numeric score pair, else undefined. Renderers interpolate these into
+ * template strings (`scoreline`, the statusline minute), so a string smuggled
+ * into a numeric slot ("1\nFAKE") would otherwise print verbatim.
+ */
+function sanitizeScorePair(v: { home?: unknown; away?: unknown } | undefined) {
+  const home = finiteOrUndefined(v?.home);
+  const away = finiteOrUndefined(v?.away);
+  return home !== undefined && away !== undefined ? { home, away } : undefined;
+}
+
+/**
+ * Sanitized, display-safe copy of a Match. Used on cache reads (the
  * statusline/hook render straight from the cache file), so it must be total:
- * a malformed entry yields empty strings, never a throw.
+ * a malformed entry yields empty strings, never a throw. Beyond the string
+ * fields, the RENDERED numeric fields (score, shootout, minute) are dropped
+ * unless they are real finite numbers — poisoned values degrade to "vs" /
+ * "LIVE", never to injected text. Shootout never survives without its score
+ * (the adapter-level invariant, re-enforced here).
  */
 export function sanitizeMatchStrings(m: Match): Match {
+  const score = sanitizeScorePair(m.score);
   return {
     ...m,
     venue: sanitizeFeedText(m.venue ?? ''),
@@ -55,5 +76,8 @@ export function sanitizeMatchStrings(m: Match): Match {
     country: m.country == null ? m.country : sanitizeFeedText(m.country),
     home: sanitizeTeam(m.home),
     away: sanitizeTeam(m.away),
+    score,
+    shootout: score ? sanitizeScorePair(m.shootout) : undefined,
+    minute: finiteOrUndefined(m.minute),
   };
 }

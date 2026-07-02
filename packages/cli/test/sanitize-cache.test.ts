@@ -76,3 +76,33 @@ describe('corrupt fixtures slice', () => {
     expect(line).not.toBe('');
   });
 });
+
+describe('poisoned numeric cache fields (score/minute as strings)', () => {
+  function numericPoisoned(): CacheState {
+    const m = poisonedLive();
+    return {
+      ...state(),
+      live: [
+        {
+          ...m,
+          home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+          away: { code: 'RSA', name: 'South Africa', flag: '🇿🇦' },
+          score: { home: '1\nFAKE_SCORE', away: 0 },
+          minute: '67\nFAKE_MINUTE',
+        } as unknown as Match,
+      ],
+    };
+  }
+
+  it('renderPrompt stays a single line with no injected text', () => {
+    const line = renderPrompt(numericPoisoned(), { now: NOW });
+    expect(line).not.toContain('\n');
+    expect(line).not.toContain('FAKE');
+  });
+
+  it('renderHook injects no extra lines into the context block', () => {
+    const ctx = renderHook(numericPoisoned(), { now: NOW });
+    expect(ctx).not.toContain('FAKE');
+    expect(ctx.split('\n')).toHaveLength(2); // label + exactly one match line
+  });
+});
