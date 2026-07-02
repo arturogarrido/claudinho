@@ -24,7 +24,7 @@ package is [`@claudinho/mcp`](https://www.npmjs.com/package/@claudinho/mcp).
 - `get_share_snippet` — copy-paste plain-text card (match, standings, bracket, …)
 - `get_team` — resolve a name/code to its FIFA code, flag, group (fuzzy; offline)
 
-All tools: `readOnlyHint`, optional `tz` / `lang` / `flavor`. No API keys.
+All tools are `readOnlyHint`; the match tools take optional `tz` / `lang` / `flavor`, while `get_team` is offline and takes just a `query`. No API keys.
 
 ## Verify locally
 
