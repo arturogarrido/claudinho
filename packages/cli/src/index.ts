@@ -167,7 +167,7 @@ program
   .command('markets')
   .description('show prediction-market signals (read-only, informational only)')
   .argument('[target]', 'date (YYYY-MM-DD), match id, "today", or "next"')
-  .argument('[team]', 'team code when target is "next" (default: $CLAUDINHO_TEAM)')
+  .argument('[team]', 'team name or code when target is "next", e.g. Mexico or MEX (default: $CLAUDINHO_TEAM)')
   .action(async (target, team, _opts, cmd) => {
     try {
       await cmdMarkets(target, team, ctxFrom(cmd));
@@ -182,7 +182,7 @@ program
   .argument('[target]', '"today" (default), "live", a date, a match id, "next", "table", or "bracket"')
   .argument(
     '[team]',
-    'team code for "next" (default: $CLAUDINHO_TEAM), group letter for "table", or stage for "bracket"',
+    'team name or code for "next" (default: $CLAUDINHO_TEAM), group letter for "table", or stage for "bracket"',
   )
   .option('--style <style>', 'snippet style: social (default) or compact')
   .option('--copy', 'also copy the snippet to the clipboard (best-effort)')

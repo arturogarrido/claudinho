@@ -171,6 +171,13 @@ describe('cmdMarkets — next <team>', () => {
     expect(data.informationalOnly).toBe(true);
   });
 
+  it('accepts a team NAME (not just a code) via the shared resolver', async () => {
+    // `markets next` funnels through resolveTeamArg like next/share, so a nation
+    // name resolves to its code (Holland → NED). Regression for the follow-up.
+    await cmdMarkets('next', 'holland', ctx({ json: true }, synth()));
+    expect((json() as { team: string }).team).toBe('NED');
+  });
+
   it("prefers the team's IN-PLAY match over their next fixture", async () => {
     const fixture = upcoming();
     const during = new Date(Date.parse(fixture.kickoff) + 30 * 60_000);
