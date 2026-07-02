@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   FakeMarketProvider,
   makeMarketProvider,
@@ -425,3 +425,34 @@ describe('makeMarketProvider', () => {
 function deriveSlug(m: Match): string {
   return `fifwc-${m.home.code.toLowerCase()}-${m.away.code.toLowerCase()}-${m.kickoff.slice(0, 10)}`;
 }
+
+describe('PolymarketProvider — fetch hardening (size cap + no redirects)', () => {
+  it('rejects an oversized declared body before parsing (no signal, not negative-cached)', async () => {
+    const json = vi.fn(async () => [event()]);
+    const fetchImpl = (async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: (k: string) => (k === 'content-length' ? String(6 * 1024 * 1024) : null) },
+      json,
+    })) as unknown as typeof fetch;
+    const p = new PolymarketProvider({ fetchImpl, now: NOW });
+    await expect(p.findSignal(match())).resolves.toBeUndefined();
+    expect(json).not.toHaveBeenCalled();
+    // Treated as a provider error → NOT "checked", so it's retried, never
+    // negative-cached as a definitive "no market".
+    const r = await p.findSignals([match()]);
+    expect(r.checked.has(match().id)).toBe(false);
+  });
+
+  it("sends redirect:'error' so a redirect can't sidestep the host allow-list", async () => {
+    let init: RequestInit | undefined;
+    const fetchImpl = (async (_url: string, i?: RequestInit) => {
+      init = i;
+      throw new TypeError('unexpected redirect'); // undici behavior on 3xx
+    }) as unknown as typeof fetch;
+    const p = new PolymarketProvider({ fetchImpl, now: NOW });
+    await expect(p.findSignal(match())).resolves.toBeUndefined(); // degrades, never throws
+    expect(init?.redirect).toBe('error');
+  });
+});

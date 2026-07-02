@@ -222,6 +222,9 @@ export function spawnRefresh(source: string): void {
     const child = spawn(process.execPath, [entry, '_refresh', '--source', source], {
       detached: true,
       stdio: 'ignore',
+      // Windows: a detached child gets its own console window without this —
+      // the statusline would flash one every ~12–15s during live matches.
+      windowsHide: true,
     });
     child.unref();
   } catch {

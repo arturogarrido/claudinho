@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { mapEspnEvent } from '../src/adapters/espn';
+import { describe, expect, it, vi } from 'vitest';
+import { EspnAdapter, MAX_RESPONSE_BYTES, mapEspnEvent } from '../src/adapters/espn';
+import { getLiveMatches } from '../src/live';
 
 // Minimal ESPN-shaped fixtures mirroring the real response structure.
 
@@ -188,5 +189,54 @@ describe('mapEspnEvent', () => {
     const m = mapEspnEvent(scheduled as never);
     expect(m.stage).toBe('GROUP');
     expect(m.group).toBeUndefined();
+  });
+});
+
+describe('EspnAdapter fetch hardening (size cap + no redirects)', () => {
+  /** Response-like fake with a content-length header and a spy json(). */
+  function bigResponse(bytes: number) {
+    const json = vi.fn(async () => ({ events: [] }));
+    return {
+      res: {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: { get: (k: string) => (k === 'content-length' ? String(bytes) : null) },
+        json,
+      },
+      json,
+    };
+  }
+
+  it('rejects an oversized declared body BEFORE parsing (memory-DoS guard)', async () => {
+    const { res, json } = bigResponse(MAX_RESPONSE_BYTES + 1);
+    const fetchImpl = (async () => res) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
+    await expect(adapter.fetchByDate('2026-06-11')).rejects.toThrow(/too large/);
+    expect(json).not.toHaveBeenCalled();
+    // …and the domain wrapper degrades rather than throwing to the user.
+    const r = await getLiveMatches(adapter);
+    expect(r.degraded).toBe(true);
+  });
+
+  it('accepts a normal-sized (or unstated) body', async () => {
+    const { res } = bigResponse(2048);
+    const fetchImpl = (async () => res) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
+    await expect(adapter.fetchByDate('2026-06-11')).resolves.toEqual([]);
+  });
+
+  it("sends redirect:'error' so a redirect can't escape the fixed host", async () => {
+    let init: RequestInit | undefined;
+    const fetchImpl = (async (_url: string, i?: RequestInit) => {
+      init = i;
+      // undici with redirect:'error' rejects on any 3xx — simulate that.
+      throw new TypeError('unexpected redirect');
+    }) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
+    await expect(adapter.fetchByDate('2026-06-11')).rejects.toThrow();
+    expect(init?.redirect).toBe('error');
+    const r = await getLiveMatches(adapter); // degrades, never crashes a surface
+    expect(r.degraded).toBe(true);
   });
 });

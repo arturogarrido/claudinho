@@ -30,7 +30,6 @@ import {
   resolveCompetition,
   resolveMarketSource,
   scoreline,
-  stageLabel,
   t as i18n,
   stageLabelI18n,
   type Stage,
@@ -221,20 +220,36 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
  * guessing; a raw 3-letter code not in the bundled roster still passes through
  * uppercased (the escape hatch for CLAUDINHO_COMPETITION / other feeds).
  */
-function resolveTeamArg(team: string | undefined, usage: string): string {
+function resolveTeamArg(team: string | undefined, usage: string, t: Translator): string {
   const raw = team ?? process.env.CLAUDINHO_TEAM;
   if (!raw) throw new InputError(usage);
   const { team: hit, matches } = lookupTeam(raw);
   if (hit) return hit.code;
   if (matches.length > 1) {
+    // Localized via the same keys cmdTeam renders (team.ambiguous ends in ":").
     throw new InputError(
-      `"${raw}" is ambiguous — did you mean ${matches
+      `${t('team.ambiguous', { query: raw })} ${matches
         .map((m) => `${m.name} (${m.code})`)
-        .join(', ')}? Use the 3-letter code.`,
+        .join(', ')}`,
     );
   }
   if (/^[A-Za-z]{3}$/.test(raw)) return raw.toUpperCase();
-  throw new InputError(`No team found for "${raw}". Use a nation name or 3-letter code (e.g. Mexico, MEX).`);
+  throw new InputError(t('team.none', { query: raw }));
+}
+
+/**
+ * Resolve CLAUDINHO_TEAM for the statusline/hook. Same offline lookup as the
+ * commands (`CLAUDINHO_TEAM=mexico` filters, not just `MEX`); an unknown
+ * 3-letter value still passes through uppercased (the CLAUDINHO_COMPETITION
+ * escape hatch), and anything unresolvable yields no filter — showing all
+ * matches beats a dead filter that blanks the statusline. Pure and offline
+ * (bundled roster only), so it's safe on the no-network hot path.
+ */
+function resolveEnvTeam(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const { team } = lookupTeam(raw);
+  if (team) return team.code;
+  return /^[A-Za-z]{3}$/.test(raw) ? raw.toUpperCase() : undefined;
 }
 
 /** `claudinho today [date]` */
@@ -320,7 +335,7 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
 export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void> {
   const { cfg, t, now } = ctx;
   precheck(cfg, t);
-  const code = resolveTeamArg(team, 'Usage: claudinho next <team> (or set CLAUDINHO_TEAM)');
+  const code = resolveTeamArg(team, 'Usage: claudinho next <team> (or set CLAUDINHO_TEAM)', t);
   // Live-resolved: the bundled knockout slots are resultless placeholders, so a
   // static lookup goes blind once a team's group games pass — overlay the live
   // knockout window so a confirmed R32+ tie (e.g. MEX vs ECU) surfaces here too.
@@ -349,7 +364,10 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   out(header(t('next.label', { team: code }), c));
   out();
   out(matchLine(fixture, cfg, t, c, flags));
-  const stage = fixture.stage !== 'GROUP' ? `${stageLabel(fixture)} · ` : '';
+  // Localized (stageLabelI18n, like cmdBracket) — EN-only stageLabel here made
+  // `next MEX --lang es` render "Round of 32" beside otherwise-Spanish copy.
+  const stage =
+    fixture.stage !== 'GROUP' ? `${stageLabelI18n(cfg.lang, fixture.stage)} · ` : '';
   out(
     '  ' +
       c.dim(
@@ -547,7 +565,8 @@ export function cmdPrompt({ cfg }: Ctx): void {
   try {
     // Always drain stdin so Cursor's statusline pipe never blocks (meta optional).
     const payload = readCursorPayload();
-    const team = process.env.CLAUDINHO_TEAM;
+    // Name-or-code, like the commands (offline lookup — hot-path safe).
+    const team = resolveEnvTeam(process.env.CLAUDINHO_TEAM);
     const compact = !['0', 'false', 'no'].includes(
       (process.env.CLAUDINHO_COMPACT ?? '').toLowerCase(),
     );
@@ -577,7 +596,8 @@ export function cmdPrompt({ cfg }: Ctx): void {
  */
 export function cmdHook({ cfg }: Ctx): void {
   try {
-    const team = process.env.CLAUDINHO_TEAM;
+    // Name-or-code, like the commands (offline lookup — hot-path safe).
+    const team = resolveEnvTeam(process.env.CLAUDINHO_TEAM);
     // Only trust a snapshot fetched for the current source + competition.
     const state = readCurrentState(cfg.source, resolveCompetition());
     const ctx = renderHook(state, { team, flags: flagsEnabled() });
@@ -663,7 +683,8 @@ export function cmdInitCursor(opts: { print?: boolean }, { cfg }: Ctx): void {
     out(CURSOR_MCP_SNIPPET);
     return;
   }
-  printInitResult(initCursorStatusline(), cfg);
+  const res = initCursorStatusline();
+  printInitResult(res, cfg);
   out('');
   out('Optional — live MCP tools in Cursor: add to ~/.cursor/mcp.json (or project .cursor/mcp.json):');
   out(CURSOR_MCP_SNIPPET);
@@ -671,7 +692,7 @@ export function cmdInitCursor(opts: { print?: boolean }, { cfg }: Ctx): void {
   out('Tip: export CLAUDINHO_CURSOR_META=auto for a model + context line below the score.');
   out('');
   out('→ Restart your agent session to see it.');
-  printInitStarCta(cfg);
+  if (res.action === 'written') printInitStarCta(cfg);
 }
 
 /**
@@ -691,14 +712,16 @@ export function cmdInitClaude(opts: { print?: boolean }, { cfg }: Ctx): void {
     out(CLAUDE_MCP_ONELINER);
     return;
   }
-  printInitResult(initStatusline(), cfg);
-  printInitResult(initHook(), cfg);
+  const statusRes = initStatusline();
+  const hookRes = initHook();
+  printInitResult(statusRes, cfg);
+  printInitResult(hookRes, cfg);
   out('');
   out('Next — add the MCP server:');
   out(`  ${CLAUDE_MCP_ONELINER}`);
   out('');
   out('→ Restart Claude Code to see it.');
-  printInitStarCta(cfg);
+  if (statusRes.action === 'written' || hookRes.action === 'written') printInitStarCta(cfg);
 }
 
 /** `claudinho match <id>` */
@@ -729,7 +752,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
     out(disclaimer(t, c));
     return;
   }
-  const stageLabelText = stageLabel(match);
+  const stageLabelText = stageLabelI18n(cfg.lang, match.stage, match.group ?? undefined);
   out(header(`${match.home.name} ${scoreline(match)} ${match.away.name}`, c));
   out('  ' + c.dim(`${stageLabelText} · ${matchLocation(match)}`));
   out(
@@ -825,7 +848,7 @@ export async function cmdMarkets(
   // not next week's (whose thin market would gate to an empty answer).
   if (target === 'next') {
     precheck(cfg, t);
-    const code = resolveTeamArg(team, 'Usage: claudinho markets next <team> (or set CLAUDINHO_TEAM)');
+    const code = resolveTeamArg(team, 'Usage: claudinho markets next <team> (or set CLAUDINHO_TEAM)', t);
     const now = ctx.now ?? new Date();
     // Live-confirmed selection: handles extra time past the static window AND
     // early FTs inside it (the static fixture's status is forever SCHEDULED).
@@ -1218,7 +1241,7 @@ export async function cmdShare(
   // share next <team>
   if (target === 'next') {
     precheck(cfg, t);
-    const code = resolveTeamArg(team, 'Usage: claudinho share next <team> (or set CLAUDINHO_TEAM)');
+    const code = resolveTeamArg(team, 'Usage: claudinho share next <team> (or set CLAUDINHO_TEAM)', t);
     // Live-resolved (see cmdNext): overlay the knockout window so a confirmed
     // R32+ tie pastes here too, not just group games.
     const { fixture, degraded, source } = await getNextFixtureForTeam(
@@ -1414,8 +1437,14 @@ function maybeStarNudge(ctx: Ctx): void {
   out(c.dim(`  ⭐ Enjoying Claudinho? Star it → ${REPO_URL}   (claudinho star)`));
 }
 
-/** Star CTA after a successful interactive init — the highest-intent moment. */
+/**
+ * Star CTA after a successful interactive init — the highest-intent moment.
+ * Same gates as `maybeStarNudge` (AGENTS.md: CTAs never in `--json`, piped
+ * output, or with CLAUDINHO_NO_STAR set); callers additionally gate on a
+ * `written` result so "already configured" / errors don't get a victory lap.
+ */
 function printInitStarCta(cfg: CliConfig): void {
+  if (cfg.json || !process.stdout.isTTY || process.env.CLAUDINHO_NO_STAR) return;
   const c = painterFor(cfg);
   out('');
   out(c.dim(`⭐ If this keeps you in the flow during the match, star the repo → ${REPO_URL}`));

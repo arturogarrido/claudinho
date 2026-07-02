@@ -7,18 +7,18 @@
     "source": "github",
     "subfolder": "packages/mcp"
   },
-  "version": "0.8.18",
+  "version": "0.8.19",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@claudinho/mcp",
-      "version": "0.8.18",
+      "version": "0.8.19",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
-          "description": "UI language: en, es, pt, or fr (optional; default en)",
+          "description": "Locale for dates, attribution, and commentary: en, es, pt, or fr (optional; default en)",
           "isRequired": false,
           "format": "string",
           "name": "CLAUDINHO_LANG"

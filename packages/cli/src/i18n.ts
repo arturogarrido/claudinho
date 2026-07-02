@@ -21,7 +21,6 @@ const EN: Dict = {
   'table.degraded': 'Live standings unavailable — showing the group roster.',
   'table.empty': 'No standings available.',
   'match.none': 'No match found with id {id}.',
-  'status.scheduled': 'scheduled',
   'status.live': 'LIVE',
   'status.ht': 'HT',
   'status.ft': 'FT',
@@ -60,7 +59,6 @@ const ES: Dict = {
   'table.degraded': 'Tabla en vivo no disponible — mostrando la lista del grupo.',
   'table.empty': 'No hay clasificación disponible.',
   'match.none': 'No se encontró partido con id {id}.',
-  'status.scheduled': 'programado',
   'status.live': 'EN VIVO',
   'status.ht': 'DESC',
   'status.ft': 'FIN',
@@ -99,7 +97,6 @@ const PT: Dict = {
   'table.degraded': 'Classificação ao vivo indisponível — mostrando os times do grupo.',
   'table.empty': 'Classificação indisponível.',
   'match.none': 'Nenhum jogo encontrado com id {id}.',
-  'status.scheduled': 'agendado',
   'status.live': 'AO VIVO',
   'status.ht': 'INT',
   'status.ft': 'FIM',
@@ -138,7 +135,6 @@ const FR: Dict = {
   'table.degraded': 'Classement en direct indisponible — affichage de la composition du groupe.',
   'table.empty': 'Aucun classement disponible.',
   'match.none': 'Aucun match trouvé avec id {id}.',
-  'status.scheduled': 'prévu',
   'status.live': 'DIRECT',
   'status.ht': 'MT',
   'status.ft': 'FIN',
@@ -164,7 +160,8 @@ export function makeT(lang: string) {
   const dict = CATALOGS[lang] ?? EN;
   return (key: string, vars?: Record<string, string>): string => {
     let s = dict[key] ?? EN[key] ?? key;
-    if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, v);
+    // replaceAll (matching core's t()) so a repeated placeholder fills every slot.
+    if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, v);
     return s;
   };
 }

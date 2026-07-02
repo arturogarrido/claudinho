@@ -85,3 +85,20 @@ describe('team-arg name resolution (next / share next accept names, not just cod
     await expect(cmdNext('zzzzz', ctx())).rejects.toBeInstanceOf(InputError);
   });
 });
+
+describe('resolveTeamArg errors are localized (team.ambiguous / team.none)', () => {
+  const esCtx = () => ({ cfg: cfg({ lang: 'es' }), t: makeT('es'), adapter: fakeAdapter });
+
+  it('unknown team errors in Spanish under --lang es', async () => {
+    await expect(cmdNext('zzzzz', esCtx())).rejects.toThrow(/No se encontró ningún equipo/);
+  });
+
+  it('ambiguous name errors in Spanish, listing the candidates', async () => {
+    await expect(cmdNext('south', esCtx())).rejects.toThrow(/es ambiguo/);
+    await expect(cmdNext('south', esCtx())).rejects.toThrow(/South Africa \(RSA\)/);
+  });
+
+  it('still errors in English by default', async () => {
+    await expect(cmdNext('zzzzz', ctx())).rejects.toThrow(/No team found for "zzzzz"/);
+  });
+});

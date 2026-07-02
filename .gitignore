@@ -17,8 +17,8 @@ coverage/
 .idea/
 .vscode/
 
-# Claude Code local (keep shared settings, ignore local)
-.claude/settings.local.json
+# Claude Code local (keep shared settings, ignore local — at any depth)
+**/.claude/settings.local.json
 
 # build output
 packages/*/dist/

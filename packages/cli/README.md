@@ -186,7 +186,7 @@ The statusline reads from a local micro-cache and **never blocks on the
 network** (<150ms). When several matches are live it shows them all inline:
 `⚽ 🇳🇴 1–1 🇫🇷 87' · 🇸🇳 1–2 🇮🇶 86'`. Customize via env:
 
-- `CLAUDINHO_TEAM=MEX` — show only your team's match; also the default team for `next`, `markets next`, and `share next` when the argument is omitted
+- `CLAUDINHO_TEAM=MEX` — show only your team's match (a nation name works too, e.g. `CLAUDINHO_TEAM=mexico`); also the default team for `next`, `markets next`, and `share next` when the argument is omitted
 - `CLAUDINHO_MAX=2` — cap how many live matches show inline (rest collapse to `+N`; default: all)
 - `CLAUDINHO_COMPACT=0` — show 3-letter codes alongside flags
 - `CLAUDINHO_FLAGS=off` — drop emoji flags for 3-letter codes (statusline) / plain names (`today`, `live`, `table`, `next`, hook); already automatic on terminals that can't render flag emoji, e.g. Warp

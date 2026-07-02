@@ -15,6 +15,7 @@ import {
   LIVE_WINDOW_MS,
   mergeLive,
   nextFixtureForTeam,
+  sanitizeMatchStrings,
   scoreline,
   type Match,
 } from '@claudinho/core';
@@ -119,10 +120,15 @@ export function liveMatchesFromCache(
 ): Match[] {
   const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
   const liveArr = fresh && Array.isArray(state?.live) ? state!.live : [];
-  return liveArr.filter(
-    (m): m is Match =>
-      !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
-  );
+  return liveArr
+    .filter(
+      (m): m is Match =>
+        !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
+    )
+    // Mirror of the adapter's feed sanitizer: the statusline/hook render these
+    // strings on every prompt, so a poisoned CACHE FILE (not just a poisoned
+    // feed) must not inject ANSI/newlines into the terminal or Claude's context.
+    .map(sanitizeMatchStrings);
 }
 
 export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {}): string {
@@ -139,7 +145,15 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
   // resolve itself, so this overlay is how the statusline shows real pairings
   // (still NETWORK-FREE: reads only the cache). Used by both the syncing and
   // next-fixture branches below.
-  const cachedFixtures = Array.isArray(state?.fixtures) ? (state!.fixtures as Match[]) : [];
+  // Sanitized like the live slice above — cached fixtures render on the
+  // countdown/syncing lines, so they get the same poisoned-cache defense.
+  // Non-object entries are dropped (a corrupt element must degrade to "that
+  // fixture is missing", never throw the whole statusline blank in mergeLive).
+  const cachedFixtures = Array.isArray(state?.fixtures)
+    ? (state!.fixtures as Match[])
+        .filter((m): m is Match => !!m && typeof m === 'object')
+        .map(sanitizeMatchStrings)
+    : [];
   const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;
 
   // With a team filter, show only that team's live match.
