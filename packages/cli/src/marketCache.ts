@@ -10,10 +10,10 @@
  * appear as kickoff approaches). Best-effort + tolerant: a corrupt/absent file
  * reads as empty, and writes never throw.
  */
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { MarketSignal } from '@claudinho/core';
+import { cacheDir, writeFileAtomic } from './paths';
 
 const POSITIVE_TTL_MS = 10 * 60_000;
 const NEGATIVE_TTL_MS = 3 * 60_000;
@@ -27,11 +27,6 @@ interface MarketCacheFile {
   source: string;
   competition: string;
   entries: Record<string, CacheEntry>;
-}
-
-function cacheDir(): string {
-  const base = process.env.XDG_CACHE_HOME || join(homedir(), '.cache');
-  return join(base, 'claudinho');
 }
 
 function cachePath(): string {
@@ -99,10 +94,7 @@ export function writeMarketCache(
     for (const id of attempted) {
       base.entries[id] = { fetchedAt, signal: fetched.get(id) ?? null };
     }
-    mkdirSync(cacheDir(), { recursive: true });
-    const tmp = join(cacheDir(), `market-signals.${process.pid}.tmp`);
-    writeFileSync(tmp, JSON.stringify(base));
-    renameSync(tmp, cachePath()); // atomic on the same filesystem
+    writeFileAtomic(cachePath(), JSON.stringify(base));
   } catch {
     /* best-effort; never break a command */
   }

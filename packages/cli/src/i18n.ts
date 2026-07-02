@@ -1,7 +1,5 @@
 /** Minimal message catalog. Keys are stable; values localized. */
-type Dict = Record<string, string>;
-
-const EN: Dict = {
+const EN = {
   'today.title': "Today's matches",
   'today.on': 'Matches',
   'today.none': 'No matches scheduled for this date.',
@@ -38,6 +36,13 @@ const EN: Dict = {
   'warn.lang': 'Unsupported language {lang}; using English. (supported: en, es, pt, fr)',
   disclaimer: 'Not affiliated with FIFA or Anthropic.',
 };
+
+/**
+ * Every locale must define exactly the EN key set — a missing or mistyped
+ * es/pt/fr key fails `tsc` instead of silently rendering mid-sentence English
+ * at runtime (the fallback below stays, but only for genuinely unknown keys).
+ */
+type Dict = Record<keyof typeof EN, string>;
 
 const ES: Dict = {
   'today.title': 'Partidos de hoy',
@@ -157,9 +162,11 @@ const CATALOGS: Record<string, Dict> = { en: EN, es: ES, pt: PT, fr: FR };
 
 /** Translator bound to a locale, with simple {placeholder} interpolation. */
 export function makeT(lang: string) {
-  const dict = CATALOGS[lang] ?? EN;
+  // Widen for lookup: callers pass arbitrary string keys (unknown → key echo).
+  const dict: Record<string, string> = CATALOGS[lang] ?? EN;
+  const en: Record<string, string> = EN;
   return (key: string, vars?: Record<string, string>): string => {
-    let s = dict[key] ?? EN[key] ?? key;
+    let s = dict[key] ?? en[key] ?? key;
     // replaceAll (matching core's t()) so a repeated placeholder fills every slot.
     if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, v);
     return s;

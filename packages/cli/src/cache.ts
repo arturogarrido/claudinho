@@ -9,14 +9,15 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
   writeSync,
 } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Match } from '@claudinho/core';
+import { cacheDir, writeFileAtomic } from './paths';
+
+export { cacheDir } from './paths';
 
 /** The cached snapshot. `live` holds in-progress matches at `updatedAt`. */
 export interface CacheState {
@@ -39,11 +40,6 @@ export interface CacheState {
 }
 
 const LOCK_STALE_MS = 60_000;
-
-export function cacheDir(): string {
-  const base = process.env.XDG_CACHE_HOME || join(homedir(), '.cache');
-  return join(base, 'claudinho');
-}
 
 export function cachePath(): string {
   return join(cacheDir(), 'state.json');
@@ -77,21 +73,7 @@ export function readCurrentState(
 
 /** Atomically write the cached state. */
 export function writeState(state: CacheState): void {
-  const dir = cacheDir();
-  mkdirSync(dir, { recursive: true });
-  const tmp = join(dir, `state.${process.pid}.tmp`);
-  writeFileSync_(tmp, JSON.stringify(state));
-  renameSync(tmp, cachePath()); // atomic on the same filesystem
-}
-
-// Small helper to avoid importing writeFileSync separately from writeSync use.
-function writeFileSync_(path: string, data: string): void {
-  const fd = openSync(path, 'w');
-  try {
-    writeSync(fd, data);
-  } finally {
-    closeSync(fd);
-  }
+  writeFileAtomic(cachePath(), JSON.stringify(state));
 }
 
 /** Age of the cache in ms (Infinity if absent/unparseable). */

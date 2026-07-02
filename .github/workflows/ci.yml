@@ -13,10 +13,16 @@ concurrency:
 permissions:
   contents: read
 
+# Actions are pinned to full commit SHAs (not tags): a re-pointed tag on a
+# third-party action would otherwise execute arbitrary code in these jobs — and
+# publish.yml (same pins) holds the npm OIDC credential. Dependabot keeps SHA
+# pins updated; the trailing comment records the human-readable version.
+
 jobs:
   build-test:
     name: build · typecheck · test (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # a hung test must fail in minutes, not burn the 6h default
     strategy:
       fail-fast: false
       matrix:
@@ -25,9 +31,9 @@ jobs:
         # — that floor is verified by the `runtime-node20` job below.
         node: [22, 24]
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6 # reads pnpm version from package.json "packageManager"
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6 — reads pnpm version from package.json "packageManager"
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
@@ -40,14 +46,26 @@ jobs:
       - run: pnpm -r test
       - run: pnpm lint # Biome (real linter, replaces the former no-op)
 
+      # The MCP server over REAL stdio — the transport every install channel
+      # (Registry npx, Smithery, Cursor plugin) actually launches, which the
+      # vitest suite never exercises (it imports handlers in-process).
+      - name: MCP server stdio smoke
+        run: pnpm -F @claudinho/mcp smoke:stdio
+
+      # Tarball contents: nothing ships beyond dist/README/LICENSE, never a
+      # .mcpb or anything under docs/ (and git must track nothing under docs/).
+      - name: Pack contents guard
+        run: node scripts/check-pack.mjs
+
   runtime-node20:
     name: runtime smoke (Node 20 engines floor)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
       # Build with a pnpm-supported Node...
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 22
           cache: pnpm
@@ -56,7 +74,7 @@ jobs:
       # ...then run the built artifacts under Node 20 to confirm the shipped
       # code actually works on the version we advertise (engines.node >= 20).
       # Uses offline-only commands (bundled schedule, no network).
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 20
       - name: Exercise the built CLI on Node 20
@@ -66,14 +84,80 @@ jobs:
           node packages/cli/dist/index.js table A
           node packages/cli/dist/index.js vibe
           echo "Node 20 runtime OK"
+      # The engines floor applies to the MCP server and the statusline too —
+      # plain `node` invocations (pnpm itself needs >= 22.13, so no pnpm here).
+      - name: MCP server stdio smoke on Node 20
+        run: node packages/mcp/scripts/stdio-smoke.mjs
+      - name: Statusline smoke on Node 20 (seeded cache, offline)
+        run: node scripts/smoke-statusline.mjs
+
+  os-matrix:
+    # The CLI ships to macOS/Windows users (statusline installs on both), but
+    # nothing had ever EXECUTED on them in CI — cache tmp+rename, the detached
+    # refresher spawn, and ~/.claude writes are all platform-sensitive.
+    name: build · test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # The first windows leg hung for an hour on a blocking stdin read — cap the
+    # blast radius of any future platform hang.
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      - run: pnpm -r test
+      - name: Offline CLI smoke (bundled schedule, no network)
+        run: |
+          node packages/cli/dist/index.js next MEX
+          node packages/cli/dist/index.js table A
+      - name: Statusline smoke (seeded cache)
+        run: node scripts/smoke-statusline.mjs
+      - name: MCP server stdio smoke
+        run: node packages/mcp/scripts/stdio-smoke.mjs
+
+  coverage:
+    # Visibility only, never a gate: publishes per-package V8 coverage so blind
+    # spots are inspectable (several shipped bugs were "the branch nobody
+    # rendered"). Thresholds are a deliberate non-goal for now.
+    name: coverage (non-gating)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      - name: Test with V8 coverage
+        # No `--` separator: pnpm forwards unrecognized options to the script;
+        # with `--` the flags never reach vitest (verified locally).
+        run: pnpm -r test --coverage --coverage.reporter=text-summary --coverage.reporter=json-summary
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-summaries
+          path: packages/*/coverage/coverage-summary.json
+          if-no-files-found: warn
 
   audit:
     name: audit (shipped deps)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: 22
           cache: pnpm

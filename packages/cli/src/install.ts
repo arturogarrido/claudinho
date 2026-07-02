@@ -3,15 +3,10 @@
  * Claude Code or Cursor CLI statuslines. Safe: preserves existing settings,
  * backs up before overwriting, and refuses to clobber unparseable files.
  */
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
+import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+import { writeFileAtomic } from './paths';
 
 export type StatuslineTarget = 'claude' | 'cursor';
 
@@ -137,8 +132,8 @@ export function initStatuslineFor(
 
   backupOnce(path);
   settings.statusLine = sl;
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+  // Atomic (tmp + rename): a crash mid-write must never truncate the user's settings.
+  writeFileAtomic(path, JSON.stringify(settings, null, 2) + '\n');
   const surface = target === 'cursor' ? 'Cursor CLI statusline' : 'Statusline';
   return {
     action: 'written',
@@ -213,8 +208,7 @@ export function initHook(opts: InitOpts = {}): InitResult {
   const hooks = settings.hooks as Record<string, ClaudeHookMatcher[]>;
   hooks[CLAUDE_HOOK_EVENT] ??= [];
   hooks[CLAUDE_HOOK_EVENT].push({ hooks: [{ type: 'command', command }] });
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+  writeFileAtomic(path, JSON.stringify(settings, null, 2) + '\n');
   return {
     action: 'written',
     path,

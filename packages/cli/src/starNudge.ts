@@ -6,9 +6,9 @@
  * suppressible with CLAUDINHO_NO_STAR. Everything here is best-effort and never
  * throws — a CTA must never break or slow a command.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { cacheDir, writeFileAtomic } from './paths';
 
 /** Canonical repo URL — the single place every star CTA points to. */
 export const REPO_URL = 'https://github.com/arturogarrido/claudinho';
@@ -16,8 +16,7 @@ export const REPO_URL = 'https://github.com/arturogarrido/claudinho';
 const NUDGE_EVERY = 5;
 
 function counterPath(): string {
-  const base = process.env.XDG_CACHE_HOME || join(homedir(), '.cache');
-  return join(base, 'claudinho', 'runs.json');
+  return join(cacheDir(), 'runs.json');
 }
 
 /** Show the star nudge on every Nth interactive run. Pure → unit-testable. */
@@ -40,8 +39,7 @@ export function bumpRunCount(path: string = counterPath()): number | undefined {
       count = 0; // missing/corrupt → start fresh
     }
     count += 1;
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, JSON.stringify({ count }), 'utf8');
+    writeFileAtomic(path, JSON.stringify({ count }));
     return count;
   } catch {
     return undefined;

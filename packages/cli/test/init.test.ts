@@ -69,18 +69,24 @@ describe('CURSOR_MCP_SNIPPET', () => {
 });
 
 // Write-path integration: `init claude` must write BOTH the statusline and the
-// hook to settings.json (parity bundle), and stay idempotent. Isolated via $HOME
-// so it never touches the real ~/.claude (os.homedir() reads $HOME on POSIX).
+// hook to settings.json (parity bundle), and stay idempotent. Isolated via
+// $HOME (POSIX) AND %USERPROFILE% (os.homedir() reads USERPROFILE on Windows —
+// HOME alone let the first windows-latest CI leg write to the runner's real
+// ~/.claude) so it never touches the real settings.
 describe('cmdInitClaude — write path (isolated HOME)', () => {
   let dir: string;
   const ORIG_HOME = process.env.HOME;
+  const ORIG_USERPROFILE = process.env.USERPROFILE;
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'claudinho-init-'));
     process.env.HOME = dir;
+    process.env.USERPROFILE = dir;
   });
   afterEach(() => {
     if (ORIG_HOME === undefined) delete process.env.HOME;
     else process.env.HOME = ORIG_HOME;
+    if (ORIG_USERPROFILE === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = ORIG_USERPROFILE;
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -115,16 +121,20 @@ describe('cmdInitClaude — write path (isolated HOME)', () => {
 describe('printInitStarCta gating (via cmdInitClaude, isolated HOME)', () => {
   let dir: string;
   const ORIG_HOME = process.env.HOME;
+  const ORIG_USERPROFILE = process.env.USERPROFILE;
   const ORIG_NO_STAR = process.env.CLAUDINHO_NO_STAR;
   const ORIG_TTY = process.stdout.isTTY;
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'claudinho-cta-'));
     process.env.HOME = dir;
+    process.env.USERPROFILE = dir; // homedir() reads USERPROFILE on Windows
     delete process.env.CLAUDINHO_NO_STAR;
   });
   afterEach(() => {
     if (ORIG_HOME === undefined) delete process.env.HOME;
     else process.env.HOME = ORIG_HOME;
+    if (ORIG_USERPROFILE === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = ORIG_USERPROFILE;
     if (ORIG_NO_STAR === undefined) delete process.env.CLAUDINHO_NO_STAR;
     else process.env.CLAUDINHO_NO_STAR = ORIG_NO_STAR;
     process.stdout.isTTY = ORIG_TTY;

@@ -1,9 +1,7 @@
 /** Supported UI locales — same set as CLI/MCP `lang`. */
 export type Lang = 'en' | 'es' | 'pt' | 'fr';
 
-type Dict = Record<string, string>;
-
-const EN: Dict = {
+const EN = {
   'bracket.title': 'Knockout bracket',
   'bracket.stageTitle': 'Knockout · {stage}',
   'bracket.shareTitle': 'Knockout bracket · 2026',
@@ -34,6 +32,13 @@ const EN: Dict = {
   'stage.f': 'Final',
   'stage.friendly': 'Friendly',
 };
+
+/**
+ * Every locale must define exactly the EN key set — a missing or mistyped
+ * es/pt/fr key fails `tsc` instead of silently rendering mid-sentence English
+ * at runtime (the fallback in `t()` stays, but only for genuinely unknown keys).
+ */
+type Dict = Record<keyof typeof EN, string>;
 
 const ES: Dict = {
   'bracket.title': 'Cuadro de eliminatorias',
@@ -142,8 +147,10 @@ export function normalizeLang(lang?: string): Lang {
 
 /** Translate a message key with optional `{placeholder}` interpolation. */
 export function t(lang: string | undefined, key: string, vars?: Record<string, string>): string {
-  const dict = CATALOGS[normalizeLang(lang)];
-  let s = dict[key] ?? EN[key] ?? key;
+  // Widen for lookup: callers pass arbitrary string keys (unknown → key echo).
+  const dict: Record<string, string> = CATALOGS[normalizeLang(lang)];
+  const en: Record<string, string> = EN;
+  let s = dict[key] ?? en[key] ?? key;
   if (vars) {
     for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, v);
   }

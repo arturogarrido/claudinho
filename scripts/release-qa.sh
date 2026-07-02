@@ -215,6 +215,56 @@ else
   SKIP=$((SKIP+1))
 fi
 
+# T8 — bundle↔live drift: every fixture ESPN serves in a ±1-day window must exist
+# in the bundled schedule under the SAME id, with a kickoff within 12h. The live
+# overlay is id-keyed, so an ESPN renumber/reschedule silently divorces static
+# from live (missed overlays, stale kickoff/venue) with no crash — regenerate the
+# schedule if this trips. SKIPs when the feed is unreachable/empty (a network
+# blip must never block a release) or under a non-default competition (the
+# bundle is fifa.world only).
+if [ -n "${CLI:-}" ]; then
+  printf '  \033[33m⚠ SKIP\033[0m  bundle↔live drift check (CLI override tests a global install; tripwire imports the local core)\n'
+  SKIP=$((SKIP+1))
+elif [ "$CLAUDINHO_COMPETITION" != "fifa.world" ]; then
+  printf '  \033[33m⚠ SKIP\033[0m  bundle↔live drift check (non-default competition — the bundled schedule is fifa.world)\n'
+  SKIP=$((SKIP+1))
+elif [ -f "$CORE_DIST" ]; then
+  DRIFT="$(node --input-type=module -e "
+import { allFixtures, makeAdapter } from 'file://$CORE_DIST';
+const bundled = new Map(allFixtures().map((f) => [f.id, f]));
+const adapter = makeAdapter('espn');
+const day = (d) => d.toISOString().slice(0, 10);
+const now = Date.now();
+try {
+  const served = [];
+  for (const off of [-1, 0, 1]) {
+    served.push(...(await adapter.fetchByDate(day(new Date(now + off * 864e5)))));
+  }
+  if (!served.length) { process.stdout.write('DRIFT-SKIP'); process.exit(0); }
+  const missing = served.filter((m) => !bundled.has(m.id)).map((m) => 'missing:' + m.id);
+  const shifted = served.filter((m) => {
+    const b = bundled.get(m.id);
+    return b && Math.abs(Date.parse(b.kickoff) - Date.parse(m.kickoff)) > 12 * 3600e3;
+  }).map((m) => 'shifted:' + m.id);
+  process.stdout.write(missing.length || shifted.length
+    ? 'DRIFT-FAIL ' + [...missing, ...shifted].join(',')
+    : 'DRIFT-OK ' + served.length);
+} catch { process.stdout.write('DRIFT-SKIP'); }
+" 2>/dev/null)"
+  case "$DRIFT" in
+    DRIFT-OK*)
+      check ok "bundle↔live: every live-served fixture id is in the bundle, kickoff within 12h (${DRIFT#DRIFT-OK } fixtures)" ;;
+    DRIFT-FAIL*)
+      check no "bundle↔live drift: ${DRIFT#DRIFT-FAIL } — regenerate the schedule (pnpm -F @claudinho/core gen:schedule)" ;;
+    *)
+      printf '  \033[33m⚠ SKIP\033[0m  bundle↔live drift check (feed unreachable/empty)\n'
+      SKIP=$((SKIP+1)) ;;
+  esac
+else
+  printf '  \033[33m⚠ SKIP\033[0m  bundle↔live drift check (core dist not built — run pnpm -r build)\n'
+  SKIP=$((SKIP+1))
+fi
+
 echo
 bold "tripwires: $PASS passed · $FAIL failed · $SKIP skipped"
 echo "NOTE: this covers CLI/share rendering. MCP arg-threading (tz/lang on get_bracket"
