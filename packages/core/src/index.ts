@@ -38,6 +38,8 @@ export {
   sanitizeBundledFixture,
 } from './schedule';
 
+export { allTeams, lookupTeam, type TeamInfo, type TeamLookup } from './teams';
+
 export { computeStandings } from './standings';
 export type { StandingRow, GroupStandings } from './standings';
 

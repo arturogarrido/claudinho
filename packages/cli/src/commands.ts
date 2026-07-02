@@ -18,6 +18,7 @@ import {
   isValidDate,
   isValidTimeZone,
   localDate,
+  lookupTeam,
   makeMarketProvider,
   marketBlock,
   marketFixtureForTeam,
@@ -211,13 +212,29 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
 }
 
 /**
- * Resolve an optional team argument, falling back to CLAUDINHO_TEAM — the same
- * env the statusline/hook already honor, so "my team" is configured once.
+ * Resolve an optional team argument to a FIFA code, falling back to CLAUDINHO_TEAM
+ * (the same env the statusline/hook honor, so "my team" is configured once).
+ *
+ * Accepts a nation NAME as well as a code — "mexico" / "DR Congo" / "Türkiye" all
+ * resolve via {@link lookupTeam}, so `claudinho next mexico` just works. An exact
+ * code resolves directly; an ambiguous name errors with the candidates rather than
+ * guessing; a raw 3-letter code not in the bundled roster still passes through
+ * uppercased (the escape hatch for CLAUDINHO_COMPETITION / other feeds).
  */
 function resolveTeamArg(team: string | undefined, usage: string): string {
-  const code = team ?? process.env.CLAUDINHO_TEAM;
-  if (!code) throw new InputError(usage);
-  return code.toUpperCase();
+  const raw = team ?? process.env.CLAUDINHO_TEAM;
+  if (!raw) throw new InputError(usage);
+  const { team: hit, matches } = lookupTeam(raw);
+  if (hit) return hit.code;
+  if (matches.length > 1) {
+    throw new InputError(
+      `"${raw}" is ambiguous — did you mean ${matches
+        .map((m) => `${m.name} (${m.code})`)
+        .join(', ')}? Use the 3-letter code.`,
+    );
+  }
+  if (/^[A-Za-z]{3}$/.test(raw)) return raw.toUpperCase();
+  throw new InputError(`No team found for "${raw}". Use a nation name or 3-letter code (e.g. Mexico, MEX).`);
 }
 
 /** `claudinho today [date]` */
@@ -345,6 +362,41 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   // knockout tie); a static group fixture carries no source.
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
+  out(disclaimer(t, c));
+  maybeStarNudge(ctx);
+}
+
+/** `claudinho team <name|code>` — resolve a nation name/code to its FIFA code (offline). */
+export function cmdTeam(query: string | undefined, ctx: Ctx): void {
+  const { cfg, t } = ctx;
+  precheck(cfg, t);
+  const q = (query ?? '').trim();
+  const { team, matches } = lookupTeam(q);
+
+  if (cfg.json) {
+    emitJson({ query: q, team: team ?? null, matches, count: matches.length });
+    return;
+  }
+
+  const c = painterFor(cfg);
+  const flags = flagsEnabled();
+  const label = (tm: { code: string; name: string; flag: string; group?: string }) => {
+    const flag = flags ? `${tm.flag} ` : '';
+    const grp = tm.group ? ` · ${t('team.group', { group: tm.group })}` : '';
+    return `  ${flag}${c.bold(tm.name)}  ${c.dim(tm.code + grp)}`;
+  };
+  out();
+  if (!q) {
+    out('  ' + c.dim(t('team.usage')));
+  } else if (team) {
+    out(label(team));
+  } else if (matches.length > 0) {
+    out('  ' + c.dim(t('team.ambiguous', { query: q })));
+    for (const m of matches) out(label(m));
+  } else {
+    out('  ' + c.dim(t('team.none', { query: q })));
+  }
+  out();
   out(disclaimer(t, c));
   maybeStarNudge(ctx);
 }

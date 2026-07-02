@@ -9,10 +9,10 @@ package is [`@claudinho/mcp`](https://www.npmjs.com/package/@claudinho/mcp).
 | Shipped in plugin | Not shipped (by design) |
 |-------------------|-------------------------|
 | MCP server via `../mcp.json` → `npx -y @claudinho/mcp` | Cursor CLI **statusline** (separate: `@claudinho/cli`) |
-| 8 read-only tools (see below) | **Hook** / score-aware prompt injection (Cursor `beforeSubmitPrompt` unreliable) |
+| 9 read-only tools (see below) | **Hook** / score-aware prompt injection (Cursor `beforeSubmitPrompt` unreliable) |
 | Resources + prompts | Betting links or trade calls |
 
-## MCP tools (8)
+## MCP tools (9)
 
 - `get_today` — fixtures for a date (default today), live overlay
 - `get_live` — matches in play now
@@ -22,8 +22,9 @@ package is [`@claudinho/mcp`](https://www.npmjs.com/package/@claudinho/mcp).
 - `get_next_fixture` — team's next match (offline schedule)
 - `get_market_signal` — read-only market-implied % (informational only)
 - `get_share_snippet` — copy-paste plain-text card (match, standings, bracket, …)
+- `get_team` — resolve a name/code to its FIFA code, flag, group (fuzzy; offline)
 
-All tools: `readOnlyHint`, optional `tz` / `lang` / `flavor`. No API keys.
+All tools are `readOnlyHint`; the match tools take optional `tz` / `lang` / `flavor`, while `get_team` is offline and takes just a `query`. No API keys.
 
 ## Verify locally
 
@@ -31,7 +32,7 @@ All tools: `readOnlyHint`, optional `tz` / `lang` / `flavor`. No API keys.
 git clone https://github.com/arturogarrido/claudinho.git
 cp -R claudinho ~/.cursor/plugins/local/claudinho
 # Cursor → Developer: Reload Window
-# Settings → MCP → confirm `claudinho` lists 8 tools
+# Settings → MCP → confirm `claudinho` lists 9 tools
 ```
 
 Or run the server directly:

@@ -51,9 +51,11 @@ Then just ask your agent naturally — it picks the right tool and answers with 
 | `get_next_fixture` | a team's next match (3-letter code, e.g. `MEX`) — live-resolves a confirmed knockout tie from the feed; group fixtures offline, fails back to the bundled schedule if the feed is down |
 | `get_market_signal` | read-only prediction-market signal for a match, a team's current-or-next fixture (in-play preferred while live), or a date — informational only |
 | `get_share_snippet` | a copy-pasteable plain-text card — for a match, a team's next fixture, a group's standings table (`group`), the knockout bracket (`bracket: true`, optional `knockoutStage`), a date, or live — hand the returned snippet to the user as-is |
+| `get_team` | resolve a nation name or code to its FIFA 3-letter code, flag, and group — fuzzy (`Mexico`, `mex`, `DR Congo`, `Türkiye`); call it first to turn a user's team name into the code the other tools need. Offline (no network) |
 
-All tools are **read-only** (`readOnlyHint`) and accept optional `tz`, `lang`
-(`en`/`es`/`pt`/`fr`), and `flavor` (`off`/`subtle`/`full`). Every response carries
+Most tools are **read-only** (`readOnlyHint`) and accept optional `tz`, `lang`
+(`en`/`es`/`pt`/`fr`), and `flavor` (`off`/`subtle`/`full`); `get_team` is read-only
+**and** offline. Every response carries
 human-readable text **and** structured content, validated against each tool's
 declared `outputSchema`.
 

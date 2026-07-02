@@ -16,6 +16,7 @@ import {
   cmdRefresh,
   cmdShare,
   cmdTable,
+  cmdTeam,
   cmdBracket,
   cmdStar,
   cmdToday,
@@ -104,10 +105,22 @@ program
 program
   .command('next')
   .description("show a team's next fixture")
-  .argument('[team]', 'team code, e.g. MEX (default: $CLAUDINHO_TEAM)')
+  .argument('[team]', 'team name or code, e.g. Mexico or MEX (default: $CLAUDINHO_TEAM)')
   .action(async (team, _opts, cmd) => {
     try {
       await cmdNext(team, ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
+  });
+
+program
+  .command('team')
+  .description('resolve a nation name or code to its FIFA code, flag, and group')
+  .argument('<query>', 'team name or 3-letter code, e.g. Mexico, MEX, "DR Congo"')
+  .action((query, _opts, cmd) => {
+    try {
+      cmdTeam(query, ctxFrom(cmd));
     } catch (e) {
       fail(e);
     }
@@ -154,7 +167,7 @@ program
   .command('markets')
   .description('show prediction-market signals (read-only, informational only)')
   .argument('[target]', 'date (YYYY-MM-DD), match id, "today", or "next"')
-  .argument('[team]', 'team code when target is "next" (default: $CLAUDINHO_TEAM)')
+  .argument('[team]', 'team name or code when target is "next", e.g. Mexico or MEX (default: $CLAUDINHO_TEAM)')
   .action(async (target, team, _opts, cmd) => {
     try {
       await cmdMarkets(target, team, ctxFrom(cmd));
@@ -169,7 +182,7 @@ program
   .argument('[target]', '"today" (default), "live", a date, a match id, "next", "table", or "bracket"')
   .argument(
     '[team]',
-    'team code for "next" (default: $CLAUDINHO_TEAM), group letter for "table", or stage for "bracket"',
+    'team name or code for "next" (default: $CLAUDINHO_TEAM), group letter for "table", or stage for "bracket"',
   )
   .option('--style <style>', 'snippet style: social (default) or compact')
   .option('--copy', 'also copy the snippet to the clipboard (best-effort)')
