@@ -5,7 +5,7 @@ import type { Match, MarketProvider } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as cursorPayload from '../src/cursorPayload';
 import { writeState } from '../src/cache';
-import { cmdHook, cmdPrompt } from '../src/commands';
+import { cmdHook, cmdPrompt, cmdVibe } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 
@@ -170,6 +170,21 @@ describe('CLAUDINHO_TEAM accepts a nation name on the statusline/hook (offline l
     const lines = writes.join('').trimEnd().split('\n');
     expect(lines[1]).toContain('Mexico');
     expect(lines[2]).toContain('Brazil');
+  });
+
+  it('cmdVibe live segment honors a resolved team name too (CLAUDINHO_TEAM=mexico)', () => {
+    writeState({
+      updatedAt: new Date().toISOString(),
+      live: [braLive(), liveMatch()],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+    });
+    process.env.CLAUDINHO_TEAM = 'mexico';
+    cmdVibe({ cfg: cfg({ json: true }), t: makeT('en') });
+    const data = JSON.parse(writes.join('')) as { live?: string };
+    expect(data.live).toContain('🇲🇽');
+    expect(data.live).not.toContain('🇧🇷');
   });
 
   it('an unknown 3-letter value still passes through as a code (escape hatch)', () => {

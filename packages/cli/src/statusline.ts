@@ -60,6 +60,25 @@ function isResolvedFixture(m: Match): boolean {
 }
 
 /**
+ * Minimal Match shape the render paths rely on: `id` (mergeLive keying),
+ * `kickoff` string (byKickoff sorts with localeCompare — a missing kickoff
+ * throws), and both team codes. A cached element failing this is DROPPED, so a
+ * partially-poisoned cache degrades to "that fixture is missing" instead of
+ * throwing the whole statusline blank.
+ */
+function isMatchShaped(m: unknown): m is Match {
+  const x = m as Match | null | undefined;
+  return (
+    !!x &&
+    typeof x === 'object' &&
+    typeof x.id === 'string' &&
+    typeof x.kickoff === 'string' &&
+    !!x.home?.code &&
+    !!x.away?.code
+  );
+}
+
+/**
  * The soonest upcoming RESOLVED fixture. Skips unresolved knockout placeholders
  * so the no-team statusline fails closed to "⚽ —" rather than leaking
  * "🏳️ vs 🏳️" once the group stage ends and every static fixture is a placeholder.
@@ -147,12 +166,10 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
   // next-fixture branches below.
   // Sanitized like the live slice above — cached fixtures render on the
   // countdown/syncing lines, so they get the same poisoned-cache defense.
-  // Non-object entries are dropped (a corrupt element must degrade to "that
-  // fixture is missing", never throw the whole statusline blank in mergeLive).
+  // Malformed entries (null, {}, missing kickoff/teams) are dropped, never
+  // allowed to throw the whole statusline blank downstream.
   const cachedFixtures = Array.isArray(state?.fixtures)
-    ? (state!.fixtures as Match[])
-        .filter((m): m is Match => !!m && typeof m === 'object')
-        .map(sanitizeMatchStrings)
+    ? (state!.fixtures as unknown[]).filter(isMatchShaped).map(sanitizeMatchStrings)
     : [];
   const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;
 

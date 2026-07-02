@@ -62,15 +62,17 @@ describe('poisoned cache → clean statusline/hook output', () => {
 });
 
 describe('corrupt fixtures slice', () => {
-  it('drops falsy/non-object elements instead of blanking the whole statusline', () => {
+  it('drops malformed elements ({}, null, strings) instead of blanking the statusline', () => {
     const s: CacheState = {
       ...state(),
       live: [],
-      fixtures: [null, 'garbage', poisonedLive()] as unknown as Match[],
+      fixtures: [null, 'garbage', {}, { id: 'x' }, poisonedLive()] as unknown as Match[],
       fixturesUpdatedAt: NOW.toISOString(),
     };
-    // Must not throw (mergeLive would choke on null.id) — the good fixture
-    // still merges and the corrupt elements are simply absent.
-    expect(() => renderPrompt(s, { now: NOW })).not.toThrow();
+    // Must not throw ({}.kickoff would crash byKickoff; null.id would crash
+    // mergeLive) — and the output must stay a real line (countdown or "⚽ —"),
+    // never the blank line cmdPrompt's catch would print on a throw.
+    const line = renderPrompt(s, { now: NOW });
+    expect(line).not.toBe('');
   });
 });

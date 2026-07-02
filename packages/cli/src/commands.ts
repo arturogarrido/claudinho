@@ -1459,7 +1459,8 @@ export function cmdVibe(ctx: Ctx): void {
     const state = readCurrentState(cfg.source, resolveCompetition());
     liveSeg = vibeLiveSegment(
       liveMatchesFromCache(state, (ctx.now ?? new Date()).getTime()),
-      process.env.CLAUDINHO_TEAM,
+      // Name-or-code, matching the statusline/hook (offline lookup).
+      resolveEnvTeam(process.env.CLAUDINHO_TEAM),
     );
   } catch {
     // The easter egg stays harmless: any cache problem → plain vibe.
