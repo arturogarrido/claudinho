@@ -53,6 +53,7 @@ import {
   getNextFixtureForTeam,
   getStandings,
   getBracket,
+  KNOWN_SOURCES,
   makeAdapter,
 } from './data';
 import { readMarketCache, writeMarketCache } from './marketCache';
@@ -69,11 +70,15 @@ import type {
   ShareBracketOptions,
   ShareStyle,
 } from '@claudinho/core';
-import { readCurrentState } from './cache';
+import { isLockFresh, readCurrentState } from './cache';
 import { flagsEnabled, liveMatchesFromCache, renderPrompt } from './statusline';
 import { renderHook } from './hook';
 import { runRefresh, shouldRefresh, shouldRefreshFixtures, spawnRefresh } from './refresh';
-import { readCursorPayload, renderPromptOutput } from './cursorPayload';
+import {
+  type CursorStatusLinePayload,
+  readCursorPayload,
+  renderPromptOutput,
+} from './cursorPayload';
 import { type InitResult, initCursorStatusline, initHook, initStatusline } from './install';
 
 /**
@@ -193,6 +198,12 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
   }
   if (cfg.tz && !isValidTimeZone(cfg.tz)) {
     process.stderr.write(t('warn.tz', { tz: cfg.tz }) + '\n');
+  }
+  // An unknown --source/CLAUDINHO_SOURCE used to silently run ESPN — the flag
+  // lied. Fail loud with the valid list (core makeAdapter also throws, as
+  // defense in depth; this gives the localized, prefix-free message).
+  if (!(KNOWN_SOURCES as readonly string[]).includes(cfg.source)) {
+    throw new InputError(t('err.source', { source: cfg.source }));
   }
   // Config-drift guard: a leftover CLAUDINHO_COMPETITION (e.g. from
   // pre-tournament testing) silently points the live fetch at a different
@@ -561,10 +572,16 @@ export async function cmdBracket(
  * `claudinho prompt` — the HOT PATH. Reads the cache, prints one line, and (if
  * warranted) fires a detached refresher. Synchronous, no network, never throws.
  */
-export function cmdPrompt({ cfg }: Ctx): void {
+export function cmdPrompt(
+  { cfg }: Ctx,
+  io: { cursor?: CursorStatusLinePayload } = {},
+): void {
   try {
-    // Always drain stdin so Cursor's statusline pipe never blocks (meta optional).
-    const payload = readCursorPayload();
+    // The binary pre-drains stdin with a BOUNDED wait and passes the payload in
+    // (see index.ts / readCursorPayloadBounded — a writerless open pipe must not
+    // hang the statusline; PR #77's 62-min Windows CI hang was this). The sync
+    // fallback remains for direct in-process callers (tests mock it).
+    const payload = 'cursor' in io ? io.cursor : readCursorPayload();
     // Name-or-code, like the commands (offline lookup — hot-path safe).
     const team = resolveEnvTeam(process.env.CLAUDINHO_TEAM);
     const compact = !['0', 'false', 'no'].includes(
@@ -578,8 +595,15 @@ export function cmdPrompt({ cfg }: Ctx): void {
     out(renderPromptOutput(scoreLine, payload));
     // Spawn a background refresh for live scores OR stale knockout fixtures (the
     // latter keeps the next-match countdown live outside live windows). Pass the
-    // already-read state so the fixtures check adds no extra cache read.
-    if (!state || shouldRefresh() || shouldRefreshFixtures(Date.now(), state)) {
+    // already-read state so the checks add no extra cache read. The no-cache
+    // branch is lock-deduped like the others: N concurrent statusline ticks on a
+    // fresh install must fork one refresher, not N (and the refresher always
+    // writes a snapshot, so this branch fires once, never per-tick forever).
+    if (
+      (!state && !isLockFresh()) ||
+      shouldRefresh(Date.now(), state) ||
+      shouldRefreshFixtures(Date.now(), state)
+    ) {
       spawnRefresh(cfg.source);
     }
   } catch {
@@ -603,8 +627,13 @@ export function cmdHook({ cfg }: Ctx): void {
     const ctx = renderHook(state, { team, flags: flagsEnabled() });
     if (ctx) out(ctx);
     // Warm the same cache the statusline reads, for parity (the hook itself shows
-    // only live scores). Spawn for live OR stale knockout fixtures.
-    if (!state || shouldRefresh() || shouldRefreshFixtures(Date.now(), state)) {
+    // only live scores). Spawn for live OR stale knockout fixtures; the no-cache
+    // branch is lock-deduped (see cmdPrompt).
+    if (
+      (!state && !isLockFresh()) ||
+      shouldRefresh(Date.now(), state) ||
+      shouldRefreshFixtures(Date.now(), state)
+    ) {
       spawnRefresh(cfg.source);
     }
   } catch {

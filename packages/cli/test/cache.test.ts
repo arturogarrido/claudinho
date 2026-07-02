@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   acquireLock,
   ageMs,
+  CACHE_VERSION,
   cachePath,
   isLockFresh,
   readCurrentState,
@@ -40,15 +41,42 @@ describe('cache state', () => {
     expect(readState()).toBeUndefined();
   });
 
-  it('round-trips an atomic write/read', () => {
+  it('round-trips an atomic write/read (version-stamped)', () => {
     writeState(sample);
     expect(cachePath().startsWith(dir)).toBe(true);
-    expect(readState()).toEqual(sample);
+    expect(readState()).toEqual({ ...sample, version: CACHE_VERSION });
+  });
+
+  it('treats a version-mismatched (old-binary) snapshot as absent', () => {
+    writeState(sample);
+    const fs = require('node:fs') as typeof import('node:fs');
+    // Simulate a pre-versioning (v1) file and a future-version file.
+    fs.writeFileSync(cachePath(), JSON.stringify(sample));
+    expect(readState()).toBeUndefined();
+    fs.writeFileSync(cachePath(), JSON.stringify({ ...sample, version: CACHE_VERSION + 1 }));
+    expect(readState()).toBeUndefined();
+  });
+
+  it('keeps a separate cache file per non-default competition (no thrash)', () => {
+    writeState(sample); // default scope → legacy state.json
+    const friendly: CacheState = { ...sample, competition: 'fifa.friendly' };
+    writeState(friendly);
+    // Both snapshots coexist — writing one scope no longer clobbers the other.
+    expect(readCurrentState('espn', 'fifa.world')).toEqual({ ...sample, version: CACHE_VERSION });
+    expect(readCurrentState('espn', 'fifa.friendly')).toEqual({
+      ...friendly,
+      version: CACHE_VERSION,
+    });
+    expect(cachePath('espn', 'fifa.friendly')).not.toBe(cachePath());
+    // The env-sourced competition can only shape a FLAT filename inside the
+    // cache dir — path separators are stripped, so no traversal is possible.
+    const evil = cachePath('espn', '../../evil');
+    expect(join(evil, '..')).toBe(join(cachePath(), '..')); // same parent dir
   });
 
   it('readCurrentState only returns a snapshot for the matching source + competition', () => {
     writeState(sample); // source 'espn', competition 'fifa.world'
-    expect(readCurrentState('espn', 'fifa.world')).toEqual(sample);
+    expect(readCurrentState('espn', 'fifa.world')).toEqual({ ...sample, version: CACHE_VERSION });
     // A friendly snapshot must never bleed into a World-Cup view.
     expect(readCurrentState('espn', 'fifa.friendly')).toBeUndefined();
     expect(readCurrentState('other', 'fifa.world')).toBeUndefined();

@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { resolveConfig, type RawGlobalOpts } from './config';
+import { readCursorPayloadBounded } from './cursorPayload';
 import { makeT } from './i18n';
 import {
   cmdHook,
@@ -199,8 +200,12 @@ program
 program
   .command('prompt')
   .description('print a status line (Claude Code / Cursor CLI statusline, tmux, Starship, …)')
-  .action((_opts, cmd) => {
-    cmdPrompt(ctxFrom(cmd));
+  .action(async (_opts, cmd) => {
+    // Drain stdin with a bounded wait BEFORE the sync render: Claude Code and
+    // Cursor pipe a payload and close; a writerless open pipe must not hang the
+    // statusline (readFileSync(0) blocks forever there — PR #77).
+    const cursor = await readCursorPayloadBounded();
+    cmdPrompt(ctxFrom(cmd), { cursor });
   });
 
 // One-step setup aliases. `init cursor` / `init claude` compose the granular

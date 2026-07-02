@@ -4,6 +4,7 @@
  * lives in exactly one place (@claudinho/core).
  */
 export {
+  KNOWN_SOURCES,
   makeAdapter,
   mergeLive,
   getMatchesForDate,

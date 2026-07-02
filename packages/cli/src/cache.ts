@@ -14,13 +14,23 @@ import {
   writeSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import type { Match } from '@claudinho/core';
+import { DEFAULT_COMPETITION, type Match } from '@claudinho/core';
 import { cacheDir, writeFileAtomic } from './paths';
 
 export { cacheDir } from './paths';
 
+/**
+ * Cache schema version, stamped into every write. A file with a different (or
+ * absent, i.e. pre-versioning) version is treated as ABSENT: with releases
+ * shipping near-daily, an old binary's snapshot must never be blind-cast into a
+ * new binary's shape — the refresher simply rebuilds it on the next cycle.
+ */
+export const CACHE_VERSION = 2;
+
 /** The cached snapshot. `live` holds in-progress matches at `updatedAt`. */
 export interface CacheState {
+  /** Schema version (see {@link CACHE_VERSION}); stamped by writeState. */
+  version?: number;
   updatedAt: string; // ISO 8601
   live: Match[];
   degraded: boolean;
@@ -37,22 +47,57 @@ export interface CacheState {
   fixtures?: Match[];
   /** ISO 8601 timestamp of the last successful `fixtures` fetch. */
   fixturesUpdatedAt?: string;
+  /**
+   * ISO 8601 timestamp of the last fixtures fetch ATTEMPT (success or failure).
+   * Throttles failure retries: a failed fetch leaves `fixturesUpdatedAt`
+   * untouched (fail-closed), which used to degrade the intended 15-min cadence
+   * into a retry every lock cycle (~15s) for the whole outage.
+   */
+  fixturesAttemptedAt?: string;
+  /**
+   * ISO 8601: the provider throttled/blocked us (429/403) — no refresh of any
+   * kind until this passes. Hammering a block at the live cadence makes it
+   * worse; the statusline meanwhile fails closed (stale → countdown/`⚽ —`).
+   */
+  backoffUntil?: string;
 }
 
 const LOCK_STALE_MS = 60_000;
 
-export function cachePath(): string {
-  return join(cacheDir(), 'state.json');
+/**
+ * Per-scope cache file. The default scope (espn + the bundled World Cup) keeps
+ * the legacy `state.json` name — no migration for the installed base — while
+ * any other source/competition gets its own slot, so two sessions with
+ * different `CLAUDINHO_COMPETITION` values stop thrashing a single file
+ * (previously: ping-ponged full refetches plus a refresher spawn per statusline
+ * tick on both sides). The slug is sanitized: the competition comes from an env
+ * var and must never influence the path beyond a flat filename.
+ */
+export function cachePath(source = 'espn', competition = DEFAULT_COMPETITION): string {
+  if (source === 'espn' && competition === DEFAULT_COMPETITION) {
+    return join(cacheDir(), 'state.json');
+  }
+  const slug = `${source}.${competition}`.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return join(cacheDir(), `state.${slug}.json`);
 }
 
 function lockPath(): string {
   return join(cacheDir(), 'refresh.lock');
 }
 
-/** Read the cached state, or undefined if missing/corrupt (never throws). */
-export function readState(): CacheState | undefined {
+/**
+ * Read the cached state for a scope, or undefined if missing/corrupt/
+ * version-mismatched (never throws).
+ */
+export function readState(
+  source = 'espn',
+  competition = DEFAULT_COMPETITION,
+): CacheState | undefined {
   try {
-    return JSON.parse(readFileSync(cachePath(), 'utf8')) as CacheState;
+    const s = JSON.parse(
+      readFileSync(cachePath(source, competition), 'utf8'),
+    ) as CacheState;
+    return s.version === CACHE_VERSION ? s : undefined;
   } catch {
     return undefined;
   }
@@ -60,20 +105,40 @@ export function readState(): CacheState | undefined {
 
 /**
  * Read the cache only if it was produced for the *current* source + competition.
- * A snapshot fetched under a different `CLAUDINHO_COMPETITION` (e.g. friendlies)
- * must never bleed into a World-Cup statusline/hook, even while it's fresh.
+ * The per-scope filename already isolates scopes; the embedded-field check stays
+ * as defense in depth (e.g. a hand-copied file must still not bleed across).
  */
 export function readCurrentState(
   source: string,
   competition: string,
 ): CacheState | undefined {
-  const s = readState();
+  const s = readState(source, competition);
   return s && s.source === source && s.competition === competition ? s : undefined;
 }
 
-/** Atomically write the cached state. */
+/** Atomically write the cached state (version-stamped, to its scope's file). */
 export function writeState(state: CacheState): void {
-  writeFileAtomic(cachePath(), JSON.stringify(state));
+  writeFileAtomic(
+    cachePath(state.source, state.competition),
+    JSON.stringify({ ...state, version: CACHE_VERSION }),
+  );
+}
+
+/** True while a persisted provider backoff (429/403) is in effect. */
+export function backoffActive(state: CacheState | undefined, now = Date.now()): boolean {
+  if (!state?.backoffUntil) return false;
+  const t = Date.parse(state.backoffUntil);
+  return Number.isFinite(t) && now < t;
+}
+
+/** Age of the latest fixtures ATTEMPT in ms (Infinity if never attempted). */
+export function fixturesAttemptAgeMs(
+  state: CacheState | undefined,
+  now = Date.now(),
+): number {
+  if (!state?.fixturesAttemptedAt) return Infinity;
+  const t = Date.parse(state.fixturesAttemptedAt);
+  return Number.isFinite(t) ? now - t : Infinity;
 }
 
 /** Age of the cache in ms (Infinity if absent/unparseable). */

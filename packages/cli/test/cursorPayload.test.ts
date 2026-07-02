@@ -1,11 +1,37 @@
+import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   cursorMetaEnabled,
   looksLikeCursorPayload,
   parseCursorPayload,
+  readCursorPayloadBounded,
   renderCursorMetaLine,
   renderPromptOutput,
 } from '../src/cursorPayload';
+
+describe('readCursorPayloadBounded — the statusline must never hang on stdin', () => {
+  const asStdin = (s: PassThrough) => s as unknown as NodeJS.ReadStream;
+
+  it('resolves (no payload) within the bound on a writerless open pipe — the PR #77 hang class', async () => {
+    const stdin = new PassThrough();
+    const t0 = Date.now();
+    const payload = await readCursorPayloadBounded(50, asStdin(stdin));
+    expect(payload).toBeUndefined();
+    expect(Date.now() - t0).toBeLessThan(2000); // resolved by the timer, not EOF
+  });
+
+  it('parses a payload written-then-closed (the real Claude Code / Cursor shape)', async () => {
+    const stdin = new PassThrough();
+    const promise = readCursorPayloadBounded(5000, asStdin(stdin));
+    stdin.end(JSON.stringify({ model: { display_name: 'Composer 2.5' } }));
+    expect((await promise)?.model?.display_name).toBe('Composer 2.5');
+  });
+
+  it('short-circuits on a TTY (interactive shells get no drain at all)', async () => {
+    const stdin = { isTTY: true } as unknown as NodeJS.ReadStream;
+    expect(await readCursorPayloadBounded(50, stdin)).toBeUndefined();
+  });
+});
 
 describe('parseCursorPayload', () => {
   it('parses valid JSON and returns undefined for empty or invalid input', () => {

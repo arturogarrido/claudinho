@@ -20,8 +20,10 @@ import {
 import {
   acquireLock,
   ageMs,
+  backoffActive,
   type CacheState,
   fixturesAgeMs,
+  fixturesAttemptAgeMs,
   isLockFresh,
   readState,
   releaseLock,
@@ -51,13 +53,26 @@ const FIXTURES_TTL_MS = 15 * 60_000;
 const FIXTURES_EMPTY_TTL_MS = 60_000;
 
 /**
+ * How long the provider is left alone after it throttles/blocks us (429/403),
+ * plus up to a minute of jitter so a fleet of statuslines doesn't retry in
+ * lockstep. Persisted as `backoffUntil` and honored by every refresh trigger.
+ */
+const BACKOFF_MS = 5 * 60_000;
+const BACKOFF_JITTER_MS = 60_000;
+
+/**
  * Whether the cached knockout `fixtures` are stale enough to refetch. Uses the
  * short empty-TTL when the cache holds no resolved fixtures (re-poll soon at the
- * boundary), the long TTL once it holds some (pairings are stable).
+ * boundary), the long TTL once it holds some (pairings are stable). A recent
+ * ATTEMPT also suppresses a refetch: a FAILED fetch keeps `fixturesUpdatedAt`
+ * untouched (fail-closed), which used to collapse the cadence into a retry
+ * every lock cycle (~15s) for the whole outage — now failures re-poll on the
+ * same short cadence as an empty result.
  */
 function fixturesStale(state: CacheState | undefined, now: number): boolean {
   const ttl = (state?.fixtures?.length ?? 0) > 0 ? FIXTURES_TTL_MS : FIXTURES_EMPTY_TTL_MS;
-  return fixturesAgeMs(state, now) > ttl; // `>` to match shouldRefresh's LIVE_TTL boundary
+  if (fixturesAgeMs(state, now) <= ttl) return false; // `>` boundary matches shouldRefresh's LIVE_TTL
+  return fixturesAttemptAgeMs(state, now) > FIXTURES_EMPTY_TTL_MS;
 }
 
 /** The soonest upcoming static fixture (cheap; bundle is in memory). */
@@ -112,21 +127,52 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
   const source = opts.source ?? 'espn';
   const competition = resolveCompetition();
 
-  const cached = readState();
+  const cached = readState(source, competition);
   // A snapshot from a different source/competition can't be reused — start fresh
   // (and refetch both parts) so e.g. a friendlies cache never bleeds into the WC.
+  // (The per-scope cache file already isolates this; defense in depth.)
   const sameScope =
     !!cached && cached.source === source && cached.competition === competition;
   const base: CacheState | undefined = sameScope ? cached : undefined;
+
+  // While a persisted provider backoff (429/403) is active, fetch NOTHING —
+  // retrying a block at the live cadence makes it worse. The statusline fails
+  // closed meanwhile (stale snapshot → countdown / `⚽ —`, never a wrong score).
+  const inBackoff = backoffActive(base, nowMs);
 
   // Two INDEPENDENT cadences: live scores (~12s, only in a live window) and
   // resolved knockout fixtures (~15min, only in the knockout phase). Each part
   // skips if its own slice is still fresh — a live write must not block a due
   // fixtures fetch, or vice-versa.
   const needLive =
-    liveWindowActive(nowMs) && (!base || ageMs(base, nowMs) >= MIN_REFRESH_MS);
-  const needFixtures = inKnockoutPhase(nowMs) && fixturesStale(base, nowMs);
-  if (!needLive && !needFixtures) return;
+    !inBackoff &&
+    liveWindowActive(nowMs) &&
+    (!base || ageMs(base, nowMs) >= MIN_REFRESH_MS);
+  const needFixtures = !inBackoff && inKnockoutPhase(nowMs) && fixturesStale(base, nowMs);
+  if (!needLive && !needFixtures) {
+    // Nothing to fetch — but make sure a scope-stamped snapshot EXISTS. The
+    // statusline spawns a refresher whenever it finds no cache, so a missing
+    // file outside every window (post-tournament, off-hours, fresh installs)
+    // would otherwise fork a do-nothing child on EVERY statusline tick,
+    // forever (the post-final spawn loop — F5 review PERF-1). `live: []` is
+    // honest by construction here: on the default competition the bundled
+    // schedule says no match can be in play, and non-default competitions
+    // always take the fetch path above.
+    if (!base && acquireLock()) {
+      try {
+        writeState({
+          updatedAt: now.toISOString(),
+          live: [],
+          degraded: false,
+          source,
+          competition,
+        });
+      } finally {
+        releaseLock();
+      }
+    }
+    return;
+  }
 
   if (!acquireLock()) return;
   try {
@@ -137,6 +183,9 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
     let updatedAt = base?.updatedAt ?? now.toISOString();
     let fixtures = base?.fixtures;
     let fixturesUpdatedAt = base?.fixturesUpdatedAt;
+    let fixturesAttemptedAt = base?.fixturesAttemptedAt;
+    let backoffUntil = base?.backoffUntil;
+    const adapter = liveAdapter();
 
     if (needLive) {
       // Use the domain helper, not adapter.fetchLive() directly: it fetches a
@@ -146,7 +195,7 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
       // getLiveMatches fails closed internally; the try also guards adapter
       // construction so any error degrades rather than skipping the cache write.
       try {
-        const r = await getLiveMatches(liveAdapter(), now);
+        const r = await getLiveMatches(adapter, now);
         live = r.matches;
         degraded = r.degraded;
       } catch {
@@ -159,9 +208,12 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
       // Fail closed: getKnockoutFixtures returns degraded on a provider error —
       // KEEP the prior cached fixtures + timestamp rather than caching an empty
       // list as a real "no knockouts" (a transient outage must never read as
-      // "your team is out"). Only a SUCCESSFUL fetch updates the slice + clock.
+      // "your team is out"). Only a SUCCESSFUL fetch updates the slice + clock;
+      // the ATTEMPT clock always advances so failures re-poll on the short
+      // cadence instead of every lock cycle.
+      fixturesAttemptedAt = now.toISOString();
       try {
-        const r = await getKnockoutFixtures(liveAdapter(), now);
+        const r = await getKnockoutFixtures(adapter, now);
         if (!r.degraded) {
           fixtures = r.fixtures;
           fixturesUpdatedAt = now.toISOString();
@@ -169,6 +221,17 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
       } catch {
         /* keep prior fixtures + timestamp; retry next cycle */
       }
+    }
+
+    // The provider told us to go away (429/403) → persist a jittered backoff
+    // that every refresh trigger honors. An expired backoff is dropped so the
+    // snapshot doesn't carry it forever.
+    if (adapter.lastError?.throttled) {
+      backoffUntil = new Date(
+        nowMs + BACKOFF_MS + Math.floor(Math.random() * BACKOFF_JITTER_MS),
+      ).toISOString();
+    } else if (backoffUntil && Date.parse(backoffUntil) <= nowMs) {
+      backoffUntil = undefined;
     }
 
     writeState({
@@ -179,6 +242,8 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
       competition,
       ...(fixtures ? { fixtures } : {}),
       ...(fixturesUpdatedAt ? { fixturesUpdatedAt } : {}),
+      ...(fixturesAttemptedAt ? { fixturesAttemptedAt } : {}),
+      ...(backoffUntil ? { backoffUntil } : {}),
     });
   } finally {
     releaseLock();
@@ -187,26 +252,32 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
 
 /**
  * Decide whether a refresh is warranted right now (live window + stale cache +
- * nobody already refreshing).
+ * no active backoff + nobody already refreshing). Pass the already-read `state`
+ * to avoid a second cache read on the hot path.
  */
-export function shouldRefresh(now = Date.now()): boolean {
+export function shouldRefresh(
+  now = Date.now(),
+  state: CacheState | undefined = readState('espn', resolveCompetition()),
+): boolean {
   if (!liveWindowActive(now)) return false;
+  if (backoffActive(state, now)) return false;
   if (isLockFresh(now)) return false;
-  return ageMs(readState(), now) > LIVE_TTL_MS;
+  return ageMs(state, now) > LIVE_TTL_MS;
 }
 
 /**
  * Decide whether to refresh the cached knockout `fixtures` — the trigger that
  * keeps the statusline's next-match countdown live OUTSIDE live windows (when
  * `shouldRefresh` is false). True only in the knockout phase, when the cached
- * fixtures are stale, and nobody's already refreshing. Pass the already-read
- * `state` to avoid a second cache read on the hot path.
+ * fixtures are stale, no backoff is active, and nobody's already refreshing.
+ * Pass the already-read `state` to avoid a second cache read on the hot path.
  */
 export function shouldRefreshFixtures(
   now = Date.now(),
-  state: CacheState | undefined = readState(),
+  state: CacheState | undefined = readState('espn', resolveCompetition()),
 ): boolean {
   if (!inKnockoutPhase(now)) return false;
+  if (backoffActive(state, now)) return false;
   if (isLockFresh(now)) return false;
   return fixturesStale(state, now);
 }

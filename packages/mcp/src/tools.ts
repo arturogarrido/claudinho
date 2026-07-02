@@ -64,8 +64,24 @@ export interface CommonOpts {
   now?: Date;
 }
 
+/**
+ * Server-lifetime adapters, keyed by source. A stdio MCP session serves many
+ * tool calls, and constructing a fresh adapter per call re-fetched the group
+ * map (a standings request) every time. Freshness is bounded inside the
+ * adapter itself: the standings fetch is shared for ~30s, then re-fetched, so
+ * a long-lived session never serves stale tables.
+ */
+const adapters = new Map<string, ProviderAdapter>();
+
 function resolveAdapter(args: CommonOpts): ProviderAdapter {
-  return args.adapter ?? makeAdapter(args.source);
+  if (args.adapter) return args.adapter;
+  const key = args.source ?? 'espn';
+  let adapter = adapters.get(key);
+  if (!adapter) {
+    adapter = makeAdapter(args.source);
+    adapters.set(key, adapter);
+  }
+  return adapter;
 }
 
 function resolveMarketProvider(args: CommonOpts): MarketProvider {
