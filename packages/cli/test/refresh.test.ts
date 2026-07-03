@@ -306,6 +306,34 @@ describe('post-tournament: the refresher goes quiet, never a spawn loop (F5 PERF
   });
 });
 
+describe('unknown source on the refresher path (PR #78 review P2)', () => {
+  // ARCH-10's interactive validation doesn't cover the detached refresher —
+  // `CLAUDINHO_SOURCE=foo claudinho _refresh` used to poll ESPN and label the
+  // cache scope with the fake source. It must fail closed instead.
+  const DURING = new Date('2026-06-17T05:00:00Z'); // inside a live window
+
+  it('never fetches, writes ONE idle degraded snapshot, and goes quiet', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      await runRefresh({ now: DURING, source: 'foo' });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      const state = readState('foo', 'fifa.world');
+      expect(state?.degraded).toBe(true); // no live provider served this — never claim otherwise
+      expect(state?.live).toEqual([]);
+      // The default (espn) scope was never touched with mislabeled data.
+      expect(readState()).toBeUndefined();
+
+      // Second cycle: the snapshot exists → plain return, still no network.
+      await runRefresh({ now: new Date(DURING.getTime() + 60_000), source: 'foo' });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(readState('foo', 'fifa.world')?.updatedAt).toBe(state?.updatedAt);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe('provider backoff on 429/403 (F5 PERF-2)', () => {
   // Inside the AUT-JOR live window from the scoreboard fixture above.
   const DURING = new Date('2026-06-17T05:00:00Z');

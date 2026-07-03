@@ -203,7 +203,9 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
   // lied. Fail loud with the valid list (core makeAdapter also throws, as
   // defense in depth; this gives the localized, prefix-free message).
   if (!(KNOWN_SOURCES as readonly string[]).includes(cfg.source)) {
-    throw new InputError(t('err.source', { source: cfg.source }));
+    throw new InputError(
+      t('err.source', { source: cfg.source, sources: KNOWN_SOURCES.join(', ') }),
+    );
   }
   // Config-drift guard: a leftover CLAUDINHO_COMPETITION (e.g. from
   // pre-tournament testing) silently points the live fetch at a different

@@ -106,6 +106,7 @@ emits the snippets, or copy them straight from here:
 export CLAUDINHO_CURSOR_META=auto   # model + context % line under the score (recommended)
 export CLAUDINHO_TEAM=MEX           # show only your team's match
 export CLAUDINHO_FLAGS=off          # 3-letter codes instead of flag emoji (already automatic in Warp)
+export CLAUDINHO_DEBUG=1            # print data-provider failure diagnostics to stderr
 ```
 
 > **Note:** Cursor's `beforeSubmitPrompt` hook doesn't yet reliably inject context into the

@@ -75,7 +75,10 @@ const adapters = new Map<string, ProviderAdapter>();
 
 function resolveAdapter(args: CommonOpts): ProviderAdapter {
   if (args.adapter) return args.adapter;
-  const key = args.source ?? 'espn';
+  // Keyed by source AND competition: makeAdapter bakes the competition slug
+  // into the base URL at construction, so a cache keyed by source alone would
+  // pin the first competition seen for the whole session.
+  const key = `${args.source ?? 'espn'}::${resolveCompetition()}`;
   let adapter = adapters.get(key);
   if (!adapter) {
     adapter = makeAdapter(args.source);

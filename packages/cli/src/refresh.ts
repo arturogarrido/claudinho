@@ -12,6 +12,7 @@ import {
   EspnAdapter,
   getKnockoutFixtures,
   getLiveMatches,
+  KNOWN_SOURCES,
   makeAdapter,
   resolveCompetition,
   type Match,
@@ -104,15 +105,21 @@ function liveWindowActive(nowMs: number): boolean {
   return inLiveWindow(nowMs);
 }
 
-/** The live-fetch adapter, honoring CLAUDINHO_COMPETITION (group enrichment off). */
-function liveAdapter(): ProviderAdapter {
+/**
+ * The live-fetch adapter for a VALIDATED source, honoring CLAUDINHO_COMPETITION
+ * (group enrichment off on the default path — the statusline doesn't need it).
+ * Never constructs a provider under a label it doesn't match: runRefresh
+ * validates `source` against KNOWN_SOURCES before calling this.
+ */
+function liveAdapter(source: string): ProviderAdapter {
   const competition = resolveCompetition();
-  if (competition === DEFAULT_COMPETITION) {
+  if (source === 'espn' && competition === DEFAULT_COMPETITION) {
     // Default WC path: skip the standings request the statusline doesn't need.
     return new EspnAdapter({ enrichGroups: false });
   }
-  // Non-default competition: build via makeAdapter so the slug is applied.
-  return makeAdapter('espn');
+  // Non-default competition: build via makeAdapter so the slug is applied
+  // (throws for unknown sources — defense in depth behind the validation).
+  return makeAdapter(source);
 }
 
 export interface RefreshOpts {
@@ -126,6 +133,29 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
   const nowMs = now.getTime();
   const source = opts.source ?? 'espn';
   const competition = resolveCompetition();
+
+  // ARCH-10 applies to the refresher too, not just interactive precheck: an
+  // unknown source must never poll a provider it doesn't name (the cache scope
+  // would be LABELED with the fake source while carrying ESPN data — review P2
+  // on PR #78). Fail closed: write ONE idle DEGRADED snapshot so the
+  // statusline's no-cache spawn trigger goes quiet, and never touch the
+  // network. Interactive commands error loudly for the same config.
+  if (!(KNOWN_SOURCES as readonly string[]).includes(source)) {
+    if (!readState(source, competition) && acquireLock()) {
+      try {
+        writeState({
+          updatedAt: now.toISOString(),
+          live: [],
+          degraded: true, // no live provider served this scope — never claim otherwise
+          source,
+          competition,
+        });
+      } finally {
+        releaseLock();
+      }
+    }
+    return;
+  }
 
   const cached = readState(source, competition);
   // A snapshot from a different source/competition can't be reused — start fresh
@@ -185,7 +215,7 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
     let fixturesUpdatedAt = base?.fixturesUpdatedAt;
     let fixturesAttemptedAt = base?.fixturesAttemptedAt;
     let backoffUntil = base?.backoffUntil;
-    const adapter = liveAdapter();
+    const adapter = liveAdapter(source);
 
     if (needLive) {
       // Use the domain helper, not adapter.fetchLive() directly: it fetches a
