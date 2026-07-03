@@ -46,11 +46,13 @@ export { computeStandings } from './standings';
 export type { StandingRow, GroupStandings } from './standings';
 
 export type { ProviderAdapter, ProviderCapabilities } from './adapters/types';
-export { EspnAdapter, mapEspnEvent, parseStandings } from './adapters/espn';
-export type { EspnAdapterOptions, MapContext } from './adapters/espn';
+export { EspnAdapter, mapEspnEvent, parseStandings, ProviderError } from './adapters/espn';
+export type { EspnAdapterOptions, MapContext, ProviderErrorKind } from './adapters/espn';
 
 export {
   makeAdapter,
+  KNOWN_SOURCES,
+  knockoutWindow,
   mergeLive,
   getMatchesForDate,
   getLiveMatches,

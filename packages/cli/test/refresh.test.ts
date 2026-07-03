@@ -227,6 +227,30 @@ describe('knockout fixtures cadence (statusline countdown across the knockouts)'
     }
   });
 
+  it('a FAILED fixtures fetch re-polls on the short cadence, not every lock cycle', async () => {
+    // Failure keeps fixturesUpdatedAt untouched (fail-closed), which used to
+    // make the next cycle retry immediately (~15s hammer for a whole outage).
+    // The ATTEMPT clock now throttles retries to the same short cadence as an
+    // empty result.
+    const fetchSpy = vi.fn(async () => ({ ok: false, status: 500, statusText: 'oops' }));
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      await runRefresh({ now: new Date(KO_NOW), source: 'espn' }); // attempt #1 fails
+      const afterFirst = fetchSpy.mock.calls.length;
+      expect(afterFirst).toBeGreaterThan(0);
+      expect(readState()?.fixturesAttemptedAt).toBeTruthy();
+      expect(readState()?.fixturesUpdatedAt).toBeUndefined(); // no success stamp
+
+      await runRefresh({ now: new Date(KO_NOW + 15_000), source: 'espn' }); // was: hammered here
+      expect(fetchSpy.mock.calls.length).toBe(afterFirst);
+
+      await runRefresh({ now: new Date(KO_NOW + 90_000), source: 'espn' }); // past 60s → retry
+      expect(fetchSpy.mock.calls.length).toBeGreaterThan(afterFirst);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('runRefresh re-polls an EMPTY fixtures cache only after the short TTL', async () => {
     // ESPN hasn't filed pairings yet → empty success. No live match at 12:00, so
     // every fetch here is a fixtures fetch — count them across three cycles.
@@ -242,6 +266,119 @@ describe('knockout fixtures cadence (statusline countdown across the knockouts)'
 
       await runRefresh({ now: new Date(KO_NOW + 90_000), source: 'espn' }); // past 60s → refetch
       expect(fetchSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('post-tournament: the refresher goes quiet, never a spawn loop (F5 PERF-1)', () => {
+  // The day after the final: no live window ever again, no upcoming knockout.
+  const POST_FINAL = new Date('2026-07-20T12:00:00Z');
+
+  it('writes an idle snapshot ONCE with zero fetches, then never re-triggers', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      // Fresh install (empty cache): nothing to fetch, but a scope-stamped
+      // snapshot must still be written — the statusline spawns a refresher
+      // whenever it finds NO cache, so without this write every statusline
+      // tick would fork a do-nothing child forever once the tournament ends.
+      await runRefresh({ now: POST_FINAL, source: 'espn' });
+      const state = readState();
+      expect(state).toBeTruthy();
+      expect(state?.live).toEqual([]);
+      expect(state?.degraded).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // Second tick: the snapshot exists → plain return, no rewrite, no fetch.
+      await runRefresh({ now: new Date(POST_FINAL.getTime() + 60_000), source: 'espn' });
+      expect(readState()?.updatedAt).toBe(state?.updatedAt);
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // And neither hot-path trigger fires → cmdPrompt spawns nothing again.
+      const later = POST_FINAL.getTime() + 60_000;
+      expect(shouldRefresh(later)).toBe(false);
+      expect(shouldRefreshFixtures(later)).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('unknown source on the refresher path (PR #78 review P2)', () => {
+  // ARCH-10's interactive validation doesn't cover the detached refresher —
+  // `CLAUDINHO_SOURCE=foo claudinho _refresh` used to poll ESPN and label the
+  // cache scope with the fake source. It must fail closed instead.
+  const DURING = new Date('2026-06-17T05:00:00Z'); // inside a live window
+
+  it('never fetches, writes ONE idle degraded snapshot, and goes quiet', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      await runRefresh({ now: DURING, source: 'foo' });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      const state = readState('foo', 'fifa.world');
+      expect(state?.degraded).toBe(true); // no live provider served this — never claim otherwise
+      expect(state?.live).toEqual([]);
+      // The default (espn) scope was never touched with mislabeled data.
+      expect(readState()).toBeUndefined();
+
+      // Second cycle: the snapshot exists → plain return, still no network.
+      await runRefresh({ now: new Date(DURING.getTime() + 60_000), source: 'foo' });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(readState('foo', 'fifa.world')?.updatedAt).toBe(state?.updatedAt);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('provider backoff on 429/403 (F5 PERF-2)', () => {
+  // Inside the AUT-JOR live window from the scoreboard fixture above.
+  const DURING = new Date('2026-06-17T05:00:00Z');
+
+  it('a throttled response persists a jittered backoffUntil that every trigger honors', async () => {
+    const fetchSpy = vi.fn(async () => ({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+    }));
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      await runRefresh({ now: DURING, source: 'espn' });
+      const state = readState();
+      expect(state?.degraded).toBe(true);
+      const until = Date.parse(state?.backoffUntil ?? '');
+      // 5 min + up to 1 min jitter.
+      expect(until - DURING.getTime()).toBeGreaterThanOrEqual(5 * 60_000);
+      expect(until - DURING.getTime()).toBeLessThanOrEqual(6 * 60_000);
+
+      // The hot-path trigger goes quiet despite a stale cache in a live window…
+      const later = DURING.getTime() + 60_000;
+      expect(shouldRefresh(later, state)).toBe(false);
+      // …and a spawned refresher itself refuses to fetch while backed off.
+      const calls = fetchSpy.mock.calls.length;
+      await runRefresh({ now: new Date(later), source: 'espn' });
+      expect(fetchSpy.mock.calls.length).toBe(calls);
+
+      // After expiry the trigger resumes (still in the live window, cache stale).
+      const after = DURING.getTime() + 7 * 60_000;
+      expect(shouldRefresh(after, readState())).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('an ordinary failure (500) degrades WITHOUT setting a backoff', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, statusText: 'oops' })),
+    );
+    try {
+      await runRefresh({ now: DURING, source: 'espn' });
+      expect(readState()?.degraded).toBe(true);
+      expect(readState()?.backoffUntil).toBeUndefined();
     } finally {
       vi.unstubAllGlobals();
     }

@@ -37,4 +37,17 @@ export interface ProviderAdapter {
 
   /** Optional push subscription (websocket/SSE providers). Returns an unsubscribe fn. */
   subscribe?(onBatch: (matches: Match[]) => void): () => void;
+
+  /**
+   * Optional: the most recent request failure, cleared when a new request
+   * starts (best-effort under concurrency). Lets a caller whose result path
+   * fails closed to `degraded` booleans still distinguish a throttle/block
+   * (`throttled` — persist a backoff, hammering makes it worse) from an
+   * ordinary blip (retry on the normal cadence).
+   */
+  readonly lastError?: {
+    readonly kind: string;
+    readonly status?: number;
+    readonly throttled?: boolean;
+  };
 }

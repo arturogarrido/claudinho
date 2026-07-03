@@ -22,7 +22,7 @@ const downAdapter: ProviderAdapter = {
 };
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'fake', flavor: 'off', markets: false, ...over };
+  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', flavor: 'off', markets: false, ...over };
 }
 
 const ctx = (adapter: ProviderAdapter) => ({ cfg: cfg(), t: makeT('en'), adapter });

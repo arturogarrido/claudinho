@@ -31,6 +31,7 @@ try {
   writeFileSync(
     join(cacheDir, 'state.json'),
     JSON.stringify({
+      version: 2, // = CACHE_VERSION in packages/cli/src/cache.ts — bump together
       updatedAt: now,
       degraded: false,
       source: 'espn',

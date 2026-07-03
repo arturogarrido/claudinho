@@ -37,6 +37,16 @@ afterEach(() => {
   errSpy.mockReset();
 });
 
+describe('source validation (F5 ARCH-10)', () => {
+  it('rejects an unknown --source with a localized InputError instead of silently running ESPN', async () => {
+    await expect(cmdToday(undefined, ctx({ source: 'foo' }))).rejects.toBeInstanceOf(InputError);
+    await expect(cmdToday(undefined, ctx({ source: 'foo' }))).rejects.toThrow(/espn/);
+    await expect(
+      cmdToday(undefined, { ...ctx({ source: 'foo', lang: 'es' }), t: makeT('es') }),
+    ).rejects.toThrow(/desconocida/);
+  });
+});
+
 describe('date validation (L1)', () => {
   it('rejects a malformed date with InputError before any network call', async () => {
     await expect(cmdToday('2026-6-11', ctx())).rejects.toBeInstanceOf(InputError);

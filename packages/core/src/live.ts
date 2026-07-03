@@ -37,15 +37,27 @@ export function resolveCompetition(explicit?: string): string {
   return DEFAULT_COMPETITION;
 }
 
-/** Construct a provider adapter for a `--source` name (default: espn). */
+/** Provider names {@link makeAdapter} can construct (the CLI validates against this). */
+export const KNOWN_SOURCES = ['espn'] as const;
+
+/**
+ * Construct a provider adapter for a `--source` name (default: espn). An
+ * unknown source FAILS LOUD instead of silently running ESPN — `--source foo`
+ * previously no-op'd, which lied about what the flag did (attribution stayed
+ * honest, but the advertised knob did nothing).
+ */
 export function makeAdapter(source = 'espn'): ProviderAdapter {
   switch (source) {
-    default: {
+    case 'espn': {
       const competition = resolveCompetition();
       const baseUrl =
         competition === DEFAULT_COMPETITION ? undefined : competitionBase(competition);
       return new EspnAdapter({ baseUrl });
     }
+    default:
+      throw new Error(
+        `Unknown data source "${source}" (available: ${KNOWN_SOURCES.join(', ')})`,
+      );
   }
 }
 
@@ -146,9 +158,30 @@ export async function getStandings(
   return { tables, degraded: true };
 }
 
-/** Knockout-phase UTC window for a single live overlay fetch (R32 through the final). */
-const KNOCKOUT_WINDOW_START = '20260628';
-const KNOCKOUT_WINDOW_END = '20260719';
+/**
+ * Knockout-phase UTC window for a single live overlay fetch (first knockout
+ * kickoff through the final), DERIVED from the bundled schedule — never a
+ * hardcoded calendar. This keeps the `CLAUDINHO_COMPETITION` repurposing seam
+ * honest (a future bundle for another tournament resolves its own window) and
+ * can't rot after this tournament ends. For the 2026 bundle it derives to
+ * exactly the former literals (20260628–20260719); a parity test pins that.
+ * `null` when the bundle has no knockout fixtures — callers skip the overlay.
+ */
+let knockoutWindowMemo: { start: string; end: string } | null | undefined;
+export function knockoutWindow(): { start: string; end: string } | null {
+  if (knockoutWindowMemo !== undefined) return knockoutWindowMemo;
+  const days = allFixtures()
+    .filter((m) => m.stage !== 'GROUP' && m.stage !== 'FRIENDLY')
+    .map((m) => m.kickoff.slice(0, 10).replace(/-/g, ''))
+    .filter((d) => d.length === 8);
+  knockoutWindowMemo = days.length
+    ? {
+        start: days.reduce((a, b) => (a < b ? a : b)),
+        end: days.reduce((a, b) => (a > b ? a : b)),
+      }
+    : null;
+  return knockoutWindowMemo;
+}
 
 /**
  * Knockout bracket with hybrid slot resolution: confirmed FT winners/losers from
@@ -166,9 +199,9 @@ export async function getBracket(
   let source: string | undefined;
 
   try {
-    const live = adapter.fetchWindow
-      ? await adapter.fetchWindow(KNOCKOUT_WINDOW_START, KNOCKOUT_WINDOW_END)
-      : [];
+    const win = knockoutWindow();
+    const live =
+      adapter.fetchWindow && win ? await adapter.fetchWindow(win.start, win.end) : [];
     matches = mergeLive(base, live);
     liveDegraded = false;
     source = adapter.name;
@@ -239,8 +272,9 @@ export async function marketFixtureForTeam(
   let fixtures = allFixtures();
   let overlayFailed = false;
   try {
-    if (adapter.fetchWindow) {
-      fixtures = mergeLive(fixtures, await adapter.fetchWindow(KNOCKOUT_WINDOW_START, KNOCKOUT_WINDOW_END));
+    const win = knockoutWindow();
+    if (adapter.fetchWindow && win) {
+      fixtures = mergeLive(fixtures, await adapter.fetchWindow(win.start, win.end));
     }
   } catch {
     overlayFailed = true; // KO overlay unavailable — a knockout tie may be unresolvable
@@ -297,9 +331,9 @@ export async function getNextFixtureForTeam(
   let degraded = true;
   let liveById: Set<string> | undefined;
   try {
-    const live = adapter.fetchWindow
-      ? await adapter.fetchWindow(KNOCKOUT_WINDOW_START, KNOCKOUT_WINDOW_END)
-      : [];
+    const win = knockoutWindow();
+    const live =
+      adapter.fetchWindow && win ? await adapter.fetchWindow(win.start, win.end) : [];
     matches = mergeLive(base, live);
     degraded = false;
     liveById = new Set(live.map((m) => m.id));
@@ -340,10 +374,11 @@ export async function getKnockoutFixtures(
   adapter: ProviderAdapter,
   now: Date = new Date(),
 ): Promise<KnockoutFixturesResult> {
-  if (!adapter.fetchWindow) return { fixtures: [], degraded: true };
+  const win = knockoutWindow();
+  if (!adapter.fetchWindow || !win) return { fixtures: [], degraded: true };
   let live: Match[];
   try {
-    live = await adapter.fetchWindow(KNOCKOUT_WINDOW_START, KNOCKOUT_WINDOW_END);
+    live = await adapter.fetchWindow(win.start, win.end);
   } catch {
     return { fixtures: [], degraded: true };
   }

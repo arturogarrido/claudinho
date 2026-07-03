@@ -24,7 +24,15 @@ export function parseCursorPayload(raw: string): CursorStatusLinePayload | undef
   }
 }
 
-/** Read and parse the Cursor statusline JSON from stdin. Never throws. */
+/**
+ * Read and parse the Cursor statusline JSON from stdin. Never throws.
+ *
+ * CAUTION: `readFileSync(0)` blocks until EOF — an open pipe with no writer
+ * hangs it FOREVER (it froze the first windows-latest CI leg for 62 minutes,
+ * PR #77). The shipped binary therefore drains stdin via
+ * {@link readCursorPayloadBounded} and passes the payload into cmdPrompt; this
+ * sync variant remains only as the in-process fallback (tests mock it).
+ */
 export function readCursorPayload(): CursorStatusLinePayload | undefined {
   try {
     if (process.stdin.isTTY) return undefined;
@@ -32,6 +40,42 @@ export function readCursorPayload(): CursorStatusLinePayload | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Read the statusline stdin payload with a BOUNDED wait. Claude Code and Cursor
+ * write their JSON and close stdin immediately, so the normal path resolves on
+ * 'end' within milliseconds; the timeout fires only for a writerless open pipe
+ * (tmux misconfig, harnesses), where the statusline proceeds without a payload
+ * (the meta line is simply absent) instead of hanging forever.
+ */
+export function readCursorPayloadBounded(
+  timeoutMs = 100,
+  stdin: NodeJS.ReadStream = process.stdin,
+): Promise<CursorStatusLinePayload | undefined> {
+  if (stdin.isTTY) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    const done = () => {
+      clearTimeout(timer);
+      stdin.off('data', onData);
+      stdin.off('end', done);
+      stdin.off('error', done);
+      stdin.pause();
+      // Parse whatever arrived — parseCursorPayload never throws; a timed-out
+      // writerless pipe yields '' → undefined.
+      resolve(parseCursorPayload(Buffer.concat(chunks).toString('utf8')));
+    };
+    const onData = (c: Buffer) => {
+      chunks.push(c);
+    };
+    const timer = setTimeout(done, timeoutMs);
+    timer.unref?.();
+    stdin.on('data', onData);
+    stdin.once('end', done);
+    stdin.once('error', done);
+    stdin.resume();
+  });
 }
 
 /** Heuristic: stdin JSON looks like a Cursor StatusLinePayload. */
