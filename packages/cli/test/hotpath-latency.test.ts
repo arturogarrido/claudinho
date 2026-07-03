@@ -3,10 +3,10 @@
  *
  * Two contracts:
  *  1. The built `prompt` binary, fed a fresh seeded cache, completes well inside
- *     an order-of-magnitude bound on its FASTEST of N runs. The bound is
- *     deliberately loose (runners are noisy); its job is to catch a heavy
- *     top-level import or accidental sync work sneaking onto the hot path,
- *     not to certify 150ms.
+ *     an order-of-magnitude bound on its FASTEST of N runs — where the bound is
+ *     calibrated against bare Node startup measured under the SAME machine load.
+ *     Its job is to catch a heavy top-level import or accidental sync work
+ *     sneaking onto the hot path, not to certify 150ms.
  *  2. In-process, `cmdPrompt`/`cmdHook` with a FRESH cache perform zero network
  *     calls and spawn zero refreshers — the hot path is cache-read + render only.
  */
@@ -129,35 +129,56 @@ describe.skipIf(!existsSync(DIST))('built `prompt` stays inside the latency budg
   // regression (the real budget is <150ms; warm p50 measured ~50ms on dev hardware).
   const BOUND_MS = process.platform === 'win32' ? 1500 : 500;
 
-  // Generous it-timeout: under parallel load the 10 sequential runs can take
+  // Generous it-timeout: under parallel load the 20 sequential spawns can take
   // >5s AGGREGATE (vitest's default) without any single run being slow. A truly
   // hung binary still fails loud via execFileSync's own 15s per-run timeout.
-  it(`fastest of 10 runs < ${BOUND_MS}ms and renders the seeded match`, { timeout: 120_000 }, () => {
-    seedFreshCache();
-    const env = { ...process.env }; // carries XDG_CACHE_HOME + CLAUDINHO_FLAGS from beforeEach
-    const times: number[] = [];
-    let lastOut = '';
-    for (let i = 0; i < 10; i++) {
-      const t0 = performance.now();
-      lastOut = execFileSync(process.execPath, [DIST, 'prompt'], {
-        env,
-        encoding: 'utf8',
-        input: '', // immediate stdin EOF — the Cursor-payload drain must not block
-        timeout: 15_000,
-      });
-      times.push(performance.now() - t0);
-    }
-    expect(lastOut).toContain('🇲🇽'); // it actually rendered from the seeded cache
-    // MIN of the runs, not the median: co-scheduling noise (e.g. `pnpm -r test`
-    // running three suites on one machine) only ever ADDS time, so under load the
-    // median measures the machine, not the binary (observed: median 890ms during
-    // the 0.9.0 release gate while passing in isolation). The fastest run is the
-    // closest observable to the binary's intrinsic cost, and a structural
-    // regression — a heavy top-level import or sync work on the hot path —
-    // inflates every run including the fastest, so min still trips the guard.
-    const fastest = Math.min(...times);
-    expect(fastest, `run times: ${times.map((t) => t.toFixed(0)).join(', ')}ms`).toBeLessThan(
-      BOUND_MS,
-    );
-  });
+  it(
+    `fastest of 10 runs beats max(${BOUND_MS}ms, 10× bare-Node floor) and renders the seeded match`,
+    { timeout: 120_000 },
+    () => {
+      seedFreshCache();
+      const env = { ...process.env }; // carries XDG_CACHE_HOME + CLAUDINHO_FLAGS from beforeEach
+      const promptTimes: number[] = [];
+      const floorTimes: number[] = [];
+      let lastOut = '';
+      for (let i = 0; i < 10; i++) {
+        // Interleave a bare `node -e ''` with each prompt run so both samples
+        // see the same load profile — the floor is the calibration probe.
+        let t0 = performance.now();
+        execFileSync(process.execPath, ['-e', ''], { env, timeout: 15_000 });
+        floorTimes.push(performance.now() - t0);
+        t0 = performance.now();
+        lastOut = execFileSync(process.execPath, [DIST, 'prompt'], {
+          env,
+          encoding: 'utf8',
+          input: '', // immediate stdin EOF — the Cursor-payload drain must not block
+          timeout: 15_000,
+        });
+        promptTimes.push(performance.now() - t0);
+      }
+      expect(lastOut).toContain('🇲🇽'); // it actually rendered from the seeded cache
+      // MIN of the runs, not the median: co-scheduling noise (e.g. `pnpm -r test`
+      // running three suites on one machine) only ever ADDS time, so under load
+      // the median measures the machine, not the binary (observed: median 890ms
+      // during the 0.9.0 release gate while passing in isolation).
+      const fastest = Math.min(...promptTimes);
+      // ...and even the fastest run rides the loaded-machine floor when the load
+      // is sustained rather than spiky (observed post-min-fix: fastest 656ms
+      // under `pnpm -r test`). So the bound is calibrated: bare Node startup,
+      // measured under the SAME load, is the floor no Node CLI can beat. Idle,
+      // `prompt` costs ~1.5-2.5× the floor (~50ms vs ~30ms warm), so 10× floor
+      // is an order-of-magnitude allowance that honest contention — which
+      // inflates both samples together — stays under, while a hot-path
+      // regression (heavy import, sync work) inflates ONLY the prompt side and
+      // blows the ratio. On a quiet machine the absolute bound governs,
+      // keeping today's strictness.
+      const floor = Math.min(...floorTimes);
+      const bound = Math.max(BOUND_MS, floor * 10);
+      expect(
+        fastest,
+        `prompt runs: ${promptTimes.map((t) => t.toFixed(0)).join(', ')}ms; ` +
+          `bare-node floor: ${floor.toFixed(0)}ms → bound ${bound.toFixed(0)}ms`,
+      ).toBeLessThan(bound);
+    },
+  );
 });
