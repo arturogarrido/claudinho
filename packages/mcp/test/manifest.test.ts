@@ -11,6 +11,7 @@ const read = (rel: string) =>
   JSON.parse(readFileSync(new URL(rel, import.meta.url), 'utf8')) as {
     version: string;
     tools?: { name: string }[];
+    privacy_policies?: unknown;
   };
 
 describe('mcpb manifest', () => {
@@ -19,6 +20,19 @@ describe('mcpb manifest', () => {
   it('version matches package.json', () => {
     const pkg = read('../package.json');
     expect(manifest.version).toBe(pkg.version);
+  });
+
+  it('declares an https privacy policy (required for the Claude Desktop Extensions directory)', () => {
+    // The extension makes outbound calls (ESPN/Polymarket), so Anthropic's directory
+    // requires a privacy_policies array of HTTPS URLs. Guard it so a manifest edit
+    // can't silently drop the field and fail review.
+    const policies = manifest.privacy_policies;
+    expect(Array.isArray(policies)).toBe(true);
+    expect((policies as string[]).length).toBeGreaterThan(0);
+    for (const url of policies as string[]) {
+      expect(typeof url).toBe('string');
+      expect(url).toMatch(/^https:\/\//);
+    }
   });
 
   it('lists exactly the tools the server exposes', async () => {

@@ -196,6 +196,10 @@ Claudinho is a solo, $0, organic fan project — a GitHub star is the only signa
 
 New here? [`CONTRIBUTING.md`](CONTRIBUTING.md) has the layout, the dev loop, and good first issues.
 
+## Privacy
+
+Claudinho collects **no personal data** — no accounts, no telemetry, no analytics, no tracking. There is no Claudinho server. To show live results it makes anonymous, read-only requests to public sports-data services (ESPN for scores/standings; Polymarket for informational-only market signals), sending them nothing about you, and keeps a small cache on your own machine. Full details: **[PRIVACY.md](PRIVACY.md)**.
+
 ## License
 
 MIT © 2026 Arturo Garrido. All three packages publish with npm provenance via OIDC trusted publishing.

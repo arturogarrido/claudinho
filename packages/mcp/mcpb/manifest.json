@@ -13,6 +13,7 @@
   "documentation": "https://github.com/arturogarrido/claudinho#readme",
   "support": "https://github.com/arturogarrido/claudinho/issues",
   "license": "MIT",
+  "privacy_policies": ["https://github.com/arturogarrido/claudinho/blob/main/PRIVACY.md"],
   "keywords": ["football", "soccer", "world-cup", "2026", "live-scores"],
   "server": {
     "type": "node",
