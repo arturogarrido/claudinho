@@ -31,21 +31,27 @@ sports-data services:
   Fetched only when market signals are enabled (`CLAUDINHO_MARKETS` is not `off`), and never
   shown on the statusline or hook.
 
-These requests carry **no personal data and no authentication** — they are anonymous reads
-of public endpoints (a date and competition for scores; a public event slug for market data).
-Claudinho sends these services nothing about you. Your use of those third-party services is
-governed by their own privacy policies:
+Claudinho itself adds **no accounts, authentication, profile, or prompt data** to these
+requests — they are anonymous reads of public endpoints (a date and competition for scores;
+a public event slug for market data). As with any HTTP request, though, the service you
+connect to still receives the standard request metadata your device sends, such as your **IP
+address and HTTP headers**; Claudinho cannot avoid this and adds nothing beyond it. Your use
+of those third-party services is governed by their own privacy policies:
 
 - ESPN (a division of The Walt Disney Company): <https://privacy.thewaltdisneycompany.com/en/current-privacy-policy/>
-- Polymarket: <https://polymarket.com/>
+- Polymarket: <https://polymarket.com/privacy>
 
 ## Local storage
 
 To keep the statusline fast (it must render in well under 150 ms and never block on the
-network), Claudinho writes a small **cache file on your own machine**, under your home
-directory (e.g. `~/.claude/`). It contains only public match data (scores, fixtures,
-standings) and Claudinho's own settings — never personal data. It stays on your device, is
-never uploaded, and you can delete it at any time.
+network), Claudinho writes a small **cache on your own machine**, in your cache directory
+(`$XDG_CACHE_HOME/claudinho`, falling back to `~/.cache/claudinho`). These files hold only
+public match data and Claudinho's own local counters — for example `state.json` (cached
+scores, fixtures, and standings), `market-signals.json` (cached market reads), and
+`runs.json` (a local counter for the star-reminder nudge). They contain no personal data,
+stay on your device, are never uploaded, and you can delete them at any time. (Claude Code's
+own settings and hook configuration live separately under `~/.claude/`; that is editor
+configuration, not a Claudinho data store.)
 
 ## Data sharing and retention
 
