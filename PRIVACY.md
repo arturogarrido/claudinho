@@ -43,15 +43,20 @@ of those third-party services is governed by their own privacy policies:
 
 ## Local storage
 
-To keep the statusline fast (it must render in well under 150 ms and never block on the
-network), Claudinho writes a small **cache on your own machine**, in your cache directory
-(`$XDG_CACHE_HOME/claudinho`, falling back to `~/.cache/claudinho`). These files hold only
-public match data and Claudinho's own local counters — for example `state.json` (cached
-scores, fixtures, and standings), `market-signals.json` (cached market reads), and
-`runs.json` (a local counter for the star-reminder nudge). They contain no personal data,
-stay on your device, are never uploaded, and you can delete them at any time. (Claude Code's
-own settings and hook configuration live separately under `~/.claude/`; that is editor
-configuration, not a Claudinho data store.)
+The behavior differs by component:
+
+- The **CLI and statusline** keep a small **cache on your own machine** so the statusline
+  renders fast (well under 150 ms, never blocking on the network). It lives in your cache
+  directory (`$XDG_CACHE_HOME/claudinho`, falling back to `~/.cache/claudinho`) and holds only
+  public match data and Claudinho's own local counters — for example `state.json` (cached
+  live/upcoming scores and fixtures), `market-signals.json` (cached market reads), and
+  `runs.json` (a local counter for the star-reminder nudge). These files contain no personal
+  data, stay on your device, are never uploaded, and you can delete them at any time.
+- The **MCP server** keeps its cache **in memory only** — a short-lived in-process cache for
+  the life of the running server — and writes **no cache files to disk**.
+
+(Claude Code's own settings and hook configuration live separately under `~/.claude/`; that is
+editor configuration, not a Claudinho data store — see below.)
 
 ## Configuration changes (`init`)
 
@@ -66,8 +71,10 @@ contents anywhere.
 
 ## Data sharing and retention
 
-Claudinho does not sell, rent, share, or transmit your data to anyone, because it collects
-none. It retains nothing on any server (there is no server). The only data it retains is
+Claudinho does not sell or share your data, and does not transmit any **user-supplied** data.
+Its only third-party disclosures are the provider request parameters and the transport
+metadata (such as IP address and HTTP headers) described above, inherent to any HTTP request.
+It retains nothing on any server (there is no server). The only data it retains is
 local and on your own device: the cache described above and, if you ran a setup command, the
 one-time settings backup — both under your control and deletable at any time.
 
