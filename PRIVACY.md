@@ -53,11 +53,23 @@ stay on your device, are never uploaded, and you can delete them at any time. (C
 own settings and hook configuration live separately under `~/.claude/`; that is editor
 configuration, not a Claudinho data store.)
 
+## Configuration changes (`init`)
+
+The optional setup commands (`claudinho init claude` / `init cursor`, and the granular
+`init-…` commands) modify your editor's own configuration on your machine so the statusline
+and hook can run: they read your Claude Code (`~/.claude/settings.json`) or Cursor CLI
+(`~/.cursor/cli-config.json`) settings file, add Claudinho's entries, and write it back.
+Before the first change, Claudinho saves a one-time backup of the original alongside it (e.g.
+`settings.json.claudinho.bak`) so you can restore it. This all stays on your machine —
+Claudinho does not read these files for personal data, upload them, or transmit their
+contents anywhere.
+
 ## Data sharing and retention
 
 Claudinho does not sell, rent, share, or transmit your data to anyone, because it collects
-none. It retains nothing on any server (there is no server). The only retained data is the
-local cache described above, which lives on your device under your control.
+none. It retains nothing on any server (there is no server). The only data it retains is
+local and on your own device: the cache described above and, if you ran a setup command, the
+one-time settings backup — both under your control and deletable at any time.
 
 ## Children's privacy
 
