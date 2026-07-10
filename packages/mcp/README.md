@@ -87,6 +87,15 @@ live scores from **ESPN's** public scoreboard (swappable provider, attributed in
 output), market signals from Polymarket. Stdout carries only the MCP protocol;
 diagnostics go to stderr.
 
+## Privacy Policy
+
+No personal data collected — no accounts, no telemetry, no analytics, no tracking, and no
+Claudinho server. To show live scores, Claudinho makes read-only requests to public services
+(ESPN; Polymarket for informational-only market signals) with no account or personal data
+attached, though those services still receive standard request metadata (such as your IP
+address) like any HTTP call. The MCP server keeps its cache **in memory only** and writes
+nothing to disk. Full policy: [PRIVACY.md](https://github.com/arturogarrido/claudinho/blob/main/PRIVACY.md).
+
 ## License
 
 MIT © 2026 Arturo Garrido · [source & issues](https://github.com/arturogarrido/claudinho)
