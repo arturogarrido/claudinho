@@ -28,8 +28,17 @@ updates:
     # @types/node tracks the Node version we support (engines floor: Node 20),
     # not the newest Node major. Skip major-version PRs (e.g. 22 -> 25): a newer
     # major types APIs that may not exist on our floor. Minor/patch still flow.
+    #
+    # typescript majors are skipped too: TS 7 is the native (Go) compiler rewrite,
+    # and our build toolchain (tsup + its dts plugins) doesn't support the changed
+    # compiler API yet -- 5.9.3 -> 7.0.2 broke every build/typecheck job (PR #84,
+    # `Cannot read properties of undefined (reading 'useCaseSensitiveFileNames')`).
+    # Adopting TS 7 is a deliberate migration gated on that tooling, not a routine
+    # bump. Minor/patch on the 5.x/6.x line still flow.
     ignore:
       - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 
   # Keep the GitHub Actions used in CI up to date.
