@@ -65,10 +65,10 @@
   },
   "devDependencies": {
     "@claudinho/core": "workspace:*",
-    "@types/node": "^22.20.0",
-    "@vitest/coverage-v8": "^4.1.9",
+    "@types/node": "^22.20.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   }
 }
