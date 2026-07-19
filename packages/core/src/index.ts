@@ -36,6 +36,8 @@ export {
   currentOrNextFixtureForTeam,
   fixturesInLiveWindow,
   LIVE_WINDOW_MS,
+  KNOCKOUT_EXTRA_TIME_MS,
+  liveWindowMsFor,
   groups,
   sanitizeBundledFixture,
 } from './schedule';

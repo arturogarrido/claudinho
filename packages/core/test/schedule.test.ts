@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { fixturesByDate, sanitizeBundledFixture, type Match } from '../src/index';
+import {
+  fixturesByDate,
+  fixturesInLiveWindow,
+  KNOCKOUT_EXTRA_TIME_MS,
+  LIVE_WINDOW_MS,
+  liveWindowMsFor,
+  sanitizeBundledFixture,
+  type Match,
+  type Stage,
+} from '../src/index';
 
 function fx(id: string, kickoff: string): Match {
   return {
@@ -13,6 +22,10 @@ function fx(id: string, kickoff: string): Match {
     status: 'SCHEDULED',
     updatedAt: '2026-06-01T00:00Z',
   };
+}
+
+function fxStage(id: string, kickoff: string, stage: Stage): Match {
+  return { ...fx(id, kickoff), stage, group: stage === 'GROUP' ? 'D' : undefined };
 }
 
 // A kickoff at 01:00Z on the 13th is the evening of the 12th in the Americas.
@@ -41,6 +54,45 @@ describe('fixturesByDate — local-date grouping', () => {
         weekday: 'long',
       });
       expect(wd).toBe('Saturday');
+    }
+  });
+});
+
+describe('fixturesInLiveWindow — stage-aware window (extra time + penalties)', () => {
+  const kickoff = '2026-07-19T19:00:00Z';
+  const k = Date.parse(kickoff);
+  const finalMatch = fxStage('final', kickoff, 'F');
+  const groupMatch = fxStage('group', kickoff, 'GROUP');
+
+  it('keeps a knockout tie in-window through extra time (the statusline-went-dark bug)', () => {
+    // 150 min after kickoff: past the 140-min group window, inside the KO window.
+    // Before the fix this returned [] for the final → refresher stopped, cache
+    // went stale, statusline showed "⚽ —" while ET was still being played.
+    const at150 = k + 150 * 60_000;
+    expect(fixturesInLiveWindow(at150, [finalMatch]).map((m) => m.id)).toEqual(['final']);
+    // A group match at the same offset has already fallen out (unchanged behavior).
+    expect(fixturesInLiveWindow(at150, [groupMatch])).toEqual([]);
+  });
+
+  it('a knockout tie drops out only after ET + penalties (past ~kickoff + 200 min)', () => {
+    const at210 = k + 210 * 60_000;
+    expect(fixturesInLiveWindow(at210, [finalMatch])).toEqual([]);
+  });
+
+  it('both stages are in-window during regulation (kickoff + 100 min)', () => {
+    const at100 = k + 100 * 60_000;
+    expect(
+      fixturesInLiveWindow(at100, [finalMatch, groupMatch])
+        .map((m) => m.id)
+        .sort(),
+    ).toEqual(['final', 'group']);
+  });
+
+  it('liveWindowMsFor: 140 min for group/friendly, +extra time for every knockout stage', () => {
+    expect(liveWindowMsFor(groupMatch)).toBe(LIVE_WINDOW_MS);
+    expect(liveWindowMsFor(fxStage('fr', kickoff, 'FRIENDLY'))).toBe(LIVE_WINDOW_MS);
+    for (const s of ['R32', 'R16', 'QF', 'SF', '3P', 'F'] as const) {
+      expect(liveWindowMsFor(fxStage('x', kickoff, s))).toBe(LIVE_WINDOW_MS + KNOCKOUT_EXTRA_TIME_MS);
     }
   });
 });

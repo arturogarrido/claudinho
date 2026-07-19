@@ -92,10 +92,30 @@ export function nextFixtureForTeam(
   );
 }
 
-/** A fixture is potentially live from kickoff until ~kickoff + 140 min. */
+/**
+ * A group/regular fixture is potentially live from kickoff until ~kickoff + 140
+ * min (90' + half-time + stoppage).
+ */
 export const LIVE_WINDOW_MS = 140 * 60_000;
 
-/** Fixtures whose live window contains `now` (cheap, static — no network). */
+/**
+ * Extra allowance for knockout matches, which can go to extra time (+30') and a
+ * penalty shootout, running to ~kickoff + 190 min — well past LIVE_WINDOW_MS.
+ * Without it the statusline refresher stops polling at kickoff+140min and the
+ * cache goes stale mid-match, so a knockout tie still level after 90' (in ET or
+ * penalties) silently drops off the statusline while it's still being played.
+ * Numerically matches the slack `marketFixtureForTeam` already applies (live.ts).
+ */
+export const KNOCKOUT_EXTRA_TIME_MS = 60 * 60_000;
+
+/** Live-window length for a fixture — longer for knockout (extra time + penalties). */
+export function liveWindowMsFor(m: Match): number {
+  return m.stage === 'GROUP' || m.stage === 'FRIENDLY'
+    ? LIVE_WINDOW_MS
+    : LIVE_WINDOW_MS + KNOCKOUT_EXTRA_TIME_MS;
+}
+
+/** Fixtures whose (stage-aware) live window contains `now` (cheap, static — no network). */
 export function fixturesInLiveWindow(
   now = Date.now(),
   fixtures: Match[] = SCHEDULE,
@@ -103,7 +123,7 @@ export function fixturesInLiveWindow(
   return fixtures
     .filter((m) => {
       const k = Date.parse(m.kickoff);
-      return now >= k && now <= k + LIVE_WINDOW_MS;
+      return now >= k && now <= k + liveWindowMsFor(m);
     })
     .sort(byKickoff);
 }
@@ -123,7 +143,7 @@ export function currentOrNextFixtureForTeam(
   const nowMs = from.getTime();
   const inPlay = fixturesByTeam(code, opts.fixtures ?? SCHEDULE).find((m) => {
     const k = Date.parse(m.kickoff);
-    return nowMs >= k && nowMs <= k + LIVE_WINDOW_MS;
+    return nowMs >= k && nowMs <= k + liveWindowMsFor(m);
   });
   return inPlay ?? nextFixtureForTeam(code, opts);
 }
