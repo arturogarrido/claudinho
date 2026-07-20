@@ -240,6 +240,18 @@ state hits the network. Live scores come from **ESPN's** public scoreboard (a
 swappable provider, attributed in output as `Live data: ESPN`) and market signals
 from Polymarket; provider attribution and rate limits are respected.
 
+## Privacy Policy
+
+No personal data collected — no accounts, no telemetry, no analytics, no tracking, and no
+Claudinho server. To show live results, the CLI makes read-only requests to public services
+(ESPN; Polymarket for informational-only market signals) with no account or personal data
+attached, though those services still receive standard request metadata (such as your IP
+address) like any HTTP call. It keeps a small cache of public match data in your local cache
+directory (`~/.cache/claudinho`, or `$XDG_CACHE_HOME/claudinho`), and the optional `init`
+commands update your Claude Code / Cursor settings file after saving a one-time
+`.claudinho.bak` backup — all on your machine, never uploaded. Full policy:
+[PRIVACY.md](https://github.com/arturogarrido/claudinho/blob/main/PRIVACY.md).
+
 ## License
 
 MIT © 2026 Arturo Garrido · [source & issues](https://github.com/arturogarrido/claudinho)

@@ -1,6 +1,6 @@
 {
   "name": "@claudinho/cli",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "Live 2026 World Cup scores, fixtures, group tables, and read-only prediction-market signals in your terminal, Claude Code, and Cursor CLI statusline. No API keys. Not affiliated with FIFA or Anthropic.",
   "type": "module",
   "license": "MIT",
