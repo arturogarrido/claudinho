@@ -111,4 +111,48 @@ describe('post-tournament sign-off — interactive score commands', () => {
     expect(t).toContain('The World Cup is complete');
     expect(t).not.toContain(REPO_URL);
   });
+
+  it('suppressed when CLAUDINHO_COMPETITION points at another competition', async () => {
+    // The bundled schedule describes the World Cup — appending its goodbye to a
+    // live alternate feed would be flatly wrong. (Set before the command runs;
+    // resolveCompetition() reads the env at call time.)
+    process.env.CLAUDINHO_COMPETITION = 'fifa.friendly';
+    try {
+      await cmdToday(undefined, ctx(AFTER));
+      const t = text();
+      expect(t).not.toContain('The World Cup is complete');
+      expect(t).not.toContain(REPO_URL);
+    } finally {
+      delete process.env.CLAUDINHO_COMPETITION;
+    }
+  });
+});
+
+describe('post-tournament sign-off — localization (four-locale rule)', () => {
+  // The statusline is EN-only by documented carve-out; these are interactive
+  // surfaces, so the copy must follow the user's --lang. Regression: Spanish
+  // `today --lang es` output previously ended in an English sign-off.
+  const cases = [
+    { lang: 'es', needle: 'El Mundial ha terminado', star: 'Dale una estrella' },
+    { lang: 'pt', needle: 'A Copa do Mundo terminou', star: 'Dê uma estrela' },
+    { lang: 'fr', needle: 'La Coupe du Monde est terminée', star: 'Mettez une étoile' },
+    { lang: 'en', needle: 'The World Cup is complete', star: 'Star the project' },
+  ] as const;
+
+  for (const { lang, needle, star } of cases) {
+    it(`signs off in ${lang}`, async () => {
+      writes = [];
+      await cmdToday(undefined, {
+        cfg: cfg({ lang }),
+        t: makeT(lang),
+        adapter,
+        now: AFTER,
+      });
+      const t = text();
+      expect(t).toContain(needle);
+      expect(t).toContain(star);
+      // The hashtag is a fixed tag in every locale (same rule as the disclaimer).
+      expect(t).toContain('#VibingLaVidaLoca');
+    });
+  }
 });

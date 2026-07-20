@@ -12,7 +12,7 @@ import {
   fixturesInLiveWindow,
   isLive,
   isResolvedNation,
-  isTournamentComplete,
+  isTournamentWindowOver,
   LIVE_WINDOW_MS,
   mergeLive,
   nextFixtureForTeam,
@@ -112,6 +112,14 @@ export interface PromptOpts {
   /** Render emoji flags (default true); false → 3-letter codes (flagless terminals). */
   flags?: boolean;
   now?: Date;
+  /**
+   * Whether the bundled (World Cup) schedule actually describes what we're
+   * following. False when `CLAUDINHO_COMPETITION` points elsewhere, which makes
+   * the bundle's "every window has elapsed" answer meaningless — so the
+   * post-tournament sign-off is suppressed and we fall back to `⚽ —`.
+   * Resolved by the caller (this module stays env-free, like `flags`).
+   */
+  defaultCompetition?: boolean;
 }
 
 /** A team's compact token: emoji flag, or its 3-letter code when flags are off. */
@@ -163,6 +171,7 @@ export function liveMatchesFromCache(
 export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {}): string {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
+  const defaultCompetition = opts.defaultCompetition ?? true;
   const compact = opts.compact ?? true;
   const flags = opts.flags ?? true;
   const team = opts.team?.toUpperCase();
@@ -241,7 +250,13 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
   // sign-off WITH the CTA lives on `today`/`live`/`next`, where a human reads it.
   // Note this is checked AFTER the countdown, so an eliminated team mid-tournament
   // (no next fixture, schedule not exhausted) still falls through to "⚽ —".
-  if (isTournamentComplete(nowMs, schedule)) return TOURNAMENT_COMPLETE_LINE;
+  // Gated on the DEFAULT competition: the bundled schedule describes the World
+  // Cup, so with CLAUDINHO_COMPETITION pointing elsewhere its "windows elapsed"
+  // answer says nothing about that feed — signing off there would be a permanent
+  // wrong line on a live competition. Falls back to "⚽ —".
+  if (defaultCompetition && isTournamentWindowOver(nowMs, schedule)) {
+    return TOURNAMENT_COMPLETE_LINE;
+  }
 
   return '⚽ —';
 }

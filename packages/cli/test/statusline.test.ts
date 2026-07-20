@@ -319,6 +319,17 @@ describe('renderPrompt — post-tournament sign-off', () => {
     expect(line.toLowerCase()).not.toContain('star');
   });
 
+  it('suppressed when CLAUDINHO_COMPETITION points at another competition', () => {
+    // The bundled schedule describes the World Cup; on `fifa.friendly` its
+    // "windows elapsed" answer says nothing about that feed, so signing off
+    // would be a permanent wrong line on a live competition. Back to "⚽ —".
+    expect(renderPrompt(undefined, { now: AFTER, defaultCompetition: false })).toBe('⚽ —');
+    // ...and still signs off on the default competition.
+    expect(renderPrompt(undefined, { now: AFTER, defaultCompetition: true })).toBe(
+      TOURNAMENT_COMPLETE_LINE,
+    );
+  });
+
   it('does NOT claim "complete" mid-tournament for a team with no next fixture', () => {
     // An unknown/eliminated team has no upcoming match either — that must fail
     // closed to "⚽ —", never read as the tournament being over.

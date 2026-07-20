@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   fixturesByDate,
   fixturesInLiveWindow,
-  isTournamentComplete,
+  isTournamentWindowOver,
   KNOCKOUT_EXTRA_TIME_MS,
   LIVE_WINDOW_MS,
   liveWindowMsFor,
@@ -98,7 +98,7 @@ describe('fixturesInLiveWindow — stage-aware window (extra time + penalties)',
   });
 });
 
-describe('isTournamentComplete — provable, never a guess', () => {
+describe('isTournamentWindowOver — elapsed windows, global, fails closed', () => {
   const kickoff = '2026-07-19T19:00:00Z';
   const k = Date.parse(kickoff);
   const finalMatch = fxStage('final', kickoff, 'F');
@@ -106,26 +106,36 @@ describe('isTournamentComplete — provable, never a guess', () => {
 
   it('false while the last fixture is still inside its knockout window', () => {
     // 150 min in: past the group window but the final can still be in ET/pens.
-    expect(isTournamentComplete(k + 150 * 60_000, [groupMatch, finalMatch])).toBe(false);
+    expect(isTournamentWindowOver(k + 150 * 60_000, [groupMatch, finalMatch])).toBe(false);
   });
 
   it('true only once EVERY fixture window has closed (past ET + penalties)', () => {
-    expect(isTournamentComplete(k + 210 * 60_000, [groupMatch, finalMatch])).toBe(true);
+    expect(isTournamentWindowOver(k + 210 * 60_000, [groupMatch, finalMatch])).toBe(true);
   });
 
   it('false mid-tournament even when earlier fixtures are done', () => {
     // The group game is long finished; the final has not kicked off yet. An
     // eliminated team has no next fixture either — that must NOT read "complete".
-    expect(isTournamentComplete(k - 24 * 3600_000, [groupMatch, finalMatch])).toBe(false);
+    expect(isTournamentWindowOver(k - 24 * 3600_000, [groupMatch, finalMatch])).toBe(false);
   });
 
   it('false on an empty schedule — "we know nothing" is not "it is over"', () => {
-    expect(isTournamentComplete(k + 210 * 60_000, [])).toBe(false);
+    expect(isTournamentWindowOver(k + 210 * 60_000, [])).toBe(false);
   });
 
   it('false when a kickoff is unparseable (cannot prove it is past)', () => {
     const bogus = { ...groupMatch, id: 'bogus', kickoff: 'not-a-date' };
-    expect(isTournamentComplete(k + 210 * 60_000, [bogus, finalMatch])).toBe(false);
+    expect(isTournamentWindowOver(k + 210 * 60_000, [bogus, finalMatch])).toBe(false);
+  });
+
+  it('KNOWN LIMIT: it is a time predicate — a POSTPONED fixture still reads elapsed', () => {
+    // Documents the boundary rather than pretending it does not exist. The
+    // bundled schedule is a resultless skeleton (everything ships SCHEDULED),
+    // so status cannot inform this; a postponed match whose original window has
+    // passed counts as elapsed. Fine for the sign-off (its only caller) — make
+    // this status-aware against the live overlay before reusing it for results.
+    const postponed = { ...finalMatch, id: 'postponed', status: 'POSTPONED' as const };
+    expect(isTournamentWindowOver(k + 210 * 60_000, [postponed])).toBe(true);
   });
 });
 

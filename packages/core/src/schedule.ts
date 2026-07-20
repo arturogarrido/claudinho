@@ -116,19 +116,30 @@ export function liveWindowMsFor(m: Match): number {
 }
 
 /**
- * True once EVERY bundled fixture's (stage-aware) live window has closed — i.e.
- * the tournament is provably over, derived from the bundled schedule rather than
- * a hardcoded date (same reasoning as the derived knockout window: the
- * `CLAUDINHO_COMPETITION` seam must not carry a dead calendar).
+ * True once EVERY bundled fixture's (stage-aware) live window has ELAPSED —
+ * derived from the bundled schedule rather than a hardcoded date (same reasoning
+ * as the derived knockout window: the `CLAUDINHO_COMPETITION` seam must not carry
+ * a dead calendar).
+ *
+ * Named for exactly what it measures. This is a TIME predicate, not proof that
+ * every match was played: the bundled schedule is a **resultless skeleton** (every
+ * fixture ships `SCHEDULED` by design), so status can't inform it — a POSTPONED or
+ * abandoned fixture still reads as elapsed once its window passes. That is
+ * acceptable for the only use it has (turning a spent schedule into a sign-off),
+ * and it's why this is not called `isTournamentComplete`. **Make it status-aware
+ * against the live overlay before reusing it for anything that asserts results.**
  *
  * Deliberately a GLOBAL condition, independent of any team filter: an eliminated
- * team mid-tournament has no next fixture either, and must NOT read as "complete".
- * Callers use this only to turn a *provably* empty schedule into a sign-off; every
- * other empty case still fails closed to the neutral `⚽ —`.
+ * team mid-tournament has no next fixture either, and must NOT read as "over".
+ * Every other empty case still fails closed to the neutral `⚽ —`.
+ *
+ * Callers must additionally confirm the bundled schedule even applies — it
+ * describes the DEFAULT competition, so `CLAUDINHO_COMPETITION` pointing elsewhere
+ * makes this answer meaningless (see the `DEFAULT_COMPETITION` gates in the CLI).
  *
  * Empty fixture list → false: "we know nothing" is not "it's over".
  */
-export function isTournamentComplete(
+export function isTournamentWindowOver(
   now = Date.now(),
   fixtures: Match[] = SCHEDULE,
 ): boolean {
