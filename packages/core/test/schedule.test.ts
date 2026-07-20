@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   fixturesByDate,
   fixturesInLiveWindow,
+  isTournamentComplete,
   KNOCKOUT_EXTRA_TIME_MS,
   LIVE_WINDOW_MS,
   liveWindowMsFor,
@@ -94,6 +95,37 @@ describe('fixturesInLiveWindow — stage-aware window (extra time + penalties)',
     for (const s of ['R32', 'R16', 'QF', 'SF', '3P', 'F'] as const) {
       expect(liveWindowMsFor(fxStage('x', kickoff, s))).toBe(LIVE_WINDOW_MS + KNOCKOUT_EXTRA_TIME_MS);
     }
+  });
+});
+
+describe('isTournamentComplete — provable, never a guess', () => {
+  const kickoff = '2026-07-19T19:00:00Z';
+  const k = Date.parse(kickoff);
+  const finalMatch = fxStage('final', kickoff, 'F');
+  const groupMatch = fxStage('group', '2026-06-11T19:00:00Z', 'GROUP');
+
+  it('false while the last fixture is still inside its knockout window', () => {
+    // 150 min in: past the group window but the final can still be in ET/pens.
+    expect(isTournamentComplete(k + 150 * 60_000, [groupMatch, finalMatch])).toBe(false);
+  });
+
+  it('true only once EVERY fixture window has closed (past ET + penalties)', () => {
+    expect(isTournamentComplete(k + 210 * 60_000, [groupMatch, finalMatch])).toBe(true);
+  });
+
+  it('false mid-tournament even when earlier fixtures are done', () => {
+    // The group game is long finished; the final has not kicked off yet. An
+    // eliminated team has no next fixture either — that must NOT read "complete".
+    expect(isTournamentComplete(k - 24 * 3600_000, [groupMatch, finalMatch])).toBe(false);
+  });
+
+  it('false on an empty schedule — "we know nothing" is not "it is over"', () => {
+    expect(isTournamentComplete(k + 210 * 60_000, [])).toBe(false);
+  });
+
+  it('false when a kickoff is unparseable (cannot prove it is past)', () => {
+    const bogus = { ...groupMatch, id: 'bogus', kickoff: 'not-a-date' };
+    expect(isTournamentComplete(k + 210 * 60_000, [bogus, finalMatch])).toBe(false);
   });
 });
 

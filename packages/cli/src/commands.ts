@@ -3,6 +3,7 @@ import {
   countdown,
   DEFAULT_COMPETITION,
   fixturesByDate,
+  isTournamentComplete,
   formatDate,
   formatKickoff,
   formatShareSnippet,
@@ -308,7 +309,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
-  maybeStarNudge(ctx);
+  endScoreCommand(ctx);
 }
 
 /** `claudinho live` */
@@ -341,7 +342,7 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
-  maybeStarNudge(ctx);
+  endScoreCommand(ctx);
 }
 
 /** `claudinho next [team]` (team defaults to CLAUDINHO_TEAM) */
@@ -372,6 +373,10 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
     out(c.dim('  ' + (degraded ? t('live.degraded') : t('next.none', { team: code }))));
     out();
     out(disclaimer(t, c));
+    // Post-tournament this is the ONLY branch `next` takes (no team has an
+    // upcoming fixture), so the sign-off has to live here too — the early
+    // return below would otherwise skip it on the one surface that needs it most.
+    endScoreCommand(ctx);
     return;
   }
   out(header(t('next.label', { team: code }), c));
@@ -394,7 +399,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
-  maybeStarNudge(ctx);
+  endScoreCommand(ctx);
 }
 
 /** `claudinho team <name|code>` — resolve a nation name/code to its FIFA code (offline). */
@@ -1466,6 +1471,39 @@ function maybeStarNudge(ctx: Ctx): void {
   const c = painterFor(ctx.cfg);
   out();
   out(c.dim(`  ⭐ Enjoying Claudinho? Star it → ${REPO_URL}   (claudinho star)`));
+}
+
+/**
+ * Post-tournament sign-off for the interactive score commands (`today`/`live`/
+ * `next`), shown once every bundled fixture has been played — it both EXPLAINS
+ * why those commands are now empty and says goodbye.
+ *
+ * Split by intent, so the CTA rule still holds:
+ *  - the informational line prints on any non-`--json` run (it's product state,
+ *    not marketing — a piped/redirected run still deserves the explanation);
+ *  - the ⭐ star block is a CTA, so it takes the standard gates (TTY, non-JSON,
+ *    no CLAUDINHO_NO_STAR) exactly like `maybeStarNudge`.
+ * The statusline/hook never call this — their sign-off is CTA-free.
+ */
+/**
+ * Tail for the three score commands (`today`/`live`/`next`). Once the tournament
+ * is over they'd print an unexplained empty result, so sign off instead — and
+ * never alongside the every-Nth nudge, so a run shows one CTA, not two.
+ */
+function endScoreCommand(ctx: Ctx): void {
+  if (isTournamentComplete(ctx.now?.getTime() ?? Date.now())) printTournamentSignOff(ctx);
+  else maybeStarNudge(ctx);
+}
+
+function printTournamentSignOff(ctx: Ctx): void {
+  if (ctx.cfg.json) return;
+  const c = painterFor(ctx.cfg);
+  out();
+  out('The World Cup is complete. Thanks for using Claudinho. #VibingLaVidaLoca');
+  if (!process.stdout.isTTY || process.env.CLAUDINHO_NO_STAR) return;
+  out();
+  out(c.dim('⭐ Star the project:'));
+  out(c.cyan(REPO_URL));
 }
 
 /**

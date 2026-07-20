@@ -115,6 +115,31 @@ export function liveWindowMsFor(m: Match): number {
     : LIVE_WINDOW_MS + KNOCKOUT_EXTRA_TIME_MS;
 }
 
+/**
+ * True once EVERY bundled fixture's (stage-aware) live window has closed — i.e.
+ * the tournament is provably over, derived from the bundled schedule rather than
+ * a hardcoded date (same reasoning as the derived knockout window: the
+ * `CLAUDINHO_COMPETITION` seam must not carry a dead calendar).
+ *
+ * Deliberately a GLOBAL condition, independent of any team filter: an eliminated
+ * team mid-tournament has no next fixture either, and must NOT read as "complete".
+ * Callers use this only to turn a *provably* empty schedule into a sign-off; every
+ * other empty case still fails closed to the neutral `⚽ —`.
+ *
+ * Empty fixture list → false: "we know nothing" is not "it's over".
+ */
+export function isTournamentComplete(
+  now = Date.now(),
+  fixtures: Match[] = SCHEDULE,
+): boolean {
+  if (fixtures.length === 0) return false;
+  return fixtures.every((m) => {
+    const k = Date.parse(m.kickoff);
+    if (Number.isNaN(k)) return false; // unparseable kickoff → can't prove it's past
+    return now > k + liveWindowMsFor(m);
+  });
+}
+
 /** Fixtures whose (stage-aware) live window contains `now` (cheap, static — no network). */
 export function fixturesInLiveWindow(
   now = Date.now(),
