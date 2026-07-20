@@ -35,6 +35,12 @@ Claudinho surfaces the 2026 men's football tournament in developer environments:
 - `pnpm -F @claudinho/core test` — operate on a single package
 - `pnpm release:qa` — pre-tag surface renderer (see "Release readiness")
 
+**Bumping `@biomejs/biome`?** Bump `biome.json`'s `$schema` URL to the *same* version in the
+same change. Dependabot only rewrites the root `package.json`, so the schema pin drifts and Biome
+then reports a schema-version mismatch on every lint run (it has drifted on three bumps: 2.5.2,
+2.5.3, 2.5.4). **Hand-edit the single line — `biome migrate` reformats the whole config to tabs.**
+Guarded by `packages/core/test/biome-schema.test.ts`, which fails CI when the two disagree.
+
 ## Releasing
 
 Releases ship via `.github/workflows/publish.yml` on a `v*` tag, using npm **trusted
