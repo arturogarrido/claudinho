@@ -46,6 +46,7 @@ const ctx = (now: Date, over: Partial<CliConfig> = {}) => ({
 const outSpy = vi.spyOn(process.stdout, 'write');
 let writes: string[] = [];
 let tty: boolean | undefined;
+let savedCompetition: string | undefined;
 
 beforeEach(() => {
   writes = [];
@@ -56,11 +57,18 @@ beforeEach(() => {
   tty = process.stdout.isTTY;
   process.stdout.isTTY = true; // CTA surfaces are TTY-gated
   delete process.env.CLAUDINHO_NO_STAR;
+  // Isolate CLAUDINHO_COMPETITION: it's a documented override, and the sign-off
+  // gates on it — a developer running the suite with it exported would fail
+  // every positive case here. Saved and restored, not blindly deleted.
+  savedCompetition = process.env.CLAUDINHO_COMPETITION;
+  delete process.env.CLAUDINHO_COMPETITION;
 });
 afterEach(() => {
   outSpy.mockReset();
   process.stdout.isTTY = tty as boolean;
   delete process.env.CLAUDINHO_NO_STAR;
+  if (savedCompetition === undefined) delete process.env.CLAUDINHO_COMPETITION;
+  else process.env.CLAUDINHO_COMPETITION = savedCompetition;
 });
 const text = () => writes.join('');
 
@@ -82,6 +90,10 @@ describe('post-tournament sign-off — interactive score commands', () => {
   });
 
   it('stays silent mid-tournament (the sign-off is not a permanent footer)', async () => {
+    // Not signing off means falling through to the every-Nth star nudge, which
+    // would bump the REAL runs.json counter (we forced isTTY above) — suppress
+    // it so the test has no side effect on the developer's cache dir.
+    process.env.CLAUDINHO_NO_STAR = '1';
     await cmdToday(undefined, ctx(DURING));
     expect(text()).not.toContain('The World Cup is complete');
   });
@@ -115,16 +127,18 @@ describe('post-tournament sign-off — interactive score commands', () => {
   it('suppressed when CLAUDINHO_COMPETITION points at another competition', async () => {
     // The bundled schedule describes the World Cup — appending its goodbye to a
     // live alternate feed would be flatly wrong. (Set before the command runs;
-    // resolveCompetition() reads the env at call time.)
+    // resolveCompetition() reads the env at call time; afterEach restores it.)
     process.env.CLAUDINHO_COMPETITION = 'fifa.friendly';
-    try {
-      await cmdToday(undefined, ctx(AFTER));
-      const t = text();
-      expect(t).not.toContain('The World Cup is complete');
-      expect(t).not.toContain(REPO_URL);
-    } finally {
-      delete process.env.CLAUDINHO_COMPETITION;
-    }
+    // Suppressed sign-off correctly falls through to the every-Nth star nudge,
+    // which ALSO prints REPO_URL when the shared runs counter hits a multiple —
+    // so a bare not.toContain(REPO_URL) is flaky against product behavior that
+    // is fine. Silence the nudge to make the no-URL assert deterministic (and
+    // to avoid bumping the real counter from a test).
+    process.env.CLAUDINHO_NO_STAR = '1';
+    await cmdToday(undefined, ctx(AFTER));
+    const t = text();
+    expect(t).not.toContain('The World Cup is complete');
+    expect(t).not.toContain(REPO_URL);
   });
 });
 
