@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { flagsEnabled, inLiveWindow, renderPrompt } from '../src/statusline';
+import {
+  flagsEnabled,
+  inLiveWindow,
+  renderPrompt,
+  TOURNAMENT_COMPLETE_LINE,
+} from '../src/statusline';
 import type { CacheState } from '../src/cache';
 import type { Match } from '@claudinho/core';
 
@@ -289,5 +294,48 @@ describe('renderPrompt — live window, cold/stale cache → "syncing"', () => {
   it('applies the team filter: syncing only for a team in a window', () => {
     expect(renderPrompt(undefined, { now: NOW, team: 'MEX' })).toContain('live · syncing');
     expect(renderPrompt(undefined, { now: NOW, team: 'BRA' })).toContain(' in ');
+  });
+});
+
+describe('renderPrompt — post-tournament sign-off', () => {
+  // Well past the bundled final (2026-07-19 19:00Z + extra-time window), so this
+  // exercises the REAL shipped schedule, not a hand-built fixture.
+  const AFTER = new Date('2026-08-01T12:00:00Z');
+
+  it('signs off instead of a permanent, unexplained "⚽ —"', () => {
+    expect(renderPrompt(undefined, { now: AFTER })).toBe(TOURNAMENT_COMPLETE_LINE);
+    expect(renderPrompt(state([]), { now: AFTER })).toBe(TOURNAMENT_COMPLETE_LINE);
+    // Team filter doesn't change a global fact.
+    expect(renderPrompt(undefined, { now: AFTER, team: 'MEX' })).toBe(TOURNAMENT_COMPLETE_LINE);
+  });
+
+  it('stays CTA-free on the hot path — no star, no URL (AGENTS.md invariant)', () => {
+    // The statusline re-renders on every prompt forever; the star ask lives on
+    // the interactive commands instead. Guard it so a future edit can't sneak
+    // a CTA onto the hot path.
+    const line = renderPrompt(undefined, { now: AFTER });
+    expect(line).not.toContain('github.com');
+    expect(line).not.toContain('⭐');
+    expect(line.toLowerCase()).not.toContain('star');
+  });
+
+  it('suppressed when CLAUDINHO_COMPETITION points at another competition', () => {
+    // The bundled schedule describes the World Cup; on `fifa.friendly` its
+    // "windows elapsed" answer says nothing about that feed, so signing off
+    // would be a permanent wrong line on a live competition. Back to "⚽ —".
+    expect(renderPrompt(undefined, { now: AFTER, defaultCompetition: false })).toBe('⚽ —');
+    // ...and still signs off on the default competition.
+    expect(renderPrompt(undefined, { now: AFTER, defaultCompetition: true })).toBe(
+      TOURNAMENT_COMPLETE_LINE,
+    );
+  });
+
+  it('does NOT claim "complete" mid-tournament for a team with no next fixture', () => {
+    // An unknown/eliminated team has no upcoming match either — that must fail
+    // closed to "⚽ —", never read as the tournament being over.
+    const MID = new Date('2026-06-20T03:00:00Z'); // group stage, nothing in a window
+    const line = renderPrompt(undefined, { now: MID, team: 'ZZZ' });
+    expect(line).toBe('⚽ —');
+    expect(line).not.toBe(TOURNAMENT_COMPLETE_LINE);
   });
 });

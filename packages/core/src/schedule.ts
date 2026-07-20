@@ -115,6 +115,42 @@ export function liveWindowMsFor(m: Match): number {
     : LIVE_WINDOW_MS + KNOCKOUT_EXTRA_TIME_MS;
 }
 
+/**
+ * True once EVERY bundled fixture's (stage-aware) live window has ELAPSED —
+ * derived from the bundled schedule rather than a hardcoded date (same reasoning
+ * as the derived knockout window: the `CLAUDINHO_COMPETITION` seam must not carry
+ * a dead calendar).
+ *
+ * Named for exactly what it measures. This is a TIME predicate, not proof that
+ * every match was played: the bundled schedule is a **resultless skeleton** (every
+ * fixture ships `SCHEDULED` by design), so status can't inform it — a POSTPONED or
+ * abandoned fixture still reads as elapsed once its window passes. That is
+ * acceptable for the only use it has (turning a spent schedule into a sign-off),
+ * and it's why this is not called `isTournamentComplete`. **Make it status-aware
+ * against the live overlay before reusing it for anything that asserts results.**
+ *
+ * Deliberately a GLOBAL condition, independent of any team filter: an eliminated
+ * team mid-tournament has no next fixture either, and must NOT read as "over".
+ * Every other empty case still fails closed to the neutral `⚽ —`.
+ *
+ * Callers must additionally confirm the bundled schedule even applies — it
+ * describes the DEFAULT competition, so `CLAUDINHO_COMPETITION` pointing elsewhere
+ * makes this answer meaningless (see the `DEFAULT_COMPETITION` gates in the CLI).
+ *
+ * Empty fixture list → false: "we know nothing" is not "it's over".
+ */
+export function isTournamentWindowOver(
+  now = Date.now(),
+  fixtures: Match[] = SCHEDULE,
+): boolean {
+  if (fixtures.length === 0) return false;
+  return fixtures.every((m) => {
+    const k = Date.parse(m.kickoff);
+    if (Number.isNaN(k)) return false; // unparseable kickoff → can't prove it's past
+    return now > k + liveWindowMsFor(m);
+  });
+}
+
 /** Fixtures whose (stage-aware) live window contains `now` (cheap, static — no network). */
 export function fixturesInLiveWindow(
   now = Date.now(),

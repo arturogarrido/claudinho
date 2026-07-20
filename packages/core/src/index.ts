@@ -35,6 +35,7 @@ export {
   nextFixtureForTeam,
   currentOrNextFixtureForTeam,
   fixturesInLiveWindow,
+  isTournamentWindowOver,
   LIVE_WINDOW_MS,
   KNOCKOUT_EXTRA_TIME_MS,
   liveWindowMsFor,

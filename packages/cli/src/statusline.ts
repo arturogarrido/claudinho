@@ -12,6 +12,7 @@ import {
   fixturesInLiveWindow,
   isLive,
   isResolvedNation,
+  isTournamentWindowOver,
   LIVE_WINDOW_MS,
   mergeLive,
   nextFixtureForTeam,
@@ -26,6 +27,15 @@ import { ageMs, type CacheState } from './cache';
 export { LIVE_WINDOW_MS };
 /** Don't display cached live scores older than this (avoid stale scores). */
 export const DISPLAY_STALE_MS = 5 * 60_000;
+
+/**
+ * Shown once every bundled fixture has been played, in place of a permanent,
+ * unexplained "⚽ —". English-only like the rest of the statusline (a deliberate
+ * carve-out from the four-locale rule for the two ambient surfaces), and CTA-free
+ * by design — no star ask, no URL on the hot path.
+ */
+export const TOURNAMENT_COMPLETE_LINE =
+  '⚽ World Cup 2026 is complete · Thanks for vibing with Claudinho';
 
 /**
  * Terminals whose renderer doesn't compose regional-indicator pairs into flag
@@ -102,6 +112,14 @@ export interface PromptOpts {
   /** Render emoji flags (default true); false → 3-letter codes (flagless terminals). */
   flags?: boolean;
   now?: Date;
+  /**
+   * Whether the bundled (World Cup) schedule actually describes what we're
+   * following. False when `CLAUDINHO_COMPETITION` points elsewhere, which makes
+   * the bundle's "every window has elapsed" answer meaningless — so the
+   * post-tournament sign-off is suppressed and we fall back to `⚽ —`.
+   * Resolved by the caller (this module stays env-free, like `flags`).
+   */
+  defaultCompetition?: boolean;
 }
 
 /** A team's compact token: emoji flag, or its 3-letter code when flags are off. */
@@ -153,6 +171,7 @@ export function liveMatchesFromCache(
 export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {}): string {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
+  const defaultCompetition = opts.defaultCompetition ?? true;
   const compact = opts.compact ?? true;
   const flags = opts.flags ?? true;
   const team = opts.team?.toUpperCase();
@@ -223,5 +242,21 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
   if (next && isResolvedFixture(next)) {
     return `${teamTok(next.home, flags)} vs ${teamTok(next.away, flags)} in ${countdown(next.kickoff, now)}`;
   }
+
+  // Tournament provably over (every bundled fixture's window has closed) → sign
+  // off instead of a permanent, unexplained "⚽ —". Deliberately NO star CTA and
+  // no URL: this is the hot path, which re-renders on every prompt forever, and
+  // star CTAs are interactive-surface-only (see starNudge.ts / AGENTS.md). The
+  // sign-off WITH the CTA lives on `today`/`live`/`next`, where a human reads it.
+  // Note this is checked AFTER the countdown, so an eliminated team mid-tournament
+  // (no next fixture, schedule not exhausted) still falls through to "⚽ —".
+  // Gated on the DEFAULT competition: the bundled schedule describes the World
+  // Cup, so with CLAUDINHO_COMPETITION pointing elsewhere its "windows elapsed"
+  // answer says nothing about that feed — signing off there would be a permanent
+  // wrong line on a live competition. Falls back to "⚽ —".
+  if (defaultCompetition && isTournamentWindowOver(nowMs, schedule)) {
+    return TOURNAMENT_COMPLETE_LINE;
+  }
+
   return '⚽ —';
 }

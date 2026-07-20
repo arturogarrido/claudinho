@@ -3,6 +3,7 @@ import {
   countdown,
   DEFAULT_COMPETITION,
   fixturesByDate,
+  isTournamentWindowOver,
   formatDate,
   formatKickoff,
   formatShareSnippet,
@@ -28,6 +29,7 @@ import {
   matchFlavor,
   matchLocation,
   resolveCompetition,
+  SHARE_HASHTAG,
   resolveMarketSource,
   scoreline,
   t as i18n,
@@ -308,7 +310,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
-  maybeStarNudge(ctx);
+  endScoreCommand(ctx);
 }
 
 /** `claudinho live` */
@@ -341,7 +343,7 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
-  maybeStarNudge(ctx);
+  endScoreCommand(ctx);
 }
 
 /** `claudinho next [team]` (team defaults to CLAUDINHO_TEAM) */
@@ -372,6 +374,10 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
     out(c.dim('  ' + (degraded ? t('live.degraded') : t('next.none', { team: code }))));
     out();
     out(disclaimer(t, c));
+    // Post-tournament this is the ONLY branch `next` takes (no team has an
+    // upcoming fixture), so the sign-off has to live here too — the early
+    // return below would otherwise skip it on the one surface that needs it most.
+    endScoreCommand(ctx);
     return;
   }
   out(header(t('next.label', { team: code }), c));
@@ -394,7 +400,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
-  maybeStarNudge(ctx);
+  endScoreCommand(ctx);
 }
 
 /** `claudinho team <name|code>` — resolve a nation name/code to its FIFA code (offline). */
@@ -593,7 +599,15 @@ export function cmdPrompt(
     const max = Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : undefined;
     // Only trust a snapshot fetched for the current source + competition.
     const state = readCurrentState(cfg.source, resolveCompetition());
-    const scoreLine = renderPrompt(state, { team, compact, max, flags: flagsEnabled() });
+    const scoreLine = renderPrompt(state, {
+      team,
+      compact,
+      max,
+      flags: flagsEnabled(),
+      // The bundled schedule describes the default competition only — see the
+      // sign-off gate in renderPrompt.
+      defaultCompetition: resolveCompetition() === DEFAULT_COMPETITION,
+    });
     out(renderPromptOutput(scoreLine, payload));
     // Spawn a background refresh for live scores OR stale knockout fixtures (the
     // latter keeps the next-match countdown live outside live windows). Pass the
@@ -1466,6 +1480,51 @@ function maybeStarNudge(ctx: Ctx): void {
   const c = painterFor(ctx.cfg);
   out();
   out(c.dim(`  ⭐ Enjoying Claudinho? Star it → ${REPO_URL}   (claudinho star)`));
+}
+
+/**
+ * Tail for the three score commands (`today`/`live`/`next`). Once the bundled
+ * schedule is spent they'd print an unexplained empty result, so sign off
+ * instead — and never alongside the every-Nth nudge, so a run shows one CTA,
+ * not two.
+ *
+ * Gated on the DEFAULT competition: the bundled schedule describes the World
+ * Cup, so with `CLAUDINHO_COMPETITION` pointing elsewhere its "windows elapsed"
+ * answer says nothing about that feed, and appending a World Cup goodbye to a
+ * live alternate competition would simply be wrong.
+ */
+function endScoreCommand(ctx: Ctx): void {
+  const over =
+    resolveCompetition() === DEFAULT_COMPETITION &&
+    isTournamentWindowOver(ctx.now?.getTime() ?? Date.now());
+  if (over) printTournamentSignOff(ctx);
+  else maybeStarNudge(ctx);
+}
+
+/**
+ * Post-tournament sign-off for the interactive score commands — it both EXPLAINS
+ * why they're now empty and says goodbye.
+ *
+ * Split by intent, so the CTA rule still holds:
+ *  - the informational line is LOCALIZED and prints on any non-`--json` run
+ *    (product state, not marketing — a piped run still deserves the explanation);
+ *  - the ⭐ star block is a CTA, so it takes the standard gates (TTY, non-JSON,
+ *    no CLAUDINHO_NO_STAR) exactly like `maybeStarNudge`.
+ *
+ * The hashtag stays EN as a fixed tag (same treatment as the share disclaimer),
+ * and reuses `SHARE_HASHTAG` so there's one source for it. The statusline/hook
+ * never call this — their sign-off is CTA-free by design.
+ */
+function printTournamentSignOff(ctx: Ctx): void {
+  const { cfg, t } = ctx;
+  if (cfg.json) return;
+  const c = painterFor(cfg);
+  out();
+  out(`${t('signoff.complete')} ${SHARE_HASHTAG}`);
+  if (!process.stdout.isTTY || process.env.CLAUDINHO_NO_STAR) return;
+  out();
+  out(c.dim(`⭐ ${t('signoff.star')}`));
+  out(c.cyan(REPO_URL));
 }
 
 /**
