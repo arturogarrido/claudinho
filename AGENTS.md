@@ -35,11 +35,17 @@ Claudinho surfaces the 2026 men's football tournament in developer environments:
 - `pnpm -F @claudinho/core test` — operate on a single package
 - `pnpm release:qa` — pre-tag surface renderer (see "Release readiness")
 
-**Bumping `@biomejs/biome`?** Bump `biome.json`'s `$schema` URL to the *same* version in the
-same change. Dependabot only rewrites the root `package.json`, so the schema pin drifts and Biome
-then reports a schema-version mismatch on every lint run (it has drifted on three bumps: 2.5.2,
-2.5.3, 2.5.4). **Hand-edit the single line — `biome migrate` reformats the whole config to tabs.**
-Guarded by `packages/core/test/biome-schema.test.ts`, which fails CI when the two disagree.
+**Bumping `@biomejs/biome`?** Nothing to do — `biome.json`'s `$schema` points at
+`./node_modules/@biomejs/biome/configuration_schema.json`, so it resolves to whatever version is
+installed and is correct by construction after any bump. This replaced a version-pinned
+`https://biomejs.dev/schemas/<version>/schema.json` URL that drifted on **six** consecutive bumps
+(Dependabot rewrites only the root `package.json`, never `biome.json`). Each drift made Biome emit a
+*"configuration schema version does not match the CLI version"* diagnostic on every lint run — three
+of them (2.5.0 / 2.5.1 / 2.5.3) landed on `main` that way, since an info-level diagnostic fails
+nothing. Only from the guard test onward did drift become a red build, which is what CI then caught.
+`packages/core/test/biome-schema.test.ts` now guards the *shape*: it fails if anyone reintroduces a
+pinned URL, or if a Biome upgrade moves the bundled schema file. (If you ever do edit `biome.json`,
+hand-edit it — `biome migrate` reformats the whole config to tabs.)
 
 ## Releasing
 
