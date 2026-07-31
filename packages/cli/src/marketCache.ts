@@ -33,12 +33,29 @@ function cachePath(): string {
   return join(cacheDir(), 'market-signals.json');
 }
 
-function readFile(): MarketCacheFile | undefined {
+/**
+ * Parse the cache file as `unknown`, never as the declared shape. It is a JSON
+ * file on disk: `entries` may be absent, a non-object, or hold `null` members,
+ * and a blind cast makes every later dereference a crash waiting to happen.
+ */
+function readFile(): { source: unknown; competition: unknown; entries: unknown } | undefined {
   try {
-    return JSON.parse(readFileSync(cachePath(), 'utf8')) as MarketCacheFile;
+    const parsed: unknown = JSON.parse(readFileSync(cachePath(), 'utf8'));
+    if (!parsed || typeof parsed !== 'object') return undefined;
+    return parsed as { source: unknown; competition: unknown; entries: unknown };
   } catch {
     return undefined;
   }
+}
+
+/** A cache entry we are willing to look at: an object with an ISO `fetchedAt`. */
+function isEntryShaped(e: unknown): e is CacheEntry {
+  return (
+    !!e &&
+    typeof e === 'object' &&
+    typeof (e as CacheEntry).fetchedAt === 'string' &&
+    Number.isFinite(Date.parse((e as CacheEntry).fetchedAt))
+  );
 }
 
 export interface MarketCacheRead {
@@ -60,9 +77,16 @@ export function readMarketCache(
   if (!file || file.source !== source || file.competition !== competition) {
     return { signals, checked };
   }
-  for (const [id, entry] of Object.entries(file.entries ?? {})) {
+  const entries = file.entries;
+  if (!entries || typeof entries !== 'object') return { signals, checked };
+  for (const [id, raw] of Object.entries(entries as Record<string, unknown>)) {
+    // Validate the ENVELOPE before touching it: a JSON `null` (or a string, or a
+    // number) is a legal value here, and dereferencing it threw before this
+    // guard. A malformed entry is skipped entirely — notably it must NOT reach
+    // `checked`, or a junk file would suppress the real fetch for that match.
+    if (!isEntryShaped(raw)) continue;
+    const entry = raw;
     const t = Date.parse(entry.fetchedAt);
-    if (!Number.isFinite(t)) continue;
     const ttl = entry.signal ? POSITIVE_TTL_MS : NEGATIVE_TTL_MS;
     if (now - t > ttl) continue; // expired
     checked.add(id);
@@ -91,10 +115,17 @@ export function writeMarketCache(
   if (attempted.length === 0) return;
   try {
     const existing = readFile();
-    const base: MarketCacheFile =
-      existing && existing.source === source && existing.competition === competition
-        ? existing
-        : { source, competition, entries: {} };
+    const reuse = existing && existing.source === source && existing.competition === competition;
+    // Carry forward only entries that are actually well-formed. Reusing the
+    // parsed object wholesale would round-trip a poisoned file's junk (null
+    // members, wrong-typed envelopes) back to disk on every write.
+    const carried: Record<string, CacheEntry> = {};
+    if (reuse && existing.entries && typeof existing.entries === 'object') {
+      for (const [id, raw] of Object.entries(existing.entries as Record<string, unknown>)) {
+        if (isEntryShaped(raw)) carried[id] = raw;
+      }
+    }
+    const base: MarketCacheFile = { source, competition, entries: carried };
     const fetchedAt = new Date(now).toISOString();
     for (const id of attempted) {
       base.entries[id] = { fetchedAt, signal: fetched.get(id) ?? null };

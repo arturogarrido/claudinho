@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { MarketSignal } from '@claudinho/core';
@@ -77,5 +77,50 @@ describe('market-signals cache', () => {
     const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW + 60_000);
     expect(signals.has('760415')).toBe(true);
     expect(checked.has('888')).toBe(true);
+  });
+});
+
+describe('market-signals cache — malformed file must not crash a command', () => {
+  /** Write raw JSON straight to the cache path, bypassing writeMarketCache. */
+  function poison(json: unknown) {
+    mkdirSync(join(dir, 'claudinho'), { recursive: true });
+    writeFileSync(join(dir, 'claudinho', 'market-signals.json'), JSON.stringify(json));
+  }
+
+  it('skips a null entry instead of throwing (reported crash)', () => {
+    poison({
+      source: 'polymarket',
+      competition: 'fifa.world',
+      entries: { '760415': null, '760416': 'nope', '760417': 42 },
+    });
+    expect(() => readMarketCache('polymarket', 'fifa.world', NOW)).not.toThrow();
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+    expect(signals.size).toBe(0);
+    // Critically: a malformed entry must NOT be marked checked, or a junk file
+    // would suppress the real fetch for that match.
+    expect(checked.size).toBe(0);
+  });
+
+  it('survives a hostile toString in a cached signal', () => {
+    poison({
+      source: 'polymarket',
+      competition: 'fifa.world',
+      entries: {
+        '760415': {
+          fetchedAt: '2026-06-11T14:56:00Z',
+          signal: { ...signal, source: { toString: null } },
+        },
+      },
+    });
+    expect(() => readMarketCache('polymarket', 'fifa.world', NOW)).not.toThrow();
+    const { signals } = readMarketCache('polymarket', 'fifa.world', NOW);
+    expect(signals.get('760415')?.source).toBe('');
+  });
+
+  it('tolerates entries being absent or a non-object', () => {
+    for (const entries of [undefined, null, 'x', 7, []]) {
+      poison({ source: 'polymarket', competition: 'fifa.world', entries });
+      expect(() => readMarketCache('polymarket', 'fifa.world', NOW)).not.toThrow();
+    }
   });
 });

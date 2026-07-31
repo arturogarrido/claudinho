@@ -44,14 +44,17 @@ flag-emoji fallback), and the home directory via `os.homedir()` (`HOME` / `USERP
 | `site.api.espn.com` | live scores, fixtures, standings | attributed in output as `Live data: ESPN` |
 | `gamma-api.polymarket.com` | read-only prediction-market signals | opt-out via `CLAUDINHO_MARKETS=off`; host allow-listed in code |
 
-Requests are anonymous GETs: no account, no credentials, and no user-supplied content. They use
-`redirect: 'error'` (no redirect following), an abort-signal timeout, and a declared-
-content-length cap before parsing. As with any HTTP request the provider still receives normal
-transport metadata such as your IP address and headers — see [PRIVACY.md](PRIVACY.md).
+Requests are anonymous GETs — no account and no credentials. They do carry the parameters a
+lookup needs: the requested date, and the competition slug (`CLAUDINHO_COMPETITION`, which
+selects the ESPN competition path). They use `redirect: 'error'` (no redirect following), an
+abort-signal timeout, and a declared-content-length cap before parsing. As with any HTTP
+request the provider also receives normal transport metadata such as your IP address and
+headers — see [PRIVACY.md](PRIVACY.md).
 
 The bundled 104-fixture schedule is an **offline fallback**, not the default path: live-aware
 commands try the provider first and degrade to the bundle on any network or provider error.
-Purely static lookups (`next`, `team`, the bundled bracket structure) do answer offline.
+That includes `next`, which live-resolves knockout ties before falling back. `team` is the
+genuinely offline lookup (it only consults the bundled roster).
 
 **Local writes only.** A cache in `$XDG_CACHE_HOME/claudinho` (default `~/.cache/claudinho`),
 written atomically via tmp+rename. The optional `init` commands modify your editor's own config
@@ -63,8 +66,11 @@ the adapter boundary (control characters and escape sequences stripped, length c
 they can reach a terminal, a share card, or the model's context via the hook. The local caches
 get the same treatment **on read** — both the match/statusline cache and the market-signal
 cache — since a file on disk is attacker-writable in a way the type system does not capture.
-Sanitizing covers more than the string fields: values typed as numbers, enums or booleans are
-validated at runtime and dropped when malformed, because JSON on disk can hold anything.
+Sanitizing is allowlist-based (only known fields survive, so an injected key cannot ride into
+`--json` or MCP output) and validates by runtime type, not the declared one: malformed
+numbers, enums, timestamps and booleans are dropped or fail closed, because JSON on disk can
+hold anything. Derived values such as the market favorite are recomputed from the sanitized
+data rather than trusted, so a crafted file cannot make the headline contradict the numbers.
 
 **Subprocesses.** Two, both with a fixed argument array and never `shell: true`, so no shell
 interpolation is possible. (1) The statusline spawns a detached background refresher via
@@ -92,6 +98,9 @@ binary — though such an attacker can generally run code anyway.
   at `MAX_RESPONSE_BYTES`); a streaming cap is deferred.
 - Claudinho trusts its data providers for factual accuracy. It fails closed rather than
   displaying invented data, but a compromised upstream feed could still show wrong scores.
+- Provider-supplied timestamps are echoed verbatim in MCP structured output (`asOf`,
+  `fetchedAt`) once they parse as dates. They are validated as real date strings, not
+  reformatted, so they are timestamp-shaped rather than guaranteed byte-for-byte canonical.
 
 ## Supply chain
 

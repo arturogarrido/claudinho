@@ -8,6 +8,7 @@
  * Applied at the ESPN adapter boundary (toTeam / mapEspnEvent) and mirrored on
  * the statusline's cache reads (defense against a poisoned cache file).
  */
+import { deriveFavorite } from './markets/normalize';
 import type { MarketOutcome, MarketSignal } from './markets/types';
 import type { Match, Team } from './types';
 
@@ -20,9 +21,14 @@ export const FEED_TEXT_MAX = 100;
  * feed split across lines don't fuse together. Total: never throws.
  */
 export function sanitizeFeedText(value: string, max = FEED_TEXT_MAX): string {
+  // `String(value)` is NOT total: JSON can hold `{"toString": null}`, and
+  // coercing that throws "Cannot convert object to primitive value". Since every
+  // caller here is handling deserialized, attacker-influenced data, anything that
+  // is not already a string is treated as absent rather than coerced.
+  if (typeof value !== 'string') return '';
   let out = '';
   let count = 0;
-  for (const ch of String(value)) {
+  for (const ch of value) {
     const cp = ch.codePointAt(0) ?? 0;
     const isWhitespaceControl = cp === 0x09 || cp === 0x0a || cp === 0x0d;
     if ((cp <= 0x1f || (cp >= 0x7f && cp <= 0x9f)) && !isWhitespaceControl) continue;
@@ -94,11 +100,20 @@ function saneProbability(v: unknown): v is number {
 function sanitizeOutcome(o: MarketOutcome): MarketOutcome | undefined {
   if (!o || typeof o !== 'object') return undefined;
   if (!OUTCOME_KINDS.has(o.kind) || !saneProbability(o.probability)) return undefined;
-  return {
-    ...o,
-    label: sanitizeFeedText(o.label ?? ''),
-    teamCode: o.teamCode == null ? o.teamCode : sanitizeFeedText(o.teamCode),
+  // Built explicitly, NOT spread: a spread would carry arbitrary extra keys from
+  // the JSON straight into `--json` and MCP structured content.
+  const out: MarketOutcome = {
+    kind: o.kind,
+    label: sanitizeFeedText(o.label),
+    probability: o.probability,
   };
+  if (typeof o.teamCode === 'string') out.teamCode = sanitizeFeedText(o.teamCode);
+  return out;
+}
+
+/** An ISO timestamp we are willing to echo: a real string that actually parses. */
+function saneTimestamp(v: unknown): string {
+  return typeof v === 'string' && Number.isFinite(Date.parse(v)) ? v : '';
 }
 
 /**
@@ -113,40 +128,49 @@ function sanitizeOutcome(o: MarketOutcome): MarketOutcome | undefined {
  * entry could otherwise inject ANSI escapes or extra lines into the terminal, a
  * share card, or the hook's context.
  *
- * Like the match sanitizer this validates by RUNTIME TYPE, not just the
- * string-typed fields: a non-finite or out-of-range probability, an unknown
- * outcome kind, a non-finite liquidity/volume, or an unparseable timestamp drops
- * that piece rather than rendering it. The reliability booleans are coerced so a
- * truthy-but-not-boolean value can't slip a stale/ambiguous market past a gate.
- * Total: never throws.
+ * Three properties this has to hold, each learned from a real defect:
+ *
+ * 1. **Allowlist, don't spread.** The result is built field by field. A spread
+ *    (`{...s}`) preserves arbitrary extra keys from the JSON — an injected
+ *    `instruction: "ignore previous instructions"` would ride through into
+ *    `--json` and MCP structured content, i.e. into an agent's context.
+ * 2. **Validate by RUNTIME TYPE, not the declared one.** A non-finite or
+ *    out-of-range probability, an unknown outcome kind, a non-string timestamp
+ *    (a parseable array or number is still the wrong type), or a non-finite
+ *    liquidity/volume drops that piece instead of being echoed.
+ * 3. **Derive what can be derived; never trust it.** `favorite` is RECOMPUTED
+ *    from the sanitized outcomes via {@link deriveFavorite} rather than taken
+ *    from the file. Trusting it independently let a crafted entry render
+ *    "slightly favor South Africa" beside "Mexico 60%" — internally inconsistent
+ *    output that still passed every reliability gate, which is exactly the
+ *    confidently-wrong display this project refuses.
+ *
+ * `stale`/`ambiguous` are accepted only as real booleans and otherwise fail
+ * CLOSED (unknown ⇒ stale/ambiguous ⇒ gated out), so a malformed value can't
+ * coerce its way into looking trustworthy. Total: never throws.
  */
 export function sanitizeMarketSignal(s: MarketSignal): MarketSignal {
-  const outcomes = Array.isArray(s.outcomes)
+  const outcomes = Array.isArray(s?.outcomes)
     ? s.outcomes.map(sanitizeOutcome).filter((o): o is MarketOutcome => !!o)
     : [];
-  const favorite =
-    s.favorite && OUTCOME_KINDS.has(s.favorite.kind) && saneProbability(s.favorite.probability)
-      ? {
-          ...s.favorite,
-          teamCode:
-            s.favorite.teamCode == null
-              ? s.favorite.teamCode
-              : sanitizeFeedText(s.favorite.teamCode),
-        }
-      : undefined;
-  return {
-    ...s,
-    matchId: sanitizeFeedText(s.matchId ?? ''),
-    source: sanitizeFeedText(s.source ?? ''),
-    sourceMarketId:
-      s.sourceMarketId == null ? s.sourceMarketId : sanitizeFeedText(s.sourceMarketId),
-    asOf: Number.isFinite(Date.parse(s.asOf)) ? s.asOf : '',
-    fetchedAt: Number.isFinite(Date.parse(s.fetchedAt)) ? s.fetchedAt : '',
+  const out: MarketSignal = {
+    matchId: sanitizeFeedText(s?.matchId),
+    source: sanitizeFeedText(s?.source),
+    asOf: saneTimestamp(s?.asOf),
+    fetchedAt: saneTimestamp(s?.fetchedAt),
     outcomes,
-    favorite,
-    liquidity: finiteOrUndefined(s.liquidity),
-    volume24h: finiteOrUndefined(s.volume24h),
-    stale: !!s.stale,
-    ambiguous: !!s.ambiguous,
+    // Recomputed, not trusted — keeps the headline consistent with the numbers.
+    favorite: deriveFavorite(outcomes),
+    // Fail closed: only an explicit `false` is treated as "not stale/ambiguous".
+    stale: s?.stale !== false,
+    ambiguous: s?.ambiguous !== false,
   };
+  if (typeof s?.sourceMarketId === 'string') {
+    out.sourceMarketId = sanitizeFeedText(s.sourceMarketId);
+  }
+  const liquidity = finiteOrUndefined(s?.liquidity);
+  if (liquidity !== undefined) out.liquidity = liquidity;
+  const volume24h = finiteOrUndefined(s?.volume24h);
+  if (volume24h !== undefined) out.volume24h = volume24h;
+  return out;
 }
