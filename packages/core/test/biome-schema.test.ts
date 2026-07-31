@@ -23,10 +23,11 @@ import { describe, expect, it } from 'vitest';
  * value is a versioned `biomejs.dev` URL, compares that version against its own —
  * that is the "configuration schema version does not match the CLI version" info
  * diagnostic the old scheme emitted on every lint run. It does NOT dereference or
- * fetch the value: pointing `$schema` at a path that does not exist produces no
- * diagnostic at all. Hence both properties we want — a relative path gives Biome no
- * version to compare (the mismatch class disappears), and a not-yet-installed
- * node_modules lints cleanly in a fresh clone.
+ * fetch the value: with Biome installed, pointing `$schema` at a path that does not
+ * exist produces no diagnostic at all. So a relative path gives Biome no version to
+ * compare and the mismatch class disappears, while the unresolved path itself costs
+ * nothing. (This says nothing about a clone with no `node_modules` — there `pnpm
+ * lint` fails at `biome: command not found`, before any config is read.)
  *
  * These assertions therefore guard the SHAPE, not a version: nobody should quietly
  * reintroduce a pinned URL (that restores the drift class), and the file the path
