@@ -21,6 +21,7 @@
  * resolve in regular time — otherwise no signal is produced.
  */
 import { MAX_RESPONSE_BYTES } from '../adapters/espn';
+import { sanitizeFeedText } from '../sanitize';
 import { shiftUtcDate } from '../time';
 import type { Match } from '../types';
 import mappingJson from './mapping.2026.json';
@@ -275,7 +276,12 @@ export class PolymarketProvider implements MarketProvider {
     const signal = buildMarketSignal({
       match,
       source: 'polymarket',
-      sourceMarketId: event.id ?? eventSlug,
+      // The only feed-derived STRING that survives into the signal, so it gets the
+      // same treatment the ESPN adapter gives its mapping boundary (AGENTS.md).
+      // `source` is hardcoded and the outcome labels come from the already-
+      // sanitized Match, but this id is echoed into MCP structured content
+      // (tools.ts `market.id`), i.e. straight into an agent's context.
+      sourceMarketId: sanitizeFeedText(event.id ?? eventSlug),
       asOf: asOf ?? new Date().toISOString(),
       outcomes,
       liquidity,
