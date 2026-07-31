@@ -17,15 +17,22 @@ import { describe, expect, it } from 'vitest';
  * version is installed, so it is correct by construction after any bump — no edit,
  * no guard to satisfy, nothing to forget. Editors (VS Code / Cursor) resolve a
  * relative `$schema` against the config file's own directory, so completions keep
- * working. Biome itself never reads `$schema` (it is editor metadata), so linting is
- * unaffected either way — including in a fresh clone before `pnpm install`, where the
- * path simply does not resolve yet.
+ * working.
+ *
+ * What Biome does with the value (measured, not assumed): it READS it and, when the
+ * value is a versioned `biomejs.dev` URL, compares that version against its own —
+ * that is the "configuration schema version does not match the CLI version" info
+ * diagnostic the old scheme emitted on every lint run. It does NOT dereference or
+ * fetch the value: pointing `$schema` at a path that does not exist produces no
+ * diagnostic at all. Hence both properties we want — a relative path gives Biome no
+ * version to compare (the mismatch class disappears), and a not-yet-installed
+ * node_modules lints cleanly in a fresh clone.
  *
  * These assertions therefore guard the SHAPE, not a version: nobody should quietly
  * reintroduce a pinned URL (that restores the drift class), and the file the path
  * names must actually exist (a Biome major could rename or relocate it — the one way
- * this scheme can still break, and it would otherwise fail silently, since only an
- * editor would ever notice).
+ * this scheme can still break, and, per the measurement above, it would fail SILENTLY:
+ * Biome says nothing, so only an editor losing completions would ever reveal it).
  */
 const ROOT = '../../../';
 const readRoot = (rel: string) =>
