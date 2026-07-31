@@ -113,8 +113,36 @@ describe('market-signals cache — malformed file must not crash a command', () 
       },
     });
     expect(() => readMarketCache('polymarket', 'fifa.world', NOW)).not.toThrow();
-    const { signals } = readMarketCache('polymarket', 'fifa.world', NOW);
-    expect(signals.get('760415')?.source).toBe('');
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+    // A signal whose source sanitizes to nothing is malformed, not a negative
+    // result: it must be dropped AND left unchecked so the real fetch still runs.
+    expect(signals.has('760415')).toBe(false);
+    expect(checked.has('760415')).toBe(false);
+  });
+
+  it('does not mark a malformed POSITIVE body as checked (would suppress refetch)', () => {
+    for (const bad of [false, {}, 'nope', 0, { outcomes: [] }]) {
+      poison({
+        source: 'polymarket',
+        competition: 'fifa.world',
+        entries: { '760415': { fetchedAt: '2026-06-11T14:56:00Z', signal: bad } },
+      });
+      const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+      expect(signals.has('760415')).toBe(false);
+      expect(checked.has('760415')).toBe(false);
+    }
+  });
+
+  it('still honours a genuine negative entry (signal: null) as checked', () => {
+    // Inside the 3-minute NEGATIVE TTL (14:59 -> 15:00), unlike the positive one.
+    poison({
+      source: 'polymarket',
+      competition: 'fifa.world',
+      entries: { '760415': { fetchedAt: '2026-06-11T14:59:00Z', signal: null } },
+    });
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+    expect(signals.has('760415')).toBe(false);
+    expect(checked.has('760415')).toBe(true);
   });
 
   it('tolerates entries being absent or a non-object', () => {

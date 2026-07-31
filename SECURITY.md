@@ -98,9 +98,8 @@ binary — though such an attacker can generally run code anyway.
   at `MAX_RESPONSE_BYTES`); a streaming cap is deferred.
 - Claudinho trusts its data providers for factual accuracy. It fails closed rather than
   displaying invented data, but a compromised upstream feed could still show wrong scores.
-- Provider-supplied timestamps are echoed verbatim in MCP structured output (`asOf`,
-  `fetchedAt`) once they parse as dates. They are validated as real date strings, not
-  reformatted, so they are timestamp-shaped rather than guaranteed byte-for-byte canonical.
+- Sanitizing is defence in depth, not a proof. It constrains what reaches output; it cannot
+  make a compromised provider's *numbers* correct.
 
 ## Supply chain
 

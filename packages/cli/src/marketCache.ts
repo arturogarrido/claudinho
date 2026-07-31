@@ -48,14 +48,33 @@ function readFile(): { source: unknown; competition: unknown; entries: unknown }
   }
 }
 
-/** A cache entry we are willing to look at: an object with an ISO `fetchedAt`. */
+/**
+ * A cache entry we are willing to ACT ON.
+ *
+ * `signal` must be either an explicit `null` (a negative result: "we checked,
+ * there was nothing") or a real object. Anything else — `false`, `{}` with no
+ * outcomes, a string, a missing key — is a malformed envelope, and treating it
+ * as a negative result would suppress the real provider fetch for the whole
+ * negative TTL. Malformed entries are dropped so the next run re-fetches.
+ */
 function isEntryShaped(e: unknown): e is CacheEntry {
-  return (
-    !!e &&
-    typeof e === 'object' &&
-    typeof (e as CacheEntry).fetchedAt === 'string' &&
-    Number.isFinite(Date.parse((e as CacheEntry).fetchedAt))
-  );
+  if (!e || typeof e !== 'object') return false;
+  const entry = e as CacheEntry;
+  if (typeof entry.fetchedAt !== 'string' || !Number.isFinite(Date.parse(entry.fetchedAt))) {
+    return false;
+  }
+  if (entry.signal === null) return true; // legitimate negative-cache entry
+  return !!entry.signal && typeof entry.signal === 'object';
+}
+
+/**
+ * A sanitized signal is only USABLE if it still carries a renderable market.
+ * Sanitizing fails closed (dropping bad outcomes, rejecting duplicate kinds), so
+ * an entry can survive parsing yet end up empty — that is a malformed positive,
+ * not a negative result, and must not suppress the refetch either.
+ */
+function isUsableSignal(s: MarketSignal): boolean {
+  return s.outcomes.length > 0 && s.source !== '' && s.asOf !== '';
 }
 
 export interface MarketCacheRead {
@@ -89,13 +108,22 @@ export function readMarketCache(
     const t = Date.parse(entry.fetchedAt);
     const ttl = entry.signal ? POSITIVE_TTL_MS : NEGATIVE_TTL_MS;
     if (now - t > ttl) continue; // expired
-    checked.add(id);
+    if (entry.signal === null) {
+      checked.add(id); // genuine negative result — don't re-fetch this window
+      continue;
+    }
     // Sanitize on READ: this file is attacker-writable in a way the MarketSignal
     // type isn't, and the formatters interpolate several of these fields straight
     // into output (marketSourceLabel falls through to `source` verbatim for an
     // unrecognized provider). Mirrors the statusline's sanitizeMatchStrings on
     // its own cache read.
-    if (entry.signal) signals.set(id, sanitizeMarketSignal(entry.signal));
+    const clean = sanitizeMarketSignal(entry.signal);
+    // Only a signal that survived sanitizing counts as "checked". Otherwise a
+    // crafted (or simply corrupt) positive entry would suppress the real fetch
+    // for the full positive TTL while displaying nothing.
+    if (!isUsableSignal(clean)) continue;
+    checked.add(id);
+    signals.set(id, clean);
   }
   return { signals, checked };
 }
@@ -122,7 +150,11 @@ export function writeMarketCache(
     const carried: Record<string, CacheEntry> = {};
     if (reuse && existing.entries && typeof existing.entries === 'object') {
       for (const [id, raw] of Object.entries(existing.entries as Record<string, unknown>)) {
-        if (isEntryShaped(raw)) carried[id] = raw;
+        if (!isEntryShaped(raw)) continue;
+        // Don't round-trip a positive body that no longer sanitizes to anything
+        // usable — it would keep suppressing refetches on every later read.
+        if (raw.signal !== null && !isUsableSignal(sanitizeMarketSignal(raw.signal))) continue;
+        carried[id] = raw;
       }
     }
     const base: MarketCacheFile = { source, competition, entries: carried };

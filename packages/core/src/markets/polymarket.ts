@@ -21,7 +21,7 @@
  * resolve in regular time — otherwise no signal is produced.
  */
 import { MAX_RESPONSE_BYTES } from '../adapters/espn';
-import { sanitizeFeedText } from '../sanitize';
+import { canonicalTimestamp } from '../sanitize';
 import { shiftUtcDate } from '../time';
 import type { Match } from '../types';
 import mappingJson from './mapping.2026.json';
@@ -210,6 +210,12 @@ export class PolymarketProvider implements MarketProvider {
     options?: MarketSignalOptions,
   ): MarketSignal | undefined {
     // ---- fail-closed event validation ----
+    // Only real booleans are trusted. `active: "false"` / `closed: "true"` are
+    // truthy strings, so an `=== false` / `=== true` test alone read them as
+    // "open" — fail OPEN on exactly the fields that decide whether a market is
+    // still live. Anything non-boolean is malformed and rejects the payload.
+    if (event.active != null && typeof event.active !== 'boolean') return undefined;
+    if (event.closed != null && typeof event.closed !== 'boolean') return undefined;
     if (event.active === false || event.closed === true) return undefined;
     if (
       event.seriesSlug != null &&
@@ -221,6 +227,12 @@ export class PolymarketProvider implements MarketProvider {
     // We guessed/looked-up the slug — confirm the API returned that exact event.
     if (event.slug != null && event.slug !== eventSlug) return undefined;
     // Kickoff must line up with the Claudinho fixture (when the event states it).
+    // A PRESENT-but-invalid startTime is malformed, not "absent": letting it fall
+    // through as NaN skipped the tolerance check entirely, so a payload claiming
+    // any kickoff passed. Absent stays fine; present-and-unparseable rejects.
+    if (event.startTime != null && !Number.isFinite(canonicalTimestamp(event.startTime) ? Date.parse(event.startTime) : Number.NaN)) {
+      return undefined;
+    }
     const start = event.startTime ? Date.parse(event.startTime) : Number.NaN;
     const kick = Date.parse(match.kickoff);
     if (
@@ -253,17 +265,23 @@ export class PolymarketProvider implements MarketProvider {
     ];
 
     const outcomes: MarketOutcome[] = [];
-    let asOf = event.updatedAt;
+    // Canonicalized, never echoed raw: Date.parse accepts strings carrying an
+    // arbitrary RFC-2822 `(comment)` payload, which then reached MCP/JSON
+    // verbatim. Compared by EPOCH below, not lexically.
+    let asOf = canonicalTimestamp(event.updatedAt);
     let liquidity: number | undefined;
     for (const [kind, market, teamCode, label] of legs) {
       if (!market) continue; // draw may be absent for a two-way knockout line
+      if (market.closed != null && typeof market.closed !== 'boolean') return undefined;
+      if (market.active != null && typeof market.active !== 'boolean') return undefined;
       if (market.closed === true || market.active === false) return undefined;
       // Regular-time (90') resolution only — reject extra-time/advance markets.
       if (market.description && NON_REGULAR_TIME.test(market.description)) return undefined;
       const yes = yesPrice(market);
       if (yes == null) return undefined;
       outcomes.push({ kind, teamCode, label, probability: yes });
-      if (market.updatedAt && (!asOf || market.updatedAt < asOf)) asOf = market.updatedAt;
+      const marketAsOf = canonicalTimestamp(market.updatedAt);
+      if (marketAsOf && (!asOf || Date.parse(marketAsOf) < Date.parse(asOf))) asOf = marketAsOf;
       const liq = numberish(market.liquidityNum ?? market.liquidity);
       if (liq != null) liquidity = liquidity == null ? liq : Math.min(liquidity, liq);
     }
@@ -276,13 +294,14 @@ export class PolymarketProvider implements MarketProvider {
     const signal = buildMarketSignal({
       match,
       source: 'polymarket',
-      // The only feed-derived STRING that survives into the signal, so it gets the
-      // same treatment the ESPN adapter gives its mapping boundary (AGENTS.md).
-      // `source` is hardcoded and the outcome labels come from the already-
-      // sanitized Match, but this id is echoed into MCP structured content
-      // (tools.ts `market.id`), i.e. straight into an agent's context.
-      sourceMarketId: sanitizeFeedText(event.id ?? eventSlug),
-      asOf: asOf ?? new Date().toISOString(),
+      // Echoed into MCP structured content (tools.ts `market.id`), i.e. straight
+      // into an agent's context. Stripping control characters is NOT sufficient
+      // there: printable prose ("IGNORE PREVIOUS INSTRUCTIONS") survives that and
+      // is precisely what matters for a model reading it. Gamma ids are short
+      // opaque tokens, so validate that GRAMMAR and otherwise fall back to the
+      // slug we derived ourselves.
+      sourceMarketId: safeMarketId(event.id) ?? eventSlug,
+      asOf: asOf || new Date().toISOString(),
       outcomes,
       liquidity,
       now: options?.now ?? this.opts.now,
@@ -292,6 +311,19 @@ export class PolymarketProvider implements MarketProvider {
     // (e.g. a group match missing its draw leg) is dropped here.
     return signal.ambiguous ? undefined : signal;
   }
+}
+
+/**
+ * A Gamma market id we are willing to echo into agent-facing output.
+ *
+ * Control-stripping alone is not enough here: `market.id` lands in MCP
+ * structured content, where PRINTABLE prose ("IGNORE PREVIOUS INSTRUCTIONS") is
+ * exactly what matters and survives a control-character filter untouched. Gamma
+ * ids are short opaque tokens (numeric in practice), so accept only that grammar
+ * and let the caller fall back to the slug we derived ourselves.
+ */
+function safeMarketId(id: unknown): string | undefined {
+  return typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : undefined;
 }
 
 /**
