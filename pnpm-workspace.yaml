@@ -6,15 +6,29 @@ packages:
 # Force vulnerable transitive dependencies up to patched versions.
 # - vite/esbuild: dev tooling (GHSA path-traversal in vite; esbuild dev-server
 #   request leak). vitest 4 otherwise reuses the older vite 5 / esbuild 0.21.
-# - hono: a *shipped* transitive dep of @modelcontextprotocol/sdk (the sdk
-#   allows ^4.11.4, which resolved to the vulnerable 4.12.23). The advisories
-#   are all HTTP-server features (CORS, serve-static, Lambda adapter,
-#   body-limit) that our stdio MCP server never exercises, but `pnpm audit
-#   --prod` gates on them; 4.12.25 patches all four and satisfies the sdk range.
+#
+# NO override for the @modelcontextprotocol/sdk HTTP stack (hono,
+# @hono/node-server, fast-uri via ajv, body-parser via express), deliberately.
+# `pnpm audit --prod` gates on versions, not reachability, and their advisories
+# are HTTP-server features our stdio server can't reach: hono, @hono/node-server
+# and body-parser are never LOADED at all (the built dist imports exactly
+# sdk/server/mcp.js, sdk/server/stdio.js and zod). fast-uri IS loaded, via ajv —
+# but only ever called on a constant meta-schema URI, because ajv.compile() is
+# not reached on the stdio path and no attacker-controlled URI reaches it.
+#
+# The remedy is a LOCKFILE RE-RESOLUTION (`pnpm update`), not a version floor.
+# The previous `hono@<4.12.25: >=4.12.25` override (added v0.5.1) was inert by
+# the time it went stale — its selector matches versions BELOW 4.12.25, so it
+# never applied to the 4.12.25 the lockfile held; plain `pnpm install` retains
+# any already-satisfying entry, which is what actually kept the tree vulnerable.
+# The sdk floor (^1.30.0 in packages/mcp) is what makes @hono/node-server 2.x
+# semver-legal — 1.29.0 declared ^1.19.9, 1.30.0 declares ^1.19.9 || ^2.0.5 —
+# but a floor alone does NOT refresh transitives under pnpm: verified that
+# floor-bump + plain `install --lockfile-only` still yields hono 4.12.25 /
+# fast-uri 3.1.2. Refreshing them requires an explicit `pnpm update`.
 overrides:
   vite: "^6.4.2"
   esbuild: ">=0.28.1"
-  "hono@<4.12.25": ">=4.12.25"
 
 # esbuild (via tsup + vitest) ships its native binary through the
 # @esbuild/<platform> optional dependency, so its own postinstall (node
