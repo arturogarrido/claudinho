@@ -6,15 +6,21 @@ packages:
 # Force vulnerable transitive dependencies up to patched versions.
 # - vite/esbuild: dev tooling (GHSA path-traversal in vite; esbuild dev-server
 #   request leak). vitest 4 otherwise reuses the older vite 5 / esbuild 0.21.
-# - hono: a *shipped* transitive dep of @modelcontextprotocol/sdk (the sdk
-#   allows ^4.11.4, which resolved to the vulnerable 4.12.23). The advisories
-#   are all HTTP-server features (CORS, serve-static, Lambda adapter,
-#   body-limit) that our stdio MCP server never exercises, but `pnpm audit
-#   --prod` gates on them; 4.12.25 patches all four and satisfies the sdk range.
+#
+# NO override for the @modelcontextprotocol/sdk HTTP stack (hono,
+# @hono/node-server, fast-uri via ajv, body-parser via express), deliberately.
+# Every advisory against them is an HTTP-server feature (CORS, serve-static,
+# body-limit, URI parsing) that our stdio MCP server never loads — the built
+# dist imports exactly sdk/server/mcp.js, sdk/server/stdio.js and zod — but
+# `pnpm audit --prod` gates on versions, not reachability. The remedy is a
+# LOCKFILE RE-RESOLUTION (`pnpm update`), not a version floor: the previous
+# `hono@<4.12.25: >=4.12.25` override (added v0.5.1) went stale and ended up
+# pinning 4.12.25, which is exactly what the next advisory batch flagged. The
+# sdk floor (^1.30.0 in packages/mcp) is what makes @hono/node-server 2.x
+# semver-legal — 1.29.0 declared ^1.19.9, 1.30.0 declares ^1.19.9 || ^2.0.5.
 overrides:
   vite: "^6.4.2"
   esbuild: ">=0.28.1"
-  "hono@<4.12.25": ">=4.12.25"
 
 # esbuild (via tsup + vitest) ships its native binary through the
 # @esbuild/<platform> optional dependency, so its own postinstall (node
