@@ -7,7 +7,12 @@ export type { Lang } from './i18n';
 export { resolveTz, formatKickoff, formatDate, formatTime, countdown, localDate } from './time';
 export type { FormatOpts } from './time';
 export { isValidTimeZone, isValidDate } from './validate';
-export { sanitizeFeedText, sanitizeMatchStrings, FEED_TEXT_MAX } from './sanitize';
+export {
+  sanitizeFeedText,
+  sanitizeMatchStrings,
+  sanitizeMarketSignal,
+  FEED_TEXT_MAX,
+} from './sanitize';
 export { displayWidth, padVisible } from './text';
 export {
   outcomeFromScore,

@@ -12,7 +12,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { MarketSignal } from '@claudinho/core';
+import { sanitizeMarketSignal, type MarketSignal } from '@claudinho/core';
 import { cacheDir, writeFileAtomic } from './paths';
 
 const POSITIVE_TTL_MS = 10 * 60_000;
@@ -66,7 +66,12 @@ export function readMarketCache(
     const ttl = entry.signal ? POSITIVE_TTL_MS : NEGATIVE_TTL_MS;
     if (now - t > ttl) continue; // expired
     checked.add(id);
-    if (entry.signal) signals.set(id, entry.signal);
+    // Sanitize on READ: this file is attacker-writable in a way the MarketSignal
+    // type isn't, and the formatters interpolate several of these fields straight
+    // into output (marketSourceLabel falls through to `source` verbatim for an
+    // unrecognized provider). Mirrors the statusline's sanitizeMatchStrings on
+    // its own cache read.
+    if (entry.signal) signals.set(id, sanitizeMarketSignal(entry.signal));
   }
   return { signals, checked };
 }

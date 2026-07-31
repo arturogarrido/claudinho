@@ -8,6 +8,7 @@
  * Applied at the ESPN adapter boundary (toTeam / mapEspnEvent) and mirrored on
  * the statusline's cache reads (defense against a poisoned cache file).
  */
+import type { MarketOutcome, MarketSignal } from './markets/types';
 import type { Match, Team } from './types';
 
 /** Default per-field cap — generous for any real team/venue name. */
@@ -79,5 +80,73 @@ export function sanitizeMatchStrings(m: Match): Match {
     score,
     shootout: score ? sanitizeScorePair(m.shootout) : undefined,
     minute: finiteOrUndefined(m.minute),
+  };
+}
+
+/** Outcome kinds we will render; anything else is a poisoned/unknown entry. */
+const OUTCOME_KINDS = new Set(['home', 'draw', 'away', 'other']);
+
+/** A probability we are willing to render: a real number within [0,1]. */
+function saneProbability(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
+}
+
+function sanitizeOutcome(o: MarketOutcome): MarketOutcome | undefined {
+  if (!o || typeof o !== 'object') return undefined;
+  if (!OUTCOME_KINDS.has(o.kind) || !saneProbability(o.probability)) return undefined;
+  return {
+    ...o,
+    label: sanitizeFeedText(o.label ?? ''),
+    teamCode: o.teamCode == null ? o.teamCode : sanitizeFeedText(o.teamCode),
+  };
+}
+
+/**
+ * Sanitized, display-safe copy of a MarketSignal — the market sibling of
+ * {@link sanitizeMatchStrings}, applied when signals are restored from the local
+ * market cache (`marketCache.ts`).
+ *
+ * Why it exists: the cache is a JSON file on disk, so its contents are
+ * attacker-writable in a way the `MarketSignal` type does not capture. The
+ * formatters interpolate several of these fields directly — `marketSourceLabel`
+ * falls through to `source` verbatim for an unrecognized provider — so a crafted
+ * entry could otherwise inject ANSI escapes or extra lines into the terminal, a
+ * share card, or the hook's context.
+ *
+ * Like the match sanitizer this validates by RUNTIME TYPE, not just the
+ * string-typed fields: a non-finite or out-of-range probability, an unknown
+ * outcome kind, a non-finite liquidity/volume, or an unparseable timestamp drops
+ * that piece rather than rendering it. The reliability booleans are coerced so a
+ * truthy-but-not-boolean value can't slip a stale/ambiguous market past a gate.
+ * Total: never throws.
+ */
+export function sanitizeMarketSignal(s: MarketSignal): MarketSignal {
+  const outcomes = Array.isArray(s.outcomes)
+    ? s.outcomes.map(sanitizeOutcome).filter((o): o is MarketOutcome => !!o)
+    : [];
+  const favorite =
+    s.favorite && OUTCOME_KINDS.has(s.favorite.kind) && saneProbability(s.favorite.probability)
+      ? {
+          ...s.favorite,
+          teamCode:
+            s.favorite.teamCode == null
+              ? s.favorite.teamCode
+              : sanitizeFeedText(s.favorite.teamCode),
+        }
+      : undefined;
+  return {
+    ...s,
+    matchId: sanitizeFeedText(s.matchId ?? ''),
+    source: sanitizeFeedText(s.source ?? ''),
+    sourceMarketId:
+      s.sourceMarketId == null ? s.sourceMarketId : sanitizeFeedText(s.sourceMarketId),
+    asOf: Number.isFinite(Date.parse(s.asOf)) ? s.asOf : '',
+    fetchedAt: Number.isFinite(Date.parse(s.fetchedAt)) ? s.fetchedAt : '',
+    outcomes,
+    favorite,
+    liquidity: finiteOrUndefined(s.liquidity),
+    volume24h: finiteOrUndefined(s.volume24h),
+    stale: !!s.stale,
+    ambiguous: !!s.ambiguous,
   };
 }

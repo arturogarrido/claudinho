@@ -33,8 +33,9 @@ and `zod`; the SDK's HTTP transports are never loaded. The CLI and statusline li
 on nothing.
 
 **No credentials.** Claudinho requires no API key, token, or account, and handles none at
-runtime. The only environment variables it reads are its own `CLAUDINHO_*` options plus
-`LANG`, `NO_COLOR` and `XDG_CACHE_HOME`.
+runtime. Beyond its own `CLAUDINHO_*` options it reads only environment used for display and
+paths: `LANG`, `NO_COLOR`, `XDG_CACHE_HOME`, `TERM_PROGRAM` (terminal detection, for the
+flag-emoji fallback), and the home directory via `os.homedir()` (`HOME` / `USERPROFILE`).
 
 **Two outbound hosts, both public and read-only.**
 
@@ -43,10 +44,14 @@ runtime. The only environment variables it reads are its own `CLAUDINHO_*` optio
 | `site.api.espn.com` | live scores, fixtures, standings | attributed in output as `Live data: ESPN` |
 | `gamma-api.polymarket.com` | read-only prediction-market signals | opt-out via `CLAUDINHO_MARKETS=off`; host allow-listed in code |
 
-Requests are anonymous GETs carrying no personal data. They use `redirect: 'error'` (no
-redirect following), an abort-signal timeout, and a declared-content-length cap before parsing.
-Nothing is ever sent *to* those services about you. The bundled 104-fixture schedule means the
-common path is offline entirely.
+Requests are anonymous GETs: no account, no credentials, and no user-supplied content. They use
+`redirect: 'error'` (no redirect following), an abort-signal timeout, and a declared-
+content-length cap before parsing. As with any HTTP request the provider still receives normal
+transport metadata such as your IP address and headers — see [PRIVACY.md](PRIVACY.md).
+
+The bundled 104-fixture schedule is an **offline fallback**, not the default path: live-aware
+commands try the provider first and degrade to the bundle on any network or provider error.
+Purely static lookups (`next`, `team`, the bundled bracket structure) do answer offline.
 
 **Local writes only.** A cache in `$XDG_CACHE_HOME/claudinho` (default `~/.cache/claudinho`),
 written atomically via tmp+rename. The optional `init` commands modify your editor's own config
@@ -55,13 +60,19 @@ backup. Nothing is uploaded. See [PRIVACY.md](PRIVACY.md) for the full data-hand
 
 **Untrusted input is treated as untrusted.** Provider feed strings pass through a sanitizer at
 the adapter boundary (control characters and escape sequences stripped, length capped) before
-they can reach a terminal, a share card, or the model's context via the hook. The local cache
-file gets the same treatment on read, including numeric fields, since a cache file on disk is
-attacker-writable in a way the type system does not capture.
+they can reach a terminal, a share card, or the model's context via the hook. The local caches
+get the same treatment **on read** — both the match/statusline cache and the market-signal
+cache — since a file on disk is attacker-writable in a way the type system does not capture.
+Sanitizing covers more than the string fields: values typed as numbers, enums or booleans are
+validated at runtime and dropped when malformed, because JSON on disk can hold anything.
 
-**Subprocesses.** The statusline spawns one detached background refresher using
-`spawn(process.execPath, [...])` with an argument array and never `shell: true`, so no shell
-interpolation is possible.
+**Subprocesses.** Two, both with a fixed argument array and never `shell: true`, so no shell
+interpolation is possible. (1) The statusline spawns a detached background refresher via
+`spawn(process.execPath, [...])`. (2) `share --copy` runs a platform clipboard helper —
+`pbcopy`, `clip`, `wl-copy`, `xclip` or `xsel` — resolved through `PATH`, with the snippet
+passed on stdin rather than as an argument. `PATH`-resolved execution is worth knowing about:
+on a machine whose `PATH` an attacker already controls, that name could resolve to their
+binary — though such an attacker can generally run code anyway.
 
 ### Things genuinely worth reporting
 

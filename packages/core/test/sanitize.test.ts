@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatShareSnippet,
   sanitizeFeedText,
+  sanitizeMarketSignal,
   sanitizeMatchStrings,
   type Match,
 } from '../src/index';
@@ -155,5 +156,93 @@ describe('sanitizeMatchStrings — numeric fields (score/shootout/minute)', () =
     expect(clean.score).toBeUndefined();
     expect(clean.shootout).toBeUndefined(); // never a shootout without its score
     expect(clean.minute).toBeUndefined();
+  });
+});
+
+describe('sanitizeMarketSignal — the market cache is attacker-writable too', () => {
+  const base = {
+    matchId: 'm1',
+    source: 'polymarket',
+    asOf: '2026-07-01T12:00:00.000Z',
+    fetchedAt: '2026-07-01T12:00:00.000Z',
+    outcomes: [
+      { kind: 'home' as const, label: 'Mexico', probability: 0.5 },
+      { kind: 'draw' as const, label: 'Draw', probability: 0.3 },
+      { kind: 'away' as const, label: 'Ecuador', probability: 0.2 },
+    ],
+    liquidity: 500_000,
+    volume24h: 1_000,
+    stale: false,
+    ambiguous: false,
+  };
+
+  it('strips an ANSI/newline injection smuggled through `source` (the reported gap)', () => {
+    // marketSourceLabel falls through to `source` verbatim for an unrecognized
+    // provider, so a crafted cache entry reached the terminal / share card /
+    // hook context unsanitized. Regression pin for that exact vector.
+    const poisoned = { ...base, source: `polymarket${ESC}[2K\nFAKE: injected` };
+    const clean = sanitizeMarketSignal(poisoned);
+    expect(clean.source).not.toContain(ESC);
+    expect(clean.source).not.toContain('\n');
+    expect(CONTROLS.test(clean.source)).toBe(false);
+    // And it survives as readable text rather than being dropped entirely.
+    expect(clean.source).toContain('polymarket');
+  });
+
+  it('sanitizes every rendered string field, not just source', () => {
+    const clean = sanitizeMarketSignal({
+      ...base,
+      matchId: `m1${ESC}[31m`,
+      sourceMarketId: `id${ESC}[0m`,
+      outcomes: [{ kind: 'home', label: `Mexico\nFAKE`, teamCode: `MEX${ESC}`, probability: 0.5 }],
+    });
+    const [outcome] = clean.outcomes;
+    expect(CONTROLS.test(clean.matchId)).toBe(false);
+    expect(CONTROLS.test(clean.sourceMarketId ?? '')).toBe(false);
+    expect(CONTROLS.test(outcome?.label ?? '')).toBe(false);
+    expect(CONTROLS.test(outcome?.teamCode ?? '')).toBe(false);
+  });
+
+  it('drops outcomes with a poisoned NUMERIC probability or unknown kind (rule: validate by runtime type)', () => {
+    const clean = sanitizeMarketSignal({
+      ...base,
+      outcomes: [
+        { kind: 'home', label: 'ok', probability: 0.5 },
+        { kind: 'draw', label: 'nan', probability: Number.NaN },
+        { kind: 'away', label: 'out-of-range', probability: 42 },
+        { kind: 'evil' as never, label: 'unknown kind', probability: 0.1 },
+        { kind: 'home', label: 'string prob', probability: '0.9' as never },
+      ],
+    });
+    expect(clean.outcomes).toHaveLength(1);
+    expect(clean.outcomes[0]?.label).toBe('ok');
+  });
+
+  it('coerces the reliability booleans so a truthy non-boolean cannot slip a gate', () => {
+    const clean = sanitizeMarketSignal({
+      ...base,
+      stale: 'no' as never,
+      ambiguous: 0 as never,
+    });
+    expect(clean.stale).toBe(true); // 'no' is truthy — coerced, not trusted
+    expect(clean.ambiguous).toBe(false);
+  });
+
+  it('blanks unparseable timestamps and non-finite liquidity; never throws on junk', () => {
+    const clean = sanitizeMarketSignal({
+      ...base,
+      asOf: 'not-a-date',
+      fetchedAt: 'nope',
+      liquidity: Number.POSITIVE_INFINITY,
+      volume24h: Number.NaN,
+      outcomes: undefined as never,
+      favorite: { kind: 'home', probability: Number.NaN, strength: 'strong' } as never,
+    });
+    expect(clean.asOf).toBe('');
+    expect(clean.fetchedAt).toBe('');
+    expect(clean.liquidity).toBeUndefined();
+    expect(clean.volume24h).toBeUndefined();
+    expect(clean.outcomes).toEqual([]);
+    expect(clean.favorite).toBeUndefined();
   });
 });
