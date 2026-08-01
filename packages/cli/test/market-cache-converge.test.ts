@@ -15,9 +15,31 @@
  *   ambiguous not cacheable -> 6, 6, 6 requests   (never converges)
  *   ambiguous cacheable     -> 6, 0, 0 requests
  */
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PolymarketProvider, cacheableKeys, resolvedValues } from '@claudinho/core';
 import { readMarketCache, writeMarketCache } from '../src/marketCache';
+
+// This test is ABOUT the cache, so it must own one. Left to the ambient
+// XDG_CACHE_HOME it reads the developer's real `~/.cache/claudinho` — which
+// already holds these ids after one run, so run 0 issues zero requests and the
+// assertion inverts. It passed under an explicit XDG_CACHE_HOME and failed in
+// the plain suite: an environment the test depends on has to be pinned BY the
+// test, not by how it happened to be invoked.
+let cacheDir: string;
+let previous: string | undefined;
+beforeAll(() => {
+  previous = process.env.XDG_CACHE_HOME;
+  cacheDir = mkdtempSync(join(tmpdir(), 'claudinho-converge-'));
+  process.env.XDG_CACHE_HOME = cacheDir;
+});
+afterAll(() => {
+  if (previous === undefined) delete process.env.XDG_CACHE_HOME;
+  else process.env.XDG_CACHE_HOME = previous;
+  rmSync(cacheDir, { recursive: true, force: true });
+});
 
 const NOW = new Date('2026-06-11T15:00:00Z');
 
