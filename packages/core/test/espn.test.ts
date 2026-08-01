@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { EspnAdapter, MAX_RESPONSE_BYTES, mapEspnEvent } from '../src/adapters/espn';
+import { EspnAdapter, MAX_RESPONSE_BYTES, mapEspnEvent, parseStandings } from '../src/adapters/espn';
 import { getLiveMatches } from '../src/live';
 
 // Minimal ESPN-shaped fixtures mirroring the real response structure.
@@ -345,5 +345,58 @@ describe('mapEspnEvent — participants must be real, winners unambiguous', () =
       ],
     } as never);
     expect(both?.winnerCode).toBeUndefined();
+  });
+});
+
+describe('mapEspnEvent / parseStandings — identity and outer bounds', () => {
+  const base = {
+    id: '700001',
+    date: '2026-06-11T19:00Z',
+    season: { slug: 'group-stage' },
+    status: { type: { state: 'pre' } },
+  };
+  const withTeams = (home: unknown, away: unknown) =>
+    mapEspnEvent({
+      ...base,
+      competitions: [
+        { competitors: [{ homeAway: 'home', team: home }, { homeAway: 'away', team: away }] },
+      ],
+    } as never);
+
+  it('drops a fixture whose participants do not identify anyone', () => {
+    expect(withTeams({}, {})).toBeUndefined();
+    expect(withTeams({ abbreviation: '  ' }, { abbreviation: '  ' })).toBeUndefined();
+  });
+
+  it('drops a team playing itself, but keeps ESPN placeholder pairs', () => {
+    expect(
+      withTeams(
+        { abbreviation: 'MEX', displayName: 'Mexico' },
+        { abbreviation: 'MEX', displayName: 'Mexico' },
+      ),
+    ).toBeUndefined();
+    // Real ESPN knockout slots SHARE an abbreviation and differ by name.
+    expect(
+      withTeams(
+        { abbreviation: 'RD32', displayName: 'Round of 32 1 Winner' },
+        { abbreviation: 'RD32', displayName: 'Round of 32 3 Winner' },
+      ),
+    ).toBeDefined();
+  });
+
+  it('bounds standings CHILDREN, not just the rows inside them', () => {
+    // Bounding the inner list while the outer one is unbounded is not a bound.
+    const children = Array.from({ length: 200 }, () => ({
+      name: 'Group A',
+      standings: {
+        entries: Array.from({ length: 40 }, (_, i) => ({
+          team: { abbreviation: `T${i}`, displayName: `Team ${i}` },
+          stats: [{ name: 'points', value: 3 }],
+        })),
+      },
+    }));
+    const out = parseStandings({ children } as never);
+    expect(out.length).toBe(1); // deduped: "Group A" is one group, not 200
+    expect(out[0]!.rows.length).toBeLessThanOrEqual(32);
   });
 });

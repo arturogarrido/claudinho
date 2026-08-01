@@ -63,9 +63,18 @@ const EMOJI_CLUSTER = /^(?:\p{Regional_Indicator}|\p{Extended_Pictographic})/u;
 const HAS_TAG_CHARACTER = /[\u{E0020}-\u{E007F}]/u;
 
 const REGIONAL_INDICATOR = /^\p{Regional_Indicator}$/u;
-const PICTOGRAPH = /^\p{Extended_Pictographic}$/u;
-/** The only non-pictographic code points a real emoji cluster needs. */
-const EMOJI_STRUCTURAL = /^[\u{200D}\u{FE0F}]$/u;
+/**
+ * A real emoji ZWJ sequence: a pictograph, optionally presentation-selected,
+ * then zero or more ZWJ-joined pictographs.
+ *
+ * Written as the SHAPE rather than as a set of permitted code points. "Every
+ * code point is a pictograph, a ZWJ or VS16" admitted `⚽` followed by fourteen
+ * alternating ZWJ/VS16 — which is a two-symbol alphabet, so chained clusters
+ * carry a payload exactly like tag characters do. A joiner has to actually
+ * join something.
+ */
+const EMOJI_ZWJ_SEQUENCE =
+  /^\p{Extended_Pictographic}\u{FE0F}?(?:\u{200D}\p{Extended_Pictographic}\u{FE0F}?)*$/u;
 
 /** Build a subdivision-flag cluster from its ISO 3166-2 tag letters. */
 function tagFlag(code: string): string {
@@ -116,7 +125,7 @@ function isRealEmojiCluster(cluster: string): boolean {
   if (REGIONAL_INDICATOR.test(cps[0] ?? '')) {
     return cps.length === 2 && cps.every((c) => REGIONAL_INDICATOR.test(c));
   }
-  return cps.every((c) => PICTOGRAPH.test(c) || EMOJI_STRUCTURAL.test(c));
+  return EMOJI_ZWJ_SEQUENCE.test(cluster);
 }
 
 /**
@@ -134,6 +143,13 @@ export function sanitizeFeedText(value: string, max = FEED_TEXT_MAX): string {
   // caller here is handling deserialized, attacker-influenced data, anything that
   // is not already a string is treated as absent rather than coerced.
   if (typeof value !== 'string') return '';
+  // Bound the INPUT, not just the output. The loop's early exit only fires when
+  // a cluster is KEPT, so an all-rejected field (500k zero-width spaces) was
+  // scanned to the end — 169ms for one field, which defeats the hot path's work
+  // bound from the other direction. Nothing legitimate approaches this; the
+  // output can never exceed `max * 4` code points anyway. Slicing by UTF-16
+  // units may split a trailing surrogate pair, which the `Cs` filter then drops.
+  const scanned = value.length > max * 32 ? value.slice(0, max * 32) : value;
   let out = '';
   let width = 0;
   let codePoints = 0;
@@ -142,7 +158,7 @@ export function sanitizeFeedText(value: string, max = FEED_TEXT_MAX): string {
   // code points. Both budgets are enforced; the code-point ceiling is generous
   // enough that no legitimate value (a 50-flag string is ~350) can reach it.
   const maxCodePoints = max * 4;
-  for (const cluster of graphemes(value)) {
+  for (const cluster of graphemes(scanned)) {
     let piece: string;
     // A cluster longer than any real character is a payload wearing one glyph.
     // Checked BEFORE the emoji exemption, because that exemption is exactly what
@@ -177,7 +193,13 @@ export function sanitizeFeedText(value: string, max = FEED_TEXT_MAX): string {
     width += w;
     codePoints += n;
   }
-  return out;
+  // Re-check on the ASSEMBLED string. Each piece was bounded on its own, but
+  // dropping a separator between two of them can merge them into one cluster
+  // that is over the cap — the invariant is about what we EMIT, so it is
+  // verified on what we emit.
+  return [...graphemes(out)]
+    .filter((c) => [...c].length <= MAX_CLUSTER_CODE_POINTS)
+    .join('');
 }
 
 /**

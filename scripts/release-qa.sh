@@ -193,10 +193,10 @@ elif [ -f "$CORE_DIST" ]; then
 import { PolymarketProvider } from 'file://$CORE_DIST';
 const mkt = (slug, title, yes) => ({ id:slug, slug, groupItemTitle:title, sportsMarketType:'moneyline',
   outcomes:JSON.stringify(['Yes','No']), outcomePrices:JSON.stringify([String(yes),String(1-yes)]),
-  active:true, closed:false, updatedAt:'2026-07-01T15:00Z' });
+  active:true, closed:false, updatedAt:'2026-07-01T11:55Z' });
 const ev = { id:'ev', slug:'fifwc-eng-cdr-2026-07-01', title:'England vs. DR Congo',
   startTime:'2026-07-01T16:00:00Z', active:true, closed:false, seriesSlug:'soccer-fifwc',
-  sport:{sport:'fifwc'}, updatedAt:'2026-07-01T15:00Z',
+  sport:{sport:'fifwc'}, updatedAt:'2026-07-01T11:55Z',
   markets:[ mkt('x-eng','England',0.76), mkt('x-draw','Draw (England vs. DR Congo)',0.18), mkt('x-cdr','DR Congo',0.05) ] };
 const fetchImpl = async (url) => ({ ok:true, status:200, statusText:'OK',
   json: async () => (new URL(String(url)).searchParams.get('slug')==='fifwc-eng-cdr-2026-07-01' ? [ev] : []) });

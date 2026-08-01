@@ -262,6 +262,11 @@ export class PolymarketProvider implements MarketProvider {
       throw new Error(`Polymarket response too large: ${length} bytes`);
     }
     const data = (await res.json()) as unknown;
+    // One slug, one event. More than one is an answer we cannot resolve, and
+    // taking `[0]` was picking whichever the API happened to order first.
+    if (Array.isArray(data) && data.length > 1) {
+      throw new MalformedPayloadError('slug returned more than one event');
+    }
     const event = Array.isArray(data) ? data[0] : data;
     return event && typeof event === 'object' ? (event as GammaEvent) : undefined;
   }
@@ -303,7 +308,12 @@ export class PolymarketProvider implements MarketProvider {
     // `soccer-fifwc` and 90/90 active sports events, so this rejects nothing
     // real (it is absent only on non-sports events, which the exact-slug
     // comparison already excludes).
-    if (typeof event.slug !== 'string' || event.slug !== eventSlug) return undefined;
+    if (typeof event.slug !== 'string') {
+      throw new MalformedPayloadError('event states no slug');
+    }
+    // A DIFFERENT slug is a real answer ("that is not the event you asked for"),
+    // unlike an absent one, which is a shape we cannot read.
+    if (event.slug !== eventSlug) return undefined;
     // Kickoff must line up with the Claudinho fixture. `startTime` is REQUIRED:
     // absence skipped the tolerance check entirely, so an event for the wrong
     // day could still be adopted. Verified against the live Gamma API:
@@ -340,6 +350,12 @@ export class PolymarketProvider implements MarketProvider {
     const moneyline = event.markets.filter((m) => m?.sportsMarketType === 'moneyline');
     const homeMarket = pickMarket(moneyline, match.home.code, match.home.name);
     const awayMarket = pickMarket(moneyline, match.away.code, match.away.name);
+    // A DUPLICATE draw is ambiguous; ABSENT is legitimate on a two-way knockout
+    // line. `pickDraw` returns undefined for both, so the two cases have to be
+    // told apart here or an ambiguous payload passes as a clean two-way market.
+    if (moneyline.filter(isDrawMarket).length > 1) {
+      throw new MalformedPayloadError('more than one draw market');
+    }
     const drawMarket = pickDraw(moneyline);
     if (!homeMarket || !awayMarket) return undefined; // need both result legs
 
@@ -395,11 +411,20 @@ export class PolymarketProvider implements MarketProvider {
       // Taking the OLDEST hides a leg dated forward: a 2099 timestamp beside
       // current siblings simply lost the comparison and the signal read fresh.
       // A price that claims to be from the future is not a price.
-      if (Date.parse(marketAsOf) - Date.now() > FUTURE_SKEW_MS) {
+      const nowMs = (options?.now ?? this.opts.now ?? new Date()).getTime();
+      if (Date.parse(marketAsOf) - nowMs > FUTURE_SKEW_MS) {
         throw new MalformedPayloadError('market updatedAt is dated forward');
       }
       if (marketAsOf && (!asOf || Date.parse(marketAsOf) < Date.parse(asOf))) asOf = marketAsOf;
-      const liq = numberish(market.liquidityNum ?? market.liquidity);
+      // A leg whose liquidity is PRESENT but unreadable invalidates the
+      // aggregate rather than being skipped: the minimum across legs is what a
+      // `minLiquidity` floor is compared against, and quietly omitting the
+      // thinnest leg makes the book look deeper than it is.
+      const rawLiq = market.liquidityNum ?? market.liquidity;
+      const liq = numberish(rawLiq);
+      if (rawLiq != null && liq == null) {
+        throw new MalformedPayloadError('market liquidity is unreadable');
+      }
       if (liq != null) liquidity = liquidity == null ? liq : Math.min(liquidity, liq);
     }
 
@@ -607,7 +632,12 @@ function assertAllowedHost(base: string): void {
  */
 function yesPrice(market: GammaMarket): number | undefined {
   const labels = parseJsonArray(market.outcomes).map((l) => l.trim().toLowerCase());
-  const prices = parseJsonArray(market.outcomePrices).map((p) => Number(p));
+  // `Number('')` is 0, and `parseJsonArray` renders anything unreadable (null,
+  // an object) as ''. So a malformed price silently became a valid-looking 0%
+  // rather than being refused. Require a real numeric literal.
+  const raw = parseJsonArray(market.outcomePrices);
+  if (raw.some((v) => v.trim() === '' || !Number.isFinite(Number(v)))) return undefined;
+  const prices = raw.map((v) => Number(v));
   if (labels.length !== 2 || prices.length !== 2) return undefined;
   // The WHOLE binary shape, not just the slot we want. Validating only the
   // 'Yes' leg accepted `["Yes","Maybe"]` — which is not a Yes/No market, so its

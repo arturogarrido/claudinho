@@ -34,6 +34,8 @@ const MAX_EVENTS_PER_PAYLOAD = 300;
 
 /** Rows accepted per standings group. A real group is 4; this is slack, not a target. */
 const MAX_STANDINGS_ROWS = 32;
+/** Groups accepted from one standings payload. The tournament has 12. */
+const MAX_STANDINGS_GROUPS = 16;
 
 const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 /** Default competition slug (the 2026 World Cup). */
@@ -241,6 +243,14 @@ function toGoals(s?: string | number): number | undefined {
   return n !== undefined && n >= 0 && n <= MAX_GOALS ? n : undefined;
 }
 
+/** Does this competitor's team say who it is at all? */
+function identifies(t?: EspnTeam): boolean {
+  if (!t || typeof t !== 'object') return false;
+  return [t.abbreviation, t.displayName, t.shortDisplayName, t.name, t.location].some(
+    (v) => typeof v === 'string' && v.trim() !== '',
+  );
+}
+
 function toTeam(t?: EspnTeam): Team {
   // Sanitize at the feed boundary: these strings reach terminals, share cards,
   // and (via the hook) Claude's context — strip controls/ESC and cap length.
@@ -306,13 +316,23 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match | undef
   if (competitors.length !== 2) return undefined;
   const homeC = competitors.find((c) => c.homeAway === 'home');
   const awayC = competitors.find((c) => c.homeAway === 'away');
-  if (!homeC || !awayC || !homeC.team || !awayC.team) return undefined;
+  if (!homeC || !awayC) return undefined;
+  // The team object must actually IDENTIFY someone. `{}` is truthy, so requiring
+  // its presence still produced "TBD vs TBD" from two empty objects — `toTeam`
+  // falls back to 'TBD' by design, which is right for a knockout slot ESPN has
+  // not filled but wrong as an invented participant.
+  if (!identifies(homeC.team) || !identifies(awayC.team)) return undefined;
 
   const status = mapStatus(ev.status ?? comp?.status);
   const stage = stageFromSlug(ev.season?.slug);
 
   const home = toTeam(homeC?.team);
   const away = toTeam(awayC?.team);
+  // A team cannot play itself. Compared on code AND name, because ESPN's real
+  // knockout placeholders legitimately SHARE an abbreviation while differing by
+  // name — "RD32 / Round of 32 1 Winner" vs "RD32 / Round of 32 3 Winner" is a
+  // real fixture, whereas "MEX / Mexico" twice is not.
+  if (home.code === away.code && home.name === away.name) return undefined;
 
   // Group letter only applies to the group stage, and comes from the
   // authoritative standings map keyed by team code.
@@ -454,7 +474,8 @@ function entryToRow(e: EspnStandingsEntry): StandingRow {
  */
 export function parseStandings(data: EspnStandings): GroupStandings[] {
   const out: GroupStandings[] = [];
-  for (const child of data.children ?? []) {
+  const seen = new Set<string>();
+  for (const child of Array.isArray(data?.children) ? data.children : []) {
     const letter = (child.name ?? child.abbreviation ?? '')
       .match(/Group\s+([A-L])/i)?.[1]
       ?.toUpperCase();
@@ -478,6 +499,14 @@ export function parseStandings(data: EspnStandings): GroupStandings[] {
     // most 4 teams; capping the table COUNT downstream was a no-op (there are 12
     // groups) while the rows inside each table stayed unbounded, which is what
     // actually carries the bytes into model context.
+    //
+    // The CHILDREN need the same bound, and for the same reason I keep having to
+    // learn: bounding the inner list while the outer one is unbounded is not a
+    // bound. A hostile feed returning "Group A" 200 times produced 200 tables
+    // and 6,400 rows. Groups are also DEDUPED — twelve letters exist, and a
+    // repeated one is a duplicate table, not a new group.
+    if (out.length >= MAX_STANDINGS_GROUPS || seen.has(letter)) continue;
+    seen.add(letter);
     out.push({ group: letter, rows: ranked.slice(0, MAX_STANDINGS_ROWS).map((x) => x.row) });
   }
   out.sort((a, b) => a.group.localeCompare(b.group));

@@ -701,3 +701,30 @@ describe('property: nothing invisible survives INSIDE an emoji cluster either', 
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Reviewer round 10. The emoji grammar said "every code point is a pictograph,
+// a ZWJ or VS16" — but ZWJ and VS16 are a two-symbol alphabet, so a joiner that
+// joins nothing is still a payload. The shape has to be the shape.
+// ---------------------------------------------------------------------------
+describe('property: joiners must actually join, and work is bounded on INPUT', () => {
+  it('refuses a cluster of joiners and selectors carried by one pictograph', () => {
+    const bits = '\u{200D}\u{FE0F}\u{200D}\u{FE0F}\u{200D}\u{FE0F}\u{200D}';
+    expect(sanitizeFeedText(`⚽${bits}⚽${bits}`)).toBe('');
+  });
+
+  it('keeps a real ZWJ sequence and a real presentation selector', () => {
+    for (const s of ['\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}', '🏳️', '⚽', '🇲🇽']) {
+      expect(sanitizeFeedText(s), s).toBe(s);
+    }
+  });
+
+  it('does not scan an all-rejected field to the end', () => {
+    // The loop's early exit only fires when a cluster is KEPT, so 500k
+    // zero-width spaces were scanned in full: 169ms for one field, which
+    // defeats the hot path's work bound from the other direction.
+    const t = process.hrtime.bigint();
+    sanitizeFeedText('​'.repeat(500_000));
+    expect(Number(process.hrtime.bigint() - t) / 1e6).toBeLessThan(50);
+  });
+});

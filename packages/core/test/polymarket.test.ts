@@ -139,12 +139,12 @@ describe('PolymarketProvider — slug derivation', () => {
         slug: 'fifwc-eng-cdr-2026-07-01',
         title: 'England vs. DR Congo',
         startTime: '2026-07-01T16:00:00Z',
-        updatedAt: '2026-07-01T15:00:00Z',
+        updatedAt: '2026-07-01T11:55:00Z',
       },
       [
-        market('eng', 'England', 0.76, { updatedAt: '2026-07-01T15:00:00Z' }),
-        market('draw', 'Draw (England vs. DR Congo)', 0.18, { updatedAt: '2026-07-01T15:00:00Z' }),
-        market('cdr', 'DR Congo', 0.05, { updatedAt: '2026-07-01T15:00:00Z' }),
+        market('eng', 'England', 0.76, { updatedAt: '2026-07-01T11:55:00Z' }),
+        market('draw', 'Draw (England vs. DR Congo)', 0.18, { updatedAt: '2026-07-01T11:55:00Z' }),
+        market('cdr', 'DR Congo', 0.05, { updatedAt: '2026-07-01T11:55:00Z' }),
       ],
     );
     const p = new PolymarketProvider({
@@ -173,12 +173,12 @@ describe('PolymarketProvider — slug derivation', () => {
         slug: 'fifwc-nld-swe-2026-06-20',
         title: 'Netherlands vs. Sweden',
         startTime: '2026-06-20T16:00:00Z',
-        updatedAt: '2026-06-20T15:00:00Z',
+        updatedAt: '2026-06-20T11:55:00Z',
       },
       [
-        market('nld', 'Netherlands', 0.6, { updatedAt: '2026-06-20T15:00:00Z' }),
-        market('draw', 'Draw (Netherlands vs. Sweden)', 0.25, { updatedAt: '2026-06-20T15:00:00Z' }),
-        market('swe', 'Sweden', 0.15, { updatedAt: '2026-06-20T15:00:00Z' }),
+        market('nld', 'Netherlands', 0.6, { updatedAt: '2026-06-20T11:55:00Z' }),
+        market('draw', 'Draw (Netherlands vs. Sweden)', 0.25, { updatedAt: '2026-06-20T11:55:00Z' }),
+        market('swe', 'Sweden', 0.15, { updatedAt: '2026-06-20T11:55:00Z' }),
       ],
     );
     const p = new PolymarketProvider({

@@ -364,6 +364,8 @@ export async function toolGetStandings(
   }
 
   let text = shaped.map((t) => standingsTable(t.group, t.standings)).join('\n\n');
+  // Stated, not silent — the same rule the match lists follow.
+  text += truncationNote(tables.length, shaped.length);
   if (degraded) text += '\n\n(Live standings unavailable — showing the group roster.)';
   return {
     text: withDisclaimer(text, source, args.lang),
@@ -562,6 +564,11 @@ export async function toolGetMarketSignal(
     data: {
       date,
       informationalOnly: true,
+      // Self-describing: the prose says it was truncated, and so does the
+      // structured payload — a consumer reading only `data` could not otherwise
+      // tell 40 signals from all of them.
+      count: all.length,
+      truncated: all.length > shown.length,
       signals: shown.map(({ signal }) => marketData(signal)),
     },
   };
@@ -614,6 +621,8 @@ function shareResult(
   team: string | undefined,
   input: ShareSnippetInput,
   options: ShareSnippetOptions,
+  /** Records BEFORE capping, so the payload can say what it dropped. */
+  total = input.matches.length,
 ): ToolResult {
   const snippet = formatShareSnippet(input, options);
   return {
@@ -631,6 +640,8 @@ function shareResult(
       informationalOnly: true,
       style: options.style ?? 'social',
       snippet,
+      count: total,
+      truncated: total > input.matches.length,
       matches: input.matches,
       marketSignals: Object.fromEntries(
         [...(input.marketSignals ?? new Map<string, MarketSignal>())].map(([id, s]) => [
@@ -680,6 +691,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         locale: args.lang,
       },
       { ...options, includeMarkets: false },
+      matches.length,
     );
   }
 
@@ -689,7 +701,10 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     const { tables, degraded, source } = await getStandings(resolveAdapter(args), group);
     const snippet = formatShareTable(
       {
-        tables,
+        // Capped like the structured payload beside it. Bounding `data.tables`
+        // while the rendered SNIPPET came from the full list meant the surface a
+        // reader actually sees was the unbounded one.
+        tables: capRecords(tables),
         // Degraded ⇒ static roster, no live provider: don't attribute one, and
         // surface the not-live notice (the card gets pasted publicly).
         source: degraded ? undefined : source,
@@ -846,5 +861,6 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       locale: args.lang,
     },
     options,
+    todays.length,
   );
 }
