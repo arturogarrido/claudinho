@@ -121,7 +121,20 @@ export function humanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): stri
     width += w;
     points += cps;
   }
-  return out.trim();
+  // NORMALIZE AGAIN, because this function's own filtering can change what
+  // composes. The input is normalized first, but a dropped character can sit
+  // BETWEEN a base and its combining mark — "Me" + U+00AD + U+0301 + "xico"
+  // normalizes with the soft hyphen still separating them, so nothing composes;
+  // removing it then leaves a decomposed "e" + acute. Feeding that back in
+  // composes it to "é", so sealing was not idempotent and the live and cache
+  // paths produced byte-different output for the same fixture — breaking the
+  // one property this whole boundary exists to provide. NFC is idempotent, so
+  // running it on the RESULT closes the loop.
+  try {
+    return out.normalize('NFC').trim();
+  } catch {
+    return out.trim();
+  }
 }
 
 /**

@@ -79,6 +79,18 @@ function liveMatches(): Match[] {
         { homeAway: 'away', team: { id: '2', abbreviation: 'RD32', displayName: 'Round of 32 3 Winner' } },
       ],
     }),
+    // A DROPPED character sitting between a base and its combining mark. This
+    // is the shape that broke idempotence: NFC runs on the input, so the soft
+    // hyphen keeps "e" and U+0301 apart and nothing composes; removing it then
+    // leaves a DECOMPOSED "e"+acute, which composes to "é" on the next pass.
+    // Live and cache therefore emitted byte-different output for one fixture.
+    espnEvent({}, {
+      venue: { fullName: 'Estadio Me\u00AD\u0301xico', address: { city: 'Ciudad de Me\u00AD\u0301xico' } },
+      competitors: [
+        { homeAway: 'home', team: { id: '203', abbreviation: 'MEX', displayName: 'Me\u00AD\u0301xico' } },
+        { homeAway: 'away', team: { id: '467', abbreviation: 'RSA', displayName: 'South Africa' } },
+      ],
+    }),
     // Penalty shootout, plus in-match events.
     espnEvent({
       events: [{ type: 'GOAL', minute: 61, teamCode: 'MEX', player: 'Raúl Jiménez' }],
@@ -94,7 +106,15 @@ describe('a Match survives the cache round trip unchanged', () => {
   const live = liveMatches();
 
   it('has fixtures to check', () => {
-    expect(live.length).toBeGreaterThanOrEqual(4);
+    expect(live.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('every label is already in normal form — a second pass changes nothing', () => {
+    for (const m of live) {
+      for (const text of [m.venue, m.city ?? '', m.country ?? '', m.home.name, m.away.name]) {
+        expect(text.normalize('NFC'), JSON.stringify(text)).toBe(text);
+      }
+    }
   });
 
   it('the cache path returns exactly what the live path produced', () => {
