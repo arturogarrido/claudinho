@@ -11,7 +11,9 @@ import {
   formatShareBracket,
   formatBracketList,
   formatBracketTree,
+  cacheableKeys,
   getMarketSignals,
+  resolvedValues,
   getMatchById,
   hasSaneDistribution,
   isFinished,
@@ -122,11 +124,11 @@ async function marketSignalsFor(
   matches: Match[],
   opts: MarketFetchOpts = {},
 ): Promise<Map<string, MarketSignal>> {
-  if (ctx.marketProvider) return (await getMarketSignals(ctx.marketProvider, matches, opts)).signals;
+  if (ctx.marketProvider) return resolvedValues(await getMarketSignals(ctx.marketProvider, matches, opts));
   const source = resolveMarketSource();
   // Dev/demo/no-op providers ('fake'/'none') are free — skip the on-disk cache.
   if (source !== 'polymarket') {
-    return (await getMarketSignals(makeMarketProvider(source), matches, opts)).signals;
+    return resolvedValues(await getMarketSignals(makeMarketProvider(source), matches, opts));
   }
   const competition = resolveCompetition();
   const { signals: cached, checked: cachedIds } = readMarketCache('polymarket', competition);
@@ -146,14 +148,13 @@ async function marketSignalsFor(
     miss.push(m);
   }
   if (miss.length > 0) {
-    const { signals: fetched, checked } = await getMarketSignals(
-      makeMarketProvider('polymarket'),
-      miss,
-      opts,
-    );
-    // Negative-cache only DEFINITIVELY-checked ids; errored/deadline-skipped
-    // matches are omitted so a transient failure doesn't suppress a real signal.
-    writeMarketCache('polymarket', competition, [...checked], fetched);
+    const batch = await getMarketSignals(makeMarketProvider('polymarket'), miss, opts);
+    const fetched = resolvedValues(batch);
+    // Negative-cache only ids whose verdict may be REMEMBERED (valid or a
+    // definitive none). Malformed, ambiguous and deadline-skipped matches are
+    // omitted, so neither a transient failure nor a payload we could not read
+    // suppresses the refetch that would produce a real signal.
+    writeMarketCache('polymarket', competition, [...cacheableKeys(batch)], fetched);
     for (const [id, s] of fetched) result.set(id, s);
   }
   return result;

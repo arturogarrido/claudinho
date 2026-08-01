@@ -1,11 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+
   FakeMarketProvider,
   makeMarketProvider,
   type Match,
   type MarketMappingTable,
   PolymarketProvider,
 } from '../src/index';
+
+import { cacheableKeys, resolvedValues } from '../src/trust';
+import type { MarketSignal } from '../src/markets/types';
+import type { BatchResolution } from '../src/trust';
+/** The old {signals, checked} view, so these assertions keep their meaning. */
+const view = (b: BatchResolution<MarketSignal>) => ({
+  signals: resolvedValues(b),
+  checked: cacheableKeys(b),
+});
 
 function match(over: Partial<Match> = {}): Match {
   return {
@@ -209,7 +219,7 @@ describe('PolymarketProvider — slug derivation', () => {
     });
     const p = new PolymarketProvider({ fetchImpl: slowEmpty, now: new Date('2026-07-01T12:00:00Z') });
     const start = Date.now();
-    const { signals, checked } = await p.findSignals([engCod], { deadlineMs: 10 });
+    const { signals, checked } = view(await p.findSignals([engCod], { deadlineMs: 10 }));
     const elapsed = Date.now() - start;
     expect(signals.size).toBe(0);
     expect(checked.has('760495')).toBe(false); // deadline-aborted → retried, not cached
@@ -427,7 +437,7 @@ describe('PolymarketProvider — an ABSENT field must reject, not skip the gate'
       { startTime: 'whenever' },
     ]) {
       const provider = derived(fetchFor(SLUG, event(bad)));
-      const { signals, checked } = await provider.findSignals([match()]);
+      const { signals, checked } = view(await provider.findSignals([match()]));
       expect(signals.size, JSON.stringify(bad)).toBe(0);
       expect(checked.has(match().id), JSON.stringify(bad)).toBe(false);
     }
@@ -441,7 +451,7 @@ describe('PolymarketProvider — an ABSENT field must reject, not skip the gate'
       market('draw', 'Draw', 0.205, { sportsMarketType: 'soccer_exact_score' }),
       market('rsa', 'South Africa', 0.105, { sportsMarketType: 'soccer_exact_score' }),
     ]);
-    const { signals, checked } = await derived(fetchFor(SLUG, notMoneyline)).findSignals([match()]);
+    const { signals, checked } = view(await derived(fetchFor(SLUG, notMoneyline)).findSignals([match()]));
     expect(signals.size).toBe(0);
     expect(checked.has(match().id)).toBe(true);
   });
@@ -451,7 +461,7 @@ describe('PolymarketProvider — an ABSENT field must reject, not skip the gate'
     // escaped findSignals and took every other fixture's signal with it.
     const broken = match({ id: 'broken', kickoff: undefined as unknown as string });
     const provider = derived(fetchAny(event()));
-    const { signals } = await provider.findSignals([broken, match()]);
+    const { signals } = view(await provider.findSignals([broken, match()]));
     expect(signals.has(match().id)).toBe(true);
   });
 });
@@ -490,14 +500,18 @@ describe('PolymarketProvider — batch + deadline + checked semantics', () => {
     }) as unknown as typeof fetch;
     const p = new PolymarketProvider({ fetchImpl: counting, now: NOW });
     const out = await p.findSignals([match(), match({ id: 'b' })], { deadlineMs: 0 });
-    expect(out.signals.size).toBe(0);
+    expect(view(out).signals.size).toBe(0);
+    // Nothing was asked, so the batch did not finish — and an unasked question
+    // must not be filed as a negative answer.
+    expect(out.complete).toBe(false);
+    expect(view(out).checked.size).toBe(0);
     expect(calls).toBe(0);
   });
 
   it('returns signals + the set of resolvable matches', async () => {
     const p = derived(fetchFor(SLUG, event()));
     const other = match({ id: 'x', home: { code: 'AAA', name: 'A', flag: '' }, away: { code: 'BBB', name: 'B', flag: '' } });
-    const { signals, checked } = await p.findSignals([match(), other]);
+    const { signals, checked } = view(await p.findSignals([match(), other]));
     expect(signals.size).toBe(1);
     expect(signals.get('760415')?.source).toBe('polymarket');
     expect(checked.has('760415')).toBe(true);
@@ -506,18 +520,18 @@ describe('PolymarketProvider — batch + deadline + checked semantics', () => {
 
   it('marks no-event / 404 / unmappable as checked, but a provider error as NOT checked', async () => {
     const empty: typeof fetch = (async () => ({ ok: true, status: 200, statusText: 'OK', json: async () => [] })) as unknown as typeof fetch;
-    expect((await derived(empty).findSignals([match()])).checked.has('760415')).toBe(true);
+    expect((view(await derived(empty).findSignals([match()]))).checked.has('760415')).toBe(true);
 
     const notFound: typeof fetch = (async () => ({ ok: false, status: 404, statusText: 'NF', json: async () => ({}) })) as unknown as typeof fetch;
-    expect((await derived(notFound).findSignals([match()])).checked.has('760415')).toBe(true);
+    expect((view(await derived(notFound).findSignals([match()]))).checked.has('760415')).toBe(true);
 
     const boom: typeof fetch = (async () => {
       throw new Error('dns');
     }) as unknown as typeof fetch;
-    expect((await derived(boom).findSignals([match()])).checked.has('760415')).toBe(false);
+    expect((view(await derived(boom).findSignals([match()]))).checked.has('760415')).toBe(false);
 
     const tbd = match({ id: 'tbd1', home: { code: 'TBD', name: 'TBD', flag: '' } });
-    expect((await derived(boom).findSignals([tbd])).checked.has('tbd1')).toBe(true);
+    expect((view(await derived(boom).findSignals([tbd]))).checked.has('tbd1')).toBe(true);
   });
 });
 
@@ -565,7 +579,7 @@ describe('PolymarketProvider — fetch hardening (size cap + no redirects)', () 
     // Treated as a provider error → NOT "checked", so it's retried, never
     // negative-cached as a definitive "no market".
     const r = await p.findSignals([match()]);
-    expect(r.checked.has(match().id)).toBe(false);
+    expect(view(r).checked.has(match().id)).toBe(false);
   });
 
   it("sends redirect:'error' so a redirect can't sidestep the host allow-list", async () => {

@@ -162,3 +162,23 @@ export type {
 } from './bracket/types';
 export { BRACKET_STAGE_ORDER } from './bracket/types';
 export type { BracketFormatOpts, ShareBracketInput, ShareBracketOptions } from './bracket/format';
+
+// The trust boundary. Only the batch vocabulary is re-exported: the parse
+// constructors are for adapters and cache readers inside core, not for
+// surfaces. (`export *` would also collide with sanitize's canonicalTimestamp.)
+export {
+  type BatchResolution,
+  type ParseResult,
+  type Selection,
+  ambiguous,
+  cacheableKeys,
+  definitiveNone,
+  emptyBatch,
+  isCacheable,
+  malformed,
+  parsedValue,
+  resolvedValues,
+  selectOne,
+  unresolved,
+  valid,
+} from './trust';

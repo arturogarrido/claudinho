@@ -1,3 +1,4 @@
+import type { BatchResolution } from '../trust/batch';
 /**
  * Prediction-market "signal" model — a *sidecar* to Match, deliberately never
  * embedded in it. Market data has different freshness, reliability, failure,
@@ -87,16 +88,16 @@ export interface MarketSignalOptions {
 }
 
 /**
- * Result of a batch lookup. `checked` is the set of match ids the provider
- * DEFINITIVELY resolved (reached the source and found no usable market, or the
- * fixture is unmappable) — distinct from matches that errored or were skipped by
- * the deadline. Callers negative-cache only `checked` ids, so a transient
- * provider/network failure never suppresses a valid signal.
+ * Result of a batch lookup: every match id's VERDICT, plus whether the batch
+ * finished. Read the signals with `resolvedValues` and the negative-cacheable
+ * ids with `cacheableKeys`.
+ *
+ * This replaces a `checked: Set<string>` that was maintained beside the results
+ * instead of derived from them — so an ambiguous or unreadable payload could be
+ * recorded as the definitive fact "this fixture has no market", suppressing the
+ * refetch for the whole TTL.
  */
-export interface MarketSignalsResult {
-  signals: Map<string, MarketSignal>;
-  checked: Set<string>;
-}
+export type MarketSignalsResult = BatchResolution<MarketSignal>;
 
 /**
  * A prediction-market provider. A *separate* swap-point from ProviderAdapter
@@ -107,6 +108,6 @@ export interface MarketProvider {
   readonly name: string;
   /** Signal for one match, or undefined when nothing maps cleanly. */
   findSignal(match: Match, options?: MarketSignalOptions): Promise<MarketSignal | undefined>;
-  /** Batch form; signals plus the set of definitively-checked ids. */
+  /** Batch form; a verdict per match id (see MarketSignalsResult). */
   findSignals(matches: Match[], options?: MarketSignalOptions): Promise<MarketSignalsResult>;
 }

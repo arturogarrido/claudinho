@@ -15,7 +15,9 @@ import {
   getBracket,
   getLiveMatches,
   getMarketSignal,
+  cacheableKeys,
   getMarketSignals,
+  resolvedValues,
   getMatchById,
   getMatchesForDate,
   getNextFixtureForTeam,
@@ -185,11 +187,12 @@ async function cachedMarketSignals(
   args: CommonOpts,
   matches: Match[],
 ): Promise<Map<string, MarketSignal>> {
-  if (args.marketProvider) return (await getMarketSignals(args.marketProvider, matches)).signals;
+  if (args.marketProvider) return resolvedValues(await getMarketSignals(args.marketProvider, matches));
   const source = resolveMarketSource();
   if (source !== 'polymarket') {
-    return (await getMarketSignals(makeMarketProvider(source), matches, DEFAULT_ON_MARKET_OPTS))
-      .signals;
+    return resolvedValues(
+      await getMarketSignals(makeMarketProvider(source), matches, DEFAULT_ON_MARKET_OPTS),
+    );
   }
   const competition = resolveCompetition();
   const now = Date.now();
@@ -205,13 +208,15 @@ async function cachedMarketSignals(
     }
   }
   if (miss.length > 0) {
-    const { signals: fetched, checked } = await getMarketSignals(
+    const batch = await getMarketSignals(
       makeMarketProvider('polymarket'),
       miss,
       DEFAULT_ON_MARKET_OPTS,
     );
-    // Cache only DEFINITIVELY-checked ids; errored/skipped matches are retried.
-    for (const id of checked) {
+    const fetched = resolvedValues(batch);
+    // Cache only ids whose verdict may be remembered; malformed, ambiguous and
+    // deadline-skipped matches are retried rather than cached as "no market".
+    for (const id of cacheableKeys(batch)) {
       marketMem.set(memKey(competition, id), { at: now, signal: fetched.get(id) ?? null });
     }
     for (const [id, s] of fetched) result.set(id, s);
@@ -545,7 +550,7 @@ export async function toolGetMarketSignal(
   const date = args.date ?? localDate(now.toISOString(), args.tz);
   const { matches } = await getMatchesForDate(resolveAdapter(args), date);
   const todays = fixturesByDate(date, matches, args.tz).filter((m) => marketRelevant(m, now));
-  const { signals } = await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS);
+  const signals = resolvedValues(await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS));
   const all = todays
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
     .filter(

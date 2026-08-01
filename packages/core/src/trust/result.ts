@@ -16,7 +16,15 @@ export type ParseResult<T> =
   /** We could not read the payload. A fact about US, not about the fixture. NOT cacheable. */
   | { readonly kind: 'malformed'; readonly reason: string }
   /** The payload admits more than one reading. Never guess between them. NOT cacheable. */
-  | { readonly kind: 'ambiguous'; readonly reason: string };
+  | { readonly kind: 'ambiguous'; readonly reason: string }
+  /**
+   * We never reached a verdict — the deadline expired, the budget ran out.
+   * A fact about the CLOCK, not about the fixture. NOT cacheable.
+   *
+   * This kind exists because the alternative was folding a timeout into
+   * `malformed`, which is the same conflation this type was written to end.
+   */
+  | { readonly kind: 'unresolved'; readonly reason: string };
 
 export const valid = <T>(value: T): ParseResult<T> => ({ kind: 'valid', value });
 export const definitiveNone = <T>(reason: string): ParseResult<T> => ({
@@ -25,6 +33,7 @@ export const definitiveNone = <T>(reason: string): ParseResult<T> => ({
 });
 export const malformed = <T>(reason: string): ParseResult<T> => ({ kind: 'malformed', reason });
 export const ambiguous = <T>(reason: string): ParseResult<T> => ({ kind: 'ambiguous', reason });
+export const unresolved = <T>(reason: string): ParseResult<T> => ({ kind: 'unresolved', reason });
 
 /** The value, or undefined — for callers that genuinely do not care why. */
 export function parsedValue<T>(r: ParseResult<T>): T | undefined {

@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdShare, InputError } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
+import { definitiveNone, valid } from '@claudinho/core';
 
 /** Offline match adapter → commands fall back to the bundled static schedule. */
 const fakeAdapter: ProviderAdapter = {
@@ -72,14 +73,17 @@ function provider(make?: (m: Match) => MarketSignal | undefined): MarketProvider
   return {
     name: 'fixed',
     findSignal: async (m) => make?.(m),
-    findSignals: async (matches) => {
-      const signals = new Map<string, MarketSignal>();
-      for (const m of matches) {
-        const s = make?.(m);
-        if (s) signals.set(m.id, s);
-      }
-      return { signals, checked: new Set(matches.map((m) => m.id)) };
-    },
+    findSignals: async (matches) => ({
+      // A verdict per match: the signal when this fake makes one, an explicit
+      // definitive none when it does not.
+      results: new Map(
+        matches.map((m) => {
+          const s = make?.(m);
+          return [m.id, s ? valid(s) : definitiveNone('no signal for this fixture')] as const;
+        }),
+      ),
+      complete: true,
+    }),
   };
 }
 
