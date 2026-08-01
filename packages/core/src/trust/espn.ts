@@ -23,7 +23,7 @@ import { nationToFlag } from '../flags';
 import { isFinished } from '../normalize';
 import type { GroupStandings, StandingRow } from '../standings';
 import type { Match, Stage, Status, Team } from '../types';
-import { type BoundedList, bounded, takeBounded } from './bounded';
+import { type BoundedList, takeBounded } from './bounded';
 import { definitiveNone, malformed, type ParseResult, valid } from './result';
 import { MAX_GOALS, MAX_MINUTE, TEAM_CODE_COLUMNS, sealMatch } from './match';
 import {
@@ -285,11 +285,23 @@ export function parseEspnEvent(raw: unknown, ctx: MapContext = {}): ParseResult<
  * so an empty day is distinguishable from a day we could not parse.
  */
 export function parseEspnEvents(raw: unknown, ctx: MapContext = {}): BoundedList<Match> {
-  const events = takeBounded<unknown>((raw as { events?: unknown })?.events, MAX_EVENTS);
-  const parsed = events.map((e) => parseEspnEvent(e, ctx));
-  const matches = parsed.flatMap((r) => (r.kind === 'valid' ? [r.value] : []));
-  const unreadable = parsed.some((r) => r.kind === 'malformed');
-  return { ...bounded(matches, MAX_EVENTS, !unreadable), total: matches.length };
+  // The TRUE payload size, read BEFORE slicing. Taken afterwards it can only
+  // ever say "nothing was dropped" — the same defect `parseCachedMatches` had,
+  // which I fixed there and did not grep for here.
+  const all = (raw as { events?: unknown })?.events;
+  const total = Array.isArray(all) ? all.length : 0;
+  const considered = takeBounded<unknown>(all, MAX_EVENTS);
+  const parsed = considered.map((e) => parseEspnEvent(e, ctx));
+  const items = parsed.flatMap((r) => (r.kind === 'valid' ? [r.value] : []));
+  return {
+    items,
+    total,
+    shown: items.length,
+    truncated: total > considered.length,
+    // Some record was unreadable, or the window did not cover the payload —
+    // either way this is not a complete account of what the provider sent.
+    complete: items.length === total,
+  };
 }
 
 // ---- standings ----
@@ -336,10 +348,14 @@ function entryToRow(e: RawEntry): ParseResult<StandingRow & { providerId?: strin
  * and every one is the same mistake: validating after doing the work.
  */
 export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
-  const children = takeBounded<Record<string, unknown>>(
-    (raw as { children?: unknown })?.children,
-    MAX_GROUPS * 4,
-  );
+  // Children are per-group entries that may repeat a group name, so `total` is
+  // distinct GROUPS, not array length — but the raw length still decides whether
+  // we looked at all of them. Read before slicing, for the same reason as
+  // parseEspnEvents: a count taken after the slice can only report success.
+  const rawChildren = (raw as { children?: unknown })?.children;
+  const rawCount = Array.isArray(rawChildren) ? rawChildren.length : 0;
+  const children = takeBounded<Record<string, unknown>>(rawChildren, MAX_GROUPS * 4);
+  const sawAllChildren = rawCount === children.length;
   const out: GroupStandings[] = [];
   const seenGroups = new Set<string>();
 
@@ -377,5 +393,12 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
     });
     out.push({ group: letter, rows: ranked.map((x) => x.row) });
   }
-  return bounded(out, MAX_GROUPS);
+  return {
+    items: out,
+    total: out.length,
+    shown: out.length,
+    // We stopped early if the child list was cut, or if we filled the group cap.
+    truncated: !sawAllChildren || out.length >= MAX_GROUPS,
+    complete: sawAllChildren,
+  };
 }

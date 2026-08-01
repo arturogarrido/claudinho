@@ -128,6 +128,21 @@ describe('parseEspnEvents / parseEspnStandings — bounded before the work', () 
     const list = parseEspnEvents({ events: [EV, { ...EV, id: 'PROSE_ID' }] });
     expect(list.items.length).toBe(1);
     expect(list.complete).toBe(false); // one malformed -> we did not read it all
+    // `total` is what the PROVIDER sent, not what survived. Taken after the
+    // filter it could only ever equal `shown`, and a partial day would report
+    // itself as a complete one.
+    expect(list.total).toBe(2);
+    expect(list.shown).toBe(1);
+  });
+
+  it('reports truncation against the TRUE payload size, not the sliced one', () => {
+    const list = parseEspnEvents({
+      events: Array.from({ length: 5000 }, (_, i) => ({ ...EV, id: String(900000 + i) })),
+    });
+    expect(list.total).toBe(5000);
+    expect(list.shown).toBe(300);
+    expect(list.truncated).toBe(true);
+    expect(list.complete).toBe(false);
   });
 
   it('one malformed record cannot remove the valid ones', () => {

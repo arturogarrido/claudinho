@@ -102,6 +102,13 @@ export function mapEspnEvent(ev: unknown, ctx: MapContext = {}): Match | undefin
 
 /** Project an ESPN standings payload onto group tables. Exported for tests. */
 export function parseStandings(data: unknown): GroupStandings[] {
+  // KNOWN GAP: `ProviderAdapter` returns a bare array, so the boundary's
+  // `complete`/`truncated` are computed and then dropped here. A payload we
+  // could only partly read therefore renders as a complete one — the same as
+  // before this refactor, which filtered unreadable records silently, but the
+  // information now EXISTS and is discarded. Surfacing it means widening
+  // `ProviderAdapter` to carry it into `degraded`, which changes when users see
+  // "unavailable" and is a product decision, not a refactor. Deliberately left.
   return [...parseEspnStandings(data).items];
 }
 
@@ -236,6 +243,8 @@ export class EspnAdapter implements ProviderAdapter {
     // parsing anything and drops what it cannot read. The adapter no longer
     // decides any of that — which is the point, since every duplicated rule was
     // a place for the two copies to drift.
+    // Same known gap as `fetchStandings` above: `complete` is computed and
+    // dropped, because the adapter contract is a bare array.
     return [...parseEspnEvents(data, { groupByTeam }).items];
   }
 
