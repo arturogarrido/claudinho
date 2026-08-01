@@ -172,6 +172,18 @@ const MAX_LIVE_CONSIDERED = 64;
  * said "+56"). Reporting a number that is quietly wrong is the same class of
  * problem as losing the marker entirely.
  */
+/**
+ * How many records the cache OFFERS as live, before any of them is read.
+ *
+ * Distinct from {@link liveMatchCountFromCache}, which applies a cheap shape
+ * test: this one answers "did we stop early?", the only question for which the
+ * unsealed count is the right input.
+ */
+export function liveCacheRecordCount(state: CacheState | undefined, nowMs = Date.now()): number {
+  const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
+  return fresh && Array.isArray(state?.live) ? state.live.length : 0;
+}
+
 export function liveMatchCountFromCache(
   state: CacheState | undefined,
   nowMs = Date.now(),
@@ -284,9 +296,15 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
     // contract is that it is one short line in the user's prompt.
     const max = opts.max && opts.max > 0 ? Math.min(opts.max, DEFAULT_MAX_SEGMENTS) : DEFAULT_MAX_SEGMENTS;
     const shown = live.slice(0, max);
-    // The TRUE total, not the post-cap one — `live` has already been bounded to
-    // MAX_LIVE_CONSIDERED, so counting from it understated the overflow.
-    const overflow = Math.max(liveMatchCountFromCache(state, nowMs), live.length) - shown.length;
+    // "+N" is a claim about MATCHES, and a record we read and could not use is
+    // not one. Two honest sources, and only two:
+    //   - matches we sealed but did not display (the segment cap), and
+    //   - records past MAX_LIVE_CONSIDERED that we never examined at all.
+    // A record we DID examine and rejected belongs to neither. Counting anything
+    // merely shaped like a live match put "+99" beside a single real fixture on
+    // a cache holding 99 junk entries — a lie told in the user's prompt.
+    const unexamined = Math.max(0, liveCacheRecordCount(state, nowMs) - MAX_LIVE_CONSIDERED);
+    const overflow = live.length - shown.length + unexamined;
     const marker = overflow > 0 ? ` +${overflow}` : '';
     // The overflow marker is the honest part of this line — it is what says the
     // list is incomplete — so it must survive the width cap. Truncating the

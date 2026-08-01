@@ -75,3 +75,43 @@ describe('a poisoned cache cannot make the statusline slow', () => {
     expect(line).not.toContain('\u{FFF0}');
   });
 });
+
+describe('the "+N" marker counts matches, not junk that looks like one', () => {
+  const NOW = new Date('2026-06-20T20:00:00Z');
+  const real = {
+    id: '700123', stage: 'GROUP', group: 'A', kickoff: '2026-06-20T19:00:00Z',
+    venue: 'Estadio Azteca', home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+    away: { code: 'RSA', name: 'South Africa', flag: '🇿🇦' },
+    score: { home: 1, away: 0 }, minute: 55, status: 'LIVE', updatedAt: '2026-06-20T19:59:00Z',
+  };
+  /** Passes the cheap shape test (LIVE + two codes) but cannot be sealed. */
+  const junk = { status: 'LIVE', home: { code: 'AAA' }, away: { code: 'BBB' } };
+  const cache = (live: unknown[]) =>
+    ({ version: 2, updatedAt: '2026-06-20T19:59:30Z', live, degraded: false,
+       source: 'espn', competition: 'fifa.world' }) as never;
+
+  it('does not advertise records it EXAMINED and rejected as hidden matches', () => {
+    // 60 junk records: under the examine cap, so every one of them was read and
+    // refused. None is a hidden match. Previously this rendered "+60".
+    const line = renderPrompt(cache([real, ...Array.from({ length: 60 }, () => ({ ...junk }))]), {
+      now: NOW,
+    });
+    expect(line).toContain('1–0');
+    expect(line).not.toMatch(/\+\d+/);
+  });
+
+  it('DOES report records it never examined — stopping early is not silence', () => {
+    // 200 records: we examine 64 and stop, so 136 are genuinely unknown and the
+    // line must not read as a complete account of what is live.
+    const line = renderPrompt(cache([real, ...Array.from({ length: 199 }, () => ({ ...junk }))]), {
+      now: NOW,
+    });
+    expect(line).toMatch(/\+136\b/);
+  });
+
+  it('still reports overflow when there are genuinely more live matches', () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ ...real, id: String(700200 + i) }));
+    const line = renderPrompt(cache(many), { now: NOW });
+    expect(line).toMatch(/\+\d+/); // more real matches than segments shown
+  });
+});
