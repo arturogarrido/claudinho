@@ -15,7 +15,18 @@ export type ParseResult<T> =
   | { readonly kind: 'definitive-none'; readonly reason: string }
   /** We could not read the payload. A fact about US, not about the fixture. NOT cacheable. */
   | { readonly kind: 'malformed'; readonly reason: string }
-  /** The payload admits more than one reading. Never guess between them. NOT cacheable. */
+  /**
+   * The payload admits more than one reading. Never guess between them.
+   *
+   * CACHEABLE, unlike the two below. This is a fact about a payload we read
+   * successfully — two legs claiming the same team, an incoherent 1X2 — and it
+   * is STABLE: fetching again returns the same bytes and the same ambiguity.
+   * Treating it as non-cacheable meant re-fetching on every single command,
+   * forever, and under the default-on enrichment deadline those doomed fixtures
+   * consumed the whole budget and starved the resolvable ones behind them.
+   * A negative TTL is a bounded delay if the provider later fixes their data;
+   * a permanent refetch loop is not bounded by anything.
+   */
   | { readonly kind: 'ambiguous'; readonly reason: string }
   /**
    * We never reached a verdict — the deadline expired, the budget ran out.
@@ -41,12 +52,17 @@ export function parsedValue<T>(r: ParseResult<T>): T | undefined {
 }
 
 /**
- * May this rejection be remembered as a result?
+ * May this rejection be remembered for the length of a TTL?
  *
- * Only a definitive none. Caching "malformed" or "ambiguous" suppresses the
- * retry that would recover, and reports our own confusion as the provider's
- * answer.
+ * The line is whether we READ the payload, not whether we liked it. A
+ * definitive none and an ambiguity are both conclusions drawn from bytes we
+ * understood, and both are stable across a refetch — so remembering them is
+ * correct, and re-asking immediately just burns the request.
+ *
+ * `malformed` and `unresolved` are facts about US: a shape we could not read
+ * (which may be a provider mid-deploy) and a clock that ran out. Remembering
+ * either would suppress the retry that recovers.
  */
 export function isCacheable<T>(r: ParseResult<T>): boolean {
-  return r.kind === 'valid' || r.kind === 'definitive-none';
+  return r.kind === 'valid' || r.kind === 'definitive-none' || r.kind === 'ambiguous';
 }

@@ -25,7 +25,7 @@ import type { GroupStandings, StandingRow } from '../standings';
 import type { Match, Stage, Status, Team } from '../types';
 import { type BoundedList, takeBounded } from './bounded';
 import { definitiveNone, malformed, type ParseResult, valid } from './result';
-import { MAX_GOALS, MAX_MINUTE, TEAM_CODE_COLUMNS, sealMatch } from './match';
+import { MAX_GOALS, MAX_MINUTE, sealMatch, teamCode } from './match';
 import {
   canonicalTimestamp,
   count,
@@ -99,8 +99,7 @@ function toParticipant(raw: RawCompetitor | undefined): ParseResult<Participant>
   const names = teamNames(raw.team);
   if (names.length === 0) return malformed('competitor names no team');
   const name = names[0] as string;
-  const code = humanLabel(raw.team?.abbreviation, TEAM_CODE_COLUMNS).toUpperCase() ||
-    name.slice(0, 3).toUpperCase();
+  const code = teamCode(raw.team?.abbreviation, name);
   // The flag is GENERATED, never taken from the payload — see trust/roles.
   const team: Team = { code, name, flag: productFlag(name) };
   const providerId = opaqueId(raw.team?.id, ESPN_ID);
@@ -324,8 +323,7 @@ function entryToRow(e: RawEntry): ParseResult<StandingRow & { providerId?: strin
   const names = teamNames(e?.team);
   if (names.length === 0) return definitiveNone('standings entry names no team');
   const name = names[0] as string;
-  const code = humanLabel(e?.team?.abbreviation, TEAM_CODE_COLUMNS).toUpperCase() ||
-    name.slice(0, 3).toUpperCase();
+  const code = teamCode(e?.team?.abbreviation, name);
   return valid({
     team: { code, name, flag: productFlag(name) },
     played: statVal(e.stats, 'gamesPlayed'),

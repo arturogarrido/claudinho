@@ -20,6 +20,28 @@ import { liveMatchCountFromCache, liveMatchesFromCache } from './statusline';
  */
 const MAX_HOOK_MATCHES = 12;
 
+/**
+ * Hard ceiling on the WHOLE injected block, in code points.
+ *
+ * Every field is bounded and so is the record count, but neither bounds their
+ * SUM — twelve records whose every label sits just under its own cap produced
+ * 19.5 KB of model context. This is the surface that writes into Claude on
+ * every prompt submit, so the aggregate needs its own limit, exactly as
+ * `renderPrompt` caps the whole line rather than each segment. A real matchday
+ * block is well under 1 KB.
+ *
+ * Applied as a wrapper over the return rather than inside each branch, so a
+ * branch added later cannot forget it.
+ */
+const MAX_HOOK_CODE_POINTS = 4096;
+
+function boundContext(text: string): string {
+  const points = [...text];
+  if (points.length <= MAX_HOOK_CODE_POINTS) return text;
+  // Stated, never silent — the same rule the record cap follows.
+  return `${points.slice(0, MAX_HOOK_CODE_POINTS).join('')}\n(context truncated)`;
+}
+
 export interface HookOpts {
   /** Preferred team code (e.g. "MEX") — listed first. */
   team?: string;
@@ -93,5 +115,5 @@ export function renderHook(
   const more = overflow > 0 ? `\n(+${overflow} more not shown)` : '';
   // Labelled as live context so the model treats it as ambient info, not an
   // instruction. Kept terse to minimise token cost.
-  return `[Claudinho — live football scores right now]\n${lines}${more}`;
+  return boundContext(`[Claudinho — live football scores right now]\n${lines}${more}`);
 }

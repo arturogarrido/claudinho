@@ -13,6 +13,7 @@
  * is work not done.
  */
 import { describe, expect, it } from 'vitest';
+import { renderHook } from '../src/hook';
 import { renderPrompt } from '../src/statusline';
 
 /** Unassigned code points: every cluster is rejected, so none can short-circuit. */
@@ -113,5 +114,40 @@ describe('the "+N" marker counts matches, not junk that looks like one', () => {
     const many = Array.from({ length: 40 }, (_, i) => ({ ...real, id: String(700200 + i) }));
     const line = renderPrompt(cache(many), { now: NOW });
     expect(line).toMatch(/\+\d+/); // more real matches than segments shown
+  });
+});
+
+describe('the hook bounds the whole block it writes into model context', () => {
+  const zalgo = `A${'​' + '́'.repeat(7)}`.repeat(400);
+  const poisoned = (i: number) => ({
+    id: String(700000 + i), stage: 'GROUP', kickoff: '2026-06-11T19:00:00.000Z',
+    venue: zalgo, city: zalgo, country: zalgo,
+    home: { code: zalgo, name: zalgo }, away: { code: zalgo, name: zalgo },
+    score: { home: 1, away: 0 }, minute: 55, status: 'LIVE',
+    updatedAt: '2026-06-11T19:59:00Z',
+  });
+  const state = (live: unknown[]) =>
+    ({ version: 2, updatedAt: '2026-06-11T19:59:30Z', live, degraded: false,
+       source: 'espn', competition: 'fifa.world' }) as never;
+
+  it('caps the SUM, not just each field and the record count', () => {
+    // Every field bounded and the record count bounded still left their sum
+    // unbounded: 12 records each sitting just under its own cap produced 19.5 KB
+    // of context on every prompt submit.
+    const out = renderHook(state(Array.from({ length: 12 }, (_, i) => poisoned(i))), {
+      now: new Date('2026-06-11T20:00:00Z'),
+    });
+    expect([...out].length).toBeLessThanOrEqual(4096 + 32);
+    expect(out).toContain('(context truncated)'); // stated, never silent
+  });
+
+  it('leaves a real matchday block untouched', () => {
+    const real = {
+      ...poisoned(0), venue: 'Estadio Azteca', city: 'Mexico City', country: 'Mexico',
+      home: { code: 'MEX', name: 'Mexico' }, away: { code: 'RSA', name: 'South Africa' },
+    };
+    const out = renderHook(state([real]), { now: new Date('2026-06-11T20:00:00Z') });
+    expect(out).toContain('Mexico');
+    expect(out).not.toContain('(context truncated)');
   });
 });

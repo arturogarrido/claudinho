@@ -98,12 +98,16 @@ async function verdict(fetchImpl: typeof fetch, m = match()) {
   };
 }
 
-describe('a payload we could not resolve is never filed as "no market"', () => {
+describe('an ambiguity is remembered — it is stable, and re-asking changes nothing', () => {
   it('two markets claiming the same team is AMBIGUOUS, not a negative result', async () => {
     const twoMexico = [...LEGS, market('mex2', 'Mexico', 0.4)];
     const v = await verdict(serving([event({}, twoMexico)]));
     expect(v.kind).toBe('ambiguous');
-    expect(v.cacheable).toBe(false);
+    // Cacheable: we READ this payload fine, and fetching again returns the same
+    // bytes and the same ambiguity. Treating it as non-cacheable re-fetched the
+    // fixture on every command forever, and under the default-on deadline those
+    // doomed fixtures ate the whole budget and starved the resolvable ones.
+    expect(v.cacheable).toBe(true);
   });
 
   it('two outcome legs that are the same market is AMBIGUOUS', async () => {
@@ -114,7 +118,7 @@ describe('a payload we could not resolve is never filed as "no market"', () => {
     const collapsed = [market('mex', 'South Africa', 0.5), market('draw', 'Draw', 0.2)];
     const v = await verdict(serving([event({}, collapsed)]));
     expect(v.kind).toBe('ambiguous');
-    expect(v.cacheable).toBe(false);
+    expect(v.cacheable).toBe(true); // stable, so remembering it is correct
   });
 
   it('probabilities that do not form a 1X2 are AMBIGUOUS — we grabbed the wrong markets', async () => {
@@ -125,7 +129,15 @@ describe('a payload we could not resolve is never filed as "no market"', () => {
     ];
     const v = await verdict(serving([event({}, incoherent)]));
     expect(v.kind).toBe('ambiguous');
-    expect(v.cacheable).toBe(false);
+    expect(v.cacheable).toBe(true); // stable, so remembering it is correct
+  });
+
+  it('a stable ambiguity is remembered, a failure to READ is not', async () => {
+    // The line is whether we understood the bytes, not whether we liked them.
+    const twoMexico = [...LEGS, market('mex2', 'Mexico', 0.4)];
+    expect((await verdict(serving([event({}, twoMexico)]))).cacheable).toBe(true);
+    expect((await verdict(serving(null, 500))).cacheable).toBe(false); // provider error
+    expect((await verdict(serving('not json'))).cacheable).toBe(false); // unreadable shape
   });
 
   it('an unreadable leg is MALFORMED — a fact about the payload, not the fixture', async () => {
@@ -142,7 +154,7 @@ describe('a payload we could not resolve is never filed as "no market"', () => {
   it('one slug returning two events is AMBIGUOUS', async () => {
     const v = await verdict(serving([event(), event({ id: '2' })]));
     expect(v.kind).toBe('ambiguous');
-    expect(v.cacheable).toBe(false);
+    expect(v.cacheable).toBe(true);
   });
 
   it('a provider error is MALFORMED, and the batch is not complete', async () => {

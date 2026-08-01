@@ -58,12 +58,12 @@ export function resolvedValues<T>(batch: BatchResolution<T>): Map<string, T> {
 }
 
 /**
- * The keys whose verdict may be remembered — `valid` or `definitive-none`.
+ * The keys whose verdict may be remembered — see {@link isCacheable}.
  *
  * This is the old `checked` set, now DERIVED from each verdict instead of
- * tracked beside it. A malformed, ambiguous or unresolved key is absent, so a
- * schema change, a two-legged payload or an expired deadline is retried next
- * time rather than cached as the fact that this fixture has no market.
+ * tracked beside it. A malformed or unresolved key is absent, so a shape we
+ * could not read and a deadline that expired are both retried next time rather
+ * than cached as the fact that this fixture has no market.
  */
 export function cacheableKeys<T>(batch: BatchResolution<T>): Set<string> {
   const out = new Set<string>();

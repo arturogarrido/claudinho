@@ -25,7 +25,7 @@
 import { describe, expect, it } from 'vitest';
 import { mapEspnEvent } from '../src/adapters/espn';
 import { allTeams } from '../src/teams';
-import { productFlag } from '../src/trust';
+import { productFlag, teamCode } from '../src/trust';
 import { displayWidth } from '../src/text';
 import { marketLine } from '../src/markets/format';
 import { marketSignalRendersFor } from '../src/markets/normalize';
@@ -319,6 +319,22 @@ describe('property: control/format characters out, emoji intact', () => {
         Math.max(16, (cols ?? 100) * 4),
       );
     }
+  });
+
+  it('a team code is uppercased BEFORE it is bounded, and never split mid-character', () => {
+    // Two bugs in one line. `humanLabel(x, 8).toUpperCase()` bounded the input
+    // and then GREW it — case mapping is not length-preserving, and 'ß' x8
+    // uppercases to sixteen 'S', twice the cap the call declared. And the
+    // fallback `name.slice(0, 3)` sliced UTF-16 UNITS, cutting a surrogate pair
+    // in half and emitting a LONE SURROGATE — the exact \p{Cs} class the label
+    // role exists to refuse.
+    const wide = teamCode('ß'.repeat(8), 'X');
+    expect(displayWidth(wide)).toBeLessThanOrEqual(8);
+    const astral = teamCode(undefined, '𝕄𝕖𝕩');
+    expect([...astral].some((c) => {
+      const n = c.codePointAt(0) ?? 0;
+      return n >= 0xd800 && n <= 0xdfff;
+    }), `lone surrogate in ${JSON.stringify(astral)}`).toBe(false);
   });
 
   it('resolves a nation name that collides with an Object prototype key', () => {

@@ -73,12 +73,33 @@ export interface MatchParts {
  * There is no path by which a provider or a cache file chooses which glyph is
  * rendered, so there is no exemption for an attacker to aim at.
  */
+/**
+ * A team's short code: uppercased, THEN bounded.
+ *
+ * Two bugs lived in the one-liner this replaces.
+ *
+ * Order: `humanLabel(x, 8).toUpperCase()` bounded the input and then grew it —
+ * `'ß'.repeat(8)` uppercases to sixteen `S`, twice the cap the call declared.
+ * Case-mapping is not length-preserving, so it has to happen first.
+ *
+ * Fallback: `name.slice(0, 3)` slices UTF-16 UNITS, so a name beginning with
+ * astral characters was cut through the middle of a surrogate pair — emitting a
+ * LONE SURROGATE, which is exactly the \p{Cs} class the label role exists to
+ * refuse. Slicing by code point cannot split one.
+ */
+export function teamCode(raw: unknown, fallbackName: string): string {
+  const upper = typeof raw === 'string' ? raw.toUpperCase() : raw;
+  const stated = humanLabel(upper, TEAM_CODE_COLUMNS);
+  if (stated) return stated;
+  return humanLabel([...fallbackName].slice(0, 3).join('').toUpperCase(), TEAM_CODE_COLUMNS);
+}
+
 export function sealTeam(raw: unknown): Team | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const t = raw as Record<string, unknown>;
   const name = humanLabel(t.name);
   if (!name) return undefined;
-  const code = humanLabel(t.code, TEAM_CODE_COLUMNS).toUpperCase() || name.slice(0, 3).toUpperCase();
+  const code = teamCode(t.code, name);
   return { code, name, flag: productFlag(name) };
 }
 
@@ -156,7 +177,7 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   // Only one of the two teams can have won this match. Passed through as free
   // text, `winnerCode` named whoever the payload liked — and it is the field the
   // bracket advances on.
-  const claimedWinner = humanLabel(parts.winnerCode, TEAM_CODE_COLUMNS).toUpperCase();
+  const claimedWinner = teamCode(parts.winnerCode, '');
   const winnerCode =
     claimedWinner === home.code || claimedWinner === away.code ? claimedWinner : undefined;
 

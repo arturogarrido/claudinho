@@ -112,9 +112,12 @@ a claim we cannot make.
   numbers, or an old reading claim to be fresh. A team's flag is derived the same way, from its
   name. — `core/test/trust-parity.test.ts`
 - **"We could not read this" is never recorded as "there is nothing here."** A rejection states
-  which kind it is, and only a definitive answer may be cached. An ambiguous or unreadable
-  payload is retried rather than remembered as a fact about the fixture — the mirror image of
-  never caching a transient error as a real negative. — `core/test/market-verdict.test.ts`
+  which KIND it is, and the line for remembering it is whether we understood the bytes. A
+  definitive "no market" and a structural ambiguity are both conclusions drawn from a payload we
+  read, and both are stable across a refetch, so both may be cached for a TTL. A shape we could
+  not read, or a deadline that expired, are facts about *us* — never remembered, always retried,
+  the mirror image of never caching a transient error as a real negative. —
+  `core/test/market-verdict.test.ts`
 
 Each property names the negative control that should make it fail. A property test that has not
 been made to fail is pinning nothing, so every one of them was verified to go red with its rule
@@ -155,14 +158,23 @@ binary — though such an attacker can generally run code anyway.
   and is not claimed to be exhaustive; a miss costs column alignment, not safety.
 - Sanitizing normalizes what a *string* can contain, not what it can *say*. A provider that
   serves a plausible-looking team name is echoed as-is; only its shape is constrained.
+- Removing bidi CONTROLS does not stop bidi reordering. Strong right-to-left characters — the
+  letters of Arabic and Hebrew themselves — reorder their neighbours under the Unicode
+  Bidirectional Algorithm with no control character involved, so a name in those scripts can still
+  change how an adjacent scoreline reads. Refusing them is not an option: they are legitimate text.
+  Both current providers serve Latin-script names, so nothing is reachable today; the structural
+  mitigation, if a provider ever serves them, is to isolate each interpolated field (U+2066/U+2069)
+  at the formatting layer rather than to filter the input.
 - Stripping format characters also removes ZERO WIDTH NON-JOINER (U+200C), which is
   orthographic in Persian and several Indic scripts. Both current providers serve Latin-script
-  names, so nothing is lost today; a future adapter serving native-script names would need an
-  exemption modelled on the flag one — a structural grammar, not a blanket carve-out.
-- Emoji are preserved as whole grapheme clusters so flags survive, and the only clusters allowed
-  to carry TAG characters are well-formed subdivision flags. That restriction is the point: tag
-  characters map one-to-one onto printable ASCII, so an unrestricted cluster is a covert channel
-  that renders as a single two-column glyph.
+  names, so nothing is lost today; a future adapter serving native-script names would need a
+  structural grammar for it, not a blanket carve-out.
+- A label carries no emoji at all, so a name that legitimately contained one would lose it. That
+  is the trade for having no exemption: while flags travelled through the text filter it needed an
+  emoji carve-out, and a carve-out without its own grammar is a covert channel — tag characters map
+  one-to-one onto printable ASCII, so one cluster can spell a sentence inside a single two-column
+  glyph. Product glyphs are generated from the nation instead, which is why the carve-out could be
+  removed rather than fenced.
 
 ## Supply chain
 
