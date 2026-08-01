@@ -25,6 +25,7 @@ import type { GroupStandings, StandingRow } from '../standings';
 import type { Match, Stage, Status, Team } from '../types';
 import { type BoundedList, bounded, takeBounded } from './bounded';
 import { definitiveNone, malformed, type ParseResult, valid } from './result';
+import { MAX_GOALS, MAX_MINUTE, TEAM_CODE_COLUMNS, sealMatch } from './match';
 import {
   canonicalTimestamp,
   count,
@@ -43,13 +44,6 @@ export const MAX_EVENTS = 300;
 export const MAX_GROUPS = 16;
 /** Rows per group. A real group is 4. */
 export const MAX_GROUP_ROWS = 32;
-/** In-match events on one fixture. A real match has a few dozen. */
-export const MAX_MATCH_EVENTS = 128;
-/** Goals, and the minute ceiling — well above any real value, but finite. */
-const MAX_GOALS = 99;
-const MAX_MINUTE = 200;
-/** A team code is 3 letters; a "code" is padded into fixed columns everywhere. */
-const TEAM_CODE_COLUMNS = 8;
 
 const STAGES = new Set<string>(['GROUP', 'R32', 'R16', 'QF', 'SF', '3P', 'F', 'FRIENDLY']);
 const STATUSES = new Set<string>(['SCHEDULED', 'LIVE', 'HT', 'FT', 'POSTPONED', 'CANCELLED']);
@@ -173,7 +167,6 @@ function toGoals(v: unknown): number | undefined {
   return /^-?\d{1,9}$/.test(v.trim()) ? count(Number(v.trim()), MAX_GOALS) : undefined;
 }
 
-const EVENT_TYPES = new Set(['GOAL', 'OWN_GOAL', 'PEN', 'YELLOW', 'RED', 'SUB']);
 
 /**
  * One ESPN event → a `Match`, or the reason it is not one.
@@ -262,14 +255,17 @@ export function parseEspnEvent(raw: unknown, ctx: MapContext = {}): ParseResult<
       : undefined;
 
   const venue = comp?.venue as { fullName?: unknown; address?: Record<string, unknown> } | undefined;
-  const match: Match = {
+
+  // Both paths end at the SAME seal — see trust/match.ts. Anything asserted
+  // about a Match is asserted once, here, for the feed and the cache alike.
+  return sealMatch({
     id,
     stage,
     group,
     kickoff,
-    venue: humanLabel(venue?.fullName),
-    city: humanLabel(venue?.address?.city) || undefined,
-    country: humanLabel(venue?.address?.country) || undefined,
+    venue: venue?.fullName,
+    city: venue?.address?.city,
+    country: venue?.address?.country,
     home,
     away,
     score: hasScore ? { home: hs, away: as } : undefined,
@@ -278,28 +274,8 @@ export function parseEspnEvent(raw: unknown, ctx: MapContext = {}): ParseResult<
     status,
     winnerCode,
     updatedAt: new Date().toISOString(),
-  };
-
-  // Nested collections are bounded before mapping, like every other list.
-  const rawEvents = takeBounded<Record<string, unknown>>(ev.events, MAX_MATCH_EVENTS);
-  const events = rawEvents
-    .map((e) => {
-      const type = member<string>(e?.type, EVENT_TYPES);
-      const minute = count(e?.minute, MAX_MINUTE);
-      if (!type || minute === undefined) return undefined;
-      const out: Match['events'] extends (infer E)[] | undefined ? E : never = {
-        type: type as 'GOAL',
-        minute,
-        teamCode: humanLabel(e?.teamCode, TEAM_CODE_COLUMNS),
-      };
-      const player = humanLabel(e?.player);
-      if (player) out.player = player;
-      return out;
-    })
-    .filter((e): e is NonNullable<typeof e> => !!e);
-  if (events.length) match.events = events;
-
-  return valid(match);
+    events: ev.events,
+  });
 }
 
 /**

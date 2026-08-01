@@ -17,7 +17,8 @@ import {
   mergeLive,
   nextFixtureForTeam,
   displayWidth,
-  sanitizeMatchStrings,
+  parseCachedMatch,
+  parsedValue,
   truncateVisible,
   scoreline,
   type Match,
@@ -197,18 +198,17 @@ export function liveMatchesFromCache(
       )
       // Bound the EXPENSIVE work before doing it. The cheap predicate above runs
       // over the whole array (so a live match late in the file is still found),
-      // but sanitizing is grapheme-level over ~8 fields per record, and running
-      // it on every record made the HOT PATH scale with the cache file: measured
+      // but sealing is grapheme-level over ~8 fields per record, and running it
+      // on every record made the HOT PATH scale with the cache file: measured
       // 120ms at 1,000 records and 2,487ms at 20,000, against a 150ms budget.
       // Slicing here rather than at the render sites is what actually bounds it —
       // the render caps limited what was DISPLAYED, not what was computed.
       .slice(0, MAX_LIVE_CONSIDERED)
-      // Mirror of the adapter's feed sanitizer: the statusline/hook render these
-      // strings on every prompt, so a poisoned CACHE FILE (not just a poisoned
-      // feed) must not inject ANSI/newlines into the terminal or Claude's context.
-      // An entry whose stage/status/kickoff can't be trusted is DROPPED rather
-      // than rendered from a substituted default.
-      .map(sanitizeMatchStrings)
+      // THE SAME constructor the live adapter path ends at (core trust/match).
+      // The statusline renders straight from the cache file on every prompt, so
+      // a poisoned cache is untrusted input exactly like a poisoned feed — and
+      // when the two paths had separate rules, every fix landed on one of them.
+      .map((m) => parsedValue(parseCachedMatch(m)))
       .filter((m): m is Match => !!m)
   );
 }
@@ -262,7 +262,7 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
         // budget. Bounding one of two paths in this function was not fixing the
         // class; a knockout window is a few dozen fixtures, never thousands.
         .slice(0, MAX_LIVE_CONSIDERED)
-        .map(sanitizeMatchStrings)
+        .map((m) => parsedValue(parseCachedMatch(m)))
         .filter((m): m is Match => !!m)
     : [];
   const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;

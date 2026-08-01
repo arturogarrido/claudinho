@@ -103,12 +103,25 @@ describe('parseEspnEvent — a payload we cannot READ vs one that is not a fixtu
 });
 
 describe('parseEspnEvents / parseEspnStandings — bounded before the work', () => {
-  it('bounds a flood of events and reports it', () => {
-    const events = Array.from({ length: 5000 }, (_, i) => ({ ...EV, id: String(900000 + i) }));
-    const t = process.hrtime.bigint();
-    const list = parseEspnEvents({ events });
-    expect(Number(process.hrtime.bigint() - t) / 1e6).toBeLessThan(500);
-    expect(list.items.length).toBeLessThanOrEqual(300);
+  it('bounds a flood of events — the WORK, not just the output', () => {
+    const make = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ ...EV, id: String(900000 + i) }));
+    const time = (events: unknown[]) => {
+      const t = process.hrtime.bigint();
+      const list = parseEspnEvents({ events });
+      return { ms: Number(process.hrtime.bigint() - t) / 1e6, n: list.items.length };
+    };
+    time(make(300)); // warm
+    // 17x the input for the same bounded output. An absolute millisecond budget
+    // would measure the machine (it failed under parallel test load while
+    // passing alone); the property is that the extra 4,700 records cost
+    // essentially nothing, because they are sliced off BEFORE any per-record
+    // work. Ratio, so honest contention inflates both samples together.
+    const small = time(make(300));
+    const huge = time(make(5000));
+    expect(huge.n).toBe(small.n);
+    expect(huge.n).toBeLessThanOrEqual(300);
+    expect(huge.ms).toBeLessThan(Math.max(small.ms * 4, 50));
   });
 
   it('marks the batch incomplete when a record was unreadable', () => {
@@ -131,9 +144,16 @@ describe('parseEspnEvents / parseEspnStandings — bounded before the work', () 
       name: 'Group A',
       standings: { entries: Array.from({ length: 4000 }, (_, i) => entry(i)) },
     }));
+    const small = { children: children.slice(0, 1) };
+    parseEspnStandings(small); // warm
+    const t0 = process.hrtime.bigint();
+    parseEspnStandings(small);
+    const baseMs = Number(process.hrtime.bigint() - t0) / 1e6;
     const t = process.hrtime.bigint();
     const list = parseEspnStandings({ children });
-    expect(Number(process.hrtime.bigint() - t) / 1e6).toBeLessThan(200);
+    // 200 groups x 4,000 rows, bounded before the per-row work — see above for
+    // why this is a ratio and not a millisecond constant.
+    expect(Number(process.hrtime.bigint() - t) / 1e6).toBeLessThan(Math.max(baseMs * 40, 50));
     expect(list.items.length).toBe(1); // "Group A" is one group, not 200
     expect(list.items[0]!.rows.length).toBeLessThanOrEqual(MAX_GROUP_ROWS);
   });

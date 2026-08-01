@@ -12,7 +12,12 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { hasSaneDistribution, sanitizeMarketSignal, type MarketSignal } from '@claudinho/core';
+import {
+  hasSaneDistribution,
+  parseCachedMarketSignal,
+  parsedValue,
+  type MarketSignal,
+} from '@claudinho/core';
 import { cacheDir, writeFileAtomic } from './paths';
 
 const POSITIVE_TTL_MS = 10 * 60_000;
@@ -90,7 +95,10 @@ function isEntryShaped(e: unknown): e is CacheEntry {
  * The fixture-dependent half (`marketSignalRendersFor`) needs a Match and is
  * applied by the caller.
  */
-function isUsableSignal(s: MarketSignal): boolean {
+function isUsableSignal(s: MarketSignal | undefined): boolean {
+  // An unreadable signal is not a usable one — the seal returning nothing is
+  // itself an answer, and the caller must not have to remember to check.
+  if (!s) return false;
   if (s.source === '' || s.asOf === '' || s.outcomes.length === 0) return false;
   if (s.outcomes.some((o) => o.kind === 'other')) return false;
   if (s.ambiguous) return false;
@@ -135,14 +143,17 @@ export function readMarketCache(
       checked.add(id); // genuine negative result — don't re-fetch this window
       continue;
     }
-    // Sanitize on READ: this file is attacker-writable in a way the MarketSignal
-    // type isn't, and the formatters interpolate several of these fields straight
-    // into output (marketSourceLabel falls through to `source` verbatim for an
-    // unrecognized provider). Mirrors the statusline's sanitizeMatchStrings on
-    // its own cache read.
-    // `now` is threaded so the DERIVED staleness inside the sanitizer agrees
-    // with the TTL arithmetic above instead of reading the wall clock.
-    const clean = sanitizeMarketSignal(entry.signal, { now: new Date(now) });
+    // THE SAME seal the live provider path ends at (core trust/market). This
+    // file is attacker-writable in a way the MarketSignal type is not, and the
+    // formatters interpolate several of these fields straight into output
+    // (marketSourceLabel falls through to `source` verbatim for an unrecognized
+    // provider). `now` is threaded so the DERIVED staleness agrees with the TTL
+    // arithmetic above instead of reading the wall clock.
+    const sealed = parseCachedMarketSignal(entry.signal, { now: new Date(now) });
+    // A signal we could not read is not a negative result: it must NOT reach
+    // `checked`, or a corrupt entry suppresses the real fetch for the full TTL.
+    if (sealed.kind !== 'valid') continue;
+    const clean = sealed.value;
     // The BODY must match the key it was filed under, and the provider the file
     // claims. Without this a poisoned file could park one fixture's prices under
     // another fixture's id — the entry is well-formed, just not about this match.
@@ -189,7 +200,7 @@ export function writeMarketCache(
         // usable — it would keep suppressing refetches on every later read.
         if (
           raw.signal !== null &&
-          !isUsableSignal(sanitizeMarketSignal(raw.signal, { now: new Date(now) }))
+          !isUsableSignal(parsedValue(parseCachedMarketSignal(raw.signal, { now: new Date(now) })))
         ) {
           continue;
         }
