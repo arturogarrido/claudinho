@@ -45,7 +45,13 @@ const FORBIDDEN_IN_LABEL =
  * never something we need. Refusing them removes the exemption that the TAG,
  * variation-selector and ZWJ payload channels all rode through.
  */
-const EMOJI_IN_LABEL = /\p{Extended_Pictographic}|\p{Regional_Indicator}/u;
+// A keycap is a plain character (a digit, `#` or `*`) wearing U+20E3, so it is
+// neither Extended_Pictographic nor a Regional_Indicator — it slipped through as
+// a 2-column glyph. It is visible and bounded, so it was never a covert channel,
+// but "a label admits no emoji" has to be true as stated. Named explicitly
+// rather than widening to \p{Emoji}, which matches the bare digits in "2026".
+// Verified absent from 36,538 real feed strings.
+const EMOJI_IN_LABEL = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u{20E3}/u;
 
 /** Input bytes read before any per-character work. A work bound, not a display one. */
 const MAX_LABEL_INPUT_UNITS = 4096;
@@ -76,8 +82,22 @@ export function humanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): stri
     return ''; // a lone surrogate can make normalize throw
   }
 
+  // Code points allowed OUT, derived from the column budget. Columns alone do
+  // not bound a label: a zero-width cluster adds 0, so `width` never grows and
+  // the loop never breaks. Separators that are themselves dropped (U+200B,
+  // U+00AD — format characters whose GCB is Control) split a run of combining
+  // marks into small clusters that each pass the per-cluster check, and then
+  // re-merge onto one base once the separators are removed. Measured: 2,801
+  // code points emitted at ONE display column, and 2,048 on a field declaring a
+  // cap of 8 columns.
+  //
+  // Four per column is far above anything real — the longest name we ship is 22
+  // characters at 22 columns — and far below a payload.
+  const maxCodePoints = Math.max(16, maxColumns * 4);
+
   let out = '';
   let width = 0;
+  let points = 0;
   for (const cluster of graphemes(normalized)) {
     // A real character is a handful of code points. Anything longer is a
     // payload wearing one glyph, whatever it is built from.
@@ -95,9 +115,11 @@ export function humanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): stri
     }
     if (!piece) continue;
     const w = displayWidth(piece);
-    if (width + w > maxColumns) break;
+    const cps = [...piece].length;
+    if (width + w > maxColumns || points + cps > maxCodePoints) break;
     out += piece;
     width += w;
+    points += cps;
   }
   return out.trim();
 }

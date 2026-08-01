@@ -287,12 +287,51 @@ describe('property: control/format characters out, emoji intact', () => {
       '🏳️',
       '🇲🇽',
       '⚽',
+      '1️⃣', // keycap: a digit wearing U+20E3, neither pictographic nor RI
+      '#️⃣',
     ]) {
       expect(sanitizeFeedText(hostile), JSON.stringify(hostile)).toBe('');
     }
-    // Real prose is untouched, including accents and non-Latin scripts.
-    for (const real of ['Curaçao', "Côte d'Ivoire", 'Estadio Banorte', '대한민국']) {
+    // Real prose is untouched, including accents, non-Latin scripts, and the
+    // bare digits and '#' that a keycap is BUILT from — which is why the rule
+    // names U+20E3 rather than widening to \p{Emoji}, that matching "2026".
+    for (const real of ['Curaçao', "Côte d'Ivoire", 'Estadio Banorte', '대한민국', '2026', '#1 seed']) {
       expect(sanitizeFeedText(real), real).toBe(real);
+    }
+  });
+
+  it('bounds the OUTPUT by code points, not only by columns', () => {
+    // Display columns alone do not bound a label: a zero-width cluster adds 0,
+    // so the column budget never fills and the loop never stops. Separators that
+    // are themselves DROPPED (U+200B, U+00AD — format characters whose grapheme
+    // break is Control) split a run of combining marks into small clusters that
+    // each pass the per-cluster check, then re-merge onto one base once the
+    // separators are removed. Both measured against a 100-column field:
+    //   zero-width space + 7 marks, x400  -> 2,801 code points at 1 column
+    //   soft hyphen + 1 mark, x2048       -> 2,048 code points at 8 columns
+    for (const [label, evil, cols] of [
+      ['ZWSP', `A${'\u200B'.repeat(1)}${'\u0301'.repeat(7)}`.repeat(400), undefined],
+      ['SHY', `A${'\u00AD\u0301'.repeat(2048)}`, 8],
+    ] as const) {
+      const out = sanitizeFeedText(evil, cols);
+      const points = [...out].length;
+      expect(points, `${label} emitted ${points} code points`).toBeLessThanOrEqual(
+        Math.max(16, (cols ?? 100) * 4),
+      );
+    }
+  });
+
+  it('resolves a nation name that collides with an Object prototype key', () => {
+    // `norm('Constructor')` is exactly 'constructor', a real key on
+    // Object.prototype whose value is a FUNCTION. A bare index on a plain object
+    // returned it, `flagEmoji` called `.trim()` on it, and the TypeError escaped
+    // the boundary — taking the whole batch with it, on a layer whose stated
+    // property is that it is total.
+    for (const name of ['Constructor', 'CONSTRUCTOR', '__proto__', 'toString', 'valueOf']) {
+      const m = { ...goodMatch, home: { code: 'CON', name }, away: goodMatch.away };
+      expect(() => sanitizeMatchStrings(m as Match), name).not.toThrow();
+      const clean = sanitizeMatchStrings(m as Match);
+      expect(clean?.home.flag, name).toBe('🏳️'); // fails closed to the placeholder
     }
   });
 
