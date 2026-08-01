@@ -13,6 +13,16 @@ function pct(p: number): number {
   return Math.round(p * 100);
 }
 
+/**
+ * Market sources that can legitimately produce a signal.
+ *
+ * `marketSourceLabel` falls through to the raw string for anything it does not
+ * recognize, so an unvalidated `source` from a cache file rendered verbatim in
+ * the provider-attribution slot — the one place a reader (or an agent) expects
+ * product-authored text. Allow-listing it keeps that slot ours.
+ */
+export const KNOWN_MARKET_SOURCES = ['polymarket', 'fake'] as const;
+
 /** Human label for the data source (text only — never a logo). */
 export function marketSourceLabel(source: string): string {
   if (source === 'polymarket') return 'Polymarket';

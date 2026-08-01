@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { EspnAdapter, MAX_RESPONSE_BYTES, mapEspnEvent } from '../src/adapters/espn';
+import { EspnAdapter, MAX_RESPONSE_BYTES, mapEspnEvent, parseStandings } from '../src/adapters/espn';
 import { getLiveMatches } from '../src/live';
 
 // Minimal ESPN-shaped fixtures mirroring the real response structure.
@@ -76,12 +76,22 @@ const knockout = {
   ],
 };
 
+/**
+ * `mapEspnEvent` now DROPS an event with no usable id or parseable date. Every
+ * fixture in this file is mappable, so unwrap and fail loudly if that changes.
+ */
+function mapped(ev: unknown, ctx?: Parameters<typeof mapEspnEvent>[1]) {
+  const m = mapEspnEvent(ev as never, ctx);
+  if (!m) throw new Error('expected a mappable ESPN event, got undefined');
+  return m;
+}
+
 describe('mapEspnEvent', () => {
   it('maps a scheduled group fixture (stage from slug, group from map)', () => {
-    const m = mapEspnEvent(scheduled as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(scheduled, { groupByTeam: GROUP_MAP });
     expect(m.id).toBe('700001');
     expect(m.status).toBe('SCHEDULED');
-    expect(m.kickoff).toBe('2026-06-11T19:00Z');
+    expect(m.kickoff).toBe('2026-06-11T19:00:00.000Z');
     expect(m.stage).toBe('GROUP');
     expect(m.group).toBe('A');
     expect(m.venue).toBe('Estadio Banorte');
@@ -94,7 +104,7 @@ describe('mapEspnEvent', () => {
   });
 
   it('maps a live fixture (score + minute + LIVE status)', () => {
-    const m = mapEspnEvent(live as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(live, { groupByTeam: GROUP_MAP });
     expect(m.status).toBe('LIVE');
     expect(m.score).toEqual({ home: 2, away: 1 });
     expect(m.minute).toBe(67);
@@ -107,7 +117,7 @@ describe('mapEspnEvent', () => {
   });
 
   it('maps a finished fixture (FT + final score, no minute)', () => {
-    const m = mapEspnEvent(finished as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(finished, { groupByTeam: GROUP_MAP });
     expect(m.status).toBe('FT');
     expect(m.score).toEqual({ home: 3, away: 0 });
     expect(m.minute).toBeUndefined();
@@ -127,7 +137,7 @@ describe('mapEspnEvent', () => {
         },
       ],
     };
-    const m = mapEspnEvent(pens as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(pens, { groupByTeam: GROUP_MAP });
     expect(m.score).toEqual({ home: 1, away: 1 });
     expect(m.winnerCode).toBe('NED');
   });
@@ -146,14 +156,14 @@ describe('mapEspnEvent', () => {
         },
       ],
     };
-    const m = mapEspnEvent(pens as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(pens, { groupByTeam: GROUP_MAP });
     expect(m.score).toEqual({ home: 1, away: 1 }); // regulation result preserved
     expect(m.shootout).toEqual({ home: 3, away: 4 });
     expect(m.winnerCode).toBe('PAR');
   });
 
   it('leaves shootout undefined for a regular finished match (no phantom parens)', () => {
-    const m = mapEspnEvent(finished as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(finished, { groupByTeam: GROUP_MAP });
     expect(m.shootout).toBeUndefined();
   });
 
@@ -172,13 +182,13 @@ describe('mapEspnEvent', () => {
         },
       ],
     };
-    const m = mapEspnEvent(orphan as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(orphan, { groupByTeam: GROUP_MAP });
     expect(m.score).toBeUndefined();
     expect(m.shootout).toBeUndefined();
   });
 
   it('maps a knockout fixture from the slug, with no group letter', () => {
-    const m = mapEspnEvent(knockout as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(knockout, { groupByTeam: GROUP_MAP });
     expect(m.stage).toBe('R16');
     expect(m.group).toBeUndefined();
     expect(m.home.name).toBe('Round of 32 1 Winner');
@@ -186,7 +196,7 @@ describe('mapEspnEvent', () => {
   });
 
   it('does not assign a group when no map is provided', () => {
-    const m = mapEspnEvent(scheduled as never);
+    const m = mapped(scheduled);
     expect(m.stage).toBe('GROUP');
     expect(m.group).toBeUndefined();
   });
@@ -238,5 +248,155 @@ describe('EspnAdapter fetch hardening (size cap + no redirects)', () => {
     expect(init?.redirect).toBe('error');
     const r = await getLiveMatches(adapter); // degrades, never crashes a surface
     expect(r.degraded).toBe(true);
+  });
+});
+
+/**
+ * Reviewer round 7 — the ADAPTER path renders straight to output without a
+ * cache round-trip, so bounds enforced in `sanitizeMatchStrings` do not cover
+ * it. Each of these was reproduced against the previous head.
+ */
+describe('mapEspnEvent — impossible facts and malformed records', () => {
+  const base = {
+    id: '700001',
+    date: '2026-06-11T19:00Z',
+    season: { slug: 'group-stage' },
+    status: { type: { name: 'STATUS_FULL_TIME', state: 'post', completed: true } },
+    competitions: [
+      {
+        competitors: [
+          { homeAway: 'home', score: '1', winner: true, team: { abbreviation: 'MEX', displayName: 'Mexico' } },
+          { homeAway: 'away', score: '0', team: { abbreviation: 'RSA', displayName: 'South Africa' } },
+        ],
+      },
+    ],
+  };
+
+  const withHome = (over: Record<string, unknown>) => ({
+    ...base,
+    competitions: [
+      {
+        competitors: [
+          { ...base.competitions[0]!.competitors[0], ...over },
+          base.competitions[0]!.competitors[1],
+        ],
+      },
+    ],
+  });
+
+  it('drops an impossible score rather than publishing it as fact', () => {
+    for (const score of ['-5', '999999999', '1x', '5 goals', '1e3']) {
+      expect(mapped(withHome({ score })).score, `score ${score}`).toBeUndefined();
+    }
+  });
+
+  it('still reads a real score', () => {
+    expect(mapped(withHome({ score: '3' })).score).toEqual({ home: 3, away: 0 });
+  });
+
+  it('treats winner as a REAL boolean (winner:"false" is not a win)', () => {
+    // `winnerCode` is what advances a team through the knockout bracket.
+    expect(mapped(withHome({ winner: 'false' })).winnerCode).toBeUndefined();
+    expect(mapped(withHome({ winner: true })).winnerCode).toBe('MEX');
+  });
+
+  it('never throws on a malformed competitors body (one event must not sink the feed)', () => {
+    for (const competitions of [
+      [{ competitors: {} }],
+      [{ competitors: [null] }],
+      [{ competitors: 'nope' }],
+      [null],
+      'nope',
+    ]) {
+      expect(() => mapEspnEvent({ ...base, competitions } as never)).not.toThrow();
+    }
+  });
+});
+
+describe('mapEspnEvent — participants must be real, winners unambiguous', () => {
+  const base = {
+    id: '700001',
+    date: '2026-06-11T19:00Z',
+    season: { slug: 'group-stage' },
+    status: { type: { name: 'STATUS_FULL_TIME', state: 'post', completed: true } },
+  };
+
+  it('drops the record rather than inventing a TBD vs TBD fixture', () => {
+    // Filtering invalid competitors without requiring TWO valid ones rendered a
+    // match nobody is playing — worse than dropping it.
+    for (const competitors of [{}, [null], [], [null, null]]) {
+      expect(
+        mapEspnEvent({ ...base, competitions: [{ competitors }] } as never),
+        JSON.stringify(competitors),
+      ).toBeUndefined();
+    }
+  });
+
+  it('refuses to pick a winner out of a contradiction', () => {
+    const both = mapEspnEvent({
+      ...base,
+      competitions: [
+        {
+          competitors: [
+            { homeAway: 'home', score: '1', winner: true, team: { abbreviation: 'MEX', displayName: 'Mexico' } },
+            { homeAway: 'away', score: '1', winner: true, team: { abbreviation: 'RSA', displayName: 'South Africa' } },
+          ],
+        },
+      ],
+    } as never);
+    expect(both?.winnerCode).toBeUndefined();
+  });
+});
+
+describe('mapEspnEvent / parseStandings — identity and outer bounds', () => {
+  const base = {
+    id: '700001',
+    date: '2026-06-11T19:00Z',
+    season: { slug: 'group-stage' },
+    status: { type: { state: 'pre' } },
+  };
+  const withTeams = (home: unknown, away: unknown) =>
+    mapEspnEvent({
+      ...base,
+      competitions: [
+        { competitors: [{ homeAway: 'home', team: home }, { homeAway: 'away', team: away }] },
+      ],
+    } as never);
+
+  it('drops a fixture whose participants do not identify anyone', () => {
+    expect(withTeams({}, {})).toBeUndefined();
+    expect(withTeams({ abbreviation: '  ' }, { abbreviation: '  ' })).toBeUndefined();
+  });
+
+  it('drops a team playing itself, but keeps ESPN placeholder pairs', () => {
+    expect(
+      withTeams(
+        { abbreviation: 'MEX', displayName: 'Mexico' },
+        { abbreviation: 'MEX', displayName: 'Mexico' },
+      ),
+    ).toBeUndefined();
+    // Real ESPN knockout slots SHARE an abbreviation and differ by name.
+    expect(
+      withTeams(
+        { abbreviation: 'RD32', displayName: 'Round of 32 1 Winner' },
+        { abbreviation: 'RD32', displayName: 'Round of 32 3 Winner' },
+      ),
+    ).toBeDefined();
+  });
+
+  it('bounds standings CHILDREN, not just the rows inside them', () => {
+    // Bounding the inner list while the outer one is unbounded is not a bound.
+    const children = Array.from({ length: 200 }, () => ({
+      name: 'Group A',
+      standings: {
+        entries: Array.from({ length: 40 }, (_, i) => ({
+          team: { abbreviation: `T${i}`, displayName: `Team ${i}` },
+          stats: [{ name: 'points', value: 3 }],
+        })),
+      },
+    }));
+    const out = parseStandings({ children } as never);
+    expect(out.length).toBe(1); // deduped: "Group A" is one group, not 200
+    expect(out[0]!.rows.length).toBeLessThanOrEqual(32);
   });
 });

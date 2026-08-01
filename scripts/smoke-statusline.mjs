@@ -38,7 +38,9 @@ try {
       competition: 'fifa.world',
       live: [
         {
-          id: 'smoke1',
+          // Numeric: safeMatchId accepts only digits (every real ESPN and bundled
+          // id is numeric), so a cache record with a prose-shaped id is dropped.
+          id: '900001',
           stage: 'GROUP',
           group: 'A',
           kickoff: now,

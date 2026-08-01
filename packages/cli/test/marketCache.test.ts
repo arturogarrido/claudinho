@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { MarketSignal } from '@claudinho/core';
@@ -77,5 +77,147 @@ describe('market-signals cache', () => {
     const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW + 60_000);
     expect(signals.has('760415')).toBe(true);
     expect(checked.has('888')).toBe(true);
+  });
+});
+
+describe('market-signals cache — malformed file must not crash a command', () => {
+  /** Write raw JSON straight to the cache path, bypassing writeMarketCache. */
+  function poison(json: unknown) {
+    mkdirSync(join(dir, 'claudinho'), { recursive: true });
+    writeFileSync(join(dir, 'claudinho', 'market-signals.json'), JSON.stringify(json));
+  }
+
+  it('skips a null entry instead of throwing (reported crash)', () => {
+    poison({
+      source: 'polymarket',
+      competition: 'fifa.world',
+      entries: { '760415': null, '760416': 'nope', '760417': 42 },
+    });
+    expect(() => readMarketCache('polymarket', 'fifa.world', NOW)).not.toThrow();
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+    expect(signals.size).toBe(0);
+    // Critically: a malformed entry must NOT be marked checked, or a junk file
+    // would suppress the real fetch for that match.
+    expect(checked.size).toBe(0);
+  });
+
+  it('survives a hostile toString in a cached signal', () => {
+    poison({
+      source: 'polymarket',
+      competition: 'fifa.world',
+      entries: {
+        '760415': {
+          fetchedAt: '2026-06-11T14:56:00Z',
+          signal: { ...signal, source: { toString: null } },
+        },
+      },
+    });
+    expect(() => readMarketCache('polymarket', 'fifa.world', NOW)).not.toThrow();
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+    // A signal whose source sanitizes to nothing is malformed, not a negative
+    // result: it must be dropped AND left unchecked so the real fetch still runs.
+    expect(signals.has('760415')).toBe(false);
+    expect(checked.has('760415')).toBe(false);
+  });
+
+  it('does not mark a malformed POSITIVE body as checked (would suppress refetch)', () => {
+    for (const bad of [false, {}, 'nope', 0, { outcomes: [] }]) {
+      poison({
+        source: 'polymarket',
+        competition: 'fifa.world',
+        entries: { '760415': { fetchedAt: '2026-06-11T14:56:00Z', signal: bad } },
+      });
+      const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+      expect(signals.has('760415')).toBe(false);
+      expect(checked.has('760415')).toBe(false);
+    }
+  });
+
+  it('still honours a genuine negative entry (signal: null) as checked', () => {
+    // Inside the 3-minute NEGATIVE TTL (14:59 -> 15:00), unlike the positive one.
+    poison({
+      source: 'polymarket',
+      competition: 'fifa.world',
+      entries: { '760415': { fetchedAt: '2026-06-11T14:59:00Z', signal: null } },
+    });
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+    expect(signals.has('760415')).toBe(false);
+    expect(checked.has('760415')).toBe(true);
+  });
+
+  /**
+   * PROPERTY 7 — AVAILABILITY. An entry may suppress the real provider fetch
+   * ONLY if it would actually render. Five shapes previously survived
+   * sanitizing, were marked `checked`, and then displayed nothing — so the
+   * cache hid the market line AND blocked the fetch that could have produced a
+   * real one, for the full 10-minute positive TTL.
+   *
+   * Negative control: revert isUsableSignal to its three emptiness checks.
+   */
+  it('never marks an entry `checked` unless it would render', () => {
+    const shapes: Array<[string, unknown]> = [
+      ['all-other outcomes', { ...signal, outcomes: [{ kind: 'other', label: 'x', probability: 1 }] }],
+      [
+        'incoherent distribution',
+        {
+          ...signal,
+          outcomes: [
+            { kind: 'home', teamCode: 'MEX', label: 'Mexico', probability: 0.1 },
+            { kind: 'away', teamCode: 'RSA', label: 'South Africa', probability: 0.1 },
+          ],
+        },
+      ],
+      ['ambiguous', { ...signal, ambiguous: true }],
+      ['no determinable favorite', { ...signal, outcomes: [] }],
+      ['unknown source', { ...signal, source: 'evilprovider' }],
+    ];
+    for (const [label, bad] of shapes) {
+      poison({
+        source: 'polymarket',
+        competition: 'fifa.world',
+        entries: { '760415': { fetchedAt: '2026-06-11T14:59:00Z', signal: bad } },
+      });
+      const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+      expect(signals.has('760415'), label).toBe(false);
+      expect(checked.has('760415'), `${label} must NOT suppress the refetch`).toBe(false);
+    }
+  });
+
+  it('DOES serve a structurally-valid but STALE signal (markets renders it with a caveat)', () => {
+    // The counterpart to the test above, and the reason `isUsableSignal` must
+    // not fold in a freshness term: a provider reading that was already old
+    // when written is a real result. Gating it out here made it un-cacheable —
+    // re-fetched on every command forever — and silently removed the
+    // stale-with-caveat rendering that `markets` is designed to show.
+    poison({
+      source: 'polymarket',
+      competition: 'fifa.world',
+      entries: {
+        '760415': {
+          fetchedAt: '2026-06-11T14:59:00Z',
+          signal: { ...signal, asOf: '2026-06-11T14:00:00Z' },
+        },
+      },
+    });
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+    expect(signals.get('760415')?.stale).toBe(true); // honestly flagged...
+    expect(checked.has('760415')).toBe(true); // ...but still a real result
+  });
+
+  it('treats a FUTURE fetchedAt as expired, not as permanently fresh', () => {
+    poison({
+      source: 'polymarket',
+      competition: 'fifa.world',
+      entries: { '760415': { fetchedAt: '2099-01-01T00:00:00Z', signal: null } },
+    });
+    const { checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+    expect(checked.has('760415')).toBe(false);
+  });
+
+  it('tolerates entries being absent or a non-object', () => {
+    for (const entries of [undefined, null, 'x', 7, []]) {
+      poison({ source: 'polymarket', competition: 'fifa.world', entries });
+      expect(() => readMarketCache('polymarket', 'fifa.world', NOW)).not.toThrow();
+    }
   });
 });

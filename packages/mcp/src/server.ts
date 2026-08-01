@@ -135,6 +135,11 @@ const marketOut = {
   informationalOnly: z.boolean(),
   signal: anyObj.nullable().optional(),
   signals: z.array(anyObj).optional(),
+  // Present on the list-shaped branches: the TRUE total and whether the array
+  // beside it was capped, so a consumer reading only `structuredContent` can
+  // tell a complete list from a truncated one.
+  count: z.number().optional(),
+  truncated: z.boolean().optional(),
 };
 const shareOut = {
   kind: z.string(),
@@ -151,6 +156,8 @@ const shareOut = {
   view: anyObj.nullable().optional(),
   matches: z.array(matchOut).optional(),
   marketSignals: z.record(anyObj).optional(),
+  count: z.number().optional(),
+  truncated: z.boolean().optional(),
 };
 const teamInfo = z
   .object({ code: z.string(), name: z.string(), flag: z.string(), group: z.string() })

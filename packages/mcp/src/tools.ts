@@ -43,7 +43,15 @@ import {
   type ShareSnippetOptions,
   type Stage,
 } from '@claudinho/core';
-import { DISCLAIMER, matchLine, matchList, standingsTable } from './format';
+import {
+  capRecords,
+  capSignals,
+  DISCLAIMER,
+  matchLine,
+  matchList,
+  standingsTable,
+  truncationNote,
+} from './format';
 
 export interface ToolResult {
   text: string;
@@ -269,9 +277,14 @@ export async function toolGetToday(
       date,
       degraded,
       source: source ?? null,
+      // `count` stays the TRUE total; `matches` is capped. Bounding only the
+      // TEXT would leave structuredContent unbounded, and that is model context
+      // too — a repeated-record payload measured ~5 MB there.
       count: todays.length,
-      matches: todays,
-      ...(marketSignals ? { marketSignals } : {}),
+      matches: capRecords(todays),
+      // Capped in step with `matches`: a signal keyed to a match that is no
+      // longer in the payload is dead weight in model context.
+      ...(marketSignals ? { marketSignals: capSignals(marketSignals, capRecords(todays)) } : {}),
     },
   };
 }
@@ -288,7 +301,12 @@ export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
     : `Live now:\n${matchList(matches, 'No matches in play right now.', opts)}`;
   return {
     text: withDisclaimer(text, source, args.lang),
-    data: { degraded, source: source ?? null, count: matches.length, matches },
+    data: {
+      degraded,
+      source: source ?? null,
+      count: matches.length,
+      matches: capRecords(matches),
+    },
   };
 }
 
@@ -334,7 +352,7 @@ export async function toolGetStandings(
   const { tables, degraded, source } = await getStandings(resolveAdapter(args), args.group);
 
   // Preserve the structured shape: { group, standings: StandingRow[] }.
-  const shaped = tables.map((tb) => ({ group: tb.group, standings: tb.rows }));
+  const shaped = capRecords(tables).map((tb) => ({ group: tb.group, standings: tb.rows }));
 
   if (shaped.length === 0) {
     const g = args.group?.toUpperCase();
@@ -346,6 +364,8 @@ export async function toolGetStandings(
   }
 
   let text = shaped.map((t) => standingsTable(t.group, t.standings)).join('\n\n');
+  // Stated, not silent — the same rule the match lists follow.
+  text += truncationNote(tables.length, shaped.length);
   if (degraded) text += '\n\n(Live standings unavailable — showing the group roster.)';
   return {
     text: withDisclaimer(text, source, args.lang),
@@ -526,14 +546,16 @@ export async function toolGetMarketSignal(
   const { matches } = await getMatchesForDate(resolveAdapter(args), date);
   const todays = fixturesByDate(date, matches, args.tz).filter((m) => marketRelevant(m, now));
   const { signals } = await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS);
-  const shown = todays
+  const all = todays
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
     .filter(
       (r): r is { match: Match; signal: MarketSignal } =>
         !!r.signal && marketDisplayable(r.match, r.signal),
     );
+  // Bounded: this branch serialized one object per fixture into model context.
+  const shown = capRecords(all);
   const text = shown.length
-    ? `Market signals on ${date}:\n${shown
+    ? `Market signals on ${date}:${truncationNote(all.length, shown.length)}\n${shown
         .map(({ match, signal }) => marketText(match, signal, args))
         .join('\n\n')}`
     : `No reliable market signals on ${date}.`;
@@ -542,6 +564,11 @@ export async function toolGetMarketSignal(
     data: {
       date,
       informationalOnly: true,
+      // Self-describing: the prose says it was truncated, and so does the
+      // structured payload — a consumer reading only `data` could not otherwise
+      // tell 40 signals from all of them.
+      count: all.length,
+      truncated: all.length > shown.length,
       signals: shown.map(({ signal }) => marketData(signal)),
     },
   };
@@ -594,6 +621,8 @@ function shareResult(
   team: string | undefined,
   input: ShareSnippetInput,
   options: ShareSnippetOptions,
+  /** Records BEFORE capping, so the payload can say what it dropped. */
+  total = input.matches.length,
 ): ToolResult {
   const snippet = formatShareSnippet(input, options);
   return {
@@ -611,6 +640,8 @@ function shareResult(
       informationalOnly: true,
       style: options.style ?? 'social',
       snippet,
+      count: total,
+      truncated: total > input.matches.length,
       matches: input.matches,
       marketSignals: Object.fromEntries(
         [...(input.marketSignals ?? new Map<string, MarketSignal>())].map(([id, s]) => [
@@ -645,8 +676,10 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       'live',
       undefined,
       {
-        title: 'Live match pulse',
-        matches,
+        title: `Live match pulse${truncationNote(matches.length, capRecords(matches).length)}`,
+        // Bounded like the date branch: a share card is returned through MCP
+        // before a human ever sees it. The count is STATED, not silently lost.
+        matches: capRecords(matches),
         source,
         degraded,
         // Feed down ⇒ don't let an empty card read as "nothing is on".
@@ -658,6 +691,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         locale: args.lang,
       },
       { ...options, includeMarkets: false },
+      matches.length,
     );
   }
 
@@ -667,7 +701,10 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     const { tables, degraded, source } = await getStandings(resolveAdapter(args), group);
     const snippet = formatShareTable(
       {
-        tables,
+        // Capped like the structured payload beside it. Bounding `data.tables`
+        // while the rendered SNIPPET came from the full list meant the surface a
+        // reader actually sees was the unbounded one.
+        tables: capRecords(tables),
         // Degraded ⇒ static roster, no live provider: don't attribute one, and
         // surface the not-live notice (the card gets pasted publicly).
         source: degraded ? undefined : source,
@@ -687,7 +724,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         degraded,
         informationalOnly: true,
         snippet,
-        tables: tables.map((tb) => ({ group: tb.group, standings: tb.rows })),
+        tables: capRecords(tables).map((tb) => ({ group: tb.group, standings: tb.rows })),
       },
     };
   }
@@ -809,9 +846,13 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     date,
     undefined,
     {
-      title: args.date ? `Matches · ${human}` : `Today's matches · ${human}`,
-      matches: todays,
-      marketSignals: await signalsFor(todays),
+      title:
+        (args.date ? `Matches · ${human}` : `Today's matches · ${human}`) +
+        truncationNote(todays.length, capRecords(todays).length),
+      // Bounded like every other model-facing payload — a share card is
+      // returned through MCP before a human ever sees it.
+      matches: capRecords(todays),
+      marketSignals: await signalsFor(capRecords(todays)),
       source,
       degraded,
       emptyNote: `No matches scheduled for ${human}.`,
@@ -820,5 +861,6 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       locale: args.lang,
     },
     options,
+    todays.length,
   );
 }

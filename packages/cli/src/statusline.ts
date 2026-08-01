@@ -16,7 +16,9 @@ import {
   LIVE_WINDOW_MS,
   mergeLive,
   nextFixtureForTeam,
+  displayWidth,
   sanitizeMatchStrings,
+  truncateVisible,
   scoreline,
   type Match,
 } from '@claudinho/core';
@@ -106,7 +108,7 @@ export interface PromptOpts {
   compact?: boolean;
   /**
    * Max live matches to show inline before collapsing the rest into "+N".
-   * Default: show all. (CLAUDINHO_MAX caps it for busy days.)
+   * Capped at DEFAULT_MAX_SEGMENTS regardless — this is a one-line surface.
    */
   max?: number;
   /** Render emoji flags (default true); false → 3-letter codes (flagless terminals). */
@@ -151,24 +153,88 @@ function matchSegment(m: Match, compact: boolean, flags: boolean): string {
  * against a corrupt cache (?? only catches null/undefined) so callers never
  * throw on bad input. Returns [] when there's nothing trustworthy/live.
  */
+/**
+ * Cache records the hot path will sanitize. Far above any real matchday (12),
+ * and the ceiling on how much work a cache file can make the statusline do.
+ *
+ * A cache holding more live matches than this is already lying — an attacker
+ * with write access could equally have deleted the real fixture — so the
+ * trade-off is bounded work against a hypothetical hidden record, and work
+ * wins on a surface that renders on every prompt.
+ */
+const MAX_LIVE_CONSIDERED = 64;
+
+/**
+ * How many cache records LOOK live, before the work cap. Only the cheap
+ * predicate — no sanitizing — so the "+N" overflow can report the true total
+ * rather than the capped one, which would understate it (a 500-record cache
+ * said "+56"). Reporting a number that is quietly wrong is the same class of
+ * problem as losing the marker entirely.
+ */
+export function liveMatchCountFromCache(
+  state: CacheState | undefined,
+  nowMs = Date.now(),
+): number {
+  const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
+  const liveArr = fresh && Array.isArray(state?.live) ? state!.live : [];
+  return liveArr.filter(
+    (m): m is Match =>
+      !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
+  ).length;
+}
+
 export function liveMatchesFromCache(
   state: CacheState | undefined,
   nowMs = Date.now(),
 ): Match[] {
   const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
   const liveArr = fresh && Array.isArray(state?.live) ? state!.live : [];
-  return liveArr
-    .filter(
-      (m): m is Match =>
-        !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
-    )
-    // Mirror of the adapter's feed sanitizer: the statusline/hook render these
-    // strings on every prompt, so a poisoned CACHE FILE (not just a poisoned
-    // feed) must not inject ANSI/newlines into the terminal or Claude's context.
-    .map(sanitizeMatchStrings);
+  return (
+    liveArr
+      .filter(
+        (m): m is Match =>
+          !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
+      )
+      // Bound the EXPENSIVE work before doing it. The cheap predicate above runs
+      // over the whole array (so a live match late in the file is still found),
+      // but sanitizing is grapheme-level over ~8 fields per record, and running
+      // it on every record made the HOT PATH scale with the cache file: measured
+      // 120ms at 1,000 records and 2,487ms at 20,000, against a 150ms budget.
+      // Slicing here rather than at the render sites is what actually bounds it —
+      // the render caps limited what was DISPLAYED, not what was computed.
+      .slice(0, MAX_LIVE_CONSIDERED)
+      // Mirror of the adapter's feed sanitizer: the statusline/hook render these
+      // strings on every prompt, so a poisoned CACHE FILE (not just a poisoned
+      // feed) must not inject ANSI/newlines into the terminal or Claude's context.
+      // An entry whose stage/status/kickoff can't be trusted is DROPPED rather
+      // than rendered from a substituted default.
+      .map(sanitizeMatchStrings)
+      .filter((m): m is Match => !!m)
+  );
 }
 
+/**
+ * Live-match segments rendered before the rest collapse to "+N". A World Cup
+ * matchday peaks well below this; the cap exists so a poisoned cache cannot
+ * decide how long the user's prompt line is.
+ */
+const DEFAULT_MAX_SEGMENTS = 8;
+
+/**
+ * Hard ceiling on the whole rendered line, in display columns.
+ *
+ * The statusline's contract is a single short line in someone's prompt. Every
+ * field is capped, but nothing capped the LINE — a poisoned cache produced a
+ * ~850 KB single line. Applied as a wrapper over every branch rather than at
+ * each `return`, so a branch added later cannot forget it.
+ */
+const MAX_LINE_COLUMNS = 200;
+
 export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {}): string {
+  return truncateVisible(renderPromptLine(state, opts), MAX_LINE_COLUMNS);
+}
+
+function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}): string {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
   const defaultCompetition = opts.defaultCompetition ?? true;
@@ -188,7 +254,16 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
   // Malformed entries (null, {}, missing kickoff/teams) are dropped, never
   // allowed to throw the whole statusline blank downstream.
   const cachedFixtures = Array.isArray(state?.fixtures)
-    ? (state!.fixtures as unknown[]).filter(isMatchShaped).map(sanitizeMatchStrings)
+    ? (state!.fixtures as unknown[])
+        .filter(isMatchShaped)
+        // Same bound as the live slice above, for the same reason and on the
+        // same hot path — this list feeds `mergeLive` and the countdown, and
+        // sanitizing all of it cost 1,658ms at 20,000 records against a 150ms
+        // budget. Bounding one of two paths in this function was not fixing the
+        // class; a knockout window is a few dozen fixtures, never thousands.
+        .slice(0, MAX_LIVE_CONSIDERED)
+        .map(sanitizeMatchStrings)
+        .filter((m): m is Match => !!m)
     : [];
   const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;
 
@@ -197,14 +272,24 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
     const mine = live.find((m) => m.home?.code === team || m.away?.code === team);
     if (mine) return `⚽ ${matchSegment(mine, compact, flags)}`;
   } else if (live.length > 0) {
-    // No filter → show all live matches inline, separated by " · ".
-    // CLAUDINHO_MAX caps how many render before the rest collapse to "+N".
-    const max = opts.max && opts.max > 0 ? opts.max : live.length;
+    // No filter → show live matches inline, separated by " · ".
+    // CLAUDINHO_MAX caps how many render before the rest collapse to "+N", but
+    // it is opt-IN: with no filter and no env var, `max` defaulted to
+    // live.length, so the count was UNBOUNDED. A poisoned cache listing 500
+    // matches produced a single ~850 KB "line", and this surface's entire
+    // contract is that it is one short line in the user's prompt.
+    const max = opts.max && opts.max > 0 ? Math.min(opts.max, DEFAULT_MAX_SEGMENTS) : DEFAULT_MAX_SEGMENTS;
     const shown = live.slice(0, max);
-    let line = '⚽ ' + shown.map((m) => matchSegment(m, compact, flags)).join(' · ');
-    const overflow = live.length - shown.length;
-    if (overflow > 0) line += ` +${overflow}`;
-    return line;
+    // The TRUE total, not the post-cap one — `live` has already been bounded to
+    // MAX_LIVE_CONSIDERED, so counting from it understated the overflow.
+    const overflow = Math.max(liveMatchCountFromCache(state, nowMs), live.length) - shown.length;
+    const marker = overflow > 0 ? ` +${overflow}` : '';
+    // The overflow marker is the honest part of this line — it is what says the
+    // list is incomplete — so it must survive the width cap. Truncating the
+    // whole line afterwards cut the marker off the end, turning a truncated
+    // list back into one that looks complete. Reserve its room and append it.
+    const body = '⚽ ' + shown.map((m) => matchSegment(m, compact, flags)).join(' · ');
+    return truncateVisible(body, MAX_LINE_COLUMNS - displayWidth(marker)) + marker;
   }
 
   // Cold/stale cache during a live window: a countdown here is actively

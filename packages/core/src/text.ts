@@ -14,13 +14,79 @@ const segmenter = new Intl.Segmenter();
 /** Pictographic (emoji) clusters — incl. both flag encodings — render 2 cols wide. */
 const WIDE_CLUSTER = /^(?:\p{Regional_Indicator}|\p{Extended_Pictographic})/u;
 
+/**
+ * East Asian Wide/Fullwidth bases, which occupy 2 terminal columns. JS regexes
+ * expose no `East_Asian_Width` property (only General_Category, Script and the
+ * binary properties), so the ranges are spelled out.
+ */
+const WIDE_BASE =
+  /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏ꥠ-꥿가-힣豈-﫿︐-︙︰-﹯＀-｠￠-￦\u{20000}-\u{2FFFD}\u{30000}-\u{3FFFD}]/u;
+
+/**
+ * A keycap sequence (`1⃣` = digit + VS16 + U+20E3) renders 2 columns, but its
+ * cluster BEGINS with an ASCII digit, so neither the emoji test nor the East
+ * Asian ranges catch it.
+ */
+const KEYCAP = /\u{20E3}/u;
+
+/**
+ * Bases that occupy NO column: combining marks (a cluster's accent rides on its
+ * base) and format/control characters. Counting these as 1 was how an invisible
+ * character inflated a measured width, spreading a standings table.
+ */
+const ZERO_WIDTH_BASE = /[\p{Mn}\p{Me}\p{Cf}\p{Cc}]/u;
+
+/** Terminal columns occupied by ONE grapheme cluster. */
+function clusterWidth(segment: string): number {
+  // An emoji cluster is 2 columns whatever it contains — the ZWJ, variation
+  // selectors and tag characters inside it are structural, not separate glyphs.
+  if (WIDE_CLUSTER.test(segment) || KEYCAP.test(segment)) return 2;
+  const first = segment.codePointAt(0);
+  if (first === undefined) return 0;
+  const base = String.fromCodePoint(first);
+  if (ZERO_WIDTH_BASE.test(base)) return 0;
+  return WIDE_BASE.test(base) ? 2 : 1;
+}
+
 /** Terminal display width of a string (grapheme clusters; emoji count as 2). */
 export function displayWidth(s: string): number {
   let w = 0;
   for (const { segment } of segmenter.segment(s)) {
-    w += WIDE_CLUSTER.test(segment) ? 2 : 1;
+    w += clusterWidth(segment);
   }
   return w;
+}
+
+/**
+ * Truncate to `maxColumns` display columns, appending `marker` when anything
+ * was dropped. Never splits a grapheme cluster.
+ *
+ * `padVisible` deliberately never truncates, so a single over-wide value pushed
+ * every other column out of line for the whole table — and on the statusline,
+ * whose entire contract is one short line, nothing bounded the result at all.
+ */
+export function truncateVisible(s: string, maxColumns: number, marker = '…'): string {
+  if (displayWidth(s) <= maxColumns) return s;
+  const budget = Math.max(0, maxColumns - displayWidth(marker));
+  let out = '';
+  let w = 0;
+  for (const { segment } of segmenter.segment(s)) {
+    const cw = clusterWidth(segment);
+    if (w + cw > budget) break;
+    out += segment;
+    w += cw;
+  }
+  return out + marker;
+}
+
+/**
+ * Iterate a string by grapheme cluster. Shared with the feed sanitizer, which
+ * must reason in clusters rather than code points: a flag or ZWJ emoji is a
+ * single indivisible unit whose internal format characters are structural,
+ * while a bidi control is always a cluster of its own.
+ */
+export function* graphemes(s: string): Generator<string> {
+  for (const { segment } of segmenter.segment(s)) yield segment;
 }
 
 /**

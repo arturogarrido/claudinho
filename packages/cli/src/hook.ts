@@ -12,7 +12,13 @@
  */
 import { lookupTeam, scoreline, type Match, type Team } from '@claudinho/core';
 import type { readState } from './cache';
-import { liveMatchesFromCache } from './statusline';
+import { liveMatchCountFromCache, liveMatchesFromCache } from './statusline';
+
+/**
+ * Live matches listed in the hook's context. Well above any real simultaneity
+ * (a World Cup matchday peaks at 12, with at most 6 kicking off together).
+ */
+const MAX_HOOK_MATCHES = 12;
 
 export interface HookOpts {
   /** Preferred team code (e.g. "MEX") — listed first. */
@@ -59,6 +65,11 @@ export function renderHook(
 
   let live = liveMatchesFromCache(state, now.getTime());
   if (live.length === 0) return '';
+  // The TRUE total. `liveMatchesFromCache` is bounded to protect the hot path,
+  // so counting the overflow from its result understated it — the statusline had
+  // the same bug and the same fix; a count that is quietly wrong reads as a
+  // complete list.
+  const total = Math.max(liveMatchCountFromCache(state, now.getTime()), live.length);
 
   // Surface the user's team first, if any.
   if (team) {
@@ -69,8 +80,18 @@ export function renderHook(
     });
   }
 
-  const lines = live.map((mm) => line(mm, flags)).join('\n');
+  // Bound the RECORD COUNT. This text is injected into Claude's context on
+  // every prompt submit, and while each field is capped, nothing capped how
+  // many matches a poisoned cache could list — a 500-record file produced
+  // 2,002 lines of context. `renderPrompt` has had this cap (CLAUDINHO_MAX);
+  // the hook, the surface that actually writes into the model, had none.
+  const shown = live.slice(0, MAX_HOOK_MATCHES);
+  const overflow = total - shown.length;
+  const lines = shown.map((mm) => line(mm, flags)).join('\n');
+  // Truncation is stated, never silent (English-only, like the rest of the
+  // hook — see the ambient-surface carve-out in AGENTS.md).
+  const more = overflow > 0 ? `\n(+${overflow} more not shown)` : '';
   // Labelled as live context so the model treats it as ambient info, not an
   // instruction. Kept terse to minimise token cost.
-  return `[Claudinho — live football scores right now]\n${lines}`;
+  return `[Claudinho — live football scores right now]\n${lines}${more}`;
 }

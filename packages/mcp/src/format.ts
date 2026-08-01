@@ -47,10 +47,47 @@ export function matchLine(m: Match, opts: FmtOpts = {}): string {
   return (flair ? `${base} — ${flair}` : base).trimEnd();
 }
 
+/**
+ * Records rendered into one text block. This block is model context, and the
+ * per-field sanitizer bounds a single NAME without bounding how many records
+ * arrive — repetition defeated it. Comfortably above any real matchday (the
+ * 48-team format peaks at 12).
+ */
+export const MAX_LIST_MATCHES = 40;
+
+/**
+ * Cap a record array bound for `structuredContent`, which is model context just
+ * as much as the text block is. Callers keep reporting the TRUE total in
+ * `count`, so the payload stays honest about what was omitted.
+ */
+export function capRecords<T>(rows: T[], max = MAX_LIST_MATCHES): T[] {
+  return rows.length > max ? rows.slice(0, max) : rows;
+}
+
+/**
+ * The line to append when `capRecords` dropped something.
+ *
+ * A cap that drops records silently reads as a complete list, which is the same
+ * failure as losing the statusline's "+N" marker: the reader cannot tell. Returns
+ * '' when nothing was dropped, so call sites can append unconditionally.
+ *
+ * English, matching the surrounding MCP text labels ("Matches on {date}:",
+ * "No matches scheduled.") which are hardcoded English today. Localizing one
+ * line of an English block would be inconsistent; the block is a separate change.
+ */
+export function truncationNote(total: number, shown: number): string {
+  return total > shown ? `\n(showing ${shown} of ${total} — list truncated)` : '';
+}
+
 /** A list of matches as a text block (or an empty-state message). */
 export function matchList(matches: Match[], empty: string, opts: FmtOpts = {}): string {
   if (matches.length === 0) return empty;
-  return matches.map((m) => `• ${matchLine(m, opts)}`).join('\n');
+  const shown = matches.slice(0, MAX_LIST_MATCHES);
+  const lines = shown.map((m) => `• ${matchLine(m, opts)}`).join('\n');
+  const overflow = matches.length - shown.length;
+  // Truncation is STATED. Silently dropping matches would read as a complete
+  // list of the day's fixtures, which is a worse failure than a long one.
+  return overflow > 0 ? `${lines}\n• (list truncated — ${overflow} more not shown)` : lines;
 }
 
 /** A group table as a monospace-friendly text block. */
@@ -79,3 +116,17 @@ export function standingsTable(group: string, rows: StandingRow[]): string {
 /** The persistent legal disclaimer appended to responses. */
 export const DISCLAIMER =
   'Claudinho is an independent fan project — not affiliated with or endorsed by FIFA or Anthropic.';
+
+/**
+ * Keep only the signals whose match survived `capRecords`. A signal keyed to a
+ * match that is no longer in the payload is dead weight in model context, and
+ * capping `matches` without capping these left the larger of the two uncapped.
+ */
+export function capSignals<T>(signals: Record<string, T>, kept: { id: string }[]): Record<string, T> {
+  const ids = new Set(kept.map((m) => m.id));
+  const out: Record<string, T> = {};
+  for (const [id, v] of Object.entries(signals)) {
+    if (ids.has(id)) out[id] = v;
+  }
+  return out;
+}

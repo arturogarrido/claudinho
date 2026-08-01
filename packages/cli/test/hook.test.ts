@@ -5,9 +5,12 @@ import type { Match } from '@claudinho/core';
 
 const NOW = new Date('2026-06-11T20:00:00Z');
 
+let nextId = 900000;
 function m(home: [string, string], away: [string, string], over: Partial<Match> = {}): Match {
   return {
-    id: `${home[0]}-${away[0]}`,
+    // Numeric: `safeMatchId` accepts only digits, matching every real ESPN and
+    // bundled id, so a team-code-derived id like "MEX-RSA" is now dropped.
+    id: String(nextId++),
     stage: 'GROUP',
     group: 'A',
     kickoff: '2026-06-11T19:00Z',
@@ -116,5 +119,20 @@ describe('renderHook — poisoned numeric cache fields', () => {
     expect(out).not.toContain('FAKE');
     expect(out.split('\n')).toHaveLength(2);
     expect(out).toContain('Mexico vs South Africa'); // scoreline degrades to "vs"
+  });
+});
+
+describe('hook — the overflow count is the TRUE total', () => {
+  it('reports +488 for 500 cached live matches, not the post-cap count', () => {
+    // `liveMatchesFromCache` is bounded to protect the hot path, so counting the
+    // overflow from its RESULT understated it (+52). The statusline had the same
+    // bug and the same fix — a count that is quietly wrong reads as complete.
+    const live: Match[] = [];
+    for (let i = 0; i < 500; i++) live.push(m(['MEX', '🇲🇽'], ['RSA', '🇿🇦']));
+    const out = renderHook(
+      { updatedAt: NOW.toISOString(), live, degraded: false } as never,
+      { now: NOW },
+    );
+    expect(out).toContain('(+488 more not shown)');
   });
 });
