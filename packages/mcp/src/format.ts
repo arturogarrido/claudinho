@@ -64,6 +64,21 @@ export function capRecords<T>(rows: T[], max = MAX_LIST_MATCHES): T[] {
   return rows.length > max ? rows.slice(0, max) : rows;
 }
 
+/**
+ * The line to append when `capRecords` dropped something.
+ *
+ * A cap that drops records silently reads as a complete list, which is the same
+ * failure as losing the statusline's "+N" marker: the reader cannot tell. Returns
+ * '' when nothing was dropped, so call sites can append unconditionally.
+ *
+ * English, matching the surrounding MCP text labels ("Matches on {date}:",
+ * "No matches scheduled.") which are hardcoded English today. Localizing one
+ * line of an English block would be inconsistent; the block is a separate change.
+ */
+export function truncationNote(total: number, shown: number): string {
+  return total > shown ? `\n(showing ${shown} of ${total} — list truncated)` : '';
+}
+
 /** A list of matches as a text block (or an empty-state message). */
 export function matchList(matches: Match[], empty: string, opts: FmtOpts = {}): string {
   if (matches.length === 0) return empty;

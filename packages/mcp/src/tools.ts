@@ -50,6 +50,7 @@ import {
   matchLine,
   matchList,
   standingsTable,
+  truncationNote,
 } from './format';
 
 export interface ToolResult {
@@ -552,7 +553,7 @@ export async function toolGetMarketSignal(
   // Bounded: this branch serialized one object per fixture into model context.
   const shown = capRecords(all);
   const text = shown.length
-    ? `Market signals on ${date}:\n${shown
+    ? `Market signals on ${date}:${truncationNote(all.length, shown.length)}\n${shown
         .map(({ match, signal }) => marketText(match, signal, args))
         .join('\n\n')}`
     : `No reliable market signals on ${date}.`;
@@ -664,9 +665,9 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       'live',
       undefined,
       {
-        title: 'Live match pulse',
+        title: `Live match pulse${truncationNote(matches.length, capRecords(matches).length)}`,
         // Bounded like the date branch: a share card is returned through MCP
-        // before a human ever sees it.
+        // before a human ever sees it. The count is STATED, not silently lost.
         matches: capRecords(matches),
         source,
         degraded,
@@ -830,7 +831,9 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     date,
     undefined,
     {
-      title: args.date ? `Matches · ${human}` : `Today's matches · ${human}`,
+      title:
+        (args.date ? `Matches · ${human}` : `Today's matches · ${human}`) +
+        truncationNote(todays.length, capRecords(todays).length),
       // Bounded like every other model-facing payload — a share card is
       // returned through MCP before a human ever sees it.
       matches: capRecords(todays),

@@ -121,3 +121,18 @@ describe('renderHook — poisoned numeric cache fields', () => {
     expect(out).toContain('Mexico vs South Africa'); // scoreline degrades to "vs"
   });
 });
+
+describe('hook — the overflow count is the TRUE total', () => {
+  it('reports +488 for 500 cached live matches, not the post-cap count', () => {
+    // `liveMatchesFromCache` is bounded to protect the hot path, so counting the
+    // overflow from its RESULT understated it (+52). The statusline had the same
+    // bug and the same fix — a count that is quietly wrong reads as complete.
+    const live: Match[] = [];
+    for (let i = 0; i < 500; i++) live.push(m(['MEX', '🇲🇽'], ['RSA', '🇿🇦']));
+    const out = renderHook(
+      { updatedAt: NOW.toISOString(), live, degraded: false } as never,
+      { now: NOW },
+    );
+    expect(out).toContain('(+488 more not shown)');
+  });
+});

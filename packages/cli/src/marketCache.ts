@@ -142,6 +142,10 @@ export function readMarketCache(
     // `now` is threaded so the DERIVED staleness inside the sanitizer agrees
     // with the TTL arithmetic above instead of reading the wall clock.
     const clean = sanitizeMarketSignal(entry.signal, { now: new Date(now) });
+    // The BODY must match the key it was filed under, and the provider the file
+    // claims. Without this a poisoned file could park one fixture's prices under
+    // another fixture's id — the entry is well-formed, just not about this match.
+    if (clean.matchId !== id || clean.source !== source) continue;
     // Only a signal that survived sanitizing counts as "checked". Otherwise a
     // crafted (or simply corrupt) positive entry would suppress the real fetch
     // for the full positive TTL while displaying nothing.

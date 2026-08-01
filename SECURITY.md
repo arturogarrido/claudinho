@@ -76,8 +76,9 @@ file on disk is attacker-writable in a way the type system does not capture. Con
   code-point range. That covers bidi overrides and isolates, not just ANSI escapes: a single
   U+202E in a team name transposes the *displayed* score under the Unicode Bidirectional
   Algorithm, which matters most on share cards, since those exist to be pasted into tools that
-  implement it. Emoji flags are exempted as whole grapheme clusters, because two of the flags
-  shipped here are tag sequences built from format characters.
+  implement it. Emoji are handled as whole grapheme clusters rather than code points, because
+  several flags shipped here are built from format characters — but a cluster is kept only if it
+  is a real emoji (see below), not merely because it starts like one.
 - **Bounded** per field (display columns, code points, and grapheme-cluster length) and per
   record count on the MCP and hook surfaces, which is where a model reads. Truncation is stated,
   never silent. The CLI's own terminal output and `--json` are deliberately *not* record-capped —
@@ -90,8 +91,10 @@ file on disk is attacker-writable in a way the type system does not capture. Con
   over into a different one.
 - **Invisible characters are treated as a payload channel, not as noise.** Bidi controls, tag
   characters and variation selectors are each invisible and each map onto a text alphabet, so a
-  single glyph can carry a sentence a model will read. Only exact, allow-listed flag sequences may
-  carry tag characters, and a grapheme cluster longer than any real character is refused whole.
+  single glyph can carry a sentence a model will read. Rather than screening for each one, an
+  emoji cluster is accepted only if it *is* an emoji — a regional-indicator pair, an allow-listed
+  subdivision flag, or pictographs joined by ZWJ — and any cluster longer than a real character is
+  refused whole. The bound is checked on the output, not the input.
 - **Fail closed, including on absence.** A missing field must be at least as rejecting as a
   wrong one; several gates once skipped themselves when their field was absent, which made a
   more malformed payload more likely to be accepted.
@@ -132,6 +135,9 @@ binary — though such an attacker can generally run code anyway.
   make a compromised provider's *numbers* correct.
 - The bounds above are chosen well above any real football value rather than derived from the
   fixture list, so they stop absurdity, not merely-implausible values.
+- The East Asian display-width table is a hand-maintained list of ranges, because JavaScript
+  regular expressions expose no `East_Asian_Width` property. It covers the planes that matter here
+  and is not claimed to be exhaustive; a miss costs column alignment, not safety.
 - Sanitizing normalizes what a *string* can contain, not what it can *say*. A provider that
   serves a plausible-looking team name is echoed as-is; only its shape is constrained.
 - Stripping format characters also removes ZERO WIDTH NON-JOINER (U+200C), which is

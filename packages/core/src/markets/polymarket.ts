@@ -28,7 +28,7 @@ import { canonicalTimestamp } from '../sanitize';
 import { shiftUtcDate } from '../time';
 import type { Match } from '../types';
 import mappingJson from './mapping.2026.json';
-import { buildMarketSignal } from './normalize';
+import { buildMarketSignal, FUTURE_SKEW_MS } from './normalize';
 import type {
   MarketOutcome,
   MarketOutcomeKind,
@@ -377,7 +377,9 @@ export class PolymarketProvider implements MarketProvider {
       // Regular-time (90') resolution only — reject extra-time/advance markets.
       if (market.description && NON_REGULAR_TIME.test(market.description)) return undefined;
       const yes = yesPrice(market);
-      if (yes == null) return undefined;
+      // A leg we cannot read is a schema failure, not the fact "this fixture has
+      // no market" — the distinction `checked` is built on.
+      if (yes == null) throw new MalformedPayloadError('market is not a readable Yes/No binary');
       outcomes.push({ kind, teamCode, label, probability: yes });
       // A PRESENT-but-unparseable leg timestamp rejects. Skipping it silently
       // substituted the EVENT's timestamp, which is not when this price was
@@ -390,6 +392,12 @@ export class PolymarketProvider implements MarketProvider {
         throw new MalformedPayloadError('market updatedAt missing or unparseable');
       }
       const marketAsOf = canonicalTimestamp(market.updatedAt);
+      // Taking the OLDEST hides a leg dated forward: a 2099 timestamp beside
+      // current siblings simply lost the comparison and the signal read fresh.
+      // A price that claims to be from the future is not a price.
+      if (Date.parse(marketAsOf) - Date.now() > FUTURE_SKEW_MS) {
+        throw new MalformedPayloadError('market updatedAt is dated forward');
+      }
       if (marketAsOf && (!asOf || Date.parse(marketAsOf) < Date.parse(asOf))) asOf = marketAsOf;
       const liq = numberish(market.liquidityNum ?? market.liquidity);
       if (liq != null) liquidity = liquidity == null ? liq : Math.min(liquidity, liq);
@@ -561,16 +569,24 @@ function pickMarket(
   // is not a question we can answer, so it is not a question we should guess at.
   const bySlug = teamMarkets.filter((m) => tokens.includes(slugToken(m)));
   if (bySlug.length > 1) return undefined;
-  if (bySlug.length === 1) return bySlug[0];
   // An EMPTY team name would match any market with no groupItemTitle ('' === ''),
   // adopting an unrelated prop as a result leg. A nameless team is not a match.
-  if (!name) return undefined;
-  const byTitle = teamMarkets.filter((m) => (m.groupItemTitle ?? '').trim().toLowerCase() === name);
-  return byTitle.length === 1 ? byTitle[0] : undefined;
+  const byTitle = name
+    ? teamMarkets.filter((m) => (m.groupItemTitle ?? '').trim().toLowerCase() === name)
+    : [];
+  if (byTitle.length > 1) return undefined;
+  // Both selectors are resolved before choosing, so a payload where the slug
+  // names one market and the title names a DIFFERENT one is ambiguous rather
+  // than silently resolved by which check happened to run first.
+  const candidates = new Set([...bySlug, ...byTitle]);
+  return candidates.size === 1 ? [...candidates][0] : undefined;
 }
 
 function pickDraw(markets: GammaMarket[]): GammaMarket | undefined {
-  return markets.find(isDrawMarket);
+  // EXACTLY one — the same ambiguity `pickMarket` refuses. Two draw legs is not
+  // a payload we can read, and picking the first is guessing.
+  const draws = markets.filter(isDrawMarket);
+  return draws.length === 1 ? draws[0] : undefined;
 }
 
 function assertAllowedHost(base: string): void {
@@ -613,11 +629,14 @@ function yesPrice(market: GammaMarket): number | undefined {
 
 /** Parse a value that may be an array or a JSON-encoded string array. */
 function parseJsonArray(v: unknown): string[] {
-  if (Array.isArray(v)) return v.map((x) => String(x));
+  // NOT `String(x)`: JSON can hold `{"toString": null}`, and coercing that
+  // throws out of a function whose whole contract is that it never does.
+  const asText = (x: unknown) => (typeof x === 'string' || typeof x === 'number' ? String(x) : '');
+  if (Array.isArray(v)) return v.map(asText);
   if (typeof v === 'string') {
     try {
       const parsed: unknown = JSON.parse(v);
-      return Array.isArray(parsed) ? parsed.map((x) => String(x)) : [];
+      return Array.isArray(parsed) ? parsed.map(asText) : [];
     } catch {
       return [];
     }

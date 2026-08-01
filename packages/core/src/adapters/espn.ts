@@ -32,6 +32,9 @@ const TEAM_CODE_MAX = 8;
 /** Records accepted from one scoreboard payload — matches the `limit` we ask for. */
 const MAX_EVENTS_PER_PAYLOAD = 300;
 
+/** Rows accepted per standings group. A real group is 4; this is slack, not a target. */
+const MAX_STANDINGS_ROWS = 32;
+
 const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 /** Default competition slug (the 2026 World Cup). */
 export const DEFAULT_COMPETITION = 'fifa.world';
@@ -293,15 +296,17 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match | undef
   const competitors = (Array.isArray(comp?.competitors) ? comp.competitors : []).filter(
     (c): c is EspnCompetitor => !!c && typeof c === 'object',
   );
-  // TWO valid participants, or there is no fixture to describe. Filtering the
-  // invalid ones without requiring what remains produced phantom "TBD vs TBD"
-  // matches from `{}`, `[null]` and `[]` — which is worse than dropping the
-  // record, because it renders as a real fixture nobody is playing.
-  if (competitors.length < 2) return undefined;
-  const homeC =
-    competitors.find((c) => c.homeAway === 'home') ?? competitors[0];
-  const awayC =
-    competitors.find((c) => c.homeAway === 'away') ?? competitors[1];
+  // EXACTLY one home and one away, each naming a team. Anything else is a
+  // fixture we would be guessing at: `[{}, {}]` produced a phantom "TBD vs TBD"
+  // match nobody is playing, two competitors both marked `home` were silently
+  // assigned by position, and a third contradictory competitor was ignored.
+  // Positional fallback is gone with it — it only ever papered over a payload
+  // that did not say who was playing. The live 104-fixture response satisfies
+  // this stricter contract, so nothing real is refused.
+  if (competitors.length !== 2) return undefined;
+  const homeC = competitors.find((c) => c.homeAway === 'home');
+  const awayC = competitors.find((c) => c.homeAway === 'away');
+  if (!homeC || !awayC || !homeC.team || !awayC.team) return undefined;
 
   const status = mapStatus(ev.status ?? comp?.status);
   const stage = stageFromSlug(ev.season?.slug);
@@ -469,7 +474,11 @@ export function parseStandings(data: EspnStandings): GroupStandings[] {
         r.team.code.localeCompare(s.team.code)
       );
     });
-    out.push({ group: letter, rows: ranked.map((x) => x.row) });
+    // Rows bounded at the ADAPTER, so every consumer inherits it. A group is at
+    // most 4 teams; capping the table COUNT downstream was a no-op (there are 12
+    // groups) while the rows inside each table stayed unbounded, which is what
+    // actually carries the bytes into model context.
+    out.push({ group: letter, rows: ranked.slice(0, MAX_STANDINGS_ROWS).map((x) => x.row) });
   }
   out.sort((a, b) => a.group.localeCompare(b.group));
   return out;
