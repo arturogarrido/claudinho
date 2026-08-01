@@ -84,6 +84,14 @@ export function deriveFavorite(outcomes: MarketOutcome[]): MarketFavorite | unde
  */
 export function mapsCleanly(match: Match, outcomes: MarketOutcome[]): boolean {
   if (outcomes.some((o) => o.kind === 'other')) return false;
+  // A repeated 1X2 kind is never legitimate — the market is one home/draw/away
+  // line — and it is invisible in the rendered list while still counting toward
+  // the derived favorite, so a hidden second `home` leg can supply the mass that
+  // makes a 10% team the headline. The cache sanitizer has rejected this since
+  // the last round (`dedupeKinds`); the LIVE boundary did not, which meant a
+  // signal and its own cached round-trip could disagree.
+  const kinds = outcomes.map((o) => o.kind);
+  if (new Set(kinds).size !== kinds.length) return false;
   const home = outcomes.find((o) => o.kind === 'home');
   const away = outcomes.find((o) => o.kind === 'away');
   const draw = outcomes.find((o) => o.kind === 'draw');

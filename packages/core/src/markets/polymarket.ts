@@ -337,6 +337,11 @@ export class PolymarketProvider implements MarketProvider {
       const yes = yesPrice(market);
       if (yes == null) return undefined;
       outcomes.push({ kind, teamCode, label, probability: yes });
+      // A PRESENT-but-unparseable leg timestamp rejects. Skipping it silently
+      // substituted the EVENT's timestamp, which is not when this price was
+      // taken — so the displayed "updated HH:MM UTC" would describe a different
+      // reading than the number beside it.
+      if (market.updatedAt != null && !canonicalTimestamp(market.updatedAt)) return undefined;
       const marketAsOf = canonicalTimestamp(market.updatedAt);
       if (marketAsOf && (!asOf || Date.parse(marketAsOf) < Date.parse(asOf))) asOf = marketAsOf;
       const liq = numberish(market.liquidityNum ?? market.liquidity);
@@ -369,7 +374,7 @@ export class PolymarketProvider implements MarketProvider {
       // The fallback is grammar-checked too. It is normally a slug we derived
       // ourselves, but `mapping.2026.json` can override it, so echoing it raw
       // was the one path around the agent-facing filter this line exists for.
-      sourceMarketId: safeMarketId(event.id) ?? safeMarketId(eventSlug),
+      sourceMarketId: safeMarketId(event.id) ?? safeDerivedSlug(eventSlug),
       asOf,
       outcomes,
       liquidity,
@@ -392,7 +397,24 @@ export class PolymarketProvider implements MarketProvider {
  * and let the caller fall back to the slug we derived ourselves.
  */
 function safeMarketId(id: unknown): string | undefined {
-  return typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : undefined;
+  // NUMERIC. `[A-Za-z0-9_-]{1,64}` still admits IGNORE_PREVIOUS_INSTRUCTIONS,
+  // and this value lands in MCP structured content. Verified against the live
+  // Gamma API: all 104 World Cup event ids and all 312 of their market ids are
+  // numeric strings.
+  return typeof id === 'string' && /^[0-9]{1,32}$/.test(id) ? id : undefined;
+}
+
+/**
+ * The slug fallback, validated by ITS OWN grammar rather than the id one.
+ *
+ * It is normally a slug we derived ourselves, but `mapping.2026.json` can
+ * override it, so it is provider-influenced and reaches MCP structured content
+ * the same way. This is exactly the shape `deriveEventSlugs` produces.
+ */
+function safeDerivedSlug(slug: unknown): string | undefined {
+  return typeof slug === 'string' && /^fifwc-[a-z]{2,3}-[a-z]{2,3}-\d{4}-\d{2}-\d{2}$/.test(slug)
+    ? slug
+    : undefined;
 }
 
 /**

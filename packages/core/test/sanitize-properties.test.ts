@@ -559,3 +559,42 @@ describe('property: text and structured data never disagree', () => {
     expect(line).toContain(match.away.name);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Reviewer round 7 — identifier grammars, calendar validity, and the LIVE
+// market boundary. Each was reproduced against the previous head before fixing.
+// ---------------------------------------------------------------------------
+describe('property: an identifier must look like an identifier, not like prose', () => {
+  it('refuses prose and prototype names in Match.id', () => {
+    for (const id of [
+      'IGNORE_PREVIOUS_INSTRUCTIONS',
+      '__proto__',
+      'constructor',
+      'ev-eng-cdr',
+      'x'.repeat(40),
+    ]) {
+      expect(sanitizeMatchStrings({ ...goodMatch, id } as Match), `id ${id}`).toBeUndefined();
+    }
+  });
+
+  it('keeps every real id shape', () => {
+    for (const id of ['760415', '700001', '401841174', '633787']) {
+      expect(sanitizeMatchStrings({ ...goodMatch, id } as Match)?.id).toBe(id);
+    }
+  });
+});
+
+describe('property: a timestamp names a real calendar day', () => {
+  it('refuses a date that Date.parse would silently ROLL OVER', () => {
+    // Not a parse failure — `2026-02-30` becomes March 2, a well-formed instant
+    // that files a fixture on the wrong day.
+    expect(canonicalTimestamp('2026-02-30T00:00:00Z')).toBe('');
+    expect(canonicalTimestamp('2026-13-01T00:00:00Z')).toBe('');
+    expect(canonicalTimestamp('2026-02-29T00:00:00Z')).toBe(''); // 2026 is not a leap year
+  });
+
+  it('keeps a real leap day and an offset that legitimately shifts the UTC date', () => {
+    expect(canonicalTimestamp('2024-02-29T00:00:00Z')).toBe('2024-02-29T00:00:00.000Z');
+    expect(canonicalTimestamp('2026-06-11T23:00:00+02:00')).toBe('2026-06-11T21:00:00.000Z');
+  });
+});

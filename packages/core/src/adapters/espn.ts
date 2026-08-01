@@ -14,7 +14,13 @@ import type { Match, Stage, Status, Team } from '../types';
 import type { ProviderAdapter, ProviderCapabilities } from './types';
 import { nationToFlag } from '../flags';
 import { isFinished, isLive } from '../normalize';
-import { canonicalTimestamp, MAX_MINUTE, safeMatchId, sanitizeFeedText } from '../sanitize';
+import {
+  canonicalTimestamp,
+  MAX_GOALS,
+  MAX_MINUTE,
+  safeMatchId,
+  sanitizeFeedText,
+} from '../sanitize';
 
 /**
  * Real team abbreviations are 3 letters, so the 100-column default cap was far
@@ -213,8 +219,23 @@ function stageFromSlug(slug?: string): Stage {
 function toInt(s?: string | number): number | undefined {
   if (typeof s === 'number') return Number.isInteger(s) ? s : undefined;
   if (typeof s !== 'string' || s === '') return undefined;
-  const n = parseInt(s, 10);
-  return Number.isFinite(n) ? n : undefined;
+  // WHOLE-string match, not `parseInt`. parseInt stops at the first invalid
+  // character, so "1x" silently became 1 and "5 goals" became 5 — a partially
+  // parsed value presented as an exact score.
+  return /^-?\d{1,9}$/.test(s.trim()) ? Number(s.trim()) : undefined;
+}
+
+/**
+ * A goal tally we are willing to publish as fact: a whole number in range.
+ *
+ * `toInt` says "is this an integer"; this says "is this a possible football
+ * score". Without it the adapter emitted -5 and 999999999 with exactly the
+ * confidence of a real result — and unlike the cache path, a live fetch renders
+ * straight through without passing `sanitizeMatchStrings`.
+ */
+function toGoals(s?: string | number): number | undefined {
+  const n = toInt(s);
+  return n !== undefined && n >= 0 && n <= MAX_GOALS ? n : undefined;
 }
 
 function toTeam(t?: EspnTeam): Team {
@@ -265,7 +286,13 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match | undef
   const kickoff = canonicalTimestamp(ev?.date);
   if (!id || !kickoff) return undefined;
   const comp = ev.competitions?.[0];
-  const competitors = comp?.competitors ?? [];
+  // `competitors` is cast from an unchecked JSON body: `{}` made `.find` throw
+  // and `[null]` made the `.homeAway` read throw — and because the batch mapper
+  // has no per-record isolation, ONE such event took the whole day's feed down
+  // with it. A record we cannot read is dropped, never guessed.
+  const competitors = (Array.isArray(comp?.competitors) ? comp.competitors : []).filter(
+    (c): c is EspnCompetitor => !!c && typeof c === 'object',
+  );
   const homeC =
     competitors.find((c) => c.homeAway === 'home') ?? competitors[0];
   const awayC =
@@ -284,14 +311,17 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match | undef
     group = ctx.groupByTeam[home.code] ?? ctx.groupByTeam[away.code];
   }
 
-  const hs = toInt(homeC?.score);
-  const as = toInt(awayC?.score);
+  const hs = toGoals(homeC?.score);
+  const as = toGoals(awayC?.score);
   const hasScore = status !== 'SCHEDULED' && hs !== undefined && as !== undefined;
 
   let winnerCode: string | undefined;
   if (isFinished(status)) {
-    if (homeC?.winner) winnerCode = home.code;
-    else if (awayC?.winner) winnerCode = away.code;
+    // A REAL boolean only. `winner: "false"` is a truthy string, so a plain
+    // truthiness test read it as "this team won" — and `winnerCode` is what
+    // advances a team through the knockout bracket.
+    if (homeC?.winner === true) winnerCode = home.code;
+    else if (awayC?.winner === true) winnerCode = away.code;
   }
 
   // Penalty shootout: ESPN carries `shootoutScore` on BOTH competitors only for
@@ -300,8 +330,8 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match | undef
   // structured payload can't surface an impossible { score: undefined, shootout }
   // (the scoreline already hides that, but `--json`/MCP `data` would expose it).
   // `hasScore` (not `isFinished`) so a live in-progress shootout still shows.
-  const hShoot = toInt(homeC?.shootoutScore);
-  const aShoot = toInt(awayC?.shootoutScore);
+  const hShoot = toGoals(homeC?.shootoutScore);
+  const aShoot = toGoals(awayC?.shootoutScore);
   const shootout = hasScore && hShoot !== undefined && aShoot !== undefined
     ? { home: hShoot, away: aShoot }
     : undefined;

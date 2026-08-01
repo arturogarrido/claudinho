@@ -104,7 +104,7 @@ function sanitized(m: unknown): Match {
 describe('sanitizeMatchStrings (statusline cache mirror)', () => {
   it('cleans every display string and never throws on malformed teams', () => {
     const dirty = {
-      id: 'x',
+      id: '900001',
       stage: 'GROUP',
       kickoff: '2026-06-11T19:00Z',
       venue: `V${ESC}[31menue`,
@@ -126,7 +126,7 @@ describe('sanitizeMatchStrings (statusline cache mirror)', () => {
 
 describe('sanitizeMatchStrings — numeric fields (score/shootout/minute)', () => {
   const base = {
-    id: 'x',
+    id: '900001',
     stage: 'GROUP',
     kickoff: '2026-06-11T19:00Z',
     venue: 'V',

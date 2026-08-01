@@ -357,7 +357,7 @@ describe('statusline — bounded regardless of what the cache holds', () => {
     const live: Match[] = [];
     for (let i = 0; i < n; i++) {
       live.push(
-        m(`F${i}`, ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], {
+        m(`90${i}`, ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], {
           status: 'LIVE',
           score: { home: 1, away: 0 },
           minute: 55,
@@ -403,7 +403,7 @@ describe('statusline — hot-path work is bounded by the cap, not the cache size
     const live: Match[] = [];
     for (let i = 0; i < n; i++) {
       live.push(
-        m(`F${i}`, ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], {
+        m(`90${i}`, ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], {
           status: 'LIVE',
           score: { home: 1, away: 0 },
           minute: 55,

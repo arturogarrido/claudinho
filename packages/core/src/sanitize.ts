@@ -145,10 +145,17 @@ export function sanitizeFeedText(value: string, max = FEED_TEXT_MAX): string {
  * INSTRUCTIONS") is exactly the payload that matters and survives a control
  * filter untouched. Ids are short opaque tokens, so validate the GRAMMAR.
  *
- * Verified permissive enough for real data: all 104 bundled fixture ids and
- * 1755 live ESPN event ids across nine competitions are 6-9 digit numerics.
+ * NUMERIC, not merely "identifier-shaped". A charset of `[A-Za-z0-9_-]` still
+ * admits `IGNORE_PREVIOUS_INSTRUCTIONS`, and no length cap separates prose from
+ * an id when underscores are allowed — `__proto__` fits in nine characters, and
+ * this value is also used as an object key. Verified against real data: all 104
+ * bundled fixture ids and 1755 live ESPN event ids across nine competitions are
+ * 6-9 digit numerics, so nothing real is refused.
+ *
+ * A future provider whose ids are not numeric should widen this DELIBERATELY,
+ * with its own ground truth — not by loosening it speculatively.
  */
-const ID_GRAMMAR = /^[A-Za-z0-9_-]{1,32}$/;
+const ID_GRAMMAR = /^[0-9]{1,20}$/;
 
 /** The id, or '' when it isn't a plausible identifier. */
 export function safeMatchId(v: unknown): string {
@@ -374,8 +381,28 @@ const ISO_CANONICAL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
  * characters longer and therefore shifted the fixed `[11..16]` slice the
  * attribution line takes for "HH:MM UTC" — printing "13T00 UTC".
  */
+/**
+ * Is the calendar date real? `Date.parse` ROLLS OVER rather than failing, so
+ * `2026-02-30` becomes March 2 and `2026-13-01` becomes January 2027 — a
+ * well-formed instant that silently files a fixture on the wrong day. The
+ * output date cannot simply be compared to the input's, because a legitimate
+ * UTC offset shifts it, so the input's own components are checked instead.
+ */
+function calendarValid(iso: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1) return false;
+  // Day 0 of the NEXT month is the last day of this one.
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return day <= lastDay;
+}
+
 export function canonicalTimestamp(v: unknown): string {
   if (typeof v !== 'string' || !ISO_INSTANT.test(v)) return '';
+  if (!calendarValid(v)) return '';
   const t = Date.parse(v);
   if (!Number.isFinite(t)) return '';
   const out = new Date(t).toISOString();

@@ -250,3 +250,65 @@ describe('EspnAdapter fetch hardening (size cap + no redirects)', () => {
     expect(r.degraded).toBe(true);
   });
 });
+
+/**
+ * Reviewer round 7 — the ADAPTER path renders straight to output without a
+ * cache round-trip, so bounds enforced in `sanitizeMatchStrings` do not cover
+ * it. Each of these was reproduced against the previous head.
+ */
+describe('mapEspnEvent — impossible facts and malformed records', () => {
+  const base = {
+    id: '700001',
+    date: '2026-06-11T19:00Z',
+    season: { slug: 'group-stage' },
+    status: { type: { name: 'STATUS_FULL_TIME', state: 'post', completed: true } },
+    competitions: [
+      {
+        competitors: [
+          { homeAway: 'home', score: '1', winner: true, team: { abbreviation: 'MEX', displayName: 'Mexico' } },
+          { homeAway: 'away', score: '0', team: { abbreviation: 'RSA', displayName: 'South Africa' } },
+        ],
+      },
+    ],
+  };
+
+  const withHome = (over: Record<string, unknown>) => ({
+    ...base,
+    competitions: [
+      {
+        competitors: [
+          { ...base.competitions[0]!.competitors[0], ...over },
+          base.competitions[0]!.competitors[1],
+        ],
+      },
+    ],
+  });
+
+  it('drops an impossible score rather than publishing it as fact', () => {
+    for (const score of ['-5', '999999999', '1x', '5 goals', '1e3']) {
+      expect(mapped(withHome({ score })).score, `score ${score}`).toBeUndefined();
+    }
+  });
+
+  it('still reads a real score', () => {
+    expect(mapped(withHome({ score: '3' })).score).toEqual({ home: 3, away: 0 });
+  });
+
+  it('treats winner as a REAL boolean (winner:"false" is not a win)', () => {
+    // `winnerCode` is what advances a team through the knockout bracket.
+    expect(mapped(withHome({ winner: 'false' })).winnerCode).toBeUndefined();
+    expect(mapped(withHome({ winner: true })).winnerCode).toBe('MEX');
+  });
+
+  it('never throws on a malformed competitors body (one event must not sink the feed)', () => {
+    for (const competitions of [
+      [{ competitors: {} }],
+      [{ competitors: [null] }],
+      [{ competitors: 'nope' }],
+      [null],
+      'nope',
+    ]) {
+      expect(() => mapEspnEvent({ ...base, competitions } as never)).not.toThrow();
+    }
+  });
+});

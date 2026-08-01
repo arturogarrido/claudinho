@@ -5,9 +5,12 @@ import type { Match } from '@claudinho/core';
 
 const NOW = new Date('2026-06-11T20:00:00Z');
 
+let nextId = 900000;
 function m(home: [string, string], away: [string, string], over: Partial<Match> = {}): Match {
   return {
-    id: `${home[0]}-${away[0]}`,
+    // Numeric: `safeMatchId` accepts only digits, matching every real ESPN and
+    // bundled id, so a team-code-derived id like "MEX-RSA" is now dropped.
+    id: String(nextId++),
     stage: 'GROUP',
     group: 'A',
     kickoff: '2026-06-11T19:00Z',
