@@ -125,6 +125,14 @@ binary — though such an attacker can generally run code anyway.
   fixture list, so they stop absurdity, not merely-implausible values.
 - Sanitizing normalizes what a *string* can contain, not what it can *say*. A provider that
   serves a plausible-looking team name is echoed as-is; only its shape is constrained.
+- Stripping format characters also removes ZERO WIDTH NON-JOINER (U+200C), which is
+  orthographic in Persian and several Indic scripts. Both current providers serve Latin-script
+  names, so nothing is lost today; a future adapter serving native-script names would need an
+  exemption modelled on the flag one — a structural grammar, not a blanket carve-out.
+- Emoji are preserved as whole grapheme clusters so flags survive, and the only clusters allowed
+  to carry TAG characters are well-formed subdivision flags. That restriction is the point: tag
+  characters map one-to-one onto printable ASCII, so an unrestricted cluster is a covert channel
+  that renders as a single two-column glyph.
 
 ## Supply chain
 
