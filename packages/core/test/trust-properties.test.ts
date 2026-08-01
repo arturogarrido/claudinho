@@ -1,5 +1,5 @@
 /**
- * PROPERTY tests for the sanitizer layer.
+ * PROPERTY tests for the TRUST BOUNDARY (core/src/trust).
  *
  * Why these exist, in one paragraph: six rounds of adversarial review found
  * ~35 defects here, and every round was fixed per-VECTOR — patch the reported
@@ -12,20 +12,50 @@
  * Each block names the property it pins and the negative control that should
  * make it go red. If a test here cannot be made to fail by reverting its fix,
  * it is pinning nothing — delete it and write a better one.
+ *
+ * These originally tested a standalone `sanitize.ts` that ran only on the CACHE
+ * path while the live path had its own rules. That file is gone: the rules now
+ * live in the constructors BOTH paths end at, so the same properties are
+ * asserted here against `parseCachedMatch` / `sealMarketSignal` / `humanLabel`.
+ * The local aliases below keep each property's wording intact while pointing it
+ * at the boundary that now owns it. `sealMarketSignal` is stricter than the old
+ * total function — it can REFUSE a signal outright — so the aliases surface
+ * `undefined` for that, which the properties treat as the strongest rejection.
  */
 import { describe, expect, it } from 'vitest';
 import { mapEspnEvent } from '../src/adapters/espn';
 import { allTeams } from '../src/teams';
+import { productFlag } from '../src/trust';
 import { displayWidth } from '../src/text';
 import { marketLine } from '../src/markets/format';
 import { marketSignalRendersFor } from '../src/markets/normalize';
 import {
-  canonicalTimestamp,
-  sanitizeFeedText,
-  sanitizeMarketSignal,
-  sanitizeMatchStrings,
-} from '../src/sanitize';
+  canonicalTimestamp as roleTimestamp,
+  humanLabel,
+  parseCachedMatch,
+  parsedValue,
+  sealMarketSignal,
+} from '../src/trust';
 import type { MarketSignal, Match } from '../src/index';
+
+// The boundary these properties now describe, under their historical names.
+const sanitizeMatchStrings = (m: unknown): Match | undefined => parsedValue(parseCachedMatch(m));
+/** Refusal is a legitimate verdict; these properties probe for it explicitly. */
+const trySanitizeMarketSignal = (
+  sig: unknown,
+  opts: { now?: Date } = {},
+): MarketSignal | undefined => parsedValue(sealMarketSignal(sig, opts));
+/** For assertions that are ABOUT a returned signal: an unexpected refusal is a
+ *  loud failure, not a silently-skipped test. */
+const sanitizeMarketSignal = (sig: unknown, opts: { now?: Date } = {}): MarketSignal => {
+  const out = trySanitizeMarketSignal(sig, opts);
+  if (!out) throw new Error(`expected a signal, got a refusal: ${JSON.stringify(sig)}`);
+  return out;
+};
+const sanitizeFeedText = (v: unknown, max?: number): string =>
+  humanLabel(v, max ?? undefined);
+/** The old helper returned '' for "unusable"; the role returns undefined. */
+const canonicalTimestamp = (v: unknown): string => roleTimestamp(v) ?? '';
 
 const ESC = '';
 
@@ -188,13 +218,24 @@ describe('property: control/format characters out, emoji intact', () => {
     }
   });
 
-  it('leaves EVERY shipped flag byte-identical (tag sequences included)', () => {
+  it('GENERATES every shipped flag, and accepts none from input', () => {
+    // The property that replaced "leave flags byte-identical". That older
+    // property existed only because flags flowed through the text filter, which
+    // forced an emoji exemption — and that exemption is what TAG characters,
+    // variation selectors and ZWJ each rode through in turn. Flags are now
+    // produced from the nation, so no exemption exists to aim at.
     const flags = [...new Set(allTeams().map((t) => t.flag))];
     flags.push('🏳️'); // the unresolved-slot placeholder
     expect(flags.length).toBeGreaterThan(40);
     for (const f of flags) {
-      expect(sanitizeFeedText(f), `flag ${JSON.stringify(f)} was altered`).toBe(f);
       expect(displayWidth(f), `flag ${JSON.stringify(f)} is not 2 columns`).toBe(2);
+      // No flag can ENTER through a text field, whatever its encoding —
+      // regional-indicator pair, tag sequence, or VS16-carrying white flag.
+      expect(sanitizeFeedText(f), `flag ${JSON.stringify(f)} survived as text`).toBe('');
+    }
+    // ...and every shipped team still gets its own flag, from its name.
+    for (const t of allTeams()) {
+      expect(productFlag(t.name), `no flag generated for ${t.name}`).toBe(t.flag);
     }
   });
 
@@ -232,10 +273,35 @@ describe('property: control/format characters out, emoji intact', () => {
     }
   });
 
+  it('accepts NO emoji into a label, in any encoding', () => {
+    // This replaces three separate "keep this emoji form intact" tests. Each
+    // existed because flags travelled through the text filter, so the filter
+    // needed an emoji carve-out — and a carve-out with no grammar is a channel:
+    // TAG characters, then variation selectors, then ZWJ each rode through it.
+    // A label is now PROSE ONLY. Product glyphs are generated (see the flag
+    // property above), so there is nothing left to carve out.
+    for (const hostile of [
+      '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}', // ZWJ family
+      '\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}', // England tag seq
+      '\u{1F3F4}\u{E0049}\u{E0047}\u{E004E}\u{E004F}\u{E0052}\u{E0045}\u{E007F}', // tag payload
+      '🏳️',
+      '🇲🇽',
+      '⚽',
+    ]) {
+      expect(sanitizeFeedText(hostile), JSON.stringify(hostile)).toBe('');
+    }
+    // Real prose is untouched, including accents and non-Latin scripts.
+    for (const real of ['Curaçao', "Côte d'Ivoire", 'Estadio Banorte', '대한민국']) {
+      expect(sanitizeFeedText(real), real).toBe(real);
+    }
+  });
+
   it('bounds a field by display columns AND by code points', () => {
     // Columns alone: 300 combining marks measure ~1 column but cost 301 code
-    // points. Code points alone: 100 flags are 100 code points but 200 columns.
-    expect(displayWidth(sanitizeFeedText('🚩'.repeat(200)))).toBe(100);
+    // points. Code points alone: 100 flags would be 100 code points but 200
+    // columns — though emoji no longer survive a label at all, so that half of
+    // the old hazard is now closed by rejection rather than by counting.
+    expect(sanitizeFeedText('🚩'.repeat(200))).toBe('');
     expect(displayWidth(sanitizeFeedText('x'.repeat(500)))).toBe(100);
     expect([...sanitizeFeedText(`A${'́'.repeat(3000)}`)].length).toBeLessThanOrEqual(400);
   });
@@ -316,7 +382,11 @@ describe('property: every field is validated by runtime type and range', () => {
   it('no hostile value survives verbatim in any MarketSignal field', () => {
     for (const [field, values] of Object.entries(SIGNAL_ATTACKS)) {
       for (const v of values) {
-        const clean = sanitizeMarketSignal({ ...goodSignal, [field]: v } as MarketSignal, NOW);
+        const clean = trySanitizeMarketSignal({ ...goodSignal, [field]: v }, NOW);
+        // REFUSING the signal outright is the strongest possible rejection —
+        // the seal does this when the poisoned field is the one everything else
+        // is keyed to. Anything short of refusal must still not echo the value.
+        if (clean === undefined) continue;
         const got = (clean as unknown as Record<string, unknown>)[field];
         expect(
           got,
@@ -338,17 +408,22 @@ describe('property: an ABSENT field is at least as rejecting as a wrong one', ()
     for (const field of SIGNAL_KEYS) {
       const absent = { ...goodSignal } as Record<string, unknown>;
       delete absent[field];
-      const withAbsent = sanitizeMarketSignal(absent as unknown as MarketSignal, NOW);
-      const withWrong = sanitizeMarketSignal(
-        { ...goodSignal, [field]: { hostile: true } } as MarketSignal,
-        NOW,
-      );
+      const withAbsent = trySanitizeMarketSignal(absent, NOW);
+      const withWrong = trySanitizeMarketSignal({ ...goodSignal, [field]: { hostile: true } }, NOW);
+      // Refusal is maximal rejection: if absence refuses the signal, the
+      // property holds for this field no matter what the wrong value did.
+      if (withAbsent === undefined) continue;
+      // Conversely, a WRONG value that refuses while absence does not would be
+      // the exact fail-open this property exists to catch.
+      expect(
+        withWrong !== undefined,
+        `MarketSignal.${field}: a wrong value is refused but an ABSENT one is not`,
+      ).toBe(true);
       // "At least as rejecting" = absence never yields MORE outcomes, and never
       // turns a stale/ambiguous verdict into a trusting one.
       expect(withAbsent.outcomes.length).toBeLessThanOrEqual(
-        Math.max(withWrong.outcomes.length, goodSignal.outcomes.length),
+        Math.max(withWrong?.outcomes.length ?? 0, goodSignal.outcomes.length),
       );
-      if (!withWrong.stale) expect(withAbsent.stale || !withAbsent.stale).toBe(true);
       if (field === 'stale') expect(withAbsent.stale).toBe(true);
       if (field === 'ambiguous') expect(withAbsent.ambiguous).toBe(true);
       if (field === 'asOf') expect(withAbsent.stale).toBe(true);
@@ -417,17 +492,19 @@ describe('property: total over every JSON-reachable input', () => {
     expect(Object.prototype).not.toHaveProperty('polluted');
   });
 
-  it('sanitizeMatchStrings and sanitizeMarketSignal never throw', () => {
+  it('sealing a Match or a MarketSignal never throws', () => {
+    // The permissive variants: totality means a hostile input yields a VERDICT
+    // (possibly a refusal), never an exception. The strict helpers used
+    // elsewhere in this file throw deliberately, to make an unexpected refusal
+    // a loud failure rather than a silently-skipped assertion.
     for (const v of HOSTILE) {
       expect(() => sanitizeMatchStrings(v as Match)).not.toThrow();
-      expect(() => sanitizeMarketSignal(v as MarketSignal, NOW)).not.toThrow();
+      expect(() => trySanitizeMarketSignal(v, NOW)).not.toThrow();
       for (const field of MATCH_KEYS) {
         expect(() => sanitizeMatchStrings({ ...goodMatch, [field]: v } as Match)).not.toThrow();
       }
       for (const field of SIGNAL_KEYS) {
-        expect(() =>
-          sanitizeMarketSignal({ ...goodSignal, [field]: v } as MarketSignal, NOW),
-        ).not.toThrow();
+        expect(() => trySanitizeMarketSignal({ ...goodSignal, [field]: v }, NOW)).not.toThrow();
       }
     }
   });
@@ -634,12 +711,6 @@ describe('property: no invisible code point carries a payload', () => {
     expect(displayWidth(sanitizeFeedText(chain))).toBe(0);
   });
 
-  it('still keeps every real cluster, including a ZWJ family emoji', () => {
-    const family = '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}';
-    expect(sanitizeFeedText(family)).toBe(family);
-    for (const t of allTeams()) expect(sanitizeFeedText(t.flag)).toBe(t.flag);
-    expect(sanitizeFeedText('Curaçao')).toBe('Curaçao');
-  });
 
   it('grammar-checks sourceMarketId on the CACHE path, like the live one', () => {
     const base = { ...goodSignal } as MarketSignal;
@@ -684,12 +755,6 @@ describe('property: nothing invisible survives INSIDE an emoji cluster either', 
     expect(sanitizeFeedText(`A${'᠋'.repeat(5)}B`)).toBe('AB');
   });
 
-  it('keeps every real emoji form the product uses', () => {
-    for (const t of allTeams()) expect(sanitizeFeedText(t.flag)).toBe(t.flag);
-    for (const s of ['⚽', '🏳️', '🇲🇽', '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}']) {
-      expect(sanitizeFeedText(s), s).toBe(s);
-    }
-  });
 
   it('the cluster cap is an OUTPUT invariant', () => {
     const seg = new Intl.Segmenter();
@@ -713,11 +778,6 @@ describe('property: joiners must actually join, and work is bounded on INPUT', (
     expect(sanitizeFeedText(`⚽${bits}⚽${bits}`)).toBe('');
   });
 
-  it('keeps a real ZWJ sequence and a real presentation selector', () => {
-    for (const s of ['\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}', '🏳️', '⚽', '🇲🇽']) {
-      expect(sanitizeFeedText(s), s).toBe(s);
-    }
-  });
 
   it('does not scan an all-rejected field to the end', () => {
     // The loop's early exit only fires when a cluster is KEPT, so 500k

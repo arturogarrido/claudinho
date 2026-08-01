@@ -61,49 +61,64 @@ written atomically via tmp+rename. The optional `init` commands modify your edit
 (`~/.claude/settings.json` or `~/.cursor/cli-config.json`) after saving a one-time `.claudinho.bak`
 backup. Nothing is uploaded. See [PRIVACY.md](PRIVACY.md) for the full data-handling picture.
 
-**Untrusted input is treated as untrusted.** Provider responses pass through a sanitizer at the
-adapter boundary before they can reach a terminal, a share card, `--json`, MCP
-`structuredContent`, or the model's context via the hook. The local caches get the same
-treatment **on read** — both the match/statusline cache and the market-signal cache — since a
-file on disk is attacker-writable in a way the type system does not capture. Concretely:
+**Untrusted input is treated as untrusted.** Feed responses and local cache files enter through
+one trust boundary (`packages/core/src/trust/`) and leave as domain types or as a stated reason
+they could not. Nothing else builds a `Match` or a `MarketSignal` from raw input. This matters
+because there are two ways data reaches a renderer — live from the provider, and read back from
+the cache the statusline renders on every prompt — and when those paths had separate rules, a fix
+applied to one of them left the other open. Both now end at the same constructor.
+
+Each property below names the test that proves it. If a claim here is not pinned by a test, it is
+a claim we cannot make.
 
 - **Allow-listed fields.** Only declared keys are rebuilt, so an injected key cannot ride into
-  `--json` or MCP output.
-- **Validated by runtime type _and range_**, not by the declared type. A field declared
-  `number` can hold a string in JSON; scores, minutes and probabilities are also bounded, so a
-  malformed value degrades to "no score" rather than rendering `1e+308` as fact.
+  `--json` or MCP output. — `core/test/trust-properties.test.ts` *(property: allowlist)*
+- **Validated by runtime type _and range_**, not by the declared type. A field declared `number`
+  can hold a string in JSON; scores, minutes and probabilities are also bounded, so a malformed
+  value degrades to "no score" rather than rendering `1e+308` as fact. —
+  `core/test/trust-properties.test.ts` *(property: runtime type and range)*
 - **Control _and format_ characters removed**, filtered by Unicode category rather than by
   code-point range. That covers bidi overrides and isolates, not just ANSI escapes: a single
   U+202E in a team name transposes the *displayed* score under the Unicode Bidirectional
   Algorithm, which matters most on share cards, since those exist to be pasted into tools that
-  implement it. Emoji are handled as whole grapheme clusters rather than code points, because
-  several flags shipped here are built from format characters — but a cluster is kept only if it
-  is a real emoji (see below), not merely because it starts like one.
-- **Bounded** per field (display columns, code points, and grapheme-cluster length) and per
-  record count on the MCP and hook surfaces, which is where a model reads. Truncation is stated,
-  never silent. The CLI's own terminal output and `--json` are deliberately *not* record-capped —
-  there the full day's list is the correct answer — but the record count is bounded upstream at
-  the adapter, so the input is not unbounded either.
+  implement it. — `core/test/trust-properties.test.ts` *(property: control/format characters)*
+- **No emoji is accepted from input at all.** Product glyphs — every flag — are GENERATED from
+  the nation, never read from a payload or a cache file. This replaced an emoji carve-out in the
+  text filter, and the carve-out is worth describing because it was the single most productive
+  bug source here: flags had to travel through the filter, so the filter needed an exemption, and
+  an exemption without its own grammar is a channel. Tag characters, then variation selectors,
+  then ZWJ each rode through it in turn. A `🏴` plus 42 tag characters is one grapheme cluster
+  measuring two display columns that spells a full instruction sentence — invisible on a
+  terminal, perfectly legible to a model reading `--json`. There is now nothing to exempt. —
+  `core/test/flags-generated.test.ts`, `core/test/trust-properties.test.ts` *(property: no emoji
+  in a label)*
+- **Bounded** per field (display columns, code points, and grapheme-cluster length), per nested
+  collection, and per record count on the MCP and hook surfaces, which is where a model reads.
+  Collections are bounded *before* the per-record work, not after, so a large payload cannot cost
+  CPU on a 150 ms-budget surface before being discarded. Truncation is stated, never silent, and
+  the count a payload reports comes from the same value as the list it describes. —
+  `mcp/test/bounded-payload.test.ts`, `core/test/trust-espn.test.ts`
 - **Identifiers and timestamps are grammar-checked, not merely stripped**, on both the live and
   cached paths. Both land in model context without being rendered as prose, so they never *look*
   wrong — and stripping control characters leaves printable prose untouched. Timestamps are
   re-emitted in one canonical form, and a date that does not exist is refused rather than rolled
-  over into a different one.
-- **Invisible characters are treated as a payload channel, not as noise.** Bidi controls, tag
-  characters and variation selectors are each invisible and each map onto a text alphabet, so a
-  single glyph can carry a sentence a model will read. Rather than screening for each one, an
-  emoji cluster is accepted only if it *is* an emoji — a regional-indicator pair, an allow-listed
-  subdivision flag, or pictographs joined by ZWJ — and any cluster longer than a real character is
-  refused whole. The bound is checked on the output, not the input.
-- **Fail closed, including on absence.** A missing field must be at least as rejecting as a
-  wrong one; several gates once skipped themselves when their field was absent, which made a
-  more malformed payload more likely to be accepted.
+  over into a different one. — `core/test/trust-parity.test.ts`, `core/test/trust-espn.test.ts`
+- **Fail closed, including on absence.** A missing field must be at least as rejecting as a wrong
+  one; several gates once skipped themselves when their field was absent, which made a more
+  malformed payload more likely to be accepted. —
+  `core/test/trust-properties.test.ts` *(property: absent is at least as rejecting)*
 - **Derived values are recomputed, never trusted** — the market favorite and staleness are
-  derived from the sanitized data, so a crafted file cannot make the headline contradict the
-  numbers, or an old reading claim to be fresh.
+  derived from the sealed data, so a crafted file cannot make the headline contradict the
+  numbers, or an old reading claim to be fresh. A team's flag is derived the same way, from its
+  name. — `core/test/trust-parity.test.ts`
+- **"We could not read this" is never recorded as "there is nothing here."** A rejection states
+  which kind it is, and only a definitive answer may be cached. An ambiguous or unreadable
+  payload is retried rather than remembered as a fact about the fixture — the mirror image of
+  never caching a transient error as a real negative. — `core/test/market-verdict.test.ts`
 
-These properties are pinned by property tests rather than by per-vector regression tests, so a
-field added without a check fails the suite by default.
+Each property names the negative control that should make it fail. A property test that has not
+been made to fail is pinning nothing, so every one of them was verified to go red with its rule
+reverted.
 
 **Subprocesses.** Two, both with a fixed argument array and never `shell: true`, so no shell
 interpolation is possible. (1) The statusline spawns a detached background refresher via

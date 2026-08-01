@@ -1,12 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import {
-  formatShareSnippet,
-  sanitizeFeedText,
-  sanitizeMarketSignal,
-  sanitizeMatchStrings,
-  type Match,
-} from '../src/index';
+import { formatShareSnippet, type Match, type MarketSignal } from '../src/index';
 import { mapEspnEvent } from '../src/adapters/espn';
+import { humanLabel, parseCachedMatch, parsedValue, sealMarketSignal } from '../src/trust';
+
+// These were unit tests for a standalone `sanitize.ts` that ran only on the
+// CACHE path. That file is gone — its rules moved into the constructors BOTH
+// paths end at — so the same assertions now run against the boundary that owns
+// them. See trust-parity.test.ts for the property that made the merge safe.
+const sanitizeMatchStrings = (m: unknown): Match | undefined => parsedValue(parseCachedMatch(m));
+const trySanitizeMarketSignal = (s: unknown, o: { now?: Date } = {}): MarketSignal | undefined =>
+  parsedValue(sealMarketSignal(s, o));
+/** An unexpected refusal should fail loudly, not skip the assertion. */
+const sanitizeMarketSignal = (s: unknown, o: { now?: Date } = {}): MarketSignal => {
+  const out = trySanitizeMarketSignal(s, o);
+  if (!out) throw new Error(`expected a signal, got a refusal: ${JSON.stringify(s)}`);
+  return out;
+};
+const sanitizeFeedText = (v: unknown, max?: number): string => humanLabel(v, max ?? undefined);
 
 const ESC = '\u001b';
 // biome-ignore lint/suspicious/noControlCharactersInRegex: asserting controls are stripped
@@ -28,10 +38,13 @@ describe('sanitizeFeedText', () => {
     expect(sanitizeFeedText('x'.repeat(500))).toHaveLength(100);
   });
 
-  it('passes clean names through untouched (emoji flags included)', () => {
-    const england = '🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F} England';
+  it('passes clean names through untouched, and admits no emoji at all', () => {
     expect(sanitizeFeedText('Côte d’Ivoire')).toBe('Côte d’Ivoire');
-    expect(sanitizeFeedText(england)).toBe(england);
+    // England's flag is an emoji TAG SEQUENCE, and carrying it through a text
+    // field is what forced the emoji carve-out that TAG, VS and ZWJ each rode
+    // through. A label is prose; the flag beside it is generated separately.
+    const england = '🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F} England';
+    expect(sanitizeFeedText(england)).toBe('England');
   });
 });
 
@@ -103,24 +116,43 @@ function sanitized(m: unknown): Match {
 
 describe('sanitizeMatchStrings (statusline cache mirror)', () => {
   it('cleans every display string and never throws on malformed teams', () => {
-    const dirty = {
+    const clean = sanitized({
       id: '900001',
       stage: 'GROUP',
       kickoff: '2026-06-11T19:00Z',
       venue: `V${ESC}[31menue`,
       city: 'City\n2',
       home: { code: `M${ESC}X`, name: `${ESC}[31mMexico`, flag: '🇲🇽' },
+      away: { code: 'RSA', name: 'South Africa' },
+      status: 'LIVE',
+      updatedAt: '2026-06-11T20:00Z',
+    });
+    expect(clean.home.name).toBe('[31mMexico');
+    expect(clean.home.code).toBe('MX');
+    // The flag is GENERATED from the sanitized name, so a name we can no longer
+    // recognize as a nation gets the placeholder — not Mexico's flag. Copying
+    // the payload's `flag` field through, as the cache path used to, made a
+    // poisoned name render beside an authentic-looking 🇲🇽.
+    expect(clean.home.flag).toBe('🏳️');
+    expect(clean.away).toEqual({ code: 'RSA', name: 'South Africa', flag: '🇿🇦' });
+    expect(clean.venue).toBe('V[31menue');
+    expect(clean.city).toBe('City 2');
+  });
+
+  it('refuses a fixture that does not name both teams', () => {
+    // Previously this rendered an away side of { code: '', name: '', flag: '' }
+    // — a participant nobody can identify, shown as though it were one.
+    const clean = sanitizeMatchStrings({
+      id: '900001',
+      stage: 'GROUP',
+      kickoff: '2026-06-11T19:00Z',
+      venue: 'V',
+      home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
       away: undefined,
       status: 'LIVE',
       updatedAt: '2026-06-11T20:00Z',
-    } as unknown as Match;
-    const clean = sanitized(dirty);
-    expect(clean.home.name).toBe('[31mMexico');
-    expect(clean.home.code).toBe('MX');
-    expect(clean.home.flag).toBe('🇲🇽');
-    expect(clean.venue).toBe('V[31menue');
-    expect(clean.city).toBe('City 2');
-    expect(clean.away).toEqual({ code: '', name: '', flag: '' });
+    });
+    expect(clean).toBeUndefined();
   });
 });
 
@@ -173,7 +205,10 @@ describe('sanitizeMatchStrings — numeric fields (score/shootout/minute)', () =
 
 describe('sanitizeMarketSignal — the market cache is attacker-writable too', () => {
   const base = {
-    matchId: 'm1',
+    // A REAL-shaped id: every one of 1,755 live ESPN events is numeric, and the
+    // seal refuses anything else outright rather than degrading it to an empty
+    // string that a downstream key comparison then had to catch.
+    matchId: '760415',
     source: 'polymarket',
     asOf: '2026-07-01T12:00:00.000Z',
     fetchedAt: '2026-07-01T12:00:00.000Z',
@@ -223,16 +258,24 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
     expect(sanitizeMarketSignal(ancient).stale).toBe(true);
   });
 
+  it('refuses a signal whose own id is poisoned', () => {
+    // `matchId` is the key everything else is bound to, so a poisoned one is
+    // not sanitized-and-kept: the signal cannot be checked against a fixture.
+    expect(trySanitizeMarketSignal({ ...base, matchId: `760415${ESC}[31m` })).toBeUndefined();
+  });
+
   it('sanitizes every rendered string field, not just source', () => {
     const clean = sanitizeMarketSignal({
       ...base,
-      matchId: `m1${ESC}[31m`,
       sourceMarketId: `id${ESC}[0m`,
       outcomes: [{ kind: 'home', label: `Mexico\nFAKE`, teamCode: `MEX${ESC}`, probability: 0.5 }],
     });
-    const [outcome] = clean.outcomes;
-    expect(CONTROLS.test(clean.matchId)).toBe(false);
-    expect(CONTROLS.test(clean.sourceMarketId ?? '')).toBe(false);
+    expect(clean).toBeDefined();
+    const [outcome] = clean?.outcomes ?? [];
+    expect(CONTROLS.test(clean?.matchId ?? '')).toBe(false);
+    // A poisoned source id is DROPPED, not cleaned: it is an opaque token
+    // checked against a grammar, and a cleaned-up version is a different token.
+    expect(clean?.sourceMarketId).toBeUndefined();
     expect(CONTROLS.test(outcome?.label ?? '')).toBe(false);
     expect(CONTROLS.test(outcome?.teamCode ?? '')).toBe(false);
   });
@@ -278,11 +321,14 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
     expect(sanitizeMarketSignal({ ...base, source: { toString: null } as never }).source).toBe('');
   });
 
-  it('is total for a non-object signal (null / string / number)', () => {
-    for (const junk of [null, undefined, 'x', 5] as never[]) {
-      const clean = sanitizeMarketSignal(junk);
-      expect(clean.outcomes).toEqual([]);
-      expect(clean.stale).toBe(true); // fail closed
+  it('never throws on a non-object signal, and yields nothing usable', () => {
+    // The old function was TOTAL — it always returned a signal, degraded to
+    // empty fields, which a downstream key check then had to catch. The seal
+    // refuses instead. Totality still holds in the sense that matters: it never
+    // throws, whatever JSON hands it.
+    for (const junk of [null, undefined, 'x', 5, [], true] as never[]) {
+      expect(() => trySanitizeMarketSignal(junk)).not.toThrow();
+      expect(trySanitizeMarketSignal(junk), String(junk)).toBeUndefined();
     }
   });
 

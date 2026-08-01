@@ -7,12 +7,6 @@ export type { Lang } from './i18n';
 export { resolveTz, formatKickoff, formatDate, formatTime, countdown, localDate } from './time';
 export type { FormatOpts } from './time';
 export { isValidTimeZone, isValidDate } from './validate';
-export {
-  sanitizeFeedText,
-  sanitizeMatchStrings,
-  sanitizeMarketSignal,
-  FEED_TEXT_MAX,
-} from './sanitize';
 export { displayWidth, padVisible, truncateVisible } from './text';
 export {
   outcomeFromScore,
@@ -171,19 +165,24 @@ export {
   type BoundedList,
   type ParseResult,
   type Selection,
+  MAX_LABEL_COLUMNS,
   ambiguous,
   bounded,
   cacheableKeys,
   definitiveNone,
   emptyBatch,
   isCacheable,
+  humanLabel,
   malformed,
   parsedValue,
   parseCachedMarketSignal,
   parseCachedMatch,
   parseCachedMatches,
   resolvedValues,
+  productFlag,
   selectOne,
+  sealMarketSignal,
+  sealMatch,
   unresolved,
   valid,
 } from './trust';

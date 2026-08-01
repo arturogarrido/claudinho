@@ -24,7 +24,7 @@
  * gate it should fail.
  */
 import { MAX_RESPONSE_BYTES } from '../adapters/espn';
-import { canonicalTimestamp } from '../sanitize';
+
 import { shiftUtcDate } from '../time';
 import type { Match } from '../types';
 import mappingJson from './mapping.2026.json';
@@ -36,6 +36,7 @@ import {
   definitiveNone,
   malformed,
   parsedValue,
+  canonicalTimestamp,
   selectOne,
   unresolved,
   valid,
@@ -440,10 +441,10 @@ export class PolymarketProvider implements MarketProvider {
       // REQUIRED, not merely valid-when-present. An omitted leg timestamp was
       // accepted and the signal then reported some other leg's time as when this
       // price was taken. Verified present on 312/312 real World Cup markets.
-      if (!canonicalTimestamp(market.updatedAt)) {
+      const marketAsOf = canonicalTimestamp(market.updatedAt);
+      if (!marketAsOf) {
         return malformed('market updatedAt missing or unparseable');
       }
-      const marketAsOf = canonicalTimestamp(market.updatedAt);
       // Taking the OLDEST hides a leg dated forward: a 2099 timestamp beside
       // current siblings simply lost the comparison and the signal read fresh.
       // A price that claims to be from the future is not a price.
@@ -451,7 +452,7 @@ export class PolymarketProvider implements MarketProvider {
       if (Date.parse(marketAsOf) - nowMs > FUTURE_SKEW_MS) {
         return malformed('market updatedAt is dated forward');
       }
-      if (marketAsOf && (!asOf || Date.parse(marketAsOf) < Date.parse(asOf))) asOf = marketAsOf;
+      if (!asOf || Date.parse(marketAsOf) < Date.parse(asOf)) asOf = marketAsOf;
       // A leg whose liquidity is PRESENT but unreadable invalidates the
       // aggregate rather than being skipped: the minimum across legs is what a
       // `minLiquidity` floor is compared against, and quietly omitting the
