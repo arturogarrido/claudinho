@@ -27,7 +27,7 @@ export const malformed = <T>(reason: string): ParseResult<T> => ({ kind: 'malfor
 export const ambiguous = <T>(reason: string): ParseResult<T> => ({ kind: 'ambiguous', reason });
 
 /** The value, or undefined — for callers that genuinely do not care why. */
-export function valueOf<T>(r: ParseResult<T>): T | undefined {
+export function parsedValue<T>(r: ParseResult<T>): T | undefined {
   return r.kind === 'valid' ? r.value : undefined;
 }
 
