@@ -415,12 +415,33 @@ describe('PolymarketProvider — an ABSENT field must reject, not skip the gate'
     expect(await derived(fetchFor(SLUG, halfTime)).findSignal(match())).toBeUndefined();
   });
 
-  it('treats an unreadable `markets` body as a definitive no-market, not a retry', async () => {
-    // A non-array made `.filter` throw; resolveOne's catch can only read a throw
-    // as a TRANSIENT error, so a permanently malformed payload was re-fetched on
-    // every command forever.
-    const provider = derived(fetchFor(SLUG, event({ markets: 'not-an-array' })));
-    const { signals, checked } = await provider.findSignals([match()]);
+  it('treats an unreadable payload as NOT definitive, so it is retried', async () => {
+    // `checked` means DEFINITIVE. Reaching the source and finding no market is a
+    // fact about the fixture; failing to PARSE what the source sent is not, and
+    // negative-caching it suppresses recovery for the whole TTL. (Earlier this
+    // test asserted the opposite — the egress argument lost to the
+    // "never cache a transient error as a real negative" rule.)
+    for (const bad of [
+      { markets: 'not-an-array' },
+      { active: 'true' },
+      { startTime: 'whenever' },
+    ]) {
+      const provider = derived(fetchFor(SLUG, event(bad)));
+      const { signals, checked } = await provider.findSignals([match()]);
+      expect(signals.size, JSON.stringify(bad)).toBe(0);
+      expect(checked.has(match().id), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it('still marks a READABLE payload with no market as definitive', async () => {
+    // The other half: a well-formed event whose markets simply are not a 1X2
+    // moneyline IS a fact about this fixture, and must stay negative-cached.
+    const notMoneyline = event({}, [
+      market('mex', 'Mexico', 0.685, { sportsMarketType: 'soccer_exact_score' }),
+      market('draw', 'Draw', 0.205, { sportsMarketType: 'soccer_exact_score' }),
+      market('rsa', 'South Africa', 0.105, { sportsMarketType: 'soccer_exact_score' }),
+    ]);
+    const { signals, checked } = await derived(fetchFor(SLUG, notMoneyline)).findSignals([match()]);
     expect(signals.size).toBe(0);
     expect(checked.has(match().id)).toBe(true);
   });

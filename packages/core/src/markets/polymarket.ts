@@ -86,6 +86,21 @@ interface MappingFile {
 
 const BUNDLED_MAPPING = (mappingJson as unknown as MappingFile).markets;
 
+/**
+ * The provider answered, but not in a shape we can read.
+ *
+ * Distinct from "no market for this fixture", which is a FACT worth caching.
+ * A schema change is not a fact about the fixture, and negative-caching it
+ * suppresses the real fetch for the whole TTL — the mirror image of the
+ * "never cache a transient error as a real negative" rule.
+ */
+class MalformedPayloadError extends Error {
+  constructor(what: string) {
+    super(`Polymarket payload unreadable: ${what}`);
+    this.name = 'MalformedPayloadError';
+  }
+}
+
 // Gamma shapes — only the fields we read (verified against the live API).
 interface GammaMarket {
   id?: string;
@@ -176,6 +191,9 @@ export class PolymarketProvider implements MarketProvider {
     // getMarketSignals as an empty result. One malformed fixture therefore
     // voided the WHOLE batch's signals AND its `checked` set, turning a
     // single-record problem into a total market outage for that command.
+    // Set when a candidate's payload could not be READ (shape/schema), as
+    // distinct from a candidate that was read fine and simply has no market.
+    let sawMalformed = false;
     try {
       const entry = (this.opts.mapping ?? BUNDLED_MAPPING)[match.id];
       // A hand-curated override is authoritative (single slug); otherwise try
@@ -191,10 +209,24 @@ export class PolymarketProvider implements MarketProvider {
         const remaining = deadline - Date.now();
         if (remaining <= 0) return { checked: false };
         const event = await this.fetchEvent(slug, Math.min(configured, remaining));
-        const signal = event ? this.toSignal(match, slug, event, options) : undefined;
+        let signal: MarketSignal | undefined;
+        try {
+          signal = event ? this.toSignal(match, slug, event, options) : undefined;
+        } catch (e) {
+          // A payload we could not READ is not the same fact as "this fixture
+          // has no market". Caught per-candidate rather than letting it escape,
+          // so the alias fan-out still tries the remaining slugs.
+          if (!(e instanceof MalformedPayloadError)) throw e;
+          sawMalformed = true;
+          continue;
+        }
         if (signal) return { signal, checked: true }; // first candidate that validates wins
       }
-      return { checked: true }; // reached the source, no usable market on any candidate
+      // `checked` means DEFINITIVE. Reaching the source and finding no usable
+      // market is definitive; failing to parse what it sent is not — treating a
+      // schema change as "no market" negative-caches it for the full TTL, which
+      // is the "never cache a transient error as a real negative" rule inverted.
+      return { checked: !sawMalformed };
     } catch {
       return { checked: false }; // provider/network error → retry, don't cache
     }
@@ -244,7 +276,9 @@ export class PolymarketProvider implements MarketProvider {
     // Verified against the live Gamma API: both are real booleans on 831/831
     // events in series `soccer-fifwc` and 90/90 active sports events — absence
     // is a non-sports signature.
-    if (typeof event.active !== 'boolean' || typeof event.closed !== 'boolean') return undefined;
+    if (typeof event.active !== 'boolean' || typeof event.closed !== 'boolean') {
+      throw new MalformedPayloadError('event active/closed is not a boolean');
+    }
     if (event.active === false || event.closed === true) return undefined;
     // The event must NAME this competition. Stated negatively, the check only
     // fired when `seriesSlug` was PRESENT and wrong — so an event naming no
@@ -270,7 +304,7 @@ export class PolymarketProvider implements MarketProvider {
     // startTime is present AND parseable on 831/831 series events and 90/90
     // active sports events.
     if (typeof event.startTime !== 'string' || !canonicalTimestamp(event.startTime)) {
-      return undefined;
+      throw new MalformedPayloadError('event startTime missing or unparseable');
     }
     const start = Date.parse(event.startTime);
     const kick = Date.parse(match.kickoff);
@@ -294,7 +328,9 @@ export class PolymarketProvider implements MarketProvider {
     // provider error (`checked: false`), so a permanently malformed payload was
     // re-fetched on every command forever. A body we cannot read is a definitive
     // "no market". A null element is filtered out by the same test.
-    if (!Array.isArray(event.markets)) return undefined;
+    if (!Array.isArray(event.markets)) {
+      throw new MalformedPayloadError('event markets is not an array');
+    }
     const moneyline = event.markets.filter((m) => m?.sportsMarketType === 'moneyline');
     const homeMarket = pickMarket(moneyline, match.home.code, match.home.name);
     const awayMarket = pickMarket(moneyline, match.away.code, match.away.name);
@@ -329,7 +365,7 @@ export class PolymarketProvider implements MarketProvider {
       // series. This sits after `if (!market) continue`, so a legitimately
       // absent draw leg on a two-way knockout line is unaffected.
       if (typeof market.closed !== 'boolean' || typeof market.active !== 'boolean') {
-        return undefined;
+        throw new MalformedPayloadError('market active/closed is not a boolean');
       }
       if (market.closed === true || market.active === false) return undefined;
       // Regular-time (90') resolution only — reject extra-time/advance markets.
@@ -341,7 +377,9 @@ export class PolymarketProvider implements MarketProvider {
       // substituted the EVENT's timestamp, which is not when this price was
       // taken — so the displayed "updated HH:MM UTC" would describe a different
       // reading than the number beside it.
-      if (market.updatedAt != null && !canonicalTimestamp(market.updatedAt)) return undefined;
+      if (market.updatedAt != null && !canonicalTimestamp(market.updatedAt)) {
+        throw new MalformedPayloadError('market updatedAt is unparseable');
+      }
       const marketAsOf = canonicalTimestamp(market.updatedAt);
       if (marketAsOf && (!asOf || Date.parse(marketAsOf) < Date.parse(asOf))) asOf = marketAsOf;
       const liq = numberish(market.liquidityNum ?? market.liquidity);
@@ -360,7 +398,7 @@ export class PolymarketProvider implements MarketProvider {
     // API: canonicalTimestamp is non-empty for 104/104 World Cup events,
     // 312/312 of their markets and 1,731/1,731 active-sports records, so this
     // branch is unreachable on real data and only ever rescued malformed input.
-    if (!asOf) return undefined;
+    if (!asOf) throw new MalformedPayloadError('no usable timestamp on the event or its markets');
 
     const signal = buildMarketSignal({
       match,

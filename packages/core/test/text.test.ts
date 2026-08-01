@@ -38,3 +38,17 @@ describe('padVisible', () => {
     expect(padVisible(long, 10)).toBe(long);
   });
 });
+
+describe('displayWidth — planes and sequences the BMP ranges miss', () => {
+  it('counts supplementary-plane CJK and keycap sequences as 2 columns', () => {
+    expect(displayWidth('\u{20000}')).toBe(2); // CJK Ext. B
+    expect(displayWidth(String.fromCodePoint(0x31, 0xfe0f, 0x20e3))).toBe(2); // 1️⃣
+  });
+
+  it('still counts the common cases correctly', () => {
+    expect(displayWidth('日')).toBe(2);
+    expect(displayWidth('ａ')).toBe(2);
+    expect(displayWidth('A')).toBe(1);
+    expect(displayWidth('🇲🇽')).toBe(2);
+  });
+});

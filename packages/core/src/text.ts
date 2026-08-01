@@ -20,7 +20,14 @@ const WIDE_CLUSTER = /^(?:\p{Regional_Indicator}|\p{Extended_Pictographic})/u;
  * binary properties), so the ranges are spelled out.
  */
 const WIDE_BASE =
-  /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏ꥠ-꥿가-힣豈-﫿︐-︙︰-﹯＀-｠￠-￦]/u;
+  /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏ꥠ-꥿가-힣豈-﫿︐-︙︰-﹯＀-｠￠-￦\u{20000}-\u{2FFFD}\u{30000}-\u{3FFFD}]/u;
+
+/**
+ * A keycap sequence (`1⃣` = digit + VS16 + U+20E3) renders 2 columns, but its
+ * cluster BEGINS with an ASCII digit, so neither the emoji test nor the East
+ * Asian ranges catch it.
+ */
+const KEYCAP = /\u{20E3}/u;
 
 /**
  * Bases that occupy NO column: combining marks (a cluster's accent rides on its
@@ -33,7 +40,7 @@ const ZERO_WIDTH_BASE = /[\p{Mn}\p{Me}\p{Cf}\p{Cc}]/u;
 function clusterWidth(segment: string): number {
   // An emoji cluster is 2 columns whatever it contains — the ZWJ, variation
   // selectors and tag characters inside it are structural, not separate glyphs.
-  if (WIDE_CLUSTER.test(segment)) return 2;
+  if (WIDE_CLUSTER.test(segment) || KEYCAP.test(segment)) return 2;
   const first = segment.codePointAt(0);
   if (first === undefined) return 0;
   const base = String.fromCodePoint(first);
