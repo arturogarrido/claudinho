@@ -273,6 +273,15 @@ function saneCount(v: unknown, max: number): number | undefined {
     : undefined;
 }
 
+/**
+ * Items read from any nested collection on a sanitized record.
+ *
+ * Bounding the RECORD COUNT is not bounding the WORK: one record's nested array
+ * was unbounded, which is the same "inner list, outer list" mistake in the other
+ * direction. Real values are tiny — a few dozen match events, three market legs.
+ */
+export const MAX_COLLECTION_ITEMS = 128;
+
 /** Ceilings chosen well above any real football value, but finite. */
 export const MAX_GOALS = 99;
 export const MAX_MINUTE = 200;
@@ -388,7 +397,14 @@ export function sanitizeMatchStrings(m: Match): Match | undefined {
   if (minute !== undefined) out.minute = minute;
   if (m?.winnerCode != null) out.winnerCode = sanitizeFeedText(m.winnerCode);
   if (Array.isArray(m?.events)) {
-    const events = m.events.map(sanitizeEvent).filter((e): e is MatchEvent => !!e);
+    // SLICE BEFORE MAP. The record count is bounded upstream; the bytes INSIDE
+    // one record were not, so a single match carrying 100k events cost 5.3s in
+    // the sanitizer alone — on a surface with a 150ms budget. A real match has
+    // a few dozen.
+    const events = m.events
+      .slice(0, MAX_COLLECTION_ITEMS)
+      .map(sanitizeEvent)
+      .filter((e): e is MatchEvent => !!e);
     if (events.length) out.events = events;
   }
   return out;
@@ -547,7 +563,12 @@ export function sanitizeMarketSignal(
 ): MarketSignal {
   const outcomes = dedupeKinds(
     Array.isArray(s?.outcomes)
-      ? s.outcomes.map(sanitizeOutcome).filter((o): o is MarketOutcome => !!o)
+      ? s.outcomes
+          // Same rule: a 1X2 market has three legs. 100k of them cost ~600ms
+          // before being discarded anyway ('other' kinds bypass dedupeKinds).
+          .slice(0, MAX_COLLECTION_ITEMS)
+          .map(sanitizeOutcome)
+          .filter((o): o is MarketOutcome => !!o)
       : [],
   );
   const out: MarketSignal = {

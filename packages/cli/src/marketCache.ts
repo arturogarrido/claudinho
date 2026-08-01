@@ -119,7 +119,8 @@ export function readMarketCache(
   }
   const entries = file.entries;
   if (!entries || typeof entries !== 'object') return { signals, checked };
-  for (const [id, raw] of Object.entries(entries as Record<string, unknown>)) {
+  // Bounded like every other collection: a day is at most a few dozen fixtures.
+  for (const [id, raw] of Object.entries(entries as Record<string, unknown>).slice(0, 256)) {
     // Validate the ENVELOPE before touching it: a JSON `null` (or a string, or a
     // number) is a legal value here, and dereferencing it threw before this
     // guard. A malformed entry is skipped entirely — notably it must NOT reach

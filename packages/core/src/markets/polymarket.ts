@@ -568,7 +568,10 @@ function slugToken(m: GammaMarket): string {
 
 /** Is this the draw market? (slug token `draw`, or a "Draw (...)" group title.) */
 function isDrawMarket(m: GammaMarket): boolean {
-  return slugToken(m) === 'draw' || (m.groupItemTitle ?? '').trim().toLowerCase().startsWith('draw');
+  // EXACT "Draw", or the documented "Draw (Home vs. Away)" form. A prefix test
+  // adopted "Drawbridge promotional market" as the match's draw probability.
+  const title = (m.groupItemTitle ?? '').trim().toLowerCase();
+  return slugToken(m) === 'draw' || title === 'draw' || /^draw\s*\(/.test(title);
 }
 
 /**

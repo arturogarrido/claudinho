@@ -480,7 +480,11 @@ export function parseStandings(data: EspnStandings): GroupStandings[] {
       .match(/Group\s+([A-L])/i)?.[1]
       ?.toUpperCase();
     if (!letter) continue;
-    const ranked = (child.standings?.entries ?? []).map((e) => ({
+    // Guard BEFORE mapping and sorting. Doing the per-entry work first and
+    // capping after meant a 4,000-row group cost ~300ms to produce 32 rows.
+    if (out.length >= MAX_STANDINGS_GROUPS || seen.has(letter)) continue;
+    const rawEntries = Array.isArray(child.standings?.entries) ? child.standings.entries : [];
+    const ranked = rawEntries.slice(0, MAX_STANDINGS_ROWS * 4).map((e) => ({
       row: entryToRow(e),
       rank: statVal(e.stats, 'rank'),
     }));
@@ -505,7 +509,6 @@ export function parseStandings(data: EspnStandings): GroupStandings[] {
     // bound. A hostile feed returning "Group A" 200 times produced 200 tables
     // and 6,400 rows. Groups are also DEDUPED — twelve letters exist, and a
     // repeated one is a duplicate table, not a new group.
-    if (out.length >= MAX_STANDINGS_GROUPS || seen.has(letter)) continue;
     seen.add(letter);
     out.push({ group: letter, rows: ranked.slice(0, MAX_STANDINGS_ROWS).map((x) => x.row) });
   }

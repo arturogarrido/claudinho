@@ -728,3 +728,37 @@ describe('property: joiners must actually join, and work is bounded on INPUT', (
     expect(Number(process.hrtime.bigint() - t) / 1e6).toBeLessThan(50);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Reviewer round 11 — the LAST shape of this class: bounding the record count
+// is not bounding the work when a record's nested array is unbounded. Stated as
+// a property over collection fields so a new one fails by default.
+// Negative control: move any `.slice()` back after its `.map()`.
+// ---------------------------------------------------------------------------
+describe('property: every nested collection is length-bounded', () => {
+  it('bounds Match.events on the hot path', () => {
+    const events = Array.from({ length: 100_000 }, () => ({
+      type: 'GOAL',
+      minute: 45,
+      teamCode: 'MEX',
+    }));
+    const t = process.hrtime.bigint();
+    const clean = sanitizeMatchStrings({ ...goodMatch, events } as unknown as Match);
+    const ms = Number(process.hrtime.bigint() - t) / 1e6;
+    expect(clean?.events?.length ?? 0).toBeLessThanOrEqual(128);
+    expect(ms).toBeLessThan(150); // the statusline's whole budget
+  });
+
+  it('bounds MarketSignal.outcomes', () => {
+    const outcomes = Array.from({ length: 100_000 }, () => ({
+      kind: 'other',
+      label: 'x',
+      probability: 0.5,
+    }));
+    const t = process.hrtime.bigint();
+    const clean = sanitizeMarketSignal({ ...goodSignal, outcomes } as unknown as MarketSignal, NOW);
+    const ms = Number(process.hrtime.bigint() - t) / 1e6;
+    expect(clean.outcomes.length).toBeLessThanOrEqual(128);
+    expect(ms).toBeLessThan(150);
+  });
+});
