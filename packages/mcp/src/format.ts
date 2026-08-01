@@ -101,3 +101,17 @@ export function standingsTable(group: string, rows: StandingRow[]): string {
 /** The persistent legal disclaimer appended to responses. */
 export const DISCLAIMER =
   'Claudinho is an independent fan project — not affiliated with or endorsed by FIFA or Anthropic.';
+
+/**
+ * Keep only the signals whose match survived `capRecords`. A signal keyed to a
+ * match that is no longer in the payload is dead weight in model context, and
+ * capping `matches` without capping these left the larger of the two uncapped.
+ */
+export function capSignals<T>(signals: Record<string, T>, kept: { id: string }[]): Record<string, T> {
+  const ids = new Set(kept.map((m) => m.id));
+  const out: Record<string, T> = {};
+  for (const [id, v] of Object.entries(signals)) {
+    if (ids.has(id)) out[id] = v;
+  }
+  return out;
+}

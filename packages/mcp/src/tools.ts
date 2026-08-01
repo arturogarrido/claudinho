@@ -43,7 +43,14 @@ import {
   type ShareSnippetOptions,
   type Stage,
 } from '@claudinho/core';
-import { capRecords, DISCLAIMER, matchLine, matchList, standingsTable } from './format';
+import {
+  capRecords,
+  capSignals,
+  DISCLAIMER,
+  matchLine,
+  matchList,
+  standingsTable,
+} from './format';
 
 export interface ToolResult {
   text: string;
@@ -274,7 +281,9 @@ export async function toolGetToday(
       // too — a repeated-record payload measured ~5 MB there.
       count: todays.length,
       matches: capRecords(todays),
-      ...(marketSignals ? { marketSignals } : {}),
+      // Capped in step with `matches`: a signal keyed to a match that is no
+      // longer in the payload is dead weight in model context.
+      ...(marketSignals ? { marketSignals: capSignals(marketSignals, capRecords(todays)) } : {}),
     },
   };
 }
@@ -818,8 +827,10 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     undefined,
     {
       title: args.date ? `Matches · ${human}` : `Today's matches · ${human}`,
-      matches: todays,
-      marketSignals: await signalsFor(todays),
+      // Bounded like every other model-facing payload — a share card is
+      // returned through MCP before a human ever sees it.
+      matches: capRecords(todays),
+      marketSignals: await signalsFor(capRecords(todays)),
       source,
       degraded,
       emptyNote: `No matches scheduled for ${human}.`,

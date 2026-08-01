@@ -16,6 +16,7 @@ import {
   LIVE_WINDOW_MS,
   mergeLive,
   nextFixtureForTeam,
+  displayWidth,
   sanitizeMatchStrings,
   truncateVisible,
   scoreline,
@@ -254,10 +255,14 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
     // contract is that it is one short line in the user's prompt.
     const max = opts.max && opts.max > 0 ? Math.min(opts.max, DEFAULT_MAX_SEGMENTS) : DEFAULT_MAX_SEGMENTS;
     const shown = live.slice(0, max);
-    let line = '⚽ ' + shown.map((m) => matchSegment(m, compact, flags)).join(' · ');
     const overflow = live.length - shown.length;
-    if (overflow > 0) line += ` +${overflow}`;
-    return line;
+    const marker = overflow > 0 ? ` +${overflow}` : '';
+    // The overflow marker is the honest part of this line — it is what says the
+    // list is incomplete — so it must survive the width cap. Truncating the
+    // whole line afterwards cut the marker off the end, turning a truncated
+    // list back into one that looks complete. Reserve its room and append it.
+    const body = '⚽ ' + shown.map((m) => matchSegment(m, compact, flags)).join(' · ');
+    return truncateVisible(body, MAX_LINE_COLUMNS - displayWidth(marker)) + marker;
   }
 
   // Cold/stale cache during a live window: a countdown here is actively
