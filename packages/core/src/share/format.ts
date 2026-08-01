@@ -54,7 +54,8 @@ export interface ShareSnippetInput {
   /** Pre-resolved, English title line, e.g. "Next up for Mexico". */
   title: string;
   /** Matches to render (0..n). An empty set still yields a valid titled card. */
-  matches: Match[];
+  /** Read-only: callers pass a bounded view, which must not be mutated. */
+  matches: readonly Match[];
   /**
    * Reliable, display-ready market signals keyed by match id (sidecar — never
    * embedded in Match). Callers gate these; the formatter only renders.
@@ -235,7 +236,7 @@ function tableRow(r: StandingRow, rank: number): string {
 
 export interface ShareTableInput {
   /** Group tables to render (1..n); each in standings order. */
-  tables: { group: string; rows: StandingRow[] }[];
+  tables: readonly { group: string; rows: readonly StandingRow[] }[];
   /** Live-data provider name for attribution; omit when degraded/static. */
   source?: string;
   /** Exact run cue, e.g. "npx @claudinho/cli table A". */

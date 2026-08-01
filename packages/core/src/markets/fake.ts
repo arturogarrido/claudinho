@@ -40,7 +40,7 @@ export class FakeMarketProvider implements MarketProvider {
   }
 
   async findSignals(
-    matches: Match[],
+    matches: readonly Match[],
     options?: MarketSignalOptions,
   ): Promise<MarketSignalsResult> {
     const results = new Map<string, ParseResult<MarketSignal>>();

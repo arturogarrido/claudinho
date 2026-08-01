@@ -168,9 +168,11 @@ export type { BracketFormatOpts, ShareBracketInput, ShareBracketOptions } from '
 // surfaces. (`export *` would also collide with sanitize's canonicalTimestamp.)
 export {
   type BatchResolution,
+  type BoundedList,
   type ParseResult,
   type Selection,
   ambiguous,
+  bounded,
   cacheableKeys,
   definitiveNone,
   emptyBatch,

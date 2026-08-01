@@ -15,6 +15,7 @@ import {
   type Match,
   type StandingRow,
 } from '@claudinho/core';
+import { type BoundedList, bounded } from '@claudinho/core';
 
 const STATUS_LABEL: Record<Match['status'], string> = {
   SCHEDULED: 'scheduled',
@@ -65,6 +66,19 @@ export function capRecords<T>(rows: T[], max = MAX_LIST_MATCHES): T[] {
 }
 
 /**
+ * The capped rows AND the counts describing them, as one value.
+ *
+ * Handlers used to call `capRecords` two or three times in the same response
+ * and hand-write `count: rows.length` beside it, so the payload's own account
+ * of itself was assembled from four independent expressions that could — and
+ * did — disagree. A `BoundedList` carries `total`, `shown` and `truncated`
+ * together, so nothing downstream recomputes them.
+ */
+export function boundedRecords<T>(rows: T[], max = MAX_LIST_MATCHES): BoundedList<T> {
+  return bounded(rows, max);
+}
+
+/**
  * The line to append when `capRecords` dropped something.
  *
  * A cap that drops records silently reads as a complete list, which is the same
@@ -75,8 +89,8 @@ export function capRecords<T>(rows: T[], max = MAX_LIST_MATCHES): T[] {
  * "No matches scheduled.") which are hardcoded English today. Localizing one
  * line of an English block would be inconsistent; the block is a separate change.
  */
-export function truncationNote(total: number, shown: number): string {
-  return total > shown ? `\n(showing ${shown} of ${total} — list truncated)` : '';
+export function truncationNote(list: BoundedList<unknown>): string {
+  return list.truncated ? `\n(showing ${list.shown} of ${list.total} — list truncated)` : '';
 }
 
 /** A list of matches as a text block (or an empty-state message). */
@@ -122,7 +136,10 @@ export const DISCLAIMER =
  * match that is no longer in the payload is dead weight in model context, and
  * capping `matches` without capping these left the larger of the two uncapped.
  */
-export function capSignals<T>(signals: Record<string, T>, kept: { id: string }[]): Record<string, T> {
+export function capSignals<T>(
+  signals: Record<string, T>,
+  kept: readonly { id: string }[],
+): Record<string, T> {
   const ids = new Set(kept.map((m) => m.id));
   const out: Record<string, T> = {};
   for (const [id, v] of Object.entries(signals)) {

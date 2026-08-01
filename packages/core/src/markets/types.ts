@@ -109,5 +109,8 @@ export interface MarketProvider {
   /** Signal for one match, or undefined when nothing maps cleanly. */
   findSignal(match: Match, options?: MarketSignalOptions): Promise<MarketSignal | undefined>;
   /** Batch form; a verdict per match id (see MarketSignalsResult). */
-  findSignals(matches: Match[], options?: MarketSignalOptions): Promise<MarketSignalsResult>;
+  findSignals(
+    matches: readonly Match[],
+    options?: MarketSignalOptions,
+  ): Promise<MarketSignalsResult>;
 }

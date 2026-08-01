@@ -60,7 +60,7 @@ export async function getMarketSignal(
 /** Batch fetch; never throws — an empty, INCOMPLETE batch on any error. */
 export async function getMarketSignals(
   provider: MarketProvider,
-  matches: Match[],
+  matches: readonly Match[],
   options?: MarketSignalOptions,
 ): Promise<MarketSignalsResult> {
   try {

@@ -159,7 +159,7 @@ export class PolymarketProvider implements MarketProvider {
   }
 
   async findSignals(
-    matches: Match[],
+    matches: readonly Match[],
     options?: MarketSignalOptions,
   ): Promise<BatchResolution<MarketSignal>> {
     const results = new Map<string, ParseResult<MarketSignal>>();

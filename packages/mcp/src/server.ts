@@ -99,11 +99,21 @@ const todayOut = {
   date: z.string(),
   degraded: z.boolean(),
   source: src,
+  // `count` is the TRUE total and `matches` may be a bounded view of it, so the
+  // payload states whether it was cut rather than leaving a consumer to infer
+  // it from two numbers.
   count: z.number(),
+  truncated: z.boolean(),
   matches: z.array(matchOut),
   marketSignals: z.record(anyObj).optional(),
 };
-const liveOut = { degraded: z.boolean(), source: src, count: z.number(), matches: z.array(matchOut) };
+const liveOut = {
+  degraded: z.boolean(),
+  source: src,
+  count: z.number(),
+  truncated: z.boolean(),
+  matches: z.array(matchOut),
+};
 const matchDetailOut = {
   match: matchOut.nullable(),
   degraded: z.boolean().optional(),
