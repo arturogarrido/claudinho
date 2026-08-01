@@ -112,7 +112,21 @@ function sealEvent(raw: unknown): MatchEvent | undefined {
  * fixture is filed under — so substituting a plausible value would invent the
  * very fact the bad field destroyed.
  */
-export function sealMatch(parts: MatchParts): ParseResult<Match> {
+export interface SealOptions {
+  /**
+   * Seal in-match events too. Default true.
+   *
+   * The statusline and hook render a scoreline, not a timeline — they never
+   * read `events` — and sealing them is the DOMINANT cost on a 150ms path: a
+   * poisoned cache of 64 live matches carrying 128 events each measured
+   * 11.9 s, because each event's `player` is a label and a label is segmented
+   * grapheme by grapheme. Bounding the COUNT was not enough when the surface
+   * needs ZERO. Cheapest work is work not done.
+   */
+  readonly events?: boolean;
+}
+
+export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResult<Match> {
   if (!parts || typeof parts !== 'object') return malformed('match is not an object');
 
   const id = opaqueId(parts.id, ESPN_ID);
@@ -149,9 +163,12 @@ export function sealMatch(parts: MatchParts): ParseResult<Match> {
   // SLICE BEFORE MAP: the record count is bounded by the caller, the events
   // inside ONE record were not, and a single match carrying 100k of them cost
   // seconds on a surface with a 150ms budget.
-  const events = takeBounded<unknown>(parts.events, MAX_MATCH_EVENTS)
-    .map(sealEvent)
-    .filter((e): e is MatchEvent => !!e);
+  const events =
+    opts.events === false
+      ? []
+      : takeBounded<unknown>(parts.events, MAX_MATCH_EVENTS)
+          .map(sealEvent)
+          .filter((e): e is MatchEvent => !!e);
 
   // Assigned in the order `Match` DECLARES its fields, skipping the absent ones.
   // Key order is not cosmetic here: this object is serialized straight into
@@ -185,19 +202,23 @@ export function sealMatch(parts: MatchParts): ParseResult<Match> {
  * that it holds values we ourselves wrote, which is what made it tempting to
  * trust. It goes through the same seal.
  */
-export function parseCachedMatch(raw: unknown): ParseResult<Match> {
+export function parseCachedMatch(raw: unknown, opts: SealOptions = {}): ParseResult<Match> {
   if (!raw || typeof raw !== 'object') return definitiveNone('cache entry is not an object');
-  return sealMatch(raw as MatchParts);
+  return sealMatch(raw as MatchParts, opts);
 }
 
 /** Cached fixtures, bounded BEFORE the per-record work. */
-export function parseCachedMatches(raw: unknown, max: number): BoundedList<Match> {
+export function parseCachedMatches(
+  raw: unknown,
+  max: number,
+  opts: SealOptions = {},
+): BoundedList<Match> {
   // The TRUE input size, read before slicing — `takeBounded` discards it, and a
   // count taken after the slice can only ever report "nothing was dropped".
   const total = Array.isArray(raw) ? raw.length : 0;
   const considered = takeBounded<unknown>(raw, max);
   const items = considered
-    .map(parseCachedMatch)
+    .map((m) => parseCachedMatch(m, opts))
     .flatMap((r) => (r.kind === 'valid' ? [r.value] : []));
   return {
     items,

@@ -208,7 +208,9 @@ export function liveMatchesFromCache(
       // The statusline renders straight from the cache file on every prompt, so
       // a poisoned cache is untrusted input exactly like a poisoned feed — and
       // when the two paths had separate rules, every fix landed on one of them.
-      .map((m) => parsedValue(parseCachedMatch(m)))
+      // `events: false` — this surface renders a scoreline, not a timeline, and
+      // sealing per-event labels is the dominant cost on a 150ms budget.
+      .map((m) => parsedValue(parseCachedMatch(m, { events: false })))
       .filter((m): m is Match => !!m)
   );
 }
@@ -262,7 +264,9 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
         // budget. Bounding one of two paths in this function was not fixing the
         // class; a knockout window is a few dozen fixtures, never thousands.
         .slice(0, MAX_LIVE_CONSIDERED)
-        .map((m) => parsedValue(parseCachedMatch(m)))
+        // `events: false` — this surface renders a scoreline, not a timeline, and
+      // sealing per-event labels is the dominant cost on a 150ms budget.
+      .map((m) => parsedValue(parseCachedMatch(m, { events: false })))
         .filter((m): m is Match => !!m)
     : [];
   const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;
