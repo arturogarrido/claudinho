@@ -435,3 +435,52 @@ describe('statusline — hot-path work is bounded by the cap, not the cache size
     expect(big).toBeLessThan(150);
   });
 });
+
+/**
+ * Round 8: `liveMatchesFromCache` was bounded, `cachedFixtures` in the SAME
+ * function was not — 1,658ms at 20,000 records. Bounding one of two paths is
+ * not fixing the class.
+ */
+describe('statusline — the FIXTURES path is bounded too', () => {
+  it('renders a 20,000-record fixtures cache inside the budget', () => {
+    const fixtures: Match[] = [];
+    for (let i = 0; i < 20_000; i++) {
+      fixtures.push(
+        m(String(900000 + i), ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], {
+          stage: 'R32',
+          status: 'SCHEDULED',
+          kickoff: '2026-06-28T19:00:00.000Z',
+        }),
+      );
+    }
+    const state = {
+      updatedAt: '2026-06-11T19:59:00.000Z',
+      live: [],
+      fixtures,
+      degraded: false,
+    } as unknown as CacheState;
+    const now = new Date('2026-06-11T20:00:00Z');
+    renderPrompt(state, { now }); // warm
+    const t = process.hrtime.bigint();
+    renderPrompt(state, { now });
+    expect(Number(process.hrtime.bigint() - t) / 1e6).toBeLessThan(150);
+  });
+
+  it('reports the TRUE overflow count, not the post-cap one', () => {
+    const live: Match[] = [];
+    for (let i = 0; i < 500; i++) {
+      live.push(
+        m(String(900000 + i), ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], {
+          status: 'LIVE',
+          score: { home: 1, away: 0 },
+          minute: 55,
+        }),
+      );
+    }
+    const line = renderPrompt(
+      { updatedAt: '2026-06-11T19:59:00.000Z', live, degraded: false } as unknown as CacheState,
+      { now: new Date('2026-06-11T20:00:00Z') },
+    );
+    expect(line).toMatch(/\+492$/); // 500 live, 8 shown
+  });
+});

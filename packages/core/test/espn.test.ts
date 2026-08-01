@@ -312,3 +312,38 @@ describe('mapEspnEvent — impossible facts and malformed records', () => {
     }
   });
 });
+
+describe('mapEspnEvent — participants must be real, winners unambiguous', () => {
+  const base = {
+    id: '700001',
+    date: '2026-06-11T19:00Z',
+    season: { slug: 'group-stage' },
+    status: { type: { name: 'STATUS_FULL_TIME', state: 'post', completed: true } },
+  };
+
+  it('drops the record rather than inventing a TBD vs TBD fixture', () => {
+    // Filtering invalid competitors without requiring TWO valid ones rendered a
+    // match nobody is playing — worse than dropping it.
+    for (const competitors of [{}, [null], [], [null, null]]) {
+      expect(
+        mapEspnEvent({ ...base, competitions: [{ competitors }] } as never),
+        JSON.stringify(competitors),
+      ).toBeUndefined();
+    }
+  });
+
+  it('refuses to pick a winner out of a contradiction', () => {
+    const both = mapEspnEvent({
+      ...base,
+      competitions: [
+        {
+          competitors: [
+            { homeAway: 'home', score: '1', winner: true, team: { abbreviation: 'MEX', displayName: 'Mexico' } },
+            { homeAway: 'away', score: '1', winner: true, team: { abbreviation: 'RSA', displayName: 'South Africa' } },
+          ],
+        },
+      ],
+    } as never);
+    expect(both?.winnerCode).toBeUndefined();
+  });
+});

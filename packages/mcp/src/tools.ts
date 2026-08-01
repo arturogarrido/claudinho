@@ -351,7 +351,7 @@ export async function toolGetStandings(
   const { tables, degraded, source } = await getStandings(resolveAdapter(args), args.group);
 
   // Preserve the structured shape: { group, standings: StandingRow[] }.
-  const shaped = tables.map((tb) => ({ group: tb.group, standings: tb.rows }));
+  const shaped = capRecords(tables).map((tb) => ({ group: tb.group, standings: tb.rows }));
 
   if (shaped.length === 0) {
     const g = args.group?.toUpperCase();
@@ -543,12 +543,14 @@ export async function toolGetMarketSignal(
   const { matches } = await getMatchesForDate(resolveAdapter(args), date);
   const todays = fixturesByDate(date, matches, args.tz).filter((m) => marketRelevant(m, now));
   const { signals } = await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS);
-  const shown = todays
+  const all = todays
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
     .filter(
       (r): r is { match: Match; signal: MarketSignal } =>
         !!r.signal && marketDisplayable(r.match, r.signal),
     );
+  // Bounded: this branch serialized one object per fixture into model context.
+  const shown = capRecords(all);
   const text = shown.length
     ? `Market signals on ${date}:\n${shown
         .map(({ match, signal }) => marketText(match, signal, args))
@@ -663,7 +665,9 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       undefined,
       {
         title: 'Live match pulse',
-        matches,
+        // Bounded like the date branch: a share card is returned through MCP
+        // before a human ever sees it.
+        matches: capRecords(matches),
         source,
         degraded,
         // Feed down ⇒ don't let an empty card read as "nothing is on".
@@ -704,7 +708,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         degraded,
         informationalOnly: true,
         snippet,
-        tables: tables.map((tb) => ({ group: tb.group, standings: tb.rows })),
+        tables: capRecords(tables).map((tb) => ({ group: tb.group, standings: tb.rows })),
       },
     };
   }

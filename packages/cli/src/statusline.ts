@@ -164,6 +164,25 @@ function matchSegment(m: Match, compact: boolean, flags: boolean): string {
  */
 const MAX_LIVE_CONSIDERED = 64;
 
+/**
+ * How many cache records LOOK live, before the work cap. Only the cheap
+ * predicate — no sanitizing — so the "+N" overflow can report the true total
+ * rather than the capped one, which would understate it (a 500-record cache
+ * said "+56"). Reporting a number that is quietly wrong is the same class of
+ * problem as losing the marker entirely.
+ */
+export function liveMatchCountFromCache(
+  state: CacheState | undefined,
+  nowMs = Date.now(),
+): number {
+  const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
+  const liveArr = fresh && Array.isArray(state?.live) ? state!.live : [];
+  return liveArr.filter(
+    (m): m is Match =>
+      !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
+  ).length;
+}
+
 export function liveMatchesFromCache(
   state: CacheState | undefined,
   nowMs = Date.now(),
@@ -237,6 +256,12 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   const cachedFixtures = Array.isArray(state?.fixtures)
     ? (state!.fixtures as unknown[])
         .filter(isMatchShaped)
+        // Same bound as the live slice above, for the same reason and on the
+        // same hot path — this list feeds `mergeLive` and the countdown, and
+        // sanitizing all of it cost 1,658ms at 20,000 records against a 150ms
+        // budget. Bounding one of two paths in this function was not fixing the
+        // class; a knockout window is a few dozen fixtures, never thousands.
+        .slice(0, MAX_LIVE_CONSIDERED)
         .map(sanitizeMatchStrings)
         .filter((m): m is Match => !!m)
     : [];
@@ -255,7 +280,9 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
     // contract is that it is one short line in the user's prompt.
     const max = opts.max && opts.max > 0 ? Math.min(opts.max, DEFAULT_MAX_SEGMENTS) : DEFAULT_MAX_SEGMENTS;
     const shown = live.slice(0, max);
-    const overflow = live.length - shown.length;
+    // The TRUE total, not the post-cap one — `live` has already been bounded to
+    // MAX_LIVE_CONSIDERED, so counting from it understated the overflow.
+    const overflow = Math.max(liveMatchCountFromCache(state, nowMs), live.length) - shown.length;
     const marker = overflow > 0 ? ` +${overflow}` : '';
     // The overflow marker is the honest part of this line — it is what says the
     // list is incomplete — so it must survive the width cap. Truncating the

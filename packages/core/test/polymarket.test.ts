@@ -644,16 +644,44 @@ describe('PolymarketProvider - feed-string sanitization at the mapping boundary'
  * not, so a signal and its own cached round-trip could disagree.
  */
 describe('PolymarketProvider — ambiguity at the live boundary', () => {
-  it('rejects a payload whose legs collapse to a duplicate 1X2 kind', async () => {
-    // Two markets both resolving to the home leg: the second is invisible in the
-    // rendered list yet counts toward the derived favorite.
+  it('rejects a payload with two legs claiming the same team', async () => {
+    // Deliberately COHERENT: whichever pair is chosen, the three selected
+    // probabilities total ~1, so no downstream sum check would catch it. The
+    // point is that "which Mexico leg is the real one" is not a question we can
+    // answer, so it must not be guessed — `find` silently took the first.
     const dup = event({}, [
-      market('mex', 'Mexico', 0.1),
-      market('mex2', 'Mexico', 0.55, { slug: 'mkt-mex' }),
-      market('draw', 'Draw', 0.15),
-      market('rsa', 'South Africa', 0.2),
+      market('mex', 'Mexico', 0.685),
+      market('mex2', 'Mexico', 0.685, { slug: 'mkt-mex' }),
+      market('draw', 'Draw', 0.205),
+      market('rsa', 'South Africa', 0.105),
     ]);
     expect(await derived(fetchFor(SLUG, dup)).findSignal(match())).toBeUndefined();
+  });
+
+  it('rejects a market that is not a real Yes/No binary', async () => {
+    // Validating only the 'Yes' slot accepted `["Yes","Maybe"]`, whose "Yes"
+    // price is not the probability of the outcome we label with it.
+    const maybe = event({}, [
+      market('mex', 'Mexico', 0.685, { outcomes: JSON.stringify(['Yes', 'Maybe']) }),
+      market('draw', 'Draw', 0.205),
+      market('rsa', 'South Africa', 0.105),
+    ]);
+    expect(await derived(fetchFor(SLUG, maybe)).findSignal(match())).toBeUndefined();
+
+    // ...and a complement that does not complement.
+    const badPair = event({}, [
+      market('mex', 'Mexico', 0.685, { outcomePrices: JSON.stringify(['0.685', '0.9']) }),
+      market('draw', 'Draw', 0.205),
+      market('rsa', 'South Africa', 0.105),
+    ]);
+    expect(await derived(fetchFor(SLUG, badPair)).findSignal(match())).toBeUndefined();
+  });
+
+  it('rejects a leg with NO timestamp of its own', async () => {
+    const noStamp = market('mex', 'Mexico', 0.685) as Record<string, unknown>;
+    delete noStamp.updatedAt;
+    const ev = event({}, [noStamp, market('draw', 'Draw', 0.205), market('rsa', 'South Africa', 0.105)]);
+    expect(await derived(fetchFor(SLUG, ev)).findSignal(match())).toBeUndefined();
   });
 
   it('rejects a leg whose OWN timestamp is unparseable', async () => {

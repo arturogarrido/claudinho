@@ -78,11 +78,20 @@ file on disk is attacker-writable in a way the type system does not capture. Con
   Algorithm, which matters most on share cards, since those exist to be pasted into tools that
   implement it. Emoji flags are exempted as whole grapheme clusters, because two of the flags
   shipped here are tag sequences built from format characters.
-- **Bounded** per field (display columns *and* code points) and per record count, on every
-  surface a model reads. Truncation is stated, never silent.
-- **Identifiers and timestamps are grammar-checked, not merely stripped.** Both land in model
-  context without being rendered as prose, so they never *look* wrong — and stripping control
-  characters leaves printable prose untouched. Timestamps are re-emitted in one canonical form.
+- **Bounded** per field (display columns, code points, and grapheme-cluster length) and per
+  record count on the MCP and hook surfaces, which is where a model reads. Truncation is stated,
+  never silent. The CLI's own terminal output and `--json` are deliberately *not* record-capped —
+  there the full day's list is the correct answer — but the record count is bounded upstream at
+  the adapter, so the input is not unbounded either.
+- **Identifiers and timestamps are grammar-checked, not merely stripped**, on both the live and
+  cached paths. Both land in model context without being rendered as prose, so they never *look*
+  wrong — and stripping control characters leaves printable prose untouched. Timestamps are
+  re-emitted in one canonical form, and a date that does not exist is refused rather than rolled
+  over into a different one.
+- **Invisible characters are treated as a payload channel, not as noise.** Bidi controls, tag
+  characters and variation selectors are each invisible and each map onto a text alphabet, so a
+  single glyph can carry a sentence a model will read. Only exact, allow-listed flag sequences may
+  carry tag characters, and a grapheme cluster longer than any real character is refused whole.
 - **Fail closed, including on absence.** A missing field must be at least as rejecting as a
   wrong one; several gates once skipped themselves when their field was absent, which made a
   more malformed payload more likely to be accepted.

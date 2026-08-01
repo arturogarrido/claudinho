@@ -293,6 +293,11 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match | undef
   const competitors = (Array.isArray(comp?.competitors) ? comp.competitors : []).filter(
     (c): c is EspnCompetitor => !!c && typeof c === 'object',
   );
+  // TWO valid participants, or there is no fixture to describe. Filtering the
+  // invalid ones without requiring what remains produced phantom "TBD vs TBD"
+  // matches from `{}`, `[null]` and `[]` — which is worse than dropping the
+  // record, because it renders as a real fixture nobody is playing.
+  if (competitors.length < 2) return undefined;
   const homeC =
     competitors.find((c) => c.homeAway === 'home') ?? competitors[0];
   const awayC =
@@ -317,11 +322,13 @@ export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match | undef
 
   let winnerCode: string | undefined;
   if (isFinished(status)) {
-    // A REAL boolean only. `winner: "false"` is a truthy string, so a plain
-    // truthiness test read it as "this team won" — and `winnerCode` is what
-    // advances a team through the knockout bracket.
-    if (homeC?.winner === true) winnerCode = home.code;
-    else if (awayC?.winner === true) winnerCode = away.code;
+    // A REAL boolean only — `winner: "false"` is a truthy string, so a plain
+    // truthiness test read it as "this team won". And EXACTLY one: checking
+    // home first meant a payload claiming both teams won advanced the home
+    // side, silently picking a winner out of a contradiction. `winnerCode` is
+    // what advances a team through the knockout bracket.
+    const winners = [homeC, awayC].filter((c) => c?.winner === true);
+    if (winners.length === 1) winnerCode = winners[0] === homeC ? home.code : away.code;
   }
 
   // Penalty shootout: ESPN carries `shootoutScore` on BOTH competitors only for

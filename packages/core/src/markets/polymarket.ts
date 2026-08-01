@@ -42,6 +42,13 @@ const DEFAULT_BASE = 'https://gamma-api.polymarket.com';
 const ALLOWED_HOSTS = new Set(['gamma-api.polymarket.com']);
 const USER_AGENT = 'claudinho/0.0 (+https://github.com/arturogarrido/claudinho)';
 const DEFAULT_TIMEOUT_MS = 8000;
+/**
+ * Total enrichment budget when a caller does not set one. The CLI and MCP both
+ * pass explicit deadlines, but the exported provider defaulted to UNBOUNDED —
+ * so an embedder gets a fixture count times the per-fetch timeout before any
+ * output. Optional odds must never be able to block a render.
+ */
+const DEFAULT_DEADLINE_MS = 15_000;
 const WC_SERIES_SLUG = 'soccer-fifwc';
 const WC_SPORT = 'fifwc';
 /** Kickoff must line up with the fixture within this window (catches mis-maps). */
@@ -150,7 +157,7 @@ export class PolymarketProvider implements MarketProvider {
     options?: MarketSignalOptions,
   ): Promise<MarketSignal | undefined> {
     const deadline =
-      options?.deadlineMs != null ? Date.now() + options.deadlineMs : Number.POSITIVE_INFINITY;
+      Date.now() + (options?.deadlineMs ?? DEFAULT_DEADLINE_MS);
     return (await this.resolveOne(match, options, deadline)).signal;
   }
 
@@ -161,8 +168,7 @@ export class PolymarketProvider implements MarketProvider {
     const signals = new Map<string, MarketSignal>();
     const checked = new Set<string>();
     // Total enrichment deadline: optional odds must never block core output.
-    const deadline =
-      options?.deadlineMs != null ? Date.now() + options.deadlineMs : Number.POSITIVE_INFINITY;
+    const deadline = Date.now() + (options?.deadlineMs ?? DEFAULT_DEADLINE_MS);
     for (const m of matches) {
       if (Date.now() >= deadline) break; // skipped (not checked) → retry next time
       const r = await this.resolveOne(m, options, deadline);
@@ -377,8 +383,11 @@ export class PolymarketProvider implements MarketProvider {
       // substituted the EVENT's timestamp, which is not when this price was
       // taken — so the displayed "updated HH:MM UTC" would describe a different
       // reading than the number beside it.
-      if (market.updatedAt != null && !canonicalTimestamp(market.updatedAt)) {
-        throw new MalformedPayloadError('market updatedAt is unparseable');
+      // REQUIRED, not merely valid-when-present. An omitted leg timestamp was
+      // accepted and the signal then reported some other leg's time as when this
+      // price was taken. Verified present on 312/312 real World Cup markets.
+      if (!canonicalTimestamp(market.updatedAt)) {
+        throw new MalformedPayloadError('market updatedAt missing or unparseable');
       }
       const marketAsOf = canonicalTimestamp(market.updatedAt);
       if (marketAsOf && (!asOf || Date.parse(marketAsOf) < Date.parse(asOf))) asOf = marketAsOf;
@@ -546,12 +555,18 @@ function pickMarket(
   const tokens = pmTokens(teamCode);
   const name = teamName.trim().toLowerCase();
   const teamMarkets = markets.filter((m) => !isDrawMarket(m));
-  const bySlug = teamMarkets.find((m) => tokens.includes(slugToken(m)));
-  if (bySlug) return bySlug;
+  // EXACTLY one, not the first of several. `find` silently adopted one of two
+  // legs claiming the same team, so a payload with two Mexico markets produced a
+  // confident signal built from whichever happened to come first — and which one
+  // is not a question we can answer, so it is not a question we should guess at.
+  const bySlug = teamMarkets.filter((m) => tokens.includes(slugToken(m)));
+  if (bySlug.length > 1) return undefined;
+  if (bySlug.length === 1) return bySlug[0];
   // An EMPTY team name would match any market with no groupItemTitle ('' === ''),
   // adopting an unrelated prop as a result leg. A nameless team is not a match.
   if (!name) return undefined;
-  return teamMarkets.find((m) => (m.groupItemTitle ?? '').trim().toLowerCase() === name);
+  const byTitle = teamMarkets.filter((m) => (m.groupItemTitle ?? '').trim().toLowerCase() === name);
+  return byTitle.length === 1 ? byTitle[0] : undefined;
 }
 
 function pickDraw(markets: GammaMarket[]): GammaMarket | undefined {
@@ -575,13 +590,25 @@ function assertAllowedHost(base: string): void {
  * Returns undefined for a market that isn't a clean priced Yes/No.
  */
 function yesPrice(market: GammaMarket): number | undefined {
-  const labels = parseJsonArray(market.outcomes);
+  const labels = parseJsonArray(market.outcomes).map((l) => l.trim().toLowerCase());
   const prices = parseJsonArray(market.outcomePrices).map((p) => Number(p));
-  if (labels.length === 0 || labels.length !== prices.length) return undefined;
-  const i = labels.findIndex((l) => l.trim().toLowerCase() === 'yes');
-  if (i < 0) return undefined;
-  const p = prices[i];
-  return typeof p === 'number' && Number.isFinite(p) && p > 0 && p <= 1 ? p : undefined;
+  if (labels.length !== 2 || prices.length !== 2) return undefined;
+  // The WHOLE binary shape, not just the slot we want. Validating only the
+  // 'Yes' leg accepted `["Yes","Maybe"]` — which is not a Yes/No market, so its
+  // "Yes" price is not the probability of the outcome we are labelling — and
+  // accepted a complement that does not complement.
+  const i = labels.indexOf('yes');
+  const j = labels.indexOf('no');
+  if (i < 0 || j < 0) return undefined;
+  const yes = prices[i];
+  const no = prices[j];
+  if (![yes, no].every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1)) {
+    return undefined;
+  }
+  // A binary market's two prices are complementary; a pair that isn't means we
+  // are not reading what we think we are reading.
+  if (Math.abs((yes as number) + (no as number) - 1) > 0.05) return undefined;
+  return (yes as number) > 0 ? (yes as number) : undefined;
 }
 
 /** Parse a value that may be an array or a JSON-encoded string array. */
@@ -600,10 +627,15 @@ function parseJsonArray(v: unknown): string[] {
 
 /** Coerce a number or numeric string to a finite number, else undefined. */
 function numberish(v: unknown): number | undefined {
-  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  // NON-NEGATIVE. Liquidity and volume are quantities of money; a negative one
+  // is malformed, and it fed a `minLiquidity` comparison. The cache path has
+  // refused these since `finiteOrUndefined` gained its range check — the live
+  // path had not, which is the same one-path-of-a-class miss as the rest of
+  // this round.
+  if (typeof v === 'number') return Number.isFinite(v) && v >= 0 ? v : undefined;
   if (typeof v === 'string') {
     const n = Number(v);
-    return Number.isFinite(n) ? n : undefined;
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
   }
   return undefined;
 }
