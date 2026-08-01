@@ -142,10 +142,21 @@ export function fixturesAttemptAgeMs(
 }
 
 /** Age of the cache in ms (Infinity if absent/unparseable). */
+/** Tolerated clock skew between writing a snapshot and reading it back. */
+const FUTURE_SKEW_MS = 60_000;
+
 export function ageMs(state: CacheState | undefined, now = Date.now()): number {
   if (!state) return Infinity;
   const t = Date.parse(state.updatedAt);
-  return Number.isFinite(t) ? now - t : Infinity;
+  if (!Number.isFinite(t)) return Infinity;
+  const age = now - t;
+  // A snapshot stamped in the FUTURE is not fresh, it is wrong. Returned as a
+  // negative age it compared below every staleness threshold, so a cache dated
+  // 2099 rendered as live indefinitely and no refresh ever superseded it —
+  // fail-OPEN on exactly the field that decides whether we trust the file.
+  // A little clock skew between writing and reading is normal, so only a
+  // meaningful lead counts as wrong.
+  return age < -FUTURE_SKEW_MS ? Infinity : age;
 }
 
 /**
