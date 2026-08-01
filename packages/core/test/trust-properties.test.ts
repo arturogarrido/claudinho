@@ -650,14 +650,21 @@ describe('property: text and structured data never disagree', () => {
       } as unknown as MarketSignal,
     ];
     for (const a of attacks) {
-      const clean = sanitizeMarketSignal(a, NOW);
-      if (!clean.favorite) continue; // dropped entirely — the strongest outcome
+      // A duplicated kind is now REFUSED outright rather than quietly deduped —
+      // the strongest possible form of "text and data never disagree", and the
+      // last live/cache asymmetry: the live provider already demanded exactly
+      // one leg per result while the cache path kept whichever came first.
+      const clean = trySanitizeMarketSignal(a, NOW);
+      if (!clean) continue;
+      if (!clean.favorite) continue; // dropped entirely — also acceptable
       const top = [...clean.outcomes]
         .filter((o) => o.kind !== 'other')
         .sort((x, y) => y.probability - x.probability)[0];
       expect(clean.favorite.kind).toBe(top?.kind);
       expect(clean.favorite.probability).toBe(top?.probability);
     }
+    // ...and the duplicate case specifically must be refused, not sanitized.
+    expect(trySanitizeMarketSignal(attacks[1], NOW)).toBeUndefined();
   });
 
   it('a codeless, label-swapped signal can never render for the fixture', () => {

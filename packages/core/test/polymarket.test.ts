@@ -172,7 +172,7 @@ describe('PolymarketProvider — slug derivation', () => {
     // Belt-and-suspenders: the COD case exercises the AWAY alias; this covers the
     // HOME slot going through the alias in both the slug and the outcome match.
     const nedSwe = match({
-      id: '760xxx',
+      id: '760920', // numeric, like every real ESPN id
       kickoff: '2026-06-20T16:00Z',
       home: { code: 'NED', name: 'Netherlands', flag: '🇳🇱' },
       away: { code: 'SWE', name: 'Sweden', flag: '🇸🇪' },

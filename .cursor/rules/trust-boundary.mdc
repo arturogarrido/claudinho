@@ -31,9 +31,13 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   instruction sentence — invisible on a terminal, legible to a model reading
   `--json`.
 - **Say which kind of failure it is.** `ParseResult` = `valid` /
-  `definitive-none` / `malformed` / `ambiguous` / `unresolved`. Only the first
-  two may be cached. "We could not read this" recorded as "there is nothing
-  here" suppresses the retry that would have recovered.
+  `definitive-none` / `malformed` / `ambiguous` / `unresolved`. The line for
+  CACHING one is whether we understood the payload: `valid`, `definitive-none`
+  and `ambiguous` are conclusions drawn from bytes we read and are stable across
+  a refetch, so all three may be remembered for a TTL. `malformed` and
+  `unresolved` are facts about US and must always be retried. Getting this
+  backwards cost a permanent per-command refetch loop — an ambiguity never
+  converges if you re-ask it (measured: 6,6,6 requests vs 6,0,0).
 - **Bound the work, not just the output.** `takeBounded` slices *before* the
   per-record map. A surface reports `total`/`shown`/`truncated` from one
   `BoundedList`; no handler recomputes a count.

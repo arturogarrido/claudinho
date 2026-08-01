@@ -201,7 +201,14 @@ async function cachedMarketSignals(
   for (const m of matches) {
     const e = marketMem.get(memKey(competition, m.id));
     const ttl = e?.signal ? MEM_POSITIVE_TTL : MEM_NEGATIVE_TTL;
-    if (e && now - e.at <= ttl) {
+    const fresh = e && now - e.at <= ttl;
+    // A cached signal is keyed by match id, but the FIXTURE behind that id can
+    // change — a knockout slot degrading back to a placeholder — so a hit has to
+    // be re-checked against the match in hand. The CLI has done this since
+    // 0.8.12 (`marketSignalRendersFor`); MCP accepted on the id alone, so a
+    // changed pairing both hid the market line and suppressed the refetch that
+    // would have produced a real one, for the full ten-minute TTL.
+    if (fresh && (!e.signal || marketSignalRendersFor(m, e.signal))) {
       if (e.signal) result.set(m.id, e.signal);
     } else {
       miss.push(m);
@@ -214,8 +221,9 @@ async function cachedMarketSignals(
       DEFAULT_ON_MARKET_OPTS,
     );
     const fetched = resolvedValues(batch);
-    // Cache only ids whose verdict may be remembered; malformed, ambiguous and
-    // deadline-skipped matches are retried rather than cached as "no market".
+    // Cache only ids whose verdict may be remembered (see `isCacheable`): a
+    // conclusion drawn from a payload we READ, including a stable ambiguity.
+    // A shape we could not read and a deadline that expired are retried.
     for (const id of cacheableKeys(batch)) {
       marketMem.set(memKey(competition, id), { at: now, signal: fetched.get(id) ?? null });
     }

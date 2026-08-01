@@ -4,6 +4,7 @@
  * reliable, otherwise omit silently."
  */
 import { isFinished, isLive } from '../normalize';
+import { sealMarketSignal } from '../trust/market';
 import { LIVE_WINDOW_MS } from '../schedule';
 import type { Match } from '../types';
 import type {
@@ -218,5 +219,24 @@ export function buildMarketSignal(input: BuildSignalInput): MarketSignal {
     ambiguous,
   };
   signal.stale = isStaleSignal(signal, { now: input.now, maxAgeMs: input.maxAgeMs });
-  return signal;
+  // BOTH PATHS END HERE. The cache reader seals what it reads; the live provider
+  // seals what it builds. Without this the claim that they share a constructor
+  // was an argument about which fields happened to be derived from already-clean
+  // data, and it was already false in places — FakeMarketProvider's
+  // `fake-<id>` source id survives live and is dropped on read, and duplicate
+  // outcome kinds were rejected live but silently deduped from cache.
+  //
+  // `ambiguous` is preserved rather than recomputed: only the builder knows the
+  // fixture the outcomes were mapped against.
+  const sealed = sealMarketSignal(signal, { now: input.now, maxAgeMs: input.maxAgeMs });
+  if (sealed.kind !== 'valid') {
+    // Unreachable when the caller passes a sealed Match, which every production
+    // caller does — `matchId` is the only field here the seal can refuse.
+    // Flagged unusable rather than emptied: `ambiguous` and `stale` are what
+    // every display gate keys off, and destroying the outcomes as well told the
+    // caller a different lie (a signal with no legs) instead of the truth (a
+    // signal we will not show).
+    return { ...signal, favorite: undefined, stale: true, ambiguous: true };
+  }
+  return { ...sealed.value, ambiguous: sealed.value.ambiguous || ambiguous };
 }

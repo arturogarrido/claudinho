@@ -288,7 +288,12 @@ export function parseEspnEvents(raw: unknown, ctx: MapContext = {}): BoundedList
   // ever say "nothing was dropped" — the same defect `parseCachedMatches` had,
   // which I fixed there and did not grep for here.
   const all = (raw as { events?: unknown })?.events;
-  const total = Array.isArray(all) ? all.length : 0;
+  // An envelope we cannot read is NOT an empty day. `{}` and
+  // `{events:'nope'}` both yielded `complete: true`, so a 200 carrying garbage
+  // reported itself as a genuine "no matches" — the exact shape this type
+  // exists to distinguish. An actual `events: []` is a real, complete answer.
+  const readable = Array.isArray(all);
+  const total = readable ? all.length : 0;
   const considered = takeBounded<unknown>(all, MAX_EVENTS);
   const parsed = considered.map((e) => parseEspnEvent(e, ctx));
   const items = parsed.flatMap((r) => (r.kind === 'valid' ? [r.value] : []));
@@ -297,9 +302,10 @@ export function parseEspnEvents(raw: unknown, ctx: MapContext = {}): BoundedList
     total,
     shown: items.length,
     truncated: total > considered.length,
-    // Some record was unreadable, or the window did not cover the payload —
-    // either way this is not a complete account of what the provider sent.
-    complete: items.length === total,
+    // Some record was unreadable, or the window did not cover the payload, or
+    // the envelope itself was not a list — none of those is a complete account
+    // of what the provider sent.
+    complete: readable && items.length === total,
   };
 }
 
@@ -354,6 +360,7 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
   const rawCount = Array.isArray(rawChildren) ? rawChildren.length : 0;
   const children = takeBounded<Record<string, unknown>>(rawChildren, MAX_GROUPS * 4);
   const sawAllChildren = rawCount === children.length;
+  let rowsTruncated = false;
   const out: GroupStandings[] = [];
   const seenGroups = new Set<string>();
 
@@ -366,10 +373,12 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
 
     // Bounded BEFORE the map and the sort: a 4,000-row group cost ~300ms to
     // produce 32 rows because the cap was applied to the result.
-    const entries = takeBounded<RawEntry>(
-      (child?.standings as { entries?: unknown } | undefined)?.entries,
-      MAX_GROUP_ROWS,
-    );
+    const rawEntries = (child?.standings as { entries?: unknown } | undefined)?.entries;
+    // Detected AT THE SLICE: `ranked` is built from the already-bounded list, so
+    // measuring it afterwards can only ever say nothing was dropped — the same
+    // count-after-the-fact mistake as `total`.
+    if (Array.isArray(rawEntries) && rawEntries.length > MAX_GROUP_ROWS) rowsTruncated = true;
+    const entries = takeBounded<RawEntry>(rawEntries, MAX_GROUP_ROWS);
     const seenTeams = new Set<string>();
     const ranked: Array<{ row: StandingRow; rank: number }> = [];
     for (const e of entries) {
@@ -395,8 +404,9 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
     items: out,
     total: out.length,
     shown: out.length,
-    // We stopped early if the child list was cut, or if we filled the group cap.
-    truncated: !sawAllChildren || out.length >= MAX_GROUPS,
-    complete: sawAllChildren,
+    // We stopped early if the child list was cut, we filled the group cap, or
+    // any single group's ROWS were cut.
+    truncated: !sawAllChildren || out.length >= MAX_GROUPS || rowsTruncated,
+    complete: sawAllChildren && !rowsTruncated,
   };
 }

@@ -68,7 +68,9 @@ export class FakeMarketProvider implements MarketProvider {
     return buildMarketSignal({
       match,
       source: 'fake',
-      sourceMarketId: `fake-${match.id}`,
+      // Must satisfy the boundary's opaque-id grammar, like a real one:
+      // a source id that only the live path accepts is the asymmetry itself.
+      sourceMarketId: match.id,
       asOf,
       fetchedAt: now.toISOString(),
       outcomes,

@@ -185,8 +185,10 @@ export class PolymarketProvider implements MarketProvider {
   /**
    * Resolve one match into a verdict.
    *
-   * Every exit says which KIND of non-answer it is, because only two of them
-   * ('valid', 'definitive-none') may be remembered. Previously a single
+   * Every exit says which KIND of non-answer it is, because that decides
+   * whether it may be remembered — see `isCacheable`: a conclusion we drew from
+   * a payload we READ is cacheable (including an ambiguity, which is stable),
+   * while a shape we could not read is not. Previously a single
    * `checked: boolean` collapsed five distinct situations into two, and the
    * ones that landed on the wrong side of it — an ambiguous payload, a
    * two-legged market, an incoherent 1X2 — were negative-cached as the fact
@@ -211,9 +213,23 @@ export class PolymarketProvider implements MarketProvider {
       // the derived candidates (UTC date, then the prior day — deriveEventSlugs).
       const slugs = entry?.eventSlug ? [entry.eventSlug] : deriveEventSlugs(match);
       if (slugs.length === 0) return definitiveNone('fixture has no derivable event slug');
-      // The best verdict any candidate reached. A later candidate's clean
-      // "no such event" must not erase an earlier one's ambiguity.
+      // The most alarming verdict any candidate reached, by explicit PRECEDENCE.
+      // Plain assignment let a later `ambiguous` overwrite an earlier
+      // `malformed` — and since an ambiguity is cacheable and a malformed shape
+      // is not, that quietly made an unreadable payload rememberable.
+      // Order: malformed/unresolved (facts about us, never cacheable) outrank
+      // ambiguous, which outranks a plain "no such event".
+      const RANK: Record<string, number> = {
+        'definitive-none': 0,
+        ambiguous: 1,
+        unresolved: 2,
+        malformed: 3,
+      };
       let worst: ParseResult<MarketSignal> | undefined;
+      const keepWorst = (r: ParseResult<MarketSignal>) => {
+        if (r.kind === 'definitive-none' || r.kind === 'valid') return;
+        if (!worst || (RANK[r.kind] ?? 0) > (RANK[worst.kind] ?? 0)) worst = r;
+      };
       for (const slug of slugs) {
         // Enforce the enrichment deadline BETWEEN candidate slugs, not just between
         // fixtures: with team aliases a match can have up to 8 candidates, and
@@ -223,15 +239,15 @@ export class PolymarketProvider implements MarketProvider {
         if (remaining <= 0) return unresolved('deadline expired between candidate slugs');
         const found = await this.fetchEvent(slug, Math.min(configured, remaining));
         if (found.kind !== 'valid') {
-          if (found.kind !== 'definitive-none') worst = found as ParseResult<MarketSignal>;
+          keepWorst(found as ParseResult<MarketSignal>);
           continue;
         }
         const r = this.toSignal(match, slug, found.value, options);
         if (r.kind === 'valid') return r; // first candidate that validates wins
         // Keep the most alarming non-answer across the fan-out: a payload we
         // could not read is not cancelled out by a sibling slug that simply
-        // does not exist.
-        if (r.kind !== 'definitive-none') worst = r;
+        // does not exist, NOR downgraded by a sibling that is merely ambiguous.
+        keepWorst(r);
       }
       // Reaching the source and finding no usable market is definitive. Failing
       // to READ what it sent is not — treating a schema change as "no market"

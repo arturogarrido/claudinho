@@ -150,10 +150,10 @@ async function marketSignalsFor(
   if (miss.length > 0) {
     const batch = await getMarketSignals(makeMarketProvider('polymarket'), miss, opts);
     const fetched = resolvedValues(batch);
-    // Negative-cache only ids whose verdict may be REMEMBERED (valid or a
-    // definitive none). Malformed, ambiguous and deadline-skipped matches are
-    // omitted, so neither a transient failure nor a payload we could not read
-    // suppresses the refetch that would produce a real signal.
+    // Negative-cache only ids whose verdict may be REMEMBERED (see
+    // `isCacheable`): a conclusion drawn from a payload we READ, which includes
+    // a stable ambiguity. A shape we could not read and a deadline that expired
+    // are omitted, so neither suppresses the refetch that would recover.
     writeMarketCache('polymarket', competition, [...cacheableKeys(batch)], fetched);
     for (const [id, s] of fetched) result.set(id, s);
   }

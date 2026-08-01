@@ -163,7 +163,7 @@ function matchSegment(m: Match, compact: boolean, flags: boolean): string {
  * trade-off is bounded work against a hypothetical hidden record, and work
  * wins on a surface that renders on every prompt.
  */
-const MAX_LIVE_CONSIDERED = 64;
+export const MAX_LIVE_CONSIDERED = 64;
 
 /**
  * How many cache records LOOK live, before the work cap. Only the cheap

@@ -51,7 +51,11 @@ const FORBIDDEN_IN_LABEL =
 // but "a label admits no emoji" has to be true as stated. Named explicitly
 // rather than widening to \p{Emoji}, which matches the bare digits in "2026".
 // Verified absent from 36,538 real feed strings.
-const EMOJI_IN_LABEL = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u{20E3}/u;
+// `\p{Emoji_Modifier}` is the five skin-tone modifiers and nothing else — it
+// matches no real name (checked against the shipped roster and the live feed).
+// Not `\p{Emoji_Component}`, which includes the bare digits in "2026".
+const EMOJI_IN_LABEL =
+  /\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|\u{20E3}/u;
 
 /** Input bytes read before any per-character work. A work bound, not a display one. */
 const MAX_LABEL_INPUT_UNITS = 4096;
@@ -75,9 +79,31 @@ export function humanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): stri
   // character is KEPT, so an all-rejected field was otherwise scanned in full.
   const capped =
     value.length > MAX_LABEL_INPUT_UNITS ? value.slice(0, MAX_LABEL_INPUT_UNITS) : value;
+
+  // Run to a FIXED POINT, because one pass is not closed under its own output.
+  // Filtering removes characters, and removing a character changes what
+  // composes: a pass can emit clusters that individually passed the per-cluster
+  // check and then merge under NFC into one cluster that would not — measured
+  // at 320 code points in a single 1-column cluster. Idempotence is the
+  // property the live and cache paths are compared on, so it has to hold by
+  // construction rather than by argument.
+  //
+  // Converges immediately for real text (pass 2 is a no-op). If it has not
+  // settled within a few passes the value is adversarial, so we fail closed.
+  let out = sealLabelOnce(capped, maxColumns);
+  for (let pass = 0; pass < 3; pass++) {
+    const again = sealLabelOnce(out, maxColumns);
+    if (again === out) return out;
+    out = again;
+  }
+  return sealLabelOnce(out, maxColumns) === out ? out : '';
+}
+
+/** One filtering pass. See {@link humanLabel}, which runs this to a fixed point. */
+function sealLabelOnce(value: string, maxColumns: number): string {
   let normalized: string;
   try {
-    normalized = capped.normalize('NFC');
+    normalized = value.normalize('NFC');
   } catch {
     return ''; // a lone surrogate can make normalize throw
   }
@@ -121,15 +147,8 @@ export function humanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): stri
     width += w;
     points += cps;
   }
-  // NORMALIZE AGAIN, because this function's own filtering can change what
-  // composes. The input is normalized first, but a dropped character can sit
-  // BETWEEN a base and its combining mark — "Me" + U+00AD + U+0301 + "xico"
-  // normalizes with the soft hyphen still separating them, so nothing composes;
-  // removing it then leaves a decomposed "e" + acute. Feeding that back in
-  // composes it to "é", so sealing was not idempotent and the live and cache
-  // paths produced byte-different output for the same fixture — breaking the
-  // one property this whole boundary exists to provide. NFC is idempotent, so
-  // running it on the RESULT closes the loop.
+  // Normalize the RESULT: this pass's own filtering can change what composes,
+  // and the caller re-runs until that settles.
   try {
     return out.normalize('NFC').trim();
   } catch {

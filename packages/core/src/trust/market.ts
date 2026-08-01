@@ -23,7 +23,7 @@ import { KNOWN_MARKET_SOURCES } from '../markets/format';
 import { deriveFavorite, isStaleSignal } from '../markets/normalize';
 import type { MarketOutcome, MarketSignal } from '../markets/types';
 import { takeBounded } from './bounded';
-import { type ParseResult, malformed, valid } from './result';
+import { type ParseResult, ambiguous, malformed, valid } from './result';
 import { canonicalTimestamp, humanLabel, member, opaqueId, probability, quantity } from './roles';
 
 /** Legs read from one signal. A 1X2 market has three. */
@@ -62,15 +62,24 @@ function sealOutcome(raw: unknown): MarketOutcome | undefined {
   return out;
 }
 
-/** One leg per kind: a second `home` leg is a contradiction, not extra data. */
-function dedupeKinds(outcomes: MarketOutcome[]): MarketOutcome[] {
+/**
+ * A second `home` leg is a CONTRADICTION, not extra data.
+ *
+ * Silently keeping the first was the last live/cache asymmetry: the live
+ * provider refuses a payload whose legs collapse (`pickMarket` demands exactly
+ * one), while the cache path deduped quietly and returned a confident
+ * `ambiguous: false` signal built from whichever leg happened to come first.
+ * Which one is right is not a question the payload answers, so it is not a
+ * question this function answers either.
+ */
+function hasDuplicateKind(outcomes: readonly MarketOutcome[]): boolean {
   const seen = new Set<string>();
-  return outcomes.filter((o) => {
-    if (o.kind === 'other') return true;
-    if (seen.has(o.kind)) return false;
+  for (const o of outcomes) {
+    if (o.kind === 'other') continue;
+    if (seen.has(o.kind)) return true;
     seen.add(o.kind);
-    return true;
-  });
+  }
+  return false;
 }
 
 /**
@@ -89,15 +98,15 @@ export function sealMarketSignal(
   const matchId = opaqueId(s.matchId, MATCH_ID);
   if (!matchId) return malformed('signal names no fixture');
 
-  const outcomes = dedupeKinds(
-    // SLICE BEFORE MAP, as everywhere: 100k legs cost ~600ms before being
-    // discarded anyway, since 'other' kinds bypass the dedupe.
-    takeBounded<unknown>(s.outcomes, MAX_OUTCOMES)
-      .map(sealOutcome)
-      .filter((o): o is MarketOutcome => !!o),
-  );
+  // SLICE BEFORE MAP, as everywhere: 100k legs cost ~600ms before being
+  // discarded anyway.
+  const outcomes = takeBounded<unknown>(s.outcomes, MAX_OUTCOMES)
+    .map(sealOutcome)
+    .filter((o): o is MarketOutcome => !!o);
+  if (hasDuplicateKind(outcomes)) {
+    return ambiguous('two outcomes claim the same result');
+  }
 
-  const favorite = deriveFavorite(outcomes);
   const sourceMarketId = opaqueId(s.sourceMarketId, MARKET_ID);
   const liquidity = quantity(s.liquidity);
   const volume24h = quantity(s.volume24h);
@@ -115,13 +124,18 @@ export function sealMarketSignal(
   out.asOf = canonicalTimestamp(s.asOf) ?? '';
   out.fetchedAt = canonicalTimestamp(s.fetchedAt) ?? '';
   out.outcomes = outcomes;
+  // Fail closed: only an explicit `false` reads as "not stale/ambiguous".
+  const isAmbiguous = s.ambiguous !== false;
   // Recomputed, never read — keeps the headline consistent with the numbers.
+  // Suppressed entirely when the signal does not map cleanly onto its fixture:
+  // a confident favourite on an unmappable signal is the confidently-wrong
+  // display this project refuses, and it is what the live builder already does.
+  const favorite = isAmbiguous ? undefined : deriveFavorite(outcomes);
   if (favorite) out.favorite = favorite;
   if (liquidity !== undefined) out.liquidity = liquidity;
   if (volume24h !== undefined) out.volume24h = volume24h;
-  // Fail closed: only an explicit `false` reads as "not stale/ambiguous".
   out.stale = s.stale !== false;
-  out.ambiguous = s.ambiguous !== false;
+  out.ambiguous = isAmbiguous;
   // Derived against the clock, for the same reason `favorite` is derived from
   // the outcomes. An unusable `asOf` parses to NaN and reads as stale.
   out.stale = out.stale || isStaleSignal(out, { now: options.now, maxAgeMs: options.maxAgeMs });
