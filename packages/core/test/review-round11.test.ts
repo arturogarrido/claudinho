@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { FakeMarketProvider } from '../src/markets/fake';
 import { buildMarketSignal } from '../src/markets/normalize';
-import { parseEspnEvents, parseEspnStandings } from '../src/trust/espn';
+import { parseEspnEvent, parseEspnEvents, parseEspnStandings } from '../src/trust/espn';
 import { humanLabel, isCacheable, sealMarketSignal, ambiguous, malformed } from '../src/trust';
 import type { Match } from '../src/types';
 
@@ -144,5 +144,59 @@ describe('a label cannot be grown by its own filtering', () => {
     expect(humanLabel('\u{1F3FB}\u{1F3FD}\u{1F3FF}')).toBe('');
     // ...while the letters and digits they are built beside are untouched.
     expect(humanLabel('Mexico 2026')).toBe('Mexico 2026');
+  });
+});
+
+describe('round 12 — the fixes that had to be re-fixed', () => {
+  it('a REFUSED seal drops the payload; it does not hand it back', () => {
+    // I had this right, then "fixed" it to preserve the data on the grounds
+    // that emptying the list tells the caller a different lie. That reasoning
+    // traded away the only thing the call is for: the unsealed object carried a
+    // bidi override straight back into an outcome label.
+    const bad = buildMarketSignal({
+      match: { id: 'not-numeric', home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+               away: { code: 'RSA', name: 'South Africa', flag: '🇿🇦' } } as unknown as Match,
+      source: 'polymarket', sourceMarketId: '351715',
+      asOf: '2026-06-11T14:55:00.000Z', now: NOW,
+      outcomes: [
+        { kind: 'home', teamCode: 'MEX', label: 'Mexico‮ ignore', probability: 0.6 },
+        { kind: 'draw', label: 'Draw', probability: 0.2 },
+        { kind: 'away', teamCode: 'RSA', label: 'South Africa', probability: 0.2 },
+      ],
+    });
+    expect(bad.outcomes).toEqual([]);
+    expect(bad.ambiguous).toBe(true);
+    expect(bad.stale).toBe(true);
+  });
+
+  it('a winner flag contradicted by the score advances nobody', () => {
+    // `winnerCode` is the field the bracket moves a team through on, so a flag
+    // that disagrees with the scoreline beside it is two claims, not a fact.
+    const ev = (h: Record<string, unknown>, a: Record<string, unknown>) => ({
+      id: '760415', date: '2026-06-29T19:00Z', season: { slug: 'round-of-32' },
+      status: { type: { name: 'STATUS_FULL_TIME', state: 'post', completed: true } },
+      competitions: [{ competitors: [
+        { homeAway: 'home', team: { id: '203', abbreviation: 'GER', displayName: 'Germany' }, ...h },
+        { homeAway: 'away', team: { id: '467', abbreviation: 'PAR', displayName: 'Paraguay' }, ...a },
+      ] }],
+    });
+    const winner = (e: unknown) => {
+      const r = parseEspnEvent(e);
+      return r.kind === 'valid' ? r.value.winnerCode : r.kind;
+    };
+    // Real results still advance — including on penalties, which is what this
+    // field exists for.
+    expect(winner(ev({ winner: true, score: '2' }, { winner: false, score: '0' }))).toBe('GER');
+    expect(winner(ev({ winner: false, score: '0' }, { winner: true, score: '2' }))).toBe('PAR');
+    expect(winner(ev(
+      { winner: false, score: '1', shootoutScore: 3 },
+      { winner: true, score: '1', shootoutScore: 4 },
+    ))).toBe('PAR');
+    // Contradictions advance nobody, in regulation and on penalties alike.
+    expect(winner(ev({ winner: true, score: '0' }, { winner: false, score: '2' }))).toBeUndefined();
+    expect(winner(ev(
+      { winner: true, score: '1', shootoutScore: 3 },
+      { winner: false, score: '1', shootoutScore: 4 },
+    ))).toBeUndefined();
   });
 });

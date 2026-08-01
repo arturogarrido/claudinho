@@ -90,7 +90,13 @@ export function humanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): stri
   //
   // Converges immediately for real text (pass 2 is a no-op). If it has not
   // settled within a few passes the value is adversarial, so we fail closed.
-  let out = sealLabelOnce(capped, maxColumns);
+  const first = sealLabelOnce(capped, maxColumns);
+  // Only filtering can change what composes, so a pass that dropped nothing has
+  // already converged — which is every real name, and keeps the common path at
+  // one pass. `dropped` is set by the pass itself rather than inferred from the
+  // lengths, because NFC alone can change length without anything being removed.
+  if (!lastPassDropped) return first;
+  let out = first;
   for (let pass = 0; pass < 3; pass++) {
     const again = sealLabelOnce(out, maxColumns);
     if (again === out) return out;
@@ -99,8 +105,17 @@ export function humanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): stri
   return sealLabelOnce(out, maxColumns) === out ? out : '';
 }
 
+/**
+ * Did the last {@link sealLabelOnce} remove anything?
+ *
+ * Module-scoped rather than a return tuple to keep this allocation-free on a
+ * 150ms path; `humanLabel` is the only caller and reads it immediately.
+ */
+let lastPassDropped = false;
+
 /** One filtering pass. See {@link humanLabel}, which runs this to a fixed point. */
 function sealLabelOnce(value: string, maxColumns: number): string {
+  lastPassDropped = false;
   let normalized: string;
   try {
     normalized = value.normalize('NFC');
@@ -127,8 +142,14 @@ function sealLabelOnce(value: string, maxColumns: number): string {
   for (const cluster of graphemes(normalized)) {
     // A real character is a handful of code points. Anything longer is a
     // payload wearing one glyph, whatever it is built from.
-    if ([...cluster].length > 8) continue;
-    if (EMOJI_IN_LABEL.test(cluster)) continue;
+    if ([...cluster].length > 8) {
+      lastPassDropped = true;
+      continue;
+    }
+    if (EMOJI_IN_LABEL.test(cluster)) {
+      lastPassDropped = true;
+      continue;
+    }
     let piece = '';
     for (const ch of cluster) {
       const cp = ch.codePointAt(0) ?? 0;
@@ -136,10 +157,16 @@ function sealLabelOnce(value: string, maxColumns: number): string {
         piece += ' ';
         continue;
       }
-      if (FORBIDDEN_IN_LABEL.test(ch)) continue;
+      if (FORBIDDEN_IN_LABEL.test(ch)) {
+        lastPassDropped = true;
+        continue;
+      }
       piece += ch;
     }
-    if (!piece) continue;
+    if (!piece) {
+      lastPassDropped = true;
+      continue;
+    }
     const w = displayWidth(piece);
     const cps = [...piece].length;
     if (width + w > maxColumns || points + cps > maxCodePoints) break;

@@ -842,12 +842,25 @@ describe('property: joiners must actually join, and work is bounded on INPUT', (
 
 
   it('does not scan an all-rejected field to the end', () => {
-    // The loop's early exit only fires when a cluster is KEPT, so 500k
-    // zero-width spaces were scanned in full: 169ms for one field, which
-    // defeats the hot path's work bound from the other direction.
-    const t = process.hrtime.bigint();
-    sanitizeFeedText('​'.repeat(500_000));
-    expect(Number(process.hrtime.bigint() - t) / 1e6).toBeLessThan(50);
+    // The loop's early exit only fires when a cluster is KEPT, so an
+    // all-rejected field was otherwise scanned in full — defeating the hot
+    // path's work bound from the other direction.
+    //
+    // A RATIO, not a millisecond constant. This started as `< 50ms` and failed
+    // at 94ms the moment `humanLabel` gained a second pass — measuring the
+    // machine, not the property. The property is that the INPUT cap makes the
+    // cost flat: 20x the input costs the same, because everything past
+    // MAX_LABEL_INPUT_UNITS is sliced off before any of it is looked at.
+    const time = (n: number) => {
+      const s = '\u200B'.repeat(n);
+      sanitizeFeedText(s); // warm
+      const t = process.hrtime.bigint();
+      sanitizeFeedText(s);
+      return Number(process.hrtime.bigint() - t) / 1e6;
+    };
+    const small = time(25_000);
+    const huge = time(500_000);
+    expect(huge).toBeLessThan(Math.max(small * 4, 25));
   });
 });
 

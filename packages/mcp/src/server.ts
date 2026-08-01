@@ -104,6 +104,8 @@ const todayOut = {
   // it from two numbers.
   count: z.number(),
   truncated: z.boolean(),
+  // Set when the whole-response size cap dropped per-match event lists.
+  eventsOmitted: z.boolean().optional(),
   matches: z.array(matchOut),
   marketSignals: z.record(anyObj).optional(),
 };
@@ -112,6 +114,7 @@ const liveOut = {
   source: src,
   count: z.number(),
   truncated: z.boolean(),
+  eventsOmitted: z.boolean().optional(),
   matches: z.array(matchOut),
 };
 const matchDetailOut = {
@@ -208,13 +211,52 @@ export const OUTPUT_SCHEMAS = {
  * The redundancy costs a few tokens for agents that read both; dropping the text
  * block would silently blind those older clients to everything but the prose.
  */
-function toContent(r: ToolResult) {
+/**
+ * Ceiling on one tool response, in characters of serialized JSON.
+ *
+ * The record COUNT is bounded (40) and every field is bounded, but neither
+ * bounds their product: 40 maximal fixtures whose `events` arrays are full can
+ * still serialize to megabytes, and this is model context on every call. The
+ * hook already learned this — bounding each field and the record count is not
+ * the same as bounding the sum. A real response is a few KB.
+ *
+ * Applied at the ONE place every tool's payload leaves the server, rather than
+ * per handler, so a tool added later cannot forget it.
+ */
+export const MAX_RESPONSE_CHARS = 128_000;
+
+/**
+ * Drop the heaviest optional field until the payload fits.
+ *
+ * `events` first because it is the only unbounded-by-nature list and no tool's
+ * primary answer depends on it; the fixtures themselves stay. Truncation is
+ * STATED in the payload, never silent.
+ */
+export function boundResponse(data: unknown): unknown {
+  if (JSON.stringify(data ?? null).length <= MAX_RESPONSE_CHARS) return data;
+  if (!data || typeof data !== 'object') return data;
+  const d = { ...(data as Record<string, unknown>) } as Record<string, unknown>;
+  if (Array.isArray(d.matches)) {
+    d.matches = (d.matches as Record<string, unknown>[]).map(({ events: _e, ...rest }) => rest);
+    d.eventsOmitted = true;
+  }
+  if (JSON.stringify(d).length <= MAX_RESPONSE_CHARS) return d;
+  // Still too large: keep the head of the list and say so.
+  if (Array.isArray(d.matches)) {
+    d.matches = (d.matches as unknown[]).slice(0, 8);
+    d.truncated = true;
+  }
+  return d;
+}
+
+export function toContent(r: ToolResult) {
+  const data = boundResponse(r.data);
   return {
     content: [
       { type: 'text' as const, text: r.text },
-      { type: 'text' as const, text: '```json\n' + JSON.stringify(r.data, null, 2) + '\n```' },
+      { type: 'text' as const, text: '```json\n' + JSON.stringify(data, null, 2) + '\n```' },
     ],
-    structuredContent: r.data as Record<string, unknown>,
+    structuredContent: data as Record<string, unknown>,
   };
 }
 

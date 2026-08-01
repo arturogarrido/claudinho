@@ -12,6 +12,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { stampAgeMs } from './cache';
 import {
   hasSaneDistribution,
   parseCachedMarketSignal,
@@ -193,7 +194,7 @@ export function writeMarketCache(
         if (!isEntryShaped(raw)) continue;
         // Prune on write. An expired entry is dead weight the read path skips
         // anyway, and carrying every id forward grew the file without bound.
-        const age = now - Date.parse(raw.fetchedAt);
+        const age = stampAgeMs(raw.fetchedAt, now);
         if (age > (raw.signal ? POSITIVE_TTL_MS : NEGATIVE_TTL_MS)) continue;
         if (age < -FUTURE_SKEW_MS) continue;
         // Don't round-trip a positive body that no longer sanitizes to anything

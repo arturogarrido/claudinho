@@ -125,10 +125,18 @@ export function writeState(state: CacheState): void {
 }
 
 /** True while a persisted provider backoff (429/403) is in effect. */
+/** Longest a provider backoff may hold, whatever the file claims. */
+const MAX_BACKOFF_MS = 30 * 60_000;
+
 export function backoffActive(state: CacheState | undefined, now = Date.now()): boolean {
   if (!state?.backoffUntil) return false;
   const t = Date.parse(state.backoffUntil);
-  return Number.isFinite(t) && now < t;
+  if (!Number.isFinite(t)) return false;
+  // BOUNDED. `now < t` alone let a `backoffUntil` of 2099 suppress every
+  // refresh forever — a permanent silence written by whoever last wrote the
+  // file. The real backoff is 5-6 minutes; anything past the ceiling is not a
+  // backoff we wrote.
+  return now < t && t - now <= MAX_BACKOFF_MS;
 }
 
 /** Age of the latest fixtures ATTEMPT in ms (Infinity if never attempted). */
@@ -136,27 +144,36 @@ export function fixturesAttemptAgeMs(
   state: CacheState | undefined,
   now = Date.now(),
 ): number {
-  if (!state?.fixturesAttemptedAt) return Infinity;
-  const t = Date.parse(state.fixturesAttemptedAt);
-  return Number.isFinite(t) ? now - t : Infinity;
+  return stampAgeMs(state?.fixturesAttemptedAt, now);
 }
 
 /** Age of the cache in ms (Infinity if absent/unparseable). */
 /** Tolerated clock skew between writing a snapshot and reading it back. */
 const FUTURE_SKEW_MS = 60_000;
 
-export function ageMs(state: CacheState | undefined, now = Date.now()): number {
-  if (!state) return Infinity;
-  const t = Date.parse(state.updatedAt);
+/**
+ * How old a cache timestamp is, or Infinity if we cannot trust it.
+ *
+ * A stamp in the FUTURE is not fresh, it is wrong. Returned as a negative age
+ * it compares below every staleness threshold, so a value dated 2099 reads as
+ * current forever and no refresh supersedes it — fail-OPEN on exactly the
+ * fields that decide whether we trust the file. Ordinary skew between writing
+ * and reading is tolerated; a meaningful lead is not.
+ *
+ * EVERY age question goes through here. Fixing only `updatedAt` left the
+ * siblings — the fixtures attempt stamp, the market entries — open to the same
+ * value, which is the "fixed one instance, not the class" mistake again.
+ */
+export function stampAgeMs(value: string | undefined, now: number): number {
+  if (!value) return Infinity;
+  const t = Date.parse(value);
   if (!Number.isFinite(t)) return Infinity;
   const age = now - t;
-  // A snapshot stamped in the FUTURE is not fresh, it is wrong. Returned as a
-  // negative age it compared below every staleness threshold, so a cache dated
-  // 2099 rendered as live indefinitely and no refresh ever superseded it —
-  // fail-OPEN on exactly the field that decides whether we trust the file.
-  // A little clock skew between writing and reading is normal, so only a
-  // meaningful lead counts as wrong.
   return age < -FUTURE_SKEW_MS ? Infinity : age;
+}
+
+export function ageMs(state: CacheState | undefined, now = Date.now()): number {
+  return stampAgeMs(state?.updatedAt, now);
 }
 
 /**

@@ -230,13 +230,15 @@ export function buildMarketSignal(input: BuildSignalInput): MarketSignal {
   // fixture the outcomes were mapped against.
   const sealed = sealMarketSignal(signal, { now: input.now, maxAgeMs: input.maxAgeMs });
   if (sealed.kind !== 'valid') {
-    // Unreachable when the caller passes a sealed Match, which every production
-    // caller does — `matchId` is the only field here the seal can refuse.
-    // Flagged unusable rather than emptied: `ambiguous` and `stale` are what
-    // every display gate keys off, and destroying the outcomes as well told the
-    // caller a different lie (a signal with no legs) instead of the truth (a
-    // signal we will not show).
-    return { ...signal, favorite: undefined, stale: true, ambiguous: true };
+    // The outcomes are DROPPED, not carried through flagged.
+    //
+    // I had this right, then "fixed" it to preserve the data on the grounds
+    // that emptying the list tells the caller a different lie. That reasoning
+    // traded the only thing this call is for: returning the unsealed object put
+    // a bidi override back into an outcome label, which is precisely what the
+    // seal exists to remove. A signal with no legs, flagged stale AND ambiguous,
+    // is not a lie — it is "nothing here we are willing to show", which is true.
+    return { ...signal, outcomes: [], favorite: undefined, stale: true, ambiguous: true };
   }
   return { ...sealed.value, ambiguous: sealed.value.ambiguous || ambiguous };
 }
