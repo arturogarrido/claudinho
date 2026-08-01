@@ -68,6 +68,7 @@ const poisoned = {
 
 describe('mapEspnEvent — feed-string sanitization (SEC-1 chokepoint)', () => {
   const m = mapEspnEvent(poisoned as never);
+  if (!m) throw new Error('the poisoned fixture is still mappable — expected a Match');
 
   it('produces a clean Match: no controls, no newlines, capped length', () => {
     const fields = [m.home.name, m.home.code, m.away.name, m.venue, m.city ?? '', m.country ?? ''];
@@ -89,6 +90,17 @@ describe('mapEspnEvent — feed-string sanitization (SEC-1 chokepoint)', () => {
   });
 });
 
+/**
+ * `sanitizeMatchStrings` DROPS a match it can't render honestly (bad
+ * stage/status/kickoff). These fixtures are all renderable, so unwrap and fail
+ * loudly if that ever stops being true.
+ */
+function sanitized(m: unknown): Match {
+  const clean = sanitizeMatchStrings(m as Match);
+  if (!clean) throw new Error('expected a renderable match, got undefined');
+  return clean;
+}
+
 describe('sanitizeMatchStrings (statusline cache mirror)', () => {
   it('cleans every display string and never throws on malformed teams', () => {
     const dirty = {
@@ -102,7 +114,7 @@ describe('sanitizeMatchStrings (statusline cache mirror)', () => {
       status: 'LIVE',
       updatedAt: '2026-06-11T20:00Z',
     } as unknown as Match;
-    const clean = sanitizeMatchStrings(dirty);
+    const clean = sanitized(dirty);
     expect(clean.home.name).toBe('[31mMexico');
     expect(clean.home.code).toBe('MX');
     expect(clean.home.flag).toBe('🇲🇽');
@@ -125,7 +137,7 @@ describe('sanitizeMatchStrings — numeric fields (score/shootout/minute)', () =
   };
 
   it('keeps real numbers untouched', () => {
-    const clean = sanitizeMatchStrings({
+    const clean = sanitized({
       ...base,
       score: { home: 1, away: 0 },
       shootout: { home: 3, away: 4 },
@@ -137,7 +149,7 @@ describe('sanitizeMatchStrings — numeric fields (score/shootout/minute)', () =
   });
 
   it('drops strings smuggled into numeric slots (they would print verbatim)', () => {
-    const clean = sanitizeMatchStrings({
+    const clean = sanitized({
       ...base,
       score: { home: '1\nFAKE_SCORE', away: 0 },
       minute: '67\nFAKE_MINUTE',
@@ -147,7 +159,7 @@ describe('sanitizeMatchStrings — numeric fields (score/shootout/minute)', () =
   });
 
   it('drops NaN/Infinity and a shootout whose score was dropped', () => {
-    const clean = sanitizeMatchStrings({
+    const clean = sanitized({
       ...base,
       score: { home: Number.NaN, away: 0 },
       shootout: { home: 3, away: 4 },
@@ -166,9 +178,9 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
     asOf: '2026-07-01T12:00:00.000Z',
     fetchedAt: '2026-07-01T12:00:00.000Z',
     outcomes: [
-      { kind: 'home' as const, label: 'Mexico', probability: 0.5 },
+      { kind: 'home' as const, teamCode: 'MEX', label: 'Mexico', probability: 0.5 },
       { kind: 'draw' as const, label: 'Draw', probability: 0.3 },
-      { kind: 'away' as const, label: 'Ecuador', probability: 0.2 },
+      { kind: 'away' as const, teamCode: 'ECU', label: 'Ecuador', probability: 0.2 },
     ],
     liquidity: 500_000,
     volume24h: 1_000,
@@ -176,17 +188,39 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
     ambiguous: false,
   };
 
-  it('strips an ANSI/newline injection smuggled through `source` (the reported gap)', () => {
+  it('REJECTS an unknown `source` outright rather than sanitizing it (the reported gap)', () => {
     // marketSourceLabel falls through to `source` verbatim for an unrecognized
     // provider, so a crafted cache entry reached the terminal / share card /
-    // hook context unsanitized. Regression pin for that exact vector.
+    // hook context. Stripping controls was not enough: the surviving PROSE is
+    // what matters in an attribution slot, so the field is now allow-listed.
     const poisoned = { ...base, source: `polymarket${ESC}[2K\nFAKE: injected` };
     const clean = sanitizeMarketSignal(poisoned);
-    expect(clean.source).not.toContain(ESC);
-    expect(clean.source).not.toContain('\n');
+    expect(clean.source).toBe('');
     expect(CONTROLS.test(clean.source)).toBe(false);
-    // And it survives as readable text rather than being dropped entirely.
-    expect(clean.source).toContain('polymarket');
+  });
+
+  it('keeps the two real providers', () => {
+    expect(sanitizeMarketSignal({ ...base, source: 'polymarket' }).source).toBe('polymarket');
+    expect(sanitizeMarketSignal({ ...base, source: 'fake' }).source).toBe('fake');
+  });
+
+  it('rejects a wrong-TYPED teamCode instead of dropping the field (fail-open)', () => {
+    // Dropping the field skipped mapsCleanly's identity check, so an array
+    // teamCode passed where the plain wrong string 'RSA' was refused.
+    const clean = sanitizeMarketSignal({
+      ...base,
+      outcomes: [
+        { kind: 'home', label: 'Mexico', teamCode: ['RSA'], probability: 0.5 },
+        { kind: 'draw', label: 'Draw', probability: 0.3 },
+        { kind: 'away', label: 'Ecuador', teamCode: 'ECU', probability: 0.2 },
+      ],
+    } as unknown as Parameters<typeof sanitizeMarketSignal>[0]);
+    expect(clean.outcomes.some((o) => o.kind === 'home')).toBe(false);
+  });
+
+  it('DERIVES staleness rather than trusting the file', () => {
+    const ancient = { ...base, asOf: '2020-01-01T00:00:00.000Z', stale: false };
+    expect(sanitizeMarketSignal(ancient).stale).toBe(true);
   });
 
   it('sanitizes every rendered string field, not just source', () => {
@@ -207,11 +241,11 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
     const clean = sanitizeMarketSignal({
       ...base,
       outcomes: [
-        { kind: 'home', label: 'ok', probability: 0.5 },
+        { kind: 'home', teamCode: 'MEX', label: 'ok', probability: 0.5 },
         { kind: 'draw', label: 'nan', probability: Number.NaN },
-        { kind: 'away', label: 'out-of-range', probability: 42 },
+        { kind: 'away', teamCode: 'ECU', label: 'out-of-range', probability: 42 },
         { kind: 'evil' as never, label: 'unknown kind', probability: 0.1 },
-        { kind: 'home', label: 'string prob', probability: '0.9' as never },
+        { kind: 'home', teamCode: 'MEX', label: 'string prob', probability: '0.9' as never },
       ],
     });
     expect(clean.outcomes).toHaveLength(1);
@@ -228,8 +262,13 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
     });
     expect(clean.stale).toBe(true);
     expect(clean.ambiguous).toBe(true);
-    // A genuine `false` still means what it says.
-    const good = sanitizeMarketSignal({ ...base, stale: false, ambiguous: false });
+    // A genuine `false` still means what it says — but only for a signal that
+    // is ACTUALLY fresh, since staleness is derived from `asOf` rather than
+    // trusted. Clock injected so this doesn't rot.
+    const good = sanitizeMarketSignal(
+      { ...base, stale: false, ambiguous: false },
+      { now: new Date('2026-07-01T12:05:00.000Z') },
+    );
     expect(good.stale).toBe(false);
     expect(good.ambiguous).toBe(false);
   });
@@ -256,7 +295,7 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
     // ...including on nested outcomes.
     const nested = sanitizeMarketSignal({
       ...base,
-      outcomes: [{ kind: 'home', label: 'Mexico', probability: 0.5, evil: 'payload' }],
+      outcomes: [{ kind: 'home', teamCode: 'MEX', label: 'Mexico', probability: 0.5, evil: 'payload' }],
     } as never);
     expect(Object.hasOwn(nested.outcomes[0] ?? {}, 'evil')).toBe(false);
   });
@@ -273,9 +312,9 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
     const clean = sanitizeMarketSignal({
       ...base,
       outcomes: [
-        { kind: 'home', label: 'Mexico', probability: 0.6 },
+        { kind: 'home', teamCode: 'MEX', label: 'Mexico', probability: 0.6 },
         { kind: 'draw', label: 'Draw', probability: 0.25 },
-        { kind: 'away', label: 'South Africa', probability: 0.15 },
+        { kind: 'away', teamCode: 'RSA', label: 'South Africa', probability: 0.15 },
       ],
       favorite: { kind: 'other', teamCode: 'RSA', probability: 0.99, strength: 'clear' } as never,
     });

@@ -13,7 +13,7 @@ export {
   sanitizeMarketSignal,
   FEED_TEXT_MAX,
 } from './sanitize';
-export { displayWidth, padVisible } from './text';
+export { displayWidth, padVisible, truncateVisible } from './text';
 export {
   outcomeFromScore,
   isLive,

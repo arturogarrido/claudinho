@@ -76,12 +76,22 @@ const knockout = {
   ],
 };
 
+/**
+ * `mapEspnEvent` now DROPS an event with no usable id or parseable date. Every
+ * fixture in this file is mappable, so unwrap and fail loudly if that changes.
+ */
+function mapped(ev: unknown, ctx?: Parameters<typeof mapEspnEvent>[1]) {
+  const m = mapEspnEvent(ev as never, ctx);
+  if (!m) throw new Error('expected a mappable ESPN event, got undefined');
+  return m;
+}
+
 describe('mapEspnEvent', () => {
   it('maps a scheduled group fixture (stage from slug, group from map)', () => {
-    const m = mapEspnEvent(scheduled as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(scheduled, { groupByTeam: GROUP_MAP });
     expect(m.id).toBe('700001');
     expect(m.status).toBe('SCHEDULED');
-    expect(m.kickoff).toBe('2026-06-11T19:00Z');
+    expect(m.kickoff).toBe('2026-06-11T19:00:00.000Z');
     expect(m.stage).toBe('GROUP');
     expect(m.group).toBe('A');
     expect(m.venue).toBe('Estadio Banorte');
@@ -94,7 +104,7 @@ describe('mapEspnEvent', () => {
   });
 
   it('maps a live fixture (score + minute + LIVE status)', () => {
-    const m = mapEspnEvent(live as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(live, { groupByTeam: GROUP_MAP });
     expect(m.status).toBe('LIVE');
     expect(m.score).toEqual({ home: 2, away: 1 });
     expect(m.minute).toBe(67);
@@ -107,7 +117,7 @@ describe('mapEspnEvent', () => {
   });
 
   it('maps a finished fixture (FT + final score, no minute)', () => {
-    const m = mapEspnEvent(finished as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(finished, { groupByTeam: GROUP_MAP });
     expect(m.status).toBe('FT');
     expect(m.score).toEqual({ home: 3, away: 0 });
     expect(m.minute).toBeUndefined();
@@ -127,7 +137,7 @@ describe('mapEspnEvent', () => {
         },
       ],
     };
-    const m = mapEspnEvent(pens as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(pens, { groupByTeam: GROUP_MAP });
     expect(m.score).toEqual({ home: 1, away: 1 });
     expect(m.winnerCode).toBe('NED');
   });
@@ -146,14 +156,14 @@ describe('mapEspnEvent', () => {
         },
       ],
     };
-    const m = mapEspnEvent(pens as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(pens, { groupByTeam: GROUP_MAP });
     expect(m.score).toEqual({ home: 1, away: 1 }); // regulation result preserved
     expect(m.shootout).toEqual({ home: 3, away: 4 });
     expect(m.winnerCode).toBe('PAR');
   });
 
   it('leaves shootout undefined for a regular finished match (no phantom parens)', () => {
-    const m = mapEspnEvent(finished as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(finished, { groupByTeam: GROUP_MAP });
     expect(m.shootout).toBeUndefined();
   });
 
@@ -172,13 +182,13 @@ describe('mapEspnEvent', () => {
         },
       ],
     };
-    const m = mapEspnEvent(orphan as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(orphan, { groupByTeam: GROUP_MAP });
     expect(m.score).toBeUndefined();
     expect(m.shootout).toBeUndefined();
   });
 
   it('maps a knockout fixture from the slug, with no group letter', () => {
-    const m = mapEspnEvent(knockout as never, { groupByTeam: GROUP_MAP });
+    const m = mapped(knockout, { groupByTeam: GROUP_MAP });
     expect(m.stage).toBe('R16');
     expect(m.group).toBeUndefined();
     expect(m.home.name).toBe('Round of 32 1 Winner');
@@ -186,7 +196,7 @@ describe('mapEspnEvent', () => {
   });
 
   it('does not assign a group when no map is provided', () => {
-    const m = mapEspnEvent(scheduled as never);
+    const m = mapped(scheduled);
     expect(m.stage).toBe('GROUP');
     expect(m.group).toBeUndefined();
   });

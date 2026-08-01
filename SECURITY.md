@@ -61,16 +61,37 @@ written atomically via tmp+rename. The optional `init` commands modify your edit
 (`~/.claude/settings.json` or `~/.cursor/cli-config.json`) after saving a one-time `.claudinho.bak`
 backup. Nothing is uploaded. See [PRIVACY.md](PRIVACY.md) for the full data-handling picture.
 
-**Untrusted input is treated as untrusted.** Provider feed strings pass through a sanitizer at
-the adapter boundary (control characters and escape sequences stripped, length capped) before
-they can reach a terminal, a share card, or the model's context via the hook. The local caches
-get the same treatment **on read** — both the match/statusline cache and the market-signal
-cache — since a file on disk is attacker-writable in a way the type system does not capture.
-Sanitizing is allowlist-based (only known fields survive, so an injected key cannot ride into
-`--json` or MCP output) and validates by runtime type, not the declared one: malformed
-numbers, enums, timestamps and booleans are dropped or fail closed, because JSON on disk can
-hold anything. Derived values such as the market favorite are recomputed from the sanitized
-data rather than trusted, so a crafted file cannot make the headline contradict the numbers.
+**Untrusted input is treated as untrusted.** Provider responses pass through a sanitizer at the
+adapter boundary before they can reach a terminal, a share card, `--json`, MCP
+`structuredContent`, or the model's context via the hook. The local caches get the same
+treatment **on read** — both the match/statusline cache and the market-signal cache — since a
+file on disk is attacker-writable in a way the type system does not capture. Concretely:
+
+- **Allow-listed fields.** Only declared keys are rebuilt, so an injected key cannot ride into
+  `--json` or MCP output.
+- **Validated by runtime type _and range_**, not by the declared type. A field declared
+  `number` can hold a string in JSON; scores, minutes and probabilities are also bounded, so a
+  malformed value degrades to "no score" rather than rendering `1e+308` as fact.
+- **Control _and format_ characters removed**, filtered by Unicode category rather than by
+  code-point range. That covers bidi overrides and isolates, not just ANSI escapes: a single
+  U+202E in a team name transposes the *displayed* score under the Unicode Bidirectional
+  Algorithm, which matters most on share cards, since those exist to be pasted into tools that
+  implement it. Emoji flags are exempted as whole grapheme clusters, because two of the flags
+  shipped here are tag sequences built from format characters.
+- **Bounded** per field (display columns *and* code points) and per record count, on every
+  surface a model reads. Truncation is stated, never silent.
+- **Identifiers and timestamps are grammar-checked, not merely stripped.** Both land in model
+  context without being rendered as prose, so they never *look* wrong — and stripping control
+  characters leaves printable prose untouched. Timestamps are re-emitted in one canonical form.
+- **Fail closed, including on absence.** A missing field must be at least as rejecting as a
+  wrong one; several gates once skipped themselves when their field was absent, which made a
+  more malformed payload more likely to be accepted.
+- **Derived values are recomputed, never trusted** — the market favorite and staleness are
+  derived from the sanitized data, so a crafted file cannot make the headline contradict the
+  numbers, or an old reading claim to be fresh.
+
+These properties are pinned by property tests rather than by per-vector regression tests, so a
+field added without a check fails the suite by default.
 
 **Subprocesses.** Two, both with a fixed argument array and never `shell: true`, so no shell
 interpolation is possible. (1) The statusline spawns a detached background refresher via
@@ -100,6 +121,10 @@ binary — though such an attacker can generally run code anyway.
   displaying invented data, but a compromised upstream feed could still show wrong scores.
 - Sanitizing is defence in depth, not a proof. It constrains what reaches output; it cannot
   make a compromised provider's *numbers* correct.
+- The bounds above are chosen well above any real football value rather than derived from the
+  fixture list, so they stop absurdity, not merely-implausible values.
+- Sanitizing normalizes what a *string* can contain, not what it can *say*. A provider that
+  serves a plausible-looking team name is echoed as-is; only its shape is constrained.
 
 ## Supply chain
 

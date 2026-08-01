@@ -88,10 +88,15 @@ export function mapsCleanly(match: Match, outcomes: MarketOutcome[]): boolean {
   const away = outcomes.find((o) => o.kind === 'away');
   const draw = outcomes.find((o) => o.kind === 'draw');
   if (!home || !away) return false;
-  if (home.teamCode && home.teamCode.toUpperCase() !== match.home.code.toUpperCase()) {
+  // The team code must be PRESENT, not merely consistent-when-present. Both
+  // real providers always set it on the result legs, so requiring it costs
+  // nothing — while making it conditional meant an absent code SKIPPED the
+  // identity check, and a crafted signal with the codes removed and the labels
+  // swapped mapped "cleanly" onto the wrong fixture.
+  if (!home.teamCode || home.teamCode.toUpperCase() !== match.home.code.toUpperCase()) {
     return false;
   }
-  if (away.teamCode && away.teamCode.toUpperCase() !== match.away.code.toUpperCase()) {
+  if (!away.teamCode || away.teamCode.toUpperCase() !== match.away.code.toUpperCase()) {
     return false;
   }
   if (match.stage === 'GROUP' && !draw) return false;
@@ -120,7 +125,19 @@ export function hasSaneDistribution(outcomes: MarketOutcome[]): boolean {
   return sum > 0.97 && sum < 1.03;
 }
 
-/** Is the signal older than the freshness window? Unparseable timestamps are stale. */
+/**
+ * Tolerance for honest clock skew between us and a provider. Beyond it, a
+ * future timestamp is not skew — it is a value we cannot treat as a reading.
+ */
+export const FUTURE_SKEW_MS = 60_000;
+
+/**
+ * Is the signal outside the freshness window? Unparseable timestamps are stale.
+ *
+ * A FUTURE `asOf` is stale too. Freshness was a one-sided test (`now - asOf >
+ * maxAge`), so a timestamp dated forward was never stale and never expired —
+ * failing open permanently, in the direction that looks most trustworthy.
+ */
 export function isStaleSignal(
   signal: MarketSignal,
   options: MarketSignalOptions = {},
@@ -129,6 +146,7 @@ export function isStaleSignal(
   const asOf = Date.parse(signal.asOf);
   if (!Number.isFinite(asOf)) return true;
   const now = (options.now ?? new Date()).getTime();
+  if (asOf - now > FUTURE_SKEW_MS) return true;
   return now - asOf > maxAge;
 }
 

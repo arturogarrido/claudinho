@@ -333,6 +333,108 @@ describe('PolymarketProvider — fail-closed validation', () => {
   });
 });
 
+/**
+ * PROPERTY 3 for this adapter — FAIL CLOSED ON ABSENCE.
+ *
+ * Every identity and lifecycle gate here used to be written `x != null && ...`,
+ * so an ABSENT field SKIPPED the very check it should fail. That made a
+ * stripped-down payload strictly more successful than a merely wrong one: an
+ * event object carrying nothing but `markets` passed all of them. Each field
+ * below is present on 831/831 real events in the `soccer-fifwc` series (and
+ * 36,243/36,243 markets), so requiring presence rejects nothing real.
+ *
+ * Negative control: restore any `!= null &&` guard — its case goes green.
+ */
+describe('PolymarketProvider — an ABSENT field must reject, not skip the gate', () => {
+  /** The fixture with one key genuinely removed (not set to undefined). */
+  function without(key: string) {
+    const ev = event() as Record<string, unknown>;
+    delete ev[key];
+    return ev;
+  }
+
+  for (const key of ['slug', 'startTime', 'active', 'closed']) {
+    it(`rejects an event with no \`${key}\``, async () => {
+      expect(await derived(fetchFor(SLUG, without(key))).findSignal(match())).toBeUndefined();
+    });
+  }
+
+  it('rejects when NO timestamp is available (never substitutes the wall clock)', async () => {
+    // `asOf` legitimately falls back to the minimum market `updatedAt`, so the
+    // event's own absence alone is fine. With none anywhere there is no reading
+    // time at all — and substituting `now` made a malformed payload read as
+    // "priced right now", i.e. strictly MORE trusted than an honest stale one.
+    const noStamp = (t: string, title: string, yes: number) => {
+      const m = market(t, title, yes) as Record<string, unknown>;
+      delete m.updatedAt;
+      return m;
+    };
+    const ev = event({}, [
+      noStamp('mex', 'Mexico', 0.685),
+      noStamp('draw', 'Draw', 0.205),
+      noStamp('rsa', 'South Africa', 0.105),
+    ]) as Record<string, unknown>;
+    delete ev.updatedAt;
+    expect(await derived(fetchFor(SLUG, ev)).findSignal(match())).toBeUndefined();
+  });
+
+  it('rejects an event that names neither the series nor the sport', async () => {
+    const ev = event() as Record<string, unknown>;
+    delete ev.seriesSlug;
+    delete ev.sport;
+    expect(await derived(fetchFor(SLUG, ev)).findSignal(match())).toBeUndefined();
+    // ...and one that names no series while declaring some other sport.
+    const other = event() as Record<string, unknown>;
+    delete other.seriesSlug;
+    other.sport = { sport: 'nba' };
+    expect(await derived(fetchFor(SLUG, other)).findSignal(match())).toBeUndefined();
+  });
+
+  for (const key of ['sportsMarketType', 'active', 'closed']) {
+    it(`rejects a leg with no \`${key}\``, async () => {
+      const leg = market('mex', 'Mexico', 0.685) as Record<string, unknown>;
+      delete leg[key];
+      const ev = event({}, [leg, market('draw', 'Draw', 0.205), market('rsa', 'South Africa', 0.105)]);
+      expect(await derived(fetchFor(SLUG, ev)).findSignal(match())).toBeUndefined();
+    });
+  }
+
+  it('never adopts a half-time market as the match result', async () => {
+    // The real attack shape: `soccer_halftime_result` has the SAME 1X2 legs,
+    // the same group titles, a coherent sum, and a description mentioning
+    // neither extra time nor penalties — so the text denylist cannot see it.
+    // 312/312 real World Cup half-time markets escape that regex.
+    const halfTime = event({}, [
+      market('mex', 'Mexico', 0.685, {
+        sportsMarketType: 'soccer_halftime_result',
+        description: 'If Mexico wins within the first 45 minutes of regular play, this resolves Yes.',
+      }),
+      market('draw', 'Draw', 0.205, { sportsMarketType: 'soccer_halftime_result' }),
+      market('rsa', 'South Africa', 0.105, { sportsMarketType: 'soccer_halftime_result' }),
+    ]);
+    expect(await derived(fetchFor(SLUG, halfTime)).findSignal(match())).toBeUndefined();
+  });
+
+  it('treats an unreadable `markets` body as a definitive no-market, not a retry', async () => {
+    // A non-array made `.filter` throw; resolveOne's catch can only read a throw
+    // as a TRANSIENT error, so a permanently malformed payload was re-fetched on
+    // every command forever.
+    const provider = derived(fetchFor(SLUG, event({ markets: 'not-an-array' })));
+    const { signals, checked } = await provider.findSignals([match()]);
+    expect(signals.size).toBe(0);
+    expect(checked.has(match().id)).toBe(true);
+  });
+
+  it('a malformed fixture cannot void the whole batch', async () => {
+    // deriveEventSlugs reads match.kickoff; when it threw from ABOVE the try it
+    // escaped findSignals and took every other fixture's signal with it.
+    const broken = match({ id: 'broken', kickoff: undefined as unknown as string });
+    const provider = derived(fetchAny(event()));
+    const { signals } = await provider.findSignals([broken, match()]);
+    expect(signals.has(match().id)).toBe(true);
+  });
+});
+
 describe('PolymarketProvider — team-market mapping (no draw mislabel)', () => {
   it('uses an exact title match and never picks the draw market for a team', async () => {
     // Home market's slug token ('mexico') differs from the FIFA code ('mex'),

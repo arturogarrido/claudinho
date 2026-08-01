@@ -43,7 +43,7 @@ import {
   type ShareSnippetOptions,
   type Stage,
 } from '@claudinho/core';
-import { DISCLAIMER, matchLine, matchList, standingsTable } from './format';
+import { capRecords, DISCLAIMER, matchLine, matchList, standingsTable } from './format';
 
 export interface ToolResult {
   text: string;
@@ -269,8 +269,11 @@ export async function toolGetToday(
       date,
       degraded,
       source: source ?? null,
+      // `count` stays the TRUE total; `matches` is capped. Bounding only the
+      // TEXT would leave structuredContent unbounded, and that is model context
+      // too — a repeated-record payload measured ~5 MB there.
       count: todays.length,
-      matches: todays,
+      matches: capRecords(todays),
       ...(marketSignals ? { marketSignals } : {}),
     },
   };
@@ -288,7 +291,12 @@ export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
     : `Live now:\n${matchList(matches, 'No matches in play right now.', opts)}`;
   return {
     text: withDisclaimer(text, source, args.lang),
-    data: { degraded, source: source ?? null, count: matches.length, matches },
+    data: {
+      degraded,
+      source: source ?? null,
+      count: matches.length,
+      matches: capRecords(matches),
+    },
   };
 }
 

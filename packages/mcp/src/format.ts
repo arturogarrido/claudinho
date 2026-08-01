@@ -47,10 +47,32 @@ export function matchLine(m: Match, opts: FmtOpts = {}): string {
   return (flair ? `${base} — ${flair}` : base).trimEnd();
 }
 
+/**
+ * Records rendered into one text block. This block is model context, and the
+ * per-field sanitizer bounds a single NAME without bounding how many records
+ * arrive — repetition defeated it. Comfortably above any real matchday (the
+ * 48-team format peaks at 12).
+ */
+export const MAX_LIST_MATCHES = 40;
+
+/**
+ * Cap a record array bound for `structuredContent`, which is model context just
+ * as much as the text block is. Callers keep reporting the TRUE total in
+ * `count`, so the payload stays honest about what was omitted.
+ */
+export function capRecords<T>(rows: T[], max = MAX_LIST_MATCHES): T[] {
+  return rows.length > max ? rows.slice(0, max) : rows;
+}
+
 /** A list of matches as a text block (or an empty-state message). */
 export function matchList(matches: Match[], empty: string, opts: FmtOpts = {}): string {
   if (matches.length === 0) return empty;
-  return matches.map((m) => `• ${matchLine(m, opts)}`).join('\n');
+  const shown = matches.slice(0, MAX_LIST_MATCHES);
+  const lines = shown.map((m) => `• ${matchLine(m, opts)}`).join('\n');
+  const overflow = matches.length - shown.length;
+  // Truncation is STATED. Silently dropping matches would read as a complete
+  // list of the day's fixtures, which is a worse failure than a long one.
+  return overflow > 0 ? `${lines}\n• (list truncated — ${overflow} more not shown)` : lines;
 }
 
 /** A group table as a monospace-friendly text block. */

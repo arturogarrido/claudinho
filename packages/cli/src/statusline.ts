@@ -17,6 +17,7 @@ import {
   mergeLive,
   nextFixtureForTeam,
   sanitizeMatchStrings,
+  truncateVisible,
   scoreline,
   type Match,
 } from '@claudinho/core';
@@ -106,7 +107,7 @@ export interface PromptOpts {
   compact?: boolean;
   /**
    * Max live matches to show inline before collapsing the rest into "+N".
-   * Default: show all. (CLAUDINHO_MAX caps it for busy days.)
+   * Capped at DEFAULT_MAX_SEGMENTS regardless — this is a one-line surface.
    */
   max?: number;
   /** Render emoji flags (default true); false → 3-letter codes (flagless terminals). */
@@ -165,10 +166,34 @@ export function liveMatchesFromCache(
     // Mirror of the adapter's feed sanitizer: the statusline/hook render these
     // strings on every prompt, so a poisoned CACHE FILE (not just a poisoned
     // feed) must not inject ANSI/newlines into the terminal or Claude's context.
-    .map(sanitizeMatchStrings);
+    // An entry whose stage/status/kickoff can't be trusted is DROPPED rather
+    // than rendered from a substituted default.
+    .map(sanitizeMatchStrings)
+    .filter((m): m is Match => !!m);
 }
 
+/**
+ * Live-match segments rendered before the rest collapse to "+N". A World Cup
+ * matchday peaks well below this; the cap exists so a poisoned cache cannot
+ * decide how long the user's prompt line is.
+ */
+const DEFAULT_MAX_SEGMENTS = 8;
+
+/**
+ * Hard ceiling on the whole rendered line, in display columns.
+ *
+ * The statusline's contract is a single short line in someone's prompt. Every
+ * field is capped, but nothing capped the LINE — a poisoned cache produced a
+ * ~850 KB single line. Applied as a wrapper over every branch rather than at
+ * each `return`, so a branch added later cannot forget it.
+ */
+const MAX_LINE_COLUMNS = 200;
+
 export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {}): string {
+  return truncateVisible(renderPromptLine(state, opts), MAX_LINE_COLUMNS);
+}
+
+function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}): string {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
   const defaultCompetition = opts.defaultCompetition ?? true;
@@ -188,7 +213,10 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
   // Malformed entries (null, {}, missing kickoff/teams) are dropped, never
   // allowed to throw the whole statusline blank downstream.
   const cachedFixtures = Array.isArray(state?.fixtures)
-    ? (state!.fixtures as unknown[]).filter(isMatchShaped).map(sanitizeMatchStrings)
+    ? (state!.fixtures as unknown[])
+        .filter(isMatchShaped)
+        .map(sanitizeMatchStrings)
+        .filter((m): m is Match => !!m)
     : [];
   const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;
 
@@ -197,9 +225,13 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
     const mine = live.find((m) => m.home?.code === team || m.away?.code === team);
     if (mine) return `⚽ ${matchSegment(mine, compact, flags)}`;
   } else if (live.length > 0) {
-    // No filter → show all live matches inline, separated by " · ".
-    // CLAUDINHO_MAX caps how many render before the rest collapse to "+N".
-    const max = opts.max && opts.max > 0 ? opts.max : live.length;
+    // No filter → show live matches inline, separated by " · ".
+    // CLAUDINHO_MAX caps how many render before the rest collapse to "+N", but
+    // it is opt-IN: with no filter and no env var, `max` defaulted to
+    // live.length, so the count was UNBOUNDED. A poisoned cache listing 500
+    // matches produced a single ~850 KB "line", and this surface's entire
+    // contract is that it is one short line in the user's prompt.
+    const max = opts.max && opts.max > 0 ? Math.min(opts.max, DEFAULT_MAX_SEGMENTS) : DEFAULT_MAX_SEGMENTS;
     const shown = live.slice(0, max);
     let line = '⚽ ' + shown.map((m) => matchSegment(m, compact, flags)).join(' · ');
     const overflow = live.length - shown.length;

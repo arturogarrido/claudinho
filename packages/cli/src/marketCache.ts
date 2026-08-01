@@ -12,11 +12,16 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { sanitizeMarketSignal, type MarketSignal } from '@claudinho/core';
+import { hasSaneDistribution, sanitizeMarketSignal, type MarketSignal } from '@claudinho/core';
 import { cacheDir, writeFileAtomic } from './paths';
 
 const POSITIVE_TTL_MS = 10 * 60_000;
 const NEGATIVE_TTL_MS = 3 * 60_000;
+/**
+ * A cache entry dated into the future is expired, not fresh. Without this a
+ * `fetchedAt` of 2099 never aged out, suppressing the provider permanently.
+ */
+const FUTURE_SKEW_MS = 60_000;
 
 interface CacheEntry {
   fetchedAt: string; // ISO 8601
@@ -68,13 +73,29 @@ function isEntryShaped(e: unknown): e is CacheEntry {
 }
 
 /**
- * A sanitized signal is only USABLE if it still carries a renderable market.
- * Sanitizing fails closed (dropping bad outcomes, rejecting duplicate kinds), so
- * an entry can survive parsing yet end up empty — that is a malformed positive,
- * not a negative result, and must not suppress the refetch either.
+ * Is this signal STRUCTURALLY renderable? Only then may it suppress a refetch.
+ *
+ * Testing three emptiness conditions was not the same question: an all-'other'
+ * outcome set, an incoherent distribution, no determinable favorite and
+ * `ambiguous: true` all survived sanitizing, were marked `checked`, and then
+ * displayed nothing — so the cache suppressed the real provider fetch for the
+ * full positive TTL while the user saw no market line at all.
+ *
+ * Deliberately NOT a freshness test, and not `isReliableMarketSignal`. Staleness
+ * is the TTL's job, and `markets` renders a stale signal on purpose, with its
+ * caveat. Folding freshness in here regressed both: a provider reading that was
+ * already 40 minutes old when written became un-cacheable, so it was re-fetched
+ * on *every* command forever and its stale-with-caveat rendering vanished.
+ *
+ * The fixture-dependent half (`marketSignalRendersFor`) needs a Match and is
+ * applied by the caller.
  */
 function isUsableSignal(s: MarketSignal): boolean {
-  return s.outcomes.length > 0 && s.source !== '' && s.asOf !== '';
+  if (s.source === '' || s.asOf === '' || s.outcomes.length === 0) return false;
+  if (s.outcomes.some((o) => o.kind === 'other')) return false;
+  if (s.ambiguous) return false;
+  if (!s.favorite) return false;
+  return hasSaneDistribution(s.outcomes);
 }
 
 export interface MarketCacheRead {
@@ -107,7 +128,8 @@ export function readMarketCache(
     const entry = raw;
     const t = Date.parse(entry.fetchedAt);
     const ttl = entry.signal ? POSITIVE_TTL_MS : NEGATIVE_TTL_MS;
-    if (now - t > ttl) continue; // expired
+    const age = now - t;
+    if (age > ttl || age < -FUTURE_SKEW_MS) continue; // expired, or dated forward
     if (entry.signal === null) {
       checked.add(id); // genuine negative result — don't re-fetch this window
       continue;
@@ -117,7 +139,9 @@ export function readMarketCache(
     // into output (marketSourceLabel falls through to `source` verbatim for an
     // unrecognized provider). Mirrors the statusline's sanitizeMatchStrings on
     // its own cache read.
-    const clean = sanitizeMarketSignal(entry.signal);
+    // `now` is threaded so the DERIVED staleness inside the sanitizer agrees
+    // with the TTL arithmetic above instead of reading the wall clock.
+    const clean = sanitizeMarketSignal(entry.signal, { now: new Date(now) });
     // Only a signal that survived sanitizing counts as "checked". Otherwise a
     // crafted (or simply corrupt) positive entry would suppress the real fetch
     // for the full positive TTL while displaying nothing.
@@ -151,9 +175,19 @@ export function writeMarketCache(
     if (reuse && existing.entries && typeof existing.entries === 'object') {
       for (const [id, raw] of Object.entries(existing.entries as Record<string, unknown>)) {
         if (!isEntryShaped(raw)) continue;
+        // Prune on write. An expired entry is dead weight the read path skips
+        // anyway, and carrying every id forward grew the file without bound.
+        const age = now - Date.parse(raw.fetchedAt);
+        if (age > (raw.signal ? POSITIVE_TTL_MS : NEGATIVE_TTL_MS)) continue;
+        if (age < -FUTURE_SKEW_MS) continue;
         // Don't round-trip a positive body that no longer sanitizes to anything
         // usable — it would keep suppressing refetches on every later read.
-        if (raw.signal !== null && !isUsableSignal(sanitizeMarketSignal(raw.signal))) continue;
+        if (
+          raw.signal !== null &&
+          !isUsableSignal(sanitizeMarketSignal(raw.signal, { now: new Date(now) }))
+        ) {
+          continue;
+        }
         carried[id] = raw;
       }
     }

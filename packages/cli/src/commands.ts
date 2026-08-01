@@ -134,8 +134,16 @@ async function marketSignalsFor(
   const miss: Match[] = [];
   for (const m of matches) {
     const hit = cached.get(m.id);
-    if (hit) result.set(m.id, hit);
-    else if (!cachedIds.has(m.id)) miss.push(m); // negative-cached → skip re-fetch
+    // A cached signal that would not RENDER for THIS fixture is not a hit. It
+    // is keyed by match id, but the fixture behind that id can change (a
+    // knockout slot degrading back to a placeholder), and keeping it both hid
+    // the market line and suppressed the refetch that could produce a real one.
+    if (hit && marketSignalRendersFor(m, hit)) {
+      result.set(m.id, hit);
+      continue;
+    }
+    if (!hit && cachedIds.has(m.id)) continue; // definitive negative within TTL
+    miss.push(m);
   }
   if (miss.length > 0) {
     const { signals: fetched, checked } = await getMarketSignals(

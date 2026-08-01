@@ -8,17 +8,54 @@
  * Applied at the ESPN adapter boundary (toTeam / mapEspnEvent) and mirrored on
  * the statusline's cache reads (defense against a poisoned cache file).
  */
-import { deriveFavorite } from './markets/normalize';
+import { KNOWN_MARKET_SOURCES } from './markets/format';
+import { deriveFavorite, isStaleSignal } from './markets/normalize';
 import type { MarketOutcome, MarketSignal } from './markets/types';
+import { displayWidth, graphemes } from './text';
 import type { Match, MatchEvent, Team } from './types';
 
-/** Default per-field cap — generous for any real team/venue name. */
+/** Default per-field cap, in DISPLAY COLUMNS — generous for any real name. */
 export const FEED_TEXT_MAX = 100;
 
 /**
- * Strip C0/C1 control characters (including ESC) and cap at `max` code points.
+ * Code points refused outside an emoji cluster.
+ *
+ * Filtering by code-point RANGE (`cp <= 0x1f || 0x7f..0x9f`) was not enough: it
+ * strips ESC and U+0085 but passes every Unicode bidi and format control, and
+ * one U+202E RIGHT-TO-LEFT OVERRIDE in a team name transposes the *displayed*
+ * scoreline under the Unicode Bidirectional Algorithm — so "Mexico 0-3 South
+ * Africa FT" renders as "MexicoTF acirfA htuoS 3-0". Share cards exist to be
+ * pasted into Slack, X and GitHub, all of which implement UBA, so this is a
+ * confidently-wrong display rather than cosmetic noise.
+ *
+ * Categories, not a list of individual code points: `Cc` (C0/C1 incl. ESC),
+ * `Cf` (bidi overrides and isolates, ZWSP, ZWJ, BOM, SHY), `Zl`/`Zp` (line and
+ * paragraph separators), `Cs` (lone surrogates, which break re-serialization)
+ * and `Co` (private use, which renders font-dependently).
+ */
+const REJECTED_CODE_POINT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}\p{Co}]/u;
+
+/**
+ * Clusters that ARE an emoji, and are therefore kept whole.
+ *
+ * This exemption is load-bearing, not a nicety: two flags the product ships —
+ * England 🏴󠁧󠁢󠁥󠁮󠁧󠁿 and Scotland 🏴󠁧󠁢󠁳󠁣󠁴󠁿 — are tag sequences whose payload characters
+ * (U+E0060..U+E007F) are `\p{Cf}`, and 🏳️ carries a `\p{Mn}` variation selector.
+ * Rejecting those categories code-point-by-code-point would mutilate them. A
+ * grapheme cluster is the right unit: every flag is exactly one cluster, while
+ * a bidi control always forms a cluster of its own (its grapheme-cluster break
+ * property is Control), so nothing hostile can hide inside an emoji.
+ */
+const EMOJI_CLUSTER = /^(?:\p{Regional_Indicator}|\p{Extended_Pictographic})/u;
+
+/**
+ * Strip control/format characters and cap at `max` DISPLAY COLUMNS.
+ *
  * Whitespace controls (tab/newline/CR) become a single space so words a hostile
- * feed split across lines don't fuse together. Total: never throws.
+ * feed split across lines don't fuse together. The cap counts columns rather
+ * than code points because that is the property the surfaces actually need: the
+ * statusline is a single line and the tables align by column, and a field of
+ * 100 double-width clusters overflowed both. Total: never throws.
  */
 export function sanitizeFeedText(value: string, max = FEED_TEXT_MAX): string {
   // `String(value)` is NOT total: JSON can hold `{"toString": null}`, and
@@ -27,16 +64,58 @@ export function sanitizeFeedText(value: string, max = FEED_TEXT_MAX): string {
   // is not already a string is treated as absent rather than coerced.
   if (typeof value !== 'string') return '';
   let out = '';
-  let count = 0;
-  for (const ch of value) {
-    const cp = ch.codePointAt(0) ?? 0;
-    const isWhitespaceControl = cp === 0x09 || cp === 0x0a || cp === 0x0d;
-    if ((cp <= 0x1f || (cp >= 0x7f && cp <= 0x9f)) && !isWhitespaceControl) continue;
-    if (count >= max) break;
-    out += isWhitespaceControl ? ' ' : ch;
-    count++;
+  let width = 0;
+  let codePoints = 0;
+  // Columns alone are not a sufficient bound: combining marks occupy no column,
+  // so a base character carrying 300 of them measures 1 wide while costing 301
+  // code points. Both budgets are enforced; the code-point ceiling is generous
+  // enough that no legitimate value (a 50-flag string is ~350) can reach it.
+  const maxCodePoints = max * 4;
+  for (const cluster of graphemes(value)) {
+    let piece: string;
+    if (EMOJI_CLUSTER.test(cluster)) {
+      piece = cluster; // kept whole — its internal Cf/Mn are structural
+    } else {
+      piece = '';
+      for (const ch of cluster) {
+        const cp = ch.codePointAt(0) ?? 0;
+        if (cp === 0x09 || cp === 0x0a || cp === 0x0d) {
+          piece += ' ';
+          continue;
+        }
+        if (REJECTED_CODE_POINT.test(ch)) continue;
+        piece += ch;
+      }
+    }
+    if (!piece) continue;
+    const w = displayWidth(piece);
+    const n = [...piece].length;
+    if (width + w > max || codePoints + n > maxCodePoints) break;
+    out += piece;
+    width += w;
+    codePoints += n;
   }
   return out;
+}
+
+/**
+ * A match id we are willing to echo into agent-facing output.
+ *
+ * Stripping control characters is NOT sufficient here, for the same reason it
+ * was not for `sourceMarketId`: `id` is not rendered as prose, so it never
+ * *looks* wrong, but it lands verbatim in CLI `--json` and MCP
+ * `structuredContent` — model context — where printable prose ("IGNORE PREVIOUS
+ * INSTRUCTIONS") is exactly the payload that matters and survives a control
+ * filter untouched. Ids are short opaque tokens, so validate the GRAMMAR.
+ *
+ * Verified permissive enough for real data: all 104 bundled fixture ids and
+ * 1755 live ESPN event ids across nine competitions are 6-9 digit numerics.
+ */
+const ID_GRAMMAR = /^[A-Za-z0-9_-]{1,32}$/;
+
+/** The id, or '' when it isn't a plausible identifier. */
+export function safeMatchId(v: unknown): string {
+  return typeof v === 'string' && ID_GRAMMAR.test(v) ? v : '';
 }
 
 /** Sanitized copy of a team's display strings. Tolerates malformed input. */
@@ -50,10 +129,30 @@ function sanitizeTeam(t: Team | undefined): Team {
   };
 }
 
-/** A finite NUMBER, else undefined — a poisoned cache can hold strings here. */
+/** A finite, NON-NEGATIVE number, else undefined (liquidity/volume slots). */
 function finiteOrUndefined(v: unknown): number | undefined {
-  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined;
 }
+
+/**
+ * A countable quantity we are willing to render as fact: a whole number in
+ * `0..max`.
+ *
+ * Type-checking alone was not enough. `Number.isFinite` accepts `-3.7` and
+ * `1e308`, so a poisoned cache rendered "Mexico 1e+308-(-3.7) South Africa" and
+ * a minute of `1e+308'` on the statusline and in the hook's context — displayed
+ * with exactly the confidence of a real score. Impossible values are dropped,
+ * degrading to "vs"/"LIVE" rather than to an authoritative absurdity.
+ */
+function saneCount(v: unknown, max: number): number | undefined {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max
+    ? v
+    : undefined;
+}
+
+/** Ceilings chosen well above any real football value, but finite. */
+export const MAX_GOALS = 99;
+export const MAX_MINUTE = 200;
 
 /**
  * A valid numeric score pair, else undefined. Renderers interpolate these into
@@ -61,8 +160,8 @@ function finiteOrUndefined(v: unknown): number | undefined {
  * into a numeric slot ("1\nFAKE") would otherwise print verbatim.
  */
 function sanitizeScorePair(v: { home?: unknown; away?: unknown } | undefined) {
-  const home = finiteOrUndefined(v?.home);
-  const away = finiteOrUndefined(v?.away);
+  const home = saneCount(v?.home, MAX_GOALS);
+  const away = saneCount(v?.away, MAX_GOALS);
   return home !== undefined && away !== undefined ? { home, away } : undefined;
 }
 
@@ -80,7 +179,7 @@ const EVENT_TYPES = new Set(['GOAL', 'OWN_GOAL', 'PEN', 'YELLOW', 'RED', 'SUB'])
 function sanitizeEvent(e: MatchEvent): MatchEvent | undefined {
   if (!e || typeof e !== 'object') return undefined;
   if (!EVENT_TYPES.has(e.type)) return undefined;
-  const minute = finiteOrUndefined(e.minute);
+  const minute = saneCount(e.minute, MAX_MINUTE);
   if (minute === undefined) return undefined;
   const out: MatchEvent = {
     type: e.type,
@@ -91,28 +190,68 @@ function sanitizeEvent(e: MatchEvent): MatchEvent | undefined {
   return out;
 }
 
+/** The declared `Stage`/`Status` unions, as runtime allowlists. */
+const STAGES = new Set<string>([
+  'GROUP',
+  'R32',
+  'R16',
+  'QF',
+  'SF',
+  '3P',
+  'F',
+  'FRIENDLY',
+]);
+const STATUSES = new Set<string>([
+  'SCHEDULED',
+  'LIVE',
+  'HT',
+  'FT',
+  'POSTPONED',
+  'CANCELLED',
+]);
+
 /**
- * Sanitized, display-safe copy of a Match. Used on cache reads (the
- * statusline/hook render straight from the cache file), so it must be total:
- * a malformed entry yields empty strings, never a throw. Beyond the string
- * fields, the RENDERED numeric fields (score, shootout, minute) are dropped
- * unless they are real finite numbers — poisoned values degrade to "vs" /
- * "LIVE", never to injected text. Shootout never survives without its score
- * (the adapter-level invariant, re-enforced here).
+ * Sanitized, display-safe copy of a Match, or **undefined** when the entry
+ * cannot be rendered honestly.
+ *
+ * Used on cache reads (the statusline/hook render straight from the cache
+ * file), so it must be total: a malformed entry yields undefined or empty
+ * strings, never a throw. Beyond the string fields, the RENDERED numeric fields
+ * (score, shootout, minute) are dropped unless they are real whole numbers in
+ * range — poisoned values degrade to "vs"/"LIVE", never to injected text.
+ * Shootout never survives without its score (the adapter-level invariant,
+ * re-enforced here).
+ *
+ * `stage`, `status` and `kickoff` DROP the whole match rather than falling back
+ * to a default. Each is load-bearing for what the reader is told — status picks
+ * between "FT" and a live scoreline, kickoff decides which day a fixture is
+ * filed under — so substituting a plausible value would invent the very fact
+ * the poisoned field destroyed. They were previously copied through unchecked,
+ * which let an arbitrary nested object sit in the `stage` enum slot and let ESC
+ * and newlines through `status`, both of which are `--json` and MCP output.
  */
-export function sanitizeMatchStrings(m: Match): Match {
+export function sanitizeMatchStrings(m: Match): Match | undefined {
+  if (!m || typeof m !== 'object') return undefined;
+  if (!STAGES.has(m.stage) || !STATUSES.has(m.status)) return undefined;
+  // The id keys the cache and rides into --json / MCP structured content.
+  const id = safeMatchId(m.id);
+  if (!id) return undefined;
+  // The one timestamp the feed fully controls and every renderer parses. An
+  // unusable value cannot be rendered as a day, so the fixture is dropped.
+  const kickoff = canonicalTimestamp(m.kickoff);
+  if (!kickoff) return undefined;
   const score = sanitizeScorePair(m?.score);
   // Allowlisted like sanitizeMarketSignal — a spread let arbitrary keys from a
   // poisoned cache file (`instruction: "..."`) survive into `--json` and MCP
   // structured content, i.e. an agent's context. Only known fields are rebuilt.
   const out: Match = {
-    id: sanitizeFeedText(m?.id ?? ''),
-    stage: m?.stage,
-    kickoff: typeof m?.kickoff === 'string' ? m.kickoff : '',
+    id,
+    stage: m.stage,
+    kickoff,
     venue: sanitizeFeedText(m?.venue ?? ''),
     home: sanitizeTeam(m?.home),
     away: sanitizeTeam(m?.away),
-    status: m?.status,
+    status: m.status,
     updatedAt: canonicalTimestamp(m?.updatedAt),
   };
   if (m?.group != null) out.group = sanitizeFeedText(m.group);
@@ -122,7 +261,7 @@ export function sanitizeMatchStrings(m: Match): Match {
   // Shootout never survives without its score (the adapter-level invariant).
   const shootout = score ? sanitizeScorePair(m?.shootout) : undefined;
   if (shootout) out.shootout = shootout;
-  const minute = finiteOrUndefined(m?.minute);
+  const minute = saneCount(m?.minute, MAX_MINUTE);
   if (minute !== undefined) out.minute = minute;
   if (m?.winnerCode != null) out.winnerCode = sanitizeFeedText(m.winnerCode);
   if (Array.isArray(m?.events)) {
@@ -150,9 +289,39 @@ function sanitizeOutcome(o: MarketOutcome): MarketOutcome | undefined {
     label: sanitizeFeedText(o.label),
     probability: o.probability,
   };
-  if (typeof o.teamCode === 'string') out.teamCode = sanitizeFeedText(o.teamCode);
+  // A PRESENT-but-wrong-typed teamCode REJECTS the outcome; it must never be
+  // silently dropped. `mapsCleanly` only compares the code when one is present,
+  // so dropping the field SKIPPED the fixture-identity check — making a
+  // wrong-typed code strictly more successful than a wrong-valued one. A
+  // `teamCode: ['RSA']` on the home leg therefore rendered as a valid Mexico
+  // market where the plain string 'RSA' was correctly refused.
+  if (o.teamCode !== undefined) {
+    if (typeof o.teamCode !== 'string') return undefined;
+    out.teamCode = sanitizeFeedText(o.teamCode);
+  }
+  // A RESULT leg must name its team. Only the draw (and 'other') legitimately
+  // has no code — both providers always set one on home/away — and without it
+  // the outcome cannot be bound to a fixture, so `label` becomes the only thing
+  // identifying it. That is how a signal with the codes stripped and the labels
+  // swapped stayed internally consistent-looking while `--json` said "South
+  // Africa" under the home leg.
+  if ((out.kind === 'home' || out.kind === 'away') && !out.teamCode) return undefined;
   return out;
 }
+
+/**
+ * An ISO-8601 instant with an EXPLICIT offset.
+ *
+ * The offset is required, not cosmetic. `Date.parse` resolves an offsetless
+ * date-time against the HOST timezone, so the same feed string canonicalized to
+ * four different instants in four zones — a timestamp whose meaning depends on
+ * the reader's laptop is not a fact we can attribute to a provider. Both feeds
+ * send an explicit `Z`, so nothing real is lost by refusing the ambiguous form.
+ */
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)$/;
+
+/** Exactly what {@link canonicalTimestamp} is allowed to emit. */
+const ISO_CANONICAL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 /**
  * A timestamp we are willing to echo, RE-EMITTED in canonical ISO form.
@@ -162,11 +331,18 @@ function sanitizeOutcome(o: MarketOutcome): MarketOutcome | undefined {
  * `(comment)`), and those were reaching MCP/JSON verbatim. Re-emitting from the
  * parsed epoch means only a canonical `YYYY-MM-DDTHH:mm:ss.sssZ` can ever leave
  * this function, whatever the input looked like.
+ *
+ * Both ends are checked against a grammar. Re-emitting alone still let the
+ * expanded-year form through (`+275760-09-13T00:00:00.000Z`), which is 7
+ * characters longer and therefore shifted the fixed `[11..16]` slice the
+ * attribution line takes for "HH:MM UTC" — printing "13T00 UTC".
  */
 export function canonicalTimestamp(v: unknown): string {
-  if (typeof v !== 'string') return '';
+  if (typeof v !== 'string' || !ISO_INSTANT.test(v)) return '';
   const t = Date.parse(v);
-  return Number.isFinite(t) ? new Date(t).toISOString() : '';
+  if (!Number.isFinite(t)) return '';
+  const out = new Date(t).toISOString();
+  return ISO_CANONICAL.test(out) ? out : '';
 }
 
 /**
@@ -222,7 +398,10 @@ function dedupeKinds(outcomes: MarketOutcome[]): MarketOutcome[] {
  * CLOSED (unknown ⇒ stale/ambiguous ⇒ gated out), so a malformed value can't
  * coerce its way into looking trustworthy. Total: never throws.
  */
-export function sanitizeMarketSignal(s: MarketSignal): MarketSignal {
+export function sanitizeMarketSignal(
+  s: MarketSignal,
+  options: { now?: Date } = {},
+): MarketSignal {
   const outcomes = dedupeKinds(
     Array.isArray(s?.outcomes)
       ? s.outcomes.map(sanitizeOutcome).filter((o): o is MarketOutcome => !!o)
@@ -230,7 +409,13 @@ export function sanitizeMarketSignal(s: MarketSignal): MarketSignal {
   );
   const out: MarketSignal = {
     matchId: sanitizeFeedText(s?.matchId),
-    source: sanitizeFeedText(s?.source),
+    // Allow-listed, not merely stripped: this lands in the provider-attribution
+    // slot, where `marketSourceLabel` falls through to the raw string for an
+    // unrecognized provider — 100 columns of attacker prose where the reader
+    // expects "Polymarket".
+    source: KNOWN_MARKET_SOURCES.includes(s?.source as (typeof KNOWN_MARKET_SOURCES)[number])
+      ? s.source
+      : '',
     asOf: canonicalTimestamp(s?.asOf),
     fetchedAt: canonicalTimestamp(s?.fetchedAt),
     outcomes,
@@ -240,6 +425,11 @@ export function sanitizeMarketSignal(s: MarketSignal): MarketSignal {
     stale: s?.stale !== false,
     ambiguous: s?.ambiguous !== false,
   };
+  // Staleness is DERIVED, not trusted — the same treatment `favorite` gets. A
+  // file claiming `stale: false` on a six-year-old reading otherwise rendered
+  // without the caveat, because the display gate has no staleness term of its
+  // own. An unusable `asOf` parses to NaN here and reads as stale.
+  out.stale = out.stale || isStaleSignal(out, { now: options.now });
   if (typeof s?.sourceMarketId === 'string') {
     out.sourceMarketId = sanitizeFeedText(s.sourceMarketId);
   }

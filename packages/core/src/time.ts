@@ -59,8 +59,27 @@ function safeLocale(locale?: string): string {
   }
 }
 
+/**
+ * A `Date` only when the input actually parses.
+ *
+ * `Intl.DateTimeFormat.format()` throws `RangeError: Invalid time value` on an
+ * Invalid Date, and every one of these helpers is called with a feed-supplied
+ * `kickoff`. One unparseable value therefore aborted the entire command rather
+ * than degrading one fixture. The adapter now refuses such a value at the
+ * boundary; this is the second line, so no renderer can be crashed by a date.
+ */
+function parsedDate(iso: string): Date | undefined {
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? new Date(t) : undefined;
+}
+
+/** Shown in place of a time we cannot compute. Never a guessed one. */
+const UNKNOWN_TIME = '—';
+
 /** Format a kickoff like "Thu 19:00", or "Sat, Jul 4, 17:00" when `date` is set. */
 export function formatKickoff(iso: string, opts: FormatOpts = {}): string {
+  const when = parsedDate(iso);
+  if (!when) return UNKNOWN_TIME;
   const tz = resolveTz(opts.tz);
   const locale = safeLocale(opts.locale);
   return new Intl.DateTimeFormat(locale, {
@@ -70,22 +89,26 @@ export function formatKickoff(iso: string, opts: FormatOpts = {}): string {
     minute: '2-digit',
     hour12: false,
     timeZone: tz,
-  }).format(new Date(iso));
+  }).format(when);
 }
 
 /** A short calendar date like "Jun 11" in the target timezone/locale. */
 export function formatDate(iso: string, opts: FormatOpts = {}): string {
+  const when = parsedDate(iso);
+  if (!when) return UNKNOWN_TIME;
   const tz = resolveTz(opts.tz);
   const locale = safeLocale(opts.locale);
   return new Intl.DateTimeFormat(locale, {
     month: 'short',
     day: 'numeric',
     timeZone: tz,
-  }).format(new Date(iso));
+  }).format(when);
 }
 
 /** Time of day like "19:00" (24-hour) in the target timezone/locale. */
 export function formatTime(iso: string, opts: FormatOpts = {}): string {
+  const when = parsedDate(iso);
+  if (!when) return UNKNOWN_TIME;
   const tz = resolveTz(opts.tz);
   const locale = safeLocale(opts.locale);
   return new Intl.DateTimeFormat(locale, {
@@ -93,12 +116,15 @@ export function formatTime(iso: string, opts: FormatOpts = {}): string {
     minute: '2-digit',
     hour12: false,
     timeZone: tz,
-  }).format(new Date(iso));
+  }).format(when);
 }
 
 /** Compact human countdown until kickoff: "3d4h", "2h10m", "45m", or "now". */
 export function countdown(iso: string, from: Date = new Date()): string {
-  const ms = new Date(iso).getTime() - from.getTime();
+  const when = parsedDate(iso);
+  // NaN arithmetic previously fell through every comparison and printed "NaNm".
+  if (!when) return UNKNOWN_TIME;
+  const ms = when.getTime() - from.getTime();
   if (ms <= 0) return 'now';
   const totalMin = Math.floor(ms / 60000);
   const days = Math.floor(totalMin / 1440);
@@ -109,8 +135,14 @@ export function countdown(iso: string, from: Date = new Date()): string {
   return `${mins}m`;
 }
 
-/** The calendar date (YYYY-MM-DD) of a kickoff in the target timezone. */
+/**
+ * The calendar date (YYYY-MM-DD) of a kickoff in the target timezone, or ''
+ * when the input can't be parsed — an unfileable fixture matches no date rather
+ * than throwing out of whatever was grouping by day.
+ */
 export function localDate(iso: string, tz?: string): string {
+  const when = parsedDate(iso);
+  if (!when) return '';
   const zone = resolveTz(tz);
   // en-CA renders ISO-like YYYY-MM-DD.
   return new Intl.DateTimeFormat('en-CA', {
@@ -118,7 +150,7 @@ export function localDate(iso: string, tz?: string): string {
     month: '2-digit',
     day: '2-digit',
     timeZone: zone,
-  }).format(new Date(iso));
+  }).format(when);
 }
 
 /**
