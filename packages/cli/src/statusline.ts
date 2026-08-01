@@ -152,24 +152,45 @@ function matchSegment(m: Match, compact: boolean, flags: boolean): string {
  * against a corrupt cache (?? only catches null/undefined) so callers never
  * throw on bad input. Returns [] when there's nothing trustworthy/live.
  */
+/**
+ * Cache records the hot path will sanitize. Far above any real matchday (12),
+ * and the ceiling on how much work a cache file can make the statusline do.
+ *
+ * A cache holding more live matches than this is already lying — an attacker
+ * with write access could equally have deleted the real fixture — so the
+ * trade-off is bounded work against a hypothetical hidden record, and work
+ * wins on a surface that renders on every prompt.
+ */
+const MAX_LIVE_CONSIDERED = 64;
+
 export function liveMatchesFromCache(
   state: CacheState | undefined,
   nowMs = Date.now(),
 ): Match[] {
   const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
   const liveArr = fresh && Array.isArray(state?.live) ? state!.live : [];
-  return liveArr
-    .filter(
-      (m): m is Match =>
-        !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
-    )
-    // Mirror of the adapter's feed sanitizer: the statusline/hook render these
-    // strings on every prompt, so a poisoned CACHE FILE (not just a poisoned
-    // feed) must not inject ANSI/newlines into the terminal or Claude's context.
-    // An entry whose stage/status/kickoff can't be trusted is DROPPED rather
-    // than rendered from a substituted default.
-    .map(sanitizeMatchStrings)
-    .filter((m): m is Match => !!m);
+  return (
+    liveArr
+      .filter(
+        (m): m is Match =>
+          !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
+      )
+      // Bound the EXPENSIVE work before doing it. The cheap predicate above runs
+      // over the whole array (so a live match late in the file is still found),
+      // but sanitizing is grapheme-level over ~8 fields per record, and running
+      // it on every record made the HOT PATH scale with the cache file: measured
+      // 120ms at 1,000 records and 2,487ms at 20,000, against a 150ms budget.
+      // Slicing here rather than at the render sites is what actually bounds it —
+      // the render caps limited what was DISPLAYED, not what was computed.
+      .slice(0, MAX_LIVE_CONSIDERED)
+      // Mirror of the adapter's feed sanitizer: the statusline/hook render these
+      // strings on every prompt, so a poisoned CACHE FILE (not just a poisoned
+      // feed) must not inject ANSI/newlines into the terminal or Claude's context.
+      // An entry whose stage/status/kickoff can't be trusted is DROPPED rather
+      // than rendered from a substituted default.
+      .map(sanitizeMatchStrings)
+      .filter((m): m is Match => !!m)
+  );
 }
 
 /**
