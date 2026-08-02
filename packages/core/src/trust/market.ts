@@ -135,7 +135,12 @@ export function sealMarketSignal(
   if (liquidity !== undefined) out.liquidity = liquidity;
   if (volume24h !== undefined) out.volume24h = volume24h;
   out.stale = s.stale !== false;
-  out.ambiguous = isAmbiguous;
+  // A signal we cannot ATTRIBUTE is not a signal we may show. `source` is
+  // allow-listed, so an unknown provider becomes '' — and an empty attribution
+  // slot beside real-looking percentages is precisely the confidently-wrong
+  // display the Hard Constraints forbid ("attribute data providers"). It read
+  // as RELIABLE before this, because no display gate had a source term.
+  out.ambiguous = isAmbiguous || out.source === '';
   // Derived against the clock, for the same reason `favorite` is derived from
   // the outcomes. An unusable `asOf` parses to NaN and reads as stale.
   out.stale = out.stale || isStaleSignal(out, { now: options.now, maxAgeMs: options.maxAgeMs });

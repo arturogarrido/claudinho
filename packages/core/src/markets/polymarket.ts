@@ -38,6 +38,7 @@ import {
   parsedValue,
   canonicalTimestamp,
   selectOne,
+  takeBounded,
   unresolved,
   valid,
 } from '../trust';
@@ -60,6 +61,9 @@ const DEFAULT_TIMEOUT_MS = 8000;
  * so an embedder gets a fixture count times the per-fetch timeout before any
  * output. Optional odds must never be able to block a render.
  */
+/** Markets read from one event. A real 1X2 has three. */
+const MAX_EVENT_MARKETS = 256;
+
 const DEFAULT_DEADLINE_MS = 15_000;
 const WC_SERIES_SLUG = 'soccer-fifwc';
 const WC_SPORT = 'fifwc';
@@ -237,7 +241,16 @@ export class PolymarketProvider implements MarketProvider {
         // budget too.
         const remaining = deadline - Date.now();
         if (remaining <= 0) return unresolved('deadline expired between candidate slugs');
-        const found = await this.fetchEvent(slug, Math.min(configured, remaining));
+        // Per-candidate. A 500 on the UTC-date slug used to throw out of the
+        // whole loop, so the prior-day slug — the one that actually resolves an
+        // Americas-evening kickoff — was never tried despite budget remaining.
+        let found: ParseResult<GammaEvent>;
+        try {
+          found = await this.fetchEvent(slug, Math.min(configured, remaining));
+        } catch {
+          keepWorst(malformed('candidate request failed'));
+          continue;
+        }
         if (found.kind !== 'valid') {
           keepWorst(found as ParseResult<MarketSignal>);
           continue;
@@ -380,7 +393,12 @@ export class PolymarketProvider implements MarketProvider {
     if (!Array.isArray(event.markets)) {
       return malformed('event markets is not an array');
     }
-    const moneyline = event.markets.filter((m) => m?.sportsMarketType === 'moneyline');
+    // BOUNDED BEFORE THE FILTER. The 5MB body cap only covers responses that
+    // declare a length, and production Gamma omits it — so this array was the
+    // one untrusted collection still traversed whole. A real event has 3 legs.
+    const moneyline = takeBounded<GammaMarket>(event.markets, MAX_EVENT_MARKETS).filter(
+      (m) => m?.sportsMarketType === 'moneyline',
+    );
     // Each selector answers none / exactly one / ambiguous. Collapsing the last
     // two into `undefined` is what let a payload carrying TWO legs for the same
     // team be recorded as the definitive fact "this fixture has no market" —

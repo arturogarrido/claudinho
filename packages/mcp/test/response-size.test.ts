@@ -32,9 +32,22 @@ describe('one tool response cannot flood model context', () => {
     expect(JSON.stringify(huge).length).toBeGreaterThan(MAX_RESPONSE_CHARS);
     const bounded = boundResponse(huge) as Record<string, unknown>;
     expect(JSON.stringify(bounded).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
-    // Stated, never silent — and the fixtures themselves survive.
-    expect(bounded.eventsOmitted).toBe(true);
+    // The fixtures themselves survive; only `events` is dropped. No new KEYS:
+    // a field that appears solely on large payloads fails the strict output
+    // schema of every tool that never declared it.
     expect((bounded.matches as unknown[]).length).toBeGreaterThan(0);
+    expect(Object.keys(bounded).sort()).toEqual(Object.keys(huge).sort());
+    expect((bounded.matches as Record<string, unknown>[])[0]).not.toHaveProperty('events');
+  });
+
+  it('bounds shapes that are not `matches` — bracket, standings, share', () => {
+    // The first version special-cased a top-level `matches` array, so every
+    // other tool's shape walked past it. A 300 KB share snippet came back whole.
+    const share = { kind: 'date', target: '2026-06-11', snippet: 'X'.repeat(300_000) };
+    expect(JSON.stringify(boundResponse(share)).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
+    const bracket = { stages: Array.from({ length: 8 }, (_, i) => ({ stage: `S${i}`,
+      matches: Array.from({ length: 400 }, (_, k) => ({ id: String(k), note: 'Y'.repeat(400) })) })) };
+    expect(JSON.stringify(boundResponse(bracket)).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
   });
 
   it('is WIRED into the payload every tool returns', () => {

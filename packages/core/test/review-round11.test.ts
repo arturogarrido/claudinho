@@ -8,7 +8,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { FakeMarketProvider } from '../src/markets/fake';
-import { buildMarketSignal } from '../src/markets/normalize';
+import { PolymarketProvider } from '../src/markets/polymarket';
+import { buildMarketSignal, isReliableMarketSignal } from '../src/markets/normalize';
 import { parseEspnEvent, parseEspnEvents, parseEspnStandings } from '../src/trust/espn';
 import { humanLabel, isCacheable, sealMarketSignal, ambiguous, malformed } from '../src/trust';
 import type { Match } from '../src/types';
@@ -198,5 +199,76 @@ describe('round 12 — the fixes that had to be re-fixed', () => {
       { winner: true, score: '1', shootoutScore: 3 },
       { winner: false, score: '1', shootoutScore: 4 },
     ))).toBeUndefined();
+  });
+});
+
+describe('round 13 — the rest', () => {
+  it('a signal we cannot ATTRIBUTE is not a signal we may show', () => {
+    // `source` is allow-listed, so an unknown provider becomes ''. An empty
+    // attribution slot beside real-looking percentages is the confidently-wrong
+    // display the Hard Constraints forbid — and it read as RELIABLE, because no
+    // display gate had a source term of its own.
+    const r = sealMarketSignal({
+      matchId: '760415', source: 'evilprovider',
+      asOf: '2026-06-11T14:55:00.000Z', fetchedAt: '2026-06-11T14:56:00.000Z',
+      stale: false, ambiguous: false, liquidity: 500_000,
+      outcomes: [
+        { kind: 'home', teamCode: 'MEX', label: 'Mexico', probability: 0.6 },
+        { kind: 'draw', label: 'Draw', probability: 0.2 },
+        { kind: 'away', teamCode: 'RSA', label: 'South Africa', probability: 0.2 },
+      ],
+    }, { now: NOW });
+    expect(r.kind).toBe('valid');
+    if (r.kind !== 'valid') return;
+    expect(r.value.source).toBe('');
+    expect(r.value.ambiguous).toBe(true); // therefore never rendered
+    expect(isReliableMarketSignal(r.value, { now: NOW })).toBe(false);
+  });
+
+  it('bounds an event’s market list before traversing it', async () => {
+    // The 5MB body cap only covers responses that DECLARE a length, and
+    // production Gamma omits it — so this was the one untrusted collection
+    // still walked whole.
+    const leg = (i: number) => ({ id: `m${i}`, slug: `mkt-${i}`, groupItemTitle: `T${i}`,
+      sportsMarketType: 'moneyline', outcomes: JSON.stringify(['Yes', 'No']),
+      outcomePrices: JSON.stringify(['0.5', '0.5']), active: true, closed: false,
+      updatedAt: '2026-06-11T14:55:00.000Z' });
+    const event = { id: '351715', slug: 'fifwc-mex-rsa-2026-06-11',
+      startTime: '2026-06-11T19:00:00Z', active: true, closed: false,
+      seriesSlug: 'soccer-fifwc', sport: { sport: 'fifwc' },
+      updatedAt: '2026-06-11T14:55:00.000Z',
+      markets: Array.from({ length: 50_000 }, (_, i) => leg(i)) };
+    const serve = (markets: unknown[]) =>
+      (async () => ({ ok: true, status: 200, statusText: 'OK',
+        json: async () => [{ ...event, markets }] })) as unknown as typeof fetch;
+    const run = async (n: number) => {
+      const markets = Array.from({ length: n }, (_, i) => leg(i));
+      const p = new PolymarketProvider({ fetchImpl: serve(markets), now: NOW });
+      await p.findSignals([MATCH]); // warm
+      const t = performance.now();
+      await p.findSignals([MATCH]);
+      return performance.now() - t;
+    };
+    // A RATIO, not a millisecond budget: 100x the legs must cost about the
+    // same, because everything past the cap is sliced off before the filter.
+    const small = await run(500);
+    const huge = await run(50_000);
+    expect(huge).toBeLessThan(Math.max(small * 5, 25));
+  });
+
+  it('one candidate’s transport failure does not abort the fan-out', async () => {
+    // An Americas-evening kickoff derives two slugs; a 500 on the first used to
+    // throw out of the whole loop, so the prior-day slug that actually resolves
+    // was never tried despite remaining budget.
+    const late = { ...MATCH, id: '760416', kickoff: '2026-07-01T01:00Z' } as Match;
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls++;
+      if (calls === 1) throw new Error('connection reset');
+      return { ok: true, status: 200, statusText: 'OK', json: async () => [] };
+    }) as unknown as typeof fetch;
+    await new PolymarketProvider({ fetchImpl, now: new Date('2026-06-30T15:00:00Z') })
+      .findSignals([late]);
+    expect(calls).toBeGreaterThan(1);
   });
 });

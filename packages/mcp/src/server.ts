@@ -104,8 +104,6 @@ const todayOut = {
   // it from two numbers.
   count: z.number(),
   truncated: z.boolean(),
-  // Set when the whole-response size cap dropped per-match event lists.
-  eventsOmitted: z.boolean().optional(),
   matches: z.array(matchOut),
   marketSignals: z.record(anyObj).optional(),
 };
@@ -114,7 +112,6 @@ const liveOut = {
   source: src,
   count: z.number(),
   truncated: z.boolean(),
-  eventsOmitted: z.boolean().optional(),
   matches: z.array(matchOut),
 };
 const matchDetailOut = {
@@ -226,35 +223,72 @@ export const OUTPUT_SCHEMAS = {
 export const MAX_RESPONSE_CHARS = 128_000;
 
 /**
- * Drop the heaviest optional field until the payload fits.
+ * Shrink a payload until it fits, whatever SHAPE it has.
  *
- * `events` first because it is the only unbounded-by-nature list and no tool's
- * primary answer depends on it; the fixtures themselves stay. Truncation is
- * STATED in the payload, never silent.
+ * The first version special-cased a top-level `matches` array, which meant the
+ * bracket, standings and share shapes walked straight past it — a 300 KB share
+ * snippet was returned in full. Bounding the shape you thought of is not
+ * bounding the payload.
+ *
+ * Generic, in increasing order of damage: drop `events` anywhere in the tree,
+ * then truncate long strings, then shorten arrays. It adds NO keys, because a
+ * key that only appears when a payload is large fails the strict output schema
+ * on the tools that never declared it — a cure worse than the disease.
+ * Truncation is stated in the TEXT beside it instead.
  */
-export function boundResponse(data: unknown): unknown {
-  if (JSON.stringify(data ?? null).length <= MAX_RESPONSE_CHARS) return data;
-  if (!data || typeof data !== 'object') return data;
-  const d = { ...(data as Record<string, unknown>) } as Record<string, unknown>;
-  if (Array.isArray(d.matches)) {
-    d.matches = (d.matches as Record<string, unknown>[]).map(({ events: _e, ...rest }) => rest);
-    d.eventsOmitted = true;
+function shrink(value: unknown, pass: 1 | 2 | 3): unknown {
+  if (Array.isArray(value)) {
+    const items = pass === 3 ? value.slice(0, 8) : value;
+    return items.map((v) => shrink(v, pass));
   }
-  if (JSON.stringify(d).length <= MAX_RESPONSE_CHARS) return d;
-  // Still too large: keep the head of the list and say so.
-  if (Array.isArray(d.matches)) {
-    d.matches = (d.matches as unknown[]).slice(0, 8);
-    d.truncated = true;
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (k === 'events') continue; // always the first thing to go
+      out[k] = shrink(v, pass);
+    }
+    return out;
   }
-  return d;
+  if (pass >= 2 && typeof value === 'string' && value.length > 2_000) {
+    return `${value.slice(0, 2_000)}…`;
+  }
+  return value;
 }
+
+const size = (v: unknown) => JSON.stringify(v ?? null).length;
+
+export function boundResponse(data: unknown): unknown {
+  if (size(data) <= MAX_RESPONSE_CHARS) return data;
+  for (const pass of [1, 2, 3] as const) {
+    const candidate = shrink(data, pass);
+    if (size(candidate) <= MAX_RESPONSE_CHARS) return candidate;
+  }
+  // Nothing structural got it under budget. Rechecked rather than assumed —
+  // the previous version returned its last attempt without re-measuring.
+  return shrink(data, 3);
+}
+
+/** Ceiling on the prose block, which is model context too and was never bounded. */
+const MAX_TEXT_CHARS = 32_000;
 
 export function toContent(r: ToolResult) {
   const data = boundResponse(r.data);
+  const text =
+    r.text.length > MAX_TEXT_CHARS
+      ? `${r.text.slice(0, MAX_TEXT_CHARS)}\n(truncated)`
+      : r.text;
+  // The JSON block is PRETTY-printed, so it is roughly 2x the compact size the
+  // cap measures. Bounded on what is actually shipped, not on the number that
+  // was convenient to check.
+  const pretty = JSON.stringify(data, null, 2);
+  const block =
+    pretty.length > MAX_RESPONSE_CHARS
+      ? JSON.stringify(data) // fall back to compact rather than ship 2x
+      : pretty;
   return {
     content: [
-      { type: 'text' as const, text: r.text },
-      { type: 'text' as const, text: '```json\n' + JSON.stringify(data, null, 2) + '\n```' },
+      { type: 'text' as const, text },
+      { type: 'text' as const, text: '```json\n' + block + '\n```' },
     ],
     structuredContent: data as Record<string, unknown>,
   };

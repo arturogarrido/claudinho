@@ -35,11 +35,16 @@ const MAX_HOOK_MATCHES = 12;
  */
 const MAX_HOOK_CODE_POINTS = 4096;
 
-function boundContext(text: string): string {
+function boundContext(text: string, marker = ''): string {
   const points = [...text];
-  if (points.length <= MAX_HOOK_CODE_POINTS) return text;
-  // Stated, never silent — the same rule the record cap follows.
-  return `${points.slice(0, MAX_HOOK_CODE_POINTS).join('')}\n(context truncated)`;
+  if (points.length + [...marker].length <= MAX_HOOK_CODE_POINTS) return text + marker;
+  // The overflow marker is the honest part of this block — it is what says the
+  // list is incomplete — so it is RESERVED and re-appended rather than cut off
+  // the end. The statusline reserves its marker's width for the same reason;
+  // the hook truncated straight through it, turning an incomplete list back
+  // into one that reads as complete.
+  const room = Math.max(0, MAX_HOOK_CODE_POINTS - [...marker].length);
+  return `${points.slice(0, room).join('')}\n(context truncated)${marker}`;
 }
 
 export interface HookOpts {
@@ -121,5 +126,5 @@ export function renderHook(
   const more = overflow > 0 ? `\n(+${overflow} more not shown)` : '';
   // Labelled as live context so the model treats it as ambient info, not an
   // instruction. Kept terse to minimise token cost.
-  return boundContext(`[Claudinho — live football scores right now]\n${lines}${more}`);
+  return boundContext(`[Claudinho — live football scores right now]\n${lines}`, more);
 }
