@@ -187,6 +187,45 @@ findings **P1/P2/P3**.
    tool descriptions, and release guards (`publish.yml`, pinned tool versions). Flag any
    claim that went stale.
 
+## Change discipline (the failures that cost #97 twelve rounds)
+
+Nothing here is new — it is the rules above, made unskippable. Each line is a
+mistake repeated at least twice in one PR, several of them *after* being written
+down.
+
+**Changing a shared rule**
+
+- **Put the rule where every path reaches it, then delete the other copy.** Not "add
+  the check at the site the report mentioned". #97 fixed the knockout winner rule in
+  the ESPN parser while the cache path had none — inside the PR whose whole thesis is
+  that one value must not have two readers.
+- **Grep for siblings before calling a class closed.** Every single-instance fix in
+  #97 had two or three: `updatedAt` had four other timestamps, the statusline had the
+  hook, `parseCachedMatches` had both ESPN constructors.
+
+**Tests**
+
+- **Make it fail before trusting it.** Revert the rule; green means it pins nothing.
+  About a third of #97's tests first passed for the wrong reason.
+- **Pin the CALL, not just the function.** Delete the call site and confirm red. Two
+  #97 tests pinned a helper and stayed green when its only caller was removed — the
+  second written one round after that lesson was recorded.
+- **Never assert wall-clock time.** Three timing tests failed under load or on CI, and
+  each "fix" was a new constant. If the property has an observable consequence, assert
+  that: put a valid item just past the cap and prove it is never reached.
+- **Escape invisible characters in fixtures.** Written literally they are lost in
+  transit, and the test then passes on plain ASCII while claiming otherwise.
+
+**Before saying it is done**
+
+- **Run the gates AND read the output.** #97 pushed a lint error to a repo that gates
+  on lint, and separately broke a `release:qa` tripwire — both times the output was
+  produced and not read.
+- **Diff real-feed output against the base branch**, key order included, for anything
+  claiming to be a refactor.
+- **Wait for CI on the SHA you pushed.** `gh run watch` on a queued run returns
+  success; check `headSha` matches.
+
 ## Definition of Done (per user-facing feature, not per PR)
 
 The Pre-PR rubric above is per *change*. A feature that spans several PRs also needs a
@@ -194,7 +233,12 @@ The Pre-PR rubric above is per *change*. A feature that spans several PRs also n
 reactive dot-releases because each gap (ambiguous dates, missing host-nation flags, a
 dropped `tz` on MCP `get_bracket`) was found by *using* the feature after it was already
 live. Before implementing a user-facing feature, write 3–5 acceptance criteria **from the
-user's point of view** and don't call it done until each holds on a real terminal:
+user's point of view** and don't call it done until each holds on a real terminal.
+**Put them in the PR description before the first commit, together with an explicit
+statement of what the change does NOT cover.** PR #97 skipped this and took twelve
+review rounds: with no written finish line every round ended at "I fixed what was
+reported" and the next round moved it, and with no stated boundary, findings that were
+equally true of `main` arrived as blockers instead of as issues. The criteria:
 
 - The output is **unambiguous** to read (e.g. "which calendar day is this match?" across a 3-week span).
 - Every entity renders **consistently with the rest of the product** (host nations show flags like every other team; no static/placeholder leaks; the resultless invariant holds).

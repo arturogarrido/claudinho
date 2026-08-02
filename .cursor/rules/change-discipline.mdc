@@ -1,60 +1,30 @@
 ---
-description: How to scope and land a change here without a twelve-round review loop
+description: Scope a change and land it without a multi-round review loop
 globs: **/*
 alwaysApply: true
 ---
 
 # Change discipline
 
-Written after PR #97 took twelve review rounds. Nothing here is new insight —
-it is the existing rules, made unskippable, plus the two steps whose absence
-caused the loop.
+The canonical text is **`AGENTS.md` → "Change discipline"**, and the "Definition
+of Done" section beside it. This file exists only because Cursor reads
+`.cursor/rules` and not `AGENTS.md` — Claude Code reads AGENTS.md via
+`CLAUDE.md`, and it is Codex's source of truth. Keep the two in sync; if they
+disagree, AGENTS.md wins.
 
-## Before writing code
+The short form:
 
-1. **Write the acceptance criteria first.** AGENTS.md already requires this
-   ("Definition of Done") and #97 skipped it, which is the root cause: with no
-   written finish line, every round ended at "I fixed what was reported", and
-   the next round moved the line. Three to five criteria, from the user's point
-   of view, in the PR description before the first commit.
-2. **Declare the scope boundary in the same breath.** Name what this change does
-   NOT cover. A reviewer finding something true of `main` is reporting a bug,
-   not blocking your PR — but only if the boundary was stated up front rather
-   than argued afterwards.
-
-## While changing a shared rule
-
-3. **Put the rule where every path reaches it, then delete the other copy.** Not
-   "add the check to the site the report mentioned". #97 fixed the winner rule
-   in the ESPN parser while the cache path had none — inside the very PR whose
-   thesis is that one value must not have two readers.
-4. **Grep for siblings before claiming a class is closed.** Every fix in #97 that
-   was reported once turned out to have two or three siblings: `updatedAt` and
-   four other timestamps, the statusline and the hook, `parseCachedMatches` and
-   both ESPN constructors.
-
-## Testing
-
-5. **Make the test fail before you trust it.** Revert the rule; if the suite
-   stays green the test pins nothing. Roughly a third of #97's tests first
-   passed for the wrong reason.
-6. **Pin the CALL, not just the function.** Delete the call site and confirm red.
-   Two #97 tests pinned a helper and stayed green when its only caller was
-   removed — the second one written a round after the lesson.
-7. **Never assert wall-clock time.** Three timing tests in #97 failed on load or
-   on CI, and each "fix" was a new constant. If the property has an observable
-   consequence, assert that instead: put a valid item just past the cap and prove
-   it is never reached.
-8. **Escape invisible characters in fixtures.** Written literally they are lost
-   in transit, and the test then passes on plain ASCII while claiming otherwise.
-
-## Before saying it is done
-
-9. **Run the gates, and read the output.** `pnpm -r build && typecheck && test`,
-   `pnpm lint`, the three CI smoke scripts, and `pnpm release:qa`. #97 pushed a
-   lint error on a repo that gates on lint, and separately broke a `release:qa`
-   tripwire, both because the output was produced and not read.
-10. **Diff the real-feed output against the base branch**, key order included,
-    for any change that claims to be a refactor.
-11. **Wait for CI on the SHA you actually pushed.** `gh run watch` on a queued
-    run returns success; check `headSha` matches.
+1. **Acceptance criteria in the PR before the first commit**, plus an explicit
+   statement of what the change does NOT cover. Skipping this is what turned
+   PR #97 into twelve review rounds: with no written finish line every round
+   ended at "I fixed what was reported" and the next round moved it, and with no
+   stated boundary, findings equally true of `main` arrived as blockers.
+2. **Put a shared rule where every path reaches it, then delete the other copy** —
+   not at the site the report happened to mention.
+3. **Grep for siblings before calling a class closed.** Every single-instance fix
+   in #97 had two or three.
+4. **Make a test fail before trusting it, and pin the CALL, not just the
+   function.** Delete the call site and confirm red.
+5. **Never assert wall-clock time.** Assert the observable consequence instead.
+6. **Run the gates and READ the output** — build, typecheck, test, lint, the three
+   CI smokes, `release:qa` — then wait for CI on the SHA you actually pushed.
