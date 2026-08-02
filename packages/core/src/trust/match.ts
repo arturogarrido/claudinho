@@ -171,8 +171,16 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   // enforced this by construction and the cache path did not, which let an
   // edited cache file put a scoreline on a fixture that has not kicked off.
   const score = status === 'SCHEDULED' ? undefined : sealScorePair(parts.score);
-  // A shootout never survives without the regulation score it decorates.
-  const shootout = score ? sealScorePair(parts.shootout) : undefined;
+  // A shootout is a KNOCKOUT tie-break on a FINISHED, LEVEL match. Gated on all
+  // three, because each ungated one is a state that cannot exist: penalties in a
+  // group game, penalties mid-match, penalties on a 2-0. It also never survives
+  // without the regulation score it decorates.
+  const finished = status === 'FT';
+  const knockout = stage !== 'GROUP' && stage !== 'FRIENDLY';
+  const shootout =
+    score && finished && knockout && score.home === score.away
+      ? sealScorePair(parts.shootout)
+      : undefined;
 
   // `winnerCode` is the field the bracket ADVANCES a team on, so it gets the
   // strictest reading in this file, and it gets it HERE so the live feed and the
@@ -191,12 +199,14 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   const claimedSide =
     claimedWinner === home.code ? 'home' : claimedWinner === away.code ? 'away' : undefined;
   let winnerCode: string | undefined;
-  if (claimedSide && score) {
+  // Only a FINISHED match has a winner. A LIVE 2-0 carrying a `winnerCode`
+  // advanced a team out of a match still being played.
+  if (claimedSide && score && finished) {
     const level = score.home === score.away;
     const decider = level ? shootout : score;
     if (decider && decider.home !== decider.away) {
       if ((decider.home > decider.away ? 'home' : 'away') === claimedSide) winnerCode = claimedWinner;
-    } else if (level && !shootout && stage !== 'GROUP' && stage !== 'FRIENDLY') {
+    } else if (level && !shootout && knockout) {
       winnerCode = claimedWinner;
     }
   }

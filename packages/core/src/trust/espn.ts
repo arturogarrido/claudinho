@@ -212,13 +212,17 @@ export function parseEspnEvent(raw: unknown, ctx: MapContext = {}): ParseResult<
   // differ only by label, so they are two different slots, not one team twice.
   const h = homeP.value;
   const a = awayP.value;
+  // EITHER test is sufficient, and requiring both to be slots for the label test
+  // was a REGRESSION against the rule this replaced: `MEX vs MEX` with two
+  // different provider ids sailed through, because `samePerProvider` was false
+  // and `sameByLabel` was skipped for real teams. Base rejected it.
+  //
+  // The label test stays safe for unresolved bracket slots because it demands
+  // code AND name: "Round of 32 1 Winner" and "…3 Winner" share `RD32` but
+  // differ by name, so they are still two different slots.
   const samePerProvider =
     h.kind === 'team' && a.kind === 'team' && h.providerId === a.providerId;
-  const sameByLabel =
-    h.kind !== 'team' &&
-    a.kind !== 'team' &&
-    h.team.code === a.team.code &&
-    h.team.name === a.team.name;
+  const sameByLabel = h.team.code === a.team.code && h.team.name === a.team.name;
   if (samePerProvider || sameByLabel) {
     return definitiveNone('both competitors are the same team');
   }

@@ -57,7 +57,7 @@ const sanitizeFeedText = (v: unknown, max?: number): string =>
 /** The old helper returned '' for "unusable"; the role returns undefined. */
 const canonicalTimestamp = (v: unknown): string => roleTimestamp(v) ?? '';
 
-const ESC = '';
+const ESC = '\u001B';
 
 /** The ONLY keys each sanitizer may emit. Adding a field means adding it here. */
 const MATCH_KEYS = [

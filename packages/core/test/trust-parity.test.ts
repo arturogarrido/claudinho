@@ -166,9 +166,9 @@ describe('what the live path would refuse, the cache path refuses too', () => {
       ['id', 42],
       ['kickoff', '2026-06-11T19:00'], // no offset: means a different instant per reader
       ['kickoff', '2026-02-30T00:00:00Z'], // Date.parse would roll this into March
-      ['stage', 'GROUP'],
+      ['stage', 'GROUP\u0007'],
       ['stage', { toString: () => 'GROUP' }],
-      ['status', 'FT\n[31mFAKE'],
+      ['status', 'FT\n\u001B[31mFAKE'],
     ] as const) {
       const r = parseCachedMatch({ ...base(), [field]: value });
       expect(r.kind, `${field}=${String(value)}`).toBe('malformed');
@@ -200,7 +200,7 @@ describe('what the live path would refuse, the cache path refuses too', () => {
     const r = parseCachedMatch({
       ...base(),
       score: { home: '1\nFAKE', away: 0 },
-      minute: '90[2K',
+      minute: '90\u001B[2K',
     });
     expect(r.kind).toBe('valid');
     if (r.kind !== 'valid') return;
@@ -342,5 +342,63 @@ describe('winnerCode: one rule, both paths', () => {
     expect(code(cached({
       stage: 'GROUP', score: { home: 1, away: 1 }, winnerCode: 'GER',
     }))).toBeUndefined();
+  });
+});
+
+describe('states that cannot exist are refused, on both paths', () => {
+  const cached = (over: Record<string, unknown>) =>
+    parseCachedMatch({
+      id: '760415', stage: 'R32', kickoff: '2026-06-29T19:00:00.000Z', status: 'FT',
+      home: { code: 'GER', name: 'Germany' }, away: { code: 'PAR', name: 'Paraguay' },
+      updatedAt: '2026-06-29T21:00:00.000Z', ...over,
+    });
+  const seen = (r: ReturnType<typeof parseCachedMatch>) =>
+    r.kind === 'valid' ? { w: r.value.winnerCode, s: r.value.shootout } : { w: `<${r.kind}>`, s: undefined };
+
+  it('a match still being played has no winner', () => {
+    expect(seen(cached({ status: 'LIVE', score: { home: 2, away: 0 }, winnerCode: 'GER' })).w)
+      .toBeUndefined();
+  });
+
+  it('a group game has no penalty shootout', () => {
+    const r = seen(cached({
+      stage: 'GROUP', score: { home: 1, away: 1 },
+      shootout: { home: 4, away: 3 }, winnerCode: 'GER',
+    }));
+    expect(r.s).toBeUndefined();
+    expect(r.w).toBeUndefined(); // and therefore no winner either
+  });
+
+  it('a decisive regulation score has no shootout', () => {
+    expect(seen(cached({ score: { home: 2, away: 0 }, shootout: { home: 1, away: 4 } })).s)
+      .toBeUndefined();
+  });
+
+  it('but a real knockout tie keeps both', () => {
+    const r = seen(cached({
+      score: { home: 1, away: 1 }, shootout: { home: 3, away: 4 }, winnerCode: 'PAR',
+    }));
+    expect(r.s).toEqual({ home: 3, away: 4 });
+    expect(r.w).toBe('PAR');
+  });
+
+  it('a team cannot play itself, whatever its provider ids say', () => {
+    const ev = (h: object, a: object) =>
+      parseEspnEvent({
+        id: '760415', date: '2026-06-11T19:00Z', season: { slug: 'group-stage' },
+        status: { type: { name: 'STATUS_SCHEDULED', state: 'pre' } },
+        competitions: [{ competitors: [{ homeAway: 'home', team: h }, { homeAway: 'away', team: a }] }],
+      }).kind;
+    // Requiring BOTH sides to be unresolved slots for the label test was a
+    // regression against the rule it replaced: two real teams with the same
+    // code and name but different provider ids sailed through.
+    expect(ev({ id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
+              { id: '999', abbreviation: 'MEX', displayName: 'Mexico' })).toBe('definitive-none');
+    expect(ev({ id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
+              { abbreviation: 'MEX', displayName: 'Mexico' })).toBe('definitive-none');
+    // ...while two unresolved bracket slots legitimately SHARE a code and
+    // differ only by name, so they are still two different slots.
+    expect(ev({ id: '1', abbreviation: 'RD32', displayName: 'Round of 32 1 Winner' },
+              { id: '2', abbreviation: 'RD32', displayName: 'Round of 32 3 Winner' })).toBe('valid');
   });
 });

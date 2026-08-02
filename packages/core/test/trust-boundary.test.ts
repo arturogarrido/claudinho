@@ -171,11 +171,17 @@ describe('sanitizeMatchStrings — numeric fields (score/shootout/minute)', () =
   it('keeps real numbers untouched', () => {
     const clean = sanitized({
       ...base,
-      score: { home: 1, away: 0 },
+      // A shootout decides a LEVEL tie in a FINISHED KNOCKOUT match. The base
+      // fixture is a LIVE group game, where penalties cannot occur at all — the
+      // seal now refuses that whole state. This test is about numeric
+      // passthrough, so the fixture just has to be a match that can exist.
+      stage: 'R32',
+      status: 'FT',
+      score: { home: 1, away: 1 },
       shootout: { home: 3, away: 4 },
       minute: 67,
     } as Match);
-    expect(clean.score).toEqual({ home: 1, away: 0 });
+    expect(clean.score).toEqual({ home: 1, away: 1 });
     expect(clean.shootout).toEqual({ home: 3, away: 4 });
     expect(clean.minute).toBe(67);
   });

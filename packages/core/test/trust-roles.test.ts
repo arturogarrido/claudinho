@@ -45,7 +45,7 @@ const REGRESSION_CORPUS: Array<[string, string]> = [
   ['Mongolian FVS (round 9)', `A${'\u{180B}'.repeat(5)}B`],
   ['zero-width spaces', `A${'\u{200B}'.repeat(50)}B`],
   ['BOM / SHY', 'A\u{FEFF}B\u{00AD}C'],
-  ['ANSI escape', 'A[31mB'],
+  ['ANSI escape', 'A\u001B[31mB'],
   ['zalgo', `A${'́'.repeat(400)}`],
 ];
 

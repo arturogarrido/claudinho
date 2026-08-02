@@ -151,6 +151,10 @@ describe('mapEspnEvent', () => {
   it('maps the penalty shootout score when ESPN sends shootoutScore on both sides', () => {
     const pens = {
       ...finished,
+      // Penalties settle a KNOCKOUT tie. `finished` is a group-stage fixture,
+      // and a drawn group game does not go to a shootout — so the stage has to
+      // say what the test is actually about.
+      season: { year: 2026, slug: 'round-of-32' },
       competitions: [
         {
           ...finished.competitions[0],
