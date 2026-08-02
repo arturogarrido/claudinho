@@ -150,6 +150,7 @@ const marketOut = {
   // tell a complete list from a truncated one.
   count: z.number().optional(),
   truncated: z.boolean().optional(),
+  complete: z.boolean().optional(),
 };
 const shareOut = {
   kind: z.string(),

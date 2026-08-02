@@ -564,7 +564,8 @@ export async function toolGetMarketSignal(
   const date = args.date ?? localDate(now.toISOString(), args.tz);
   const { matches } = await getMatchesForDate(resolveAdapter(args), date);
   const todays = fixturesByDate(date, matches, args.tz).filter((m) => marketRelevant(m, now));
-  const signals = resolvedValues(await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS));
+  const batch = await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS);
+  const signals = resolvedValues(batch);
   const all = todays
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
     .filter(
@@ -577,7 +578,15 @@ export async function toolGetMarketSignal(
     ? `Market signals on ${date}:${truncationNote(shown)}\n${shown.items
         .map(({ match, signal }) => marketText(match, signal, args))
         .join('\n\n')}`
-    : `No reliable market signals on ${date}.`;
+    : // An empty result and an INCOMPLETE one are different answers. The batch
+      // knows which it was — a provider outage or an expired deadline leaves it
+      // `complete: false` — and collapsing to `resolvedValues` threw that away,
+      // so "we could not reach the market data" rendered as the confident
+      // "there is none", which is the failure this project refuses everywhere
+      // else.
+      batch.complete
+      ? `No reliable market signals on ${date}.`
+      : `Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
   return {
     text: withDisclaimer(text),
     data: {
@@ -588,6 +597,9 @@ export async function toolGetMarketSignal(
       // tell 40 signals from all of them.
       count: shown.total,
       truncated: shown.truncated,
+      // Stated, so a consumer reading only `data` can tell "none" from
+      // "we could not check them all".
+      complete: batch.complete,
       signals: shown.items.map(({ signal }) => marketData(signal)),
     },
   };
