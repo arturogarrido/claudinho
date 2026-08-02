@@ -42,24 +42,23 @@ describe('a shootout is kept while it is being TAKEN', () => {
     expect(m.shootout).toEqual({ home: 3, away: 3 });
   });
 
-  it('refuses a FINISHED shootout that is level — that one really cannot exist', () => {
-    expect(
-      seal({ status: 'FT', score: { home: 1, away: 1 }, shootout: { home: 3, away: 3 } }).kind,
-    ).toBe('malformed');
+  it('drops a FINISHED shootout that is still level without dropping the match', () => {
+    const m = sealed({ status: 'FT', score: { home: 1, away: 1 }, shootout: { home: 3, away: 3 } });
+    expect(m.shootout).toBeUndefined();
   });
 
-  it('and does not then advance anyone on the strength of the field it refused', () => {
+  it('does not advance anyone on the strength of a shootout field it dropped', () => {
     // The subtle half: dropping the contradictory shootout leaves a level FT
     // knockout, which the winner rule treats as "settled some other way" and
     // honours. Tested against what was CLAIMED, so it does not fall through.
-    expect(
-      seal({
-        status: 'FT',
-        score: { home: 1, away: 1 },
-        shootout: { home: 3, away: 3 },
-        winnerCode: 'GER',
-      }).kind,
-    ).toBe('malformed');
+    const m = sealed({
+      status: 'FT',
+      score: { home: 1, away: 1 },
+      shootout: { home: 3, away: 3 },
+      winnerCode: 'GER',
+    });
+    expect(m.shootout).toBeUndefined();
+    expect(m.winnerCode).toBeUndefined();
   });
 
   it('keeps a shootout in a NON-World-Cup cup tie (the CLAUDINHO_COMPETITION seam)', () => {
@@ -80,18 +79,38 @@ describe('a shootout is kept while it is being TAKEN', () => {
     expect(m.winnerCode).toBe('GER');
   });
 
-  it('still refuses penalties where they cannot happen', () => {
-    expect(
-      seal({ status: 'FT', score: { home: 2, away: 0 }, shootout: { home: 4, away: 3 } }).kind,
-    ).toBe('malformed'); // not level
-    expect(
-      seal({
-        stage: 'GROUP',
-        status: 'FT',
-        score: { home: 1, away: 1 },
-        shootout: { home: 4, away: 3 },
-      }).kind,
-    ).toBe('malformed'); // a World Cup group draw is a final result
+  it('keeps penalties that settled a two-legged aggregate despite a non-level leg score', () => {
+    const m = sealed({
+      status: 'FT',
+      score: { home: 2, away: 0 },
+      shootout: { home: 4, away: 3 },
+      winnerCode: 'GER',
+    });
+    expect(m.shootout).toEqual({ home: 4, away: 3 });
+    expect(m.winnerCode).toBe('GER');
+  });
+
+  it('drops penalties from a group match without dropping the scoreline', () => {
+    const m = sealed({
+      stage: 'GROUP',
+      status: 'FT',
+      score: { home: 1, away: 1 },
+      shootout: { home: 4, away: 3 },
+    });
+    expect(m.score).toEqual({ home: 1, away: 1 });
+    expect(m.shootout).toBeUndefined();
+  });
+
+  it('drops a one-sided shootout without dropping the match', () => {
+    const m = sealed({
+      status: 'FT',
+      score: { home: 2, away: 1 },
+      shootout: { home: 4 },
+      winnerCode: 'GER',
+    });
+    expect(m.score).toEqual({ home: 2, away: 1 });
+    expect(m.shootout).toBeUndefined();
+    expect(m.winnerCode).toBeUndefined();
   });
 });
 

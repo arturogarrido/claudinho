@@ -11,24 +11,24 @@
 import { describe, expect, it } from 'vitest';
 import { renderPrompt } from '../src/statusline';
 
-const NOW = new Date('2026-06-29T20:00:00Z');
+const NOW = new Date('2026-06-29T12:00:00Z');
 
 /** A resolved knockout tie in the cache — what the statusline must find. */
 const resolvedTie = {
-  id: '760415',
+  id: '760489',
   stage: 'R32',
-  kickoff: '2026-06-29T23:00:00.000Z',
+  kickoff: '2026-06-29T20:30:00.000Z',
   venue: 'Estadio Azteca',
   home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
   away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
   status: 'SCHEDULED',
-  updatedAt: '2026-06-29T19:59:00Z',
+  updatedAt: '2026-06-29T11:59:00Z',
 };
 
 /** Passes `isMatchShaped` (id/kickoff strings, both codes) but cannot be sealed. */
 const junkFixture = (i: number) => ({
   id: `x${i}`, // not an ESPN id — refused at the seal
-  kickoff: '2026-06-29T23:00:00.000Z',
+  kickoff: '2026-06-29T20:30:00.000Z',
   home: { code: 'AAA' },
   away: { code: 'BBB' },
 });
@@ -36,7 +36,7 @@ const junkFixture = (i: number) => ({
 const cache = (fixtures: unknown[]) =>
   ({
     version: 2,
-    updatedAt: '2026-06-29T19:59:30Z',
+    updatedAt: '2026-06-29T11:59:30Z',
     live: [],
     fixtures,
     degraded: false,
@@ -44,14 +44,14 @@ const cache = (fixtures: unknown[]) =>
     competition: 'fifa.world',
   }) as never;
 
-describe('cached knockout fixtures: malformed or partial snapshots fail closed', () => {
-  it('does not treat the readable suffix of a malformed snapshot as authoritative', () => {
+describe('cached knockout fixtures: readable pairings survive malformed siblings', () => {
+  it('displays a sealed pairing found after malformed records', () => {
     const line = renderPrompt(
       cache([...Array.from({ length: 64 }, (_, i) => junkFixture(i)), resolvedTie]),
       { now: NOW },
     );
-    expect(line).not.toContain('🇲🇽');
-    expect(line).not.toContain('🇪🇨');
+    expect(line).toContain('🇲🇽');
+    expect(line).toContain('🇪🇨');
   });
 
   it('bounds the examined records without a wall-clock assertion', () => {

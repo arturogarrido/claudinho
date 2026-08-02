@@ -15,12 +15,12 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
 - **An adapter FETCHES; it does not interpret.** Parsing lives in `trust/`
   (`trust/espn.ts` is the model). The adapter that also parsed is how `id` and
   `kickoff` ended up copied verbatim while every string beside them was cleaned.
-- **Completeness crosses the adapter boundary.** Boundary-aware adapters return
-  the array-compatible `ProviderBatch<T>`; `complete: false` is not a partial
-  success and every domain orchestrator fails closed to its existing degraded
-  path. Preserve iteration, indexing, JSON serialization, and array methods;
-  do not replace the public array surface with an object envelope. A bare array
-  remains the compatibility form for injected adapters and means complete.
+- **Record refusal is local, not a provider outage.** `ProviderAdapter` returns
+  plain arrays. Omit malformed, duplicate, or truncated records while keeping
+  readable siblings usable and attributed to the provider. Throw into the
+  degraded path only for transport/JSON failure, or an incomplete payload with
+  no usable records. Parser-local `BoundedList.complete` is diagnostic; never
+  promote one refused record into a batch-wide blackout.
 - **Both paths end at the same constructor.** Live and cache reads call
   `sealMatch` / `sealMarketSignal`. When they had separate rules, each fix landed
   on one of them; `core/test/trust-parity.test.ts` asserts they agree, as a JSON
@@ -37,13 +37,12 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   instruction sentence — invisible on a terminal, legible to a model reading
   `--json`.
 - **Say which kind of failure it is.** `ParseResult` = `valid` /
-  `definitive-none` / `malformed` / `ambiguous` / `unresolved`. The line for
-  CACHING one is whether we understood the payload: `valid`, `definitive-none`
-  and `ambiguous` are conclusions drawn from bytes we read and are stable across
-  a refetch, so all three may be remembered for a TTL. `malformed` and
-  `unresolved` are facts about US and must always be retried. Getting this
-  backwards cost a permanent per-command refetch loop — an ambiguity never
-  converges if you re-ask it (measured: 6,6,6 requests vs 6,0,0).
+  `definitive-none` / `malformed` / `ambiguous` / `unresolved`. For per-item
+  market resolution, `valid`, `definitive-none` and `ambiguous` are stable and
+  cacheable; `malformed` and `unresolved` must not become definitive negatives.
+  A successful provider batch with one malformed sibling is still shared for
+  the coalescing TTL: identical bytes will parse identically, and immediate
+  refetches only waste egress and starve the readable records.
 - **Enrichment completeness reaches the renderer.** Market cache/fetch helpers
   return `{ signals, complete }`; default-on annotations, dedicated tools,
   share cards, and structured output retain it. Only a complete empty batch may

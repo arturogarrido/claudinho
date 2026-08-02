@@ -317,16 +317,21 @@ describe('winnerCode: one rule, both paths', () => {
       { winner: false, score: '1', shootoutScore: 3 },
       { winner: true, score: '1', shootoutScore: 4 },
     ))).toBe('PAR');
+    // ESPN reports the current leg score; penalties can settle a level
+    // two-legged aggregate even when that leg was not level.
+    expect(code(cached({
+      score: { home: 2, away: 0 }, shootout: { home: 1, away: 4 }, winnerCode: 'PAR',
+    }))).toBe('PAR');
+    expect(code(live(
+      { winner: false, score: '2', shootoutScore: 1 },
+      { winner: true, score: '0', shootoutScore: 4 },
+    ))).toBe('PAR');
   });
 
   it('advances nobody when the result contradicts the claim — on EITHER path', () => {
     // regulation says the other side won
     expect(code(cached({ score: { home: 0, away: 2 }, winnerCode: 'GER' }))).toBeUndefined();
     expect(code(live({ winner: true, score: '0' }, { winner: false, score: '2' }))).toBeUndefined();
-    // penalties cannot overturn a DECISIVE regulation score
-    expect(code(cached({
-      score: { home: 2, away: 0 }, shootout: { home: 1, away: 4 }, winnerCode: 'PAR',
-    }))).toBe('<malformed>');
     // no score at all is nothing to agree with
     expect(code(cached({ winnerCode: 'GER' }))).toBe('<malformed>');
     expect(code(live({ winner: true }, { winner: false }))).toBe('<malformed>');
@@ -363,13 +368,15 @@ describe('states that cannot exist are refused, on both paths', () => {
       shootout: { home: 4, away: 3 }, winnerCode: 'GER',
     }));
     expect(r.s).toBeUndefined();
-    expect(r.w).toBe('<malformed>');
+    expect(r.w).toBeUndefined();
   });
 
-  it('a decisive regulation score has no shootout', () => {
-    expect(
-      seen(cached({ score: { home: 2, away: 0 }, shootout: { home: 1, away: 4 } })).w,
-    ).toBe('<malformed>');
+  it('a non-level leg can carry the shootout that settled its aggregate tie', () => {
+    const r = seen(cached({
+      score: { home: 2, away: 0 }, shootout: { home: 1, away: 4 }, winnerCode: 'PAR',
+    }));
+    expect(r.s).toEqual({ home: 1, away: 4 });
+    expect(r.w).toBe('PAR');
   });
 
   it('but a real knockout tie keeps both', () => {

@@ -92,11 +92,9 @@ export function renderHook(
 
   const liveList = liveMatchesFromCache(state, now.getTime());
   let live: Match[] = [...liveList.items];
-  if (live.length === 0) {
-    return liveList.complete
-      ? ''
-      : '[Claudinho — live football scores unavailable: cached list incomplete]';
-  }
+  // A malformed cache record does not establish that live scores are down.
+  // Outside a match window the hook's contract is still zero added tokens.
+  if (live.length === 0) return '';
   // Surface the user's team first, if any.
   if (team) {
     live = [...live].sort((a, b) => {

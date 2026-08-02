@@ -3,7 +3,7 @@ import {
   EspnAdapter,
   MAX_RESPONSE_BYTES,
   mapEspnEvent,
-  parseStandingsBatch,
+  parseStandings,
 } from '../src/adapters/espn';
 import { getLiveMatches } from '../src/live';
 
@@ -177,9 +177,78 @@ describe('mapEspnEvent', () => {
     expect(m.winnerCode).toBe('PAR');
   });
 
+  it('maps the non-level leg score and shootout from a real two-legged ESPN tie', () => {
+    // UEFA Europa League, 2026-03-19, event 401862875. ESPN's score is this
+    // leg; the shootout settled the level aggregate.
+    const m = mapped({
+      id: '401862875',
+      date: '2026-03-19T17:45Z',
+      season: { year: 2025, type: 13686, slug: 'round-of-16' },
+      status: {
+        clock: 7200,
+        displayClock: "120'",
+        period: 5,
+        type: { name: 'STATUS_FINAL_PEN', state: 'post', completed: true },
+      },
+      competitions: [
+        {
+          competitors: [
+            {
+              homeAway: 'home',
+              score: '1',
+              shootoutScore: 0,
+              winner: false,
+              team: { id: '572', abbreviation: 'MID', displayName: 'FC Midtjylland' },
+            },
+            {
+              homeAway: 'away',
+              score: '2',
+              shootoutScore: 3,
+              winner: true,
+              team: { id: '393', abbreviation: 'NFO', displayName: 'Nottingham Forest' },
+            },
+          ],
+        },
+      ],
+    });
+    expect(m.score).toEqual({ home: 1, away: 2 });
+    expect(m.shootout).toEqual({ home: 0, away: 3 });
+    expect(m.winnerCode).toBe('NFO');
+  });
+
   it('leaves shootout undefined for a regular finished match (no phantom parens)', () => {
     const m = mapped(finished, { groupByTeam: GROUP_MAP });
     expect(m.shootout).toBeUndefined();
+  });
+
+  it('drops a one-sided shootout field without dropping the ESPN fixture', () => {
+    const oneSided = {
+      ...finished,
+      season: { year: 2026, slug: 'round-of-16' },
+      competitions: [
+        {
+          ...finished.competitions[0],
+          competitors: [
+            {
+              homeAway: 'home',
+              score: '2',
+              shootoutScore: 3,
+              winner: true,
+              team: { abbreviation: 'NED', displayName: 'Netherlands' },
+            },
+            {
+              homeAway: 'away',
+              score: '1',
+              team: { abbreviation: 'BRA', displayName: 'Brazil' },
+            },
+          ],
+        },
+      ],
+    };
+    const m = mapped(oneSided);
+    expect(m.score).toEqual({ home: 2, away: 1 });
+    expect(m.shootout).toBeUndefined();
+    expect(m.winnerCode).toBeUndefined();
   });
 
   it('refuses a finished event that claims a shootout without a regulation score', () => {
@@ -244,11 +313,39 @@ describe('EspnAdapter fetch hardening (size cap + no redirects)', () => {
     const { res } = bigResponse(2048);
     const fetchImpl = (async () => res) as unknown as typeof fetch;
     const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
-    const batch = await adapter.fetchByDate('2026-06-11');
-    expect(Array.isArray(batch)).toBe(true);
-    expect(batch).toEqual([]);
-    expect(batch.complete).toBe(true);
-    expect(batch.items).toBe(batch);
+    const matches = await adapter.fetchByDate('2026-06-11');
+    expect(Array.isArray(matches)).toBe(true);
+    expect(matches).toEqual([]);
+  });
+
+  it('keeps readable fixtures when a sibling record is malformed', async () => {
+    const malformed = {
+      ...scheduled,
+      id: '700404',
+      status: { type: { name: 'STATUS_FROM_THE_FUTURE', state: 'in' } },
+    };
+    const fetchImpl = (async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: () => null },
+      json: async () => ({ events: [scheduled, malformed] }),
+    })) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
+    const matches = await adapter.fetchByDate('2026-06-11');
+    expect(matches.map((m) => m.id)).toEqual(['700001']);
+  });
+
+  it('rejects an unreadable scoreboard that contains no usable fixture', async () => {
+    const fetchImpl = (async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: () => null },
+      json: async () => ({ events: [{ status: 'unknown' }] }),
+    })) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
+    await expect(adapter.fetchByDate('2026-06-11')).rejects.toMatchObject({ kind: 'parse' });
   });
 
   it("sends redirect:'error' so a redirect can't escape the fixed host", async () => {
@@ -421,9 +518,8 @@ describe('mapEspnEvent / parseStandings — identity and outer bounds', () => {
         })),
       },
     }));
-    const out = parseStandingsBatch({ children } as never);
-    expect(out.items.length).toBe(1); // deduped: "Group A" is one group, not 200
-    expect(out.items[0]!.rows.length).toBeLessThanOrEqual(32);
-    expect(out.complete).toBe(false);
+    const out = parseStandings({ children } as never);
+    expect(out.length).toBe(1); // deduped: "Group A" is one group, not 200
+    expect(out[0]!.rows.length).toBeLessThanOrEqual(32);
   });
 });

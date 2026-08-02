@@ -103,7 +103,6 @@ describe('poisoned numeric cache fields (score/minute as strings)', () => {
   it('renderHook injects no extra lines into the context block', () => {
     const ctx = renderHook(numericPoisoned(), { now: NOW });
     expect(ctx).not.toContain('FAKE');
-    expect(ctx).toContain('cached list incomplete');
-    expect(ctx.split('\n')).toHaveLength(1);
+    expect(ctx).toBe('');
   });
 });

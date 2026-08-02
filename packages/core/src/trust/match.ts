@@ -182,9 +182,9 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   if ((status === 'LIVE' || status === 'HT' || status === 'FT') && !score) {
     return malformed('match claims an unreadable score');
   }
-  // A shootout is a KNOCKOUT tie-break on a LEVEL match, and it never survives
-  // without the regulation score it decorates. Those gates refuse the states
-  // that cannot exist: penalties in a group game, penalties on a 2-0.
+  // A shootout is a knockout tie-break and never survives without the score it
+  // decorates. Do not require that score to be level: ESPN reports the score of
+  // the current leg, while penalties can settle a level two-legged aggregate.
   //
   // It is deliberately NOT gated on FT. A shootout is at its most interesting
   // while it is being TAKEN, and requiring a finished match hid exactly that —
@@ -204,23 +204,20 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   const canGoToPenalties = stage !== 'GROUP';
   const shootoutPresent = parts.shootout !== undefined && parts.shootout !== null;
   const parsedShootout = shootoutPresent ? sealScorePair(parts.shootout) : undefined;
-  if (shootoutPresent && !parsedShootout) {
-    return malformed('match claims an unreadable shootout');
-  }
   const shootoutStatus = status === 'LIVE' || status === 'FT';
-  if (
-    shootoutPresent &&
-    (!score || !canGoToPenalties || score.home !== score.away || !shootoutStatus)
-  ) {
-    return malformed('match claims a shootout in an impossible state');
-  }
-  const claimedShootout = parsedShootout;
   // A shootout that is OVER decided the tie, so it cannot be level. One still in
   // progress can be, and usually is — 3-3 is sudden death, not a contradiction.
-  const shootoutContradicts =
-    !!claimedShootout && finished && claimedShootout.home === claimedShootout.away;
-  if (shootoutContradicts) return malformed('finished shootout is still level');
-  const shootout = claimedShootout;
+  // An unreadable or contradictory shootout is a bad optional field, not a bad
+  // fixture: omit it while preserving the score/status and the other records in
+  // the provider response.
+  const shootout =
+    parsedShootout &&
+    score &&
+    canGoToPenalties &&
+    shootoutStatus &&
+    !(finished && parsedShootout.home === parsedShootout.away)
+      ? parsedShootout
+      : undefined;
 
   // `winnerCode` is the field the bracket ADVANCES a team on, so it gets the
   // strictest reading in this file, and it gets it HERE so the live feed and the
@@ -230,8 +227,8 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   //
   // A claim is kept only when the RESULT agrees with it:
   //   - no score at all        -> nothing to agree with; advance nobody
-  //   - decisive regulation    -> the score decides, penalties cannot override it
-  //   - level + penalties      -> penalties decide, and must themselves be decisive
+  //   - valid penalties        -> penalties decide, including a two-legged tie
+  //   - otherwise decisive score -> the score decides
   //   - level, no penalties    -> a KNOCKOUT tie that finished level was settled
   //     somehow, and the flag is the only record of it, so it is not
   //     contradicted; a level GROUP game has no winner at all, so it is.
@@ -241,12 +238,15 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   let winnerCode: string | undefined;
   // Only a FINISHED match has a winner. A LIVE 2-0 carrying a `winnerCode`
   // advanced a team out of a match still being played.
-  if (claimedSide && score && finished) {
+  // If the payload asserted a shootout but that field was unusable, do not
+  // advance from the leg score: the omitted tally may have settled an aggregate
+  // tie in the opposite direction.
+  if (claimedSide && score && finished && (!shootoutPresent || shootout)) {
     const level = score.home === score.away;
-    const decider = level ? shootout : score;
+    const decider = shootout ?? score;
     if (decider && decider.home !== decider.away) {
       if ((decider.home > decider.away ? 'home' : 'away') === claimedSide) winnerCode = claimedWinner;
-    } else if (level && !claimedShootout && canGoToPenalties) {
+    } else if (level && !shootoutPresent && canGoToPenalties) {
       // Tested against what was CLAIMED, not what survived: a contradictory
       // shootout (a finished 3-3) is dropped above, and reading the survivor
       // here would let that record fall through to "settled some other way" and

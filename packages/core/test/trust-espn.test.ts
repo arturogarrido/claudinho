@@ -224,32 +224,73 @@ describe('parseEspnEvents / parseEspnStandings — bounded before the work', () 
     expect(list.complete).toBe(false);
   });
 
-  it('lists a provider team in at most one group across the payload', () => {
-    const stats = [
+  it('keeps distinct provider teams that share an abbreviation', () => {
+    const stats = (rank: number, points: number) => [
       { name: 'gamesPlayed', value: 1 },
-      { name: 'wins', value: 1 },
+      { name: 'wins', value: points === 3 ? 1 : 0 },
       { name: 'ties', value: 0 },
-      { name: 'losses', value: 0 },
-      { name: 'pointsFor', value: 2 },
-      { name: 'pointsAgainst', value: 0 },
-      { name: 'pointDifferential', value: 2 },
-      { name: 'points', value: 3 },
-      { name: 'rank', value: 1 },
+      { name: 'losses', value: points === 3 ? 0 : 1 },
+      { name: 'pointsFor', value: points === 3 ? 2 : 0 },
+      { name: 'pointsAgainst', value: points === 3 ? 0 : 2 },
+      { name: 'pointDifferential', value: points === 3 ? 2 : -2 },
+      { name: 'points', value: points },
+      { name: 'rank', value: rank },
     ];
-    const mexico = {
-      team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
-      stats,
-    };
     const list = parseEspnStandings({
       children: [
-        { name: 'Group A', standings: { entries: [mexico] } },
-        { name: 'Group B', standings: { entries: [mexico] } },
+        {
+          name: 'Group A',
+          standings: {
+            entries: [
+              {
+                team: { id: '16', abbreviation: 'RIV', displayName: 'River Plate' },
+                stats: stats(1, 3),
+              },
+              {
+                team: { id: '9744', abbreviation: 'RIV', displayName: 'Independiente Rivadavia' },
+                stats: stats(2, 0),
+              },
+            ],
+          },
+        },
       ],
     });
-    expect(list.items.flatMap((table) => table.rows).map((row) => row.team.code)).toEqual([
-      'MEX',
+    expect(list.items[0]?.rows.map((row) => row.team.name)).toEqual([
+      'River Plate',
+      'Independiente Rivadavia',
     ]);
-    expect(list.complete).toBe(false);
+    expect(list.complete).toBe(true);
+  });
+
+  it('accounts for provider points deductions', () => {
+    const list = parseEspnStandings({
+      children: [
+        {
+          name: 'Group A',
+          standings: {
+            entries: [
+              {
+                team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
+                stats: [
+                  { name: 'gamesPlayed', value: 2 },
+                  { name: 'wins', value: 1 },
+                  { name: 'ties', value: 1 },
+                  { name: 'losses', value: 0 },
+                  { name: 'pointsFor', value: 2 },
+                  { name: 'pointsAgainst', value: 0 },
+                  { name: 'pointDifferential', value: 2 },
+                  { name: 'points', value: 1 },
+                  { name: 'deductions', value: 3 },
+                  { name: 'rank', value: 1 },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(list.items[0]?.rows[0]?.points).toBe(1);
+    expect(list.complete).toBe(true);
   });
 
   it('marks contradictory aggregate statistics incomplete', () => {

@@ -2,11 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   getStandings,
   parseStandings,
-  parseStandingsBatch,
-  providerBatch,
   type GroupStandings,
   type ProviderAdapter,
-  type ProviderResult,
 } from '../src/index';
 
 // --- ESPN-standings-shaped fixtures (mirror the real payload shape) ---
@@ -91,10 +88,7 @@ describe('parseStandings', () => {
         },
       ],
     };
-    expect(parseStandings(malformed)).toEqual([]);
-    const batch = parseStandingsBatch(malformed);
-    expect(batch.complete).toBe(false);
-    expect(batch.items[0]?.rows.map((row) => row.team.code)).toEqual(['MEX']);
+    expect(parseStandings(malformed)[0]?.rows.map((row) => row.team.code)).toEqual(['MEX']);
   });
 
   it('is total on malformed / empty input', () => {
@@ -106,7 +100,7 @@ describe('parseStandings', () => {
 
 // --- getStandings (orchestration + fail-closed) ---
 function standingsAdapter(
-  tables: ProviderResult<GroupStandings> | (() => never),
+  tables: GroupStandings[] | (() => never),
 ): ProviderAdapter {
   return {
     name: 'fake',
@@ -119,7 +113,7 @@ function standingsAdapter(
     },
     async fetchStandings() {
       if (typeof tables === 'function') tables();
-      return tables as ProviderResult<GroupStandings>;
+      return tables as GroupStandings[];
     },
   };
 }
@@ -185,10 +179,23 @@ describe('getStandings', () => {
     expect(r.tables[0]?.rows.every((row) => row.played === 0 && row.points === 0)).toBe(true);
   });
 
-  it('FAILS CLOSED when the provider only parsed a prefix of the table', async () => {
-    const r = await getStandings(standingsAdapter(providerBatch(TABLES, false)), 'A');
-    expect(r.degraded).toBe(true);
-    expect(r.source).toBeUndefined();
-    expect(r.tables[0]?.rows.every((row) => row.played === 0 && row.points === 0)).toBe(true);
+  it('preserves readable rows when one standings sibling is malformed', async () => {
+    const partial = parseStandings({
+      children: [
+        {
+          name: 'Group A',
+          standings: {
+            entries: [
+              entry('MEX', 'Mexico', full(1, 1, 0, 0, 2, 0, 1)),
+              entry('CZE', 'Czechia', [stat('gamesPlayed', 1), stat('rank', 2)]),
+            ],
+          },
+        },
+      ],
+    });
+    const r = await getStandings(standingsAdapter(partial), 'A');
+    expect(r.degraded).toBe(false);
+    expect(r.source).toBe('fake');
+    expect(r.tables[0]?.rows.map((row) => row.team.code)).toEqual(['MEX']);
   });
 });

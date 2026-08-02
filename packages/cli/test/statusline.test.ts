@@ -69,9 +69,9 @@ describe('renderPrompt — live', () => {
       minute: 30,
       score: { home: 0, away: 0 },
     });
-    expect(renderPrompt(state([...other, target]), { now: NOW, team: 'MEX' })).toBe(
-      '⚽ live · syncing…',
-    );
+    const line = renderPrompt(state([...other, target]), { now: NOW, team: 'MEX' });
+    expect(line).toContain('live · syncing…');
+    expect(line).not.toContain(' in ');
   });
 
   it('shows ALL live matches inline (no team filter), joined by " · "', () => {
@@ -124,6 +124,19 @@ describe('renderPrompt — live', () => {
     const out = renderPrompt(s as never, { now: NOW });
     expect(out.length).toBeGreaterThan(0);
     expect(out).toContain('live · syncing');
+  });
+
+  it('does not claim live scores are syncing from cache junk on a quiet morning', () => {
+    const quiet = new Date('2026-06-12T12:00:00Z');
+    const s = {
+      updatedAt: quiet.toISOString(),
+      live: [{ status: 'LIVE', home: {}, away: {} }],
+      degraded: false,
+      source: 'espn',
+    };
+    const out = renderPrompt(s as never, { now: quiet });
+    expect(out).toContain(' in ');
+    expect(out).not.toContain('live · syncing');
   });
 });
 
@@ -325,19 +338,19 @@ describe('renderPrompt — post-tournament sign-off', () => {
     expect(renderPrompt(undefined, { now: AFTER, team: 'MEX' })).toBe(TOURNAMENT_COMPLETE_LINE);
   });
 
-  it('does not sign off or count down from an incomplete live-cache scan', () => {
+  it('still signs off after the tournament when cache junk proves nothing is live', () => {
     const malformed = {
       ...state([], AFTER.toISOString()),
       live: [
         { status: 'LIVE', home: { code: 'MEX' }, away: { code: 'RSA' } },
       ] as unknown as Match[],
     };
-    expect(renderPrompt(malformed, { now: AFTER })).toBe('⚽ live · syncing…');
+    expect(renderPrompt(malformed, { now: AFTER })).toBe(TOURNAMENT_COMPLETE_LINE);
     expect(renderPrompt(malformed, { now: AFTER, team: 'MEX' })).toBe(
-      '⚽ live · syncing…',
+      TOURNAMENT_COMPLETE_LINE,
     );
     expect(renderPrompt(malformed, { now: AFTER, defaultCompetition: false })).toBe(
-      '⚽ live · syncing…',
+      '⚽ —',
     );
   });
 

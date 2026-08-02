@@ -320,9 +320,9 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // Malformed entries (null, {}, missing kickoff/teams) are dropped, never
   // allowed to throw the whole statusline blank downstream.
   const cachedFixtureList = sealFixtures(state?.fixtures);
-  // A partial fixture overlay can prove a pairing it contains, but it cannot
-  // prove that a missing team has no pairing. Use none of it for selection.
-  const cachedFixtures = cachedFixtureList.complete ? [...cachedFixtureList.items] : [];
+  // A partial fixture overlay cannot prove a pairing is absent, but every
+  // sealed pairing it does contain is safe to display.
+  const cachedFixtures = [...cachedFixtureList.items];
   const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;
 
   // With a team filter, show only that team's live match.
@@ -351,12 +351,6 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
     return truncateVisible(body, MAX_LINE_COLUMNS - displayWidth(marker)) + marker;
   }
 
-  // We found no trusted selection, but the bounded scan did not establish that
-  // none exists. Falling through to a countdown, tournament sign-off, or dash
-  // would turn "could not inspect the cache" into a confident absence claim.
-  // This also protects team filters when their live record sits past the cap.
-  if (!liveList.complete) return '⚽ live · syncing…';
-
   // Cold/stale cache during a live window: a countdown here is actively
   // misleading — a match is on, and the static schedule alone tells us that.
   // Say "live · syncing" until the refresher lands a snapshot. A FRESH,
@@ -367,10 +361,11 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   const cacheFresh =
     !!state &&
     state.degraded !== true &&
-    liveList.complete &&
-    cachedFixtureList.complete &&
     ageMs(state, nowMs) < DISPLAY_STALE_MS;
-  if (!cacheFresh) {
+  // An incomplete scan only justifies "syncing" when the schedule says a match
+  // may actually be on. On a quiet morning (or after the tournament), cache
+  // junk must not turn into a false live-score outage claim.
+  if (!cacheFresh || !liveList.complete) {
     const win = fixturesInLiveWindow(nowMs, schedule).filter(
       (m) => !team || m.home.code === team || m.away.code === team,
     );

@@ -102,9 +102,9 @@ describe('renderHook', () => {
     expect(renderHook(s, { now: NOW })).toBe('');
   });
 
-  it('never throws on a corrupt cache and states that it is incomplete', () => {
+  it('never throws or injects an outage claim from a corrupt empty cache', () => {
     const bad = { updatedAt: NOW.toISOString(), live: 'not-an-array', degraded: false, source: 'espn' };
-    expect(renderHook(bad as never, { now: NOW })).toContain('cached list incomplete');
+    expect(renderHook(bad as never, { now: NOW })).toBe('');
   });
 });
 
@@ -118,7 +118,7 @@ describe('renderHook — poisoned numeric cache fields', () => {
     ]);
     const out = renderHook(s, { now: NOW });
     expect(out).not.toContain('FAKE');
-    expect(out).toContain('cached list incomplete');
+    expect(out).toBe('');
   });
 });
 

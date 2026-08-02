@@ -12,7 +12,6 @@ import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EspnAdapter } from '../src/adapters/espn';
-import { completeProviderItems } from '../src/adapters/types';
 import { buildBracketTopology } from '../src/bracket/build';
 import type { BracketTopology } from '../src/bracket/types';
 import { isResolvedNation } from '../src/bracket/placeholders';
@@ -39,7 +38,7 @@ async function main(): Promise<void> {
 
   for (const [start, end] of WINDOWS) {
     try {
-      const matches = completeProviderItems(await adapter.fetchWindow(start, end));
+      const matches = await adapter.fetchWindow(start, end);
       for (const m of matches) byId.set(m.id, m);
       console.log(`  ${start}-${end}: ${matches.length} fixtures`);
     } catch (err) {

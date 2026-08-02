@@ -325,7 +325,7 @@ export function parseEspnEvents(raw: unknown, ctx: MapContext = {}): BoundedList
   for (const event of considered) {
     const parsed = parseEspnEvent(event, ctx);
     if (parsed.kind !== 'valid') {
-      complete = false;
+      if (parsed.kind !== 'definitive-none') complete = false;
       continue;
     }
     // Two records asserting different facts about one fixture are ambiguous.
@@ -355,7 +355,7 @@ interface RawEntry {
   stats?: unknown;
 }
 
-/** One exact integer stat. `signed` is for goal difference, the only negative field. */
+/** One exact integer stat. `signed` permits fields such as goal difference or deducted points. */
 function statVal(stats: unknown, name: string, signed = false): number | undefined {
   if (!Array.isArray(stats) || stats.length > 64) return undefined;
   const matches = takeBounded<{ name?: unknown; value?: unknown }>(stats, 64).filter(
@@ -366,6 +366,18 @@ function statVal(stats: unknown, name: string, signed = false): number | undefin
   if (typeof v !== 'number' || !Number.isFinite(v) || !Number.isInteger(v)) return undefined;
   const limit = 1000;
   return v > limit || v < (signed ? -limit : 0) ? undefined : v;
+}
+
+/** ESPN emits deductions when applicable; absence means no deduction. */
+function optionalStatVal(stats: unknown, name: string): number | undefined {
+  if (!Array.isArray(stats) || stats.length > 64) return undefined;
+  const matches = takeBounded<{ name?: unknown; value?: unknown }>(stats, 64).filter(
+    (s) => s?.name === name,
+  );
+  if (matches.length === 0) return 0;
+  if (matches.length !== 1) return undefined;
+  const v = matches[0]?.value;
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 1000 ? v : undefined;
 }
 
 type ParsedStandingRow = StandingRow & { providerId?: string; providerRank: number };
@@ -382,7 +394,8 @@ function entryToRow(e: RawEntry): ParseResult<ParsedStandingRow> {
   const goalsFor = statVal(e.stats, 'pointsFor');
   const goalsAgainst = statVal(e.stats, 'pointsAgainst');
   const goalDiff = statVal(e.stats, 'pointDifferential', true);
-  const points = statVal(e.stats, 'points');
+  const points = statVal(e.stats, 'points', true);
+  const deductions = optionalStatVal(e.stats, 'deductions');
   const providerRank = statVal(e.stats, 'rank');
   if (
     played === undefined ||
@@ -393,6 +406,7 @@ function entryToRow(e: RawEntry): ParseResult<ParsedStandingRow> {
     goalsAgainst === undefined ||
     goalDiff === undefined ||
     points === undefined ||
+    deductions === undefined ||
     providerRank === undefined ||
     providerRank < 1
   ) {
@@ -404,7 +418,7 @@ function entryToRow(e: RawEntry): ParseResult<ParsedStandingRow> {
   if (goalDiff !== goalsFor - goalsAgainst) {
     return malformed('standings entry goal difference does not add up');
   }
-  if (points !== won * 3 + drawn) {
+  if (points !== won * 3 + drawn - deductions) {
     return malformed('standings entry points do not add up');
   }
   return valid({
@@ -440,15 +454,9 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
   const children = takeBounded<Record<string, unknown>>(rawChildren, MAX_GROUPS * 4);
   const sawAllChildren = rawCount === children.length;
   let rowsTruncated = false;
-  let groupsTruncated = false;
   let complete = readable && sawAllChildren;
   const out: GroupStandings[] = [];
   const seenGroups = new Set<string>();
-  // A nation belongs to exactly one World Cup group. Keep identity sets across
-  // the whole payload, not per table, so the same provider team cannot make two
-  // contradictory groups look independently valid.
-  const seenTeams = new Set<string>();
-  const seenCodes = new Set<string>();
 
   for (const child of children) {
     const label = humanLabel(child?.name ?? child?.abbreviation);
@@ -459,11 +467,6 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
       continue;
     }
     seenGroups.add(letter);
-    if (out.length >= MAX_GROUPS) {
-      complete = false;
-      groupsTruncated = true;
-      continue;
-    }
 
     // Bounded BEFORE the map and the sort: a 4,000-row group cost ~300ms to
     // produce 32 rows because the cap was applied to the result.
@@ -480,27 +483,25 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
       complete = false;
     }
     const entries = takeBounded<RawEntry>(rawEntries, MAX_GROUP_ROWS);
+    // Identity is table-local. Other competitions can reuse a provider code in
+    // different tables, and two distinct teams can share an abbreviation.
+    const seenTeams = new Set<string>();
     const seenRanks = new Set<number>();
     const ranked: Array<{ row: StandingRow; rank: number }> = [];
     for (const e of entries) {
       const r = entryToRow(e);
       if (r.kind !== 'valid') {
-        complete = false;
+        if (r.kind !== 'definitive-none') complete = false;
         continue;
       }
       // A team appears once per table. A duplicate is a payload we cannot read
       // as a table, not two rows about two teams.
       const key = r.value.providerId ?? r.value.team.code;
-      if (
-        seenTeams.has(key) ||
-        seenCodes.has(r.value.team.code) ||
-        seenRanks.has(r.value.providerRank)
-      ) {
+      if (seenTeams.has(key) || seenRanks.has(r.value.providerRank)) {
         complete = false;
         continue;
       }
       seenTeams.add(key);
-      seenCodes.add(r.value.team.code);
       seenRanks.add(r.value.providerRank);
       const { providerId: _dropId, providerRank: rank, ...row } = r.value;
       ranked.push({ row, rank });
@@ -519,7 +520,7 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
     shown: out.length,
     // We stopped early if the child list was cut, we filled the group cap, or
     // any single group's ROWS were cut.
-    truncated: !sawAllChildren || groupsTruncated || rowsTruncated,
-    complete: complete && !groupsTruncated && !rowsTruncated,
+    truncated: !sawAllChildren || rowsTruncated,
+    complete: complete && !rowsTruncated,
   };
 }

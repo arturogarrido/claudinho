@@ -145,21 +145,59 @@ describe('shared standings fetch (F5 PERF-4)', () => {
       }) as FetchImpl,
     });
     await expect(adapter.fetchStandings()).rejects.toBeInstanceOf(ProviderError);
-    expect((await adapter.fetchStandings()).items).toHaveLength(1);
+    expect(await adapter.fetchStandings()).toHaveLength(1);
     expect(calls).toBe(2);
   });
 
-  it('an INCOMPLETE shared parse is not cached — the next caller retries', async () => {
+  it('a stable partial parse is shared instead of refetched forever', async () => {
     let calls = 0;
     const adapter = new EspnAdapter({
       fetchImpl: (async () => {
         calls += 1;
-        return okJson(calls === 1 ? { children: [{ name: 'Group A' }] } : STANDINGS);
+        return okJson({
+          children: [
+            ...STANDINGS.children,
+            {
+              name: 'Group B',
+              standings: {
+                entries: [
+                  {
+                    team: { id: 'bad', abbreviation: 'BAD', displayName: 'Bad Row' },
+                    stats: [],
+                  },
+                ],
+              },
+            },
+          ],
+        });
       }) as FetchImpl,
     });
-    expect((await adapter.fetchStandings()).complete).toBe(false);
-    expect((await adapter.fetchStandings()).complete).toBe(true);
-    expect(calls).toBe(2);
+    expect(await adapter.fetchStandings()).toHaveLength(2);
+    expect(await adapter.fetchGroupMap()).toEqual({ MEX: 'A' });
+    expect(await adapter.fetchStandings()).toHaveLength(2);
+    expect(calls).toBe(1);
+  });
+
+  it('rejects standings bytes that contain no usable row', async () => {
+    const adapter = new EspnAdapter({
+      fetchImpl: (async () =>
+        okJson({
+          children: [
+            {
+              name: 'Group A',
+              standings: {
+                entries: [
+                  {
+                    team: { id: '999', abbreviation: 'BAD', displayName: 'Bad Row' },
+                    stats: [],
+                  },
+                ],
+              },
+            },
+          ],
+        })) as FetchImpl,
+    });
+    await expect(adapter.fetchStandings()).rejects.toMatchObject({ kind: 'parse' });
   });
 });
 

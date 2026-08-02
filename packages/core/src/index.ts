@@ -47,19 +47,11 @@ export { allTeams, lookupTeam, type TeamInfo, type TeamLookup } from './teams';
 export { computeStandings } from './standings';
 export type { StandingRow, GroupStandings } from './standings';
 
-export {
-  completeProviderItems,
-  providerBatch,
-  type ProviderAdapter,
-  type ProviderBatch,
-  type ProviderCapabilities,
-  type ProviderResult,
-} from './adapters/types';
+export type { ProviderAdapter, ProviderCapabilities } from './adapters/types';
 export {
   EspnAdapter,
   mapEspnEvent,
   parseStandings,
-  parseStandingsBatch,
   ProviderError,
 } from './adapters/espn';
 export type { EspnAdapterOptions, MapContext, ProviderErrorKind } from './adapters/espn';

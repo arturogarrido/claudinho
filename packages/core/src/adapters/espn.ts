@@ -12,12 +12,7 @@
 import type { GroupStandings } from '../standings';
 import { type MapContext, parseEspnEvent, parseEspnEvents, parseEspnStandings } from '../trust/espn';
 import type { Match } from '../types';
-import {
-  type ProviderAdapter,
-  type ProviderBatch,
-  type ProviderCapabilities,
-  providerBatch,
-} from './types';
+import type { ProviderAdapter, ProviderCapabilities } from './types';
 
 export type { MapContext };
 
@@ -107,14 +102,22 @@ export function mapEspnEvent(ev: unknown, ctx: MapContext = {}): Match | undefin
 
 /** Project an ESPN standings payload onto group tables. Exported for tests. */
 export function parseStandings(data: unknown): GroupStandings[] {
-  const parsed = parseEspnStandings(data);
-  return parsed.complete ? [...parsed.items] : [];
+  return [...parseEspnStandings(data).items];
 }
 
-/** Standings plus the boundary's completeness verdict, used by the adapter. */
-export function parseStandingsBatch(data: unknown): ProviderBatch<GroupStandings> {
-  const parsed = parseEspnStandings(data);
-  return providerBatch(parsed.items, parsed.complete);
+/**
+ * A readable prefix is usable provider data; an unreadable payload with no
+ * usable records is a parse failure, not an authoritative empty answer.
+ */
+function usableProviderItems<T>(
+  kind: 'scoreboard' | 'standings',
+  parsed: { readonly items: readonly T[]; readonly complete: boolean },
+  hasUsableRecord = parsed.items.length > 0,
+): T[] {
+  if (!parsed.complete && !hasUsableRecord) {
+    throw new ProviderError(`ESPN ${kind} payload had no readable records`, 'parse');
+  }
+  return [...parsed.items];
 }
 
 export interface EspnAdapterOptions {
@@ -143,7 +146,7 @@ export class EspnAdapter implements ProviderAdapter {
    * of twice, and a long-lived MCP server stays fresh (short TTL). A rejected
    * fetch clears the slot — a transient failure is never cached.
    */
-  private standingsShared?: { at: number; promise: Promise<ProviderBatch<GroupStandings>> };
+  private standingsShared?: { at: number; promise: Promise<GroupStandings[]> };
 
   /**
    * The most recent request failure (best-effort under concurrency; cleared
@@ -155,11 +158,11 @@ export class EspnAdapter implements ProviderAdapter {
 
   constructor(private readonly opts: EspnAdapterOptions = {}) {}
 
-  async fetchByDate(dateISO: string): Promise<ProviderBatch<Match>> {
+  async fetchByDate(dateISO: string): Promise<Match[]> {
     return this.fetchScoreboard(toEspnDate(dateISO));
   }
 
-  async fetchWindow(startDate: string, endDate: string): Promise<ProviderBatch<Match>> {
+  async fetchWindow(startDate: string, endDate: string): Promise<Match[]> {
     return this.fetchScoreboard(`${toEspnDate(startDate)}-${toEspnDate(endDate)}`);
   }
 
@@ -169,9 +172,9 @@ export class EspnAdapter implements ProviderAdapter {
    * is a fallback for window-less callers — the domain `getLiveMatches` wraps a
    * ±1-day window around this to catch boundary-crossing matches. Prefer it.
    */
-  async fetchLive(): Promise<ProviderBatch<Match>> {
+  async fetchLive(): Promise<Match[]> {
     const today = await this.fetchScoreboard();
-    return providerBatch(today.filter((m) => isLive(m.status)), today.complete);
+    return today.filter((m) => isLive(m.status));
   }
 
   /** Standings endpoint URL (lives under apis/v2, not site/v2; derived from base). */
@@ -181,36 +184,36 @@ export class EspnAdapter implements ProviderAdapter {
   }
 
   /** The shared standings fetch (see {@link standingsShared}). */
-  private sharedStandings(): Promise<ProviderBatch<GroupStandings>> {
+  private sharedStandings(): Promise<GroupStandings[]> {
     const now = Date.now();
     if (this.standingsShared && now - this.standingsShared.at < STANDINGS_SHARE_MS) {
       return this.standingsShared.promise;
     }
-    const promise = this.get(this.standingsUrl()).then((d) => parseStandingsBatch(d));
+    const promise = this.get(this.standingsUrl()).then((d) => {
+      const parsed = parseEspnStandings(d);
+      return usableProviderItems<GroupStandings>(
+        'standings',
+        parsed,
+        parsed.items.some((table) => table.rows.length > 0),
+      );
+    });
     this.standingsShared = { at: now, promise };
-    // Never cache a transient failure OR an unreadable partial payload: either
-    // frees the slot so the next caller retries instead of inheriting it for
-    // 30s. The fulfilled promise is still shared by concurrent callers.
-    void promise.then(
-      (batch) => {
-        if (!batch.complete && this.standingsShared?.promise === promise) {
-          this.standingsShared = undefined;
-        }
-      },
-      () => {
-        if (this.standingsShared?.promise === promise) this.standingsShared = undefined;
-      },
-    );
+    // Never cache a transient failure: a rejected fetch frees the slot so the
+    // next caller retries instead of inheriting it for 30s. A fulfilled parse,
+    // including one that omitted malformed rows, is stable for these bytes.
+    void promise.catch(() => {
+      if (this.standingsShared?.promise === promise) this.standingsShared = undefined;
+    });
     return promise;
   }
 
   /**
    * Authoritative, cumulative group tables from the standings endpoint. Throws
-   * on fetch failure and marks an unreadable/partial parse incomplete (the
-   * caller decides the fallback). Group-stage only: non-group `children` are
-   * filtered out by {@link parseStandingsBatch}.
+   * on fetch failure. Group-stage only: non-group `children` are filtered out
+   * by {@link parseStandings}; malformed rows are omitted without hiding their
+   * readable siblings.
    */
-  async fetchStandings(): Promise<ProviderBatch<GroupStandings>> {
+  async fetchStandings(): Promise<GroupStandings[]> {
     return this.sharedStandings();
   }
 
@@ -226,9 +229,8 @@ export class EspnAdapter implements ProviderAdapter {
     if (this.groupMap && !force) return this.groupMap;
     try {
       const tables = await this.sharedStandings();
-      if (!tables.complete) return {};
       const map: Record<string, string> = {};
-      for (const t of tables.items) for (const r of t.rows) map[r.team.code] = t.group;
+      for (const t of tables) for (const r of t.rows) map[r.team.code] = t.group;
       this.groupMap = map;
       return map;
     } catch {
@@ -237,7 +239,7 @@ export class EspnAdapter implements ProviderAdapter {
     }
   }
 
-  private async fetchScoreboard(dates?: string): Promise<ProviderBatch<Match>> {
+  private async fetchScoreboard(dates?: string): Promise<Match[]> {
     const base = this.opts.baseUrl ?? DEFAULT_BASE;
     const url = new URL(`${base}/scoreboard`);
     url.searchParams.set('limit', '300');
@@ -257,7 +259,7 @@ export class EspnAdapter implements ProviderAdapter {
     // decides any of that — which is the point, since every duplicated rule was
     // a place for the two copies to drift.
     const parsed = parseEspnEvents(data, { groupByTeam });
-    return providerBatch(parsed.items, parsed.complete);
+    return usableProviderItems<Match>('scoreboard', parsed);
   }
 
   private async get(url: string): Promise<unknown> {
