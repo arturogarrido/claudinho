@@ -285,3 +285,62 @@ describe('a MarketSignal survives the cache round trip unchanged', () => {
     expect(r.value.source).toBe('');
   });
 });
+
+describe('winnerCode: one rule, both paths', () => {
+  // This is the field the bracket ADVANCES on. I first wrote the agreement
+  // check in the ESPN parser only, which left the cache path accepting `0-2`
+  // with the loser named — the exact asymmetry this file exists to catch, in
+  // the fix for another asymmetry. It lives in `sealMatch` now, so the table
+  // below is asserted against BOTH entry points.
+  const cached = (over: Record<string, unknown>) =>
+    parseCachedMatch({
+      id: '760415', stage: 'R32', kickoff: '2026-06-29T19:00:00.000Z', status: 'FT',
+      home: { code: 'GER', name: 'Germany' }, away: { code: 'PAR', name: 'Paraguay' },
+      updatedAt: '2026-06-29T21:00:00.000Z', ...over,
+    });
+  const live = (h: Record<string, unknown>, a: Record<string, unknown>) =>
+    parseEspnEvent({
+      id: '760415', date: '2026-06-29T19:00Z', season: { slug: 'round-of-32' },
+      status: { type: { name: 'STATUS_FULL_TIME', state: 'post', completed: true } },
+      competitions: [{ competitors: [
+        { homeAway: 'home', team: { id: '1', abbreviation: 'GER', displayName: 'Germany' }, ...h },
+        { homeAway: 'away', team: { id: '2', abbreviation: 'PAR', displayName: 'Paraguay' }, ...a },
+      ] }],
+    });
+  const code = (r: ReturnType<typeof parseCachedMatch>) =>
+    r.kind === 'valid' ? r.value.winnerCode : `<${r.kind}>`;
+
+  it('keeps a winner the result agrees with — including on penalties', () => {
+    expect(code(cached({ score: { home: 2, away: 0 }, winnerCode: 'GER' }))).toBe('GER');
+    expect(code(live({ winner: true, score: '2' }, { winner: false, score: '0' }))).toBe('GER');
+    expect(code(cached({
+      score: { home: 1, away: 1 }, shootout: { home: 3, away: 4 }, winnerCode: 'PAR',
+    }))).toBe('PAR');
+    expect(code(live(
+      { winner: false, score: '1', shootoutScore: 3 },
+      { winner: true, score: '1', shootoutScore: 4 },
+    ))).toBe('PAR');
+  });
+
+  it('advances nobody when the result contradicts the claim — on EITHER path', () => {
+    // regulation says the other side won
+    expect(code(cached({ score: { home: 0, away: 2 }, winnerCode: 'GER' }))).toBeUndefined();
+    expect(code(live({ winner: true, score: '0' }, { winner: false, score: '2' }))).toBeUndefined();
+    // penalties cannot overturn a DECISIVE regulation score
+    expect(code(cached({
+      score: { home: 2, away: 0 }, shootout: { home: 1, away: 4 }, winnerCode: 'PAR',
+    }))).toBeUndefined();
+    // no score at all is nothing to agree with
+    expect(code(cached({ winnerCode: 'GER' }))).toBeUndefined();
+    expect(code(live({ winner: true }, { winner: false }))).toBeUndefined();
+    // a team that is not playing
+    expect(code(cached({ score: { home: 2, away: 0 }, winnerCode: 'BRA' }))).toBeUndefined();
+  });
+
+  it('a level score means penalties in a knockout, and a contradiction in a group', () => {
+    expect(code(cached({ score: { home: 1, away: 1 }, winnerCode: 'GER' }))).toBe('GER');
+    expect(code(cached({
+      stage: 'GROUP', score: { home: 1, away: 1 }, winnerCode: 'GER',
+    }))).toBeUndefined();
+  });
+});

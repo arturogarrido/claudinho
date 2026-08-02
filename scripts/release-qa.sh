@@ -159,7 +159,7 @@ if [ -n "${CLI:-}" ]; then
 elif [ -f "$CORE_DIST" ]; then
   GATE="$(node --input-type=module -e "
 import { marketSignalRendersFor, buildMarketSignal, normalizeOutcomes } from 'file://$CORE_DIST';
-const resolved = { id:'g', stage:'R32', kickoff:'2026-06-30T18:00Z', venue:'X',
+const resolved = { id:'760901', stage:'R32', kickoff:'2026-06-30T18:00Z', venue:'X',
   home:{code:'MEX',name:'Mexico',flag:'🇲🇽'}, away:{code:'ECU',name:'Ecuador',flag:'🇪🇨'},
   status:'SCHEDULED', updatedAt:'2026-06-30T00:00Z' };
 const sig = buildMarketSignal({ match: resolved, source:'fake', asOf:'2026-06-30T11:55Z',

@@ -182,9 +182,7 @@ export function ageMs(state: CacheState | undefined, now = Date.now()): number {
  * live write must not make stale fixtures look fresh (or vice-versa).
  */
 export function fixturesAgeMs(state: CacheState | undefined, now = Date.now()): number {
-  if (!state?.fixturesUpdatedAt) return Infinity;
-  const t = Date.parse(state.fixturesUpdatedAt);
-  return Number.isFinite(t) ? now - t : Infinity;
+  return stampAgeMs(state?.fixturesUpdatedAt, now);
 }
 
 /**
@@ -197,7 +195,9 @@ function lockAgeMs(now = Date.now()): number {
   try {
     const contents = readFileSync(lp, 'utf8');
     const written = Number.parseInt(contents.split(/\s+/)[1] ?? '', 10);
-    if (Number.isFinite(written)) return now - written;
+    // Through the shared guard: a lock written in the future never went
+    // stale, so it held the refresher silent forever.
+    if (Number.isFinite(written)) return stampAgeMs(new Date(written).toISOString(), now);
   } catch {
     return Infinity; // no lock
   }

@@ -174,12 +174,32 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   // A shootout never survives without the regulation score it decorates.
   const shootout = score ? sealScorePair(parts.shootout) : undefined;
 
-  // Only one of the two teams can have won this match. Passed through as free
-  // text, `winnerCode` named whoever the payload liked — and it is the field the
-  // bracket advances on.
+  // `winnerCode` is the field the bracket ADVANCES a team on, so it gets the
+  // strictest reading in this file, and it gets it HERE so the live feed and the
+  // cache file are held to one rule. (I first wrote this check in the ESPN
+  // parser, which left the cache path accepting `0-2` with the loser named — the
+  // exact path asymmetry this module exists to make impossible.)
+  //
+  // A claim is kept only when the RESULT agrees with it:
+  //   - no score at all        -> nothing to agree with; advance nobody
+  //   - decisive regulation    -> the score decides, penalties cannot override it
+  //   - level + penalties      -> penalties decide, and must themselves be decisive
+  //   - level, no penalties    -> a KNOCKOUT tie that finished level was settled
+  //     somehow, and the flag is the only record of it, so it is not
+  //     contradicted; a level GROUP game has no winner at all, so it is.
   const claimedWinner = teamCode(parts.winnerCode, '');
-  const winnerCode =
-    claimedWinner === home.code || claimedWinner === away.code ? claimedWinner : undefined;
+  const claimedSide =
+    claimedWinner === home.code ? 'home' : claimedWinner === away.code ? 'away' : undefined;
+  let winnerCode: string | undefined;
+  if (claimedSide && score) {
+    const level = score.home === score.away;
+    const decider = level ? shootout : score;
+    if (decider && decider.home !== decider.away) {
+      if ((decider.home > decider.away ? 'home' : 'away') === claimedSide) winnerCode = claimedWinner;
+    } else if (level && !shootout && stage !== 'GROUP' && stage !== 'FRIENDLY') {
+      winnerCode = claimedWinner;
+    }
+  }
 
   // SLICE BEFORE MAP: the record count is bounded by the caller, the events
   // inside ONE record were not, and a single match carrying 100k of them cost

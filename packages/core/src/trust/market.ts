@@ -149,4 +149,3 @@ export function parseCachedMarketSignal(
 ): ParseResult<MarketSignal> {
   return sealMarketSignal(raw, options);
 }
-

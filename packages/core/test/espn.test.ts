@@ -127,6 +127,12 @@ describe('mapEspnEvent', () => {
   it('maps winnerCode from ESPN competitor.winner (e.g. penalties)', () => {
     const pens = {
       ...finished,
+      // A KNOCKOUT tie: a level score at FT means it was settled somehow, and
+      // the winner flag is the only record of it. In a GROUP game the same
+      // shape is a contradiction — nobody wins a drawn group match — which is
+      // why the rule is stage-aware and why this fixture cannot stay
+      // `group-stage` while calling itself a penalty result.
+      season: { year: 2026, slug: 'round-of-32' },
       competitions: [
         {
           ...finished.competitions[0],

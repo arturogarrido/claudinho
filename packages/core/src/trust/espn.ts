@@ -247,27 +247,14 @@ export function parseEspnEvent(raw: unknown, ctx: MapContext = {}): ParseResult<
       ? { home: hShoot, away: aShoot }
       : undefined;
 
-  // EXACTLY one winner, and one the RESULT agrees with. Checking home first
-  // meant a payload claiming both teams won advanced the home side out of a
-  // contradiction; not checking the score at all meant a payload marking the
-  // losing side advanced the LOSER — `winnerCode` is the field the bracket
-  // moves a team through on, so a flag that disagrees with the scoreline beside
-  // it is not a fact, it is two claims and we cannot pick between them.
+  // EXACTLY one competitor may claim the win. Whether that claim AGREES with
+  // the result is decided in `sealMatch`, so the live and cache paths share one
+  // rule — putting it here is what left the cache path accepting a winnerCode
+  // the scoreline contradicts.
   let winnerCode: string | undefined;
   if (isFinished(status)) {
     const winners = [homeRaw, awayRaw].filter((c) => boolFlag(c.winner) === true);
-    if (winners.length === 1) {
-      const claimed = winners[0] === homeRaw ? 'home' : 'away';
-      // Penalties decide a level regulation score; otherwise the score does.
-      const decider = shootout ?? (hasScore ? { home: hs as number, away: as as number } : undefined);
-      const beaten =
-        decider === undefined || decider.home === decider.away
-          ? undefined
-          : decider.home > decider.away
-            ? 'away'
-            : 'home';
-      if (beaten !== claimed) winnerCode = claimed === 'home' ? home.code : away.code;
-    }
+    if (winners.length === 1) winnerCode = winners[0] === homeRaw ? home.code : away.code;
   }
 
   const venue = comp?.venue as { fullName?: unknown; address?: Record<string, unknown> } | undefined;
