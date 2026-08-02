@@ -125,6 +125,7 @@ describe('sanitizeMatchStrings (statusline cache mirror)', () => {
       home: { code: `M${ESC}X`, name: `${ESC}[31mMexico`, flag: '🇲🇽' },
       away: { code: 'RSA', name: 'South Africa' },
       status: 'LIVE',
+      score: { home: 1, away: 0 },
       updatedAt: '2026-06-11T20:00Z',
     });
     expect(clean.home.name).toBe('[31mMexico');
@@ -186,26 +187,32 @@ describe('sanitizeMatchStrings — numeric fields (score/shootout/minute)', () =
     expect(clean.minute).toBe(67);
   });
 
-  it('drops strings smuggled into numeric slots (they would print verbatim)', () => {
+  it('refuses a malformed required score and drops an optional malformed minute', () => {
+    expect(
+      sanitizeMatchStrings({
+        ...base,
+        score: { home: '1\nFAKE_SCORE', away: 0 },
+      } as unknown as Match),
+    ).toBeUndefined();
     const clean = sanitized({
       ...base,
-      score: { home: '1\nFAKE_SCORE', away: 0 },
+      score: { home: 1, away: 0 },
       minute: '67\nFAKE_MINUTE',
     } as unknown as Match);
-    expect(clean.score).toBeUndefined();
+    expect(clean.score).toEqual({ home: 1, away: 0 });
     expect(clean.minute).toBeUndefined();
   });
 
-  it('drops NaN/Infinity and a shootout whose score was dropped', () => {
-    const clean = sanitized({
-      ...base,
-      score: { home: Number.NaN, away: 0 },
-      shootout: { home: 3, away: 4 },
-      minute: Number.POSITIVE_INFINITY,
-    } as Match);
-    expect(clean.score).toBeUndefined();
-    expect(clean.shootout).toBeUndefined(); // never a shootout without its score
-    expect(clean.minute).toBeUndefined();
+  it('refuses NaN in a required score and never preserves its shootout', () => {
+    expect(
+      sanitizeMatchStrings({
+        ...base,
+        stage: 'R32',
+        score: { home: Number.NaN, away: 0 },
+        shootout: { home: 3, away: 4 },
+        minute: Number.POSITIVE_INFINITY,
+      } as Match),
+    ).toBeUndefined();
   });
 });
 
@@ -248,7 +255,7 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
   it('rejects a wrong-TYPED teamCode instead of dropping the field (fail-open)', () => {
     // Dropping the field skipped mapsCleanly's identity check, so an array
     // teamCode passed where the plain wrong string 'RSA' was refused.
-    const clean = sanitizeMarketSignal({
+    const clean = trySanitizeMarketSignal({
       ...base,
       outcomes: [
         { kind: 'home', label: 'Mexico', teamCode: ['RSA'], probability: 0.5 },
@@ -256,7 +263,7 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
         { kind: 'away', label: 'Ecuador', teamCode: 'ECU', probability: 0.2 },
       ],
     } as unknown as Parameters<typeof sanitizeMarketSignal>[0]);
-    expect(clean.outcomes.some((o) => o.kind === 'home')).toBe(false);
+    expect(clean).toBeUndefined();
   });
 
   it('DERIVES staleness rather than trusting the file', () => {
@@ -286,8 +293,8 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
     expect(CONTROLS.test(outcome?.teamCode ?? '')).toBe(false);
   });
 
-  it('drops outcomes with a poisoned NUMERIC probability or unknown kind (rule: validate by runtime type)', () => {
-    const clean = sanitizeMarketSignal({
+  it('refuses a set carrying a poisoned probability or unknown outcome kind', () => {
+    const clean = trySanitizeMarketSignal({
       ...base,
       outcomes: [
         { kind: 'home', teamCode: 'MEX', label: 'ok', probability: 0.5 },
@@ -297,8 +304,7 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
         { kind: 'home', teamCode: 'MEX', label: 'string prob', probability: '0.9' as never },
       ],
     });
-    expect(clean.outcomes).toHaveLength(1);
-    expect(clean.outcomes[0]?.label).toBe('ok');
+    expect(clean).toBeUndefined();
   });
 
   it('reliability booleans FAIL CLOSED — only an explicit false is trusted', () => {
@@ -381,14 +387,13 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
       fetchedAt: 'nope',
       liquidity: Number.POSITIVE_INFINITY,
       volume24h: Number.NaN,
-      outcomes: undefined as never,
       favorite: { kind: 'home', probability: Number.NaN, strength: 'strong' } as never,
     });
     expect(clean.asOf).toBe('');
     expect(clean.fetchedAt).toBe('');
     expect(clean.liquidity).toBeUndefined();
     expect(clean.volume24h).toBeUndefined();
-    expect(clean.outcomes).toEqual([]);
-    expect(clean.favorite).toBeUndefined();
+    expect(clean.outcomes).toEqual(base.outcomes);
+    expect(clean.favorite?.kind).toBe('home');
   });
 });

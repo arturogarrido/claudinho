@@ -42,22 +42,24 @@ describe('a shootout is kept while it is being TAKEN', () => {
     expect(m.shootout).toEqual({ home: 3, away: 3 });
   });
 
-  it('drops a FINISHED shootout that is level — that one really cannot exist', () => {
-    const m = sealed({ status: 'FT', score: { home: 1, away: 1 }, shootout: { home: 3, away: 3 } });
-    expect(m.shootout).toBeUndefined();
+  it('refuses a FINISHED shootout that is level — that one really cannot exist', () => {
+    expect(
+      seal({ status: 'FT', score: { home: 1, away: 1 }, shootout: { home: 3, away: 3 } }).kind,
+    ).toBe('malformed');
   });
 
   it('and does not then advance anyone on the strength of the field it refused', () => {
     // The subtle half: dropping the contradictory shootout leaves a level FT
     // knockout, which the winner rule treats as "settled some other way" and
     // honours. Tested against what was CLAIMED, so it does not fall through.
-    const m = sealed({
-      status: 'FT',
-      score: { home: 1, away: 1 },
-      shootout: { home: 3, away: 3 },
-      winnerCode: 'GER',
-    });
-    expect(m.winnerCode).toBeUndefined();
+    expect(
+      seal({
+        status: 'FT',
+        score: { home: 1, away: 1 },
+        shootout: { home: 3, away: 3 },
+        winnerCode: 'GER',
+      }).kind,
+    ).toBe('malformed');
   });
 
   it('keeps a shootout in a NON-World-Cup cup tie (the CLAUDINHO_COMPETITION seam)', () => {
@@ -79,12 +81,17 @@ describe('a shootout is kept while it is being TAKEN', () => {
   });
 
   it('still refuses penalties where they cannot happen', () => {
-    expect(sealed({ status: 'FT', score: { home: 2, away: 0 }, shootout: { home: 4, away: 3 } }).shootout)
-      .toBeUndefined(); // not level
     expect(
-      sealed({ stage: 'GROUP', status: 'FT', score: { home: 1, away: 1 }, shootout: { home: 4, away: 3 } })
-        .shootout,
-    ).toBeUndefined(); // a World Cup group draw is a final result
+      seal({ status: 'FT', score: { home: 2, away: 0 }, shootout: { home: 4, away: 3 } }).kind,
+    ).toBe('malformed'); // not level
+    expect(
+      seal({
+        stage: 'GROUP',
+        status: 'FT',
+        score: { home: 1, away: 1 },
+        shootout: { home: 4, away: 3 },
+      }).kind,
+    ).toBe('malformed'); // a World Cup group draw is a final result
   });
 });
 
@@ -147,6 +154,7 @@ describe('an unrecognized status drops the fixture rather than inventing one', (
       [{ type: { name: 'STATUS_CANCELED', state: 'post' } }, 'CANCELLED'],
     ];
     for (const [status, expected] of shapes) {
+      const scored = expected === 'FT' || expected === 'LIVE';
       const r = parseEspnEvent({
         id: '760415',
         date: '2026-06-29T19:00Z',
@@ -155,8 +163,16 @@ describe('an unrecognized status drops the fixture rather than inventing one', (
         competitions: [
           {
             competitors: [
-              { homeAway: 'home', team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' } },
-              { homeAway: 'away', team: { id: '467', abbreviation: 'RSA', displayName: 'South Africa' } },
+              {
+                homeAway: 'home',
+                ...(scored ? { score: '1' } : {}),
+                team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
+              },
+              {
+                homeAway: 'away',
+                ...(scored ? { score: '0' } : {}),
+                team: { id: '467', abbreviation: 'RSA', displayName: 'South Africa' },
+              },
             ],
           },
         ],

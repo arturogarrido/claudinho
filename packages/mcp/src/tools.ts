@@ -14,7 +14,6 @@ import {
   formatBracketList,
   getBracket,
   getLiveMatches,
-  getMarketSignal,
   cacheableKeys,
   getMarketSignals,
   resolvedValues,
@@ -168,6 +167,11 @@ interface MarketMemEntry {
   at: number;
   signal: MarketSignal | null;
 }
+interface MarketSignalsResult {
+  readonly signals: Map<string, MarketSignal>;
+  readonly complete: boolean;
+}
+type MarketProviderFactory = (source?: string) => MarketProvider;
 const marketMem = new Map<string, MarketMemEntry>();
 const MEM_POSITIVE_TTL = 10 * 60_000;
 const MEM_NEGATIVE_TTL = 3 * 60_000;
@@ -183,16 +187,23 @@ function memKey(competition: string, id: string): string {
  * Market signals with an in-process cache + fetch deadline so optional
  * enrichment never slows get_today/get_match. Injected providers bypass it.
  */
-async function cachedMarketSignals(
+export async function cachedMarketSignals(
   args: CommonOpts,
   matches: readonly Match[],
-): Promise<Map<string, MarketSignal>> {
-  if (args.marketProvider) return resolvedValues(await getMarketSignals(args.marketProvider, matches));
+  providerFactory: MarketProviderFactory = makeMarketProvider,
+): Promise<MarketSignalsResult> {
+  if (args.marketProvider) {
+    const batch = await getMarketSignals(args.marketProvider, matches);
+    return { signals: resolvedValues(batch), complete: batch.complete };
+  }
   const source = resolveMarketSource();
   if (source !== 'polymarket') {
-    return resolvedValues(
-      await getMarketSignals(makeMarketProvider(source), matches, DEFAULT_ON_MARKET_OPTS),
+    const batch = await getMarketSignals(
+      providerFactory(source),
+      matches,
+      DEFAULT_ON_MARKET_OPTS,
     );
+    return { signals: resolvedValues(batch), complete: batch.complete };
   }
   const competition = resolveCompetition();
   const now = Date.now();
@@ -214,13 +225,15 @@ async function cachedMarketSignals(
       miss.push(m);
     }
   }
+  let complete = true;
   if (miss.length > 0) {
     const batch = await getMarketSignals(
-      makeMarketProvider('polymarket'),
+      providerFactory('polymarket'),
       miss,
       DEFAULT_ON_MARKET_OPTS,
     );
     const fetched = resolvedValues(batch);
+    complete = batch.complete;
     // Cache only ids whose verdict may be remembered (see `isCacheable`): a
     // conclusion drawn from a payload we READ, including a stable ambiguity.
     // A shape we could not read and a deadline that expired are retried.
@@ -229,29 +242,35 @@ async function cachedMarketSignals(
     }
     for (const [id, s] of fetched) result.set(id, s);
   }
-  return result;
+  return { signals: result, complete };
 }
 
-/** Strict-gated market payloads keyed by matchId, or undefined when none/off. */
+/** Strict-gated market payloads plus whether every relevant match was checked. */
 async function reliableMarketData(
   args: CommonOpts,
   matches: readonly Match[],
-): Promise<Record<string, ReturnType<typeof marketData>> | undefined> {
-  if (!marketsEnabled()) return undefined;
+): Promise<{
+  data: Record<string, ReturnType<typeof marketData>> | undefined;
+  complete: boolean;
+}> {
+  if (!marketsEnabled()) return { data: undefined, complete: true };
   const now = args.now ?? new Date();
   // Market reads are pre-match/in-play artifacts — never fetch/show for
   // finished matches (a resolved "favorite" reads as a bug, not information).
   const relevant = matches.filter((m) => marketRelevant(m, now));
-  if (relevant.length === 0) return undefined;
-  const signals = await cachedMarketSignals(args, relevant);
+  if (relevant.length === 0) return { data: undefined, complete: true };
+  const result = await cachedMarketSignals(args, relevant);
   const out: Record<string, ReturnType<typeof marketData>> = {};
   for (const m of relevant) {
-    const s = signals.get(m.id);
+    const s = result.signals.get(m.id);
     if (s && isReliableMarketSignal(s, { now }) && marketSignalRendersFor(m, s)) {
       out[m.id] = marketData(s);
     }
   }
-  return Object.keys(out).length > 0 ? out : undefined;
+  return {
+    data: Object.keys(out).length > 0 ? out : undefined,
+    complete: result.complete,
+  };
 }
 
 /** Flavor from the call arg, else the server env, else the default (full). */
@@ -283,7 +302,10 @@ export async function toolGetToday(
   let text = `Matches on ${date}:\n${matchList(todays, 'No matches scheduled.', opts)}`;
   // Degraded ⇒ the live overlay failed; these are static fixtures with no live scores.
   if (degraded) text += '\n\n(Live scores unavailable — showing the bundled schedule.)';
-  const marketSignals = await reliableMarketData(args, todays);
+  const market = await reliableMarketData(args, todays);
+  if (!market.complete) {
+    text += '\n\n(Market data unavailable or incomplete — not all fixtures were checked.)';
+  }
   const shownToday = boundedRecords(todays);
   return {
     text: withDisclaimer(text, source, args.lang),
@@ -298,9 +320,10 @@ export async function toolGetToday(
       count: shownToday.total,
       truncated: shownToday.truncated,
       matches: shownToday.items,
+      marketComplete: market.complete,
       // Capped in step with `matches`: a signal keyed to a match that is no
       // longer in the payload is dead weight in model context.
-      ...(marketSignals ? { marketSignals: capSignals(marketSignals, shownToday.items) } : {}),
+      ...(market.data ? { marketSignals: capSignals(market.data, shownToday.items) } : {}),
     },
   };
 }
@@ -342,20 +365,27 @@ export async function toolGetMatch(
   const opts = fmtOpts(args);
   const now = args.now ?? new Date();
   let marketSignal: MarketSignal | undefined;
+  let marketComplete = true;
   if (marketsEnabled() && marketRelevant(match, now)) {
-    const s = (await cachedMarketSignals(args, [match])).get(match.id);
+    const market = await cachedMarketSignals(args, [match]);
+    marketComplete = market.complete;
+    const s = market.signals.get(match.id);
     if (s && isReliableMarketSignal(s, { now }) && marketSignalRendersFor(match, s)) marketSignal = s;
   }
   const base = matchLine(match, opts);
   let text = marketSignal ? `${base}\n${marketBlock(marketSignal, match).join('\n')}` : base;
   // Degraded ⇒ the live overlay failed; this is the static fixture, no live state.
   if (degraded) text += '\n\n(Live state unavailable — showing the scheduled fixture.)';
+  if (!marketComplete) {
+    text += '\n\n(Market data unavailable or incomplete — this match was not checked.)';
+  }
   return {
     text: withDisclaimer(text, liveSource, args.lang),
     data: {
       degraded,
       source: liveSource ?? null,
       match,
+      marketComplete,
       marketSignal: marketSignal ? marketData(marketSignal) : null,
     },
   };
@@ -513,10 +543,16 @@ export async function toolGetMarketSignal(
   if (args.matchId) {
     const { match } = await getMatchById(resolveAdapter(args), args.matchId);
     const relevant = match ? marketRelevant(match, now) : false;
-    const sig = match && relevant ? await getMarketSignal(provider, match) : undefined;
-    const shown = match && sig && marketDisplayable(match, sig) ? sig : undefined;
+    const batch =
+      match && relevant
+        ? await getMarketSignals(provider, [match], MARKETS_TOOL_OPTS)
+        : { results: new Map(), complete: true };
+    const sig = match ? resolvedValues(batch).get(match.id) : undefined;
+    const shown = batch.complete && match && sig && marketDisplayable(match, sig) ? sig : undefined;
     const text = !match
       ? `No match found with id ${args.matchId}.`
+      : !batch.complete
+        ? `Market data unavailable or incomplete for ${marketHeader(match, args)} — this match could not be checked.`
       : shown
         ? marketText(match, shown, args)
         : noSignalText(match, args, now);
@@ -525,6 +561,7 @@ export async function toolGetMarketSignal(
       data: {
         matchId: args.matchId,
         informationalOnly: true,
+        complete: batch.complete,
         signal: shown ? marketData(shown) : null,
       },
     };
@@ -539,12 +576,19 @@ export async function toolGetMarketSignal(
     // early FTs inside it (the static fixture's status is forever SCHEDULED).
     const { match: fixture, degraded } = await marketFixtureForTeam(resolveAdapter(args), code, now);
     const relevant = fixture ? marketRelevant(fixture, now) : false;
-    const sig = fixture && relevant ? await getMarketSignal(provider, fixture) : undefined;
-    const shown = fixture && sig && marketDisplayable(fixture, sig) ? sig : undefined;
+    const batch =
+      fixture && relevant
+        ? await getMarketSignals(provider, [fixture], MARKETS_TOOL_OPTS)
+        : { results: new Map(), complete: true };
+    const sig = fixture ? resolvedValues(batch).get(fixture.id) : undefined;
+    const shown =
+      batch.complete && fixture && sig && marketDisplayable(fixture, sig) ? sig : undefined;
     const text = !fixture
       ? degraded
         ? `Live feed unavailable — can't resolve ${code}'s next fixture right now.`
         : `No upcoming fixture found for ${code}.`
+      : !batch.complete
+        ? `Market data unavailable or incomplete for ${marketHeader(fixture, args)} — this match could not be checked.`
       : shown
         ? marketText(fixture, shown, args)
         : noSignalText(fixture, args, now);
@@ -555,6 +599,7 @@ export async function toolGetMarketSignal(
         matchId: fixture?.id ?? null,
         degraded,
         informationalOnly: true,
+        complete: batch.complete,
         signal: shown ? marketData(shown) : null,
       },
     };
@@ -574,7 +619,7 @@ export async function toolGetMarketSignal(
     );
   // Bounded: this branch serialized one object per fixture into model context.
   const shown = boundedRecords(all);
-  const text = shown.shown
+  let text = shown.shown
     ? `Market signals on ${date}:${truncationNote(shown)}\n${shown.items
         .map(({ match, signal }) => marketText(match, signal, args))
         .join('\n\n')}`
@@ -587,6 +632,9 @@ export async function toolGetMarketSignal(
       batch.complete
       ? `No reliable market signals on ${date}.`
       : `Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
+  if (shown.shown > 0 && !batch.complete) {
+    text += `\n\nMarket data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
+  }
   return {
     text: withDisclaimer(text),
     data: {
@@ -609,18 +657,18 @@ export async function toolGetMarketSignal(
 async function reliableSignalMap(
   args: CommonOpts,
   matches: readonly Match[],
-): Promise<Map<string, MarketSignal>> {
-  if (!marketsEnabled()) return new Map();
+): Promise<MarketSignalsResult> {
+  if (!marketsEnabled()) return { signals: new Map(), complete: true };
   const now = args.now ?? new Date();
   const relevant = matches.filter((m) => marketRelevant(m, now));
-  if (relevant.length === 0) return new Map();
-  const signals = await cachedMarketSignals(args, relevant);
+  if (relevant.length === 0) return { signals: new Map(), complete: true };
+  const result = await cachedMarketSignals(args, relevant);
   const out = new Map<string, MarketSignal>();
   for (const m of relevant) {
-    const s = signals.get(m.id);
+    const s = result.signals.get(m.id);
     if (s && isReliableMarketSignal(s, { now }) && marketDisplayable(m, s)) out.set(m.id, s);
   }
-  return out;
+  return { signals: out, complete: result.complete };
 }
 
 interface ShareArgs extends CommonOpts {
@@ -680,6 +728,7 @@ function shareResult(
           marketData(s),
         ]),
       ),
+      marketComplete: input.marketComplete ?? true,
     },
   };
 }
@@ -696,8 +745,10 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
   // Per-call opt-out: `includeMarkets: false` skips the provider ENTIRELY (no
   // fetch) and yields no market data — not merely suppressed rendering. The env
   // opt-out (CLAUDINHO_MARKETS=off) is handled inside reliableSignalMap.
-  const signalsFor = (ms: readonly Match[]): Promise<Map<string, MarketSignal>> =>
-    args.includeMarkets === false ? Promise.resolve(new Map()) : reliableSignalMap(args, ms);
+  const signalsFor = (ms: readonly Match[]): Promise<MarketSignalsResult> =>
+    args.includeMarkets === false
+      ? Promise.resolve({ signals: new Map(), complete: true })
+      : reliableSignalMap(args, ms);
 
   // live: matches in play right now (no market enrichment, matching the CLI).
   if (args.live) {
@@ -810,6 +861,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
   if (args.matchId) {
     const { match, degraded, source } = await getMatchById(resolveAdapter(args), args.matchId);
     const matches = match ? [match] : [];
+    const market = await signalsFor(matches);
     return shareResult(
       'match',
       args.matchId,
@@ -817,7 +869,8 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       {
         title: 'Match pulse',
         matches,
-        marketSignals: await signalsFor(matches),
+        marketSignals: market.signals,
+        marketComplete: market.complete,
         source,
         degraded,
         emptyNote: `No match found with id ${args.matchId}.`,
@@ -845,6 +898,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         ? fixture.home.name
         : fixture.away.name
       : code;
+    const market = await signalsFor(matches);
     return shareResult(
       'next',
       'next',
@@ -852,7 +906,8 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       {
         title: `Next up for ${teamName}`,
         matches,
-        marketSignals: await signalsFor(matches),
+        marketSignals: market.signals,
+        marketComplete: market.complete,
         // Attribute the provider only when the overlay resolved the tie; parity
         // with get_next_fixture (a static group fixture carries no source).
         source,
@@ -874,6 +929,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
   const todays = fixturesByDate(date, all, args.tz);
   const human = formatDate(`${date}T12:00:00.000Z`, { tz: args.tz, locale: args.lang });
   const shownToday = boundedRecords(todays);
+  const market = await signalsFor(shownToday.items);
   return shareResult(
     'today',
     date,
@@ -885,7 +941,8 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       // Bounded like every other model-facing payload — a share card is
       // returned through MCP before a human ever sees it.
       matches: shownToday.items,
-      marketSignals: await signalsFor(shownToday.items),
+      marketSignals: market.signals,
+      marketComplete: market.complete,
       source,
       degraded,
       emptyNote: `No matches scheduled for ${human}.`,

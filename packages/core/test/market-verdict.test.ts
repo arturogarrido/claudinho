@@ -151,6 +151,25 @@ describe('an ambiguity is remembered — it is stable, and re-asking changes not
     expect(v.cacheable).toBe(false);
   });
 
+  it('a market-list suffix beyond the cap makes the whole event MALFORMED', async () => {
+    const filler = Array.from({ length: 254 }, (_, i) =>
+      market(`spread-${i}`, `Spread ${i}`, 0.5, { sportsMarketType: 'spread' }),
+    );
+    const v = await verdict(serving([event({}, [...LEGS, ...filler])]));
+    expect(v.kind).toBe('malformed');
+    expect(v.cacheable).toBe(false);
+    expect(v.complete).toBe(false);
+  });
+
+  it('a market missing its type discriminator is MALFORMED, not ignored', async () => {
+    const untyped = market('other', 'Other', 0.5);
+    delete (untyped as { sportsMarketType?: string }).sportsMarketType;
+    const v = await verdict(serving([event({}, [...LEGS, untyped])]));
+    expect(v.kind).toBe('malformed');
+    expect(v.cacheable).toBe(false);
+    expect(v.complete).toBe(false);
+  });
+
   it('one slug returning two events is AMBIGUOUS', async () => {
     const v = await verdict(serving([event(), event({ id: '2' })]));
     expect(v.kind).toBe('ambiguous');

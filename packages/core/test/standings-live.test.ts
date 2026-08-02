@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   getStandings,
   parseStandings,
+  parseStandingsBatch,
+  providerBatch,
   type GroupStandings,
   type ProviderAdapter,
+  type ProviderResult,
 } from '../src/index';
 
 // --- ESPN-standings-shaped fixtures (mirror the real payload shape) ---
@@ -36,13 +39,7 @@ const ESPN = {
           entry('RSA', 'South Africa', full(1, 0, 0, 1, 0, 2, 4)),
           entry('MEX', 'Mexico', full(1, 1, 0, 0, 2, 0, 1)),
           entry('KOR', 'South Korea', full(1, 1, 0, 0, 2, 1, 2)),
-          // Sparse stats + a non-finite value → both must default to 0.
-          entry('CZE', 'Czechia', [
-            stat('gamesPlayed', 1),
-            stat('points', 0),
-            stat('pointDifferential', Number.NaN),
-            stat('rank', 3),
-          ]),
+          entry('CZE', 'Czechia', full(1, 0, 0, 1, 0, 1, 3)),
         ],
       },
     },
@@ -80,22 +77,37 @@ describe('parseStandings', () => {
     expect(mex.team.flag).not.toBe(''); // emoji flag resolved
   });
 
-  it('defaults missing / non-finite stats to 0 (never NaN)', () => {
-    const cze = parseStandings(ESPN)[0]!.rows.find((r) => r.team.code === 'CZE')!;
-    expect(cze.goalDiff).toBe(0); // NaN → 0
-    expect(cze.won).toBe(0); // absent → 0
-    expect(Number.isNaN(cze.goalDiff)).toBe(false);
+  it('refuses a partial row instead of inventing zero-valued aggregates', () => {
+    const malformed = {
+      children: [
+        {
+          name: 'Group A',
+          standings: {
+            entries: [
+              entry('MEX', 'Mexico', full(1, 1, 0, 0, 2, 0, 1)),
+              entry('CZE', 'Czechia', [stat('gamesPlayed', 1), stat('rank', 2)]),
+            ],
+          },
+        },
+      ],
+    };
+    expect(parseStandings(malformed)).toEqual([]);
+    const batch = parseStandingsBatch(malformed);
+    expect(batch.complete).toBe(false);
+    expect(batch.items[0]?.rows.map((row) => row.team.code)).toEqual(['MEX']);
   });
 
   it('is total on malformed / empty input', () => {
     expect(parseStandings({})).toEqual([]);
     expect(parseStandings({ children: [] })).toEqual([]);
-    expect(parseStandings({ children: [{ name: 'Group B' }] })[0]?.rows).toEqual([]);
+    expect(parseStandings({ children: [{ name: 'Group B' }] })).toEqual([]);
   });
 });
 
 // --- getStandings (orchestration + fail-closed) ---
-function standingsAdapter(tables: GroupStandings[] | (() => never)): ProviderAdapter {
+function standingsAdapter(
+  tables: ProviderResult<GroupStandings> | (() => never),
+): ProviderAdapter {
   return {
     name: 'fake',
     capabilities: { push: false, latencyHintSec: 0 },
@@ -107,7 +119,7 @@ function standingsAdapter(tables: GroupStandings[] | (() => never)): ProviderAda
     },
     async fetchStandings() {
       if (typeof tables === 'function') tables();
-      return tables as GroupStandings[];
+      return tables as ProviderResult<GroupStandings>;
     },
   };
 }
@@ -170,6 +182,13 @@ describe('getStandings', () => {
     const r = await getStandings(boom, 'A');
     expect(r.degraded).toBe(true);
     expect(r.tables[0]?.rows.length).toBe(4);
+    expect(r.tables[0]?.rows.every((row) => row.played === 0 && row.points === 0)).toBe(true);
+  });
+
+  it('FAILS CLOSED when the provider only parsed a prefix of the table', async () => {
+    const r = await getStandings(standingsAdapter(providerBatch(TABLES, false)), 'A');
+    expect(r.degraded).toBe(true);
+    expect(r.source).toBeUndefined();
     expect(r.tables[0]?.rows.every((row) => row.played === 0 && row.points === 0)).toBe(true);
   });
 });

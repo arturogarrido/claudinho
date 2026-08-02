@@ -58,6 +58,22 @@ describe('renderPrompt — live', () => {
     expect(renderPrompt(s, { now: NOW, team: 'BRA' })).toBe("⚽ 🇧🇷 2–1 🇲🇦 70'");
   });
 
+  it('does not claim a team is absent when its record may sit past the scan cap', () => {
+    const other = Array.from({ length: 64 }, (_, i) =>
+      m(String(1000 + i), ['BRA', '🇧🇷'], ['MAR', '🇲🇦'], {
+        minute: 70,
+        score: { home: 2, away: 1 },
+      }),
+    );
+    const target = m('9999', ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], {
+      minute: 30,
+      score: { home: 0, away: 0 },
+    });
+    expect(renderPrompt(state([...other, target]), { now: NOW, team: 'MEX' })).toBe(
+      '⚽ live · syncing…',
+    );
+  });
+
   it('shows ALL live matches inline (no team filter), joined by " · "', () => {
     const s = state([
       m('1', ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], { minute: 30, score: { home: 0, away: 0 } }),
@@ -87,14 +103,14 @@ describe('renderPrompt — live', () => {
     expect(renderPrompt(s, { now: NOW })).not.toContain('67');
   });
 
-  it('degrades to the countdown on a corrupt cache (regression: blank line)', () => {
+  it('degrades to syncing on a corrupt cache during a live window', () => {
     // A corrupt cache where `live` isn't an array must NOT blank the statusline.
     const cases: unknown[] = ['not-an-array', 42, { a: 1 }, null];
     for (const bad of cases) {
       const s = { updatedAt: NOW.toISOString(), live: bad, degraded: false, source: 'espn' };
       const out = renderPrompt(s as never, { now: NOW });
       expect(out.length).toBeGreaterThan(0); // never empty
-      expect(out).toContain('in '); // fell back to a countdown
+      expect(out).toContain('live · syncing');
     }
   });
 
@@ -107,7 +123,7 @@ describe('renderPrompt — live', () => {
     };
     const out = renderPrompt(s as never, { now: NOW });
     expect(out.length).toBeGreaterThan(0);
-    expect(out).toContain('in '); // no valid live entry -> countdown
+    expect(out).toContain('live · syncing');
   });
 });
 
@@ -309,6 +325,22 @@ describe('renderPrompt — post-tournament sign-off', () => {
     expect(renderPrompt(undefined, { now: AFTER, team: 'MEX' })).toBe(TOURNAMENT_COMPLETE_LINE);
   });
 
+  it('does not sign off or count down from an incomplete live-cache scan', () => {
+    const malformed = {
+      ...state([], AFTER.toISOString()),
+      live: [
+        { status: 'LIVE', home: { code: 'MEX' }, away: { code: 'RSA' } },
+      ] as unknown as Match[],
+    };
+    expect(renderPrompt(malformed, { now: AFTER })).toBe('⚽ live · syncing…');
+    expect(renderPrompt(malformed, { now: AFTER, team: 'MEX' })).toBe(
+      '⚽ live · syncing…',
+    );
+    expect(renderPrompt(malformed, { now: AFTER, defaultCompetition: false })).toBe(
+      '⚽ live · syncing…',
+    );
+  });
+
   it('stays CTA-free on the hot path — no star, no URL (AGENTS.md invariant)', () => {
     // The statusline re-renders on every prompt forever; the star ask lives on
     // the interactive commands instead. Guard it so a future edit can't sneak
@@ -372,11 +404,11 @@ describe('statusline — bounded regardless of what the cache holds', () => {
     } as unknown as CacheState;
   }
 
-  it('stays one short line under a 500-record cache, and says how many it dropped', () => {
+  it('stays one short line under a 500-record cache, and states incomplete scanning', () => {
     const line = renderPrompt(floodedCache(500), { now: new Date('2026-06-11T20:00:00Z') });
     expect(line).not.toContain('\n');
     expect(line.length).toBeLessThan(1000);
-    expect(line).toMatch(/\+\d+$/); // the drop is announced, not silent
+    expect(line).toMatch(/\+more$/); // the drop is announced without a guessed count
   });
 
   it('caps segments even when CLAUDINHO_MAX asks for more', () => {
@@ -399,40 +431,29 @@ describe('statusline — bounded regardless of what the cache holds', () => {
  * Negative control: move the .slice() after the .map().
  */
 describe('statusline — hot-path work is bounded by the cap, not the cache size', () => {
-  function flooded(n: number): CacheState {
-    const live: Match[] = [];
-    for (let i = 0; i < n; i++) {
-      live.push(
-        m(`90${i}`, ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], {
-          status: 'LIVE',
-          score: { home: 1, away: 0 },
-          minute: 55,
-        }),
-      );
-    }
-    return {
-      updatedAt: '2026-06-11T19:59:00.000Z',
-      live,
-      degraded: false,
-    } as unknown as CacheState;
-  }
-
-  it('renders a 20,000-record cache in about the same time as a 10-record one', () => {
+  it('does not inspect records after the result cap is full', () => {
     const now = new Date('2026-06-11T20:00:00Z');
-    const small = flooded(10);
-    const huge = flooded(20_000);
-    renderPrompt(small, { now }); // warm
-    renderPrompt(huge, { now });
-
-    const time = (s: CacheState) => {
-      const t = process.hrtime.bigint();
-      renderPrompt(s, { now });
-      return Number(process.hrtime.bigint() - t) / 1e6;
-    };
-    const big = Math.min(time(huge), time(huge), time(huge));
-    // Generous absolute bound: the point is that it does NOT scale with n.
-    // Pre-fix this was ~2,500ms.
-    expect(big).toBeLessThan(150);
+    let touched = 0;
+    const live = Array.from({ length: 600 }, (_, i) => {
+      const match = m(`90${i}`, ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], {
+        score: { home: 1, away: 0 },
+        minute: 55,
+      });
+      Object.defineProperty(match, 'status', {
+        enumerable: true,
+        get() {
+          touched = Math.max(touched, i + 1);
+          return 'LIVE';
+        },
+      });
+      return match;
+    });
+    const line = renderPrompt(
+      { updatedAt: '2026-06-11T19:59:00.000Z', live, degraded: false } as CacheState,
+      { now },
+    );
+    expect(line).toContain('+more');
+    expect(touched).toBeLessThanOrEqual(64);
   });
 });
 
@@ -442,17 +463,23 @@ describe('statusline — hot-path work is bounded by the cap, not the cache size
  * not fixing the class.
  */
 describe('statusline — the FIXTURES path is bounded too', () => {
-  it('renders a 20,000-record fixtures cache inside the budget', () => {
-    const fixtures: Match[] = [];
-    for (let i = 0; i < 20_000; i++) {
-      fixtures.push(
-        m(String(900000 + i), ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], {
-          stage: 'R32',
-          status: 'SCHEDULED',
-          kickoff: '2026-06-28T19:00:00.000Z',
-        }),
-      );
-    }
+  it('stops examining fixtures after the result cap is full', () => {
+    let touched = 0;
+    const fixtures = Array.from({ length: 600 }, (_, i) => {
+      const fixture = m(String(900000 + i), ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], {
+        stage: 'R32',
+        status: 'SCHEDULED',
+        kickoff: '2026-06-28T19:00:00.000Z',
+      });
+      Object.defineProperty(fixture, 'id', {
+        enumerable: true,
+        get() {
+          touched = Math.max(touched, i + 1);
+          return String(900000 + i);
+        },
+      });
+      return fixture;
+    });
     const state = {
       updatedAt: '2026-06-11T19:59:00.000Z',
       live: [],
@@ -460,13 +487,11 @@ describe('statusline — the FIXTURES path is bounded too', () => {
       degraded: false,
     } as unknown as CacheState;
     const now = new Date('2026-06-11T20:00:00Z');
-    renderPrompt(state, { now }); // warm
-    const t = process.hrtime.bigint();
-    renderPrompt(state, { now });
-    expect(Number(process.hrtime.bigint() - t) / 1e6).toBeLessThan(150);
+    expect(renderPrompt(state, { now })).not.toBe('');
+    expect(touched).toBeLessThanOrEqual(64);
   });
 
-  it('reports the TRUE overflow count, not the post-cap one', () => {
+  it('does not claim an exact overflow after the reader cap stops the scan', () => {
     const live: Match[] = [];
     for (let i = 0; i < 500; i++) {
       live.push(
@@ -481,6 +506,6 @@ describe('statusline — the FIXTURES path is bounded too', () => {
       { updatedAt: '2026-06-11T19:59:00.000Z', live, degraded: false } as unknown as CacheState,
       { now: new Date('2026-06-11T20:00:00Z') },
     );
-    expect(line).toMatch(/\+492$/); // 500 live, 8 shown
+    expect(line).toMatch(/\+more$/);
   });
 });

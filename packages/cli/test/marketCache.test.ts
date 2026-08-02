@@ -220,4 +220,29 @@ describe('market-signals cache — malformed file must not crash a command', () 
       expect(() => readMarketCache('polymarket', 'fifa.world', NOW)).not.toThrow();
     }
   });
+
+  it('rejects an oversized cache before using any entry', () => {
+    poison({
+      source: 'polymarket',
+      competition: 'fifa.world',
+      entries: {},
+      padding: 'x'.repeat(1024 * 1024),
+    });
+    expect(readMarketCache('polymarket', 'fifa.world', NOW)).toEqual({
+      signals: new Map(),
+      checked: new Set(),
+    });
+  });
+
+  it('examines at most 256 entries from a poisoned cache', () => {
+    const entries: Record<string, unknown> = {};
+    for (let i = 0; i < 256; i++) {
+      entries[`cached-${i}`] = { fetchedAt: '2026-06-11T14:59:00Z', signal: null };
+    }
+    entries.late = { fetchedAt: '2026-06-11T14:59:00Z', signal: null };
+    poison({ source: 'polymarket', competition: 'fifa.world', entries });
+    const result = readMarketCache('polymarket', 'fifa.world', NOW);
+    expect(result.checked.size).toBe(256);
+    expect(result.checked.has('late')).toBe(false);
+  });
 });

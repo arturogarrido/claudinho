@@ -92,14 +92,11 @@ export function renderHook(
 
   const liveList = liveMatchesFromCache(state, now.getTime());
   let live: Match[] = [...liveList.items];
-  if (live.length === 0) return '';
-  // "+N" comes from the reader's BoundedList, not from a record count recomputed
-  // here. `total` is matches we sealed plus live-looking records past the point
-  // the reader stopped; a record it examined and REJECTED is in neither, which
-  // is the whole fix — 60 unreadable records used to read as "(+60 more not
-  // shown)" inside Claude's context, which is worse than on a prompt line.
-  const total = liveList.total;
-
+  if (live.length === 0) {
+    return liveList.complete
+      ? ''
+      : '[Claudinho — live football scores unavailable: cached list incomplete]';
+  }
   // Surface the user's team first, if any.
   if (team) {
     live = [...live].sort((a, b) => {
@@ -115,11 +112,15 @@ export function renderHook(
   // 2,002 lines of context. `renderPrompt` has had this cap (CLAUDINHO_MAX);
   // the hook, the surface that actually writes into the model, had none.
   const shown = live.slice(0, MAX_HOOK_MATCHES);
-  const overflow = total - shown.length;
+  const overflow = live.length - shown.length;
   const lines = shown.map((mm) => line(mm, flags)).join('\n');
   // Truncation is stated, never silent (English-only, like the rest of the
   // hook — see the ambient-surface carve-out in AGENTS.md).
-  const more = overflow > 0 ? `\n(+${overflow} more not shown)` : '';
+  const more = !liveList.complete
+    ? '\n(more live matches may not be shown)'
+    : overflow > 0
+      ? `\n(+${overflow} more not shown)`
+      : '';
   // Labelled as live context so the model treats it as ambient info, not an
   // instruction. Kept terse to minimise token cost.
   return boundContext(`[Claudinho — live football scores right now]\n${lines}`, more);

@@ -11,7 +11,13 @@
  * added later cannot forget it.
  */
 import { describe, expect, it } from 'vitest';
-import { boundResponse, MAX_RESPONSE_CHARS, toContent } from '../src/server';
+import { z } from 'zod';
+import {
+  boundResponse,
+  MAX_RESPONSE_CHARS,
+  OUTPUT_SCHEMAS,
+  toContent,
+} from '../src/server';
 
 const events = Array.from({ length: 128 }, (_, i) => ({
   type: 'GOAL', minute: i % 90, teamCode: 'MEX', player: 'A'.repeat(90),
@@ -32,12 +38,15 @@ describe('one tool response cannot flood model context', () => {
     expect(JSON.stringify(huge).length).toBeGreaterThan(MAX_RESPONSE_CHARS);
     const bounded = boundResponse(huge) as Record<string, unknown>;
     expect(JSON.stringify(bounded).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
-    // The fixtures themselves survive; only `events` is dropped. No new KEYS:
-    // a field that appears solely on large payloads fails the strict output
-    // schema of every tool that never declared it.
+    // The fixtures themselves survive; only optional `events` is dropped. The
+    // response-level metadata is declared by every tool output schema.
     expect((bounded.matches as unknown[]).length).toBeGreaterThan(0);
-    expect(Object.keys(bounded).sort()).toEqual(Object.keys(huge).sort());
+    expect(bounded).toMatchObject({
+      responseTruncated: true,
+      responseTruncation: expect.any(String),
+    });
     expect((bounded.matches as Record<string, unknown>[])[0]).not.toHaveProperty('events');
+    expect(() => z.object(OUTPUT_SCHEMAS.get_today).strict().parse(bounded)).not.toThrow();
   });
 
   it('bounds shapes that are not `matches` — bracket, standings, share', () => {
@@ -55,7 +64,46 @@ describe('one tool response cannot flood model context', () => {
     // array; slicing only arrays left it at 271 KB against a 128 KB cap.
     const wide: Record<string, string> = {};
     for (let i = 0; i < 3_000; i++) wide[`k${i}`] = 'V'.repeat(80);
-    expect(JSON.stringify(boundResponse(wide)).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
+    // Width cannot be reduced without deleting unknown schema fields. Refuse
+    // structuredContent instead of manufacturing a schema-invalid skeleton.
+    expect(boundResponse(wide)).toBeNull();
+    const out = toContent({ text: 'wide', data: wide });
+    expect(out).toMatchObject({ isError: true });
+    expect(out).not.toHaveProperty('structuredContent');
+  });
+
+  it('bounds inspection work before serialization or shrinking', () => {
+    let getterReads = 0;
+    const hostile: Record<string, unknown> = {};
+    for (let i = 0; i < 3_000; i++) {
+      Object.defineProperty(hostile, `k${i}`, {
+        enumerable: true,
+        get() {
+          getterReads += 1;
+          return 'x'.repeat(1_000);
+        },
+      });
+    }
+
+    // Accessors are refused from their descriptors, never executed by
+    // JSON.stringify or Object.entries while trying to discover the size.
+    expect(boundResponse(hostile)).toBeNull();
+    expect(getterReads).toBe(0);
+    let proxyTraps = 0;
+    const proxied = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          proxyTraps += 1;
+          return Object.prototype;
+        },
+      },
+    );
+    expect(boundResponse(proxied)).toBeNull();
+    expect(proxyTraps).toBe(0);
+    // Sparse length is still work for JSON.stringify; reject it before walking
+    // or allocating a serialized 100,000-element array.
+    expect(boundResponse({ matches: new Array(100_000) })).toBeNull();
   });
 
   it('is WIRED into the payload every tool returns', () => {
@@ -65,6 +113,8 @@ describe('one tool response cannot flood model context', () => {
       count: 60, truncated: false, matches: Array.from({ length: 60 }, (_, i) => fixture(i)) };
     const out = toContent({ text: 'x', data: huge } as never);
     expect(JSON.stringify(out.structuredContent).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
+    expect(out.structuredContent).toMatchObject({ responseTruncated: true });
+    expect(out.content[0]?.text).toContain('Optional response detail was truncated');
   });
 
   it('leaves a real response untouched', () => {
@@ -79,9 +129,9 @@ describe('one tool response cannot flood model context', () => {
  *
  * `boundResponse` used to return its last shrink attempt whether or not it fit,
  * so an adversarial payload came back at its full size — the number in the
- * constant was a wish, not a bound. A pathological shape is now cut to a
- * bounded skeleton (4 keys, depth 3, 100-char strings) which is provably under
- * budget for ANY input.
+ * constant was a wish, not a bound. A pathological shape is now reduced only
+ * while its declared output shape can be preserved. Otherwise the server
+ * returns a bounded explicit tool error with no structuredContent.
  */
 describe('the response cap is a bound, not a suggestion', () => {
   /** Deep, wide and long at once — beats "drop events / trim strings". */
@@ -101,6 +151,14 @@ describe('the response cap is a bound, not a suggestion', () => {
       const out = boundResponse(input);
       expect(JSON.stringify(out ?? null).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
     }
+  });
+
+  it('turns an unshrinkable payload into an explicit bounded tool error', () => {
+    const out = toContent({ text: 'pathological', data: pathological(4) });
+    expect(out).toMatchObject({ isError: true });
+    expect(out).not.toHaveProperty('structuredContent');
+    expect(out.content[0]?.text).toContain('could not be reduced without violating');
+    expect(JSON.stringify(out).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
   });
 
   it('survives a payload whose SIZE cannot be measured', () => {

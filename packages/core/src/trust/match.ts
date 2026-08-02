@@ -179,6 +179,9 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   // enforced this by construction and the cache path did not, which let an
   // edited cache file put a scoreline on a fixture that has not kicked off.
   const score = status === 'SCHEDULED' ? undefined : sealScorePair(parts.score);
+  if ((status === 'LIVE' || status === 'HT' || status === 'FT') && !score) {
+    return malformed('match claims an unreadable score');
+  }
   // A shootout is a KNOCKOUT tie-break on a LEVEL match, and it never survives
   // without the regulation score it decorates. Those gates refuse the states
   // that cannot exist: penalties in a group game, penalties on a 2-0.
@@ -199,13 +202,25 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   // ESPN corpus lost `shootout: 5-3` and their `winnerCode`, which the parity
   // diff against main caught and no test did.
   const canGoToPenalties = stage !== 'GROUP';
-  const claimedShootout =
-    score && canGoToPenalties && score.home === score.away ? sealScorePair(parts.shootout) : undefined;
+  const shootoutPresent = parts.shootout !== undefined && parts.shootout !== null;
+  const parsedShootout = shootoutPresent ? sealScorePair(parts.shootout) : undefined;
+  if (shootoutPresent && !parsedShootout) {
+    return malformed('match claims an unreadable shootout');
+  }
+  const shootoutStatus = status === 'LIVE' || status === 'FT';
+  if (
+    shootoutPresent &&
+    (!score || !canGoToPenalties || score.home !== score.away || !shootoutStatus)
+  ) {
+    return malformed('match claims a shootout in an impossible state');
+  }
+  const claimedShootout = parsedShootout;
   // A shootout that is OVER decided the tie, so it cannot be level. One still in
   // progress can be, and usually is — 3-3 is sudden death, not a contradiction.
   const shootoutContradicts =
     !!claimedShootout && finished && claimedShootout.home === claimedShootout.away;
-  const shootout = shootoutContradicts ? undefined : claimedShootout;
+  if (shootoutContradicts) return malformed('finished shootout is still level');
+  const shootout = claimedShootout;
 
   // `winnerCode` is the field the bracket ADVANCES a team on, so it gets the
   // strictest reading in this file, and it gets it HERE so the live feed and the

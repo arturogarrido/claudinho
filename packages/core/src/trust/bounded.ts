@@ -11,7 +11,10 @@
 export interface BoundedList<T> {
   /** What survived the cap. */
   readonly items: readonly T[];
-  /** How many there were BEFORE capping. */
+  /**
+   * How many were established before capping. Exact when `complete` is true;
+   * otherwise it may only be a lower bound over the records examined.
+   */
   readonly total: number;
   /** `items.length` — kept explicit so a serialized payload is self-describing. */
   readonly shown: number;

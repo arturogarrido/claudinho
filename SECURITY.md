@@ -74,9 +74,11 @@ a claim we cannot make.
 - **Allow-listed fields.** Only declared keys are rebuilt, so an injected key cannot ride into
   `--json` or MCP output. — `core/test/trust-properties.test.ts` *(property: allowlist)*
 - **Validated by runtime type _and range_**, not by the declared type. A field declared `number`
-  can hold a string in JSON; scores, minutes and probabilities are also bounded, so a malformed
-  value degrades to "no score" rather than rendering `1e+308` as fact. —
-  `core/test/trust-properties.test.ts` *(property: runtime type and range)*
+  can hold a string in JSON; scores, minutes and probabilities are also bounded. A malformed
+  required score, claimed shootout, or market leg rejects its containing record rather than
+  rendering `1e+308` as fact or silently changing what the record means. —
+  `core/test/trust-properties.test.ts` *(property: runtime type and range)*,
+  `core/test/trust-boundary.test.ts`
 - **Control _and format_ characters removed**, filtered by Unicode category rather than by
   code-point range. That covers bidi overrides and isolates, not just ANSI escapes: a single
   U+202E in a team name transposes the *displayed* score under the Unicode Bidirectional
@@ -97,10 +99,12 @@ a claim we cannot make.
   Collections are bounded *before* the per-record work, not after, so a large payload cannot cost
   CPU on a 150 ms-budget surface before being discarded. What is bounded is the input EXAMINED,
   not the results kept, so records that cannot be read can never crowd out one that can. Truncation
-  is stated, never silent, and the count a payload reports comes from the same value as the list it
-  describes — an "+N more" therefore counts records we did not reach, never records we read and
-  refused. The MCP response cap is total: a payload that cannot be shrunk structurally is reduced
-  to a bounded skeleton rather than returned over budget. —
+  is stated, never silent, and exact `+N` counts are shown only after a complete scan; an incomplete
+  hot-path scan uses a nonnumeric `+more` marker rather than guessing how many valid records remain.
+  The MCP response cap is total, and a depth/width/entry/text preflight bounds the work before
+  serialization or recursive shrinking. Schema-preserving reductions carry declared response
+  metadata; if the payload cannot fit without violating its output schema, the tool returns a
+  bounded explicit error and omits `structuredContent`. —
   `mcp/test/bounded-payload.test.ts`, `mcp/test/response-size.test.ts`,
   `cli/test/hotpath-work.test.ts`, `cli/test/review-round15.test.ts`,
   `core/test/trust-espn.test.ts`
@@ -116,11 +120,14 @@ a claim we cannot make.
   have erased the score of a match being played. —
   `core/test/trust-properties.test.ts` *(property: absent is at least as rejecting)*,
   `core/test/review-round15.test.ts`
-
-  **Not covered:** failing closed is a property of the boundary, not of every surface behind it.
-  `ProviderAdapter` still returns a bare array, so a partially-readable ESPN payload is known to be
-  incomplete at the boundary and renders as a complete one. Widening that contract changes when
-  users are told "unavailable" and is deliberately out of scope here.
+- **Completeness survives the provider boundary.** Boundary-aware adapters return a
+  `ProviderBatch<T>` verdict, not only the readable prefix. A malformed, duplicated, or truncated
+  ESPN event/table makes the batch incomplete, and every domain orchestrator takes its existing
+  degraded fallback instead of presenting the prefix as authoritative. `ProviderBatch<T>` remains
+  an array for iteration, indexing, JSON serialization, and array methods; bare arrays remain the
+  compatibility form for injected adapters and explicitly mean complete. —
+  `core/test/live.test.ts`, `core/test/standings-live.test.ts`,
+  `core/test/trust-espn.test.ts`
 - **Derived values are recomputed, never trusted** — the market favorite and staleness are
   derived from the sealed data, so a crafted file cannot make the headline contradict the
   numbers, or an old reading claim to be fresh. A team's flag is derived the same way, from its
@@ -132,6 +139,12 @@ a claim we cannot make.
   not read, or a deadline that expired, are facts about *us* — never remembered, always retried,
   the mirror image of never caching a transient error as a real negative. —
   `core/test/market-verdict.test.ts`
+- **Enrichment completeness reaches every surface.** Default-on market annotations, dedicated
+  market tools, share cards, and their structured output retain the batch's completeness verdict.
+  A complete empty read may say "no signal"; an incomplete one carries `marketComplete:false` or
+  `complete:false` and an explicit warning, including when cached results are mixed with misses. —
+  `cli/test/markets.test.ts`, `cli/test/today.test.ts`, `cli/test/share.test.ts`,
+  `mcp/test/market-completeness.test.ts`
 
 Each property names the negative control that should make it fail. A property test that has not
 been made to fail is pinning nothing, so every one of them was verified to go red with its rule

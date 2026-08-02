@@ -18,7 +18,17 @@ const STANDINGS = {
         entries: [
           {
             team: { abbreviation: 'MEX', displayName: 'Mexico' },
-            stats: [{ name: 'rank', value: 1 }],
+            stats: [
+              { name: 'gamesPlayed', value: 1 },
+              { name: 'wins', value: 1 },
+              { name: 'ties', value: 0 },
+              { name: 'losses', value: 0 },
+              { name: 'pointsFor', value: 2 },
+              { name: 'pointsAgainst', value: 0 },
+              { name: 'pointDifferential', value: 2 },
+              { name: 'points', value: 3 },
+              { name: 'rank', value: 1 },
+            ],
           },
         ],
       },
@@ -135,7 +145,20 @@ describe('shared standings fetch (F5 PERF-4)', () => {
       }) as FetchImpl,
     });
     await expect(adapter.fetchStandings()).rejects.toBeInstanceOf(ProviderError);
-    expect(await adapter.fetchStandings()).toHaveLength(1);
+    expect((await adapter.fetchStandings()).items).toHaveLength(1);
+    expect(calls).toBe(2);
+  });
+
+  it('an INCOMPLETE shared parse is not cached — the next caller retries', async () => {
+    let calls = 0;
+    const adapter = new EspnAdapter({
+      fetchImpl: (async () => {
+        calls += 1;
+        return okJson(calls === 1 ? { children: [{ name: 'Group A' }] } : STANDINGS);
+      }) as FetchImpl,
+    });
+    expect((await adapter.fetchStandings()).complete).toBe(false);
+    expect((await adapter.fetchStandings()).complete).toBe(true);
     expect(calls).toBe(2);
   });
 });

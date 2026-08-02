@@ -4,6 +4,7 @@
  * Code, Cursor, Codex, and any other MCP client.
  */
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { types as utilTypes } from 'node:util';
 import { z } from 'zod';
 import {
   allFixtures,
@@ -94,6 +95,10 @@ const matchOut = z
   .passthrough();
 const anyObj = z.object({}).passthrough();
 const src = z.string().nullable();
+const responseMeta = {
+  responseTruncated: z.boolean().optional(),
+  responseTruncation: z.string().optional(),
+};
 
 const todayOut = {
   date: z.string(),
@@ -106,6 +111,11 @@ const todayOut = {
   truncated: z.boolean(),
   matches: z.array(matchOut),
   marketSignals: z.record(anyObj).optional(),
+  marketComplete: z
+    .boolean()
+    .optional()
+    .describe('False when optional market enrichment did not check every relevant fixture'),
+  ...responseMeta,
 };
 const liveOut = {
   degraded: z.boolean(),
@@ -113,29 +123,38 @@ const liveOut = {
   count: z.number(),
   truncated: z.boolean(),
   matches: z.array(matchOut),
+  ...responseMeta,
 };
 const matchDetailOut = {
   match: matchOut.nullable(),
   degraded: z.boolean().optional(),
   source: src.optional(),
   marketSignal: anyObj.nullable().optional(),
+  marketComplete: z
+    .boolean()
+    .optional()
+    .describe('False when optional market enrichment did not check this fixture'),
+  ...responseMeta,
 };
 const standingsOut = {
   degraded: z.boolean(),
   source: src,
   tables: z.union([anyObj, z.array(anyObj), z.null()]),
+  ...responseMeta,
 };
 const bracketOut = {
   view: anyObj.nullable(),
   degraded: z.boolean().optional(),
   standingsDegraded: z.boolean().optional(),
   source: src.optional(),
+  ...responseMeta,
 };
 const nextOut = {
   team: z.string(),
   fixture: matchOut.nullable(),
   degraded: z.boolean(),
   source: src,
+  ...responseMeta,
 };
 const marketOut = {
   matchId: z.string().nullable().optional(),
@@ -150,7 +169,11 @@ const marketOut = {
   // tell a complete list from a truncated one.
   count: z.number().optional(),
   truncated: z.boolean().optional(),
-  complete: z.boolean().optional(),
+  complete: z
+    .boolean()
+    .optional()
+    .describe('False when the market provider did not complete every relevant read'),
+  ...responseMeta,
 };
 const shareOut = {
   kind: z.string(),
@@ -167,8 +190,13 @@ const shareOut = {
   view: anyObj.nullable().optional(),
   matches: z.array(matchOut).optional(),
   marketSignals: z.record(anyObj).optional(),
+  marketComplete: z
+    .boolean()
+    .optional()
+    .describe('False when optional market enrichment did not check every relevant fixture'),
   count: z.number().optional(),
   truncated: z.boolean().optional(),
+  ...responseMeta,
 };
 const teamInfo = z
   .object({ code: z.string(), name: z.string(), flag: z.string(), group: z.string() })
@@ -179,6 +207,7 @@ const teamOut = {
   team: teamInfo.nullable(),
   matches: z.array(teamInfo),
   count: z.number(),
+  ...responseMeta,
 };
 
 /**
@@ -223,8 +252,8 @@ export const OUTPUT_SCHEMAS = {
  */
 export const MAX_RESPONSE_CHARS = 128_000;
 
-/** Keys kept from one object when the response has to be cut. */
-const MAX_OBJECT_KEYS = 64;
+const RESPONSE_TRUNCATION =
+  'Optional response detail was truncated to stay within the MCP context limit.';
 
 /**
  * Shrink a payload until it fits, whatever SHAPE it has.
@@ -234,47 +263,153 @@ const MAX_OBJECT_KEYS = 64;
  * snippet was returned in full. Bounding the shape you thought of is not
  * bounding the payload.
  *
- * Generic, in increasing order of damage: drop `events` anywhere in the tree,
- * then truncate long strings, then shorten arrays. It adds NO keys, because a
- * key that only appears when a payload is large fails the strict output schema
- * on the tools that never declared it — a cure worse than the disease.
- * Truncation is stated in the TEXT beside it instead.
+ * Generic, in increasing order of damage: drop optional `events` detail,
+ * truncate long strings, then shorten arrays. Every tool schema declares the
+ * response metadata added after a successful shrink. If none of those
+ * schema-preserving passes fits, `toContent` returns a bounded explicit error
+ * without `structuredContent` instead of fabricating a schema-invalid shape.
  */
-function shrink(value: unknown, pass: 1 | 2 | 3 | 4, depth = 0): unknown {
-  // Pass 4 is the last resort, and unlike the others it is TOTAL: bounded
-  // breadth (4 keys), bounded depth (3), bounded strings (100), arrays cut to a
-  // single element. That gives at most 4^3 nodes of ~200 chars — provably under
-  // the cap for ANY input, which is what makes the cap hard rather than
-  // advisory. It only ever runs on a payload the gentler passes could not fit.
-  if (pass === 4 && depth >= 4) return null;
-  // Depth guard for EVERY pass: recursion over an attacker-shaped object is a
-  // stack overflow, which on this path takes the server down rather than the
-  // response over budget.
-  if (depth >= 64) return null;
+const SHRINK_FAILED = Symbol('shrink-failed');
+
+/**
+ * Work budget applied before JSON.stringify or the recursive shrink passes.
+ * Real responses are far below these ceilings; they allow the largest tested
+ * fixture/event response while refusing shapes whose inspection alone could
+ * monopolize the long-running MCP server.
+ */
+const MAX_INSPECTION_DEPTH = 64;
+const MAX_INSPECTION_ARRAY_LENGTH = 4_096;
+const MAX_INSPECTION_KEYS_PER_OBJECT = 1_024;
+const MAX_INSPECTION_ENTRIES = 65_536;
+const MAX_INSPECTION_CONTAINERS = 16_384;
+const MAX_INSPECTION_CHARS = 2_000_000;
+
+type InspectionFrame =
+  | { readonly value: unknown; readonly depth: number; readonly exit?: false }
+  | { readonly value: object; readonly depth: number; readonly exit: true };
+
+/**
+ * Prove that measuring and shrinking this value have bounded work.
+ *
+ * This is iterative so a 50,000-level object cannot overflow the stack. It
+ * reads data descriptors rather than property values, so accessors are refused
+ * without executing attacker-controlled getters. The ancestor set detects
+ * cycles but permits shared subtrees, matching JSON.stringify's behavior while
+ * charging each serialized occurrence to the aggregate budgets.
+ */
+function withinInspectionBudget(root: unknown): boolean {
+  const stack: InspectionFrame[] = [{ value: root, depth: 0 }];
+  const ancestors = new WeakSet<object>();
+  let containers = 0;
+  let entries = 0;
+  let chars = 0;
+
+  try {
+    while (stack.length > 0) {
+      const frame = stack.pop()!;
+      if (frame.exit) {
+        ancestors.delete(frame.value);
+        continue;
+      }
+      const { value, depth } = frame;
+      if (typeof value === 'string') {
+        chars += value.length;
+        if (chars > MAX_INSPECTION_CHARS) return false;
+        continue;
+      }
+      if (!value || typeof value !== 'object') continue;
+      if (depth >= MAX_INSPECTION_DEPTH || ancestors.has(value)) return false;
+      // A Proxy can change its descriptors between preflight and stringify, or
+      // make `ownKeys` allocate an unbounded list before a loop can stop.
+      if (utilTypes.isProxy(value)) return false;
+      containers += 1;
+      if (containers > MAX_INSPECTION_CONTAINERS) return false;
+
+      const proto = Object.getPrototypeOf(value);
+      const expectedProto = Array.isArray(value) ? Array.prototype : Object.prototype;
+      if (proto !== expectedProto && proto !== null) return false;
+      if (
+        Object.getOwnPropertyDescriptor(value, 'toJSON') ||
+        (proto && Object.getOwnPropertyDescriptor(proto, 'toJSON'))
+      ) {
+        return false;
+      }
+
+      ancestors.add(value);
+      stack.push({ value, depth, exit: true });
+
+      if (Array.isArray(value)) {
+        if (value.length > MAX_INSPECTION_ARRAY_LENGTH) return false;
+        entries += value.length;
+        if (entries > MAX_INSPECTION_ENTRIES) return false;
+        for (let i = 0; i < value.length; i++) {
+          const descriptor = Object.getOwnPropertyDescriptor(value, String(i));
+          if (!descriptor) continue; // JSON serializes a hole as null.
+          if (!('value' in descriptor)) return false;
+          stack.push({ value: descriptor.value, depth: depth + 1 });
+        }
+        continue;
+      }
+
+      let keys = 0;
+      for (const key in value as Record<string, unknown>) {
+        keys += 1;
+        if (keys > MAX_INSPECTION_KEYS_PER_OBJECT) return false;
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (!descriptor?.enumerable) continue;
+        if (!('value' in descriptor)) return false;
+        entries += 1;
+        chars += key.length;
+        if (entries > MAX_INSPECTION_ENTRIES || chars > MAX_INSPECTION_CHARS) return false;
+        stack.push({ value: descriptor.value, depth: depth + 1 });
+      }
+    }
+    return true;
+  } catch {
+    // Proxies and exotic objects can throw from reflection. Tool data is plain
+    // structured data; an uninspectable shape takes the explicit error path.
+    return false;
+  }
+}
+
+function shrink(
+  value: unknown,
+  pass: 1 | 2 | 3,
+  depth = 0,
+  ancestors = new WeakSet<object>(),
+): unknown | typeof SHRINK_FAILED {
+  // A schema-preserving shrink may shorten strings/arrays or remove the
+  // optional match `events` detail. It may not replace a required nested value
+  // with null merely to fit. Deep/cyclic shapes therefore take the explicit
+  // bounded-error path in `toContent`.
+  if (depth >= 64) return SHRINK_FAILED;
   if (Array.isArray(value)) {
-    const items = pass === 4 ? value.slice(0, 1) : pass === 3 ? value.slice(0, 8) : value;
-    return items.map((v) => shrink(v, pass, depth + 1));
+    if (ancestors.has(value)) return SHRINK_FAILED;
+    ancestors.add(value);
+    const items = pass === 3 ? value.slice(0, 8) : value;
+    const out: unknown[] = [];
+    for (const item of items) {
+      const shrunk = shrink(item, pass, depth + 1, ancestors);
+      if (shrunk === SHRINK_FAILED) return SHRINK_FAILED;
+      out.push(shrunk);
+    }
+    ancestors.delete(value);
+    return out;
   }
   if (value && typeof value === 'object') {
+    if (ancestors.has(value)) return SHRINK_FAILED;
+    ancestors.add(value);
     const out: Record<string, unknown> = {};
-    // Objects are bounded by WIDTH too, not only arrays by length. A record with
-    // 3,000 keys is as much model context as a 3,000-element array, and slicing
-    // only arrays left it at 271 KB against a 128 KB cap — bounding one shape of
-    // bigness is not bounding the payload.
-    let kept = 0;
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (k === 'events') continue; // always the first thing to go
-      if (pass === 4 && kept >= 4) break;
-      if (pass === 3 && kept >= MAX_OBJECT_KEYS) break;
-      kept++;
-      // Key NAMES are payload too — a bound that truncates values and leaves a
-      // 30 KB key is not a bound.
-      out[pass === 4 ? k.slice(0, 100) : k] = shrink(v, pass, depth + 1);
+      const shrunk = shrink(v, pass, depth + 1, ancestors);
+      if (shrunk === SHRINK_FAILED) return SHRINK_FAILED;
+      out[k] = shrunk;
     }
+    ancestors.delete(value);
     return out;
   }
   if (typeof value === 'string') {
-    if (pass === 4 && value.length > 100) return `${value.slice(0, 100)}…`;
     if (pass >= 2 && value.length > 2_000) return `${value.slice(0, 2_000)}…`;
   }
   return value;
@@ -297,16 +432,31 @@ function size(v: unknown): number {
 }
 
 export function boundResponse(data: unknown): unknown {
+  if (!withinInspectionBudget(data)) return null;
   if (size(data) <= MAX_RESPONSE_CHARS) return data;
-  for (const pass of [1, 2, 3, 4] as const) {
+  // Every declared tool output is an object. Spreading a top-level array into
+  // numeric object keys would fit the byte cap by violating that contract.
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  for (const pass of [1, 2, 3] as const) {
     const candidate = shrink(data, pass);
-    if (size(candidate) <= MAX_RESPONSE_CHARS) return candidate;
+    if (
+      candidate === SHRINK_FAILED ||
+      !candidate ||
+      typeof candidate !== 'object' ||
+      Array.isArray(candidate)
+    ) {
+      continue;
+    }
+    const marked = {
+      ...(candidate as Record<string, unknown>),
+      responseTruncated: true,
+      responseTruncation: RESPONSE_TRUNCATION,
+    };
+    if (size(marked) <= MAX_RESPONSE_CHARS) return marked;
   }
-  // Unreachable: pass 4 is bounded by construction (see `shrink`). Kept as a
-  // hard floor rather than returning an over-budget payload, which is what the
-  // previous `return shrink(data, 3)` did — it re-measured and then returned
-  // the oversized value anyway, so the "cap" was advisory. An 8 MB probe came
-  // back at 8 MB. `null` is the one value that cannot exceed a budget.
+  // `null` is an internal sentinel: `toContent` turns it into a small explicit
+  // MCP error and omits structuredContent, so no invalid output-schema skeleton
+  // is ever handed to the SDK.
   return null;
 }
 
@@ -321,10 +471,29 @@ const DUAL_EMIT_LIMIT = 16_000;
 
 export function toContent(r: ToolResult) {
   const data = boundResponse(r.data);
+  const dataTruncated =
+    !!data &&
+    typeof data === 'object' &&
+    (data as Record<string, unknown>).responseTruncated === true;
+  const marker = dataTruncated ? `\n\n(${RESPONSE_TRUNCATION})` : '';
+  const room = Math.max(0, MAX_TEXT_CHARS - marker.length - '\n(truncated)'.length);
   const text =
-    r.text.length > MAX_TEXT_CHARS
-      ? `${r.text.slice(0, MAX_TEXT_CHARS)}\n(truncated)`
-      : r.text;
+    r.text.length > room
+      ? `${r.text.slice(0, room)}\n(truncated)${marker}`
+      : r.text + marker;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    const error =
+      'Response data exceeded the MCP context limit and could not be reduced without violating its output schema.';
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `${text.slice(0, Math.max(0, MAX_TEXT_CHARS - error.length - 2))}\n\n${error}`,
+        },
+      ],
+      isError: true,
+    };
+  }
   // The JSON text block DUPLICATES `structuredContent`; that dual-emit is
   // deliberate, so clients too old to read structuredContent still get the data
   // (see the note above). But duplicating a large payload doubles the context
@@ -333,7 +502,10 @@ export function toContent(r: ToolResult) {
   const compact = JSON.stringify(data);
   const content = [{ type: 'text' as const, text }];
   if (compact.length <= DUAL_EMIT_LIMIT) {
-    content.push({ type: 'text' as const, text: '```json\n' + JSON.stringify(data, null, 2) + '\n```' });
+    content.push({
+      type: 'text' as const,
+      text: '```json\n' + JSON.stringify(data, null, 2) + '\n```',
+    });
   }
   return { content, structuredContent: data as Record<string, unknown> };
 }
@@ -350,7 +522,7 @@ export function buildServer(): McpServer {
     {
       title: "Today's matches",
       description:
-        "All fixtures for a date (default: today), with live score and minute overlaid on any match in play. Use this for a whole day's card; for only in-play matches use get_live, for one team's match use get_next_fixture, for a single match's detail use get_match. Kickoffs render in tz; lang localizes dates, attribution, and commentary (en/es/pt/fr); flavor sets commentary tone.",
+        "All fixtures for a date (default: today), with live score and minute overlaid on any match in play. Optional prediction-market enrichment carries marketComplete; false means the read was incomplete, not that no signal exists. Use this for a whole day's card; for only in-play matches use get_live, for one team's match use get_next_fixture, for a single match's detail use get_match. Kickoffs render in tz; lang localizes dates, attribution, and commentary (en/es/pt/fr); flavor sets commentary tone.",
       inputSchema: {
         date: dateArg.optional().describe('Date as YYYY-MM-DD (default: today)'),
         ...commonArgs,
@@ -380,7 +552,7 @@ export function buildServer(): McpServer {
     {
       title: 'Match detail',
       description:
-        "One match by its id, with live score/minute overlaid when it's in play. Get the id from get_today or get_live; to find a team's match without an id, use get_next_fixture. tz/lang/flavor affect formatting.",
+        "One match by its id, with live score/minute overlaid when it's in play. Optional prediction-market enrichment carries marketComplete; false means the read was incomplete, not that no signal exists. Get the id from get_today or get_live; to find a team's match without an id, use get_next_fixture. tz/lang/flavor affect formatting.",
       inputSchema: { id: z.string().describe('Match id'), ...commonArgs },
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: matchDetailOut,
@@ -442,7 +614,7 @@ export function buildServer(): McpServer {
     {
       title: 'Prediction-market signal',
       description:
-        "Read-only prediction-market signals for a match (by id), a team's current-or-next fixture, or a date (default: today). Returns market-implied percentages with attribution. Shown only before and during a match — finished matches have no market read. Informational only — relay the numbers factually; do not add betting, trading, or 'value' advice, and do not invent links.",
+        "Read-only prediction-market signals for a match (by id), a team's current-or-next fixture, or a date (default: today). Returns market-implied percentages with attribution; complete:false means the provider read was incomplete, not that no signal exists. Shown only before and during a match — finished matches have no market read. Informational only — relay the numbers factually; do not add betting, trading, or 'value' advice, and do not invent links.",
       inputSchema: {
         matchId: z.string().optional().describe('Match id (most specific)'),
         team: teamArg
@@ -467,7 +639,7 @@ export function buildServer(): McpServer {
     {
       title: 'Shareable match snippet',
       description:
-        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), a group's standings table (group, e.g. \"A\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
+        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), a group's standings table (group, e.g. \"A\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. marketComplete:false is stated inside the card as an incomplete optional read. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
       inputSchema: {
         matchId: z.string().optional().describe('Match id (most specific)'),
         team: teamArg

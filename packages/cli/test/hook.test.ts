@@ -18,6 +18,7 @@ function m(home: [string, string], away: [string, string], over: Partial<Match> 
     home: { code: home[0], name: home[0], flag: home[1] },
     away: { code: away[0], name: away[0], flag: away[1] },
     status: 'LIVE',
+    score: { home: 0, away: 0 },
     updatedAt: NOW.toISOString(),
     ...over,
   };
@@ -33,7 +34,7 @@ describe('renderHook', () => {
   });
 
   it('is silent when the cache has no live matches', () => {
-    const s = state([m(['MEX', '🇲🇽'], ['RSA', '🇿🇦'], { status: 'FT', score: { home: 2, away: 0 } })]);
+    const s = state([]);
     expect(renderHook(s, { now: NOW })).toBe('');
   });
 
@@ -101,9 +102,9 @@ describe('renderHook', () => {
     expect(renderHook(s, { now: NOW })).toBe('');
   });
 
-  it('never throws on a corrupt cache (returns empty)', () => {
+  it('never throws on a corrupt cache and states that it is incomplete', () => {
     const bad = { updatedAt: NOW.toISOString(), live: 'not-an-array', degraded: false, source: 'espn' };
-    expect(renderHook(bad as never, { now: NOW })).toBe('');
+    expect(renderHook(bad as never, { now: NOW })).toContain('cached list incomplete');
   });
 });
 
@@ -117,22 +118,19 @@ describe('renderHook — poisoned numeric cache fields', () => {
     ]);
     const out = renderHook(s, { now: NOW });
     expect(out).not.toContain('FAKE');
-    expect(out.split('\n')).toHaveLength(2);
-    expect(out).toContain('Mexico vs South Africa'); // scoreline degrades to "vs"
+    expect(out).toContain('cached list incomplete');
   });
 });
 
-describe('hook — the overflow count is the TRUE total', () => {
-  it('reports +488 for 500 cached live matches, not the post-cap count', () => {
-    // `liveMatchesFromCache` is bounded to protect the hot path, so counting the
-    // overflow from its RESULT understated it (+52). The statusline had the same
-    // bug and the same fix — a count that is quietly wrong reads as complete.
+describe('hook — an incomplete scan never claims an exact overflow', () => {
+  it('uses a nonnumeric warning for 500 cached live matches', () => {
     const live: Match[] = [];
     for (let i = 0; i < 500; i++) live.push(m(['MEX', '🇲🇽'], ['RSA', '🇿🇦']));
     const out = renderHook(
       { updatedAt: NOW.toISOString(), live, degraded: false } as never,
       { now: NOW },
     );
-    expect(out).toContain('(+488 more not shown)');
+    expect(out).toContain('more live matches may not be shown');
+    expect(out).not.toMatch(/\+\d+ more/);
   });
 });

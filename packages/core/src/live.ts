@@ -4,7 +4,7 @@
  * notifier) so the overlay logic lives in exactly one place.
  */
 import { competitionBase, DEFAULT_COMPETITION, EspnAdapter } from './adapters/espn';
-import type { ProviderAdapter } from './adapters/types';
+import { completeProviderItems, type ProviderAdapter } from './adapters/types';
 import { byKickoff, isFinished, isLive } from './normalize';
 import {
   allFixtures,
@@ -105,9 +105,11 @@ export async function getMatchesForDate(
     // *local* date, so fetch a ±1-day UTC window — one request, since ESPN
     // takes a date range — and merge by id. Fetching only `day` would leave a
     // boundary match showing from the static schedule with no live score.
-    const live = adapter.fetchWindow
-      ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
-      : await adapter.fetchByDate(day);
+    const live = completeProviderItems(
+      adapter.fetchWindow
+        ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
+        : await adapter.fetchByDate(day),
+    );
     return { matches: mergeLive(base, live), degraded: false, source: adapter.name };
   } catch {
     return { matches: base, degraded: true };
@@ -142,7 +144,7 @@ export async function getStandings(
   const want = group?.toUpperCase();
   if (adapter.fetchStandings) {
     try {
-      const all = await adapter.fetchStandings();
+      const all = completeProviderItems(await adapter.fetchStandings());
       const tables = (want ? all.filter((t) => t.group === want) : all).sort((a, b) =>
         a.group.localeCompare(b.group),
       );
@@ -200,8 +202,9 @@ export async function getBracket(
 
   try {
     const win = knockoutWindow();
-    const live =
-      adapter.fetchWindow && win ? await adapter.fetchWindow(win.start, win.end) : [];
+    const live = completeProviderItems(
+      adapter.fetchWindow && win ? await adapter.fetchWindow(win.start, win.end) : [],
+    );
     matches = mergeLive(base, live);
     liveDegraded = false;
     source = adapter.name;
@@ -274,7 +277,10 @@ export async function marketFixtureForTeam(
   try {
     const win = knockoutWindow();
     if (adapter.fetchWindow && win) {
-      fixtures = mergeLive(fixtures, await adapter.fetchWindow(win.start, win.end));
+      fixtures = mergeLive(
+        fixtures,
+        completeProviderItems(await adapter.fetchWindow(win.start, win.end)),
+      );
     }
   } catch {
     overlayFailed = true; // KO overlay unavailable — a knockout tie may be unresolvable
@@ -332,8 +338,9 @@ export async function getNextFixtureForTeam(
   let liveById: Set<string> | undefined;
   try {
     const win = knockoutWindow();
-    const live =
-      adapter.fetchWindow && win ? await adapter.fetchWindow(win.start, win.end) : [];
+    const live = completeProviderItems(
+      adapter.fetchWindow && win ? await adapter.fetchWindow(win.start, win.end) : [],
+    );
     matches = mergeLive(base, live);
     degraded = false;
     liveById = new Set(live.map((m) => m.id));
@@ -378,7 +385,7 @@ export async function getKnockoutFixtures(
   if (!adapter.fetchWindow || !win) return { fixtures: [], degraded: true };
   let live: Match[];
   try {
-    live = await adapter.fetchWindow(win.start, win.end);
+    live = completeProviderItems(await adapter.fetchWindow(win.start, win.end));
   } catch {
     return { fixtures: [], degraded: true };
   }
@@ -414,9 +421,11 @@ export async function getMatchById(
   if (!base) return { match: undefined, degraded: false };
   const day = base.kickoff.slice(0, 10);
   try {
-    const live = adapter.fetchWindow
-      ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
-      : await adapter.fetchByDate(day);
+    const live = completeProviderItems(
+      adapter.fetchWindow
+        ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
+        : await adapter.fetchByDate(day),
+    );
     const hit = live.find((m) => m.id === id);
     // Attribute the provider only when live data actually served the match —
     // a static fixture rendered after a successful-but-missing fetch is not
@@ -446,11 +455,11 @@ export async function getLiveMatches(
 ): Promise<LiveResult> {
   try {
     const day = now.toISOString().slice(0, 10);
-    const matches = adapter.fetchWindow
-      ? (await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))).filter((m) =>
-          isLive(m.status),
-        )
-      : await adapter.fetchLive();
+    const matches = completeProviderItems(
+      adapter.fetchWindow
+        ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
+        : await adapter.fetchLive(),
+    ).filter((m) => isLive(m.status));
     return { matches, degraded: false, source: adapter.name };
   } catch {
     return { matches: [], degraded: true };

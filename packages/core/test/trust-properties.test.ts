@@ -682,9 +682,7 @@ describe('property: text and structured data never disagree', () => {
         { kind: 'away', label: 'Mexico', probability: 0.15 },
       ],
     } as unknown as MarketSignal;
-    const clean = sanitizeMarketSignal(swapped, NOW);
-    expect(clean.outcomes.some((o) => o.kind === 'home' || o.kind === 'away')).toBe(false);
-    expect(marketSignalRendersFor(match, clean)).toBe(false);
+    expect(trySanitizeMarketSignal(swapped, NOW)).toBeUndefined();
   });
 
   it('when a signal DOES render, its result legs name the fixture own teams', () => {
@@ -904,11 +902,11 @@ describe('property: every nested collection is length-bounded', () => {
         return 'x';
       },
     }));
-    const clean = sanitizeMarketSignal(
+    const clean = trySanitizeMarketSignal(
       { ...goodSignal, outcomes: probe } as unknown as MarketSignal,
       NOW,
     );
-    expect(clean.outcomes.length).toBeLessThanOrEqual(128);
-    expect(touched).toBeLessThanOrEqual(128);
+    expect(clean).toBeUndefined();
+    expect(touched).toBe(0); // rejected by length before any leg is read
   });
 });

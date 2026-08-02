@@ -27,6 +27,11 @@ export { cacheDir } from './paths';
  */
 export const CACHE_VERSION = 2;
 
+/** Hard byte ceiling before JSON parsing on the statusline hot path. */
+export const MAX_STATE_BYTES = 1024 * 1024;
+/** Far above any real live/knockout snapshot, but finite before traversal. */
+const MAX_STATE_RECORDS = 1024;
+
 /** The cached snapshot. `live` holds in-progress matches at `updatedAt`. */
 export interface CacheState {
   /** Schema version (see {@link CACHE_VERSION}); stamped by writeState. */
@@ -85,6 +90,51 @@ function lockPath(): string {
   return join(cacheDir(), 'refresh.lock');
 }
 
+function validStamp(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const match = value.match(
+    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,3}))?Z$/,
+  );
+  if (!match) return false;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return false;
+  const canonical = `${match[1]}.${(match[2] ?? '').padEnd(3, '0')}Z`;
+  return new Date(parsed).toISOString() === canonical;
+}
+
+function validScope(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 128 &&
+    /^[a-zA-Z0-9._-]+$/.test(value)
+  );
+}
+
+/** Validate only the envelope here; each Match is sealed lazily by its reader. */
+function isCacheState(value: unknown): value is CacheState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const s = value as Record<string, unknown>;
+  if (s.version !== CACHE_VERSION) return false;
+  if (!validStamp(s.updatedAt) || typeof s.degraded !== 'boolean') return false;
+  if (!validScope(s.source) || !validScope(s.competition)) return false;
+  if (!Array.isArray(s.live) || s.live.length > MAX_STATE_RECORDS) return false;
+  if (
+    s.fixtures !== undefined &&
+    (!Array.isArray(s.fixtures) || s.fixtures.length > MAX_STATE_RECORDS)
+  ) {
+    return false;
+  }
+  for (const key of [
+    'fixturesUpdatedAt',
+    'fixturesAttemptedAt',
+    'backoffUntil',
+  ] as const) {
+    if (s[key] !== undefined && !validStamp(s[key])) return false;
+  }
+  return true;
+}
+
 /**
  * Read the cached state for a scope, or undefined if missing/corrupt/
  * version-mismatched (never throws).
@@ -94,10 +144,15 @@ export function readState(
   competition = DEFAULT_COMPETITION,
 ): CacheState | undefined {
   try {
-    const s = JSON.parse(
-      readFileSync(cachePath(source, competition), 'utf8'),
-    ) as CacheState;
-    return s.version === CACHE_VERSION ? s : undefined;
+    const path = cachePath(source, competition);
+    const info = statSync(path);
+    if (!info.isFile() || info.size > MAX_STATE_BYTES) return undefined;
+    const bytes = readFileSync(path);
+    // Re-check the bytes actually read: the stat and read are separate syscalls,
+    // so a concurrently replaced file must not bypass the pre-parse ceiling.
+    if (bytes.byteLength > MAX_STATE_BYTES) return undefined;
+    const parsed: unknown = JSON.parse(bytes.toString('utf8'));
+    return isCacheState(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }

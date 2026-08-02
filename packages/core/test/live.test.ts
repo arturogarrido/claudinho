@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  completeProviderItems,
+  getBracket,
   getKnockoutFixtures,
   getLiveMatches,
+  getMatchById,
   getMatchesForDate,
   getNextFixtureForTeam,
+  getStandings,
+  marketFixtureForTeam,
+  providerBatch,
   type Match,
   type ProviderAdapter,
 } from '../src/index';
@@ -175,6 +181,87 @@ describe('getLiveMatches — windowed in-play detection (P1)', () => {
     const { matches, degraded } = await getLiveMatches(adapter, new Date('2026-06-17T05:00:00Z'));
     expect(degraded).toBe(true);
     expect(matches).toEqual([]);
+  });
+});
+
+describe('ProviderBatch completeness reaches every domain surface', () => {
+  const asserted = fx('760415', '2026-06-11T19:00Z', {
+    status: 'FT',
+    score: { home: 9, away: 0 },
+  });
+  const adapter: ProviderAdapter = {
+    name: 'partial',
+    capabilities: { push: false, latencyHintSec: 0 },
+    async fetchByDate() {
+      return providerBatch([asserted], false);
+    },
+    async fetchLive() {
+      return providerBatch([asserted], false);
+    },
+    async fetchWindow() {
+      return providerBatch([asserted], false);
+    },
+    async fetchStandings() {
+      return providerBatch([], false);
+    },
+  };
+
+  it('degrades date, live, match, standings, and bracket reads', async () => {
+    const date = await getMatchesForDate(adapter, '2026-06-11');
+    expect(date.degraded).toBe(true);
+    expect(date.source).toBeUndefined();
+    expect(date.matches.find((m) => m.id === asserted.id)?.score).toBeUndefined();
+
+    await expect(getLiveMatches(adapter, new Date('2026-06-11T20:00:00Z'))).resolves.toEqual({
+      matches: [],
+      degraded: true,
+    });
+
+    const match = await getMatchById(adapter, asserted.id);
+    expect(match.degraded).toBe(true);
+    expect(match.source).toBeUndefined();
+    expect(match.match?.score).toBeUndefined();
+
+    const standings = await getStandings(adapter, 'A');
+    expect(standings.degraded).toBe(true);
+    expect(standings.source).toBeUndefined();
+
+    const bracket = await getBracket(adapter);
+    expect(bracket.degraded).toBe(true);
+    expect(bracket.standingsDegraded).toBe(true);
+    expect(bracket.source).toBeUndefined();
+  });
+
+  it('degrades every team and knockout overlay read', async () => {
+    const beforeOpener = new Date('2026-06-11T18:00:00Z');
+    const next = await getNextFixtureForTeam(adapter, 'MEX', beforeOpener);
+    expect(next.degraded).toBe(true);
+    expect(next.source).toBeUndefined();
+
+    const market = await marketFixtureForTeam(adapter, 'MEX', beforeOpener);
+    expect(market.degraded).toBe(true);
+
+    const knockout = await getKnockoutFixtures(adapter, new Date('2026-06-28T00:00:00Z'));
+    expect(knockout).toEqual({ fixtures: [], degraded: true });
+  });
+
+  it('treats a malformed adapter envelope as incomplete at runtime', () => {
+    expect(providerBatch({ items: 'not-an-array', complete: true } as never).complete).toBe(false);
+    expect(() =>
+      completeProviderItems({ items: 'not-an-array', complete: true } as never),
+    ).toThrow(/incomplete/);
+  });
+
+  it('keeps ProviderBatch array-compatible for existing adapter consumers', () => {
+    const batch = providerBatch([1, 2, 3], false);
+    expect(Array.isArray(batch)).toBe(true);
+    expect(batch[1]).toBe(2);
+    expect(batch.filter((n) => n > 1)).toEqual([2, 3]);
+    expect([...batch]).toEqual([1, 2, 3]);
+    expect(JSON.stringify(batch)).toBe('[1,2,3]');
+    expect(batch.items).toBe(batch);
+    expect(batch.complete).toBe(false);
+    expect(completeProviderItems([1, 2, 3])).toEqual([1, 2, 3]);
   });
 });
 

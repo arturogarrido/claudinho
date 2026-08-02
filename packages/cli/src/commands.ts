@@ -133,10 +133,13 @@ interface MarketSignalsResult {
   readonly complete: boolean;
 }
 
-async function marketSignalsFor(
+type MarketProviderFactory = (source?: string) => MarketProvider;
+
+export async function marketSignalsFor(
   ctx: Ctx,
   matches: Match[],
   opts: MarketFetchOpts = {},
+  providerFactory: MarketProviderFactory = makeMarketProvider,
 ): Promise<MarketSignalsResult> {
   if (ctx.marketProvider) {
     const b = await getMarketSignals(ctx.marketProvider, matches, opts);
@@ -145,7 +148,7 @@ async function marketSignalsFor(
   const source = resolveMarketSource();
   // Dev/demo/no-op providers ('fake'/'none') are free — skip the on-disk cache.
   if (source !== 'polymarket') {
-    const b = await getMarketSignals(makeMarketProvider(source), matches, opts);
+    const b = await getMarketSignals(providerFactory(source), matches, opts);
     return { signals: resolvedValues(b), complete: b.complete };
   }
   const competition = resolveCompetition();
@@ -167,7 +170,7 @@ async function marketSignalsFor(
   }
   let complete = true;
   if (miss.length > 0) {
-    const batch = await getMarketSignals(makeMarketProvider('polymarket'), miss, opts);
+    const batch = await getMarketSignals(providerFactory('polymarket'), miss, opts);
     const fetched = resolvedValues(batch);
     // Cache hits and remembered negatives are settled; only the fetched slice
     // can leave us not knowing.
@@ -186,26 +189,30 @@ async function marketSignalsFor(
 async function reliableMarketSignals(
   ctx: Ctx,
   matches: Match[],
-): Promise<Map<string, MarketSignal>> {
-  if (ctx.cfg.markets === false) return new Map();
+): Promise<MarketSignalsResult> {
+  if (ctx.cfg.markets === false) return { signals: new Map(), complete: true };
   const now = ctx.now ?? new Date();
   // Market reads are pre-match/in-play artifacts: never fetch (or show) them
   // for finished matches — "markets favor X" after full time reads as a bug.
   const relevant = matches.filter((m) => marketRelevant(m, now));
-  if (relevant.length === 0) return new Map();
-  const raw = (await marketSignalsFor(ctx, relevant, DEFAULT_ON_MARKET_OPTS)).signals;
+  if (relevant.length === 0) return { signals: new Map(), complete: true };
+  const raw = await marketSignalsFor(ctx, relevant, DEFAULT_ON_MARKET_OPTS);
   const out = new Map<string, MarketSignal>();
-  for (const [id, s] of raw) {
+  for (const [id, s] of raw.signals) {
     const m = relevant.find((x) => x.id === id);
     // Re-check against the fixture being shown: a cached signal must not render
     // against a degraded placeholder that inherited its id (fail closed).
     if (m && isReliableMarketSignal(s, { now }) && marketSignalRendersFor(m, s)) out.set(id, s);
   }
-  return out;
+  return { signals: out, complete: raw.complete };
 }
 
-async function reliableMarketSignalFor(ctx: Ctx, match: Match): Promise<MarketSignal | undefined> {
-  return (await reliableMarketSignals(ctx, [match])).get(match.id);
+async function reliableMarketSignalFor(
+  ctx: Ctx,
+  match: Match,
+): Promise<{ signal: MarketSignal | undefined; complete: boolean }> {
+  const result = await reliableMarketSignals(ctx, [match]);
+  return { signal: result.signals.get(match.id), complete: result.complete };
 }
 
 function out(line = ''): void {
@@ -306,7 +313,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   const targetDate = date ?? localDate(new Date().toISOString(), cfg.tz);
   const { matches, degraded, source } = await getMatchesForDate(adapter, targetDate);
   const todays = fixturesByDate(targetDate, matches, cfg.tz);
-  const signals = await reliableMarketSignals(ctx, todays);
+  const market = await reliableMarketSignals(ctx, todays);
 
   if (cfg.json) {
     emitJson({
@@ -314,7 +321,8 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
       degraded,
       source: source ?? null,
       matches: todays,
-      marketSignals: Object.fromEntries(signals),
+      marketComplete: market.complete,
+      marketSignals: Object.fromEntries(market.signals),
     });
     return;
   }
@@ -331,9 +339,12 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   } else {
     for (const m of todays) {
       out(matchLine(m, cfg, t, c, flags));
-      const s = signals.get(m.id);
+      const s = market.signals.get(m.id);
       if (s) out('    ' + c.dim(marketLine(s, m)));
     }
+  }
+  if (!market.complete) {
+    out(c.dim('  Market data unavailable or incomplete — not all fixtures were checked.'));
   }
   out();
   // Live overlay failed → these are static fixtures with no live scores. Say so.
@@ -808,14 +819,17 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   // so fetching only the fixture's UTC date can miss its live/final state.
   const { match, degraded, source: liveSource } = await getMatchById(adapterFor(ctx), id);
 
-  const marketSignal = match ? await reliableMarketSignalFor(ctx, match) : undefined;
+  const market = match
+    ? await reliableMarketSignalFor(ctx, match)
+    : { signal: undefined, complete: true };
 
   if (cfg.json) {
     emitJson({
       degraded,
       match: match ?? null,
       source: liveSource ?? null,
-      marketSignal: marketSignal ?? null,
+      marketComplete: market.complete,
+      marketSignal: market.signal ?? null,
     });
     return;
   }
@@ -845,9 +859,13 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
       out(`  ${e.minute}'  ${e.type}  ${e.teamCode}${e.player ? ` — ${e.player}` : ''}`);
     }
   }
-  if (marketSignal) {
+  if (market.signal) {
     out();
-    for (const mline of marketBlock(marketSignal, match)) out('  ' + c.dim(mline));
+    for (const mline of marketBlock(market.signal, match)) out('  ' + c.dim(mline));
+  }
+  if (!market.complete) {
+    out();
+    out(c.dim('  Market data unavailable or incomplete — this match could not be checked.'));
   }
   out();
   // Live overlay failed → this is the static fixture with no live state. Say so.
@@ -929,17 +947,20 @@ export async function cmdMarkets(
     // Live-confirmed selection: handles extra time past the static window AND
     // early FTs inside it (the static fixture's status is forever SCHEDULED).
     const { match: fixture, degraded } = await marketFixtureForTeam(adapterFor(ctx), code, now);
-    const sig =
+    const market =
       fixture && marketRelevant(fixture, now)
-        ? (await marketSignalsFor(ctx, [fixture], MARKETS_CMD_OPTS)).signals.get(fixture.id)
-        : undefined;
-    const shown = fixture && sig && marketDisplayable(fixture, sig) ? sig : undefined;
+        ? await marketSignalsFor(ctx, [fixture], MARKETS_CMD_OPTS)
+        : { signals: new Map<string, MarketSignal>(), complete: true };
+    const sig = fixture ? market.signals.get(fixture.id) : undefined;
+    const shown =
+      market.complete && fixture && sig && marketDisplayable(fixture, sig) ? sig : undefined;
     if (cfg.json) {
       emitJson({
         team: code,
         matchId: fixture?.id ?? null,
         degraded,
         informationalOnly: true,
+        complete: market.complete,
         signal: shown ?? null,
       });
       return;
@@ -953,7 +974,9 @@ export async function cmdMarkets(
       out(header(marketHeaderLine(fixture, cfg), c));
       out();
       if (shown) printMarketBlock(fixture, shown, c);
-      else out(c.dim('    ' + noSignalLine(fixture, now)));
+      else if (!market.complete) {
+        out(c.dim('    Market data unavailable or incomplete — this match could not be checked.'));
+      } else out(c.dim('    ' + noSignalLine(fixture, now)));
     }
     out();
     out(disclaimer(t, c));
@@ -967,13 +990,19 @@ export async function cmdMarkets(
     const now = ctx.now ?? new Date();
     // Live overlay (±1-day window) so FT gates the resolved market correctly.
     const { match } = await getMatchById(adapterFor(ctx), target);
-    const sig =
+    const market =
       match && marketRelevant(match, now)
-        ? (await marketSignalsFor(ctx, [match], MARKETS_CMD_OPTS)).signals.get(match.id)
-        : undefined;
-    const shown = match && sig && marketDisplayable(match, sig) ? sig : undefined;
+        ? await marketSignalsFor(ctx, [match], MARKETS_CMD_OPTS)
+        : { signals: new Map<string, MarketSignal>(), complete: true };
+    const sig = match ? market.signals.get(match.id) : undefined;
+    const shown = market.complete && match && sig && marketDisplayable(match, sig) ? sig : undefined;
     if (cfg.json) {
-      emitJson({ matchId: target, informationalOnly: true, signal: shown ?? null });
+      emitJson({
+        matchId: target,
+        informationalOnly: true,
+        complete: market.complete,
+        signal: shown ?? null,
+      });
       return;
     }
     const c = painterFor(cfg);
@@ -984,7 +1013,9 @@ export async function cmdMarkets(
       out(header(marketHeaderLine(match, cfg), c));
       out();
       if (shown) printMarketBlock(match, shown, c);
-      else out(c.dim('    ' + noSignalLine(match, now)));
+      else if (!market.complete) {
+        out(c.dim('    Market data unavailable or incomplete — this match could not be checked.'));
+      } else out(c.dim('    ' + noSignalLine(match, now)));
     }
     out();
     out(disclaimer(t, c));
@@ -1036,6 +1067,10 @@ export async function cmdMarkets(
       printMarketBlock(match, signal, c);
       out();
     }
+    if (!complete) {
+      out(c.dim(`  Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`));
+      out();
+    }
   }
   out(disclaimer(t, c));
   out(c.dim(MARKET_INFO));
@@ -1068,14 +1103,14 @@ function pickShareStyle(v: string | undefined): ShareStyle {
 async function reliableShareSignals(
   ctx: Ctx,
   matches: Match[],
-): Promise<Map<string, MarketSignal>> {
+): Promise<MarketSignalsResult> {
   const raw = await reliableMarketSignals(ctx, matches);
   const out = new Map<string, MarketSignal>();
-  for (const [id, s] of raw) {
+  for (const [id, s] of raw.signals) {
     const m = matches.find((x) => x.id === id);
     if (m && marketDisplayable(m, s)) out.set(id, s);
   }
-  return out;
+  return { signals: out, complete: raw.complete };
 }
 
 type ShareEmit = {
@@ -1100,6 +1135,7 @@ function emitShare(ctx: Ctx, e: ShareEmit, copy: boolean): void {
       style: e.options.style ?? 'social',
       snippet,
       matches: e.input.matches,
+      marketComplete: e.input.marketComplete ?? true,
       marketSignals: Object.fromEntries(e.input.marketSignals ?? new Map()),
     });
   } else {
@@ -1335,7 +1371,7 @@ export async function cmdShare(
       ctx.now ?? new Date(),
     );
     const matches = fixture ? [fixture] : [];
-    const signals = await reliableShareSignals(ctx, matches);
+    const market = await reliableShareSignals(ctx, matches);
     const teamName = fixture
       ? fixture.home.code === code
         ? fixture.home.name
@@ -1350,7 +1386,8 @@ export async function cmdShare(
         input: {
           title: `Next up for ${teamName}`,
           matches,
-          marketSignals: signals,
+          marketSignals: market.signals,
+          marketComplete: market.complete,
           // Attribute the provider when the overlay resolved the tie (knockout);
           // undefined for a static group fixture — parity with CLI `next`.
           source,
@@ -1377,7 +1414,7 @@ export async function cmdShare(
     // differ from the fixture's UTC date.
     const { match, degraded, source } = await getMatchById(adapterFor(ctx), target);
     const matches = match ? [match] : [];
-    const signals = await reliableShareSignals(ctx, matches);
+    const market = await reliableShareSignals(ctx, matches);
     emitShare(
       ctx,
       {
@@ -1386,7 +1423,8 @@ export async function cmdShare(
         input: {
           title: 'Match pulse',
           matches,
-          marketSignals: signals,
+          marketSignals: market.signals,
+          marketComplete: market.complete,
           source,
           degraded,
           emptyNote: `No match found with id ${target}.`,
@@ -1407,7 +1445,7 @@ export async function cmdShare(
   const date = explicitDate ?? localDate(new Date().toISOString(), cfg.tz);
   const { matches: all, degraded, source } = await getMatchesForDate(adapterFor(ctx), date);
   const todays = fixturesByDate(date, all, cfg.tz);
-  const signals = await reliableShareSignals(ctx, todays);
+  const market = await reliableShareSignals(ctx, todays);
   // Human date label from a stable midday-UTC instant (avoids tz day flips).
   const human = formatDate(`${date}T12:00:00.000Z`, { tz: cfg.tz, locale: cfg.lang });
   const title = explicitDate ? `Matches · ${human}` : `Today's matches · ${human}`;
@@ -1419,7 +1457,8 @@ export async function cmdShare(
       input: {
         title,
         matches: todays,
-        marketSignals: signals,
+        marketSignals: market.signals,
+        marketComplete: market.complete,
         source,
         degraded,
         emptyNote: `No matches scheduled for ${human}.`,

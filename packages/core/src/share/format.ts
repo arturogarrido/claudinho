@@ -61,6 +61,8 @@ export interface ShareSnippetInput {
    * embedded in Match). Callers gate these; the formatter only renders.
    */
   marketSignals?: Map<string, MarketSignal>;
+  /** False when market enrichment stopped before every relevant match was checked. */
+  marketComplete?: boolean;
   /** Live-data provider name (e.g. "espn") for attribution; omit when static/degraded. */
   source?: string;
   /**
@@ -190,6 +192,9 @@ export function formatShareSnippet(
   // pasted card imply live data when the feed was unreachable.
   if (input.degraded && input.matches.length > 0) {
     blocks.push('(Live data unavailable — showing the bundled schedule, not live scores.)');
+  }
+  if (includeMarkets && input.marketComplete === false) {
+    blocks.push('(Market data unavailable or incomplete — not all fixtures were checked.)');
   }
 
   blocks.push(

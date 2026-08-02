@@ -98,11 +98,18 @@ export function sealMarketSignal(
   const matchId = opaqueId(s.matchId, MATCH_ID);
   if (!matchId) return malformed('signal names no fixture');
 
+  if (!Array.isArray(s.outcomes) || s.outcomes.length > MAX_OUTCOMES) {
+    return malformed('signal outcomes are absent or exceed the cap');
+  }
   // SLICE BEFORE MAP, as everywhere: 100k legs cost ~600ms before being
-  // discarded anyway.
-  const outcomes = takeBounded<unknown>(s.outcomes, MAX_OUTCOMES)
-    .map(sealOutcome)
-    .filter((o): o is MarketOutcome => !!o);
+  // discarded anyway. A malformed leg invalidates the set; filtering it could
+  // turn a contradictory payload into a clean-looking 1X2.
+  const outcomes: MarketOutcome[] = [];
+  for (const rawOutcome of takeBounded<unknown>(s.outcomes, MAX_OUTCOMES)) {
+    const outcome = sealOutcome(rawOutcome);
+    if (!outcome) return malformed('signal carries an unreadable outcome');
+    outcomes.push(outcome);
+  }
   if (hasDuplicateKind(outcomes)) {
     return ambiguous('two outcomes claim the same result');
   }

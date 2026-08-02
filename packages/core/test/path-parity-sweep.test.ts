@@ -167,8 +167,10 @@ const label = (f: string, v: unknown) => `${f}=${String(JSON.stringify(v)).slice
 describe('every Match field is sealed the same way, whatever is in it', () => {
   const bases = [liveMatch(), liveInPlayMatch(), liveGroupMatch()];
   const base = bases[0] as Match;
-  // The UNION over both bases: no single legal Match carries every field.
+  // The union over the legal bases: no single Match carries every field.
   const fields = [...new Set(bases.flatMap((b) => Object.keys(b)))] as (keyof Match)[];
+  const baseFor = (field: keyof Match): Match =>
+    (bases.find((candidate) => Object.hasOwn(candidate, field)) ?? base) as Match;
 
   it('sweeps a field list taken from a real sealed Match, not a literal', () => {
     // So a field added to the type is covered without anyone remembering to.
@@ -194,7 +196,8 @@ describe('every Match field is sealed the same way, whatever is in it', () => {
     // change nothing — the executable form of "one constructor, both paths".
     // A field where that fails is a field with a rule applied inconsistently.
     const unstable: string[] = [];
-    for (const b of bases) for (const field of fields) {
+    for (const field of fields) {
+      const b = baseFor(field);
       for (const value of HOSTILE) {
         const once = parseCachedMatch({ ...clone(b), [field]: value });
         if (once.kind !== 'valid') continue;
@@ -223,7 +226,8 @@ describe('every Match field is sealed the same way, whatever is in it', () => {
   });
 
   it('never throws, whatever a JSON file can hold', () => {
-    for (const b of bases) for (const field of fields) {
+    for (const field of fields) {
+      const b = baseFor(field);
       for (const value of HOSTILE) {
         expect(
           () => parseCachedMatch({ ...clone(b), [field]: value }),

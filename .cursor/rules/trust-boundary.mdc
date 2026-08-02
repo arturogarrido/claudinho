@@ -15,6 +15,12 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
 - **An adapter FETCHES; it does not interpret.** Parsing lives in `trust/`
   (`trust/espn.ts` is the model). The adapter that also parsed is how `id` and
   `kickoff` ended up copied verbatim while every string beside them was cleaned.
+- **Completeness crosses the adapter boundary.** Boundary-aware adapters return
+  the array-compatible `ProviderBatch<T>`; `complete: false` is not a partial
+  success and every domain orchestrator fails closed to its existing degraded
+  path. Preserve iteration, indexing, JSON serialization, and array methods;
+  do not replace the public array surface with an object envelope. A bare array
+  remains the compatibility form for injected adapters and means complete.
 - **Both paths end at the same constructor.** Live and cache reads call
   `sealMatch` / `sealMarketSignal`. When they had separate rules, each fix landed
   on one of them; `core/test/trust-parity.test.ts` asserts they agree, as a JSON
@@ -38,9 +44,19 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   `unresolved` are facts about US and must always be retried. Getting this
   backwards cost a permanent per-command refetch loop — an ambiguity never
   converges if you re-ask it (measured: 6,6,6 requests vs 6,0,0).
+- **Enrichment completeness reaches the renderer.** Market cache/fetch helpers
+  return `{ signals, complete }`; default-on annotations, dedicated tools,
+  share cards, and structured output retain it. Only a complete empty batch may
+  say "no signal"; an incomplete one warns and carries `marketComplete:false`
+  or `complete:false`.
 - **Bound the work, not just the output.** `takeBounded` slices *before* the
   per-record map. A surface reports `total`/`shown`/`truncated` from one
-  `BoundedList`; no handler recomputes a count.
+  `BoundedList`; no handler recomputes a count. `total` is exact only when
+  `complete` is true, so incomplete hot-path scans use a nonnumeric `more`
+  marker rather than guessing how many valid records remain. MCP response
+  limiting preflights depth, width, entries, containers, and aggregate text
+  before serialization or recursive shrinking; a byte cap alone does not bound
+  the CPU and allocation spent discovering that a payload is too large.
 - **Fail closed on ABSENCE.** A missing field must be at least as rejecting as a
   wrong one. Five market gates were `x != null && ...`, so the more malformed
   payload was the more successful one.

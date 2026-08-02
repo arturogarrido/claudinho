@@ -40,28 +40,21 @@ function liveMatch(i: number, events: number) {
   };
 }
 
-function fastestRender(live: unknown[]): number {
-  const state = { updatedAt: new Date().toISOString(), live, degraded: false } as never;
-  renderPrompt(state, { now: new Date() }); // warm
-  const runs: number[] = [];
-  for (let i = 0; i < 3; i++) {
-    const t0 = performance.now();
-    renderPrompt(state, { now: new Date() });
-    runs.push(performance.now() - t0);
-  }
-  return Math.min(...runs);
-}
-
 describe('a poisoned cache cannot make the statusline slow', () => {
-  it('costs the same whether or not every match carries 128 hostile events', () => {
-    const clean = fastestRender(Array.from({ length: 64 }, (_, i) => liveMatch(i, 0)));
-    const loaded = fastestRender(Array.from({ length: 64 }, (_, i) => liveMatch(i, 128)));
-    // A RATIO, not a millisecond constant: an absolute budget here measures the
-    // machine (see the calibration lesson in hotpath-latency). The property is
-    // that 8,192 hostile event records cost essentially nothing, because the
-    // surface never reads them. Before this, the same input took 11.9 s.
-    expect(loaded).toBeLessThan(Math.max(clean * 6, 40));
-  }, 120_000);
+  it('does not read the events field at all', () => {
+    let touched = 0;
+    const match = liveMatch(0, 0);
+    Object.defineProperty(match, 'events', {
+      enumerable: true,
+      get() {
+        touched += 1;
+        return Array.from({ length: 128 }, () => ({ player: JUNK }));
+      },
+    });
+    const state = { updatedAt: new Date().toISOString(), live: [match], degraded: false } as never;
+    expect(renderPrompt(state, { now: new Date() })).toContain('1–0');
+    expect(touched).toBe(0);
+  });
 
   it('still renders the score correctly with events present', () => {
     const state = {
@@ -91,7 +84,7 @@ describe('the "+N" marker counts matches, not junk that looks like one', () => {
     ({ version: 2, updatedAt: '2026-06-20T19:59:30Z', live, degraded: false,
        source: 'espn', competition: 'fifa.world' }) as never;
 
-  it('does not advertise records it EXAMINED and rejected as hidden matches', () => {
+  it('does not advertise rejected records as an exact number of hidden matches', () => {
     // 60 junk records: under the examine cap, so every one of them was read and
     // refused. None is a hidden match. Previously this rendered "+60".
     const line = renderPrompt(cache([real, ...Array.from({ length: 60 }, () => ({ ...junk }))]), {
@@ -99,12 +92,12 @@ describe('the "+N" marker counts matches, not junk that looks like one', () => {
     });
     expect(line).toContain('1–0');
     expect(line).not.toMatch(/\+\d+/);
+    expect(line).toContain('+more');
   });
 
-  it('DOES report records it never examined — stopping early is not silence', () => {
-    // 600 records trips the EXAMINE cap (512), which is the only way to leave
-    // records unread: we stop at index 512, so 88 records that look live were
-    // never opened and the line must not read as a complete account.
+  it('DOES report records it never examined — without inventing an exact count', () => {
+    // 600 records trips the EXAMINE cap (512). The unread suffix may contain
+    // valid matches or junk, so the only honest marker is nonnumeric.
     //
     // This test used to pass 200 records and expect "+136", asserting the cap
     // that was wrong — it charged the 64-result cap against raw records, so
@@ -113,17 +106,17 @@ describe('the "+N" marker counts matches, not junk that looks like one', () => {
     const line = renderPrompt(cache([real, ...Array.from({ length: 599 }, () => ({ ...junk }))]), {
       now: NOW,
     });
-    expect(line).toMatch(/\+88\b/);
+    expect(line).toContain('+more');
+    expect(line).not.toMatch(/\+\d+/);
   });
 
-  it('reports NOTHING hidden when every record was read, however many', () => {
-    // 200 junk records are all under the examine cap. We read every one, none
-    // was a match, and there is nothing more to tell the user about.
+  it('states that a fully-scanned but malformed list is still incomplete', () => {
     const line = renderPrompt(cache([real, ...Array.from({ length: 199 }, () => ({ ...junk }))]), {
       now: NOW,
     });
     expect(line).toContain('1–0');
     expect(line).not.toMatch(/\+\d+/);
+    expect(line).toContain('+more');
   });
 
   it('still reports overflow when there are genuinely more live matches', () => {

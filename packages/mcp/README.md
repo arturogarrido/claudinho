@@ -67,7 +67,10 @@ the prediction-market read).
 
 Market signals are pre-match and in-play reads — finished matches never show one.
 `get_today` / `get_match` include a short market line when a reliable market exists
-(slugs are auto-derived per fixture; matching fails closed). **Read-only and
+(slugs are auto-derived per fixture; matching fails closed). Their structured output
+includes `marketComplete`; the dedicated market tool uses `complete`. A false verdict
+means the optional read was unavailable or incomplete and is never described as "no signal."
+Share cards carry the same verdict and warning. **Read-only and
 informational only — not betting advice:** market-implied percentages with Polymarket
 attribution, never links or trade calls. Disable with `CLAUDINHO_MARKETS=off`; set
 `CLAUDINHO_MARKETS_SOURCE=fake` in the server `env` for a network-free, clearly

@@ -252,15 +252,18 @@ export function parseEspnEvent(raw: unknown, ctx: MapContext = {}): ParseResult<
 
   const hs = toGoals(homeRaw.score);
   const as = toGoals(awayRaw.score);
-  const hasScore = status !== 'SCHEDULED' && hs !== undefined && as !== undefined;
+  const scoreExpected = status === 'LIVE' || status === 'HT' || status === 'FT';
+  const hasScore = scoreExpected && hs !== undefined && as !== undefined;
+  if (scoreExpected && !hasScore) return malformed('event score is absent or unreadable');
 
   // EXACTLY one winner. Checking home first meant a payload claiming both teams
   // won advanced the home side out of a contradiction, and `winnerCode` is what
   // moves a team through the bracket.
   const hShoot = toGoals(homeRaw.shootoutScore);
   const aShoot = toGoals(awayRaw.shootoutScore);
+  const shootoutPresent = homeRaw.shootoutScore !== undefined || awayRaw.shootoutScore !== undefined;
   const shootout =
-    hasScore && hShoot !== undefined && aShoot !== undefined
+    shootoutPresent
       ? { home: hShoot, away: aShoot }
       : undefined;
 
@@ -316,8 +319,24 @@ export function parseEspnEvents(raw: unknown, ctx: MapContext = {}): BoundedList
   const readable = Array.isArray(all);
   const total = readable ? all.length : 0;
   const considered = takeBounded<unknown>(all, MAX_EVENTS);
-  const parsed = considered.map((e) => parseEspnEvent(e, ctx));
-  const items = parsed.flatMap((r) => (r.kind === 'valid' ? [r.value] : []));
+  const items: Match[] = [];
+  const seenIds = new Set<string>();
+  let complete = readable && considered.length === total;
+  for (const event of considered) {
+    const parsed = parseEspnEvent(event, ctx);
+    if (parsed.kind !== 'valid') {
+      complete = false;
+      continue;
+    }
+    // Two records asserting different facts about one fixture are ambiguous.
+    // Keeping whichever arrived last made live scores order-dependent.
+    if (seenIds.has(parsed.value.id)) {
+      complete = false;
+      continue;
+    }
+    seenIds.add(parsed.value.id);
+    items.push(parsed.value);
+  }
   return {
     items,
     total,
@@ -326,7 +345,7 @@ export function parseEspnEvents(raw: unknown, ctx: MapContext = {}): BoundedList
     // Some record was unreadable, or the window did not cover the payload, or
     // the envelope itself was not a list — none of those is a complete account
     // of what the provider sent.
-    complete: readable && items.length === total,
+    complete,
   };
 }
 
@@ -336,32 +355,70 @@ interface RawEntry {
   stats?: unknown;
 }
 
-/** One numeric stat, bounded. `signed` is for goal difference, the only one that may go below zero. */
-function statVal(stats: unknown, name: string, signed = false): number {
-  const list = takeBounded<{ name?: unknown; value?: unknown }>(stats, 64);
-  const v = list.find((s) => s?.name === name)?.value;
-  if (typeof v !== 'number' || !Number.isFinite(v)) return 0;
-  const n = Math.round(v);
+/** One exact integer stat. `signed` is for goal difference, the only negative field. */
+function statVal(stats: unknown, name: string, signed = false): number | undefined {
+  if (!Array.isArray(stats) || stats.length > 64) return undefined;
+  const matches = takeBounded<{ name?: unknown; value?: unknown }>(stats, 64).filter(
+    (s) => s?.name === name,
+  );
+  if (matches.length !== 1) return undefined;
+  const v = matches[0]?.value;
+  if (typeof v !== 'number' || !Number.isFinite(v) || !Number.isInteger(v)) return undefined;
   const limit = 1000;
-  return n > limit || n < (signed ? -limit : 0) ? 0 : n;
+  return v > limit || v < (signed ? -limit : 0) ? undefined : v;
 }
 
-function entryToRow(e: RawEntry): ParseResult<StandingRow & { providerId?: string }> {
+type ParsedStandingRow = StandingRow & { providerId?: string; providerRank: number };
+
+function entryToRow(e: RawEntry): ParseResult<ParsedStandingRow> {
   const names = teamNames(e?.team);
   if (names.length === 0) return definitiveNone('standings entry names no team');
   const name = names[0] as string;
   const code = teamCode(e?.team?.abbreviation, name);
+  const played = statVal(e.stats, 'gamesPlayed');
+  const won = statVal(e.stats, 'wins');
+  const drawn = statVal(e.stats, 'ties');
+  const lost = statVal(e.stats, 'losses');
+  const goalsFor = statVal(e.stats, 'pointsFor');
+  const goalsAgainst = statVal(e.stats, 'pointsAgainst');
+  const goalDiff = statVal(e.stats, 'pointDifferential', true);
+  const points = statVal(e.stats, 'points');
+  const providerRank = statVal(e.stats, 'rank');
+  if (
+    played === undefined ||
+    won === undefined ||
+    drawn === undefined ||
+    lost === undefined ||
+    goalsFor === undefined ||
+    goalsAgainst === undefined ||
+    goalDiff === undefined ||
+    points === undefined ||
+    providerRank === undefined ||
+    providerRank < 1
+  ) {
+    return malformed('standings entry has missing or invalid statistics');
+  }
+  if (played !== won + drawn + lost) {
+    return malformed('standings entry games do not add up');
+  }
+  if (goalDiff !== goalsFor - goalsAgainst) {
+    return malformed('standings entry goal difference does not add up');
+  }
+  if (points !== won * 3 + drawn) {
+    return malformed('standings entry points do not add up');
+  }
   return valid({
     team: { code, name, flag: productFlag(name) },
-    played: statVal(e.stats, 'gamesPlayed'),
-    won: statVal(e.stats, 'wins'),
-    drawn: statVal(e.stats, 'ties'),
-    lost: statVal(e.stats, 'losses'),
-    goalsFor: statVal(e.stats, 'pointsFor'),
-    goalsAgainst: statVal(e.stats, 'pointsAgainst'),
-    goalDiff: statVal(e.stats, 'pointDifferential', true),
-    points: statVal(e.stats, 'points'),
+    played,
+    won,
+    drawn,
+    lost,
+    goalsFor,
+    goalsAgainst,
+    goalDiff,
+    points,
     providerId: opaqueId(e?.team?.id, ESPN_ID),
+    providerRank,
   });
 }
 
@@ -378,40 +435,75 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
   // we looked at all of them. Read before slicing, for the same reason as
   // parseEspnEvents: a count taken after the slice can only report success.
   const rawChildren = (raw as { children?: unknown })?.children;
-  const rawCount = Array.isArray(rawChildren) ? rawChildren.length : 0;
+  const readable = Array.isArray(rawChildren);
+  const rawCount = readable ? rawChildren.length : 0;
   const children = takeBounded<Record<string, unknown>>(rawChildren, MAX_GROUPS * 4);
   const sawAllChildren = rawCount === children.length;
   let rowsTruncated = false;
+  let groupsTruncated = false;
+  let complete = readable && sawAllChildren;
   const out: GroupStandings[] = [];
   const seenGroups = new Set<string>();
+  // A nation belongs to exactly one World Cup group. Keep identity sets across
+  // the whole payload, not per table, so the same provider team cannot make two
+  // contradictory groups look independently valid.
+  const seenTeams = new Set<string>();
+  const seenCodes = new Set<string>();
 
   for (const child of children) {
-    if (out.length >= MAX_GROUPS) break;
     const label = humanLabel(child?.name ?? child?.abbreviation);
     const letter = label.match(/Group\s+([A-L])/i)?.[1]?.toUpperCase();
-    if (!letter || seenGroups.has(letter)) continue;
+    if (!letter) continue; // a knockout/non-group child is not malformed
+    if (seenGroups.has(letter)) {
+      complete = false;
+      continue;
+    }
     seenGroups.add(letter);
+    if (out.length >= MAX_GROUPS) {
+      complete = false;
+      groupsTruncated = true;
+      continue;
+    }
 
     // Bounded BEFORE the map and the sort: a 4,000-row group cost ~300ms to
     // produce 32 rows because the cap was applied to the result.
     const rawEntries = (child?.standings as { entries?: unknown } | undefined)?.entries;
+    if (!Array.isArray(rawEntries) || rawEntries.length === 0) {
+      complete = false;
+      continue;
+    }
     // Detected AT THE SLICE: `ranked` is built from the already-bounded list, so
     // measuring it afterwards can only ever say nothing was dropped — the same
     // count-after-the-fact mistake as `total`.
-    if (Array.isArray(rawEntries) && rawEntries.length > MAX_GROUP_ROWS) rowsTruncated = true;
+    if (rawEntries.length > MAX_GROUP_ROWS) {
+      rowsTruncated = true;
+      complete = false;
+    }
     const entries = takeBounded<RawEntry>(rawEntries, MAX_GROUP_ROWS);
-    const seenTeams = new Set<string>();
+    const seenRanks = new Set<number>();
     const ranked: Array<{ row: StandingRow; rank: number }> = [];
     for (const e of entries) {
       const r = entryToRow(e);
-      if (r.kind !== 'valid') continue;
+      if (r.kind !== 'valid') {
+        complete = false;
+        continue;
+      }
       // A team appears once per table. A duplicate is a payload we cannot read
       // as a table, not two rows about two teams.
       const key = r.value.providerId ?? r.value.team.code;
-      if (seenTeams.has(key)) continue;
+      if (
+        seenTeams.has(key) ||
+        seenCodes.has(r.value.team.code) ||
+        seenRanks.has(r.value.providerRank)
+      ) {
+        complete = false;
+        continue;
+      }
       seenTeams.add(key);
-      const { providerId: _drop, ...row } = r.value;
-      ranked.push({ row, rank: statVal(e.stats, 'rank') });
+      seenCodes.add(r.value.team.code);
+      seenRanks.add(r.value.providerRank);
+      const { providerId: _dropId, providerRank: rank, ...row } = r.value;
+      ranked.push({ row, rank });
     }
     ranked.sort((a, b) => {
       if (a.rank && b.rank && a.rank !== b.rank) return a.rank - b.rank;
@@ -423,11 +515,11 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
   }
   return {
     items: out,
-    total: out.length,
+    total: seenGroups.size,
     shown: out.length,
     // We stopped early if the child list was cut, we filled the group cap, or
     // any single group's ROWS were cut.
-    truncated: !sawAllChildren || out.length >= MAX_GROUPS || rowsTruncated,
-    complete: sawAllChildren && !rowsTruncated,
+    truncated: !sawAllChildren || groupsTruncated || rowsTruncated,
+    complete: complete && !groupsTruncated && !rowsTruncated,
   };
 }

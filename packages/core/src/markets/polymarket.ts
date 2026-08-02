@@ -391,10 +391,10 @@ export class PolymarketProvider implements MarketProvider {
     // Equality is exact, so the sibling type 'child_moneyline' (a per-game
     // winner) is excluded too.
     // `markets` is cast from an unchecked JSON body, so a non-array made
-    // `.filter` throw. resolveOne's catch can only read a throw as a TRANSIENT
-    // provider error (`checked: false`), so a permanently malformed payload was
-    // re-fetched on every command forever. A body we cannot read is a definitive
-    // "no market". A null element is filtered out by the same test.
+    // `.filter` throw. resolveOne's catch can only read a throw as a transient
+    // provider error (`checked: false`), while the boundary can classify the
+    // unreadable shape explicitly as malformed and retry it without caching a
+    // false "no market" verdict.
     if (!Array.isArray(event.markets)) {
       return malformed('event markets is not an array');
     }
@@ -406,7 +406,21 @@ export class PolymarketProvider implements MarketProvider {
     // fixture whose legs sat past the cap was negative-cached for the whole TTL.
     const marketsTruncated =
       Array.isArray(event.markets) && event.markets.length > MAX_EVENT_MARKETS;
-    const moneyline = takeBounded<GammaMarket>(event.markets, MAX_EVENT_MARKETS).filter(
+    if (marketsTruncated) {
+      return malformed('event market list exceeded the cap');
+    }
+    const marketList = takeBounded<GammaMarket>(event.markets, MAX_EVENT_MARKETS);
+    if (
+      marketList.some(
+        (market) =>
+          !market ||
+          typeof market !== 'object' ||
+          typeof market.sportsMarketType !== 'string',
+      )
+    ) {
+      return malformed('event market is missing its market-type discriminator');
+    }
+    const moneyline = marketList.filter(
       (m) => m?.sportsMarketType === 'moneyline',
     );
     // Each selector answers none / exactly one / ambiguous. Collapsing the last
@@ -435,9 +449,7 @@ export class PolymarketProvider implements MarketProvider {
     // included (`fifwc-rsa-can-2026-06-28` is an R32 tie with rsa/draw/can).
     // Requiring the draw leg costs zero real signal and closes the fail-open.
     if (homeSel.kind !== 'one' || awaySel.kind !== 'one' || drawSel.kind !== 'one') {
-      return marketsTruncated
-        ? malformed('event market list exceeded the cap before both legs were found')
-        : definitiveNone('event does not carry all three 1X2 legs');
+      return definitiveNone('event does not carry all three 1X2 legs');
     }
     const homeMarket = homeSel.value;
     const awayMarket = awaySel.value;

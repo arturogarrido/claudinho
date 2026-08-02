@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { EspnAdapter, MAX_RESPONSE_BYTES, mapEspnEvent, parseStandings } from '../src/adapters/espn';
+import {
+  EspnAdapter,
+  MAX_RESPONSE_BYTES,
+  mapEspnEvent,
+  parseStandingsBatch,
+} from '../src/adapters/espn';
 import { getLiveMatches } from '../src/live';
 
 // Minimal ESPN-shaped fixtures mirroring the real response structure.
@@ -177,9 +182,7 @@ describe('mapEspnEvent', () => {
     expect(m.shootout).toBeUndefined();
   });
 
-  it('never sets shootout without a regulation score (no impossible { score: undefined, shootout })', () => {
-    // Defensive: shootoutScore present but score absent → both omitted, so the
-    // structured payload (--json / MCP data) can't surface an inconsistent state.
+  it('refuses a finished event that claims a shootout without a regulation score', () => {
     const orphan = {
       ...finished,
       competitions: [
@@ -192,9 +195,7 @@ describe('mapEspnEvent', () => {
         },
       ],
     };
-    const m = mapped(orphan, { groupByTeam: GROUP_MAP });
-    expect(m.score).toBeUndefined();
-    expect(m.shootout).toBeUndefined();
+    expect(mapEspnEvent(orphan, { groupByTeam: GROUP_MAP })).toBeUndefined();
   });
 
   it('maps a knockout fixture from the slug, with no group letter', () => {
@@ -243,7 +244,11 @@ describe('EspnAdapter fetch hardening (size cap + no redirects)', () => {
     const { res } = bigResponse(2048);
     const fetchImpl = (async () => res) as unknown as typeof fetch;
     const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
-    await expect(adapter.fetchByDate('2026-06-11')).resolves.toEqual([]);
+    const batch = await adapter.fetchByDate('2026-06-11');
+    expect(Array.isArray(batch)).toBe(true);
+    expect(batch).toEqual([]);
+    expect(batch.complete).toBe(true);
+    expect(batch.items).toBe(batch);
   });
 
   it("sends redirect:'error' so a redirect can't escape the fixed host", async () => {
@@ -294,9 +299,9 @@ describe('mapEspnEvent — impossible facts and malformed records', () => {
     ],
   });
 
-  it('drops an impossible score rather than publishing it as fact', () => {
+  it('refuses an event with an impossible required score', () => {
     for (const score of ['-5', '999999999', '1x', '5 goals', '1e3']) {
-      expect(mapped(withHome({ score })).score, `score ${score}`).toBeUndefined();
+      expect(mapEspnEvent(withHome({ score })), `score ${score}`).toBeUndefined();
     }
   });
 
@@ -396,17 +401,29 @@ describe('mapEspnEvent / parseStandings — identity and outer bounds', () => {
 
   it('bounds standings CHILDREN, not just the rows inside them', () => {
     // Bounding the inner list while the outer one is unbounded is not a bound.
+    const stats = (i: number) => [
+      { name: 'gamesPlayed', value: 0 },
+      { name: 'wins', value: 0 },
+      { name: 'ties', value: 0 },
+      { name: 'losses', value: 0 },
+      { name: 'pointsFor', value: 0 },
+      { name: 'pointsAgainst', value: 0 },
+      { name: 'pointDifferential', value: 0 },
+      { name: 'points', value: 0 },
+      { name: 'rank', value: i + 1 },
+    ];
     const children = Array.from({ length: 200 }, () => ({
       name: 'Group A',
       standings: {
         entries: Array.from({ length: 40 }, (_, i) => ({
           team: { abbreviation: `T${i}`, displayName: `Team ${i}` },
-          stats: [{ name: 'points', value: 3 }],
+          stats: stats(i),
         })),
       },
     }));
-    const out = parseStandings({ children } as never);
-    expect(out.length).toBe(1); // deduped: "Group A" is one group, not 200
-    expect(out[0]!.rows.length).toBeLessThanOrEqual(32);
+    const out = parseStandingsBatch({ children } as never);
+    expect(out.items.length).toBe(1); // deduped: "Group A" is one group, not 200
+    expect(out.items[0]!.rows.length).toBeLessThanOrEqual(32);
+    expect(out.complete).toBe(false);
   });
 });

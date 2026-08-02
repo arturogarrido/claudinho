@@ -32,6 +32,25 @@ GROUP="${GROUP:-A}"
 # Default to the built dist (tests exactly what ships); CLI=claudinho overrides.
 cli() { if [ -n "${CLI:-}" ]; then $CLI "$@"; else node "$DIST" "$@"; fi; }
 
+# A scheduled tie close to a date boundary keeps the date/tz tripwires useful
+# after the live bracket is entirely FT (finished lines intentionally omit the
+# kickoff). This exercises the built core artifact, not a test-only formatter.
+synthetic_scheduled_bracket() {
+  node --input-type=module -e "
+import { formatBracketList } from 'file://$CORE_DIST';
+const tz = process.argv[1];
+const match = { id:'tz', stage:'R32', kickoff:'2026-06-29T23:30:00Z', venue:'X',
+  home:{code:'MEX',name:'Mexico',flag:'🇲🇽'}, away:{code:'JPN',name:'Japan',flag:'🇯🇵'},
+  status:'SCHEDULED', updatedAt:'2026-06-01T00:00:00Z' };
+const view = { stages:[{ stage:'R32', label:'Round of 32', matches:[{
+  match, kickoff:match.kickoff,
+  home:{code:'MEX',label:'Mexico',flag:'🇲🇽',status:'confirmed'},
+  away:{code:'JPN',label:'Japan',flag:'🇯🇵',status:'confirmed'}
+}]}], degraded:false, standingsDegraded:false };
+process.stdout.write(formatBracketList(view, { tz, locale:'en', footer:false }));
+" "$1" 2>/dev/null
+}
+
 bold()    { printf '\033[1m%s\033[0m\n' "$1"; }
 banner()  { printf '\n\033[1;36m━━━ %s ━━━\033[0m\n' "$1"; }
 run()     { printf '\033[2m$ claudinho %s\033[0m\n' "$*"; cli "$@"; echo; }
@@ -101,14 +120,32 @@ if ! grep -q "Round of 32" <<<"$BR_EN" || grep -qi "degraded\|feed.*down\|unreac
   printf '  \033[33m⚠ SKIP\033[0m  feed degraded/unreachable — eyeball the sections above manually\n'
   SKIP=4
 else
+  DATE_EN="$BR_EN"; DATE_UTC="$BR_UTC"; DATE_TYO="$BR_TYO"
+  # Once every tie is FT, the live output has no scheduled kickoff to exercise.
+  # Fall back to one deterministic scheduled tie through the artifact about to
+  # ship. CLI override mode cannot make that claim about the global install.
+  if ! grep -q " vs " <<<"$BR_EN"; then
+    if [ -z "${CLI:-}" ] && [ -f "$CORE_DIST" ]; then
+      DATE_EN="$(synthetic_scheduled_bracket UTC)"
+      DATE_UTC="$DATE_EN"
+      DATE_TYO="$(synthetic_scheduled_bracket Asia/Tokyo)"
+    else
+      printf '  \033[33m⚠ SKIP\033[0m  bracket calendar-date check (no scheduled live tie; local core artifact unavailable)\n'
+      printf '  \033[33m⚠ SKIP\033[0m  bracket timezone check (no scheduled live tie; local core artifact unavailable)\n'
+      SKIP=$((SKIP+2))
+      DATE_EN=""
+    fi
+  fi
   # T1: bracket kickoffs show a CALENDAR DATE (month), not a bare weekday (0.8.4)
-  grep -qE "(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)" <<<"$BR_EN" \
-    && check ok  "bracket kickoffs show a calendar month (unambiguous over the 3-week span)" \
-    || check no  "bracket kickoffs show a calendar month (unambiguous over the 3-week span)"
-  # T2: tz is actually threaded into the rendered date/time (0.8.4 MCP miss)
-  [ "$BR_UTC" != "$BR_TYO" ] \
-    && check ok  "bracket output differs UTC vs Asia/Tokyo (tz threaded into rendering)" \
-    || check no  "bracket output differs UTC vs Asia/Tokyo (tz threaded into rendering)"
+  if [ -n "$DATE_EN" ]; then
+    grep -qE "(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)" <<<"$DATE_EN" \
+      && check ok  "bracket kickoffs show a calendar month (unambiguous over the 3-week span)" \
+      || check no  "bracket kickoffs show a calendar month (unambiguous over the 3-week span)"
+    # T2: tz is actually threaded into the rendered date/time (0.8.4 MCP miss)
+    [ "$DATE_UTC" != "$DATE_TYO" ] \
+      && check ok  "bracket output differs UTC vs Asia/Tokyo (tz threaded into rendering)" \
+      || check no  "bracket output differs UTC vs Asia/Tokyo (tz threaded into rendering)"
+  fi
   # T3/T4: the non-affiliation disclaimer is non-optional on share cards (legal)
   grep -qi "not affiliated with FIFA" <<<"$SB" \
     && check ok  "share bracket carries the non-affiliation disclaimer" \

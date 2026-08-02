@@ -66,14 +66,14 @@ function liveMatches(): Match[] {
     espnEvent({ season: { slug: 'round-of-16' } }),
     // England: a flag that is an emoji TAG SEQUENCE, the shape a naive
     // category filter mutilates and a naive exemption smuggles data through.
-    espnEvent({}, {
+    espnEvent({ status: { type: { name: 'STATUS_SCHEDULED', state: 'pre' } } }, {
       competitors: [
         { homeAway: 'home', team: { id: '448', abbreviation: 'ENG', displayName: 'England' } },
         { homeAway: 'away', team: { id: '449', abbreviation: 'SCO', displayName: 'Scotland' } },
       ],
     }),
     // An unresolved knockout slot: no nation, so a white-flag placeholder.
-    espnEvent({}, {
+    espnEvent({ status: { type: { name: 'STATUS_SCHEDULED', state: 'pre' } } }, {
       competitors: [
         { homeAway: 'home', team: { id: '1', abbreviation: 'RD32', displayName: 'Round of 32 1 Winner' } },
         { homeAway: 'away', team: { id: '2', abbreviation: 'RD32', displayName: 'Round of 32 3 Winner' } },
@@ -84,7 +84,7 @@ function liveMatches(): Match[] {
     // hyphen keeps "e" and U+0301 apart and nothing composes; removing it then
     // leaves a DECOMPOSED "e"+acute, which composes to "é" on the next pass.
     // Live and cache therefore emitted byte-different output for one fixture.
-    espnEvent({}, {
+    espnEvent({ status: { type: { name: 'STATUS_SCHEDULED', state: 'pre' } } }, {
       venue: { fullName: 'Estadio Me\u00AD\u0301xico', address: { city: 'Ciudad de Me\u00AD\u0301xico' } },
       competitors: [
         { homeAway: 'home', team: { id: '203', abbreviation: 'MEX', displayName: 'Me\u00AD\u0301xico' } },
@@ -196,16 +196,13 @@ describe('what the live path would refuse, the cache path refuses too', () => {
     expect(JSON.stringify(r.value)).not.toContain('instruction');
   });
 
-  it('drops a poisoned numeric field rather than printing it', () => {
+  it('refuses a poisoned required score rather than publishing a scoreless result', () => {
     const r = parseCachedMatch({
       ...base(),
       score: { home: '1\nFAKE', away: 0 },
       minute: '90\u001B[2K',
     });
-    expect(r.kind).toBe('valid');
-    if (r.kind !== 'valid') return;
-    expect(r.value.score).toBeUndefined();
-    expect(r.value.minute).toBeUndefined();
+    expect(r.kind).toBe('malformed');
   });
 
   it('bounds a cache file with more fixtures than a tournament has', () => {
@@ -329,10 +326,10 @@ describe('winnerCode: one rule, both paths', () => {
     // penalties cannot overturn a DECISIVE regulation score
     expect(code(cached({
       score: { home: 2, away: 0 }, shootout: { home: 1, away: 4 }, winnerCode: 'PAR',
-    }))).toBeUndefined();
+    }))).toBe('<malformed>');
     // no score at all is nothing to agree with
-    expect(code(cached({ winnerCode: 'GER' }))).toBeUndefined();
-    expect(code(live({ winner: true }, { winner: false }))).toBeUndefined();
+    expect(code(cached({ winnerCode: 'GER' }))).toBe('<malformed>');
+    expect(code(live({ winner: true }, { winner: false }))).toBe('<malformed>');
     // a team that is not playing
     expect(code(cached({ score: { home: 2, away: 0 }, winnerCode: 'BRA' }))).toBeUndefined();
   });
@@ -366,12 +363,13 @@ describe('states that cannot exist are refused, on both paths', () => {
       shootout: { home: 4, away: 3 }, winnerCode: 'GER',
     }));
     expect(r.s).toBeUndefined();
-    expect(r.w).toBeUndefined(); // and therefore no winner either
+    expect(r.w).toBe('<malformed>');
   });
 
   it('a decisive regulation score has no shootout', () => {
-    expect(seen(cached({ score: { home: 2, away: 0 }, shootout: { home: 1, away: 4 } })).s)
-      .toBeUndefined();
+    expect(
+      seen(cached({ score: { home: 2, away: 0 }, shootout: { home: 1, away: 4 } })).w,
+    ).toBe('<malformed>');
   });
 
   it('but a real knockout tie keeps both', () => {

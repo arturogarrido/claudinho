@@ -7,7 +7,14 @@
  * as the provider's answer.
  */
 import { describe, expect, it } from 'vitest';
-import { MAX_GROUP_ROWS, parseEspnEvent, parseEspnEvents, parseEspnStandings } from '../src/trust/espn';
+import {
+  MAX_EVENTS,
+  MAX_GROUPS,
+  MAX_GROUP_ROWS,
+  parseEspnEvent,
+  parseEspnEvents,
+  parseEspnStandings,
+} from '../src/trust/espn';
 
 const EV = {
   id: '700001',
@@ -104,24 +111,22 @@ describe('parseEspnEvent — a payload we cannot READ vs one that is not a fixtu
 
 describe('parseEspnEvents / parseEspnStandings — bounded before the work', () => {
   it('bounds a flood of events — the WORK, not just the output', () => {
-    const make = (n: number) =>
-      Array.from({ length: n }, (_, i) => ({ ...EV, id: String(900000 + i) }));
-    const time = (events: unknown[]) => {
-      const t = process.hrtime.bigint();
-      const list = parseEspnEvents({ events });
-      return { ms: Number(process.hrtime.bigint() - t) / 1e6, n: list.items.length };
-    };
-    time(make(300)); // warm
-    // 17x the input for the same bounded output. An absolute millisecond budget
-    // would measure the machine (it failed under parallel test load while
-    // passing alone); the property is that the extra 4,700 records cost
-    // essentially nothing, because they are sliced off BEFORE any per-record
-    // work. Ratio, so honest contention inflates both samples together.
-    const small = time(make(300));
-    const huge = time(make(5000));
-    expect(huge.n).toBe(small.n);
-    expect(huge.n).toBeLessThanOrEqual(300);
-    expect(huge.ms).toBeLessThan(Math.max(small.ms * 4, 50));
+    let touched = 0;
+    const events = Array.from({ length: 5_000 }, (_, i) => {
+      const event = { ...EV };
+      Object.defineProperty(event, 'id', {
+        enumerable: true,
+        get() {
+          touched = Math.max(touched, i + 1);
+          return String(900000 + i);
+        },
+      });
+      return event;
+    });
+    const list = parseEspnEvents({ events });
+    expect(list.items).toHaveLength(MAX_EVENTS);
+    expect(touched).toBeLessThanOrEqual(MAX_EVENTS);
+    expect(list.complete).toBe(false);
   });
 
   it('marks the batch incomplete when a record was unreadable', () => {
@@ -150,37 +155,128 @@ describe('parseEspnEvents / parseEspnStandings — bounded before the work', () 
     expect(list.items.map((m) => m.id)).toEqual(['700001']);
   });
 
+  it('marks duplicate fixture ids incomplete instead of choosing by order', () => {
+    const list = parseEspnEvents({ events: [EV, { ...EV }] });
+    expect(list.items.map((m) => m.id)).toEqual(['700001']);
+    expect(list.complete).toBe(false);
+  });
+
   it('bounds and dedupes standings groups AND their rows', () => {
+    const stats = (i: number) => [
+      { name: 'gamesPlayed', value: 0 },
+      { name: 'wins', value: 0 },
+      { name: 'ties', value: 0 },
+      { name: 'losses', value: 0 },
+      { name: 'pointsFor', value: 0 },
+      { name: 'pointsAgainst', value: 0 },
+      { name: 'pointDifferential', value: 0 },
+      { name: 'points', value: 0 },
+      { name: 'rank', value: i + 1 },
+    ];
+    let rowsTouched = 0;
     const entry = (i: number) => ({
-      team: { id: String(i), abbreviation: `T${i}`, displayName: `Team ${i}` },
-      stats: [{ name: 'points', value: 3 }],
+      get team() {
+        rowsTouched = Math.max(rowsTouched, i + 1);
+        return { id: String(i), abbreviation: `T${i}`, displayName: `Team ${i}` };
+      },
+      stats: stats(i),
     });
-    const children = Array.from({ length: 200 }, () => ({
-      name: 'Group A',
-      standings: { entries: Array.from({ length: 4000 }, (_, i) => entry(i)) },
+    let groupsTouched = 0;
+    // Reuse one hostile row array across groups. The parser still sees the same
+    // 200 x 4,000 logical shape, without the test itself allocating 800,000
+    // objects before the bounded-work assertion even starts.
+    const entries = Array.from({ length: 4_000 }, (_, row) => entry(row));
+    const children = Array.from({ length: 200 }, (_, i) => ({
+      get name() {
+        groupsTouched = Math.max(groupsTouched, i + 1);
+        return 'Group A';
+      },
+      standings: { entries },
     }));
-    const small = { children: children.slice(0, 1) };
-    parseEspnStandings(small); // warm
-    const t0 = process.hrtime.bigint();
-    parseEspnStandings(small);
-    const baseMs = Number(process.hrtime.bigint() - t0) / 1e6;
-    const t = process.hrtime.bigint();
     const list = parseEspnStandings({ children });
-    // 200 groups x 4,000 rows, bounded before the per-row work — see above for
-    // why this is a ratio and not a millisecond constant.
-    expect(Number(process.hrtime.bigint() - t) / 1e6).toBeLessThan(Math.max(baseMs * 40, 50));
     expect(list.items.length).toBe(1); // "Group A" is one group, not 200
     expect(list.items[0]!.rows.length).toBeLessThanOrEqual(MAX_GROUP_ROWS);
+    expect(groupsTouched).toBeLessThanOrEqual(MAX_GROUPS * 4);
+    expect(rowsTouched).toBeLessThanOrEqual(MAX_GROUP_ROWS);
+    expect(list.complete).toBe(false);
   });
 
   it('lists a team at most once per table', () => {
+    const stats = [
+      { name: 'gamesPlayed', value: 1 },
+      { name: 'wins', value: 1 },
+      { name: 'ties', value: 0 },
+      { name: 'losses', value: 0 },
+      { name: 'pointsFor', value: 2 },
+      { name: 'pointsAgainst', value: 0 },
+      { name: 'pointDifferential', value: 2 },
+      { name: 'points', value: 3 },
+      { name: 'rank', value: 1 },
+    ];
     const dup = {
       team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
-      stats: [{ name: 'points', value: 9 }],
+      stats,
     };
     const list = parseEspnStandings({
       children: [{ name: 'Group A', standings: { entries: [dup, dup, dup] } }],
     });
     expect(list.items[0]!.rows.length).toBe(1);
+    expect(list.complete).toBe(false);
+  });
+
+  it('lists a provider team in at most one group across the payload', () => {
+    const stats = [
+      { name: 'gamesPlayed', value: 1 },
+      { name: 'wins', value: 1 },
+      { name: 'ties', value: 0 },
+      { name: 'losses', value: 0 },
+      { name: 'pointsFor', value: 2 },
+      { name: 'pointsAgainst', value: 0 },
+      { name: 'pointDifferential', value: 2 },
+      { name: 'points', value: 3 },
+      { name: 'rank', value: 1 },
+    ];
+    const mexico = {
+      team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
+      stats,
+    };
+    const list = parseEspnStandings({
+      children: [
+        { name: 'Group A', standings: { entries: [mexico] } },
+        { name: 'Group B', standings: { entries: [mexico] } },
+      ],
+    });
+    expect(list.items.flatMap((table) => table.rows).map((row) => row.team.code)).toEqual([
+      'MEX',
+    ]);
+    expect(list.complete).toBe(false);
+  });
+
+  it('marks contradictory aggregate statistics incomplete', () => {
+    const stats = [
+      { name: 'gamesPlayed', value: 1 },
+      { name: 'wins', value: 1 },
+      { name: 'ties', value: 1 },
+      { name: 'losses', value: 0 },
+      { name: 'pointsFor', value: 2 },
+      { name: 'pointsAgainst', value: 0 },
+      { name: 'pointDifferential', value: 7 },
+      { name: 'points', value: 99 },
+      { name: 'rank', value: 1 },
+    ];
+    const list = parseEspnStandings({
+      children: [
+        {
+          name: 'Group A',
+          standings: {
+            entries: [
+              { team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' }, stats },
+            ],
+          },
+        },
+      ],
+    });
+    expect(list.items[0]?.rows).toEqual([]);
+    expect(list.complete).toBe(false);
   });
 });

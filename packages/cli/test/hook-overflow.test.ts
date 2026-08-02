@@ -3,9 +3,8 @@
  *
  * The statusline had this bug and got this fix (475975a); the hook kept the
  * shape-only count. Fixing one surface and not its sibling is the recurring
- * mistake in this codebase, which is why both now share the same two sources:
- * matches sealed but not shown, plus records past the examine cap we never
- * looked at. A record we examined and rejected is neither.
+ * mistake in this codebase. Exact overflow is only possible after a complete
+ * scan; an unread suffix gets a nonnumeric warning.
  */
 import { describe, expect, it } from 'vitest';
 import { renderHook } from '../src/hook';
@@ -30,24 +29,24 @@ describe('the hook does not report phantom matches to the model', () => {
     });
     expect(out).toContain('Mexico');
     expect(out).not.toMatch(/\+\d+ more/); // was "(+60 more not shown)"
+    expect(out).toContain('more live matches may not be shown');
   });
 
-  it('but records it never examined ARE reported — stopping early is not silence', () => {
-    // 600 records trips the examine cap, leaving 88 genuinely unread. Under 512
-    // every record is read, and then there is nothing hidden to report — see
-    // the sibling case below.
+  it('but an incomplete scan is reported without guessing how many matches remain', () => {
     const out = renderHook(state([real, ...Array.from({ length: 599 }, () => ({ ...junk }))]), {
       now: NOW,
     });
-    expect(out).toMatch(/\+88 more/);
+    expect(out).toContain('more live matches may not be shown');
+    expect(out).not.toMatch(/\+\d+ more/);
   });
 
-  it('says nothing is hidden when every record was read', () => {
+  it('still marks a fully-scanned list incomplete when records were malformed', () => {
     const out = renderHook(state([real, ...Array.from({ length: 199 }, () => ({ ...junk }))]), {
       now: NOW,
     });
     expect(out).toContain('Mexico');
     expect(out).not.toMatch(/\+\d+ more/);
+    expect(out).toContain('more live matches may not be shown');
   });
 
   it('and genuinely hidden matches are still counted', () => {

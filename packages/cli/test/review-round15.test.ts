@@ -44,29 +44,34 @@ const cache = (fixtures: unknown[]) =>
     competition: 'fifa.world',
   }) as never;
 
-describe('cached knockout fixtures: junk cannot crowd out a real pairing', () => {
-  it('finds the resolved tie behind 64 unsealable shapes', () => {
-    // The exact sibling of the live-list bug fixed a round earlier: this path
-    // sliced the first 64 records passing a CHEAP shape test and sealed only
-    // those, so 64 junk records hid a confirmed tie and the statusline fell
-    // back to "⚽ —" with the answer sitting in the cache.
+describe('cached knockout fixtures: malformed or partial snapshots fail closed', () => {
+  it('does not treat the readable suffix of a malformed snapshot as authoritative', () => {
     const line = renderPrompt(
       cache([...Array.from({ length: 64 }, (_, i) => junkFixture(i)), resolvedTie]),
       { now: NOW },
     );
-    expect(line).toContain('🇲🇽');
-    expect(line).toContain('🇪🇨');
+    expect(line).not.toContain('🇲🇽');
+    expect(line).not.toContain('🇪🇨');
   });
 
-  it('and still bounds the work when the cache is enormous', () => {
-    const many = [...Array.from({ length: 200_000 }, (_, i) => junkFixture(i)), resolvedTie];
-    const started = Date.now();
+  it('bounds the examined records without a wall-clock assertion', () => {
+    let touched = 0;
+    const many = [
+      ...Array.from({ length: 600 }, (_, i) => {
+        const fixture = junkFixture(i);
+        Object.defineProperty(fixture, 'id', {
+          enumerable: true,
+          get() {
+            touched = Math.max(touched, i + 1);
+            return `x${i}`;
+          },
+        });
+        return fixture;
+      }),
+      resolvedTie,
+    ];
     const line = renderPrompt(cache(many), { now: NOW });
-    // Deterministic assertion, not a stopwatch: past the examine cap we stop,
-    // so a fixture beyond it is NEVER reached however large the file. (The
-    // elapsed time is asserted only as a smoke ceiling an order of magnitude
-    // above the 150ms budget, so a loaded CI box cannot flake it.)
     expect(line).not.toContain('🇲🇽');
-    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(touched).toBeLessThanOrEqual(512);
   });
 });

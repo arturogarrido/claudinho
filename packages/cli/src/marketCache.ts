@@ -10,7 +10,7 @@
  * appear as kickoff approaches). Best-effort + tolerant: a corrupt/absent file
  * reads as empty, and writes never throw.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { stampAgeMs } from './cache';
 import {
@@ -23,6 +23,8 @@ import { cacheDir, writeFileAtomic } from './paths';
 
 const POSITIVE_TTL_MS = 10 * 60_000;
 const NEGATIVE_TTL_MS = 3 * 60_000;
+/** Cold-path cache ceiling before JSON parsing. Real files are a few KB. */
+const MAX_MARKET_CACHE_BYTES = 1024 * 1024;
 /**
  * A cache entry dated into the future is expired, not fresh. Without this a
  * `fetchedAt` of 2099 never aged out, suppressing the provider permanently.
@@ -51,7 +53,12 @@ function cachePath(): string {
  */
 function readFile(): { source: unknown; competition: unknown; entries: unknown } | undefined {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(cachePath(), 'utf8'));
+    const path = cachePath();
+    const info = statSync(path);
+    if (!info.isFile() || info.size > MAX_MARKET_CACHE_BYTES) return undefined;
+    const bytes = readFileSync(path);
+    if (bytes.byteLength > MAX_MARKET_CACHE_BYTES) return undefined;
+    const parsed: unknown = JSON.parse(bytes.toString('utf8'));
     if (!parsed || typeof parsed !== 'object') return undefined;
     return parsed as { source: unknown; competition: unknown; entries: unknown };
   } catch {
@@ -127,9 +134,16 @@ export function readMarketCache(
     return { signals, checked };
   }
   const entries = file.entries;
-  if (!entries || typeof entries !== 'object') return { signals, checked };
+  if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {
+    return { signals, checked };
+  }
   // Bounded like every other collection: a day is at most a few dozen fixtures.
-  for (const [id, raw] of Object.entries(entries as Record<string, unknown>).slice(0, 256)) {
+  let examined = 0;
+  for (const id in entries as Record<string, unknown>) {
+    if (!Object.hasOwn(entries, id)) continue;
+    if (examined >= 256) break;
+    examined += 1;
+    const raw = (entries as Record<string, unknown>)[id];
     // Validate the ENVELOPE before touching it: a JSON `null` (or a string, or a
     // number) is a legal value here, and dereferencing it threw before this
     // guard. A malformed entry is skipped entirely — notably it must NOT reach
@@ -189,8 +203,18 @@ export function writeMarketCache(
     // parsed object wholesale would round-trip a poisoned file's junk (null
     // members, wrong-typed envelopes) back to disk on every write.
     const carried: Record<string, CacheEntry> = {};
-    if (reuse && existing.entries && typeof existing.entries === 'object') {
-      for (const [id, raw] of Object.entries(existing.entries as Record<string, unknown>)) {
+    if (
+      reuse &&
+      existing.entries &&
+      typeof existing.entries === 'object' &&
+      !Array.isArray(existing.entries)
+    ) {
+      let examined = 0;
+      for (const id in existing.entries as Record<string, unknown>) {
+        if (!Object.hasOwn(existing.entries, id)) continue;
+        if (examined >= 256) break;
+        examined += 1;
+        const raw = (existing.entries as Record<string, unknown>)[id];
         if (!isEntryShaped(raw)) continue;
         // Prune on write. An expired entry is dead weight the read path skips
         // anyway, and carrying every id forward grew the file without bound.
@@ -210,7 +234,7 @@ export function writeMarketCache(
     }
     const base: MarketCacheFile = { source, competition, entries: carried };
     const fetchedAt = new Date(now).toISOString();
-    for (const id of attempted) {
+    for (const id of attempted.slice(0, 256)) {
       base.entries[id] = { fetchedAt, signal: fetched.get(id) ?? null };
     }
     writeFileAtomic(cachePath(), JSON.stringify(base));

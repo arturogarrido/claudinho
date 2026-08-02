@@ -12,7 +12,12 @@
 import type { GroupStandings } from '../standings';
 import { type MapContext, parseEspnEvent, parseEspnEvents, parseEspnStandings } from '../trust/espn';
 import type { Match } from '../types';
-import type { ProviderAdapter, ProviderCapabilities } from './types';
+import {
+  type ProviderAdapter,
+  type ProviderBatch,
+  type ProviderCapabilities,
+  providerBatch,
+} from './types';
 
 export type { MapContext };
 
@@ -102,14 +107,14 @@ export function mapEspnEvent(ev: unknown, ctx: MapContext = {}): Match | undefin
 
 /** Project an ESPN standings payload onto group tables. Exported for tests. */
 export function parseStandings(data: unknown): GroupStandings[] {
-  // KNOWN GAP: `ProviderAdapter` returns a bare array, so the boundary's
-  // `complete`/`truncated` are computed and then dropped here. A payload we
-  // could only partly read therefore renders as a complete one — the same as
-  // before this refactor, which filtered unreadable records silently, but the
-  // information now EXISTS and is discarded. Surfacing it means widening
-  // `ProviderAdapter` to carry it into `degraded`, which changes when users see
-  // "unavailable" and is a product decision, not a refactor. Deliberately left.
-  return [...parseEspnStandings(data).items];
+  const parsed = parseEspnStandings(data);
+  return parsed.complete ? [...parsed.items] : [];
+}
+
+/** Standings plus the boundary's completeness verdict, used by the adapter. */
+export function parseStandingsBatch(data: unknown): ProviderBatch<GroupStandings> {
+  const parsed = parseEspnStandings(data);
+  return providerBatch(parsed.items, parsed.complete);
 }
 
 export interface EspnAdapterOptions {
@@ -138,7 +143,7 @@ export class EspnAdapter implements ProviderAdapter {
    * of twice, and a long-lived MCP server stays fresh (short TTL). A rejected
    * fetch clears the slot — a transient failure is never cached.
    */
-  private standingsShared?: { at: number; promise: Promise<GroupStandings[]> };
+  private standingsShared?: { at: number; promise: Promise<ProviderBatch<GroupStandings>> };
 
   /**
    * The most recent request failure (best-effort under concurrency; cleared
@@ -150,11 +155,11 @@ export class EspnAdapter implements ProviderAdapter {
 
   constructor(private readonly opts: EspnAdapterOptions = {}) {}
 
-  async fetchByDate(dateISO: string): Promise<Match[]> {
+  async fetchByDate(dateISO: string): Promise<ProviderBatch<Match>> {
     return this.fetchScoreboard(toEspnDate(dateISO));
   }
 
-  async fetchWindow(startDate: string, endDate: string): Promise<Match[]> {
+  async fetchWindow(startDate: string, endDate: string): Promise<ProviderBatch<Match>> {
     return this.fetchScoreboard(`${toEspnDate(startDate)}-${toEspnDate(endDate)}`);
   }
 
@@ -164,9 +169,9 @@ export class EspnAdapter implements ProviderAdapter {
    * is a fallback for window-less callers — the domain `getLiveMatches` wraps a
    * ±1-day window around this to catch boundary-crossing matches. Prefer it.
    */
-  async fetchLive(): Promise<Match[]> {
+  async fetchLive(): Promise<ProviderBatch<Match>> {
     const today = await this.fetchScoreboard();
-    return today.filter((m) => isLive(m.status));
+    return providerBatch(today.filter((m) => isLive(m.status)), today.complete);
   }
 
   /** Standings endpoint URL (lives under apis/v2, not site/v2; derived from base). */
@@ -176,29 +181,36 @@ export class EspnAdapter implements ProviderAdapter {
   }
 
   /** The shared standings fetch (see {@link standingsShared}). */
-  private sharedStandings(): Promise<GroupStandings[]> {
+  private sharedStandings(): Promise<ProviderBatch<GroupStandings>> {
     const now = Date.now();
     if (this.standingsShared && now - this.standingsShared.at < STANDINGS_SHARE_MS) {
       return this.standingsShared.promise;
     }
-    const promise = this.get(this.standingsUrl()).then((d) =>
-      parseStandings(d),
-    );
+    const promise = this.get(this.standingsUrl()).then((d) => parseStandingsBatch(d));
     this.standingsShared = { at: now, promise };
-    // Never cache a transient failure: a rejected fetch frees the slot so the
-    // next caller retries instead of inheriting the same rejection for 30s.
-    promise.catch(() => {
-      if (this.standingsShared?.promise === promise) this.standingsShared = undefined;
-    });
+    // Never cache a transient failure OR an unreadable partial payload: either
+    // frees the slot so the next caller retries instead of inheriting it for
+    // 30s. The fulfilled promise is still shared by concurrent callers.
+    void promise.then(
+      (batch) => {
+        if (!batch.complete && this.standingsShared?.promise === promise) {
+          this.standingsShared = undefined;
+        }
+      },
+      () => {
+        if (this.standingsShared?.promise === promise) this.standingsShared = undefined;
+      },
+    );
     return promise;
   }
 
   /**
    * Authoritative, cumulative group tables from the standings endpoint. Throws
-   * on fetch/parse failure (the caller decides the fallback). Group-stage only:
-   * non-group `children` are filtered out by {@link parseStandings}.
+   * on fetch failure and marks an unreadable/partial parse incomplete (the
+   * caller decides the fallback). Group-stage only: non-group `children` are
+   * filtered out by {@link parseStandingsBatch}.
    */
-  async fetchStandings(): Promise<GroupStandings[]> {
+  async fetchStandings(): Promise<ProviderBatch<GroupStandings>> {
     return this.sharedStandings();
   }
 
@@ -214,8 +226,9 @@ export class EspnAdapter implements ProviderAdapter {
     if (this.groupMap && !force) return this.groupMap;
     try {
       const tables = await this.sharedStandings();
+      if (!tables.complete) return {};
       const map: Record<string, string> = {};
-      for (const t of tables) for (const r of t.rows) map[r.team.code] = t.group;
+      for (const t of tables.items) for (const r of t.rows) map[r.team.code] = t.group;
       this.groupMap = map;
       return map;
     } catch {
@@ -224,7 +237,7 @@ export class EspnAdapter implements ProviderAdapter {
     }
   }
 
-  private async fetchScoreboard(dates?: string): Promise<Match[]> {
+  private async fetchScoreboard(dates?: string): Promise<ProviderBatch<Match>> {
     const base = this.opts.baseUrl ?? DEFAULT_BASE;
     const url = new URL(`${base}/scoreboard`);
     url.searchParams.set('limit', '300');
@@ -243,9 +256,8 @@ export class EspnAdapter implements ProviderAdapter {
     // parsing anything and drops what it cannot read. The adapter no longer
     // decides any of that — which is the point, since every duplicated rule was
     // a place for the two copies to drift.
-    // Same known gap as `fetchStandings` above: `complete` is computed and
-    // dropped, because the adapter contract is a bare array.
-    return [...parseEspnEvents(data, { groupByTeam }).items];
+    const parsed = parseEspnEvents(data, { groupByTeam });
+    return providerBatch(parsed.items, parsed.complete);
   }
 
   private async get(url: string): Promise<unknown> {

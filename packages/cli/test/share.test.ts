@@ -5,12 +5,13 @@ import {
   type MarketProvider,
   type MarketSignal,
   type ProviderAdapter,
+  definitiveNone,
+  valid,
 } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdShare, InputError } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
-import { definitiveNone, valid } from '@claudinho/core';
 
 /** Offline match adapter → commands fall back to the bundled static schedule. */
 const fakeAdapter: ProviderAdapter = {
@@ -87,6 +88,12 @@ function provider(make?: (m: Match) => MarketSignal | undefined): MarketProvider
   };
 }
 
+const incompleteProvider: MarketProvider = {
+  name: 'incomplete',
+  findSignal: async () => undefined,
+  findSignals: async () => ({ results: new Map(), complete: false }),
+};
+
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
   return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', flavor: 'off', ...over };
 }
@@ -136,12 +143,14 @@ describe('cmdShare — routing & JSON', () => {
       kind: string;
       team: string;
       informationalOnly: boolean;
+      marketComplete: boolean;
       style: string;
       snippet: string;
     };
     expect(d.kind).toBe('next');
     expect(d.team).toBe(code);
     expect(d.informationalOnly).toBe(true);
+    expect(d.marketComplete).toBe(true);
     expect(d.style).toBe('social');
     expect(typeof d.snippet).toBe('string');
     expect(d.snippet.length).toBeGreaterThan(0);
@@ -238,6 +247,15 @@ describe('cmdShare — market gating (fail closed)', () => {
     };
     await cmdShare('next', aTeam(), {}, ctx({}, boom));
     expect(text()).toContain(HASHTAG); // degraded gracefully — card still renders
+    expect(text()).toContain('Market data unavailable or incomplete');
+  });
+
+  it('carries an incomplete enrichment verdict in JSON', async () => {
+    await cmdShare('next', aTeam(), {}, ctx({ json: true }, incompleteProvider));
+    const data = json();
+    expect(data.marketComplete).toBe(false);
+    expect(data.marketSignals).toEqual({});
+    expect(data.snippet).toContain('Market data unavailable or incomplete');
   });
 });
 
