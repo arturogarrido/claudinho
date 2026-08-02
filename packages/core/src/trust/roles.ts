@@ -58,7 +58,7 @@ const EMOJI_IN_LABEL =
   /\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|\u{20E3}/u;
 
 /** Input bytes read before any per-character work. A work bound, not a display one. */
-const MAX_LABEL_INPUT_UNITS = 4096;
+export const MAX_LABEL_INPUT_UNITS = 4096;
 
 /** Display columns a label may occupy. Generous for any real team or venue name. */
 export const MAX_LABEL_COLUMNS = 100;

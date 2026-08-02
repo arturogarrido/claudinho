@@ -226,34 +226,36 @@ describe('round 13 — the rest', () => {
   });
 
   it('bounds an event’s market list before traversing it', async () => {
-    // The 5MB body cap only covers responses that DECLARE a length, and
-    // production Gamma omits it — so this was the one untrusted collection
-    // still walked whole.
-    const leg = (i: number) => ({ id: `m${i}`, slug: `mkt-${i}`, groupItemTitle: `T${i}`,
-      sportsMarketType: 'moneyline', outcomes: JSON.stringify(['Yes', 'No']),
+    // DETERMINISTIC, not timed — a wall-clock bound here measures the runner.
+    // The property has an observable consequence: legs past the cap are sliced
+    // off BEFORE the moneyline filter, so a market sitting beyond it is never
+    // seen and the fixture cannot resolve.
+    const filler = (i: number) => ({ id: `f${i}`, slug: `mkt-f${i}`, groupItemTitle: `F${i}`,
+      sportsMarketType: 'spread', outcomes: JSON.stringify(['Yes', 'No']),
       outcomePrices: JSON.stringify(['0.5', '0.5']), active: true, closed: false,
       updatedAt: '2026-06-11T14:55:00.000Z' });
-    const event = { id: '351715', slug: 'fifwc-mex-rsa-2026-06-11',
+    const real = (tok: string, title: string, yes: number) => ({ id: `m-${tok}`, slug: `mkt-${tok}`,
+      groupItemTitle: title, sportsMarketType: 'moneyline', liquidityNum: 120_000,
+      outcomes: JSON.stringify(['Yes', 'No']),
+      outcomePrices: JSON.stringify([String(yes), String(Number((1 - yes).toFixed(4)))]),
+      active: true, closed: false, updatedAt: '2026-06-11T14:55:00.000Z' });
+    const legs = [real('mex', 'Mexico', 0.685), real('draw', 'Draw', 0.205),
+                  real('rsa', 'South Africa', 0.105)];
+    const event = (markets: unknown[]) => ({ id: '351715', slug: 'fifwc-mex-rsa-2026-06-11',
       startTime: '2026-06-11T19:00:00Z', active: true, closed: false,
       seriesSlug: 'soccer-fifwc', sport: { sport: 'fifwc' },
-      updatedAt: '2026-06-11T14:55:00.000Z',
-      markets: Array.from({ length: 50_000 }, (_, i) => leg(i)) };
-    const serve = (markets: unknown[]) =>
-      (async () => ({ ok: true, status: 200, statusText: 'OK',
-        json: async () => [{ ...event, markets }] })) as unknown as typeof fetch;
-    const run = async (n: number) => {
-      const markets = Array.from({ length: n }, (_, i) => leg(i));
-      const p = new PolymarketProvider({ fetchImpl: serve(markets), now: NOW });
-      await p.findSignals([MATCH]); // warm
-      const t = performance.now();
-      await p.findSignals([MATCH]);
-      return performance.now() - t;
+      updatedAt: '2026-06-11T14:55:00.000Z', markets });
+    const resolve = async (markets: unknown[]) => {
+      const fetchImpl = (async () => ({ ok: true, status: 200, statusText: 'OK',
+        json: async () => [event(markets)] })) as unknown as typeof fetch;
+      return new PolymarketProvider({ fetchImpl, now: NOW }).findSignal(MATCH, { now: NOW });
     };
-    // A RATIO, not a millisecond budget: 100x the legs must cost about the
-    // same, because everything past the cap is sliced off before the filter.
-    const small = await run(500);
-    const huge = await run(50_000);
-    expect(huge).toBeLessThan(Math.max(small * 5, 25));
+    // Within the cap: the real legs are found.
+    expect(await resolve([...Array.from({ length: 10 }, (_, i) => filler(i)), ...legs])).toBeDefined();
+    // Pushed past it: never examined, so no signal — proving the slice happens
+    // before the filter rather than after.
+    const past = [...Array.from({ length: 300 }, (_, i) => filler(i)), ...legs];
+    expect(await resolve(past)).toBeUndefined();
   });
 
   it('one candidate’s transport failure does not abort the fan-out', async () => {

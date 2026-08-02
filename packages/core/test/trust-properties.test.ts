@@ -25,7 +25,7 @@
 import { describe, expect, it } from 'vitest';
 import { mapEspnEvent } from '../src/adapters/espn';
 import { allTeams } from '../src/teams';
-import { productFlag, teamCode } from '../src/trust';
+import { MAX_LABEL_INPUT_UNITS, productFlag, teamCode } from '../src/trust';
 import { displayWidth } from '../src/text';
 import { marketLine } from '../src/markets/format';
 import { marketSignalRendersFor } from '../src/markets/normalize';
@@ -842,25 +842,20 @@ describe('property: joiners must actually join, and work is bounded on INPUT', (
 
 
   it('does not scan an all-rejected field to the end', () => {
-    // The loop's early exit only fires when a cluster is KEPT, so an
-    // all-rejected field was otherwise scanned in full — defeating the hot
-    // path's work bound from the other direction.
+    // DETERMINISTIC, not timed. This began as `< 50ms`, became `< max(4x, 25ms)`
+    // when a second pass was added, and still failed on CI at 32ms — because a
+    // wall-clock assertion measures the machine, not the property. Two rewrites
+    // to learn that a timing test cannot state this.
     //
-    // A RATIO, not a millisecond constant. This started as `< 50ms` and failed
-    // at 94ms the moment `humanLabel` gained a second pass — measuring the
-    // machine, not the property. The property is that the INPUT cap makes the
-    // cost flat: 20x the input costs the same, because everything past
-    // MAX_LABEL_INPUT_UNITS is sliced off before any of it is looked at.
-    const time = (n: number) => {
-      const s = '\u200B'.repeat(n);
-      sanitizeFeedText(s); // warm
-      const t = process.hrtime.bigint();
-      sanitizeFeedText(s);
-      return Number(process.hrtime.bigint() - t) / 1e6;
-    };
-    const small = time(25_000);
-    const huge = time(500_000);
-    expect(huge).toBeLessThan(Math.max(small * 4, 25));
+    // The property has an OBSERVABLE consequence: the input is sliced at
+    // MAX_LABEL_INPUT_UNITS *before* anything is examined, so a character
+    // sitting past that cap is never reached — whatever the machine is doing.
+    const filler = '\u200B'.repeat(MAX_LABEL_INPUT_UNITS + 10); // all rejected
+    expect(sanitizeFeedText(`${filler}KEPT`)).toBe('');
+    // ...and the same character just INSIDE the cap is reached, so the test
+    // cannot pass by the function simply refusing everything.
+    const inside = '\u200B'.repeat(MAX_LABEL_INPUT_UNITS - 10);
+    expect(sanitizeFeedText(`${inside}KEPT`)).toBe('KEPT');
   });
 });
 
