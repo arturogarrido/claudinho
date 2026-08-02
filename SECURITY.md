@@ -95,9 +95,15 @@ a claim we cannot make.
 - **Bounded** per field (display columns, code points, and grapheme-cluster length), per nested
   collection, and per record count on the MCP and hook surfaces, which is where a model reads.
   Collections are bounded *before* the per-record work, not after, so a large payload cannot cost
-  CPU on a 150 ms-budget surface before being discarded. Truncation is stated, never silent, and
-  the count a payload reports comes from the same value as the list it describes. —
-  `mcp/test/bounded-payload.test.ts`, `core/test/trust-espn.test.ts`
+  CPU on a 150 ms-budget surface before being discarded. What is bounded is the input EXAMINED,
+  not the results kept, so records that cannot be read can never crowd out one that can. Truncation
+  is stated, never silent, and the count a payload reports comes from the same value as the list it
+  describes — an "+N more" therefore counts records we did not reach, never records we read and
+  refused. The MCP response cap is total: a payload that cannot be shrunk structurally is reduced
+  to a bounded skeleton rather than returned over budget. —
+  `mcp/test/bounded-payload.test.ts`, `mcp/test/response-size.test.ts`,
+  `cli/test/hotpath-work.test.ts`, `cli/test/review-round15.test.ts`,
+  `core/test/trust-espn.test.ts`
 - **Identifiers and timestamps are grammar-checked, not merely stripped**, on both the live and
   cached paths. Both land in model context without being rendered as prose, so they never *look*
   wrong — and stripping control characters leaves printable prose untouched. Timestamps are
@@ -105,8 +111,16 @@ a claim we cannot make.
   over into a different one. — `core/test/trust-parity.test.ts`, `core/test/trust-espn.test.ts`
 - **Fail closed, including on absence.** A missing field must be at least as rejecting as a wrong
   one; several gates once skipped themselves when their field was absent, which made a more
-  malformed payload more likely to be accepted. —
-  `core/test/trust-properties.test.ts` *(property: absent is at least as rejecting)*
+  malformed payload more likely to be accepted. The same rule governs whole records: an
+  unrecognized match status drops the fixture rather than defaulting to `SCHEDULED`, which would
+  have erased the score of a match being played. —
+  `core/test/trust-properties.test.ts` *(property: absent is at least as rejecting)*,
+  `core/test/review-round15.test.ts`
+
+  **Not covered:** failing closed is a property of the boundary, not of every surface behind it.
+  `ProviderAdapter` still returns a bare array, so a partially-readable ESPN payload is known to be
+  incomplete at the boundary and renders as a complete one. Widening that contract changes when
+  users are told "unavailable" and is deliberately out of scope here.
 - **Derived values are recomputed, never trusted** — the market favorite and staleness are
   derived from the sealed data, so a crafted file cannot make the headline contradict the
   numbers, or an old reading claim to be fresh. A team's flag is derived the same way, from its

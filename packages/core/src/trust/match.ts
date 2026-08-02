@@ -162,6 +162,14 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   const home = sealTeam(parts.home);
   const away = sealTeam(parts.away);
   if (!home || !away) return malformed('match does not name both teams');
+  // A team cannot play itself. This lives HERE rather than in the ESPN parser
+  // where I first wrote it, because the cache path reached no such rule and
+  // `MEX vs MEX` sealed clean from a cache file. The ESPN parser keeps its own
+  // stronger check on top: it can compare provider ids, so it also catches two
+  // records for one team that differ in spelling.
+  if (home.code === away.code && home.name === away.name) {
+    return definitiveNone('both competitors are the same team');
+  }
 
   const group = humanLabel(parts.group) || undefined;
   const city = humanLabel(parts.city) || undefined;
@@ -171,16 +179,33 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   // enforced this by construction and the cache path did not, which let an
   // edited cache file put a scoreline on a fixture that has not kicked off.
   const score = status === 'SCHEDULED' ? undefined : sealScorePair(parts.score);
-  // A shootout is a KNOCKOUT tie-break on a FINISHED, LEVEL match. Gated on all
-  // three, because each ungated one is a state that cannot exist: penalties in a
-  // group game, penalties mid-match, penalties on a 2-0. It also never survives
-  // without the regulation score it decorates.
+  // A shootout is a KNOCKOUT tie-break on a LEVEL match, and it never survives
+  // without the regulation score it decorates. Those gates refuse the states
+  // that cannot exist: penalties in a group game, penalties on a 2-0.
+  //
+  // It is deliberately NOT gated on FT. A shootout is at its most interesting
+  // while it is being TAKEN, and requiring a finished match hid exactly that —
+  // a live tie at 1-1 with penalties 3-2 rendered as a bare 1-1. I introduced
+  // that gate reaching for "penalties mid-match are impossible"; penalties ARE
+  // mid-match for the several minutes that decide the tie.
   const finished = status === 'FT';
-  const knockout = stage !== 'GROUP' && stage !== 'FRIENDLY';
-  const shootout =
-    score && finished && knockout && score.home === score.away
-      ? sealScorePair(parts.shootout)
-      : undefined;
+  // Where penalties can settle a tie. Only a WORLD CUP GROUP fixture is excluded:
+  // a draw is its legitimate final result.
+  //
+  // This deliberately does NOT exclude `FRIENDLY`, which is the catch-all stage
+  // for anything outside the bundled schedule — i.e. every competition reachable
+  // through `CLAUDINHO_COMPETITION`, the seam this project keeps on purpose.
+  // Excluding it silently dropped real shootouts: two J-League cup ties in an
+  // ESPN corpus lost `shootout: 5-3` and their `winnerCode`, which the parity
+  // diff against main caught and no test did.
+  const canGoToPenalties = stage !== 'GROUP';
+  const claimedShootout =
+    score && canGoToPenalties && score.home === score.away ? sealScorePair(parts.shootout) : undefined;
+  // A shootout that is OVER decided the tie, so it cannot be level. One still in
+  // progress can be, and usually is — 3-3 is sudden death, not a contradiction.
+  const shootoutContradicts =
+    !!claimedShootout && finished && claimedShootout.home === claimedShootout.away;
+  const shootout = shootoutContradicts ? undefined : claimedShootout;
 
   // `winnerCode` is the field the bracket ADVANCES a team on, so it gets the
   // strictest reading in this file, and it gets it HERE so the live feed and the
@@ -206,7 +231,11 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
     const decider = level ? shootout : score;
     if (decider && decider.home !== decider.away) {
       if ((decider.home > decider.away ? 'home' : 'away') === claimedSide) winnerCode = claimedWinner;
-    } else if (level && !shootout && knockout) {
+    } else if (level && !claimedShootout && canGoToPenalties) {
+      // Tested against what was CLAIMED, not what survived: a contradictory
+      // shootout (a finished 3-3) is dropped above, and reading the survivor
+      // here would let that record fall through to "settled some other way" and
+      // advance a team on the strength of the very field we just refused.
       winnerCode = claimedWinner;
     }
   }

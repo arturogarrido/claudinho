@@ -46,7 +46,6 @@ export const MAX_GROUPS = 16;
 export const MAX_GROUP_ROWS = 32;
 
 const STAGES = new Set<string>(['GROUP', 'R32', 'R16', 'QF', 'SF', '3P', 'F', 'FRIENDLY']);
-const STATUSES = new Set<string>(['SCHEDULED', 'LIVE', 'HT', 'FT', 'POSTPONED', 'CANCELLED']);
 
 /** What the raw payload may hold — every field `unknown` until a role accepts it. */
 interface RawTeam {
@@ -111,7 +110,21 @@ function toParticipant(raw: RawCompetitor | undefined): ParseResult<Participant>
   );
 }
 
-function mapStatus(st: unknown): Status {
+/**
+ * ESPN's status, or undefined when it is not one we recognize.
+ *
+ * The `SCHEDULED` fallback this replaces contradicted the rule `sealMatch`
+ * states for exactly this field — status DROPS the fixture rather than
+ * defaulting — and did the specific damage that rule exists to prevent: a
+ * scored 2-0 event whose status ESPN omitted became a valid, SCORELESS,
+ * scheduled fixture, so a match being played rendered as one yet to come.
+ * Returning undefined lets the seal refuse the record instead.
+ *
+ * Measured before tightening: 368 real events across 18 competitions produce
+ * five distinct `state|name` pairs, every one of them mapped here. The drop
+ * rule costs nothing on real data.
+ */
+function mapStatus(st: unknown): Status | undefined {
   const type = (st as { type?: { name?: unknown; state?: unknown } } | undefined)?.type;
   const name = typeof type?.name === 'string' ? type.name.toUpperCase() : '';
   const state = typeof type?.state === 'string' ? type.state : '';
@@ -121,7 +134,7 @@ function mapStatus(st: unknown): Status {
   if (state === 'pre') return 'SCHEDULED';
   if (state === 'post') return 'FT';
   if (state === 'in') return 'LIVE';
-  return 'SCHEDULED';
+  return undefined;
 }
 
 function parseMinute(st: unknown): number | undefined {
@@ -212,24 +225,24 @@ export function parseEspnEvent(raw: unknown, ctx: MapContext = {}): ParseResult<
   // differ only by label, so they are two different slots, not one team twice.
   const h = homeP.value;
   const a = awayP.value;
-  // EITHER test is sufficient, and requiring both to be slots for the label test
-  // was a REGRESSION against the rule this replaced: `MEX vs MEX` with two
-  // different provider ids sailed through, because `samePerProvider` was false
-  // and `sameByLabel` was skipped for real teams. Base rejected it.
+  // Only the id comparison lives here: it needs the provider ids, which exist on
+  // this path and nowhere else, and it catches the case a label test cannot —
+  // one team appearing twice under two spellings ("Mexico" / "México").
   //
-  // The label test stays safe for unresolved bracket slots because it demands
-  // code AND name: "Round of 32 1 Winner" and "…3 Winner" share `RD32` but
-  // differ by name, so they are still two different slots.
-  const samePerProvider =
-    h.kind === 'team' && a.kind === 'team' && h.providerId === a.providerId;
-  const sameByLabel = h.team.code === a.team.code && h.team.name === a.team.name;
-  if (samePerProvider || sameByLabel) {
+  // The code+name comparison that used to sit beside it MOVED to `sealMatch`,
+  // so the cache path gets it too. Leaving a copy here would recreate in one
+  // commit the two-readers-one-rule shape this whole refactor exists to remove.
+  if (h.kind === 'team' && a.kind === 'team' && h.providerId === a.providerId) {
     return definitiveNone('both competitors are the same team');
   }
 
   const home = homeP.value.team;
   const away = awayP.value.team;
-  const status = member<Status>(mapStatus(ev.status ?? comp?.status), STATUSES) ?? 'SCHEDULED';
+  // No `?? 'SCHEDULED'`: an unrecognized status drops the fixture. Refused here
+  // rather than left for the seal so the reason names the actual problem, and
+  // so the winner/shootout reads below cannot run on a status we never mapped.
+  const status = mapStatus(ev.status ?? comp?.status);
+  if (!status) return malformed('event status is not a status we recognize');
   const stage = member<Stage>(stageFromSlug((ev.season as { slug?: unknown })?.slug), STAGES) ?? 'FRIENDLY';
 
   let group: string | undefined;

@@ -119,16 +119,34 @@ const MARKETS_CMD_OPTS: MarketFetchOpts = { deadlineMs: 12000, timeoutMs: 6000 }
  * around the default provider so repeated cold commands don't re-hit the data
  * source. NEVER reached from the statusline/hook hot path.
  */
+/**
+ * Signals, plus whether we actually managed to CHECK every fixture.
+ *
+ * `complete: false` means at least one fixture was never resolved — a timeout,
+ * an unreadable payload, a deadline. It is not the same as "this fixture has no
+ * market", and collapsing the two is how an outage renders as the confident
+ * "No market signals available", which is the confidently-wrong output this
+ * project refuses everywhere else.
+ */
+interface MarketSignalsResult {
+  readonly signals: Map<string, MarketSignal>;
+  readonly complete: boolean;
+}
+
 async function marketSignalsFor(
   ctx: Ctx,
   matches: Match[],
   opts: MarketFetchOpts = {},
-): Promise<Map<string, MarketSignal>> {
-  if (ctx.marketProvider) return resolvedValues(await getMarketSignals(ctx.marketProvider, matches, opts));
+): Promise<MarketSignalsResult> {
+  if (ctx.marketProvider) {
+    const b = await getMarketSignals(ctx.marketProvider, matches, opts);
+    return { signals: resolvedValues(b), complete: b.complete };
+  }
   const source = resolveMarketSource();
   // Dev/demo/no-op providers ('fake'/'none') are free — skip the on-disk cache.
   if (source !== 'polymarket') {
-    return resolvedValues(await getMarketSignals(makeMarketProvider(source), matches, opts));
+    const b = await getMarketSignals(makeMarketProvider(source), matches, opts);
+    return { signals: resolvedValues(b), complete: b.complete };
   }
   const competition = resolveCompetition();
   const { signals: cached, checked: cachedIds } = readMarketCache('polymarket', competition);
@@ -147,9 +165,13 @@ async function marketSignalsFor(
     if (!hit && cachedIds.has(m.id)) continue; // definitive negative within TTL
     miss.push(m);
   }
+  let complete = true;
   if (miss.length > 0) {
     const batch = await getMarketSignals(makeMarketProvider('polymarket'), miss, opts);
     const fetched = resolvedValues(batch);
+    // Cache hits and remembered negatives are settled; only the fetched slice
+    // can leave us not knowing.
+    complete = batch.complete;
     // Negative-cache only ids whose verdict may be REMEMBERED (see
     // `isCacheable`): a conclusion drawn from a payload we READ, which includes
     // a stable ambiguity. A shape we could not read and a deadline that expired
@@ -157,7 +179,7 @@ async function marketSignalsFor(
     writeMarketCache('polymarket', competition, [...cacheableKeys(batch)], fetched);
     for (const [id, s] of fetched) result.set(id, s);
   }
-  return result;
+  return { signals: result, complete };
 }
 
 /** Strict-gated signals for the default-on annotation; empty when markets are off. */
@@ -171,7 +193,7 @@ async function reliableMarketSignals(
   // for finished matches — "markets favor X" after full time reads as a bug.
   const relevant = matches.filter((m) => marketRelevant(m, now));
   if (relevant.length === 0) return new Map();
-  const raw = await marketSignalsFor(ctx, relevant, DEFAULT_ON_MARKET_OPTS);
+  const raw = (await marketSignalsFor(ctx, relevant, DEFAULT_ON_MARKET_OPTS)).signals;
   const out = new Map<string, MarketSignal>();
   for (const [id, s] of raw) {
     const m = relevant.find((x) => x.id === id);
@@ -909,7 +931,7 @@ export async function cmdMarkets(
     const { match: fixture, degraded } = await marketFixtureForTeam(adapterFor(ctx), code, now);
     const sig =
       fixture && marketRelevant(fixture, now)
-        ? (await marketSignalsFor(ctx, [fixture], MARKETS_CMD_OPTS)).get(fixture.id)
+        ? (await marketSignalsFor(ctx, [fixture], MARKETS_CMD_OPTS)).signals.get(fixture.id)
         : undefined;
     const shown = fixture && sig && marketDisplayable(fixture, sig) ? sig : undefined;
     if (cfg.json) {
@@ -947,7 +969,7 @@ export async function cmdMarkets(
     const { match } = await getMatchById(adapterFor(ctx), target);
     const sig =
       match && marketRelevant(match, now)
-        ? (await marketSignalsFor(ctx, [match], MARKETS_CMD_OPTS)).get(match.id)
+        ? (await marketSignalsFor(ctx, [match], MARKETS_CMD_OPTS)).signals.get(match.id)
         : undefined;
     const shown = match && sig && marketDisplayable(match, sig) ? sig : undefined;
     if (cfg.json) {
@@ -978,7 +1000,7 @@ export async function cmdMarkets(
   const { matches } = await getMatchesForDate(adapterFor(ctx), date);
   const todays = fixturesByDate(date, matches, cfg.tz);
   const relevant = todays.filter((m) => marketRelevant(m, now));
-  const signals = await marketSignalsFor(ctx, relevant, MARKETS_CMD_OPTS);
+  const { signals, complete } = await marketSignalsFor(ctx, relevant, MARKETS_CMD_OPTS);
   const rows = relevant
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
     .filter(
@@ -989,7 +1011,10 @@ export async function cmdMarkets(
   if (cfg.json) {
     const marketSignals: Record<string, MarketSignal> = {};
     for (const r of rows) marketSignals[r.match.id] = r.signal;
-    emitJson({ date, informationalOnly: true, marketSignals });
+    // `complete` distinguishes "checked everything, found none" from "could not
+    // check". Without it a consumer of `--json` cannot tell an outage from a
+    // quiet day, which is the same gap the text branch had.
+    emitJson({ date, informationalOnly: true, complete, marketSignals });
     return;
   }
 
@@ -998,7 +1023,13 @@ export async function cmdMarkets(
   out(header(`Market signals · ${date}`, c));
   out();
   if (rows.length === 0) {
-    out(c.dim(`  No market signals available for ${date}.`));
+    out(
+      c.dim(
+        complete
+          ? `  No market signals available for ${date}.`
+          : `  Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`,
+      ),
+    );
   } else {
     for (const { match, signal } of rows) {
       out('  ' + c.bold(marketHeaderLine(match, cfg)));
@@ -1433,7 +1464,7 @@ const VIBES_FINAL = [
  * CLAUDINHO_TEAM match, else the first live match; undefined when nothing is
  * live. Pure — exported for tests.
  */
-export function vibeLiveSegment(live: Match[], team?: string): string | undefined {
+export function vibeLiveSegment(live: readonly Match[], team?: string): string | undefined {
   const code = team?.toUpperCase();
   const pick =
     (code && live.find((m) => m.home.code === code || m.away.code === code)) ?? live[0];
@@ -1557,7 +1588,7 @@ export function cmdVibe(ctx: Ctx): void {
   try {
     const state = readCurrentState(cfg.source, resolveCompetition());
     liveSeg = vibeLiveSegment(
-      liveMatchesFromCache(state, (ctx.now ?? new Date()).getTime()),
+      liveMatchesFromCache(state, (ctx.now ?? new Date()).getTime()).items,
       // Name-or-code, matching the statusline/hook (offline lookup).
       resolveEnvTeam(process.env.CLAUDINHO_TEAM),
     );

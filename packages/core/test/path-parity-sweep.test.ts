@@ -24,27 +24,40 @@ import { describe, expect, it } from 'vitest';
 import { parseCachedMatch, parseEspnEvent } from '../src/trust';
 import type { Match } from '../src/types';
 
-/** A live-path Match, built the way the adapter builds one. */
+/**
+ * A live-path Match, built the way the adapter builds one.
+ *
+ * A KNOCKOUT tie decided on PENALTIES, deliberately — this fixture is where the
+ * swept field list comes from, so any field it lacks is a field nothing here
+ * checks. The previous fixture was a decisive 2-0 group-stage game with no
+ * `shootout`, no `minute`, no `group` and no `events`, which is precisely why a
+ * regression that dropped every live shootout ran green through this suite. A
+ * sweep is only as wide as its most-populated fixture.
+ */
 function liveMatch(): Match {
   const r = parseEspnEvent({
     id: '760415',
     date: '2026-06-29T19:00Z',
     season: { slug: 'round-of-32' },
     status: { type: { name: 'STATUS_FULL_TIME', state: 'post', completed: true } },
+    events: [{ type: 'GOAL', minute: 45, teamCode: 'MEX', player: 'Raúl Jiménez' }],
     competitions: [
       {
         venue: { fullName: 'Estadio Azteca', address: { city: 'Mexico City', country: 'Mexico' } },
+
         competitors: [
           {
             homeAway: 'home',
             winner: true,
-            score: '2',
+            score: '1',
+            shootoutScore: 4,
             team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
           },
           {
             homeAway: 'away',
             winner: false,
-            score: '0',
+            score: '1',
+            shootoutScore: 3,
             team: { id: '467', abbreviation: 'RSA', displayName: 'South Africa' },
           },
         ],
@@ -52,6 +65,64 @@ function liveMatch(): Match {
     ],
   });
   if (r.kind !== 'valid') throw new Error(`fixture did not seal: ${r.kind}`);
+  return r.value;
+}
+
+/**
+ * A GROUP-stage fixture, the only kind that carries `group`.
+ */
+function liveGroupMatch(): Match {
+  const r = parseEspnEvent(
+    {
+      id: '760001',
+      date: '2026-06-11T19:00Z',
+      season: { slug: 'group-stage' },
+      status: { displayClock: "63'", type: { name: 'STATUS_IN_PROGRESS', state: 'in' } },
+      competitions: [
+        {
+          venue: { fullName: 'Estadio Azteca' },
+          competitors: [
+            { homeAway: 'home', score: '1',
+              team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' } },
+            { homeAway: 'away', score: '0',
+              team: { id: '467', abbreviation: 'RSA', displayName: 'South Africa' } },
+          ],
+        },
+      ],
+    },
+    { groupByTeam: { MEX: 'A', RSA: 'A' } },
+  );
+  if (r.kind !== 'valid') throw new Error(`group fixture did not seal: ${r.kind}`);
+  return r.value;
+}
+
+/**
+ * A live-path Match still being PLAYED — a knockout tie level at 1-1 with the
+ * shootout under way.
+ *
+ * Two bases, not one, because some fields cannot coexist: `minute` belongs to a
+ * match in progress and `winnerCode` to a finished one, and the seal is right to
+ * refuse them together. Sweeping their UNION is the only way to cover both.
+ */
+function liveInPlayMatch(): Match {
+  const r = parseEspnEvent({
+    id: '760416',
+    date: '2026-06-29T19:00Z',
+    season: { slug: 'round-of-32' },
+    status: { displayClock: "112'", type: { name: 'STATUS_IN_PROGRESS', state: 'in' } },
+    competitions: [
+      {
+        venue: { fullName: 'Estadio Azteca', address: { city: 'Mexico City', country: 'Mexico' } },
+        competitors: [
+          { homeAway: 'home', score: '1', shootoutScore: 3,
+            team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' } },
+          { homeAway: 'away', score: '1', shootoutScore: 2,
+            team: { id: '467', abbreviation: 'RSA', displayName: 'South Africa' } },
+        ],
+      },
+    ],
+  });
+  if (r.kind !== 'valid') throw new Error(`in-play fixture did not seal: ${r.kind}`);
   return r.value;
 }
 
@@ -94,8 +165,10 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const label = (f: string, v: unknown) => `${f}=${String(JSON.stringify(v)).slice(0, 34)}`;
 
 describe('every Match field is sealed the same way, whatever is in it', () => {
-  const base = liveMatch();
-  const fields = Object.keys(base) as (keyof Match)[];
+  const bases = [liveMatch(), liveInPlayMatch(), liveGroupMatch()];
+  const base = bases[0] as Match;
+  // The UNION over both bases: no single legal Match carries every field.
+  const fields = [...new Set(bases.flatMap((b) => Object.keys(b)))] as (keyof Match)[];
 
   it('sweeps a field list taken from a real sealed Match, not a literal', () => {
     // So a field added to the type is covered without anyone remembering to.
@@ -105,14 +178,25 @@ describe('every Match field is sealed the same way, whatever is in it', () => {
     expect(fields).toContain('status');
   });
 
+  it('the base fixture populates the OPTIONAL fields too', () => {
+    // The sweep can only cover fields the fixture actually has. This assertion
+    // is the one that would have failed when the fixture was a plain 2-0 group
+    // game — and a live-shootout regression shipped green because of it.
+    for (const optional of ['shootout', 'minute', 'winnerCode', 'events', 'group'] as const) {
+      expect(fields, `no base fixture carries ${optional}, so nothing sweeps it`).toContain(
+        optional,
+      );
+    }
+  });
+
   it('sealing is stable for a hostile value in ANY field', () => {
     // Both entry points end at `sealMatch`, so re-sealing its own output must
     // change nothing — the executable form of "one constructor, both paths".
     // A field where that fails is a field with a rule applied inconsistently.
     const unstable: string[] = [];
-    for (const field of fields) {
+    for (const b of bases) for (const field of fields) {
       for (const value of HOSTILE) {
-        const once = parseCachedMatch({ ...clone(base), [field]: value });
+        const once = parseCachedMatch({ ...clone(b), [field]: value });
         if (once.kind !== 'valid') continue;
         const twice = parseCachedMatch(clone(once.value));
         if (twice.kind !== 'valid') {
@@ -139,10 +223,10 @@ describe('every Match field is sealed the same way, whatever is in it', () => {
   });
 
   it('never throws, whatever a JSON file can hold', () => {
-    for (const field of fields) {
+    for (const b of bases) for (const field of fields) {
       for (const value of HOSTILE) {
         expect(
-          () => parseCachedMatch({ ...clone(base), [field]: value }),
+          () => parseCachedMatch({ ...clone(b), [field]: value }),
           label(String(field), value),
         ).not.toThrow();
       }

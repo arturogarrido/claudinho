@@ -102,12 +102,28 @@ describe('the "+N" marker counts matches, not junk that looks like one', () => {
   });
 
   it('DOES report records it never examined — stopping early is not silence', () => {
-    // 200 records: we examine 64 and stop, so 136 are genuinely unknown and the
-    // line must not read as a complete account of what is live.
+    // 600 records trips the EXAMINE cap (512), which is the only way to leave
+    // records unread: we stop at index 512, so 88 records that look live were
+    // never opened and the line must not read as a complete account.
+    //
+    // This test used to pass 200 records and expect "+136", asserting the cap
+    // that was wrong — it charged the 64-result cap against raw records, so
+    // every junk entry we read AND REJECTED was advertised as a hidden match.
+    // 200 records are now all examined, and the honest answer there is no "+N".
+    const line = renderPrompt(cache([real, ...Array.from({ length: 599 }, () => ({ ...junk }))]), {
+      now: NOW,
+    });
+    expect(line).toMatch(/\+88\b/);
+  });
+
+  it('reports NOTHING hidden when every record was read, however many', () => {
+    // 200 junk records are all under the examine cap. We read every one, none
+    // was a match, and there is nothing more to tell the user about.
     const line = renderPrompt(cache([real, ...Array.from({ length: 199 }, () => ({ ...junk }))]), {
       now: NOW,
     });
-    expect(line).toMatch(/\+136\b/);
+    expect(line).toContain('1–0');
+    expect(line).not.toMatch(/\+\d+/);
   });
 
   it('still reports overflow when there are genuinely more live matches', () => {
@@ -122,7 +138,10 @@ describe('the hook bounds the whole block it writes into model context', () => {
   const poisoned = (i: number) => ({
     id: String(700000 + i), stage: 'GROUP', kickoff: '2026-06-11T19:00:00.000Z',
     venue: zalgo, city: zalgo, country: zalgo,
-    home: { code: zalgo, name: zalgo }, away: { code: zalgo, name: zalgo },
+    // Distinct labels per side: identical code AND name is one team playing
+    // itself, which `sealMatch` now refuses outright — and this case is about
+    // the SIZE of what survives, so it has to survive.
+    home: { code: zalgo, name: `H${zalgo}` }, away: { code: zalgo, name: `A${zalgo}` },
     score: { home: 1, away: 0 }, minute: 55, status: 'LIVE',
     updatedAt: '2026-06-11T19:59:00Z',
   });

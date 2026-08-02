@@ -73,3 +73,62 @@ describe('one tool response cannot flood model context', () => {
     expect(boundResponse(real)).toBe(real); // same object, not a copy
   });
 });
+
+/**
+ * Round 15: the cap has to be HARD.
+ *
+ * `boundResponse` used to return its last shrink attempt whether or not it fit,
+ * so an adversarial payload came back at its full size — the number in the
+ * constant was a wish, not a bound. A pathological shape is now cut to a
+ * bounded skeleton (4 keys, depth 3, 100-char strings) which is provably under
+ * budget for ANY input.
+ */
+describe('the response cap is a bound, not a suggestion', () => {
+  /** Deep, wide and long at once — beats "drop events / trim strings". */
+  function pathological(depth: number): unknown {
+    if (depth === 0) return 'x'.repeat(5_000);
+    const o: Record<string, unknown> = {};
+    for (let i = 0; i < 6; i++) o[`k${i}`.repeat(200)] = pathological(depth - 1);
+    return o;
+  }
+
+  it('never returns a payload over the cap, whatever the shape', () => {
+    for (const input of [
+      pathological(4), // ~6 MB, 50x the cap
+      Array.from({ length: 20_000 }, (_, i) => ({ id: String(i), blob: 'y'.repeat(500) })),
+      { deep: pathological(3) },
+    ]) {
+      const out = boundResponse(input);
+      expect(JSON.stringify(out ?? null).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
+    }
+  });
+
+  it('survives a payload whose SIZE cannot be measured', () => {
+    // `JSON.stringify` throws on a cycle (and past V8's max string length).
+    // Measuring was the step assumed safe, so this used to take the tool call
+    // down with a RangeError rather than return anything at all — found by this
+    // test, on my own fix, one round after writing it.
+    const cyclic: Record<string, unknown> = { date: '2026-06-29' };
+    cyclic.self = cyclic;
+    expect(() => boundResponse(cyclic)).not.toThrow();
+    expect(JSON.stringify(boundResponse(cyclic) ?? null).length).toBeLessThanOrEqual(
+      MAX_RESPONSE_CHARS,
+    );
+  });
+
+  it('does not recurse without bound on a deeply nested payload', () => {
+    let deep: Record<string, unknown> = {};
+    const root = deep;
+    for (let i = 0; i < 50_000; i++) {
+      const next: Record<string, unknown> = {};
+      deep.next = next;
+      deep = next;
+    }
+    expect(() => boundResponse(root)).not.toThrow(); // was a stack overflow
+  });
+
+  it('leaves a normal payload untouched', () => {
+    const normal = { date: '2026-06-29', matches: [{ id: '760415', home: 'MEX' }], count: 1 };
+    expect(boundResponse(normal)).toEqual(normal);
+  });
+});

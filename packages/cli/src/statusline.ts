@@ -19,6 +19,7 @@ import {
   displayWidth,
   parseCachedMatch,
   parsedValue,
+  type BoundedList,
   truncateVisible,
   scoreline,
   type Match,
@@ -173,25 +174,6 @@ export const MAX_LIVE_CONSIDERED = 64;
  */
 const MAX_LIVE_EXAMINED = 512;
 
-/**
- * How many cache records LOOK live, before the work cap. Only the cheap
- * predicate — no sanitizing — so the "+N" overflow can report the true total
- * rather than the capped one, which would understate it (a 500-record cache
- * said "+56"). Reporting a number that is quietly wrong is the same class of
- * problem as losing the marker entirely.
- */
-/**
- * How many records the cache OFFERS as live, before any of them is read.
- *
- * Distinct from {@link liveMatchCountFromCache}, which applies a cheap shape
- * test: this one answers "did we stop early?", the only question for which the
- * unsealed count is the right input.
- */
-export function liveCacheRecordCount(state: CacheState | undefined, nowMs = Date.now()): number {
-  const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
-  return fresh && Array.isArray(state?.live) ? state.live.length : 0;
-}
-
 export function liveMatchCountFromCache(
   state: CacheState | undefined,
   nowMs = Date.now(),
@@ -204,10 +186,48 @@ export function liveMatchCountFromCache(
   ).length;
 }
 
+/**
+ * How far past the stop point we count unrendered candidates.
+ *
+ * The "+N" marker needs a number for records we never rendered, and counting
+ * them is a cheap shape test — but "cheap × unbounded" is how this surface
+ * loses its budget, so the tail scan is bounded too. When the bound is hit, N
+ * is a LOWER bound and `complete` is false. Undercounting a degenerate cache is
+ * acceptable; the bug being fixed is the opposite, a marker inflated by records
+ * that were examined and rejected.
+ */
+const MAX_LIVE_TAIL_SCAN = 1024;
+
+/**
+ * Cached knockout fixtures, sealed until we have enough — NOT sliced first.
+ *
+ * The sibling of the live-list bug, and it survived the round that fixed that
+ * one: this took the first 64 records passing a cheap shape test and sealed
+ * those, so 64 malformed shapes could hide the first real resolved pairing and
+ * the statusline fell back to "⚽ —" with a confirmed tie sitting in the cache.
+ * Bound the CANDIDATES examined, not the RESULTS kept.
+ *
+ * `events: false` — this surface renders a scoreline, not a timeline, and
+ * sealing per-event labels is the dominant cost on a 150ms budget.
+ */
+function sealFixtures(raw: unknown): Match[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Match[] = [];
+  let examined = 0;
+  for (const rec of raw) {
+    if (out.length >= MAX_LIVE_CONSIDERED || examined >= MAX_LIVE_EXAMINED) break;
+    if (!isMatchShaped(rec)) continue;
+    examined++;
+    const sealed = parsedValue(parseCachedMatch(rec, { events: false }));
+    if (sealed) out.push(sealed);
+  }
+  return out;
+}
+
 export function liveMatchesFromCache(
   state: CacheState | undefined,
   nowMs = Date.now(),
-): Match[] {
+): BoundedList<Match> {
   const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
   const liveArr = fresh && Array.isArray(state?.live) ? state!.live : [];
 
@@ -225,8 +245,13 @@ export function liveMatchesFromCache(
   // RESULTS keeps a real match from being crowded out by junk.
   const out: Match[] = [];
   let examined = 0;
-  for (const raw of liveArr) {
-    if (out.length >= MAX_LIVE_CONSIDERED || examined >= MAX_LIVE_EXAMINED) break;
+  let stopped = liveArr.length; // index we stopped at; default = ran to the end
+  for (let i = 0; i < liveArr.length; i++) {
+    if (out.length >= MAX_LIVE_CONSIDERED || examined >= MAX_LIVE_EXAMINED) {
+      stopped = i;
+      break;
+    }
+    const raw = liveArr[i];
     if (!raw || typeof raw !== 'object') continue;
     const m = raw as Match;
     // Cheap test first: it costs nothing and skips most junk without sealing.
@@ -235,7 +260,29 @@ export function liveMatchesFromCache(
     const sealed = parsedValue(parseCachedMatch(m, { events: false }));
     if (sealed) out.push(sealed);
   }
-  return out;
+
+  // How many live-looking records we NEVER LOOKED AT, counted from the actual
+  // stop position. The call sites used to derive this as `records - cap`, which
+  // charged every rejected record to the "+N" marker: a cache of 500 junk
+  // entries and one real match rendered the match plus a confident "+436 more",
+  // none of which existed. Only the unscanned tail can hold anything more.
+  let remaining = 0;
+  let scannedTail = 0;
+  for (let i = stopped; i < liveArr.length && scannedTail < MAX_LIVE_TAIL_SCAN; i++, scannedTail++) {
+    const m = liveArr[i] as Match | undefined;
+    if (m && typeof m === 'object' && isLive(m.status) && m.home?.code && m.away?.code) remaining++;
+  }
+  const tailExhausted = liveArr.length - stopped > scannedTail;
+
+  return {
+    items: out,
+    total: out.length + remaining,
+    shown: out.length,
+    truncated: remaining > 0,
+    // False when we stopped early: there may be live matches we never read, and
+    // an empty list here must not render as "nothing is on".
+    complete: stopped === liveArr.length && !tailExhausted,
+  };
 }
 
 /**
@@ -267,7 +314,8 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   const flags = opts.flags ?? true;
   const team = opts.team?.toUpperCase();
 
-  const live = liveMatchesFromCache(state, nowMs);
+  const liveList = liveMatchesFromCache(state, nowMs);
+  const live = liveList.items;
 
   // The static bundle MERGED with the refresher's cached resolved knockout
   // fixtures — the bundle's KO slots are 🏳️ placeholders the hot path can't
@@ -278,20 +326,7 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // countdown/syncing lines, so they get the same poisoned-cache defense.
   // Malformed entries (null, {}, missing kickoff/teams) are dropped, never
   // allowed to throw the whole statusline blank downstream.
-  const cachedFixtures = Array.isArray(state?.fixtures)
-    ? (state!.fixtures as unknown[])
-        .filter(isMatchShaped)
-        // Same bound as the live slice above, for the same reason and on the
-        // same hot path — this list feeds `mergeLive` and the countdown, and
-        // sanitizing all of it cost 1,658ms at 20,000 records against a 150ms
-        // budget. Bounding one of two paths in this function was not fixing the
-        // class; a knockout window is a few dozen fixtures, never thousands.
-        .slice(0, MAX_LIVE_CONSIDERED)
-        // `events: false` — this surface renders a scoreline, not a timeline, and
-      // sealing per-event labels is the dominant cost on a 150ms budget.
-      .map((m) => parsedValue(parseCachedMatch(m, { events: false })))
-        .filter((m): m is Match => !!m)
-    : [];
+  const cachedFixtures = sealFixtures(state?.fixtures);
   const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;
 
   // With a team filter, show only that team's live match.
@@ -307,15 +342,12 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
     // contract is that it is one short line in the user's prompt.
     const max = opts.max && opts.max > 0 ? Math.min(opts.max, DEFAULT_MAX_SEGMENTS) : DEFAULT_MAX_SEGMENTS;
     const shown = live.slice(0, max);
-    // "+N" is a claim about MATCHES, and a record we read and could not use is
-    // not one. Two honest sources, and only two:
-    //   - matches we sealed but did not display (the segment cap), and
-    //   - records past MAX_LIVE_CONSIDERED that we never examined at all.
-    // A record we DID examine and rejected belongs to neither. Counting anything
-    // merely shaped like a live match put "+99" beside a single real fixture on
-    // a cache holding 99 junk entries — a lie told in the user's prompt.
-    const unexamined = Math.max(0, liveCacheRecordCount(state, nowMs) - MAX_LIVE_CONSIDERED);
-    const overflow = live.length - shown.length + unexamined;
+    // "+N" is a claim about MATCHES, and it now comes from ONE value: the
+    // BoundedList the reader returned, whose `total` counts matches we sealed
+    // plus live-looking records past the point we stopped reading. Deriving it
+    // here from raw record counts is what made it a lie — every junk record we
+    // examined and rejected was charged to the marker.
+    const overflow = liveList.total - shown.length;
     const marker = overflow > 0 ? ` +${overflow}` : '';
     // The overflow marker is the honest part of this line — it is what says the
     // list is incomplete — so it must survive the width cap. Truncating the

@@ -12,7 +12,7 @@
  */
 import { lookupTeam, scoreline, type Match, type Team } from '@claudinho/core';
 import type { readState } from './cache';
-import { MAX_LIVE_CONSIDERED, liveCacheRecordCount, liveMatchesFromCache } from './statusline';
+import { liveMatchesFromCache } from './statusline';
 
 /**
  * Live matches listed in the hook's context. Well above any real simultaneity
@@ -90,19 +90,15 @@ export function renderHook(
   const team = opts.team?.toUpperCase();
   const flags = opts.flags ?? true;
 
-  let live = liveMatchesFromCache(state, now.getTime());
+  const liveList = liveMatchesFromCache(state, now.getTime());
+  let live: Match[] = [...liveList.items];
   if (live.length === 0) return '';
-  // "+N" is a claim about MATCHES, and a record we read and could not use is not
-  // one. Two honest sources, and only two: matches we sealed but did not show,
-  // and records past the examine cap we never looked at. A record we DID examine
-  // and rejected belongs to neither.
-  //
-  // The statusline had exactly this bug and exactly this fix; the hook kept the
-  // shape-only count, so 60 unreadable records read as "(+60 more not shown)"
-  // — in Claude's context, which is worse than on a prompt line. Fixing one
-  // surface and not its sibling is the recurring mistake in this codebase.
-  const unexamined = Math.max(0, liveCacheRecordCount(state, now.getTime()) - MAX_LIVE_CONSIDERED);
-  const total = live.length + unexamined;
+  // "+N" comes from the reader's BoundedList, not from a record count recomputed
+  // here. `total` is matches we sealed plus live-looking records past the point
+  // the reader stopped; a record it examined and REJECTED is in neither, which
+  // is the whole fix — 60 unreadable records used to read as "(+60 more not
+  // shown)" inside Claude's context, which is worse than on a prompt line.
+  const total = liveList.total;
 
   // Surface the user's team first, if any.
   if (team) {

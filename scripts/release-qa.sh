@@ -199,7 +199,7 @@ const ev = { id:'ev', slug:'fifwc-eng-cdr-2026-07-01', title:'England vs. DR Con
   sport:{sport:'fifwc'}, updatedAt:'2026-07-01T11:55Z',
   markets:[ mkt('x-eng','England',0.76), mkt('x-draw','Draw (England vs. DR Congo)',0.18), mkt('x-cdr','DR Congo',0.05) ] };
 const fetchImpl = async (url) => ({ ok:true, status:200, statusText:'OK',
-  json: async () => (new URL(String(url)).searchParams.get('slug')==='fifwc-eng-cdr-2026-07-01' ? [ev] : []) });
+  json: async () => (decodeURIComponent(new URL(String(url)).pathname.split('/events/slug/')[1] ?? '')==='fifwc-eng-cdr-2026-07-01' ? ev : null) });
 const p = new PolymarketProvider({ fetchImpl, now:new Date('2026-07-01T12:00Z') });
 const sig = await p.findSignal({ id:'760495', stage:'R32', kickoff:'2026-07-01T16:00Z', venue:'X',
   home:{code:'ENG',name:'England',flag:'🏴'}, away:{code:'COD',name:'DR Congo',flag:'🇨🇩'},

@@ -872,11 +872,22 @@ describe('property: every nested collection is length-bounded', () => {
       minute: 45,
       teamCode: 'MEX',
     }));
-    const t = process.hrtime.bigint();
-    const clean = sanitizeMatchStrings({ ...goodMatch, events } as unknown as Match);
-    const ms = Number(process.hrtime.bigint() - t) / 1e6;
+    // Asserted by OBSERVATION, not by stopwatch: a poisoned event carrying a
+    // value the seal would reject is planted past the cap, and the bound holds
+    // iff it is never looked at. A wall-clock threshold measures the machine as
+    // much as the code — it flakes under parallel load and says nothing about
+    // WHY it was fast. This says the work was not done.
+    let touched = 0;
+    const probe = events.map((e, i) => ({
+      ...e,
+      get teamCode() {
+        touched = Math.max(touched, i + 1);
+        return 'MEX';
+      },
+    }));
+    const clean = sanitizeMatchStrings({ ...goodMatch, events: probe } as unknown as Match);
     expect(clean?.events?.length ?? 0).toBeLessThanOrEqual(128);
-    expect(ms).toBeLessThan(150); // the statusline's whole budget
+    expect(touched).toBeLessThanOrEqual(128); // nothing past the cap was read
   });
 
   it('bounds MarketSignal.outcomes', () => {
@@ -885,10 +896,19 @@ describe('property: every nested collection is length-bounded', () => {
       label: 'x',
       probability: 0.5,
     }));
-    const t = process.hrtime.bigint();
-    const clean = sanitizeMarketSignal({ ...goodSignal, outcomes } as unknown as MarketSignal, NOW);
-    const ms = Number(process.hrtime.bigint() - t) / 1e6;
+    let touched = 0;
+    const probe = outcomes.map((o, i) => ({
+      ...o,
+      get label() {
+        touched = Math.max(touched, i + 1);
+        return 'x';
+      },
+    }));
+    const clean = sanitizeMarketSignal(
+      { ...goodSignal, outcomes: probe } as unknown as MarketSignal,
+      NOW,
+    );
     expect(clean.outcomes.length).toBeLessThanOrEqual(128);
-    expect(ms).toBeLessThan(150);
+    expect(touched).toBeLessThanOrEqual(128);
   });
 });

@@ -90,6 +90,23 @@ export function humanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): stri
   //
   // Converges immediately for real text (pass 2 is a no-op). If it has not
   // settled within a few passes the value is adversarial, so we fail closed.
+  return visible(runToFixedPoint(capped, maxColumns));
+}
+
+/**
+ * A label has to be SEEN to be a label.
+ *
+ * Combining marks with no base survive every other rule — they are not controls,
+ * not format characters, not emoji — and occupy zero columns, so a team could be
+ * named `"\u0301\u0301\u0301"` and render as nothing at all. An identity that
+ * displays as empty is not an identity; a surface showing it shows a blank where
+ * a nation should be. Real names always occupy at least one column.
+ */
+function visible(label: string): string {
+  return label !== '' && displayWidth(label) === 0 ? '' : label;
+}
+
+function runToFixedPoint(capped: string, maxColumns: number): string {
   const first = sealLabelOnce(capped, maxColumns);
   // Only filtering can change what composes, so a pass that dropped nothing has
   // already converged — which is every real name, and keeps the common path at

@@ -29,14 +29,14 @@ const cache = (live: unknown[]) =>
 describe('junk cannot crowd out a live score', () => {
   it('finds the real match behind 64 unsealable records', () => {
     const state = cache([...Array.from({ length: 64 }, () => ({ ...junk })), real]);
-    expect(liveMatchesFromCache(state, NOW.getTime())).toHaveLength(1);
+    expect(liveMatchesFromCache(state, NOW.getTime()).items).toHaveLength(1);
     expect(renderPrompt(state, { now: NOW })).toContain('1–0');
     expect(renderHook(state, { now: NOW })).toContain('Mexico');
   });
 
   it('and behind 400 of them', () => {
     const state = cache([...Array.from({ length: 400 }, () => ({ ...junk })), real]);
-    expect(liveMatchesFromCache(state, NOW.getTime())).toHaveLength(1);
+    expect(liveMatchesFromCache(state, NOW.getTime()).items).toHaveLength(1);
   });
 
   it('while the work stays bounded on a million records', () => {
@@ -49,7 +49,7 @@ describe('junk cannot crowd out a live score', () => {
     renderPrompt(state, { now: NOW });
     // Generous absolute ceiling only as a smoke check; the real assertion is
     // that the result count is capped, which is deterministic.
-    expect(liveMatchesFromCache(state, NOW.getTime()).length).toBeLessThanOrEqual(64);
+    expect(liveMatchesFromCache(state, NOW.getTime()).items.length).toBeLessThanOrEqual(64);
     expect(performance.now() - t).toBeLessThan(2_000);
   }, 120_000);
 });

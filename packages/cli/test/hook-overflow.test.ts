@@ -33,10 +33,21 @@ describe('the hook does not report phantom matches to the model', () => {
   });
 
   it('but records it never examined ARE reported — stopping early is not silence', () => {
+    // 600 records trips the examine cap, leaving 88 genuinely unread. Under 512
+    // every record is read, and then there is nothing hidden to report — see
+    // the sibling case below.
+    const out = renderHook(state([real, ...Array.from({ length: 599 }, () => ({ ...junk }))]), {
+      now: NOW,
+    });
+    expect(out).toMatch(/\+88 more/);
+  });
+
+  it('says nothing is hidden when every record was read', () => {
     const out = renderHook(state([real, ...Array.from({ length: 199 }, () => ({ ...junk }))]), {
       now: NOW,
     });
-    expect(out).toMatch(/\+\d+ more/);
+    expect(out).toContain('Mexico');
+    expect(out).not.toMatch(/\+\d+ more/);
   });
 
   it('and genuinely hidden matches are still counted', () => {

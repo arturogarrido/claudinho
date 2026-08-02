@@ -240,10 +240,20 @@ const MAX_OBJECT_KEYS = 64;
  * on the tools that never declared it — a cure worse than the disease.
  * Truncation is stated in the TEXT beside it instead.
  */
-function shrink(value: unknown, pass: 1 | 2 | 3): unknown {
+function shrink(value: unknown, pass: 1 | 2 | 3 | 4, depth = 0): unknown {
+  // Pass 4 is the last resort, and unlike the others it is TOTAL: bounded
+  // breadth (4 keys), bounded depth (3), bounded strings (100), arrays cut to a
+  // single element. That gives at most 4^3 nodes of ~200 chars — provably under
+  // the cap for ANY input, which is what makes the cap hard rather than
+  // advisory. It only ever runs on a payload the gentler passes could not fit.
+  if (pass === 4 && depth >= 4) return null;
+  // Depth guard for EVERY pass: recursion over an attacker-shaped object is a
+  // stack overflow, which on this path takes the server down rather than the
+  // response over budget.
+  if (depth >= 64) return null;
   if (Array.isArray(value)) {
-    const items = pass === 3 ? value.slice(0, 8) : value;
-    return items.map((v) => shrink(v, pass));
+    const items = pass === 4 ? value.slice(0, 1) : pass === 3 ? value.slice(0, 8) : value;
+    return items.map((v) => shrink(v, pass, depth + 1));
   }
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
@@ -254,29 +264,50 @@ function shrink(value: unknown, pass: 1 | 2 | 3): unknown {
     let kept = 0;
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (k === 'events') continue; // always the first thing to go
+      if (pass === 4 && kept >= 4) break;
       if (pass === 3 && kept >= MAX_OBJECT_KEYS) break;
       kept++;
-      out[k] = shrink(v, pass);
+      // Key NAMES are payload too — a bound that truncates values and leaves a
+      // 30 KB key is not a bound.
+      out[pass === 4 ? k.slice(0, 100) : k] = shrink(v, pass, depth + 1);
     }
     return out;
   }
-  if (pass >= 2 && typeof value === 'string' && value.length > 2_000) {
-    return `${value.slice(0, 2_000)}…`;
+  if (typeof value === 'string') {
+    if (pass === 4 && value.length > 100) return `${value.slice(0, 100)}…`;
+    if (pass >= 2 && value.length > 2_000) return `${value.slice(0, 2_000)}…`;
   }
   return value;
 }
 
-const size = (v: unknown) => JSON.stringify(v ?? null).length;
+/**
+ * Serialized size, or Infinity if it cannot even be measured.
+ *
+ * `JSON.stringify` THROWS `RangeError: Invalid string length` past V8's maximum
+ * string length, and on a cycle. Measuring was the one step assumed safe, so a
+ * big enough payload did not return over-budget — it crashed the tool call.
+ * Unmeasurable is treated as "too big", which routes it to the harsher pass.
+ */
+function size(v: unknown): number {
+  try {
+    return JSON.stringify(v ?? null)?.length ?? Number.POSITIVE_INFINITY;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
 
 export function boundResponse(data: unknown): unknown {
   if (size(data) <= MAX_RESPONSE_CHARS) return data;
-  for (const pass of [1, 2, 3] as const) {
+  for (const pass of [1, 2, 3, 4] as const) {
     const candidate = shrink(data, pass);
     if (size(candidate) <= MAX_RESPONSE_CHARS) return candidate;
   }
-  // Nothing structural got it under budget. Rechecked rather than assumed —
-  // the previous version returned its last attempt without re-measuring.
-  return shrink(data, 3);
+  // Unreachable: pass 4 is bounded by construction (see `shrink`). Kept as a
+  // hard floor rather than returning an over-budget payload, which is what the
+  // previous `return shrink(data, 3)` did — it re-measured and then returned
+  // the oversized value anyway, so the "cap" was advisory. An 8 MB probe came
+  // back at 8 MB. `null` is the one value that cannot exceed a budget.
+  return null;
 }
 
 /** Ceiling on the prose block, which is model context too and was never bounded. */

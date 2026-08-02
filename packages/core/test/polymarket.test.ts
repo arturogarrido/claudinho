@@ -73,11 +73,27 @@ function event(over: Record<string, unknown> = {}, markets?: unknown[]) {
   };
 }
 
-/** Fetch stub that only returns the event for the EXACT requested slug. */
+/**
+ * The slug a request is FOR, read from the documented per-slug route
+ * (`/events/slug/{slug}`). The stubs used to parse a `?slug=` query parameter,
+ * which is the route Gamma has now sunset.
+ */
+function requestedSlug(url: string | URL): string {
+  return decodeURIComponent(new URL(String(url)).pathname.split('/events/slug/')[1] ?? '');
+}
+
+/**
+ * Fetch stub that only returns the event for the EXACT requested slug.
+ *
+ * Returns a bare object, as the per-slug route does; the array form the query
+ * route returned is still accepted by the parser and still covered below.
+ */
 function fetchFor(expectedSlug: string, ev: unknown): typeof fetch {
   return (async (url: string | URL) => {
-    const slug = new URL(String(url)).searchParams.get('slug');
-    return { ok: true, status: 200, statusText: 'OK', json: async () => (slug === expectedSlug ? [ev] : []) };
+    const hit = requestedSlug(url) === expectedSlug;
+    return hit
+      ? { ok: true, status: 200, statusText: 'OK', json: async () => ev }
+      : { ok: false, status: 404, statusText: 'Not Found', json: async () => ({}) };
   }) as unknown as typeof fetch;
 }
 
@@ -311,7 +327,38 @@ describe('PolymarketProvider — fail-closed validation', () => {
     expect(await derived(fetchFor(SLUG, closedLeg)).findSignal(match())).toBeUndefined();
   });
 
-  it('drops a group match missing the draw market, allows a two-way knockout', async () => {
+  it('asks Polymarket for Korea by its TWO-letter token', async () => {
+    // Korea Republic is the one nation Polymarket does not slug with three
+    // letters: `fifwc-kor-cze-2026-06-11` is a 404, `fifwc-kr-cze-2026-06-11`
+    // resolves to "Korea Republic vs. Czechia" (verified live). All three of
+    // Korea's group fixtures therefore had no market line at all. The
+    // `^[a-z]{3}$` guard in `deriveEventSlugs` validates the FIFA CODE, not the
+    // token, so the two-letter alias passes through it.
+    const asked: string[] = [];
+    const recording = (async (u: string | URL) => {
+      asked.push(String(u));
+      return { ok: false, status: 404, statusText: 'Not Found', json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    await derived(recording).findSignal(
+      match({
+        home: { code: 'KOR', name: 'Korea Republic', flag: '🇰🇷' },
+        away: { code: 'CZE', name: 'Czechia', flag: '🇨🇿' },
+        kickoff: '2026-06-11T19:00:00.000Z',
+      }),
+    );
+    expect(asked[0]).toContain('fifwc-kr-cze-2026-06-11');
+    // The bare FIFA code is still tried, so a Polymarket-side change back to
+    // `kor` does not silently lose the fixture.
+    expect(asked.some((u) => u.includes('fifwc-kor-cze-2026-06-11'))).toBe(true);
+  });
+
+  it('drops a two-way market at EVERY stage — knockout ties are not an exception', async () => {
+    // This test used to assert the opposite for knockouts, on the theory that a
+    // knockout tie has no draw. Polymarket disagrees: all 71 real fifwc
+    // moneyline events carry three legs including draw, R32 ties included
+    // (`fifwc-rsa-can-2026-06-28` → rsa/draw/can). The exemption only ever let
+    // a DIFFERENT market through — a two-way "to advance" line, which answers a
+    // different question over a different period — as regular-time match odds.
     const twoWay = (m?: Match) =>
       derived(
         fetchFor(m ? deriveSlug(m) : SLUG, event({ slug: m ? deriveSlug(m) : SLUG }, [
@@ -319,11 +366,9 @@ describe('PolymarketProvider — fail-closed validation', () => {
           market('rsa', 'South Africa', 0.4),
         ])),
       ).findSignal(m ?? match());
-    expect(await twoWay()).toBeUndefined(); // group stage needs a draw
-    const ko = match({ stage: 'R16', group: undefined });
-    const sig = await twoWay(ko);
-    expect(sig?.ambiguous).toBe(false);
-    expect(sig?.favorite?.kind).toBe('home');
+    expect(await twoWay()).toBeUndefined(); // group
+    expect(await twoWay(match({ stage: 'R16', group: undefined }))).toBeUndefined(); // knockout
+    expect(await twoWay(match({ stage: 'F', group: undefined }))).toBeUndefined(); // final
   });
 
   it('rejects an incoherent market set (Yes prices do not sum to ~1)', async () => {

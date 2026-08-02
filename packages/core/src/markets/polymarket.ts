@@ -276,7 +276,12 @@ export class PolymarketProvider implements MarketProvider {
   private async fetchEvent(slug: string, timeoutMs?: number): Promise<ParseResult<GammaEvent>> {
     const base = this.opts.baseUrl ?? DEFAULT_BASE;
     assertAllowedHost(base);
-    const url = `${base}/events?slug=${encodeURIComponent(slug)}`;
+    // The documented per-slug lookup. The `/events?slug=` query route this
+    // replaces now answers with `deprecation: true`, `sunset: Fri, 01 May 2026`
+    // and a migration warning — a sunset date already in the past. Verified
+    // returning the identical event (same id, same three markets), and it 404s
+    // for an unknown slug, which is the `definitiveNone` below.
+    const url = `${base}/events/slug/${encodeURIComponent(slug)}`;
     const doFetch = this.opts.fetchImpl ?? fetch;
     const res = await doFetch(url, {
       signal: AbortSignal.timeout(timeoutMs ?? this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
@@ -420,16 +425,23 @@ export class PolymarketProvider implements MarketProvider {
         return ambiguous(`${sel.count} markets claim the ${side} outcome`);
       }
     }
-    // ABSENT draw is legitimate on a two-way knockout line; absent result legs
-    // are not, and that IS a real answer about this event.
-    if (homeSel.kind !== 'one' || awaySel.kind !== 'one') {
+    // ALL THREE legs are required, draw included.
+    //
+    // The exemption this replaces read "absent draw is legitimate on a two-way
+    // knockout line", which let a 60/40 "to advance" market — a different
+    // question, over a different period — pass as regular-time match odds. It
+    // was a guess about the feed, and the feed says otherwise: all 71 fifwc
+    // moneyline events carry exactly three legs including draw, knockout ties
+    // included (`fifwc-rsa-can-2026-06-28` is an R32 tie with rsa/draw/can).
+    // Requiring the draw leg costs zero real signal and closes the fail-open.
+    if (homeSel.kind !== 'one' || awaySel.kind !== 'one' || drawSel.kind !== 'one') {
       return marketsTruncated
         ? malformed('event market list exceeded the cap before both legs were found')
-        : definitiveNone('event has no moneyline leg for one or both teams');
+        : definitiveNone('event does not carry all three 1X2 legs');
     }
     const homeMarket = homeSel.value;
     const awayMarket = awaySel.value;
-    const drawMarket = drawSel.kind === 'one' ? drawSel.value : undefined;
+    const drawMarket = drawSel.value;
 
     // Reject a degenerate payload where two legs collapse to the same market.
     const legIds = [homeMarket, awayMarket, drawMarket]
@@ -592,7 +604,8 @@ function safeDerivedSlug(slug: unknown): string | undefined {
  * lookup is still fail-closed (exact slug + kickoff + coherent 1X2), so a stale or
  * wrong entry degrades to "no market", never a wrong one. (Curaçao is intentionally
  * absent — Polymarket's data mislabels it under the `kor` token, so we fail closed
- * rather than risk showing South Korea's odds.)
+ * rather than risk showing South Korea's odds — and note Polymarket does not use
+ * `kor` for Korea either, see the KOR entry below.)
  */
 const POLYMARKET_TOKEN: Record<string, string> = {
   SUI: 'che', // Switzerland
@@ -602,6 +615,13 @@ const POLYMARKET_TOKEN: Record<string, string> = {
   CRO: 'hrv', // Croatia
   COD: 'cdr', // DR Congo
   CPV: 'cvi', // Cabo Verde
+  // TWO letters, not three — the one entry that is not ISO alpha-3. Verified
+  // live: `fifwc-kor-cze-2026-06-11` is a 404, `fifwc-kr-cze-2026-06-11`
+  // resolves to "Korea Republic vs. Czechia". Korea's three group fixtures
+  // therefore had no market line at all. The `^[a-z]{3}$` guard in
+  // `deriveEventSlugs` validates the FIFA CODE, not the token, so a two-letter
+  // alias passes through it unharmed.
+  KOR: 'kr', // Korea Republic
 };
 
 /** Polymarket slug token(s) for a team: its alias (canonical) first, then the FIFA code. */
