@@ -166,6 +166,14 @@ function matchSegment(m: Match, compact: boolean, flags: boolean): string {
 export const MAX_LIVE_CONSIDERED = 64;
 
 /**
+ * Records we are willing to SEAL before giving up, however many look live.
+ *
+ * Higher than the result cap so junk cannot crowd out a real match, but finite
+ * so a poisoned cache cannot make the hot path scale with the file.
+ */
+const MAX_LIVE_EXAMINED = 512;
+
+/**
  * How many cache records LOOK live, before the work cap. Only the cheap
  * predicate — no sanitizing — so the "+N" overflow can report the true total
  * rather than the capped one, which would understate it (a 500-record cache
@@ -202,29 +210,32 @@ export function liveMatchesFromCache(
 ): Match[] {
   const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
   const liveArr = fresh && Array.isArray(state?.live) ? state!.live : [];
-  return (
-    liveArr
-      .filter(
-        (m): m is Match =>
-          !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
-      )
-      // Bound the EXPENSIVE work before doing it. The cheap predicate above runs
-      // over the whole array (so a live match late in the file is still found),
-      // but sealing is grapheme-level over ~8 fields per record, and running it
-      // on every record made the HOT PATH scale with the cache file: measured
-      // 120ms at 1,000 records and 2,487ms at 20,000, against a 150ms budget.
-      // Slicing here rather than at the render sites is what actually bounds it —
-      // the render caps limited what was DISPLAYED, not what was computed.
-      .slice(0, MAX_LIVE_CONSIDERED)
-      // THE SAME constructor the live adapter path ends at (core trust/match).
-      // The statusline renders straight from the cache file on every prompt, so
-      // a poisoned cache is untrusted input exactly like a poisoned feed — and
-      // when the two paths had separate rules, every fix landed on one of them.
-      // `events: false` — this surface renders a scoreline, not a timeline, and
-      // sealing per-event labels is the dominant cost on a 150ms budget.
-      .map((m) => parsedValue(parseCachedMatch(m, { events: false })))
-      .filter((m): m is Match => !!m)
-  );
+
+  // SEAL UNTIL WE HAVE ENOUGH — do not slice first and seal the slice.
+  //
+  // Sealing is grapheme-level over ~8 fields, so it cannot run on every record
+  // of an unbounded file (measured 2,487ms at 20,000 records against a 150ms
+  // budget). The previous fix took the first 64 records passing a CHEAP shape
+  // test and sealed those — which meant 64 records that merely LOOK live, and
+  // seal to nothing, consumed the whole budget and hid a real live match behind
+  // them. The statusline showed a countdown while a match was being played,
+  // which is the failure this surface exists to avoid.
+  //
+  // Bounding the CANDIDATES examined keeps the work bounded; bounding the
+  // RESULTS keeps a real match from being crowded out by junk.
+  const out: Match[] = [];
+  let examined = 0;
+  for (const raw of liveArr) {
+    if (out.length >= MAX_LIVE_CONSIDERED || examined >= MAX_LIVE_EXAMINED) break;
+    if (!raw || typeof raw !== 'object') continue;
+    const m = raw as Match;
+    // Cheap test first: it costs nothing and skips most junk without sealing.
+    if (!isLive(m.status) || !m.home?.code || !m.away?.code) continue;
+    examined++;
+    const sealed = parsedValue(parseCachedMatch(m, { events: false }));
+    if (sealed) out.push(sealed);
+  }
+  return out;
 }
 
 /**

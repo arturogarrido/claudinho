@@ -50,6 +50,14 @@ describe('one tool response cannot flood model context', () => {
     expect(JSON.stringify(boundResponse(bracket)).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
   });
 
+  it('bounds an object by WIDTH, not only arrays by length', () => {
+    // A record with 3,000 keys is as much model context as a 3,000-element
+    // array; slicing only arrays left it at 271 KB against a 128 KB cap.
+    const wide: Record<string, string> = {};
+    for (let i = 0; i < 3_000; i++) wide[`k${i}`] = 'V'.repeat(80);
+    expect(JSON.stringify(boundResponse(wide)).length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
+  });
+
   it('is WIRED into the payload every tool returns', () => {
     // Pinning the function is not pinning the call — the last round's routing
     // test made exactly this mistake and stayed green when the call was removed.

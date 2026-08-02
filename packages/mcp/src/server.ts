@@ -222,6 +222,9 @@ export const OUTPUT_SCHEMAS = {
  */
 export const MAX_RESPONSE_CHARS = 128_000;
 
+/** Keys kept from one object when the response has to be cut. */
+const MAX_OBJECT_KEYS = 64;
+
 /**
  * Shrink a payload until it fits, whatever SHAPE it has.
  *
@@ -243,8 +246,15 @@ function shrink(value: unknown, pass: 1 | 2 | 3): unknown {
   }
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
+    // Objects are bounded by WIDTH too, not only arrays by length. A record with
+    // 3,000 keys is as much model context as a 3,000-element array, and slicing
+    // only arrays left it at 271 KB against a 128 KB cap — bounding one shape of
+    // bigness is not bounding the payload.
+    let kept = 0;
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (k === 'events') continue; // always the first thing to go
+      if (pass === 3 && kept >= MAX_OBJECT_KEYS) break;
+      kept++;
       out[k] = shrink(v, pass);
     }
     return out;
@@ -271,27 +281,29 @@ export function boundResponse(data: unknown): unknown {
 /** Ceiling on the prose block, which is model context too and was never bounded. */
 const MAX_TEXT_CHARS = 32_000;
 
+/**
+ * Above this, the JSON text block is dropped rather than duplicating
+ * `structuredContent`. Comfortably larger than any real response.
+ */
+const DUAL_EMIT_LIMIT = 16_000;
+
 export function toContent(r: ToolResult) {
   const data = boundResponse(r.data);
   const text =
     r.text.length > MAX_TEXT_CHARS
       ? `${r.text.slice(0, MAX_TEXT_CHARS)}\n(truncated)`
       : r.text;
-  // The JSON block is PRETTY-printed, so it is roughly 2x the compact size the
-  // cap measures. Bounded on what is actually shipped, not on the number that
-  // was convenient to check.
-  const pretty = JSON.stringify(data, null, 2);
-  const block =
-    pretty.length > MAX_RESPONSE_CHARS
-      ? JSON.stringify(data) // fall back to compact rather than ship 2x
-      : pretty;
-  return {
-    content: [
-      { type: 'text' as const, text },
-      { type: 'text' as const, text: '```json\n' + block + '\n```' },
-    ],
-    structuredContent: data as Record<string, unknown>,
-  };
+  // The JSON text block DUPLICATES `structuredContent`; that dual-emit is
+  // deliberate, so clients too old to read structuredContent still get the data
+  // (see the note above). But duplicating a large payload doubles the context
+  // for a compatibility case, so past a threshold the block is dropped and the
+  // prose carries it — modern clients read structuredContent regardless.
+  const compact = JSON.stringify(data);
+  const content = [{ type: 'text' as const, text }];
+  if (compact.length <= DUAL_EMIT_LIMIT) {
+    content.push({ type: 'text' as const, text: '```json\n' + JSON.stringify(data, null, 2) + '\n```' });
+  }
+  return { content, structuredContent: data as Record<string, unknown> };
 }
 
 export function buildServer(): McpServer {

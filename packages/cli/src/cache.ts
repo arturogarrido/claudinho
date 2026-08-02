@@ -201,9 +201,13 @@ function lockAgeMs(now = Date.now()): number {
   } catch {
     return Infinity; // no lock
   }
-  // Lock exists but content is unparseable — fall back to mtime.
+  // Lock exists but its content is unparseable — fall back to mtime, THROUGH
+  // the same guard. Bypassing it here meant an unreadable lock dated 2099 was
+  // permanently fresh and never released: `isLockFresh()` true and
+  // `acquireLock()` false, forever. Third time a timestamp fix has missed a
+  // sibling, which is why every one of them now routes through `stampAgeMs`.
   try {
-    return now - statSync(lp).mtimeMs;
+    return stampAgeMs(new Date(statSync(lp).mtimeMs).toISOString(), now);
   } catch {
     return Infinity;
   }

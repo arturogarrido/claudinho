@@ -396,6 +396,11 @@ export class PolymarketProvider implements MarketProvider {
     // BOUNDED BEFORE THE FILTER. The 5MB body cap only covers responses that
     // declare a length, and production Gamma omits it — so this array was the
     // one untrusted collection still traversed whole. A real event has 3 legs.
+    // If the list was CUT, "we found no legs" is a statement about our cap, not
+    // about the event — and it was being cached as the provider's answer, so a
+    // fixture whose legs sat past the cap was negative-cached for the whole TTL.
+    const marketsTruncated =
+      Array.isArray(event.markets) && event.markets.length > MAX_EVENT_MARKETS;
     const moneyline = takeBounded<GammaMarket>(event.markets, MAX_EVENT_MARKETS).filter(
       (m) => m?.sportsMarketType === 'moneyline',
     );
@@ -418,7 +423,9 @@ export class PolymarketProvider implements MarketProvider {
     // ABSENT draw is legitimate on a two-way knockout line; absent result legs
     // are not, and that IS a real answer about this event.
     if (homeSel.kind !== 'one' || awaySel.kind !== 'one') {
-      return definitiveNone('event has no moneyline leg for one or both teams');
+      return marketsTruncated
+        ? malformed('event market list exceeded the cap before both legs were found')
+        : definitiveNone('event has no moneyline leg for one or both teams');
     }
     const homeMarket = homeSel.value;
     const awayMarket = awaySel.value;
