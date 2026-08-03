@@ -245,6 +245,29 @@ describe('shared standings fetch (F5 PERF-4)', () => {
   });
 });
 
+describe('aggregate standings scope', () => {
+  it('advertises bundled groups only for the default World Cup base', () => {
+    expect(new EspnAdapter().expectedStandingsGroups).toEqual([
+      'A',
+      'B',
+      'C',
+      'D',
+      'E',
+      'F',
+      'G',
+      'H',
+      'I',
+      'J',
+      'K',
+      'L',
+    ]);
+    expect(
+      new EspnAdapter({ baseUrl: 'https://example.test/custom-competition' })
+        .expectedStandingsGroups,
+    ).toBeUndefined();
+  });
+});
+
 describe('request shape', () => {
   it('sends a versioned claudinho User-Agent', async () => {
     let ua: string | undefined;

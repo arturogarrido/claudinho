@@ -10,6 +10,7 @@
  * should be re-verified during an actual live match.
  */
 import type { GroupStandings } from '../standings';
+import { groups as bundledGroups } from '../schedule';
 import { type MapContext, parseEspnEvent, parseEspnEvents, parseEspnStandings } from '../trust/espn';
 import type { Match } from '../types';
 import type { ProviderAdapter, ProviderCapabilities } from './types';
@@ -18,8 +19,6 @@ export type { MapContext };
 
 import { isLive } from '../normalize';
 import { parsedValue } from '../trust/result';
-
-
 
 const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 /** Default competition slug (the 2026 World Cup). */
@@ -128,6 +127,12 @@ export interface EspnAdapterOptions {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   /**
+   * Expected standings groups for aggregate completeness checks. Defaults to
+   * the bundled groups when using the default World Cup base; custom bases
+   * leave the scope open unless the caller supplies one.
+   */
+  expectedStandingsGroups?: readonly string[];
+  /**
    * Enrich group-stage matches with their group letter via the standings
    * endpoint (one extra request). Default true. Set false on the hot live-poll
    * path, where group letters aren't needed and the extra call is wasteful.
@@ -135,10 +140,10 @@ export interface EspnAdapterOptions {
   enrichGroups?: boolean;
 }
 
-
 export class EspnAdapter implements ProviderAdapter {
   readonly name = 'espn';
   readonly capabilities: ProviderCapabilities = { push: false, latencyHintSec: 45 };
+  readonly expectedStandingsGroups?: readonly string[];
 
   /** Short-lived team-code -> group-letter map (built lazily from standings). */
   private groupMap?: { at: number; value: Record<string, string> };
@@ -159,7 +164,11 @@ export class EspnAdapter implements ProviderAdapter {
    */
   lastError?: ProviderError;
 
-  constructor(private readonly opts: EspnAdapterOptions = {}) {}
+  constructor(private readonly opts: EspnAdapterOptions = {}) {
+    const expected =
+      opts.expectedStandingsGroups ?? (opts.baseUrl === undefined ? bundledGroups() : undefined);
+    this.expectedStandingsGroups = expected ? [...expected] : undefined;
+  }
 
   async fetchByDate(dateISO: string): Promise<Match[]> {
     return this.fetchScoreboard(toEspnDate(dateISO));

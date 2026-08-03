@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getStandings,
+  groups,
   parseStandings,
   type GroupStandings,
   type ProviderAdapter,
@@ -101,10 +102,12 @@ describe('parseStandings', () => {
 // --- getStandings (orchestration + fail-closed) ---
 function standingsAdapter(
   tables: GroupStandings[] | (() => never),
+  expectedStandingsGroups?: readonly string[],
 ): ProviderAdapter {
   return {
     name: 'fake',
     capabilities: { push: false, latencyHintSec: 0 },
+    expectedStandingsGroups,
     async fetchByDate() {
       return [];
     },
@@ -172,17 +175,26 @@ describe('getStandings', () => {
       ],
     });
     expect(partial.map((table) => table.group)).toEqual(['B']);
+    const adapter = standingsAdapter(partial, groups());
 
-    const omitted = await getStandings(standingsAdapter(partial), 'A');
+    const omitted = await getStandings(adapter, 'A');
     expect(omitted.degraded).toBe(true);
     expect(omitted.source).toBeUndefined();
     expect(omitted.tables[0]?.rows).toHaveLength(4);
     expect(omitted.tables[0]?.rows.every((row) => row.played === 0)).toBe(true);
 
-    const readable = await getStandings(standingsAdapter(partial), 'B');
+    const readable = await getStandings(adapter, 'B');
     expect(readable.degraded).toBe(false);
     expect(readable.source).toBe('fake');
     expect(readable.tables[0]?.rows.map((row) => row.team.code)).toEqual(['CAN']);
+
+    const aggregate = await getStandings(adapter);
+    expect(aggregate.degraded).toBe(true);
+    expect(aggregate.source).toBeUndefined();
+    expect(aggregate.tables.map((table) => table.group)).toEqual(groups());
+    expect(aggregate.tables.every((table) => table.rows.every((row) => row.played === 0))).toBe(
+      true,
+    );
   });
 
   it('FAILS CLOSED to a degraded roster when the provider has no fetchStandings', async () => {

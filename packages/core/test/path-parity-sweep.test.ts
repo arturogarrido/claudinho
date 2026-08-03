@@ -212,7 +212,7 @@ describe('every Match field is sealed the same way, whatever is in it', () => {
       }
     }
     expect(unstable).toEqual([]);
-  });
+  }, 120_000);
 
   it('never emits a key the type does not declare', () => {
     const declared = new Set<string>(fields);

@@ -125,9 +125,11 @@ a claim we cannot make.
   siblings keep their provider attribution; one odd record must not blank a matchday or standings
   table. A transport/JSON failure, an unreadable envelope, or a non-empty provider list with no
   usable records still throws and reaches the domain's degraded fallback. Parser-local
-  `BoundedList.complete` remains a test and diagnostics property, not a batch-wide kill switch. —
-  `core/test/adapter-hardening.test.ts`, `core/test/espn.test.ts`, `core/test/live.test.ts`,
-  `core/test/standings-live.test.ts`, `core/test/trust-espn.test.ts`
+  `BoundedList.complete` remains a test and diagnostics property, not a batch-wide kill switch.
+  Group-specific standings preserve readable sibling tables; an aggregate read falls back when an
+  expected table is absent because its single attribution verdict cannot describe mixed live and
+  static provenance honestly. — `core/test/adapter-hardening.test.ts`, `core/test/espn.test.ts`,
+  `core/test/live.test.ts`, `core/test/standings-live.test.ts`, `core/test/trust-espn.test.ts`
 - **Derived values are recomputed, never trusted** — the market favorite and staleness are
   derived from the sealed data, so a crafted file cannot make the headline contradict the
   numbers, or an old reading claim to be fresh. A team's flag is derived the same way, from its

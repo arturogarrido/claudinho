@@ -17,6 +17,11 @@ export interface ProviderCapabilities {
 export interface ProviderAdapter {
   readonly name: string;
   readonly capabilities: ProviderCapabilities;
+  /**
+   * Expected group-table scope for aggregate standings reads. Omit when the
+   * competition's group set is not the bundled tournament's known shape.
+   */
+  readonly expectedStandingsGroups?: readonly string[];
 
   /** All fixtures/results for a single calendar date (provider's timezone semantics). */
   fetchByDate(dateISO: string): Promise<Match[]>;
