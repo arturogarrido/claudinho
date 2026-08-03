@@ -5,6 +5,8 @@ import {
   type MarketProvider,
   type MarketSignal,
   type ProviderAdapter,
+  definitiveNone,
+  valid,
 } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdShare, InputError } from '../src/commands';
@@ -72,16 +74,25 @@ function provider(make?: (m: Match) => MarketSignal | undefined): MarketProvider
   return {
     name: 'fixed',
     findSignal: async (m) => make?.(m),
-    findSignals: async (matches) => {
-      const signals = new Map<string, MarketSignal>();
-      for (const m of matches) {
-        const s = make?.(m);
-        if (s) signals.set(m.id, s);
-      }
-      return { signals, checked: new Set(matches.map((m) => m.id)) };
-    },
+    findSignals: async (matches) => ({
+      // A verdict per match: the signal when this fake makes one, an explicit
+      // definitive none when it does not.
+      results: new Map(
+        matches.map((m) => {
+          const s = make?.(m);
+          return [m.id, s ? valid(s) : definitiveNone('no signal for this fixture')] as const;
+        }),
+      ),
+      complete: true,
+    }),
   };
 }
+
+const incompleteProvider: MarketProvider = {
+  name: 'incomplete',
+  findSignal: async () => undefined,
+  findSignals: async () => ({ results: new Map(), complete: false }),
+};
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
   return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', flavor: 'off', ...over };
@@ -132,12 +143,14 @@ describe('cmdShare — routing & JSON', () => {
       kind: string;
       team: string;
       informationalOnly: boolean;
+      marketComplete: boolean;
       style: string;
       snippet: string;
     };
     expect(d.kind).toBe('next');
     expect(d.team).toBe(code);
     expect(d.informationalOnly).toBe(true);
+    expect(d.marketComplete).toBe(true);
     expect(d.style).toBe('social');
     expect(typeof d.snippet).toBe('string');
     expect(d.snippet.length).toBeGreaterThan(0);
@@ -234,6 +247,15 @@ describe('cmdShare — market gating (fail closed)', () => {
     };
     await cmdShare('next', aTeam(), {}, ctx({}, boom));
     expect(text()).toContain(HASHTAG); // degraded gracefully — card still renders
+    expect(text()).toContain('Market data unavailable or incomplete');
+  });
+
+  it('carries an incomplete enrichment verdict in JSON', async () => {
+    await cmdShare('next', aTeam(), {}, ctx({ json: true }, incompleteProvider));
+    const data = json();
+    expect(data.marketComplete).toBe(false);
+    expect(data.marketSignals).toEqual({});
+    expect(data.snippet).toContain('Market data unavailable or incomplete');
   });
 });
 
@@ -307,11 +329,30 @@ describe('cmdShare table — standings card', () => {
   });
 
   it('fails closed to a degraded roster (no fetchStandings), with a not-live notice', async () => {
-    await cmdShare('table', 'A', {}, tableCtx(fakeAdapter));
+    await cmdShare(
+      'table',
+      'A',
+      {},
+      tableCtx({
+        ...fakeAdapter,
+        expectedStandingsGroups: ['A'],
+        standingsFallbackGroups: ['A'],
+      }),
+    );
     const o = text();
     expect(o).toContain('Group A · standings');
     expect(o).not.toContain('Live data:');
     expect(o).toContain('Live standings unavailable — group roster, not live results.');
+    expect(o).toContain(DISCLAIMER);
+  });
+
+  it('open-scope outage stays empty and does not paste World Cup teams', async () => {
+    await cmdShare('table', 'A', {}, tableCtx(fakeAdapter));
+    const o = text();
+    expect(o).toContain('Live standings unavailable.');
+    expect(o).not.toContain('No group A.');
+    expect(o).not.toContain('Group A · standings');
+    expect(o).not.toContain('MEX');
     expect(o).toContain(DISCLAIMER);
   });
 

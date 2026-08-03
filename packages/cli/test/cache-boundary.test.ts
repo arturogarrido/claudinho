@@ -2,7 +2,7 @@
  * SEC-1 mirror: the statusline/hook render straight from the cache file, so a
  * poisoned CACHE (not just a poisoned feed) must not inject ANSI escapes or
  * fake lines into the terminal or Claude's context. The adapter-side chokepoint
- * is tested in core (sanitize.test.ts); this covers the cache-read mirror.
+ * is tested in core (trust-boundary.test.ts); this covers the cache-read path.
  */
 import { describe, expect, it } from 'vitest';
 import type { Match } from '@claudinho/core';
@@ -103,6 +103,6 @@ describe('poisoned numeric cache fields (score/minute as strings)', () => {
   it('renderHook injects no extra lines into the context block', () => {
     const ctx = renderHook(numericPoisoned(), { now: NOW });
     expect(ctx).not.toContain('FAKE');
-    expect(ctx.split('\n')).toHaveLength(2); // label + exactly one match line
+    expect(ctx).toBe('');
   });
 });

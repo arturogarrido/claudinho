@@ -8,6 +8,7 @@ import {
   CACHE_VERSION,
   cachePath,
   isLockFresh,
+  MAX_STATE_BYTES,
   readCurrentState,
   readState,
   releaseLock,
@@ -91,6 +92,36 @@ describe('cache state', () => {
     // Corrupt the file.
     const fs = require('node:fs') as typeof import('node:fs');
     fs.writeFileSync(cachePath(), '{not json');
+    expect(readState()).toBeUndefined();
+  });
+
+  it('rejects a malformed envelope before any renderer sees nested records', () => {
+    const fs = require('node:fs') as typeof import('node:fs');
+    writeState(sample);
+    const valid = { ...sample, version: CACHE_VERSION };
+    for (const malformed of [
+      { ...valid, updatedAt: '2026-02-30T20:00:00Z' },
+      { ...valid, live: 'not-an-array' },
+      { ...valid, degraded: 'false' },
+      { ...valid, source: '../espn' },
+      { ...valid, competition: '' },
+      { ...valid, fixtures: {} },
+    ]) {
+      fs.writeFileSync(cachePath(), JSON.stringify(malformed));
+      expect(readState(), JSON.stringify(malformed)).toBeUndefined();
+    }
+  });
+
+  it('rejects oversized files and record floods', () => {
+    const fs = require('node:fs') as typeof import('node:fs');
+    writeState(sample);
+    fs.writeFileSync(cachePath(), JSON.stringify({ padding: 'x'.repeat(MAX_STATE_BYTES) }));
+    expect(readState()).toBeUndefined();
+
+    fs.writeFileSync(
+      cachePath(),
+      JSON.stringify({ ...sample, version: CACHE_VERSION, live: Array(1_025).fill(null) }),
+    );
     expect(readState()).toBeUndefined();
   });
 

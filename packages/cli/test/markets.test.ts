@@ -4,6 +4,7 @@ import {
   type Match,
   type MarketProvider,
   type ProviderAdapter,
+  valid,
 } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdMarkets, InputError } from '../src/commands';
@@ -31,6 +32,25 @@ const TEST_NOW = new Date('2026-06-13T12:00:00Z');
 
 /** A synthesizing market provider with the same fixed clock (deterministic). */
 const synth = () => new FakeMarketProvider({ synthesize: true, now: TEST_NOW });
+
+/** An unfinished read, optionally retaining the valid signals found so far. */
+function incomplete(withSignals = false): MarketProvider {
+  const base = synth();
+  return {
+    name: 'incomplete',
+    findSignal: async () => undefined,
+    findSignals: async (matches) => {
+      const results = new Map();
+      if (withSignals) {
+        for (const match of matches) {
+          const signal = await base.findSignal(match);
+          if (signal) results.set(match.id, valid(signal));
+        }
+      }
+      return { results, complete: false };
+    },
+  };
+}
 
 /** A fixture still upcoming at TEST_NOW (its market read is relevant). */
 const upcoming = (): Match =>
@@ -75,6 +95,7 @@ describe('cmdMarkets — date listing', () => {
     };
     expect(data.date).toBe(upcomingDate());
     expect(data.informationalOnly).toBe(true);
+    expect((data as typeof data & { complete: boolean }).complete).toBe(true);
     const ids = Object.keys(data.marketSignals);
     expect(ids.length).toBeGreaterThan(0);
     expect(data.marketSignals[ids[0]!]?.source).toBe('fake');
@@ -96,7 +117,7 @@ describe('cmdMarkets — date listing', () => {
     expect(text()).toContain('No market signals available');
   });
 
-  it('degrades to an empty map when the provider throws', async () => {
+  it('marks an empty map incomplete when the provider throws', async () => {
     const boom: MarketProvider = {
       name: 'boom',
       findSignal: async () => {
@@ -107,7 +128,15 @@ describe('cmdMarkets — date listing', () => {
       },
     };
     await cmdMarkets('2026-06-13', undefined, ctx({ json: true }, boom));
-    expect(Object.keys(json().marketSignals).length).toBe(0);
+    const data = json();
+    expect(Object.keys(data.marketSignals).length).toBe(0);
+    expect(data.complete).toBe(false);
+  });
+
+  it('keeps partial signals but warns that the date read was incomplete', async () => {
+    await cmdMarkets(upcomingDate(), undefined, ctx({ json: false }, incomplete(true)));
+    expect(text()).toContain('Prediction markets');
+    expect(text()).toContain('unavailable or incomplete');
   });
 });
 
@@ -124,6 +153,16 @@ describe('cmdMarkets — single match', () => {
   it('returns a null signal for an unknown match id', async () => {
     await cmdMarkets('does-not-exist', undefined, ctx({ json: true }, synth()));
     expect(json().signal).toBeNull();
+  });
+
+  it('does not collapse an unfinished read into a confident null signal', async () => {
+    await cmdMarkets(upcoming().id, undefined, ctx({ json: true }, incomplete()));
+    expect(json()).toMatchObject({ complete: false, signal: null });
+
+    writes = [];
+    await cmdMarkets(upcoming().id, undefined, ctx({ json: false }, incomplete()));
+    expect(text()).toContain('unavailable or incomplete');
+    expect(text()).not.toContain('No market signal for this match');
   });
 
   it('suppresses the signal for a finished match (market reads are pre-match)', async () => {
@@ -183,5 +222,11 @@ describe('cmdMarkets — next <team>', () => {
     const during = new Date(Date.parse(fixture.kickoff) + 30 * 60_000);
     await cmdMarkets('next', fixture.home.code, ctx({ json: true }, synth(), during));
     expect((json() as { matchId: string }).matchId).toBe(fixture.id);
+  });
+
+  it('surfaces an incomplete current-or-next read', async () => {
+    const team = upcoming().home.code;
+    await cmdMarkets('next', team, ctx({ json: true }, incomplete()));
+    expect(json()).toMatchObject({ team, complete: false, signal: null });
   });
 });

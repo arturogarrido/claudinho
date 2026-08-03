@@ -36,16 +36,32 @@ const liveAdapter: ProviderAdapter = {
   },
 };
 
+const emptyStandingsAdapter: ProviderAdapter = {
+  ...liveAdapter,
+  async fetchStandings(): Promise<GroupStandings[]> {
+    return [];
+  },
+};
+
 /** Adapter with NO fetchStandings → the degraded (roster) path. */
 const bareAdapter: ProviderAdapter = {
   name: 'espn',
   capabilities: { push: false, latencyHintSec: 0 },
+  expectedStandingsGroups: ['A'],
+  standingsFallbackGroups: ['A'],
   async fetchByDate(): Promise<Match[]> {
     return [];
   },
   async fetchLive(): Promise<Match[]> {
     return [];
   },
+};
+
+/** Custom competition with no known bundled standings scope. */
+const openScopeAdapter: ProviderAdapter = {
+  ...bareAdapter,
+  expectedStandingsGroups: undefined,
+  standingsFallbackGroups: undefined,
 };
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
@@ -102,6 +118,13 @@ describe('cmdTable — localized live-data attribution (text)', () => {
     expect(text()).toContain('Datos en vivo: ESPN');
     expect(text()).not.toContain('Live data:');
   });
+
+  it('attributes a successful empty provider result', async () => {
+    await cmdTable('A', ctx(emptyStandingsAdapter, { json: false }));
+    expect(text()).toContain('No group found for A.');
+    expect(text()).toContain('Live data: ESPN');
+    expect(text()).not.toContain('Live standings unavailable');
+  });
 });
 
 describe('cmdTable — fail closed', () => {
@@ -117,6 +140,19 @@ describe('cmdTable — fail closed', () => {
     await cmdTable('A', ctx(bareAdapter, { json: false }));
     expect(text()).toContain('Group A');
     expect(text()).toContain('Live standings unavailable');
+  });
+
+  it('open scope: reports an outage without injecting or claiming a World Cup group', async () => {
+    await cmdTable('A', ctx(openScopeAdapter, { json: false }));
+    const o = text();
+    expect(o).toContain('Live standings unavailable.');
+    expect(o).not.toContain('No group found');
+    expect(o).not.toContain('Group A');
+    expect(o).not.toContain('Mexico');
+
+    writes = [];
+    await cmdTable('A', ctx(openScopeAdapter));
+    expect(json()).toMatchObject({ degraded: true, source: null, tables: null });
   });
 });
 

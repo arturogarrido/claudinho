@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+
   buildMarketSignal,
   deriveFavorite,
   FakeMarketProvider,
@@ -21,6 +22,14 @@ import {
   marketSignalRendersFor,
   normalizeOutcomes,
 } from '../src/index';
+
+import { cacheableKeys, resolvedValues } from '../src/trust';
+import type { BatchResolution } from '../src/trust';
+/** The old {signals, checked} view, so these assertions keep their meaning. */
+const view = (b: BatchResolution<MarketSignal>) => ({
+  signals: resolvedValues(b),
+  checked: cacheableKeys(b),
+});
 
 const NOW = new Date('2026-06-11T15:00:00Z');
 
@@ -286,7 +295,7 @@ describe('FakeMarketProvider', () => {
 
   it('findSignals returns signals + the checked set', async () => {
     const p = new FakeMarketProvider({ synthesize: true, now: NOW });
-    const { signals, checked } = await p.findSignals([match(), match({ id: 'zzz' })]);
+    const { signals, checked } = view(await p.findSignals([match(), match({ id: 'zzz' })]));
     expect(signals.size).toBe(2);
     expect(signals.get('760415')?.matchId).toBe('760415');
     expect(checked.has('760415')).toBe(true);
@@ -309,7 +318,7 @@ describe('graceful degradation', () => {
   });
 
   it('getMarketSignals swallows errors → empty result (nothing checked)', async () => {
-    const { signals, checked } = await getMarketSignals(boom, [match()]);
+    const { signals, checked } = view(await getMarketSignals(boom, [match()]));
     expect(signals.size).toBe(0);
     expect(checked.size).toBe(0); // error → not checked → not negative-cached
   });

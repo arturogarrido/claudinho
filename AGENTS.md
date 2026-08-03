@@ -137,9 +137,14 @@ Co-Authored-By: Codex (GPT-5) <noreply@openai.com>
 ## Conventions
 
 - Shared domain types live in `@claudinho/core` — never duplicate them.
-- Every data vendor implements the `ProviderAdapter` interface — keep providers swappable. Any new adapter MUST pass feed strings through `sanitizeFeedText` at its mapping boundary (the ESPN adapter's `toTeam`/`mapEspnEvent` is the model) — feed strings reach terminals, share cards, and Claude's context via the hook.
+- Every data vendor implements the `ProviderAdapter` interface — keep providers swappable. An adapter **FETCHES**; it must not interpret. Turning a payload into a domain type happens in `packages/core/src/trust/` and nowhere else (`packages/core/src/trust/espn.ts` is the model), because feed strings reach terminals, share cards, and Claude's context via the hook. Cache readers call the **same** constructors: when the live and cache paths had separate rules, every fix landed on one of them and left the other open — the asymmetry behind most of the security findings in #96. `core/test/trust-parity.test.ts` asserts the two agree. `ProviderAdapter` keeps its plain-array contract. Record-level refusal is local: malformed, duplicate, or truncated records are omitted while readable siblings remain usable and attributed to the provider. A transport/JSON failure, an unreadable envelope, or a non-empty provider list with no usable records reaches the domain's degraded fallback. Never turn one refused record into a batch-wide outage.
+- **Standings expected scope and static fallback compatibility are separate contracts.** `expectedStandingsGroups` says which tables must exist for a provider result to be complete; it never authorizes bundled teams. `standingsFallbackGroups` explicitly says which groups may use the bundled roster. The default World Cup adapter advertises A–L for both. A custom-competition adapter may declare its expected letters but leaves bundled fallback unset, so an outage or omitted expected table returns empty + degraded and can never inject World Cup teams. After a successful open-scope fetch, an absent group means "no such group." An all-groups read uses one fallback verdict because `StandingsResult` cannot honestly represent mixed live and static provenance.
+- **Text has ROLES, not one universal cleaner.** A human label is prose (no controls, no format characters, no emoji — bounded by display columns AND code points); an identifier is checked against an exact grammar; a timestamp is re-emitted canonically; a flag is **generated** from the nation, never read from a payload or a cache file. That last one is load-bearing: while flags travelled through the text filter, the filter needed an emoji carve-out, and a carve-out without its own grammar is a covert channel (TAG characters, variation selectors and ZWJ each rode through it in turn — a `🏴` plus 42 tag characters is one 2-column glyph spelling a full instruction sentence).
+- **A rejection says which KIND it is.** `ParseResult` distinguishes `valid` / `definitive-none` / `malformed` / `ambiguous` / `unresolved`. For per-item market resolution, `valid`, `definitive-none` and `ambiguous` are stable conclusions and may be cached for a TTL; `malformed` and `unresolved` must not become definitive negative market results. A successfully fetched provider batch is different: share its readable prefix for the coalescing TTL even when a sibling row was malformed, because refetching identical bytes cannot heal that row and must not starve valid siblings.
+- **Market completeness reaches the renderer.** `cachedMarketSignals` / `marketSignalsFor` return `{ signals, complete }`; default-on annotations, dedicated market commands/tools, share snippets, and JSON/structured output must retain that verdict. A complete empty batch may render "no signal". An incomplete batch renders an explicit unavailable/incomplete notice and carries `marketComplete:false` or `complete:false`; never collapse it to an empty `Map`.
+- **Bound the WORK, not just the output.** Collections are sliced before the per-record work, never after (`takeBounded`), and a surface reports `total`/`shown`/`truncated` from ONE `BoundedList` rather than recomputing counts per call site.
 - Static data (schedule, groups, flags) ships bundled in clients; only **live state** hits the network.
-- **Standings come from the provider's standings feed, NOT computed from a match window.** The bundled schedule is a resultless skeleton, and clients only fetch a ±1-day live window — so deriving a table from those matches yields a *wrong, partial* table mid-tournament (this was a real bug: groups not playing that day read all-zeros). `table`/`get_standings`/`standings://` go through core `getStandings` → optional `adapter.fetchStandings()` (authoritative cumulative table from ESPN's standings endpoint — the SAME endpoint `fetchGroupMap` already hits, so no new egress). It **fails closed** to a static roster-at-zero flagged `degraded` with no attribution — never a confidently-wrong table. `computeStandings` (match-derived) remains for that fallback only.
+- **Standings come from the provider's standings feed, NOT computed from a match window.** The bundled schedule is a resultless skeleton, and clients only fetch a ±1-day live window — so deriving a table from those matches yields a *wrong, partial* table mid-tournament (this was a real bug: groups not playing that day read all-zeros). `table`/`get_standings`/`standings://` go through core `getStandings` → optional `adapter.fetchStandings()` (authoritative cumulative table from ESPN's standings endpoint — the SAME endpoint `fetchGroupMap` already hits, so no new egress). It **fails closed** with no attribution: the default World Cup scope may show a static roster-at-zero, while a competition with no compatible bundled roster returns empty + degraded. `computeStandings` (match-derived) remains for the compatible static fallback only.
 - **`CLAUDINHO_COMPETITION` is a deliberate keeper — do not remove it.** It points the live fetch at another ESPN competition (e.g. `fifa.friendly`) and is woven through both the live fetch and the **hot-path cache key** (the cache is competition-keyed). It looks dormant during the World Cup but is load-bearing — it's the seam for following other tournaments.
 - **The bundled schedule is a resultless skeleton.** No scores/status, no confirmed nations in knockout slots. `sanitizeBundledFixture` restores topology placeholders; `gen:schedule` **fails loud** if any knockout fixture carries a real nation flag. Advancement comes only from the live overlay — clients never invent it from static JSON.
 - **The live fixture's pairing wins over the static topology's winner-refs.** `buildBracketView`/`resolveSlot` resolve a knockout slot from the ESPN fixture ESPN actually serves for that match (`liveParticipant`), and only fall back to projecting a winner from the bundled `winner`/`loser` topology refs when that fixture is **absent from the merged set** (degraded feed). This is deliberate: the bundled winner-ref indices (parsed from ESPN's placeholder slot labels at generation time) do **not** reliably correspond to ESPN's actual R32→R16 feeder assignment, so projecting from them rendered **wrong R16 pairings** (v0.8.16 P1: "Paraguay vs Mexico" instead of the real ties). The topology is now structure/labels + a degraded-only fallback; the pairing is ESPN's. Guarded by the `P1 GUARD` case in `bracket-resolve.test.ts` (feeder ref disagrees with the live fixture → live wins).
@@ -184,6 +189,45 @@ findings **P1/P2/P3**.
    tool descriptions, and release guards (`publish.yml`, pinned tool versions). Flag any
    claim that went stale.
 
+## Change discipline (the failures that cost #97 twelve rounds)
+
+Nothing here is new — it is the rules above, made unskippable. Each line is a
+mistake repeated at least twice in one PR, several of them *after* being written
+down.
+
+**Changing a shared rule**
+
+- **Put the rule where every path reaches it, then delete the other copy.** Not "add
+  the check at the site the report mentioned". #97 fixed the knockout winner rule in
+  the ESPN parser while the cache path had none — inside the PR whose whole thesis is
+  that one value must not have two readers.
+- **Grep for siblings before calling a class closed.** Every single-instance fix in
+  #97 had two or three: `updatedAt` had four other timestamps, the statusline had the
+  hook, `parseCachedMatches` had both ESPN constructors.
+
+**Tests**
+
+- **Make it fail before trusting it.** Revert the rule; green means it pins nothing.
+  About a third of #97's tests first passed for the wrong reason.
+- **Pin the CALL, not just the function.** Delete the call site and confirm red. Two
+  #97 tests pinned a helper and stayed green when its only caller was removed — the
+  second written one round after that lesson was recorded.
+- **Never assert wall-clock time.** Three timing tests failed under load or on CI, and
+  each "fix" was a new constant. If the property has an observable consequence, assert
+  that: put a valid item just past the cap and prove it is never reached.
+- **Escape invisible characters in fixtures.** Written literally they are lost in
+  transit, and the test then passes on plain ASCII while claiming otherwise.
+
+**Before saying it is done**
+
+- **Run the gates AND read the output.** #97 pushed a lint error to a repo that gates
+  on lint, and separately broke a `release:qa` tripwire — both times the output was
+  produced and not read.
+- **Diff real-feed output against the base branch**, key order included, for anything
+  claiming to be a refactor.
+- **Wait for CI on the SHA you pushed.** `gh run watch` on a queued run returns
+  success; check `headSha` matches.
+
 ## Definition of Done (per user-facing feature, not per PR)
 
 The Pre-PR rubric above is per *change*. A feature that spans several PRs also needs a
@@ -191,7 +235,12 @@ The Pre-PR rubric above is per *change*. A feature that spans several PRs also n
 reactive dot-releases because each gap (ambiguous dates, missing host-nation flags, a
 dropped `tz` on MCP `get_bracket`) was found by *using* the feature after it was already
 live. Before implementing a user-facing feature, write 3–5 acceptance criteria **from the
-user's point of view** and don't call it done until each holds on a real terminal:
+user's point of view** and don't call it done until each holds on a real terminal.
+**Put them in the PR description before the first commit, together with an explicit
+statement of what the change does NOT cover.** PR #97 skipped this and took twelve
+review rounds: with no written finish line every round ended at "I fixed what was
+reported" and the next round moved it, and with no stated boundary, findings that were
+equally true of `main` arrived as blockers instead of as issues. The criteria:
 
 - The output is **unambiguous** to read (e.g. "which calendar day is this match?" across a 3-week span).
 - Every entity renders **consistently with the rest of the product** (host nations show flags like every other team; no static/placeholder leaks; the resultless invariant holds).

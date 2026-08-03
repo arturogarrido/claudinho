@@ -17,7 +17,9 @@ import {
   mergeLive,
   nextFixtureForTeam,
   displayWidth,
-  sanitizeMatchStrings,
+  parseCachedMatch,
+  parsedValue,
+  type BoundedList,
   truncateVisible,
   scoreline,
   type Match,
@@ -162,55 +164,118 @@ function matchSegment(m: Match, compact: boolean, flags: boolean): string {
  * trade-off is bounded work against a hypothetical hidden record, and work
  * wins on a surface that renders on every prompt.
  */
-const MAX_LIVE_CONSIDERED = 64;
+export const MAX_LIVE_CONSIDERED = 64;
 
 /**
- * How many cache records LOOK live, before the work cap. Only the cheap
- * predicate — no sanitizing — so the "+N" overflow can report the true total
- * rather than the capped one, which would understate it (a 500-record cache
- * said "+56"). Reporting a number that is quietly wrong is the same class of
- * problem as losing the marker entirely.
+ * Records we are willing to SEAL before giving up, however many look live.
+ *
+ * Higher than the result cap so junk cannot crowd out a real match, but finite
+ * so a poisoned cache cannot make the hot path scale with the file.
  */
-export function liveMatchCountFromCache(
-  state: CacheState | undefined,
-  nowMs = Date.now(),
-): number {
-  const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
-  const liveArr = fresh && Array.isArray(state?.live) ? state!.live : [];
-  return liveArr.filter(
-    (m): m is Match =>
-      !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
-  ).length;
+const MAX_LIVE_EXAMINED = 512;
+
+/**
+ * Cached knockout fixtures, sealed until we have enough — NOT sliced first.
+ *
+ * The sibling of the live-list bug, and it survived the round that fixed that
+ * one: this took the first 64 records passing a cheap shape test and sealed
+ * those, so 64 malformed shapes could hide the first real resolved pairing and
+ * the statusline fell back to "⚽ —" with a confirmed tie sitting in the cache.
+ * Bound the CANDIDATES examined, not the RESULTS kept.
+ *
+ * `events: false` — this surface renders a scoreline, not a timeline, and
+ * sealing per-event labels is the dominant cost on a 150ms budget.
+ */
+function sealFixtures(raw: unknown): BoundedList<Match> {
+  if (raw === undefined) {
+    return { items: [], total: 0, shown: 0, truncated: false, complete: true };
+  }
+  if (!Array.isArray(raw)) {
+    return { items: [], total: 0, shown: 0, truncated: false, complete: false };
+  }
+  const out: Match[] = [];
+  let inspected = 0;
+  let readable = true;
+  for (const rec of raw) {
+    if (out.length >= MAX_LIVE_CONSIDERED || inspected >= MAX_LIVE_EXAMINED) break;
+    inspected++;
+    if (!isMatchShaped(rec)) {
+      readable = false;
+      continue;
+    }
+    const sealed = parsedValue(parseCachedMatch(rec, { events: false }));
+    if (sealed) out.push(sealed);
+    else readable = false;
+  }
+  const exhausted = inspected === raw.length;
+  const complete = exhausted && readable;
+  return {
+    items: out,
+    // Exact only when complete; otherwise this is the number actually sealed.
+    // Callers use a nonnumeric marker for an incomplete scan.
+    total: out.length,
+    shown: out.length,
+    truncated: !exhausted,
+    complete,
+  };
 }
 
 export function liveMatchesFromCache(
   state: CacheState | undefined,
   nowMs = Date.now(),
-): Match[] {
+): BoundedList<Match> {
   const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
-  const liveArr = fresh && Array.isArray(state?.live) ? state!.live : [];
-  return (
-    liveArr
-      .filter(
-        (m): m is Match =>
-          !!m && typeof m === 'object' && isLive(m.status) && !!m.home?.code && !!m.away?.code,
-      )
-      // Bound the EXPENSIVE work before doing it. The cheap predicate above runs
-      // over the whole array (so a live match late in the file is still found),
-      // but sanitizing is grapheme-level over ~8 fields per record, and running
-      // it on every record made the HOT PATH scale with the cache file: measured
-      // 120ms at 1,000 records and 2,487ms at 20,000, against a 150ms budget.
-      // Slicing here rather than at the render sites is what actually bounds it —
-      // the render caps limited what was DISPLAYED, not what was computed.
-      .slice(0, MAX_LIVE_CONSIDERED)
-      // Mirror of the adapter's feed sanitizer: the statusline/hook render these
-      // strings on every prompt, so a poisoned CACHE FILE (not just a poisoned
-      // feed) must not inject ANSI/newlines into the terminal or Claude's context.
-      // An entry whose stage/status/kickoff can't be trusted is DROPPED rather
-      // than rendered from a substituted default.
-      .map(sanitizeMatchStrings)
-      .filter((m): m is Match => !!m)
-  );
+  const rawLive = fresh ? state?.live : [];
+  if (!Array.isArray(rawLive)) {
+    return { items: [], total: 0, shown: 0, truncated: false, complete: false };
+  }
+  const liveArr = rawLive;
+
+  // SEAL UNTIL WE HAVE ENOUGH — do not slice first and seal the slice.
+  //
+  // Sealing is grapheme-level over ~8 fields, so it cannot run on every record
+  // of an unbounded file (measured 2,487ms at 20,000 records against a 150ms
+  // budget). The previous fix took the first 64 records passing a CHEAP shape
+  // test and sealed those — which meant 64 records that merely LOOK live, and
+  // seal to nothing, consumed the whole budget and hid a real live match behind
+  // them. The statusline showed a countdown while a match was being played,
+  // which is the failure this surface exists to avoid.
+  //
+  // Bounding the CANDIDATES examined keeps the work bounded; bounding the
+  // RESULTS keeps a real match from being crowded out by junk.
+  const out: Match[] = [];
+  let inspected = 0;
+  let readable = true;
+  for (let i = 0; i < liveArr.length; i++) {
+    if (out.length >= MAX_LIVE_CONSIDERED || inspected >= MAX_LIVE_EXAMINED) break;
+    inspected++;
+    const raw = liveArr[i];
+    if (!raw || typeof raw !== 'object') {
+      readable = false;
+      continue;
+    }
+    const m = raw as Match;
+    // Cheap test first: it costs nothing and skips most junk without sealing.
+    if (!isLive(m.status) || !m.home?.code || !m.away?.code) {
+      readable = false;
+      continue;
+    }
+    const sealed = parsedValue(parseCachedMatch(m, { events: false }));
+    if (sealed) out.push(sealed);
+    else readable = false;
+  }
+  const exhausted = inspected === liveArr.length;
+  const complete = exhausted && readable;
+
+  return {
+    items: out,
+    total: out.length,
+    shown: out.length,
+    truncated: !exhausted,
+    // False when we stopped early or a record was unreadable. In either case an
+    // empty list must not render as the authoritative "nothing is on".
+    complete,
+  };
 }
 
 /**
@@ -242,7 +307,8 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   const flags = opts.flags ?? true;
   const team = opts.team?.toUpperCase();
 
-  const live = liveMatchesFromCache(state, nowMs);
+  const liveList = liveMatchesFromCache(state, nowMs);
+  const live = liveList.items;
 
   // The static bundle MERGED with the refresher's cached resolved knockout
   // fixtures — the bundle's KO slots are 🏳️ placeholders the hot path can't
@@ -253,18 +319,10 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // countdown/syncing lines, so they get the same poisoned-cache defense.
   // Malformed entries (null, {}, missing kickoff/teams) are dropped, never
   // allowed to throw the whole statusline blank downstream.
-  const cachedFixtures = Array.isArray(state?.fixtures)
-    ? (state!.fixtures as unknown[])
-        .filter(isMatchShaped)
-        // Same bound as the live slice above, for the same reason and on the
-        // same hot path — this list feeds `mergeLive` and the countdown, and
-        // sanitizing all of it cost 1,658ms at 20,000 records against a 150ms
-        // budget. Bounding one of two paths in this function was not fixing the
-        // class; a knockout window is a few dozen fixtures, never thousands.
-        .slice(0, MAX_LIVE_CONSIDERED)
-        .map(sanitizeMatchStrings)
-        .filter((m): m is Match => !!m)
-    : [];
+  const cachedFixtureList = sealFixtures(state?.fixtures);
+  // A partial fixture overlay cannot prove a pairing is absent, but every
+  // sealed pairing it does contain is safe to display.
+  const cachedFixtures = [...cachedFixtureList.items];
   const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;
 
   // With a team filter, show only that team's live match.
@@ -280,10 +338,11 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
     // contract is that it is one short line in the user's prompt.
     const max = opts.max && opts.max > 0 ? Math.min(opts.max, DEFAULT_MAX_SEGMENTS) : DEFAULT_MAX_SEGMENTS;
     const shown = live.slice(0, max);
-    // The TRUE total, not the post-cap one — `live` has already been bounded to
-    // MAX_LIVE_CONSIDERED, so counting from it understated the overflow.
-    const overflow = Math.max(liveMatchCountFromCache(state, nowMs), live.length) - shown.length;
-    const marker = overflow > 0 ? ` +${overflow}` : '';
+    // "+N" is only used when the reader finished and therefore knows the exact
+    // set. An incomplete scan gets a nonnumeric marker: unexamined records may
+    // be junk or valid matches, so no exact count exists.
+    const overflow = live.length - shown.length;
+    const marker = !liveList.complete ? ' +more' : overflow > 0 ? ` +${overflow}` : '';
     // The overflow marker is the honest part of this line — it is what says the
     // list is incomplete — so it must survive the width cap. Truncating the
     // whole line afterwards cut the marker off the end, turning a truncated
@@ -300,8 +359,13 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // the countdown; a degraded snapshot means "the fetch failed", not "the
   // feed said empty", so it must not bring the countdown back mid-match.
   const cacheFresh =
-    !!state && state.degraded !== true && ageMs(state, nowMs) < DISPLAY_STALE_MS;
-  if (!cacheFresh) {
+    !!state &&
+    state.degraded !== true &&
+    ageMs(state, nowMs) < DISPLAY_STALE_MS;
+  // An incomplete scan only justifies "syncing" when the schedule says a match
+  // may actually be on. On a quiet morning (or after the tournament), cache
+  // junk must not turn into a false live-score outage claim.
+  if (!cacheFresh || !liveList.complete) {
     const win = fixturesInLiveWindow(nowMs, schedule).filter(
       (m) => !team || m.home.code === team || m.away.code === team,
     );

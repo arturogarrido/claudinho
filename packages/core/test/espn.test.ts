@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { EspnAdapter, MAX_RESPONSE_BYTES, mapEspnEvent, parseStandings } from '../src/adapters/espn';
-import { getLiveMatches } from '../src/live';
+import {
+  EspnAdapter,
+  MAX_RESPONSE_BYTES,
+  mapEspnEvent,
+  parseStandings,
+} from '../src/adapters/espn';
+import { getLiveMatches, getMatchesForDate } from '../src/live';
 
 // Minimal ESPN-shaped fixtures mirroring the real response structure.
 
@@ -127,6 +132,12 @@ describe('mapEspnEvent', () => {
   it('maps winnerCode from ESPN competitor.winner (e.g. penalties)', () => {
     const pens = {
       ...finished,
+      // A KNOCKOUT tie: a level score at FT means it was settled somehow, and
+      // the winner flag is the only record of it. In a GROUP game the same
+      // shape is a contradiction — nobody wins a drawn group match — which is
+      // why the rule is stage-aware and why this fixture cannot stay
+      // `group-stage` while calling itself a penalty result.
+      season: { year: 2026, slug: 'round-of-32' },
       competitions: [
         {
           ...finished.competitions[0],
@@ -145,6 +156,10 @@ describe('mapEspnEvent', () => {
   it('maps the penalty shootout score when ESPN sends shootoutScore on both sides', () => {
     const pens = {
       ...finished,
+      // Penalties settle a KNOCKOUT tie. `finished` is a group-stage fixture,
+      // and a drawn group game does not go to a shootout — so the stage has to
+      // say what the test is actually about.
+      season: { year: 2026, slug: 'round-of-32' },
       competitions: [
         {
           ...finished.competitions[0],
@@ -162,14 +177,81 @@ describe('mapEspnEvent', () => {
     expect(m.winnerCode).toBe('PAR');
   });
 
+  it('maps the non-level leg score and shootout from a real two-legged ESPN tie', () => {
+    // UEFA Europa League, 2026-03-19, event 401862875. ESPN's score is this
+    // leg; the shootout settled the level aggregate.
+    const m = mapped({
+      id: '401862875',
+      date: '2026-03-19T17:45Z',
+      season: { year: 2025, type: 13686, slug: 'round-of-16' },
+      status: {
+        clock: 7200,
+        displayClock: "120'",
+        period: 5,
+        type: { name: 'STATUS_FINAL_PEN', state: 'post', completed: true },
+      },
+      competitions: [
+        {
+          competitors: [
+            {
+              homeAway: 'home',
+              score: '1',
+              shootoutScore: 0,
+              winner: false,
+              team: { id: '572', abbreviation: 'MID', displayName: 'FC Midtjylland' },
+            },
+            {
+              homeAway: 'away',
+              score: '2',
+              shootoutScore: 3,
+              winner: true,
+              team: { id: '393', abbreviation: 'NFO', displayName: 'Nottingham Forest' },
+            },
+          ],
+        },
+      ],
+    });
+    expect(m.score).toEqual({ home: 1, away: 2 });
+    expect(m.shootout).toEqual({ home: 0, away: 3 });
+    expect(m.winnerCode).toBe('NFO');
+  });
+
   it('leaves shootout undefined for a regular finished match (no phantom parens)', () => {
     const m = mapped(finished, { groupByTeam: GROUP_MAP });
     expect(m.shootout).toBeUndefined();
   });
 
-  it('never sets shootout without a regulation score (no impossible { score: undefined, shootout })', () => {
-    // Defensive: shootoutScore present but score absent → both omitted, so the
-    // structured payload (--json / MCP data) can't surface an inconsistent state.
+  it('drops a one-sided shootout field without dropping the ESPN fixture', () => {
+    const oneSided = {
+      ...finished,
+      season: { year: 2026, slug: 'round-of-16' },
+      competitions: [
+        {
+          ...finished.competitions[0],
+          competitors: [
+            {
+              homeAway: 'home',
+              score: '2',
+              shootoutScore: 3,
+              winner: true,
+              team: { abbreviation: 'NED', displayName: 'Netherlands' },
+            },
+            {
+              homeAway: 'away',
+              score: '1',
+              team: { abbreviation: 'BRA', displayName: 'Brazil' },
+            },
+          ],
+        },
+      ],
+    };
+    const m = mapped(oneSided);
+    expect(m.score).toEqual({ home: 2, away: 1 });
+    expect(m.shootout).toBeUndefined();
+    expect(m.winnerCode).toBeUndefined();
+  });
+
+  it('refuses a finished event that claims a shootout without a regulation score', () => {
     const orphan = {
       ...finished,
       competitions: [
@@ -182,9 +264,7 @@ describe('mapEspnEvent', () => {
         },
       ],
     };
-    const m = mapped(orphan, { groupByTeam: GROUP_MAP });
-    expect(m.score).toBeUndefined();
-    expect(m.shootout).toBeUndefined();
+    expect(mapEspnEvent(orphan, { groupByTeam: GROUP_MAP })).toBeUndefined();
   });
 
   it('maps a knockout fixture from the slug, with no group letter', () => {
@@ -203,6 +283,26 @@ describe('mapEspnEvent', () => {
 });
 
 describe('EspnAdapter fetch hardening (size cap + no redirects)', () => {
+  const sameTeamEvent = {
+    ...scheduled,
+    id: '700099',
+    competitions: [
+      {
+        ...scheduled.competitions[0],
+        competitors: [
+          {
+            homeAway: 'home',
+            team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
+          },
+          {
+            homeAway: 'away',
+            team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
+          },
+        ],
+      },
+    ],
+  };
+
   /** Response-like fake with a content-length header and a spy json(). */
   function bigResponse(bytes: number) {
     const json = vi.fn(async () => ({ events: [] }));
@@ -233,7 +333,71 @@ describe('EspnAdapter fetch hardening (size cap + no redirects)', () => {
     const { res } = bigResponse(2048);
     const fetchImpl = (async () => res) as unknown as typeof fetch;
     const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
-    await expect(adapter.fetchByDate('2026-06-11')).resolves.toEqual([]);
+    const matches = await adapter.fetchByDate('2026-06-11');
+    expect(Array.isArray(matches)).toBe(true);
+    expect(matches).toEqual([]);
+  });
+
+  it('keeps readable fixtures when a sibling record is malformed', async () => {
+    const malformed = {
+      ...scheduled,
+      id: '700404',
+      status: { type: { name: 'STATUS_FROM_THE_FUTURE', state: 'in' } },
+    };
+    const fetchImpl = (async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: () => null },
+      json: async () => ({ events: [scheduled, malformed, sameTeamEvent] }),
+    })) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
+    const matches = await adapter.fetchByDate('2026-06-11');
+    expect(matches.map((m) => m.id)).toEqual(['700001']);
+  });
+
+  it('rejects an unreadable scoreboard that contains no usable fixture', async () => {
+    const fetchImpl = (async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: () => null },
+      json: async () => ({ events: [{ status: 'unknown' }] }),
+    })) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
+    await expect(adapter.fetchByDate('2026-06-11')).rejects.toMatchObject({ kind: 'parse' });
+  });
+
+  it('degrades an unreadable zero-record envelope instead of treating it as a true empty day', async () => {
+    const fetchImpl = (async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: () => null },
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
+
+    await expect(adapter.fetchByDate('2026-06-11')).rejects.toMatchObject({ kind: 'parse' });
+    const result = await getMatchesForDate(adapter, '2026-06-11');
+    expect(result.degraded).toBe(true);
+    expect(result.source).toBeUndefined();
+  });
+
+  it('degrades when every non-empty scoreboard record is definitive-none', async () => {
+    const fetchImpl = (async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: () => null },
+      json: async () => ({ events: [sameTeamEvent] }),
+    })) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
+
+    await expect(adapter.fetchByDate('2026-06-11')).rejects.toMatchObject({ kind: 'parse' });
+    const result = await getMatchesForDate(adapter, '2026-06-11');
+    expect(result.degraded).toBe(true);
+    expect(result.source).toBeUndefined();
   });
 
   it("sends redirect:'error' so a redirect can't escape the fixed host", async () => {
@@ -284,9 +448,9 @@ describe('mapEspnEvent — impossible facts and malformed records', () => {
     ],
   });
 
-  it('drops an impossible score rather than publishing it as fact', () => {
+  it('refuses an event with an impossible required score', () => {
     for (const score of ['-5', '999999999', '1x', '5 goals', '1e3']) {
-      expect(mapped(withHome({ score })).score, `score ${score}`).toBeUndefined();
+      expect(mapEspnEvent(withHome({ score })), `score ${score}`).toBeUndefined();
     }
   });
 
@@ -298,6 +462,30 @@ describe('mapEspnEvent — impossible facts and malformed records', () => {
     // `winnerCode` is what advances a team through the knockout bracket.
     expect(mapped(withHome({ winner: 'false' })).winnerCode).toBeUndefined();
     expect(mapped(withHome({ winner: true })).winnerCode).toBe('MEX');
+  });
+
+  it('keeps a decisive group winner when stray shootout fields are present', () => {
+    const event = {
+      ...base,
+      competitions: [
+        {
+          competitors: [
+            {
+              ...base.competitions[0]!.competitors[0],
+              score: '2',
+              shootoutScore: 1,
+              winner: true,
+            },
+            {
+              ...base.competitions[0]!.competitors[1],
+              score: '0',
+              shootoutScore: 4,
+            },
+          ],
+        },
+      ],
+    };
+    expect(mapped(event).winnerCode).toBe('MEX');
   });
 
   it('never throws on a malformed competitors body (one event must not sink the feed)', () => {
@@ -386,12 +574,23 @@ describe('mapEspnEvent / parseStandings — identity and outer bounds', () => {
 
   it('bounds standings CHILDREN, not just the rows inside them', () => {
     // Bounding the inner list while the outer one is unbounded is not a bound.
+    const stats = (i: number) => [
+      { name: 'gamesPlayed', value: 0 },
+      { name: 'wins', value: 0 },
+      { name: 'ties', value: 0 },
+      { name: 'losses', value: 0 },
+      { name: 'pointsFor', value: 0 },
+      { name: 'pointsAgainst', value: 0 },
+      { name: 'pointDifferential', value: 0 },
+      { name: 'points', value: 0 },
+      { name: 'rank', value: i + 1 },
+    ];
     const children = Array.from({ length: 200 }, () => ({
       name: 'Group A',
       standings: {
         entries: Array.from({ length: 40 }, (_, i) => ({
           team: { abbreviation: `T${i}`, displayName: `Team ${i}` },
-          stats: [{ name: 'points', value: 3 }],
+          stats: stats(i),
         })),
       },
     }));

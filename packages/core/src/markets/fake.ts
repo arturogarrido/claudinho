@@ -1,3 +1,4 @@
+import { type ParseResult, definitiveNone, valid } from '../trust';
 /**
  * A network-free MarketProvider for tests and local UX validation. Returns
  * explicitly-provided signals and (optionally) deterministically synthesizes
@@ -39,17 +40,16 @@ export class FakeMarketProvider implements MarketProvider {
   }
 
   async findSignals(
-    matches: Match[],
+    matches: readonly Match[],
     options?: MarketSignalOptions,
   ): Promise<MarketSignalsResult> {
-    const signals = new Map<string, MarketSignal>();
-    const checked = new Set<string>();
+    const results = new Map<string, ParseResult<MarketSignal>>();
     for (const m of matches) {
-      checked.add(m.id); // the fake provider never errors → always definitive
+      // The fake provider never errors, so every verdict is definitive.
       const s = await this.findSignal(m, options);
-      if (s) signals.set(m.id, s);
+      results.set(m.id, s ? valid(s) : definitiveNone('fake provider has no signal'));
     }
-    return { signals, checked };
+    return { results, complete: true };
   }
 
   private synthesize(match: Match, options?: MarketSignalOptions): MarketSignal {
@@ -68,7 +68,9 @@ export class FakeMarketProvider implements MarketProvider {
     return buildMarketSignal({
       match,
       source: 'fake',
-      sourceMarketId: `fake-${match.id}`,
+      // Must satisfy the boundary's opaque-id grammar, like a real one:
+      // a source id that only the live path accepts is the asymmetry itself.
+      sourceMarketId: match.id,
       asOf,
       fetchedAt: now.toISOString(),
       outcomes,

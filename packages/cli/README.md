@@ -109,6 +109,9 @@ when a reliable market is available. It's **informational only — not betting
 advice:** market-implied percentages with attribution, no trading, no links. Data
 comes from Polymarket public market data and is shown
 only when the market maps cleanly to the result and is fresh.
+Structured output uses `complete` on `markets` and `marketComplete` on the
+default-on `today`/`match` enrichment. `false` means the optional read did not
+finish and is paired with an explicit warning, not a confident empty result.
 
 Opt out with `--no-markets` (per command) or `CLAUDINHO_MARKETS=off` (global). The
 statusline and hook **never** show market data — it stays off the hot path.
@@ -165,8 +168,11 @@ advice**) and disappears when no reliable market exists. Per-command options:
 | `--no-hashtag` | omit the `#VibingLaVidaLoca` tag |
 | `--no-install-line` | omit the `Try it: …` run cue |
 
-`--json` returns the structured snippet (`{ kind, snippet, matches, marketSignals, … }`)
-for scripts and future reuse. No clipboard tool? `claudinho share … | pbcopy` works too.
+`--json` returns the structured snippet
+(`{ kind, snippet, matches, marketSignals, marketComplete, … }`) for scripts and
+future reuse. An incomplete optional market read is stated in the snippet and reported
+as `marketComplete: false`; it is never presented as a confident empty market result.
+No clipboard tool? `claudinho share … | pbcopy` works too.
 
 ### Want an image?
 
@@ -187,7 +193,9 @@ network** (<150ms). When several matches are live it shows them all inline:
 `⚽ 🇳🇴 1–1 🇫🇷 87' · 🇸🇳 1–2 🇮🇶 86'`. Customize via env:
 
 - `CLAUDINHO_TEAM=MEX` — show only your team's match (a nation name works too, e.g. `CLAUDINHO_TEAM=mexico`); also the default team for `next`, `markets next`, and `share next` when the argument is omitted
-- `CLAUDINHO_MAX=2` — cap how many live matches show inline (rest collapse to `+N`; default: all)
+- `CLAUDINHO_MAX=2` — cap how many live matches show inline (rest collapse to exact `+N`
+  after a complete cache scan, or `+more` when the bounded scan cannot know the count; default: 8,
+  and values above 8 are capped at 8)
 - `CLAUDINHO_COMPACT=0` — show 3-letter codes alongside flags
 - `CLAUDINHO_FLAGS=off` — drop emoji flags for 3-letter codes (statusline) / plain names (`today`, `live`, `table`, `next`, hook); already automatic on terminals that can't render flag emoji, e.g. Warp
 

@@ -7,12 +7,6 @@ export type { Lang } from './i18n';
 export { resolveTz, formatKickoff, formatDate, formatTime, countdown, localDate } from './time';
 export type { FormatOpts } from './time';
 export { isValidTimeZone, isValidDate } from './validate';
-export {
-  sanitizeFeedText,
-  sanitizeMatchStrings,
-  sanitizeMarketSignal,
-  FEED_TEXT_MAX,
-} from './sanitize';
 export { displayWidth, padVisible, truncateVisible } from './text';
 export {
   outcomeFromScore,
@@ -54,7 +48,12 @@ export { computeStandings } from './standings';
 export type { StandingRow, GroupStandings } from './standings';
 
 export type { ProviderAdapter, ProviderCapabilities } from './adapters/types';
-export { EspnAdapter, mapEspnEvent, parseStandings, ProviderError } from './adapters/espn';
+export {
+  EspnAdapter,
+  mapEspnEvent,
+  parseStandings,
+  ProviderError,
+} from './adapters/espn';
 export type { EspnAdapterOptions, MapContext, ProviderErrorKind } from './adapters/espn';
 
 export {
@@ -162,3 +161,33 @@ export type {
 } from './bracket/types';
 export { BRACKET_STAGE_ORDER } from './bracket/types';
 export type { BracketFormatOpts, ShareBracketInput, ShareBracketOptions } from './bracket/format';
+
+// The trust boundary. Only the batch vocabulary is re-exported: the parse
+// constructors are for adapters and cache readers inside core, not for
+// surfaces. (`export *` would also collide with sanitize's canonicalTimestamp.)
+export {
+  type BatchResolution,
+  type BoundedList,
+  type ParseResult,
+  type Selection,
+  MAX_LABEL_COLUMNS,
+  ambiguous,
+  bounded,
+  cacheableKeys,
+  definitiveNone,
+  emptyBatch,
+  isCacheable,
+  humanLabel,
+  malformed,
+  parsedValue,
+  parseCachedMarketSignal,
+  parseCachedMatch,
+  parseCachedMatches,
+  resolvedValues,
+  productFlag,
+  selectOne,
+  sealMarketSignal,
+  sealMatch,
+  unresolved,
+  valid,
+} from './trust';

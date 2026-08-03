@@ -54,12 +54,15 @@ export interface ShareSnippetInput {
   /** Pre-resolved, English title line, e.g. "Next up for Mexico". */
   title: string;
   /** Matches to render (0..n). An empty set still yields a valid titled card. */
-  matches: Match[];
+  /** Read-only: callers pass a bounded view, which must not be mutated. */
+  matches: readonly Match[];
   /**
    * Reliable, display-ready market signals keyed by match id (sidecar — never
    * embedded in Match). Callers gate these; the formatter only renders.
    */
   marketSignals?: Map<string, MarketSignal>;
+  /** False when market enrichment stopped before every relevant match was checked. */
+  marketComplete?: boolean;
   /** Live-data provider name (e.g. "espn") for attribution; omit when static/degraded. */
   source?: string;
   /**
@@ -190,6 +193,9 @@ export function formatShareSnippet(
   if (input.degraded && input.matches.length > 0) {
     blocks.push('(Live data unavailable — showing the bundled schedule, not live scores.)');
   }
+  if (includeMarkets && input.marketComplete === false) {
+    blocks.push('(Market data unavailable or incomplete — not all fixtures were checked.)');
+  }
 
   blocks.push(
     shareFooter({
@@ -235,7 +241,7 @@ function tableRow(r: StandingRow, rank: number): string {
 
 export interface ShareTableInput {
   /** Group tables to render (1..n); each in standings order. */
-  tables: { group: string; rows: StandingRow[] }[];
+  tables: readonly { group: string; rows: readonly StandingRow[] }[];
   /** Live-data provider name for attribution; omit when degraded/static. */
   source?: string;
   /** Exact run cue, e.g. "npx @claudinho/cli table A". */
@@ -243,10 +249,10 @@ export interface ShareTableInput {
   /** Body line when there are no tables (e.g. "No group Z."). */
   emptyNote?: string;
   /**
-   * True when the rows are a static roster (no live results), not an
-   * authoritative table. A shared card is pasted into public/social, so this
-   * MUST be surfaced — otherwise a roster-at-zero reads as a real "nobody has
-   * played yet" table. The card then carries an explicit not-live notice.
+   * True when no authoritative table was available. Non-empty rows are a
+   * static roster, not live results; an empty open-scope outage is described by
+   * `emptyNote`. A shared card is pasted into public/social, so degraded state
+   * MUST be surfaced rather than reading as an authoritative table.
    */
   degraded?: boolean;
 }
@@ -263,7 +269,10 @@ export function formatShareTable(input: ShareTableInput, options: ShareSnippetOp
 
   const blocks: string[] = [];
   if (input.tables.length === 0) {
-    blocks.push(input.emptyNote ?? 'No standings available.');
+    blocks.push(
+      input.emptyNote ??
+        (input.degraded ? 'Live standings unavailable.' : 'No standings available.'),
+    );
   } else {
     for (const { group, rows } of input.tables) {
       blocks.push(

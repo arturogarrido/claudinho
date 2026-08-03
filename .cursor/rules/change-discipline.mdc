@@ -1,0 +1,30 @@
+---
+description: Scope a change and land it without a multi-round review loop
+globs: **/*
+alwaysApply: true
+---
+
+# Change discipline
+
+The canonical text is **`AGENTS.md` → "Change discipline"**, and the "Definition
+of Done" section beside it. This file exists only because Cursor reads
+`.cursor/rules` and not `AGENTS.md` — Claude Code reads AGENTS.md via
+`CLAUDE.md`, and it is Codex's source of truth. Keep the two in sync; if they
+disagree, AGENTS.md wins.
+
+The short form:
+
+1. **Acceptance criteria in the PR before the first commit**, plus an explicit
+   statement of what the change does NOT cover. Skipping this is what turned
+   PR #97 into twelve review rounds: with no written finish line every round
+   ended at "I fixed what was reported" and the next round moved it, and with no
+   stated boundary, findings equally true of `main` arrived as blockers.
+2. **Put a shared rule where every path reaches it, then delete the other copy** —
+   not at the site the report happened to mention.
+3. **Grep for siblings before calling a class closed.** Every single-instance fix
+   in #97 had two or three.
+4. **Make a test fail before trusting it, and pin the CALL, not just the
+   function.** Delete the call site and confirm red.
+5. **Never assert wall-clock time.** Assert the observable consequence instead.
+6. **Run the gates and READ the output** — build, typecheck, test, lint, the three
+   CI smokes, `release:qa` — then wait for CI on the SHA you actually pushed.

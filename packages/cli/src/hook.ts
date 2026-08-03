@@ -12,13 +12,40 @@
  */
 import { lookupTeam, scoreline, type Match, type Team } from '@claudinho/core';
 import type { readState } from './cache';
-import { liveMatchCountFromCache, liveMatchesFromCache } from './statusline';
+import { liveMatchesFromCache } from './statusline';
 
 /**
  * Live matches listed in the hook's context. Well above any real simultaneity
  * (a World Cup matchday peaks at 12, with at most 6 kicking off together).
  */
 const MAX_HOOK_MATCHES = 12;
+
+/**
+ * Hard ceiling on the WHOLE injected block, in code points.
+ *
+ * Every field is bounded and so is the record count, but neither bounds their
+ * SUM — twelve records whose every label sits just under its own cap produced
+ * 19.5 KB of model context. This is the surface that writes into Claude on
+ * every prompt submit, so the aggregate needs its own limit, exactly as
+ * `renderPrompt` caps the whole line rather than each segment. A real matchday
+ * block is well under 1 KB.
+ *
+ * Applied as a wrapper over the return rather than inside each branch, so a
+ * branch added later cannot forget it.
+ */
+const MAX_HOOK_CODE_POINTS = 4096;
+
+function boundContext(text: string, marker = ''): string {
+  const points = [...text];
+  if (points.length + [...marker].length <= MAX_HOOK_CODE_POINTS) return text + marker;
+  // The overflow marker is the honest part of this block — it is what says the
+  // list is incomplete — so it is RESERVED and re-appended rather than cut off
+  // the end. The statusline reserves its marker's width for the same reason;
+  // the hook truncated straight through it, turning an incomplete list back
+  // into one that reads as complete.
+  const room = Math.max(0, MAX_HOOK_CODE_POINTS - [...marker].length);
+  return `${points.slice(0, room).join('')}\n(context truncated)${marker}`;
+}
 
 export interface HookOpts {
   /** Preferred team code (e.g. "MEX") — listed first. */
@@ -63,14 +90,11 @@ export function renderHook(
   const team = opts.team?.toUpperCase();
   const flags = opts.flags ?? true;
 
-  let live = liveMatchesFromCache(state, now.getTime());
+  const liveList = liveMatchesFromCache(state, now.getTime());
+  let live: Match[] = [...liveList.items];
+  // A malformed cache record does not establish that live scores are down.
+  // Outside a match window the hook's contract is still zero added tokens.
   if (live.length === 0) return '';
-  // The TRUE total. `liveMatchesFromCache` is bounded to protect the hot path,
-  // so counting the overflow from its result understated it — the statusline had
-  // the same bug and the same fix; a count that is quietly wrong reads as a
-  // complete list.
-  const total = Math.max(liveMatchCountFromCache(state, now.getTime()), live.length);
-
   // Surface the user's team first, if any.
   if (team) {
     live = [...live].sort((a, b) => {
@@ -86,12 +110,16 @@ export function renderHook(
   // 2,002 lines of context. `renderPrompt` has had this cap (CLAUDINHO_MAX);
   // the hook, the surface that actually writes into the model, had none.
   const shown = live.slice(0, MAX_HOOK_MATCHES);
-  const overflow = total - shown.length;
+  const overflow = live.length - shown.length;
   const lines = shown.map((mm) => line(mm, flags)).join('\n');
   // Truncation is stated, never silent (English-only, like the rest of the
   // hook — see the ambient-surface carve-out in AGENTS.md).
-  const more = overflow > 0 ? `\n(+${overflow} more not shown)` : '';
+  const more = !liveList.complete
+    ? '\n(more live matches may not be shown)'
+    : overflow > 0
+      ? `\n(+${overflow} more not shown)`
+      : '';
   // Labelled as live context so the model treats it as ambient info, not an
   // instruction. Kept terse to minimise token cost.
-  return `[Claudinho — live football scores right now]\n${lines}${more}`;
+  return boundContext(`[Claudinho — live football scores right now]\n${lines}`, more);
 }

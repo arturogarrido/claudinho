@@ -27,6 +27,11 @@ export { cacheDir } from './paths';
  */
 export const CACHE_VERSION = 2;
 
+/** Hard byte ceiling before JSON parsing on the statusline hot path. */
+export const MAX_STATE_BYTES = 1024 * 1024;
+/** Far above any real live/knockout snapshot, but finite before traversal. */
+const MAX_STATE_RECORDS = 1024;
+
 /** The cached snapshot. `live` holds in-progress matches at `updatedAt`. */
 export interface CacheState {
   /** Schema version (see {@link CACHE_VERSION}); stamped by writeState. */
@@ -85,6 +90,51 @@ function lockPath(): string {
   return join(cacheDir(), 'refresh.lock');
 }
 
+function validStamp(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const match = value.match(
+    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,3}))?Z$/,
+  );
+  if (!match) return false;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return false;
+  const canonical = `${match[1]}.${(match[2] ?? '').padEnd(3, '0')}Z`;
+  return new Date(parsed).toISOString() === canonical;
+}
+
+function validScope(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 128 &&
+    /^[a-zA-Z0-9._-]+$/.test(value)
+  );
+}
+
+/** Validate only the envelope here; each Match is sealed lazily by its reader. */
+function isCacheState(value: unknown): value is CacheState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const s = value as Record<string, unknown>;
+  if (s.version !== CACHE_VERSION) return false;
+  if (!validStamp(s.updatedAt) || typeof s.degraded !== 'boolean') return false;
+  if (!validScope(s.source) || !validScope(s.competition)) return false;
+  if (!Array.isArray(s.live) || s.live.length > MAX_STATE_RECORDS) return false;
+  if (
+    s.fixtures !== undefined &&
+    (!Array.isArray(s.fixtures) || s.fixtures.length > MAX_STATE_RECORDS)
+  ) {
+    return false;
+  }
+  for (const key of [
+    'fixturesUpdatedAt',
+    'fixturesAttemptedAt',
+    'backoffUntil',
+  ] as const) {
+    if (s[key] !== undefined && !validStamp(s[key])) return false;
+  }
+  return true;
+}
+
 /**
  * Read the cached state for a scope, or undefined if missing/corrupt/
  * version-mismatched (never throws).
@@ -94,10 +144,15 @@ export function readState(
   competition = DEFAULT_COMPETITION,
 ): CacheState | undefined {
   try {
-    const s = JSON.parse(
-      readFileSync(cachePath(source, competition), 'utf8'),
-    ) as CacheState;
-    return s.version === CACHE_VERSION ? s : undefined;
+    const path = cachePath(source, competition);
+    const info = statSync(path);
+    if (!info.isFile() || info.size > MAX_STATE_BYTES) return undefined;
+    const bytes = readFileSync(path);
+    // Re-check the bytes actually read: the stat and read are separate syscalls,
+    // so a concurrently replaced file must not bypass the pre-parse ceiling.
+    if (bytes.byteLength > MAX_STATE_BYTES) return undefined;
+    const parsed: unknown = JSON.parse(bytes.toString('utf8'));
+    return isCacheState(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }
@@ -125,10 +180,18 @@ export function writeState(state: CacheState): void {
 }
 
 /** True while a persisted provider backoff (429/403) is in effect. */
+/** Longest a provider backoff may hold, whatever the file claims. */
+const MAX_BACKOFF_MS = 30 * 60_000;
+
 export function backoffActive(state: CacheState | undefined, now = Date.now()): boolean {
   if (!state?.backoffUntil) return false;
   const t = Date.parse(state.backoffUntil);
-  return Number.isFinite(t) && now < t;
+  if (!Number.isFinite(t)) return false;
+  // BOUNDED. `now < t` alone let a `backoffUntil` of 2099 suppress every
+  // refresh forever — a permanent silence written by whoever last wrote the
+  // file. The real backoff is 5-6 minutes; anything past the ceiling is not a
+  // backoff we wrote.
+  return now < t && t - now <= MAX_BACKOFF_MS;
 }
 
 /** Age of the latest fixtures ATTEMPT in ms (Infinity if never attempted). */
@@ -136,16 +199,36 @@ export function fixturesAttemptAgeMs(
   state: CacheState | undefined,
   now = Date.now(),
 ): number {
-  if (!state?.fixturesAttemptedAt) return Infinity;
-  const t = Date.parse(state.fixturesAttemptedAt);
-  return Number.isFinite(t) ? now - t : Infinity;
+  return stampAgeMs(state?.fixturesAttemptedAt, now);
 }
 
 /** Age of the cache in ms (Infinity if absent/unparseable). */
+/** Tolerated clock skew between writing a snapshot and reading it back. */
+const FUTURE_SKEW_MS = 60_000;
+
+/**
+ * How old a cache timestamp is, or Infinity if we cannot trust it.
+ *
+ * A stamp in the FUTURE is not fresh, it is wrong. Returned as a negative age
+ * it compares below every staleness threshold, so a value dated 2099 reads as
+ * current forever and no refresh supersedes it — fail-OPEN on exactly the
+ * fields that decide whether we trust the file. Ordinary skew between writing
+ * and reading is tolerated; a meaningful lead is not.
+ *
+ * EVERY age question goes through here. Fixing only `updatedAt` left the
+ * siblings — the fixtures attempt stamp, the market entries — open to the same
+ * value, which is the "fixed one instance, not the class" mistake again.
+ */
+export function stampAgeMs(value: string | undefined, now: number): number {
+  if (!value) return Infinity;
+  const t = Date.parse(value);
+  if (!Number.isFinite(t)) return Infinity;
+  const age = now - t;
+  return age < -FUTURE_SKEW_MS ? Infinity : age;
+}
+
 export function ageMs(state: CacheState | undefined, now = Date.now()): number {
-  if (!state) return Infinity;
-  const t = Date.parse(state.updatedAt);
-  return Number.isFinite(t) ? now - t : Infinity;
+  return stampAgeMs(state?.updatedAt, now);
 }
 
 /**
@@ -154,9 +237,7 @@ export function ageMs(state: CacheState | undefined, now = Date.now()): number {
  * live write must not make stale fixtures look fresh (or vice-versa).
  */
 export function fixturesAgeMs(state: CacheState | undefined, now = Date.now()): number {
-  if (!state?.fixturesUpdatedAt) return Infinity;
-  const t = Date.parse(state.fixturesUpdatedAt);
-  return Number.isFinite(t) ? now - t : Infinity;
+  return stampAgeMs(state?.fixturesUpdatedAt, now);
 }
 
 /**
@@ -169,13 +250,19 @@ function lockAgeMs(now = Date.now()): number {
   try {
     const contents = readFileSync(lp, 'utf8');
     const written = Number.parseInt(contents.split(/\s+/)[1] ?? '', 10);
-    if (Number.isFinite(written)) return now - written;
+    // Through the shared guard: a lock written in the future never went
+    // stale, so it held the refresher silent forever.
+    if (Number.isFinite(written)) return stampAgeMs(new Date(written).toISOString(), now);
   } catch {
     return Infinity; // no lock
   }
-  // Lock exists but content is unparseable — fall back to mtime.
+  // Lock exists but its content is unparseable — fall back to mtime, THROUGH
+  // the same guard. Bypassing it here meant an unreadable lock dated 2099 was
+  // permanently fresh and never released: `isLockFresh()` true and
+  // `acquireLock()` false, forever. Third time a timestamp fix has missed a
+  // sibling, which is why every one of them now routes through `stampAgeMs`.
   try {
-    return now - statSync(lp).mtimeMs;
+    return stampAgeMs(new Date(statSync(lp).mtimeMs).toISOString(), now);
   } catch {
     return Infinity;
   }

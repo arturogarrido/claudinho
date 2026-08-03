@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getStandings,
+  groups,
   parseStandings,
   type GroupStandings,
   type ProviderAdapter,
@@ -36,13 +37,7 @@ const ESPN = {
           entry('RSA', 'South Africa', full(1, 0, 0, 1, 0, 2, 4)),
           entry('MEX', 'Mexico', full(1, 1, 0, 0, 2, 0, 1)),
           entry('KOR', 'South Korea', full(1, 1, 0, 0, 2, 1, 2)),
-          // Sparse stats + a non-finite value → both must default to 0.
-          entry('CZE', 'Czechia', [
-            stat('gamesPlayed', 1),
-            stat('points', 0),
-            stat('pointDifferential', Number.NaN),
-            stat('rank', 3),
-          ]),
+          entry('CZE', 'Czechia', full(1, 0, 0, 1, 0, 1, 3)),
         ],
       },
     },
@@ -80,25 +75,41 @@ describe('parseStandings', () => {
     expect(mex.team.flag).not.toBe(''); // emoji flag resolved
   });
 
-  it('defaults missing / non-finite stats to 0 (never NaN)', () => {
-    const cze = parseStandings(ESPN)[0]!.rows.find((r) => r.team.code === 'CZE')!;
-    expect(cze.goalDiff).toBe(0); // NaN → 0
-    expect(cze.won).toBe(0); // absent → 0
-    expect(Number.isNaN(cze.goalDiff)).toBe(false);
+  it('refuses a partial row instead of inventing zero-valued aggregates', () => {
+    const malformed = {
+      children: [
+        {
+          name: 'Group A',
+          standings: {
+            entries: [
+              entry('MEX', 'Mexico', full(1, 1, 0, 0, 2, 0, 1)),
+              entry('CZE', 'Czechia', [stat('gamesPlayed', 1), stat('rank', 2)]),
+            ],
+          },
+        },
+      ],
+    };
+    expect(parseStandings(malformed)[0]?.rows.map((row) => row.team.code)).toEqual(['MEX']);
   });
 
   it('is total on malformed / empty input', () => {
     expect(parseStandings({})).toEqual([]);
     expect(parseStandings({ children: [] })).toEqual([]);
-    expect(parseStandings({ children: [{ name: 'Group B' }] })[0]?.rows).toEqual([]);
+    expect(parseStandings({ children: [{ name: 'Group B' }] })).toEqual([]);
   });
 });
 
 // --- getStandings (orchestration + fail-closed) ---
-function standingsAdapter(tables: GroupStandings[] | (() => never)): ProviderAdapter {
+function standingsAdapter(
+  tables: GroupStandings[] | (() => never),
+  expectedStandingsGroups?: readonly string[],
+  standingsFallbackGroups?: readonly string[],
+): ProviderAdapter {
   return {
     name: 'fake',
     capabilities: { push: false, latencyHintSec: 0 },
+    expectedStandingsGroups,
+    standingsFallbackGroups,
     async fetchByDate() {
       return [];
     },
@@ -112,9 +123,23 @@ function standingsAdapter(tables: GroupStandings[] | (() => never)): ProviderAda
   };
 }
 
-/** Adapter with NO fetchStandings (the degraded path). */
+/** World Cup adapter with NO fetchStandings (the compatible static fallback path). */
 const noStandings: ProviderAdapter = {
   name: 'bare',
+  capabilities: { push: false, latencyHintSec: 0 },
+  expectedStandingsGroups: groups(),
+  standingsFallbackGroups: groups(),
+  async fetchByDate() {
+    return [];
+  },
+  async fetchLive() {
+    return [];
+  },
+};
+
+/** Open-scope adapter with no standings capability and therefore no compatible roster. */
+const openScopeNoStandings: ProviderAdapter = {
+  name: 'open',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate() {
     return [];
@@ -148,6 +173,95 @@ describe('getStandings', () => {
     expect(r.tables).toEqual([]);
   });
 
+  it('does not substitute bundled groups into an open-scope custom competition', async () => {
+    const adapter = standingsAdapter([]);
+
+    await expect(getStandings(adapter)).resolves.toEqual({
+      tables: [],
+      degraded: false,
+      source: 'fake',
+    });
+    await expect(getStandings(adapter, 'A')).resolves.toEqual({
+      tables: [],
+      degraded: false,
+      source: 'fake',
+    });
+  });
+
+  it('keeps open-scope outages empty instead of injecting the World Cup roster', async () => {
+    const down = standingsAdapter(() => {
+      throw new Error('down');
+    });
+
+    for (const adapter of [down, openScopeNoStandings]) {
+      await expect(getStandings(adapter)).resolves.toEqual({ tables: [], degraded: true });
+      await expect(getStandings(adapter, 'A')).resolves.toEqual({ tables: [], degraded: true });
+    }
+  });
+
+  it('does not treat a custom adapter expected scope as bundled-roster compatibility', async () => {
+    const down = standingsAdapter(() => {
+      throw new Error('down');
+    }, ['A']);
+    const omitted = standingsAdapter([], ['A']);
+
+    for (const adapter of [down, omitted]) {
+      await expect(getStandings(adapter, 'A')).resolves.toEqual({ tables: [], degraded: true });
+      await expect(getStandings(adapter)).resolves.toEqual({ tables: [], degraded: true });
+    }
+  });
+
+  it('limits a degraded roster to the adapter-declared expected scope', async () => {
+    const adapter = standingsAdapter(() => {
+      throw new Error('down');
+    }, ['B', 'A', 'A'], ['B', 'A', 'A']);
+
+    const result = await getStandings(adapter);
+    expect(result.degraded).toBe(true);
+    expect(result.tables.map((table) => table.group)).toEqual(['A', 'B']);
+    expect(result.tables.every((table) => table.rows.every((row) => row.played === 0))).toBe(true);
+  });
+
+  it('falls back when every row of a known group is refused but a sibling group parses', async () => {
+    const partial = parseStandings({
+      children: [
+        {
+          name: 'Group A',
+          standings: {
+            entries: [entry('BAD', 'Bad Row', [stat('gamesPlayed', 1), stat('rank', 1)])],
+          },
+        },
+        {
+          name: 'Group B',
+          standings: {
+            entries: [entry('CAN', 'Canada', full(1, 1, 0, 0, 1, 0, 1))],
+          },
+        },
+      ],
+    });
+    expect(partial.map((table) => table.group)).toEqual(['B']);
+    const adapter = standingsAdapter(partial, groups(), groups());
+
+    const omitted = await getStandings(adapter, 'A');
+    expect(omitted.degraded).toBe(true);
+    expect(omitted.source).toBeUndefined();
+    expect(omitted.tables[0]?.rows).toHaveLength(4);
+    expect(omitted.tables[0]?.rows.every((row) => row.played === 0)).toBe(true);
+
+    const readable = await getStandings(adapter, 'B');
+    expect(readable.degraded).toBe(false);
+    expect(readable.source).toBe('fake');
+    expect(readable.tables[0]?.rows.map((row) => row.team.code)).toEqual(['CAN']);
+
+    const aggregate = await getStandings(adapter);
+    expect(aggregate.degraded).toBe(true);
+    expect(aggregate.source).toBeUndefined();
+    expect(aggregate.tables.map((table) => table.group)).toEqual(groups());
+    expect(aggregate.tables.every((table) => table.rows.every((row) => row.played === 0))).toBe(
+      true,
+    );
+  });
+
   it('FAILS CLOSED to a degraded roster when the provider has no fetchStandings', async () => {
     const r = await getStandings(noStandings, 'A');
     expect(r.degraded).toBe(true);
@@ -166,10 +280,41 @@ describe('getStandings', () => {
   it('FAILS CLOSED to a degraded roster when fetchStandings throws', async () => {
     const boom = standingsAdapter(() => {
       throw new Error('down');
-    });
+    }, groups(), groups());
     const r = await getStandings(boom, 'A');
     expect(r.degraded).toBe(true);
     expect(r.tables[0]?.rows.length).toBe(4);
     expect(r.tables[0]?.rows.every((row) => row.played === 0 && row.points === 0)).toBe(true);
+  });
+
+  it('rejects a group outside a declared scope without fetching or degrading', async () => {
+    let fetched = false;
+    const adapter = standingsAdapter(() => {
+      fetched = true;
+      throw new Error('should not fetch');
+    }, groups(), groups());
+
+    await expect(getStandings(adapter, 'Z')).resolves.toEqual({ tables: [], degraded: false });
+    expect(fetched).toBe(false);
+  });
+
+  it('preserves readable rows when one standings sibling is malformed', async () => {
+    const partial = parseStandings({
+      children: [
+        {
+          name: 'Group A',
+          standings: {
+            entries: [
+              entry('MEX', 'Mexico', full(1, 1, 0, 0, 2, 0, 1)),
+              entry('CZE', 'Czechia', [stat('gamesPlayed', 1), stat('rank', 2)]),
+            ],
+          },
+        },
+      ],
+    });
+    const r = await getStandings(standingsAdapter(partial), 'A');
+    expect(r.degraded).toBe(false);
+    expect(r.source).toBe('fake');
+    expect(r.tables[0]?.rows.map((row) => row.team.code)).toEqual(['MEX']);
   });
 });

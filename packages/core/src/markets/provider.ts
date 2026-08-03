@@ -1,3 +1,4 @@
+import { emptyBatch } from '../trust/batch';
 /**
  * Provider factory + graceful-degradation wrappers, mirroring `live.ts`'s
  * getMatchesForDate contract: a market signal is optional enrichment, so any
@@ -56,15 +57,15 @@ export async function getMarketSignal(
   }
 }
 
-/** Batch fetch; never throws — empty result (nothing checked) on any error. */
+/** Batch fetch; never throws — an empty, INCOMPLETE batch on any error. */
 export async function getMarketSignals(
   provider: MarketProvider,
-  matches: Match[],
+  matches: readonly Match[],
   options?: MarketSignalOptions,
 ): Promise<MarketSignalsResult> {
   try {
     return await provider.findSignals(matches, options);
   } catch {
-    return { signals: new Map(), checked: new Set() };
+    return emptyBatch();
   }
 }

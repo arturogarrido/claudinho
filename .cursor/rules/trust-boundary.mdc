@@ -1,0 +1,69 @@
+---
+description: Where untrusted input becomes a domain type, and the rules that hold there
+globs: packages/core/src/trust/**,packages/core/src/adapters/**,packages/core/src/markets/**,packages/cli/src/statusline.ts,packages/cli/src/marketCache.ts
+alwaysApply: false
+---
+
+# The trust boundary
+
+Feed responses and local cache files are untrusted input. They enter through
+`packages/core/src/trust/` and leave as a domain type or as a stated reason they
+could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
+
+## Rules
+
+- **An adapter FETCHES; it does not interpret.** Parsing lives in `trust/`
+  (`trust/espn.ts` is the model). The adapter that also parsed is how `id` and
+  `kickoff` ended up copied verbatim while every string beside them was cleaned.
+- **Record refusal is local, not a provider outage.** `ProviderAdapter` returns
+  plain arrays. Omit malformed, duplicate, or truncated records while keeping
+  readable siblings usable and attributed to the provider. Throw into the
+  degraded path only for transport/JSON failure, or an incomplete payload with
+  no usable records. Parser-local `BoundedList.complete` is diagnostic; never
+  promote one refused record into a batch-wide blackout.
+- **Both paths end at the same constructor.** Live and cache reads call
+  `sealMatch` / `sealMarketSignal`. When they had separate rules, each fix landed
+  on one of them; `core/test/trust-parity.test.ts` asserts they agree, as a JSON
+  round trip, because that is literally what the cache file is.
+- **Text has roles.** `humanLabel` is prose — no controls, no format characters,
+  **no emoji**, bounded by display columns *and* code points. `opaqueId` is
+  checked against an exact grammar. `canonicalTimestamp` re-emits one form and
+  refuses a date that does not exist. `productFlag` GENERATES the flag from the
+  nation.
+- **Never accept a product glyph from input.** While flags travelled through the
+  text filter it needed an emoji carve-out, and a carve-out without a grammar is
+  a covert channel: TAG characters, variation selectors and ZWJ each rode through
+  it. A `🏴` plus 42 tag characters is ONE two-column glyph spelling a full
+  instruction sentence — invisible on a terminal, legible to a model reading
+  `--json`.
+- **Say which kind of failure it is.** `ParseResult` = `valid` /
+  `definitive-none` / `malformed` / `ambiguous` / `unresolved`. For per-item
+  market resolution, `valid`, `definitive-none` and `ambiguous` are stable and
+  cacheable; `malformed` and `unresolved` must not become definitive negatives.
+  A successful provider batch with one malformed sibling is still shared for
+  the coalescing TTL: identical bytes will parse identically, and immediate
+  refetches only waste egress and starve the readable records.
+- **Enrichment completeness reaches the renderer.** Market cache/fetch helpers
+  return `{ signals, complete }`; default-on annotations, dedicated tools,
+  share cards, and structured output retain it. Only a complete empty batch may
+  say "no signal"; an incomplete one warns and carries `marketComplete:false`
+  or `complete:false`.
+- **Bound the work, not just the output.** `takeBounded` slices *before* the
+  per-record map. A surface reports `total`/`shown`/`truncated` from one
+  `BoundedList`; no handler recomputes a count. `total` is exact only when
+  `complete` is true, so incomplete hot-path scans use a nonnumeric `more`
+  marker rather than guessing how many valid records remain. MCP response
+  limiting preflights depth, width, entries, containers, and aggregate text
+  before serialization or recursive shrinking; a byte cap alone does not bound
+  the CPU and allocation spent discovering that a payload is too large.
+- **Fail closed on ABSENCE.** A missing field must be at least as rejecting as a
+  wrong one. Five market gates were `x != null && ...`, so the more malformed
+  payload was the more successful one.
+
+## Changing this area
+
+Add the property to `core/test/trust-properties.test.ts` (table-driven off each
+type's declared key list, so a new field fails by default), and **verify it goes
+red** with the rule reverted — a property test you have not made fail is pinning
+nothing. If it is a claim `SECURITY.md` makes, cite the test there;
+`core/test/security-claims.test.ts` fails if a citation rots.

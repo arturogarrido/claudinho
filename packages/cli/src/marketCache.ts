@@ -10,13 +10,21 @@
  * appear as kickoff approaches). Best-effort + tolerant: a corrupt/absent file
  * reads as empty, and writes never throw.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { hasSaneDistribution, sanitizeMarketSignal, type MarketSignal } from '@claudinho/core';
+import { stampAgeMs } from './cache';
+import {
+  hasSaneDistribution,
+  parseCachedMarketSignal,
+  parsedValue,
+  type MarketSignal,
+} from '@claudinho/core';
 import { cacheDir, writeFileAtomic } from './paths';
 
 const POSITIVE_TTL_MS = 10 * 60_000;
 const NEGATIVE_TTL_MS = 3 * 60_000;
+/** Cold-path cache ceiling before JSON parsing. Real files are a few KB. */
+const MAX_MARKET_CACHE_BYTES = 1024 * 1024;
 /**
  * A cache entry dated into the future is expired, not fresh. Without this a
  * `fetchedAt` of 2099 never aged out, suppressing the provider permanently.
@@ -45,7 +53,12 @@ function cachePath(): string {
  */
 function readFile(): { source: unknown; competition: unknown; entries: unknown } | undefined {
   try {
-    const parsed: unknown = JSON.parse(readFileSync(cachePath(), 'utf8'));
+    const path = cachePath();
+    const info = statSync(path);
+    if (!info.isFile() || info.size > MAX_MARKET_CACHE_BYTES) return undefined;
+    const bytes = readFileSync(path);
+    if (bytes.byteLength > MAX_MARKET_CACHE_BYTES) return undefined;
+    const parsed: unknown = JSON.parse(bytes.toString('utf8'));
     if (!parsed || typeof parsed !== 'object') return undefined;
     return parsed as { source: unknown; competition: unknown; entries: unknown };
   } catch {
@@ -90,7 +103,10 @@ function isEntryShaped(e: unknown): e is CacheEntry {
  * The fixture-dependent half (`marketSignalRendersFor`) needs a Match and is
  * applied by the caller.
  */
-function isUsableSignal(s: MarketSignal): boolean {
+function isUsableSignal(s: MarketSignal | undefined): boolean {
+  // An unreadable signal is not a usable one — the seal returning nothing is
+  // itself an answer, and the caller must not have to remember to check.
+  if (!s) return false;
   if (s.source === '' || s.asOf === '' || s.outcomes.length === 0) return false;
   if (s.outcomes.some((o) => o.kind === 'other')) return false;
   if (s.ambiguous) return false;
@@ -118,9 +134,16 @@ export function readMarketCache(
     return { signals, checked };
   }
   const entries = file.entries;
-  if (!entries || typeof entries !== 'object') return { signals, checked };
+  if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {
+    return { signals, checked };
+  }
   // Bounded like every other collection: a day is at most a few dozen fixtures.
-  for (const [id, raw] of Object.entries(entries as Record<string, unknown>).slice(0, 256)) {
+  let examined = 0;
+  for (const id in entries as Record<string, unknown>) {
+    if (!Object.hasOwn(entries, id)) continue;
+    if (examined >= 256) break;
+    examined += 1;
+    const raw = (entries as Record<string, unknown>)[id];
     // Validate the ENVELOPE before touching it: a JSON `null` (or a string, or a
     // number) is a legal value here, and dereferencing it threw before this
     // guard. A malformed entry is skipped entirely — notably it must NOT reach
@@ -135,14 +158,17 @@ export function readMarketCache(
       checked.add(id); // genuine negative result — don't re-fetch this window
       continue;
     }
-    // Sanitize on READ: this file is attacker-writable in a way the MarketSignal
-    // type isn't, and the formatters interpolate several of these fields straight
-    // into output (marketSourceLabel falls through to `source` verbatim for an
-    // unrecognized provider). Mirrors the statusline's sanitizeMatchStrings on
-    // its own cache read.
-    // `now` is threaded so the DERIVED staleness inside the sanitizer agrees
-    // with the TTL arithmetic above instead of reading the wall clock.
-    const clean = sanitizeMarketSignal(entry.signal, { now: new Date(now) });
+    // THE SAME seal the live provider path ends at (core trust/market). This
+    // file is attacker-writable in a way the MarketSignal type is not, and the
+    // formatters interpolate several of these fields straight into output
+    // (marketSourceLabel falls through to `source` verbatim for an unrecognized
+    // provider). `now` is threaded so the DERIVED staleness agrees with the TTL
+    // arithmetic above instead of reading the wall clock.
+    const sealed = parseCachedMarketSignal(entry.signal, { now: new Date(now) });
+    // A signal we could not read is not a negative result: it must NOT reach
+    // `checked`, or a corrupt entry suppresses the real fetch for the full TTL.
+    if (sealed.kind !== 'valid') continue;
+    const clean = sealed.value;
     // The BODY must match the key it was filed under, and the provider the file
     // claims. Without this a poisoned file could park one fixture's prices under
     // another fixture's id — the entry is well-formed, just not about this match.
@@ -177,19 +203,29 @@ export function writeMarketCache(
     // parsed object wholesale would round-trip a poisoned file's junk (null
     // members, wrong-typed envelopes) back to disk on every write.
     const carried: Record<string, CacheEntry> = {};
-    if (reuse && existing.entries && typeof existing.entries === 'object') {
-      for (const [id, raw] of Object.entries(existing.entries as Record<string, unknown>)) {
+    if (
+      reuse &&
+      existing.entries &&
+      typeof existing.entries === 'object' &&
+      !Array.isArray(existing.entries)
+    ) {
+      let examined = 0;
+      for (const id in existing.entries as Record<string, unknown>) {
+        if (!Object.hasOwn(existing.entries, id)) continue;
+        if (examined >= 256) break;
+        examined += 1;
+        const raw = (existing.entries as Record<string, unknown>)[id];
         if (!isEntryShaped(raw)) continue;
         // Prune on write. An expired entry is dead weight the read path skips
         // anyway, and carrying every id forward grew the file without bound.
-        const age = now - Date.parse(raw.fetchedAt);
+        const age = stampAgeMs(raw.fetchedAt, now);
         if (age > (raw.signal ? POSITIVE_TTL_MS : NEGATIVE_TTL_MS)) continue;
         if (age < -FUTURE_SKEW_MS) continue;
         // Don't round-trip a positive body that no longer sanitizes to anything
         // usable — it would keep suppressing refetches on every later read.
         if (
           raw.signal !== null &&
-          !isUsableSignal(sanitizeMarketSignal(raw.signal, { now: new Date(now) }))
+          !isUsableSignal(parsedValue(parseCachedMarketSignal(raw.signal, { now: new Date(now) })))
         ) {
           continue;
         }
@@ -198,7 +234,7 @@ export function writeMarketCache(
     }
     const base: MarketCacheFile = { source, competition, entries: carried };
     const fetchedAt = new Date(now).toISOString();
-    for (const id of attempted) {
+    for (const id of attempted.slice(0, 256)) {
       base.entries[id] = { fetchedAt, signal: fetched.get(id) ?? null };
     }
     writeFileAtomic(cachePath(), JSON.stringify(base));

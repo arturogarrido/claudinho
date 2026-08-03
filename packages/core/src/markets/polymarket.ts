@@ -24,10 +24,24 @@
  * gate it should fail.
  */
 import { MAX_RESPONSE_BYTES } from '../adapters/espn';
-import { canonicalTimestamp } from '../sanitize';
+
 import { shiftUtcDate } from '../time';
 import type { Match } from '../types';
 import mappingJson from './mapping.2026.json';
+import {
+  type BatchResolution,
+  type ParseResult,
+  type Selection,
+  ambiguous,
+  definitiveNone,
+  malformed,
+  parsedValue,
+  canonicalTimestamp,
+  selectOne,
+  takeBounded,
+  unresolved,
+  valid,
+} from '../trust';
 import { buildMarketSignal, FUTURE_SKEW_MS } from './normalize';
 import type {
   MarketOutcome,
@@ -35,7 +49,6 @@ import type {
   MarketProvider,
   MarketSignal,
   MarketSignalOptions,
-  MarketSignalsResult,
 } from './types';
 
 const DEFAULT_BASE = 'https://gamma-api.polymarket.com';
@@ -48,6 +61,9 @@ const DEFAULT_TIMEOUT_MS = 8000;
  * so an embedder gets a fixture count times the per-fetch timeout before any
  * output. Optional odds must never be able to block a render.
  */
+/** Markets read from one event. A real 1X2 has three. */
+const MAX_EVENT_MARKETS = 256;
+
 const DEFAULT_DEADLINE_MS = 15_000;
 const WC_SERIES_SLUG = 'soccer-fifwc';
 const WC_SPORT = 'fifwc';
@@ -93,20 +109,6 @@ interface MappingFile {
 
 const BUNDLED_MAPPING = (mappingJson as unknown as MappingFile).markets;
 
-/**
- * The provider answered, but not in a shape we can read.
- *
- * Distinct from "no market for this fixture", which is a FACT worth caching.
- * A schema change is not a fact about the fixture, and negative-caching it
- * suppresses the real fetch for the whole TTL — the mirror image of the
- * "never cache a transient error as a real negative" rule.
- */
-class MalformedPayloadError extends Error {
-  constructor(what: string) {
-    super(`Polymarket payload unreadable: ${what}`);
-    this.name = 'MalformedPayloadError';
-  }
-}
 
 // Gamma shapes — only the fields we read (verified against the live API).
 interface GammaMarket {
@@ -158,37 +160,49 @@ export class PolymarketProvider implements MarketProvider {
   ): Promise<MarketSignal | undefined> {
     const deadline =
       Date.now() + (options?.deadlineMs ?? DEFAULT_DEADLINE_MS);
-    return (await this.resolveOne(match, options, deadline)).signal;
+    return parsedValue(await this.resolveOne(match, options, deadline));
   }
 
   async findSignals(
-    matches: Match[],
+    matches: readonly Match[],
     options?: MarketSignalOptions,
-  ): Promise<MarketSignalsResult> {
-    const signals = new Map<string, MarketSignal>();
-    const checked = new Set<string>();
+  ): Promise<BatchResolution<MarketSignal>> {
+    const results = new Map<string, ParseResult<MarketSignal>>();
     // Total enrichment deadline: optional odds must never block core output.
     const deadline = Date.now() + (options?.deadlineMs ?? DEFAULT_DEADLINE_MS);
+    let complete = true;
     for (const m of matches) {
-      if (Date.now() >= deadline) break; // skipped (not checked) → retry next time
+      if (Date.now() >= deadline) {
+        // Not asked, so not answered. Recorded rather than dropped, so the
+        // caller can tell "we ran out of time" from "not in this batch".
+        results.set(m.id, unresolved('enrichment deadline expired'));
+        complete = false;
+        continue;
+      }
       const r = await this.resolveOne(m, options, deadline);
-      if (r.checked) checked.add(m.id);
-      if (r.signal) signals.set(m.id, r.signal);
+      if (r.kind === 'unresolved' || r.kind === 'malformed') complete = false;
+      results.set(m.id, r);
     }
-    return { signals, checked };
+    return { results, complete };
   }
 
   /**
-   * Resolve one match. `checked` distinguishes a DEFINITIVE result (reached the
-   * source and found no usable market, or the fixture is unmappable) from a
-   * provider/network error — so transient failures are retried, not
-   * negative-cached.
+   * Resolve one match into a verdict.
+   *
+   * Every exit says which KIND of non-answer it is, because that decides
+   * whether it may be remembered — see `isCacheable`: a conclusion we drew from
+   * a payload we READ is cacheable (including an ambiguity, which is stable),
+   * while a shape we could not read is not. Previously a single
+   * `checked: boolean` collapsed five distinct situations into two, and the
+   * ones that landed on the wrong side of it — an ambiguous payload, a
+   * two-legged market, an incoherent 1X2 — were negative-cached as the fact
+   * that this fixture has no market.
    */
   private async resolveOne(
     match: Match,
     options?: MarketSignalOptions,
     deadline = Number.POSITIVE_INFINITY,
-  ): Promise<{ signal?: MarketSignal; checked: boolean }> {
+  ): Promise<ParseResult<MarketSignal>> {
     const configured = options?.timeoutMs ?? this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     // Slug derivation lives INSIDE the try. It reads `match.kickoff`, and a
     // Match whose kickoff isn't a usable string made deriveEventSlugs throw —
@@ -197,51 +211,77 @@ export class PolymarketProvider implements MarketProvider {
     // getMarketSignals as an empty result. One malformed fixture therefore
     // voided the WHOLE batch's signals AND its `checked` set, turning a
     // single-record problem into a total market outage for that command.
-    // Set when a candidate's payload could not be READ (shape/schema), as
-    // distinct from a candidate that was read fine and simply has no market.
-    let sawMalformed = false;
     try {
       const entry = (this.opts.mapping ?? BUNDLED_MAPPING)[match.id];
       // A hand-curated override is authoritative (single slug); otherwise try
       // the derived candidates (UTC date, then the prior day — deriveEventSlugs).
       const slugs = entry?.eventSlug ? [entry.eventSlug] : deriveEventSlugs(match);
-      if (slugs.length === 0) return { checked: true }; // unmappable → no market
+      if (slugs.length === 0) return definitiveNone('fixture has no derivable event slug');
+      // The most alarming verdict any candidate reached, by explicit PRECEDENCE.
+      // Plain assignment let a later `ambiguous` overwrite an earlier
+      // `malformed` — and since an ambiguity is cacheable and a malformed shape
+      // is not, that quietly made an unreadable payload rememberable.
+      // Order: malformed/unresolved (facts about us, never cacheable) outrank
+      // ambiguous, which outranks a plain "no such event".
+      const RANK: Record<string, number> = {
+        'definitive-none': 0,
+        ambiguous: 1,
+        unresolved: 2,
+        malformed: 3,
+      };
+      let worst: ParseResult<MarketSignal> | undefined;
+      const keepWorst = (r: ParseResult<MarketSignal>) => {
+        if (r.kind === 'definitive-none' || r.kind === 'valid') return;
+        if (!worst || (RANK[r.kind] ?? 0) > (RANK[worst.kind] ?? 0)) worst = r;
+      };
       for (const slug of slugs) {
         // Enforce the enrichment deadline BETWEEN candidate slugs, not just between
         // fixtures: with team aliases a match can have up to 8 candidates, and
         // default-on rendering must never block. Bound each fetch to the remaining
-        // budget too. A deadline abort is NOT "checked" — we didn't finish, so it's
-        // retried next time rather than negative-cached as "no market".
+        // budget too.
         const remaining = deadline - Date.now();
-        if (remaining <= 0) return { checked: false };
-        const event = await this.fetchEvent(slug, Math.min(configured, remaining));
-        let signal: MarketSignal | undefined;
+        if (remaining <= 0) return unresolved('deadline expired between candidate slugs');
+        // Per-candidate. A 500 on the UTC-date slug used to throw out of the
+        // whole loop, so the prior-day slug — the one that actually resolves an
+        // Americas-evening kickoff — was never tried despite budget remaining.
+        let found: ParseResult<GammaEvent>;
         try {
-          signal = event ? this.toSignal(match, slug, event, options) : undefined;
-        } catch (e) {
-          // A payload we could not READ is not the same fact as "this fixture
-          // has no market". Caught per-candidate rather than letting it escape,
-          // so the alias fan-out still tries the remaining slugs.
-          if (!(e instanceof MalformedPayloadError)) throw e;
-          sawMalformed = true;
+          found = await this.fetchEvent(slug, Math.min(configured, remaining));
+        } catch {
+          keepWorst(malformed('candidate request failed'));
           continue;
         }
-        if (signal) return { signal, checked: true }; // first candidate that validates wins
+        if (found.kind !== 'valid') {
+          keepWorst(found as ParseResult<MarketSignal>);
+          continue;
+        }
+        const r = this.toSignal(match, slug, found.value, options);
+        if (r.kind === 'valid') return r; // first candidate that validates wins
+        // Keep the most alarming non-answer across the fan-out: a payload we
+        // could not read is not cancelled out by a sibling slug that simply
+        // does not exist, NOR downgraded by a sibling that is merely ambiguous.
+        keepWorst(r);
       }
-      // `checked` means DEFINITIVE. Reaching the source and finding no usable
-      // market is definitive; failing to parse what it sent is not — treating a
-      // schema change as "no market" negative-caches it for the full TTL, which
-      // is the "never cache a transient error as a real negative" rule inverted.
-      return { checked: !sawMalformed };
+      // Reaching the source and finding no usable market is definitive. Failing
+      // to READ what it sent is not — treating a schema change as "no market"
+      // negative-caches it for the full TTL, which is the "never cache a
+      // transient error as a real negative" rule inverted.
+      return worst ?? definitiveNone('no candidate slug yielded a usable market');
     } catch {
-      return { checked: false }; // provider/network error → retry, don't cache
+      // Provider/network error. Not a fact about the fixture.
+      return malformed('provider request failed');
     }
   }
 
-  private async fetchEvent(slug: string, timeoutMs?: number): Promise<GammaEvent | undefined> {
+  private async fetchEvent(slug: string, timeoutMs?: number): Promise<ParseResult<GammaEvent>> {
     const base = this.opts.baseUrl ?? DEFAULT_BASE;
     assertAllowedHost(base);
-    const url = `${base}/events?slug=${encodeURIComponent(slug)}`;
+    // The documented per-slug lookup. The `/events?slug=` query route this
+    // replaces now answers with `deprecation: true`, `sunset: Fri, 01 May 2026`
+    // and a migration warning — a sunset date already in the past. Verified
+    // returning the identical event (same id, same three markets), and it 404s
+    // for an unknown slug, which is the `definitiveNone` below.
+    const url = `${base}/events/slug/${encodeURIComponent(slug)}`;
     const doFetch = this.opts.fetchImpl ?? fetch;
     const res = await doFetch(url, {
       signal: AbortSignal.timeout(timeoutMs ?? this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
@@ -250,7 +290,8 @@ export class PolymarketProvider implements MarketProvider {
       redirect: 'error',
       headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
     });
-    if (res.status === 404) return undefined; // no such event → no market (not an error)
+    // No such event. A real answer about this slug, and cacheable as one.
+    if (res.status === 404) return definitiveNone('slug returns 404');
     if (!res.ok) {
       throw new Error(`Polymarket request failed: ${res.status} ${res.statusText}`);
     }
@@ -265,10 +306,14 @@ export class PolymarketProvider implements MarketProvider {
     // One slug, one event. More than one is an answer we cannot resolve, and
     // taking `[0]` was picking whichever the API happened to order first.
     if (Array.isArray(data) && data.length > 1) {
-      throw new MalformedPayloadError('slug returned more than one event');
+      return ambiguous('slug returned more than one event');
     }
+    // An empty array is Gamma's real "no such slug" — a fact, not a shape
+    // problem. Anything else that isn't an object is a body we cannot read.
+    if (Array.isArray(data) && data.length === 0) return definitiveNone('slug returns no event');
     const event = Array.isArray(data) ? data[0] : data;
-    return event && typeof event === 'object' ? (event as GammaEvent) : undefined;
+    if (!event || typeof event !== 'object') return malformed('event body is not an object');
+    return valid(event as GammaEvent);
   }
 
   private toSignal(
@@ -276,7 +321,7 @@ export class PolymarketProvider implements MarketProvider {
     eventSlug: string,
     event: GammaEvent,
     options?: MarketSignalOptions,
-  ): MarketSignal | undefined {
+  ): ParseResult<MarketSignal> {
     // ---- fail-closed event validation ----
     // Only real booleans are trusted, and both must be PRESENT. `active:
     // "false"` / `closed: "true"` are truthy strings, so an `=== false` /
@@ -288,9 +333,11 @@ export class PolymarketProvider implements MarketProvider {
     // events in series `soccer-fifwc` and 90/90 active sports events — absence
     // is a non-sports signature.
     if (typeof event.active !== 'boolean' || typeof event.closed !== 'boolean') {
-      throw new MalformedPayloadError('event active/closed is not a boolean');
+      return malformed('event active/closed is not a boolean');
     }
-    if (event.active === false || event.closed === true) return undefined;
+    if (event.active === false || event.closed === true) {
+      return definitiveNone('event is closed or inactive');
+    }
     // The event must NAME this competition. Stated negatively, the check only
     // fired when `seriesSlug` was PRESENT and wrong — so an event naming no
     // series at all skipped it, as did one naming no series while declaring some
@@ -299,7 +346,7 @@ export class PolymarketProvider implements MarketProvider {
     // the series carry BOTH `seriesSlug === 'soccer-fifwc'` and
     // `sport.sport === 'fifwc'`, so either half alone already satisfies it.
     if (event.seriesSlug !== WC_SERIES_SLUG && event.sport?.sport !== WC_SPORT) {
-      return undefined;
+      return definitiveNone('event is not in this competition');
     }
     // We guessed/looked-up the slug — confirm the API returned that exact event.
     // PRESENCE is required: an omitted slug SKIPPED the single confirmation
@@ -309,23 +356,27 @@ export class PolymarketProvider implements MarketProvider {
     // real (it is absent only on non-sports events, which the exact-slug
     // comparison already excludes).
     if (typeof event.slug !== 'string') {
-      throw new MalformedPayloadError('event states no slug');
+      return malformed('event states no slug');
     }
     // A DIFFERENT slug is a real answer ("that is not the event you asked for"),
     // unlike an absent one, which is a shape we cannot read.
-    if (event.slug !== eventSlug) return undefined;
+    if (event.slug !== eventSlug) return definitiveNone('event is not the one requested');
     // Kickoff must line up with the Claudinho fixture. `startTime` is REQUIRED:
     // absence skipped the tolerance check entirely, so an event for the wrong
     // day could still be adopted. Verified against the live Gamma API:
     // startTime is present AND parseable on 831/831 series events and 90/90
     // active sports events.
     if (typeof event.startTime !== 'string' || !canonicalTimestamp(event.startTime)) {
-      throw new MalformedPayloadError('event startTime missing or unparseable');
+      return malformed('event startTime missing or unparseable');
     }
     const start = Date.parse(event.startTime);
     const kick = Date.parse(match.kickoff);
-    if (!Number.isFinite(start) || !Number.isFinite(kick)) return undefined;
-    if (Math.abs(start - kick) > KICKOFF_TOLERANCE_MS) return undefined;
+    if (!Number.isFinite(start) || !Number.isFinite(kick)) {
+      return malformed('event or fixture kickoff is unreadable');
+    }
+    if (Math.abs(start - kick) > KICKOFF_TOLERANCE_MS) {
+      return definitiveNone('event kickoff does not match the fixture');
+    }
 
     // Only moneyline (match-result) markets; map each to a result kind by team.
     // PRESENT-and-exact, never defaulted. Verified against the live Gamma API:
@@ -340,30 +391,77 @@ export class PolymarketProvider implements MarketProvider {
     // Equality is exact, so the sibling type 'child_moneyline' (a per-game
     // winner) is excluded too.
     // `markets` is cast from an unchecked JSON body, so a non-array made
-    // `.filter` throw. resolveOne's catch can only read a throw as a TRANSIENT
-    // provider error (`checked: false`), so a permanently malformed payload was
-    // re-fetched on every command forever. A body we cannot read is a definitive
-    // "no market". A null element is filtered out by the same test.
+    // `.filter` throw. resolveOne's catch can only read a throw as a transient
+    // provider error (`checked: false`), while the boundary can classify the
+    // unreadable shape explicitly as malformed and retry it without caching a
+    // false "no market" verdict.
     if (!Array.isArray(event.markets)) {
-      throw new MalformedPayloadError('event markets is not an array');
+      return malformed('event markets is not an array');
     }
-    const moneyline = event.markets.filter((m) => m?.sportsMarketType === 'moneyline');
-    const homeMarket = pickMarket(moneyline, match.home.code, match.home.name);
-    const awayMarket = pickMarket(moneyline, match.away.code, match.away.name);
-    // A DUPLICATE draw is ambiguous; ABSENT is legitimate on a two-way knockout
-    // line. `pickDraw` returns undefined for both, so the two cases have to be
-    // told apart here or an ambiguous payload passes as a clean two-way market.
-    if (moneyline.filter(isDrawMarket).length > 1) {
-      throw new MalformedPayloadError('more than one draw market');
+    // BOUNDED BEFORE THE FILTER. The 5MB body cap only covers responses that
+    // declare a length, and production Gamma omits it — so this array was the
+    // one untrusted collection still traversed whole. A real event has 3 legs.
+    // If the list was CUT, "we found no legs" is a statement about our cap, not
+    // about the event — and it was being cached as the provider's answer, so a
+    // fixture whose legs sat past the cap was negative-cached for the whole TTL.
+    const marketsTruncated =
+      Array.isArray(event.markets) && event.markets.length > MAX_EVENT_MARKETS;
+    if (marketsTruncated) {
+      return malformed('event market list exceeded the cap');
     }
-    const drawMarket = pickDraw(moneyline);
-    if (!homeMarket || !awayMarket) return undefined; // need both result legs
+    const marketList = takeBounded<GammaMarket>(event.markets, MAX_EVENT_MARKETS);
+    if (
+      marketList.some(
+        (market) =>
+          !market ||
+          typeof market !== 'object' ||
+          typeof market.sportsMarketType !== 'string',
+      )
+    ) {
+      return malformed('event market is missing its market-type discriminator');
+    }
+    const moneyline = marketList.filter(
+      (m) => m?.sportsMarketType === 'moneyline',
+    );
+    // Each selector answers none / exactly one / ambiguous. Collapsing the last
+    // two into `undefined` is what let a payload carrying TWO legs for the same
+    // team be recorded as the definitive fact "this fixture has no market" —
+    // suppressing the refetch that would have resolved it, for the whole TTL.
+    const homeSel = pickMarket(moneyline, match.home.code, match.home.name);
+    const awaySel = pickMarket(moneyline, match.away.code, match.away.name);
+    const drawSel = pickDraw(moneyline);
+    for (const [side, sel] of [
+      ['home', homeSel],
+      ['away', awaySel],
+      ['draw', drawSel],
+    ] as const) {
+      if (sel.kind === 'ambiguous') {
+        return ambiguous(`${sel.count} markets claim the ${side} outcome`);
+      }
+    }
+    // ALL THREE legs are required, draw included.
+    //
+    // The exemption this replaces read "absent draw is legitimate on a two-way
+    // knockout line", which let a 60/40 "to advance" market — a different
+    // question, over a different period — pass as regular-time match odds. It
+    // was a guess about the feed, and the feed says otherwise: all 71 fifwc
+    // moneyline events carry exactly three legs including draw, knockout ties
+    // included (`fifwc-rsa-can-2026-06-28` is an R32 tie with rsa/draw/can).
+    // Requiring the draw leg costs zero real signal and closes the fail-open.
+    if (homeSel.kind !== 'one' || awaySel.kind !== 'one' || drawSel.kind !== 'one') {
+      return definitiveNone('event does not carry all three 1X2 legs');
+    }
+    const homeMarket = homeSel.value;
+    const awayMarket = awaySel.value;
+    const drawMarket = drawSel.value;
 
     // Reject a degenerate payload where two legs collapse to the same market.
     const legIds = [homeMarket, awayMarket, drawMarket]
       .filter((m): m is GammaMarket => m != null)
       .map((m) => m.id ?? m.slug ?? '');
-    if (new Set(legIds).size !== legIds.length) return undefined;
+    if (new Set(legIds).size !== legIds.length) {
+      return ambiguous('two outcome legs are the same market');
+    }
 
     const legs: Array<[MarketOutcomeKind, GammaMarket | undefined, string | undefined, string]> = [
       ['home', homeMarket, match.home.code, match.home.name],
@@ -387,15 +485,19 @@ export class PolymarketProvider implements MarketProvider {
       // series. This sits after `if (!market) continue`, so a legitimately
       // absent draw leg on a two-way knockout line is unaffected.
       if (typeof market.closed !== 'boolean' || typeof market.active !== 'boolean') {
-        throw new MalformedPayloadError('market active/closed is not a boolean');
+        return malformed('market active/closed is not a boolean');
       }
-      if (market.closed === true || market.active === false) return undefined;
+      if (market.closed === true || market.active === false) {
+        return definitiveNone('an outcome leg is closed or inactive');
+      }
       // Regular-time (90') resolution only — reject extra-time/advance markets.
-      if (market.description && NON_REGULAR_TIME.test(market.description)) return undefined;
+      if (market.description && NON_REGULAR_TIME.test(market.description)) {
+        return definitiveNone('an outcome leg is not a regular-time market');
+      }
       const yes = yesPrice(market);
       // A leg we cannot read is a schema failure, not the fact "this fixture has
       // no market" — the distinction `checked` is built on.
-      if (yes == null) throw new MalformedPayloadError('market is not a readable Yes/No binary');
+      if (yes == null) return malformed('market is not a readable Yes/No binary');
       outcomes.push({ kind, teamCode, label, probability: yes });
       // A PRESENT-but-unparseable leg timestamp rejects. Skipping it silently
       // substituted the EVENT's timestamp, which is not when this price was
@@ -404,18 +506,18 @@ export class PolymarketProvider implements MarketProvider {
       // REQUIRED, not merely valid-when-present. An omitted leg timestamp was
       // accepted and the signal then reported some other leg's time as when this
       // price was taken. Verified present on 312/312 real World Cup markets.
-      if (!canonicalTimestamp(market.updatedAt)) {
-        throw new MalformedPayloadError('market updatedAt missing or unparseable');
-      }
       const marketAsOf = canonicalTimestamp(market.updatedAt);
+      if (!marketAsOf) {
+        return malformed('market updatedAt missing or unparseable');
+      }
       // Taking the OLDEST hides a leg dated forward: a 2099 timestamp beside
       // current siblings simply lost the comparison and the signal read fresh.
       // A price that claims to be from the future is not a price.
       const nowMs = (options?.now ?? this.opts.now ?? new Date()).getTime();
       if (Date.parse(marketAsOf) - nowMs > FUTURE_SKEW_MS) {
-        throw new MalformedPayloadError('market updatedAt is dated forward');
+        return malformed('market updatedAt is dated forward');
       }
-      if (marketAsOf && (!asOf || Date.parse(marketAsOf) < Date.parse(asOf))) asOf = marketAsOf;
+      if (!asOf || Date.parse(marketAsOf) < Date.parse(asOf)) asOf = marketAsOf;
       // A leg whose liquidity is PRESENT but unreadable invalidates the
       // aggregate rather than being skipped: the minimum across legs is what a
       // `minLiquidity` floor is compared against, and quietly omitting the
@@ -423,7 +525,7 @@ export class PolymarketProvider implements MarketProvider {
       const rawLiq = market.liquidityNum ?? market.liquidity;
       const liq = numberish(rawLiq);
       if (rawLiq != null && liq == null) {
-        throw new MalformedPayloadError('market liquidity is unreadable');
+        return malformed('market liquidity is unreadable');
       }
       if (liq != null) liquidity = liquidity == null ? liq : Math.min(liquidity, liq);
     }
@@ -431,7 +533,12 @@ export class PolymarketProvider implements MarketProvider {
     // The raw "Yes" probabilities should form a coherent 1X2 before normalizing;
     // a sum well outside ~1 means we grabbed the wrong markets.
     const rawSum = outcomes.reduce((s, o) => s + o.probability, 0);
-    if (rawSum < 0.9 || rawSum > 1.15) return undefined;
+    // Incoherent as a 1X2. By this function's own reasoning that means we
+    // grabbed the wrong markets — a failure to MAP, not the fact that no market
+    // exists, so it must not be remembered as one.
+    if (rawSum < 0.9 || rawSum > 1.15) {
+      return ambiguous('outcome probabilities do not form a coherent 1X2');
+    }
 
     // A market with no usable timestamp IS the "no signal" case. Substituting
     // the wall clock turned a malformed or absent Gamma timestamp into "priced
@@ -440,7 +547,7 @@ export class PolymarketProvider implements MarketProvider {
     // API: canonicalTimestamp is non-empty for 104/104 World Cup events,
     // 312/312 of their markets and 1,731/1,731 active-sports records, so this
     // branch is unreachable on real data and only ever rescued malformed input.
-    if (!asOf) throw new MalformedPayloadError('no usable timestamp on the event or its markets');
+    if (!asOf) return malformed('no usable timestamp on the event or its markets');
 
     const signal = buildMarketSignal({
       match,
@@ -463,7 +570,9 @@ export class PolymarketProvider implements MarketProvider {
     });
     // Adapter contract: a cleanly-mapped signal or nothing. An ambiguous result
     // (e.g. a group match missing its draw leg) is dropped here.
-    return signal.ambiguous ? undefined : signal;
+    return signal.ambiguous
+      ? ambiguous('signal does not map cleanly onto this fixture')
+      : valid(signal);
   }
 }
 
@@ -507,7 +616,8 @@ function safeDerivedSlug(slug: unknown): string | undefined {
  * lookup is still fail-closed (exact slug + kickoff + coherent 1X2), so a stale or
  * wrong entry degrades to "no market", never a wrong one. (Curaçao is intentionally
  * absent — Polymarket's data mislabels it under the `kor` token, so we fail closed
- * rather than risk showing South Korea's odds.)
+ * rather than risk showing South Korea's odds — and note Polymarket does not use
+ * `kor` for Korea either, see the KOR entry below.)
  */
 const POLYMARKET_TOKEN: Record<string, string> = {
   SUI: 'che', // Switzerland
@@ -517,6 +627,13 @@ const POLYMARKET_TOKEN: Record<string, string> = {
   CRO: 'hrv', // Croatia
   COD: 'cdr', // DR Congo
   CPV: 'cvi', // Cabo Verde
+  // TWO letters, not three — the one entry that is not ISO alpha-3. Verified
+  // live: `fifwc-kor-cze-2026-06-11` is a 404, `fifwc-kr-cze-2026-06-11`
+  // resolves to "Korea Republic vs. Czechia". Korea's three group fixtures
+  // therefore had no market line at all. The `^[a-z]{3}$` guard in
+  // `deriveEventSlugs` validates the FIFA CODE, not the token, so a two-letter
+  // alias passes through it unharmed.
+  KOR: 'kr', // Korea Republic
 };
 
 /** Polymarket slug token(s) for a team: its alias (canonical) first, then the FIFA code. */
@@ -584,7 +701,7 @@ function pickMarket(
   markets: GammaMarket[],
   teamCode: string,
   teamName: string,
-): GammaMarket | undefined {
+): Selection<GammaMarket> {
   // Match the outcome market's slug token against the team's Polymarket token(s):
   // the alias (e.g. `cdr` for DR Congo) or the FIFA code. Without the alias the
   // away leg of an ISO-vs-FIFA fixture is never found → no signal.
@@ -596,25 +713,23 @@ function pickMarket(
   // confident signal built from whichever happened to come first — and which one
   // is not a question we can answer, so it is not a question we should guess at.
   const bySlug = teamMarkets.filter((m) => tokens.includes(slugToken(m)));
-  if (bySlug.length > 1) return undefined;
+  if (bySlug.length > 1) return { kind: 'ambiguous', count: bySlug.length };
   // An EMPTY team name would match any market with no groupItemTitle ('' === ''),
   // adopting an unrelated prop as a result leg. A nameless team is not a match.
   const byTitle = name
     ? teamMarkets.filter((m) => (m.groupItemTitle ?? '').trim().toLowerCase() === name)
     : [];
-  if (byTitle.length > 1) return undefined;
+  if (byTitle.length > 1) return { kind: 'ambiguous', count: byTitle.length };
   // Both selectors are resolved before choosing, so a payload where the slug
   // names one market and the title names a DIFFERENT one is ambiguous rather
   // than silently resolved by which check happened to run first.
-  const candidates = new Set([...bySlug, ...byTitle]);
-  return candidates.size === 1 ? [...candidates][0] : undefined;
+  return selectOne([...new Set([...bySlug, ...byTitle])]);
 }
 
-function pickDraw(markets: GammaMarket[]): GammaMarket | undefined {
+function pickDraw(markets: GammaMarket[]): Selection<GammaMarket> {
   // EXACTLY one — the same ambiguity `pickMarket` refuses. Two draw legs is not
   // a payload we can read, and picking the first is guessing.
-  const draws = markets.filter(isDrawMarket);
-  return draws.length === 1 ? draws[0] : undefined;
+  return selectOne(markets.filter(isDrawMarket));
 }
 
 function assertAllowedHost(base: string): void {

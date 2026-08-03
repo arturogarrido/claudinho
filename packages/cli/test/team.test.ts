@@ -28,7 +28,7 @@ describe('cmdTeam', () => {
     expect(j.team).toMatchObject({ code: 'MEX', name: 'Mexico', group: 'A' });
     expect(j.matches).toHaveLength(1);
     // JSON stays machine-clean (no ANSI); it's structured data.
-    expect(text()).not.toContain('[');
+    expect(text()).not.toContain('\u001B[');
   });
 
   it('resolves an alias + code + accent in text output', () => {

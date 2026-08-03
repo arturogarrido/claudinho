@@ -67,6 +67,16 @@ describe('matchLine — flavor wiring', () => {
     });
     expect(matchLine(pens, cfg(), makeT('en'), painterFor(cfg()))).toContain('1(3)–1(4)');
   });
+
+  it('renders a two-legged shootout whose current-leg score is not level', () => {
+    const pens = liveMatch({
+      status: 'FT',
+      minute: undefined,
+      score: { home: 1, away: 2 },
+      shootout: { home: 0, away: 3 },
+    });
+    expect(matchLine(pens, cfg(), makeT('en'), painterFor(cfg()))).toContain('1(0)–2(3)');
+  });
 });
 
 describe('dataSource — localized live-data attribution', () => {

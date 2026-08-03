@@ -301,7 +301,15 @@ describe('toolGetShareSnippet — group standings table', () => {
   });
 
   it('fails closed to a degraded roster (no fetchStandings) with a not-live notice', async () => {
-    const r = await toolGetShareSnippet({ group: 'A', adapter: fakeAdapter, marketProvider: synth() });
+    const r = await toolGetShareSnippet({
+      group: 'A',
+      adapter: {
+        ...fakeAdapter,
+        expectedStandingsGroups: ['A'],
+        standingsFallbackGroups: ['A'],
+      },
+      marketProvider: synth(),
+    });
     const data = r.data as { degraded: boolean; source: string | null };
     expect(data.degraded).toBe(true);
     expect(data.source).toBeNull(); // degraded ⇒ no provider attribution
@@ -309,6 +317,20 @@ describe('toolGetShareSnippet — group standings table', () => {
     expect(r.text).not.toContain('Live data:');
     expect(r.text).toContain('Live standings unavailable — group roster, not live results.');
     expect(r.text).toContain(DISCLAIMER);
+  });
+
+  it('open-scope outage stays empty and does not paste World Cup teams', async () => {
+    const r = await toolGetShareSnippet({
+      group: 'A',
+      adapter: fakeAdapter,
+      marketProvider: synth(),
+    });
+    expect(r.text).toContain('Live standings unavailable.');
+    expect(r.text).not.toContain('No group A.');
+    expect(r.text).not.toContain('Group A · standings');
+    expect(r.text).not.toContain('MEX');
+    expect(r.text).toContain(DISCLAIMER);
+    expect(r.data).toMatchObject({ degraded: true, source: null, tables: [] });
   });
 
   it('renders an empty-state card for an unknown group', async () => {

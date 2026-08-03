@@ -4,6 +4,7 @@
  * reliable, otherwise omit silently."
  */
 import { isFinished, isLive } from '../normalize';
+import { sealMarketSignal } from '../trust/market';
 import { LIVE_WINDOW_MS } from '../schedule';
 import type { Match } from '../types';
 import type {
@@ -218,5 +219,26 @@ export function buildMarketSignal(input: BuildSignalInput): MarketSignal {
     ambiguous,
   };
   signal.stale = isStaleSignal(signal, { now: input.now, maxAgeMs: input.maxAgeMs });
-  return signal;
+  // BOTH PATHS END HERE. The cache reader seals what it reads; the live provider
+  // seals what it builds. Without this the claim that they share a constructor
+  // was an argument about which fields happened to be derived from already-clean
+  // data, and it was already false in places — FakeMarketProvider's
+  // `fake-<id>` source id survives live and is dropped on read, and duplicate
+  // outcome kinds were rejected live but silently deduped from cache.
+  //
+  // `ambiguous` is preserved rather than recomputed: only the builder knows the
+  // fixture the outcomes were mapped against.
+  const sealed = sealMarketSignal(signal, { now: input.now, maxAgeMs: input.maxAgeMs });
+  if (sealed.kind !== 'valid') {
+    // The outcomes are DROPPED, not carried through flagged.
+    //
+    // I had this right, then "fixed" it to preserve the data on the grounds
+    // that emptying the list tells the caller a different lie. That reasoning
+    // traded the only thing this call is for: returning the unsealed object put
+    // a bidi override back into an outcome label, which is precisely what the
+    // seal exists to remove. A signal with no legs, flagged stale AND ambiguous,
+    // is not a lie — it is "nothing here we are willing to show", which is true.
+    return { ...signal, outcomes: [], favorite: undefined, stale: true, ambiguous: true };
+  }
+  return { ...sealed.value, ambiguous: sealed.value.ambiguous || ambiguous };
 }

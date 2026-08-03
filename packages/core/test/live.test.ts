@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getBracket,
   getKnockoutFixtures,
   getLiveMatches,
+  getMatchById,
   getMatchesForDate,
   getNextFixtureForTeam,
   type Match,
@@ -175,6 +177,68 @@ describe('getLiveMatches — windowed in-play detection (P1)', () => {
     const { matches, degraded } = await getLiveMatches(adapter, new Date('2026-06-17T05:00:00Z'));
     expect(degraded).toBe(true);
     expect(matches).toEqual([]);
+  });
+});
+
+describe('provider records remain usable across domain surfaces', () => {
+  const asserted = fx('760415', '2026-06-11T19:00Z', {
+    status: 'LIVE',
+    score: { home: 9, away: 0 },
+  });
+  const adapter: ProviderAdapter = {
+    name: 'readable',
+    capabilities: { push: false, latencyHintSec: 0 },
+    async fetchByDate() {
+      return [asserted];
+    },
+    async fetchLive() {
+      return [asserted];
+    },
+    async fetchWindow() {
+      return [asserted];
+    },
+  };
+
+  it('keeps date, live, and match reads healthy', async () => {
+    const date = await getMatchesForDate(adapter, '2026-06-11');
+    expect(date.degraded).toBe(false);
+    expect(date.source).toBe('readable');
+    expect(date.matches.find((m) => m.id === asserted.id)?.score).toEqual({ home: 9, away: 0 });
+
+    await expect(getLiveMatches(adapter, new Date('2026-06-11T20:00:00Z'))).resolves.toEqual({
+      matches: [asserted],
+      degraded: false,
+      source: 'readable',
+    });
+
+    const match = await getMatchById(adapter, asserted.id);
+    expect(match.degraded).toBe(false);
+    expect(match.source).toBe('readable');
+    expect(match.match?.score).toEqual({ home: 9, away: 0 });
+  });
+});
+
+describe('getBracket — degraded fallback', () => {
+  it('keeps provider failures degraded and unattributed', async () => {
+    const adapter: ProviderAdapter = {
+      name: 'boom',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate() {
+        return [];
+      },
+      async fetchLive() {
+        return [];
+      },
+      async fetchWindow() {
+        throw new Error('down');
+      },
+    };
+
+    const result = await getBracket(adapter);
+    expect(result.degraded).toBe(true);
+    expect(result.standingsDegraded).toBe(true);
+    expect(result.source).toBeUndefined();
+    expect(result.view.source).toBeUndefined();
   });
 });
 

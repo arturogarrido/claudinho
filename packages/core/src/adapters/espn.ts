@@ -9,33 +9,16 @@
  * verified against live data; the in-play minute/score path is best-effort and
  * should be re-verified during an actual live match.
  */
-import type { GroupStandings, StandingRow } from '../standings';
-import type { Match, Stage, Status, Team } from '../types';
+import type { GroupStandings } from '../standings';
+import { groups as bundledGroups } from '../schedule';
+import { type MapContext, parseEspnEvent, parseEspnEvents, parseEspnStandings } from '../trust/espn';
+import type { Match } from '../types';
 import type { ProviderAdapter, ProviderCapabilities } from './types';
-import { nationToFlag } from '../flags';
-import { isFinished, isLive } from '../normalize';
-import {
-  canonicalTimestamp,
-  MAX_GOALS,
-  MAX_MINUTE,
-  safeMatchId,
-  sanitizeFeedText,
-} from '../sanitize';
 
-/**
- * Real team abbreviations are 3 letters, so the 100-column default cap was far
- * looser than the field means — and a team "code" is padded into fixed columns
- * on every table.
- */
-const TEAM_CODE_MAX = 8;
+export type { MapContext };
 
-/** Records accepted from one scoreboard payload — matches the `limit` we ask for. */
-const MAX_EVENTS_PER_PAYLOAD = 300;
-
-/** Rows accepted per standings group. A real group is 4; this is slack, not a target. */
-const MAX_STANDINGS_ROWS = 32;
-/** Groups accepted from one standings payload. The tournament has 12. */
-const MAX_STANDINGS_GROUPS = 16;
+import { isLive } from '../normalize';
+import { parsedValue } from '../trust/result';
 
 const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 /** Default competition slug (the 2026 World Cup). */
@@ -94,298 +77,13 @@ export class ProviderError extends Error {
 }
 
 // ---- ESPN response shapes (only the fields we read) ----
-interface EspnStatusType {
-  name?: string;
-  state?: string; // 'pre' | 'in' | 'post'
-  completed?: boolean;
-  shortDetail?: string;
-}
-interface EspnStatus {
-  type?: EspnStatusType;
-  clock?: number;
-  displayClock?: string;
-  period?: number;
-}
-interface EspnTeam {
-  abbreviation?: string;
-  displayName?: string;
-  shortDisplayName?: string;
-  name?: string;
-  location?: string;
-}
-interface EspnCompetitor {
-  homeAway?: 'home' | 'away';
-  score?: string;
-  /** Penalty-shootout tally, present only on shootout matches (ESPN sends a number). */
-  shootoutScore?: number | string;
-  winner?: boolean;
-  team?: EspnTeam;
-}
-interface EspnCompetition {
-  id?: string;
-  date?: string;
-  competitors?: EspnCompetitor[];
-  venue?: { fullName?: string; address?: { city?: string; country?: string } };
-  status?: EspnStatus;
-}
-interface EspnSeason {
-  year?: number;
-  slug?: string; // 'group-stage' | 'round-of-32' | ... | 'final'
-}
-interface EspnEvent {
-  id: string;
-  date: string;
-  name?: string;
-  shortName?: string;
-  season?: EspnSeason;
-  status?: EspnStatus;
-  competitions?: EspnCompetition[];
-}
-interface EspnScoreboard {
-  events?: EspnEvent[];
-}
 
-// ---- mapping helpers ----
-function mapStatus(st?: EspnStatus): Status {
-  // `name`/`state` are DECLARED strings but arrive from JSON, so `.toUpperCase()`
-  // on a number threw and took the whole command down. The emitted value was
-  // never at risk (this function is closed over the Status union); totality was.
-  const name = typeof st?.type?.name === 'string' ? st.type.name.toUpperCase() : '';
-  const state = typeof st?.type?.state === 'string' ? st.type.state : '';
-  if (name.includes('HALFTIME')) return 'HT';
-  if (name.includes('POSTPONED')) return 'POSTPONED';
-  if (name.includes('CANCEL')) return 'CANCELLED';
-  if (state === 'pre') return 'SCHEDULED';
-  if (state === 'post') return 'FT';
-  if (state === 'in') return 'LIVE';
-  return 'SCHEDULED';
-}
-
-function parseMinute(st?: EspnStatus): number | undefined {
-  if (st?.type?.state !== 'in') return undefined;
-  // `displayClock` is DECLARED a string but arrives from JSON, so calling
-  // `.match` on it unguarded threw on any other type. The result is also
-  // bounded: an unbounded minute renders as authoritative fact on the
-  // statusline and in the hook's context.
-  const dc = typeof st.displayClock === 'string' ? st.displayClock.match(/(\d+)/) : null;
-  if (dc) {
-    const n = parseInt(dc[1]!, 10);
-    return Number.isInteger(n) && n >= 0 && n <= MAX_MINUTE ? n : undefined;
-  }
-  if (typeof st.clock === 'number' && st.clock > 0) {
-    const n = Math.floor(st.clock / 60);
-    return n > 0 && n <= MAX_MINUTE ? n : undefined;
-  }
-  return undefined;
-}
-
-/**
- * Authoritative stage mapping from ESPN's `season.slug`. This is exact and
- * always present — far more reliable than parsing display text (which is empty
- * for real fixtures and uses placeholder names like "Round of 32 1 Winner").
- */
-const SLUG_TO_STAGE: Record<string, Stage> = {
-  'group-stage': 'GROUP',
-  'round-of-32': 'R32',
-  'round-of-16': 'R16',
-  quarterfinals: 'QF',
-  semifinals: 'SF',
-  '3rd-place-match': '3P',
-  final: 'F',
-};
-
-function stageFromSlug(slug?: string): Stage {
-  if (slug == null || slug === '') {
-    // Missing slug → GROUP (the WC scoreboard occasionally omits it).
-    return 'GROUP';
-  }
-  // OWN-property lookup. A bare `SLUG_TO_STAGE[slug]` walks the prototype
-  // chain, so a feed slug of "constructor" / "toString" / "valueOf" returned a
-  // FUNCTION — and "__proto__" returned Object.prototype — straight into the
-  // `Stage` enum slot, from where it reached --json and MCP structured content.
-  if (typeof slug === 'string' && Object.hasOwn(SLUG_TO_STAGE, slug)) {
-    const mapped = SLUG_TO_STAGE[slug];
-    if (mapped) return mapped;
-  }
-  // A recognized World Cup phase falls in the table above. Anything else is a
-  // non-tournament fixture (e.g. "2026-international-friendly") — label it
-  // FRIENDLY so it never gets a fake group/stage.
-  return 'FRIENDLY';
-}
-
-/**
- * A whole number from ESPN's string-or-number numeric fields.
- *
- * No `String(s)` coercion: it is not total — a feed value of
- * `{"toString": null}` throws "Cannot convert object to primitive value" and
- * took the whole command down. Anything that is not already a string or a
- * number is absent, and a non-integer is malformed rather than rounded.
- */
-function toInt(s?: string | number): number | undefined {
-  if (typeof s === 'number') return Number.isInteger(s) ? s : undefined;
-  if (typeof s !== 'string' || s === '') return undefined;
-  // WHOLE-string match, not `parseInt`. parseInt stops at the first invalid
-  // character, so "1x" silently became 1 and "5 goals" became 5 — a partially
-  // parsed value presented as an exact score.
-  return /^-?\d{1,9}$/.test(s.trim()) ? Number(s.trim()) : undefined;
-}
-
-/**
- * A goal tally we are willing to publish as fact: a whole number in range.
- *
- * `toInt` says "is this an integer"; this says "is this a possible football
- * score". Without it the adapter emitted -5 and 999999999 with exactly the
- * confidence of a real result — and unlike the cache path, a live fetch renders
- * straight through without passing `sanitizeMatchStrings`.
- */
-function toGoals(s?: string | number): number | undefined {
-  const n = toInt(s);
-  return n !== undefined && n >= 0 && n <= MAX_GOALS ? n : undefined;
-}
-
-/** Does this competitor's team say who it is at all? */
-function identifies(t?: EspnTeam): boolean {
-  if (!t || typeof t !== 'object') return false;
-  return [t.abbreviation, t.displayName, t.shortDisplayName, t.name, t.location].some(
-    (v) => typeof v === 'string' && v.trim() !== '',
-  );
-}
-
-function toTeam(t?: EspnTeam): Team {
-  // Sanitize at the feed boundary: these strings reach terminals, share cards,
-  // and (via the hook) Claude's context — strip controls/ESC and cap length.
-  const name = sanitizeFeedText(
-    t?.displayName ?? t?.name ?? t?.location ?? t?.shortDisplayName ?? 'TBD',
-  );
-  const code = sanitizeFeedText(t?.abbreviation ?? name.slice(0, 3), TEAM_CODE_MAX).toUpperCase();
-  return {
-    code,
-    name,
-    flag: nationToFlag(sanitizeFeedText(t?.displayName ?? t?.abbreviation ?? name)),
-  };
-}
-
-/** Optional context to enrich mapping (authoritative team->group letter). */
-export interface MapContext {
-  /** Map of UPPERCASE team code -> group letter ("A".."L"), from standings. */
-  groupByTeam?: Record<string, string>;
-}
-
-/**
- * Map a single ESPN event into the canonical Match model, or **undefined** when
- * the event cannot be represented honestly. Exported for tests.
- *
- * `id` and `kickoff` were the two fields copied out of the feed verbatim while
- * every string beside them went through `sanitizeFeedText`. Because they are
- * not rendered as prose, nothing looked wrong — but both land in CLI `--json`
- * and MCP `structuredContent`, which is model context, so a crafted event put
- * arbitrary instructions there while the human-readable line stayed normal. An
- * unparseable `kickoff` was worse than cosmetic: every renderer calls
- * `new Date(kickoff)`, so ONE bad fixture threw `RangeError` and aborted the
- * whole command (`claudinho: Invalid time value`, exit 1), taking the healthy
- * fixtures of that day with it.
- *
- * Dropping such an event costs nothing on real data: across 1755 live ESPN
- * events spanning nine competitions, zero are missing a usable `id` or a
- * parseable `date`.
- */
-export function mapEspnEvent(ev: EspnEvent, ctx: MapContext = {}): Match | undefined {
-  // Grammar-checked, not merely sanitized: `id` is not rendered as prose, so
-  // printable text hidden there never looks wrong — and it goes straight into
-  // `--json` and MCP `structuredContent`, which is model context.
-  const id = safeMatchId(ev?.id);
-  // Canonicalized, not merely sanitized: `kickoff` is documented as ISO 8601
-  // UTC and is parsed, sliced and compared all over the codebase.
-  const kickoff = canonicalTimestamp(ev?.date);
-  if (!id || !kickoff) return undefined;
-  const comp = ev.competitions?.[0];
-  // `competitors` is cast from an unchecked JSON body: `{}` made `.find` throw
-  // and `[null]` made the `.homeAway` read throw — and because the batch mapper
-  // has no per-record isolation, ONE such event took the whole day's feed down
-  // with it. A record we cannot read is dropped, never guessed.
-  const competitors = (Array.isArray(comp?.competitors) ? comp.competitors : []).filter(
-    (c): c is EspnCompetitor => !!c && typeof c === 'object',
-  );
-  // EXACTLY one home and one away, each naming a team. Anything else is a
-  // fixture we would be guessing at: `[{}, {}]` produced a phantom "TBD vs TBD"
-  // match nobody is playing, two competitors both marked `home` were silently
-  // assigned by position, and a third contradictory competitor was ignored.
-  // Positional fallback is gone with it — it only ever papered over a payload
-  // that did not say who was playing. The live 104-fixture response satisfies
-  // this stricter contract, so nothing real is refused.
-  if (competitors.length !== 2) return undefined;
-  const homeC = competitors.find((c) => c.homeAway === 'home');
-  const awayC = competitors.find((c) => c.homeAway === 'away');
-  if (!homeC || !awayC) return undefined;
-  // The team object must actually IDENTIFY someone. `{}` is truthy, so requiring
-  // its presence still produced "TBD vs TBD" from two empty objects — `toTeam`
-  // falls back to 'TBD' by design, which is right for a knockout slot ESPN has
-  // not filled but wrong as an invented participant.
-  if (!identifies(homeC.team) || !identifies(awayC.team)) return undefined;
-
-  const status = mapStatus(ev.status ?? comp?.status);
-  const stage = stageFromSlug(ev.season?.slug);
-
-  const home = toTeam(homeC?.team);
-  const away = toTeam(awayC?.team);
-  // A team cannot play itself. Compared on code AND name, because ESPN's real
-  // knockout placeholders legitimately SHARE an abbreviation while differing by
-  // name — "RD32 / Round of 32 1 Winner" vs "RD32 / Round of 32 3 Winner" is a
-  // real fixture, whereas "MEX / Mexico" twice is not.
-  if (home.code === away.code && home.name === away.name) return undefined;
-
-  // Group letter only applies to the group stage, and comes from the
-  // authoritative standings map keyed by team code.
-  let group: string | undefined;
-  if (stage === 'GROUP' && ctx.groupByTeam) {
-    group = ctx.groupByTeam[home.code] ?? ctx.groupByTeam[away.code];
-  }
-
-  const hs = toGoals(homeC?.score);
-  const as = toGoals(awayC?.score);
-  const hasScore = status !== 'SCHEDULED' && hs !== undefined && as !== undefined;
-
-  let winnerCode: string | undefined;
-  if (isFinished(status)) {
-    // A REAL boolean only — `winner: "false"` is a truthy string, so a plain
-    // truthiness test read it as "this team won". And EXACTLY one: checking
-    // home first meant a payload claiming both teams won advanced the home
-    // side, silently picking a winner out of a contradiction. `winnerCode` is
-    // what advances a team through the knockout bracket.
-    const winners = [homeC, awayC].filter((c) => c?.winner === true);
-    if (winners.length === 1) winnerCode = winners[0] === homeC ? home.code : away.code;
-  }
-
-  // Penalty shootout: ESPN carries `shootoutScore` on BOTH competitors only for
-  // matches decided on penalties (absent otherwise). Gate on `hasScore` too, so a
-  // shootout never rides without the regulation `score` it parenthesizes — the
-  // structured payload can't surface an impossible { score: undefined, shootout }
-  // (the scoreline already hides that, but `--json`/MCP `data` would expose it).
-  // `hasScore` (not `isFinished`) so a live in-progress shootout still shows.
-  const hShoot = toGoals(homeC?.shootoutScore);
-  const aShoot = toGoals(awayC?.shootoutScore);
-  const shootout = hasScore && hShoot !== undefined && aShoot !== undefined
-    ? { home: hShoot, away: aShoot }
-    : undefined;
-
-  return {
-    id,
-    stage,
-    group,
-    kickoff,
-    venue: sanitizeFeedText(comp?.venue?.fullName ?? ''),
-    city: sanitizeFeedText(comp?.venue?.address?.city ?? '') || undefined,
-    country: sanitizeFeedText(comp?.venue?.address?.country ?? '') || undefined,
-    home,
-    away,
-    score: hasScore ? { home: hs, away: as } : undefined,
-    shootout,
-    minute: parseMinute(ev.status ?? comp?.status),
-    status,
-    winnerCode,
-    updatedAt: new Date().toISOString(),
-  };
-}
+// ---- parsing lives at the trust boundary ----
+//
+// This adapter is now FETCH only. Every rule about what a payload must look
+// like — cardinality, identity, roles, bounds — lives in `trust/espn.ts`, so
+// there is no second copy to drift from. Ten rounds of review were, over and
+// over, one path enforcing a rule its sibling did not.
 
 /**
  * Convert "YYYY-MM-DD" or "YYYYMMDD" to ESPN's compact "YYYYMMDD".
@@ -396,10 +94,45 @@ function toEspnDate(d: string): string {
   return d.replace(/\D/g, '').slice(0, 8);
 }
 
+/** Map a single ESPN event into the canonical Match model. Exported for tests. */
+export function mapEspnEvent(ev: unknown, ctx: MapContext = {}): Match | undefined {
+  return parsedValue(parseEspnEvent(ev, ctx));
+}
+
+/** Project an ESPN standings payload onto group tables. Exported for tests. */
+export function parseStandings(data: unknown): GroupStandings[] {
+  return [...parseEspnStandings(data).items];
+}
+
+/**
+ * A readable prefix is usable provider data; an unreadable payload with no
+ * usable records is a parse failure, not an authoritative empty answer.
+ */
+function usableProviderItems<T>(
+  kind: 'scoreboard' | 'standings',
+  parsed: { readonly items: readonly T[]; readonly total: number; readonly complete: boolean },
+  hasUsableRecord = parsed.items.length > 0,
+): T[] {
+  // A genuinely empty provider list is authoritative. A non-empty list from
+  // which we could not accept one record is not, even when every refusal was a
+  // `definitive-none` and therefore did not make the batch incomplete.
+  if (!hasUsableRecord && (!parsed.complete || parsed.total > 0)) {
+    throw new ProviderError(`ESPN ${kind} payload had no readable records`, 'parse');
+  }
+  return [...parsed.items];
+}
+
 export interface EspnAdapterOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /**
+   * Expected standings groups for completeness checks and definitive group
+   * validation. Defaults to the bundled groups for the default World Cup base;
+   * custom bases leave the scope open unless supplied. Declaring custom groups
+   * does not authorize use of the bundled World Cup roster on failure.
+   */
+  expectedStandingsGroups?: readonly string[];
   /**
    * Enrich group-stage matches with their group letter via the standings
    * endpoint (one extra request). Default true. Set false on the hot live-poll
@@ -408,120 +141,14 @@ export interface EspnAdapterOptions {
   enrichGroups?: boolean;
 }
 
-// Standings endpoint shapes (only what we read).
-interface EspnStandingsStat {
-  name?: string;
-  value?: number; // numeric (a float, e.g. 3.0)
-}
-interface EspnStandingsEntry {
-  team?: EspnTeam;
-  stats?: EspnStandingsStat[];
-}
-interface EspnStandingsChild {
-  name?: string; // e.g. "Group A"
-  abbreviation?: string;
-  standings?: { entries?: EspnStandingsEntry[] };
-}
-interface EspnStandings {
-  children?: EspnStandingsChild[];
-}
-
-/**
- * Read one numeric stat by name; missing / non-finite / out-of-range → 0.
- *
- * Finiteness alone was not enough: a hostile standings payload rendered a table
- * reading `1e+308`, `-7` and `999999999999` with exactly the confidence of a
- * real one. Every stat here is a season count bounded by the fixture list;
- * `signed` is for goal difference, the only one that may go below zero.
- */
-function statVal(
-  stats: EspnStandingsStat[] | undefined,
-  name: string,
-  signed = false,
-): number {
-  const v = stats?.find((s) => s?.name === name)?.value;
-  if (typeof v !== 'number' || !Number.isFinite(v)) return 0;
-  const n = Math.round(v);
-  const limit = 1000;
-  if (n > limit || n < (signed ? -limit : 0)) return 0;
-  return n;
-}
-
-/** Project an ESPN standings entry onto our StandingRow (goals = soccer "points"). */
-function entryToRow(e: EspnStandingsEntry): StandingRow {
-  return {
-    team: toTeam(e.team),
-    played: statVal(e.stats, 'gamesPlayed'),
-    won: statVal(e.stats, 'wins'),
-    drawn: statVal(e.stats, 'ties'),
-    lost: statVal(e.stats, 'losses'),
-    goalsFor: statVal(e.stats, 'pointsFor'),
-    goalsAgainst: statVal(e.stats, 'pointsAgainst'),
-    // The one stat that may legitimately be negative.
-    goalDiff: statVal(e.stats, 'pointDifferential', true),
-    points: statVal(e.stats, 'points'),
-  };
-}
-
-/**
- * Parse the standings payload into group tables. Pure (exported for tests).
- *
- * Two non-obvious robustness points, both verified against the live response:
- *  - ESPN's `entries` array is NOT in rank order, so we sort by the `rank` stat
- *    (falling back to points → GD → GF → code when rank is absent).
- *  - Non-group `children` (knockout brackets) are skipped by the "Group X" name
- *    test, so this stays correct once the bracket phase begins.
- */
-export function parseStandings(data: EspnStandings): GroupStandings[] {
-  const out: GroupStandings[] = [];
-  const seen = new Set<string>();
-  for (const child of Array.isArray(data?.children) ? data.children : []) {
-    const letter = (child.name ?? child.abbreviation ?? '')
-      .match(/Group\s+([A-L])/i)?.[1]
-      ?.toUpperCase();
-    if (!letter) continue;
-    // Guard BEFORE mapping and sorting. Doing the per-entry work first and
-    // capping after meant a 4,000-row group cost ~300ms to produce 32 rows.
-    if (out.length >= MAX_STANDINGS_GROUPS || seen.has(letter)) continue;
-    const rawEntries = Array.isArray(child.standings?.entries) ? child.standings.entries : [];
-    const ranked = rawEntries.slice(0, MAX_STANDINGS_ROWS * 4).map((e) => ({
-      row: entryToRow(e),
-      rank: statVal(e.stats, 'rank'),
-    }));
-    ranked.sort((a, b) => {
-      if (a.rank && b.rank && a.rank !== b.rank) return a.rank - b.rank;
-      const r = a.row;
-      const s = b.row;
-      return (
-        s.points - r.points ||
-        s.goalDiff - r.goalDiff ||
-        s.goalsFor - r.goalsFor ||
-        r.team.code.localeCompare(s.team.code)
-      );
-    });
-    // Rows bounded at the ADAPTER, so every consumer inherits it. A group is at
-    // most 4 teams; capping the table COUNT downstream was a no-op (there are 12
-    // groups) while the rows inside each table stayed unbounded, which is what
-    // actually carries the bytes into model context.
-    //
-    // The CHILDREN need the same bound, and for the same reason I keep having to
-    // learn: bounding the inner list while the outer one is unbounded is not a
-    // bound. A hostile feed returning "Group A" 200 times produced 200 tables
-    // and 6,400 rows. Groups are also DEDUPED — twelve letters exist, and a
-    // repeated one is a duplicate table, not a new group.
-    seen.add(letter);
-    out.push({ group: letter, rows: ranked.slice(0, MAX_STANDINGS_ROWS).map((x) => x.row) });
-  }
-  out.sort((a, b) => a.group.localeCompare(b.group));
-  return out;
-}
-
 export class EspnAdapter implements ProviderAdapter {
   readonly name = 'espn';
   readonly capabilities: ProviderCapabilities = { push: false, latencyHintSec: 45 };
+  readonly expectedStandingsGroups?: readonly string[];
+  readonly standingsFallbackGroups?: readonly string[];
 
-  /** Cached team-code -> group-letter map (built lazily from standings). */
-  private groupMap?: Record<string, string>;
+  /** Short-lived team-code -> group-letter map (built lazily from standings). */
+  private groupMap?: { at: number; value: Record<string, string> };
 
   /**
    * One in-flight/recent standings fetch shared by fetchStandings and
@@ -539,7 +166,15 @@ export class EspnAdapter implements ProviderAdapter {
    */
   lastError?: ProviderError;
 
-  constructor(private readonly opts: EspnAdapterOptions = {}) {}
+  constructor(private readonly opts: EspnAdapterOptions = {}) {
+    const expected =
+      opts.expectedStandingsGroups ?? (opts.baseUrl === undefined ? bundledGroups() : undefined);
+    this.expectedStandingsGroups = expected ? [...expected] : undefined;
+    // A custom base can declare its expected letters for completeness without
+    // claiming that its teams match the bundled World Cup roster.
+    this.standingsFallbackGroups =
+      opts.baseUrl === undefined && expected ? [...expected] : undefined;
+  }
 
   async fetchByDate(dateISO: string): Promise<Match[]> {
     return this.fetchScoreboard(toEspnDate(dateISO));
@@ -572,13 +207,19 @@ export class EspnAdapter implements ProviderAdapter {
     if (this.standingsShared && now - this.standingsShared.at < STANDINGS_SHARE_MS) {
       return this.standingsShared.promise;
     }
-    const promise = this.get(this.standingsUrl()).then((d) =>
-      parseStandings(d as EspnStandings),
-    );
+    const promise = this.get(this.standingsUrl()).then((d) => {
+      const parsed = parseEspnStandings(d);
+      return usableProviderItems<GroupStandings>(
+        'standings',
+        parsed,
+        parsed.items.some((table) => table.rows.length > 0),
+      );
+    });
     this.standingsShared = { at: now, promise };
     // Never cache a transient failure: a rejected fetch frees the slot so the
-    // next caller retries instead of inheriting the same rejection for 30s.
-    promise.catch(() => {
+    // next caller retries instead of inheriting it for 30s. A fulfilled parse,
+    // including one that omitted malformed rows, is stable for these bytes.
+    void promise.catch(() => {
       if (this.standingsShared?.promise === promise) this.standingsShared = undefined;
     });
     return promise;
@@ -586,28 +227,33 @@ export class EspnAdapter implements ProviderAdapter {
 
   /**
    * Authoritative, cumulative group tables from the standings endpoint. Throws
-   * on fetch/parse failure (the caller decides the fallback). Group-stage only:
-   * non-group `children` are filtered out by {@link parseStandings}.
+   * on fetch failure. Group-stage only: non-group `children` are filtered out
+   * by {@link parseStandings}; malformed rows are omitted without hiding their
+   * readable siblings.
    */
   async fetchStandings(): Promise<GroupStandings[]> {
     return this.sharedStandings();
   }
 
   /**
-   * Build (and cache) a team-code -> group-letter map from the standings
+   * Build (and briefly cache) a team-code -> group-letter map from the standings
    * endpoint. Best-effort: returns {} if standings are unavailable — but a
-   * transient failure is NOT cached (only a successful parse pins the map), so
-   * one blip can't silently drop group letters for the adapter's lifetime.
+   * transient failure is NOT cached, and a partial successful parse expires at
+   * the standings TTL, so neither can silently drop group letters for the
+   * adapter's lifetime.
    * Reuses the same parse/fetch as {@link fetchStandings}, so the two never
    * drift and one command never fetches standings twice.
    */
   async fetchGroupMap(force = false): Promise<Record<string, string>> {
-    if (this.groupMap && !force) return this.groupMap;
+    const now = Date.now();
+    if (!force && this.groupMap && now - this.groupMap.at < STANDINGS_SHARE_MS) {
+      return this.groupMap.value;
+    }
     try {
       const tables = await this.sharedStandings();
       const map: Record<string, string> = {};
       for (const t of tables) for (const r of t.rows) map[r.team.code] = t.group;
-      this.groupMap = map;
+      this.groupMap = { at: Date.now(), value: map };
       return map;
     } catch {
       // standings optional — group letters absent for THIS call; retry next call
@@ -628,17 +274,14 @@ export class EspnAdapter implements ProviderAdapter {
       this.opts.enrichGroups === false
         ? Promise.resolve<Record<string, string>>({})
         : this.fetchGroupMap(),
-      this.get(url.toString()) as Promise<EspnScoreboard>,
+      this.get(url.toString()),
     ]);
-    // Bound the RECORD COUNT, not just each field. The per-field cap limits one
-    // name to 100 columns but says nothing about how many records arrive, and
-    // repetition defeated it: a payload of identical poisoned fixtures produced
-    // a multi-megabyte tool response, every byte of it model context. We ask
-    // for `limit=300`, so anything beyond that is not a response to our query.
-    return (data.events ?? [])
-      .slice(0, MAX_EVENTS_PER_PAYLOAD)
-      .map((ev) => mapEspnEvent(ev, { groupByTeam }))
-      .filter((m): m is Match => !!m);
+    // One call, one boundary: `parseEspnEvents` bounds the record count BEFORE
+    // parsing anything and drops what it cannot read. The adapter no longer
+    // decides any of that — which is the point, since every duplicated rule was
+    // a place for the two copies to drift.
+    const parsed = parseEspnEvents(data, { groupByTeam });
+    return usableProviderItems<Match>('scoreboard', parsed);
   }
 
   private async get(url: string): Promise<unknown> {

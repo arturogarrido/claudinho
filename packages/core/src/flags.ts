@@ -99,12 +99,24 @@ const ALIASES: ReadonlyArray<readonly [string, string]> = [
   ['Burma', 'MM'], ['Cape Verde', 'CV'],
 ];
 
-const BY_NATION: Record<string, string> = Object.fromEntries(
-  [...NATIONS, ...ALIASES].map(([name, code]) => [norm(name), code]),
+/**
+ * NULL-PROTOTYPE, and so are the two tables below.
+ *
+ * A plain object inherits from Object.prototype, so a bare index walks the
+ * prototype chain on a miss. `norm()` strips everything outside [a-z], and
+ * `norm('Constructor')` is exactly `'constructor'` — a real key on that
+ * prototype whose value is the Object FUNCTION. A team named "Constructor"
+ * therefore resolved to a function, `flagEmoji` called `.trim()` on it, and the
+ * TypeError escaped the trust boundary: one poisoned record took down the whole
+ * batch, on a boundary whose stated property is that it is total.
+ */
+const BY_NATION: Record<string, string> = Object.assign(
+  Object.create(null),
+  Object.fromEntries([...NATIONS, ...ALIASES].map(([name, code]) => [norm(name), code])),
 );
 
 // Best-effort FIFA/IOC 3-letter codes -> region code (secondary lookup path).
-const BY_CODE: Record<string, string> = {
+const BY_CODE: Record<string, string> = Object.assign(Object.create(null), {
   MEX: 'MX', RSA: 'ZA', KOR: 'KR', CZE: 'CZ', CAN: 'CA', BIH: 'BA',
   USA: 'US', PAR: 'PY', QAT: 'QA', SUI: 'CH', BRA: 'BR', MAR: 'MA',
   HAI: 'HT', SCO: 'GB-SCT', AUS: 'AU', TUR: 'TR', GER: 'DE', CUW: 'CW',
@@ -115,7 +127,7 @@ const BY_CODE: Record<string, string> = {
   NOR: 'NO', DEN: 'DK', AUT: 'AT', POL: 'PL', ITA: 'IT', SRB: 'RS',
   PAN: 'PA', CRC: 'CR', JOR: 'JO', UZB: 'UZ', NZL: 'NZ', CPV: 'CV',
   JAM: 'JM', PER: 'PE', CHI: 'CL', HON: 'HN', COD: 'CD', MLI: 'ML',
-};
+});
 
 /**
  * Resolve a flag emoji from a nation name or code.
@@ -137,7 +149,7 @@ export function nationToFlag(nameOrCode: string | undefined | null): string {
 let INTL_BY_NAME: Record<string, string> | undefined;
 function intlNameMap(): Record<string, string> {
   if (INTL_BY_NAME) return INTL_BY_NAME;
-  const map: Record<string, string> = {};
+  const map: Record<string, string> = Object.create(null);
   try {
     const dn = new Intl.DisplayNames(['en'], { type: 'region' });
     for (let a = 65; a <= 90; a++) {
@@ -169,9 +181,13 @@ function intlNameMap(): Record<string, string> {
  */
 export function nationToRegion(nameOrCode: string | undefined | null): string | undefined {
   if (!nameOrCode) return undefined;
-  const byName = BY_NATION[norm(nameOrCode)];
-  if (byName) return byName;
-  const byCode = BY_CODE[nameOrCode.trim().toUpperCase()];
-  if (byCode) return byCode;
-  return intlNameMap()[norm(nameOrCode)];
+  // Defence in depth behind the null-prototype tables: a region is a STRING,
+  // and anything else a lookup produces is not one. Cheap, and it keeps a
+  // future table built the ordinary way from becoming a crash again.
+  const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
+  return (
+    str(BY_NATION[norm(nameOrCode)]) ??
+    str(BY_CODE[nameOrCode.trim().toUpperCase()]) ??
+    str(intlNameMap()[norm(nameOrCode)])
+  );
 }
