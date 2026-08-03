@@ -36,6 +36,40 @@ const STANDINGS = {
   ],
 };
 
+const BAD_GROUP_B = {
+  name: 'Group B',
+  standings: {
+    entries: [
+      {
+        team: { id: 'bad', abbreviation: 'BAD', displayName: 'Bad Row' },
+        stats: [],
+      },
+    ],
+  },
+};
+
+const GROUP_B = {
+  name: 'Group B',
+  standings: {
+    entries: [
+      {
+        team: { id: 'can', abbreviation: 'CAN', displayName: 'Canada' },
+        stats: [
+          { name: 'gamesPlayed', value: 1 },
+          { name: 'wins', value: 1 },
+          { name: 'ties', value: 0 },
+          { name: 'losses', value: 0 },
+          { name: 'pointsFor', value: 1 },
+          { name: 'pointsAgainst', value: 0 },
+          { name: 'pointDifferential', value: 1 },
+          { name: 'points', value: 3 },
+          { name: 'rank', value: 1 },
+        ],
+      },
+    ],
+  },
+};
+
 const okJson = (body: unknown) =>
   ({ ok: true, status: 200, statusText: 'OK', json: async () => body }) as unknown as Response;
 const httpError = (status: number, statusText = 'err') =>
@@ -110,6 +144,29 @@ describe('group map: never cache a transient failure (F5 ARCH-2)', () => {
     // Second call: the blip passed → the real map (the old code returned {} forever).
     expect(await adapter.fetchGroupMap()).toEqual({ MEX: 'A' });
   });
+
+  it('expires a partial successful map so omitted groups can recover', async () => {
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    let calls = 0;
+    const adapter = new EspnAdapter({
+      fetchImpl: (async () => {
+        calls += 1;
+        return okJson({
+          children: calls === 1 ? [...STANDINGS.children, BAD_GROUP_B] : [...STANDINGS.children, GROUP_B],
+        });
+      }) as FetchImpl,
+    });
+
+    try {
+      expect(await adapter.fetchGroupMap()).toEqual({ MEX: 'A' });
+      now += 30_001;
+      expect(await adapter.fetchGroupMap()).toEqual({ MEX: 'A', CAN: 'B' });
+      expect(calls).toBe(2);
+    } finally {
+      clock.mockRestore();
+    }
+  });
 });
 
 describe('shared standings fetch (F5 PERF-4)', () => {
@@ -155,26 +212,13 @@ describe('shared standings fetch (F5 PERF-4)', () => {
       fetchImpl: (async () => {
         calls += 1;
         return okJson({
-          children: [
-            ...STANDINGS.children,
-            {
-              name: 'Group B',
-              standings: {
-                entries: [
-                  {
-                    team: { id: 'bad', abbreviation: 'BAD', displayName: 'Bad Row' },
-                    stats: [],
-                  },
-                ],
-              },
-            },
-          ],
+          children: [...STANDINGS.children, BAD_GROUP_B],
         });
       }) as FetchImpl,
     });
-    expect(await adapter.fetchStandings()).toHaveLength(2);
+    expect(await adapter.fetchStandings()).toHaveLength(1);
     expect(await adapter.fetchGroupMap()).toEqual({ MEX: 'A' });
-    expect(await adapter.fetchStandings()).toHaveLength(2);
+    expect(await adapter.fetchStandings()).toHaveLength(1);
     expect(calls).toBe(1);
   });
 

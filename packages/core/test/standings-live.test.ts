@@ -154,6 +154,37 @@ describe('getStandings', () => {
     expect(r.tables).toEqual([]);
   });
 
+  it('falls back when every row of a known group is refused but a sibling group parses', async () => {
+    const partial = parseStandings({
+      children: [
+        {
+          name: 'Group A',
+          standings: {
+            entries: [entry('BAD', 'Bad Row', [stat('gamesPlayed', 1), stat('rank', 1)])],
+          },
+        },
+        {
+          name: 'Group B',
+          standings: {
+            entries: [entry('CAN', 'Canada', full(1, 1, 0, 0, 1, 0, 1))],
+          },
+        },
+      ],
+    });
+    expect(partial.map((table) => table.group)).toEqual(['B']);
+
+    const omitted = await getStandings(standingsAdapter(partial), 'A');
+    expect(omitted.degraded).toBe(true);
+    expect(omitted.source).toBeUndefined();
+    expect(omitted.tables[0]?.rows).toHaveLength(4);
+    expect(omitted.tables[0]?.rows.every((row) => row.played === 0)).toBe(true);
+
+    const readable = await getStandings(standingsAdapter(partial), 'B');
+    expect(readable.degraded).toBe(false);
+    expect(readable.source).toBe('fake');
+    expect(readable.tables[0]?.rows.map((row) => row.team.code)).toEqual(['CAN']);
+  });
+
   it('FAILS CLOSED to a degraded roster when the provider has no fetchStandings', async () => {
     const r = await getStandings(noStandings, 'A');
     expect(r.degraded).toBe(true);

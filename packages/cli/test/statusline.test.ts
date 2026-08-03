@@ -70,8 +70,7 @@ describe('renderPrompt — live', () => {
       score: { home: 0, away: 0 },
     });
     const line = renderPrompt(state([...other, target]), { now: NOW, team: 'MEX' });
-    expect(line).toContain('live · syncing…');
-    expect(line).not.toContain(' in ');
+    expect(line).toBe('⚽ 🇲🇽 vs 🇿🇦 live · syncing…');
   });
 
   it('shows ALL live matches inline (no team filter), joined by " · "', () => {

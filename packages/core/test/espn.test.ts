@@ -5,7 +5,7 @@ import {
   mapEspnEvent,
   parseStandings,
 } from '../src/adapters/espn';
-import { getLiveMatches } from '../src/live';
+import { getLiveMatches, getMatchesForDate } from '../src/live';
 
 // Minimal ESPN-shaped fixtures mirroring the real response structure.
 
@@ -283,6 +283,26 @@ describe('mapEspnEvent', () => {
 });
 
 describe('EspnAdapter fetch hardening (size cap + no redirects)', () => {
+  const sameTeamEvent = {
+    ...scheduled,
+    id: '700099',
+    competitions: [
+      {
+        ...scheduled.competitions[0],
+        competitors: [
+          {
+            homeAway: 'home',
+            team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
+          },
+          {
+            homeAway: 'away',
+            team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
+          },
+        ],
+      },
+    ],
+  };
+
   /** Response-like fake with a content-length header and a spy json(). */
   function bigResponse(bytes: number) {
     const json = vi.fn(async () => ({ events: [] }));
@@ -329,7 +349,7 @@ describe('EspnAdapter fetch hardening (size cap + no redirects)', () => {
       status: 200,
       statusText: 'OK',
       headers: { get: () => null },
-      json: async () => ({ events: [scheduled, malformed] }),
+      json: async () => ({ events: [scheduled, malformed, sameTeamEvent] }),
     })) as unknown as typeof fetch;
     const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
     const matches = await adapter.fetchByDate('2026-06-11');
@@ -346,6 +366,38 @@ describe('EspnAdapter fetch hardening (size cap + no redirects)', () => {
     })) as unknown as typeof fetch;
     const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
     await expect(adapter.fetchByDate('2026-06-11')).rejects.toMatchObject({ kind: 'parse' });
+  });
+
+  it('degrades an unreadable zero-record envelope instead of treating it as a true empty day', async () => {
+    const fetchImpl = (async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: () => null },
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
+
+    await expect(adapter.fetchByDate('2026-06-11')).rejects.toMatchObject({ kind: 'parse' });
+    const result = await getMatchesForDate(adapter, '2026-06-11');
+    expect(result.degraded).toBe(true);
+    expect(result.source).toBeUndefined();
+  });
+
+  it('degrades when every non-empty scoreboard record is definitive-none', async () => {
+    const fetchImpl = (async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: () => null },
+      json: async () => ({ events: [sameTeamEvent] }),
+    })) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
+
+    await expect(adapter.fetchByDate('2026-06-11')).rejects.toMatchObject({ kind: 'parse' });
+    const result = await getMatchesForDate(adapter, '2026-06-11');
+    expect(result.degraded).toBe(true);
+    expect(result.source).toBeUndefined();
   });
 
   it("sends redirect:'error' so a redirect can't escape the fixed host", async () => {
@@ -410,6 +462,30 @@ describe('mapEspnEvent — impossible facts and malformed records', () => {
     // `winnerCode` is what advances a team through the knockout bracket.
     expect(mapped(withHome({ winner: 'false' })).winnerCode).toBeUndefined();
     expect(mapped(withHome({ winner: true })).winnerCode).toBe('MEX');
+  });
+
+  it('keeps a decisive group winner when stray shootout fields are present', () => {
+    const event = {
+      ...base,
+      competitions: [
+        {
+          competitors: [
+            {
+              ...base.competitions[0]!.competitors[0],
+              score: '2',
+              shootoutScore: 1,
+              winner: true,
+            },
+            {
+              ...base.competitions[0]!.competitors[1],
+              score: '0',
+              shootoutScore: 4,
+            },
+          ],
+        },
+      ],
+    };
+    expect(mapped(event).winnerCode).toBe('MEX');
   });
 
   it('never throws on a malformed competitors body (one event must not sink the feed)', () => {

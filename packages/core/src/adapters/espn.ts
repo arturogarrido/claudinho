@@ -111,10 +111,13 @@ export function parseStandings(data: unknown): GroupStandings[] {
  */
 function usableProviderItems<T>(
   kind: 'scoreboard' | 'standings',
-  parsed: { readonly items: readonly T[]; readonly complete: boolean },
+  parsed: { readonly items: readonly T[]; readonly total: number; readonly complete: boolean },
   hasUsableRecord = parsed.items.length > 0,
 ): T[] {
-  if (!parsed.complete && !hasUsableRecord) {
+  // A genuinely empty provider list is authoritative. A non-empty list from
+  // which we could not accept one record is not, even when every refusal was a
+  // `definitive-none` and therefore did not make the batch incomplete.
+  if (!hasUsableRecord && (!parsed.complete || parsed.total > 0)) {
     throw new ProviderError(`ESPN ${kind} payload had no readable records`, 'parse');
   }
   return [...parsed.items];
@@ -137,8 +140,8 @@ export class EspnAdapter implements ProviderAdapter {
   readonly name = 'espn';
   readonly capabilities: ProviderCapabilities = { push: false, latencyHintSec: 45 };
 
-  /** Cached team-code -> group-letter map (built lazily from standings). */
-  private groupMap?: Record<string, string>;
+  /** Short-lived team-code -> group-letter map (built lazily from standings). */
+  private groupMap?: { at: number; value: Record<string, string> };
 
   /**
    * One in-flight/recent standings fetch shared by fetchStandings and
@@ -218,20 +221,24 @@ export class EspnAdapter implements ProviderAdapter {
   }
 
   /**
-   * Build (and cache) a team-code -> group-letter map from the standings
+   * Build (and briefly cache) a team-code -> group-letter map from the standings
    * endpoint. Best-effort: returns {} if standings are unavailable — but a
-   * transient failure is NOT cached (only a successful parse pins the map), so
-   * one blip can't silently drop group letters for the adapter's lifetime.
+   * transient failure is NOT cached, and a partial successful parse expires at
+   * the standings TTL, so neither can silently drop group letters for the
+   * adapter's lifetime.
    * Reuses the same parse/fetch as {@link fetchStandings}, so the two never
    * drift and one command never fetches standings twice.
    */
   async fetchGroupMap(force = false): Promise<Record<string, string>> {
-    if (this.groupMap && !force) return this.groupMap;
+    const now = Date.now();
+    if (!force && this.groupMap && now - this.groupMap.at < STANDINGS_SHARE_MS) {
+      return this.groupMap.value;
+    }
     try {
       const tables = await this.sharedStandings();
       const map: Record<string, string> = {};
       for (const t of tables) for (const r of t.rows) map[r.team.code] = t.group;
-      this.groupMap = map;
+      this.groupMap = { at: Date.now(), value: map };
       return map;
     } catch {
       // standings optional — group letters absent for THIS call; retry next call

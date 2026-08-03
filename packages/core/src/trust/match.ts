@@ -238,11 +238,17 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   let winnerCode: string | undefined;
   // Only a FINISHED match has a winner. A LIVE 2-0 carrying a `winnerCode`
   // advanced a team out of a match still being played.
-  // If the payload asserted a shootout but that field was unusable, do not
-  // advance from the leg score: the omitted tally may have settled an aggregate
-  // tie in the opposite direction.
-  if (claimedSide && score && finished && (!shootoutPresent || shootout)) {
+  // If a knockout payload asserted a shootout but that field was unusable, do
+  // not advance from the leg score: the omitted tally may have settled an
+  // aggregate tie in the opposite direction. A group match cannot be decided
+  // by penalties, so stray shootout bytes there do not erase its score winner.
+  const unusableShootoutCouldDecide = canGoToPenalties && shootoutPresent && !shootout;
+  if (claimedSide && score && finished && !unusableShootoutCouldDecide) {
     const level = score.home === score.away;
+    // A valid shootout deliberately outranks a decisive score. ESPN's score is
+    // the current leg, not the aggregate, and the stage does not distinguish a
+    // two-legged tie from a single-leg match; honoring penalties is the only
+    // reading that advances real aggregate shootouts correctly.
     const decider = shootout ?? score;
     if (decider && decider.home !== decider.away) {
       if ((decider.home > decider.away ? 'home' : 'away') === claimedSide) winnerCode = claimedWinner;

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getBracket,
   getKnockoutFixtures,
   getLiveMatches,
   getMatchById,
   getMatchesForDate,
   getNextFixtureForTeam,
-  getStandings,
   type Match,
   type ProviderAdapter,
 } from '../src/index';
@@ -197,9 +197,6 @@ describe('provider records remain usable across domain surfaces', () => {
     async fetchWindow() {
       return [asserted];
     },
-    async fetchStandings() {
-      return [];
-    },
   };
 
   it('keeps date, live, and match reads healthy', async () => {
@@ -218,9 +215,30 @@ describe('provider records remain usable across domain surfaces', () => {
     expect(match.degraded).toBe(false);
     expect(match.source).toBe('readable');
     expect(match.match?.score).toEqual({ home: 9, away: 0 });
+  });
+});
 
-    const standings = await getStandings(adapter, 'A');
-    expect(standings).toEqual({ tables: [], degraded: false, source: 'readable' });
+describe('getBracket — degraded fallback', () => {
+  it('keeps provider failures degraded and unattributed', async () => {
+    const adapter: ProviderAdapter = {
+      name: 'boom',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate() {
+        return [];
+      },
+      async fetchLive() {
+        return [];
+      },
+      async fetchWindow() {
+        throw new Error('down');
+      },
+    };
+
+    const result = await getBracket(adapter);
+    expect(result.degraded).toBe(true);
+    expect(result.standingsDegraded).toBe(true);
+    expect(result.source).toBeUndefined();
+    expect(result.view.source).toBeUndefined();
   });
 });
 

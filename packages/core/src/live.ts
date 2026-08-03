@@ -132,8 +132,10 @@ export interface StandingsResult {
  * a group not playing today) — the bug this replaced. A degraded roster is
  * honestly empty; a confidently-wrong table is the failure mode we refuse.
  *
- * An empty `tables` with `degraded: false` means the fetch succeeded but the
- * asked-for group isn't in it (caller renders "no such group").
+ * An empty `tables` with `degraded: false` means the fetch succeeded but an
+ * unknown asked-for group isn't in it (caller renders "no such group"). A
+ * bundled group omitted from a partial provider result takes the degraded
+ * roster fallback instead of rendering as an authoritative empty table.
  */
 export async function getStandings(
   adapter: ProviderAdapter,
@@ -146,7 +148,10 @@ export async function getStandings(
       const tables = (want ? all.filter((t) => t.group === want) : all).sort((a, b) =>
         a.group.localeCompare(b.group),
       );
-      return { tables, degraded: false, source: adapter.name };
+      const knownGroupWasOmitted = !!want && groups().includes(want) && tables.length === 0;
+      if (!knownGroupWasOmitted) {
+        return { tables, degraded: false, source: adapter.name };
+      }
     } catch {
       // fall through to the degraded roster
     }

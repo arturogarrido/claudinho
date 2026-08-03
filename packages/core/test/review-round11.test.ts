@@ -107,7 +107,17 @@ describe('completeness is not invented', () => {
   it('a group whose ROWS were cut is not a complete table', () => {
     const entry = (i: number) => ({
       team: { id: String(i), abbreviation: `T${i}`, displayName: `Team ${i}` },
-      stats: [{ name: 'points', value: 3 }],
+      stats: [
+        { name: 'gamesPlayed', value: 1 },
+        { name: 'wins', value: 1 },
+        { name: 'ties', value: 0 },
+        { name: 'losses', value: 0 },
+        { name: 'pointsFor', value: 1 },
+        { name: 'pointsAgainst', value: 0 },
+        { name: 'pointDifferential', value: 1 },
+        { name: 'points', value: 3 },
+        { name: 'rank', value: i + 1 },
+      ],
     });
     const list = parseEspnStandings({
       children: [{ name: 'Group A', standings: { entries: Array.from({ length: 100 }, (_, i) => entry(i)) } }],

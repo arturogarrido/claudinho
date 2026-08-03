@@ -262,6 +262,33 @@ describe('parseEspnEvents / parseEspnStandings — bounded before the work', () 
     expect(list.complete).toBe(true);
   });
 
+  it('does not let one provider team occupy two group tables', () => {
+    const stats = [
+      { name: 'gamesPlayed', value: 1 },
+      { name: 'wins', value: 1 },
+      { name: 'ties', value: 0 },
+      { name: 'losses', value: 0 },
+      { name: 'pointsFor', value: 2 },
+      { name: 'pointsAgainst', value: 0 },
+      { name: 'pointDifferential', value: 2 },
+      { name: 'points', value: 3 },
+      { name: 'rank', value: 1 },
+    ];
+    const sameTeam = {
+      team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
+      stats,
+    };
+    const list = parseEspnStandings({
+      children: [
+        { name: 'Group A', standings: { entries: [sameTeam] } },
+        { name: 'Group B', standings: { entries: [sameTeam] } },
+      ],
+    });
+
+    expect(list.items.map((table) => table.group)).toEqual(['A']);
+    expect(list.complete).toBe(false);
+  });
+
   it('accounts for provider points deductions', () => {
     const list = parseEspnStandings({
       children: [
@@ -293,7 +320,7 @@ describe('parseEspnEvents / parseEspnStandings — bounded before the work', () 
     expect(list.complete).toBe(true);
   });
 
-  it('marks contradictory aggregate statistics incomplete', () => {
+  it('omits a table when every row has contradictory aggregate statistics', () => {
     const stats = [
       { name: 'gamesPlayed', value: 1 },
       { name: 'wins', value: 1 },
@@ -317,7 +344,51 @@ describe('parseEspnEvents / parseEspnStandings — bounded before the work', () 
         },
       ],
     });
-    expect(list.items[0]?.rows).toEqual([]);
+    expect(list.items).toEqual([]);
+    expect(list.complete).toBe(false);
+  });
+
+  it('keeps readable sibling groups when another group has no usable row', () => {
+    const validStats = [
+      { name: 'gamesPlayed', value: 1 },
+      { name: 'wins', value: 1 },
+      { name: 'ties', value: 0 },
+      { name: 'losses', value: 0 },
+      { name: 'pointsFor', value: 2 },
+      { name: 'pointsAgainst', value: 0 },
+      { name: 'pointDifferential', value: 2 },
+      { name: 'points', value: 3 },
+      { name: 'rank', value: 1 },
+    ];
+    const list = parseEspnStandings({
+      children: [
+        {
+          name: 'Group A',
+          standings: {
+            entries: [
+              {
+                team: { id: 'bad', abbreviation: 'BAD', displayName: 'Bad Row' },
+                stats: [],
+              },
+            ],
+          },
+        },
+        {
+          name: 'Group B',
+          standings: {
+            entries: [
+              {
+                team: { id: 'can', abbreviation: 'CAN', displayName: 'Canada' },
+                stats: validStats,
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(list.items.map((table) => table.group)).toEqual(['B']);
+    expect(list.items[0]?.rows.map((row) => row.team.code)).toEqual(['CAN']);
     expect(list.complete).toBe(false);
   });
 });

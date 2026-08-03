@@ -457,6 +457,10 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
   let complete = readable && sawAllChildren;
   const out: GroupStandings[] = [];
   const seenGroups = new Set<string>();
+  // ESPN team ids identify a provider entity across the whole payload. Codes
+  // remain table-local because distinct teams can share an abbreviation, but
+  // one stable provider id cannot legitimately occupy two groups.
+  const seenProviderIds = new Set<string>();
 
   for (const child of children) {
     const label = humanLabel(child?.name ?? child?.abbreviation);
@@ -497,12 +501,17 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
       // A team appears once per table. A duplicate is a payload we cannot read
       // as a table, not two rows about two teams.
       const key = r.value.providerId ?? r.value.team.code;
-      if (seenTeams.has(key) || seenRanks.has(r.value.providerRank)) {
+      if (
+        seenTeams.has(key) ||
+        seenRanks.has(r.value.providerRank) ||
+        (r.value.providerId !== undefined && seenProviderIds.has(r.value.providerId))
+      ) {
         complete = false;
         continue;
       }
       seenTeams.add(key);
       seenRanks.add(r.value.providerRank);
+      if (r.value.providerId !== undefined) seenProviderIds.add(r.value.providerId);
       const { providerId: _dropId, providerRank: rank, ...row } = r.value;
       ranked.push({ row, rank });
     }
@@ -512,14 +521,20 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
       if (b.row.goalDiff !== a.row.goalDiff) return b.row.goalDiff - a.row.goalDiff;
       return b.row.goalsFor - a.row.goalsFor;
     });
+    // Do not turn a group we could not read into an authoritative empty table.
+    // Readable sibling groups remain usable; a caller asking for this known
+    // group will take the degraded roster fallback instead.
+    if (ranked.length === 0) {
+      complete = false;
+      continue;
+    }
     out.push({ group: letter, rows: ranked.map((x) => x.row) });
   }
   return {
     items: out,
     total: seenGroups.size,
     shown: out.length,
-    // We stopped early if the child list was cut, we filled the group cap, or
-    // any single group's ROWS were cut.
+    // We stopped early if the child list or any single group's rows were cut.
     truncated: !sawAllChildren || rowsTruncated,
     complete: complete && !rowsTruncated,
   };
