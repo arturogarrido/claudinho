@@ -157,6 +157,21 @@ describe('getStandings', () => {
     expect(r.tables).toEqual([]);
   });
 
+  it('does not substitute bundled groups into an open-scope custom competition', async () => {
+    const adapter = standingsAdapter([]);
+
+    await expect(getStandings(adapter)).resolves.toEqual({
+      tables: [],
+      degraded: false,
+      source: 'fake',
+    });
+    await expect(getStandings(adapter, 'A')).resolves.toEqual({
+      tables: [],
+      degraded: false,
+      source: 'fake',
+    });
+  });
+
   it('falls back when every row of a known group is refused but a sibling group parses', async () => {
     const partial = parseStandings({
       children: [

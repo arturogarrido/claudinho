@@ -134,8 +134,9 @@ export interface StandingsResult {
  *
  * An empty `tables` with `degraded: false` means the fetch succeeded but an
  * unknown asked-for group isn't in it (caller renders "no such group"). A
- * bundled group omitted from a partial provider result takes the degraded
- * roster fallback instead of rendering as an authoritative empty table. An
+ * group declared in the adapter's expected scope but omitted from a partial
+ * provider result takes the degraded roster fallback instead of rendering as
+ * an authoritative empty table. An
  * aggregate read also falls back when any group in the adapter's expected
  * standings scope is absent; one result-level verdict cannot honestly describe
  * a mix of live tables and static roster tables.
@@ -153,7 +154,7 @@ export async function getStandings(
       );
       const availableGroups = new Set(tables.map((table) => table.group));
       const expectedGroupWasOmitted = want
-        ? groups().includes(want) && tables.length === 0
+        ? (adapter.expectedStandingsGroups?.includes(want) ?? false) && tables.length === 0
         : (adapter.expectedStandingsGroups?.some((expected) => !availableGroups.has(expected)) ??
           false);
       if (!expectedGroupWasOmitted) {

@@ -126,7 +126,8 @@ a claim we cannot make.
   table. A transport/JSON failure, an unreadable envelope, or a non-empty provider list with no
   usable records still throws and reaches the domain's degraded fallback. Parser-local
   `BoundedList.complete` remains a test and diagnostics property, not a batch-wide kill switch.
-  Group-specific standings preserve readable sibling tables; an aggregate read falls back when an
+  Group-specific standings fall back only for groups the adapter declares expected; an open-scope
+  competition never receives bundled World Cup teams. An aggregate read falls back when an
   expected table is absent because its single attribution verdict cannot describe mixed live and
   static provenance honestly. — `core/test/adapter-hardening.test.ts`, `core/test/espn.test.ts`,
   `core/test/live.test.ts`, `core/test/standings-live.test.ts`, `core/test/trust-espn.test.ts`
