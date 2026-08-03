@@ -249,10 +249,10 @@ export interface ShareTableInput {
   /** Body line when there are no tables (e.g. "No group Z."). */
   emptyNote?: string;
   /**
-   * True when the rows are a static roster (no live results), not an
-   * authoritative table. A shared card is pasted into public/social, so this
-   * MUST be surfaced — otherwise a roster-at-zero reads as a real "nobody has
-   * played yet" table. The card then carries an explicit not-live notice.
+   * True when no authoritative table was available. Non-empty rows are a
+   * static roster, not live results; an empty open-scope outage is described by
+   * `emptyNote`. A shared card is pasted into public/social, so degraded state
+   * MUST be surfaced rather than reading as an authoritative table.
    */
   degraded?: boolean;
 }
@@ -269,7 +269,10 @@ export function formatShareTable(input: ShareTableInput, options: ShareSnippetOp
 
   const blocks: string[] = [];
   if (input.tables.length === 0) {
-    blocks.push(input.emptyNote ?? 'No standings available.');
+    blocks.push(
+      input.emptyNote ??
+        (input.degraded ? 'Live standings unavailable.' : 'No standings available.'),
+    );
   } else {
     for (const { group, rows } of input.tables) {
       blocks.push(

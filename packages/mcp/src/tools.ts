@@ -395,8 +395,9 @@ export async function toolGetMatch(
 export async function toolGetStandings(
   args: { group?: string } & CommonOpts,
 ): Promise<ToolResult> {
-  // Authoritative cumulative standings from the provider; fails closed to a
-  // roster-at-zero (degraded) rather than a wrong, single-day-window table.
+  // Authoritative cumulative standings from the provider. A degraded bundled
+  // roster is valid only for a declared compatible scope; open-scope outages
+  // stay empty rather than borrowing World Cup teams.
   const { tables, degraded, source } = await getStandings(resolveAdapter(args), args.group);
 
   // Preserve the structured shape: { group, standings: StandingRow[] }.
@@ -405,9 +406,13 @@ export async function toolGetStandings(
 
   if (shaped.length === 0) {
     const g = args.group?.toUpperCase();
-    const msg = g ? `No group "${g}". Groups are A–L.` : 'No standings available.';
+    const msg = degraded
+      ? t(args.lang, 'standings.unavailable')
+      : g
+        ? `No group "${g}".`
+        : 'No standings available.';
     return {
-      text: withDisclaimer(degraded ? `${msg} (Live standings unavailable.)` : msg, source, args.lang),
+      text: withDisclaimer(msg, source, args.lang),
       data: { degraded, source: source ?? null, tables: args.group ? null : [] },
     };
   }
@@ -468,7 +473,11 @@ export async function standingsResourceText(
   const g = group.toUpperCase();
   const { tables, degraded, source } = await getStandings(adapter, g);
   const tb = tables[0];
-  let text = tb ? standingsTable(tb.group, tb.rows) : `No group ${g}.`;
+  let text = tb
+    ? standingsTable(tb.group, tb.rows)
+    : degraded
+      ? 'Live standings unavailable.'
+      : `No group ${g}.`;
   if (degraded && tb) text += '\n\n(Live standings unavailable — showing the group roster.)';
   return withDisclaimer(text, source);
 }
@@ -788,11 +797,11 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         // while the rendered SNIPPET came from the full list meant the surface a
         // reader actually sees was the unbounded one.
         tables: boundedRecords(tables).items,
-        // Degraded ⇒ static roster, no live provider: don't attribute one, and
-        // surface the not-live notice (the card gets pasted publicly).
+        // Degraded ⇒ no live provider: don't attribute one. An open-scope
+        // outage has no compatible bundled roster, so name that empty state.
         source: degraded ? undefined : source,
         installLine: `npx @claudinho/cli table ${group}`,
-        emptyNote: `No group ${group}.`,
+        emptyNote: degraded ? 'Live standings unavailable.' : `No group ${group}.`,
         degraded,
       },
       options,

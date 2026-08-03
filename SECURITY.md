@@ -126,10 +126,12 @@ a claim we cannot make.
   table. A transport/JSON failure, an unreadable envelope, or a non-empty provider list with no
   usable records still throws and reaches the domain's degraded fallback. Parser-local
   `BoundedList.complete` remains a test and diagnostics property, not a batch-wide kill switch.
-  Group-specific standings fall back only for groups the adapter declares expected; an open-scope
-  competition never receives bundled World Cup teams. An aggregate read falls back when an
-  expected table is absent because its single attribution verdict cannot describe mixed live and
-  static provenance honestly. — `core/test/adapter-hardening.test.ts`, `core/test/espn.test.ts`,
+  Standings expected scope never authorizes static teams: only the separate
+  `standingsFallbackGroups` contract permits a bundled roster. A custom competition therefore
+  returns empty + degraded on transport failure, missing capability, or an omitted expected table
+  and never receives World Cup teams. An aggregate read uses one fallback verdict because its
+  single attribution cannot describe mixed live and static provenance honestly. —
+  `core/test/adapter-hardening.test.ts`, `core/test/espn.test.ts`,
   `core/test/live.test.ts`, `core/test/standings-live.test.ts`, `core/test/trust-espn.test.ts`
 - **Derived values are recomputed, never trusted** — the market favorite and staleness are
   derived from the sealed data, so a crafted file cannot make the headline contradict the

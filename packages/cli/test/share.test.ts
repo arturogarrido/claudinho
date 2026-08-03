@@ -329,11 +329,30 @@ describe('cmdShare table — standings card', () => {
   });
 
   it('fails closed to a degraded roster (no fetchStandings), with a not-live notice', async () => {
-    await cmdShare('table', 'A', {}, tableCtx(fakeAdapter));
+    await cmdShare(
+      'table',
+      'A',
+      {},
+      tableCtx({
+        ...fakeAdapter,
+        expectedStandingsGroups: ['A'],
+        standingsFallbackGroups: ['A'],
+      }),
+    );
     const o = text();
     expect(o).toContain('Group A · standings');
     expect(o).not.toContain('Live data:');
     expect(o).toContain('Live standings unavailable — group roster, not live results.');
+    expect(o).toContain(DISCLAIMER);
+  });
+
+  it('open-scope outage stays empty and does not paste World Cup teams', async () => {
+    await cmdShare('table', 'A', {}, tableCtx(fakeAdapter));
+    const o = text();
+    expect(o).toContain('Live standings unavailable.');
+    expect(o).not.toContain('No group A.');
+    expect(o).not.toContain('Group A · standings');
+    expect(o).not.toContain('MEX');
     expect(o).toContain(DISCLAIMER);
   });
 

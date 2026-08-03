@@ -18,10 +18,16 @@ export interface ProviderAdapter {
   readonly name: string;
   readonly capabilities: ProviderCapabilities;
   /**
-   * Expected group-table scope for aggregate standings reads. Omit when the
-   * competition's group set is not the bundled tournament's known shape.
+   * Expected group-table scope for omission checks. Omit when the competition's
+   * full group set is not known in advance.
    */
   readonly expectedStandingsGroups?: readonly string[];
+  /**
+   * Groups whose degraded roster may be derived from the bundled schedule.
+   * This is deliberately separate from expected scope: a custom competition
+   * can have known groups without sharing the bundled World Cup teams.
+   */
+  readonly standingsFallbackGroups?: readonly string[];
 
   /** All fixtures/results for a single calendar date (provider's timezone semantics). */
   fetchByDate(dateISO: string): Promise<Match[]>;
@@ -35,8 +41,9 @@ export interface ProviderAdapter {
   /**
    * Optional authoritative group tables (cumulative across the group stage).
    * Returned in standings order per group. Providers that can't supply a real
-   * table omit this; callers then fall back (degraded) to a roster at zero —
-   * never a wrong, partial table computed from a narrow live window.
+   * table omit this; callers then fail closed (degraded), using a roster at zero
+   * only when `standingsFallbackGroups` declares bundled-schedule compatibility
+   * — never a wrong, partial table computed from a narrow live window.
    */
   fetchStandings?(): Promise<GroupStandings[]>;
 

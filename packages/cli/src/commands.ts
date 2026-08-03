@@ -485,8 +485,8 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
   const { cfg, t } = ctx;
   precheck(cfg, t);
   // Authoritative, cumulative standings from the provider. Fails closed to a
-  // roster-at-zero (degraded) rather than a wrong table computed from a single
-  // day's window — see core getStandings.
+  // degraded bundled roster only for a declared compatible scope; open-scope
+  // competitions stay empty rather than borrowing World Cup teams.
   const { tables, degraded, source } = await getStandings(adapterFor(ctx), group);
 
   if (cfg.json) {
@@ -504,15 +504,21 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
   const flags = flagsEnabled();
   if (tables.length === 0) {
     out();
-    // A specific group that isn't there → "no group X"; no group asked (e.g. the
-    // group stage is over and only knockout brackets remain) → "no standings".
+    // A degraded empty result means the provider was unavailable and no bundled
+    // fallback belongs to this competition. Do not turn that into "no group".
     out(
       c.dim(
-        '  ' + (group ? t('table.none', { group: group.toUpperCase() }) : t('table.empty')),
+        '  ' +
+          (degraded
+            ? t('table.unavailable')
+            : group
+              ? t('table.none', { group: group.toUpperCase() })
+              : t('table.empty')),
       ),
     );
     out();
-    if (degraded) out(c.dim('  ' + t('table.degraded')));
+    const src = dataSource(source, cfg.lang, c);
+    if (src) out(src);
     out(disclaimer(t, c));
     return;
   }
@@ -1310,11 +1316,16 @@ export async function cmdShare(
       {
         group,
         tables,
-        // Degraded ⇒ a static roster, served by no live provider: no attribution.
+        // Degraded ⇒ no live provider: no attribution. Open-scope outages
+        // have no compatible bundled roster, so name the outage in the empty card.
         source: degraded ? undefined : source,
         degraded,
         installLine: group ? `npx @claudinho/cli table ${group}` : 'npx @claudinho/cli table',
-        emptyNote: group ? `No group ${group}.` : 'No standings available.',
+        emptyNote: degraded
+          ? 'Live standings unavailable.'
+          : group
+            ? `No group ${group}.`
+            : 'No standings available.',
         options: baseOptions,
       },
       copy,

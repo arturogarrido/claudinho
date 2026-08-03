@@ -565,7 +565,7 @@ export function buildServer(): McpServer {
     {
       title: 'Group standings',
       description:
-        'Live cumulative group standings — pass a group letter A–L, or omit for all 12. Returns ranked rows (team, played, W/D/L, goal difference, points). Use get_today for fixtures/scores and get_next_fixture for one team. Falls back to a roster at zero (flagged degraded) if live standings are unavailable.',
+        'Live cumulative group standings — pass a group letter A–L, or omit for all 12. Returns ranked rows (team, played, W/D/L, goal difference, points). Use get_today for fixtures/scores and get_next_fixture for one team. If unavailable, the default World Cup scope returns a roster at zero; competitions without a compatible bundled roster return no tables. Both are flagged degraded.',
       inputSchema: {
         group: groupArg.optional().describe('Group letter A–L (omit for all)'),
         ...commonArgs,

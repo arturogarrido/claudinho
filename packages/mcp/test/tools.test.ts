@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  groups,
   matchFlavor,
   type GroupStandings,
   type Match,
@@ -45,10 +46,14 @@ function fakeAdapter(opts: {
   window?: Match[];
   throws?: boolean;
   standings?: GroupStandings[];
+  expectedStandingsGroups?: readonly string[];
+  standingsFallbackGroups?: readonly string[];
 }): ProviderAdapter {
   return {
     name: 'fake',
     capabilities: { push: false, latencyHintSec: 0 },
+    expectedStandingsGroups: opts.expectedStandingsGroups,
+    standingsFallbackGroups: opts.standingsFallbackGroups,
     async fetchByDate() {
       if (opts.throws) throw new Error('network down');
       return opts.byDate ?? [];
@@ -250,14 +255,27 @@ describe('production adapter path (no injection)', () => {
 
 describe('toolGetStandings', () => {
   it('returns all 12 group tables (static fallback)', async () => {
-    const r = await toolGetStandings({ adapter: fakeAdapter({ throws: true }) });
+    const r = await toolGetStandings({
+      adapter: fakeAdapter({
+        throws: true,
+        expectedStandingsGroups: groups(),
+        standingsFallbackGroups: groups(),
+      }),
+    });
     const data = r.data as { tables: Array<{ group: string }> };
     expect(Array.isArray(data.tables)).toBe(true);
     expect(data.tables).toHaveLength(12);
   });
 
   it('returns a single group when asked', async () => {
-    const r = await toolGetStandings({ group: 'A', adapter: fakeAdapter({ throws: true }) });
+    const r = await toolGetStandings({
+      group: 'A',
+      adapter: fakeAdapter({
+        throws: true,
+        expectedStandingsGroups: groups(),
+        standingsFallbackGroups: groups(),
+      }),
+    });
     const data = r.data as { tables: { group: string; standings: unknown[] } };
     expect(data.tables.group).toBe('A');
     expect(data.tables.standings).toHaveLength(4);
@@ -265,10 +283,25 @@ describe('toolGetStandings', () => {
   });
 
   it('reports a clean message for an unknown group (not an empty table)', async () => {
-    const r = await toolGetStandings({ group: 'Z', adapter: fakeAdapter({ throws: true }) });
+    const r = await toolGetStandings({ group: 'Z', adapter: fakeAdapter({ standings: [A_TABLE] }) });
     expect(r.text).toContain('No group "Z"');
     expect(r.text).not.toContain('P  W  D  L'); // no table header rendered
     expect((r.data as { tables: null }).tables).toBeNull();
+  });
+
+  it('open-scope outage reports unavailability without World Cup scope or teams', async () => {
+    for (const adapter of [fakeAdapter({}), fakeAdapter({ standings: [], throws: true })]) {
+      const r = await toolGetStandings({ group: 'A', adapter });
+      expect(r.text).toContain('Live standings unavailable.');
+      expect(r.text).not.toContain('No group');
+      expect(r.text).not.toContain('A–L');
+      expect(r.text).not.toContain('Mexico');
+      expect(r.data).toMatchObject({ degraded: true, source: null, tables: null });
+    }
+
+    const es = await toolGetStandings({ group: 'A', lang: 'es', adapter: fakeAdapter({}) });
+    expect(es.text).toContain('Tabla en vivo no disponible.');
+    expect(es.text).not.toContain('Live standings unavailable.');
   });
 
   it('renders the authoritative table (not degraded) with attribution', async () => {
@@ -366,9 +399,24 @@ describe('standingsResourceText (standings:// resource)', () => {
   });
 
   it('drops attribution but keeps the disclaimer + notice when degraded', async () => {
-    const text = await standingsResourceText('A', fakeAdapter({ throws: true }));
+    const text = await standingsResourceText(
+      'A',
+      fakeAdapter({
+        throws: true,
+        expectedStandingsGroups: groups(),
+        standingsFallbackGroups: groups(),
+      }),
+    );
     expect(text).not.toContain('Live data:'); // no live provider served it
     expect(text).toContain('Live standings unavailable');
+    expect(text).toContain(DISCLAIMER);
+  });
+
+  it('does not describe an open-scope outage as a missing World Cup group', async () => {
+    const text = await standingsResourceText('A', fakeAdapter({}));
+    expect(text).toContain('Live standings unavailable.');
+    expect(text).not.toContain('No group A.');
+    expect(text).not.toContain('Mexico');
     expect(text).toContain(DISCLAIMER);
   });
 

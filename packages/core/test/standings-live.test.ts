@@ -103,11 +103,13 @@ describe('parseStandings', () => {
 function standingsAdapter(
   tables: GroupStandings[] | (() => never),
   expectedStandingsGroups?: readonly string[],
+  standingsFallbackGroups?: readonly string[],
 ): ProviderAdapter {
   return {
     name: 'fake',
     capabilities: { push: false, latencyHintSec: 0 },
     expectedStandingsGroups,
+    standingsFallbackGroups,
     async fetchByDate() {
       return [];
     },
@@ -121,9 +123,23 @@ function standingsAdapter(
   };
 }
 
-/** Adapter with NO fetchStandings (the degraded path). */
+/** World Cup adapter with NO fetchStandings (the compatible static fallback path). */
 const noStandings: ProviderAdapter = {
   name: 'bare',
+  capabilities: { push: false, latencyHintSec: 0 },
+  expectedStandingsGroups: groups(),
+  standingsFallbackGroups: groups(),
+  async fetchByDate() {
+    return [];
+  },
+  async fetchLive() {
+    return [];
+  },
+};
+
+/** Open-scope adapter with no standings capability and therefore no compatible roster. */
+const openScopeNoStandings: ProviderAdapter = {
+  name: 'open',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate() {
     return [];
@@ -172,6 +188,40 @@ describe('getStandings', () => {
     });
   });
 
+  it('keeps open-scope outages empty instead of injecting the World Cup roster', async () => {
+    const down = standingsAdapter(() => {
+      throw new Error('down');
+    });
+
+    for (const adapter of [down, openScopeNoStandings]) {
+      await expect(getStandings(adapter)).resolves.toEqual({ tables: [], degraded: true });
+      await expect(getStandings(adapter, 'A')).resolves.toEqual({ tables: [], degraded: true });
+    }
+  });
+
+  it('does not treat a custom adapter expected scope as bundled-roster compatibility', async () => {
+    const down = standingsAdapter(() => {
+      throw new Error('down');
+    }, ['A']);
+    const omitted = standingsAdapter([], ['A']);
+
+    for (const adapter of [down, omitted]) {
+      await expect(getStandings(adapter, 'A')).resolves.toEqual({ tables: [], degraded: true });
+      await expect(getStandings(adapter)).resolves.toEqual({ tables: [], degraded: true });
+    }
+  });
+
+  it('limits a degraded roster to the adapter-declared expected scope', async () => {
+    const adapter = standingsAdapter(() => {
+      throw new Error('down');
+    }, ['B', 'A', 'A'], ['B', 'A', 'A']);
+
+    const result = await getStandings(adapter);
+    expect(result.degraded).toBe(true);
+    expect(result.tables.map((table) => table.group)).toEqual(['A', 'B']);
+    expect(result.tables.every((table) => table.rows.every((row) => row.played === 0))).toBe(true);
+  });
+
   it('falls back when every row of a known group is refused but a sibling group parses', async () => {
     const partial = parseStandings({
       children: [
@@ -190,7 +240,7 @@ describe('getStandings', () => {
       ],
     });
     expect(partial.map((table) => table.group)).toEqual(['B']);
-    const adapter = standingsAdapter(partial, groups());
+    const adapter = standingsAdapter(partial, groups(), groups());
 
     const omitted = await getStandings(adapter, 'A');
     expect(omitted.degraded).toBe(true);
@@ -230,11 +280,22 @@ describe('getStandings', () => {
   it('FAILS CLOSED to a degraded roster when fetchStandings throws', async () => {
     const boom = standingsAdapter(() => {
       throw new Error('down');
-    });
+    }, groups(), groups());
     const r = await getStandings(boom, 'A');
     expect(r.degraded).toBe(true);
     expect(r.tables[0]?.rows.length).toBe(4);
     expect(r.tables[0]?.rows.every((row) => row.played === 0 && row.points === 0)).toBe(true);
+  });
+
+  it('rejects a group outside a declared scope without fetching or degrading', async () => {
+    let fetched = false;
+    const adapter = standingsAdapter(() => {
+      fetched = true;
+      throw new Error('should not fetch');
+    }, groups(), groups());
+
+    await expect(getStandings(adapter, 'Z')).resolves.toEqual({ tables: [], degraded: false });
+    expect(fetched).toBe(false);
   });
 
   it('preserves readable rows when one standings sibling is malformed', async () => {

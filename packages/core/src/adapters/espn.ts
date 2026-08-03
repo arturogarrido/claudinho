@@ -127,9 +127,10 @@ export interface EspnAdapterOptions {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   /**
-   * Expected standings groups for aggregate completeness checks. Defaults to
-   * the bundled groups when using the default World Cup base; custom bases
-   * leave the scope open unless the caller supplies one.
+   * Expected standings groups for completeness checks and definitive group
+   * validation. Defaults to the bundled groups for the default World Cup base;
+   * custom bases leave the scope open unless supplied. Declaring custom groups
+   * does not authorize use of the bundled World Cup roster on failure.
    */
   expectedStandingsGroups?: readonly string[];
   /**
@@ -144,6 +145,7 @@ export class EspnAdapter implements ProviderAdapter {
   readonly name = 'espn';
   readonly capabilities: ProviderCapabilities = { push: false, latencyHintSec: 45 };
   readonly expectedStandingsGroups?: readonly string[];
+  readonly standingsFallbackGroups?: readonly string[];
 
   /** Short-lived team-code -> group-letter map (built lazily from standings). */
   private groupMap?: { at: number; value: Record<string, string> };
@@ -168,6 +170,10 @@ export class EspnAdapter implements ProviderAdapter {
     const expected =
       opts.expectedStandingsGroups ?? (opts.baseUrl === undefined ? bundledGroups() : undefined);
     this.expectedStandingsGroups = expected ? [...expected] : undefined;
+    // A custom base can declare its expected letters for completeness without
+    // claiming that its teams match the bundled World Cup roster.
+    this.standingsFallbackGroups =
+      opts.baseUrl === undefined && expected ? [...expected] : undefined;
   }
 
   async fetchByDate(dateISO: string): Promise<Match[]> {

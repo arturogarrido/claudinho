@@ -260,6 +260,13 @@ describe('formatShareTable', () => {
     expect(out).toContain(SHARE_DISCLAIMER);
   });
 
+  it('defaults an empty degraded card to an outage notice', () => {
+    const out = formatShareTable({ tables: [], degraded: true });
+    expect(out).toContain('Live standings unavailable.');
+    expect(out).not.toContain('No standings available.');
+    expect(out).toContain(SHARE_DISCLAIMER);
+  });
+
   it('renders multiple groups as separate blocks', () => {
     const out = formatShareTable({ tables: [{ group: 'A', rows }, { group: 'B', rows }] });
     expect(out).toContain('Group A · standings');

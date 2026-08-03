@@ -9,7 +9,6 @@ import { byKickoff, isFinished, isLive } from './normalize';
 import {
   allFixtures,
   fixturesByGroup,
-  groups,
   fixturesByTeam,
   LIVE_WINDOW_MS,
   nextFixtureForTeam,
@@ -117,35 +116,44 @@ export async function getMatchesForDate(
 export interface StandingsResult {
   /** Group tables in group-letter order; each table's rows in standings order. */
   tables: GroupStandings[];
-  /** True when no authoritative table was available and rows are a static roster. */
+  /** True when no authoritative table was available; tables may be a static roster or empty. */
   degraded: boolean;
-  /** The provider that served a real table (absent when degraded). */
+  /** Provider that served the authoritative result, including an empty one (absent when degraded). */
   source?: string;
 }
 
 /**
  * Authoritative group tables, preferring the provider's cumulative standings and
- * FAILING CLOSED to a roster-at-zero (degraded) when none is available.
+ * FAILING CLOSED when none is available. An adapter with explicit bundled-
+ * roster compatibility may use the roster-at-zero; otherwise it returns an
+ * empty degraded result because expected group letters alone do not prove the
+ * bundle belongs to the same competition.
  *
  * Deliberately does NOT compute a table from a live-match window: that silently
  * drops earlier matchdays and reports a wrong, partial table (e.g. all-zeros for
  * a group not playing today) — the bug this replaced. A degraded roster is
- * honestly empty; a confidently-wrong table is the failure mode we refuse.
+ * explicitly zeroed; a confidently-wrong table is the failure mode we refuse.
  *
- * An empty `tables` with `degraded: false` means the fetch succeeded but an
- * unknown asked-for group isn't in it (caller renders "no such group"). A
- * group declared in the adapter's expected scope but omitted from a partial
- * provider result takes the degraded roster fallback instead of rendering as
- * an authoritative empty table. An
- * aggregate read also falls back when any group in the adapter's expected
- * standings scope is absent; one result-level verdict cannot honestly describe
- * a mix of live tables and static roster tables.
+ * An empty `tables` with `degraded: false` means either the fetch succeeded but
+ * the asked-for group wasn't in it, or the group is definitively outside the
+ * adapter's declared scope (caller renders "no such group"). A group declared
+ * in that expected scope but omitted from a partial
+ * provider result takes the degraded fallback instead of rendering as an
+ * authoritative empty table. An aggregate read also falls back when any group
+ * in that scope is absent; one result-level verdict cannot honestly describe a
+ * mix of live tables and static roster tables. Transport failure without
+ * explicit bundled-roster compatibility stays empty and degraded; it must
+ * never borrow the bundled World Cup roster.
  */
 export async function getStandings(
   adapter: ProviderAdapter,
   group?: string,
 ): Promise<StandingsResult> {
   const want = group?.toUpperCase();
+  const expected = adapter.expectedStandingsGroups;
+  if (want && expected && !expected.includes(want)) {
+    return { tables: [], degraded: false };
+  }
   if (adapter.fetchStandings) {
     try {
       const all = await adapter.fetchStandings();
@@ -154,17 +162,23 @@ export async function getStandings(
       );
       const availableGroups = new Set(tables.map((table) => table.group));
       const expectedGroupWasOmitted = want
-        ? (adapter.expectedStandingsGroups?.includes(want) ?? false) && tables.length === 0
-        : (adapter.expectedStandingsGroups?.some((expected) => !availableGroups.has(expected)) ??
-          false);
+        ? (expected?.includes(want) ?? false) && tables.length === 0
+        : (expected?.some((group) => !availableGroups.has(group)) ?? false);
       if (!expectedGroupWasOmitted) {
         return { tables, degraded: false, source: adapter.name };
       }
     } catch {
-      // fall through to the degraded roster
+      // fall through to the degraded fallback
     }
   }
-  const letters = want ? [want] : groups();
+  const fallbackGroups = adapter.standingsFallbackGroups;
+  const letters = fallbackGroups
+    ? want
+      ? fallbackGroups.includes(want)
+        ? [want]
+        : []
+      : [...new Set(fallbackGroups)].sort((a, b) => a.localeCompare(b))
+    : [];
   const tables = letters
     .map((g) => ({ group: g, rows: rosterAtZero(fixturesByGroup(g)) }))
     .filter((t) => t.rows.length > 0);

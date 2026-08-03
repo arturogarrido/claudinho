@@ -6,7 +6,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { EspnAdapter, ProviderError } from '../src/adapters/espn';
-import { knockoutWindow } from '../src/live';
+import { getStandings, knockoutWindow } from '../src/live';
 
 type FetchImpl = typeof fetch;
 
@@ -245,9 +245,9 @@ describe('shared standings fetch (F5 PERF-4)', () => {
   });
 });
 
-describe('aggregate standings scope', () => {
-  it('advertises bundled groups only for the default World Cup base', () => {
-    expect(new EspnAdapter().expectedStandingsGroups).toEqual([
+describe('standings scope and fallback compatibility', () => {
+  it('advertises bundled fallback groups only for the default World Cup base', () => {
+    const bundled = [
       'A',
       'B',
       'C',
@@ -260,11 +260,29 @@ describe('aggregate standings scope', () => {
       'J',
       'K',
       'L',
-    ]);
-    expect(
-      new EspnAdapter({ baseUrl: 'https://example.test/custom-competition' })
-        .expectedStandingsGroups,
-    ).toBeUndefined();
+    ];
+    const defaultAdapter = new EspnAdapter();
+    expect(defaultAdapter.expectedStandingsGroups).toEqual(bundled);
+    expect(defaultAdapter.standingsFallbackGroups).toEqual(bundled);
+
+    const custom = new EspnAdapter({
+      baseUrl: 'https://example.test/custom-competition',
+      expectedStandingsGroups: ['A'],
+    });
+    expect(custom.expectedStandingsGroups).toEqual(['A']);
+    expect(custom.standingsFallbackGroups).toBeUndefined();
+  });
+
+  it('never gives a custom base World Cup teams merely because its expected group is A', async () => {
+    const custom = new EspnAdapter({
+      baseUrl: 'https://example.test/custom-competition',
+      expectedStandingsGroups: ['A'],
+      fetchImpl: (async () => {
+        throw new Error('down');
+      }) as FetchImpl,
+    });
+
+    await expect(getStandings(custom, 'A')).resolves.toEqual({ tables: [], degraded: true });
   });
 });
 
