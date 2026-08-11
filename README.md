@@ -1,3 +1,5 @@
+
+
 # Claudinho ⚽
 
 [![CI](https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml/badge.svg)](https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml)
@@ -107,6 +109,7 @@ export CLAUDINHO_CURSOR_META=auto   # model + context % line under the score (re
 export CLAUDINHO_TEAM=MEX           # show only your team's match
 export CLAUDINHO_FLAGS=off          # 3-letter codes instead of flag emoji (already automatic in Warp)
 export CLAUDINHO_DEBUG=1            # print data-provider failure diagnostics to stderr
+export CLAUDINHO_NO_STAR=1          # suppress the occasional "star the repo" nudge
 ```
 
 > **Note:** Cursor's `beforeSubmitPrompt` hook doesn't yet reliably inject context into the
