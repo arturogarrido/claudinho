@@ -166,6 +166,20 @@ Speaks `en` / `es` / `pt` / `fr`, with optional localized commentary flair (`¡G
 
 _Planned (not shipped yet):_ a desktop notifier and an AI pundit with a public accuracy scorecard.
 
+## Around the web
+
+Claudinho was independently covered by [LinuxLinks](https://www.linuxlinks.com/claudinho-follow-world-cup-terminal/),
+listed in the [Official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.arturogarrido/claudinho),
+[Smithery](https://smithery.ai/servers/arturogarrido/claudinho),
+[Glama](https://glama.ai/mcp/servers/arturogarrido/claudinho),
+[MCP.so](https://mcp.so/servers/claudinho),
+[cursor.directory](https://cursor.directory/plugins/claudinho), and
+[awesome-claude-code](https://github.com/hesreallyhim/awesome-claude-code), and discussed in the
+[Cursor Community](https://forum.cursor.com/t/claudinho-live-world-cup-scores-in-your-cursor-cli-statusline-a-read-only-mcp-server/163557).
+
+See **[PUBLIC_FOOTPRINT.md](PUBLIC_FOOTPRINT.md)** for the full dated record, including community
+posts, historical listings, automated mirrors, and events.
+
 ## FAQ
 
 **Do I need an API key or account?** No. Nothing to sign up for; `npx` and done.
