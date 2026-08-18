@@ -168,13 +168,19 @@ _Planned (not shipped yet):_ a desktop notifier and an AI pundit with a public a
 
 ## Around the web
 
-Claudinho was independently covered by [LinuxLinks](https://www.linuxlinks.com/claudinho-follow-world-cup-terminal/),
-listed in the [Official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.arturogarrido/claudinho),
+Independent coverage and organic attribution include
+[LinuxLinks](https://www.linuxlinks.com/claudinho-follow-world-cup-terminal/) and
+[SuperIsland's Live Football extension](https://github.com/shobhit99/SuperIsland/tree/main/Extensions/live-football).
+
+Claudinho is also listed in the
+[Official MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.arturogarrido/claudinho),
 [Smithery](https://smithery.ai/servers/arturogarrido/claudinho),
 [Glama](https://glama.ai/mcp/servers/arturogarrido/claudinho),
 [MCP.so](https://mcp.so/servers/claudinho),
-[cursor.directory](https://cursor.directory/plugins/claudinho), and
-[awesome-claude-code](https://github.com/hesreallyhim/awesome-claude-code), and discussed in the
+[cursor.directory](https://cursor.directory/plugins/claudinho),
+[awesome-claude-code](https://github.com/hesreallyhim/awesome-claude-code#status-lines), and
+[awesome-mcp-servers](https://github.com/punkpeye/awesome-mcp-servers#-sports). The Cursor integration
+was also discussed in the
 [Cursor Community](https://forum.cursor.com/t/claudinho-live-world-cup-scores-in-your-cursor-cli-statusline-a-read-only-mcp-server/163557).
 
 See **[PUBLIC_FOOTPRINT.md](PUBLIC_FOOTPRINT.md)** for the full dated record, including community
