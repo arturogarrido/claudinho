@@ -32,7 +32,7 @@ Footprint searches use the exact repository, package, and registry identifiers
 | npm CLI | Current | [@claudinho/cli](https://www.npmjs.com/package/@claudinho/cli) | Human-facing CLI, statusline, hook, and setup commands. |
 | npm MCP | Current | [@claudinho/mcp](https://www.npmjs.com/package/@claudinho/mcp) | Read-only stdio MCP server. |
 | npm core | Current | [@claudinho/core](https://www.npmjs.com/package/@claudinho/core) | Shared domain model and provider adapters. |
-| Official MCP Registry | Current | [io.github.arturogarrido/claudinho](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.arturogarrido/claudinho) | Machine-readable registry record. Version 0.9.4 was active and marked latest when reviewed. |
+| Official MCP Registry | Current | [io.github.arturogarrido/claudinho](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.arturogarrido/claudinho&version=latest) | Machine-readable latest-version record. Version 0.9.4 was active and marked latest when reviewed. |
 
 ## Registries and directories
 
@@ -45,7 +45,7 @@ Footprint searches use the exact repository, package, and registry identifiers
 | PulseMCP | Current, automated | [arturogarrido/claudinho](https://www.pulsemcp.com/servers/arturogarrido-claudinho) | Registry-derived listing, released June 6. Traffic and rank shown there are third-party estimates. |
 | Claude Marketplaces | Current, automated | [Claudinho MCP server](https://claudemarketplaces.com/mcp/arturogarrido/claudinho) | Registry-derived page. Its generated tool count may be stale. |
 | Enterprise DNA Directories | Current, automated | [arturogarrido/claudinho](https://enterprisedna.co/directories/mcp/arturogarrido-claudinho/) | Derived from the awesome-mcp-servers index; its star snapshot is historical. |
-| Developers Locker Room | Current | [Sports-tech directory index](https://devlocker.dev/whats-new) | Lists Claudinho under Soccer / Football; no stable per-project detail URL was found. |
+| Developers Locker Room | Current | [MCP directory index](https://devlocker.dev/mcp-servers) | Contains two records for the same project (`claudinho` and `claudinho-arturogarridoclaudinho`); count them as one appearance. No stable per-project detail URL was found. |
 | Lulu | Current, automated | [Inbound listing report and response](https://github.com/arturogarrido/claudinho/issues/101) | As of August 10, Lulu had indexed duplicate entries from PulseMCP and Smithery. Free factual indexing was accepted; the ads SDK proposal was declined and deduplication was requested. |
 
 ## Automated mirrors and scans
@@ -68,7 +68,7 @@ the source.
 | Repository | Status | Link | Notes |
 | --- | --- | --- | --- |
 | awesome-claude-code | Current | [Status Lines section](https://github.com/hesreallyhim/awesome-claude-code#status-lines) / [submission #2027](https://github.com/hesreallyhim/awesome-claude-code/issues/2027) | Claudinho appears under Status Lines even though the validated submission issue remained open when reviewed. |
-| awesome-mcp-servers | Current | [Sports section](https://github.com/punkpeye/awesome-mcp-servers#-sports) / [merged PR #7774](https://github.com/punkpeye/awesome-mcp-servers/pull/7774) | Accepted under Sports on June 15 and still present in the current main README. |
+| awesome-mcp-servers | Current | [Sports section](https://github.com/punkpeye/awesome-mcp-servers#-sports) / [merged PR #7774](https://github.com/punkpeye/awesome-mcp-servers/pull/7774) | Accepted under Sports on June 15 and verified in [`main` at `6c929cdf`](https://github.com/punkpeye/awesome-mcp-servers/blob/6c929cdf022f57cf954ab1b504cc266c0908373b/README.md#L3344) on August 18. |
 
 ## Independent coverage and organic shares
 
@@ -135,10 +135,10 @@ counted as coverage.
 - AGI House project-submission page, if it remained public after the event.
 - Any Instagram posts or stories that should be preserved beyond their original lifetime.
 
-Some current pages resist automated verification: MCP.so may return a Cloudflare 403,
-cursor.directory may return a Vercel 429 checkpoint, and AGI House serves a JavaScript-only shell.
-A bot wall is not evidence that a listing disappeared; check these pages in a browser before
-changing their status.
+Some current pages resist automated verification: MCP.so may return a Cloudflare 403, MCP Market
+and cursor.directory may return 429 checkpoints, and AGI House serves a JavaScript-only shell. A
+bot wall is not evidence that a listing disappeared; check these pages in a browser before changing
+their status.
 
 When adding an entry, record the original source, date, whether it was editorial or automated,
 and the date it was last verified. The header review date covers rows without their own verification

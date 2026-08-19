@@ -173,7 +173,7 @@ Independent coverage and organic attribution include
 [SuperIsland's Live Football extension](https://github.com/shobhit99/SuperIsland/tree/main/Extensions/live-football).
 
 Claudinho is also listed in the
-[Official MCP Registry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.arturogarrido/claudinho),
+[Official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.arturogarrido/claudinho&version=latest),
 [Smithery](https://smithery.ai/servers/arturogarrido/claudinho),
 [Glama](https://glama.ai/mcp/servers/arturogarrido/claudinho),
 [MCP.so](https://mcp.so/servers/claudinho),
