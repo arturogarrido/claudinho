@@ -4,7 +4,7 @@ A dated record of where Claudinho has been published, listed, discussed, reviewe
 presented. This exists both as project history and as a source of verified links for future
 posts, talks, release notes, and retrospectives.
 
-**Last reviewed:** August 18, 2026
+**Last reviewed:** August 19, 2026
 
 ## How to read this record
 
@@ -94,10 +94,15 @@ These links preserve the public narrative around the build. They are not indepen
 
 ### LinkedIn
 
+The profile also carries a [Claudinho entry in the Projects
+section](https://www.linkedin.com/in/arturogarrido/), dated June 2026 to present, which
+links the repository and the retrospective post.
+
 - [Launch: five days from idea to the tournament opener](https://www.linkedin.com/posts/arturogarrido_5-days-ago-this-repo-didnt-exist-today-activity-7470841392882253825-87eZ)
 - [Cursor Compile and Cursor CLI integration](https://www.linkedin.com/posts/arturogarrido_buildinpublic-devtools-worldcup2026-activity-7474251498269405184-NT06)
 - [First community contributor story](https://www.linkedin.com/posts/arturogarrido_something-magical-and-unexpected-happened-share-7476168070646886401-6uiH/)
 - [World Cup closing reflection](https://www.linkedin.com/posts/arturogarrido_vibinglavidaloca-ugcPost-7484840507261624321-6ees/)
+- [One-month retrospective, with the 60-second project video](https://www.linkedin.com/posts/arturogarrido_buildinpublic-vibinglavidaloca-ugcPost-7495689713660534784-Bp0B/) (August 19, 2026; featured on the profile and linked from the Claudinho project entry)
 
 ### X
 
@@ -105,6 +110,7 @@ These links preserve the public narrative around the build. They are not indepen
 - [Final group-stage bracket](https://x.com/arturogarrido/status/2071088545679499410)
 - [Quarterfinal bracket](https://x.com/arturogarrido/status/2075118756054155616)
 - [World Cup closing post](https://x.com/arturogarrido/status/2079073946822189068)
+- [One-month retrospective, published as an X Article](https://x.com/arturogarrido/status/2090328034771607790) (August 19, 2026; carries the same video plus a wide cover card)
 
 ## Events and presentations
 
