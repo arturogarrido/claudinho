@@ -35,10 +35,21 @@ updates:
     # `Cannot read properties of undefined (reading 'useCaseSensitiveFileNames')`).
     # Adopting TS 7 is a deliberate migration gated on that tooling, not a routine
     # bump. Minor/patch on the 5.x/6.x line still flow.
+    #
+    # zod majors are skipped: zod is a RUNTIME dep of @claudinho/mcp and the MCP
+    # SDK derives every tool's inputSchema/outputSchema from it. Measured on the
+    # 3.25 -> 4.5 bump (PR #112): tools/list changed by 710 lines -- every
+    # inputSchema lost `additionalProperties: false`, all `$ref`s were inlined,
+    # keys reordered -- i.e. an MCP-AFFECTING change (Registry republish, .mcpb
+    # rebuild, Smithery re-score) even though the test suite stayed green.
+    # Adopting zod 4 is a deliberate migration tied to an MCP-affecting release,
+    # not a routine bump. Minor/patch on the 3.x line still flow.
     ignore:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
       - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "zod"
         update-types: ["version-update:semver-major"]
 
   # Keep the GitHub Actions used in CI up to date.
