@@ -384,15 +384,26 @@ describe('parseEspnEvents / parseEspnStandings — bounded before the work', () 
   });
 
   it('refuses a row whose deductions are out of range or stated twice', () => {
-    for (const extra of [
-      [{ name: 'deductions', value: 5000 }],
+    // Each fixture is arithmetically CONSISTENT with the offending deduction
+    // (3 - 1001 = -998 sits inside the signed points bound; 3 - 1 = 2 matches
+    // the first of two duplicates), so the points-consistency check cannot be
+    // what refuses it — only the deductions rule can. The first version of
+    // this test used 5000 and stayed green with the rule deleted.
+    for (const [extra, points] of [
+      [[{ name: 'deductions', value: 1001 }], -998],
       [
-        { name: 'deductions', value: 1 },
-        { name: 'deductions', value: 1 },
+        [
+          { name: 'deductions', value: 1 },
+          { name: 'deductions', value: 1 },
+        ],
+        2,
       ],
-    ]) {
+    ] as const) {
       const list = oneTable([
-        { team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' }, stats: ROW_STATS({}, extra) },
+        {
+          team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
+          stats: ROW_STATS({ points }, [...extra]),
+        },
       ]);
       expect(list.items).toEqual([]);
       expect(list.complete).toBe(false);

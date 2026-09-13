@@ -3,6 +3,7 @@ import {
   FakeMarketProvider,
   type Match,
   type MarketProvider,
+  PolymarketProvider,
   type ProviderAdapter,
 } from '@claudinho/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -193,24 +194,33 @@ describe('toolGetMarketSignal — a competition without markets', () => {
   // No injected provider: the tool builds one through the real factory, which
   // must hand back the network-free no-op off the default competition.
   const ORIG = process.env.CLAUDINHO_COMPETITION;
+  const ORIG_SRC = process.env.CLAUDINHO_MARKETS_SOURCE;
+  // Spy on the REAL provider's entry point rather than on `fetch`: the copy is
+  // decided by the competition alone, so the only observable that proves the
+  // tool never consulted Polymarket is that its provider was never asked.
+  const consulted = vi.spyOn(PolymarketProvider.prototype, 'findSignals');
   afterEach(() => {
-    vi.unstubAllGlobals();
+    consulted.mockReset();
     if (ORIG === undefined) delete process.env.CLAUDINHO_COMPETITION;
     else process.env.CLAUDINHO_COMPETITION = ORIG;
+    if (ORIG_SRC === undefined) delete process.env.CLAUDINHO_MARKETS_SOURCE;
+    else process.env.CLAUDINHO_MARKETS_SOURCE = ORIG_SRC;
   });
 
-  it('says market signals cover the World Cup only, and issues no request', async () => {
+  it('says market signals cover the World Cup only, and never consults the provider', async () => {
     process.env.CLAUDINHO_COMPETITION = 'eng.1';
-    const fetchSpy = vi.fn(async () => {
-      throw new Error('no market request may leave the process on eng.1');
+    // test/setup.ts routes the default source to the no-op for hermeticity; this
+    // test exists to prove the REAL source is gated, so ask for it explicitly.
+    process.env.CLAUDINHO_MARKETS_SOURCE = 'polymarket';
+    consulted.mockImplementation(async () => {
+      throw new Error('Polymarket must not be consulted on eng.1');
     });
-    vi.stubGlobal('fetch', fetchSpy);
     const byDate = await toolGetMarketSignal({ date: upcomingDate(), adapter: fakeAdapter, now: TEST_NOW });
     expect(byDate.text).toContain('Market signals cover the World Cup only');
     expect((byDate.data as { complete: boolean }).complete).toBe(true);
     const byId = await toolGetMarketSignal({ matchId: upcoming().id, adapter: fakeAdapter, now: TEST_NOW });
     expect(byId.text).toContain('Market signals cover the World Cup only');
-    expect((byId.data as { signal: unknown; complete: boolean })).toMatchObject({ signal: null, complete: true });
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(byId.data as { signal: unknown; complete: boolean }).toMatchObject({ signal: null, complete: true });
+    expect(consulted).not.toHaveBeenCalled();
   });
 });
