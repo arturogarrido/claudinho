@@ -6,6 +6,7 @@ import {
   parseStandings,
 } from '../src/adapters/espn';
 import { getLiveMatches, getMatchesForDate } from '../src/live';
+import { MAX_EVENTS } from '../src/trust/espn';
 
 // Minimal ESPN-shaped fixtures mirroring the real response structure.
 
@@ -354,6 +355,50 @@ describe('EspnAdapter fetch hardening (size cap + no redirects)', () => {
     const adapter = new EspnAdapter({ fetchImpl, enrichGroups: false });
     const matches = await adapter.fetchByDate('2026-06-11');
     expect(matches.map((m) => m.id)).toEqual(['700001']);
+  });
+
+  // SECURITY.md's "record refusal does not masquerade as a provider outage"
+  // bullet claims duplicate and truncated siblings are omitted while readable
+  // ones keep their attribution. Until issue #99 that was proven only one layer
+  // down (the parser's `complete` flag); these pin it where the claim is made —
+  // the adapter's plain-array contract and the domain's attribution.
+  const okResponse = (events: unknown[]) =>
+    (async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: { get: () => null },
+      json: async () => ({ events }),
+    })) as unknown as typeof fetch;
+
+  it('keeps the readable copy when a sibling record duplicates its id', async () => {
+    const adapter = new EspnAdapter({ fetchImpl: okResponse([scheduled, { ...scheduled }]), enrichGroups: false });
+    const matches = await adapter.fetchByDate('2026-06-11');
+    expect(matches.map((m) => m.id)).toEqual(['700001']);
+  });
+
+  it('returns the bounded readable prefix when the payload exceeds the events cap', async () => {
+    const events = Array.from({ length: MAX_EVENTS + 1 }, (_, i) => ({
+      ...scheduled,
+      id: String(700100 + i),
+    }));
+    const adapter = new EspnAdapter({ fetchImpl: okResponse(events), enrichGroups: false });
+    const matches = await adapter.fetchByDate('2026-06-11');
+    expect(matches.length).toBe(MAX_EVENTS);
+    expect(matches[0]?.id).toBe('700100');
+  });
+
+  it('a malformed sibling neither degrades the day nor drops the provider attribution', async () => {
+    const malformed = {
+      ...scheduled,
+      id: '700404',
+      status: { type: { name: 'STATUS_FROM_THE_FUTURE', state: 'in' } },
+    };
+    const adapter = new EspnAdapter({ fetchImpl: okResponse([scheduled, malformed]), enrichGroups: false });
+    const r = await getMatchesForDate(adapter, '2026-06-11');
+    expect(r.degraded).toBe(false);
+    expect(r.source).toBe('espn');
+    expect(r.matches.some((m) => m.id === '700404')).toBe(false);
   });
 
   it('rejects an unreadable scoreboard that contains no usable fixture', async () => {

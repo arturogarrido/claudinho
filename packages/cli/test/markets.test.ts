@@ -6,6 +6,9 @@ import {
   type ProviderAdapter,
   valid,
 } from '@claudinho/core';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdMarkets, InputError } from '../src/commands';
 import type { CliConfig } from '../src/config';
@@ -228,5 +231,63 @@ describe('cmdMarkets — next <team>', () => {
     const team = upcoming().home.code;
     await cmdMarkets('next', team, ctx({ json: true }, incomplete()));
     expect(json()).toMatchObject({ team, complete: false, signal: null });
+  });
+});
+
+describe('cmdMarkets — a competition without markets', () => {
+  // No injected provider: the command builds one through the real factory, and
+  // the factory must hand back the network-free no-op off the default
+  // competition. The copy says the sidecar covers the World Cup only rather
+  // than reporting a "no signal" it never looked for.
+  const ORIG_COMP = process.env.CLAUDINHO_COMPETITION;
+  const ORIG_XDG = process.env.XDG_CACHE_HOME;
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'claudinho-markets-'));
+    process.env.XDG_CACHE_HOME = dir; // the on-disk market cache stays out of ~/.cache
+    process.env.CLAUDINHO_COMPETITION = 'eng.1';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('no market request may leave the process on eng.1');
+      }),
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    rmSync(dir, { recursive: true, force: true });
+    if (ORIG_COMP === undefined) delete process.env.CLAUDINHO_COMPETITION;
+    else process.env.CLAUDINHO_COMPETITION = ORIG_COMP;
+    if (ORIG_XDG === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = ORIG_XDG;
+  });
+  const noProviderCtx = (over: Partial<CliConfig>) => ({
+    cfg: cfg(over),
+    t: makeT('en'),
+    adapter: fakeAdapter,
+    now: TEST_NOW,
+  });
+
+  it('says market signals cover the World Cup only, and issues no request', async () => {
+    await cmdMarkets(upcomingDate(), undefined, noProviderCtx({ json: false }));
+    const o = text();
+    expect(o).toContain('Market signals cover the World Cup only');
+    expect(o).not.toContain('No market signals available');
+    expect(o).toContain('Not affiliated with FIFA or Anthropic.');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('reports a complete, empty sidecar in --json (checked everything there was to check)', async () => {
+    await cmdMarkets(upcomingDate(), undefined, noProviderCtx({ json: true }));
+    const data = json() as { complete: boolean; marketSignals: Record<string, unknown> };
+    expect(data.complete).toBe(true);
+    expect(Object.keys(data.marketSignals)).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('uses the same scope copy for a single match', async () => {
+    await cmdMarkets(upcoming().id, undefined, noProviderCtx({ json: false }));
+    expect(text()).toContain('Market signals cover the World Cup only');
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

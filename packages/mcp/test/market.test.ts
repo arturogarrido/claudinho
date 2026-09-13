@@ -5,7 +5,7 @@ import {
   type MarketProvider,
   type ProviderAdapter,
 } from '@claudinho/core';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toolGetMarketSignal, toolGetMatch, toolGetToday } from '../src/tools';
 
 /** Offline match adapter → the date branch uses the bundled static schedule. */
@@ -186,5 +186,31 @@ describe('default-on market context', () => {
       if (prev === undefined) delete process.env.CLAUDINHO_MARKETS;
       else process.env.CLAUDINHO_MARKETS = prev;
     }
+  });
+});
+
+describe('toolGetMarketSignal — a competition without markets', () => {
+  // No injected provider: the tool builds one through the real factory, which
+  // must hand back the network-free no-op off the default competition.
+  const ORIG = process.env.CLAUDINHO_COMPETITION;
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (ORIG === undefined) delete process.env.CLAUDINHO_COMPETITION;
+    else process.env.CLAUDINHO_COMPETITION = ORIG;
+  });
+
+  it('says market signals cover the World Cup only, and issues no request', async () => {
+    process.env.CLAUDINHO_COMPETITION = 'eng.1';
+    const fetchSpy = vi.fn(async () => {
+      throw new Error('no market request may leave the process on eng.1');
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    const byDate = await toolGetMarketSignal({ date: upcomingDate(), adapter: fakeAdapter, now: TEST_NOW });
+    expect(byDate.text).toContain('Market signals cover the World Cup only');
+    expect((byDate.data as { complete: boolean }).complete).toBe(true);
+    const byId = await toolGetMarketSignal({ matchId: upcoming().id, adapter: fakeAdapter, now: TEST_NOW });
+    expect(byId.text).toContain('Market signals cover the World Cup only');
+    expect((byId.data as { signal: unknown; complete: boolean })).toMatchObject({ signal: null, complete: true });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

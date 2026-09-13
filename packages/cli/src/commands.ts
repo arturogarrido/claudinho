@@ -26,6 +26,7 @@ import {
   marketBlock,
   marketFixtureForTeam,
   marketLine,
+  marketsCoverCompetition,
   marketSignalRendersFor,
   marketRelevant,
   matchFlavor,
@@ -688,7 +689,13 @@ export function cmdHook({ cfg }: Ctx): void {
     const team = resolveEnvTeam(process.env.CLAUDINHO_TEAM);
     // Only trust a snapshot fetched for the current source + competition.
     const state = readCurrentState(cfg.source, resolveCompetition());
-    const ctx = renderHook(state, { team, flags: flagsEnabled() });
+    const ctx = renderHook(state, {
+      team,
+      flags: flagsEnabled(),
+      // The bundled roster names World Cup nations only; on another competition
+      // a club sharing a nation's code must not be renamed to that nation.
+      defaultCompetition: resolveCompetition() === DEFAULT_COMPETITION,
+    });
     if (ctx) out(ctx);
     // Warm the same cache the statusline reads, for parity (the hook itself shows
     // only live scores). Spawn for live OR stale knockout fixtures; the no-cache
@@ -885,6 +892,12 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
 // Market copy is English-only in v1 (the approved legal copy bank); the base
 // FIFA/Anthropic disclaimer stays localized via t('disclaimer').
 const MARKET_INFO = 'Prediction-market data is informational only.';
+/**
+ * Market signals exist for the World Cup only (core `MARKET_COMPETITIONS`); on
+ * any other competition the sidecar is a network-free no-op, and the copy says
+ * so rather than reporting a "no signal" it never looked for.
+ */
+const MARKETS_SCOPE_NOTE = 'Market signals cover the World Cup only; none are read for this competition.';
 
 /**
  * Show a signal only if it maps cleanly, has a determinable favorite, AND still
@@ -914,6 +927,7 @@ function marketHeaderLine(m: Match, cfg: CliConfig): string {
 
 /** Null-signal line, specific about finished matches (market reads are pre-match). */
 function noSignalLine(m: Match, now: Date): string {
+  if (!marketsCoverCompetition()) return MARKETS_SCOPE_NOTE;
   if (marketRelevant(m, now)) return 'No market signal for this match.';
   // "has finished" only when a live overlay confirmed it; a static fixture
   // whose window merely lapsed gets the honest, hedged variant.
@@ -1062,9 +1076,11 @@ export async function cmdMarkets(
   if (rows.length === 0) {
     out(
       c.dim(
-        complete
-          ? `  No market signals available for ${date}.`
-          : `  Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`,
+        !marketsCoverCompetition()
+          ? `  ${MARKETS_SCOPE_NOTE}`
+          : complete
+            ? `  No market signals available for ${date}.`
+            : `  Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`,
       ),
     );
   } else {
