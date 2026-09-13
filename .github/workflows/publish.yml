@@ -84,3 +84,100 @@ jobs:
             gh release create "$GITHUB_REF_NAME" --verify-tag --latest \
               --title "$GITHUB_REF_NAME" --generate-notes
           fi
+
+  # Publish this tag's record to the official MCP Registry
+  # (io.github.arturogarrido/claudinho) with GitHub Actions OIDC — no token, no
+  # device flow. `mcp-publisher login github-oidc` exchanges the job's OIDC token
+  # for a Registry JWT scoped to `io.github.<repository_owner>/*`; that JWT lives
+  # five minutes by design, which is why a token minted on a laptop had lapsed
+  # before every release.
+  #
+  # A separate job, not a step: `needs: publish` means it runs only after npm
+  # and the GitHub Release succeeded, and a Registry outage becomes its own red
+  # job — never a failed npm publish. Re-run it alone with
+  # `gh run rerun <id> --failed`; the pre-check below keeps that idempotent
+  # (Registry versions are immutable and a duplicate publish is a hard 400).
+  # Every release publishes a record: server.json is bumped on every release
+  # anyway (a vitest guard pins it to package.json), and the Registry's npm pin
+  # must never lag npm. `isLatest` flips by semver, so ordering is safe.
+  mcp-registry:
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # exchanged by `mcp-publisher login github-oidc`
+    env:
+      # A Go release binary, not an action, so it cannot be SHA-pinned like the
+      # actions above — pin the version AND the sha256 from that release's
+      # registry_<version>_checksums.txt, and bump both together:
+      # https://github.com/modelcontextprotocol/registry/releases
+      MCP_PUBLISHER_VERSION: 1.8.1
+      MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc # mcp-publisher_linux_amd64.tar.gz
+      REGISTRY_URL: https://registry.modelcontextprotocol.io
+      SERVER_JSON: packages/mcp/server.json
+      SERVER_NAME: io.github.arturogarrido/claudinho
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The publish job's vitest guard already pins server.json to package.json
+      # and the tag gate pins package.json to the tag; this makes the failure
+      # message specific if either ever changes.
+      - name: Verify server.json matches the tag
+        run: |
+          TAG=${GITHUB_REF_NAME#v}
+          V=$(jq -r .version "$SERVER_JSON")
+          P=$(jq -r '.packages[] | select(.registryType=="npm" and .identifier=="@claudinho/mcp") | .version' "$SERVER_JSON")
+          N=$(jq -r .name "$SERVER_JSON")
+          [ "$V" = "$TAG" ] && [ "$P" = "$TAG" ] && [ "$N" = "$SERVER_NAME" ] \
+            || { echo "::error::$SERVER_JSON version=$V npm-pin=$P name=$N must equal tag $TAG / $SERVER_NAME"; exit 1; }
+
+      - name: Install mcp-publisher (version-pinned, sha256-verified)
+        run: |
+          curl -sSfL -o mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+          ./mcp-publisher --version
+
+      - name: Check whether this version is already on the Registry
+        id: registry
+        run: |
+          NAME_ENC=$(jq -rn --arg n "$SERVER_NAME" '$n|@uri')
+          CODE=$(curl -sS -o /dev/null -w '%{http_code}' \
+            "$REGISTRY_URL/v0/servers/${NAME_ENC}/versions/${GITHUB_REF_NAME#v}")
+          echo "exists=$([ "$CODE" = 200 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "GET versions/${GITHUB_REF_NAME#v} -> HTTP $CODE"
+
+      # The Registry validates the npm pin by fetching
+      # https://registry.npmjs.org/@claudinho%2Fmcp/<version> and checking its
+      # `mcpName`; a version published seconds ago can lag, so retry. Login is
+      # inside the loop because the Registry JWT lives five minutes.
+      - name: Publish to MCP Registry (GitHub Actions OIDC)
+        if: steps.registry.outputs.exists != 'true'
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            ./mcp-publisher login github-oidc --registry "$REGISTRY_URL"
+            if ./mcp-publisher publish "$SERVER_JSON" >publish.log 2>&1; then
+              cat publish.log; exit 0
+            fi
+            cat publish.log
+            if grep -q 'already exists' publish.log; then echo "already on the Registry — treating as success"; exit 0; fi
+            if grep -qiE 'permission|Unauthorized|invalid audience|Forbidden' publish.log; then
+              echo "::error::auth/permission failure — not transient, not retrying"; exit 1
+            fi
+            echo "attempt $attempt failed (npm propagation or a transient Registry error); retrying in 20s"
+            sleep 20
+          done
+          echo "::error::Registry publish failed after 6 attempts"; exit 1
+
+      - name: Verify the Registry record
+        run: |
+          NAME_ENC=$(jq -rn --arg n "$SERVER_NAME" '$n|@uri')
+          V=${GITHUB_REF_NAME#v}
+          curl -sSf "$REGISTRY_URL/v0/servers/${NAME_ENC}/versions/$V" \
+            | jq -e --arg v "$V" '.server.version==$v
+                and (.server.packages[] | select(.identifier=="@claudinho/mcp") | .version)==$v
+                and ._meta["io.modelcontextprotocol.registry/official"].status=="active"' >/dev/null
+          echo "Registry: $SERVER_NAME@$V active"

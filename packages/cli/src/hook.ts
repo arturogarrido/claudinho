@@ -53,25 +53,36 @@ export interface HookOpts {
   /** Render emoji flags (default true); false → names only, for flagless terminals. */
   flags?: boolean;
   now?: Date;
+  /**
+   * Whether the bundled (World Cup) roster describes the teams in the cache.
+   * False when `CLAUDINHO_COMPETITION` points elsewhere: a club's ESPN
+   * abbreviation can equal a nation's code (`ESP` is Espanyol in LaLiga, `PAR`
+   * is Parma in Serie A, `POR` is Portland in MLS), so pinning by code would
+   * rename a club to a nation INSIDE Claude's context. Resolved by the caller,
+   * like `renderPrompt`'s `defaultCompetition` (this module stays env-free).
+   */
+  defaultCompetition?: boolean;
 }
 
 /**
- * The team as rendered INTO CLAUDE'S CONTEXT. When the code resolves against
- * the bundled roster (every real tournament team), the name and flag are
- * pinned to the STATIC roster — feed/cache text can then never smuggle prose
- * (e.g. "ignore previous instructions" as a "team name") into the model's
- * context. Unknown codes (other competitions) fall back to the sanitized feed
- * name — control characters and newlines are already stripped upstream.
+ * The team as rendered INTO CLAUDE'S CONTEXT. On the default competition a
+ * code that resolves against the bundled roster (every real tournament team)
+ * has its name and flag pinned to the STATIC roster — feed/cache text can then
+ * never smuggle prose (e.g. "ignore previous instructions" as a "team name")
+ * into the model's context. Unknown codes, and every team on another
+ * competition, fall back to the sealed feed name — the trust boundary has
+ * already reduced it to a bounded human label.
  */
-function rosterPinned(t: Team): Team {
+function rosterPinned(t: Team, pin: boolean): Team {
+  if (!pin) return t;
   const { team } = lookupTeam(t.code);
   return team ? { ...t, name: team.name, flag: team.flag } : t;
 }
 
-function line(m: Match, flags: boolean): string {
+function line(m: Match, flags: boolean, pin: boolean): string {
   const minute = m.status === 'HT' ? 'half-time' : m.minute ? `${m.minute}'` : 'live';
-  const h = rosterPinned(m.home);
-  const a = rosterPinned(m.away);
+  const h = rosterPinned(m.home, pin);
+  const a = rosterPinned(m.away, pin);
   const home = flags ? `${h.flag} ${h.name}` : h.name;
   const away = flags ? `${a.name} ${a.flag}` : a.name;
   return `${home} ${scoreline(m)} ${away} (${minute})`;
@@ -89,6 +100,7 @@ export function renderHook(
   const now = opts.now ?? new Date();
   const team = opts.team?.toUpperCase();
   const flags = opts.flags ?? true;
+  const pin = opts.defaultCompetition ?? true;
 
   const liveList = liveMatchesFromCache(state, now.getTime());
   let live: Match[] = [...liveList.items];
@@ -111,7 +123,7 @@ export function renderHook(
   // the hook, the surface that actually writes into the model, had none.
   const shown = live.slice(0, MAX_HOOK_MATCHES);
   const overflow = live.length - shown.length;
-  const lines = shown.map((mm) => line(mm, flags)).join('\n');
+  const lines = shown.map((mm) => line(mm, flags, pin)).join('\n');
   // Truncation is stated, never silent (English-only, like the rest of the
   // hook — see the ambient-surface carve-out in AGENTS.md).
   const more = !liveList.complete

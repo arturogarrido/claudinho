@@ -9,7 +9,6 @@ import {
   allFixtures,
   byKickoff,
   DEFAULT_COMPETITION,
-  EspnAdapter,
   getKnockoutFixtures,
   getLiveMatches,
   KNOWN_SOURCES,
@@ -106,20 +105,17 @@ function liveWindowActive(nowMs: number): boolean {
 }
 
 /**
- * The live-fetch adapter for a VALIDATED source, honoring CLAUDINHO_COMPETITION
- * (group enrichment off on the default path — the statusline doesn't need it).
- * Never constructs a provider under a label it doesn't match: runRefresh
- * validates `source` against KNOWN_SOURCES before calling this.
+ * The live-fetch adapter for a VALIDATED source, honoring CLAUDINHO_COMPETITION.
+ * ONE constructor for every competition: the statusline never renders group
+ * letters, so the standings request that enriches them is skipped everywhere.
+ * It used to be skipped on the default path only — off-default each poll made
+ * TWO requests, on the one path that polls around the clock because the bundle
+ * cannot describe another competition's windows. Never constructs a provider
+ * under a label it doesn't match: runRefresh validates `source` against
+ * KNOWN_SOURCES before calling this (makeAdapter throws as defense in depth).
  */
 function liveAdapter(source: string): ProviderAdapter {
-  const competition = resolveCompetition();
-  if (source === 'espn' && competition === DEFAULT_COMPETITION) {
-    // Default WC path: skip the standings request the statusline doesn't need.
-    return new EspnAdapter({ enrichGroups: false });
-  }
-  // Non-default competition: build via makeAdapter so the slug is applied
-  // (throws for unknown sources — defense in depth behind the validation).
-  return makeAdapter(source);
+  return makeAdapter(source, { enrichGroups: false });
 }
 
 export interface RefreshOpts {

@@ -1,6 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-
   buildMarketSignal,
   deriveFavorite,
   FakeMarketProvider,
@@ -10,6 +9,8 @@ import {
   hasSaneDistribution,
   isReliableMarketSignal,
   isStaleSignal,
+  makeMarketProvider,
+  marketsCoverCompetition,
   type Match,
   type MarketOutcome,
   type MarketProvider,
@@ -21,6 +22,7 @@ import {
   marketProbabilityText,
   marketSignalRendersFor,
   normalizeOutcomes,
+  PolymarketProvider,
 } from '../src/index';
 
 import { cacheableKeys, resolvedValues } from '../src/trust';
@@ -321,5 +323,49 @@ describe('graceful degradation', () => {
     const { signals, checked } = view(await getMarketSignals(boom, [match()]));
     expect(signals.size).toBe(0);
     expect(checked.size).toBe(0); // error → not checked → not negative-cached
+  });
+});
+
+describe('market sidecar scope — the World Cup only', () => {
+  // Polymarket's per-match football markets live in the World Cup series; its
+  // league markets are season futures with no per-match legs. Off the default
+  // competition every fixture derived a `fifwc-…` slug that cannot exist — two
+  // doomed requests per fixture per `today`, negative-cached for three minutes,
+  // then again. The rule sits at CONSTRUCTION so the CLI's disk-cache path and
+  // the MCP server's memory-cache path both inherit it.
+  const ORIG = process.env.CLAUDINHO_COMPETITION;
+  afterEach(() => {
+    if (ORIG === undefined) delete process.env.CLAUDINHO_COMPETITION;
+    else process.env.CLAUDINHO_COMPETITION = ORIG;
+    vi.unstubAllGlobals();
+  });
+
+  it('covers the default competition and nothing else', () => {
+    expect(marketsCoverCompetition('fifa.world')).toBe(true);
+    expect(marketsCoverCompetition('eng.1')).toBe(false);
+    expect(marketsCoverCompetition('uefa.champions')).toBe(false);
+    delete process.env.CLAUDINHO_COMPETITION;
+    expect(marketsCoverCompetition()).toBe(true);
+    process.env.CLAUDINHO_COMPETITION = 'eng.1';
+    expect(marketsCoverCompetition()).toBe(false);
+  });
+
+  it('constructs the network-free no-op provider off the default competition', async () => {
+    process.env.CLAUDINHO_COMPETITION = 'eng.1';
+    const fetchSpy = vi.fn(async () => {
+      throw new Error('the sidecar must not touch the network off the default competition');
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    const provider = makeMarketProvider('polymarket');
+    expect(provider).not.toBeInstanceOf(PolymarketProvider);
+    const batch = await provider.findSignals([match()]);
+    expect(batch.complete).toBe(true); // a complete, honest "no signal" …
+    expect(view(batch).signals.size).toBe(0);
+    expect(fetchSpy).not.toHaveBeenCalled(); // … and zero requests
+  });
+
+  it('still constructs the real provider on the default competition', () => {
+    delete process.env.CLAUDINHO_COMPETITION;
+    expect(makeMarketProvider('polymarket')).toBeInstanceOf(PolymarketProvider);
   });
 });

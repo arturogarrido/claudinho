@@ -12,7 +12,7 @@
  * passthrough on purpose, so this doesn't have to mirror every core field.
  */
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
   allFixtures,
   FakeMarketProvider,

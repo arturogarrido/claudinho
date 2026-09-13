@@ -161,6 +161,24 @@ describe('parseEspnEvents / parseEspnStandings — bounded before the work', () 
     expect(list.complete).toBe(false);
   });
 
+  it('keeps the batch COMPLETE when a refused record was definitively not a fixture', () => {
+    // A record naming one team on both sides is not a fixture at all
+    // (`definitive-none`), unlike one we could not READ (`malformed`). Only the
+    // latter leaves the account incomplete. The distinction had no failing test
+    // on the events path under mutation (issue #99).
+    const sameTeam = {
+      ...withCompetitors([
+        { homeAway: 'home', team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' } },
+        { homeAway: 'away', team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' } },
+      ]),
+      id: '700002',
+    };
+    const list = parseEspnEvents({ events: [EV, sameTeam] });
+    expect(list.items.map((m) => m.id)).toEqual(['700001']);
+    expect(list.total).toBe(2);
+    expect(list.complete).toBe(true);
+  });
+
   it('bounds and dedupes standings groups AND their rows', () => {
     const stats = (i: number) => [
       { name: 'gamesPlayed', value: 0 },
@@ -318,6 +336,93 @@ describe('parseEspnEvents / parseEspnStandings — bounded before the work', () 
     });
     expect(list.items[0]?.rows[0]?.points).toBe(1);
     expect(list.complete).toBe(true);
+  });
+
+  // Issue #99: rules from the standings parser that survived mutation. Each
+  // case names the clause it kills.
+  const ROW_STATS = (over: Record<string, number> = {}, extra: Array<{ name: string; value: number }> = []) => {
+    const base: Record<string, number> = {
+      gamesPlayed: 1,
+      wins: 1,
+      ties: 0,
+      losses: 0,
+      pointsFor: 2,
+      pointsAgainst: 0,
+      pointDifferential: 2,
+      points: 3,
+      rank: 1,
+      ...over,
+    };
+    return [...Object.entries(base).map(([name, value]) => ({ name, value })), ...extra];
+  };
+  const oneTable = (entries: unknown[]) =>
+    parseEspnStandings({ children: [{ name: 'Group A', standings: { entries } }] });
+
+  it('keeps a table COMPLETE when a refused row named no team (definitive-none, not malformed)', () => {
+    const list = oneTable([
+      { team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' }, stats: ROW_STATS() },
+      { team: {}, stats: ROW_STATS({ rank: 2 }) },
+    ]);
+    expect(list.items[0]?.rows.map((r) => r.team.code)).toEqual(['MEX']);
+    expect(list.complete).toBe(true);
+  });
+
+  it('keeps a row whose points deduction pushes its total negative (points is a SIGNED stat)', () => {
+    // Real tables carry these (points deductions for financial breaches): a
+    // 0-1-0 record minus 3 points is -2, and it still has to add up.
+    const list = oneTable([
+      {
+        team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
+        stats: ROW_STATS(
+          { wins: 0, ties: 1, pointsFor: 1, pointsAgainst: 1, pointDifferential: 0, points: -2 },
+          [{ name: 'deductions', value: 3 }],
+        ),
+      },
+    ]);
+    expect(list.items[0]?.rows[0]?.points).toBe(-2);
+    expect(list.complete).toBe(true);
+  });
+
+  it('refuses a row whose deductions are out of range or stated twice', () => {
+    // Each fixture is arithmetically CONSISTENT with the offending deduction
+    // (3 - 1001 = -998 sits inside the signed points bound; 3 - 1 = 2 matches
+    // the first of two duplicates), so the points-consistency check cannot be
+    // what refuses it — only the deductions rule can. The first version of
+    // this test used 5000 and stayed green with the rule deleted.
+    for (const [extra, points] of [
+      [[{ name: 'deductions', value: 1001 }], -998],
+      [
+        [
+          { name: 'deductions', value: 1 },
+          { name: 'deductions', value: 1 },
+        ],
+        2,
+      ],
+    ] as const) {
+      const list = oneTable([
+        {
+          team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' },
+          stats: ROW_STATS({ points }, [...extra]),
+        },
+      ]);
+      expect(list.items).toEqual([]);
+      expect(list.complete).toBe(false);
+    }
+  });
+
+  it('reads two same-code rows as one team listed twice when either lacks a provider id', () => {
+    // Two `RIV` rows are two clubs only because BOTH carry distinct ESPN ids.
+    // With no id on one of them there is nothing to tell them apart by, and the
+    // relaxation that admitted River/Rivadavia must not admit a plain duplicate.
+    const list = oneTable([
+      { team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' }, stats: ROW_STATS() },
+      {
+        team: { abbreviation: 'MEX', displayName: 'Mexico' },
+        stats: ROW_STATS({ wins: 0, losses: 1, pointsFor: 0, pointsAgainst: 2, pointDifferential: -2, points: 0, rank: 2 }),
+      },
+    ]);
+    expect(list.items[0]?.rows.length).toBe(1);
+    expect(list.complete).toBe(false);
   });
 
   it('omits a table when every row has contradictory aggregate statistics', () => {
