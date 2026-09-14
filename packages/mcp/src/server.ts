@@ -5,7 +5,14 @@
  */
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { types as utilTypes } from 'node:util';
-import { z } from 'zod';
+// zod 4's bundled zod-3 entry point, on purpose: the SDK converts a zod-3 schema
+// with zod-to-json-schema and a zod-4 schema with zod 4's own emitter, and the
+// two differ (input objects lose `additionalProperties: false`, `$ref`s are
+// inlined, records gain `propertyNames`, `$schema` moves) — 710 changed lines of
+// tools/list, i.e. an MCP-affecting release. Through `zod/v3` every advertised
+// schema stays byte-identical. Moving the declarations to zod 4 classic is a
+// deliberate, MCP-affecting migration, not a dependency bump.
+import { z } from 'zod/v3';
 import {
   allFixtures,
   asFlavorLevel,

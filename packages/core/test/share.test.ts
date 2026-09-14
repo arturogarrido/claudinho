@@ -59,6 +59,25 @@ const base = {
 const BANNED = /\b(bet|betting|wager|gambling|edge|lock|value pick)\b/i;
 const ESC = String.fromCharCode(27); // ANSI escape introducer
 
+describe('formatShareSnippet — shootouts', () => {
+  it('renders a two-legged shootout whose leg score is not level (1(0)–2(3))', () => {
+    // A share card is pasted as fact; the leg score alone (1–2) would name the
+    // wrong winner of a tie settled 0–3 on penalties. Issue #99: no share
+    // surface had a shootout case.
+    const pens: Match = {
+      ...scheduled,
+      stage: 'R32',
+      group: undefined,
+      status: 'FT',
+      score: { home: 1, away: 2 },
+      shootout: { home: 0, away: 3 },
+    };
+    const out = formatShareSnippet({ ...base, matches: [pens] }, { style: 'social' });
+    expect(out).toContain('1(0)–2(3)');
+    expect(out).not.toContain('1–2 ');
+  });
+});
+
 describe('formatShareSnippet — social card', () => {
   const out = formatShareSnippet(
     { ...base, marketSignals: new Map([[scheduled.id, signal]]) },

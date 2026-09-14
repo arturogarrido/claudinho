@@ -1,6 +1,6 @@
 {
   "name": "@claudinho/mcp",
-  "version": "0.9.4",
+  "version": "0.10.0",
   "mcpName": "io.github.arturogarrido/claudinho",
   "description": "World Cup MCP server for the 2026 men's football tournament — live scores, fixtures, standings, read-only prediction-market signals, and paste-ready match cards. Works with Claude Code, Cursor, Codex, Windsurf, Zed. Not affiliated with FIFA or Anthropic.",
   "type": "module",
@@ -60,7 +60,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "zod": "^3.25.0"
+    "zod": "^4.6.2"
   },
   "devDependencies": {
     "@claudinho/core": "workspace:*",

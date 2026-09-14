@@ -117,6 +117,8 @@ export {
 } from './markets/format';
 export {
   makeMarketProvider,
+  MARKET_COMPETITIONS,
+  marketsCoverCompetition,
   resolveMarketSource,
   getMarketSignal,
   getMarketSignals,

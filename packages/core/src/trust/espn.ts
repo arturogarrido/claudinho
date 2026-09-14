@@ -40,7 +40,11 @@ import {
 // ---- cardinality budgets, applied BEFORE any per-item work ----
 /** Events read from one scoreboard payload — we ask for `limit=300`. */
 export const MAX_EVENTS = 300;
-/** Groups in a standings payload. The tournament has 12. */
+/**
+ * Distinct group tables in a standings payload (a World Cup has 12). ESPN may
+ * repeat a group across children, so the children list is sliced at four times
+ * this before any per-group work; a letter is then read once.
+ */
 export const MAX_GROUPS = 16;
 /** Rows per group. A real group is 4. */
 export const MAX_GROUP_ROWS = 32;
@@ -439,9 +443,10 @@ function entryToRow(e: RawEntry): ParseResult<ParsedStandingRow> {
 /**
  * A standings payload → group tables.
  *
- * Groups are bounded AND deduped, rows are bounded BEFORE the sort, and a team
- * appears at most once per table. Every one of those was a separate finding,
- * and every one is the same mistake: validating after doing the work.
+ * The children list is bounded before any per-group work and a group letter is
+ * read once, rows are bounded BEFORE the sort, and a team appears at most once
+ * per table. Every one of those was a separate finding, and every one is the
+ * same mistake: validating after doing the work.
  */
 export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
   // Children are per-group entries that may repeat a group name, so `total` is
@@ -489,7 +494,11 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
     const entries = takeBounded<RawEntry>(rawEntries, MAX_GROUP_ROWS);
     // Identity is table-local. Other competitions can reuse a provider code in
     // different tables, and two distinct teams can share an abbreviation.
-    const seenTeams = new Set<string>();
+    // Within a table, a shared abbreviation is two teams ONLY when both rows
+    // carry (distinct) provider ids — Argentina's River Plate and Independiente
+    // Rivadavia are both `RIV`. When either row has no id there is nothing to
+    // tell them apart by, and the pair reads as one team listed twice.
+    const seenCodes = new Map<string, boolean>(); // code -> that row carried a provider id
     const seenRanks = new Set<number>();
     const ranked: Array<{ row: StandingRow; rank: number }> = [];
     for (const e of entries) {
@@ -500,18 +509,22 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
       }
       // A team appears once per table. A duplicate is a payload we cannot read
       // as a table, not two rows about two teams.
-      const key = r.value.providerId ?? r.value.team.code;
+      const { providerId, providerRank } = r.value;
+      const code = r.value.team.code;
+      const priorHadId = seenCodes.get(code);
+      const codeCollision =
+        priorHadId !== undefined && (providerId === undefined || priorHadId === false);
       if (
-        seenTeams.has(key) ||
-        seenRanks.has(r.value.providerRank) ||
-        (r.value.providerId !== undefined && seenProviderIds.has(r.value.providerId))
+        codeCollision ||
+        seenRanks.has(providerRank) ||
+        (providerId !== undefined && seenProviderIds.has(providerId))
       ) {
         complete = false;
         continue;
       }
-      seenTeams.add(key);
-      seenRanks.add(r.value.providerRank);
-      if (r.value.providerId !== undefined) seenProviderIds.add(r.value.providerId);
+      seenCodes.set(code, providerId !== undefined);
+      seenRanks.add(providerRank);
+      if (providerId !== undefined) seenProviderIds.add(providerId);
       const { providerId: _dropId, providerRank: rank, ...row } = r.value;
       ranked.push({ row, rank });
     }

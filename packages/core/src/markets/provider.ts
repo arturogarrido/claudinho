@@ -4,6 +4,8 @@ import { emptyBatch } from '../trust/batch';
  * getMatchesForDate contract: a market signal is optional enrichment, so any
  * provider/network/parse error degrades to "no signal" and never throws.
  */
+import { DEFAULT_COMPETITION } from '../adapters/espn';
+import { resolveCompetition } from '../competition';
 import type { Match } from '../types';
 import { FakeMarketProvider } from './fake';
 import { PolymarketProvider } from './polymarket';
@@ -13,6 +15,24 @@ import type {
   MarketSignalOptions,
   MarketSignalsResult,
 } from './types';
+
+/**
+ * Competitions the market sidecar covers — CLAUDINHO'S implementation scope, not
+ * Polymarket's. Polymarket does carry per-match moneylines for leagues (the
+ * event `epl-lee-new-2026-09-14` has Leeds / draw / Newcastle legs), but this
+ * sidecar derives its event slugs from the World Cup series only (`fifwc-…`,
+ * series `soccer-fifwc` — see `deriveEventSlugs`) and validates fixture↔market
+ * identity with nation tokens. Outside this set every fixture would derive a
+ * slug that cannot exist, so the sidecar is switched off by construction
+ * instead of issuing doomed requests. Supporting a league is slug-derivation,
+ * mapping and validation work per competition — not widening this set.
+ */
+export const MARKET_COMPETITIONS: ReadonlySet<string> = new Set([DEFAULT_COMPETITION]);
+
+/** Whether the market sidecar can say anything about the active competition. */
+export function marketsCoverCompetition(competition: string = resolveCompetition()): boolean {
+  return MARKET_COMPETITIONS.has(competition);
+}
 
 /**
  * Resolve the market-data source: explicit arg > CLAUDINHO_MARKETS_SOURCE env >
@@ -40,6 +60,12 @@ export function makeMarketProvider(source?: string): MarketProvider {
     case 'off':
       return new FakeMarketProvider(); // no synth → yields no signals, no network
     default:
+      // The rule sits at construction so EVERY caller inherits it — the CLI's
+      // on-disk cache path and the MCP server's in-memory one both ask this
+      // factory for their provider. A competition the sidecar does not cover
+      // gets the network-free no-op: a complete, honest "no signal" and zero
+      // requests.
+      if (!marketsCoverCompetition()) return new FakeMarketProvider();
       return new PolymarketProvider();
   }
 }

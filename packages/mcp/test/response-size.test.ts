@@ -11,7 +11,7 @@
  * added later cannot forget it.
  */
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
   boundResponse,
   MAX_RESPONSE_CHARS,

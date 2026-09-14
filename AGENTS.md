@@ -65,12 +65,24 @@ To cut a release:
    before tagging (see "Release readiness").
 3. Commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. The workflow gates (build/test/lint +
    tag==version), then `pnpm -r publish --provenance` ships all three via OIDC (versions already on
-   npm are skipped) and auto-creates the GitHub Release (`gh release create --generate-notes`).
+   npm are skipped) and auto-creates the GitHub Release (`gh release create --generate-notes`);
+   a second job, `mcp-registry`, then publishes the tag's record to the official MCP Registry.
 
-**MCP-affecting releases** (anything that changes a tool's shape or description) also bump
-`packages/mcp/server.json` and re-publish to the MCP Registry — from the repo root, pass the path
-(`mcp-publisher publish packages/mcp/server.json`), since `mcp-publisher` defaults to `./server.json`
-in the cwd and ours isn't at the root.
+**The MCP Registry record publishes automatically on every tag.** The `mcp-registry` job in
+`publish.yml` runs after the npm publish succeeded, authenticates with GitHub Actions OIDC
+(`mcp-publisher login github-oidc` — no token, no device flow; the Registry JWT lives five minutes,
+which is why one minted on a laptop always lapsed between releases), publishes
+`packages/mcp/server.json`, and verifies the record. It skips a version the Registry already has
+(records are immutable; a duplicate is a hard 400), so a re-run is safe. `server.json` is bumped on
+every release regardless (the vitest guard pins it to `package.json`), so nothing about the Registry is
+manual any more. If the job ever fails (Registry outage), re-run it alone with
+`gh run rerun <id> --failed`, or fall back to the manual path from the repo root: `mcp-publisher login
+github` (device flow), then `mcp-publisher publish packages/mcp/server.json` — pass the path, since
+`mcp-publisher` defaults to `./server.json` in the cwd and ours isn't at the root. The `mcp-publisher`
+binary is pinned by version + sha256 in the workflow; bump both together from the Registry's releases.
+
+**MCP-affecting releases** (anything that changes a tool's shape or description) still call for the
+`.mcpb`/Smithery decision below — that bundle is a snapshot and the one distribution step left manual.
 
 **Adding or changing an MCP tool:** every tool declares an `outputSchema` and returns
 `structuredContent` (`packages/mcp/src/server.ts`). A **new** tool must be added to
@@ -270,8 +282,8 @@ Two kinds of release, and only one is urgent:
   working branch and release as a single bump. Stack review fixes for the same feature into the
   same PR before merge.
 
-Every release carries real toil (a multi-file version bump, and for MCP-affecting changes an MCP
-Registry re-publish). Fewer, fuller releases cut that directly. When unsure, accumulate.
+Every release carries real toil (a multi-file version bump, and for MCP-affecting changes a
+`.mcpb`/Smithery re-publish). Fewer, fuller releases cut that directly. When unsure, accumulate.
 
 ## Don't
 

@@ -132,7 +132,7 @@ a claim we cannot make.
   and never receives World Cup teams. An aggregate read uses one fallback verdict because its
   single attribution cannot describe mixed live and static provenance honestly. —
   `core/test/adapter-hardening.test.ts`, `core/test/espn.test.ts`,
-  `core/test/live.test.ts`, `core/test/standings-live.test.ts`, `core/test/trust-espn.test.ts`
+  `core/test/standings-live.test.ts`, `core/test/trust-espn.test.ts`
 - **Derived values are recomputed, never trusted** — the market favorite and staleness are
   derived from the sealed data, so a crafted file cannot make the headline contradict the
   numbers, or an old reading claim to be fresh. A team's flag is derived the same way, from its

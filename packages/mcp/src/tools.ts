@@ -32,6 +32,7 @@ import {
   marketBlock,
   marketFixtureForTeam,
   marketRelevant,
+  marketsCoverCompetition,
   marketSignalRendersFor,
   type Match,
   type MarketProvider,
@@ -129,8 +130,16 @@ function marketText(m: Match, sig: MarketSignal, args: CommonOpts): string {
   return `${marketHeader(m, args)}\n${marketBlock(sig, m).join('\n')}`;
 }
 
+/**
+ * Market signals exist for the World Cup only (see `MARKET_COMPETITIONS`); on
+ * any other competition the sidecar is a network-free no-op, and the copy says
+ * so rather than reporting a "no signal" it never looked for.
+ */
+const MARKETS_SCOPE_NOTE = 'Market signals cover the World Cup only; none are read for this competition.';
+
 /** Null/suppressed-signal text, specific about WHY when the match is finished. */
 function noSignalText(m: Match, args: CommonOpts, now: Date): string {
+  if (!marketsCoverCompetition()) return `${marketHeader(m, args)} — ${MARKETS_SCOPE_NOTE}`;
   if (marketRelevant(m, now)) return `No reliable market signal for ${marketHeader(m, args)}.`;
   // "has finished" only when a live overlay confirmed it; a static fixture
   // whose window merely lapsed gets the honest, hedged variant.
@@ -638,9 +647,11 @@ export async function toolGetMarketSignal(
       // so "we could not reach the market data" rendered as the confident
       // "there is none", which is the failure this project refuses everywhere
       // else.
-      batch.complete
-      ? `No reliable market signals on ${date}.`
-      : `Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
+      !marketsCoverCompetition()
+        ? `${MARKETS_SCOPE_NOTE} (${date})`
+        : batch.complete
+          ? `No reliable market signals on ${date}.`
+          : `Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
   if (shown.shown > 0 && !batch.complete) {
     text += `\n\nMarket data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
   }

@@ -21,23 +21,21 @@ import { buildBracketView } from './bracket/resolve';
 import { loadBracketTopology } from './bracket/topology';
 import type { BracketResult } from './bracket/types';
 
-/**
- * The ESPN competition slug to fetch live state from. Defaults to the 2026
- * World Cup (`fifa.world`); override with CLAUDINHO_COMPETITION (e.g.
- * `fifa.friendly` to follow international friendlies during pre-tournament
- * testing). Only affects the *live* fetch — the bundled static schedule is
- * always the World Cup.
- */
-export function resolveCompetition(explicit?: string): string {
-  if (explicit) return explicit;
-  if (typeof process !== 'undefined' && process.env?.CLAUDINHO_COMPETITION) {
-    return process.env.CLAUDINHO_COMPETITION;
-  }
-  return DEFAULT_COMPETITION;
-}
+import { resolveCompetition } from './competition';
+
+export { resolveCompetition };
 
 /** Provider names {@link makeAdapter} can construct (the CLI validates against this). */
 export const KNOWN_SOURCES = ['espn'] as const;
+
+export interface AdapterOptions {
+  /**
+   * Enrich group-stage fixtures with their group letter (one extra standings
+   * request per poll). Default on; the statusline refresher turns it off because
+   * it never renders group letters.
+   */
+  enrichGroups?: boolean;
+}
 
 /**
  * Construct a provider adapter for a `--source` name (default: espn). An
@@ -45,13 +43,13 @@ export const KNOWN_SOURCES = ['espn'] as const;
  * previously no-op'd, which lied about what the flag did (attribution stayed
  * honest, but the advertised knob did nothing).
  */
-export function makeAdapter(source = 'espn'): ProviderAdapter {
+export function makeAdapter(source = 'espn', opts: AdapterOptions = {}): ProviderAdapter {
   switch (source) {
     case 'espn': {
       const competition = resolveCompetition();
       const baseUrl =
         competition === DEFAULT_COMPETITION ? undefined : competitionBase(competition);
-      return new EspnAdapter({ baseUrl });
+      return new EspnAdapter({ baseUrl, enrichGroups: opts.enrichGroups });
     }
     default:
       throw new Error(

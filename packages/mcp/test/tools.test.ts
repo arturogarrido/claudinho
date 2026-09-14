@@ -168,6 +168,22 @@ describe('toolGetToday', () => {
     const opener = (r.data as { matches: Match[] }).matches.find((m) => m.id === '760415');
     expect(opener?.shootout).toEqual({ home: 3, away: 4 });
   });
+
+  it('renders a two-legged shootout whose leg score is not level (1(0)–2(3))', async () => {
+    // ESPN reports the LEG score while penalties settle a level aggregate; the
+    // trust layer keeps such a shootout (0.9.4 round 15) and every surface must
+    // show it. Issue #99: the CLI had this case, the MCP text did not.
+    const pens = liveMatch({
+      status: 'FT',
+      minute: undefined,
+      score: { home: 1, away: 2 },
+      shootout: { home: 0, away: 3 },
+    });
+    const r = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: fakeAdapter({ byDate: [pens] }) });
+    expect(r.text).toContain('1(0)–2(3)');
+    const opener = (r.data as { matches: Match[] }).matches.find((m) => m.id === '760415');
+    expect(opener?.shootout).toEqual({ home: 0, away: 3 });
+  });
 });
 
 describe('toolGetNextFixture (live-resolved knockout)', () => {

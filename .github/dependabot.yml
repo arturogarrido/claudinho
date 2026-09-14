@@ -41,9 +41,13 @@ updates:
     # 3.25 -> 4.5 bump (PR #112): tools/list changed by 710 lines -- every
     # inputSchema lost `additionalProperties: false`, all `$ref`s were inlined,
     # keys reordered -- i.e. an MCP-AFFECTING change (Registry republish, .mcpb
-    # rebuild, Smithery re-score) even though the test suite stayed green.
-    # Adopting zod 4 is a deliberate migration tied to an MCP-affecting release,
-    # not a routine bump. Minor/patch on the 3.x line still flow.
+    # rebuild, Smithery re-score) even though the test suite stayed green (and
+    # `tsc` did not: zod 4's two-argument `z.record` fails typecheck, which
+    # vitest never runs). 0.10.0 moved the package to zod 4 through its bundled
+    # `zod/v3` entry point, which keeps every advertised schema byte-identical;
+    # migrating the declarations to zod 4 classic is tied to an MCP-affecting
+    # release. The next major (5.x) gets the same treatment. Minor/patch on the
+    # 4.x line still flow.
     ignore:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]

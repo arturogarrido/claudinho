@@ -210,6 +210,11 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   // An unreadable or contradictory shootout is a bad optional field, not a bad
   // fixture: omit it while preserving the score/status and the other records in
   // the provider response.
+  //
+  // `score &&` is redundant by construction — every status that satisfies
+  // `shootoutStatus` was refused above when it lacked a score — and is kept as
+  // the statement of the rule (a shootout never exists without the score it
+  // decorates), not as a live check. A mutation pass will find it equivalent.
   const shootout =
     parsedShootout &&
     score &&
@@ -257,6 +262,10 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
       // shootout (a finished 3-3) is dropped above, and reading the survivor
       // here would let that record fall through to "settled some other way" and
       // advance a team on the strength of the very field we just refused.
+      // (`!shootoutPresent` cannot be false here — a claimed-but-unusable
+      // shootout is excluded by the gate above, and a usable finished one is
+      // never level so it took the first branch — it is kept because it is the
+      // rule this branch encodes, and a mutation pass will find it equivalent.)
       winnerCode = claimedWinner;
     }
   }

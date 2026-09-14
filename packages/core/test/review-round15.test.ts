@@ -90,6 +90,15 @@ describe('a shootout is kept while it is being TAKEN', () => {
     expect(m.winnerCode).toBe('GER');
   });
 
+  it('drops a shootout from a record whose status cannot be taking penalties (half-time)', () => {
+    // Penalties are taken LIVE or recorded at FT; a half-time record carrying a
+    // shootout is a stray field, not a fact. The `shootoutStatus` clause had no
+    // failing test under mutation (issue #99) — this is it.
+    const m = sealed({ status: 'HT', score: { home: 1, away: 1 }, shootout: { home: 3, away: 2 } });
+    expect(m.score).toEqual({ home: 1, away: 1 });
+    expect(m.shootout).toBeUndefined();
+  });
+
   it('drops penalties from a group match without dropping the scoreline', () => {
     const m = sealed({
       stage: 'GROUP',
