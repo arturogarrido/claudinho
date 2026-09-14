@@ -46,10 +46,14 @@ const upcoming = (): Match =>
 
 const date = () => upcoming().kickoff.slice(0, 10);
 
+// Every call injects the offline `adapter`: without it `resolveAdapter` builds a
+// REAL EspnAdapter and the unit test fetches the live scoreboard. That passed
+// for weeks on fast CI network and then timed out (5 s) under V8 coverage on
+// the 0.10.0 merge — the one non-hermetic call in the MCP suites.
 describe('an incomplete market read does not render as an empty one', () => {
   it('says the data was unavailable when the batch did not finish', async () => {
     const r = await toolGetMarketSignal({
-      date: '2026-06-11', marketProvider: provider(false), now: NOW,
+      date: '2026-06-11', adapter, marketProvider: provider(false), now: NOW,
     } as never);
     expect(r.text).toContain('unavailable or incomplete');
     expect(r.text).not.toContain('No reliable market signals');
@@ -58,7 +62,7 @@ describe('an incomplete market read does not render as an empty one', () => {
 
   it('says there are none when the batch DID finish and found none', async () => {
     const r = await toolGetMarketSignal({
-      date: '2026-06-11', marketProvider: provider(true), now: NOW,
+      date: '2026-06-11', adapter, marketProvider: provider(true), now: NOW,
     } as never);
     expect(r.text).toContain('No reliable market signals');
     expect((r.data as { complete: boolean }).complete).toBe(true);

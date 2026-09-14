@@ -152,7 +152,10 @@ jobs:
 
       # The Registry validates the npm pin by fetching
       # https://registry.npmjs.org/@claudinho%2Fmcp/<version> and checking its
-      # `mcpName`; a version published seconds ago can lag, so retry. Login sits
+      # `mcpName`; a version published seconds ago lags, so retry. MEASURED on
+      # the first run (v0.10.0): npm took ~110 s to serve the new version, and
+      # the loop succeeded on its LAST of six 20 s attempts — so the budget is
+      # now twelve (≈4 min, inside the 10 min job timeout). Login sits
       # inside the loop because the Registry JWT lives five minutes, and inside
       # the retry handling because a transient token exchange must not abort the
       # job (`run` steps are `bash -e`). Success is decided by READING THE RECORD
@@ -169,7 +172,7 @@ jobs:
             [ "$(curl -sS -o /dev/null -w '%{http_code}' "$REGISTRY_URL/v0/servers/${NAME_ENC}/versions/$V")" = 200 ]
           }
           permanent() { grep -qiE 'permission|unauthorized|invalid audience|forbidden' "$1"; }
-          for attempt in 1 2 3 4 5 6; do
+          for attempt in $(seq 1 12); do
             if ! ./mcp-publisher login github-oidc --registry "$REGISTRY_URL" >login.log 2>&1; then
               cat login.log
               if permanent login.log; then echo "::error::OIDC login refused — not transient, not retrying"; exit 1; fi
@@ -184,7 +187,7 @@ jobs:
             sleep 20
           done
           if published; then echo "Registry has $SERVER_NAME@$V after all"; exit 0; fi
-          echo "::error::Registry publish failed after 6 attempts"; exit 1
+          echo "::error::Registry publish failed after 12 attempts (~4 min)"; exit 1
 
       - name: Verify the Registry record
         run: |
