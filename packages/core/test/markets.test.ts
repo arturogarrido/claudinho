@@ -327,12 +327,13 @@ describe('graceful degradation', () => {
 });
 
 describe('market sidecar scope — the World Cup only', () => {
-  // Polymarket's per-match football markets live in the World Cup series; its
-  // league markets are season futures with no per-match legs. Off the default
-  // competition every fixture derived a `fifwc-…` slug that cannot exist — two
-  // doomed requests per fixture per `today`, negative-cached for three minutes,
-  // then again. The rule sits at CONSTRUCTION so the CLI's disk-cache path and
-  // the MCP server's memory-cache path both inherit it.
+  // The gate is Claudinho's implementation scope, not Polymarket's coverage:
+  // Polymarket does carry per-match league moneylines, but this sidecar derives
+  // its slugs from the World Cup series only (`fifwc-…`), so off the default
+  // competition every fixture derived a slug that cannot exist — two doomed
+  // requests per fixture per `today`, negative-cached for three minutes, then
+  // again. The rule sits at CONSTRUCTION so the CLI's disk-cache path and the
+  // MCP server's memory-cache path both inherit it.
   const ORIG = process.env.CLAUDINHO_COMPETITION;
   afterEach(() => {
     if (ORIG === undefined) delete process.env.CLAUDINHO_COMPETITION;
