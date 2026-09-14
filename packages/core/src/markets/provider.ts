@@ -17,12 +17,15 @@ import type {
 } from './types';
 
 /**
- * Competitions the market sidecar has per-match data for. Polymarket's football
- * moneylines live in the World Cup series (`soccer-fifwc`, the slugs
- * `deriveEventSlugs` builds); its league markets are season futures — champion,
- * top scorer, qualification — with no per-match legs to read. Outside this set
- * every fixture would derive a `fifwc-…` slug that cannot exist, so the sidecar
- * is switched off by construction instead of issuing doomed requests.
+ * Competitions the market sidecar covers — CLAUDINHO'S implementation scope, not
+ * Polymarket's. Polymarket does carry per-match moneylines for leagues (the
+ * event `epl-lee-new-2026-09-14` has Leeds / draw / Newcastle legs), but this
+ * sidecar derives its event slugs from the World Cup series only (`fifwc-…`,
+ * series `soccer-fifwc` — see `deriveEventSlugs`) and validates fixture↔market
+ * identity with nation tokens. Outside this set every fixture would derive a
+ * slug that cannot exist, so the sidecar is switched off by construction
+ * instead of issuing doomed requests. Supporting a league is slug-derivation,
+ * mapping and validation work per competition — not widening this set.
  */
 export const MARKET_COMPETITIONS: ReadonlySet<string> = new Set([DEFAULT_COMPETITION]);
 
@@ -59,8 +62,9 @@ export function makeMarketProvider(source?: string): MarketProvider {
     default:
       // The rule sits at construction so EVERY caller inherits it — the CLI's
       // on-disk cache path and the MCP server's in-memory one both ask this
-      // factory for their provider. A competition without markets gets the
-      // network-free no-op: a complete, honest "no signal" and zero requests.
+      // factory for their provider. A competition the sidecar does not cover
+      // gets the network-free no-op: a complete, honest "no signal" and zero
+      // requests.
       if (!marketsCoverCompetition()) return new FakeMarketProvider();
       return new PolymarketProvider();
   }
