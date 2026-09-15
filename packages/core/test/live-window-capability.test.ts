@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProviderAdapter } from '../src/adapters/types';
-import { getBracket, getNextFixtureForTeam } from '../src/live';
+import { getBracket, getNextFixtureForTeam, marketFixtureForTeam } from '../src/live';
 
 /**
  * Audit A06 (P2): an adapter WITHOUT `fetchWindow` cannot serve the knockout
@@ -38,7 +38,13 @@ describe('A06 — missing window capability', () => {
     expect(result.source).toBeUndefined();
   });
 
-  it('no fetch was attempted on either path', () => {
+  it('marketFixtureForTeam is degraded too (the sibling found by the call-site sweep)', async () => {
+    const result = await marketFixtureForTeam(noWindow, 'MEX', new Date('2026-06-20T00:00:00Z'));
+    expect(result.degraded).toBe(true);
+    expect(result.source).toBeUndefined();
+  });
+
+  it('no fetch was attempted on any path', () => {
     expect(calls).toEqual([]);
   });
 });
