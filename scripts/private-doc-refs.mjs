@@ -2,8 +2,8 @@
  * References to the maintainer-private `docs/` folder, found in text.
  *
  * `docs/` at the repo root is gitignored and private. A tracked file that names
- * a path under it (`docs/PLAN.md`, `./docs/PLAN.md`, `../docs/PLAN.md`,
- * `/docs/PLAN.md`) leaks a private path and goes stale whenever the private
+ * a path under it (`docs/<name>`, `./docs/<name>`, `../docs/<name>`,
+ * `/docs/<name>`) leaks a private path and goes stale whenever the private
  * tree is reorganised. A bare `docs/` — the boundary rules in .gitignore, the
  * CI comment, the PR checklist — is fine: it names the folder, not a file.
  *
@@ -22,9 +22,10 @@ import { join } from 'node:path';
 // it (including a `/docs/` segment) can be read as a local path.
 const SCHEME_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s<>"'`)\]]+/gi;
 // A path-like run. Quotes, backticks, brackets, parens, `<>`, `*`, `!`, `@`,
-// `\`, `:` and whitespace end a token, so `[x](./docs/a.md)`, `!docs/a.md`
-// (a gitignore exception), `@docs/a.md` (a CLAUDE.md import) and
-// `docs/<name>` (a placeholder) tokenise the way a reader reads them.
+// `\`, `:` and whitespace end a token, so a Markdown link `[x](./docs/<a>)`,
+// a gitignore exception `!docs/<a>`, a CLAUDE.md import `@docs/<a>` and a
+// placeholder `docs/<name>` all tokenise the way a reader reads them. (This
+// file, like every tracked file, must not contain a literal private path.)
 const TOKEN = /[A-Za-z0-9._~/?#%+=-]+/g;
 // `cursor.com`, `biomejs.dev`, `sub.example.co.uk`: a scheme-less URL's host.
 const HOSTNAME = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;
