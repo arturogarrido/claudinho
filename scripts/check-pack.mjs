@@ -11,9 +11,9 @@
  *   node scripts/check-pack.mjs
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scanTrackedFiles } from './private-doc-refs.mjs';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 const PKGS = ['core', 'cli', 'mcp'];
@@ -53,30 +53,19 @@ if (tracked) {
 }
 
 // No tracked file may NAME a path under docs/. The folder is maintainer-private,
-// so a public comment, rule or template that cites `docs/<something>` leaks a
-// private path (and goes stale the moment the private tree is reorganised). A
-// bare `docs/` in the boundary rules themselves is fine; `docs/<name>` is not.
-// URLs (`…/docs/…`) are excluded by the preceding-character class.
-const PRIVATE_REF = /(^|[^A-Za-z0-9./:_-])docs\/[A-Za-z0-9_][A-Za-z0-9_.-]*/;
-const trackedFiles = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' })
-  .split('\0')
-  .filter(Boolean);
-const leaks = [];
-for (const f of trackedFiles) {
-  const buf = readFileSync(join(root, f));
-  if (buf.includes(0)) continue; // binary
-  const lines = buf.toString('utf8').split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (PRIVATE_REF.test(lines[i])) leaks.push(`${f}:${i + 1}: ${lines[i].trim()}`);
-  }
-}
+// so a public comment, rule, link or template that cites `docs/<something>`
+// (also as `./docs/…`, `../docs/…` or `/docs/…`) leaks a private path and goes
+// stale the moment the private tree is reorganised. A bare `docs/` in the
+// boundary rules themselves is fine; URLs are not local paths. The matcher
+// lives in private-doc-refs.mjs and is pinned by core's private-doc-refs test.
+const { scanned, leaks } = scanTrackedFiles(root);
 if (leaks.length) {
   failed = true;
   console.error(
     `✗ tracked files name paths under docs/ (private) — cite nothing under it from public files:\n   ${leaks.join('\n   ')}`,
   );
 } else {
-  console.log(`✓ no tracked file names a path under docs/ (${trackedFiles.length} files scanned)`);
+  console.log(`✓ no tracked file names a path under docs/ (${scanned} files scanned)`);
 }
 
 process.exit(failed ? 1 : 0);
