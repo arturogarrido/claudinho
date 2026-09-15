@@ -48,3 +48,27 @@ describe('A06 — missing window capability', () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe('A06 — empty standings must not attribute a static-only bracket (review P2)', () => {
+  const noWindowEmptyStandings: ProviderAdapter = {
+    name: 'espn',
+    capabilities: { push: false, latencyHintSec: 0 },
+    async fetchByDate() {
+      return [];
+    },
+    async fetchLive() {
+      return [];
+    },
+    async fetchStandings() {
+      return []; // a successful, EMPTY read — no bracket fact came from the provider
+    },
+  };
+
+  it('getBracket stays unattributed when the only successful read served no table', async () => {
+    const result = await getBracket(noWindowEmptyStandings);
+    expect(result.degraded).toBe(true);
+    expect(result.standingsDegraded).toBe(false);
+    expect(result.source).toBeUndefined();
+    expect(result.view.source).toBeUndefined();
+  });
+});

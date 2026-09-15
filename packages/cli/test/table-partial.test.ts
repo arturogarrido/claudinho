@@ -1,6 +1,6 @@
-import type { GroupStandings, Match, ProviderAdapter } from '@claudinho/core';
+import { FakeMarketProvider, type GroupStandings, type Match, type ProviderAdapter } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cmdTable } from '../src/commands';
+import { cmdShare, cmdTable } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 
@@ -96,5 +96,24 @@ describe('cmdTable — partial standings (A01)', () => {
   it('a complete table carries no partial notice', async () => {
     await cmdTable('B', ctx(adapterServing([FULL]), { json: false }));
     expect(text()).not.toMatch(/partial/i);
+  });
+});
+
+describe('cmdShare table --json — partial standings (A01, review P2)', () => {
+  it('structured output keeps the partial verdict the snippet warns about', async () => {
+    await cmdShare('table', 'A', {}, {
+      ...ctx(adapterServing([PARTIAL])),
+      marketProvider: new FakeMarketProvider(),
+      now: new Date('2026-06-20T00:00:00Z'),
+    });
+    const d = json() as {
+      degraded: boolean;
+      snippet: string;
+      tables: Array<{ standings: Array<{ rank?: number }>; partial?: { omitted: number } }>;
+    };
+    expect(d.degraded).toBe(false);
+    expect(d.snippet).toMatch(/partial table/i);
+    expect(d.tables[0]?.partial).toEqual({ omitted: 2 });
+    expect(d.tables[0]?.standings.map((r) => r.rank)).toEqual([2, 3]);
   });
 });
