@@ -289,3 +289,4 @@ Every release carries real toil (a multi-file version bump, and for MCP-affectin
 
 - Don't put API keys in client packages — keys live **only** in the gateway.
 - Don't block the statusline hot path on the network — read from the local cache (<150ms).
+- Don't cite anything under `docs/` from a tracked file (code comments, Cursor rules, templates, READMEs). That folder is maintainer-private and gitignored; a public reference leaks a private path and goes stale when the private tree changes. `scripts/check-pack.mjs` (run in CI) fails on any `docs/<name>` reference.

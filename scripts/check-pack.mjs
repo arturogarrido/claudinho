@@ -3,12 +3,15 @@
  * Tarball-contents guard. `npm pack --dry-run` each publishable package and
  * assert nothing ships beyond dist/ + README.md + LICENSE + package.json —
  * and never a .mcpb bundle, anything under docs/, or a dotfile. Also asserts
- * git tracks nothing under docs/ (the 0.8.3 `!docs/PRD.md` gitignore-exception
- * leak class). CI runs this after build; run locally from the repo root:
+ * git tracks nothing under docs/ (the 0.8.3 gitignore-exception leak class) and
+ * that no tracked file names a path under docs/ (the folder is maintainer-
+ * private; public code, comments, rules and templates must not cite it). CI
+ * runs this after build; run locally from the repo root:
  *
  *   node scripts/check-pack.mjs
  */
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -47,6 +50,33 @@ if (tracked) {
   );
 } else {
   console.log('✓ docs/ is untracked (private boundary holds)');
+}
+
+// No tracked file may NAME a path under docs/. The folder is maintainer-private,
+// so a public comment, rule or template that cites `docs/<something>` leaks a
+// private path (and goes stale the moment the private tree is reorganised). A
+// bare `docs/` in the boundary rules themselves is fine; `docs/<name>` is not.
+// URLs (`…/docs/…`) are excluded by the preceding-character class.
+const PRIVATE_REF = /(^|[^A-Za-z0-9./:_-])docs\/[A-Za-z0-9_][A-Za-z0-9_.-]*/;
+const trackedFiles = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' })
+  .split('\0')
+  .filter(Boolean);
+const leaks = [];
+for (const f of trackedFiles) {
+  const buf = readFileSync(join(root, f));
+  if (buf.includes(0)) continue; // binary
+  const lines = buf.toString('utf8').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (PRIVATE_REF.test(lines[i])) leaks.push(`${f}:${i + 1}: ${lines[i].trim()}`);
+  }
+}
+if (leaks.length) {
+  failed = true;
+  console.error(
+    `✗ tracked files name paths under docs/ (private) — cite nothing under it from public files:\n   ${leaks.join('\n   ')}`,
+  );
+} else {
+  console.log(`✓ no tracked file names a path under docs/ (${trackedFiles.length} files scanned)`);
 }
 
 process.exit(failed ? 1 : 0);
