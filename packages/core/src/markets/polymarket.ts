@@ -6,8 +6,8 @@
  * outbound links (sourceMarketId is opaque, never a URL). Any network/parse/host
  * error degrades to "no signal" — it never throws.
  *
- * Payload model (verified against the live Gamma API, see
- * docs/POLYMARKET_MARKET_PREDICTIONS.md): a World Cup match is a Gamma EVENT
+ * Payload model (verified against real events on the live Gamma API, never an
+ * assumed shape): a World Cup match is a Gamma EVENT
  * (`fifwc-{home}-{away}-{date}`) whose payload carries the three moneyline
  * BINARY markets — home win / draw / away win. Each is `outcomes: ["Yes","No"]`
  * and the outcome's probability is its "Yes" price.

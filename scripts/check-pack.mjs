@@ -3,14 +3,17 @@
  * Tarball-contents guard. `npm pack --dry-run` each publishable package and
  * assert nothing ships beyond dist/ + README.md + LICENSE + package.json —
  * and never a .mcpb bundle, anything under docs/, or a dotfile. Also asserts
- * git tracks nothing under docs/ (the 0.8.3 `!docs/PRD.md` gitignore-exception
- * leak class). CI runs this after build; run locally from the repo root:
+ * git tracks nothing under docs/ (the 0.8.3 gitignore-exception leak class) and
+ * that no tracked file names a path under docs/ (the folder is maintainer-
+ * private; public code, comments, rules and templates must not cite it). CI
+ * runs this after build; run locally from the repo root:
  *
  *   node scripts/check-pack.mjs
  */
 import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scanTrackedFiles } from './private-doc-refs.mjs';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 const PKGS = ['core', 'cli', 'mcp'];
@@ -47,6 +50,22 @@ if (tracked) {
   );
 } else {
   console.log('✓ docs/ is untracked (private boundary holds)');
+}
+
+// No tracked file may NAME a path under docs/. The folder is maintainer-private,
+// so a public comment, rule, link or template that cites `docs/<something>`
+// (also as `./docs/…`, `../docs/…` or `/docs/…`) leaks a private path and goes
+// stale the moment the private tree is reorganised. A bare `docs/` in the
+// boundary rules themselves is fine; URLs are not local paths. The matcher
+// lives in private-doc-refs.mjs and is pinned by core's private-doc-refs test.
+const { scanned, leaks } = scanTrackedFiles(root);
+if (leaks.length) {
+  failed = true;
+  console.error(
+    `✗ tracked files name paths under docs/ (private) — cite nothing under it from public files:\n   ${leaks.join('\n   ')}`,
+  );
+} else {
+  console.log(`✓ no tracked file names a path under docs/ (${scanned} files scanned)`);
 }
 
 process.exit(failed ? 1 : 0);

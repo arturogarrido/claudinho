@@ -19,7 +19,7 @@ Every commit produced with an AI agent: follow **`AGENTS.md` § Commit attributi
 
 **Tracked (public engineering guides):** `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, README, MCP tool descriptions.
 
-**Gitignored (maintainer-local):** `docs/` (e.g. `docs/AGENTS.internal.md` notebook), `CLAUDE.local.md`.
+**Gitignored (maintainer-local):** `docs/` (the maintainer's private notes and notebook) and `CLAUDE.local.md`. Never cite a file under `docs/` from a tracked file — the pack guard (`scripts/check-pack.mjs`, run in CI) fails on any `docs/<name>` reference.
 
 - Engineering process → update the **public** guides above.
 - Candid history, strategy, or release post-mortems → `docs/` notebook only.
