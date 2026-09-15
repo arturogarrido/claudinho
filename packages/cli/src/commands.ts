@@ -1211,7 +1211,12 @@ function emitShareTable(ctx: Ctx, e: ShareTableEmit, copy: boolean): void {
       degraded: e.degraded,
       informationalOnly: true,
       snippet,
-      tables: e.tables.map((tb) => ({ group: tb.group, standings: tb.rows })),
+      // The structured card keeps the verdict the snippet warns about (A01).
+      tables: e.tables.map((tb) => ({
+        group: tb.group,
+        standings: tb.rows,
+        ...(tb.partial ? { partial: tb.partial } : {}),
+      })),
     });
   } else {
     out(snippet);

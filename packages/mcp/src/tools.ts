@@ -840,7 +840,12 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         degraded,
         informationalOnly: true,
         snippet,
-        tables: boundedRecords(tables).items.map((tb) => ({ group: tb.group, standings: tb.rows })),
+        // The structured card keeps the verdict the snippet warns about (A01).
+        tables: boundedRecords(tables).items.map((tb) => ({
+          group: tb.group,
+          standings: tb.rows,
+          ...(tb.partial ? { partial: tb.partial } : {}),
+        })),
       },
     };
   }

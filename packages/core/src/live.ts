@@ -240,7 +240,11 @@ export async function getBracket(
   }
 
   const standings = await getStandings(adapter);
-  if (!source && !standings.degraded && standings.source) {
+  // Standings can attribute a bracket whose overlay is missing ONLY when they
+  // actually served a table the group slots project from. A successful but
+  // EMPTY read contributed no bracket fact, so it names no provider — otherwise
+  // "structure only" and "Live data: ESPN" print together (review P2, A06).
+  if (!source && !standings.degraded && standings.source && standings.tables.length > 0) {
     source = standings.source;
   }
 
