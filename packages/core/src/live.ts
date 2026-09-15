@@ -12,6 +12,7 @@ import {
   fixturesByTeam,
   LIVE_WINDOW_MS,
   nextFixtureForTeam,
+  isUpcoming,
 } from './schedule';
 import { rosterAtZero, type GroupStandings } from './standings';
 import { shiftUtcDate } from './time';
@@ -223,18 +224,27 @@ export async function getBracket(
   let liveDegraded = true;
   let source: string | undefined;
 
-  try {
-    const win = knockoutWindow();
-    const live = adapter.fetchWindow && win ? await adapter.fetchWindow(win.start, win.end) : [];
-    matches = mergeLive(base, live);
-    liveDegraded = false;
-    source = adapter.name;
-  } catch {
-    // static skeleton only
+  // No window capability (or no window) means no overlay fetch happened, so
+  // the result is degraded and attributes no provider — the bundled skeleton
+  // is not a successful fetch (audit A06; mirrors getKnockoutFixtures).
+  const win = knockoutWindow();
+  if (adapter.fetchWindow && win) {
+    try {
+      const live = await adapter.fetchWindow(win.start, win.end);
+      matches = mergeLive(base, live);
+      liveDegraded = false;
+      source = adapter.name;
+    } catch {
+      // static skeleton only
+    }
   }
 
   const standings = await getStandings(adapter);
-  if (!source && !standings.degraded && standings.source) {
+  // Standings can attribute a bracket whose overlay is missing ONLY when they
+  // actually served a table the group slots project from. A successful but
+  // EMPTY read contributed no bracket fact, so it names no provider — otherwise
+  // "structure only" and "Live data: ESPN" print together (review P2, A06).
+  if (!source && !standings.degraded && standings.source && standings.tables.length > 0) {
     source = standings.source;
   }
 
@@ -294,17 +304,20 @@ export async function marketFixtureForTeam(
   // upcoming fixture" for a team past its group stage (same root cause as
   // getNextFixtureForTeam). Fail closed to the static skeleton on a provider error.
   let fixtures = allFixtures();
+  // No window capability (or no window) means the knockout overlay was never
+  // fetched: a knockout tie may be unresolvable and the skeleton is not a
+  // successful fetch — the same rule as getBracket/getNextFixtureForTeam
+  // (audit A06, sibling found by the call-site sweep).
   let overlayFailed = false;
-  try {
-    const win = knockoutWindow();
-    if (adapter.fetchWindow && win) {
-      fixtures = mergeLive(
-        fixtures,
-        await adapter.fetchWindow(win.start, win.end),
-      );
+  const win = knockoutWindow();
+  if (adapter.fetchWindow && win) {
+    try {
+      fixtures = mergeLive(fixtures, await adapter.fetchWindow(win.start, win.end));
+    } catch {
+      overlayFailed = true; // KO overlay unavailable — a knockout tie may be unresolvable
     }
-  } catch {
-    overlayFailed = true; // KO overlay unavailable — a knockout tie may be unresolvable
+  } else {
+    overlayFailed = true;
   }
   const candidate = fixturesByTeam(code, fixtures).find((m) => {
     const k = Date.parse(m.kickoff);
@@ -357,14 +370,18 @@ export async function getNextFixtureForTeam(
   let matches = base;
   let degraded = true;
   let liveById: Set<string> | undefined;
-  try {
-    const win = knockoutWindow();
-    const live = adapter.fetchWindow && win ? await adapter.fetchWindow(win.start, win.end) : [];
-    matches = mergeLive(base, live);
-    degraded = false;
-    liveById = new Set(live.map((m) => m.id));
-  } catch {
-    // Static skeleton only — fail closed; never invent a knockout pairing.
+  // Without a window capability nothing was fetched: stay degraded, attribute
+  // nothing (audit A06; mirrors getKnockoutFixtures).
+  const win = knockoutWindow();
+  if (adapter.fetchWindow && win) {
+    try {
+      const live = await adapter.fetchWindow(win.start, win.end);
+      matches = mergeLive(base, live);
+      degraded = false;
+      liveById = new Set(live.map((m) => m.id));
+    } catch {
+      // Static skeleton only — fail closed; never invent a knockout pairing.
+    }
   }
   // Strictly the next UPCOMING fixture (kickoff ≥ now), preserving the pre-overlay
   // `next` semantics — the in-play match is `live`'s job, not `next`'s.
@@ -408,13 +425,12 @@ export async function getKnockoutFixtures(
   } catch {
     return { fixtures: [], degraded: true };
   }
-  const nowMs = now.getTime();
   const fixtures = live
     .filter(
       (m) =>
         m.stage !== 'GROUP' &&
         m.stage !== 'FRIENDLY' &&
-        Date.parse(m.kickoff) >= nowMs &&
+        isUpcoming(m, now) &&
         isResolvedNation(m.home) &&
         isResolvedNation(m.away),
     )

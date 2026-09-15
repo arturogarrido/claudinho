@@ -492,7 +492,11 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
 
   if (cfg.json) {
     // Preserve the prior JSON shape: { group, standings: StandingRow[] } per table.
-    const json = tables.map((tb) => ({ group: tb.group, standings: tb.rows }));
+    const json = tables.map((tb) => ({
+      group: tb.group,
+      standings: tb.rows,
+      ...(tb.partial ? { partial: tb.partial } : {}),
+    }));
     emitJson({
       degraded,
       source: source ?? null,
@@ -523,7 +527,7 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
     out(disclaimer(t, c));
     return;
   }
-  for (const { group: g, rows } of tables) {
+  for (const { group: g, rows, partial } of tables) {
     out();
     out(header(t('table.title', { group: g }), c));
     const table = new Table({
@@ -551,6 +555,8 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
       ]);
     }
     out(table.toString());
+    // A table the provider served but we could not read in full says so (A01).
+    if (partial) out(c.dim('  ' + t('table.partial', { n: String(partial.omitted) })));
   }
   out();
   // Degraded ⇒ rows are a static roster, not real results — say so, don't imply zeros are live.
@@ -1205,7 +1211,12 @@ function emitShareTable(ctx: Ctx, e: ShareTableEmit, copy: boolean): void {
       degraded: e.degraded,
       informationalOnly: true,
       snippet,
-      tables: e.tables.map((tb) => ({ group: tb.group, standings: tb.rows })),
+      // The structured card keeps the verdict the snippet warns about (A01).
+      tables: e.tables.map((tb) => ({
+        group: tb.group,
+        standings: tb.rows,
+        ...(tb.partial ? { partial: tb.partial } : {}),
+      })),
     });
   } else {
     out(snippet);

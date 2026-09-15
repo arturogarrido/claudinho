@@ -33,6 +33,7 @@ export {
   fixturesByGroup,
   nextFixtureForTeam,
   currentOrNextFixtureForTeam,
+  isUpcoming,
   fixturesInLiveWindow,
   isTournamentWindowOver,
   LIVE_WINDOW_MS,

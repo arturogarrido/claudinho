@@ -15,6 +15,7 @@ import {
   isTournamentWindowOver,
   LIVE_WINDOW_MS,
   mergeLive,
+  isUpcoming,
   nextFixtureForTeam,
   displayWidth,
   parseCachedMatch,
@@ -100,7 +101,7 @@ function isMatchShaped(m: unknown): m is Match {
 function nextOverall(now: number, fixtures: Match[] = allFixtures()): Match | undefined {
   return [...fixtures]
     .sort(byKickoff)
-    .find((m) => Date.parse(m.kickoff) >= now && isResolvedFixture(m));
+    .find((m) => isUpcoming(m, new Date(now)) && isResolvedFixture(m));
 }
 
 export interface PromptOpts {

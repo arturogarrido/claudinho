@@ -7,6 +7,7 @@
 import { spawn } from 'node:child_process';
 import {
   allFixtures,
+  isUpcoming,
   byKickoff,
   DEFAULT_COMPETITION,
   getKnockoutFixtures,
@@ -77,7 +78,7 @@ function fixturesStale(state: CacheState | undefined, now: number): boolean {
 
 /** The soonest upcoming static fixture (cheap; bundle is in memory). */
 function nextStaticUpcoming(nowMs: number): Match | undefined {
-  return [...allFixtures()].sort(byKickoff).find((m) => Date.parse(m.kickoff) >= nowMs);
+  return [...allFixtures()].sort(byKickoff).find((m) => isUpcoming(m, new Date(nowMs)));
 }
 
 /**

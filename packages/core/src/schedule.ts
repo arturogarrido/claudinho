@@ -81,15 +81,28 @@ export function fixturesByGroup(group: string, fixtures: Match[] = SCHEDULE): Ma
   return fixtures.filter((m) => (m.group ?? '').toUpperCase() === g).sort(byKickoff);
 }
 
+/**
+ * Eligible to be "the next match": the kickoff is still ahead AND the match is
+ * still going to be played. ONE predicate for every selector (`next`, the
+ * statusline countdown, the knockout-fixture cache, the market fixture, the
+ * refresher cadence) — a cancelled or postponed fixture keeps its kickoff, so
+ * a time-only check advertised it as the next game (audit A07). Finished is
+ * deliberately NOT a clause: under a real clock a finished match never has a
+ * future kickoff, and excluding it only changed seeded-clock replays of an
+ * ended tournament (measured on the 62-surface parity corpus).
+ */
+export function isUpcoming(m: Match, now: Date = new Date()): boolean {
+  if (m.status === 'CANCELLED' || m.status === 'POSTPONED') return false;
+  return Date.parse(m.kickoff) >= now.getTime();
+}
+
 /** The next upcoming fixture for a team at/after `from` (default now). */
 export function nextFixtureForTeam(
   code: string,
   opts: { from?: Date; fixtures?: Match[] } = {},
 ): Match | undefined {
   const from = opts.from ?? new Date();
-  return fixturesByTeam(code, opts.fixtures ?? SCHEDULE).find(
-    (m) => new Date(m.kickoff).getTime() >= from.getTime(),
-  );
+  return fixturesByTeam(code, opts.fixtures ?? SCHEDULE).find((m) => isUpcoming(m, from));
 }
 
 /**
