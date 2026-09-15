@@ -241,7 +241,12 @@ function tableRow(r: StandingRow, rank: number): string {
 
 export interface ShareTableInput {
   /** Group tables to render (1..n); each in standings order. */
-  tables: readonly { group: string; rows: readonly StandingRow[] }[];
+  tables: readonly {
+    group: string;
+    rows: readonly StandingRow[];
+    /** Rows the provider served that could not be read (see GroupStandings). */
+    partial?: { omitted: number };
+  }[];
   /** Live-data provider name for attribution; omit when degraded/static. */
   source?: string;
   /** Exact run cue, e.g. "npx @claudinho/cli table A". */
@@ -274,10 +279,16 @@ export function formatShareTable(input: ShareTableInput, options: ShareSnippetOp
         (input.degraded ? 'Live standings unavailable.' : 'No standings available.'),
     );
   } else {
-    for (const { group, rows } of input.tables) {
-      blocks.push(
-        [`Group ${group} · standings`, '', ...rows.map((r, i) => tableRow(r, i + 1))].join('\n'),
-      );
+    for (const { group, rows, partial } of input.tables) {
+      // The provider's rank, never the array position: on a partial table the
+      // survivors are not 1..n (audit A01). A computed table has no rank and
+      // prints its order.
+      const lines = [`Group ${group} · standings`, '', ...rows.map((r, i) => tableRow(r, r.rank ?? i + 1))];
+      if (partial) {
+        const n = partial.omitted;
+        lines.push('', `(partial table — ${n} row${n === 1 ? '' : 's'} unreadable; positions are the provider's ranks)`);
+      }
+      blocks.push(lines.join('\n'));
     }
     // Never let a static roster paste as if it were live results.
     if (input.degraded) {

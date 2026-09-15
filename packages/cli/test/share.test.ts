@@ -23,6 +23,12 @@ const fakeAdapter: ProviderAdapter = {
   async fetchLive(): Promise<Match[]> {
     return [];
   },
+  // Reachable and CAPABLE of a window fetch, serving nothing: an adapter without
+  // fetchWindow is honestly degraded on next/bracket (audit A06), which is a
+  // different case from "checked and found no fixture".
+  async fetchWindow(): Promise<Match[]> {
+    return [];
+  },
 };
 
 /**

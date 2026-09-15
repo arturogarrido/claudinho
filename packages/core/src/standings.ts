@@ -12,12 +12,26 @@ export interface StandingRow {
   goalsAgainst: number;
   goalDiff: number;
   points: number;
+  /**
+   * The provider's own rank for this row. Present on every live row (the
+   * standings feed states it); absent on a computed or roster-at-zero table,
+   * which has no authority to rank anyone. Renderers print THIS, never the
+   * array position — on a partial table the two differ (audit A01).
+   */
+  rank?: number;
 }
 
 /** A group's table: the group letter ("A".."L") and its rows in standings order. */
 export interface GroupStandings {
   group: string;
   rows: StandingRow[];
+  /**
+   * Present when the provider's table could not be read in full: `omitted` rows
+   * were refused (malformed, duplicate, or beyond the row cap). The readable rows
+   * stay usable, but a partial table carries no authority to confirm or project
+   * qualification, and every surface says it is partial (audit A01).
+   */
+  partial?: { omitted: number };
 }
 
 function blankRow(team: Team): StandingRow {

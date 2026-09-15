@@ -147,6 +147,19 @@ describe('A01 — bracket', () => {
     expect(slots?.home.code).toBeUndefined();
   });
 
+  it('two readable rows of a four-team group project, never confirm (roster size, not survivor count)', async () => {
+    // No partial marker (the provider only served two rows), one match each: the
+    // old rule read that as a complete two-team round-robin. Group A is a bundled
+    // four-team group, so three matches are required — the leader is projected.
+    const { tables, degraded } = await domainTables({
+      children: [group('Group A', [row(2, 'Mexico', 1), row(3, 'Canada', 2)])],
+    });
+    expect(tables[0]?.partial).toBeUndefined();
+    const view = buildBracketView(TOPOLOGY, [], tables, degraded, false);
+    expect(view.stages[0]?.matches[0]?.home).toMatchObject({ code: 'MEX', status: 'projected' });
+    expect(view.stages[0]?.matches[0]?.away).toMatchObject({ code: 'CAN', status: 'projected' });
+  });
+
   it('a fully readable, fully played table still confirms (no regression)', async () => {
     const { tables, degraded } = await domainTables({
       children: [

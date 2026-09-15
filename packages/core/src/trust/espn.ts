@@ -487,9 +487,13 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
     // Detected AT THE SLICE: `ranked` is built from the already-bounded list, so
     // measuring it afterwards can only ever say nothing was dropped — the same
     // count-after-the-fact mistake as `total`.
+    // Rows this table LOST, counted at every refusal below: the table is then
+    // marked partial so no consumer can read the survivors as the whole group.
+    let omitted = 0;
     if (rawEntries.length > MAX_GROUP_ROWS) {
       rowsTruncated = true;
       complete = false;
+      omitted += rawEntries.length - MAX_GROUP_ROWS;
     }
     const entries = takeBounded<RawEntry>(rawEntries, MAX_GROUP_ROWS);
     // Identity is table-local. Other competitions can reuse a provider code in
@@ -505,6 +509,9 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
       const r = entryToRow(e);
       if (r.kind !== 'valid') {
         if (r.kind !== 'definitive-none') complete = false;
+        // Even an entry that names no team is a row the table is missing —
+        // fail closed: it could be a real team behind an unreadable name.
+        omitted += 1;
         continue;
       }
       // A team appears once per table. A duplicate is a payload we cannot read
@@ -520,13 +527,16 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
         (providerId !== undefined && seenProviderIds.has(providerId))
       ) {
         complete = false;
+        omitted += 1;
         continue;
       }
       seenCodes.set(code, providerId !== undefined);
       seenRanks.add(providerRank);
       if (providerId !== undefined) seenProviderIds.add(providerId);
+      // The provider's rank STAYS on the row (audit A01): renderers print it,
+      // and on a partial table it is the only honest position.
       const { providerId: _dropId, providerRank: rank, ...row } = r.value;
-      ranked.push({ row, rank });
+      ranked.push({ row: { ...row, rank }, rank });
     }
     ranked.sort((a, b) => {
       if (a.rank && b.rank && a.rank !== b.rank) return a.rank - b.rank;
@@ -541,7 +551,11 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
       complete = false;
       continue;
     }
-    out.push({ group: letter, rows: ranked.map((x) => x.row) });
+    out.push({
+      group: letter,
+      rows: ranked.map((x) => x.row),
+      ...(omitted > 0 ? { partial: { omitted } } : {}),
+    });
   }
   return {
     items: out,

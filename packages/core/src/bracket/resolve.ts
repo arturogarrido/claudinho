@@ -13,6 +13,7 @@ import type {
   SlotRef,
   SlotStatus,
 } from './types';
+import { fixturesByGroup } from '../schedule';
 import { teamFromMatch } from './types';
 
 interface ResolveContext {
@@ -41,16 +42,47 @@ function matchesPerTeamInGroup(teamCount: number): number {
   return Math.max(0, teamCount - 1);
 }
 
-/** True when every team in the table has played a full round-robin. */
-export function isGroupStandingsComplete(table: GroupStandings | undefined): boolean {
-  const n = table?.rows.length ?? 0;
+/**
+ * True when every team in the table has played a full round-robin.
+ *
+ * A PARTIAL table (rows the provider served but we refused) is never complete:
+ * the survivors may not be the group's top two, and the round-robin size must
+ * come from the roster, not from how many rows survived — two readable rows
+ * with one match each are not a finished two-team group when the group has
+ * four teams (audit A01). Pass `expectedTeams` when the roster is known.
+ */
+export function isGroupStandingsComplete(
+  table: GroupStandings | undefined,
+  expectedTeams?: number,
+): boolean {
+  if (!table || table.partial) return false;
+  const n = table.rows.length;
   if (n < 2) return false;
-  const required = matchesPerTeamInGroup(n);
-  return table!.rows.every((r) => r.played >= required);
+  if (expectedTeams !== undefined && n < expectedTeams) return false;
+  const required = matchesPerTeamInGroup(Math.max(n, expectedTeams ?? n));
+  return table.rows.every((r) => r.played >= required);
+}
+
+/** Distinct teams the bundled schedule seats in a group (undefined when none). */
+function bundledGroupSize(group: string): number | undefined {
+  const codes = new Set<string>();
+  for (const m of fixturesByGroup(group)) {
+    codes.add(m.home.code);
+    codes.add(m.away.code);
+  }
+  return codes.size > 0 ? codes.size : undefined;
 }
 
 function isGroupComplete(group: string, tables: GroupStandings[]): boolean {
-  return isGroupStandingsComplete(tables.find((t) => t.group === group));
+  return isGroupStandingsComplete(
+    tables.find((t) => t.group === group),
+    bundledGroupSize(group),
+  );
+}
+
+/** A table we could not read in full carries no authority to seat anyone. */
+function isGroupPartial(group: string, tables: GroupStandings[]): boolean {
+  return tables.find((t) => t.group === group)?.partial !== undefined;
 }
 
 function resolveWinner(match: Match): Team | undefined {
@@ -118,7 +150,11 @@ function resolveSlot(
       return tbd(ref.label);
     case 'group': {
       if (liveParticipant) return liveParticipant;
-      if (!ctx.standingsDegraded && hasGroupStarted(ref.group, ctx.tables)) {
+      if (
+        !ctx.standingsDegraded &&
+        !isGroupPartial(ref.group, ctx.tables) &&
+        hasGroupStarted(ref.group, ctx.tables)
+      ) {
         const team = teamFromStandings(ref.group, ref.position, ctx.tables);
         if (team) {
           const status: SlotStatus = isGroupComplete(ref.group, ctx.tables)

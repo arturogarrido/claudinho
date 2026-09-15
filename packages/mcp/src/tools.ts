@@ -411,7 +411,11 @@ export async function toolGetStandings(
 
   // Preserve the structured shape: { group, standings: StandingRow[] }.
   const boundedTables = boundedRecords(tables);
-  const shaped = boundedTables.items.map((tb) => ({ group: tb.group, standings: tb.rows }));
+  const shaped = boundedTables.items.map((tb) => ({
+    group: tb.group,
+    standings: tb.rows,
+    ...(tb.partial ? { partial: tb.partial } : {}),
+  }));
 
   if (shaped.length === 0) {
     const g = args.group?.toUpperCase();
@@ -426,7 +430,15 @@ export async function toolGetStandings(
     };
   }
 
-  let text = shaped.map((t) => standingsTable(t.group, t.standings)).join('\n\n');
+  let text = shaped
+    .map((tb) => {
+      const block = standingsTable(tb.group, tb.standings);
+      // A table the provider served but we could not read in full says so (A01).
+      return tb.partial
+        ? `${block}\n(${t(args.lang, 'standings.partial', { n: String(tb.partial.omitted) })})`
+        : block;
+    })
+    .join('\n\n');
   // Stated, not silent — the same rule the match lists follow.
   text += truncationNote(boundedTables);
   if (degraded) text += '\n\n(Live standings unavailable — showing the group roster.)';
@@ -487,6 +499,7 @@ export async function standingsResourceText(
     : degraded
       ? 'Live standings unavailable.'
       : `No group ${g}.`;
+  if (tb?.partial) text += `\n(${t(undefined, 'standings.partial', { n: String(tb.partial.omitted) })})`;
   if (degraded && tb) text += '\n\n(Live standings unavailable — showing the group roster.)';
   return withDisclaimer(text, source);
 }

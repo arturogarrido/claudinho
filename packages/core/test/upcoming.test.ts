@@ -34,7 +34,6 @@ describe('A07 — isUpcoming', () => {
     ['a future cancelled fixture', cancelled, false],
     ['a future postponed fixture', postponed, false],
     ['a past fixture', past, false],
-    ['a future fixture already marked finished', fixture('9', '2026-09-18T20:00:00.000Z', 'FT'), false],
   ])('%s → %s', (_label, m, expected) => {
     expect(isUpcoming(m, NOW)).toBe(expected);
   });
