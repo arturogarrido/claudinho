@@ -5,7 +5,7 @@
  * window (parity-pinned against the former hardcoded literals).
  */
 import { describe, expect, it, vi } from 'vitest';
-import { EspnAdapter, ProviderError } from '../src/adapters/espn';
+import { DEFAULT_COOLDOWN_MS, EspnAdapter, ProviderError } from '../src/adapters/espn';
 import { getStandings, knockoutWindow } from '../src/live';
 
 type FetchImpl = typeof fetch;
@@ -120,11 +120,16 @@ describe('typed provider errors', () => {
 
   it('lastError clears when a subsequent request starts and succeeds', async () => {
     let fail = true;
+    // A 429 now arms a cooldown (audit A12), so the retry has to come AFTER the
+    // window; inside it the adapter answers the retained throttle by design.
+    let now = Date.parse('2026-09-15T12:00:00Z');
     const adapter = new EspnAdapter({
       fetchImpl: (async () => (fail ? httpError(429) : okJson(STANDINGS))) as FetchImpl,
+      now: () => now,
     });
     await expect(adapter.fetchStandings()).rejects.toBeInstanceOf(ProviderError);
     fail = false;
+    now += DEFAULT_COOLDOWN_MS + 1;
     await adapter.fetchStandings();
     expect(adapter.lastError).toBeUndefined();
   });

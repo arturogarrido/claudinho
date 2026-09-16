@@ -29,6 +29,8 @@ import {
   readState,
   releaseLock,
   writeState,
+  claimLock,
+  publishState,
 } from './cache';
 import { inLiveWindow, LIVE_TTL_MS } from './statusline';
 
@@ -115,13 +117,15 @@ function liveWindowActive(nowMs: number): boolean {
  * under a label it doesn't match: runRefresh validates `source` against
  * KNOWN_SOURCES before calling this (makeAdapter throws as defense in depth).
  */
-function liveAdapter(source: string): ProviderAdapter {
-  return makeAdapter(source, { enrichGroups: false });
+function liveAdapter(source: string, now?: () => number): ProviderAdapter {
+  return makeAdapter(source, { enrichGroups: false, now });
 }
 
 export interface RefreshOpts {
   source?: string;
   now?: Date;
+  /** Backoff jitter in ms (tests inject 0). Default: random up to BACKOFF_JITTER_MS. */
+  jitterMs?: number;
 }
 
 /** Perform one refresh cycle (idempotent, lock-guarded). */
@@ -201,7 +205,8 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
     return;
   }
 
-  if (!acquireLock()) return;
+  const token = claimLock();
+  if (!token) return;
   try {
     // Carry the slice we're NOT refreshing this cycle so a fixtures-only refresh
     // doesn't drop live (and vice-versa).
@@ -212,7 +217,12 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
     let fixturesUpdatedAt = base?.fixturesUpdatedAt;
     let fixturesAttemptedAt = base?.fixturesAttemptedAt;
     let backoffUntil = base?.backoffUntil;
-    const adapter = liveAdapter(source);
+    // The adapter runs on the refresher's clock (an injected `now` plus the
+    // real time elapsed since), so its absolute cooldown deadline and the
+    // snapshot's `backoffUntil` are on the same timeline.
+    const realStart = Date.now();
+    const clock = () => nowMs + (Date.now() - realStart);
+    const adapter = liveAdapter(source, clock);
 
     if (needLive) {
       // Use the domain helper, not adapter.fetchLive() directly: it fetches a
@@ -251,29 +261,42 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
     }
 
     // The provider told us to go away (429/403) → persist a jittered backoff
-    // that every refresh trigger honors. An expired backoff is dropped so the
-    // snapshot doesn't carry it forever.
-    if (adapter.lastError?.throttled) {
-      backoffUntil = new Date(
-        nowMs + BACKOFF_MS + Math.floor(Math.random() * BACKOFF_JITTER_MS),
-      ).toISOString();
+    // that every refresh trigger honors, at least as long as the provider's
+    // own Retry-After (already bounded by the adapter — audit A12). An expired
+    // backoff is dropped so the snapshot doesn't carry it forever.
+    // Read the adapter's RETAINED window, not lastError (a later non-throttle
+    // failure overwrites lastError while the window stands), and persist its
+    // ABSOLUTE deadline: the provider's Retry-After counts from receipt, so a
+    // slow response must not have its latency subtracted (review P2 on #128).
+    const armed = adapter.cooldownUntil;
+    if (armed !== undefined && armed > clock()) {
+      const jitter = opts.jitterMs ?? Math.floor(Math.random() * BACKOFF_JITTER_MS);
+      backoffUntil = new Date(Math.max(armed, nowMs + BACKOFF_MS) + jitter).toISOString();
     } else if (backoffUntil && Date.parse(backoffUntil) <= nowMs) {
       backoffUntil = undefined;
     }
 
-    writeState({
-      updatedAt,
-      live,
-      degraded,
-      source,
-      competition,
-      ...(fixtures ? { fixtures } : {}),
-      ...(fixturesUpdatedAt ? { fixturesUpdatedAt } : {}),
-      ...(fixturesAttemptedAt ? { fixturesAttemptedAt } : {}),
-      ...(backoffUntil ? { backoffUntil } : {}),
-    });
+    // Fenced on ownership: if the lease went stale mid-fetch and a successor
+    // took over, its snapshot is newer than ours and must stand (audit A10).
+    const published = publishState(
+      {
+        updatedAt,
+        live,
+        degraded,
+        source,
+        competition,
+        ...(fixtures ? { fixtures } : {}),
+        ...(fixturesUpdatedAt ? { fixturesUpdatedAt } : {}),
+        ...(fixturesAttemptedAt ? { fixturesAttemptedAt } : {}),
+        ...(backoffUntil ? { backoffUntil } : {}),
+      },
+      token,
+    );
+    if (!published && process.env.CLAUDINHO_DEBUG) {
+      process.stderr.write('claudinho: refresh lease lost to a successor; snapshot not published\n');
+    }
   } finally {
-    releaseLock();
+    releaseLock(token);
   }
 }
 

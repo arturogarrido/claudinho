@@ -13,6 +13,7 @@ import type { GroupStandings } from '../standings';
 import { groups as bundledGroups } from '../schedule';
 import { type MapContext, parseEspnEvent, parseEspnEvents, parseEspnStandings } from '../trust/espn';
 import type { Match } from '../types';
+import { readJsonBounded, ResponseTooLargeError } from './http';
 import type { ProviderAdapter, ProviderCapabilities } from './types';
 
 export type { MapContext };
@@ -37,6 +38,30 @@ const USER_AGENT = `claudinho/${process.env.CLAUDINHO_VERSION ?? '0.0'} (+https:
  * gateway-era work; the timeout still bounds how long such a body can flow.
  */
 export const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Provider cooldown after a 429/403 (audit A12): the window a throttled
+ * adapter refuses to fetch in. `Retry-After` is honoured in both RFC 9110 forms
+ * (delay-seconds and HTTP-date) up to MAX_COOLDOWN_MS — a longer request is
+ * capped, never silently shortened below the cap — and DEFAULT_COOLDOWN_MS
+ * applies when the header is absent or unreadable.
+ */
+export const DEFAULT_COOLDOWN_MS = 5 * 60_000;
+export const MAX_COOLDOWN_MS = 15 * 60_000;
+
+/** The cooldown a `Retry-After` header asks for, as milliseconds from `nowMs`, bounded. */
+export function retryAfterMs(header: string | null | undefined, nowMs: number): number {
+  if (typeof header !== 'string' || header.trim() === '') return DEFAULT_COOLDOWN_MS;
+  const h = header.trim();
+  let ms: number | undefined;
+  if (/^\d+$/.test(h)) ms = Number(h) * 1000;
+  else {
+    const at = Date.parse(h);
+    if (Number.isFinite(at)) ms = at - nowMs;
+  }
+  if (ms === undefined || !Number.isFinite(ms)) return DEFAULT_COOLDOWN_MS;
+  return Math.min(Math.max(ms, 0), MAX_COOLDOWN_MS);
+}
 
 /** Build an ESPN soccer base URL for a competition slug (e.g. "fifa.friendly"). */
 export function competitionBase(slug: string): string {
@@ -64,6 +89,8 @@ export type ProviderErrorKind = 'http' | 'timeout' | 'parse';
 export class ProviderError extends Error {
   readonly kind: ProviderErrorKind;
   readonly status?: number;
+  /** For a throttle: how long the adapter will refuse to fetch (bounded). */
+  retryAfterMs?: number;
   constructor(message: string, kind: ProviderErrorKind, status?: number) {
     super(message);
     this.name = 'ProviderError';
@@ -139,6 +166,8 @@ export interface EspnAdapterOptions {
    * path, where group letters aren't needed and the extra call is wasteful.
    */
   enrichGroups?: boolean;
+  /** Clock, injectable for tests. Drives the throttle cooldown window. */
+  now?: () => number;
 }
 
 export class EspnAdapter implements ProviderAdapter {
@@ -166,7 +195,19 @@ export class EspnAdapter implements ProviderAdapter {
    */
   lastError?: ProviderError;
 
+  /**
+   * A retained throttle (audit A12): after a 429/403 every call inside the
+   * window throws the provider's last answer WITHOUT a request. A server-
+   * lifetime MCP adapter is covered by this alone; the CLI pre-arms each
+   * process from its persisted cache via `armCooldown`.
+   */
+  private cooldownUntilMs?: number;
+  private cooldownError?: ProviderError;
+  private readonly cooldownListeners = new Set<(untilMs: number) => void>();
+  private readonly clock: () => number;
+
   constructor(private readonly opts: EspnAdapterOptions = {}) {
+    this.clock = opts.now ?? (() => Date.now());
     const expected =
       opts.expectedStandingsGroups ?? (opts.baseUrl === undefined ? bundledGroups() : undefined);
     this.expectedStandingsGroups = expected ? [...expected] : undefined;
@@ -174,6 +215,48 @@ export class EspnAdapter implements ProviderAdapter {
     // claiming that its teams match the bundled World Cup roster.
     this.standingsFallbackGroups =
       opts.baseUrl === undefined && expected ? [...expected] : undefined;
+  }
+
+  /** Epoch ms until which requests are refused, when a cooldown is armed. */
+  get cooldownUntil(): number | undefined {
+    return this.cooldownUntilMs;
+  }
+
+  /**
+   * Arm the cooldown from outside — a fresh CLI process reading the backoff
+   * its refresher persisted. The retained error reads as a throttle so every
+   * caller's `degraded` path and the refresher's persistence treat it as one.
+   */
+  armCooldown(untilMs: number, reason?: ProviderError): void {
+    const nowMs = this.clock();
+    const error =
+      reason ?? new ProviderError('ESPN request skipped: provider cooldown in effect', 'http', 429);
+    error.retryAfterMs = Math.max(0, untilMs - nowMs);
+    this.arm(untilMs, error);
+  }
+
+  /**
+   * Be told whenever the cooldown window is armed or EXTENDED — the way a
+   * caller persists a throttle that arrives from a still-running request after
+   * its own call already returned (review P2 on #128). Returns unsubscribe.
+   */
+  onCooldown(listener: (untilMs: number) => void): () => void {
+    this.cooldownListeners.add(listener);
+    return () => {
+      this.cooldownListeners.delete(listener);
+    };
+  }
+
+  /**
+   * The ONE place a window is set. Concurrent requests can each carry a
+   * Retry-After; the LATEST expiry wins — a shorter one arriving second must
+   * never shorten a longer active window (review P2 on #128).
+   */
+  private arm(untilMs: number, error: ProviderError): void {
+    if (this.cooldownUntilMs !== undefined && untilMs <= this.cooldownUntilMs) return;
+    this.cooldownUntilMs = untilMs;
+    this.cooldownError = error;
+    for (const listener of this.cooldownListeners) listener(untilMs);
   }
 
   async fetchByDate(dateISO: string): Promise<Match[]> {
@@ -285,6 +368,17 @@ export class EspnAdapter implements ProviderAdapter {
   }
 
   private async get(url: string): Promise<unknown> {
+    const nowMs = this.clock();
+    // Inside a retained throttle window nothing is requested: the provider's
+    // last answer is the answer (audit A12).
+    if (
+      this.cooldownError &&
+      this.cooldownUntilMs !== undefined &&
+      nowMs < this.cooldownUntilMs
+    ) {
+      this.lastError = this.cooldownError;
+      throw this.cooldownError;
+    }
     const doFetch = this.opts.fetchImpl ?? fetch;
     const controller = new AbortController();
     const timer = setTimeout(
@@ -309,20 +403,29 @@ export class EspnAdapter implements ProviderAdapter {
           : new ProviderError(`ESPN request failed: ${(e as Error)?.message ?? e}`, 'http');
       }
       if (!res.ok) {
-        throw new ProviderError(
+        const pe = new ProviderError(
           `ESPN request failed: ${res.status} ${res.statusText}`,
           'http',
           res.status,
         );
+        if (pe.throttled) {
+          // The provider asked us to go away: remember for how long, and refuse
+          // to ask again until then (Retry-After honoured, bounded). Measured
+          // from RECEIPT, not from when the request started — a slow response
+          // must not have its latency subtracted from the delay (review P2).
+          const receiptMs = this.clock();
+          pe.retryAfterMs = retryAfterMs(res.headers?.get?.('retry-after'), receiptMs);
+          this.arm(receiptMs + pe.retryAfterMs, pe);
+        }
+        throw pe;
       }
-      // Size cap BEFORE parsing (optional chaining: test fakes omit headers).
-      const length = Number(res.headers?.get?.('content-length'));
-      if (Number.isFinite(length) && length > MAX_RESPONSE_BYTES) {
-        throw new ProviderError(`ESPN response too large: ${length} bytes`, 'parse');
-      }
+      // Bounded on the bytes actually consumed, declared or not (audit A11).
       try {
-        return await res.json();
+        return await readJsonBounded(res, MAX_RESPONSE_BYTES);
       } catch (e) {
+        if (e instanceof ResponseTooLargeError) {
+          throw new ProviderError(`ESPN response too large: ${e.bytes} bytes`, 'parse');
+        }
         throw new ProviderError(
           `ESPN response unparseable: ${(e as Error)?.message ?? e}`,
           'parse',

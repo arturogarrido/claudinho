@@ -24,6 +24,7 @@
  * gate it should fail.
  */
 import { MAX_RESPONSE_BYTES } from '../adapters/espn';
+import { readJsonBounded, ResponseTooLargeError } from '../adapters/http';
 
 import { shiftUtcDate } from '../time';
 import type { Match } from '../types';
@@ -295,14 +296,17 @@ export class PolymarketProvider implements MarketProvider {
     if (!res.ok) {
       throw new Error(`Polymarket request failed: ${res.status} ${res.statusText}`);
     }
-    // Size cap BEFORE parsing (optional chaining: test fakes omit headers).
-    // Declared bodies only — see MAX_RESPONSE_BYTES for the accepted residual
-    // risk on chunked responses.
-    const length = Number(res.headers?.get?.('content-length'));
-    if (Number.isFinite(length) && length > MAX_RESPONSE_BYTES) {
-      throw new Error(`Polymarket response too large: ${length} bytes`);
+    // Bounded on the bytes actually consumed, declared or not (audit A11):
+    // the same reader the ESPN adapter uses.
+    let data: unknown;
+    try {
+      data = await readJsonBounded(res, MAX_RESPONSE_BYTES);
+    } catch (e) {
+      if (e instanceof ResponseTooLargeError) {
+        throw new Error(`Polymarket response too large: ${e.bytes} bytes`);
+      }
+      throw e;
     }
-    const data = (await res.json()) as unknown;
     // One slug, one event. More than one is an answer we cannot resolve, and
     // taking `[0]` was picking whichever the API happened to order first.
     if (Array.isArray(data) && data.length > 1) {

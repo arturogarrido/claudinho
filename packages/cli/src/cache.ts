@@ -15,6 +15,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_COMPETITION, type Match } from '@claudinho/core';
+import { randomBytes } from 'node:crypto';
 import { cacheDir, writeFileAtomic } from './paths';
 
 export { cacheDir } from './paths';
@@ -273,47 +274,98 @@ export function isLockFresh(now = Date.now()): boolean {
   return lockAgeMs(now) < LOCK_STALE_MS;
 }
 
-/** Acquire the refresh lock (atomic O_EXCL). Steals a stale lock. */
-export function acquireLock(now = Date.now()): boolean {
-  mkdirSync(cacheDir(), { recursive: true });
-  const lp = lockPath();
+/**
+ * The lock's owner token: `<pid> <stamp> <nonce>`. The stamp stays the second
+ * field so `lockAgeMs` keeps reading it; the nonce makes the token unguessable
+ * so ownership cannot be spoofed by pid reuse.
+ */
+export type LockToken = string;
+
+/** The token this process last acquired through the no-argument API. */
+let heldToken: LockToken | undefined;
+
+function readLockToken(): string | undefined {
+  try {
+    return readFileSync(lockPath(), 'utf8').trim();
+  } catch {
+    return undefined;
+  }
+}
+
+function writeExclusive(lp: string, token: LockToken): boolean {
   try {
     const fd = openSync(lp, 'wx'); // O_CREAT | O_EXCL
     try {
-      writeSync(fd, `${process.pid} ${now}`);
+      writeSync(fd, token);
     } finally {
       closeSync(fd);
     }
     return true;
   } catch {
-    // Lock exists. Steal it only if it's stale (by written timestamp / mtime).
-    if (lockAgeMs(now) > LOCK_STALE_MS) {
-      try {
-        rmSync(lp, { force: true });
-      } catch {
-        return false; // lost the race to remove it
-      }
-      // One retry; if someone else grabbed it first, give up (no recursion loop).
-      try {
-        const fd = openSync(lp, 'wx');
-        try {
-          writeSync(fd, `${process.pid} ${now}`);
-        } finally {
-          closeSync(fd);
-        }
-        return true;
-      } catch {
-        return false;
-      }
-    }
     return false;
   }
 }
 
-export function releaseLock(): void {
+/**
+ * Claim the refresh lock (atomic O_EXCL), stealing a stale one. Returns the
+ * owner token, which `holdsLock`, `publishState` and `releaseLock` require —
+ * audit A10: a release without ownership used to unlink whatever lock was
+ * there, so a stale owner waking up removed its SUCCESSOR's lock and a third
+ * refresher was admitted while the successor still ran.
+ * REMAINING (0.11, 2.6): the stale-check-then-unlink below is still a race
+ * window; a true cross-process coordinator closes it.
+ */
+export function claimLock(now = Date.now()): LockToken | undefined {
+  mkdirSync(cacheDir(), { recursive: true });
+  const lp = lockPath();
+  const token = `${process.pid} ${now} ${randomBytes(6).toString('hex')}`;
+  if (writeExclusive(lp, token)) return token;
+  // Lock exists. Steal it only if it's stale (by written timestamp / mtime).
+  if (lockAgeMs(now) > LOCK_STALE_MS) {
+    try {
+      rmSync(lp, { force: true });
+    } catch {
+      return undefined; // lost the race to remove it
+    }
+    // One retry; if someone else grabbed it first, give up (no recursion loop).
+    return writeExclusive(lp, token) ? token : undefined;
+  }
+  return undefined;
+}
+
+/** True while the lock file still carries this token (default: this process's). */
+export function holdsLock(token: LockToken | undefined = heldToken): boolean {
+  return token !== undefined && readLockToken() === token;
+}
+
+/** Acquire the refresh lock for this process (the no-argument API). */
+export function acquireLock(now = Date.now()): boolean {
+  const token = claimLock(now);
+  if (token) heldToken = token;
+  return token !== undefined;
+}
+
+/** Release the lock — a no-op for anyone but its current holder. */
+export function releaseLock(token: LockToken | undefined = heldToken): void {
+  if (!holdsLock(token)) return;
   try {
     rmSync(lockPath(), { force: true });
   } catch {
     /* ignore */
   }
+  if (token === heldToken) heldToken = undefined;
+}
+
+/**
+ * Publish a snapshot only while the lock is still ours (audit A10). This is an
+ * OWNERSHIP CHECK, not atomic fencing: a takeover that lands between the check
+ * and the write still lets a stale owner's snapshot land. It narrows the
+ * window a refresher that lost its lease has to overwrite its successor; a
+ * cross-process coordinator with atomic fencing (0.11, 2.6) closes it.
+ * Returns whether the write happened.
+ */
+export function publishState(state: CacheState, token: LockToken | undefined = heldToken): boolean {
+  if (!holdsLock(token)) return false;
+  writeState(state);
+  return true;
 }

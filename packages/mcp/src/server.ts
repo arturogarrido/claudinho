@@ -19,18 +19,18 @@ import {
   fixturesByDate,
   groups,
   isValidDate,
-  makeAdapter,
 } from '@claudinho/core';
 import { DISCLAIMER, matchList } from './format';
 import {
+  resolveAdapter,
   standingsResourceText,
+  toolGetBracket,
   toolGetLive,
   toolGetMarketSignal,
   toolGetMatch,
   toolGetNextFixture,
   toolGetShareSnippet,
   toolGetStandings,
-  toolGetBracket,
   toolGetTeam,
   toolGetToday,
   type ToolResult,
@@ -708,8 +708,10 @@ export function buildServer(): McpServer {
     async (uri, variables) => {
       const group = String(variables.group ?? '');
       // Shares the get_standings path → live standings, fail-closed roster, and
-      // the SAME provider attribution + disclaimer.
-      const text = await standingsResourceText(group, makeAdapter());
+      // the SAME provider attribution + disclaimer — and the SAME server-lifetime
+      // adapter, so a retained provider throttle (audit A12) covers the resource
+      // too instead of a fresh adapter per read fetching through it.
+      const text = await standingsResourceText(group, resolveAdapter({}));
       return { contents: [{ uri: uri.href, mimeType: 'text/plain', text }] };
     },
   );
