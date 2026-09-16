@@ -120,6 +120,29 @@ describe('club surface coverage — no World Cup leakage off the bundle', () => 
       expect(text()).not.toMatch(WC);
     }
   });
+
+  it('`markets next --json` and `markets <World Cup id> --json` carry the marker', async () => {
+    // Review P2 on #129: the text branches said "not available" while the JSON
+    // branches emitted `complete:true, signal:null` — indistinguishable from a
+    // successful empty result. Both selectors, since each has its own branch.
+    for (const args of [['next', 'ARS'], ['760415', undefined]] as const) {
+      writes = [];
+      await cmdMarkets(args[0], args[1], ctx({ json: true }));
+      expect(JSON.parse(text())).toMatchObject({ complete: true, signal: null, unsupported: true });
+    }
+  });
+
+  it('`share next --json`, `share <World Cup id> --json` and `share bracket --json` carry the marker', async () => {
+    // The sibling of the market P2: the snippet text warns, the structured
+    // half must say so too (the batch-1 `partial` lesson, same shape).
+    for (const args of [['next', 'ARS'], ['760415', undefined], ['bracket', undefined]] as const) {
+      writes = [];
+      await cmdShare(args[0], args[1], {}, ctx({ json: true }));
+      const data = JSON.parse(text()) as { snippet: string };
+      expect(data).toMatchObject({ degraded: false, source: null, unsupported: true });
+      expect(data.snippet).toContain(NOTICE);
+    }
+  });
 });
 
 describe('statusline off the bundle', () => {
