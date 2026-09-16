@@ -1022,6 +1022,9 @@ export async function cmdMarkets(
         informationalOnly: true,
         complete: market.complete,
         signal: shown ?? null,
+        // Review P2 on #129: a JSON consumer must tell "not available for this
+        // competition" from a successful empty result; the text branch already did.
+        ...(unsupported ? { unsupported: true } : {}),
       });
       return;
     }
@@ -1071,6 +1074,7 @@ export async function cmdMarkets(
         informationalOnly: true,
         complete: market.complete,
         signal: shown ?? null,
+        ...(unsupported ? { unsupported: true } : {}),
       });
       return;
     }
@@ -1190,6 +1194,8 @@ type ShareEmit = {
   team?: string;
   input: ShareSnippetInput;
   options: ShareSnippetOptions;
+  /** Off the bundle the feature does not exist yet (A03); the JSON says so. */
+  unsupported?: boolean;
 };
 
 /** Render + emit a snippet (text or JSON), then best-effort copy to clipboard. */
@@ -1208,6 +1214,8 @@ function emitShare(ctx: Ctx, e: ShareEmit, copy: boolean): void {
       matches: e.input.matches,
       marketComplete: e.input.marketComplete ?? true,
       marketSignals: Object.fromEntries(e.input.marketSignals ?? new Map()),
+      // The structured card keeps the verdict the snippet's note carries.
+      ...(e.unsupported ? { unsupported: true } : {}),
     });
   } else {
     out(snippet);
@@ -1282,6 +1290,8 @@ interface ShareBracketEmit {
   installLine: string;
   emptyNote: string;
   options: ShareBracketOptions;
+  /** Off the bundle there is no bracket (A03); top-level like `bracket --json`. */
+  unsupported?: boolean;
 }
 
 /** Emit a `share bracket` snippet. */
@@ -1305,6 +1315,7 @@ function emitShareBracket(ctx: Ctx, e: ShareBracketEmit, copy: boolean): void {
       informationalOnly: true,
       snippet,
       view: e.view,
+      ...(e.unsupported ? { unsupported: true } : {}),
     });
   } else {
     out(snippet);
@@ -1429,6 +1440,7 @@ export async function cmdShare(
         emptyNote: unsupported
           ? i18n(cfg.lang, 'competition.unsupported')
           : i18n(cfg.lang, 'bracket.empty'),
+        unsupported,
         options: {
           includeHashtag: baseOptions.includeHashtag,
           includeInstallLine: baseOptions.includeInstallLine,
@@ -1486,6 +1498,7 @@ export async function cmdShare(
           locale: cfg.lang,
         },
         options: baseOptions,
+        unsupported,
       },
       copy,
     );
@@ -1520,6 +1533,7 @@ export async function cmdShare(
           locale: cfg.lang,
         },
         options: baseOptions,
+        unsupported,
       },
       copy,
     );
