@@ -1,0 +1,128 @@
+import { displayWidth } from '@claudinho/core';
+import { PassThrough } from 'node:stream';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  looksLikeCursorPayload,
+  parseCursorPayload,
+  readCursorPayloadBounded,
+  renderCursorMetaLine,
+  renderPromptOutput,
+} from '../src/cursorPayload';
+
+/**
+ * Audit A08 (P2): the Cursor statusline stdin payload was cast, accumulated
+ * without a byte ceiling, and its labels were interpolated verbatim into ANSI
+ * output (repro: an ESC + newline worktree name survived into the meta line; a
+ * 2,097,181-byte stdin produced a 2,097,161-character line). Now: bytes are
+ * bounded BEFORE they are stored, the envelope is validated, every label goes
+ * through the shared human-label role, and the combined meta line is bounded.
+ * Only product-owned ANSI reaches stdout.
+ */
+const asStdin = (s: PassThrough) => s as unknown as NodeJS.ReadStream;
+// Written as escapes on purpose: a literal control character in a fixture is
+// lost in transit, and the test then passes on plain ASCII.
+const ESC = String.fromCharCode(27);
+const HOSTILE = `${ESC}[2J\nFORGED`;
+/** True when any C0 control character (incl. ESC and newline) is present. */
+const hasControl = (s: string) => [...s].some((ch) => (ch.codePointAt(0) ?? 0) < 0x20);
+const stripProductAnsi = (s: string) => s.split(`${ESC}[90m`).join('').split(`${ESC}[0m`).join('');
+
+describe('readCursorPayloadBounded — byte ceiling', () => {
+  it('drops a 2 MiB payload instead of materialising it (score line stays intact)', async () => {
+    const stdin = new PassThrough();
+    const promise = readCursorPayloadBounded(5000, asStdin(stdin));
+    stdin.end(Buffer.from(JSON.stringify({ model: { display_name: 'x'.repeat(2 * 1024 * 1024) } })));
+    expect(await promise).toBeUndefined();
+  });
+
+  it('a payload under the ceiling still parses, with its labels bounded', async () => {
+    const stdin = new PassThrough();
+    const promise = readCursorPayloadBounded(5000, asStdin(stdin));
+    stdin.end(JSON.stringify({ model: { display_name: 'y'.repeat(40_000) } }));
+    const payload = await promise;
+    expect(payload?.model?.display_name).toBeDefined();
+    expect(displayWidth(payload?.model?.display_name ?? '')).toBeLessThanOrEqual(48);
+  });
+});
+
+describe('parseCursorPayload — envelope validation', () => {
+  it.each(['[]', '"x"', 'null', '42', 'true'])('a non-object root is no payload: %s', (raw) => {
+    expect(parseCursorPayload(raw)).toBeUndefined();
+  });
+
+  it('drops wrong-typed fields instead of trusting the cast', () => {
+    const payload = parseCursorPayload(
+      JSON.stringify({
+        model: 'not-an-object',
+        context_window: { used_percentage: '50' },
+        worktree: { name: 7 },
+        vim: { mode: ['i'] },
+        render_width_chars: '80',
+      }),
+    );
+    expect(payload).toBeDefined();
+    expect(payload?.model).toBeUndefined();
+    expect(payload?.context_window?.used_percentage).toBeUndefined();
+    expect(payload?.worktree).toBeUndefined();
+    expect(payload?.vim).toBeUndefined();
+    expect(payload?.render_width_chars).toBeUndefined();
+    expect(looksLikeCursorPayload(payload as NonNullable<typeof payload>)).toBe(false);
+  });
+
+  it('strips control characters from labels at parse time', () => {
+    const payload = parseCursorPayload(JSON.stringify({ worktree: { name: HOSTILE } }));
+    expect(hasControl(payload?.worktree?.name ?? '')).toBe(false);
+    expect(payload?.worktree?.name).toContain('FORGED');
+  });
+});
+
+describe('renderCursorMetaLine — only product-owned ANSI reaches stdout', () => {
+  it('a hostile label passed straight to the renderer is still cleaned', () => {
+    const line = renderCursorMetaLine({ worktree: { name: HOSTILE } }) ?? '';
+    expect(hasControl(stripProductAnsi(line))).toBe(false);
+    expect(line).toContain('FORGED');
+  });
+
+  it('bounds the combined line even when every label is huge', () => {
+    const big = 'z'.repeat(4000);
+    const line =
+      renderCursorMetaLine({
+        model: { display_name: big, param_summary: big },
+        context_window: { used_percentage: 100 },
+        worktree: { name: big },
+        vim: { mode: big },
+      }) ?? '';
+    expect(displayWidth(stripProductAnsi(line))).toBeLessThanOrEqual(200);
+  });
+
+  it('renders a legitimate payload exactly as before', () => {
+    const line = renderCursorMetaLine({
+      model: { display_name: 'Composer 2.5', param_summary: '1M' },
+      context_window: { used_percentage: 42.7 },
+      worktree: { name: 'feat/x' },
+      vim: { mode: 'NORMAL' },
+    });
+    expect(line).toBe(`${ESC}[90mComposer 2.5 1M  ctx 42%  wt feat/x  NORMAL${ESC}[0m`);
+  });
+});
+
+describe('renderPromptOutput — end to end', () => {
+  const prev = process.env.CLAUDINHO_CURSOR_META;
+  beforeEach(() => {
+    process.env.CLAUDINHO_CURSOR_META = '1';
+  });
+  afterEach(() => {
+    if (prev === undefined) delete process.env.CLAUDINHO_CURSOR_META;
+    else process.env.CLAUDINHO_CURSOR_META = prev;
+  });
+
+  it('a hostile payload cannot change the statusline beyond the score line', () => {
+    const score = '⚽ 🇲🇽 1–0 🇪🇨 67′';
+    const payload = parseCursorPayload(JSON.stringify({ worktree: { name: HOSTILE } }));
+    const out = renderPromptOutput(score, payload);
+    const [first, ...rest] = out.split('\n');
+    expect(first).toBe(score);
+    expect(rest.length).toBeLessThanOrEqual(1);
+    expect(hasControl(stripProductAnsi(rest.join('')))).toBe(false);
+  });
+});
