@@ -196,3 +196,4 @@ export {
   unresolved,
   valid,
 } from './trust';
+export { BUNDLE_COMPETITION, bundleApplies } from './competition';

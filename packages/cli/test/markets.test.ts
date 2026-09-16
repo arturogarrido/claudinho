@@ -295,9 +295,16 @@ describe('cmdMarkets — a competition without markets', () => {
     expect(consulted).not.toHaveBeenCalled();
   });
 
-  it('uses the same scope copy for a single match', async () => {
+  it('a bundled World Cup id is not available off the bundle, and issues no request', async () => {
+    // Audit A03 (0.10.1): under `eng.1` a World Cup id used to resolve through
+    // the skeleton and print the market scope copy for a match that is not
+    // this competition's. Off the bundle the lookup is honest: the notice, no
+    // provider consulted, no market copy.
     await cmdMarkets(upcoming().id, undefined, noProviderCtx({ json: false }));
-    expect(text()).toContain('Market signals cover the World Cup only');
+    const o = text();
+    expect(o).toContain('Not available for this competition yet.');
+    expect(o).not.toContain('Market signals cover the World Cup only');
+    expect(o).toContain('Not affiliated with FIFA or Anthropic.');
     expect(consulted).not.toHaveBeenCalled();
   });
 });

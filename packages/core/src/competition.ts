@@ -16,3 +16,17 @@ export function resolveCompetition(explicit?: string): string {
   }
   return DEFAULT_COMPETITION;
 }
+
+/** The competition whose schedule ships bundled in the clients: the 2026 World Cup. */
+export const BUNDLE_COMPETITION = DEFAULT_COMPETITION;
+
+/**
+ * True when the bundled World Cup schedule applies to the active competition.
+ * Off the bundle, every path built on the skeleton (date merge, `match <id>`,
+ * `next`, the bracket, the knockout-fixture cache, the market fixture) must
+ * not read it: an empty foreign day showed 104 World Cup fixtures with foreign
+ * attribution (audit A03). Real per-competition support is 0.11 (2.1).
+ */
+export function bundleApplies(competition = resolveCompetition()): boolean {
+  return competition === BUNDLE_COMPETITION;
+}

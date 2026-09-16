@@ -20,9 +20,9 @@ import type { Match, Stage } from './types';
 import { isResolvedNation } from './bracket/placeholders';
 import { buildBracketView } from './bracket/resolve';
 import { loadBracketTopology } from './bracket/topology';
-import type { BracketResult } from './bracket/types';
+import type { BracketResult, BracketView } from './bracket/types';
 
-import { resolveCompetition } from './competition';
+import { bundleApplies, resolveCompetition } from './competition';
 
 export { resolveCompetition };
 
@@ -97,7 +97,9 @@ export async function getMatchesForDate(
   adapter: ProviderAdapter,
   dateISO: string,
 ): Promise<LiveResult> {
-  const base = allFixtures();
+  // The skeleton is merged ONLY when it is this competition's schedule; off the
+  // bundle the day is whatever the provider served, and nothing else (A03).
+  const base = bundleApplies() ? allFixtures() : [];
   const day = dateISO.slice(0, 10);
   try {
     // A local calendar day can straddle two adjacent UTC dates (a 01:00Z
@@ -219,6 +221,12 @@ export async function getBracket(
   adapter: ProviderAdapter,
   opts: { stage?: Stage; lang?: string } = {},
 ): Promise<BracketResult> {
+  if (!bundleApplies()) {
+    // No topology, no fetch, no attribution: the bracket is a World Cup
+    // feature and off the bundle it does not exist yet (audit A03).
+    const view: BracketView = { stages: [], degraded: false, standingsDegraded: false, unsupported: true };
+    return { view, degraded: false, standingsDegraded: false, unsupported: true };
+  }
   const topology = loadBracketTopology();
   const base = allFixtures().filter((m) => m.stage !== 'GROUP' && m.stage !== 'FRIENDLY');
 
@@ -274,6 +282,8 @@ export interface MatchByIdResult {
   match?: Match;
   degraded: boolean;
   source?: string;
+  /** Off the bundle a fixture list to look an id up in does not exist yet (audit A03). */
+  unsupported?: true;
 }
 
 /**
@@ -300,6 +310,7 @@ export async function marketFixtureForTeam(
   code: string,
   now: Date = new Date(),
 ): Promise<MatchByIdResult> {
+  if (!bundleApplies()) return { match: undefined, degraded: false, unsupported: true };
   const nowMs = now.getTime();
   // Overlay the live knockout window so a knockout team's fixtures RESOLVE — the
   // bundle's KO slots are 🏳️ placeholders, so a purely static lookup answers "no
@@ -344,6 +355,8 @@ export interface NextFixtureResult {
   degraded: boolean;
   /** The provider that served the live overlay (absent when degraded). */
   source?: string;
+  /** Off the bundle "next" is built on a schedule we do not have yet (audit A03). */
+  unsupported?: true;
 }
 
 /**
@@ -368,6 +381,7 @@ export async function getNextFixtureForTeam(
   code: string,
   now: Date = new Date(),
 ): Promise<NextFixtureResult> {
+  if (!bundleApplies()) return { fixture: undefined, degraded: false, unsupported: true };
   const base = allFixtures();
   let matches = base;
   let degraded = true;
@@ -400,6 +414,8 @@ export interface KnockoutFixturesResult {
   fixtures: Match[];
   /** True when the overlay fetch failed — caller must NOT cache this as "none". */
   degraded: boolean;
+  /** Off the bundle there is no knockout window to fetch (audit A03). */
+  unsupported?: true;
 }
 
 /**
@@ -419,6 +435,7 @@ export async function getKnockoutFixtures(
   adapter: ProviderAdapter,
   now: Date = new Date(),
 ): Promise<KnockoutFixturesResult> {
+  if (!bundleApplies()) return { fixtures: [], degraded: true, unsupported: true };
   const win = knockoutWindow();
   if (!adapter.fetchWindow || !win) return { fixtures: [], degraded: true };
   let live: Match[];
@@ -454,6 +471,7 @@ export async function getMatchById(
   adapter: ProviderAdapter,
   id: string,
 ): Promise<MatchByIdResult> {
+  if (!bundleApplies()) return { match: undefined, degraded: false, unsupported: true };
   const base = allFixtures().find((m) => m.id === id);
   if (!base) return { match: undefined, degraded: false };
   const day = base.kickoff.slice(0, 10);
