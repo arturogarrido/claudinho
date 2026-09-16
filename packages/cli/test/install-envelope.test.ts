@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -43,6 +43,36 @@ describe('invalid settings envelopes', () => {
       const r = initHook({ path });
       expect(r.action).toBe('manual');
       untouched(raw);
+    },
+  );
+
+  it.each([
+    '{"hooks":{"UserPromptSubmit":[null]}}',
+    '{"hooks":{"UserPromptSubmit":[{"hooks":{}}]}}',
+    '{"hooks":{"UserPromptSubmit":[{"hooks":[null]}]}}',
+  ])('malformed nested hook entry %s → manual, nothing written, no exception', (raw) => {
+    // Review P3 on #127: the outer array was validated, its contents were not,
+    // and enumerating commands threw instead of returning the manual path.
+    writeFileSync(path, raw);
+    const r = initHook({ path });
+    expect(r.action).toBe('manual');
+    untouched(raw);
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'a dangling settings symlink is preserved and refused, never replaced by a file',
+    () => {
+      // Review P3 on #127: `realpath` failing was read as "absent", so the link
+      // was replaced by a regular file and its intended target stayed missing.
+      const missing = join(dir, 'missing.json');
+      symlinkSync(missing, path);
+      for (const run of [initStatusline, initCursorStatusline, initHook]) {
+        const r = run({ path });
+        expect(r.action).toBe('manual');
+        expect(lstatSync(path).isSymbolicLink()).toBe(true);
+        expect(existsSync(missing)).toBe(false);
+        expect(existsSync(`${path}.claudinho.bak`)).toBe(false);
+      }
     },
   );
 

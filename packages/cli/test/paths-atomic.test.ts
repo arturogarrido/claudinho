@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -13,6 +14,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { type CacheState, writeState } from '../src/cache';
 import { initHook, initStatusline } from '../src/install';
 import { writeFileAtomic } from '../src/paths';
 
@@ -58,17 +60,39 @@ describe('writeFileAtomic', () => {
     expect(mode(target)).toBe(0o600);
   });
 
-  it.skipIf(!posix)('writes THROUGH a symlink: the link survives, the real file changes, its mode holds', () => {
+  it.skipIf(!posix)('with followSymlinks (settings): the link survives, the real file changes, its mode holds', () => {
     const real = join(dir, 'dotfiles', 'settings.json');
     mkdirSync(join(dir, 'dotfiles'));
     writeFileSync(real, '{"old":true}');
     chmodSync(real, 0o600);
     const link = join(dir, 'settings.json');
     symlinkSync(real, link);
-    writeFileAtomic(link, '{"new":true}');
+    writeFileAtomic(link, '{"new":true}', { followSymlinks: true });
     expect(lstatSync(link).isSymbolicLink()).toBe(true);
     expect(readFileSync(real, 'utf8')).toBe('{"new":true}');
     expect(mode(real)).toBe(0o600);
+  });
+
+  it.skipIf(!posix)('by default (cache): a symlink is REPLACED, never followed — the target is untouched', () => {
+    // Review P2 on #127: unconditional write-through let a planted link at a
+    // cache path point a cache write at an unrelated file. Default = the base
+    // behaviour: the link itself is replaced by a regular file.
+    const real = join(dir, 'unrelated-settings.json');
+    writeFileSync(real, '{"secret":"synthetic-only"}');
+    const link = join(dir, 'state.json');
+    symlinkSync(real, link);
+    writeFileAtomic(link, '{"cache":true}');
+    expect(readFileSync(real, 'utf8')).toBe('{"secret":"synthetic-only"}');
+    expect(lstatSync(link).isSymbolicLink()).toBe(false);
+    expect(readFileSync(link, 'utf8')).toBe('{"cache":true}');
+  });
+
+  it.skipIf(!posix)('with followSymlinks, a DANGLING link is refused, not replaced', () => {
+    const link = join(dir, 'settings.json');
+    symlinkSync(join(dir, 'missing.json'), link);
+    expect(() => writeFileAtomic(link, '{}', { followSymlinks: true })).toThrow();
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(existsSync(join(dir, 'missing.json'))).toBe(false);
   });
 
   it('leaves no temp file behind when the replace fails', () => {
@@ -105,5 +129,48 @@ describe.skipIf(!posix)('installers keep settings private (the call sites)', () 
   it('a settings file created from scratch is private', () => {
     expect(initStatusline({ path }).action).toBe('written');
     expect(mode(path)).toBe(0o600);
+  });
+
+  it('init statusline on a symlinked settings file writes THROUGH it (a dotfiles link stays a link)', () => {
+    const real = join(dir, 'dotfiles.json');
+    writeFileSync(real, JSON.stringify({ theme: 'dark' }));
+    chmodSync(real, 0o600);
+    symlinkSync(real, path);
+    expect(initStatusline({ path }).action).toBe('written');
+    expect(lstatSync(path).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(readFileSync(real, 'utf8'))).toMatchObject({ theme: 'dark', statusLine: { type: 'command' } });
+    expect(mode(real)).toBe(0o600);
+  });
+});
+
+describe.skipIf(!posix)('cache writers never follow a link out of the cache (the call site)', () => {
+  let dir: string;
+  const ORIG = process.env.XDG_CACHE_HOME;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'claudinho-cache-link-'));
+    process.env.XDG_CACHE_HOME = dir;
+  });
+  afterEach(() => {
+    if (ORIG === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = ORIG;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('writeState() through a planted state.json link leaves the link target untouched', () => {
+    const real = join(dir, 'unrelated-settings.json');
+    writeFileSync(real, '{"secret":"synthetic-only"}');
+    mkdirSync(join(dir, 'claudinho'));
+    const link = join(dir, 'claudinho', 'state.json');
+    symlinkSync(real, link);
+    const state: CacheState = {
+      updatedAt: '2026-09-15T00:00:00.000Z',
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+    };
+    writeState(state);
+    expect(readFileSync(real, 'utf8')).toBe('{"secret":"synthetic-only"}');
+    expect(lstatSync(link).isSymbolicLink()).toBe(false);
   });
 });
