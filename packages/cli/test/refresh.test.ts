@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Match } from '@claudinho/core';
-import { readState, writeState } from '../src/cache';
+import { CACHE_VERSION, type CacheState, claimLock, readState, writeState } from '../src/cache';
 import { inKnockoutPhase, runRefresh, shouldRefresh, shouldRefreshFixtures } from '../src/refresh';
 
 // A time well outside any World Cup window (tournament starts 2026-06-11).
@@ -405,5 +405,53 @@ describe('provider backoff on 429/403 (F5 PERF-2)', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('runRefresh — publication is fenced by lock ownership (audit A10)', () => {
+  const DURING = new Date('2026-06-17T05:00:00Z');
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("a refresher that lost its lease mid-fetch does not overwrite its successor's snapshot", async () => {
+    const successor: CacheState = {
+      updatedAt: '2026-06-17T05:00:30.000Z',
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+      fixturesAttemptedAt: '2026-06-17T05:00:31.000Z', // the marker that must survive
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        // While A is mid-fetch its lease goes stale; B reclaims the lock and publishes.
+        claimLock(Date.now() + 61_000);
+        writeState(successor);
+        return { ok: true, json: async () => SCOREBOARD };
+      }),
+    );
+    await runRefresh({ now: DURING, source: 'espn' });
+    expect(readState()).toEqual({ ...successor, version: CACHE_VERSION });
+  });
+});
+
+describe('runRefresh — the persisted backoff honours Retry-After (audit A12)', () => {
+  const DURING = new Date('2026-06-17T05:00:00Z');
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('a 429 with Retry-After 900 persists a ~15 min backoff, not the flat 5–6 min', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: { get: (k: string) => (k.toLowerCase() === 'retry-after' ? '900' : null) },
+      })),
+    );
+    await runRefresh({ now: DURING, source: 'espn' });
+    const until = Date.parse(readState()?.backoffUntil ?? '');
+    expect(until - DURING.getTime()).toBeGreaterThanOrEqual(15 * 60_000);
+    expect(until - DURING.getTime()).toBeLessThanOrEqual(16 * 60_000);
   });
 });
