@@ -29,6 +29,8 @@ import {
   readState,
   releaseLock,
   writeState,
+  claimLock,
+  publishState,
 } from './cache';
 import { inLiveWindow, LIVE_TTL_MS } from './statusline';
 
@@ -201,7 +203,8 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
     return;
   }
 
-  if (!acquireLock()) return;
+  const token = claimLock();
+  if (!token) return;
   try {
     // Carry the slice we're NOT refreshing this cycle so a fixtures-only refresh
     // doesn't drop live (and vice-versa).
@@ -251,29 +254,39 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
     }
 
     // The provider told us to go away (429/403) → persist a jittered backoff
-    // that every refresh trigger honors. An expired backoff is dropped so the
-    // snapshot doesn't carry it forever.
+    // that every refresh trigger honors, at least as long as the provider's
+    // own Retry-After (already bounded by the adapter — audit A12). An expired
+    // backoff is dropped so the snapshot doesn't carry it forever.
     if (adapter.lastError?.throttled) {
+      const asked = adapter.lastError.retryAfterMs ?? 0;
       backoffUntil = new Date(
-        nowMs + BACKOFF_MS + Math.floor(Math.random() * BACKOFF_JITTER_MS),
+        nowMs + Math.max(BACKOFF_MS, asked) + Math.floor(Math.random() * BACKOFF_JITTER_MS),
       ).toISOString();
     } else if (backoffUntil && Date.parse(backoffUntil) <= nowMs) {
       backoffUntil = undefined;
     }
 
-    writeState({
-      updatedAt,
-      live,
-      degraded,
-      source,
-      competition,
-      ...(fixtures ? { fixtures } : {}),
-      ...(fixturesUpdatedAt ? { fixturesUpdatedAt } : {}),
-      ...(fixturesAttemptedAt ? { fixturesAttemptedAt } : {}),
-      ...(backoffUntil ? { backoffUntil } : {}),
-    });
+    // Fenced on ownership: if the lease went stale mid-fetch and a successor
+    // took over, its snapshot is newer than ours and must stand (audit A10).
+    const published = publishState(
+      {
+        updatedAt,
+        live,
+        degraded,
+        source,
+        competition,
+        ...(fixtures ? { fixtures } : {}),
+        ...(fixturesUpdatedAt ? { fixturesUpdatedAt } : {}),
+        ...(fixturesAttemptedAt ? { fixturesAttemptedAt } : {}),
+        ...(backoffUntil ? { backoffUntil } : {}),
+      },
+      token,
+    );
+    if (!published && process.env.CLAUDINHO_DEBUG) {
+      process.stderr.write('claudinho: refresh lease lost to a successor; snapshot not published\n');
+    }
   } finally {
-    releaseLock();
+    releaseLock(token);
   }
 }
 

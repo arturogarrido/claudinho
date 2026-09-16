@@ -17,17 +17,22 @@ const CAP = 1024; // a small cap keeps the fixtures readable; the rule is size-a
 
 function streamed(chunks: Uint8Array[], spies: { pulls: number; cancels: number }, headers: Record<string, string> = {}): Response {
   const queue = [...chunks];
-  const body = new ReadableStream<Uint8Array>({
-    pull(controller) {
-      spies.pulls += 1;
-      const next = queue.shift();
-      if (next) controller.enqueue(next);
-      else controller.close();
+  // highWaterMark 0: a default stream prefetches one chunk on its own, which
+  // would count as a pull our reader never asked for.
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        spies.pulls += 1;
+        const next = queue.shift();
+        if (next) controller.enqueue(next);
+        else controller.close();
+      },
+      cancel() {
+        spies.cancels += 1;
+      },
     },
-    cancel() {
-      spies.cancels += 1;
-    },
-  });
+    { highWaterMark: 0 },
+  );
   return new Response(body, { headers: { 'content-type': 'application/json', ...headers } });
 }
 const bytes = (s: string) => new TextEncoder().encode(s);

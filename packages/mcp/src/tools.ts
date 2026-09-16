@@ -83,7 +83,7 @@ export interface CommonOpts {
  */
 const adapters = new Map<string, ProviderAdapter>();
 
-function resolveAdapter(args: CommonOpts): ProviderAdapter {
+export function resolveAdapter(args: CommonOpts): ProviderAdapter {
   if (args.adapter) return args.adapter;
   // Keyed by source AND competition: makeAdapter bakes the competition slug
   // into the base URL at construction, so a cache keyed by source alone would

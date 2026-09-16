@@ -85,6 +85,7 @@ import {
   renderPromptOutput,
 } from './cursorPayload';
 import { type InitResult, initCursorStatusline, initHook, initStatusline } from './install';
+import { withPersistedBackoff } from './providerBackoff';
 
 /**
  * Command context. `adapter` is an optional injection seam: production leaves
@@ -102,9 +103,13 @@ type Ctx = {
   now?: Date;
 };
 
-/** The injected adapter, or one constructed from the configured source. */
-function adapterFor({ cfg, adapter }: Ctx): ProviderAdapter {
-  return adapter ?? makeAdapter(cfg.source);
+/**
+ * The injected adapter, or one constructed from the configured source —
+ * either way armed from the persisted provider backoff and persisting a
+ * throttle it meets (audit A12; see providerBackoff.ts).
+ */
+function adapterFor({ cfg, adapter, now }: Ctx): ProviderAdapter {
+  return withPersistedBackoff(adapter ?? makeAdapter(cfg.source), cfg.source, now);
 }
 
 /** Per-fetch budgets so optional market enrichment never blocks core output. */

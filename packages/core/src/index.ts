@@ -56,6 +56,8 @@ export {
   ProviderError,
 } from './adapters/espn';
 export type { EspnAdapterOptions, MapContext, ProviderErrorKind } from './adapters/espn';
+export { DEFAULT_COOLDOWN_MS, MAX_COOLDOWN_MS, retryAfterMs } from './adapters/espn';
+export { readJsonBounded, ResponseTooLargeError } from './adapters/http';
 
 export {
   makeAdapter,

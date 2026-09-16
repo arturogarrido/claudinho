@@ -61,5 +61,17 @@ export interface ProviderAdapter {
     readonly kind: string;
     readonly status?: number;
     readonly throttled?: boolean;
+    /** For a throttle: how long the adapter will refuse to fetch (bounded). */
+    readonly retryAfterMs?: number;
   };
+
+  /** Optional: epoch ms until which the adapter refuses requests (a retained throttle). */
+  readonly cooldownUntil?: number;
+
+  /**
+   * Optional: arm the throttle window from outside — a fresh process reading
+   * the backoff its refresher persisted. Inside the window every call fails as
+   * a throttle without a request.
+   */
+  armCooldown?(untilMs: number): void;
 }

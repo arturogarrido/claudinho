@@ -22,12 +22,24 @@ const throttled = (status: number, retryAfter?: string) =>
 describe('EspnAdapter cooldown', () => {
   it('the audit repro: after a 429 with Retry-After 3600 the next call does not fetch; the window is capped', async () => {
     const fetchImpl = throttled(429, '3600');
-    const adapter = new EspnAdapter({ fetchImpl, now: () => T0 });
+    // enrichGroups off, as in the audit's own repro: group enrichment is a second,
+    // concurrent request on the first call, which would count as two fetches.
+    const adapter = new EspnAdapter({ fetchImpl, now: () => T0, enrichGroups: false });
     await expect(adapter.fetchByDate('2026-09-15')).rejects.toBeInstanceOf(ProviderError);
     await expect(adapter.fetchByDate('2026-09-15')).rejects.toMatchObject({ throttled: true });
     expect(fetchImpl.mock.calls).toHaveLength(1);
     expect(adapter.cooldownUntil).toBe(T0 + MAX_COOLDOWN_MS);
     expect(adapter.lastError?.retryAfterMs).toBe(MAX_COOLDOWN_MS);
+  });
+
+  it('Retry-After in delay-seconds below the cap is honoured exactly', async () => {
+    // Pins the delay-seconds branch on its own: without it a bare number falls
+    // through to Date.parse, where '3600' reads as the YEAR 3600 and the cap hid
+    // the difference (a mutant that dropped the branch survived on that case).
+    const adapter = new EspnAdapter({ fetchImpl: throttled(429, '120'), now: () => T0 });
+    await expect(adapter.fetchStandings()).rejects.toBeInstanceOf(ProviderError);
+    expect(adapter.cooldownUntil).toBe(T0 + 120_000);
+    expect(adapter.lastError?.retryAfterMs).toBe(120_000);
   });
 
   it('Retry-After as an HTTP-date is honoured', async () => {
@@ -64,7 +76,7 @@ describe('EspnAdapter cooldown', () => {
 
   it('armCooldown pre-arms a fresh adapter without any request', async () => {
     const fetchImpl = throttled(200);
-    const adapter = new EspnAdapter({ fetchImpl, now: () => T0 });
+    const adapter = new EspnAdapter({ fetchImpl, now: () => T0, enrichGroups: false });
     adapter.armCooldown(T0 + 60_000);
     await expect(adapter.fetchByDate('2026-09-15')).rejects.toMatchObject({ throttled: true });
     expect(fetchImpl.mock.calls).toHaveLength(0);
