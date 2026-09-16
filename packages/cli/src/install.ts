@@ -86,22 +86,41 @@ function restartMessage(target: StatuslineTarget): string {
     : 'Restart Claude Code to see it.';
 }
 
+/** A JSON object we can add keys to: non-null, not an array (audit A13). */
+function isSettingsObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function manual(path: string, snippet: string, why: string): InitResult {
+  return { action: 'manual', path, message: `${why} ${path}. Add this manually:\n${snippet}` };
+}
+
+/**
+ * Read the settings file as an object, or say why we will not touch it. Valid
+ * JSON whose root is not an object (`[]`, `null`, a string) used to be cast,
+ * mutated (a property on an array serializes to nothing) and written back as
+ * `written` — a success report with nothing installed (audit A13).
+ */
 function readSettings(path: string, snippet: string): InitResult | Record<string, unknown> {
   if (!existsSync(path)) return {};
+  let parsed: unknown;
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    parsed = JSON.parse(readFileSync(path, 'utf8'));
   } catch {
-    return {
-      action: 'manual',
-      path,
-      message: `Could not parse ${path}. Add this manually:\n${snippet}`,
-    };
+    return manual(path, snippet, 'Could not parse');
   }
+  if (!isSettingsObject(parsed)) return manual(path, snippet, 'Not a JSON settings object:');
+  return parsed;
 }
 
 function isInitResult(v: InitResult | Record<string, unknown>): v is InitResult {
-  return 'action' in v && typeof v.action === 'string';
+  return (
+    typeof v.action === 'string' && typeof v.path === 'string' && typeof v.message === 'string'
+  );
 }
+
+/** Settings files may carry secrets (env, tokens): a NEW one is created private. */
+const SETTINGS_FILE_MODE = 0o600;
 
 /**
  * Wire `claudinho prompt` into a Claude Code or Cursor CLI statusline.
@@ -132,8 +151,9 @@ export function initStatuslineFor(
 
   backupOnce(path);
   settings.statusLine = sl;
-  // Atomic (tmp + rename): a crash mid-write must never truncate the user's settings.
-  writeFileAtomic(path, JSON.stringify(settings, null, 2) + '\n');
+  // Atomic (tmp + rename): a crash mid-write must never truncate the user's
+  // settings; the existing mode is preserved and a new file is private (A09).
+  writeFileAtomic(path, JSON.stringify(settings, null, 2) + '\n', { mode: SETTINGS_FILE_MODE });
   const surface = target === 'cursor' ? 'Cursor CLI statusline' : 'Statusline';
   return {
     action: 'written',
@@ -194,6 +214,16 @@ export function initHook(opts: InitOpts = {}): InitResult {
   const parsed = readSettings(path, snippet);
   if (isInitResult(parsed)) return parsed;
   const settings = parsed;
+  // The containers we mutate must have the shapes we assume (audit A13): a
+  // `hooks` that is not an object, or an event slot that is not an array,
+  // would be silently overwritten or corrupted.
+  if (settings.hooks !== undefined && !isSettingsObject(settings.hooks)) {
+    return manual(path, snippet, 'Unexpected "hooks" shape in');
+  }
+  const eventSlot = (settings.hooks as Record<string, unknown> | undefined)?.[CLAUDE_HOOK_EVENT];
+  if (eventSlot !== undefined && !Array.isArray(eventSlot)) {
+    return manual(path, snippet, `Unexpected "hooks.${CLAUDE_HOOK_EVENT}" shape in`);
+  }
 
   if (claudeHookCommands(settings).some((c) => isSameCommand(c, command))) {
     return {
@@ -208,7 +238,7 @@ export function initHook(opts: InitOpts = {}): InitResult {
   const hooks = settings.hooks as Record<string, ClaudeHookMatcher[]>;
   hooks[CLAUDE_HOOK_EVENT] ??= [];
   hooks[CLAUDE_HOOK_EVENT].push({ hooks: [{ type: 'command', command }] });
-  writeFileAtomic(path, JSON.stringify(settings, null, 2) + '\n');
+  writeFileAtomic(path, JSON.stringify(settings, null, 2) + '\n', { mode: SETTINGS_FILE_MODE });
   return {
     action: 'written',
     path,
