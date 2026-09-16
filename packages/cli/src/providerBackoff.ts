@@ -20,12 +20,17 @@ import {
   releaseLock,
 } from './cache';
 
-/** Persist an absolute cooldown deadline as the cache's `backoffUntil`, under the lock. */
-function persistBackoff(source: string, competition: string, until: number, nowMs: number): void {
+/**
+ * Persist an absolute cooldown deadline as the cache's `backoffUntil`, under
+ * the lock. Returns whether the write actually happened: a skipped or refused
+ * write must NOT be remembered as persisted (review round 2 on #128).
+ */
+function persistBackoff(source: string, competition: string, until: number, nowMs: number): boolean {
   // The refresher may be mid-write; it persists its own throttle, so skipping
-  // here loses nothing. Never wait, never clobber an unowned snapshot.
+  // here loses nothing as long as the caller retries later. Never wait, never
+  // clobber an unowned snapshot.
   const token = claimLock(nowMs);
-  if (!token) return;
+  if (!token) return false;
   try {
     const prior = readState(source, competition);
     const base: CacheState =
@@ -38,7 +43,7 @@ function persistBackoff(source: string, competition: string, until: number, nowM
             source,
             competition,
           };
-    publishState({ ...base, backoffUntil: new Date(until).toISOString() }, token);
+    return publishState({ ...base, backoffUntil: new Date(until).toISOString() }, token);
   } finally {
     releaseLock(token);
   }
@@ -57,19 +62,23 @@ export function withPersistedBackoff(
   const competition = resolveCompetition();
   const nowMs = now.getTime();
   const state = readCurrentState(source, competition);
-  if (state?.backoffUntil && backoffActive(state, nowMs)) {
-    adapter.armCooldown?.(Date.parse(state.backoffUntil));
-  }
+  // ONE validation decides both the pre-arm and what counts as already
+  // persisted: a cached deadline backoffActive rejects (past its bound,
+  // unparseable) is neither armed nor trusted, so a real throttle can replace
+  // it (review round 2 on #128).
+  const accepted =
+    state?.backoffUntil && backoffActive(state, nowMs) ? Date.parse(state.backoffUntil) : undefined;
+  if (accepted !== undefined) adapter.armCooldown?.(accepted);
   // Persist from the adapter's RETAINED window, never from `lastError`: with
   // two concurrent requests a 500 can land after a 429 and become lastError
   // while the cooldown stands, and a 429 can arrive after this command's own
   // call already returned (review P2 on #128). Every armed or extended window
-  // is persisted once; the pre-armed value counts as already persisted.
-  let persisted = state?.backoffUntil ? Date.parse(state.backoffUntil) : undefined;
+  // is persisted once — and only a write that HAPPENED counts, so a persist
+  // skipped while another owner held the lock is retried by the next chance.
+  let persisted = accepted;
   const persistIfNewer = (until: number) => {
     if (!(until > nowMs) || (persisted !== undefined && until <= persisted)) return;
-    persisted = until;
-    persistBackoff(source, competition, until, nowMs);
+    if (persistBackoff(source, competition, until, nowMs)) persisted = until;
   };
   adapter.onCooldown?.(persistIfNewer);
   const afterCall = () => {
