@@ -77,7 +77,9 @@ interface RawCompetitor {
  */
 type Participant =
   | { readonly kind: 'team'; readonly providerId: string; readonly team: Team }
-  | { readonly kind: 'slot'; readonly team: Team };
+  // A slot keeps the provider's id when it has one: a club we cannot flag is
+  // still the provider's entity, and identity is checked on it (audit A04).
+  | { readonly kind: 'slot'; readonly providerId?: string; readonly team: Team };
 
 export interface MapContext {
   groupByTeam?: Record<string, string>;
@@ -110,7 +112,9 @@ function toParticipant(raw: RawCompetitor | undefined): ParseResult<Participant>
   // unresolved bracket slot ("Round of 32 1 Winner"), not a team.
   const known = productFlag(name) !== nationToFlag('');
   return valid(
-    providerId && known ? { kind: 'team', providerId, team } : { kind: 'slot', team },
+    providerId && known
+      ? { kind: 'team', providerId, team }
+      : { kind: 'slot', ...(providerId ? { providerId } : {}), team },
   );
 }
 
@@ -236,7 +240,9 @@ export function parseEspnEvent(raw: unknown, ctx: MapContext = {}): ParseResult<
   // The code+name comparison that used to sit beside it MOVED to `sealMatch`,
   // so the cache path gets it too. Leaving a copy here would recreate in one
   // commit the two-readers-one-rule shape this whole refactor exists to remove.
-  if (h.kind === 'team' && a.kind === 'team' && h.providerId === a.providerId) {
+  // Whatever the kind: a club has no nation flag and so is a slot, but two
+  // slots carrying the SAME provider id are one entity twice (audit A04).
+  if (h.providerId !== undefined && h.providerId === a.providerId) {
     return definitiveNone('both competitors are the same team');
   }
 
@@ -469,8 +475,19 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
 
   for (const child of children) {
     const label = humanLabel(child?.name ?? child?.abbreviation);
-    const letter = label.match(/Group\s+([A-L])/i)?.[1]?.toUpperCase();
-    if (!letter) continue; // a knockout/non-group child is not malformed
+    // The letter must END the token: "Group A1" is a numbered sub-group, not
+    // group A (audit A05).
+    const letter = label.match(/Group\s+([A-L])(?![A-Za-z0-9])/i)?.[1]?.toUpperCase();
+    if (!letter) {
+      // A child that is not a lettered group but DOES carry rows is a table
+      // shape this parser does not understand yet (a single league table, a
+      // numbered sub-group): the batch is INCOMPLETE, never a healthy empty
+      // attributed to the provider (audit A02/A05). A rowless child (a knockout
+      // stage) is simply not a group and is skipped.
+      const rows = (child?.standings as { entries?: unknown } | undefined)?.entries;
+      if (Array.isArray(rows) && rows.length > 0) complete = false;
+      continue;
+    }
     if (seenGroups.has(letter)) {
       complete = false;
       continue;

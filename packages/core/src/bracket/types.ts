@@ -67,10 +67,14 @@ export interface BracketView {
   degraded: boolean;
   standingsDegraded: boolean;
   source?: string;
+  /** The bracket is a World Cup feature; off the bundle there is none (audit A03). */
+  unsupported?: true;
 }
 
 export interface BracketResult {
   view: BracketView;
+  /** Off the bundle there is no bracket (audit A03); `view.stages` is empty. */
+  unsupported?: true;
   degraded: boolean;
   standingsDegraded: boolean;
   source?: string;

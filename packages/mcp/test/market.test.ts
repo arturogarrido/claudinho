@@ -218,8 +218,10 @@ describe('toolGetMarketSignal — a competition without markets', () => {
     const byDate = await toolGetMarketSignal({ date: upcomingDate(), adapter: fakeAdapter, now: TEST_NOW });
     expect(byDate.text).toContain('Market signals cover the World Cup only');
     expect((byDate.data as { complete: boolean }).complete).toBe(true);
+    // A World Cup fixture id is not a fixture of eng.1: off the bundle the id
+    // lookup is unsupported (audit A03), and the provider is still never asked.
     const byId = await toolGetMarketSignal({ matchId: upcoming().id, adapter: fakeAdapter, now: TEST_NOW });
-    expect(byId.text).toContain('Market signals cover the World Cup only');
+    expect(byId.text).toContain('Not available for this competition yet.');
     expect(byId.data as { signal: unknown; complete: boolean }).toMatchObject({ signal: null, complete: true });
     expect(consulted).not.toHaveBeenCalled();
   });

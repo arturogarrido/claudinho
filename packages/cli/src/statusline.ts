@@ -324,7 +324,14 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // A partial fixture overlay cannot prove a pairing is absent, but every
   // sealed pairing it does contain is safe to display.
   const cachedFixtures = [...cachedFixtureList.items];
-  const schedule = cachedFixtures.length ? mergeLive(allFixtures(), cachedFixtures) : undefined;
+  // Off the bundle the skeleton is ANOTHER competition's schedule: the
+  // countdown may read cached fixtures only, never the bundle (audit A03).
+  const bundle = defaultCompetition ? allFixtures() : [];
+  const schedule = cachedFixtures.length
+    ? mergeLive(bundle, cachedFixtures)
+    : defaultCompetition
+      ? undefined
+      : [];
 
   // With a team filter, show only that team's live match.
   if (team) {

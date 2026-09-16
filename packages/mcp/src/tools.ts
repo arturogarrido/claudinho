@@ -367,9 +367,19 @@ export async function toolGetMatch(
   // ±1-day window fetch: the provider buckets scoreboard days in its own zone
   // (ESPN: US/Eastern), so fetching only the fixture's UTC date can miss its
   // live/final state and silently render the match as still scheduled.
-  const { match, degraded, source: liveSource } = await getMatchById(resolveAdapter(args), args.id);
+  const { match, degraded, source: liveSource, unsupported } = await getMatchById(
+    resolveAdapter(args),
+    args.id,
+  );
   if (!match) {
-    return { text: withDisclaimer(`No match found with id ${args.id}.`), data: { match: null } };
+    return {
+      text: withDisclaimer(
+        unsupported ? t(args.lang, 'competition.unsupported') : `No match found with id ${args.id}.`,
+        undefined,
+        args.lang,
+      ),
+      data: { match: null },
+    };
   }
   const opts = fmtOpts(args);
   const now = args.now ?? new Date();
@@ -465,10 +475,18 @@ export async function toolGetBracket(
       data: { view: null },
     };
   }
-  const { view, degraded, standingsDegraded, source } = await getBracket(
+  const { view, degraded, standingsDegraded, source, unsupported } = await getBracket(
     resolveAdapter(args),
     filter ? { stage: filter as Stage, lang: args.lang } : { lang: args.lang },
   );
+  if (unsupported) {
+    // No World Cup topology off the bundle (A03). The marker rides INSIDE the
+    // passthrough `view`, so the advertised schema is unchanged.
+    return {
+      text: withDisclaimer(t(args.lang, 'competition.unsupported'), undefined, args.lang),
+      data: { degraded, standingsDegraded, source: null, view },
+    };
+  }
   let text = formatBracketList(view, { footer: false, locale: args.lang, tz: args.tz });
   if (degraded) {
     text += `\n\n(${t(args.lang, 'bracket.degraded')})`;
@@ -514,15 +532,17 @@ export async function toolGetNextFixture(
   // a team's group games pass (it would answer "no upcoming fixture" even after
   // ESPN confirmed the tie). Fails closed to the static result on a feed outage.
   // The caller's clock is still threaded for deterministic tests.
-  const { fixture, degraded, source } = await getNextFixtureForTeam(
+  const { fixture, degraded, source, unsupported } = await getNextFixtureForTeam(
     resolveAdapter(args),
     code,
     args.now ?? new Date(),
   );
   if (!fixture) {
-    const msg = degraded
-      ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
-      : `No upcoming fixture found for ${code}.`;
+    const msg = unsupported
+      ? t(args.lang, 'competition.unsupported')
+      : degraded
+        ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
+        : `No upcoming fixture found for ${code}.`;
     return {
       text: withDisclaimer(msg, undefined, args.lang),
       data: { team: code, fixture: null, degraded, source: source ?? null },
@@ -572,7 +592,7 @@ export async function toolGetMarketSignal(
   // Most specific: a single match by id — with live overlay so FT gates the
   // resolved market correctly (the static fixture's status never changes).
   if (args.matchId) {
-    const { match } = await getMatchById(resolveAdapter(args), args.matchId);
+    const { match, unsupported } = await getMatchById(resolveAdapter(args), args.matchId);
     const relevant = match ? marketRelevant(match, now) : false;
     const batch =
       match && relevant
@@ -581,7 +601,9 @@ export async function toolGetMarketSignal(
     const sig = match ? resolvedValues(batch).get(match.id) : undefined;
     const shown = batch.complete && match && sig && marketDisplayable(match, sig) ? sig : undefined;
     const text = !match
-      ? `No match found with id ${args.matchId}.`
+      ? unsupported
+        ? t(args.lang, 'competition.unsupported')
+        : `No match found with id ${args.matchId}.`
       : !batch.complete
         ? `Market data unavailable or incomplete for ${marketHeader(match, args)} — this match could not be checked.`
       : shown
@@ -605,7 +627,11 @@ export async function toolGetMarketSignal(
     const code = args.team.toUpperCase();
     // Live-confirmed selection: handles extra time past the static window AND
     // early FTs inside it (the static fixture's status is forever SCHEDULED).
-    const { match: fixture, degraded } = await marketFixtureForTeam(resolveAdapter(args), code, now);
+    const { match: fixture, degraded, unsupported } = await marketFixtureForTeam(
+      resolveAdapter(args),
+      code,
+      now,
+    );
     const relevant = fixture ? marketRelevant(fixture, now) : false;
     const batch =
       fixture && relevant
@@ -615,9 +641,11 @@ export async function toolGetMarketSignal(
     const shown =
       batch.complete && fixture && sig && marketDisplayable(fixture, sig) ? sig : undefined;
     const text = !fixture
-      ? degraded
-        ? `Live feed unavailable — can't resolve ${code}'s next fixture right now.`
-        : `No upcoming fixture found for ${code}.`
+      ? unsupported
+        ? t(args.lang, 'competition.unsupported')
+        : degraded
+          ? `Live feed unavailable — can't resolve ${code}'s next fixture right now.`
+          : `No upcoming fixture found for ${code}.`
       : !batch.complete
         ? `Market data unavailable or incomplete for ${marketHeader(fixture, args)} — this match could not be checked.`
       : shown
@@ -863,7 +891,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         data: { kind: 'bracket', view: null },
       };
     }
-    const { view, degraded, source } = await getBracket(
+    const { view, degraded, source, unsupported } = await getBracket(
       resolveAdapter(args),
       stageFilter
         ? { stage: stageFilter as Stage, lang: args.lang }
@@ -876,7 +904,9 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         installLine: stageFilter
           ? `npx @claudinho/cli bracket ${stageFilter}`
           : 'npx @claudinho/cli bracket',
-        emptyNote: t(args.lang, 'bracket.empty'),
+        emptyNote: unsupported
+          ? t(args.lang, 'competition.unsupported')
+          : t(args.lang, 'bracket.empty'),
       },
       { ...options, locale: args.lang, tz: args.tz },
     );
@@ -897,7 +927,10 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
 
   // a single match by id, with live overlay (±1-day window — see toolGetMatch).
   if (args.matchId) {
-    const { match, degraded, source } = await getMatchById(resolveAdapter(args), args.matchId);
+    const { match, degraded, source, unsupported } = await getMatchById(
+      resolveAdapter(args),
+      args.matchId,
+    );
     const matches = match ? [match] : [];
     const market = await signalsFor(matches);
     return shareResult(
@@ -911,7 +944,9 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         marketComplete: market.complete,
         source,
         degraded,
-        emptyNote: `No match found with id ${args.matchId}.`,
+        emptyNote: unsupported
+          ? t(args.lang, 'competition.unsupported')
+          : `No match found with id ${args.matchId}.`,
         installLine: `npx @claudinho/cli match ${args.matchId}`,
         tz: args.tz,
         locale: args.lang,
@@ -925,7 +960,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     const code = args.team.toUpperCase();
     // Overlay the live knockout window so a confirmed R32+ tie pastes too (see
     // getNextFixtureForTeam / toolGetNextFixture); fail closed on an outage.
-    const { fixture, degraded, source } = await getNextFixtureForTeam(
+    const { fixture, degraded, source, unsupported } = await getNextFixtureForTeam(
       resolveAdapter(args),
       code,
       args.now ?? new Date(),
@@ -950,9 +985,11 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         // with get_next_fixture (a static group fixture carries no source).
         source,
         degraded,
-        emptyNote: degraded
-          ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
-          : `No upcoming fixture found for ${code}.`,
+        emptyNote: unsupported
+          ? t(args.lang, 'competition.unsupported')
+          : degraded
+            ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
+            : `No upcoming fixture found for ${code}.`,
         installLine: `npx @claudinho/cli next ${code}`,
         tz: args.tz,
         locale: args.lang,
