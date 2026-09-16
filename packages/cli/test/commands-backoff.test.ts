@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readState, writeState } from '../src/cache';
+import { claimLock, readState, releaseLock, writeState } from '../src/cache';
 import { cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
@@ -162,5 +162,52 @@ describe('the post-call fallback (an adapter with a retained window but no liste
     await cmdToday('2026-06-11', { cfg: cfg(), t: makeT('en'), adapter: fake, now: NOW });
     expect(json().degraded).toBe(true);
     expect(persistedDelay()).toBe(600_000);
+  });
+});
+
+describe('persistence bookkeeping (review round 2 on #128)', () => {
+  it('a write skipped because another owner holds the lock is retried by the post-call fallback', async () => {
+    // The test owns the lock while the 429 listener fires (its persist is
+    // skipped), and releases it — via a listener registered AFTER the wrapper's —
+    // before the command's own call settles. The fallback must then persist:
+    // a skipped write is not a persisted one.
+    const held = claimLock(nowMs);
+    expect(held).toBeDefined();
+    let registered = false;
+    const fetchImpl = vi.fn(async () => {
+      if (!registered) {
+        registered = true;
+        adapter.onCooldown(() => releaseLock(held)); // runs AFTER the wrapper's listener
+      }
+      return throttled();
+    });
+    const adapter = new EspnAdapter({ fetchImpl: fetchImpl as unknown as FetchImpl, now: () => nowMs, enrichGroups: false });
+    await cmdToday('2026-06-11', { cfg: cfg(), t: makeT('en'), adapter, now: NOW });
+    expect(json().degraded).toBe(true);
+    expect(persistedDelay()).toBeGreaterThanOrEqual(600_000);
+    expect(persistedDelay()).toBeLessThanOrEqual(601_000);
+  });
+
+  it('a cached deadline the cache rejects does not suppress a real throttle', async () => {
+    // 31 min ahead is past the cache's 30-min bound: backoffActive rejects it, so
+    // nothing is pre-armed — and it must not count as "already persisted" either,
+    // or a real 600 s throttle could never replace it.
+    writeState({
+      updatedAt: NOW.toISOString(),
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+      backoffUntil: new Date(nowMs + 31 * 60_000).toISOString(),
+    });
+    const first = new EspnAdapter({ fetchImpl: throttled as unknown as FetchImpl, now: () => nowMs, enrichGroups: false });
+    await cmdToday('2026-06-11', { cfg: cfg(), t: makeT('en'), adapter: first, now: NOW });
+    expect(throttled).toHaveBeenCalledTimes(1);
+    expect(persistedDelay()).toBeGreaterThanOrEqual(600_000);
+    expect(persistedDelay()).toBeLessThanOrEqual(601_000);
+    // A fresh invocation now honours the repaired deadline: zero requests.
+    const second = new EspnAdapter({ fetchImpl: ok as unknown as FetchImpl, now: () => nowMs, enrichGroups: false });
+    await cmdToday('2026-06-11', { cfg: cfg(), t: makeT('en'), adapter: second, now: NOW });
+    expect(ok).not.toHaveBeenCalled();
   });
 });
