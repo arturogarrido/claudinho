@@ -203,6 +203,7 @@ export class EspnAdapter implements ProviderAdapter {
    */
   private cooldownUntilMs?: number;
   private cooldownError?: ProviderError;
+  private readonly cooldownListeners = new Set<(untilMs: number) => void>();
   private readonly clock: () => number;
 
   constructor(private readonly opts: EspnAdapterOptions = {}) {
@@ -231,8 +232,31 @@ export class EspnAdapter implements ProviderAdapter {
     const error =
       reason ?? new ProviderError('ESPN request skipped: provider cooldown in effect', 'http', 429);
     error.retryAfterMs = Math.max(0, untilMs - nowMs);
+    this.arm(untilMs, error);
+  }
+
+  /**
+   * Be told whenever the cooldown window is armed or EXTENDED — the way a
+   * caller persists a throttle that arrives from a still-running request after
+   * its own call already returned (review P2 on #128). Returns unsubscribe.
+   */
+  onCooldown(listener: (untilMs: number) => void): () => void {
+    this.cooldownListeners.add(listener);
+    return () => {
+      this.cooldownListeners.delete(listener);
+    };
+  }
+
+  /**
+   * The ONE place a window is set. Concurrent requests can each carry a
+   * Retry-After; the LATEST expiry wins — a shorter one arriving second must
+   * never shorten a longer active window (review P2 on #128).
+   */
+  private arm(untilMs: number, error: ProviderError): void {
+    if (this.cooldownUntilMs !== undefined && untilMs <= this.cooldownUntilMs) return;
     this.cooldownUntilMs = untilMs;
     this.cooldownError = error;
+    for (const listener of this.cooldownListeners) listener(untilMs);
   }
 
   async fetchByDate(dateISO: string): Promise<Match[]> {
@@ -386,10 +410,12 @@ export class EspnAdapter implements ProviderAdapter {
         );
         if (pe.throttled) {
           // The provider asked us to go away: remember for how long, and refuse
-          // to ask again until then (Retry-After honoured, bounded).
-          pe.retryAfterMs = retryAfterMs(res.headers?.get?.('retry-after'), nowMs);
-          this.cooldownUntilMs = nowMs + pe.retryAfterMs;
-          this.cooldownError = pe;
+          // to ask again until then (Retry-After honoured, bounded). Measured
+          // from RECEIPT, not from when the request started — a slow response
+          // must not have its latency subtracted from the delay (review P2).
+          const receiptMs = this.clock();
+          pe.retryAfterMs = retryAfterMs(res.headers?.get?.('retry-after'), receiptMs);
+          this.arm(receiptMs + pe.retryAfterMs, pe);
         }
         throw pe;
       }

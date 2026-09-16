@@ -18,10 +18,12 @@ import {
  * owner could unlink its successor's lock and a third owner then acquired
  * while the successor still ran (repro: a deterministic interleaving on a
  * modeled fs). CONTAINED: the lock carries an owner token, release is a
- * no-op for anyone but the holder, and publication is fenced on ownership.
- * REMAINING (0.11, 2.6): read-then-unlink is still a microsecond race; a true
- * cross-process coordinator closes it. This file uses a real temp dir and an
- * injected clock — no sleeps, no processes.
+ * no-op for anyone but the holder, and publication checks ownership first.
+ * REMAINING (0.11, 2.6): both the check-then-unlink and the check-then-write
+ * are still races — a takeover between the ownership check and the write
+ * lets the stale owner's snapshot land; a cross-process coordinator with
+ * atomic fencing closes it. This narrows the window, it does not close it.
+ * This file uses a real temp dir and an injected clock — no sleeps, no processes.
  */
 const T = Date.parse('2026-09-15T12:00:00Z');
 const snapshot = (updatedAt: string): CacheState => ({

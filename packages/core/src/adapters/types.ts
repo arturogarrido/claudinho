@@ -74,4 +74,7 @@ export interface ProviderAdapter {
    * a throttle without a request.
    */
   armCooldown?(untilMs: number): void;
+
+  /** Optional: be told when the throttle window is armed or extended. Returns unsubscribe. */
+  onCooldown?(listener: (untilMs: number) => void): () => void;
 }

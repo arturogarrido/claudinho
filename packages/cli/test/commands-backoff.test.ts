@@ -1,4 +1,4 @@
-import { EspnAdapter } from '@claudinho/core';
+import { EspnAdapter, type Match, type ProviderAdapter } from '@claudinho/core';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -136,5 +136,31 @@ describe('persistence follows the retained cooldown, not lastError (review P2 on
     await tick();
     expect(persistedDelay()).toBeGreaterThanOrEqual(600_000);
     expect(persistedDelay()).toBeLessThanOrEqual(601_000);
+  });
+});
+
+describe('the post-call fallback (an adapter with a retained window but no listener)', () => {
+  it('persists from cooldownUntil even when lastError is a non-throttle failure', async () => {
+    // The real adapter notifies through onCooldown; this fake has none, so the
+    // wrapper's post-call check is the only path — and it must read the retained
+    // window, never lastError (which here is the later 500).
+    const fake: ProviderAdapter & { cooldownUntil?: number; lastError?: { kind: string; status?: number; throttled?: boolean } } = {
+      name: 'espn',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate(): Promise<Match[]> {
+        return [];
+      },
+      async fetchLive(): Promise<Match[]> {
+        return [];
+      },
+      async fetchWindow(): Promise<Match[]> {
+        fake.cooldownUntil = nowMs + 600_000; // a concurrent 429 armed this…
+        fake.lastError = { kind: 'http', status: 500, throttled: false }; // …then a 500 landed last
+        throw new Error('500');
+      },
+    };
+    await cmdToday('2026-06-11', { cfg: cfg(), t: makeT('en'), adapter: fake, now: NOW });
+    expect(json().degraded).toBe(true);
+    expect(persistedDelay()).toBe(600_000);
   });
 });

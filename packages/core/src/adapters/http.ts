@@ -36,6 +36,9 @@ export async function readJsonBounded(res: Response, maxBytes: number): Promise<
   const r = res as unknown as ResponseLike;
   const declared = Number(r.headers?.get?.('content-length'));
   if (Number.isFinite(declared) && declared > maxBytes) {
+    // Refused unread — and released, so the connection is not left holding an
+    // undrained body (review P3 on #128).
+    if (isStream(r.body)) await r.body.cancel().catch(() => {});
     throw new ResponseTooLargeError(declared, maxBytes);
   }
   if (isStream(r.body)) {

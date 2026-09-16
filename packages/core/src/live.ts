@@ -36,6 +36,8 @@ export interface AdapterOptions {
    * it never renders group letters.
    */
   enrichGroups?: boolean;
+  /** Clock, injectable for tests; drives the provider cooldown window. */
+  now?: () => number;
 }
 
 /**
@@ -50,7 +52,7 @@ export function makeAdapter(source = 'espn', opts: AdapterOptions = {}): Provide
       const competition = resolveCompetition();
       const baseUrl =
         competition === DEFAULT_COMPETITION ? undefined : competitionBase(competition);
-      return new EspnAdapter({ baseUrl, enrichGroups: opts.enrichGroups });
+      return new EspnAdapter({ baseUrl, enrichGroups: opts.enrichGroups, now: opts.now });
     }
     default:
       throw new Error(

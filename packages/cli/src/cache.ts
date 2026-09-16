@@ -357,9 +357,12 @@ export function releaseLock(token: LockToken | undefined = heldToken): void {
 }
 
 /**
- * Publish a snapshot ONLY while the lock is still ours. A refresher that lost
- * its lease to a successor must not overwrite the successor's newer snapshot
- * (audit A10, fenced publication). Returns whether the write happened.
+ * Publish a snapshot only while the lock is still ours (audit A10). This is an
+ * OWNERSHIP CHECK, not atomic fencing: a takeover that lands between the check
+ * and the write still lets a stale owner's snapshot land. It narrows the
+ * window a refresher that lost its lease has to overwrite its successor; a
+ * cross-process coordinator with atomic fencing (0.11, 2.6) closes it.
+ * Returns whether the write happened.
  */
 export function publishState(state: CacheState, token: LockToken | undefined = heldToken): boolean {
   if (!holdsLock(token)) return false;

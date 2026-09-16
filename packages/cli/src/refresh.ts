@@ -117,13 +117,15 @@ function liveWindowActive(nowMs: number): boolean {
  * under a label it doesn't match: runRefresh validates `source` against
  * KNOWN_SOURCES before calling this (makeAdapter throws as defense in depth).
  */
-function liveAdapter(source: string): ProviderAdapter {
-  return makeAdapter(source, { enrichGroups: false });
+function liveAdapter(source: string, now?: () => number): ProviderAdapter {
+  return makeAdapter(source, { enrichGroups: false, now });
 }
 
 export interface RefreshOpts {
   source?: string;
   now?: Date;
+  /** Backoff jitter in ms (tests inject 0). Default: random up to BACKOFF_JITTER_MS. */
+  jitterMs?: number;
 }
 
 /** Perform one refresh cycle (idempotent, lock-guarded). */
@@ -215,7 +217,12 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
     let fixturesUpdatedAt = base?.fixturesUpdatedAt;
     let fixturesAttemptedAt = base?.fixturesAttemptedAt;
     let backoffUntil = base?.backoffUntil;
-    const adapter = liveAdapter(source);
+    // The adapter runs on the refresher's clock (an injected `now` plus the
+    // real time elapsed since), so its absolute cooldown deadline and the
+    // snapshot's `backoffUntil` are on the same timeline.
+    const realStart = Date.now();
+    const clock = () => nowMs + (Date.now() - realStart);
+    const adapter = liveAdapter(source, clock);
 
     if (needLive) {
       // Use the domain helper, not adapter.fetchLive() directly: it fetches a
@@ -257,11 +264,14 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
     // that every refresh trigger honors, at least as long as the provider's
     // own Retry-After (already bounded by the adapter — audit A12). An expired
     // backoff is dropped so the snapshot doesn't carry it forever.
-    if (adapter.lastError?.throttled) {
-      const asked = adapter.lastError.retryAfterMs ?? 0;
-      backoffUntil = new Date(
-        nowMs + Math.max(BACKOFF_MS, asked) + Math.floor(Math.random() * BACKOFF_JITTER_MS),
-      ).toISOString();
+    // Read the adapter's RETAINED window, not lastError (a later non-throttle
+    // failure overwrites lastError while the window stands), and persist its
+    // ABSOLUTE deadline: the provider's Retry-After counts from receipt, so a
+    // slow response must not have its latency subtracted (review P2 on #128).
+    const armed = adapter.cooldownUntil;
+    if (armed !== undefined && armed > clock()) {
+      const jitter = opts.jitterMs ?? Math.floor(Math.random() * BACKOFF_JITTER_MS);
+      backoffUntil = new Date(Math.max(armed, nowMs + BACKOFF_MS) + jitter).toISOString();
     } else if (backoffUntil && Date.parse(backoffUntil) <= nowMs) {
       backoffUntil = undefined;
     }
