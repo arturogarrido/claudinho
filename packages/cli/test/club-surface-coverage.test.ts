@@ -137,4 +137,29 @@ describe('statusline off the bundle', () => {
     expect(line).toBe('⚽ —');
     expect(renderPrompt(cache, { defaultCompetition: false, team: 'MEX', now: new Date('2026-06-10T12:00:00Z') })).toBe('⚽ —');
   });
+
+  it('never merges the bundle back in when the refresher cached fixtures', () => {
+    // Two mechanisms cover the empty cache above (no fixtures → an empty
+    // schedule), so that case cannot see the merge. WITH cached fixtures the
+    // schedule is `mergeLive(bundle, cached)`: a bundle that is the World Cup
+    // skeleton wins the countdown (the opener is sooner and resolved), while
+    // the club tie, flagless until 0.11, renders as nothing. Off the bundle the
+    // merge base must be empty: "⚽ —", never "🇲🇽 vs 🇿🇦 in 1d".
+    const now = new Date('2026-06-10T12:00:00Z');
+    const club: Match = { ...pl, kickoff: '2026-06-12T20:00:00.000Z', updatedAt: now.toISOString() };
+    const cache: CacheState = {
+      updatedAt: now.toISOString(),
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'eng.1',
+      fixtures: [club],
+      fixturesUpdatedAt: now.toISOString(),
+    };
+    for (const team of [undefined, 'MEX']) {
+      const line = renderPrompt(cache, { defaultCompetition: false, team, now });
+      expect(line).toBe('⚽ —');
+      expect(line).not.toMatch(WC);
+    }
+  });
 });
