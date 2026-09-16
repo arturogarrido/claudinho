@@ -69,6 +69,10 @@ describe('invalid settings envelopes', () => {
       for (const run of [initStatusline, initCursorStatusline, initHook]) {
         const r = run({ path });
         expect(r.action).toBe('manual');
+        // The precise reason, not the generic "could not parse" a failed read
+        // through the link would also produce: a mutant that drops the check
+        // lands on `manual` by that other path and must still go red here.
+        expect(r.message).toContain('symlink to a missing file');
         expect(lstatSync(path).isSymbolicLink()).toBe(true);
         expect(existsSync(missing)).toBe(false);
         expect(existsSync(`${path}.claudinho.bak`)).toBe(false);

@@ -40,6 +40,15 @@ export interface AtomicWriteOptions {
    * take the default.
    */
   mode?: number;
+  /**
+   * Write THROUGH a symlinked target: the real file changes and the link stays.
+   * For a user's settings file, where a dotfiles link is deliberate. OFF by
+   * default: a cache file that turns out to be a link is REPLACED, never
+   * followed, so a planted link in the cache directory cannot point a cache
+   * write at a file outside it (review P2 on #127). In follow mode a dangling
+   * link is refused (thrown), never silently replaced.
+   */
+  followSymlinks?: boolean;
 }
 
 /**
@@ -56,12 +65,22 @@ export function writeFileAtomic(path: string, data: string, opts: AtomicWriteOpt
   mkdirSync(dirname(path), { recursive: true });
   let target = path;
   let existingMode: number | undefined;
+  let entry: ReturnType<typeof lstatSync> | undefined;
   try {
-    const link = lstatSync(path);
-    target = link.isSymbolicLink() ? realpathSync(path) : path;
-    existingMode = statSync(target).mode & 0o777;
+    entry = lstatSync(path);
   } catch {
-    // Nothing there yet (or a dangling link): a new file at `path`.
+    entry = undefined; // nothing there yet: a new file at `path`
+  }
+  if (entry?.isSymbolicLink()) {
+    if (opts.followSymlinks) {
+      // realpathSync throws (ENOENT) for a dangling link: an existing link whose
+      // target is gone is not "absent" — refuse rather than replace it.
+      target = realpathSync(path);
+      existingMode = statSync(target).mode & 0o777;
+    }
+    // Not following: the rename replaces the link itself; nothing to preserve.
+  } else if (entry) {
+    existingMode = entry.mode & 0o777;
   }
   const tmp = `${target}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
   const fd = openSync(tmp, 'wx', existingMode ?? opts.mode ?? 0o666);

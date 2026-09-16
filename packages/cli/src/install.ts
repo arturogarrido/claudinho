@@ -3,7 +3,7 @@
  * Claude Code or Cursor CLI statuslines. Safe: preserves existing settings,
  * backs up before overwriting, and refuses to clobber unparseable files.
  */
-import { copyFileSync, existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { writeFileAtomic } from './paths';
@@ -102,7 +102,17 @@ function manual(path: string, snippet: string, why: string): InitResult {
  * `written` — a success report with nothing installed (audit A13).
  */
 function readSettings(path: string, snippet: string): InitResult | Record<string, unknown> {
-  if (!existsSync(path)) return {};
+  // An existing symlink whose target is gone is not "absent": replacing it
+  // with a regular file would silently detach a dotfiles setup (review P3).
+  let entry: ReturnType<typeof lstatSync> | undefined;
+  try {
+    entry = lstatSync(path);
+  } catch {
+    return {}; // nothing there: a fresh settings file
+  }
+  if (entry.isSymbolicLink() && !existsSync(path)) {
+    return manual(path, snippet, 'Settings path is a symlink to a missing file:');
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(path, 'utf8'));
@@ -121,6 +131,22 @@ function isInitResult(v: InitResult | Record<string, unknown>): v is InitResult 
 
 /** Settings files may carry secrets (env, tokens): a NEW one is created private. */
 const SETTINGS_FILE_MODE = 0o600;
+/** Settings are the ONE place a symlinked target is written through (a dotfiles link). */
+const SETTINGS_WRITE = { mode: SETTINGS_FILE_MODE, followSymlinks: true } as const;
+
+/**
+ * The matchers under an event slot, exactly as `claudeHookCommands` and the
+ * installer read them: each an object whose optional `hooks` is an array of
+ * objects. Anything else threw mid-enumeration instead of reaching the manual
+ * path (review P3 on #127).
+ */
+function validHookMatchers(slot: unknown[]): boolean {
+  return slot.every(
+    (m) =>
+      isSettingsObject(m) &&
+      (m.hooks === undefined || (Array.isArray(m.hooks) && m.hooks.every(isSettingsObject))),
+  );
+}
 
 /**
  * Wire `claudinho prompt` into a Claude Code or Cursor CLI statusline.
@@ -153,7 +179,7 @@ export function initStatuslineFor(
   settings.statusLine = sl;
   // Atomic (tmp + rename): a crash mid-write must never truncate the user's
   // settings; the existing mode is preserved and a new file is private (A09).
-  writeFileAtomic(path, JSON.stringify(settings, null, 2) + '\n', { mode: SETTINGS_FILE_MODE });
+  writeFileAtomic(path, JSON.stringify(settings, null, 2) + '\n', SETTINGS_WRITE);
   const surface = target === 'cursor' ? 'Cursor CLI statusline' : 'Statusline';
   return {
     action: 'written',
@@ -221,7 +247,7 @@ export function initHook(opts: InitOpts = {}): InitResult {
     return manual(path, snippet, 'Unexpected "hooks" shape in');
   }
   const eventSlot = (settings.hooks as Record<string, unknown> | undefined)?.[CLAUDE_HOOK_EVENT];
-  if (eventSlot !== undefined && !Array.isArray(eventSlot)) {
+  if (eventSlot !== undefined && (!Array.isArray(eventSlot) || !validHookMatchers(eventSlot))) {
     return manual(path, snippet, `Unexpected "hooks.${CLAUDE_HOOK_EVENT}" shape in`);
   }
 
@@ -238,7 +264,7 @@ export function initHook(opts: InitOpts = {}): InitResult {
   const hooks = settings.hooks as Record<string, ClaudeHookMatcher[]>;
   hooks[CLAUDE_HOOK_EVENT] ??= [];
   hooks[CLAUDE_HOOK_EVENT].push({ hooks: [{ type: 'command', command }] });
-  writeFileAtomic(path, JSON.stringify(settings, null, 2) + '\n', { mode: SETTINGS_FILE_MODE });
+  writeFileAtomic(path, JSON.stringify(settings, null, 2) + '\n', SETTINGS_WRITE);
   return {
     action: 'written',
     path,
