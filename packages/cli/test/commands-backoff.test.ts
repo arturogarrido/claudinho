@@ -84,3 +84,57 @@ describe('interactive commands and the persisted provider backoff', () => {
     expect(json().degraded).toBe(false);
   });
 });
+
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+const resp = (status: number, retryAfter?: string) => ({
+  ok: status < 400,
+  status,
+  statusText: 's',
+  headers: { get: (k: string) => (k.toLowerCase() === 'retry-after' ? (retryAfter ?? null) : null) },
+  json: async () => ({ events: [] }),
+});
+const tick = () => new Promise((r) => setTimeout(r, 0));
+const persistedDelay = () => Date.parse(readState()?.backoffUntil ?? '') - nowMs;
+
+describe('persistence follows the retained cooldown, not lastError (review P2 on #128)', () => {
+  it('standings 429 then scoreboard 500: the ten-minute cooldown is persisted although lastError is the 500', async () => {
+    const standings = deferred<unknown>();
+    const scoreboard = deferred<unknown>();
+    const fetchImpl = vi.fn((url: unknown) =>
+      String(url).includes('/standings') ? standings.promise : scoreboard.promise,
+    );
+    const adapter = new EspnAdapter({ fetchImpl: fetchImpl as unknown as FetchImpl, now: () => nowMs });
+    const run = cmdToday('2026-06-11', { cfg: cfg(), t: makeT('en'), adapter, now: NOW });
+    standings.resolve(resp(429, '600'));
+    await tick();
+    scoreboard.resolve(resp(500));
+    await run;
+    expect(adapter.lastError?.status).toBe(500);
+    expect(persistedDelay()).toBeGreaterThanOrEqual(600_000);
+    expect(persistedDelay()).toBeLessThanOrEqual(601_000);
+  });
+
+  it('scoreboard 500 first, standings 429 after the command returned: the late throttle is still persisted', async () => {
+    const standings = deferred<unknown>();
+    const scoreboard = deferred<unknown>();
+    const fetchImpl = vi.fn((url: unknown) =>
+      String(url).includes('/standings') ? standings.promise : scoreboard.promise,
+    );
+    const adapter = new EspnAdapter({ fetchImpl: fetchImpl as unknown as FetchImpl, now: () => nowMs });
+    const run = cmdToday('2026-06-11', { cfg: cfg(), t: makeT('en'), adapter, now: NOW });
+    scoreboard.resolve(resp(500));
+    await run; // the command is done; the enrichment request is still in flight
+    expect(readState()?.backoffUntil).toBeUndefined();
+    standings.resolve(resp(429, '600'));
+    await tick();
+    await tick();
+    expect(persistedDelay()).toBeGreaterThanOrEqual(600_000);
+    expect(persistedDelay()).toBeLessThanOrEqual(601_000);
+  });
+});

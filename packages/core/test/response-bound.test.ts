@@ -64,6 +64,7 @@ describe('readJsonBounded', () => {
     const res = streamed([bytes('{}')], spies, { 'content-length': String(CAP + 1) });
     await expect(readJsonBounded(res, CAP)).rejects.toBeInstanceOf(ResponseTooLargeError);
     expect(spies.pulls).toBe(0);
+    expect(spies.cancels).toBe(1); // review P3: the refused body is released, not left open
   });
 
   it('a Response-like fake without a body stream still parses (test doubles keep working)', async () => {

@@ -455,3 +455,28 @@ describe('runRefresh — the persisted backoff honours Retry-After (audit A12)',
     expect(until - DURING.getTime()).toBeLessThanOrEqual(16 * 60_000);
   });
 });
+
+describe('runRefresh — the persisted backoff is the provider\'s ABSOLUTE deadline (review P2 on #128)', () => {
+  const DURING = new Date('2026-06-17T05:00:00Z');
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('a slow 429 response does not have its latency subtracted from Retry-After', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        await new Promise((r) => setTimeout(r, 1200)); // the response itself took 1.2 s
+        return {
+          ok: false,
+          status: 429,
+          statusText: 'Too Many Requests',
+          headers: { get: (k: string) => (k.toLowerCase() === 'retry-after' ? '900' : null) },
+        };
+      }),
+    );
+    await runRefresh({ now: DURING, source: 'espn', jitterMs: 0 });
+    const until = Date.parse(readState()?.backoffUntil ?? '');
+    // Lower bound only (load can only make the elapsed time longer): the deadline
+    // is receipt + 900 s, and receipt was at least 1.2 s after the refresh began.
+    expect(until - DURING.getTime()).toBeGreaterThanOrEqual(900_000 + 1200);
+  });
+});

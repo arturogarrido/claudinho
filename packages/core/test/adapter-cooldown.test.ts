@@ -83,3 +83,72 @@ describe('EspnAdapter cooldown', () => {
     expect(adapter.cooldownUntil).toBe(T0 + 60_000);
   });
 });
+
+/** A response the test releases when it chooses, so ordering is controlled, never raced. */
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+const resp = (status: number, retryAfter?: string) => ({
+  ok: status < 400,
+  status,
+  statusText: 's',
+  headers: { get: (k: string) => (k.toLowerCase() === 'retry-after' ? (retryAfter ?? null) : null) },
+  json: async () => ({ events: [] }),
+});
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+describe('EspnAdapter cooldown — review round 1 on #128', () => {
+  it('a shorter concurrent throttle never shortens a longer active window (P2)', async () => {
+    const standings = deferred<unknown>();
+    const scoreboard = deferred<unknown>();
+    const fetchImpl = vi.fn((url: unknown) =>
+      String(url).includes('/standings') ? standings.promise : scoreboard.promise,
+    ) as unknown as FetchImpl & { mock: { calls: unknown[] } };
+    // enrichGroups ON: the first fetchByDate fires standings + scoreboard concurrently.
+    const adapter = new EspnAdapter({ fetchImpl, now: () => T0 });
+    const call = adapter.fetchByDate('2026-09-15').catch((e: unknown) => e);
+    standings.resolve(resp(429, '600')); // ten minutes arrives first
+    await tick();
+    scoreboard.resolve(resp(429, '5')); // five seconds arrives second
+    expect(await call).toBeInstanceOf(ProviderError);
+    expect(adapter.cooldownUntil).toBe(T0 + 600_000);
+    await expect(adapter.fetchStandings()).rejects.toMatchObject({ throttled: true });
+    expect(fetchImpl.mock.calls).toHaveLength(2);
+  });
+
+  it('request latency is not subtracted from Retry-After: the window starts at receipt (P2)', async () => {
+    let clock = T0;
+    const fetchImpl = vi.fn(async () => {
+      clock += 3000; // the response took three seconds to arrive
+      return resp(429, '2');
+    }) as unknown as FetchImpl & { mock: { calls: unknown[] } };
+    const adapter = new EspnAdapter({ fetchImpl, now: () => clock, enrichGroups: false });
+    await expect(adapter.fetchStandings()).rejects.toBeInstanceOf(ProviderError);
+    expect(adapter.cooldownUntil).toBe(T0 + 3000 + 2000);
+    await expect(adapter.fetchStandings()).rejects.toMatchObject({ throttled: true }); // immediate retry: refused
+    expect(fetchImpl.mock.calls).toHaveLength(1);
+  });
+
+  it('armCooldown never shortens an active window either', () => {
+    const adapter = new EspnAdapter({ fetchImpl: throttled(200), now: () => T0 });
+    adapter.armCooldown(T0 + 600_000);
+    adapter.armCooldown(T0 + 5_000);
+    expect(adapter.cooldownUntil).toBe(T0 + 600_000);
+    adapter.armCooldown(T0 + 900_000);
+    expect(adapter.cooldownUntil).toBe(T0 + 900_000);
+  });
+
+  it('onCooldown notifies when a window is armed or extended, never for a refused shorter one', async () => {
+    const seen: number[] = [];
+    const adapter = new EspnAdapter({ fetchImpl: throttled(429, '600'), now: () => T0, enrichGroups: false });
+    adapter.onCooldown((until) => seen.push(until));
+    await expect(adapter.fetchStandings()).rejects.toBeInstanceOf(ProviderError);
+    adapter.armCooldown(T0 + 5_000); // shorter: refused, no event
+    adapter.armCooldown(T0 + 900_000); // longer: extended, one event
+    expect(seen).toEqual([T0 + 600_000, T0 + 900_000]);
+  });
+});
