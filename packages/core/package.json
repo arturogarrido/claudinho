@@ -57,10 +57,10 @@
     "gen:schedule": "tsx scripts/build-schedule.ts"
   },
   "devDependencies": {
-    "@types/node": "^22.20.3",
+    "@types/node": "^22.20.4",
     "@vitest/coverage-v8": "^5.0.1",
     "tsup": "^8.0.0",
-    "tsx": "^4.23.13",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.0",
     "vitest": "^5.0.1"
   }
