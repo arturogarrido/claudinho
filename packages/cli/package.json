@@ -65,7 +65,7 @@
   },
   "devDependencies": {
     "@claudinho/core": "workspace:*",
-    "@types/node": "^22.20.3",
+    "@types/node": "^22.20.4",
     "@vitest/coverage-v8": "^5.0.1",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
