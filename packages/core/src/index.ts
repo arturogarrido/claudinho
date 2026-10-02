@@ -45,8 +45,8 @@ export {
 
 export { allTeams, lookupTeam, type TeamInfo, type TeamLookup } from './teams';
 
-export { computeStandings } from './standings';
-export type { StandingRow, GroupStandings } from './standings';
+export { computeStandings, tableData } from './standings';
+export type { StandingRow, GroupStandings, TableData } from './standings';
 
 export type { ProviderAdapter, ProviderCapabilities } from './adapters/types';
 export {
@@ -102,6 +102,7 @@ export {
   favoriteStrength,
   mapsCleanly,
   marketSignalRendersFor,
+  marketDisplayable,
   hasSaneDistribution,
   isStaleSignal,
   isReliableMarketSignal,
@@ -114,6 +115,7 @@ export {
   marketFavoriteText,
   marketProbabilityText,
   marketAttributionText,
+  MARKETS_SCOPE_NOTE,
   marketSourceLabel,
   marketLine,
   marketBlock,
@@ -122,6 +124,7 @@ export {
   makeMarketProvider,
   MARKET_COMPETITIONS,
   marketsCoverCompetition,
+  marketScopeVerdict,
   resolveMarketSource,
   getMarketSignal,
   getMarketSignals,
@@ -144,6 +147,28 @@ export type {
   ShareSnippetOptions,
   ShareTableInput,
 } from './share/format';
+// Share cards, assembled once for every surface (title, empty note, run cue,
+// attribution, and the verdict the card carries).
+export {
+  bracketShareCard,
+  dateShareCard,
+  liveShareCard,
+  matchShareCard,
+  nextShareCard,
+  tableShareCard,
+} from './share/cards';
+export type {
+  BracketShareCard,
+  MatchShareCard,
+  ShareCardContext,
+  ShareCardMarket,
+  ShareCardView,
+  TableShareCard,
+} from './share/cards';
+// The one place a verdict (e.g. "not available for this competition") becomes
+// a structured key and a localized sentence.
+export { verdictExtras, verdictNotice } from './verdict';
+export type { VerdictExtras, VerdictSource } from './verdict';
 
 export { buildBracketTopology, matchKey } from './bracket/build';
 export { parseTeamSlot } from './bracket/parse';

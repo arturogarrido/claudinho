@@ -12,6 +12,17 @@ import {
   formatShareTable,
   formatShareBracket,
   formatBracketList,
+  bracketShareCard,
+  dateShareCard,
+  liveShareCard,
+  matchShareCard,
+  nextShareCard,
+  tableShareCard,
+  tableData,
+  marketDisplayable,
+  type MatchShareCard,
+  verdictExtras,
+  verdictNotice,
   getBracket,
   getLiveMatches,
   cacheableKeys,
@@ -21,7 +32,6 @@ import {
   getMatchesForDate,
   getNextFixtureForTeam,
   getStandings,
-  hasSaneDistribution,
   isReliableMarketSignal,
   isFinished,
   liveSourceLabel,
@@ -33,6 +43,9 @@ import {
   marketFixtureForTeam,
   marketRelevant,
   marketsCoverCompetition,
+  marketScopeVerdict,
+  MARKETS_SCOPE_NOTE,
+  bundleApplies,
   marketSignalRendersFor,
   type Match,
   type MarketProvider,
@@ -41,7 +54,6 @@ import {
   resolveCompetition,
   resolveMarketSource,
   t,
-  type ShareSnippetInput,
   type ShareSnippetOptions,
   type Stage,
 } from '@claudinho/core';
@@ -131,21 +143,6 @@ function resolveMarketProvider(args: CommonOpts): MarketProvider {
 }
 
 /**
- * Show a signal only if it maps cleanly, has a determinable favorite, AND still
- * matches the fixture being rendered — the last check (`marketSignalRendersFor`)
- * re-validates a cached signal against the current Match so it can't print
- * against a degraded knockout placeholder (display labels come from the Match).
- */
-function marketDisplayable(match: Match, sig: MarketSignal): boolean {
-  return (
-    marketSignalRendersFor(match, sig) &&
-    !sig.ambiguous &&
-    sig.favorite != null &&
-    hasSaneDistribution(sig.outcomes)
-  );
-}
-
-/**
  * Header for a market read, dated. The date is agent UX: "South Korea (Jun 18)"
  * is the one token that stops a model conflating a future fixture's read (or
  * its null) with the match being played right now — they skim like we do.
@@ -159,12 +156,6 @@ function marketText(m: Match, sig: MarketSignal, args: CommonOpts): string {
   return `${marketHeader(m, args)}\n${marketBlock(sig, m).join('\n')}`;
 }
 
-/**
- * Market signals exist for the World Cup only (see `MARKET_COMPETITIONS`); on
- * any other competition the sidecar is a network-free no-op, and the copy says
- * so rather than reporting a "no signal" it never looked for.
- */
-const MARKETS_SCOPE_NOTE = 'Market signals cover the World Cup only; none are read for this competition.';
 
 /** Null/suppressed-signal text, specific about WHY when the match is finished. */
 function noSignalText(m: Match, args: CommonOpts, now: Date): string {
@@ -398,18 +389,18 @@ export async function toolGetMatch(
   // ±1-day window fetch: the provider buckets scoreboard days in its own zone
   // (ESPN: US/Eastern), so fetching only the fixture's UTC date can miss its
   // live/final state and silently render the match as still scheduled.
-  const { match, degraded, source: liveSource, unsupported } = await getMatchById(
-    resolveAdapter(args),
-    args.id,
-  );
+  const found = await getMatchById(resolveAdapter(args), args.id);
+  const { match, degraded, source: liveSource } = found;
   if (!match) {
     return {
       text: withDisclaimer(
-        unsupported ? t(args.lang, 'competition.unsupported') : `No match found with id ${args.id}.`,
+        verdictNotice(found, args.lang) ?? `No match found with id ${args.id}.`,
         undefined,
         args.lang,
       ),
-      data: { match: null },
+      // "Not available for this competition" is not "no such id": the verdict
+      // the text states is in the structured answer too.
+      data: { match: null, ...verdictExtras(found) },
     };
   }
   const opts = fmtOpts(args);
@@ -437,6 +428,7 @@ export async function toolGetMatch(
       match,
       marketComplete,
       marketSignal: marketSignal ? marketData(marketSignal) : null,
+      ...verdictExtras(found),
     },
   };
 }
@@ -452,11 +444,7 @@ export async function toolGetStandings(
 
   // Preserve the structured shape: { group, standings: StandingRow[] }.
   const boundedTables = boundedRecords(tables);
-  const shaped = boundedTables.items.map((tb) => ({
-    group: tb.group,
-    standings: tb.rows,
-    ...(tb.partial ? { partial: tb.partial } : {}),
-  }));
+  const shaped = boundedTables.items.map(tableData);
 
   if (shaped.length === 0) {
     const g = args.group?.toUpperCase();
@@ -506,16 +494,19 @@ export async function toolGetBracket(
       data: { view: null },
     };
   }
-  const { view, degraded, standingsDegraded, source, unsupported } = await getBracket(
+  const bracket = await getBracket(
     resolveAdapter(args),
     filter ? { stage: filter as Stage, lang: args.lang } : { lang: args.lang },
   );
-  if (unsupported) {
-    // No World Cup topology off the bundle (A03). The marker rides INSIDE the
-    // passthrough `view`, so the advertised schema is unchanged.
+  const { view, degraded, standingsDegraded, source } = bracket;
+  const notice = verdictNotice(bracket, args.lang);
+  if (notice) {
+    // No World Cup topology off the bundle (A03). The marker is a declared
+    // top-level key, like every other tool's (and still rides inside `view`,
+    // where 0.10.1 put it before the schema could carry it).
     return {
-      text: withDisclaimer(t(args.lang, 'competition.unsupported'), undefined, args.lang),
-      data: { degraded, standingsDegraded, source: null, view },
+      text: withDisclaimer(notice, undefined, args.lang),
+      data: { degraded, standingsDegraded, source: null, view, ...verdictExtras(bracket) },
     };
   }
   let text = formatBracketList(view, { footer: false, locale: args.lang, tz: args.tz });
@@ -526,7 +517,7 @@ export async function toolGetBracket(
   }
   return {
     text: withDisclaimer(text, source, args.lang),
-    data: { degraded, standingsDegraded, source: source ?? null, view },
+    data: { degraded, standingsDegraded, source: source ?? null, view, ...verdictExtras(bracket) },
   };
 }
 
@@ -563,20 +554,17 @@ export async function toolGetNextFixture(
   // a team's group games pass (it would answer "no upcoming fixture" even after
   // ESPN confirmed the tie). Fails closed to the static result on a feed outage.
   // The caller's clock is still threaded for deterministic tests.
-  const { fixture, degraded, source, unsupported } = await getNextFixtureForTeam(
-    resolveAdapter(args),
-    code,
-    args.now ?? new Date(),
-  );
+  const next = await getNextFixtureForTeam(resolveAdapter(args), code, args.now ?? new Date());
+  const { fixture, degraded, source } = next;
   if (!fixture) {
-    const msg = unsupported
-      ? t(args.lang, 'competition.unsupported')
-      : degraded
+    const msg =
+      verdictNotice(next, args.lang) ??
+      (degraded
         ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
-        : `No upcoming fixture found for ${code}.`;
+        : `No upcoming fixture found for ${code}.`);
     return {
       text: withDisclaimer(msg, undefined, args.lang),
-      data: { team: code, fixture: null, degraded, source: source ?? null },
+      data: { team: code, fixture: null, degraded, source: source ?? null, ...verdictExtras(next) },
     };
   }
   const opts = fmtOpts(args);
@@ -584,7 +572,7 @@ export async function toolGetNextFixture(
     // `source` in data mirrors the text's "Live data: …" attribution (parity
     // with CLI `next --json`); null for a static group fixture (no live source).
     text: withDisclaimer(`Next up for ${code}:\n${matchLine(fixture, opts)}`, source, args.lang),
-    data: { team: code, fixture, degraded, source: source ?? null },
+    data: { team: code, fixture, degraded, source: source ?? null, ...verdictExtras(next) },
   };
 }
 
@@ -623,7 +611,8 @@ export async function toolGetMarketSignal(
   // Most specific: a single match by id — with live overlay so FT gates the
   // resolved market correctly (the static fixture's status never changes).
   if (args.matchId) {
-    const { match, unsupported } = await getMatchById(resolveAdapter(args), args.matchId);
+    const found = await getMatchById(resolveAdapter(args), args.matchId);
+    const { match } = found;
     const relevant = match ? marketRelevant(match, now) : false;
     const batch =
       match && relevant
@@ -632,9 +621,7 @@ export async function toolGetMarketSignal(
     const sig = match ? resolvedValues(batch).get(match.id) : undefined;
     const shown = batch.complete && match && sig && marketDisplayable(match, sig) ? sig : undefined;
     const text = !match
-      ? unsupported
-        ? t(args.lang, 'competition.unsupported')
-        : `No match found with id ${args.matchId}.`
+      ? (verdictNotice(found, args.lang) ?? `No match found with id ${args.matchId}.`)
       : !batch.complete
         ? `Market data unavailable or incomplete for ${marketHeader(match, args)} — this match could not be checked.`
       : shown
@@ -647,6 +634,7 @@ export async function toolGetMarketSignal(
         informationalOnly: true,
         complete: batch.complete,
         signal: shown ? marketData(shown) : null,
+        ...verdictExtras(found),
       },
     };
   }
@@ -658,11 +646,8 @@ export async function toolGetMarketSignal(
     const code = args.team.toUpperCase();
     // Live-confirmed selection: handles extra time past the static window AND
     // early FTs inside it (the static fixture's status is forever SCHEDULED).
-    const { match: fixture, degraded, unsupported } = await marketFixtureForTeam(
-      resolveAdapter(args),
-      code,
-      now,
-    );
+    const picked = await marketFixtureForTeam(resolveAdapter(args), code, now);
+    const { match: fixture, degraded } = picked;
     const relevant = fixture ? marketRelevant(fixture, now) : false;
     const batch =
       fixture && relevant
@@ -672,11 +657,10 @@ export async function toolGetMarketSignal(
     const shown =
       batch.complete && fixture && sig && marketDisplayable(fixture, sig) ? sig : undefined;
     const text = !fixture
-      ? unsupported
-        ? t(args.lang, 'competition.unsupported')
-        : degraded
+      ? (verdictNotice(picked, args.lang) ??
+        (degraded
           ? `Live feed unavailable — can't resolve ${code}'s next fixture right now.`
-          : `No upcoming fixture found for ${code}.`
+          : `No upcoming fixture found for ${code}.`))
       : !batch.complete
         ? `Market data unavailable or incomplete for ${marketHeader(fixture, args)} — this match could not be checked.`
       : shown
@@ -691,6 +675,7 @@ export async function toolGetMarketSignal(
         informationalOnly: true,
         complete: batch.complete,
         signal: shown ? marketData(shown) : null,
+        ...verdictExtras(picked),
       },
     };
   }
@@ -741,6 +726,8 @@ export async function toolGetMarketSignal(
       // "we could not check them all".
       complete: batch.complete,
       signals: shown.items.map(({ signal }) => marketData(signal)),
+      // Off the markets' scope, "none" means "not read for this competition".
+      ...verdictExtras(marketScopeVerdict(competitionOf(args), shown.shown)),
     },
   };
 }
@@ -786,15 +773,18 @@ function shareOptions(args: ShareArgs): ShareSnippetOptions {
   };
 }
 
+/**
+ * A match card as a tool result. The card comes assembled from core (the same
+ * builders the CLI uses), verdict included; this only serializes it — and says
+ * how many records there were before this surface bounded the list.
+ */
 function shareResult(
-  kind: 'today' | 'live' | 'next' | 'match',
-  target: string,
-  team: string | undefined,
-  input: ShareSnippetInput,
+  card: MatchShareCard,
   options: ShareSnippetOptions,
   /** Records BEFORE capping, so the payload can say what it dropped. */
-  total = input.matches.length,
+  total = card.input.matches.length,
 ): ToolResult {
+  const { input } = card;
   const snippet = formatShareSnippet(input, options);
   return {
     // The snippet is self-contained: it carries its own non-affiliation
@@ -803,9 +793,9 @@ function shareResult(
     // that would duplicate the disclaimer inside a paste-ready artifact.
     text: snippet,
     data: {
-      kind,
-      target,
-      ...(team ? { team } : {}),
+      kind: card.kind,
+      target: card.target,
+      ...(card.team ? { team: card.team } : {}),
       source: input.source ?? null,
       degraded: input.degraded ?? false,
       informationalOnly: true,
@@ -821,6 +811,8 @@ function shareResult(
         ]),
       ),
       marketComplete: input.marketComplete ?? true,
+      // The verdict the card's note stands for (e.g. not available for this competition).
+      ...card.verdict,
     },
   };
 }
@@ -842,69 +834,45 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       ? Promise.resolve({ signals: new Map(), complete: true })
       : reliableSignalMap(args, ms);
 
+  const where = { tz: args.tz, locale: args.lang };
+
   // live: matches in play right now (no market enrichment, matching the CLI).
   if (args.live) {
-    const { matches, degraded, source } = await getLiveMatches(resolveAdapter(args));
-    const shownLive = boundedRecords(matches);
+    const live = await getLiveMatches(resolveAdapter(args));
+    // Bounded like the date branch: a share card is returned through MCP
+    // before a human ever sees it. The count is STATED, not silently lost.
+    const shownLive = boundedRecords(live.matches);
     return shareResult(
-      'live',
-      'live',
-      undefined,
-      {
-        title: `Live match pulse${truncationNote(shownLive)}`,
-        // Bounded like the date branch: a share card is returned through MCP
-        // before a human ever sees it. The count is STATED, not silently lost.
+      liveShareCard(live, where, {
         matches: shownLive.items,
-        source,
-        degraded,
-        // Feed down ⇒ don't let an empty card read as "nothing is on".
-        emptyNote: degraded
-          ? "Live scores unavailable right now — couldn't reach the data provider."
-          : 'No matches in play right now.',
-        installLine: 'npx @claudinho/cli live',
-        tz: args.tz,
-        locale: args.lang,
-      },
+        titleSuffix: truncationNote(shownLive),
+      }),
       { ...options, includeMarkets: false },
-      matches.length,
+      live.matches.length,
     );
   }
 
   // a group's standings table (facts only; no market lines).
   if (args.group) {
     const group = args.group.toUpperCase();
-    const { tables, degraded, source } = await getStandings(resolveAdapter(args), group);
-    const snippet = formatShareTable(
-      {
-        // Capped like the structured payload beside it. Bounding `data.tables`
-        // while the rendered SNIPPET came from the full list meant the surface a
-        // reader actually sees was the unbounded one.
-        tables: boundedRecords(tables).items,
-        // Degraded ⇒ no live provider: don't attribute one. An open-scope
-        // outage has no compatible bundled roster, so name that empty state.
-        source: degraded ? undefined : source,
-        installLine: `npx @claudinho/cli table ${group}`,
-        emptyNote: degraded ? 'Live standings unavailable.' : `No group ${group}.`,
-        degraded,
-      },
-      options,
-    );
+    const standings = await getStandings(resolveAdapter(args), group);
+    // Capped like the structured payload beside it. Bounding `data.tables`
+    // while the rendered SNIPPET came from the full list meant the surface a
+    // reader actually sees was the unbounded one.
+    const card = tableShareCard(standings, group, boundedRecords(standings.tables).items);
+    const snippet = formatShareTable(card.input, options);
     return {
       text: snippet,
       data: {
         kind: 'table',
         target: 'table',
         group,
-        source: degraded ? null : (source ?? null),
-        degraded,
+        source: card.source ?? null,
+        degraded: card.degraded,
         informationalOnly: true,
         snippet,
         // The structured card keeps the verdict the snippet warns about (A01).
-        tables: boundedRecords(tables).items.map((tb) => ({
-          group: tb.group,
-          standings: tb.rows,
-          ...(tb.partial ? { partial: tb.partial } : {}),
-        })),
+        tables: card.tables,
       },
     };
   }
@@ -922,68 +890,35 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         data: { kind: 'bracket', view: null },
       };
     }
-    const { view, degraded, source, unsupported } = await getBracket(
+    const bracket = await getBracket(
       resolveAdapter(args),
       stageFilter
         ? { stage: stageFilter as Stage, lang: args.lang }
         : { lang: args.lang },
     );
-    const snippet = formatShareBracket(
-      {
-        view,
-        source: degraded ? undefined : source,
-        installLine: stageFilter
-          ? `npx @claudinho/cli bracket ${stageFilter}`
-          : 'npx @claudinho/cli bracket',
-        emptyNote: unsupported
-          ? t(args.lang, 'competition.unsupported')
-          : t(args.lang, 'bracket.empty'),
-      },
-      { ...options, locale: args.lang, tz: args.tz },
-    );
+    const card = bracketShareCard(bracket, stageFilter, args.lang);
+    const snippet = formatShareBracket(card.input, { ...options, locale: args.lang, tz: args.tz });
     return {
       text: snippet,
       data: {
         kind: 'bracket',
         target: 'bracket',
-        ...(stageFilter ? { stage: stageFilter } : {}),
-        source: degraded ? null : (source ?? null),
-        degraded,
+        ...(card.stage ? { stage: card.stage } : {}),
+        source: card.source ?? null,
+        degraded: card.degraded,
         informationalOnly: true,
         snippet,
-        view,
+        view: card.input.view,
+        ...card.verdict,
       },
     };
   }
 
   // a single match by id, with live overlay (±1-day window — see toolGetMatch).
   if (args.matchId) {
-    const { match, degraded, source, unsupported } = await getMatchById(
-      resolveAdapter(args),
-      args.matchId,
-    );
-    const matches = match ? [match] : [];
-    const market = await signalsFor(matches);
-    return shareResult(
-      'match',
-      args.matchId,
-      undefined,
-      {
-        title: 'Match pulse',
-        matches,
-        marketSignals: market.signals,
-        marketComplete: market.complete,
-        source,
-        degraded,
-        emptyNote: unsupported
-          ? t(args.lang, 'competition.unsupported')
-          : `No match found with id ${args.matchId}.`,
-        installLine: `npx @claudinho/cli match ${args.matchId}`,
-        tz: args.tz,
-        locale: args.lang,
-      },
-      options,
-    );
+    const found = await getMatchById(resolveAdapter(args), args.matchId);
+    const market = await signalsFor(found.match ? [found.match] : []);
+    return shareResult(matchShareCard(found, args.matchId, market, where), options);
   }
 
   // a team's next fixture, live-resolved across the knockout phase (+ market read).
@@ -991,71 +926,33 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     const code = args.team.toUpperCase();
     // Overlay the live knockout window so a confirmed R32+ tie pastes too (see
     // getNextFixtureForTeam / toolGetNextFixture); fail closed on an outage.
-    const { fixture, degraded, source, unsupported } = await getNextFixtureForTeam(
-      resolveAdapter(args),
-      code,
-      args.now ?? new Date(),
-    );
-    const matches = fixture ? [fixture] : [];
-    const teamName = fixture
-      ? fixture.home.code === code
-        ? fixture.home.name
-        : fixture.away.name
-      : code;
-    const market = await signalsFor(matches);
-    return shareResult(
-      'next',
-      'next',
-      code,
-      {
-        title: `Next up for ${teamName}`,
-        matches,
-        marketSignals: market.signals,
-        marketComplete: market.complete,
-        // Attribute the provider only when the overlay resolved the tie; parity
-        // with get_next_fixture (a static group fixture carries no source).
-        source,
-        degraded,
-        emptyNote: unsupported
-          ? t(args.lang, 'competition.unsupported')
-          : degraded
-            ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
-            : `No upcoming fixture found for ${code}.`,
-        installLine: `npx @claudinho/cli next ${code}`,
-        tz: args.tz,
-        locale: args.lang,
-      },
-      options,
-    );
+    const next = await getNextFixtureForTeam(resolveAdapter(args), code, args.now ?? new Date());
+    const market = await signalsFor(next.fixture ? [next.fixture] : []);
+    return shareResult(nextShareCard(next, code, market, where), options);
   }
 
   // a date's matches (default: today).
   const date = args.date ?? localDate(new Date().toISOString(), args.tz);
-  const { matches: all, degraded, source } = await getMatchesForDate(resolveAdapter(args), date);
-  const todays = fixturesByDate(date, all, args.tz);
-  const human = formatDate(`${date}T12:00:00.000Z`, { tz: args.tz, locale: args.lang });
+  const day = await getMatchesForDate(resolveAdapter(args), date);
+  const todays = fixturesByDate(date, day.matches, args.tz);
+  // Bounded like every other model-facing payload — a share card is
+  // returned through MCP before a human ever sees it.
   const shownToday = boundedRecords(todays);
   const market = await signalsFor(shownToday.items);
   return shareResult(
-    'today',
-    date,
-    undefined,
-    {
-      title:
-        (args.date ? `Matches · ${human}` : `Today's matches · ${human}`) +
-        truncationNote(shownToday),
-      // Bounded like every other model-facing payload — a share card is
-      // returned through MCP before a human ever sees it.
-      matches: shownToday.items,
-      marketSignals: market.signals,
-      marketComplete: market.complete,
-      source,
-      degraded,
-      emptyNote: `No matches scheduled for ${human}.`,
-      installLine: 'npx @claudinho/cli today',
-      tz: args.tz,
-      locale: args.lang,
-    },
+    dateShareCard(
+      {
+        date,
+        explicit: !!args.date,
+        matches: shownToday.items,
+        degraded: day.degraded,
+        source: day.source,
+        scheduleKnown: bundleApplies(competitionOf(args)),
+        titleSuffix: truncationNote(shownToday),
+      },
+      market,
+      where,
+    ),
     options,
     todays.length,
   );

@@ -112,6 +112,22 @@ const responseMeta = {
   responseTruncated: z.boolean().optional(),
   responseTruncation: z.string().optional(),
 };
+/**
+ * The verdicts a result may state about itself (core `verdictExtras`), declared
+ * on every tool that can state one. Present only when stated: `unsupported:
+ * true` tells an agent reading `structuredContent` that an empty answer means
+ * "this does not exist for the selected competition", not "nothing was found".
+ * Undeclared, the SDK would strip it and the text would be the only place the
+ * verdict lived.
+ */
+const verdictOut = {
+  unsupported: z
+    .literal(true)
+    .optional()
+    .describe(
+      'Present (true) when this is not available for this competition yet; an empty result then means "unsupported", not "none found"',
+    ),
+};
 
 const todayOut = {
   date: z.string(),
@@ -147,6 +163,7 @@ const matchDetailOut = {
     .boolean()
     .optional()
     .describe('False when optional market enrichment did not check this fixture'),
+  ...verdictOut,
   ...responseMeta,
 };
 const standingsOut = {
@@ -160,6 +177,7 @@ const bracketOut = {
   degraded: z.boolean().optional(),
   standingsDegraded: z.boolean().optional(),
   source: src.optional(),
+  ...verdictOut,
   ...responseMeta,
 };
 const nextOut = {
@@ -167,6 +185,7 @@ const nextOut = {
   fixture: matchOut.nullable(),
   degraded: z.boolean(),
   source: src,
+  ...verdictOut,
   ...responseMeta,
 };
 const marketOut = {
@@ -186,6 +205,7 @@ const marketOut = {
     .boolean()
     .optional()
     .describe('False when the market provider did not complete every relevant read'),
+  ...verdictOut,
   ...responseMeta,
 };
 const shareOut = {
@@ -209,6 +229,7 @@ const shareOut = {
     .describe('False when optional market enrichment did not check every relevant fixture'),
   count: z.number().optional(),
   truncated: z.boolean().optional(),
+  ...verdictOut,
   ...responseMeta,
 };
 const teamInfo = z

@@ -135,6 +135,25 @@ export function hasSaneDistribution(outcomes: MarketOutcome[]): boolean {
 }
 
 /**
+ * May this signal be SHOWN beside this fixture? Only if it still belongs to the
+ * fixture being rendered ({@link marketSignalRendersFor} — display labels come
+ * from the Match, so a signal cached for a pairing that has since degraded to
+ * a placeholder must not print), is not ambiguous, has a determinable
+ * favorite, and its distribution is sane.
+ *
+ * THE display rule, for every surface. The CLI and the MCP server each carried
+ * a copy of it; a rule that exists twice is a rule one copy will forget.
+ */
+export function marketDisplayable(match: Match, signal: MarketSignal): boolean {
+  return (
+    marketSignalRendersFor(match, signal) &&
+    !signal.ambiguous &&
+    signal.favorite != null &&
+    hasSaneDistribution(signal.outcomes)
+  );
+}
+
+/**
  * Tolerance for honest clock skew between us and a provider. Beyond it, a
  * future timestamp is not skew — it is a value we cannot treat as a reading.
  */

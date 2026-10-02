@@ -15,9 +15,11 @@ import {
 /**
  * Club-surface coverage, MCP half (audit A03, CONTAINED): off the bundle every
  * tool built on the World Cup skeleton says "not available for this
- * competition yet" in text, and the bracket's structured view carries the
- * marker (inside the passthrough `view`, so the advertised schemas are
- * unchanged). Mirrors knockout-surface-coverage.test.ts.
+ * competition yet" in text. 0.10.1 could only carry the marker inside the
+ * bracket's passthrough `view` (a top-level key needed a schema change); since
+ * 0.11 every such tool declares and returns a top-level `unsupported: true`
+ * (see verdict-parity.test.ts, which owns that contract), and the bracket keeps
+ * the marker inside `view` as well. Mirrors knockout-surface-coverage.test.ts.
  */
 const NOW = new Date('2026-09-16T12:00:00Z');
 const NOTICE = 'Not available for this competition yet.';

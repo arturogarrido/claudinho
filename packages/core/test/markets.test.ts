@@ -7,6 +7,7 @@ import {
   getMarketSignal,
   getMarketSignals,
   hasSaneDistribution,
+  marketDisplayable,
   isReliableMarketSignal,
   isStaleSignal,
   makeMarketProvider,
@@ -220,6 +221,44 @@ describe('isReliableMarketSignal', () => {
   it('can be bypassed with includeUnreliable', () => {
     const ambiguous = build(hda(0.56, 0.25, 0.19), { ambiguous: true });
     expect(isReliableMarketSignal(ambiguous, { now: NOW, includeUnreliable: true })).toBe(true);
+  });
+});
+
+describe('marketDisplayable (the one display rule every surface asks)', () => {
+  // The CLI and the MCP server each had a copy of this rule; it lives here now,
+  // and each of its four conditions is pinned where it lives.
+  const sig = build(hda(0.56, 0.25, 0.19));
+
+  it('shows a clean signal for the fixture it was built for', () => {
+    expect(sig.favorite).toBeDefined();
+    expect(marketDisplayable(match(), sig)).toBe(true);
+  });
+
+  it('does not show a signal against another fixture, or a degraded placeholder', () => {
+    expect(marketDisplayable(match({ id: '999999' }), sig)).toBe(false);
+    const placeholder = match({
+      stage: 'R32',
+      group: undefined,
+      home: { code: '1A', name: 'Group A Winner', flag: '🏳️' },
+      away: { code: '2B', name: 'Group B Runner-up', flag: '🏳️' },
+    });
+    expect(marketDisplayable(placeholder, sig)).toBe(false);
+  });
+
+  it('does not show an ambiguous mapping', () => {
+    expect(marketDisplayable(match(), { ...sig, ambiguous: true })).toBe(false);
+  });
+
+  it('does not show a signal with no determinable favorite', () => {
+    expect(marketDisplayable(match(), { ...sig, favorite: undefined })).toBe(false);
+  });
+
+  it('does not show a distribution that is not one', () => {
+    // Still home/draw/away for this fixture (so it "renders for" it), but the
+    // three prices no longer describe one event: 0.56 + 0.25 + 0.50.
+    const skewed = sig.outcomes.map((o) => (o.kind === 'away' ? { ...o, probability: 0.5 } : o));
+    expect(marketSignalRendersFor(match(), { ...sig, outcomes: skewed })).toBe(true);
+    expect(marketDisplayable(match(), { ...sig, outcomes: skewed })).toBe(false);
   });
 });
 

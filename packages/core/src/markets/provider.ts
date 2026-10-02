@@ -34,6 +34,23 @@ export function marketsCoverCompetition(competition: string): boolean {
 }
 
 /**
+ * The verdict a market read with NOTHING TO SHOW states about its competition:
+ * outside the sidecar's scope, "none" means "not read for this competition",
+ * which is not "none found". A surface passes this to `verdictExtras` so a
+ * day's read off scope says so in its structured output, as the by-team and
+ * by-id reads do through their fixture lookup.
+ *
+ * `shown` is how many signals the read is about to display. A read that shows
+ * some states no such verdict, whatever the competition: the demo source
+ * (`CLAUDINHO_MARKETS_SOURCE=fake`) synthesizes signals for any competition,
+ * and the text beside them says nothing about scope. Text and structured
+ * output decide on the same two facts.
+ */
+export function marketScopeVerdict(competition: string, shown: number): { unsupported?: true } {
+  return shown === 0 && !marketsCoverCompetition(competition) ? { unsupported: true } : {};
+}
+
+/**
  * Resolve the market-data source: explicit arg > CLAUDINHO_MARKETS_SOURCE env >
  * 'polymarket' (mirrors resolveCompetition). Set CLAUDINHO_MARKETS_SOURCE=fake
  * to preview the UX with synthetic, clearly-labeled "demo data" odds.

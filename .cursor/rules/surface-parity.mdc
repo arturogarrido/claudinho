@@ -16,6 +16,10 @@ Any user-visible formatter change must land on **all three surfaces** before mer
 
 `scripts/release-qa.sh` exercises CLI + share rendering across locales and timezones; MCP arg threading is **not** rendered there — guard it with unit tests.
 
+## A verdict is forwarded by core, not by each surface
+
+A result that states a verdict about itself (today: `unsupported`, "not available for this competition") reaches text **and** structured output through `verdictNotice` / `verdictExtras` (`packages/core/src/verdict.ts`). Pass the RESULT to them; do not name the verdict at an emit site (`packages/core/test/verdict.test.ts` fails when a surface's code spells `unsupported`, a card's `emptyNote`/`installLine`, or a table's `partial` key). A new verdict is added in that module and declared in `verdictOut` (`packages/mcp/src/server.ts`). A table's structured form, with its `partial` verdict, comes from `tableData` (`packages/core/src/standings.ts`). Share cards (`claudinho share`, `get_share_snippet`) come from the builders in `packages/core/src/share/cards.ts`; a surface only serializes them.
+
 ## Knockout surfaces live-resolve — never read the skeleton (the #1 recurring bug)
 
 The bundled schedule's knockout slots are **resultless placeholders** (codes like `2A`/`2B`, flag `🏳️`). So a team-facing surface that reads the static bundle is **silently** blind to a confirmed knockout tie — no crash, no wrong data, just a stale placeholder. **Knockout live-resolve regressions** shipped repeatedly in different surfaces (root cause: skeleton reads, cache gaps, or both):
