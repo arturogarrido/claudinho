@@ -428,14 +428,22 @@ function epochAgeMs(ms: number, now: number): number {
 }
 
 /**
- * Age of the lock in ms, or `undefined` when there is NO lock (nothing at the
- * path). Read through ONE descriptor, without waiting: the hot path asks this
- * on every prompt, and a pipe at the lock's path used to block it for ever.
- * Uses the timestamp written *inside* the lock (authoritative — survives
- * copies/touch) and falls back to the mtime of the same open file. A lock
- * that is there but cannot be judged (a pipe, a directory, no permission,
- * larger than `MAX_LOCK_BYTES`) is Infinity: stale. "Absent" and "stale" are
- * different answers because `claimLock` must not remove a lock that is absent.
+ * Age of the lock in ms, or `undefined` when there is NO lock. Read through ONE
+ * descriptor, without waiting: the hot path asks this on every prompt, and a
+ * pipe at the lock's path used to block it for ever. What each answer of the
+ * reader (`lookAtSmallFile`) means for a lock:
+ * - `absent` (no entry) → `undefined`: `claimLock` creates, it never removes
+ *   what is not there;
+ * - `unreadable` (a pipe, a device, a directory, a link to nothing, no
+ *   permission, larger than `MAX_LOCK_BYTES`) → Infinity: there, and nobody can
+ *   judge it, so stale, and `claimLock` takes it over (a directory cannot be
+ *   removed, so nobody takes that one: stated);
+ * - `grown` (being written while it was read: an owner writes its token just
+ *   after creating the lock) → the age of its mtime: a lock written now is
+ *   fresh. Taking it for stale had a contender remove a lock a moment old;
+ * - `read` → the timestamp written *inside* the lock (authoritative — survives
+ *   copies/touch), else the mtime of the same open file (an empty lock, its
+ *   token not yet written, is judged by its date too).
  *
  * Intended change (0.11 2.6a): a junk lock LARGER than the bound used to be
  * read whole and judged by its mtime (fresh for a minute after it was
@@ -445,6 +453,7 @@ function lockAgeMs(now = Date.now()): number | undefined {
   const lock = lookAtSmallFile(lockPath(), MAX_LOCK_BYTES);
   if (lock.kind === 'absent') return undefined;
   if (lock.kind === 'unreadable') return Infinity;
+  if (lock.kind === 'grown') return epochAgeMs(lock.mtimeMs, now);
   const written = Number.parseInt(lock.bytes.toString('utf8').split(/\s+/)[1] ?? '', 10);
   // Through the shared guard: a lock written in the future never went stale,
   // so it held the refresher silent forever.
