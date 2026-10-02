@@ -290,10 +290,17 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     // whole. An unknown season on either side is not "different". (The hot
     // path cannot detect a new season; it takes this one refresh. The backoff
     // below is about the provider, not a season, and stays.)
+    //
+    // The ATTEMPT stamp stays too. It records that the window was asked for,
+    // which is true whatever became of the answer, and it is what paces the
+    // next ask: a cache with neither stamp is "infinitely stale", so erasing
+    // it here made a disagreement that persists refetch the window on every
+    // prompt. With it, a slice dropped right after its own fetch is asked for
+    // again on the empty-result cadence, and a carried one as soon as its last
+    // attempt is that old — once, promptly, which is what a rollover wants.
     if (season && fixturesSeason && season.year !== fixturesSeason.year) {
       fixtures = undefined;
       fixturesUpdatedAt = undefined;
-      fixturesAttemptedAt = undefined;
       fixturesSeason = undefined;
     }
 

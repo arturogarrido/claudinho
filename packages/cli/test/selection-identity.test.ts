@@ -636,6 +636,38 @@ describe('season in the cache', () => {
     expect(knockoutRequests).toBe(2);
   });
 
+  it('a CARRIED slice dropped at a rollover is asked for on the next prompt', async () => {
+    // The other side of the rule above: keeping the attempt stamp must not
+    // delay a real rollover. The carried slice was fetched ten minutes ago, so
+    // this cycle refreshes only the live slice; the live response says 2030,
+    // the slice goes, and its ten-minute-old attempt no longer holds anyone back.
+    const SEMI_LIVE = new Date('2026-07-14T19:30:00Z');
+    const fetchedAt = new Date(SEMI_LIVE.getTime() - 10 * 60_000).toISOString();
+    writeState({
+      updatedAt: new Date(SEMI_LIVE.getTime() - 60_000).toISOString(),
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+      fixtures: [carried],
+      fixturesUpdatedAt: fetchedAt,
+      fixturesAttemptedAt: fetchedAt,
+      season: { year: 2026, label: '2026 FIFA World Cup' },
+      fixturesSeason: { year: 2026, label: '2026 FIFA World Cup' },
+    });
+    let knockoutRequests = 0;
+    vi.stubGlobal('fetch', async (url: unknown) => {
+      if (String(url).includes('dates=20260628')) knockoutRequests++;
+      return response({ leagues: [{ season: season(2030) }], events: [] });
+    });
+    await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+    expect(knockoutRequests).toBe(0); // the slice was fresh: this cycle did not ask
+    const state = readState('espn', 'fifa.world');
+    expect(state?.fixtures).toBeUndefined();
+    expect(state?.fixturesAttemptedAt).toBe(fetchedAt);
+    expect(shouldRefreshFixtures(SEMI_LIVE.getTime() + 1_000, state, 'fifa.world')).toBe(true);
+  });
+
   it('a dated query never writes the live cache', async () => {
     await cmdToday('2026-06-11', {
       cfg: cfg({ json: true }),
