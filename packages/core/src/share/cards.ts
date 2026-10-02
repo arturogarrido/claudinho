@@ -207,6 +207,8 @@ export interface TableShareCard {
   degraded: boolean;
   /** The card's tables in structured form, each with the verdict it carries. */
   tables: TableData[];
+  /** The structured verdict keys of the READ (see `verdictExtras`): `incomplete` when tables are missing. */
+  verdict: VerdictExtras;
 }
 
 export function tableShareCard(
@@ -218,11 +220,15 @@ export function tableShareCard(
   // Degraded ⇒ no live provider: no attribution. An open-scope outage has no
   // compatible bundled roster, so the empty card names the outage.
   const source = result.degraded ? undefined : result.source;
+  // Share copy is English (the card is pasted anywhere); the sentence is the
+  // one every surface prints for this verdict.
+  const incompleteNote = result.incomplete ? verdictNotice(result) : undefined;
   return {
     ...(group ? { group } : {}),
     source,
     degraded: result.degraded,
     tables: tables.map(tableData),
+    verdict: verdictExtras(result),
     input: {
       tables,
       source,
@@ -233,6 +239,7 @@ export function tableShareCard(
           ? `No group ${group}.`
           : 'No standings available.',
       degraded: result.degraded,
+      ...(incompleteNote ? { incompleteNote } : {}),
     },
   };
 }

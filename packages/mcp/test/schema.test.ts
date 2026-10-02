@@ -11,11 +11,16 @@ describe('MCP input schemas', () => {
     expect(dateArg.safeParse('June 12').success).toBe(false);
   });
 
-  it('groupArg accepts a single letter A–L only', () => {
-    expect(groupArg.safeParse('A').success).toBe(true);
-    expect(groupArg.safeParse('l').success).toBe(true);
-    expect(groupArg.safeParse('Z').success).toBe(false);
-    expect(groupArg.safeParse('AA').success).toBe(false);
+  it('groupArg accepts a table key: a group letter, or a key such as A1, A-B, LEAGUE', () => {
+    // It accepted A to L only, so no agent could ask for a numbered group, a
+    // group under a league, or a league's table.
+    for (const key of ['A', 'l', 'Z', 'A1', 'a-b', 'LEAGUE', 'league']) {
+      expect(groupArg.safeParse(key).success, key).toBe(true);
+    }
+    // Not a key: empty, too long, or anything but letters, digits and `-`.
+    for (const junk of ['', 'A B', 'Group A', 'A/B', 'A_B', '../A', 'A\u200b', 'ABCDEFGHIJKLM', 'Á']) {
+      expect(groupArg.safeParse(junk).success, JSON.stringify(junk)).toBe(false);
+    }
   });
 
   it('teamArg accepts a 3-letter code only', () => {

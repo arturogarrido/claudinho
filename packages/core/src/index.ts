@@ -45,7 +45,7 @@ export {
 
 export { allTeams, lookupTeam, type TeamInfo, type TeamLookup } from './teams';
 
-export { computeStandings, tableData, tableTitle } from './standings';
+export { computeStandings, tableData, tableKeyArg, tableTitle, TABLE_KEY_ARG } from './standings';
 export type { StandingRow, GroupStandings, TableData } from './standings';
 
 export type { ProviderAdapter, ProviderCapabilities } from './adapters/types';

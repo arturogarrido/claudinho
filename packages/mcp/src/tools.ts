@@ -21,6 +21,7 @@ import {
   tableData,
   marketDisplayable,
   type MatchShareCard,
+  tableKeyArg,
   verdictExtras,
   verdictNotice,
   getBracket,
@@ -440,7 +441,8 @@ export async function toolGetStandings(
   // Authoritative cumulative standings from the provider. A degraded bundled
   // roster is valid only for a declared compatible scope; open-scope outages
   // stay empty rather than borrowing World Cup teams.
-  const { tables, degraded, source } = await getStandings(resolveAdapter(args), args.group);
+  const result = await getStandings(resolveAdapter(args), args.group);
+  const { tables, degraded, source } = result;
 
   // Preserve the structured shape: { group, standings: StandingRow[] }.
   const boundedTables = boundedRecords(tables);
@@ -455,13 +457,13 @@ export async function toolGetStandings(
         : 'No standings available.';
     return {
       text: withDisclaimer(msg, source, args.lang),
-      data: { degraded, source: source ?? null, tables: args.group ? null : [] },
+      data: { degraded, source: source ?? null, tables: args.group ? null : [], ...verdictExtras(result) },
     };
   }
 
   let text = shaped
     .map((tb) => {
-      const block = standingsTable(tb.group, tb.standings);
+      const block = standingsTable(tb, tb.standings);
       // A table the provider served but we could not read in full says so (A01).
       return tb.partial
         ? `${block}\n(${t(args.lang, 'standings.partial', { n: String(tb.partial.omitted) })})`
@@ -471,9 +473,18 @@ export async function toolGetStandings(
   // Stated, not silent — the same rule the match lists follow.
   text += truncationNote(boundedTables);
   if (degraded) text += '\n\n(Live standings unavailable — showing the group roster.)';
+  // Tables are missing: what is shown is not the whole competition. The
+  // sentence goes beside the tables, and its key into `data`.
+  const notice = verdictNotice(result, args.lang);
+  if (notice) text += `\n\n(${notice})`;
   return {
     text: withDisclaimer(text, source, args.lang),
-    data: { degraded, source: source ?? null, tables: args.group ? (shaped[0] ?? null) : shaped },
+    data: {
+      degraded,
+      source: source ?? null,
+      tables: args.group ? (shaped[0] ?? null) : shaped,
+      ...verdictExtras(result),
+    },
   };
 }
 
@@ -531,11 +542,19 @@ export async function standingsResourceText(
   group: string,
   adapter: ProviderAdapter,
 ): Promise<string> {
-  const g = group.toUpperCase();
+  // A resource URI is typed by anyone: what is not a table key is refused
+  // here, before a request, with the grammar a key has.
+  const g = tableKeyArg(group);
+  if (!g) {
+    return withDisclaimer(
+      'Not a table. Use standings://A for a group, or a key such as standings://A1, standings://A-B or standings://LEAGUE.',
+      undefined,
+    );
+  }
   const { tables, degraded, source } = await getStandings(adapter, g);
   const tb = tables[0];
   let text = tb
-    ? standingsTable(tb.group, tb.rows)
+    ? standingsTable(tb, tb.rows)
     : degraded
       ? 'Live standings unavailable.'
       : `No group ${g}.`;
@@ -873,6 +892,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         snippet,
         // The structured card keeps the verdict the snippet warns about (A01).
         tables: card.tables,
+        ...card.verdict,
       },
     };
   }

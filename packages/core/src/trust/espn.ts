@@ -540,15 +540,12 @@ function refusedStandings(truncated: boolean): EspnStandingsList {
  * So everything that can make a table unauthoritative is known before a row is
  * parsed, and the row work is bounded whatever the payload holds.
  *
- * A child is one of three things:
- *   - a table (it may still turn out partial: rows refused);
- *   - positively NOT a table: a name outside the grammar AND an empty rows
- *     list (a knockout stage listed beside the groups). Nothing else is
- *     skipped;
- *   - a table child that did not become a table, which makes the INVENTORY
- *     incomplete: a named group (or a league's one child) with no usable rows,
- *     a name outside the grammar with rows, rows that are not a list, a key
- *     two children claim (it belongs to neither), a table past the last slot.
+ * Every child either becomes a table (it may still turn out partial: rows
+ * refused) or makes the INVENTORY incomplete; nothing is skipped. A child does
+ * not become a table when: it is a named group (or a league's one child) with
+ * no usable rows; its name is outside the grammar, with rows or without; its
+ * rows are not a list; two children claim its key (it belongs to neither); or
+ * it comes after the last slot.
  *
  * A payload with tables nobody can inspect is refused WHOLE: more children
  * than the bound, or a child with children of its own. A table in there could
@@ -608,8 +605,10 @@ export function parseEspnStandings(raw: unknown, shape: StandingsShape = 'groups
 
     const key = tableKey(name);
     if (!key) {
-      // Positively not a table: no group's name, and an EMPTY rows list.
-      if (Array.isArray(entries) && entries.length === 0) continue;
+      // Nothing is skipped. A child with an empty rows list under a name the
+      // grammar does not know used to be waved through as "a knockout stage":
+      // a guess no measured payload supports, and exactly the door a name the
+      // grammar REJECTS (`Group A` + an invisible character) walks through.
       refuseTable();
       continue;
     }

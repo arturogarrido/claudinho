@@ -20,8 +20,18 @@ import { STANDINGS_SHAPE } from '../src/competition';
 import { getStandings } from '../src/live';
 import { MAX_GROUP_ROWS, MAX_GROUPS, parseEspnStandings } from '../src/trust/espn';
 
-const recorded = (slug: string): { children: Array<Record<string, unknown>> } =>
+type RecordedTeam = { id: string; abbreviation: string; displayName: string };
+type RecordedChild = { name: string; standings: { entries: Array<{ team: RecordedTeam }> } };
+/** A recorded payload (the competition with no table has no `children` at all). */
+type Recorded = { children: RecordedChild[] };
+const recorded = (slug: string): Recorded =>
   JSON.parse(readFileSync(new URL(`./fixtures/standings/${slug}.json`, import.meta.url), 'utf8'));
+/** The rows of a recorded payload's i-th table. */
+function entriesOf(payload: Recorded, i: number) {
+  const table = payload.children[i];
+  if (!table) throw new Error(`the recorded payload has no table ${i}`);
+  return table.standings.entries;
+}
 
 /** An adapter for `competition` whose standings request answers `payload`. */
 const serving = (competition: string, payload: unknown) =>
@@ -139,7 +149,7 @@ describe('groups under a league (Concacaf Nations League)', () => {
 
   it('`A-B` is League A, Group B; `B` alone is no group', async () => {
     const payload = recorded('concacaf.nations.league');
-    const sent = (payload.children[1]?.standings as { entries: Array<{ team: { displayName: string } }> }).entries;
+    const sent = entriesOf(payload, 1);
     const ab = await read('concacaf.nations.league', 'a-b');
     expect(ab.tables.map((t) => t.label)).toEqual(['League A, Group B']);
     expect(ab.tables[0]?.rows.map((x) => x.team.name).sort()).toEqual(sent.map((e) => e.team.displayName).sort());
@@ -198,7 +208,7 @@ describe('the key comes from the RAW name, whole', () => {
   it('a name that only becomes a group after sanitizing is not that group', async () => {
     // Both sanitize to exactly "Group A": an invisible character, and a tail
     // that the label's length bound cuts off.
-    for (const name of ['Group A​', `Group A${' '.repeat(150)}1`, 'Group A\n', ' Group A', 'Group  A', 'XGroup A']) {
+    for (const name of ['Group A\u200b', `Group A${' '.repeat(150)}1`, 'Group A\n', ' Group A', 'Group  A', 'XGroup A']) {
       const parsed = parseEspnStandings({ children: [child(name)] });
       expect(parsed.items, JSON.stringify(name)).toEqual([]);
       expect(parsed.inventory, JSON.stringify(name)).toBe('incomplete');
@@ -216,7 +226,7 @@ describe('the key comes from the RAW name, whole', () => {
   });
 
   it('a name with no readable label is not a table', async () => {
-    const parsed = parseEspnStandings({ children: [child('​​')] }, 'league');
+    const parsed = parseEspnStandings({ children: [child('\u200b\u200b')] }, 'league');
     expect(parsed.items).toEqual([]);
     expect(parsed.inventory).toBe('incomplete');
   });
@@ -406,11 +416,19 @@ describe('two kinds of "not whole", kept apart', () => {
     expect(await read('synthetic.cup', undefined, { children: [] })).toEqual({ tables: [], degraded: false, source: 'espn' });
   });
 
-  it('a child that is positively not a table (an empty rows list under a name that is no group) is skipped', async () => {
-    const payload = { children: [child('Group A', 4), { name: 'Round of 16', standings: { entries: [] } }] };
-    expect(parseEspnStandings(payload).inventory).toBe('complete');
-    expect((await read('synthetic.cup', undefined, payload)).incomplete).toBeUndefined();
-    expect(await read('synthetic.cup', 'C', payload)).toEqual({ tables: [], degraded: false, source: 'espn' });
+  it('nothing is skipped: an empty rows list under a name the grammar does not know is an unread child too', async () => {
+    // It used to be waved through as "a knockout stage". No measured payload
+    // holds such a child, and a name the grammar REJECTS must not get through
+    // by having no rows.
+    for (const name of ['Round of 16', 'Group A\u200b', 'Group A10', `Group A${' '.repeat(150)}1`]) {
+      const payload = { children: [child('Group B', 4), { name, standings: { entries: [] } }] };
+      expect(parseEspnStandings(payload).inventory, JSON.stringify(name)).toBe('incomplete');
+      const all = await read('synthetic.cup', undefined, payload);
+      expect(all.tables.map((t) => t.group)).toEqual(['B']);
+      expect(all.incomplete, JSON.stringify(name)).toBe(true);
+      // No key is invented from the rejected name, and A is not "no such group".
+      expect(await read('synthetic.cup', 'A', payload), JSON.stringify(name)).toEqual({ tables: [], degraded: true });
+    }
   });
 
   it('the adapter carries both on the result', async () => {
@@ -476,6 +494,16 @@ describe('bounds, applied before the work', () => {
     expect(parsed.inventory).toBe('incomplete');
   });
 
+  it('a key two children claim costs no slot: the sixteenth table after it is still read', () => {
+    const counter = { rows: 0 };
+    const names = ['Group A', ...'BCDEFGHIJKLMNO'.split('').map((l) => `Group ${l}`), 'group a', 'Group P'];
+    expect(names).toHaveLength(17);
+    const parsed = parseEspnStandings({ children: names.map((name) => ({ name, standings: { entries: counted(4, counter) } })) });
+    expect(parsed.items.map((t) => t.group)).toEqual('BCDEFGHIJKLMNOP'.split(''));
+    expect(counter.rows).toBe(15 * 4);
+    expect(parsed.inventory).toBe('incomplete');
+  });
+
   it('a slot is taken before the rows are parsed and is never given back', () => {
     // 64 children, 64 distinct keys, forty malformed rows each: no table is
     // ACCEPTED, so a budget that counted accepted tables would parse them all.
@@ -524,10 +552,8 @@ describe('a table key is not a fixture’s group', () => {
       fetchImpl: (async (input: unknown) =>
         new Response(JSON.stringify(String(input).includes('/standings') ? standings : { leagues: [{}], events }))) as unknown as typeof fetch,
     });
-  const teamsOf = (payload: { children: Array<Record<string, unknown>> }, i: number) =>
-    (payload.children[i]?.standings as { entries: Array<{ team: { id: string; abbreviation: string; displayName: string } }> }).entries.map(
-      (e) => [e.team.id, e.team.abbreviation, e.team.displayName] as [string, string, string],
-    );
+  const teamsOf = (payload: Recorded, i: number) =>
+    entriesOf(payload, i).map((e) => [e.team.id, e.team.abbreviation, e.team.displayName] as [string, string, string]);
 
   it('a league table is read, and puts no group on a fixture', async () => {
     const payload = recorded('eng.1');

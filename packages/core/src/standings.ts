@@ -53,6 +53,20 @@ export interface TableData {
 }
 
 /**
+ * A table key as a surface accepts it as an ARGUMENT (`table`, `get_standings`,
+ * `standings://`, `share table`): 1 to 12 letters, digits or `-`, in any case.
+ * It says what may be ASKED FOR, and is wider than what a provider's table can
+ * be keyed as: an unknown key is answered "no such group", a string that is
+ * not a key at all is refused before anything is fetched.
+ */
+export const TABLE_KEY_ARG = /^[A-Za-z0-9-]{1,12}$/;
+
+/** The key an argument asks for, upper-cased; undefined when it is not a key. */
+export function tableKeyArg(raw: unknown): string | undefined {
+  return typeof raw === 'string' && TABLE_KEY_ARG.test(raw) ? raw.toUpperCase() : undefined;
+}
+
+/**
  * A table's title on a surface that does not localize it (MCP text, the
  * resource, a share card): `Group A` for a lettered group, and for any other
  * table the provider's label followed by the key that selects it,

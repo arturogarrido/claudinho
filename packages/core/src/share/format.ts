@@ -23,7 +23,7 @@ import { liveSourceLabel } from '../live';
 import { marketBlock, marketLine } from '../markets/format';
 import type { MarketSignal } from '../markets/types';
 import { isLive, matchLocation, scoreline, stageLabel } from '../normalize';
-import type { StandingRow } from '../standings';
+import { type StandingRow, tableTitle } from '../standings';
 import { formatDate, formatTime } from '../time';
 import type { Match } from '../types';
 
@@ -243,6 +243,8 @@ export interface ShareTableInput {
   /** Group tables to render (1..n); each in standings order. */
   tables: readonly {
     group: string;
+    /** The provider's name for the table; absent for a lettered group. */
+    label?: string;
     rows: readonly StandingRow[];
     /** Rows the provider served that could not be read (see GroupStandings). */
     partial?: { omitted: number };
@@ -253,6 +255,12 @@ export interface ShareTableInput {
   installLine?: string;
   /** Body line when there are no tables (e.g. "No group Z."). */
   emptyNote?: string;
+  /**
+   * Stated beside the tables when they are not the whole competition (a table
+   * the provider sent could not be read). A card is pasted where nobody can
+   * ask: the tables that were read must not look like all of them.
+   */
+  incompleteNote?: string;
   /**
    * True when no authoritative table was available. Non-empty rows are a
    * static roster, not live results; an empty open-scope outage is described by
@@ -279,11 +287,11 @@ export function formatShareTable(input: ShareTableInput, options: ShareSnippetOp
         (input.degraded ? 'Live standings unavailable.' : 'No standings available.'),
     );
   } else {
-    for (const { group, rows, partial } of input.tables) {
+    for (const { group, label, rows, partial } of input.tables) {
       // The provider's rank, never the array position: on a partial table the
       // survivors are not 1..n (audit A01). A computed table has no rank and
       // prints its order.
-      const lines = [`Group ${group} · standings`, '', ...rows.map((r, i) => tableRow(r, r.rank ?? i + 1))];
+      const lines = [`${tableTitle({ group, label })} · standings`, '', ...rows.map((r, i) => tableRow(r, r.rank ?? i + 1))];
       if (partial) {
         const n = partial.omitted;
         lines.push('', `(partial table — ${n} row${n === 1 ? '' : 's'} unreadable; positions are the provider's ranks)`);
@@ -294,6 +302,7 @@ export function formatShareTable(input: ShareTableInput, options: ShareSnippetOp
     if (input.degraded) {
       blocks.push('(Live standings unavailable — group roster, not live results.)');
     }
+    if (input.incompleteNote) blocks.push(`(${input.incompleteNote})`);
   }
   blocks.push(
     shareFooter({ source: input.source, installLine: input.installLine, includeHashtag, includeInstall }),

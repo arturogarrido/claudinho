@@ -17,7 +17,7 @@ package is [`@claudinho/mcp`](https://www.npmjs.com/package/@claudinho/mcp).
 - `get_today` — fixtures for a date (default today), live overlay
 - `get_live` — matches in play now
 - `get_match` — one match by id
-- `get_standings` — group table(s) A–L or all
+- `get_standings` — standings: every table, or one by its key (a group letter, or `A1`, `A-B`, `LEAGUE`)
 - `get_bracket` — knockout tree (optional stage filter)
 - `get_next_fixture` — team's next match (offline schedule)
 - `get_market_signal` — read-only market-implied % (informational only)

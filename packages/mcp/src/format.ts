@@ -11,6 +11,7 @@ import {
   padVisible,
   scoreline,
   stageLabel,
+  tableTitle,
   type FlavorLevel,
   type Match,
   type StandingRow,
@@ -105,8 +106,10 @@ export function matchList(matches: Match[], empty: string, opts: FmtOpts = {}): 
 }
 
 /** A group table as a monospace-friendly text block. */
-export function standingsTable(group: string, rows: StandingRow[]): string {
-  const header = `Group ${group}`;
+export function standingsTable(table: { group: string; label?: string }, rows: StandingRow[]): string {
+  // `Group A` for a lettered group; any other table is its label and the key
+  // that selects it: `League A, Group B (A-B)`.
+  const header = tableTitle(table);
   // One template for the column header AND the data rows so they can't drift.
   // Display-width padding (a tag-sequence flag like England's is 14 UTF-16
   // units but 2 columns), and no truncation — never cut a nation mid-name.

@@ -129,8 +129,8 @@ program
 
 program
   .command('table')
-  .description('show group standings (default: all groups)')
-  .argument('[group]', 'group letter A-L')
+  .description('show standings (default: every table)')
+  .argument('[key]', 'a table: a group letter (A), or a key such as A1, A-B or LEAGUE')
   .action(async (group, _opts, cmd) => {
     try {
       await cmdTable(group, ctxFrom(cmd));
@@ -183,7 +183,7 @@ program
   .argument('[target]', '"today" (default), "live", a date, a match id, "next", "table", or "bracket"')
   .argument(
     '[team]',
-    'team name or code for "next" (default: $CLAUDINHO_TEAM), group letter for "table", or stage for "bracket"',
+    'team name or code for "next" (default: $CLAUDINHO_TEAM), table key for "table" (A, A1, A-B, LEAGUE), or stage for "bracket"',
   )
   .option('--style <style>', 'snippet style: social (default) or compact')
   .option('--copy', 'also copy the snippet to the clipboard (best-effort)')
