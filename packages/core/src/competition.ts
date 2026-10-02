@@ -1,4 +1,6 @@
 import { DEFAULT_COMPETITION } from './adapters/espn';
+
+export { STANDINGS_SHAPE } from './adapters/espn';
 import { allFixtures } from './schedule';
 import type { SeasonInfo } from './types';
 

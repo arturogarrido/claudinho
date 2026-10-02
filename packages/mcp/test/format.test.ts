@@ -20,7 +20,7 @@ function row(code: string, name: string, flag: string): StandingRow {
 }
 
 describe('standingsTable — display-width alignment (I18N-3)', () => {
-  const table = standingsTable('L', [
+  const table = standingsTable({ group: 'L' }, [
     row('MEX', 'Mexico', '🇲🇽'),
     row('ENG', 'England', ENGLAND),
     row('SCO', 'Scotland', SCOTLAND),

@@ -21,9 +21,18 @@ export interface StandingRow {
   rank?: number;
 }
 
-/** A group's table: the group letter ("A".."L") and its rows in standings order. */
+/**
+ * A table: its KEY and its rows in standings order.
+ *
+ * `group` is the key a surface selects the table by: a group letter (`A`), a
+ * numbered group (`A1`), a group under a league (`A-B`), or `LEAGUE` for a
+ * league's one table. `label` is the provider's name for the table, sanitized,
+ * present for every table EXCEPT a lettered group (which keeps its localized
+ * title, "Group A" / "Grupo A").
+ */
 export interface GroupStandings {
   group: string;
+  label?: string;
   rows: StandingRow[];
   /**
    * Present when the provider's table could not be read in full: `omitted` rows
@@ -37,8 +46,34 @@ export interface GroupStandings {
 /** A table as every surface's structured output states it. */
 export interface TableData {
   group: string;
+  /** The provider's name for the table; absent for a lettered group. */
+  label?: string;
   standings: StandingRow[];
   partial?: { omitted: number };
+}
+
+/**
+ * A table key as a surface accepts it as an ARGUMENT (`table`, `get_standings`,
+ * `standings://`, `share table`): 1 to 12 letters, digits or `-`, in any case.
+ * It says what may be ASKED FOR, and is wider than what a provider's table can
+ * be keyed as: an unknown key is answered "no such group", a string that is
+ * not a key at all is refused before anything is fetched.
+ */
+export const TABLE_KEY_ARG = /^[A-Za-z0-9-]{1,12}$/;
+
+/** The key an argument asks for, upper-cased; undefined when it is not a key. */
+export function tableKeyArg(raw: unknown): string | undefined {
+  return typeof raw === 'string' && TABLE_KEY_ARG.test(raw) ? raw.toUpperCase() : undefined;
+}
+
+/**
+ * A table's title on a surface that does not localize it (MCP text, the
+ * resource, a share card): `Group A` for a lettered group, and for any other
+ * table the provider's label followed by the key that selects it,
+ * `League A, Group B (A-B)`.
+ */
+export function tableTitle(table: { group: string; label?: string }): string {
+  return table.label ? `${table.label} (${table.group})` : `Group ${table.group}`;
 }
 
 /**
@@ -50,6 +85,7 @@ export interface TableData {
 export function tableData(table: GroupStandings): TableData {
   return {
     group: table.group,
+    ...(table.label ? { label: table.label } : {}),
     standings: table.rows,
     ...(table.partial ? { partial: table.partial } : {}),
   };

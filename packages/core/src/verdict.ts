@@ -23,11 +23,19 @@ import { t } from './i18n';
 export interface VerdictSource {
   /** The feature does not exist for this competition yet (off the bundled schedule). */
   readonly unsupported?: boolean;
+  /**
+   * The result holds what could be read and is not the whole answer: the
+   * provider sent a table that did not become one (an all-tables standings
+   * read). Unlike `unsupported`, the result is not empty: the sentence goes
+   * BESIDE what is shown, not instead of it.
+   */
+  readonly incomplete?: boolean;
 }
 
 /** The structured keys of the verdicts a result states. Empty when it states none. */
 export interface VerdictExtras {
   unsupported?: true;
+  incomplete?: true;
 }
 
 /**
@@ -37,6 +45,7 @@ export interface VerdictExtras {
 export function verdictExtras(result: VerdictSource): VerdictExtras {
   const out: VerdictExtras = {};
   if (result.unsupported === true) out.unsupported = true;
+  if (result.incomplete === true) out.incomplete = true;
   return out;
 }
 
@@ -48,5 +57,6 @@ export function verdictExtras(result: VerdictSource): VerdictExtras {
  */
 export function verdictNotice(result: VerdictSource, lang?: string): string | undefined {
   if (result.unsupported === true) return t(lang, 'competition.unsupported');
+  if (result.incomplete === true) return t(lang, 'standings.incomplete');
   return undefined;
 }

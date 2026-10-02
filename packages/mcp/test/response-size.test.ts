@@ -10,6 +10,7 @@
  * Applied at the single place every tool's payload leaves the server, so a tool
  * added later cannot forget it.
  */
+import { FakeMarketProvider, type ProviderAdapter, SHARE_DISCLAIMER } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v3';
 import {
@@ -18,6 +19,7 @@ import {
   OUTPUT_SCHEMAS,
   toContent,
 } from '../src/server';
+import { toolGetShareSnippet, toolGetTeam } from '../src/tools';
 
 const events = Array.from({ length: 128 }, (_, i) => ({
   type: 'GOAL', minute: i % 90, teamCode: 'MEX', player: 'A'.repeat(90),
@@ -190,3 +192,77 @@ describe('the response cap is a bound, not a suggestion', () => {
     expect(boundResponse(normal)).toEqual(normal);
   });
 });
+
+/**
+ * A text cut at a length loses its END, which is where every tool's footer is:
+ * the attribution and the non-affiliation disclaimer. Each tool states its
+ * footer (`ToolResult.footer`), and the cut keeps it. `get_standings` is pinned
+ * in league-tables.test.ts; this pins the other footer, a share snippet's (its
+ * last paragraph, from core's formatters), and the error path.
+ */
+describe('a cut keeps the footer', () => {
+  const offline: ProviderAdapter = {
+    name: 'fake',
+    competition: 'fifa.world',
+    capabilities: { push: false, latencyHintSec: 0 },
+    fetchByDate: async () => [],
+    fetchLive: async () => [],
+    fetchWindow: async () => [],
+  };
+
+  it('of every share snippet: the date, table and bracket cards', async () => {
+    for (const args of [{ date: '2026-06-11' }, { group: 'A' }, { bracket: true }]) {
+      const r = await toolGetShareSnippet({ ...args, tz: 'UTC', adapter: offline, marketProvider: new FakeMarketProvider() });
+      const label = JSON.stringify(args);
+      expect(r.text.endsWith(r.footer), label).toBe(true);
+      expect(r.footer, label).toContain(SHARE_DISCLAIMER);
+      expect(r.footer, label).toContain('Try it:');
+      const long = { ...r, text: `${'x'.repeat(40_000)}${r.text}` };
+      const sent = toContent(long).content[0]?.text ?? '';
+      expect(sent.length, label).toBeLessThanOrEqual(32_000);
+      expect(sent, label).toContain('(truncated)');
+      expect(sent.endsWith(r.footer), label).toBe(true);
+    }
+  });
+
+  it('a cut never leaves half a character', () => {
+    // Every character here is two UTF-16 units, so a cut at a fixed length
+    // lands inside one for one of the two paddings.
+    const r = toolGetTeam({ query: 'MEX' });
+    for (const pad of ['', 'x']) {
+      const sent = toContent({ ...r, text: `${pad}${'\u{1D400}'.repeat(20_000)}${r.text}` }).content[0]?.text ?? '';
+      expect(sent.length).toBeLessThanOrEqual(32_000);
+      expect(loneSurrogates(sent), `padding "${pad}"`).toBe(0);
+      expect(sent.endsWith(r.footer)).toBe(true);
+    }
+  });
+
+  it('on the error path too', () => {
+    const r = toolGetTeam({ query: 'MEX' });
+    const out = toContent({ ...r, text: `${'x'.repeat(40_000)}${r.text}`, data: pathologicalData() });
+    const sent = out.content[0]?.text ?? '';
+    expect(out).toMatchObject({ isError: true });
+    expect(sent.length).toBeLessThanOrEqual(32_000);
+    expect(sent).toContain('(truncated)');
+    expect(sent).toContain(`${r.footer}\n\n`);
+    expect(sent).toContain('could not be reduced without violating');
+  });
+});
+
+/** How many UTF-16 units of `s` are half a character. */
+function loneSurrogates(s: string): number {
+  let n = 0;
+  // Iterating a string yields whole characters; a unit left alone comes out by itself.
+  for (const ch of s) {
+    const unit = ch.charCodeAt(0);
+    if (ch.length === 1 && unit >= 0xd800 && unit <= 0xdfff) n++;
+  }
+  return n;
+}
+
+/** Width that cannot be shrunk without deleting fields: the error path. */
+function pathologicalData(): Record<string, string> {
+  const wide: Record<string, string> = {};
+  for (let i = 0; i < 3_000; i++) wide[`k${i}`] = 'V'.repeat(80);
+  return wide;
+}

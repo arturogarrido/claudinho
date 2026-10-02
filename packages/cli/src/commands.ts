@@ -19,6 +19,8 @@ import {
   nextShareCard,
   tableShareCard,
   tableData,
+  tableKeyArg,
+  tableTitle,
   marketDisplayable,
   verdictExtras,
   verdictNotice,
@@ -544,10 +546,14 @@ export function cmdTeam(query: string | undefined, ctx: Ctx): void {
 export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<void> {
   const { cfg, t } = ctx;
   precheck(cfg, t);
+  // A table KEY (a group letter, `A1`, `A-B`, `LEAGUE`); anything that is not
+  // one is refused before a request is made.
+  const key = tableKeyOrThrow(group, t);
   // Authoritative, cumulative standings from the provider. Fails closed to a
   // degraded bundled roster only for a declared compatible scope; open-scope
   // competitions stay empty rather than borrowing World Cup teams.
-  const { tables, degraded, source } = await getStandings(adapterFor(ctx), group);
+  const result = await getStandings(adapterFor(ctx), key);
+  const { tables, degraded, source } = result;
 
   if (cfg.json) {
     // Preserve the prior JSON shape: { group, standings: StandingRow[] } per table.
@@ -555,7 +561,8 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
     emitJson({
       degraded,
       source: source ?? null,
-      tables: group ? (json[0] ?? null) : json,
+      tables: key ? (json[0] ?? null) : json,
+      ...verdictExtras(result),
     });
     return;
   }
@@ -571,8 +578,8 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
         '  ' +
           (degraded
             ? t('table.unavailable')
-            : group
-              ? t('table.none', { group: group.toUpperCase() })
+            : key
+              ? t('table.none', { group: key })
               : t('table.empty')),
       ),
     );
@@ -582,9 +589,11 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
     out(disclaimer(t, c));
     return;
   }
-  for (const { group: g, rows, partial } of tables) {
+  for (const { group: g, label, rows, partial } of tables) {
     out();
-    out(header(t('table.title', { group: g }), c));
+    // A lettered group keeps its localized title; any other table is the
+    // provider's label and the key that selects it.
+    out(header(label ? tableTitle({ group: g, label }) : t('table.title', { group: g }), c));
     const table = new Table({
       head: [
         t('col.team'),
@@ -616,10 +625,25 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
   out();
   // Degraded ⇒ rows are a static roster, not real results — say so, don't imply zeros are live.
   if (degraded) out(c.dim('  ' + t('table.degraded')));
+  // Tables are missing: what is shown is not the whole competition.
+  const notice = verdictNotice(result, cfg.lang);
+  if (notice) out(c.dim('  ' + notice));
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
   maybeStarNudge(ctx);
+}
+
+/**
+ * The table key an argument asks for (upper-cased), or undefined when none was
+ * given. A string that is not a key at all is a usage error, like a date that
+ * is not a date: it must not reach the provider or come back as "no group".
+ */
+function tableKeyOrThrow(raw: string | undefined, t: Ctx['t']): string | undefined {
+  if (raw === undefined) return undefined;
+  const key = tableKeyArg(raw);
+  if (!key) throw new InputError(t('table.badKey', { key: humanLabel(raw, 24) }));
+  return key;
 }
 
 const BRACKET_STAGES = new Set(['R32', 'R16', 'QF', 'SF', '3P', 'F']);
@@ -1285,6 +1309,7 @@ function emitTableCard(
       snippet,
       // The structured card keeps the verdict the snippet warns about (A01).
       tables: card.tables,
+      ...card.verdict,
     },
     copy,
   );
@@ -1357,10 +1382,10 @@ export async function cmdShare(
   // share table [group] — a standings card (facts only; no market lines)
   if (target === 'table') {
     precheck(cfg, t);
-    const group = team?.toUpperCase();
+    const group = tableKeyOrThrow(team, t);
     emitTableCard(
       ctx,
-      tableShareCard(await getStandings(adapterFor(ctx), group), group),
+      tableShareCard(await getStandings(adapterFor(ctx), group), group, undefined, cfg.lang),
       baseOptions,
       copy,
     );

@@ -122,7 +122,8 @@ describe('completeness is not invented', () => {
     const list = parseEspnStandings({
       children: [{ name: 'Group A', standings: { entries: Array.from({ length: 100 }, (_, i) => entry(i)) } }],
     });
-    expect(list.items[0]?.rows.length).toBeLessThanOrEqual(32);
+    expect(list.items[0]?.rows.length).toBe(40);
+    expect(list.items[0]?.partial).toEqual({ omitted: 60 });
     expect(list.truncated).toBe(true);
     expect(list.complete).toBe(false);
   });

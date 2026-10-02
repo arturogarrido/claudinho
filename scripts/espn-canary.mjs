@@ -20,9 +20,9 @@
  *
  * It asks the product's parser what it could not read (the result's
  * completeness, see core `fetchMeta`) instead of keeping a second opinion.
- * The one place it reads raw is standings: the table parser does not accept
- * every competition's table shape yet, so its verdict there would say more
- * about us than about the feed.
+ * Standings are also read raw, row by row, for a diagnosis the parser does
+ * not give (which statistic a row lost, which team has no id); the verdict on
+ * whether the tables were read is the parser's, for every competition.
  *
  * What it asks, per competition: every question the adapter answers, with the
  * spans the product uses today. A window is composed of several requests (the
@@ -87,23 +87,18 @@ export const CANARY_COMPETITIONS = Object.freeze([
 ]);
 
 /**
- * What the product does with each competition's tables, measured on the real
- * feed on Oct 2 2026. A constant here until the supported-set table exists in
- * core; the canary then reads that table.
- *   read  lettered groups ("Group A") the table parser reads whole today. Its
- *         own account of the payload is the verdict: a table or a row it
- *         refuses is red, and so is a payload it can read none of.
- *   none  knockout from the first round: the endpoint answers 200 with its
- *         seasons and no table. Everywhere else, no rows is a finding.
- * Every other competition serves a shape the parser does not read yet (one
- * league table, numbered groups, groups under a league). There the rows are
- * judged raw, and the row says so. If the parser reads SOME of such a payload
- * anyway, its account must still be whole: a table read wrongly is a finding.
+ * What a competition's tables are is written down in core (`STANDINGS_SHAPE`:
+ * a league's one table, no table at all, or groups by default), and the canary
+ * checks the feed against it:
+ *   - every competition that has tables must be read WHOLE by the product's
+ *     own parser: a table or a row it refuses is red, and so is a payload it
+ *     reads none of. No shape is excused as "not read yet";
+ *   - `none` (knockout from the first round) is an expectation, not an
+ *     exemption: the endpoint must answer with no table rows, and the adapter
+ *     must accept that answer. The day it serves a table, that is a changed
+ *     shape, and a person decides what it means.
  */
-export const CANARY_TABLES = Object.freeze({
-  read: Object.freeze(['fifa.world', 'fifa.cwc', 'conmebol.libertadores', 'conmebol.america', 'concacaf.gold', 'uefa.euro']),
-  none: Object.freeze(['concacaf.champions']),
-});
+const shapeOf = (core, competition) => core.STANDINGS_SHAPE?.[competition] ?? 'groups';
 
 /**
  * The statistics the standings parser requires of every row. A copy of the
@@ -377,12 +372,18 @@ function collectTables(node, depth, tables) {
  *     second table for a group already read, a name that is no group). A
  *     refused table leaves the survivors whole and unmarked;
  *   - an expected group that is not there.
+ * (A table outside an expected list is not read by the parser at all, so it
+ * lands in the second question: a child that did not become a table.)
  * Only "complete, no partial table, nothing missing" is healthy. An adapter
  * that does not say whether the batch is complete has not said it is.
  */
 export function adapterTablesProblem({ complete, tables, expected = [], sent }) {
   const partial = tables.filter((t) => t.partial).map((t) => t.group);
-  if (partial.length > 0) return `the adapter could not read every row of Group ${partial.join(', ')}`;
+  if (partial.length > 0) {
+    // A lettered group is named as the product names it; any other table by its key.
+    const named = partial.map((key) => (/^[A-Z]$/.test(key) ? `Group ${key}` : `table ${key}`));
+    return `the adapter could not read every row of ${named.join(', ')}`;
+  }
   if (complete !== true) return `the adapter could not read every table (${sent} sent, ${tables.length} read)`;
   const got = new Set(tables.map((t) => t.group));
   const missing = expected.filter((g) => !got.has(g));
@@ -428,29 +429,26 @@ function checkStandings(core, body, adapter, result, competition) {
       }
     }
   }
-  // Absence is a finding, except where no table is expected. The day a
-  // competition that serves rows stops, a person decides what that means.
+  const expectNone = shapeOf(core, competition) === 'none';
+  // Absence is a finding, except where no table is expected; and there, a
+  // table is.
   if (rows === 0) {
-    return CANARY_TABLES.none.includes(competition)
+    if (!expectNone) return { verdict: 'changed', detail: 'the response holds no table rows' };
+    // Healthy only if the product's own reader accepted the answer as an empty one.
+    return Array.isArray(result) && result.length === 0
       ? { verdict: 'ok', detail: 'no table (none expected: knockout only)' }
-      : { verdict: 'changed', detail: 'the response holds no table rows' };
+      : { verdict: 'changed', detail: 'no table rows, and the adapter did not read the response as an empty answer' };
+  }
+  if (expectNone) {
+    return { verdict: 'changed', detail: `${rows} row(s) in ${tables.length} table(s), where no table was expected` };
   }
 
   // Rows can be well formed and still not be a table the product can show, so
-  // the product's own parser is asked wherever it reads the tables: for the
-  // competitions it reads today (it MUST have an answer there), and for any
-  // other payload it returned tables from.
+  // the product's own parser is asked, for every competition: it must have
+  // read the payload, and whole.
   const expected = adapter.expectedStandingsGroups ?? [];
-  const mustRead = CANARY_TABLES.read.includes(competition) || expected.length > 0;
-  const didRead = Array.isArray(result) && result.length > 0;
-  if (mustRead && !didRead) {
-    return { verdict: 'changed', detail: 'the adapter could not read the tables it reads today' };
-  }
-  if (!didRead) {
-    return {
-      verdict: 'ok',
-      detail: `${rows} row(s) in ${tables.length} table(s) (a shape the table parser does not read yet)`,
-    };
+  if (!Array.isArray(result) || result.length === 0) {
+    return { verdict: 'changed', detail: 'the adapter could not read the tables' };
   }
   const unread = adapterTablesProblem({
     complete: core.fetchMeta(result)?.complete,

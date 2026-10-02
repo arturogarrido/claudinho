@@ -46,7 +46,7 @@ Then just ask your agent naturally — it picks the right tool and answers with 
 | `get_today` | fixtures for a date (default: today), grouped in the caller's `tz`, live scores overlaid |
 | `get_live` | matches in play right now |
 | `get_match` | a single match by id |
-| `get_standings` | live cumulative group table(s) — one group `A`–`L`, or all |
+| `get_standings` | live cumulative standings — every table, or one by its key (a group letter, or `A1`, `A-B`, `LEAGUE`) |
 | `get_bracket` | knockout bracket from the Round of 32 through the final — optional `stage` filter (`R32`, `R16`, `QF`, `SF`, `3P`, `F`) |
 | `get_next_fixture` | a team's next match (3-letter code, e.g. `MEX`) — live-resolves a confirmed knockout tie from the feed; group fixtures offline, fails back to the bundled schedule if the feed is down |
 | `get_market_signal` | read-only prediction-market signal for a match, a team's current-or-next fixture (in-play preferred while live), or a date — informational only |
