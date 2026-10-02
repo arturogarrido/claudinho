@@ -20,8 +20,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   CANARY_COMPETITIONS,
-  CANARY_NO_TABLE,
   CANARY_QUESTIONS,
+  CANARY_TABLES,
   canaryWarnings,
   formatCanary,
   runCanary,
@@ -479,11 +479,79 @@ describe('found in review: absence is a finding, and the product’s own parser 
   it('and expected of a knockout-only competition, which is the only kind excused', async () => {
     // What the Concacaf Champions Cup's standings endpoint answers (Oct 2 2026).
     const seasonsOnly = { name: 'Concacaf Champions Cup', season: { year: 2026 }, seasons: [{ year: 2016 }] };
-    expect(CANARY_NO_TABLE).toEqual(['concacaf.champions']);
+    expect(CANARY_TABLES.none).toEqual(['concacaf.champions']);
     for (const competition of CANARY_COMPETITIONS) {
       const r = await run((url) => json(url.includes('/standings') ? seasonsOnly : healthyScoreboard), [competition]);
-      expect(verdicts(r).standings, competition).toBe(CANARY_NO_TABLE.includes(competition) ? 'ok' : 'changed');
+      expect(verdicts(r).standings, competition).toBe(CANARY_TABLES.none.includes(competition) ? 'ok' : 'changed');
     }
+  });
+
+  it('what the product reads today is written down, per competition (measured on the real feed)', () => {
+    // Lettered groups the table parser reads whole today. Every other
+    // competition is a shape it does not read yet (a league table, numbered
+    // groups, groups under a league), or has no table.
+    expect([...CANARY_TABLES.read].sort()).toEqual(
+      ['concacaf.gold', 'conmebol.america', 'conmebol.libertadores', 'fifa.cwc', 'fifa.world', 'uefa.euro'].sort(),
+    );
+    for (const c of [...CANARY_TABLES.read, ...CANARY_TABLES.none]) expect(CANARY_COMPETITIONS, c).toContain(c);
+    expect(CANARY_TABLES.read.filter((c) => CANARY_TABLES.none.includes(c))).toEqual([]);
+  });
+
+  describe('found in review (round 2): the product’s parser is asked wherever it reads the tables, not only for the bundle', () => {
+    const groupsCase = async (competition: string, body: unknown) => {
+      const r = await run((url) => json(url.includes('/standings') ? body : healthyScoreboard), [competition]);
+      return r.rows.find((x) => x.request === 'standings');
+    };
+    const badRow = (id: string, name: string, rank: number) => ({
+      team: { id, abbreviation: 'BAD', displayName: name },
+      // One win, no points: all there, all numbers, and refused by the parser.
+      stats: STATS.map((n) => ({ name: n, value: n === 'wins' || n === 'gamesPlayed' ? 1 : n === 'rank' ? rank : 0 })),
+    });
+
+    it('a cup the parser reads: whole is green', async () => {
+      const row = await groupsCase('concacaf.gold', wcStandings(['A', 'B', 'C', 'D']));
+      expect(row).toMatchObject({ verdict: 'ok', detail: '4 row(s) in 4 table(s)' });
+    });
+
+    it('a cup the parser reads: a refused row is red though the group is still served', async () => {
+      const body = wcStandings(['A', 'B', 'C', 'D']);
+      body.children[1]?.standings.entries.push(badRow('298', 'Team B2', 2));
+      const row = await groupsCase('concacaf.gold', body);
+      expect(row?.verdict).toBe('changed');
+      expect(row?.detail).toBe('the adapter could not read every row of Group B');
+    });
+
+    it('a cup the parser reads: when it can read none of it, that is red, not "a shape it does not read"', async () => {
+      const body = wcStandings(['A', 'B'], (r, g) => badRow(g === 'A' ? '297' : '298', `Team ${g}`, 1));
+      const row = await groupsCase('concacaf.gold', body);
+      expect(row?.verdict).toBe('changed');
+      expect(row?.detail).toMatch(/could not read the tables/);
+    });
+
+    it('any other competition: tables the adapter DID read must be whole too', async () => {
+      const body = wcStandings(['A']);
+      body.children[0]?.standings.entries.push(badRow('298', 'Team A2', 2));
+      expect((await groupsCase('uefa.nations', body))?.verdict).toBe('changed');
+    });
+
+    it('groups under a league, read today as if the leagues were one: red, and it says how many were lost', async () => {
+      // The Concacaf Nations League's shape on the real feed (Oct 2 2026). The
+      // parser takes "League A, Group A" for group A and drops League B's.
+      const body = wcStandings(['A', 'B']);
+      const names = ['League A, Group A', 'League B, Group A'];
+      body.children.forEach((child, i) => {
+        child.name = names[i] as string;
+      });
+      const row = await groupsCase('concacaf.nations.league', body);
+      expect(row?.verdict).toBe('changed');
+      expect(row?.detail).toBe('the adapter could not read every table (2 sent, 1 read)');
+    });
+
+    it('a league table, which the parser does not read yet, is judged on the raw rows and says so', async () => {
+      const row = await groupsCase('eng.1', standings());
+      expect(row?.verdict).toBe('ok');
+      expect(row?.detail).toBe('2 row(s) in 1 table(s) (a shape the table parser does not read yet)');
+    });
   });
 
   it('the bundled competition’s twelve groups, all read, are green', async () => {
