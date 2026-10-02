@@ -29,6 +29,7 @@ const pl: Match = {
 };
 const adapter: ProviderAdapter = {
   name: 'espn',
+  competition: 'eng.1',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate() {
     return [pl];
@@ -41,7 +42,7 @@ const adapter: ProviderAdapter = {
   },
 };
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', flavor: 'off', markets: false, ...over };
+  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'eng.1', flavor: 'off', markets: false, ...over };
 }
 const ctx = (over: Partial<CliConfig> = {}) => ({
   cfg: cfg(over),

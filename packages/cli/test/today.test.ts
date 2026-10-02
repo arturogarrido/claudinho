@@ -7,6 +7,7 @@ import { makeT } from '../src/i18n';
 /** A fake adapter so the test runs offline against the bundled schedule. */
 const fakeAdapter: ProviderAdapter = {
   name: 'fake',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate(): Promise<Match[]> {
     return [];
@@ -24,7 +25,7 @@ const marketProvider = (complete: boolean): MarketProvider => ({
 });
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: undefined, json: true, color: false, source: 'espn', flavor: 'off', ...over };
+  return { lang: 'en', tz: undefined, json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over };
 }
 const ctx = (over: Partial<CliConfig> = {}, provider?: MarketProvider) => ({
   cfg: cfg(over),

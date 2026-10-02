@@ -3,14 +3,43 @@
  * Every data vendor maps INTO these types via a ProviderAdapter.
  */
 
-/** A national team. `flag` is an emoji (no image assets, no copyright). */
+/** A team. `flag` is an emoji (no image assets, no copyright). */
 export interface Team {
-  /** Short code, typically the FIFA/IOC 3-letter abbreviation (e.g. "MEX"). */
+  /**
+   * Short code as the provider abbreviates it (e.g. "MEX", "ARS", "O&M"). A
+   * DISPLAY LABEL, not an identity: two clubs in one competition can share one
+   * (`CAR` is both Carabobo and Always Ready in the Libertadores).
+   */
   code: string;
   /** Human-readable name (e.g. "Mexico"). */
   name: string;
   /** Emoji flag (e.g. "🇲🇽"). */
   flag: string;
+  /**
+   * The provider's stable id for this team, namespaced by provider
+   * (`espn:359`). The same for a club in every competition it plays. Present
+   * on a team read from a live feed (and on that team read back from the
+   * cache); ABSENT on the bundled schedule's teams and on a feed record that
+   * carried none. Two teams with the same id are one team, whatever they are
+   * called; the id never makes two teams of one code AND name (see `sameTeam`).
+   */
+  id?: string;
+}
+
+/**
+ * What a provider reported about the season ONE response belongs to. Metadata
+ * of that response, never an input: a request selects a competition, and the
+ * provider says which season it answered for.
+ */
+export interface SeasonInfo {
+  /** The season's year as the provider keys it (2026 for "2026-27"). */
+  year: number;
+  /** Human label (e.g. "2026-27 English Premier League"); may be empty. */
+  label: string;
+  /** ISO 8601 UTC, when the provider states it. */
+  startDate?: string;
+  /** ISO 8601 UTC, when the provider states it. */
+  endDate?: string;
 }
 
 /**

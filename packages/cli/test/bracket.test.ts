@@ -6,6 +6,7 @@ import { makeT } from '../src/i18n';
 
 const downAdapter: ProviderAdapter = {
   name: 'fake',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate() {
     throw new Error('down');
@@ -22,7 +23,7 @@ const downAdapter: ProviderAdapter = {
 };
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', flavor: 'off', markets: false, ...over };
+  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', markets: false, ...over };
 }
 
 const ctx = (adapter: ProviderAdapter) => ({ cfg: cfg(), t: makeT('en'), adapter });

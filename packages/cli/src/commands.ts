@@ -1,8 +1,9 @@
 import {
   allFixtures,
+  bundleApplies,
   countdown,
-  DEFAULT_COMPETITION,
   fixturesByDate,
+  humanLabel,
   isTournamentWindowOver,
   formatDate,
   formatKickoff,
@@ -31,7 +32,6 @@ import {
   marketRelevant,
   matchFlavor,
   matchLocation,
-  resolveCompetition,
   SHARE_HASHTAG,
   resolveMarketSource,
   scoreline,
@@ -109,7 +109,11 @@ type Ctx = {
  * throttle it meets (audit A12; see providerBackoff.ts).
  */
 function adapterFor({ cfg, adapter, now }: Ctx): ProviderAdapter {
-  return withPersistedBackoff(adapter ?? makeAdapter(cfg.source), cfg.source, now);
+  return withPersistedBackoff(
+    adapter ?? makeAdapter(cfg.source, { competition: cfg.competition }),
+    cfg.source,
+    now,
+  );
 }
 
 /** Per-fetch budgets so optional market enrichment never blocks core output. */
@@ -139,7 +143,7 @@ interface MarketSignalsResult {
   readonly complete: boolean;
 }
 
-type MarketProviderFactory = (source?: string) => MarketProvider;
+type MarketProviderFactory = (source: string | undefined, competition: string) => MarketProvider;
 
 export async function marketSignalsFor(
   ctx: Ctx,
@@ -154,10 +158,10 @@ export async function marketSignalsFor(
   const source = resolveMarketSource();
   // Dev/demo/no-op providers ('fake'/'none') are free — skip the on-disk cache.
   if (source !== 'polymarket') {
-    const b = await getMarketSignals(providerFactory(source), matches, opts);
+    const b = await getMarketSignals(providerFactory(source, ctx.cfg.competition), matches, opts);
     return { signals: resolvedValues(b), complete: b.complete };
   }
-  const competition = resolveCompetition();
+  const competition = ctx.cfg.competition;
   const { signals: cached, checked: cachedIds } = readMarketCache('polymarket', competition);
   const result = new Map<string, MarketSignal>();
   const miss: Match[] = [];
@@ -176,7 +180,7 @@ export async function marketSignalsFor(
   }
   let complete = true;
   if (miss.length > 0) {
-    const batch = await getMarketSignals(providerFactory('polymarket'), miss, opts);
+    const batch = await getMarketSignals(providerFactory('polymarket', competition), miss, opts);
     const fetched = resolvedValues(batch);
     // Cache hits and remembered negatives are settled; only the fetched slice
     // can leave us not knowing.
@@ -258,8 +262,8 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
   // competition than the bundled schedule — fixtures render, scores never
   // arrive. Warn loudly on user-facing commands; never on the statusline/hook
   // hot path (those must stay single-line and silent).
-  const competition = resolveCompetition();
-  if (competition !== DEFAULT_COMPETITION) {
+  const competition = cfg.competition;
+  if (!bundleApplies(competition)) {
     process.stderr.write(
       `claudinho: CLAUDINHO_COMPETITION=${competition} — live data follows a different competition than the bundled 2026 schedule.\n`,
     );
@@ -279,9 +283,28 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
  * guessing; a raw 3-letter code not in the bundled roster still passes through
  * uppercased (the escape hatch for CLAUDINHO_COMPETITION / other feeds).
  */
-function resolveTeamArg(team: string | undefined, usage: string, t: Translator): string {
+function resolveTeamArg(
+  team: string | undefined,
+  usage: string,
+  t: Translator,
+  competition: string,
+): string {
   const raw = team ?? process.env.CLAUDINHO_TEAM;
   if (!raw) throw new InputError(usage);
+  // The bundled roster names the World Cup's nations and nothing else. Off the
+  // bundle it is ANOTHER competition's roster and is never consulted: `ALA`
+  // fuzzy-matched New Zealand there, and `RAC` Curaçao. No lookup exists for
+  // this competition yet (club lookup arrives with 0.11's `next <club>`), so
+  // the token passes through — a code uppercased, anything else as a bounded
+  // label — and the command answers "not available for this competition yet".
+  if (!bundleApplies(competition)) {
+    if (/^[A-Za-z]{3}$/.test(raw)) return raw.toUpperCase();
+    const label = humanLabel(raw, 40);
+    // Nothing readable to pass through (invisible characters only): that is
+    // the same as no team at all.
+    if (!label) throw new InputError(usage);
+    return label;
+  }
   const { team: hit, matches } = lookupTeam(raw);
   if (hit) return hit.code;
   if (matches.length > 1) {
@@ -304,10 +327,14 @@ function resolveTeamArg(team: string | undefined, usage: string, t: Translator):
  * matches beats a dead filter that blanks the statusline. Pure and offline
  * (bundled roster only), so it's safe on the no-network hot path.
  */
-function resolveEnvTeam(raw: string | undefined): string | undefined {
+function resolveEnvTeam(raw: string | undefined, competition: string): string | undefined {
   if (!raw) return undefined;
-  const { team } = lookupTeam(raw);
-  if (team) return team.code;
+  // Off the bundle the World Cup roster is not this competition's: only a bare
+  // code is honoured (`ala` filters ALA, never New Zealand's NZL).
+  if (bundleApplies(competition)) {
+    const { team } = lookupTeam(raw);
+    if (team) return team.code;
+  }
   return /^[A-Za-z]{3}$/.test(raw) ? raw.toUpperCase() : undefined;
 }
 
@@ -398,7 +425,12 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
 export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void> {
   const { cfg, t, now } = ctx;
   precheck(cfg, t);
-  const code = resolveTeamArg(team, 'Usage: claudinho next <team> (or set CLAUDINHO_TEAM)', t);
+  const code = resolveTeamArg(
+    team,
+    'Usage: claudinho next <team> (or set CLAUDINHO_TEAM)',
+    t,
+    cfg.competition,
+  );
   // Live-resolved: the bundled knockout slots are resultless placeholders, so a
   // static lookup goes blind once a team's group games pass — overlay the live
   // knockout window so a confirmed R32+ tie (e.g. MEX vs ECU) surfaces here too.
@@ -679,22 +711,22 @@ export function cmdPrompt(
     // fallback remains for direct in-process callers (tests mock it).
     const payload = 'cursor' in io ? io.cursor : readCursorPayload();
     // Name-or-code, like the commands (offline lookup — hot-path safe).
-    const team = resolveEnvTeam(process.env.CLAUDINHO_TEAM);
+    const team = resolveEnvTeam(process.env.CLAUDINHO_TEAM, cfg.competition);
     const compact = !['0', 'false', 'no'].includes(
       (process.env.CLAUDINHO_COMPACT ?? '').toLowerCase(),
     );
     const maxRaw = Number.parseInt(process.env.CLAUDINHO_MAX ?? '', 10);
     const max = Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : undefined;
-    // Only trust a snapshot fetched for the current source + competition.
-    const state = readCurrentState(cfg.source, resolveCompetition());
+    // Only trust a snapshot fetched for this invocation's source + competition.
+    const state = readCurrentState(cfg.source, cfg.competition);
     const scoreLine = renderPrompt(state, {
       team,
       compact,
       max,
       flags: flagsEnabled(),
-      // The bundled schedule describes the default competition only — see the
+      // The bundled schedule describes the bundled competition only — see the
       // sign-off gate in renderPrompt.
-      defaultCompetition: resolveCompetition() === DEFAULT_COMPETITION,
+      defaultCompetition: bundleApplies(cfg.competition),
     });
     out(renderPromptOutput(scoreLine, payload));
     // Spawn a background refresh for live scores OR stale knockout fixtures (the
@@ -705,10 +737,10 @@ export function cmdPrompt(
     // writes a snapshot, so this branch fires once, never per-tick forever).
     if (
       (!state && !isLockFresh()) ||
-      shouldRefresh(Date.now(), state) ||
-      shouldRefreshFixtures(Date.now(), state)
+      shouldRefresh(Date.now(), state, cfg.competition) ||
+      shouldRefreshFixtures(Date.now(), state, cfg.competition)
     ) {
-      spawnRefresh(cfg.source);
+      spawnRefresh(cfg.source, cfg.competition);
     }
   } catch {
     // The statusline must always succeed; print nothing rather than error.
@@ -725,15 +757,15 @@ export function cmdPrompt(
 export function cmdHook({ cfg }: Ctx): void {
   try {
     // Name-or-code, like the commands (offline lookup — hot-path safe).
-    const team = resolveEnvTeam(process.env.CLAUDINHO_TEAM);
-    // Only trust a snapshot fetched for the current source + competition.
-    const state = readCurrentState(cfg.source, resolveCompetition());
+    const team = resolveEnvTeam(process.env.CLAUDINHO_TEAM, cfg.competition);
+    // Only trust a snapshot fetched for this invocation's source + competition.
+    const state = readCurrentState(cfg.source, cfg.competition);
     const ctx = renderHook(state, {
       team,
       flags: flagsEnabled(),
       // The bundled roster names World Cup nations only; on another competition
       // a club sharing a nation's code must not be renamed to that nation.
-      defaultCompetition: resolveCompetition() === DEFAULT_COMPETITION,
+      defaultCompetition: bundleApplies(cfg.competition),
     });
     if (ctx) out(ctx);
     // Warm the same cache the statusline reads, for parity (the hook itself shows
@@ -741,10 +773,10 @@ export function cmdHook({ cfg }: Ctx): void {
     // branch is lock-deduped (see cmdPrompt).
     if (
       (!state && !isLockFresh()) ||
-      shouldRefresh(Date.now(), state) ||
-      shouldRefreshFixtures(Date.now(), state)
+      shouldRefresh(Date.now(), state, cfg.competition) ||
+      shouldRefreshFixtures(Date.now(), state, cfg.competition)
     ) {
-      spawnRefresh(cfg.source);
+      spawnRefresh(cfg.source, cfg.competition);
     }
   } catch {
     // Never block the prompt — emit nothing on any error.
@@ -753,7 +785,7 @@ export function cmdHook({ cfg }: Ctx): void {
 
 /** `claudinho _refresh` — internal cold-path cache refresher. */
 export async function cmdRefresh({ cfg }: Ctx): Promise<void> {
-  await runRefresh({ source: cfg.source });
+  await runRefresh({ source: cfg.source, competition: cfg.competition });
 }
 
 function printInitResult(res: InitResult, cfg: CliConfig): void {
@@ -966,8 +998,8 @@ function marketHeaderLine(m: Match, cfg: CliConfig): string {
 }
 
 /** Null-signal line, specific about finished matches (market reads are pre-match). */
-function noSignalLine(m: Match, now: Date): string {
-  if (!marketsCoverCompetition()) return MARKETS_SCOPE_NOTE;
+function noSignalLine(m: Match, now: Date, competition: string): string {
+  if (!marketsCoverCompetition(competition)) return MARKETS_SCOPE_NOTE;
   if (marketRelevant(m, now)) return 'No market signal for this match.';
   // "has finished" only when a live overlay confirmed it; a static fixture
   // whose window merely lapsed gets the honest, hedged variant.
@@ -1002,7 +1034,12 @@ export async function cmdMarkets(
   // not next week's (whose thin market would gate to an empty answer).
   if (target === 'next') {
     precheck(cfg, t);
-    const code = resolveTeamArg(team, 'Usage: claudinho markets next <team> (or set CLAUDINHO_TEAM)', t);
+    const code = resolveTeamArg(
+      team,
+      'Usage: claudinho markets next <team> (or set CLAUDINHO_TEAM)',
+      t,
+      cfg.competition,
+    );
     const now = ctx.now ?? new Date();
     // Live-confirmed selection: handles extra time past the static window AND
     // early FTs inside it (the static fixture's status is forever SCHEDULED).
@@ -1048,7 +1085,7 @@ export async function cmdMarkets(
       if (shown) printMarketBlock(fixture, shown, c);
       else if (!market.complete) {
         out(c.dim('    Market data unavailable or incomplete — this match could not be checked.'));
-      } else out(c.dim('    ' + noSignalLine(fixture, now)));
+      } else out(c.dim('    ' + noSignalLine(fixture, now, cfg.competition)));
     }
     out();
     out(disclaimer(t, c));
@@ -1088,7 +1125,7 @@ export async function cmdMarkets(
       if (shown) printMarketBlock(match, shown, c);
       else if (!market.complete) {
         out(c.dim('    Market data unavailable or incomplete — this match could not be checked.'));
-      } else out(c.dim('    ' + noSignalLine(match, now)));
+      } else out(c.dim('    ' + noSignalLine(match, now, cfg.competition)));
     }
     out();
     out(disclaimer(t, c));
@@ -1129,7 +1166,7 @@ export async function cmdMarkets(
   if (rows.length === 0) {
     out(
       c.dim(
-        !marketsCoverCompetition()
+        !marketsCoverCompetition(cfg.competition)
           ? `  ${MARKETS_SCOPE_NOTE}`
           : complete
             ? `  No market signals available for ${date}.`
@@ -1457,7 +1494,12 @@ export async function cmdShare(
   // share next <team>
   if (target === 'next') {
     precheck(cfg, t);
-    const code = resolveTeamArg(team, 'Usage: claudinho share next <team> (or set CLAUDINHO_TEAM)', t);
+    const code = resolveTeamArg(
+      team,
+      'Usage: claudinho share next <team> (or set CLAUDINHO_TEAM)',
+      t,
+      cfg.competition,
+    );
     // Live-resolved (see cmdNext): overlay the knockout window so a confirmed
     // R32+ tie pastes here too, not just group games.
     const { fixture, degraded, source, unsupported } = await getNextFixtureForTeam(
@@ -1675,7 +1717,7 @@ function maybeStarNudge(ctx: Ctx): void {
  */
 function endScoreCommand(ctx: Ctx): void {
   const over =
-    resolveCompetition() === DEFAULT_COMPETITION &&
+    bundleApplies(ctx.cfg.competition) &&
     isTournamentWindowOver(ctx.now?.getTime() ?? Date.now());
   if (over) printTournamentSignOff(ctx);
   else maybeStarNudge(ctx);
@@ -1726,11 +1768,11 @@ export function cmdVibe(ctx: Ctx): void {
   const line = pool[Math.floor(Math.random() * pool.length)];
   let liveSeg: string | undefined;
   try {
-    const state = readCurrentState(cfg.source, resolveCompetition());
+    const state = readCurrentState(cfg.source, cfg.competition);
     liveSeg = vibeLiveSegment(
       liveMatchesFromCache(state, (ctx.now ?? new Date()).getTime()).items,
       // Name-or-code, matching the statusline/hook (offline lookup).
-      resolveEnvTeam(process.env.CLAUDINHO_TEAM),
+      resolveEnvTeam(process.env.CLAUDINHO_TEAM, cfg.competition),
     );
   } catch {
     // The easter egg stays harmless: any cache problem → plain vibe.

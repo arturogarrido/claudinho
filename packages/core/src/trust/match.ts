@@ -27,6 +27,7 @@ import { type BoundedList, takeBounded } from './bounded';
 import { type ParseResult, definitiveNone, malformed, valid } from './result';
 import {
   ESPN_ID,
+  TEAM_ID,
   canonicalTimestamp,
   count,
   humanLabel,
@@ -94,13 +95,47 @@ export function teamCode(raw: unknown, fallbackName: string): string {
   return humanLabel([...fallbackName].slice(0, 3).join('').toUpperCase(), TEAM_CODE_COLUMNS);
 }
 
+/**
+ * THE constructor of a `Team` — the feed's competitors, the feed's standings
+ * rows and the cache file all come through here, so a rule about a team cannot
+ * hold on one path and not another.
+ *
+ * `id` is the provider's stable identity (`espn:359`). It is kept only when it
+ * matches the identifier grammar exactly; anything else is dropped, on every
+ * path alike — the team is still a team, it just carries no identity we can
+ * compare by. `code` stays a display label: bounded, never matched against a
+ * shape (a real club abbreviates to `O&M`), never an identity.
+ */
 export function sealTeam(raw: unknown): Team | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const t = raw as Record<string, unknown>;
   const name = humanLabel(t.name);
   if (!name) return undefined;
   const code = teamCode(t.code, name);
-  return { code, name, flag: productFlag(name) };
+  const id = opaqueId(t.id, TEAM_ID);
+  return id ? { code, name, flag: productFlag(name), id } : { code, name, flag: productFlag(name) };
+}
+
+/**
+ * Are these two the same team — for the question "can they play each other"?
+ *
+ * Two ways to be the same, and either is enough:
+ *
+ *   - BOTH carry a provider id and it is the same id. One entity under two
+ *     spellings ("Arsenal" / "Arsenal FC") is one team; the labels cannot see
+ *     that, the id can. A team with an id and a team without one are never the
+ *     same team BY id.
+ *   - Their code AND name are the same. A reader cannot tell "Mexico" from
+ *     "Mexico", whatever ids a payload attaches to them, so a fixture between
+ *     them is not one we will render.
+ *
+ * So an id can only ADD a refusal; it never licenses a fixture the labels
+ * refuse. Sharing a code alone is not sameness: Carabobo and Always Ready are
+ * both `CAR`, and two unresolved slots are both `RD32`.
+ */
+export function sameTeam(a: Team, b: Team): boolean {
+  if (a.id !== undefined && b.id !== undefined && a.id === b.id) return true;
+  return a.code === b.code && a.name === b.name;
 }
 
 function sealScorePair(raw: unknown): { home: number; away: number } | undefined {
@@ -164,10 +199,11 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   if (!home || !away) return malformed('match does not name both teams');
   // A team cannot play itself. This lives HERE rather than in the ESPN parser
   // where I first wrote it, because the cache path reached no such rule and
-  // `MEX vs MEX` sealed clean from a cache file. The ESPN parser keeps its own
-  // stronger check on top: it can compare provider ids, so it also catches two
-  // records for one team that differ in spelling.
-  if (home.code === away.code && home.name === away.name) {
+  // `MEX vs MEX` sealed clean from a cache file. Since a `Team` carries the
+  // provider's id (0.11), the id comparison lives here too — the ESPN parser
+  // used to keep its own copy because only it could see the ids, which left
+  // the cache path accepting one club twice under two spellings (audit A04).
+  if (sameTeam(home, away)) {
     return definitiveNone('both competitors are the same team');
   }
 

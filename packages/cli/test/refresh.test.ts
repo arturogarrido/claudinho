@@ -4,7 +4,27 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Match } from '@claudinho/core';
 import { CACHE_VERSION, type CacheState, claimLock, readState, writeState } from '../src/cache';
-import { inKnockoutPhase, runRefresh, shouldRefresh, shouldRefreshFixtures } from '../src/refresh';
+import {
+  inKnockoutPhase as inKnockoutPhaseFor,
+  type RefreshOpts,
+  runRefresh as runRefreshFor,
+  shouldRefresh as shouldRefreshFor,
+  shouldRefreshFixtures as shouldRefreshFixturesFor,
+} from '../src/refresh';
+
+// Since 0.11 (2.0) the refresher is TOLD its competition and never resolves one.
+// These cases predate that and say it through the environment, so the helpers
+// below stand in for the edge that reads it (the CLI's option resolution).
+const competition = () => process.env.CLAUDINHO_COMPETITION ?? 'fifa.world';
+const runRefresh = (opts: Omit<RefreshOpts, 'competition'> = {}) =>
+  runRefreshFor({ competition: competition(), ...opts });
+const inKnockoutPhase = (nowMs: number) => inKnockoutPhaseFor(nowMs, competition());
+const shouldRefresh = (now: number, state: CacheState | undefined = readState('espn', competition())) =>
+  shouldRefreshFor(now, state, competition());
+const shouldRefreshFixtures = (
+  now: number,
+  state: CacheState | undefined = readState('espn', competition()),
+) => shouldRefreshFixturesFor(now, state, competition());
 
 // A time well outside any World Cup window (tournament starts 2026-06-11).
 const PRE_WC = new Date('2026-06-04T16:00:00Z').getTime();

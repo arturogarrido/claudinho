@@ -9,7 +9,7 @@
  * it meets itself, so the next process, and the refresher, honour it too.
  * REMAINING (0.11, 2.6): a cross-process admission layer with a request budget.
  */
-import { type ProviderAdapter, resolveCompetition } from '@claudinho/core';
+import type { ProviderAdapter } from '@claudinho/core';
 import {
   backoffActive,
   type CacheState,
@@ -59,7 +59,8 @@ export function withPersistedBackoff(
   source: string,
   now: Date = new Date(),
 ): ProviderAdapter {
-  const competition = resolveCompetition();
+  // The adapter states the competition it serves; the backoff is its scope's.
+  const competition = adapter.competition;
   const nowMs = now.getTime();
   const state = readCurrentState(source, competition);
   // ONE validation decides both the pre-arm and what counts as already

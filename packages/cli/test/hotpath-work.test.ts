@@ -81,7 +81,7 @@ describe('the "+N" marker counts matches, not junk that looks like one', () => {
   /** Passes the cheap shape test (LIVE + two codes) but cannot be sealed. */
   const junk = { status: 'LIVE', home: { code: 'AAA' }, away: { code: 'BBB' } };
   const cache = (live: unknown[]) =>
-    ({ version: 2, updatedAt: '2026-06-20T19:59:30Z', live, degraded: false,
+    ({ version: 3, updatedAt: '2026-06-20T19:59:30Z', live, degraded: false,
        source: 'espn', competition: 'fifa.world' }) as never;
 
   it('does not advertise rejected records as an exact number of hidden matches', () => {
@@ -139,7 +139,7 @@ describe('the hook bounds the whole block it writes into model context', () => {
     updatedAt: '2026-06-11T19:59:00Z',
   });
   const state = (live: unknown[]) =>
-    ({ version: 2, updatedAt: '2026-06-11T19:59:30Z', live, degraded: false,
+    ({ version: 3, updatedAt: '2026-06-11T19:59:30Z', live, degraded: false,
        source: 'espn', competition: 'fifa.world' }) as never;
 
   it('caps the SUM, not just each field and the record count', () => {

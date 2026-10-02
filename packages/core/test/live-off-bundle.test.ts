@@ -36,6 +36,7 @@ const foreign: Match = {
 const calls: string[] = [];
 const adapter: ProviderAdapter = {
   name: 'synthetic-other-competition',
+  competition: 'eng.1',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate(d) {
     calls.push(`date:${d}`);
@@ -52,9 +53,12 @@ const adapter: ProviderAdapter = {
 };
 const WC_OPENER_ID = '760415';
 
+// Since 0.11 (2.0) the competition is the ADAPTER'S, not the environment's: the
+// environment is deliberately left at its default here, so these cases would
+// fail if any path below still asked it.
 const ORIG = process.env.CLAUDINHO_COMPETITION;
 beforeEach(() => {
-  process.env.CLAUDINHO_COMPETITION = 'eng.1';
+  delete process.env.CLAUDINHO_COMPETITION;
   calls.length = 0;
 });
 afterEach(() => {
@@ -62,9 +66,9 @@ afterEach(() => {
   else process.env.CLAUDINHO_COMPETITION = ORIG;
 });
 
-describe('off-bundle (CLAUDINHO_COMPETITION=eng.1)', () => {
+describe('off-bundle (an adapter for eng.1)', () => {
   it('bundleApplies is false', () => {
-    expect(bundleApplies()).toBe(false);
+    expect(bundleApplies(adapter.competition)).toBe(false);
   });
 
   it('S1: a World Cup date shows no World Cup fixture — the day is live-only', async () => {
@@ -117,7 +121,7 @@ describe('on the bundle (default competition) — unchanged', () => {
   });
 
   it('the bracket still renders the World Cup topology', async () => {
-    const r = await getBracket(adapter);
+    const r = await getBracket({ ...adapter, competition: 'fifa.world' });
     expect(r.unsupported).toBeUndefined();
     expect(r.view.stages.reduce((n, s) => n + s.matches.length, 0)).toBe(32);
   });

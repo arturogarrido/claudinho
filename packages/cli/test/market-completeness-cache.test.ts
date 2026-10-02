@@ -103,7 +103,12 @@ describe('marketSignalsFor completeness through the production disk cache', () =
       },
     };
 
-    const result = await marketSignalsFor({} as never, [hit, miss], {}, () => partial);
+    const result = await marketSignalsFor(
+      { cfg: { competition: 'fifa.world' } } as never,
+      [hit, miss],
+      {},
+      () => partial,
+    );
 
     expect(fetchedIds).toEqual([miss.id]);
     expect(result.signals.get(hit.id)).toMatchObject({ matchId: hit.id, source: 'polymarket' });

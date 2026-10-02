@@ -5,7 +5,7 @@ import { makeT } from '../src/i18n';
 import type { CliConfig } from '../src/config';
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', flavor: 'full', ...over };
+  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'full', ...over };
 }
 function liveMatch(over: Partial<Match> = {}): Match {
   return {

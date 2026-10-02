@@ -74,6 +74,7 @@ const provider = () => new FakeMarketProvider({ signals: { [KO_ID]: cachedSignal
 function adapterFor(window: Match[]): ProviderAdapter {
   return {
     name: 'espn',
+    competition: 'fifa.world',
     capabilities: { push: false, latencyHintSec: 0 },
     async fetchByDate() {
       return window;
@@ -88,7 +89,7 @@ function adapterFor(window: Match[]): ProviderAdapter {
 }
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', flavor: 'off', ...over };
+  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over };
 }
 const ctx = (window: Match[]) => ({
   cfg: cfg(),

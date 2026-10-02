@@ -19,7 +19,7 @@ const real = {
 /** Passes the cheap shape test (LIVE + two codes) but cannot be sealed. */
 const junk = { status: 'LIVE', home: { code: 'AAA' }, away: { code: 'BBB' } };
 const state = (live: unknown[]) =>
-  ({ version: 2, updatedAt: '2026-06-20T19:59:30Z', live, degraded: false,
+  ({ version: 3, updatedAt: '2026-06-20T19:59:30Z', live, degraded: false,
      source: 'espn', competition: 'fifa.world' }) as never;
 
 describe('the hook does not report phantom matches to the model', () => {
@@ -63,7 +63,7 @@ describe('a snapshot stamped in the future is not fresh', () => {
     updatedAt: '2026-06-20T19:59:00Z',
   };
   const at = (updatedAt: string) =>
-    ({ version: 2, updatedAt, live: [live], degraded: false,
+    ({ version: 3, updatedAt, live: [live], degraded: false,
        source: 'espn', competition: 'fifa.world' }) as never;
 
   it('does not render a future-dated cache as a live score', () => {

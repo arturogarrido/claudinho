@@ -72,7 +72,6 @@ export {
   getNextFixtureForTeam,
   getKnockoutFixtures,
   marketFixtureForTeam,
-  resolveCompetition,
   liveSourceLabel,
 } from './live';
 export type {
@@ -193,7 +192,9 @@ export {
   selectOne,
   sealMarketSignal,
   sealMatch,
+  sealSeason,
   unresolved,
   valid,
 } from './trust';
-export { BUNDLE_COMPETITION, bundleApplies } from './competition';
+export { BUNDLE_COMPETITION, bundleApplies, bundleSeasonYear, resolveCompetition } from './competition';
+export { attachFetchMeta, fetchMeta, type FetchMeta } from './adapters/meta';

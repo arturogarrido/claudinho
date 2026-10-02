@@ -14,7 +14,7 @@ import {
   writeSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { DEFAULT_COMPETITION, type Match } from '@claudinho/core';
+import { DEFAULT_COMPETITION, type Match, type SeasonInfo } from '@claudinho/core';
 import { randomBytes } from 'node:crypto';
 import { cacheDir, writeFileAtomic } from './paths';
 
@@ -25,8 +25,13 @@ export { cacheDir } from './paths';
  * absent, i.e. pre-versioning) version is treated as ABSENT: with releases
  * shipping near-daily, an old binary's snapshot must never be blind-cast into a
  * new binary's shape — the refresher simply rebuilds it on the next cycle.
+ *
+ * 3 (0.11): teams carry the provider's id and the state records its season. A
+ * version-2 file (0.10.1) is therefore an EMPTY cache to this binary: the hot
+ * path renders as if no file existed — it never fetches — and the refresher
+ * writes the new one.
  */
-export const CACHE_VERSION = 2;
+export const CACHE_VERSION = 3;
 
 /** Hard byte ceiling before JSON parsing on the statusline hot path. */
 export const MAX_STATE_BYTES = 1024 * 1024;
@@ -66,6 +71,23 @@ export interface CacheState {
    * worse; the statusline meanwhile fails closed (stale → countdown/`⚽ —`).
    */
   backoffUntil?: string;
+  /**
+   * The season the provider reported for the response that last refreshed
+   * `live`. Read ONLY by the refresher, to notice a rollover (a response for a
+   * different season replaces the state whole). The statusline never decides
+   * whether a snapshot is current by season: it cannot know a newer one exists.
+   * Sealed by its reader (`sealSeason`), like every `Match` in this file.
+   */
+  season?: SeasonInfo;
+  /**
+   * The season of the response that produced `fixtures` — its OWN provenance,
+   * stored beside it. It is not derivable from `season`: the live slice
+   * refreshes every few seconds and can lose its season (a response that states
+   * none) while the fixtures it sits beside are carried for fifteen minutes.
+   * Re-deriving it from `season` each cycle is how a carried slice from one
+   * edition survived into a snapshot labelled with another.
+   */
+  fixturesSeason?: SeasonInfo;
 }
 
 const LOCK_STALE_MS = 60_000;
@@ -125,6 +147,10 @@ function isCacheState(value: unknown): value is CacheState {
     (!Array.isArray(s.fixtures) || s.fixtures.length > MAX_STATE_RECORDS)
   ) {
     return false;
+  }
+  for (const key of ['season', 'fixturesSeason'] as const) {
+    const v = s[key];
+    if (v !== undefined && (!v || typeof v !== 'object' || Array.isArray(v))) return false;
   }
   for (const key of [
     'fixturesUpdatedAt',

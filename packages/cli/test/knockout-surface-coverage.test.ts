@@ -48,6 +48,7 @@ function r32MexEcu(): Match {
 function overlayAdapter(window: Match[]): ProviderAdapter {
   return {
     name: 'espn',
+    competition: 'fifa.world',
     capabilities: { push: false, latencyHintSec: 0 },
     async fetchByDate() {
       return [];
@@ -73,6 +74,7 @@ function cfg(over: Partial<CliConfig> = {}): CliConfig {
     json: false,
     color: false,
     source: 'espn',
+    competition: 'fifa.world',
     flavor: 'off',
     markets: false,
     ...over,

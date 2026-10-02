@@ -82,7 +82,13 @@ const commonArgs = {
 // no field is stripped and forward-compatible additions never break validation;
 // every branch-specific key is optional. Domain types live in @claudinho/core as
 // TS interfaces, so these are hand-mirrored (kept loose on purpose).
-const teamRef = z.object({ code: z.string(), name: z.string(), flag: z.string() }).partial().passthrough();
+// `id` is the provider's stable team id (`espn:359`), present on a team read
+// from a live feed. DECLARED, not left to passthrough: an agent that follows a
+// club needs a handle it can rely on being part of the contract.
+const teamRef = z
+  .object({ code: z.string(), name: z.string(), flag: z.string(), id: z.string() })
+  .partial()
+  .passthrough();
 const scorePair = z.object({ home: z.number(), away: z.number() }).partial().passthrough();
 const matchOut = z
   .object({

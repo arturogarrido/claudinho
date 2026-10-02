@@ -21,6 +21,7 @@ function r32MexEcu(): Match {
 function windowAdapter(window: Match[], opts: { throws?: boolean } = {}): ProviderAdapter {
   return {
     name: 'espn',
+    competition: 'fifa.world',
     capabilities: { push: false, latencyHintSec: 0 },
     async fetchByDate() {
       if (opts.throws) throw new Error('down');
@@ -44,6 +45,7 @@ function cfg(over: Partial<CliConfig> = {}): CliConfig {
     json: true,
     color: false,
     source: 'espn',
+    competition: 'fifa.world',
     flavor: 'off',
     markets: false,
     ...over,

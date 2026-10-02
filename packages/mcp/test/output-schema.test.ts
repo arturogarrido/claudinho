@@ -65,6 +65,7 @@ function fakeAdapter(opts: {
 }): ProviderAdapter {
   return {
     name: 'fake',
+    competition: 'fifa.world',
     capabilities: { push: false, latencyHintSec: 0 },
     async fetchByDate() {
       if (opts.throws) throw new Error('network down');

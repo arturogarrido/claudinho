@@ -51,6 +51,7 @@ function fakeAdapter(opts: {
 }): ProviderAdapter {
   return {
     name: 'fake',
+    competition: 'fifa.world',
     capabilities: { push: false, latencyHintSec: 0 },
     expectedStandingsGroups: opts.expectedStandingsGroups,
     standingsFallbackGroups: opts.standingsFallbackGroups,

@@ -34,6 +34,7 @@ const provider = (complete: boolean): MarketProvider =>
 
 const adapter: ProviderAdapter = {
   name: 'fake',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   fetchByDate: async () => [],
   fetchLive: async () => [],

@@ -31,7 +31,10 @@ try {
   writeFileSync(
     join(cacheDir, 'state.json'),
     JSON.stringify({
-      version: 2, // = CACHE_VERSION in packages/cli/src/cache.ts — bump together
+      // = CACHE_VERSION in packages/cli/src/cache.ts. Pinned by
+      // packages/cli/test/smoke-cache-version.test.ts, because a "bump together"
+      // comment alone did not survive the 0.11 format change.
+      version: 3,
       updatedAt: now,
       degraded: false,
       source: 'espn',

@@ -41,7 +41,7 @@ describe('parseEspnEvent — a payload we cannot READ vs one that is not a fixtu
     const r = parseEspnEvent(EV);
     expect(r.kind).toBe('valid');
     if (r.kind !== 'valid') return;
-    expect(r.value.home).toEqual({ code: 'MEX', name: 'Mexico', flag: '🇲🇽' });
+    expect(r.value.home).toEqual({ code: 'MEX', name: 'Mexico', flag: '🇲🇽', id: 'espn:203' });
     expect(r.value.kickoff).toBe('2026-06-11T19:00:00.000Z');
   });
 

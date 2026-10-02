@@ -5,7 +5,6 @@ import { emptyBatch } from '../trust/batch';
  * provider/network/parse error degrades to "no signal" and never throws.
  */
 import { DEFAULT_COMPETITION } from '../adapters/espn';
-import { resolveCompetition } from '../competition';
 import type { Match } from '../types';
 import { FakeMarketProvider } from './fake';
 import { PolymarketProvider } from './polymarket';
@@ -29,8 +28,8 @@ import type {
  */
 export const MARKET_COMPETITIONS: ReadonlySet<string> = new Set([DEFAULT_COMPETITION]);
 
-/** Whether the market sidecar can say anything about the active competition. */
-export function marketsCoverCompetition(competition: string = resolveCompetition()): boolean {
+/** Whether the market sidecar can say anything about a competition. */
+export function marketsCoverCompetition(competition: string): boolean {
   return MARKET_COMPETITIONS.has(competition);
 }
 
@@ -48,11 +47,15 @@ export function resolveMarketSource(explicit?: string): string {
 }
 
 /**
- * Construct a market-signal provider. Defaults to the Polymarket public-data
- * adapter; honors CLAUDINHO_MARKETS_SOURCE ('fake' = network-free synthetic
- * demo data; 'none'/'off' = network-free no-op). Tests usually inject directly.
+ * Construct a market-signal provider for one competition. Defaults to the
+ * Polymarket public-data adapter; honors CLAUDINHO_MARKETS_SOURCE ('fake' =
+ * network-free synthetic demo data; 'none'/'off' = network-free no-op). Tests
+ * usually inject directly.
+ *
+ * The competition is the REQUEST'S (its adapter's), passed in — the sidecar
+ * never asks the environment which competition it is serving.
  */
-export function makeMarketProvider(source?: string): MarketProvider {
+export function makeMarketProvider(source: string | undefined, competition: string): MarketProvider {
   switch (resolveMarketSource(source)) {
     case 'fake':
       return new FakeMarketProvider({ synthesize: true });
@@ -65,7 +68,7 @@ export function makeMarketProvider(source?: string): MarketProvider {
       // factory for their provider. A competition the sidecar does not cover
       // gets the network-free no-op: a complete, honest "no signal" and zero
       // requests.
-      if (!marketsCoverCompetition()) return new FakeMarketProvider();
+      if (!marketsCoverCompetition(competition)) return new FakeMarketProvider();
       return new PolymarketProvider();
   }
 }

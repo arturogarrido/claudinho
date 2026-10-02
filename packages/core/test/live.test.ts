@@ -30,6 +30,7 @@ function windowAdapter(live: Match[]) {
   const calls: Array<[string, string]> = [];
   const adapter: ProviderAdapter = {
     name: 'win',
+    competition: 'fifa.world',
     capabilities: { push: false, latencyHintSec: 0 },
     async fetchByDate() {
       return [];
@@ -50,6 +51,7 @@ function dateAdapter(live: Match[]) {
   const calls: string[] = [];
   const adapter: ProviderAdapter = {
     name: 'date',
+    competition: 'fifa.world',
     capabilities: { push: false, latencyHintSec: 0 },
     async fetchByDate(d) {
       calls.push(d);
@@ -87,6 +89,7 @@ describe('getMatchesForDate — spanning-window overlay (P1)', () => {
   it('degrades to the static schedule on a provider error', async () => {
     const adapter: ProviderAdapter = {
       name: 'boom',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         throw new Error('down');
@@ -146,6 +149,7 @@ describe('getLiveMatches — windowed in-play detection (P1)', () => {
     const calls: string[] = [];
     const adapter: ProviderAdapter = {
       name: 'date',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         return [];
@@ -163,6 +167,7 @@ describe('getLiveMatches — windowed in-play detection (P1)', () => {
   it('degrades to empty on a provider error (never a confidently-empty live list)', async () => {
     const adapter: ProviderAdapter = {
       name: 'boom',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         return [];
@@ -187,6 +192,7 @@ describe('provider records remain usable across domain surfaces', () => {
   });
   const adapter: ProviderAdapter = {
     name: 'readable',
+    competition: 'fifa.world',
     capabilities: { push: false, latencyHintSec: 0 },
     async fetchByDate() {
       return [asserted];
@@ -222,6 +228,7 @@ describe('getBracket — degraded fallback', () => {
   it('keeps provider failures degraded and unattributed', async () => {
     const adapter: ProviderAdapter = {
       name: 'boom',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         return [];
@@ -298,6 +305,7 @@ describe('getNextFixtureForTeam — live-resolved across the knockout phase', ()
   it('fails closed on a provider error: degraded, no invented knockout pairing', async () => {
     const adapter: ProviderAdapter = {
       name: 'boom',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         return [];
@@ -356,6 +364,7 @@ describe('getKnockoutFixtures — resolved upcoming knockouts for the statusline
   it('fails closed (degraded) on a provider error — caller must keep prior cache', async () => {
     const adapter: ProviderAdapter = {
       name: 'boom',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         return [];
@@ -375,6 +384,7 @@ describe('getKnockoutFixtures — resolved upcoming knockouts for the statusline
   it('degraded when the adapter has no window fetch (can never read the overlay)', async () => {
     const adapter: ProviderAdapter = {
       name: 'nowindow',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         return [];

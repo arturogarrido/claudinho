@@ -35,7 +35,7 @@ const junkFixture = (i: number) => ({
 
 const cache = (fixtures: unknown[]) =>
   ({
-    version: 2,
+    version: 3,
     updatedAt: '2026-06-29T11:59:30Z',
     live: [],
     fixtures,

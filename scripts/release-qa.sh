@@ -269,7 +269,8 @@ elif [ -f "$CORE_DIST" ]; then
   DRIFT="$(node --input-type=module -e "
 import { allFixtures, makeAdapter } from 'file://$CORE_DIST';
 const bundled = new Map(allFixtures().map((f) => [f.id, f]));
-const adapter = makeAdapter('espn');
+// The competition is this branch's by construction: it runs only for fifa.world.
+const adapter = makeAdapter('espn', { competition: 'fifa.world' });
 const day = (d) => d.toISOString().slice(0, 10);
 const now = Date.now();
 try {
@@ -293,9 +294,15 @@ try {
       check ok "bundle↔live: every live-served fixture id is in the bundle, kickoff within 12h (${DRIFT#DRIFT-OK } fixtures)" ;;
     DRIFT-FAIL*)
       check no "bundle↔live drift: ${DRIFT#DRIFT-FAIL } — regenerate the schedule (pnpm -F @claudinho/core gen:schedule)" ;;
-    *)
+    DRIFT-SKIP)
       printf '  \033[33m⚠ SKIP\033[0m  bundle↔live drift check (feed unreachable/empty)\n'
       SKIP=$((SKIP+1)) ;;
+    *)
+      # No verdict at all: the check itself did not run (an import or call that
+      # threw before the fetch). That is a broken tripwire, not a quiet feed —
+      # it used to fall through to SKIP, which is how a stale call in this very
+      # script went unnoticed.
+      check no "bundle↔live drift check did not run (script error; run its node block by hand to see it)" ;;
   esac
 else
   printf '  \033[33m⚠ SKIP\033[0m  bundle↔live drift check (core dist not built — run pnpm -r build)\n'

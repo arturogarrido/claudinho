@@ -7,6 +7,7 @@ import { makeT } from '../src/i18n';
 /** Feed reachable, but nothing is in play. */
 const okAdapter: ProviderAdapter = {
   name: 'espn',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate(): Promise<Match[]> {
     return [];
@@ -19,6 +20,7 @@ const okAdapter: ProviderAdapter = {
 /** Feed down (e.g. a 403 from a sandboxed environment) → degraded. */
 const downAdapter: ProviderAdapter = {
   name: 'espn',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate(): Promise<Match[]> {
     throw new Error('ESPN 403');
@@ -29,7 +31,7 @@ const downAdapter: ProviderAdapter = {
 };
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', flavor: 'off', ...over };
+  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over };
 }
 const ctx = (adapter: ProviderAdapter, over: Partial<CliConfig> = {}) => ({
   cfg: cfg(over),

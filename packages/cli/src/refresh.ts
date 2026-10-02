@@ -7,16 +7,17 @@
 import { spawn } from 'node:child_process';
 import {
   allFixtures,
+  bundleApplies,
   isUpcoming,
   byKickoff,
-  DEFAULT_COMPETITION,
   getKnockoutFixtures,
   getLiveMatches,
   KNOWN_SOURCES,
   makeAdapter,
-  resolveCompetition,
+  sealSeason,
   type Match,
   type ProviderAdapter,
+  type SeasonInfo,
 } from '@claudinho/core';
 import {
   acquireLock,
@@ -84,12 +85,12 @@ function nextStaticUpcoming(nowMs: number): Match | undefined {
 }
 
 /**
- * We're in the knockout phase (and on the default competition, the only one with
- * a bundled bracket) when the next upcoming fixture is a knockout — that's
+ * We're in the knockout phase (and on the bundled competition, the only one
+ * with a bundled bracket) when the next upcoming fixture is a knockout — that's
  * exactly when the statusline needs live-resolved pairings the bundle lacks.
  */
-export function inKnockoutPhase(nowMs: number): boolean {
-  if (resolveCompetition() !== DEFAULT_COMPETITION) return false;
+export function inKnockoutPhase(nowMs: number, competition: string): boolean {
+  if (!bundleApplies(competition)) return false;
   const next = nextStaticUpcoming(nowMs);
   return !!next && next.stage !== 'GROUP' && next.stage !== 'FRIENDLY';
 }
@@ -102,13 +103,13 @@ export function inKnockoutPhase(nowMs: number): boolean {
  * different competition is selected (e.g. CLAUDINHO_COMPETITION=fifa.friendly),
  * we can't know its windows statically and simply always allow the fetch.
  */
-function liveWindowActive(nowMs: number): boolean {
-  if (resolveCompetition() !== DEFAULT_COMPETITION) return true;
+function liveWindowActive(nowMs: number, competition: string): boolean {
+  if (!bundleApplies(competition)) return true;
   return inLiveWindow(nowMs);
 }
 
 /**
- * The live-fetch adapter for a VALIDATED source, honoring CLAUDINHO_COMPETITION.
+ * The live-fetch adapter for a VALIDATED source and the refresh's competition.
  * ONE constructor for every competition: the statusline never renders group
  * letters, so the standings request that enriches them is skipped everywhere.
  * It used to be skipped on the default path only — off-default each poll made
@@ -117,23 +118,28 @@ function liveWindowActive(nowMs: number): boolean {
  * under a label it doesn't match: runRefresh validates `source` against
  * KNOWN_SOURCES before calling this (makeAdapter throws as defense in depth).
  */
-function liveAdapter(source: string, now?: () => number): ProviderAdapter {
-  return makeAdapter(source, { enrichGroups: false, now });
+function liveAdapter(source: string, competition: string, now?: () => number): ProviderAdapter {
+  return makeAdapter(source, { competition, enrichGroups: false, now });
 }
 
 export interface RefreshOpts {
   source?: string;
+  /**
+   * The competition to refresh. Required: the refresher is told (by the
+   * config of the process that runs it), it never resolves one itself.
+   */
+  competition: string;
   now?: Date;
   /** Backoff jitter in ms (tests inject 0). Default: random up to BACKOFF_JITTER_MS. */
   jitterMs?: number;
 }
 
 /** Perform one refresh cycle (idempotent, lock-guarded). */
-export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
+export async function runRefresh(opts: RefreshOpts): Promise<void> {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
   const source = opts.source ?? 'espn';
-  const competition = resolveCompetition();
+  const competition = opts.competition;
 
   // ARCH-10 applies to the refresher too, not just interactive precheck: an
   // unknown source must never poll a provider it doesn't name (the cache scope
@@ -177,9 +183,10 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
   // fixtures fetch, or vice-versa.
   const needLive =
     !inBackoff &&
-    liveWindowActive(nowMs) &&
+    liveWindowActive(nowMs, competition) &&
     (!base || ageMs(base, nowMs) >= MIN_REFRESH_MS);
-  const needFixtures = !inBackoff && inKnockoutPhase(nowMs) && fixturesStale(base, nowMs);
+  const needFixtures =
+    !inBackoff && inKnockoutPhase(nowMs, competition) && fixturesStale(base, nowMs);
   if (!needLive && !needFixtures) {
     // Nothing to fetch — but make sure a scope-stamped snapshot EXISTS. The
     // statusline spawns a refresher whenever it finds no cache, so a missing
@@ -217,12 +224,19 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
     let fixturesUpdatedAt = base?.fixturesUpdatedAt;
     let fixturesAttemptedAt = base?.fixturesAttemptedAt;
     let backoffUntil = base?.backoffUntil;
+    // The snapshot's season: the cached one (sealed like any other value read
+    // back from the file) until this cycle's live response replaces it.
+    let season: SeasonInfo | undefined = sealSeason(base?.season);
+    // The season the `fixtures` slice belongs to: what was STORED WITH IT while
+    // the slice is carried, its own response's once this cycle refetches it.
+    // Never re-derived from the live season, which can go unknown in between.
+    let fixturesSeason: SeasonInfo | undefined = sealSeason(base?.fixturesSeason);
     // The adapter runs on the refresher's clock (an injected `now` plus the
     // real time elapsed since), so its absolute cooldown deadline and the
     // snapshot's `backoffUntil` are on the same timeline.
     const realStart = Date.now();
     const clock = () => nowMs + (Date.now() - realStart);
-    const adapter = liveAdapter(source, clock);
+    const adapter = liveAdapter(source, competition, clock);
 
     if (needLive) {
       // Use the domain helper, not adapter.fetchLive() directly: it fetches a
@@ -235,6 +249,12 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
         const r = await getLiveMatches(adapter, now);
         live = r.matches;
         degraded = r.degraded;
+        // The stored season describes the response that last refreshed `live`.
+        // A response that ANSWERED replaces it with whatever it stated — and if
+        // it stated no readable season, with nothing: fresh live data must not
+        // be published under the previous response's season. A fetch that
+        // failed replaced nothing, so the snapshot keeps the season it had.
+        if (!r.degraded) season = r.season;
       } catch {
         degraded = true;
       }
@@ -254,10 +274,34 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
         if (!r.degraded) {
           fixtures = r.fixtures;
           fixturesUpdatedAt = now.toISOString();
+          fixturesSeason = r.season;
         }
       } catch {
         /* keep prior fixtures + timestamp; retry next cycle */
       }
+    }
+
+    // ONE SEASON PER SNAPSHOT. The state's season is the live response's. The
+    // fixtures slice stays only if nothing says it belongs to a DIFFERENT one:
+    // carried from a cache written for another season (a rollover), or just
+    // refetched but answered for another season (an old binary in a new
+    // edition: its bundled knockout window still answers for the bundle's
+    // year). Either way it is dropped, never merged — the cache is replaced
+    // whole. An unknown season on either side is not "different". (The hot
+    // path cannot detect a new season; it takes this one refresh. The backoff
+    // below is about the provider, not a season, and stays.)
+    //
+    // The ATTEMPT stamp stays too. It records that the window was asked for,
+    // which is true whatever became of the answer, and it is what paces the
+    // next ask: a cache with neither stamp is "infinitely stale", so erasing
+    // it here made a disagreement that persists refetch the window on every
+    // prompt. With it, a slice dropped right after its own fetch is asked for
+    // again on the empty-result cadence, and a carried one as soon as its last
+    // attempt is that old — once, promptly, which is what a rollover wants.
+    if (season && fixturesSeason && season.year !== fixturesSeason.year) {
+      fixtures = undefined;
+      fixturesUpdatedAt = undefined;
+      fixturesSeason = undefined;
     }
 
     // The provider told us to go away (429/403) → persist a jittered backoff
@@ -289,6 +333,9 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
         ...(fixturesUpdatedAt ? { fixturesUpdatedAt } : {}),
         ...(fixturesAttemptedAt ? { fixturesAttemptedAt } : {}),
         ...(backoffUntil ? { backoffUntil } : {}),
+        ...(season ? { season } : {}),
+        // Stored with the slice it describes, and only while that slice exists.
+        ...(fixtures && fixturesSeason ? { fixturesSeason } : {}),
       },
       token,
     );
@@ -306,10 +353,11 @@ export async function runRefresh(opts: RefreshOpts = {}): Promise<void> {
  * to avoid a second cache read on the hot path.
  */
 export function shouldRefresh(
-  now = Date.now(),
-  state: CacheState | undefined = readState('espn', resolveCompetition()),
+  now: number,
+  state: CacheState | undefined,
+  competition: string,
 ): boolean {
-  if (!liveWindowActive(now)) return false;
+  if (!liveWindowActive(now, competition)) return false;
   if (backoffActive(state, now)) return false;
   if (isLockFresh(now)) return false;
   return ageMs(state, now) > LIVE_TTL_MS;
@@ -323,10 +371,11 @@ export function shouldRefresh(
  * Pass the already-read `state` to avoid a second cache read on the hot path.
  */
 export function shouldRefreshFixtures(
-  now = Date.now(),
-  state: CacheState | undefined = readState('espn', resolveCompetition()),
+  now: number,
+  state: CacheState | undefined,
+  competition: string,
 ): boolean {
-  if (!inKnockoutPhase(now)) return false;
+  if (!inKnockoutPhase(now, competition)) return false;
   if (backoffActive(state, now)) return false;
   if (isLockFresh(now)) return false;
   return fixturesStale(state, now);
@@ -336,13 +385,18 @@ export function shouldRefreshFixtures(
  * Fire-and-forget a detached refresher process. Returns immediately; the child
  * outlives this process and writes the cache for the next render.
  */
-export function spawnRefresh(source: string): void {
+export function spawnRefresh(source: string, competition: string): void {
   try {
     const entry = process.argv[1];
     if (!entry) return;
     const child = spawn(process.execPath, [entry, '_refresh', '--source', source], {
       detached: true,
       stdio: 'ignore',
+      // The child resolves its competition at ITS edge, from its environment.
+      // Hand it the one this process already resolved, so the refresher writes
+      // the cache the statusline that spawned it will read — whatever source
+      // (flag, environment, later a saved choice) the parent's selection had.
+      env: { ...process.env, CLAUDINHO_COMPETITION: competition },
       // Windows: a detached child gets its own console window without this —
       // the statusline would flash one every ~12–15s during live matches.
       windowsHide: true,
