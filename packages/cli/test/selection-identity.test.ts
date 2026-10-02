@@ -17,7 +17,7 @@ import { cmdHook, cmdNext, cmdPrompt, cmdRefresh, cmdToday, InputError } from '.
 import { type CliConfig, resolveConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 import { withPersistedBackoff } from '../src/providerBackoff';
-import { runRefresh, shouldRefresh } from '../src/refresh';
+import { runRefresh, shouldRefresh, shouldRefreshFixtures } from '../src/refresh';
 import { TOURNAMENT_COMPLETE_LINE } from '../src/statusline';
 
 // The statusline and hook spawn a detached refresher; a test must never fork one.
@@ -590,6 +590,50 @@ describe('season in the cache', () => {
     expect(state?.season?.year).toBe(2030);
     expect(state?.fixtures).toBeUndefined();
     expect(state?.fixturesUpdatedAt).toBeUndefined();
+  });
+
+  it('a slice dropped for its season is asked for again on the empty cadence, not on every prompt', async () => {
+    // Found in review: the drop also erased the ATTEMPT stamp, and a cache with
+    // neither stamp is "infinitely stale" — so while the disagreement lasted
+    // (an old binary in a new edition: it lasts until the user upgrades) every
+    // statusline or hook tick fetched the knockout window again. The attempt
+    // happened; the cadence that follows a fetch with nothing to keep applies.
+    const SEMI_LIVE = new Date('2026-07-14T19:30:00Z');
+    writeState({
+      updatedAt: new Date(SEMI_LIVE.getTime() - 60_000).toISOString(),
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+      season: { year: 2026, label: '2026 FIFA World Cup' },
+    });
+    let knockoutRequests = 0;
+    vi.stubGlobal('fetch', async (url: unknown) => {
+      if (String(url).includes('dates=20260628')) {
+        knockoutRequests++;
+        return response({ leagues: [{ season: season(2026) }], events: [] });
+      }
+      return response({ leagues: [{ season: season(2030) }], events: [] });
+    });
+    await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+    expect(knockoutRequests).toBe(1);
+    const state = readState('espn', 'fifa.world');
+    expect(state?.fixtures).toBeUndefined();
+    expect(state?.fixturesAttemptedAt).toBe(SEMI_LIVE.toISOString());
+
+    // The next prompt, seconds later: no trigger, and a refresher that runs
+    // anyway (the live slice has its own clock) leaves the window alone.
+    const soon = SEMI_LIVE.getTime() + 20_000;
+    expect(shouldRefreshFixtures(soon, state, 'fifa.world')).toBe(false);
+    await runRefresh({ source: 'espn', competition: 'fifa.world', now: new Date(soon), jitterMs: 0 });
+    expect(knockoutRequests).toBe(1);
+
+    // Past the empty cadence it is asked for again — the disagreement is
+    // retried, not cached as a conclusion.
+    const later = SEMI_LIVE.getTime() + 61_000;
+    expect(shouldRefreshFixtures(later, readState('espn', 'fifa.world'), 'fifa.world')).toBe(true);
+    await runRefresh({ source: 'espn', competition: 'fifa.world', now: new Date(later), jitterMs: 0 });
+    expect(knockoutRequests).toBe(2);
   });
 
   it('a dated query never writes the live cache', async () => {
