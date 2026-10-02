@@ -692,15 +692,48 @@ export async function getLiveMatches(
   adapter: ProviderAdapter,
   now: Date = new Date(),
 ): Promise<LiveResult> {
+  // No surface prints the read's own verdict (yet): what they get is what
+  // they got, key for key.
+  const { complete: _complete, ...result } = await getLiveRead(adapter, now);
+  return result;
+}
+
+/** A live read with the answer's own account of itself: what the refresher decides from. */
+export interface LiveReadResult extends LiveResult {
+  /**
+   * True only when the provider's answer said every record in it was read.
+   * Absent is not true, and a failed read is not whole: a read that is not
+   * whole and holds no match in play does not prove none is.
+   */
+  complete: boolean;
+}
+
+/**
+ * {@link getLiveMatches}, keeping the window's `complete` verdict (read from
+ * the window's result BEFORE the in-play filter makes a new array). For the
+ * cold-path refresher, which keeps polling after a match was seen in play
+ * until a WHOLE read holds none.
+ */
+export async function getLiveRead(
+  adapter: ProviderAdapter,
+  now: Date = new Date(),
+): Promise<LiveReadResult> {
   try {
     const day = now.toISOString().slice(0, 10);
     const fetched = adapter.fetchWindow
       ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
       : await adapter.fetchLive();
-    const season = fetchMeta(fetched)?.season;
+    const meta = fetchMeta(fetched);
+    const season = meta?.season;
     const matches = fetched.filter((m) => isLive(m.status));
-    return { matches, degraded: false, source: adapter.name, ...(season ? { season } : {}) };
+    return {
+      matches,
+      degraded: false,
+      source: adapter.name,
+      ...(season ? { season } : {}),
+      complete: meta?.complete === true,
+    };
   } catch {
-    return { matches: [], degraded: true };
+    return { matches: [], degraded: true, complete: false };
   }
 }

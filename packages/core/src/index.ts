@@ -67,6 +67,10 @@ export {
   mergeLive,
   getMatchesForDate,
   getLiveMatches,
+  getLiveRead,
+  getScheduleAhead,
+  SCHEDULE_AHEAD_DAYS,
+  SCHEDULE_LOOKBACK_DAYS,
   getMatchById,
   getStandings,
   getBracket,
@@ -77,6 +81,8 @@ export {
 } from './live';
 export type {
   LiveResult,
+  LiveReadResult,
+  ScheduleAheadResult,
   MatchByIdResult,
   NextFixtureResult,
   KnockoutFixturesResult,
