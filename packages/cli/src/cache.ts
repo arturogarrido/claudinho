@@ -96,7 +96,10 @@ export interface CacheState {
    * The schedule ahead, for a competition the bundle does not describe: what
    * decides when a match can be in play there (see `scheduleSlice.ts`, which
    * holds every rule about it). Never filled on the bundled competition, where
-   * the bundled schedule decides. Read through `scheduleView`, never directly.
+   * the bundled schedule decides. Its index, stamps, `failures`, `inPlayUntil`,
+   * `probe` and season are read through `scheduleView`, never directly; its
+   * display records are sealed where they are shown, like every cached match
+   * (`sealFixtures`).
    */
   schedule?: ScheduleSlice;
 }

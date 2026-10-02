@@ -126,8 +126,9 @@ function carriedStamp(value: string | undefined, now: number): string | undefine
  * ONE constructor for every competition: the statusline never renders group
  * letters, so the standings request that enriches them is skipped everywhere.
  * It used to be skipped on the default path only — off-default each poll made
- * TWO requests, on the one path that polls around the clock because the bundle
- * cannot describe another competition's windows. Never constructs a provider
+ * TWO requests, on the path that then polled around the clock (the bundle
+ * cannot describe another competition's windows; since 0.11 that competition's
+ * own discovered schedule does, see `refreshOffBundle`). Never constructs a provider
  * under a label it doesn't match: runRefresh validates `source` against
  * KNOWN_SOURCES before calling this (makeAdapter throws as defense in depth).
  */

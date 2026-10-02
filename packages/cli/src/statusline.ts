@@ -2,8 +2,10 @@
  * Statusline rendering — the HOT PATH. Pure, synchronous, no network: it reads
  * a cached snapshot and the static schedule and returns one compact line.
  * Live scores come from the cache (refreshed out of band); the countdown to the
- * next fixture is computed live from the static kickoff time, so it ticks for
- * free on every render even with no refresh.
+ * next fixture is computed live from a kickoff time it already holds, so it
+ * ticks for free on every render even with no refresh. On the bundled
+ * competition that kickoff is the static schedule's (with the refresher's
+ * resolved knockout pairings merged in); off it, the cache's schedule slice's.
  */
 import {
   allFixtures,

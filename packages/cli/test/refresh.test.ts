@@ -176,8 +176,9 @@ describe('runRefresh — one scoreboard request per poll on EVERY competition', 
     // The statusline renders no group letters, so the standings request that
     // enriches them is waste. The default path already skipped it; a custom
     // competition went through the general constructor with enrichment ON —
-    // two requests per poll, on the one path that polls around the clock
-    // because the bundle cannot describe its live windows.
+    // two requests per poll, on the path that then polled around the clock
+    // (since 0.11 it polls only when its discovered schedule says a match can
+    // be in play; the first cycle here discovers, and asks no standings).
     process.env.CLAUDINHO_COMPETITION = 'fifa.friendly';
     const fetchMock = vi.fn(async () => ({ ok: true, json: async () => SCOREBOARD }));
     vi.stubGlobal('fetch', fetchMock);

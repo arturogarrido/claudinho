@@ -230,12 +230,29 @@ describe('the CLI resolves the competition once, in option resolution', () => {
 
   it('refresh triggers take the competition as an argument', () => {
     const PRE_WC = new Date('2026-06-04T16:00:00Z').getTime(); // no World Cup window
-    // Off the bundle the World Cup's schedule decides nothing: the competition's
-    // own schedule does, and until one is discovered a refresher is wanted…
-    expect(refreshWanted(PRE_WC, undefined, 'eng.1')).toBe(true);
-    // …and the environment cannot turn the World Cup's schedule gate off.
+    // ONE snapshot on which the two competitions disagree: a stale live slice
+    // and a schedule slice whose fixture is inside its window. The World Cup's
+    // gate is its bundled schedule (closed on this day); `eng.1`'s is the slice
+    // (open). (Found in review: with no snapshot both answers were "closed",
+    // so a trigger that read the environment instead of its argument passed.)
+    const stale = {
+      updatedAt: new Date(PRE_WC - 3_600_000).toISOString(),
+      live: [],
+      degraded: false,
+      source: 'espn',
+      schedule: {
+        index: [{ id: '1', kickoff: new Date(PRE_WC - 60_000).toISOString(), on: true }],
+        attemptedAt: new Date(PRE_WC - 600_000).toISOString(),
+        failures: 0,
+      },
+    };
+    // The environment says one thing, the argument another, in both directions.
     process.env.CLAUDINHO_COMPETITION = 'eng.1';
-    expect(shouldRefresh(PRE_WC, undefined, 'fifa.world')).toBe(false);
+    expect(shouldRefresh(PRE_WC, { ...stale, competition: 'fifa.world' }, 'fifa.world')).toBe(false);
+    expect(refreshWanted(PRE_WC, { ...stale, competition: 'fifa.world' }, 'fifa.world')).toBe(false);
+    process.env.CLAUDINHO_COMPETITION = 'fifa.world';
+    expect(shouldRefresh(PRE_WC, { ...stale, competition: 'eng.1' }, 'eng.1')).toBe(true);
+    expect(refreshWanted(PRE_WC, { ...stale, competition: 'eng.1' }, 'eng.1')).toBe(true);
   });
 });
 
