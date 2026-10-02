@@ -727,7 +727,7 @@ export async function toolGetMarketSignal(
       complete: batch.complete,
       signals: shown.items.map(({ signal }) => marketData(signal)),
       // Off the markets' scope, "none" means "not read for this competition".
-      ...verdictExtras(marketScopeVerdict(competitionOf(args))),
+      ...verdictExtras(marketScopeVerdict(competitionOf(args), shown.shown)),
     },
   };
 }

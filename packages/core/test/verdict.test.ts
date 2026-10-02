@@ -67,9 +67,12 @@ describe('verdictExtras — the structured keys, from one place', () => {
 
 describe('marketScopeVerdict — what a market read says about its competition before any request', () => {
   it('states the verdict outside the sidecar’s scope, and nothing inside it', () => {
-    expect(marketScopeVerdict('fifa.world')).toEqual({});
-    expect(marketScopeVerdict('eng.1')).toEqual({ unsupported: true });
-    expect(verdictExtras(marketScopeVerdict('uefa.nations'))).toEqual({ unsupported: true });
+    expect(marketScopeVerdict('fifa.world', 0)).toEqual({});
+    expect(marketScopeVerdict('eng.1', 0)).toEqual({ unsupported: true });
+    expect(verdictExtras(marketScopeVerdict('uefa.nations', 0))).toEqual({ unsupported: true });
+    // A read that shows signals states no such verdict (the demo source reads any competition).
+    expect(marketScopeVerdict('eng.1', 2)).toEqual({});
+    expect(marketScopeVerdict('fifa.world', 2)).toEqual({});
   });
 });
 

@@ -1145,7 +1145,7 @@ export async function cmdMarkets(
       complete,
       marketSignals,
       // Off the markets' scope, "none" means "not read for this competition".
-      ...verdictExtras(marketScopeVerdict(cfg.competition)),
+      ...verdictExtras(marketScopeVerdict(cfg.competition, rows.length)),
     });
     return;
   }
