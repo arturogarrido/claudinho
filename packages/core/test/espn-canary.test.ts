@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   CANARY_COMPETITIONS,
+  CANARY_NO_TABLE,
   CANARY_QUESTIONS,
   canaryWarnings,
   formatCanary,
@@ -392,6 +393,14 @@ describe('found in review: every table shape, every row, every value', () => {
     expect((await standingsCase({ children: { 0: {} } })).verdict).toBe('changed');
   });
 
+  it('and it is red beside a healthy sibling too: a readable table does not excuse an unreadable one', async () => {
+    const good = { name: 'Group A', standings: { entries: [row()] } };
+    const badRows = await standingsCase({ children: [good, { name: 'Group B', standings: { entries: { 0: row() } } }] });
+    expect(badRows).toEqual({ verdict: 'changed', detail: 'a table has no `entries` list' });
+    const badChildren = await standingsCase({ children: [{ ...good, children: { 0: {} } }] });
+    expect(badChildren).toEqual({ verdict: 'changed', detail: '`children` is not a list' });
+  });
+
   it('a row without statistics is red, not skipped', async () => {
     const { verdict, detail } = await standingsCase(table([row({ stats: undefined })]));
     expect(verdict).toBe('changed');
@@ -460,10 +469,20 @@ describe('found in review: absence is a finding, and the product’s own parser 
     return r.rows.find((x) => x.request === 'standings');
   };
 
-  it('a payload with no table at all is red: every competition serves one today', async () => {
+  it('a payload with no table rows is red for a competition that serves a table', async () => {
     for (const body of [{}, { children: [] }, { children: [{ name: 'Group A', standings: { entries: [] } }] }]) {
       const r = await run((url) => json(url.includes('/standings') ? body : healthyScoreboard));
       expect(verdicts(r).standings, JSON.stringify(body)).toBe('changed');
+    }
+  });
+
+  it('and expected of a knockout-only competition, which is the only kind excused', async () => {
+    // What the Concacaf Champions Cup's standings endpoint answers (Oct 2 2026).
+    const seasonsOnly = { name: 'Concacaf Champions Cup', season: { year: 2026 }, seasons: [{ year: 2016 }] };
+    expect(CANARY_NO_TABLE).toEqual(['concacaf.champions']);
+    for (const competition of CANARY_COMPETITIONS) {
+      const r = await run((url) => json(url.includes('/standings') ? seasonsOnly : healthyScoreboard), [competition]);
+      expect(verdicts(r).standings, competition).toBe(CANARY_NO_TABLE.includes(competition) ? 'ok' : 'changed');
     }
   });
 
@@ -480,20 +499,19 @@ describe('found in review: absence is a finding, and the product’s own parser 
   });
 
   it('a row the product’s parser refuses is red, though its statistics are all there', async () => {
-    // One win and no points: every statistic present and numeric, and a table
-    // the product would mark partial.
-    const row = await wc(
-      wcStandings(GROUPS, (r, g) =>
-        g === 'C'
-          ? {
-              ...r,
-              stats: STATS.map((n) => ({ name: n, value: n === 'rank' || n === 'wins' || n === 'gamesPlayed' ? 1 : 0 })),
-            }
-          : r,
-      ),
-    );
+    // Group C gets a second team with one win and no points: every statistic
+    // present and numeric, the group still there, and a table the product
+    // would mark partial.
+    const body = wcStandings();
+    body.children[2]?.standings.entries.push({
+      team: { id: '299', abbreviation: 'TCY', displayName: 'Team C2' },
+      stats: STATS.map((n) => ({ name: n, value: n === 'wins' || n === 'gamesPlayed' ? 1 : n === 'rank' ? 2 : 0 })),
+    });
+    const tables = core.parseStandings(body);
+    expect(tables.find((t) => t.group === 'C')?.partial).toEqual({ omitted: 1 });
+    const row = await wc(body);
     expect(row?.verdict).toBe('changed');
-    expect(row?.detail).toMatch(/Group C|\bC\b/);
+    expect(row?.detail).toBe('the adapter could not read every row of Group C');
   });
 });
 

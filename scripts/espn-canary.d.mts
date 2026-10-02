@@ -1,7 +1,7 @@
 export type CanaryVerdict = 'ok' | 'rejected' | 'changed' | 'blocked' | 'unreachable';
 export interface CanaryRow {
   competition: string;
-  request: 'live' | 'day' | 'window' | 'standings';
+  request: 'live' | 'day' | 'window' | 'knockout' | 'standings';
   url: string;
   verdict: CanaryVerdict;
   detail: string;
@@ -12,6 +12,9 @@ export interface CanaryResult {
 }
 export const CANARY_COMPETITIONS: readonly string[];
 export const STANDING_STATS: readonly string[];
+export const CANARY_NO_TABLE: readonly string[];
+export const CANARY_QUESTIONS: readonly { request: CanaryRow['request']; method: string; bundleOnly?: boolean }[];
+export function canaryWarnings(result: CanaryResult): string[];
 export function runCanary(options: {
   core: unknown;
   competitions?: readonly string[];

@@ -23,14 +23,33 @@
  * every competition's table shape yet, so its verdict there would say more
  * about us than about the feed.
  *
+ * What it asks, per competition: every request FORM the adapter has, with the
+ * spans the product uses today.
+ *   live       the default scoreboard bucket (the fallback of the live read)
+ *   day        one calendar day
+ *   window     yesterday to tomorrow: what `live`, `today` and the statusline
+ *              refresher actually request
+ *   knockout   the bundled bracket's whole span, asked only of the competition
+ *              the bundle belongs to: what `bracket`, `next` and the countdown
+ *              request
+ *   standings  the tables
+ * A test fails when the adapter gains a fetch method this list does not ask.
+ *
  * Verdicts
  *   ok           the request was served and the payload fits the parsers
  *   rejected     the provider refused the request FORM (a 4xx that is not a
  *                throttle)                                           → red
  *   changed      a 2xx payload broke an invariant a parser relies on → red
  *   blocked      403/429: THIS runner is throttled or blocked. Says nothing
- *                about the feed's shape                              → neutral
+ *                about the feed's shape. Nothing more is asked in the run
+ *                                                                    → neutral
  *   unreachable  network error, timeout or 5xx                       → neutral
+ * A neutral row is a row the canary could not see: the run stays green and
+ * says so in a warning.
+ *
+ * Work, worst case: 61 requests (15 competitions, 4 each, 5 for the bundled
+ * one), each bounded by the adapter's timeout and byte limit, one at a time
+ * with a pause between them.
  *
  *   pnpm -r build && node scripts/espn-canary.mjs
  *
@@ -64,6 +83,14 @@ export const CANARY_COMPETITIONS = Object.freeze([
 ]);
 
 /**
+ * Competitions that have no table: knockout from the first round. Measured on
+ * Oct 2 2026: the standings endpoint of the Concacaf Champions Cup answers 200
+ * with its seasons and no table, while the other fourteen serve rows. For
+ * every other competition, a payload with no rows is a finding.
+ */
+export const CANARY_NO_TABLE = Object.freeze(['concacaf.champions']);
+
+/**
  * The statistics the standings parser requires of every row. A copy of the
  * parser's needs, pinned to it both ways by a test (each is required by the
  * real parser, and it requires no other).
@@ -88,6 +115,19 @@ const ERROR_BODY_BYTES = 64 * 1024;
 const MAX_TABLES = 64;
 const MAX_ROWS = 128;
 const MAX_DEPTH = 4;
+
+/**
+ * The questions, in the order they are asked. `method` is the adapter method a
+ * question goes through; `bundleOnly` questions are asked of the competition
+ * the bundled schedule belongs to.
+ */
+export const CANARY_QUESTIONS = Object.freeze([
+  { request: 'live', method: 'fetchLive' },
+  { request: 'day', method: 'fetchByDate' },
+  { request: 'window', method: 'fetchWindow' },
+  { request: 'knockout', method: 'fetchWindow', bundleOnly: true },
+  { request: 'standings', method: 'fetchStandings' },
+]);
 
 const RED = new Set(['rejected', 'changed']);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -144,10 +184,6 @@ function checkScoreboard(core, body, matches) {
     const first = rawNoId[0]?.team?.displayName ?? rawNoId[0]?.team?.abbreviation ?? 'unnamed';
     return { verdict: 'changed', detail: `${rawNoId.length} team(s) arrived without an id (first: ${first})` };
   }
-  const noId = matches.flatMap((m) => [m.home, m.away]).filter((t) => t.id === undefined);
-  if (noId.length > 0) {
-    return { verdict: 'changed', detail: `${noId.length} team(s) left the adapter without an id (first: ${noId[0].name})` };
-  }
   if (!meta.season) {
     return { verdict: 'changed', detail: 'the response states no readable season' };
   }
@@ -183,7 +219,7 @@ function collectTables(node, depth, tables) {
  * once, as a number. Nothing is skipped for being malformed: malformed IS the
  * finding.
  */
-function checkStandings(body) {
+function checkStandings(body, adapter, result, competition) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return { verdict: 'changed', detail: 'the response is not an object' };
   }
@@ -214,7 +250,36 @@ function checkStandings(body) {
       }
     }
   }
-  return { verdict: 'ok', detail: rows > 0 ? `${rows} row(s) in ${tables.length} table(s)` : 'no table' };
+  // Absence is a finding, except where no table is expected (see
+  // CANARY_NO_TABLE). The day a competition that serves rows stops, a person
+  // decides what that means.
+  if (rows === 0) {
+    return CANARY_NO_TABLE.includes(competition)
+      ? { verdict: 'ok', detail: 'no table (none expected: knockout only)' }
+      : { verdict: 'changed', detail: 'the response holds no table rows' };
+  }
+
+  // Where the ADAPTER says which tables it reads, its own account is asked too:
+  // rows can be well formed and still not be a table the product can show.
+  const expected = adapter.expectedStandingsGroups;
+  if (expected && expected.length > 0) {
+    if (!Array.isArray(result)) {
+      return { verdict: 'changed', detail: 'the adapter could not read the tables it expects' };
+    }
+    const got = new Set(result.map((t) => t.group));
+    const missing = expected.filter((g) => !got.has(g));
+    if (missing.length > 0) {
+      return { verdict: 'changed', detail: `the adapter expects group(s) ${missing.join(', ')} and did not get them` };
+    }
+    const partial = result.filter((t) => t.partial);
+    if (partial.length > 0) {
+      return {
+        verdict: 'changed',
+        detail: `the adapter could not read every row of Group ${partial.map((t) => t.group).join(', ')}`,
+      };
+    }
+  }
+  return { verdict: 'ok', detail: `${rows} row(s) in ${tables.length} table(s)` };
 }
 
 /**
@@ -249,13 +314,18 @@ export async function runCanary({
     };
     const adapter = new core.EspnAdapter({ competition, enrichGroups: false, fetchImpl: recording });
     const today = isoDay(now);
-    const requests = [
-      ['live', () => adapter.fetchLive()],
-      ['day', () => adapter.fetchByDate(today)],
-      ['window', () => adapter.fetchWindow(isoDay(shiftDay(now, -1)), isoDay(shiftDay(now, 1)))],
-      ['standings', () => adapter.fetchStandings()],
-    ];
-    for (const [request, call] of requests) {
+    // The span the bracket, `next` and the countdown read: the bundle's own.
+    const span = core.bundleApplies(competition) ? core.knockoutWindow() : null;
+    const calls = {
+      live: () => adapter.fetchLive(),
+      day: () => adapter.fetchByDate(today),
+      window: () => adapter.fetchWindow(isoDay(shiftDay(now, -1)), isoDay(shiftDay(now, 1))),
+      knockout: () => adapter.fetchWindow(span.start, span.end),
+      standings: () => adapter.fetchStandings(),
+    };
+    for (const { request, bundleOnly } of CANARY_QUESTIONS) {
+      if (bundleOnly && !span) continue;
+      const call = calls[request];
       if (throttled) {
         rows.push({ competition, request, url: '', verdict: 'blocked', detail: 'not asked: the provider throttled this runner earlier in the run' });
         continue;
@@ -272,11 +342,10 @@ export async function runCanary({
       const copy = sent?.copy ? await sent.copy : undefined;
       let verdict;
       let detail;
-      if (!sent) {
-        // Nothing was requested: the adapter is inside the cooldown a 403/429 armed.
-        verdict = 'blocked';
-        detail = 'not asked: provider cooldown in effect';
-      } else if (sent.status === undefined) {
+      if (!sent || sent.status === undefined) {
+        // No response: a network error or a timeout (or, were it ever to
+        // happen, a call that asked nothing). The run stops at the first
+        // throttle, so the adapter's own cooldown never gets to refuse a call.
         verdict = 'unreachable';
         detail = String(failure?.message ?? 'no response');
       } else if (statusVerdict(sent.status) !== 'ok') {
@@ -294,7 +363,7 @@ export async function runCanary({
         verdict = 'changed';
         detail = 'the response is not JSON';
       } else if (request === 'standings') {
-        ({ verdict, detail } = checkStandings(copy.json));
+        ({ verdict, detail } = checkStandings(copy.json, adapter, result, competition));
       } else if (!Array.isArray(result)) {
         // Served, but the adapter could not turn it into fixtures at all.
         verdict = 'changed';
@@ -310,6 +379,20 @@ export async function runCanary({
     }
   }
   return { rows, red: rows.some((r) => RED.has(r.verdict)) };
+}
+
+/**
+ * What a person should be told about a run that is not red: the rows the
+ * canary could not see. A blocked runner makes it green and blind; that must
+ * not look like a healthy feed.
+ */
+export function canaryWarnings(result) {
+  const blocked = result.rows.filter((r) => r.verdict === 'blocked').length;
+  const unreachable = result.rows.filter((r) => r.verdict === 'unreachable').length;
+  if (blocked + unreachable === 0) return [];
+  return [
+    `${blocked + unreachable} of ${result.rows.length} requests were not answered (${blocked} blocked, ${unreachable} unreachable): the canary saw nothing of those`,
+  ];
 }
 
 /** A plain-text report: one line per request, then the totals. */
@@ -350,5 +433,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const result = await runCanary({ core });
   console.log(formatCanary(result));
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, formatMarkdown(result));
+  // An annotation on the run page (GitHub Actions) or a plain line elsewhere.
+  for (const warning of canaryWarnings(result)) {
+    console.log(process.env.GITHUB_ACTIONS ? `::warning title=ESPN canary::${warning}` : `warning: ${warning}`);
+  }
   process.exit(result.red ? 1 : 0);
 }
