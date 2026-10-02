@@ -212,8 +212,17 @@ function judgePart(core, sent, copy, failure) {
   return { verdict: 'ok', detail: '', json: copy.json };
 }
 
-/** A question's verdict is its worst part's: the provider said stop, refused, was not there, changed. */
-const WORST_FIRST = ['blocked', 'rejected', 'unreachable', 'changed'];
+/**
+ * A question takes one verdict from its parts, and what was SEEN to be wrong
+ * comes first: a refused form or a changed payload is a finding whatever
+ * happened to a sibling request. A part that could not be seen (throttled,
+ * down) decides only when nothing seen was wrong, and is named in the detail
+ * either way. Whether the run goes on asking is a separate decision: a
+ * throttle on any part stops it.
+ */
+const SEEN_WRONG = ['rejected', 'changed'];
+const NOT_SEEN = ['blocked', 'unreachable'];
+const firstOf = (parts, verdicts) => verdicts.map((v) => parts.find((part) => part.verdict === v)).find(Boolean);
 
 /** What a request asked for: the `dates` parameter of its URL (empty for the default scoreboard). */
 function datesOf(url) {
@@ -232,11 +241,8 @@ function datesOf(url) {
  * parser's own account of the whole answer and on what was sent.
  */
 function checkScoreboard(core, adapter, parts, matches) {
-  for (const part of parts) {
-    if (!part.json || typeof part.json !== 'object' || !Array.isArray(part.json.events)) {
-      return { verdict: 'changed', detail: 'the response has no `events` list' };
-    }
-  }
+  const envelope = envelopeProblem(parts);
+  if (envelope) return { verdict: 'changed', detail: envelope };
   const events = parts.flatMap((part) => part.json.events);
   const meta = core.fetchMeta(matches);
   if (meta?.complete !== true) {
@@ -247,14 +253,43 @@ function checkScoreboard(core, adapter, parts, matches) {
       detail: `the adapter could not read every event (${events.length} sent, ${meta?.complete === false ? matches.length : 'unknown'} read)`,
     };
   }
-  const sent = events.flatMap((e) => {
-    const competitors = e?.competitions?.[0]?.competitors;
-    return Array.isArray(competitors) ? competitors : [];
-  });
+  const sent = sentProblem(adapter, parts);
+  if (sent) return { verdict: 'changed', detail: sent };
+  if (!meta.season) {
+    return { verdict: 'changed', detail: 'the response states no readable season' };
+  }
+  return {
+    verdict: 'ok',
+    detail: `${events.length} event(s)${parts.length > 1 ? ` in ${parts.length} requests` : ''}`,
+  };
+}
+
+/** A served scoreboard response with no `events` list, or nothing. */
+function envelopeProblem(parts) {
+  for (const part of parts) {
+    if (!part.json || typeof part.json !== 'object' || !Array.isArray(part.json.events)) {
+      return 'the response has no `events` list';
+    }
+  }
+  return undefined;
+}
+
+/**
+ * What is wrong with what was SENT, read raw, or nothing. It needs no answer
+ * from the adapter, so it is asked of every response that was served, also
+ * when a sibling request failed and the adapter had no answer to give.
+ */
+function sentProblem(adapter, parts) {
+  const sent = parts
+    .flatMap((part) => part.json.events)
+    .flatMap((e) => {
+      const competitors = e?.competitions?.[0]?.competitors;
+      return Array.isArray(competitors) ? competitors : [];
+    });
   const rawNoId = sent.filter((c) => typeof c?.team?.id !== 'string' || !RAW_TEAM_ID.test(c.team.id));
   if (rawNoId.length > 0) {
     const first = rawNoId[0]?.team?.displayName ?? rawNoId[0]?.team?.abbreviation ?? 'unnamed';
-    return { verdict: 'changed', detail: `${rawNoId.length} team(s) arrived without an id (first: ${first})` };
+    return `${rawNoId.length} team(s) arrived without an id (first: ${first})`;
   }
   // How the provider files a day: the adapter keeps, from a month's response,
   // the fixtures whose PROVIDER day a window asked for, so that rule is checked
@@ -270,20 +305,11 @@ function checkScoreboard(core, adapter, parts, matches) {
       if (Number.isNaN(kickoff.getTime())) continue;
       const day = adapter.bucketDay(kickoff).replace(/-/g, '');
       if (!day.startsWith(asked)) {
-        return {
-          verdict: 'changed',
-          detail: `a fixture filed under ${asked} kicks off on provider day ${day}: the provider no longer files a day the way the adapter assumes`,
-        };
+        return `a fixture filed under ${asked} kicks off on provider day ${day}: the provider no longer files a day the way the adapter assumes`;
       }
     }
   }
-  if (!meta.season) {
-    return { verdict: 'changed', detail: 'the response states no readable season' };
-  }
-  return {
-    verdict: 'ok',
-    detail: `${events.length} event(s)${parts.length > 1 ? ` in ${parts.length} requests` : ''}`,
-  };
+  return undefined;
 }
 
 /**
@@ -479,17 +505,27 @@ export async function runCanary({
           : undefined;
         parts.push({ url: sent.url, ...judgePart(core, sent, copy, failure) });
       }
-      const worst = WORST_FIRST.map((v) => parts.find((part) => part.verdict === v)).find(Boolean);
+      const wrong = firstOf(parts, SEEN_WRONG);
+      const unseen = firstOf(parts, NOT_SEEN);
+      const which = (part) => (parts.length > 1 ? ` (${datesOf(part.url) || 'no dates'}, 1 of ${parts.length} requests)` : '');
+      const beside = unseen ? `; another request was ${unseen.verdict} (${unseen.detail})` : '';
       let verdict;
       let detail;
       if (parts.length === 0) {
         // The call asked for nothing and has no answer.
         verdict = 'unreachable';
         detail = String(failure?.message ?? 'no response');
-      } else if (worst) {
-        verdict = worst.verdict;
-        const which = parts.length > 1 ? ` (${datesOf(worst.url) || 'no dates'}, 1 of ${parts.length} requests)` : '';
-        detail = `${worst.detail}${which}`;
+      } else if (wrong) {
+        verdict = wrong.verdict;
+        detail = `${wrong.detail}${which(wrong)}${beside}`;
+      } else if (unseen) {
+        // The adapter had no answer to give, so nothing can be asked of it.
+        // What WAS served is still read: a defect in it is a finding.
+        const served = parts.filter((part) => part.verdict === 'ok');
+        const seen =
+          request === 'standings' ? undefined : (envelopeProblem(served) ?? sentProblem(adapter, served));
+        verdict = seen ? 'changed' : unseen.verdict;
+        detail = seen ? `${seen}${beside}` : `${unseen.detail}${which(unseen)}`;
       } else if (request === 'standings') {
         ({ verdict, detail } = checkStandings(core, parts[0].json, adapter, result, competition));
       } else if (!Array.isArray(result)) {
@@ -502,7 +538,8 @@ export async function runCanary({
         ({ verdict, detail } = checkScoreboard(core, adapter, parts, result));
       }
       const sent = seen[0];
-      if (verdict === 'blocked') throttled = true;
+      // Believed on any part, whatever the row's own verdict turned out to be.
+      if (parts.some((part) => part.verdict === 'blocked')) throttled = true;
       rows.push({ competition, request, url: sent?.url ?? '', requests: seen.length, verdict, detail });
       if (pauseMs > 0 && sent && !throttled) await sleep(pauseMs);
     }
@@ -520,11 +557,11 @@ export function canaryWarnings(result) {
   const unreachable = result.rows.filter((r) => r.verdict === 'unreachable').length;
   if (blocked + unreachable === 0) return [];
   return [
-    `${blocked + unreachable} of ${result.rows.length} requests were not answered (${blocked} blocked, ${unreachable} unreachable): the canary saw nothing of those`,
+    `${blocked + unreachable} of ${result.rows.length} questions were not answered (${blocked} blocked, ${unreachable} unreachable): the canary saw nothing of those`,
   ];
 }
 
-/** A plain-text report: one line per request, then the totals. */
+/** A plain-text report: one line per question (a question can take several requests), then the totals. */
 export function formatCanary(result) {
   const count = (v) => result.rows.filter((r) => r.verdict === v).length;
   const lines = result.rows.map(
@@ -544,7 +581,7 @@ function formatMarkdown(result) {
   return [
     '### ESPN canary',
     '',
-    '| Competition | Request | Verdict | Detail |',
+    '| Competition | Question | Verdict | Detail |',
     '|---|---|---|---|',
     ...result.rows.map((r) => `| \`${r.competition}\` | ${r.request} | ${mark[r.verdict]} ${r.verdict} | ${r.detail} |`),
     '',

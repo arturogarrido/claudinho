@@ -805,24 +805,27 @@ describe('season in the cache', () => {
         expect(state?.fixturesUpdatedAt).toBe(OLD);
       });
 
-      it('an EMPTY slice has nothing to lose: the incomplete answer is taken', async () => {
-        writeState({
-          updatedAt: SEMI_LIVE.toISOString(),
-          live: [],
-          degraded: false,
-          source: 'espn',
-          competition: 'fifa.world',
-          fixtures: [],
-          fixturesUpdatedAt: OLD,
-          fixturesAttemptedAt: OLD,
-        });
-        vi.stubGlobal('fetch', async (url: unknown) =>
-          response({ leagues: [{}], events: /dates=202607(&|$)/.test(String(url)) ? [final, unreadable] : [] }),
-        );
-        await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
-        const state = readState('espn', 'fifa.world');
-        expect(state?.fixtures?.map((m) => m.id)).toEqual(['760517']);
-        expect(state?.fixturesUpdatedAt).toBe(SEMI_LIVE.toISOString());
+      it('a slice with no tie still to be played has nothing to lose: the incomplete answer is taken', async () => {
+        // Empty, or holding only a tie that has kicked off.
+        for (const slice of [[], [played]]) {
+          writeState({
+            updatedAt: SEMI_LIVE.toISOString(),
+            live: [],
+            degraded: false,
+            source: 'espn',
+            competition: 'fifa.world',
+            fixtures: slice,
+            fixturesUpdatedAt: OLD,
+            fixturesAttemptedAt: OLD,
+          });
+          vi.stubGlobal('fetch', async (url: unknown) =>
+            response({ leagues: [{}], events: /dates=202607(&|$)/.test(String(url)) ? [final, unreadable] : [] }),
+          );
+          await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+          const state = readState('espn', 'fifa.world');
+          expect(state?.fixtures?.map((m) => m.id), String(slice.length)).toEqual(['760517']);
+          expect(state?.fixturesUpdatedAt).toBe(SEMI_LIVE.toISOString());
+        }
       });
     });
 

@@ -18,9 +18,17 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
 - **Record refusal is local, not a provider outage.** `ProviderAdapter` returns
   plain arrays. Omit malformed, duplicate, or truncated records while keeping
   readable siblings usable and attributed to the provider. Throw into the
-  degraded path only for transport/JSON failure, or an incomplete payload with
-  no usable records. Parser-local `BoundedList.complete` is diagnostic; never
-  promote one refused record into a batch-wide blackout.
+  degraded path only for transport/JSON failure, an unreadable envelope, or an
+  incomplete payload with no usable records. Parser-local
+  `BoundedList.complete` is diagnostic; never promote one refused record into a
+  batch-wide blackout.
+- **A composed window fails as a whole on what no sibling can stand in for.**
+  `EspnAdapter.fetchWindow` is several responses and one answer. It throws when
+  any part failed, when a part's envelope is unreadable, when parts state two
+  seasons, or when a part filled the request's `limit` (its tail is unknown).
+  A refused record, or one fixture in two parts, leaves the answer
+  `complete: false` (`fetchMeta`). A caller that keeps a previous answer must
+  carry that verdict: an incomplete answer never erases what it did not read.
 - **Both paths end at the same constructor.** Live and cache reads call
   `sealMatch` / `sealMarketSignal`. When they had separate rules, each fix landed
   on one of them; `core/test/trust-parity.test.ts` asserts they agree, as a JSON

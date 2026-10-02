@@ -392,9 +392,11 @@ export class EspnAdapter implements ProviderAdapter {
    *
    * ONE result with ONE account, built in the order the parts were asked for
    * (never the order they arrived in):
-   *   - any part's failure fails the window. If a part was throttled, the
-   *     window's error is a throttle (the one with the latest deadline);
-   *     otherwise it is the first failed part's.
+   *   - any part's failure fails the window. A response whose envelope cannot
+   *     be read is a failed part (see `readScoreboard`), whatever its siblings
+   *     hold. If a part was throttled, the window's error is the throttle the
+   *     adapter retains (the one whose deadline is latest, counted from when
+   *     each was received); otherwise it is the first failed part's.
    *   - parts that state different seasons fail the window. "Unknown" would be
    *     the wrong account of a known disagreement: an absent season lets the
    *     bundled schedule apply, and lets a cached slice from another season
@@ -404,7 +406,10 @@ export class EspnAdapter implements ProviderAdapter {
    *   - it is complete only if every part is.
    *   - a fixture is filed under exactly one day, so two parts cannot hold the
    *     same one. If they ever do, it is the parser's rule for a duplicate:
-   *     the first is kept and the window says it is not complete.
+   *     the first copy, in the order asked, is the one that counts, and the
+   *     window says it is not complete. Copies are compared BEFORE a month is
+   *     narrowed to the window, so a second copy that falls outside it (the
+   *     same id, another kickoff) is still a contradiction.
    * It is a union of responses taken moments apart, not one snapshot: a
    * fixture moved between two parts being answered can be in neither.
    */
@@ -420,10 +425,11 @@ export class EspnAdapter implements ProviderAdapter {
     const settled = await Promise.allSettled(plan.asks.map((dates) => this.readScoreboard(dates)));
     const failures = settled.flatMap((r) => (r.status === 'rejected' ? [r.reason as ProviderError] : []));
     if (failures.length > 0) {
-      const throttles = failures.filter((e) => e instanceof ProviderError && e.throttled);
-      throw throttles.length > 0
-        ? throttles.reduce((a, b) => ((b.retryAfterMs ?? 0) > (a.retryAfterMs ?? 0) ? b : a))
-        : failures[0];
+      const throttle = failures.find((e) => e instanceof ProviderError && e.throttled);
+      // Each throttle armed the cooldown as it was received, and `arm` keeps
+      // the one whose deadline is latest. Comparing the delays each asked for
+      // would pick a 60s received first over a 59s received five seconds later.
+      throw throttle ? (this.cooldownError ?? throttle) : failures[0];
     }
     const parts = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
     // A part that filled its limit lost an unknown tail: later days of the
@@ -443,8 +449,9 @@ export class EspnAdapter implements ProviderAdapter {
       );
     }
     // The window is ONE batch. "A non-empty payload with no readable record is
-    // a failure" is asked of all of it: a day whose only record is unreadable
-    // is a refused record beside readable siblings, not an outage.
+    // a failure" is asked of all of it: a day whose only RECORD is unreadable
+    // is a refused record beside readable siblings, not an outage. (A day
+    // whose envelope is unreadable never gets here: it failed as a part.)
     usableProviderItems<Match>('scoreboard', {
       items: parts.flatMap((part) => part.items),
       total: parts.reduce((n, part) => n + part.total, 0),
@@ -456,16 +463,18 @@ export class EspnAdapter implements ProviderAdapter {
     for (const part of parts) {
       if (!part.complete) complete = false;
       for (const m of part.items) {
-        if (plan.byMonth) {
-          // A month holds more than the window: keep what the window asked for.
-          const day = this.bucketDay(new Date(m.kickoff)).replace(/-/g, '');
-          if (day < start || day > end) continue;
-        }
+        // Identity first, over everything the parts hold: a second copy is a
+        // contradiction wherever its kickoff puts it.
         if (seen.has(m.id)) {
           complete = false;
           continue;
         }
         seen.add(m.id);
+        if (plan.byMonth) {
+          // A month holds more than the window: keep what the window asked for.
+          const day = this.bucketDay(new Date(m.kickoff)).replace(/-/g, '');
+          if (day < start || day > end) continue;
+        }
         fixtures.push(m);
       }
     }
@@ -589,7 +598,9 @@ export class EspnAdapter implements ProviderAdapter {
    * One scoreboard response, parsed, with the parser's account of it. The
    * "a non-empty payload with no readable record is a failure" rule is NOT
    * applied here: it belongs to the whole answer, and a window is one answer
-   * made of several of these.
+   * made of several of these. An unreadable ENVELOPE is refused here, for
+   * every caller: it says nothing about its day, so no sibling can stand in
+   * for it (and a single read of one always was a failure).
    */
   private async readScoreboard(dates?: string): Promise<ScoreboardPart> {
     const url = new URL(`${this.base}/scoreboard`);
@@ -615,6 +626,9 @@ export class EspnAdapter implements ProviderAdapter {
       // in a group: pass none, so codes are consulted.
       ...(Object.keys(groups.byId).length > 0 ? { groupByTeamId: groups.byId } : {}),
     });
+    if (!parsed.readable) {
+      throw new ProviderError('ESPN scoreboard payload had no readable records', 'parse');
+    }
     // What the provider said about THIS response rides on THIS result (see
     // adapters/meta.ts) — never on the adapter, where an overlapping call would
     // overwrite it. An unreadable season is simply absent; it is never guessed.

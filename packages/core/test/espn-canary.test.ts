@@ -454,6 +454,14 @@ describe('found in review: a part that could not be seen does not hide a part th
     expect(windowRow(r)?.detail).toMatch(/unreachable/);
   });
 
+  it('and a served part with no `events` list', async () => {
+    const r = await run((url) =>
+      /dates=20261011(&|$)/.test(url) ? json({}, 503) : /dates=20261009(&|$)/.test(url) ? json({ leagues: [{ season: SEASON }] }) : healthy(url),
+    );
+    expect(windowRow(r)?.verdict).toBe('changed');
+    expect(windowRow(r)?.detail).toMatch(/no `events` list/);
+  });
+
   it('and so is how it files a day', async () => {
     // Filed under the 9th, kicking off on the provider's 10th.
     const misfiled = { leagues: [{ season: SEASON }], events: [event('7', { date: '2026-10-10T15:00Z' })] };

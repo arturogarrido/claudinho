@@ -461,6 +461,15 @@ export interface KnockoutFixturesResult {
    * previous answer must not let this one erase it. Absent or true otherwise.
    */
   complete?: boolean;
+  /**
+   * Stated only with `complete: false`: the id of every fixture this answer
+   * DID read, whatever became of it. `fixtures` holds the ties that are
+   * resolved and still to be played; a tie the provider postponed, cancelled,
+   * started or un-resolved was read and set aside. A caller keeping a previous
+   * answer must ask "was it read?" of this list, not of `fixtures`, or it
+   * puts back what the provider just took away.
+   */
+  mentioned?: readonly string[];
 }
 
 /**
@@ -504,7 +513,7 @@ export async function getKnockoutFixtures(
     fixtures,
     degraded: false,
     ...(meta?.season ? { season: meta.season } : {}),
-    ...(meta?.complete === false ? { complete: false } : {}),
+    ...(meta?.complete === false ? { complete: false, mentioned: live.map((m) => m.id) } : {}),
   };
 }
 
