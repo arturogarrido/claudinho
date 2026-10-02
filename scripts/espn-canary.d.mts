@@ -11,6 +11,7 @@ export interface CanaryResult {
   red: boolean;
 }
 export const CANARY_COMPETITIONS: readonly string[];
+export const STANDING_STATS: readonly string[];
 export function runCanary(options: {
   core: unknown;
   competitions?: readonly string[];

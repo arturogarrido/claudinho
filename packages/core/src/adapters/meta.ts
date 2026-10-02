@@ -18,6 +18,13 @@ import type { SeasonInfo } from '../types';
 export interface FetchMeta {
   /** The season the provider reported for this response, when it stated one. */
   readonly season?: SeasonInfo;
+  /**
+   * Whether the result accounts for every record the provider sent. False when
+   * a record was left out: refused as unreadable, contradicting a sibling under
+   * the same id, or beyond the bound. A record the provider itself marks as not
+   * a fixture is not "left out". Absent when the adapter does not say.
+   */
+  readonly complete?: boolean;
 }
 
 const META = new WeakMap<object, FetchMeta>();

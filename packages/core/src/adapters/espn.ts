@@ -418,7 +418,13 @@ export class EspnAdapter implements ProviderAdapter {
     // adapters/meta.ts) — never on the adapter, where an overlapping call would
     // overwrite it. An unreadable season is simply absent; it is never guessed.
     const season = parsedValue(parseEspnSeason(data));
-    return attachFetchMeta(usableProviderItems<Match>('scoreboard', parsed), season ? { season } : undefined);
+    // So is the parser's own account of the payload: a refused record is
+    // omitted (its readable siblings stay usable), and the result says that it
+    // does not hold everything that was sent.
+    return attachFetchMeta(usableProviderItems<Match>('scoreboard', parsed), {
+      complete: parsed.complete,
+      ...(season ? { season } : {}),
+    });
   }
 
   private async get(url: string): Promise<unknown> {

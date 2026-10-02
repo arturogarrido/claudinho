@@ -18,7 +18,14 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { CANARY_COMPETITIONS, formatCanary, runCanary, STANDING_STATS } from '../../../scripts/espn-canary.mjs';
+import {
+  CANARY_COMPETITIONS,
+  CANARY_QUESTIONS,
+  canaryWarnings,
+  formatCanary,
+  runCanary,
+  STANDING_STATS,
+} from '../../../scripts/espn-canary.mjs';
 import * as core from '../src';
 
 const NOW = new Date('2026-10-10T12:00:00Z');
@@ -118,8 +125,8 @@ describe('a healthy feed', () => {
     expect(r.urls.filter((u) => u.includes('/standings'))).toHaveLength(1);
   });
 
-  it('a competition with no fixtures in the window and no table is still green', async () => {
-    const r = await run((url) => json(url.includes('/standings') ? {} : { leagues: [{ season: SEASON }], events: [] }));
+  it('a competition with no fixtures in the window is still green', async () => {
+    const r = await run((url) => json(url.includes('/standings') ? standings() : { leagues: [{ season: SEASON }], events: [] }));
     expect(r.red).toBe(false);
   });
 });
@@ -426,6 +433,118 @@ describe('found in review: every table shape, every row, every value', () => {
     for (const gone of STANDING_STATS) {
       expect(rows(groupA(STANDING_STATS.filter((n) => n !== gone))), gone).toBe(0);
     }
+  });
+});
+
+describe('found in review: absence is a finding, and the product’s own parser is asked where it claims the tables', () => {
+  const GROUPS = 'ABCDEFGHIJKL'.split('');
+  /** A World Cup shaped payload: one table per lettered group, one team each. */
+  const wcStandings = (groups = GROUPS, over: (row: Record<string, unknown>, group: string) => Record<string, unknown> = (r) => r) => ({
+    children: groups.map((g, i) => ({
+      name: `Group ${g}`,
+      standings: {
+        entries: [
+          over(
+            {
+              team: { id: String(200 + i), abbreviation: `T${g}X`, displayName: `Team ${g}` },
+              stats: STATS.map((n) => ({ name: n, value: n === 'rank' ? 1 : 0 })),
+            },
+            g,
+          ),
+        ],
+      },
+    })),
+  });
+  const wc = async (body: unknown) => {
+    const r = await run((url) => json(url.includes('/standings') ? body : healthyScoreboard), ['fifa.world']);
+    return r.rows.find((x) => x.request === 'standings');
+  };
+
+  it('a payload with no table at all is red: every competition serves one today', async () => {
+    for (const body of [{}, { children: [] }, { children: [{ name: 'Group A', standings: { entries: [] } }] }]) {
+      const r = await run((url) => json(url.includes('/standings') ? body : healthyScoreboard));
+      expect(verdicts(r).standings, JSON.stringify(body)).toBe('changed');
+    }
+  });
+
+  it('the bundled competition’s twelve groups, all read, are green', async () => {
+    const row = await wc(wcStandings());
+    expect(row?.verdict).toBe('ok');
+    expect(row?.detail).toBe('12 row(s) in 12 table(s)');
+  });
+
+  it('a group the adapter expects and does not get is red, though every row sent is well formed', async () => {
+    const row = await wc(wcStandings(GROUPS.filter((g) => g !== 'L')));
+    expect(row?.verdict).toBe('changed');
+    expect(row?.detail).toMatch(/\bL\b/);
+  });
+
+  it('a row the product’s parser refuses is red, though its statistics are all there', async () => {
+    // One win and no points: every statistic present and numeric, and a table
+    // the product would mark partial.
+    const row = await wc(
+      wcStandings(GROUPS, (r, g) =>
+        g === 'C'
+          ? {
+              ...r,
+              stats: STATS.map((n) => ({ name: n, value: n === 'rank' || n === 'wins' || n === 'gamesPlayed' ? 1 : 0 })),
+            }
+          : r,
+      ),
+    );
+    expect(row?.verdict).toBe('changed');
+    expect(row?.detail).toMatch(/Group C|\bC\b/);
+  });
+});
+
+describe('found in review: it asks every request form the adapter has, with the spans the product uses', () => {
+  it('the bundled competition is also asked for its knockout span, the one the bracket and the countdown read', async () => {
+    const r = await run(healthy, ['fifa.world']);
+    expect(r.rows.map((row) => row.request)).toEqual(['live', 'day', 'window', 'knockout', 'standings']);
+    const span = core.knockoutWindow();
+    expect(span).not.toBeNull();
+    expect(r.rows.find((x) => x.request === 'knockout')?.url).toContain(`dates=${span?.start}-${span?.end}`);
+  });
+
+  it('a competition with no bundled bracket is not asked for one', async () => {
+    const r = await run(healthy);
+    expect(r.rows.map((row) => row.request)).toEqual(['live', 'day', 'window', 'standings']);
+  });
+
+  it('a provider that accepts a three-day range and refuses the long one is red', async () => {
+    const span = core.knockoutWindow();
+    const r = await run(
+      (url) =>
+        url.includes(`dates=${span?.start}-${span?.end}`)
+          ? json({ code: 400, message: 'Failed to get events endpoint.' }, 400)
+          : healthy(url),
+      ['fifa.world'],
+    );
+    expect(verdicts(r).window).toBe('ok');
+    expect(verdicts(r).knockout).toBe('rejected');
+    expect(r.red).toBe(true);
+  });
+
+  it('no fetch method of the adapter goes unasked', () => {
+    // A request form added to the adapter (0.11 adds at least one) must be
+    // asked here, or listed below with the reason it is covered.
+    const COVERED_ELSEWHERE: Record<string, string> = {
+      fetchGroupMap: 'the standings request, asked through fetchStandings',
+      fetchScoreboard: 'private: the scoreboard questions all go through it',
+    };
+    const onAdapter = Object.getOwnPropertyNames(core.EspnAdapter.prototype).filter((n) => n.startsWith('fetch'));
+    const asked = new Set(CANARY_QUESTIONS.map((q) => q.method));
+    expect(onAdapter.filter((n) => !asked.has(n) && !(n in COVERED_ELSEWHERE))).toEqual([]);
+    for (const q of CANARY_QUESTIONS) expect(onAdapter, q.method).toContain(q.method);
+  });
+});
+
+describe('found in review: a run that could not see says so', () => {
+  it('blocked and unreachable rows are a warning for the person, not a green silence', async () => {
+    const blocked = await run(() => json({}, 429), ['eng.1', 'esp.1']);
+    expect(canaryWarnings(blocked)).toEqual(['8 of 8 requests were not answered (8 blocked, 0 unreachable): the canary saw nothing of those']);
+    const fine = await run(healthy);
+    expect(canaryWarnings(fine)).toEqual([]);
   });
 });
 

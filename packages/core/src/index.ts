@@ -51,6 +51,7 @@ export type { StandingRow, GroupStandings } from './standings';
 export type { ProviderAdapter, ProviderCapabilities } from './adapters/types';
 export {
   EspnAdapter,
+  MAX_RESPONSE_BYTES,
   mapEspnEvent,
   parseStandings,
   ProviderError,
