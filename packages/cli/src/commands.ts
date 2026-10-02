@@ -18,6 +18,7 @@ import {
   matchShareCard,
   nextShareCard,
   tableShareCard,
+  tableData,
   marketDisplayable,
   verdictExtras,
   verdictNotice,
@@ -547,11 +548,7 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
 
   if (cfg.json) {
     // Preserve the prior JSON shape: { group, standings: StandingRow[] } per table.
-    const json = tables.map((tb) => ({
-      group: tb.group,
-      standings: tb.rows,
-      ...(tb.partial ? { partial: tb.partial } : {}),
-    }));
+    const json = tables.map(tableData);
     emitJson({
       degraded,
       source: source ?? null,
@@ -1290,11 +1287,7 @@ function emitTableCard(
       informationalOnly: true,
       snippet,
       // The structured card keeps the verdict the snippet warns about (A01).
-      tables: card.input.tables.map((tb) => ({
-        group: tb.group,
-        standings: tb.rows,
-        ...(tb.partial ? { partial: tb.partial } : {}),
-      })),
+      tables: card.tables,
     },
     copy,
   );

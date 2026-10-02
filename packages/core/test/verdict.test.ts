@@ -29,6 +29,7 @@ import {
 } from '../src/share/cards';
 import type { MarketSignal } from '../src/markets/types';
 import type { Match } from '../src/types';
+import { tableData } from '../src/standings';
 import { verdictExtras, verdictNotice } from '../src/verdict';
 
 const PACKAGES = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -179,7 +180,21 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
     const table = (group: string) => ({ group, rows: [] });
     const result = { tables: [table('A'), table('B')], degraded: false, source: 'espn' };
     expect(tableShareCard(result, undefined).input.tables).toHaveLength(2);
-    expect(tableShareCard(result, undefined, [table('A')]).input.tables).toEqual([table('A')]);
+    const bounded = tableShareCard(result, undefined, [table('A')]);
+    expect(bounded.input.tables).toEqual([table('A')]);
+    expect(bounded.tables).toEqual([{ group: 'A', standings: [] }]);
+  });
+
+  it('a table: the structured form keeps the verdict a partial table carries', () => {
+    const whole = { group: 'A', rows: [] };
+    const partial = { group: 'B', rows: [], partial: { omitted: 2 } };
+    expect(tableData(whole)).toEqual({ group: 'A', standings: [] });
+    expect(tableData(partial)).toEqual({ group: 'B', standings: [], partial: { omitted: 2 } });
+    const card = tableShareCard({ tables: [whole, partial], degraded: false, source: 'espn' }, undefined);
+    expect(card.tables).toEqual([
+      { group: 'A', standings: [] },
+      { group: 'B', standings: [], partial: { omitted: 2 } },
+    ]);
   });
 
   it('a bracket: the unsupported verdict rides on the card', () => {
@@ -225,6 +240,12 @@ describe('one definition of each rule the two surfaces used to copy', () => {
   it('no surface forwards a verdict by hand', () => {
     // The pattern that was copied to every emit site, and forgotten at some.
     const byHand = /unsupported\s*\?\s*\{\s*unsupported:\s*true\s*\}/;
+    expect(hits('cli', byHand)).toEqual([]);
+    expect(hits('mcp', byHand)).toEqual([]);
+  });
+
+  it('no surface writes out a table’s structured form, or its `partial` verdict, itself', () => {
+    const byHand = /partial\s*\?\s*\{\s*partial\b/;
     expect(hits('cli', byHand)).toEqual([]);
     expect(hits('mcp', byHand)).toEqual([]);
   });

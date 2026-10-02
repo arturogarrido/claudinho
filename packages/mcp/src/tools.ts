@@ -18,6 +18,7 @@ import {
   matchShareCard,
   nextShareCard,
   tableShareCard,
+  tableData,
   marketDisplayable,
   type MatchShareCard,
   verdictExtras,
@@ -445,11 +446,7 @@ export async function toolGetStandings(
 
   // Preserve the structured shape: { group, standings: StandingRow[] }.
   const boundedTables = boundedRecords(tables);
-  const shaped = boundedTables.items.map((tb) => ({
-    group: tb.group,
-    standings: tb.rows,
-    ...(tb.partial ? { partial: tb.partial } : {}),
-  }));
+  const shaped = boundedTables.items.map(tableData);
 
   if (shaped.length === 0) {
     const g = args.group?.toUpperCase();
@@ -875,11 +872,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         informationalOnly: true,
         snippet,
         // The structured card keeps the verdict the snippet warns about (A01).
-        tables: card.input.tables.map((tb) => ({
-          group: tb.group,
-          standings: tb.rows,
-          ...(tb.partial ? { partial: tb.partial } : {}),
-        })),
+        tables: card.tables,
       },
     };
   }

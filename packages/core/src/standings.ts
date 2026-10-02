@@ -34,6 +34,27 @@ export interface GroupStandings {
   partial?: { omitted: number };
 }
 
+/** A table as every surface's structured output states it. */
+export interface TableData {
+  group: string;
+  standings: StandingRow[];
+  partial?: { omitted: number };
+}
+
+/**
+ * A table's structured form: `--json`, MCP `data` and both share cards. ONE
+ * mapping, because it carries a verdict (`partial`: rows were left out, so the
+ * table confirms nothing). It was written out at four emit sites, and the two
+ * share ones had already dropped `partial` once (review of #126).
+ */
+export function tableData(table: GroupStandings): TableData {
+  return {
+    group: table.group,
+    standings: table.rows,
+    ...(table.partial ? { partial: table.partial } : {}),
+  };
+}
+
 function blankRow(team: Team): StandingRow {
   return {
     team,

@@ -19,7 +19,7 @@ import type { BracketResult } from '../bracket/types';
 import { t } from '../i18n';
 import type { LiveResult, MatchByIdResult, NextFixtureResult, StandingsResult } from '../live';
 import type { MarketSignal } from '../markets/types';
-import type { GroupStandings } from '../standings';
+import { type GroupStandings, type TableData, tableData } from '../standings';
 import { formatDate } from '../time';
 import type { Match } from '../types';
 import { type VerdictExtras, verdictExtras, verdictNotice } from '../verdict';
@@ -193,6 +193,8 @@ export interface TableShareCard {
   /** Null when degraded: a roster served by no provider is attributed to none. */
   source: string | undefined;
   degraded: boolean;
+  /** The card's tables in structured form, each with the verdict it carries. */
+  tables: TableData[];
 }
 
 export function tableShareCard(
@@ -208,6 +210,7 @@ export function tableShareCard(
     ...(group ? { group } : {}),
     source,
     degraded: result.degraded,
+    tables: tables.map(tableData),
     input: {
       tables,
       source,
