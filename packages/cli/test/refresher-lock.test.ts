@@ -24,6 +24,8 @@ import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let onClaim: (() => void) | undefined;
+/** While true, every publish is refused (the lease was lost), as `publishState` reports it. */
+let refusePublish = false;
 vi.mock('../src/cache', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../src/cache')>();
   return {
@@ -34,6 +36,7 @@ vi.mock('../src/cache', async (importOriginal) => {
       hook?.();
       return mod.claimLock(...args);
     },
+    publishState: (...args: Parameters<typeof mod.publishState>) => (refusePublish ? false : mod.publishState(...args)),
   };
 });
 
@@ -98,6 +101,7 @@ beforeEach(() => {
   process.env.XDG_CACHE_HOME = dir;
   requests = [];
   onClaim = undefined;
+  refusePublish = false;
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -571,5 +575,98 @@ describe('found in review', () => {
     await runRefresh({ source: 'nope', competition: WC, now: quiet, jitterMs: 0 });
     expect(requests).toEqual([]);
     expect(readState('nope', WC)?.updatedAt).toBe(theirs.updatedAt); // the other one's, not overwritten
+  });
+});
+
+describe('found in review, round 2', () => {
+  const nowMs = OPENER_LIVE.getTime();
+  const POSIX = process.platform !== 'win32';
+  const throttledCommand = (retryAfter: string) =>
+    withPersistedBackoff(
+      new EspnAdapter({
+        competition: WC,
+        enrichGroups: false,
+        now: () => nowMs,
+        fetchImpl: (async () => throttle(retryAfter)) as unknown as typeof fetch,
+      }),
+      SOURCE,
+      OPENER_LIVE,
+    );
+
+  it('a COMMAND that gets the lock and whose publish is then refused leaves its throttle in the note', async () => {
+    // The refresher's refused publish was given the note; the command's was
+    // not. A throttle that arrives late (after the command's own call
+    // returned) has no "next chance": it must be placed when it is met.
+    writeState(stale(OPENER_LIVE));
+    refusePublish = true;
+    await expect(throttledCommand('600').fetchByDate('2026-06-11')).rejects.toMatchObject({ status: 429 });
+    refusePublish = false;
+    expect(readState(SOURCE, WC)?.backoffUntil).toBeUndefined();
+    expect(readBackoffNote(SOURCE, WC, nowMs)).toBe(nowMs + 600_000);
+  });
+
+  it('a command under the lock keeps a LONGER deadline that is in the note, like every writer', async () => {
+    // It compared its throttle with the snapshot's deadline only.
+    writeState(stale(OPENER_LIVE));
+    const command = throttledCommand('600'); // wrapped before the note exists: not pre-armed
+    writeBackoffNote(SOURCE, WC, nowMs + 20 * MIN, nowMs);
+    await expect(command.fetchByDate('2026-06-11')).rejects.toBeDefined();
+    expect(Date.parse(readState(SOURCE, WC)?.backoffUntil ?? '')).toBe(nowMs + 20 * MIN);
+  });
+
+  it.skipIf(!POSIX || process.getuid?.() === 0)('a throttle written into a snapshot nobody can read is not "persisted": it goes to the note', async () => {
+    // The snapshot-side twin of the unreadable note: an atomic write keeps the
+    // mode of the file it replaces, so the deadline is on disk and invisible,
+    // and the next command asks the provider inside the backoff.
+    writeState(stale(OPENER_LIVE));
+    chmodSync(cachePath(SOURCE, WC), 0o000);
+    try {
+      await expect(throttledCommand('600').fetchByDate('2026-06-11')).rejects.toBeDefined();
+      expect(inEffect(nowMs + 1000)).toBe(nowMs + 600_000);
+      requests = [];
+      const next = withPersistedBackoff(
+        new EspnAdapter({
+          competition: WC,
+          enrichGroups: false,
+          now: () => nowMs + 30_000,
+          fetchImpl: (async (input: unknown) => {
+            requests.push(String(input));
+            return answer();
+          }) as unknown as typeof fetch,
+        }),
+        SOURCE,
+        new Date(nowMs + 30_000),
+      );
+      await expect(next.fetchByDate('2026-06-11')).rejects.toBeDefined();
+      expect(requests).toEqual([]);
+    } finally {
+      chmodSync(cachePath(SOURCE, WC), 0o600);
+    }
+  });
+
+  it.skipIf(!POSIX || process.getuid?.() === 0)('the refresher too: a throttle published into a snapshot nobody can read goes to the note', async () => {
+    writeState(stale(OPENER_LIVE));
+    chmodSync(cachePath(SOURCE, WC), 0o000);
+    try {
+      provider(() => throttle('600'));
+      await refresh(OPENER_LIVE);
+      expect(inEffect(nowMs + 20_000) ?? 0).toBeGreaterThanOrEqual(nowMs + 600_000);
+    } finally {
+      chmodSync(cachePath(SOURCE, WC), 0o600);
+    }
+  });
+
+  it('the refresher’s publish, the other way round: its own longer throttle beats a shorter note', async () => {
+    // A3 pinned a longer note against a shorter throttle only: a publish that
+    // kept the CARRIED deadline whatever came passed it.
+    writeState(stale(OPENER_LIVE));
+    provider(() => {
+      writeBackoffNote(SOURCE, WC, nowMs + MIN, nowMs);
+      return throttle('600');
+    });
+    await refresh(OPENER_LIVE);
+    const until = Date.parse(readState(SOURCE, WC)?.backoffUntil ?? '');
+    expect(until).toBeGreaterThanOrEqual(nowMs + 600_000);
+    expect(until).toBeLessThanOrEqual(nowMs + 30 * MIN);
   });
 });
