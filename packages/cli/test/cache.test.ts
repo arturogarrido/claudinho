@@ -106,6 +106,9 @@ describe('cache state', () => {
       { ...valid, source: '../espn' },
       { ...valid, competition: '' },
       { ...valid, fixtures: {} },
+      { ...valid, schedule: 'x' },
+      { ...valid, schedule: [] },
+      { ...valid, schedule: null },
     ]) {
       fs.writeFileSync(cachePath(), JSON.stringify(malformed));
       expect(readState(), JSON.stringify(malformed)).toBeUndefined();
