@@ -4,19 +4,11 @@
  * and fast. Writes are atomic (tmp + rename) so a reader never sees a partial
  * file. A lockfile serializes refreshers to prevent stampedes.
  */
-import {
-  closeSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeSync,
-} from 'node:fs';
+import { closeSync, mkdirSync, openSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_COMPETITION, type Match, type SeasonInfo } from '@claudinho/core';
 import { randomBytes } from 'node:crypto';
-import { cacheDir, readSmallFile, writeFileAtomic } from './paths';
+import { cacheDir, lookAtSmallFile, readSmallFile, writeFileAtomic } from './paths';
 
 export { cacheDir } from './paths';
 
@@ -383,40 +375,48 @@ export function fixturesAgeMs(state: CacheState | undefined, now = Date.now()): 
   return stampAgeMs(state?.fixturesUpdatedAt, now);
 }
 
-/** The file is not there (as opposed to there and unreadable). */
-function isAbsent(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+/**
+ * A lock is `<pid> <stamp> <nonce>` (a few dozen bytes): far below this. It is
+ * read on every prompt (`isLockFresh`), through the one reader of kept files.
+ */
+const MAX_LOCK_BYTES = 256;
+
+/** The age of an epoch-ms instant, through `stampAgeMs`; Infinity if it is no instant at all. */
+function epochAgeMs(ms: number, now: number): number {
+  const at = new Date(ms);
+  // Beyond the range of a date: further from now than any stamp can be, so
+  // stale, like a stamp in the future. (`toISOString` would throw.)
+  return Number.isNaN(at.getTime()) ? Infinity : stampAgeMs(at.toISOString(), now);
 }
 
 /**
- * Age of the lock in ms, or `undefined` when there is NO lock (the file is
- * gone). Uses the timestamp written *inside* the lock (authoritative —
- * survives copies/touch) and falls back to the file mtime. A lock that is
- * there but cannot be judged is Infinity: stale. "Absent" and "stale" are
+ * Age of the lock in ms, or `undefined` when there is NO lock (nothing at the
+ * path). Read through ONE descriptor, without waiting: the hot path asks this
+ * on every prompt, and a pipe at the lock's path used to block it for ever.
+ * Uses the timestamp written *inside* the lock (authoritative — survives
+ * copies/touch) and falls back to the mtime of the same open file. A lock
+ * that is there but cannot be judged (a pipe, a directory, no permission,
+ * larger than `MAX_LOCK_BYTES`) is Infinity: stale. "Absent" and "stale" are
  * different answers because `claimLock` must not remove a lock that is absent.
+ *
+ * Intended change (0.11 2.6a): a junk lock LARGER than the bound used to be
+ * read whole and judged by its mtime (fresh for a minute after it was
+ * written); it is now unreadable, so stale, and taken over.
  */
 function lockAgeMs(now = Date.now()): number | undefined {
-  const lp = lockPath();
-  let contents: string;
-  try {
-    contents = readFileSync(lp, 'utf8');
-  } catch (e) {
-    return isAbsent(e) ? undefined : Infinity;
-  }
-  const written = Number.parseInt(contents.split(/\s+/)[1] ?? '', 10);
+  const lock = lookAtSmallFile(lockPath(), MAX_LOCK_BYTES);
+  if (lock.kind === 'absent') return undefined;
+  if (lock.kind === 'unreadable') return Infinity;
+  const written = Number.parseInt(lock.bytes.toString('utf8').split(/\s+/)[1] ?? '', 10);
   // Through the shared guard: a lock written in the future never went stale,
   // so it held the refresher silent forever.
-  if (Number.isFinite(written)) return stampAgeMs(new Date(written).toISOString(), now);
+  if (Number.isFinite(written)) return epochAgeMs(written, now);
   // Lock exists but its content is unparseable — fall back to mtime, THROUGH
   // the same guard. Bypassing it here meant an unreadable lock dated 2099 was
   // permanently fresh and never released: `isLockFresh()` true and
   // `acquireLock()` false, forever. Third time a timestamp fix has missed a
   // sibling, which is why every one of them now routes through `stampAgeMs`.
-  try {
-    return stampAgeMs(new Date(statSync(lp).mtimeMs).toISOString(), now);
-  } catch (e) {
-    return isAbsent(e) ? undefined : Infinity;
-  }
+  return epochAgeMs(lock.mtimeMs, now);
 }
 
 /** True if a refresher currently holds a non-stale lock. */
@@ -435,12 +435,9 @@ export type LockToken = string;
 /** The token this process last acquired through the no-argument API. */
 let heldToken: LockToken | undefined;
 
+/** The token in the lock file, read like its age (one descriptor, bounded, never waits). */
 function readLockToken(): string | undefined {
-  try {
-    return readFileSync(lockPath(), 'utf8').trim();
-  } catch {
-    return undefined;
-  }
+  return readSmallFile(lockPath(), MAX_LOCK_BYTES)?.toString('utf8').trim();
 }
 
 function writeExclusive(lp: string, token: LockToken): boolean {

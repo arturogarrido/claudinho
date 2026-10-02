@@ -3,8 +3,9 @@
  * cache directory (previously duplicated across cache/marketCache/starNudge),
  * an atomic write for files a reader may observe mid-write (cache snapshots,
  * ~/.claude settings) — tmp + rename on the same filesystem, so a crash can
- * abandon a .tmp but never leave a truncated target — and a bounded read for a
- * small file the hot path reads.
+ * abandon a .tmp but never leave a truncated target — and the one bounded,
+ * non-blocking read for every file the CLI keeps (the snapshot, the throttle
+ * note, the refresh lock, the market cache, the run counter).
  */
 import { randomBytes } from 'node:crypto';
 import {
@@ -45,10 +46,27 @@ export function cacheDir(): string {
 const READ_FLAGS = constants.O_RDONLY | (constants.O_NONBLOCK ?? 0);
 
 /**
- * The contents of a small regular file, read through ONE descriptor and never
- * more than `maxBytes + 1` bytes of it; `undefined` when there is no such file
- * (absent, not a regular file, larger than `maxBytes`, grown since it was
- * checked, unreadable). Never throws, never waits.
+ * What one look at a small file found: its bytes and its mtime (both from the
+ * one open file), or that NOTHING is at the path, or that something is there
+ * that cannot be read as such a file. The last two differ for a caller that
+ * must not remove what is absent and must take over what it cannot judge (the
+ * refresh lock).
+ */
+export type SmallFile =
+  | { kind: 'read'; bytes: Buffer; mtimeMs: number }
+  | { kind: 'absent' }
+  | { kind: 'unreadable' };
+
+const ABSENT: SmallFile = { kind: 'absent' };
+const UNREADABLE: SmallFile = { kind: 'unreadable' };
+
+/**
+ * Read a small regular file through ONE descriptor, never more than
+ * `maxBytes + 1` bytes of it. `absent` when the open finds nothing (ENOENT);
+ * `unreadable` for anything else that is not a regular file of at most
+ * `maxBytes` (a pipe, a directory, too large, grown since it was checked, no
+ * permission). Never throws, never waits. The ONE implementation for every
+ * file the CLI keeps; `readSmallFile` is its bytes-or-nothing form.
  *
  * A check by path followed by a read by path is two looks at what may be two
  * files: between them the path can become a pipe (the read then blocks the
@@ -58,12 +76,16 @@ const READ_FLAGS = constants.O_RDONLY | (constants.O_NONBLOCK ?? 0);
  * grew in place after it was checked is being written by someone who does not
  * replace it atomically, and is not read further.
  */
-export function readSmallFile(path: string, maxBytes: number): Buffer | undefined {
+export function lookAtSmallFile(path: string, maxBytes: number): SmallFile {
   let fd: number | undefined;
   try {
-    fd = openSync(path, READ_FLAGS);
+    try {
+      fd = openSync(path, READ_FLAGS);
+    } catch (e) {
+      return (e as NodeJS.ErrnoException | undefined)?.code === 'ENOENT' ? ABSENT : UNREADABLE;
+    }
     const info = fstatSync(fd);
-    if (!info.isFile() || info.size > maxBytes) return undefined;
+    if (!info.isFile() || info.size > maxBytes) return UNREADABLE;
     const buf = Buffer.alloc(info.size + 1);
     let total = 0;
     while (total < buf.length) {
@@ -71,9 +93,10 @@ export function readSmallFile(path: string, maxBytes: number): Buffer | undefine
       if (n === 0) break;
       total += n;
     }
-    return total > info.size ? undefined : buf.subarray(0, total);
+    if (total > info.size) return UNREADABLE;
+    return { kind: 'read', bytes: buf.subarray(0, total), mtimeMs: info.mtimeMs };
   } catch {
-    return undefined;
+    return UNREADABLE;
   } finally {
     if (fd !== undefined) {
       try {
@@ -83,6 +106,15 @@ export function readSmallFile(path: string, maxBytes: number): Buffer | undefine
       }
     }
   }
+}
+
+/**
+ * The contents of a small regular file (see `lookAtSmallFile`), or `undefined`
+ * when there is no such file, whatever the reason. Never throws, never waits.
+ */
+export function readSmallFile(path: string, maxBytes: number): Buffer | undefined {
+  const file = lookAtSmallFile(path, maxBytes);
+  return file.kind === 'read' ? file.bytes : undefined;
 }
 
 export interface AtomicWriteOptions {

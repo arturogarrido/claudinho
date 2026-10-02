@@ -6,9 +6,8 @@
  * suppressible with CLAUDINHO_NO_STAR. Everything here is best-effort and never
  * throws — a CTA must never break or slow a command.
  */
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cacheDir, writeFileAtomic } from './paths';
+import { cacheDir, readSmallFile, writeFileAtomic } from './paths';
 
 /** Canonical repo URL — the single place every star CTA points to. */
 export const REPO_URL = 'https://github.com/arturogarrido/claudinho';
@@ -18,6 +17,9 @@ const NUDGE_EVERY = 5;
 function counterPath(): string {
   return join(cacheDir(), 'runs.json');
 }
+
+/** The counter is `{"count":N}`: far below this, whatever N is. */
+const MAX_COUNTER_BYTES = 64;
 
 /** Show the star nudge on every Nth interactive run. Pure → unit-testable. */
 export function shouldNudge(runCount: number, every: number = NUDGE_EVERY): boolean {
@@ -33,8 +35,11 @@ export function bumpRunCount(path: string = counterPath()): number | undefined {
   try {
     let count = 0;
     try {
-      const raw = JSON.parse(readFileSync(path, 'utf8')) as { count?: number };
-      if (typeof raw.count === 'number' && Number.isFinite(raw.count)) count = raw.count;
+      // The one reader of kept files: one descriptor, bounded, never waits.
+      // Missing, oversized or not a file reads as no counter.
+      const bytes = readSmallFile(path, MAX_COUNTER_BYTES);
+      const raw = bytes ? (JSON.parse(bytes.toString('utf8')) as { count?: number } | null) : undefined;
+      if (typeof raw?.count === 'number' && Number.isFinite(raw.count)) count = raw.count;
     } catch {
       count = 0; // missing/corrupt → start fresh
     }

@@ -10,7 +10,6 @@
  * appear as kickoff approaches). Best-effort + tolerant: a corrupt/absent file
  * reads as empty, and writes never throw.
  */
-import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { stampAgeMs } from './cache';
 import {
@@ -19,7 +18,7 @@ import {
   parsedValue,
   type MarketSignal,
 } from '@claudinho/core';
-import { cacheDir, writeFileAtomic } from './paths';
+import { cacheDir, readSmallFile, writeFileAtomic } from './paths';
 
 const POSITIVE_TTL_MS = 10 * 60_000;
 const NEGATIVE_TTL_MS = 3 * 60_000;
@@ -53,11 +52,9 @@ function cachePath(): string {
  */
 function readFile(): { source: unknown; competition: unknown; entries: unknown } | undefined {
   try {
-    const path = cachePath();
-    const info = statSync(path);
-    if (!info.isFile() || info.size > MAX_MARKET_CACHE_BYTES) return undefined;
-    const bytes = readFileSync(path);
-    if (bytes.byteLength > MAX_MARKET_CACHE_BYTES) return undefined;
+    // The one reader of kept files: one descriptor, bounded, never waits.
+    const bytes = readSmallFile(cachePath(), MAX_MARKET_CACHE_BYTES);
+    if (!bytes) return undefined;
     const parsed: unknown = JSON.parse(bytes.toString('utf8'));
     if (!parsed || typeof parsed !== 'object') return undefined;
     return parsed as { source: unknown; competition: unknown; entries: unknown };
