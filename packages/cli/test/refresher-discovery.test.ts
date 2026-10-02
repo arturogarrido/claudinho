@@ -20,6 +20,9 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let failPublish = 0;
+/** The n-th publish of a cycle THROWS (a failed atomic write); 0 for none. */
+let throwPublishAt = 0;
+let publishes = 0;
 /** Runs once, at the moment a refresher asks for the lock: what another process did since its first look. */
 let onClaim: (() => void) | undefined;
 vi.mock('../src/cache', async (importOriginal) => {
@@ -33,6 +36,8 @@ vi.mock('../src/cache', async (importOriginal) => {
       return mod.claimLock(...args);
     },
     publishState: (...args: Parameters<typeof mod.publishState>) => {
+      publishes++;
+      if (throwPublishAt > 0 && publishes === throwPublishAt) throw new Error('the write failed');
       if (failPublish > 0) {
         failPublish--;
         return false;
@@ -138,6 +143,8 @@ beforeEach(() => {
   onRequest = undefined;
   asked = [];
   failPublish = 0;
+  throwPublishAt = 0;
+  publishes = 0;
   onClaim = undefined;
   vi.stubGlobal('fetch', async (input: unknown) => {
     const url = String(input);
@@ -464,6 +471,24 @@ describe('discovery has its own cadence, anchored on the latest attempt', () => 
     expect(s?.schedule?.probe).toBeUndefined();
     // The provider is left alone for the floor every throttle gets.
     expect(Date.parse(s?.backoffUntil ?? '')).toBeGreaterThanOrEqual(NOW + 5 * MIN);
+  });
+
+  it('a throttled discovery whose FINAL publish throws (a failed atomic write) still leaves the throttle in the note', async () => {
+    // Found in review: the throttle was settled only after a publish that
+    // RETURNED. One that threw ended the cycle with the attempt on disk and no
+    // deadline anywhere, and the next cycle asked the provider inside its
+    // cooldown. The attempt's pre-write is the first publish; the final one is
+    // the second.
+    const before = fresh(NOW, [entry('1', NOW - 20 * MIN)], { failures: 1 }, 61 * MIN);
+    seed(NOW, before);
+    failing = (d) => (d.length === 6 ? json({}, 429, { 'retry-after': '600' }) : undefined);
+    throwPublishAt = 2;
+    await expect(refresh(NOW)).resolves.toBeUndefined();
+    expect(asked).toEqual(['202610']);
+    expect(wanted(NOW + 1000)).toBe(false);
+    asked = [];
+    await refresh(NOW + MIN);
+    expect(asked).toEqual([]);
   });
 
   it('a THROTTLED discovery is not a failure: no probe, no count, and it is due again when the backoff ends', async () => {

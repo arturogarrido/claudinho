@@ -26,6 +26,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 let onClaim: (() => void) | undefined;
 /** While true, every publish is refused (the lease was lost), as `publishState` reports it. */
 let refusePublish = false;
+/** While true, every publish THROWS (a failed atomic write), as `writeState` does. */
+let throwPublish = false;
 vi.mock('../src/cache', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../src/cache')>();
   return {
@@ -36,7 +38,10 @@ vi.mock('../src/cache', async (importOriginal) => {
       hook?.();
       return mod.claimLock(...args);
     },
-    publishState: (...args: Parameters<typeof mod.publishState>) => (refusePublish ? false : mod.publishState(...args)),
+    publishState: (...args: Parameters<typeof mod.publishState>) => {
+      if (throwPublish) throw new Error('the write failed');
+      return refusePublish ? false : mod.publishState(...args);
+    },
   };
 });
 
@@ -104,6 +109,7 @@ beforeEach(() => {
   requests = [];
   onClaim = undefined;
   refusePublish = false;
+  throwPublish = false;
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -663,6 +669,33 @@ describe('found in review, round 2', () => {
     refusePublish = false;
     expect(readState(SOURCE, WC)?.backoffUntil).toBeUndefined();
     expect(readBackoffNote(SOURCE, WC, nowMs)).toBe(nowMs + 600_000);
+  });
+
+  it('a COMMAND whose publish THROWS (a failed atomic write) still leaves its throttle in the note, and still reports the throttle', async () => {
+    // Found in review, round 4 of the discovery change: a publish that THROWS
+    // (the rename of an atomic write can) is not a publish that was refused;
+    // nothing after it ran, the lock was released, and the throttle went
+    // nowhere. The command's own error stays the provider's throttle.
+    writeState(stale(OPENER_LIVE));
+    throwPublish = true;
+    await expect(throttledCommand('600').fetchByDate('2026-06-11')).rejects.toMatchObject({ status: 429 });
+    throwPublish = false;
+    expect(readState(SOURCE, WC)?.backoffUntil).toBeUndefined();
+    expect(readBackoffNote(SOURCE, WC, nowMs)).toBe(nowMs + 600_000);
+  });
+
+  it('a REFRESHER whose final publish THROWS still leaves the throttle it met in the note, and ends like any cycle', async () => {
+    writeState(stale(OPENER_LIVE));
+    provider(() => throttle('600'));
+    throwPublish = true;
+    await expect(refresh(OPENER_LIVE)).resolves.toBeUndefined();
+    throwPublish = false;
+    expect(readState(SOURCE, WC)?.backoffUntil).toBeUndefined();
+    expect(inEffect(nowMs + 20_000) ?? 0).toBeGreaterThanOrEqual(nowMs + 600_000);
+    expect(shouldRefresh(nowMs + 20_000, readCurrentState(SOURCE, WC), WC, SOURCE)).toBe(false);
+    requests = [];
+    await refresh(new Date(nowMs + 20_000));
+    expect(requests).toEqual([]);
   });
 
   it('a command under the lock keeps a LONGER deadline that is in the note, like every writer', async () => {
