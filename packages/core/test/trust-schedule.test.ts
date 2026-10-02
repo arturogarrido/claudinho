@@ -21,9 +21,11 @@ const match = (over: Partial<Match> = {}): Match =>
 describe('a schedule entry', () => {
   it('is a fixture’s id, its kickoff, and whether it has a live window', () => {
     expect(scheduleEntryOf(match())).toEqual({ id: '760415', kickoff: '2026-10-10T14:00:00.000Z', on: true });
-    for (const status of ['LIVE', 'HT', 'FT'] as const) expect(scheduleEntryOf(match({ status }))?.on, status).toBe(true);
-    // A postponed or cancelled fixture is known, and opens no window.
-    for (const status of ['POSTPONED', 'CANCELLED'] as const) expect(scheduleEntryOf(match({ status }))?.on, status).toBe(false);
+    for (const status of ['SCHEDULED', 'LIVE', 'HT'] as const) expect(scheduleEntryOf(match({ status }))?.on, status).toBe(true);
+    // A postponed or cancelled fixture is known, and opens no window. Nor does
+    // one the provider says is FINISHED: nothing is left to poll for (found in
+    // review: its window stayed open, and the statusline called it "live").
+    for (const status of ['POSTPONED', 'CANCELLED', 'FT'] as const) expect(scheduleEntryOf(match({ status }))?.on, status).toBe(false);
   });
 
   it('a fixture without an id or an instant has no entry', () => {

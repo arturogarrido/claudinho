@@ -15,6 +15,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { EspnAdapter } from '../src/adapters/espn';
+import { attachFetchMeta } from '../src/adapters/meta';
 import { getLiveMatches, getLiveRead, getScheduleAhead, SCHEDULE_AHEAD_DAYS, SCHEDULE_LOOKBACK_DAYS } from '../src/live';
 import type { ProviderAdapter } from '../src/adapters/types';
 
@@ -359,10 +360,25 @@ describe('an answer that is not whole says so, and says what it READ', () => {
       capabilities: {},
       fetchByDate: async () => [],
       fetchLive: async () => [],
-      fetchWindow: async () => [{ id: '70', kickoff: 'soon' }],
+      // The adapter SAYS its answer is whole, so only the kickoff can make it not so.
+      // (Found in review: with no such statement the "says nothing" rule refused first and hid this one.)
+      fetchWindow: async () => attachFetchMeta([{ id: '70', kickoff: 'soon' }] as never[], { complete: true }),
     } as unknown as ProviderAdapter;
     const r = await getScheduleAhead(odd, now);
     expect(r).toMatchObject({ fixtures: [], degraded: false, complete: false });
+  });
+
+  it('what a month’s own window read and set aside is part of what the answer read', async () => {
+    // A month's response holding a fixture filed under ANOTHER month's day: the
+    // window sets it aside and says so (`mentioned`). The discovery's account
+    // must include it, or a union would put back a fixture that was read.
+    const stray = event({ id: '99', date: '2026-10-20T23:00Z' }); // in November's answer, an October day
+    const refused = { id: 'not an id', date: '2026-11-03T23:00Z' };
+    const f = feed([oct, nov], { extra: (d) => (d === '202611' ? [stray, refused] : []) });
+    const r = await getScheduleAhead(adapterOn(f, now), now);
+    expect(r.complete).toBe(false);
+    expect(ids(r.fixtures)).toEqual(['51', '52']);
+    expect([...(r.mentioned ?? [])].sort()).toEqual(['51', '52', '99']);
   });
 
   it('an adapter that states nothing about its answer cannot be called whole', async () => {

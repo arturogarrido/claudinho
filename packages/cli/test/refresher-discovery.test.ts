@@ -19,10 +19,18 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let failPublish = 0;
+/** Runs once, at the moment a refresher asks for the lock: what another process did since its first look. */
+let onClaim: (() => void) | undefined;
 vi.mock('../src/cache', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../src/cache')>();
   return {
     ...mod,
+    claimLock: (...args: Parameters<typeof mod.claimLock>) => {
+      const hook = onClaim;
+      onClaim = undefined;
+      hook?.();
+      return mod.claimLock(...args);
+    },
     publishState: (...args: Parameters<typeof mod.publishState>) => {
       if (failPublish > 0) {
         failPublish--;
@@ -129,6 +137,7 @@ beforeEach(() => {
   onRequest = undefined;
   asked = [];
   failPublish = 0;
+  onClaim = undefined;
   vi.stubGlobal('fetch', async (input: unknown) => {
     const url = String(input);
     const dates = new URL(url).searchParams.get('dates') ?? '';
@@ -651,6 +660,63 @@ describe('what is read back from the cache is input', () => {
     asked = [];
     await refresh(k65 + MIN);
     expect(days()).toHaveLength(3);
+  });
+});
+
+describe('rules the first mutation pass could not see (found by a reviewer’s own pass)', () => {
+  it('the decision is made again under the lock: another refresher discovered and read live in between, and nothing is asked', async () => {
+    events = [{ id: '1', at: NOW - 10 * MIN, state: 'in' }];
+    seed(NOW, fresh(NOW, [entry('1', NOW - 10 * MIN)], {}, 61 * MIN)); // discovery due, a window open, a stale live slice
+    onClaim = () => seed(NOW, fresh(NOW, [entry('1', NOW - 10 * MIN)], {}, 0), {}, 1000);
+    await refresh(NOW);
+    expect(asked).toEqual([]);
+  });
+
+  it('a cycle that only reads live carries the schedule’s display records through', async () => {
+    events = [{ id: '1', at: NOW - 10 * MIN, state: 'in' }];
+    await refresh(NOW - HOUR + MIN); // a first cycle: discovers (the fixture is 49 minutes away then)
+    const before = state()?.schedule?.fixtures?.map((m) => m.id);
+    expect(before).toEqual(['1']);
+    asked = [];
+    await refresh(NOW); // not due to discover again; the window is open
+    expect(months()).toEqual([]);
+    expect(days()).toHaveLength(3);
+    expect(state()?.schedule?.fixtures?.map((m) => m.id)).toEqual(['1']);
+  });
+
+  it('no snapshot and a throttle in the note: the first snapshot says so, off the bundle too', async () => {
+    writeBackoffNote(SOURCE, MEX, NOW + 5 * MIN, NOW);
+    await refresh(NOW);
+    expect(asked).toEqual([]);
+    expect(state()).toMatchObject({ degraded: true, backoffUntil: iso(NOW + 5 * MIN) });
+  });
+
+  it('the backoff is asked again before the live read at the time it is THEN', async () => {
+    // A deadline in the snapshot just past the 30-minute bound when the cycle
+    // decides is believed by the time discovery has answered.
+    events = [{ id: '1', at: NOW - 10 * MIN, state: 'in' }];
+    seed(NOW, fresh(NOW, [entry('1', NOW - 10 * MIN)], {}, 61 * MIN), { backoffUntil: iso(NOW + 30 * MIN + 50) });
+    const real = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: unknown) => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return real(input as never);
+    });
+    await refresh(NOW);
+    expect(months()).toEqual(['202610']);
+    expect(days()).toEqual([]);
+  });
+
+  it('the live stamp is the moment the read was admitted, after a discovery that took a while', async () => {
+    events = [{ id: '1', at: NOW - 10 * MIN, state: 'in' }];
+    const real = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: unknown) => {
+      if (/dates=\d{6}(&|$)/.test(String(input))) await new Promise((resolve) => setTimeout(resolve, 200));
+      return real(input as never);
+    });
+    await refresh(NOW); // no cache: discovers (200 ms), then reads live
+    expect(days()).toHaveLength(3);
+    // A lower bound only: at least the discovery's wait after the cycle began.
+    expect(Date.parse(state()?.updatedAt ?? '')).toBeGreaterThanOrEqual(NOW + 150);
   });
 });
 

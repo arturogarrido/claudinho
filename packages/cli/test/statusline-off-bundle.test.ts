@@ -42,7 +42,7 @@ const snapshot = (schedule: ScheduleSlice | undefined, over: Partial<CacheState>
 const line = (state: CacheState | undefined, opts: { team?: string } = {}) =>
   renderPrompt(state, { defaultCompetition: false, now: new Date(NOW), ...opts });
 const sched = (fixtures: Match[], over: Partial<ScheduleSlice> = {}): ScheduleSlice => ({
-  index: fixtures.map((m) => entry(m.id, Date.parse(m.kickoff), m.status !== 'POSTPONED')),
+  index: fixtures.map((m) => entry(m.id, Date.parse(m.kickoff), m.status === 'SCHEDULED' || m.status === 'LIVE' || m.status === 'HT')),
   fixtures,
   attemptedAt: iso(NOW - 10 * MIN),
   updatedAt: iso(NOW - 10 * MIN),
@@ -111,9 +111,20 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
     expect(line(state)).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing… +1');
   });
 
-  it('a postponed fixture beside one that is on: the line is about the one that is on, and counts only it', () => {
-    const state = snapshot(sched([nations('0', NOW - 40 * MIN, 'POSTPONED'), fixture('2', NOW - 30 * MIN, ['GER', 'Germany'], ['ITA', 'Italy'])]));
-    expect(line(state)).toBe('⚽ 🇩🇪 vs 🇮🇹 live · syncing…');
+  for (const off of ['POSTPONED', 'CANCELLED', 'FT'] as const) {
+    it(`a ${off} fixture beside one that is on: the line is about the one that is on, and counts only it`, () => {
+      // A finished record carries its score, as the cache would hold it (without one it is not a readable record at all).
+      const other = { ...nations('0', NOW - 40 * MIN, off), ...(off === 'FT' ? { score: { home: 2, away: 1 } } : {}) } as Match;
+      const state = snapshot(sched([other, fixture('2', NOW - 30 * MIN, ['GER', 'Germany'], ['ITA', 'Italy'])]));
+      expect(line(state)).toBe('⚽ 🇩🇪 vs 🇮🇹 live · syncing…');
+    });
+  }
+
+  it('a fixture the cache holds as FINISHED is not called live, alone or not', () => {
+    // Found in review: the display record said full time and the line still read "live · syncing…".
+    const over = { ...nations('1', NOW - 120 * MIN, 'FT'), score: { home: 2, away: 1 } } as Match;
+    expect(line(snapshot(sched([over])))).toBe('⚽ —');
+    expect(line(snapshot(sched([over, nations('2', NOW + 26 * HOUR)])))).toBe('🇪🇸 vs 🇫🇷 in 1d2h');
   });
 
   it('with a team filter: only when a fixture in its window is that team’s', () => {
