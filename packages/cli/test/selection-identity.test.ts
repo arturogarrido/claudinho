@@ -402,6 +402,8 @@ describe('a cache written by 0.10.1 is an empty cache', () => {
 });
 
 describe('season in the cache', () => {
+  /** The knockout span (Jun 28 to Jul 19) as the adapter asks for it: a month at a time. */
+  const KNOCKOUT_MONTH = /dates=20260[67](&|$)/;
   const OPENER_LIVE = new Date('2026-06-11T19:30:00Z');
   const knockout = allFixtures().find((m) => m.stage === 'F');
   const carried: Match = {
@@ -579,8 +581,9 @@ describe('season in the cache', () => {
       ],
     };
     vi.stubGlobal('fetch', async (url: unknown) =>
-      // The knockout window starts on Jun 28; the live window is around "now".
-      String(url).includes('dates=20260628')
+      // The knockout span is asked a month at a time (June, July); the live
+      // window is the days around "now".
+      KNOCKOUT_MONTH.test(String(url))
         ? response({ leagues: [{ season: season(2026) }], events: [final2026] })
         : response({ leagues: [{ season: season(2030) }], events: [] }),
     );
@@ -609,14 +612,14 @@ describe('season in the cache', () => {
     });
     let knockoutRequests = 0;
     vi.stubGlobal('fetch', async (url: unknown) => {
-      if (String(url).includes('dates=20260628')) {
+      if (KNOCKOUT_MONTH.test(String(url))) {
         knockoutRequests++;
         return response({ leagues: [{ season: season(2026) }], events: [] });
       }
       return response({ leagues: [{ season: season(2030) }], events: [] });
     });
     await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
-    expect(knockoutRequests).toBe(1);
+    expect(knockoutRequests).toBe(2); // one ask of the span: its two months
     const state = readState('espn', 'fifa.world');
     expect(state?.fixtures).toBeUndefined();
     expect(state?.fixturesAttemptedAt).toBe(SEMI_LIVE.toISOString());
@@ -626,14 +629,14 @@ describe('season in the cache', () => {
     const soon = SEMI_LIVE.getTime() + 20_000;
     expect(shouldRefreshFixtures(soon, state, 'fifa.world')).toBe(false);
     await runRefresh({ source: 'espn', competition: 'fifa.world', now: new Date(soon), jitterMs: 0 });
-    expect(knockoutRequests).toBe(1);
+    expect(knockoutRequests).toBe(2);
 
     // Past the empty cadence it is asked for again — the disagreement is
     // retried, not cached as a conclusion.
     const later = SEMI_LIVE.getTime() + 61_000;
     expect(shouldRefreshFixtures(later, readState('espn', 'fifa.world'), 'fifa.world')).toBe(true);
     await runRefresh({ source: 'espn', competition: 'fifa.world', now: new Date(later), jitterMs: 0 });
-    expect(knockoutRequests).toBe(2);
+    expect(knockoutRequests).toBe(4); // asked once more
   });
 
   it('a CARRIED slice dropped at a rollover is asked for on the next prompt', async () => {
@@ -657,7 +660,7 @@ describe('season in the cache', () => {
     });
     let knockoutRequests = 0;
     vi.stubGlobal('fetch', async (url: unknown) => {
-      if (String(url).includes('dates=20260628')) knockoutRequests++;
+      if (KNOCKOUT_MONTH.test(String(url))) knockoutRequests++;
       return response({ leagues: [{ season: season(2030) }], events: [] });
     });
     await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
@@ -666,6 +669,230 @@ describe('season in the cache', () => {
     expect(state?.fixtures).toBeUndefined();
     expect(state?.fixturesAttemptedAt).toBe(fetchedAt);
     expect(shouldRefreshFixtures(SEMI_LIVE.getTime() + 1_000, state, 'fifa.world')).toBe(true);
+  });
+
+  describe('an answer that left a record out cannot erase what the slice already held', () => {
+    // Found in the plan review of the windows change: a knockout answer with a
+    // record the parser refused is still a successful fetch, and the refresher
+    // replaced the slice with it. A tie the answer could not read then
+    // vanished from the countdown, though nothing said it was gone.
+    const SEMI_LIVE = new Date('2026-07-14T19:30:00Z');
+    const third = allFixtures().find((m) => m.stage === '3P') as Match;
+    const heldThird: Match = {
+      ...third,
+      home: { code: 'FRA', name: 'France', flag: '🇫🇷' },
+      away: { code: 'BRA', name: 'Brazil', flag: '🇧🇷' },
+    };
+    // A semi-final already under way when the refresh runs: not "still to be played".
+    const semi = allFixtures().find((m) => m.stage === 'SF') as Match;
+    const played: Match = {
+      ...semi,
+      kickoff: '2026-07-14T19:00:00.000Z',
+      home: { code: 'ESP', name: 'Spain', flag: '🇪🇸' },
+      away: { code: 'FRA', name: 'France', flag: '🇫🇷' },
+    };
+    const raw = (id: string, date: string, slug: string, home: [string, string, string], away: [string, string, string], status = { type: { name: 'STATUS_SCHEDULED', state: 'pre' } }) => ({
+      id,
+      date,
+      season: { slug },
+      status,
+      competitions: [
+        {
+          competitors: [
+            { homeAway: 'home', team: { id: home[0], abbreviation: home[1], displayName: home[2] } },
+            { homeAway: 'away', team: { id: away[0], abbreviation: away[1], displayName: away[2] } },
+          ],
+        },
+      ],
+    });
+    const final = raw('760517', '2026-07-19T19:00Z', 'final', ['164', 'ESP', 'Spain'], ['202', 'ARG', 'Argentina']);
+    // The third-place match, with a status the parser does not know: refused.
+    const unreadable = raw(third.id, '2026-07-18T19:00Z', '3rd-place-match', ['478', 'FRA', 'France'], ['205', 'BRA', 'Brazil'], {
+      type: { name: 'STATUS_SOMETHING_NEW', state: 'limbo' },
+    });
+    const OLD = new Date(SEMI_LIVE.getTime() - 20 * 60_000).toISOString();
+    function seedSlice(
+      liveSeason: { year: number; label: string } | null = { year: 2026, label: '2026 FIFA World Cup' },
+      sliceSeason: { year: number; label: string } | null = { year: 2026, label: '2026 FIFA World Cup' },
+    ) {
+      const old = OLD;
+      writeState({
+        updatedAt: SEMI_LIVE.toISOString(), // live is fresh: this cycle refreshes the slice only
+        live: [],
+        degraded: false,
+        source: 'espn',
+        competition: 'fifa.world',
+        fixtures: [played, heldThird, carried].sort((a, b) => a.kickoff.localeCompare(b.kickoff)),
+        fixturesUpdatedAt: old,
+        fixturesAttemptedAt: old,
+        ...(liveSeason ? { season: liveSeason } : {}),
+        ...(sliceSeason ? { fixturesSeason: sliceSeason } : {}),
+      });
+    }
+    const july = (events: unknown[]) =>
+      vi.stubGlobal('fetch', async (url: unknown) =>
+        response({ leagues: [{ season: season(2026) }], events: /dates=202607(&|$)/.test(String(url)) ? events : [] }),
+      );
+
+    it('the fixture it does not mention stays, beside the ones it does', async () => {
+      seedSlice();
+      july([final, unreadable]);
+      await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+      const state = readState('espn', 'fifa.world');
+      // Kept: the tie still to be played. Not kept: the one that has kicked off.
+      expect(state?.fixtures?.map((m) => m.id)).toEqual([third.id, '760517']);
+      expect(state?.fixtures?.map((m) => m.id)).not.toContain(semi.id);
+      expect(state?.fixtures?.[0]?.home.name).toBe('France'); // the one that was held
+      expect(state?.fixtures?.[1]?.home.id).toBe('espn:164'); // the one just read
+      expect(state?.fixturesUpdatedAt).toBe(SEMI_LIVE.toISOString());
+    });
+
+    it('a WHOLE answer replaces the slice: what it does not mention is gone', async () => {
+      seedSlice();
+      july([final]);
+      await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+      expect(readState('espn', 'fifa.world')?.fixtures?.map((m) => m.id)).toEqual(['760517']);
+    });
+
+    it('a tie the answer READ and set aside is not put back: postponed, cancelled', async () => {
+      // Found in review. "Not mentioned" was asked of the list of upcoming,
+      // resolved ties, so a tie the provider had just postponed looked
+      // unmentioned and its old scheduled copy returned to the countdown.
+      for (const name of ['STATUS_POSTPONED', 'STATUS_CANCELED']) {
+        seedSlice();
+        const setAside = raw(third.id, '2026-07-18T19:00Z', '3rd-place-match', ['478', 'FRA', 'France'], ['205', 'BRA', 'Brazil'], {
+          type: { name, state: 'pre' },
+        });
+        // An unrelated record nobody can read keeps the answer incomplete.
+        const stranger = raw('760599', '2026-07-16T19:00Z', 'semifinals', ['164', 'ESP', 'Spain'], ['478', 'FRA', 'France'], {
+          type: { name: 'STATUS_SOMETHING_NEW', state: 'limbo' },
+        });
+        july([final, setAside, stranger]);
+        await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+        expect(readState('espn', 'fifa.world')?.fixtures?.map((m) => m.id), name).toEqual(['760517']);
+      }
+    });
+
+    it('nor is a tie the answer read and the WINDOW set aside: moved outside the span, or held twice', async () => {
+      // Found in review (round 2). "Was it read" was asked of what the window
+      // returned, after it had narrowed two months to the span. A tie the
+      // provider moved past the span, or one held in both months, was read and
+      // never returned, so the cached copy came back.
+      const stranger = raw('760599', '2026-07-16T19:00Z', 'semifinals', ['164', 'ESP', 'Spain'], ['478', 'FRA', 'France'], {
+        type: { name: 'STATUS_SOMETHING_NEW', state: 'limbo' },
+      });
+      const thirdOn = (date: string) => raw(third.id, date, '3rd-place-match', ['478', 'FRA', 'France'], ['205', 'BRA', 'Brazil']);
+      // Moved to after the span (Jul 19), beside an unrelated refused record.
+      seedSlice();
+      july([final, thirdOn('2026-07-25T19:00Z'), stranger]);
+      await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+      expect(readState('espn', 'fifa.world')?.fixtures?.map((m) => m.id)).toEqual(['760517']);
+      // Held in June (before the span) and again in July: the first copy counts, and it was read.
+      seedSlice();
+      vi.stubGlobal('fetch', async (url: unknown) =>
+        response({
+          leagues: [{ season: season(2026) }],
+          events: /dates=202607(&|$)/.test(String(url)) ? [final, thirdOn('2026-07-18T23:00Z')] : [thirdOn('2026-06-20T19:00Z')],
+        }),
+      );
+      await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+      expect(readState('espn', 'fifa.world')?.fixtures?.map((m) => m.id)).toEqual(['760517']);
+    });
+
+    describe('when either season is unknown, an incomplete answer is no answer: the slice stands as it was', () => {
+      // Found in review. Without both seasons nothing can be merged (the two
+      // could be different editions), and the answer replaced the slice: a
+      // known final was erased by an answer that had not read July.
+      const group = raw('760420', '2026-06-20T19:00Z', 'group-stage', ['203', 'MEX', 'Mexico'], ['467', 'RSA', 'South Africa']);
+      const answer = (leagues: unknown[]) =>
+        vi.stubGlobal('fetch', async (url: unknown) =>
+          response({ leagues, events: /dates=202607(&|$)/.test(String(url)) ? [unreadable] : [group] }),
+        );
+      const held = () => [played, heldThird, carried].sort((a, b) => a.kickoff.localeCompare(b.kickoff)).map((m) => m.id);
+
+      it('the answer states no season', async () => {
+        seedSlice();
+        answer([{}]);
+        await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+        const state = readState('espn', 'fifa.world');
+        expect(state?.fixtures?.map((m) => m.id)).toEqual(held());
+        expect(state?.fixturesSeason?.year).toBe(2026);
+        // Not a success: the slice keeps its stamp, and the attempt is what paces the next ask.
+        expect(state?.fixturesUpdatedAt).toBe(OLD);
+        expect(state?.fixturesAttemptedAt).toBe(SEMI_LIVE.toISOString());
+      });
+
+      it('the slice was stored with none', async () => {
+        seedSlice(null, null);
+        answer([{ season: season(2026) }]);
+        await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+        const state = readState('espn', 'fifa.world');
+        expect(state?.fixtures?.map((m) => m.id)).toEqual(held());
+        expect(state?.fixturesUpdatedAt).toBe(OLD);
+      });
+
+      it('a slice with no tie still to be played has nothing to lose: the incomplete answer is taken', async () => {
+        // Empty, or holding only a tie that has kicked off.
+        for (const slice of [[], [played]]) {
+          writeState({
+            updatedAt: SEMI_LIVE.toISOString(),
+            live: [],
+            degraded: false,
+            source: 'espn',
+            competition: 'fifa.world',
+            fixtures: slice,
+            fixturesUpdatedAt: OLD,
+            fixturesAttemptedAt: OLD,
+          });
+          vi.stubGlobal('fetch', async (url: unknown) =>
+            response({ leagues: [{}], events: /dates=202607(&|$)/.test(String(url)) ? [final, unreadable] : [] }),
+          );
+          await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+          const state = readState('espn', 'fifa.world');
+          expect(state?.fixtures?.map((m) => m.id), String(slice.length)).toEqual(['760517']);
+          expect(state?.fixturesUpdatedAt).toBe(SEMI_LIVE.toISOString());
+        }
+      });
+    });
+
+    it('and nothing is kept from a slice of ANOTHER season: that answer replaces it', async () => {
+      // The snapshot's live season is unknown here, so the rollover rule below
+      // the union has nothing to compare: only the union's own rule can refuse.
+      seedSlice(null);
+      vi.stubGlobal('fetch', async (url: unknown) =>
+        response({ leagues: [{ season: season(2030) }], events: /dates=202607(&|$)/.test(String(url)) ? [final, unreadable] : [] }),
+      );
+      await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+      // The answer is 2030's; the held third-place tie was 2026's.
+      const state = readState('espn', 'fifa.world');
+      expect(state?.fixtures?.map((m) => m.id)).toEqual(['760517']);
+      expect(state?.fixturesSeason?.year).toBe(2030);
+    });
+  });
+
+  it('a throttle that arrives after a sibling request failed is persisted, and the next refresh asks nothing', async () => {
+    // A live read is three day requests, sent together. If the window answered
+    // on the first failure, the refresher would publish with no backoff while
+    // a 429 was still on its way.
+    const requests: string[] = [];
+    vi.stubGlobal('fetch', async (url: unknown) => {
+      const u = String(url);
+      requests.push(u);
+      if (/dates=20260610(&|$)/.test(u)) return { ok: false, status: 500, statusText: 'Server Error', headers: { get: () => null } };
+      if (/dates=20260612(&|$)/.test(u)) {
+        await new Promise((r) => setTimeout(r, 30));
+        return { ok: false, status: 429, statusText: 'Too Many Requests', headers: { get: (n: string) => (n.toLowerCase() === 'retry-after' ? '600' : null) } };
+      }
+      return response({ leagues: [{ season: season(2026) }], events: [] });
+    });
+    await runRefresh({ source: 'espn', competition: 'fifa.world', now: OPENER_LIVE, jitterMs: 0 });
+    expect(requests).toHaveLength(3);
+    const state = readState('espn', 'fifa.world');
+    expect(state?.degraded).toBe(true);
+    expect(Date.parse(state?.backoffUntil ?? '')).toBeGreaterThanOrEqual(OPENER_LIVE.getTime() + 600_000);
+    // The next refresher, twenty seconds later, honours it.
+    await runRefresh({ source: 'espn', competition: 'fifa.world', now: new Date(OPENER_LIVE.getTime() + 20_000), jitterMs: 0 });
+    expect(requests).toHaveLength(3);
   });
 
   it('a dated query never writes the live cache', async () => {

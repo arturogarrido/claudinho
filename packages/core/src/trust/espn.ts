@@ -322,7 +322,17 @@ export function parseEspnEvent(raw: unknown, ctx: MapContext = {}): ParseResult<
  * Bounded on the way in, and `complete` records whether anything was refused —
  * so an empty day is distinguishable from a day we could not parse.
  */
-export function parseEspnEvents(raw: unknown, ctx: MapContext = {}): BoundedList<Match> {
+/**
+ * A parsed scoreboard payload. `readable` is false when the ENVELOPE could not
+ * be read (no `events` list): nothing is known about what the response holds.
+ * That is not the same as records that were refused one by one, and a caller
+ * composing several responses must be able to tell them apart.
+ */
+export interface EspnEventList extends BoundedList<Match> {
+  readonly readable: boolean;
+}
+
+export function parseEspnEvents(raw: unknown, ctx: MapContext = {}): EspnEventList {
   // The TRUE payload size, read BEFORE slicing. Taken afterwards it can only
   // ever say "nothing was dropped" — the same defect `parseCachedMatches` had,
   // which I fixed there and did not grep for here.
@@ -361,6 +371,7 @@ export function parseEspnEvents(raw: unknown, ctx: MapContext = {}): BoundedList
     // the envelope itself was not a list — none of those is a complete account
     // of what the provider sent.
     complete,
+    readable,
   };
 }
 

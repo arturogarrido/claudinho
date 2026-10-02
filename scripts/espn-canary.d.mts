@@ -2,7 +2,10 @@ export type CanaryVerdict = 'ok' | 'rejected' | 'changed' | 'blocked' | 'unreach
 export interface CanaryRow {
   competition: string;
   request: 'live' | 'day' | 'window' | 'knockout' | 'standings';
+  /** The first request the question took. */
   url: string;
+  /** How many requests it took. */
+  requests: number;
   verdict: CanaryVerdict;
   detail: string;
 }

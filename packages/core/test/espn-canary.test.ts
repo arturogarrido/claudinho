@@ -71,7 +71,22 @@ function standings(over: (entry: Record<string, unknown>) => Record<string, unkn
     ],
   };
 }
-const healthyScoreboard = { leagues: [{ season: SEASON }], events: [event('401878761')] };
+/**
+ * The provider files a fixture under its kickoff's US/Eastern day, and answers
+ * one day (`dates=YYYYMMDD`), one month (`dates=YYYYMM`) or its default bucket.
+ * A feed that answers every request with the same events would put one fixture
+ * in every part of a window.
+ */
+const eastern = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+const providerDay = (iso: string) => eastern.format(new Date(iso)).replace(/-/g, '');
+const asked = (url: string) => new URL(url).searchParams.get('dates') ?? '';
+function filed<T extends { date: string }>(url: string, events: T[]): T[] {
+  const dates = asked(url);
+  if (dates === '') return events;
+  return events.filter((e) => (dates.length === 8 ? providerDay(e.date) === dates : providerDay(e.date).startsWith(dates)));
+}
+/** A scoreboard answer to `url`: the events that belong in it. */
+const scoreboard = (url: string, events = [event('401878761')]) => ({ leagues: [{ season: SEASON }], events: filed(url, events) });
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
@@ -87,7 +102,7 @@ function feed(handler: Handler) {
   }) as unknown as typeof fetch;
   return { fetchImpl, urls };
 }
-const healthy: Handler = (url) => json(url.includes('/standings') ? standings() : healthyScoreboard);
+const healthy: Handler = (url) => json(url.includes('/standings') ? standings() : scoreboard(url));
 
 const run = (handler: Handler, competitions = ['eng.1']) => {
   const f = feed(handler);
@@ -118,13 +133,17 @@ describe('a healthy feed', () => {
 
   it('uses the adapter’s own request shapes, for the competition it was given', async () => {
     const r = await run(healthy);
-    expect(r.urls).toHaveLength(4);
+    expect(r.urls).toHaveLength(6);
     for (const u of r.urls) expect(u).toContain('/soccer/eng.1/');
-    // bare bucket · one day · a three-day window · the standings endpoint
+    // bare bucket · one day · a three-day window, a day at a time · the standings endpoint
     expect(r.urls.filter((u) => u.includes('/scoreboard') && !u.includes('dates='))).toHaveLength(1);
-    expect(r.urls.filter((u) => /dates=20261010(&|$)/.test(u))).toHaveLength(1);
-    expect(r.urls.filter((u) => /dates=20261009-20261011(&|$)/.test(u))).toHaveLength(1);
+    expect(r.urls.filter((u) => /dates=20261010(&|$)/.test(u))).toHaveLength(2); // the day, and the window's middle day
+    expect(r.urls.filter((u) => /dates=20261009(&|$)/.test(u))).toHaveLength(1);
+    expect(r.urls.filter((u) => /dates=20261011(&|$)/.test(u))).toHaveLength(1);
     expect(r.urls.filter((u) => u.includes('/standings'))).toHaveLength(1);
+    // The form the provider refuses is never asked.
+    expect(r.urls.some((u) => /dates=\d+-\d+/.test(u))).toBe(false);
+    expect(r.rows.map((row) => row.requests)).toEqual([1, 1, 3, 1]);
   });
 
   it('a competition with no fixtures in the window is still green', async () => {
@@ -134,19 +153,36 @@ describe('a healthy feed', () => {
 });
 
 describe('the provider refuses a request form', () => {
-  // The recorded rejection of Oct 2 2026: ranges only, with this body.
-  const RANGE_REJECTED: Handler = (url) =>
-    /dates=\d{8}-\d{8}/.test(url)
-      ? json({ code: 400, message: 'Failed to get events endpoint.' }, 400)
-      : healthy(url);
+  // The body of the rejection recorded on Oct 2 2026 (then: every date range).
+  const REFUSED = () => json({ code: 400, message: 'Failed to get events endpoint.' }, 400);
+  const DAY_REJECTED: Handler = (url) => (/dates=\d{8}(&|$)/.test(url) ? REFUSED() : healthy(url));
 
   it('is red, and says which request and why', async () => {
-    const r = await run(RANGE_REJECTED);
+    const r = await run(DAY_REJECTED);
     expect(r.red).toBe(true);
-    expect(verdicts(r)).toEqual({ live: 'ok', day: 'ok', window: 'rejected', standings: 'ok' });
-    const row = r.rows.find((x) => x.request === 'window');
+    expect(verdicts(r)).toEqual({ live: 'ok', day: 'rejected', window: 'rejected', standings: 'ok' });
+    const row = r.rows.find((x) => x.request === 'day');
     expect(row?.detail).toContain('400');
-    expect(row?.url).toMatch(/dates=20261009-20261011/);
+    expect(row?.detail).toContain('Failed to get events endpoint.');
+    expect(row?.url).toMatch(/dates=20261010/);
+  });
+
+  it('the form refused on Oct 2 2026 (a date range) is no longer asked, so refusing it turns nothing red', async () => {
+    const r = await run((url) => (/dates=\d+-\d+/.test(url) ? REFUSED() : healthy(url)), ['eng.1', 'uefa.nations']);
+    expect(r.red).toBe(false);
+    expect(new Set(r.rows.map((row) => row.verdict))).toEqual(new Set(['ok']));
+  });
+
+  it('a window is judged on every request it takes, not on the first', async () => {
+    // The first day answers; the third is refused.
+    const third = await run((url) => (/dates=20261011(&|$)/.test(url) ? REFUSED() : healthy(url)));
+    expect(verdicts(third)).toEqual({ live: 'ok', day: 'ok', window: 'rejected', standings: 'ok' });
+    expect(third.rows.find((x) => x.request === 'window')?.detail).toMatch(/20261011, 1 of 3 requests/);
+    // The first day answers; the second is not JSON.
+    const second = await run((url) =>
+      /dates=20261009(&|$)/.test(url) ? new Response('<html>maintenance</html>', { status: 200 }) : healthy(url),
+    );
+    expect(verdicts(second).window).toBe('changed');
   });
 
   it('a 404 on a slug is a rejection too', async () => {
@@ -223,7 +259,7 @@ describe('a 2xx payload that no longer fits the parsers', () => {
       json(
         url.includes('/standings')
           ? standings((e) => ({ ...e, stats: (e.stats as Array<{ name: string }>).filter((s) => s.name !== 'points') }))
-          : healthyScoreboard,
+          : scoreboard(url),
       ),
     );
     expect(missingStat.red).toBe(true);
@@ -234,7 +270,7 @@ describe('a 2xx payload that no longer fits the parsers', () => {
       json(
         url.includes('/standings')
           ? standings((e) => ({ ...e, team: { abbreviation: 'ARS', displayName: 'Arsenal' } }))
-          : healthyScoreboard,
+          : scoreboard(url),
       ),
     );
     expect(missingId.red).toBe(true);
@@ -261,7 +297,7 @@ const brokenBody = (status: number, headers: Record<string, string> = {}) =>
 
 describe('found in review: the status is known from the headers', () => {
   it('a refused request whose body never arrives is still a refused request', async () => {
-    const r = await run((url) => (/dates=\d{8}-\d{8}/.test(url) ? brokenBody(400) : healthy(url)));
+    const r = await run((url) => (/dates=20261011(&|$)/.test(url) ? brokenBody(400) : healthy(url)));
     expect(verdicts(r).window).toBe('rejected');
     expect(r.red).toBe(true);
     expect(r.rows.find((x) => x.request === 'window')?.detail).toContain('400');
@@ -277,8 +313,9 @@ describe('found in review: the status is known from the headers', () => {
   });
 
   it('a served response whose body fails midway is an outage, not a changed feed', async () => {
-    const r = await run((url) => (url.includes('dates=20261010') && !url.includes('-') ? brokenBody(200) : healthy(url)));
+    const r = await run((url) => (/dates=20261010(&|$)/.test(url) ? brokenBody(200) : healthy(url)));
     expect(verdicts(r).day).toBe('unreachable');
+    expect(verdicts(r).window).toBe('unreachable');
     expect(r.red).toBe(false);
   });
 });
@@ -299,7 +336,213 @@ describe('found in review: a throttle is the provider speaking to the runner, no
     const r = await run((url) => (url.includes('/esp.1/') ? json({}, 429) : healthy(url)), ['eng.1', 'esp.1', 'ita.1']);
     expect(r.rows.slice(0, 4).map((row) => row.verdict)).toEqual(['ok', 'ok', 'ok', 'ok']);
     expect(r.rows.slice(4).every((row) => row.verdict === 'blocked')).toBe(true);
+    expect(r.urls).toHaveLength(7); // six for the first competition, one for the second
+  });
+});
+
+describe('a window takes several requests: each is judged, and the provider is believed on the first "stop"', () => {
+  it('a throttle on a later part of a window is a block, and ends the run', async () => {
+    const r = await run((url) => (/dates=20261011(&|$)/.test(url) ? json({}, 429) : healthy(url)), ['eng.1', 'esp.1']);
+    expect(r.rows.slice(0, 4).map((row) => `${row.request}:${row.verdict}`)).toEqual([
+      'live:ok',
+      'day:ok',
+      'window:blocked',
+      'standings:blocked',
+    ]);
+    expect(r.rows.slice(4).every((row) => row.verdict === 'blocked' && row.requests === 0)).toBe(true);
+    // Its three parts had gone together; nothing after them is asked.
     expect(r.urls).toHaveLength(5);
+    expect(r.red).toBe(false);
+  });
+
+  it('a team without an id in a LATER part of a window is red: every part is read, not the first', async () => {
+    // The parser accepts a team with no id (the id is optional there), so the
+    // result is complete; only the check on what was sent can see it.
+    const noId = event('8', { date: '2026-10-11T15:00Z' });
+    (noId.competitions[0]?.competitors[0]?.team as { id?: string }).id = undefined;
+    const r = await run((url) => json(url.includes('/standings') ? standings() : scoreboard(url, [event('401878761'), noId])));
+    expect(verdicts(r).day).toBe('ok');
+    expect(verdicts(r).window).toBe('changed');
+    expect(r.rows.find((x) => x.request === 'window')?.detail).toMatch(/without an id/);
+  });
+
+  it('a fixture filed under a day it does not kick off on, by the adapter’s rule, is red', async () => {
+    // 01:00 UTC on the 11th is the 10th for the provider. A feed that files it
+    // under its UTC date has stopped filing days the way the adapter assumes.
+    const late = event('7', { date: '2026-10-11T01:00Z' });
+    const byUtc = (url: string) => {
+      const dates = asked(url);
+      const events = dates.length === 8 ? [late].filter((e) => e.date.slice(0, 10).replace(/-/g, '') === dates) : [late];
+      return json(url.includes('/standings') ? standings() : { leagues: [{ season: SEASON }], events });
+    };
+    const r = await run(byUtc);
+    expect(verdicts(r).window).toBe('changed');
+    expect(r.rows.find((x) => x.request === 'window')?.detail).toMatch(/filed under 20261011 kicks off on provider day 20261010/);
+    // Filed the provider's way, the same fixture is fine.
+    const fine = await run((url) => json(url.includes('/standings') ? standings() : scoreboard(url, [late])));
+    expect(verdicts(fine).window).toBe('ok');
+  });
+
+  it('and so is a fixture a month’s response holds that is not of that month', async () => {
+    // The knockout span is asked a month at a time; June's answer holding a
+    // July fixture means the month form no longer means a provider month.
+    const july = event('760517', { date: '2026-07-19T19:00Z', season: { slug: 'final' } });
+    const r = await run(
+      (url) =>
+        json(
+          url.includes('/standings')
+            ? standings()
+            : asked(url) === '202606'
+              ? { leagues: [{ season: SEASON }], events: [july] }
+              : scoreboard(url, []),
+        ),
+      ['fifa.world'],
+    );
+    expect(verdicts(r).knockout).toBe('changed');
+    expect(r.rows.find((x) => x.request === 'knockout')?.detail).toMatch(/filed under 202606 kicks off on provider day 20260719/);
+  });
+});
+
+describe('found in review: a part that could not be seen does not hide a part that was seen to be wrong', () => {
+  // One verdict was picked for the question, "blocked" before "rejected" and
+  // "unreachable" before "changed": a defect the canary had in its hands went
+  // unreported, and the run stayed green, whenever a sibling request was
+  // throttled or down. The window here is Oct 9 to 11 (three requests).
+  const windowRow = (r: { rows: Array<{ request: string; verdict: string; detail: string }> }) => r.rows.find((x) => x.request === 'window');
+
+  it('a refused form beside a throttled part is red, and the run still stops asking', async () => {
+    const r = await run(
+      (url) =>
+        /dates=20261009(&|$)/.test(url)
+          ? json({ code: 400, message: 'Failed to get events endpoint.' }, 400)
+          : /dates=20261011(&|$)/.test(url)
+            ? json({}, 429)
+            : healthy(url),
+      ['eng.1', 'esp.1'],
+    );
+    expect(windowRow(r)?.verdict).toBe('rejected');
+    expect(windowRow(r)?.detail).toMatch(/HTTP 400/);
+    expect(windowRow(r)?.detail).toMatch(/blocked/);
+    expect(r.red).toBe(true);
+    // The throttle is still believed: nothing after the window is asked.
+    expect(r.urls).toHaveLength(5);
+    expect(r.rows.slice(3).every((row) => row.verdict === 'blocked' && row.requests === 0)).toBe(true);
+  });
+
+  it('a body that is not JSON beside a part that was down is red', async () => {
+    const r = await run((url) =>
+      /dates=20261009(&|$)/.test(url)
+        ? new Response('<html>', { status: 200 })
+        : /dates=20261011(&|$)/.test(url)
+          ? json({}, 503)
+          : healthy(url),
+    );
+    expect(windowRow(r)?.verdict).toBe('changed');
+    expect(windowRow(r)?.detail).toMatch(/not JSON/);
+    expect(windowRow(r)?.detail).toMatch(/unreachable/);
+    expect(r.red).toBe(true);
+  });
+
+  it('a part that WAS read is still checked when a sibling was down: a team without an id', async () => {
+    const noId = event('8', { date: '2026-10-09T15:00Z' });
+    (noId.competitions[0]?.competitors[0]?.team as { id?: string }).id = undefined;
+    const r = await run((url) =>
+      /dates=20261011(&|$)/.test(url) ? json({}, 503) : json(url.includes('/standings') ? standings() : scoreboard(url, [event('401878761'), noId])),
+    );
+    expect(windowRow(r)?.verdict).toBe('changed');
+    expect(windowRow(r)?.detail).toMatch(/without an id/);
+    expect(windowRow(r)?.detail).toMatch(/unreachable/);
+  });
+
+  it('and a served part with no `events` list', async () => {
+    const r = await run((url) =>
+      /dates=20261011(&|$)/.test(url) ? json({}, 503) : /dates=20261009(&|$)/.test(url) ? json({ leagues: [{ season: SEASON }] }) : healthy(url),
+    );
+    expect(windowRow(r)?.verdict).toBe('changed');
+    expect(windowRow(r)?.detail).toMatch(/no `events` list/);
+  });
+
+  it('and so is how it files a day', async () => {
+    // Filed under the 9th, kicking off on the provider's 10th.
+    const misfiled = { leagues: [{ season: SEASON }], events: [event('7', { date: '2026-10-10T15:00Z' })] };
+    const r = await run((url) =>
+      /dates=20261011(&|$)/.test(url) ? json({}, 429) : /dates=20261009(&|$)/.test(url) ? json(misfiled) : healthy(url),
+    );
+    expect(windowRow(r)?.verdict).toBe('changed');
+    expect(windowRow(r)?.detail).toMatch(/filed under 20261009 kicks off on provider day 20261010/);
+    expect(r.red).toBe(true);
+  });
+
+  describe('what was served is put to the product’s own parser, like a whole answer is (round 2)', () => {
+    // The first fix read the served parts raw (envelope, team ids, filing). A
+    // record the parser REFUSES passed all three, so it went unreported
+    // whenever a sibling request was down or throttled.
+    const on9 = (over: Record<string, unknown>) => event('9', { date: '2026-10-09T15:00Z', ...over });
+    const withOct9 = (first: unknown, last: Response) => (url: string) =>
+      /dates=20261011(&|$)/.test(url)
+        ? last
+        : /dates=20261009(&|$)/.test(url)
+          ? json({ leagues: [{ season: SEASON }], events: [first] })
+          : healthy(url);
+
+    for (const [what, last] of [
+      ['down', () => json({}, 503)],
+      ['throttled', () => json({}, 429)],
+    ] as const) {
+      it(`a record with a status the parser does not know, beside a part that was ${what}`, async () => {
+        const r = await run(withOct9(on9({ status: { type: { name: 'STATUS_SOMETHING_NEW', state: 'limbo' } } }), last()));
+        expect(windowRow(r)?.verdict).toBe('changed');
+        expect(windowRow(r)?.detail).toMatch(/could not read every event/);
+        expect(r.red).toBe(true);
+      });
+    }
+
+    it('a record with an empty id, beside a part that was down', async () => {
+      const r = await run(withOct9(on9({ id: '' }), json({}, 503)));
+      expect(windowRow(r)?.verdict).toBe('changed');
+      expect(r.red).toBe(true);
+    });
+
+    it('one fixture in two served parts, beside a part that was down', async () => {
+      // Each copy is filed under the day it kicks off on, so only the window's
+      // own rule (one fixture, one part) can see it.
+      const twice = (url: string) =>
+        /dates=20261011(&|$)/.test(url)
+          ? json({}, 503)
+          : /dates=20261009(&|$)/.test(url)
+            ? json({ leagues: [{ season: SEASON }], events: [event('5', { date: '2026-10-09T15:00Z' })] })
+            : /dates=20261010(&|$)/.test(url)
+              ? json({ leagues: [{ season: SEASON }], events: [event('5', { date: '2026-10-10T15:00Z' })] })
+              : healthy(url);
+      const r = await run(twice);
+      expect(windowRow(r)?.verdict).toBe('changed');
+      expect(windowRow(r)?.detail).toMatch(/could not read every event/);
+    });
+
+    it('served parts that state two seasons, beside a part that was down', async () => {
+      const other = { ...SEASON, year: 2027, displayName: '2027-28 English Premier League' };
+      const split = (url: string) =>
+        /dates=20261011(&|$)/.test(url)
+          ? json({}, 503)
+          : /dates=20261009(&|$)/.test(url)
+            ? json({ leagues: [{ season: other }], events: [] })
+            : healthy(url);
+      const r = await run(split);
+      expect(windowRow(r)?.verdict).toBe('changed');
+      expect(windowRow(r)?.detail).toMatch(/seasons 2026 and 2027/);
+    });
+
+    it('asks the provider nothing more to do so', async () => {
+      const r = await run(withOct9(on9({ id: '' }), json({}, 503)));
+      // live, day, the window's three, standings: the same six as a healthy run.
+      expect(r.urls).toHaveLength(6);
+    });
+  });
+
+  it('nothing wrong in what was seen: the part that could not be seen decides, and the row is neutral', async () => {
+    const down = await run((url) => (/dates=20261011(&|$)/.test(url) ? json({}, 503) : healthy(url)));
+    expect(windowRow(down)?.verdict).toBe('unreachable');
+    expect(down.red).toBe(false);
   });
 });
 
@@ -367,7 +610,7 @@ describe('found in review: a refused record cannot hide behind a sibling', () =>
 
 describe('found in review: every table shape, every row, every value', () => {
   const standingsCase = async (body: unknown) => {
-    const r = await run((url) => json(url.includes('/standings') ? body : healthyScoreboard));
+    const r = await run((url) => json(url.includes('/standings') ? body : scoreboard(url)));
     return { verdict: verdicts(r).standings, detail: r.rows.find((x) => x.request === 'standings')?.detail ?? '' };
   };
   const row = (over: Record<string, unknown> = {}) => ({
@@ -469,13 +712,13 @@ describe('found in review: absence is a finding, and the product’s own parser 
     })),
   });
   const wc = async (body: unknown) => {
-    const r = await run((url) => json(url.includes('/standings') ? body : healthyScoreboard), ['fifa.world']);
+    const r = await run((url) => json(url.includes('/standings') ? body : scoreboard(url)), ['fifa.world']);
     return r.rows.find((x) => x.request === 'standings');
   };
 
   it('a payload with no table rows is red for a competition that serves a table', async () => {
     for (const body of [{}, { children: [] }, { children: [{ name: 'Group A', standings: { entries: [] } }] }]) {
-      const r = await run((url) => json(url.includes('/standings') ? body : healthyScoreboard));
+      const r = await run((url) => json(url.includes('/standings') ? body : scoreboard(url)));
       expect(verdicts(r).standings, JSON.stringify(body)).toBe('changed');
     }
   });
@@ -485,7 +728,7 @@ describe('found in review: absence is a finding, and the product’s own parser 
     const seasonsOnly = { name: 'Concacaf Champions Cup', season: { year: 2026 }, seasons: [{ year: 2016 }] };
     expect(CANARY_TABLES.none).toEqual(['concacaf.champions']);
     for (const competition of CANARY_COMPETITIONS) {
-      const r = await run((url) => json(url.includes('/standings') ? seasonsOnly : healthyScoreboard), [competition]);
+      const r = await run((url) => json(url.includes('/standings') ? seasonsOnly : scoreboard(url)), [competition]);
       expect(verdicts(r).standings, competition).toBe(CANARY_TABLES.none.includes(competition) ? 'ok' : 'changed');
     }
   });
@@ -503,7 +746,7 @@ describe('found in review: absence is a finding, and the product’s own parser 
 
   describe('found in review (round 2): the product’s parser is asked wherever it reads the tables, not only for the bundle', () => {
     const groupsCase = async (competition: string, body: unknown) => {
-      const r = await run((url) => json(url.includes('/standings') ? body : healthyScoreboard), [competition]);
+      const r = await run((url) => json(url.includes('/standings') ? body : scoreboard(url)), [competition]);
       return r.rows.find((x) => x.request === 'standings');
     };
     const badRow = (id: string, name: string, rank: number) => ({
@@ -661,7 +904,10 @@ describe('found in review: it asks every request form the adapter has, with the 
     expect(r.rows.map((row) => row.request)).toEqual(['live', 'day', 'window', 'knockout', 'standings']);
     const span = core.knockoutWindow();
     expect(span).not.toBeNull();
-    expect(r.rows.find((x) => x.request === 'knockout')?.url).toContain(`dates=${span?.start}-${span?.end}`);
+    // A month at a time: June and July hold it.
+    expect(r.rows.find((x) => x.request === 'knockout')?.requests).toBe(2);
+    expect(r.urls.filter((u) => /dates=20260[67](&|$)/.test(u))).toHaveLength(2);
+    expect(r.urls.some((u) => /dates=\d+-\d+/.test(u))).toBe(false);
   });
 
   it('a competition with no bundled bracket is not asked for one', async () => {
@@ -669,11 +915,10 @@ describe('found in review: it asks every request form the adapter has, with the 
     expect(r.rows.map((row) => row.request)).toEqual(['live', 'day', 'window', 'standings']);
   });
 
-  it('a provider that accepts a three-day range and refuses the long one is red', async () => {
-    const span = core.knockoutWindow();
+  it('a provider that serves days and refuses a month is red', async () => {
     const r = await run(
       (url) =>
-        url.includes(`dates=${span?.start}-${span?.end}`)
+        /dates=\d{6}(&|$)/.test(url)
           ? json({ code: 400, message: 'Failed to get events endpoint.' }, 400)
           : healthy(url),
       ['fifa.world'],
@@ -700,7 +945,7 @@ describe('found in review: it asks every request form the adapter has, with the 
 describe('found in review: a run that could not see says so', () => {
   it('blocked and unreachable rows are a warning for the person, not a green silence', async () => {
     const blocked = await run(() => json({}, 429), ['eng.1', 'esp.1']);
-    expect(canaryWarnings(blocked)).toEqual(['8 of 8 requests were not answered (8 blocked, 0 unreachable): the canary saw nothing of those']);
+    expect(canaryWarnings(blocked)).toEqual(['8 of 8 questions were not answered (8 blocked, 0 unreachable): the canary saw nothing of those']);
     const fine = await run(healthy);
     expect(canaryWarnings(fine)).toEqual([]);
   });
@@ -715,7 +960,7 @@ describe('found in review (round 2): an error body cannot hold the run', () => {
   it('a large error body: the run completes and the status decides', { timeout: 2000 }, async () => {
     const body = big(70 * 1024);
     const r = await run((url) =>
-      /dates=\d{8}-\d{8}/.test(url)
+      /dates=20261011(&|$)/.test(url)
         ? new Response(body, { status: 400, headers: { 'content-length': String(Buffer.byteLength(body)) } })
         : healthy(url),
     );
@@ -730,7 +975,7 @@ describe('found in review (round 2): an error body cannot hold the run', () => {
 
   it('an error body that never ends is abandoned at a deadline, and the next question is asked', { timeout: 2000 }, async () => {
     const stalled = () => new Response(new ReadableStream<Uint8Array>({ pull() {} }), { status: 400 });
-    const f = feed((url) => (/dates=\d{8}-\d{8}/.test(url) ? stalled() : healthy(url)));
+    const f = feed((url) => (/dates=20261011(&|$)/.test(url) ? stalled() : healthy(url)));
     const r = await runCanary({ core, competitions: ['eng.1'], fetchImpl: f.fetchImpl, now: NOW, pauseMs: 0, bodyDeadlineMs: 20 });
     expect(verdicts(r)).toEqual({ live: 'ok', day: 'ok', window: 'rejected', standings: 'ok' });
   });
@@ -758,7 +1003,13 @@ describe('found in review: the canary reads no more than the adapter would', () 
         ),
         { status: 200 },
       );
-    const r = await run((url) => (url.includes('dates=20261010') && !url.includes('-') ? endless() : healthy(url)));
+    // Served once, to the `day` question (the window asks for the same day later).
+    let served = false;
+    const r = await run((url) => {
+      if (served || !/dates=20261010(&|$)/.test(url)) return healthy(url);
+      served = true;
+      return endless();
+    });
     expect(core.MAX_RESPONSE_BYTES).toBe(5 * 1024 * 1024);
     expect(cancelled).toBe(true);
     // The bound is on the bytes taken from the provider, whoever is reading.
@@ -793,12 +1044,13 @@ describe('what it watches and how it reports', () => {
 
   it('the report names every red row and states the totals', async () => {
     const r = await run((url) =>
-      /dates=\d{8}-\d{8}/.test(url) ? json({ code: 400, message: 'Failed to get events endpoint.' }, 400) : healthy(url),
+      /dates=\d{8}(&|$)/.test(url) ? json({ code: 400, message: 'Failed to get events endpoint.' }, 400) : healthy(url),
     );
     const text = formatCanary(r);
+    expect(text).toMatch(/eng\.1\s+day\s+REJECTED/);
     expect(text).toMatch(/eng\.1\s+window\s+REJECTED/);
-    expect(text).toMatch(/1 red/);
-    expect(text).toMatch(/3 ok/);
+    expect(text).toMatch(/2 red/);
+    expect(text).toMatch(/2 ok/);
   });
 
   it('scripts are checked out with LF on every platform', () => {

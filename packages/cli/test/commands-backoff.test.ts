@@ -203,7 +203,9 @@ describe('persistence bookkeeping (review round 2 on #128)', () => {
     });
     const first = new EspnAdapter({ fetchImpl: throttled as unknown as FetchImpl, now: () => nowMs, enrichGroups: false });
     await cmdToday('2026-06-11', { cfg: cfg(), t: makeT('en'), adapter: first, now: NOW });
-    expect(throttled).toHaveBeenCalledTimes(1);
+    // One dated read is three day requests, sent together: all three had gone
+    // before the first refusal was read. Nothing after them is sent (below).
+    expect(throttled).toHaveBeenCalledTimes(3);
     expect(persistedDelay()).toBeGreaterThanOrEqual(600_000);
     expect(persistedDelay()).toBeLessThanOrEqual(601_000);
     // A fresh invocation now honours the repaired deadline: zero requests.

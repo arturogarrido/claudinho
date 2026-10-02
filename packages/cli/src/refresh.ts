@@ -271,8 +271,34 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       fixturesAttemptedAt = now.toISOString();
       try {
         const r = await getKnockoutFixtures(adapter, now);
-        if (!r.degraded) {
-          fixtures = r.fixtures;
+        // An answer that left records out cannot prove a fixture is gone.
+        // What it means for a slice that already holds something depends on
+        // what is KNOWN about the two seasons:
+        //   - the same season: a union. What the slice held and this answer
+        //     did not READ stays, while it is still to be played. "Read" is
+        //     asked of everything the answer read (`mentioned`), not of the
+        //     upcoming ties it returns: a tie the provider just postponed was
+        //     read, and must not be put back.
+        //   - different seasons: the answer replaces the slice, as a whole
+        //     answer does (one season per snapshot).
+        //   - either one unknown: nothing can be merged (the two could be
+        //     different editions) and nothing may be erased, so this is not an
+        //     answer. The slice stands as it was, with its own stamp, and the
+        //     attempt stamp paces the next ask, as after a failed fetch.
+        // A slice with no tie still to be played has nothing an answer could
+        // erase: any answer is taken.
+        const atStake = (fixtures ?? []).some((old) => isUpcoming(old, now));
+        const incomplete = !r.degraded && r.complete === false && atStake;
+        const seasonsKnown = !!r.season && !!fixturesSeason;
+        if (r.degraded || (incomplete && !seasonsKnown)) {
+          /* keep prior fixtures + timestamp; retry on the short cadence */
+        } else {
+          const read = new Set(r.mentioned ?? r.fixtures.map((m) => m.id));
+          const kept =
+            incomplete && r.season?.year === fixturesSeason?.year
+              ? (fixtures ?? []).filter((old) => !read.has(old.id) && isUpcoming(old, now))
+              : [];
+          fixtures = [...r.fixtures, ...kept].sort(byKickoff);
           fixturesUpdatedAt = now.toISOString();
           fixturesSeason = r.season;
         }

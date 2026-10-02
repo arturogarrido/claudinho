@@ -25,6 +25,16 @@ export interface FetchMeta {
    * a fixture is not "left out". Absent when the adapter does not say.
    */
   readonly complete?: boolean;
+  /**
+   * The id of every fixture the response(s) held and the parser read, when the
+   * result can hold FEWER: a window narrowed from month responses sets aside
+   * what falls outside it, and the copy of a fixture held twice. A caller that
+   * keeps a previous answer asks "was this fixture read?" of this list, never
+   * of the result: a fixture the provider moved out of the window was read,
+   * and its old copy must not be put back. Absent when the result holds
+   * everything that was read.
+   */
+  readonly mentioned?: readonly string[];
 }
 
 const META = new WeakMap<object, FetchMeta>();
