@@ -18,7 +18,7 @@
  */
 import { EspnAdapter } from '@claudinho/core';
 import { execFileSync, spawn } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -542,6 +542,24 @@ describe('found in review', () => {
     expect(token).toBeDefined();
     expect(holdsLock(token)).toBe(true);
     expect(statSync(pipe).isFile()).toBe(true); // the pipe is gone: a real lock is there
+    releaseLock(token);
+  });
+
+  it.skipIf(!POSIX)('nor a lock path that leads to a device: what reads as an empty file is not judged by its date', () => {
+    // A pipe reads differently from one system to the next (an error on one,
+    // an empty read on another). The null device reads as empty everywhere and
+    // carries the date of its last write: read as a lock, it is a lock with no
+    // stamp, written just now, so fresh for a minute. It is not a regular
+    // file, so it is not read at all.
+    mkdirSync(cacheDir(), { recursive: true });
+    const link = join(cacheDir(), 'refresh.lock');
+    symlinkSync('/dev/null', link);
+    writeFileSync('/dev/null', 'x'); // its date is now
+    const now = Date.now();
+    expect(isLockFresh(now)).toBe(false);
+    const token = claimLock(now);
+    expect(token).toBeDefined();
+    expect(lstatSync(link).isFile()).toBe(true); // the link is gone: a real lock is there
     releaseLock(token);
   });
 
