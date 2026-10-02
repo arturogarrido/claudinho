@@ -211,9 +211,18 @@ describe('`share table`', () => {
     expect(text()).toContain('Group A · standings');
   });
 
-  it('every table, with one missing: the card says so (in English, like the card) and its structured form too', async () => {
-    await cmdShare('table', undefined, {}, ctx('uefa.euro', { lang: 'es' }, shortOf('uefa.euro')));
-    expect(text()).toContain(`(${INCOMPLETE.en})`);
+  it('every table, with one missing: the card says so in the reader’s language, like every verdict on a card, and in its structured form', async () => {
+    // Found in review: the sentence was English on the card whatever the
+    // language, while `table` printed it localized. A card's copy is English;
+    // the one sentence it prints for a VERDICT is the localized one, on every
+    // surface.
+    for (const lang of ['en', 'es', 'pt', 'fr'] as const) {
+      writes = [];
+      await cmdShare('table', undefined, {}, ctx('uefa.euro', { lang }, shortOf('uefa.euro')));
+      expect(text(), lang).toContain(`(${INCOMPLETE[lang]})`);
+      // The rest of the card stays English.
+      expect(text(), lang).toContain('Group A · standings');
+    }
     writes = [];
     await cmdShare('table', undefined, {}, ctx('uefa.euro', { json: true }, shortOf('uefa.euro')));
     const data = json();

@@ -738,8 +738,11 @@ describe('what every surface is built from', () => {
     expect(short.verdict).toEqual({ incomplete: true });
     const text = formatShareTable(short.input);
     expect(text).toContain('Group A · standings');
-    // English, like the card, whatever the reader's language.
     expect(text).toContain('(Some tables could not be read — this is not the whole competition.)');
+    // A verdict's sentence is the localized one on every surface, a card included.
+    const es = tableShareCard(await read('uefa.euro', undefined, shortEuro()), undefined, undefined, 'es');
+    expect(formatShareTable(es.input)).toContain('(No se pudieron leer algunas tablas — esta no es la competición completa.)');
+    expect(formatShareTable(es.input)).toContain('Group A · standings');
     // And it comes before the footer, not instead of the tables.
     expect(text.indexOf('could not be read')).toBeGreaterThan(text.indexOf('Group B · standings'));
     expect(text.indexOf('could not be read')).toBeLessThan(text.indexOf('Live data: ESPN'));

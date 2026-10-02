@@ -94,6 +94,22 @@ describe('get_standings shows the table the competition has', () => {
     expect(r.text).toContain('No standings available.');
     expect(r.data).toEqual({ degraded: false, source: 'espn', tables: [] });
   });
+
+  it('the two sentences for "nothing to show" follow the reader’s language, like "unavailable" does', async () => {
+    // Found in review: they were English literals. Under this competition the
+    // empty answer used to be the localized "unavailable"; it must not become
+    // an English sentence for a Spanish reader.
+    const empty = await toolGetStandings({ lang: 'es', ...common('concacaf.champions') });
+    expect(empty.text).toContain('No hay clasificación disponible.');
+    const unknown = await toolGetStandings({ group: 'A', lang: 'es', ...common('uefa.nations') });
+    expect(unknown.text).toContain('No se encontró el grupo "A".');
+    const pt = await toolGetStandings({ group: 'A', lang: 'pt', ...common('uefa.nations') });
+    expect(pt.text).toContain('Grupo "A" não encontrado.');
+    const fr = await toolGetStandings({ lang: 'fr', ...common('concacaf.champions') });
+    expect(fr.text).toContain('Aucun classement disponible.');
+    // English is what it was.
+    expect((await toolGetStandings({ group: 'A', ...common('uefa.nations') })).text).toContain('No group "A".');
+  });
 });
 
 describe('tables are missing: text and data both say so', () => {
