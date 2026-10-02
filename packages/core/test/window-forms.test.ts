@@ -296,6 +296,19 @@ describe('one fixture under two parts, when a month is narrowed to the window', 
     expect(fetchMeta(got)?.complete).toBe(false);
   });
 
+  it('the window says every fixture its parts held, also the ones it did not return', async () => {
+    // Found in review (round 2). A caller that keeps a previous answer asks
+    // "was this fixture read?". Asked of what the window RETURNS, a fixture the
+    // parts held and the window set aside (moved outside it, a second copy)
+    // looked unread, and the caller put its old copy back.
+    const moved = await on(months([{ id: '8', date: '2026-06-20T19:00Z' }], [{ id: '9', date: '2026-07-05T19:00Z' }, { id: '7', date: '2026-07-25T19:00Z' }])).fetchWindow('2026-06-28', '2026-07-19');
+    expect(ids(moved)).toEqual(['9']);
+    expect([...(fetchMeta(moved)?.mentioned ?? [])].sort()).toEqual(['7', '8', '9']);
+    const twice = await on(months([{ id: '9', date: '2026-06-20T19:00Z' }], [{ id: '9', date: '2026-07-05T19:00Z' }])).fetchWindow('2026-06-28', '2026-07-19');
+    expect(twice).toEqual([]);
+    expect(fetchMeta(twice)?.mentioned).toEqual(['9']);
+  });
+
   it('a fixture outside the window, held once, takes nothing from a complete answer', async () => {
     const got = await on(months([{ id: '8', date: '2026-06-20T19:00Z' }], [{ id: '9', date: '2026-07-05T19:00Z' }])).fetchWindow('2026-06-28', '2026-07-19');
     expect(ids(got)).toEqual(['9']);
@@ -610,6 +623,21 @@ describe('the reads that were degraded, with the provider refusing every range',
     // The postponed tie was read; the refused record was not. (June's opener is
     // outside the span the window asked for.)
     expect([...(r.mentioned ?? [])].sort()).toEqual(['760516', '760517']);
+    // A tie the provider moved OUT of the span was read too (July's response
+    // holds it): it is not in the fixtures, and it is in what was read.
+    const movedOut = (async (input: unknown) => {
+      const res = await f.fetchImpl(input as string);
+      if (!String(input).includes('dates=202607')) return res;
+      const body = (await res.json()) as { events: unknown[] };
+      body.events.push(
+        wcEvent({ id: '760516', date: '2026-07-25T19:00Z' }, ['478', 'FRA', 'France'], ['205', 'BRA', 'Brazil'], '3rd-place-match'),
+        event({ id: '760514', date: '2026-07-14T19:00Z', raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } }),
+      );
+      return json(body);
+    }) as unknown as typeof fetch;
+    const out = await getKnockoutFixtures(new EspnAdapter({ competition: 'fifa.world', enrichGroups: false, fetchImpl: movedOut }), new Date('2026-07-14T12:00Z'));
+    expect(out.fixtures.map((m) => m.id)).toEqual(['760517']);
+    expect(out.mentioned).toContain('760516');
     // A whole answer has no need to say.
     const whole = await getKnockoutFixtures(wcAdapter(wcFeed()), new Date('2026-07-14T12:00Z'));
     expect(whole.mentioned).toBeUndefined();

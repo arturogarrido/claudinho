@@ -773,6 +773,32 @@ describe('season in the cache', () => {
       }
     });
 
+    it('nor is a tie the answer read and the WINDOW set aside: moved outside the span, or held twice', async () => {
+      // Found in review (round 2). "Was it read" was asked of what the window
+      // returned, after it had narrowed two months to the span. A tie the
+      // provider moved past the span, or one held in both months, was read and
+      // never returned, so the cached copy came back.
+      const stranger = raw('760599', '2026-07-16T19:00Z', 'semifinals', ['164', 'ESP', 'Spain'], ['478', 'FRA', 'France'], {
+        type: { name: 'STATUS_SOMETHING_NEW', state: 'limbo' },
+      });
+      const thirdOn = (date: string) => raw(third.id, date, '3rd-place-match', ['478', 'FRA', 'France'], ['205', 'BRA', 'Brazil']);
+      // Moved to after the span (Jul 19), beside an unrelated refused record.
+      seedSlice();
+      july([final, thirdOn('2026-07-25T19:00Z'), stranger]);
+      await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+      expect(readState('espn', 'fifa.world')?.fixtures?.map((m) => m.id)).toEqual(['760517']);
+      // Held in June (before the span) and again in July: the first copy counts, and it was read.
+      seedSlice();
+      vi.stubGlobal('fetch', async (url: unknown) =>
+        response({
+          leagues: [{ season: season(2026) }],
+          events: /dates=202607(&|$)/.test(String(url)) ? [final, thirdOn('2026-07-18T23:00Z')] : [thirdOn('2026-06-20T19:00Z')],
+        }),
+      );
+      await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+      expect(readState('espn', 'fifa.world')?.fixtures?.map((m) => m.id)).toEqual(['760517']);
+    });
+
     describe('when either season is unknown, an incomplete answer is no answer: the slice stands as it was', () => {
       // Found in review. Without both seasons nothing can be merged (the two
       // could be different editions), and the answer replaced the slice: a
