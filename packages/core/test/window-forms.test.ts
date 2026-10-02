@@ -620,9 +620,10 @@ describe('the reads that were degraded, with the provider refusing every range',
     const r = await getKnockoutFixtures(new EspnAdapter({ competition: 'fifa.world', enrichGroups: false, fetchImpl: july }), new Date('2026-07-14T12:00Z'));
     expect(r.complete).toBe(false);
     expect(r.fixtures.map((m) => m.id)).toEqual(['760517']);
-    // The postponed tie was read; the refused record was not. (June's opener is
-    // outside the span the window asked for.)
-    expect([...(r.mentioned ?? [])].sort()).toEqual(['760516', '760517']);
+    // The postponed tie was read; the refused record was not. June's opener is
+    // outside the span and not a knockout tie, and it was read: this is every
+    // fixture the two month responses held, not what the read returns.
+    expect([...(r.mentioned ?? [])].sort()).toEqual(['760415', '760516', '760517']);
     // A tie the provider moved OUT of the span was read too (July's response
     // holds it): it is not in the fixtures, and it is in what was read.
     const movedOut = (async (input: unknown) => {

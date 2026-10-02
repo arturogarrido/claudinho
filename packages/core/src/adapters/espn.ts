@@ -479,7 +479,13 @@ export class EspnAdapter implements ProviderAdapter {
       }
     }
     const season = parts.find((part) => part.season)?.season;
-    return attachFetchMeta(fixtures, { complete, ...(season ? { season } : {}) });
+    // `seen` is everything the parts held; the result can hold less (a month
+    // narrowed to the window). What was read is stated beside it.
+    return attachFetchMeta(fixtures, {
+      complete,
+      ...(season ? { season } : {}),
+      ...(seen.size > fixtures.length ? { mentioned: [...seen] } : {}),
+    });
   }
 
   /**
