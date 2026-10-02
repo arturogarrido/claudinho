@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { claimLock, readState, releaseLock, writeState } from '../src/cache';
+import { claimLock, readBackoffNote, readState, releaseLock, writeState } from '../src/cache';
 import { cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
@@ -167,11 +167,21 @@ describe('the post-call fallback (an adapter with a retained window but no liste
 });
 
 describe('persistence bookkeeping (review round 2 on #128)', () => {
-  it('a write skipped because another owner holds the lock is retried by the post-call fallback', async () => {
-    // The test owns the lock while the 429 listener fires (its persist is
-    // skipped), and releases it — via a listener registered AFTER the wrapper's —
-    // before the command's own call settles. The fallback must then persist:
-    // a skipped write is not a persisted one.
+  it('a write made while another owner holds the lock is not skipped: it goes to the note, at once', async () => {
+    // The test owns the lock while the 429 listener fires, and releases it —
+    // via a listener registered AFTER the wrapper's — before the command's own
+    // call settles. Until 0.11 (2.6a) that first persist was SKIPPED and the
+    // post-call fallback retried it into the snapshot; a command whose lock
+    // never came free lost the throttle. Now the first persist goes to the
+    // scope's note, which needs no lock.
+    //
+    // Found in review: asserting only "the deadline is in effect when the
+    // command returns" passed with the note write removed, because in THIS
+    // interleaving the lock comes free and the old fallback writes the
+    // snapshot. So this pins where the deadline went: the note has it, and
+    // the fallback, with nothing left to do, wrote no snapshot. (The rule the
+    // old test pinned, "only a write that happened counts", has its own
+    // failing case in `refresher-lock.test.ts`: the note cannot be written.)
     const held = claimLock(nowMs);
     expect(held).toBeDefined();
     let registered = false;
@@ -185,12 +195,14 @@ describe('persistence bookkeeping (review round 2 on #128)', () => {
     const adapter = new EspnAdapter({ fetchImpl: fetchImpl as unknown as FetchImpl, now: () => nowMs, enrichGroups: false });
     await cmdToday('2026-06-11', { cfg: cfg(), t: makeT('en'), adapter, now: NOW });
     expect(json().degraded).toBe(true);
-    expect(persistedDelay()).toBeGreaterThanOrEqual(600_000);
-    expect(persistedDelay()).toBeLessThanOrEqual(601_000);
+    const noted = (readBackoffNote('espn', 'fifa.world', nowMs) ?? Number.NaN) - nowMs;
+    expect(noted).toBeGreaterThanOrEqual(600_000);
+    expect(noted).toBeLessThanOrEqual(601_000);
+    expect(readState('espn', 'fifa.world')?.backoffUntil).toBeUndefined();
   });
 
   it('a cached deadline the cache rejects does not suppress a real throttle', async () => {
-    // 31 min ahead is past the cache's 30-min bound: backoffActive rejects it, so
+    // 31 min ahead is past the cache's 30-min bound: it is not believed, so
     // nothing is pre-armed — and it must not count as "already persisted" either,
     // or a real 600 s throttle could never replace it.
     writeState({

@@ -49,7 +49,8 @@ The behavior differs by component:
   renders fast (well under 150 ms, never blocking on the network). It lives in your cache
   directory (`$XDG_CACHE_HOME/claudinho`, falling back to `~/.cache/claudinho`) and holds only
   public match data and Claudinho's own local counters — for example `state.json` (cached
-  live/upcoming scores and fixtures), `market-signals.json` (cached market reads), and
+  live/upcoming scores and fixtures), `backoff.json` (a single timestamp: until when the data
+  provider asked not to be contacted), `market-signals.json` (cached market reads), and
   `runs.json` (a local counter for the star-reminder nudge). These files contain no personal
   data, stay on your device, are never uploaded, and you can delete them at any time.
 - The **MCP server** keeps its cache **in memory only** — a short-lived in-process cache for

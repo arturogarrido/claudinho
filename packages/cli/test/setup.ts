@@ -4,3 +4,19 @@
 // touch the network. Tests that exercise market behavior inject their own
 // provider (which takes precedence over this env).
 process.env.CLAUDINHO_MARKETS_SOURCE = 'none';
+
+// No test reads or writes the developer's real cache directory. Most CLI test
+// files set their own; the ones that do not used to fall through to
+// `~/.cache/claudinho`, and a command test there would read a real snapshot
+// and, since the throttle note, a real `backoff.json`. A file that sets
+// `XDG_CACHE_HOME` itself overrides this and restores it afterwards.
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll } from 'vitest';
+
+const testCache = mkdtempSync(join(tmpdir(), 'claudinho-test-cache-'));
+process.env.XDG_CACHE_HOME = testCache;
+// Removed when the file's tests are done. (A `process.on('exit')` handler does
+// not run in a test worker: it left one empty directory per test file, per run.)
+afterAll(() => rmSync(testCache, { recursive: true, force: true }));

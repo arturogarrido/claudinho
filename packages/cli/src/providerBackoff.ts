@@ -7,46 +7,62 @@
  * to wait. Now the CLI pre-arms its adapter from the persisted backoff (zero
  * requests inside the window, honest degraded output) and persists a throttle
  * it meets itself, so the next process, and the refresher, honour it too.
- * REMAINING (0.11, 2.6): a cross-process admission layer with a request budget.
+ *
+ * A throttle always has somewhere to be written (0.11, 2.6a). Under the
+ * refresh lock it goes into the snapshot; whenever a reader would not find it
+ * there (a refresher holds the lock for as long as a request can take, the
+ * publish was refused, the snapshot cannot be read) it goes to the scope's
+ * note, which needs no lock. It used to be dropped, and the next refresh asked
+ * the provider that had just said stop. Every writer keeps the later of the
+ * deadlines it believes: the backoff in effect, the note included.
  */
 import type { ProviderAdapter } from '@claudinho/core';
 import {
-  backoffActive,
+  backoffInEffect,
   type CacheState,
   claimLock,
+  ensureBackoffVisible,
   publishState,
   readCurrentState,
-  readState,
   releaseLock,
 } from './cache';
 
 /**
- * Persist an absolute cooldown deadline as the cache's `backoffUntil`, under
- * the lock. Returns whether the write actually happened: a skipped or refused
- * write must NOT be remembered as persisted (review round 2 on #128).
+ * Persist an absolute cooldown deadline: as the snapshot's `backoffUntil`
+ * under the lock, then, if a reader would not find it there, in the scope's
+ * note. Returns whether a reader will find it: a write that failed, was
+ * refused, or cannot be read back must NOT be remembered as persisted (review
+ * round 2 on #128; round 2 on 2.6a for the refused and the unreadable
+ * snapshot).
  */
 function persistBackoff(source: string, competition: string, until: number, nowMs: number): boolean {
-  // The refresher may be mid-write; it persists its own throttle, so skipping
-  // here loses nothing as long as the caller retries later. Never wait, never
-  // clobber an unowned snapshot.
+  // Never wait, never clobber an unowned snapshot. A refresher may hold the
+  // lock for as long as its requests take, and this command may be gone by
+  // then: the deadline goes to the note instead, which the refresher (and
+  // every other reader of a backoff) reads beside the snapshot.
   const token = claimLock(nowMs);
-  if (!token) return false;
-  try {
-    const prior = readState(source, competition);
-    const base: CacheState =
-      prior && prior.source === source && prior.competition === competition
-        ? prior
-        : {
-            updatedAt: new Date(nowMs).toISOString(),
-            live: [],
-            degraded: true, // the provider refused us — never claim otherwise
-            source,
-            competition,
-          };
-    return publishState({ ...base, backoffUntil: new Date(until).toISOString() }, token);
-  } finally {
-    releaseLock(token);
+  if (token) {
+    try {
+      const base: CacheState = readCurrentState(source, competition) ?? {
+        updatedAt: new Date(nowMs).toISOString(),
+        live: [],
+        degraded: true, // the provider refused us — never claim otherwise
+        source,
+        competition,
+      };
+      // The later of this one and the backoff in effect (the snapshot's and the
+      // note's, each if believed): a shorter throttle (another command's, a
+      // moment later) must not replace a longer one, wherever that one is, and
+      // a stored value nobody believes must not outrank a real one.
+      const inEffect = backoffInEffect(base, source, competition, nowMs);
+      const later = inEffect !== undefined && inEffect > until ? inEffect : until;
+      publishState({ ...base, backoffUntil: new Date(later).toISOString() }, token);
+    } finally {
+      releaseLock(token);
+    }
   }
+  // Refused, unreadable or never tried: what counts is what a reader will find.
+  return ensureBackoffVisible(source, competition, until, nowMs);
 }
 
 /**
@@ -64,18 +80,19 @@ export function withPersistedBackoff(
   const nowMs = now.getTime();
   const state = readCurrentState(source, competition);
   // ONE validation decides both the pre-arm and what counts as already
-  // persisted: a cached deadline backoffActive rejects (past its bound,
-  // unparseable) is neither armed nor trusted, so a real throttle can replace
-  // it (review round 2 on #128).
-  const accepted =
-    state?.backoffUntil && backoffActive(state, nowMs) ? Date.parse(state.backoffUntil) : undefined;
+  // persisted: a deadline that is not believed (past its bound, unparseable)
+  // is neither armed nor trusted, so a real throttle can replace it (review
+  // round 2 on #128). The backoff in effect is the later of the snapshot's
+  // and the scope's note.
+  const accepted = backoffInEffect(state, source, competition, nowMs);
   if (accepted !== undefined) adapter.armCooldown?.(accepted);
   // Persist from the adapter's RETAINED window, never from `lastError`: with
   // two concurrent requests a 500 can land after a 429 and become lastError
   // while the cooldown stands, and a 429 can arrive after this command's own
   // call already returned (review P2 on #128). Every armed or extended window
-  // is persisted once — and only a write that HAPPENED counts, so a persist
-  // skipped while another owner held the lock is retried by the next chance.
+  // is persisted once — and only a deadline a reader will FIND counts: one
+  // that reached neither a readable snapshot nor the note is retried by the
+  // next chance.
   let persisted = accepted;
   const persistIfNewer = (until: number) => {
     if (!(until > nowMs) || (persisted !== undefined && until <= persisted)) return;
