@@ -16,12 +16,13 @@ import { z } from 'zod/v3';
 import {
   allFixtures,
   asFlavorLevel,
+  DISCLAIMER,
   fixturesByDate,
   groups,
   isValidDate,
   TABLE_KEY_ARG,
 } from '@claudinho/core';
-import { DISCLAIMER, matchList } from './format';
+import { matchList } from './format';
 import {
   resolveAdapter,
   standingsResourceText,
@@ -523,31 +524,45 @@ const MAX_TEXT_CHARS = 32_000;
  */
 const DUAL_EMIT_LIMIT = 16_000;
 
-export function toContent(r: ToolResult) {
+const TRUNCATED = '\n(truncated)';
+
+/**
+ * The prose block: a tool's text, then `tail` (a sentence about the response
+ * itself), within MAX_TEXT_CHARS. A text that fits is returned whole. One that
+ * does not is cut at a length, the cut is said, and what is lost is the end of
+ * the BODY, never the footer (`ToolResult.footer`: the attribution and the
+ * non-affiliation disclaimer, which every user-facing surface carries and a cut
+ * from the end used to take first). What qualifies the body is printed before
+ * it for the same reason (a verdict, a partial table).
+ */
+function boundText(r: { text: string; footer?: string }, tail: string): string {
+  if (r.text.length + tail.length <= MAX_TEXT_CHARS) return r.text + tail;
+  const room = Math.max(0, MAX_TEXT_CHARS - tail.length - TRUNCATED.length);
+  // A footer that is not the end of the text, or that would not fit, is not one.
+  const footer = r.footer && r.text.endsWith(r.footer) && r.footer.length <= room ? r.footer : '';
+  return `${r.text.slice(0, room - footer.length)}${TRUNCATED}${footer}${tail}`;
+}
+
+/**
+ * A tool's result as the MCP tool response. The footer is optional HERE only:
+ * a tool handler must state one (`ToolResult`); a result built by hand (a
+ * test) need not, and is then cut from the end like any text.
+ */
+export function toContent(r: Omit<ToolResult, 'footer'> & { footer?: string }) {
   const data = boundResponse(r.data);
   const dataTruncated =
     !!data &&
     typeof data === 'object' &&
     (data as Record<string, unknown>).responseTruncated === true;
-  const marker = dataTruncated ? `\n\n(${RESPONSE_TRUNCATION})` : '';
-  const room = Math.max(0, MAX_TEXT_CHARS - marker.length - '\n(truncated)'.length);
-  const text =
-    r.text.length > room
-      ? `${r.text.slice(0, room)}\n(truncated)${marker}`
-      : r.text + marker;
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     const error =
       'Response data exceeded the MCP context limit and could not be reduced without violating its output schema.';
     return {
-      content: [
-        {
-          type: 'text' as const,
-          text: `${text.slice(0, Math.max(0, MAX_TEXT_CHARS - error.length - 2))}\n\n${error}`,
-        },
-      ],
+      content: [{ type: 'text' as const, text: boundText(r, `\n\n${error}`) }],
       isError: true,
     };
   }
+  const text = boundText(r, dataTruncated ? `\n\n(${RESPONSE_TRUNCATION})` : '');
   // The JSON text block DUPLICATES `structuredContent`; that dual-emit is
   // deliberate, so clients too old to read structuredContent still get the data
   // (see the note above). But duplicating a large payload doubles the context
