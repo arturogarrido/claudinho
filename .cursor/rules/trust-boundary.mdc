@@ -1,6 +1,6 @@
 ---
 description: Where untrusted input becomes a domain type, and the rules that hold there
-globs: packages/core/src/trust/**,packages/core/src/adapters/**,packages/core/src/markets/**,packages/cli/src/statusline.ts,packages/cli/src/marketCache.ts
+globs: packages/core/src/trust/**,packages/core/src/adapters/**,packages/core/src/markets/**,packages/cli/src/statusline.ts,packages/cli/src/marketCache.ts,packages/cli/src/scheduleSlice.ts
 alwaysApply: false
 ---
 
@@ -39,6 +39,11 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   A refused record, or one fixture in two parts, leaves the answer
   `complete: false` (`fetchMeta`). A caller that keeps a previous answer must
   carry that verdict: an incomplete answer never erases what it did not read.
+  A caller that composes windows itself (discovery: a window per month) asks
+  "no readable record" of the whole too: a window refused because its list
+  held no readable record carries `ProviderError.noReadableRecord` and read
+  nothing; an envelope nobody could read carries no such mark and still fails
+  it.
 - **Both paths end at the same constructor.** Live and cache reads call
   `sealMatch` / `sealMarketSignal`. When they had separate rules, each fix landed
   on one of them; `core/test/trust-parity.test.ts` asserts they agree, as a JSON

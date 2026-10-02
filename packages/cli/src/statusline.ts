@@ -2,14 +2,17 @@
  * Statusline rendering — the HOT PATH. Pure, synchronous, no network: it reads
  * a cached snapshot and the static schedule and returns one compact line.
  * Live scores come from the cache (refreshed out of band); the countdown to the
- * next fixture is computed live from the static kickoff time, so it ticks for
- * free on every render even with no refresh.
+ * next fixture is computed live from a kickoff time it already holds, so it
+ * ticks for free on every render even with no refresh. On the bundled
+ * competition that kickoff is the static schedule's (with the refresher's
+ * resolved knockout pairings merged in); off it, the cache's schedule slice's.
  */
 import {
   allFixtures,
   byKickoff,
   countdown,
   fixturesInLiveWindow,
+  hasLiveWindow,
   isLive,
   isResolvedNation,
   isTournamentWindowOver,
@@ -26,6 +29,7 @@ import {
   type Match,
 } from '@claudinho/core';
 import { ageMs, type CacheState } from './cache';
+import { scheduleGateOpen, scheduleView } from './scheduleSlice';
 
 // The live-window constant lives in core (shared with the market-relevance
 // gate); re-exported here so existing call sites keep importing from this file.
@@ -187,7 +191,7 @@ const MAX_LIVE_EXAMINED = 512;
  * `events: false` — this surface renders a scoreline, not a timeline, and
  * sealing per-event labels is the dominant cost on a 150ms budget.
  */
-function sealFixtures(raw: unknown): BoundedList<Match> {
+export function sealFixtures(raw: unknown): BoundedList<Match> {
   if (raw === undefined) {
     return { items: [], total: 0, shown: 0, truncated: false, complete: true };
   }
@@ -320,10 +324,18 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // countdown/syncing lines, so they get the same poisoned-cache defense.
   // Malformed entries (null, {}, missing kickoff/teams) are dropped, never
   // allowed to throw the whole statusline blank downstream.
-  const cachedFixtureList = sealFixtures(state?.fixtures);
+  // On the bundled competition they are the refresher's resolved knockout
+  // pairings; off it, the schedule slice's display records (the knockout slice
+  // is the bundle's and is never filled there).
+  const cachedFixtureList = sealFixtures(defaultCompetition ? state?.fixtures : state?.schedule?.fixtures);
   // A partial fixture overlay cannot prove a pairing is absent, but every
-  // sealed pairing it does contain is safe to display.
-  const cachedFixtures = [...cachedFixtureList.items];
+  // sealed pairing it does contain is safe to display. Off the bundle, a
+  // display record the provider says is postponed, cancelled or FINISHED has
+  // no window and nothing to count down to: it is named nowhere on the line,
+  // by the index's own rule (`hasLiveWindow`).
+  const cachedFixtures = defaultCompetition
+    ? [...cachedFixtureList.items]
+    : cachedFixtureList.items.filter((m) => hasLiveWindow(m.status));
   // Off the bundle the skeleton is ANOTHER competition's schedule: the
   // countdown may read cached fixtures only, never the bundle (audit A03).
   const bundle = defaultCompetition ? allFixtures() : [];
@@ -373,7 +385,34 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // An incomplete scan only justifies "syncing" when the schedule says a match
   // may actually be on. On a quiet morning (or after the tournament), cache
   // junk must not turn into a false live-score outage claim.
-  if (!cacheFresh || !liveList.complete) {
+  if ((!cacheFresh || !liveList.complete) && !defaultCompetition) {
+    // Off the bundle the schedule slice's GATE says whether a match can be in
+    // play: a discovered fixture inside its window, or a match that was seen
+    // in play and not yet seen to end. Not a probe: that is the refresher
+    // asking a question, not a reason to say a match is on.
+    if (scheduleGateOpen(scheduleView(state?.schedule, nowMs), nowMs, { probe: false })) {
+      // The fixtures there is a full record for, inside their (flat) window
+      // (one that has none was left out above).
+      const win = cachedFixtures
+        .filter((m) => {
+          const k = Date.parse(m.kickoff);
+          return k <= nowMs && nowMs < k + LIVE_WINDOW_MS;
+        })
+        .filter((m) => !team || m.home.code === team || m.away.code === team)
+        .sort(byKickoff);
+      const first = win[0];
+      // With a team filter the line is about that team's match or it is not
+      // shown: the gate does not know whose match keeps it open.
+      if (first || !team) {
+        const matchup =
+          first && isResolvedFixture(first)
+            ? `${teamTok(first.home, flags)} vs ${teamTok(first.away, flags)} `
+            : '';
+        const more = win.length - 1;
+        return `⚽ ${matchup}live · syncing…` + (more > 0 ? ` +${more}` : '');
+      }
+    }
+  } else if (!cacheFresh || !liveList.complete) {
     const win = fixturesInLiveWindow(nowMs, schedule).filter(
       (m) => !team || m.home.code === team || m.away.code === team,
     );

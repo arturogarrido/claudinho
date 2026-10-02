@@ -34,7 +34,7 @@ try {
       // = CACHE_VERSION in packages/cli/src/cache.ts. Pinned by
       // packages/cli/test/smoke-cache-version.test.ts, because a "bump together"
       // comment alone did not survive the 0.11 format change.
-      version: 3,
+      version: 4,
       updatedAt: now,
       degraded: false,
       source: 'espn',

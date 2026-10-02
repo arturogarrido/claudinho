@@ -6,7 +6,7 @@
  */
 import { closeSync, mkdirSync, openSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
-import { DEFAULT_COMPETITION, type Match, type SeasonInfo } from '@claudinho/core';
+import { DEFAULT_COMPETITION, type Match, type ScheduleEntry, type SeasonInfo } from '@claudinho/core';
 import { randomBytes } from 'node:crypto';
 import { cacheDir, lookAtSmallFile, readSmallFile, writeFileAtomic } from './paths';
 
@@ -22,8 +22,12 @@ export { cacheDir } from './paths';
  * version-2 file (0.10.1) is therefore an EMPTY cache to this binary: the hot
  * path renders as if no file existed — it never fetches — and the refresher
  * writes the new one.
+ *
+ * 4 (0.11): the `schedule` slice, and off the bundled competition a live stamp
+ * that can say "never read". An older binary would poll that scope around the
+ * clock from a version-4 file's live slice; it gets an empty cache instead.
  */
-export const CACHE_VERSION = 3;
+export const CACHE_VERSION = 4;
 
 /** Hard byte ceiling before JSON parsing on the statusline hot path. */
 export const MAX_STATE_BYTES = 1024 * 1024;
@@ -80,6 +84,39 @@ export interface CacheState {
    * edition survived into a snapshot labelled with another.
    */
   fixturesSeason?: SeasonInfo;
+  /**
+   * The schedule ahead, for a competition the bundle does not describe: what
+   * decides when a match can be in play there (see `scheduleSlice.ts`, which
+   * holds every rule about it). Never filled on the bundled competition, where
+   * the bundled schedule decides. Everything in it but the display records is
+   * read through `scheduleView`, never directly (the index, both stamps,
+   * `failures`, `complete`, `inPlayUntil`, `probe`, the season); the display
+   * records are sealed where they are used, like every cached match
+   * (`sealFixtures`).
+   */
+  schedule?: ScheduleSlice;
+}
+
+/** The stored schedule slice. Every field is input when read back: see `scheduleView`. */
+export interface ScheduleSlice {
+  /** One record per relevant fixture, in kickoff order: all of them, or the slice has no index. */
+  index?: ScheduleEntry[];
+  /** Full records, for display only (the earliest relevant ones at hand). */
+  fixtures?: Match[];
+  /** ISO 8601: the last discovery that succeeded. */
+  updatedAt?: string;
+  /** ISO 8601: the last discovery ATTEMPT, written before its request is made. */
+  attemptedAt?: string;
+  /** Consecutive failed discoveries. */
+  failures?: number;
+  /** The season of the response that produced the slice. */
+  season?: SeasonInfo;
+  /** Whether the answer that produced the index was whole. */
+  complete?: boolean;
+  /** ISO 8601: a match was seen in play; the gate stays open until then. */
+  inPlayUntil?: string;
+  /** A discovery failed and no live read has asked since. */
+  probe?: boolean;
 }
 
 const LOCK_STALE_MS = 60_000;
@@ -112,7 +149,8 @@ function lockPath(): string {
   return join(cacheDir(), 'refresh.lock');
 }
 
-function validStamp(value: unknown): value is string {
+/** A stamp exactly as this product writes one: a canonical UTC instant. */
+export function validStamp(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   const match = value.match(
     /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,3}))?Z$/,
@@ -147,7 +185,7 @@ function isCacheState(value: unknown): value is CacheState {
   ) {
     return false;
   }
-  for (const key of ['season', 'fixturesSeason'] as const) {
+  for (const key of ['season', 'fixturesSeason', 'schedule'] as const) {
     const v = s[key];
     if (v !== undefined && (!v || typeof v !== 'object' || Array.isArray(v))) return false;
   }
@@ -228,9 +266,10 @@ export function believedDeadline(untilMs: number | undefined, now: number): numb
 // can take) could not write it, exited, and the throttle was lost: the next
 // refresh asked the provider that had just said stop. The note is where a
 // throttle goes whenever a reader would not find it in the snapshot (the lock
-// was taken, the publish was refused, the snapshot cannot be read): a tiny
-// file beside the snapshot, written atomically and WITHOUT the lock, read by
-// everything that reads a backoff (`ensureBackoffVisible` decides).
+// was taken, the publish was refused or its write failed, the snapshot cannot
+// be read): a tiny file beside the snapshot, written atomically and WITHOUT
+// the lock, read by everything that reads a backoff (`ensureBackoffVisible`
+// decides).
 // It is never deleted (an expired one is simply not believed, and the next
 // writer writes over it), so no cleanup can remove a deadline it did not read.
 
@@ -309,13 +348,14 @@ export function backoffInEffect(
 
 /**
  * Make a throttle visible: called by every writer of a deadline AFTER its
- * attempt to publish one, whether the publish happened, was refused, or was
- * never tried (the lock was someone else's). If the backoff a reader would
- * find (`backoffInEffect` of the snapshot as it is now, and the note) is not at
- * least as late as `untilMs`, the deadline goes to the note. Returns whether it
- * is now visible: false when `untilMs` itself is not believed, or when the note
- * could not be written or read back (never throws). In whole milliseconds, as
- * a stamp stores it and as `writeBackoffNote` compares.
+ * attempt to publish one, whether the publish happened, was refused, failed
+ * (it threw), or was never tried (the lock was someone else's). If the backoff
+ * a reader would find (`backoffInEffect` of the snapshot as it is now, and the
+ * note) is not at least as late as `untilMs`, the deadline goes to the note.
+ * Returns whether it is now visible: false when `untilMs` itself is not
+ * believed, or when the note could not be written or read back (never throws).
+ * In whole milliseconds, as a stamp stores it and as `writeBackoffNote`
+ * compares.
  *
  * A write that HAPPENED is not one a reader will find: an atomic replacement
  * keeps the mode of the file it replaces, so a snapshot nobody can read stays
@@ -548,7 +588,9 @@ export function releaseLock(token: LockToken | undefined = heldToken): void {
  * operating system holds). Stated, with the takeover race in `claimLock`.
  * Returns whether the write happened, which is not whether a reader will find
  * it (a snapshot nobody can read stays one): a writer with a throttle asks
- * `ensureBackoffVisible` afterwards, refused or not.
+ * `ensureBackoffVisible` afterwards, refused or not. It THROWS when the write
+ * fails (an atomic write's rename can): every writer with a throttle catches
+ * that, as a publish that did not happen, and still asks.
  */
 export function publishState(state: CacheState, token: LockToken | undefined = heldToken): boolean {
   if (!holdsLock(token)) return false;

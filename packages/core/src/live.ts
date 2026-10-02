@@ -3,7 +3,7 @@
  * provider state is merged over it by match id. Used by every client (CLI, MCP,
  * notifier) so the overlay logic lives in exactly one place.
  */
-import { EspnAdapter } from './adapters/espn';
+import { EspnAdapter, ProviderError } from './adapters/espn';
 import { fetchMeta } from './adapters/meta';
 import type { ProviderAdapter } from './adapters/types';
 import { byKickoff, isFinished, isLive } from './normalize';
@@ -27,6 +27,15 @@ import { bundleApplies } from './competition';
 
 /** Provider names {@link makeAdapter} can construct (the CLI validates against this). */
 export const KNOWN_SOURCES = ['espn'] as const;
+
+/**
+ * Whether a source names a provider {@link makeAdapter} can construct: THE
+ * question for every caller that must not ask a provider it does not name (a
+ * command's precheck, the refresher, the trigger that starts one).
+ */
+export function isKnownSource(source: string): boolean {
+  return (KNOWN_SOURCES as readonly string[]).includes(source);
+}
 
 export interface AdapterOptions {
   /**
@@ -595,6 +604,154 @@ export async function getMatchById(
   }
 }
 
+/** Discovery looks this many provider days back (a match that kicked off late yesterday can still be in play). */
+export const SCHEDULE_LOOKBACK_DAYS = 1;
+/** And this many ahead. */
+export const SCHEDULE_AHEAD_DAYS = 14;
+
+export interface ScheduleAheadResult {
+  /** Every fixture read in the span, in ANY status, by kickoff. */
+  fixtures: Match[];
+  /** The schedule could not be had (a failed request, a refused window): the caller keeps what it has. */
+  degraded: boolean;
+  /**
+   * The season every month's response stated, when they all stated the SAME
+   * one (by year); absent when one stated none, when two stated different
+   * ones, or on failure. A month whose list held no readable record states what
+   * its response stated. Two months can state two seasons (the provider's
+   * season turns on June 1): the fixtures of both are returned, and the answer
+   * states none, because no one season describes all of them.
+   */
+  season?: SeasonInfo;
+  /**
+   * False when the provider sent records this result does not hold (one it
+   * could not read, a month whose list held no readable record, one fixture in
+   * both months), or when the adapter says nothing about its answer. A fixture
+   * absent from such a result is not known to be gone. Stated on every answer
+   * that is not `degraded`.
+   */
+  complete?: boolean;
+  /**
+   * Stated with `complete: false`: the id of every fixture either month's
+   * response held, BEFORE the months are narrowed to the span. A caller keeping
+   * a previous answer asks "was it read?" of this list, not of `fixtures` (a
+   * fixture moved beyond the span was read, and must not be put back).
+   */
+  mentioned?: readonly string[];
+}
+
+/** `YYYY-MM-DD` of the first and last day of the month a day is in. */
+function monthOf(day: string): { first: string; last: string } {
+  const y = Number(day.slice(0, 4));
+  const m = Number(day.slice(5, 7));
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { first: `${day.slice(0, 8)}01`, last: `${day.slice(0, 8)}${String(last).padStart(2, '0')}` };
+}
+
+/**
+ * The schedule ahead: every fixture from `SCHEDULE_LOOKBACK_DAYS` back to
+ * `SCHEDULE_AHEAD_DAYS` ahead, counted in the PROVIDER's calendar days and
+ * added as dates (a daylight-saving change does not move the span). What the
+ * cold-path refresher reads, about once an hour, to know when a match can be
+ * in play in a competition the bundled schedule does not describe.
+ *
+ * Each calendar month the span touches is its OWN window, asked whole (first
+ * day to last), so it is exactly one month request whatever part of the month
+ * is in the span (a two- or three-day fragment passed as itself would be asked
+ * a day at a time). One request, or two, sent together and both settled before
+ * this answers (a throttle on one is retained by the adapter whatever the
+ * other did). Two windows, not one window of two months: a response states the
+ * season of the dates asked, and a composed window refuses two seasons. So the
+ * answer states a season only when every month stated the same one.
+ *
+ * "A list that is not empty and holds no readable record is a failure" is
+ * asked of the WHOLE discovery, as a window asks it of all its parts: a month
+ * refused that way (`ProviderError.noReadableRecord`) read nothing, so the
+ * answer is not whole and nothing of that month is in `mentioned`, while the
+ * other month's fixtures are returned. If no month read a record, the
+ * discovery failed. Any other failure of either window fails it:
+ * `degraded`, nothing else.
+ */
+export async function getScheduleAhead(
+  adapter: ProviderAdapter,
+  now: Date = new Date(),
+): Promise<ScheduleAheadResult> {
+  if (!adapter.fetchWindow) return { fixtures: [], degraded: true };
+  const dayOf = (instant: Date): string =>
+    adapter.bucketDay?.(instant) || instant.toISOString().slice(0, 10);
+  const today = dayOf(now);
+  const start = shiftUtcDate(today, -SCHEDULE_LOOKBACK_DAYS);
+  const end = shiftUtcDate(today, SCHEDULE_AHEAD_DAYS);
+  // 16 days touch one month or two.
+  const months = [monthOf(start)];
+  if (monthOf(end).first !== months[0]?.first) months.push(monthOf(end));
+
+  const settled = await Promise.allSettled(
+    months.map((month) => (adapter.fetchWindow as NonNullable<typeof adapter.fetchWindow>)(month.first, month.last)),
+  );
+  /** A month whose list held records and none that could be read; nothing for any other outcome. */
+  const readNothing = (r: PromiseSettledResult<Match[]>) =>
+    r.status === 'rejected' && r.reason instanceof ProviderError ? r.reason.noReadableRecord : undefined;
+  if (settled.some((r) => r.status === 'rejected' && !readNothing(r))) return { fixtures: [], degraded: true };
+
+  let complete = true;
+  /** What each month's response stated, in month order. */
+  const seasons: Array<SeasonInfo | undefined> = [];
+  /** Every id read so far, by any month: what it returned and what its window set aside. */
+  const read = new Set<string>();
+  const fixtures: Match[] = [];
+  for (const r of settled) {
+    if (r.status === 'rejected') {
+      // It read nothing: the answer is not whole, and what its response stated is still stated.
+      complete = false;
+      seasons.push(readNothing(r)?.season);
+      continue;
+    }
+    const window = r.value;
+    const meta = fetchMeta(window);
+    // Absent is not true: an adapter that says nothing about its answer has
+    // not said it is whole.
+    if (meta?.complete !== true) complete = false;
+    seasons.push(meta?.season);
+    /** What EARLIER months read: the question "is this a second copy?" is asked of that, not of this month. */
+    const before = new Set(read);
+    for (const id of meta?.mentioned ?? []) read.add(id);
+    for (const m of window) {
+      read.add(m.id);
+      // One fixture is filed under one day, so two months cannot both hold it.
+      // If they do, the first copy, in month order, is the one that counts
+      // (the window's own rule for its parts) WHEREVER it fell, inside the
+      // span or not, and the answer is not whole.
+      if (before.has(m.id)) {
+        complete = false;
+        continue;
+      }
+      const kickoff = new Date(m.kickoff);
+      if (Number.isNaN(kickoff.getTime())) {
+        complete = false;
+        continue;
+      }
+      const day = dayOf(kickoff);
+      if (day < start || day > end) continue;
+      fixtures.push(m);
+    }
+  }
+  // Nothing was read, and a month's list was not empty: the whole discovery
+  // holds no readable record, which is a failure, not an empty schedule.
+  if (read.size === 0 && settled.some((r) => r.status === 'rejected')) return { fixtures: [], degraded: true };
+  // One season for the answer only when every month stated it.
+  const first = seasons[0];
+  const season = first && seasons.every((s) => s?.year === first.year) ? first : undefined;
+  fixtures.sort(byKickoff);
+  return {
+    fixtures,
+    degraded: false,
+    ...(season ? { season } : {}),
+    complete,
+    ...(complete ? {} : { mentioned: [...read] }),
+  };
+}
+
 /**
  * Currently-live matches; empty + degraded on error.
  *
@@ -612,15 +769,48 @@ export async function getLiveMatches(
   adapter: ProviderAdapter,
   now: Date = new Date(),
 ): Promise<LiveResult> {
+  // No surface prints the read's own verdict (yet): what they get is what
+  // they got, key for key.
+  const { complete: _complete, ...result } = await getLiveRead(adapter, now);
+  return result;
+}
+
+/** A live read with the answer's own account of itself: what the refresher decides from. */
+export interface LiveReadResult extends LiveResult {
+  /**
+   * True only when the provider's answer said every record in it was read.
+   * Absent is not true, and a failed read is not whole: a read that is not
+   * whole and holds no match in play does not prove none is.
+   */
+  complete: boolean;
+}
+
+/**
+ * {@link getLiveMatches}, keeping the window's `complete` verdict (read from
+ * the window's result BEFORE the in-play filter makes a new array). For the
+ * cold-path refresher, which keeps polling after a match was seen in play
+ * until a WHOLE read holds none.
+ */
+export async function getLiveRead(
+  adapter: ProviderAdapter,
+  now: Date = new Date(),
+): Promise<LiveReadResult> {
   try {
     const day = now.toISOString().slice(0, 10);
     const fetched = adapter.fetchWindow
       ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
       : await adapter.fetchLive();
-    const season = fetchMeta(fetched)?.season;
+    const meta = fetchMeta(fetched);
+    const season = meta?.season;
     const matches = fetched.filter((m) => isLive(m.status));
-    return { matches, degraded: false, source: adapter.name, ...(season ? { season } : {}) };
+    return {
+      matches,
+      degraded: false,
+      source: adapter.name,
+      ...(season ? { season } : {}),
+      complete: meta?.complete === true,
+    };
   } catch {
-    return { matches: [], degraded: true };
+    return { matches: [], degraded: true, complete: false };
   }
 }

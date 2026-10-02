@@ -64,10 +64,15 @@ export { readJsonBounded, ResponseTooLargeError } from './adapters/http';
 export {
   makeAdapter,
   KNOWN_SOURCES,
+  isKnownSource,
   knockoutWindow,
   mergeLive,
   getMatchesForDate,
   getLiveMatches,
+  getLiveRead,
+  getScheduleAhead,
+  SCHEDULE_AHEAD_DAYS,
+  SCHEDULE_LOOKBACK_DAYS,
   getMatchById,
   getStandings,
   getBracket,
@@ -78,6 +83,8 @@ export {
 } from './live';
 export type {
   LiveResult,
+  LiveReadResult,
+  ScheduleAheadResult,
   MatchByIdResult,
   NextFixtureResult,
   KnockoutFixturesResult,
@@ -222,6 +229,12 @@ export {
   sealSeason,
   unresolved,
   valid,
+  type ScheduleEntry,
+  hasLiveWindow,
+  MAX_SCHEDULE_INDEX,
+  parseCachedScheduleIndex,
+  scheduleEntryOf,
+  sealScheduleEntry,
 } from './trust';
 export { BUNDLE_COMPETITION, bundleApplies, bundleSeasonYear, resolveCompetition } from './competition';
 export { attachFetchMeta, fetchMeta, type FetchMeta } from './adapters/meta';

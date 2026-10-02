@@ -25,5 +25,6 @@ export * from './batch';
 export * from './roles';
 export * from './match';
 export * from './season';
+export * from './schedule';
 export * from './market';
 export * from './espn';

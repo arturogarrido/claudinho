@@ -71,6 +71,7 @@ import {
   getNextFixtureForTeam,
   getStandings,
   getBracket,
+  isKnownSource,
   KNOWN_SOURCES,
   makeAdapter,
 } from './data';
@@ -89,10 +90,10 @@ import type {
   ShareBracketOptions,
   ShareStyle,
 } from '@claudinho/core';
-import { isLockFresh, readCurrentState } from './cache';
+import { readCurrentState } from './cache';
 import { flagsEnabled, liveMatchesFromCache, renderPrompt } from './statusline';
 import { renderHook } from './hook';
-import { runRefresh, shouldRefresh, shouldRefreshFixtures, spawnRefresh } from './refresh';
+import { refreshWanted, runRefresh, spawnRefresh } from './refresh';
 import {
   type CursorStatusLinePayload,
   readCursorPayload,
@@ -266,7 +267,7 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
   // An unknown --source/CLAUDINHO_SOURCE used to silently run ESPN — the flag
   // lied. Fail loud with the valid list (core makeAdapter also throws, as
   // defense in depth; this gives the localized, prefix-free message).
-  if (!(KNOWN_SOURCES as readonly string[]).includes(cfg.source)) {
+  if (!isKnownSource(cfg.source)) {
     throw new InputError(
       t('err.source', { source: cfg.source, sources: KNOWN_SOURCES.join(', ') }),
     );
@@ -764,11 +765,7 @@ export function cmdPrompt(
     // branch is lock-deduped like the others: N concurrent statusline ticks on a
     // fresh install must fork one refresher, not N (and the refresher always
     // writes a snapshot, so this branch fires once, never per-tick forever).
-    if (
-      (!state && !isLockFresh()) ||
-      shouldRefresh(Date.now(), state, cfg.competition, cfg.source) ||
-      shouldRefreshFixtures(Date.now(), state, cfg.competition, cfg.source)
-    ) {
+    if (refreshWanted(Date.now(), state, cfg.competition, cfg.source)) {
       spawnRefresh(cfg.source, cfg.competition);
     }
   } catch {
@@ -800,11 +797,7 @@ export function cmdHook({ cfg }: Ctx): void {
     // Warm the same cache the statusline reads, for parity (the hook itself shows
     // only live scores). Spawn for live OR stale knockout fixtures; the no-cache
     // branch is lock-deduped (see cmdPrompt).
-    if (
-      (!state && !isLockFresh()) ||
-      shouldRefresh(Date.now(), state, cfg.competition, cfg.source) ||
-      shouldRefreshFixtures(Date.now(), state, cfg.competition, cfg.source)
-    ) {
+    if (refreshWanted(Date.now(), state, cfg.competition, cfg.source)) {
       spawnRefresh(cfg.source, cfg.competition);
     }
   } catch {
