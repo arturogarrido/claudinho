@@ -672,6 +672,23 @@ describe('rules the first mutation pass could not see (found by a reviewer’s o
     expect(asked).toEqual([]);
   });
 
+  it('a live slice read less than twelve seconds ago: the cycle takes no lock and writes nothing', async () => {
+    // Two checks say this (the plan, and the one beside the read). Without the
+    // plan's, a refresher would take the lock and publish on every prompt of a
+    // live window for nothing: the lock is what is observed here.
+    events = [{ id: '1', at: NOW - 10 * MIN, state: 'in' }];
+    seed(NOW, fresh(NOW, [entry('1', NOW - 10 * MIN)]), {}, 5_000);
+    const before = state();
+    let claimed = false;
+    onClaim = () => {
+      claimed = true;
+    };
+    await refresh(NOW);
+    expect(claimed).toBe(false);
+    expect(asked).toEqual([]);
+    expect(state()).toEqual(before);
+  });
+
   it('a cycle that only reads live carries the schedule’s display records through', async () => {
     events = [{ id: '1', at: NOW - 10 * MIN, state: 'in' }];
     await refresh(NOW - HOUR + MIN); // a first cycle: discovers (the fixture is 49 minutes away then)
