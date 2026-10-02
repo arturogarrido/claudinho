@@ -320,6 +320,24 @@ describe('what a discovery answer does to the slice', () => {
       expect(moved?.index).toEqual([entry('1', HOUR), entry('2', 2 * HOUR)]);
     });
 
+    it('a union that KEEPS entries of an unknown season does not give them the answer’s season', () => {
+      // Found in review. The union stored the answer's season for everything,
+      // kept entries included; an entry the answer had not read was then "known"
+      // to be of that season, and an answer of another season could delete it.
+      // Kept entries keep their provenance: with any kept, the slice's season is
+      // the answer's only if the two were already known to be the same.
+      const prev = stored([entry('1', HOUR), entry('2', 2 * HOUR)], null);
+      const kept = applyDiscovery(prev, answer([match('2', 2 * HOUR)], { complete: false, mentioned: ['2'], season: S2025 }), NOW);
+      expect(ids(kept?.index)).toEqual(['1', '2']);
+      expect(kept?.season).toBeUndefined();
+      // Everything at stake read: nothing kept, so the answer's season is the slice's.
+      const all = applyDiscovery(prev, answer([match('1', HOUR), match('2', 2 * HOUR)], { complete: false, mentioned: ['1', '2'], season: S2025 }), NOW);
+      expect(all?.season).toMatchObject({ year: 2025 });
+      // The same season on both sides: kept entries are of it too.
+      const same = applyDiscovery(stored([entry('1', HOUR), entry('2', 2 * HOUR)], S2025), answer([match('2', 2 * HOUR)], { complete: false, mentioned: ['2'], season: S2025 }), NOW);
+      expect(same?.season).toMatchObject({ year: 2025 });
+    });
+
     it('known to be ANOTHER season replaces the slice', () => {
       const r = applyDiscovery(stored([entry('1', HOUR)], S2025), answer([match('2', HOUR)], { complete: false, mentioned: ['2'] }), NOW);
       expect(ids(r?.index)).toEqual(['2']);

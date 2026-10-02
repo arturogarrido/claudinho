@@ -561,6 +561,36 @@ describe('the provider’s season turns on June 1: the two months are two answer
     expect(days()).toHaveLength(3);
   });
 
+  it('an entry kept by a union under an unknown season is not deleted by a later answer of another season', async () => {
+    // Found in review. 13:00: a response stating no season gives 41 (15:30)
+    // and 42 (tomorrow). 14:00: an incomplete answer stating 2025 reads only
+    // 42; the union kept 41 and labelled the slice 2025. 15:00: an incomplete
+    // answer stating 2026 reads only 42: "another season", so it replaced the
+    // slice and 41 was gone at kickoff. The provider's season label moving
+    // between two answers for the same dates is not an ordinary rollover; the
+    // rule still must not invent a provenance for what it did not read.
+    const T13 = Date.parse('2026-06-02T13:00:00.000Z');
+    const KICKOFF = Date.parse('2026-06-02T15:30:00.000Z');
+    const unread = { id: 'not an id', date: iso(KICKOFF) };
+    events = [
+      { id: '41', at: KICKOFF },
+      { id: '42', at: Date.parse('2026-06-03T23:00:00.000Z') },
+    ];
+    season = () => undefined;
+    await refresh(T13);
+    expect(state()?.schedule?.index?.map((e) => e.id)).toEqual(['41', '42']);
+    expect(state()?.schedule?.season).toBeUndefined();
+    events = [{ id: '42', at: Date.parse('2026-06-03T23:00:00.000Z') }];
+    extra = () => [unread];
+    season = () => S2025;
+    await refresh(T13 + 61 * MIN);
+    expect(state()?.schedule?.index?.map((e) => e.id)).toEqual(['41', '42']);
+    season = () => S2026;
+    await refresh(T13 + 122 * MIN);
+    expect(state()?.schedule?.index?.map((e) => e.id)).toEqual(['41', '42']);
+    expect(wanted(KICKOFF + MIN)).toBe(true);
+  });
+
   it('either month failing is a failed discovery: the slice stands, and ONE probe follows', async () => {
     const before = fresh(MAY20, [entry('40', Date.parse('2026-05-23T23:00:00.000Z'))], { season: { year: 2025, label: 'x' } }, 61 * MIN);
     seed(MAY20, before);
