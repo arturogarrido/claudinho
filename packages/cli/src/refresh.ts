@@ -32,7 +32,6 @@ import {
   releaseLock,
   claimLock,
   publishState,
-  stampAgeMs,
   writeBackoffNote,
 } from './cache';
 import {
@@ -113,13 +112,6 @@ export function inKnockoutPhase(nowMs: number, competition: string): boolean {
  * owed would be skipped as already answered).
  */
 const NEVER = new Date(0).toISOString();
-
-/** A stamp carried from the cache file, re-emitted in one form; nothing if it cannot be trusted. */
-function carriedStamp(value: string | undefined, now: number): string | undefined {
-  return value !== undefined && Number.isFinite(stampAgeMs(value, now))
-    ? new Date(Date.parse(value)).toISOString()
-    : undefined;
-}
 
 /**
  * The live-fetch adapter for a VALIDATED source and the refresh's competition.
@@ -548,9 +540,9 @@ async function refreshOffBundle(c: {
     let index = view.index;
     let display: Match[] = [...sealFixtures(base?.schedule?.fixtures).items];
     let scheduleSeason = view.season;
-    let complete = base?.schedule?.complete === true;
-    let scheduleUpdatedAt = carriedStamp(base?.schedule?.updatedAt, nowMs);
-    let attemptedAt = carriedStamp(base?.schedule?.attemptedAt, nowMs);
+    let complete = view.complete;
+    let scheduleUpdatedAt = view.updatedAt;
+    let attemptedAt = view.attemptedAt;
     let failures = view.failures;
     let inPlayUntil = view.inPlayUntil;
     let probe = view.probe;

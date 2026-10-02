@@ -9,6 +9,7 @@
  * pins the cycle that uses them.
  */
 import type { Match, ScheduleAheadResult, ScheduleEntry } from '@claudinho/core';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   applyDiscovery,
@@ -52,7 +53,7 @@ describe('what is read back from the file is believed only within bounds', () =>
   it('no slice: no schedule, discovery never attempted, nothing in play, no probe', () => {
     for (const raw of [undefined, null, 'x', 7, []]) {
       const v = scheduleView(raw, NOW);
-      expect(v, String(raw)).toEqual({ index: undefined, attemptAgeMs: Infinity, failures: 0, inPlayUntil: undefined, probe: false, season: undefined });
+      expect(v, String(raw)).toEqual({ index: undefined, attemptAgeMs: Infinity, attemptedAt: undefined, updatedAt: undefined, complete: false, failures: 0, inPlayUntil: undefined, probe: false, season: undefined });
     }
   });
 
@@ -73,6 +74,9 @@ describe('what is read back from the file is believed only within bounds', () =>
     );
     expect(v.index).toEqual([entry('1', HOUR), entry('2', 2 * HOUR, false)]);
     expect(v.attemptAgeMs).toBe(10 * MIN);
+    expect(v.attemptedAt).toBe(at(-10 * MIN));
+    expect(v.updatedAt).toBe(at(-10 * MIN));
+    expect(v.complete).toBe(true);
     expect(v.failures).toBe(0);
     expect(v.inPlayUntil).toBe(NOW + 2 * HOUR);
     expect(v.probe).toBe(true);
@@ -90,6 +94,13 @@ describe('what is read back from the file is believed only within bounds', () =>
     const v = scheduleView({ index: [], attemptedAt: '2099-01-01T00:00:00.000Z', failures: 0 }, NOW);
     expect(v.attemptAgeMs).toBe(Infinity);
     expect(discoveryDue(v)).toBe(true);
+  });
+
+  it('the stamps are carried only when they can be trusted, re-emitted in one form; `complete` only when it is `true`', () => {
+    const v = scheduleView({ index: [], attemptedAt: '2099-01-01T00:00:00.000Z', updatedAt: 'yesterday', complete: 'yes' }, NOW);
+    expect(v).toMatchObject({ attemptedAt: undefined, updatedAt: undefined, complete: false });
+    const short = scheduleView({ index: [], attemptedAt: '2026-10-10T14:50:00Z', updatedAt: '2026-10-10T14:50:00Z' }, NOW);
+    expect(short).toMatchObject({ attemptedAt: '2026-10-10T14:50:00.000Z', updatedAt: '2026-10-10T14:50:00.000Z' });
   });
 
   it('`inPlayUntil` is believed only while it is ahead and at most six hours ahead', () => {
@@ -313,5 +324,23 @@ describe('what a discovery answer does to the slice', () => {
       expect(again?.fixtures).toHaveLength(SCHEDULE_DISPLAY_MAX);
       expect(ids(again?.fixtures)).not.toContain('65');
     });
+  });
+});
+
+describe('one reader', () => {
+  it('no CLI source reads a field of the stored slice directly, except its display records', () => {
+    // The slice is input. Everything in it but the display records is believed
+    // through `scheduleView`; the display records are sealed by `sealFixtures`.
+    // A direct read (`state.schedule.attemptedAt`) is a second reader with no
+    // bounds: found in review as a comment that claimed there was none.
+    const dir = new URL('../src/', import.meta.url);
+    const direct: string[] = [];
+    for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts') && f !== 'scheduleSlice.ts')) {
+      const source = readFileSync(new URL(file, dir), 'utf8');
+      for (const m of source.matchAll(/\.schedule\??\.(\w+)/g)) {
+        if (m[1] !== 'fixtures') direct.push(`${file}: .schedule.${m[1]}`);
+      }
+    }
+    expect(direct).toEqual([]);
   });
 });

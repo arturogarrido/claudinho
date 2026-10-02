@@ -51,6 +51,12 @@ export interface ScheduleView {
   index: ScheduleEntry[] | undefined;
   /** Age of the latest discovery ATTEMPT (Infinity: never, or a stamp that cannot be trusted). */
   attemptAgeMs: number;
+  /** That attempt's stamp, re-emitted in one form; absent when it cannot be trusted. */
+  attemptedAt: string | undefined;
+  /** The stamp of the last discovery that succeeded, on the same terms. */
+  updatedAt: string | undefined;
+  /** The answer that produced the index said it was whole (`true` in the file, nothing else). */
+  complete: boolean;
   /** Consecutive failed discoveries. */
   failures: number;
   /** Epoch ms until which a match seen in play keeps the gate open; only while believed. */
@@ -64,11 +70,21 @@ export interface ScheduleView {
 const NO_SCHEDULE: ScheduleView = {
   index: undefined,
   attemptAgeMs: Number.POSITIVE_INFINITY,
+  attemptedAt: undefined,
+  updatedAt: undefined,
+  complete: false,
   failures: 0,
   inPlayUntil: undefined,
   probe: false,
   season: undefined,
 };
+
+/** A stamp from the file, re-emitted in one form; nothing if `stampAgeMs` would not trust it. */
+function trustedStamp(value: unknown, now: number): string | undefined {
+  return typeof value === 'string' && Number.isFinite(stampAgeMs(value, now))
+    ? new Date(Date.parse(value)).toISOString()
+    : undefined;
+}
 
 /**
  * Read a stored slice (its display records are not read here: they are sealed
@@ -95,6 +111,9 @@ export function scheduleView(raw: unknown, now: number): ScheduleView {
   return {
     index: parseCachedScheduleIndex(s.index),
     attemptAgeMs: stampAgeMs(typeof s.attemptedAt === 'string' ? s.attemptedAt : undefined, now),
+    attemptedAt: trustedStamp(s.attemptedAt, now),
+    updatedAt: trustedStamp(s.updatedAt, now),
+    complete: s.complete === true,
     failures,
     inPlayUntil: until !== undefined && now < until && until - now <= IN_PLAY_HOLD_MS ? until : undefined,
     probe: s.probe === true,
