@@ -202,12 +202,14 @@ describe('two months that state two seasons are two answers, not a refused windo
     await expect(adapterOn(f, now).fetchWindow('2026-05-19', '2026-06-03')).rejects.toThrow(/spans seasons/);
   });
 
-  it('one of two months states no season: the answer states none', async () => {
-    const f = feed([may, june], { season: (dates) => (dates === '202605' ? undefined : S2026) });
-    const r = await getScheduleAhead(adapterOn(f, now), now);
-    expect(r.degraded).toBe(false);
-    expect(r.season).toBeUndefined();
-  });
+  for (const silent of ['202605', '202606']) {
+    it(`one of two months states no season (${silent}): the answer states none, whichever month it is`, async () => {
+      const f = feed([may, june], { season: (dates) => (dates === silent ? undefined : S2026) });
+      const r = await getScheduleAhead(adapterOn(f, now), now);
+      expect(r.degraded).toBe(false);
+      expect(r.season).toBeUndefined();
+    });
+  }
 });
 
 describe('a discovery that cannot be had is a failed one, whatever the other month says', () => {
