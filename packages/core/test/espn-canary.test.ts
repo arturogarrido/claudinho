@@ -291,12 +291,19 @@ describe('a 2xx payload that no longer fits the parsers', () => {
     const missingId = await run((url) =>
       json(
         url.includes('/standings')
-          ? standings((e) => ({ ...e, team: { abbreviation: 'ARS', displayName: 'Arsenal' } }))
+          ? standings((e) => {
+              // Only the id goes: each row keeps its own team, so the product's
+              // parser (to which an id is optional) reads the table whole and
+              // the raw check is the only thing that can see this.
+              const { id: _id, ...team } = e.team as { id: string; abbreviation: string; displayName: string };
+              return { ...e, team };
+            })
           : scoreboard(url),
       ),
     );
     expect(missingId.red).toBe(true);
     expect(verdicts(missingId).standings).toBe('changed');
+    expect(missingId.rows.find((x) => x.request === 'standings')?.detail).toBe('Arsenal has no team id');
   });
 
   it('a body that is not JSON at all', async () => {
@@ -676,10 +683,12 @@ describe('found in review: every table shape, every row, every value', () => {
   });
 
   it('a statistic that is not a number is red', async () => {
+    // The product's parser refuses such a row too, so the VERDICT is red either
+    // way; what the raw check owns is the diagnosis, and that is what is pinned.
     const strings = row({ stats: STATS.map((n) => ({ name: n, displayValue: '0' })) });
-    expect((await standingsCase(table([strings]))).verdict).toBe('changed');
+    expect(await standingsCase(table([strings]))).toEqual({ verdict: 'changed', detail: 'Arsenal: the statistic gamesPlayed is not a number' });
     const text = row({ stats: STATS.map((n) => ({ name: n, value: '0' })) });
-    expect((await standingsCase(table([text]))).verdict).toBe('changed');
+    expect(await standingsCase(table([text]))).toEqual({ verdict: 'changed', detail: 'Arsenal: the statistic gamesPlayed is not a number' });
   });
 
   it('a statistic stated twice is red', async () => {
