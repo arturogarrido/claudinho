@@ -70,11 +70,11 @@ const throttle = (retryAfter: string) =>
 
 let requests: string[] = [];
 /** A provider that answers every request (an empty, healthy day or month) and records it. */
-const provider = (each?: (url: string) => Response | undefined) =>
+const provider = (each?: (url: string) => Response | undefined | Promise<Response | undefined>) =>
   vi.stubGlobal('fetch', async (input: unknown) => {
     const url = String(input);
     requests.push(url);
-    return each?.(url) ?? answer();
+    return (await each?.(url)) ?? answer();
   });
 const days = () => requests.filter((u) => /dates=\d{8}(&|$)/.test(u));
 const months = () => requests.filter((u) => /dates=\d{6}(&|$)/.test(u));
@@ -510,6 +510,22 @@ describe('found in review', () => {
       const snapshot = basename(cachePath(source, competition));
       expect(basename(backoffNotePath(source, competition)), snapshot).toBe(snapshot.replace(/^state/, 'backoff'));
     }
+  });
+
+  it('before the second lane the refresher asks about the backoff as every reader does: the snapshot’s deadline too, at the time it is now', async () => {
+    // The second lane re-read only the NOTE. A deadline in the snapshot that
+    // was just past the 30-minute bound when the cycle started (not believed)
+    // is believed a moment later, and every other reader would then stop.
+    const semi = SEMI_LIVE.getTime();
+    writeState(stale(SEMI_LIVE, { backoffUntil: new Date(semi + 30 * MIN + 50).toISOString() }));
+    provider(async (url) => {
+      // The live read takes a moment (a lower bound is all this needs).
+      if (/dates=\d{8}(&|$)/.test(url)) await new Promise((resolve) => setTimeout(resolve, 200));
+      return undefined;
+    });
+    await refresh(SEMI_LIVE);
+    expect(days()).toHaveLength(3); // not believed when the cycle decided: the live lane ran
+    expect(months()).toEqual([]); // believed by the time the second lane would start
   });
 
   it('an unknown source: its one idle snapshot is written under the lock too, after reading again', async () => {
