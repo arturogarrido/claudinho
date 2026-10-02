@@ -305,7 +305,12 @@ describe.each(['eng.1', 'uefa.nations', 'concacaf.nations.league'])(
 
     it('a name gets the honest "not available yet", not a World Cup lookup error', async () => {
       await cmdNext('Arsenal', ctx());
-      expect(json()).toMatchObject({ fixture: null, unsupported: true });
+      expect(json()).toMatchObject({ team: 'Arsenal', fixture: null, unsupported: true });
+    });
+
+    it('an argument with nothing readable in it is no team at all', async () => {
+      // Zero-width characters only: the label role reduces it to nothing.
+      await expect(cmdNext('\u200b\u200b\u200b\u200b', ctx())).rejects.toThrow(InputError);
     });
 
     it('CLAUDINHO_TEAM=ala filters by ALA, not by New Zealand', () => {

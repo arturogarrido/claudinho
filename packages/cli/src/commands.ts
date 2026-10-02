@@ -298,7 +298,12 @@ function resolveTeamArg(
   // the token passes through — a code uppercased, anything else as a bounded
   // label — and the command answers "not available for this competition yet".
   if (!bundleApplies(competition)) {
-    return /^[A-Za-z]{3}$/.test(raw) ? raw.toUpperCase() : humanLabel(raw, 40);
+    if (/^[A-Za-z]{3}$/.test(raw)) return raw.toUpperCase();
+    const label = humanLabel(raw, 40);
+    // Nothing readable to pass through (invisible characters only): that is
+    // the same as no team at all.
+    if (!label) throw new InputError(usage);
+    return label;
   }
   const { team: hit, matches } = lookupTeam(raw);
   if (hit) return hit.code;

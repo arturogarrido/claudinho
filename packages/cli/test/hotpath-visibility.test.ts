@@ -23,7 +23,7 @@ const real = {
   updatedAt: '2026-06-20T19:59:00Z',
 };
 const cache = (live: unknown[]) =>
-  ({ version: 2, updatedAt: '2026-06-20T19:59:30Z', live, degraded: false,
+  ({ version: 3, updatedAt: '2026-06-20T19:59:30Z', live, degraded: false,
      source: 'espn', competition: 'fifa.world' }) as never;
 
 describe('junk cannot crowd out a live score', () => {

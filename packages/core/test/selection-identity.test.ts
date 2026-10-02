@@ -13,7 +13,7 @@
  *              with that response, never on a field shared between calls.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EspnAdapter } from '../src/adapters/espn';
@@ -183,7 +183,8 @@ describe('selection — decided once, at the edge', () => {
           const code = line.replace(/\/\/.*$/, '');
           if (/^\s*(\*|\/\*)/.test(line)) return; // doc comments
           if (/export function resolveCompetition\b/.test(code)) return; // the definition
-          if (pattern.test(code)) out.push(`${relative(PACKAGES, file)}:${i + 1}`);
+          // Forward slashes on every platform, so the expectations below hold on Windows.
+          if (pattern.test(code)) out.push(`${relative(PACKAGES, file).split(sep).join('/')}:${i + 1}`);
         });
       }
       return out;
