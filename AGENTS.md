@@ -2,6 +2,27 @@
 
 Guidance for AI coding agents working **in this repository**. (Standard [AGENTS.md](https://agents.md); Claude Code reads it via `CLAUDE.md`.)
 
+## Working agreement
+
+- Complete the requested work through validation and self-review. Resolve routine implementation
+  choices from the code and state material assumptions; ask when missing information would change
+  the intended behavior or scope. Continue independent work while awaiting an answer.
+- Plans, audits, and reviews are read-only unless the user asks for edits. Preserve unrelated local
+  changes. Apply existing authorization without asking again; a local edit does not by itself
+  authorize a push, merge, tag, or publish.
+- Read the files and applicable rules needed for the task. This file is the canonical repository
+  guide; `CLAUDE.md` adds Claude-specific setup, and `.cursor/rules/` mirrors focused rules. Apply
+  direct user instructions over repository workflow defaults, within system/developer constraints.
+  If a rule blocks authorized work, cite the exact rule and explain the conflict.
+- Treat memory, prior reviews, and model recommendations as context. Verify changing facts against
+  current source, configuration, and the live PR head before relying on them. Keep durable project
+  rules here rather than copying them into personal memory or another agent guide.
+- Use an independent reviewer for the cases required under "Pre-PR self-review". Give each reviewer
+  a bounded scope and reconcile their evidence. Other delegation follows the user's instructions
+  and the coding client's rules.
+- Report the outcome, checks actually run, and unresolved limitations concisely. For reviews, lead
+  with actionable findings and exact file/line references. Distinguish a skipped check from a pass.
+
 ## What this is
 
 Claudinho surfaces the 2026 men's football tournament in developer environments: a **CLI**, a **statusline** (Claude Code **and Cursor CLI** — `init claude`/`init cursor` one-step setup), an **MCP server** (also a **Cursor Marketplace plugin** + cursor.directory listing), a **score-aware hook** (Claude Code `UserPromptSubmit`), live scores/fixtures and **cumulative group standings** (from the provider's standings feed), a **knockout bracket**, read-only **prediction-market signals** (Polymarket odds — informational only), and **shareable terminal snippets** (`claudinho share` — copy-pasteable match **and standings** cards), and a **fuzzy team resolver** (`get_team` / `claudinho team` — a nation name or code → FIFA code + flag + group; the only **offline** MCP tool, `openWorldHint:false`; agents call it to resolve a user's team name into the code the other tools need). **Planned:** a desktop **notifier**, a precomputed **AI pundit**, and a small edge **gateway** that polls a data feed once for everyone.
@@ -9,7 +30,7 @@ Claudinho surfaces the 2026 men's football tournament in developer environments:
 ## Stack
 
 - TypeScript, Node ≥ 20, ES modules
-- pnpm workspaces (monorepo) · tsup (build) · vitest (test) · Biome (lint)
+- pnpm workspaces (monorepo) · tsup (build) · vitest (test) · Biome (lint-only; formatter disabled)
 - MCP: `@modelcontextprotocol/sdk`
 - Gateway (_planned_, not yet built): Cloudflare Workers + KV + D1 (`services/gateway`)
 
@@ -31,21 +52,54 @@ Claudinho surfaces the 2026 men's football tournament in developer environments:
 ## Commands
 
 - `pnpm install` — install deps
-- `pnpm build` / `pnpm test` / `pnpm typecheck` / `pnpm lint` — across all packages (`lint` = Biome)
+- `pnpm build` / `pnpm test` / `pnpm typecheck` / `pnpm lint` — across all packages (`lint` = Biome, no formatter)
 - `pnpm -F @claudinho/core test` — operate on a single package
 - `pnpm release:qa` — pre-tag surface renderer (see "Release readiness")
 
 **Bumping `@biomejs/biome`?** Nothing to do — `biome.json`'s `$schema` points at
-`./node_modules/@biomejs/biome/configuration_schema.json`, so it resolves to whatever version is
-installed and is correct by construction after any bump. This replaced a version-pinned
-`https://biomejs.dev/schemas/<version>/schema.json` URL that drifted on **six** consecutive bumps
-(Dependabot rewrites only the root `package.json`, never `biome.json`). Each drift made Biome emit a
-*"configuration schema version does not match the CLI version"* diagnostic on every lint run — three
-of them (2.5.0 / 2.5.1 / 2.5.3) landed on `main` that way, since an info-level diagnostic fails
-nothing. Only from the guard test onward did drift become a red build, which is what CI then caught.
-`packages/core/test/biome-schema.test.ts` now guards the *shape*: it fails if anyone reintroduces a
-pinned URL, or if a Biome upgrade moves the bundled schema file. (If you ever do edit `biome.json`,
-hand-edit it — `biome migrate` reformats the whole config to tabs.)
+`./node_modules/@biomejs/biome/configuration_schema.json`, so it follows the installed version.
+Keep that local path: `packages/core/test/biome-schema.test.ts` rejects a pinned URL or a missing
+bundled schema. Hand-edit `biome.json` when necessary; `biome migrate` reformats it to tabs.
+
+## Validation scope
+
+- **Prose and agent instructions only:** review the diff, check local links and stated contracts,
+  run `git diff --check`, and run the [private-document boundary check](#private-document-boundary-check)
+  below. No application build or live-feed QA is needed unless executable
+  configuration, commands, package contents, or product behavior also change.
+- **Code, dependencies, or executable configuration:** iterate with affected tests, then run
+  `pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint` before declaring the change ready.
+  Build first because CLI/MCP checks use core's generated output. Run the relevant CI smoke and
+  packaging checks; MCP contract changes also require the
+  [base/head `tools/list` comparison](CONTRIBUTING.md#comparing-mcp-tool-contracts) and
+  `pnpm -F @claudinho/mcp smoke:stdio`.
+- **User-facing behavior and releases:** also run `pnpm release:qa` after build and inspect the
+  output. Keep the "Release readiness" and feature acceptance gates below; a skipped live-feed
+  check is not verified behavior.
+- Add tests for changed behavior and failure modes. Do not add tests that merely repeat prose or
+  implementation details. Once required checks pass, rerun or broaden them only for a subsequent
+  change, a failure, or an unresolved concern. After a push, verify CI on that exact SHA.
+
+### Private-document boundary check
+
+Run this from the repository root. It needs only Node and Git, prints the scan results, and exits
+nonzero for a tracked private document or a reference to one. `scripts/private-doc-refs.mjs` only
+exports helpers; running that file directly does not scan anything.
+
+```bash
+node --input-type=module <<'NODE'
+import { execFileSync } from 'node:child_process';
+import { scanTrackedFiles } from './scripts/private-doc-refs.mjs';
+const trackedPrivateFiles = execFileSync('git', ['ls-files', '-z', '--', 'docs/'], { encoding: 'utf8' })
+  .split('\0').filter(Boolean);
+const result = scanTrackedFiles(process.cwd());
+console.log(JSON.stringify({ ...result, trackedPrivateFiles }, null, 2));
+if (result.leaks.length || trackedPrivateFiles.length) process.exitCode = 1;
+NODE
+```
+
+`pnpm check:pack` also runs the reference scanner and dry-runs package creation. Use it after a
+build for packaging validation; a pass without a build does not prove the required artifacts exist.
 
 ## Releasing
 
@@ -124,7 +178,7 @@ uses Anthropic's no-reply address; Cursor and Codex follow the same pattern with
 ```
 Co-Authored-By: Claude Code (Opus 4.8) <noreply@anthropic.com>
 Co-Authored-By: Cursor (Composer 2.5) <...>
-Co-Authored-By: Codex (GPT-5) <noreply@openai.com>
+Co-Authored-By: Codex (<actual GPT model>) <noreply@openai.com>
 ```
 
 ## Reviewing PRs (all agents)
@@ -140,11 +194,27 @@ Co-Authored-By: Codex (GPT-5) <noreply@openai.com>
 
 ## Codex / GPT specifics
 
-- Codex has no separate sidecar guide in this repo; `AGENTS.md` is its source of truth. Follow
-  the shared sections here: "Reviewing PRs", "Pre-PR self-review", "Release readiness", and
-  "Commit attribution".
-- If Codex makes a commit, use the actual GPT model in the `Co-Authored-By` trailer; the example
-  above is illustrative, not a hardcoded model name.
+- Claudinho exposes a model-independent MCP server; the shipped packages do not call an LLM API.
+  An agent-model upgrade concerns the consuming client and these instructions. The AI pundit and
+  gateway remain planned features, not migration prerequisites.
+- Preserve the user's selected model and effort. When asked to recommend a GPT-6 model, evaluate
+  `gpt-6-luna` for focused tasks where speed and cost matter, `gpt-6.1-sol` for complex work that
+  balances quality with time and cost, and `gpt-6-astra` for the most demanding reasoning/review.
+  Use the [model-selection guide](https://developers.openai.com/api/docs/guides/model-selection)
+  as a starting point, then compare on representative project tasks at the same supported effort
+  before tuning effort. The API model pages for
+  [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) and
+  [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra) list `low`, `medium`,
+  `high`, `xhigh`, and `max`; neither supports `none` or `minimal` in the API.
+  Model availability and the effective session setting must be checked in the client. A Markdown
+  recommendation does not change that setting or prove a model performs better on this project.
+- Credit the actual model used in commits and PRs; never infer it from an example or a global
+  default that the session may override.
+
+GPT-6 guidance: [model and prompting recommendations](https://developers.openai.com/api/docs/guides/latest-model)
+and [maintaining agent instructions](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra).
+Keep repository-specific contracts and required gates; remove duplicated process instructions when
+updating guides. These instructions also serve Claude Code and Cursor contributors.
 
 ## Conventions
 
@@ -178,7 +248,8 @@ Co-Authored-By: Codex (GPT-5) <noreply@openai.com>
 This is the lens an external reviewer uses — apply it yourself first. For changes
 touching money/legal/external APIs, also run an **independent adversarial pass**
 (e.g. a reviewer subagent with fresh eyes on the diff) and self-classify any
-findings **P1/P2/P3**.
+findings **P1/P2/P3**. Apply each item to the behavior and contracts affected by the change;
+use "Validation scope" for the required checks.
 
 1. **Verify external contracts against ground truth.** For any new API/integration,
    fetch a *real* response and confirm the parser **and the test fixtures** match it.
@@ -201,58 +272,40 @@ findings **P1/P2/P3**.
    tool descriptions, and release guards (`publish.yml`, pinned tool versions). Flag any
    claim that went stale.
 
-## Change discipline (the failures that cost #97 twelve rounds)
-
-Nothing here is new — it is the rules above, made unskippable. Each line is a
-mistake repeated at least twice in one PR, several of them *after* being written
-down.
+## Change discipline
 
 **Changing a shared rule**
 
-- **Put the rule where every path reaches it, then delete the other copy.** Not "add
-  the check at the site the report mentioned". #97 fixed the knockout winner rule in
-  the ESPN parser while the cache path had none — inside the PR whose whole thesis is
-  that one value must not have two readers.
-- **Grep for siblings before calling a class closed.** Every single-instance fix in
-  #97 had two or three: `updatedAt` had four other timestamps, the statusline had the
-  hook, `parseCachedMatches` had both ESPN constructors.
+- **Put the rule where every path reaches it, then delete the other copy.** Live and
+  cache paths must use the same rule.
+- **Search for siblings before calling a class closed:** other timestamps, the hook
+  beside the statusline, cache constructors beside provider constructors.
 
 **Tests**
 
-- **Make it fail before trusting it.** Revert the rule; green means it pins nothing.
-  About a third of #97's tests first passed for the wrong reason.
-- **Pin the CALL, not just the function.** Delete the call site and confirm red. Two
-  #97 tests pinned a helper and stayed green when its only caller was removed — the
-  second written one round after that lesson was recorded.
-- **Never assert wall-clock time.** Three timing tests failed under load or on CI, and
-  each "fix" was a new constant. If the property has an observable consequence, assert
-  that: put a valid item just past the cap and prove it is never reached.
-- **Escape invisible characters in fixtures.** Written literally they are lost in
-  transit, and the test then passes on plain ASCII while claiming otherwise.
+- **Make a new regression test fail before trusting it.** Temporarily revert the rule
+  and confirm red, then restore it. Preserve unrelated edits.
+- **Pin the CALL, not just the function.** For a call-site regression, temporarily remove
+  the call and confirm red, then restore it.
+- **Never assert wall-clock time.** Assert an observable consequence: put a valid item
+  just past the cap and prove it is never reached.
+- **Escape invisible characters in fixtures** so their meaning survives copying and review.
 
 **Before saying it is done**
 
-- **Run the gates AND read the output.** #97 pushed a lint error to a repo that gates
-  on lint, and separately broke a `release:qa` tripwire — both times the output was
-  produced and not read.
-- **Diff real-feed output against the base branch**, key order included, for anything
-  claiming to be a refactor.
+- **Run the checks required by "Validation scope" AND read the output.**
+- **For a refactor affecting feed output, diff real-feed output against the base branch**,
+  key order included. Report if the feed prevents verification.
 - **Wait for CI on the SHA you pushed.** `gh run watch` on a queued run returns
   success; check `headSha` matches.
 
 ## Definition of Done (per user-facing feature, not per PR)
 
-The Pre-PR rubric above is per *change*. A feature that spans several PRs also needs a
-**feature-level** acceptance gate — the bracket feature became a core release plus four
-reactive dot-releases because each gap (ambiguous dates, missing host-nation flags, a
-dropped `tz` on MCP `get_bracket`) was found by *using* the feature after it was already
-live. Before implementing a user-facing feature, write 3–5 acceptance criteria **from the
-user's point of view** and don't call it done until each holds on a real terminal.
-**Put them in the PR description before the first commit, together with an explicit
-statement of what the change does NOT cover.** PR #97 skipped this and took twelve
-review rounds: with no written finish line every round ended at "I fixed what was
-reported" and the next round moved it, and with no stated boundary, findings that were
-equally true of `main` arrived as blockers instead of as issues. The criteria:
+Before implementing a user-facing feature, write 3–5 acceptance criteria **from the
+user's point of view**, plus an explicit statement of what the change does NOT cover.
+Keep them in the PR description before the first commit; if no PR exists yet, draft that
+description locally and use it when opening the PR. A feature spanning several PRs must
+meet the same criteria across the whole feature. Verify them on a real terminal:
 
 - The output is **unambiguous** to read (e.g. "which calendar day is this match?" across a 3-week span).
 - Every entity renders **consistently with the rest of the product** (host nations show flags like every other team; no static/placeholder leaks; the resultless invariant holds).
