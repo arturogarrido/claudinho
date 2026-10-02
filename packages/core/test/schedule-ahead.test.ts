@@ -15,7 +15,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { EspnAdapter } from '../src/adapters/espn';
-import { getScheduleAhead, SCHEDULE_AHEAD_DAYS, SCHEDULE_LOOKBACK_DAYS } from '../src/live';
+import { getLiveMatches, getLiveRead, getScheduleAhead, SCHEDULE_AHEAD_DAYS, SCHEDULE_LOOKBACK_DAYS } from '../src/live';
 import type { ProviderAdapter } from '../src/adapters/types';
 
 type Season = { year: number; displayName: string };
@@ -316,5 +316,56 @@ describe('an answer that is not whole says so, and says what it READ', () => {
     const r = await getScheduleAhead(silent, now);
     expect(r.degraded).toBe(false);
     expect(r.complete).toBe(false);
+  });
+});
+
+describe('a live read says whether it was whole (the refresher needs it; no surface prints it)', () => {
+  // A match seen in play keeps the refresher polling past its window, and only a
+  // read that is WHOLE and holds none in play may end that. `getLiveMatches`
+  // dropped the window's verdict; the refresher's read keeps it.
+  const now = new Date('2026-10-10T15:00:00Z');
+  const inPlay: Ev = { id: '12', date: '2026-10-10T14:00Z', state: 'in' };
+  const later: Ev = { id: '13', date: '2026-10-11T01:00Z' };
+
+  it('a whole window: `complete: true`, with the matches in play', async () => {
+    const r = await getLiveRead(adapterOn(feed([inPlay, later]), now), now);
+    expect(r.degraded).toBe(false);
+    expect(ids(r.matches)).toEqual(['12']);
+    expect(r.complete).toBe(true);
+  });
+
+  it('a refused record anywhere in the window: `complete: false`, though no match in play was lost', async () => {
+    const refused = { id: 'not an id', date: '2026-10-10T18:00Z' };
+    const f = feed([later], { extra: (d) => (d === '20261010' ? [refused] : []) });
+    const r = await getLiveRead(adapterOn(f, now), now);
+    expect(r.degraded).toBe(false);
+    expect(r.matches).toEqual([]);
+    expect(r.complete).toBe(false);
+  });
+
+  it('a failed read is degraded and not whole', async () => {
+    const f = feed([inPlay], { fail: () => json({}, 500) });
+    expect(await getLiveRead(adapterOn(f, now), now)).toEqual({ matches: [], degraded: true, complete: false });
+  });
+
+  it('an adapter that says nothing about its answer: absent is not true', async () => {
+    const silent = {
+      name: 'fake',
+      competition: 'mex.1',
+      capabilities: {},
+      fetchByDate: async () => [],
+      fetchLive: async () => [],
+    } as unknown as ProviderAdapter;
+    expect((await getLiveRead(silent, now)).complete).toBe(false);
+  });
+
+  it('`getLiveMatches` is what it was: the same result without the verdict, key for key', async () => {
+    const whole = await getLiveMatches(adapterOn(feed([inPlay, later]), now), now);
+    expect(Object.keys(whole).sort()).toEqual(['degraded', 'matches', 'season', 'source']);
+    const refused = { id: 'not an id', date: '2026-10-10T18:00Z' };
+    const partial = await getLiveMatches(adapterOn(feed([later], { extra: (d) => (d === '20261010' ? [refused] : []) }), now), now);
+    expect(Object.keys(partial).sort()).toEqual(['degraded', 'matches', 'season', 'source']);
+    const failed = await getLiveMatches(adapterOn(feed([inPlay], { fail: () => json({}, 500) }), now), now);
+    expect(failed).toEqual({ matches: [], degraded: true });
   });
 });
