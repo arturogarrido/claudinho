@@ -3,7 +3,7 @@
  * provider state is merged over it by match id. Used by every client (CLI, MCP,
  * notifier) so the overlay logic lives in exactly one place.
  */
-import { EspnAdapter } from './adapters/espn';
+import { EspnAdapter, ProviderError } from './adapters/espn';
 import { fetchMeta } from './adapters/meta';
 import type { ProviderAdapter } from './adapters/types';
 import { byKickoff, isFinished, isLive } from './normalize';
@@ -565,16 +565,20 @@ export interface ScheduleAheadResult {
   /** The schedule could not be had (a failed request, a refused window): the caller keeps what it has. */
   degraded: boolean;
   /**
-   * The season stated by the response for the month that holds `now` (absent
-   * when it stated none, or on failure). Two months can state two seasons (the
-   * provider's season turns on June 1); the fixtures of both are returned.
+   * The season every month's response stated, when they all stated the SAME
+   * one (by year); absent when one stated none, when two stated different
+   * ones, or on failure. A month whose list held no readable record states what
+   * its response stated. Two months can state two seasons (the provider's
+   * season turns on June 1): the fixtures of both are returned, and the answer
+   * states none, because no one season describes all of them.
    */
   season?: SeasonInfo;
   /**
    * False when the provider sent records this result does not hold (one it
-   * could not read, one fixture in both months), or when the adapter says
-   * nothing about its answer. A fixture absent from such a result is not known
-   * to be gone. Stated on every answer that is not `degraded`.
+   * could not read, a month whose list held no readable record, one fixture in
+   * both months), or when the adapter says nothing about its answer. A fixture
+   * absent from such a result is not known to be gone. Stated on every answer
+   * that is not `degraded`.
    */
   complete?: boolean;
   /**
@@ -607,9 +611,16 @@ function monthOf(day: string): { first: string; last: string } {
  * a day at a time). One request, or two, sent together and both settled before
  * this answers (a throttle on one is retained by the adapter whatever the
  * other did). Two windows, not one window of two months: a response states the
- * season of the dates asked, and a composed window refuses two seasons.
+ * season of the dates asked, and a composed window refuses two seasons. So the
+ * answer states a season only when every month stated the same one.
  *
- * If either window fails, discovery failed: `degraded`, nothing else.
+ * "A list that is not empty and holds no readable record is a failure" is
+ * asked of the WHOLE discovery, as a window asks it of all its parts: a month
+ * refused that way (`ProviderError.noReadableRecord`) read nothing, so the
+ * answer is not whole and nothing of that month is in `mentioned`, while the
+ * other month's fixtures are returned. If no month read a record, the
+ * discovery failed. Any other failure of either window fails it:
+ * `degraded`, nothing else.
  */
 export async function getScheduleAhead(
   adapter: ProviderAdapter,
@@ -628,20 +639,30 @@ export async function getScheduleAhead(
   const settled = await Promise.allSettled(
     months.map((month) => (adapter.fetchWindow as NonNullable<typeof adapter.fetchWindow>)(month.first, month.last)),
   );
-  if (settled.some((r) => r.status === 'rejected')) return { fixtures: [], degraded: true };
-  const windows = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+  /** A month whose list held records and none that could be read; nothing for any other outcome. */
+  const readNothing = (r: PromiseSettledResult<Match[]>) =>
+    r.status === 'rejected' && r.reason instanceof ProviderError ? r.reason.noReadableRecord : undefined;
+  if (settled.some((r) => r.status === 'rejected' && !readNothing(r))) return { fixtures: [], degraded: true };
 
   let complete = true;
-  let season: SeasonInfo | undefined;
+  /** What each month's response stated, in month order. */
+  const seasons: Array<SeasonInfo | undefined> = [];
   /** Every id read so far, by any month: what it returned and what its window set aside. */
   const read = new Set<string>();
   const fixtures: Match[] = [];
-  windows.forEach((window, i) => {
+  for (const r of settled) {
+    if (r.status === 'rejected') {
+      // It read nothing: the answer is not whole, and what its response stated is still stated.
+      complete = false;
+      seasons.push(readNothing(r)?.season);
+      continue;
+    }
+    const window = r.value;
     const meta = fetchMeta(window);
     // Absent is not true: an adapter that says nothing about its answer has
     // not said it is whole.
     if (meta?.complete !== true) complete = false;
-    if (months[i]?.first === monthOf(today).first) season = meta?.season;
+    seasons.push(meta?.season);
     /** What EARLIER months read: the question "is this a second copy?" is asked of that, not of this month. */
     const before = new Set(read);
     for (const id of meta?.mentioned ?? []) read.add(id);
@@ -664,7 +685,13 @@ export async function getScheduleAhead(
       if (day < start || day > end) continue;
       fixtures.push(m);
     }
-  });
+  }
+  // Nothing was read, and a month's list was not empty: the whole discovery
+  // holds no readable record, which is a failure, not an empty schedule.
+  if (read.size === 0 && settled.some((r) => r.status === 'rejected')) return { fixtures: [], degraded: true };
+  // One season for the answer only when every month stated it.
+  const first = seasons[0];
+  const season = first && seasons.every((s) => s?.year === first.year) ? first : undefined;
   fixtures.sort(byKickoff);
   return {
     fixtures,

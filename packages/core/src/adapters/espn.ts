@@ -105,11 +105,27 @@ export class ProviderError extends Error {
   readonly status?: number;
   /** For a throttle: how long the adapter will refuse to fetch (bounded). */
   retryAfterMs?: number;
-  constructor(message: string, kind: ProviderErrorKind, status?: number) {
+  /**
+   * Set on ONE refusal: a response whose envelope was read and whose list was
+   * not empty, but held no record that could be read. It is not a kind of its
+   * own: to every reader of `kind` it is the `parse` failure it always was (for
+   * a single read it is one). A caller that composes several answers into one
+   * (discovery: a window per month) asks this to tell such a list from an
+   * envelope nobody could read, which is refused with the same kind and
+   * without it. `season` is the one that response stated, if it stated one.
+   */
+  readonly noReadableRecord?: { readonly season?: SeasonInfo };
+  constructor(
+    message: string,
+    kind: ProviderErrorKind,
+    status?: number,
+    detail: { noReadableRecord?: { readonly season?: SeasonInfo } } = {},
+  ) {
     super(message);
     this.name = 'ProviderError';
     this.kind = kind;
     this.status = status;
+    if (detail.noReadableRecord) this.noReadableRecord = detail.noReadableRecord;
   }
   /** 429/403 — the upstream is refusing us; retrying at the live cadence makes it worse. */
   get throttled(): boolean {
@@ -219,17 +235,28 @@ export function parseStandings(data: unknown): GroupStandings[] {
 /**
  * A readable prefix is usable provider data; an unreadable payload with no
  * usable records is a parse failure, not an authoritative empty answer.
+ * `season` is what the response (or every part of a window) stated, carried on
+ * the refusal of a list that was not empty (see `ProviderError.noReadableRecord`).
  */
 function usableProviderItems<T>(
   kind: 'scoreboard' | 'standings',
   parsed: { readonly items: readonly T[]; readonly total: number; readonly complete: boolean },
   hasUsableRecord = parsed.items.length > 0,
+  season?: SeasonInfo,
 ): T[] {
   // A genuinely empty provider list is authoritative. A non-empty list from
   // which we could not accept one record is not, even when every refusal was a
   // `definitive-none` and therefore did not make the batch incomplete.
   if (!hasUsableRecord && (!parsed.complete || parsed.total > 0)) {
-    throw new ProviderError(`ESPN ${kind} payload had no readable records`, 'parse');
+    // Marked only when the list held something: an incomplete EMPTY account is
+    // an envelope that could not be read (a standings payload with no list of
+    // tables reaches here that way), and that is not this refusal.
+    throw new ProviderError(
+      `ESPN ${kind} payload had no readable records`,
+      'parse',
+      undefined,
+      parsed.total > 0 ? { noReadableRecord: season ? { season } : {} } : {},
+    );
   }
   return [...parsed.items];
 }
@@ -448,15 +475,22 @@ export class EspnAdapter implements ProviderAdapter {
         'parse',
       );
     }
+    // One season or none (two were refused above).
+    const season = parts.find((part) => part.season)?.season;
     // The window is ONE batch. "A non-empty payload with no readable record is
     // a failure" is asked of all of it: a day whose only RECORD is unreadable
     // is a refused record beside readable siblings, not an outage. (A day
     // whose envelope is unreadable never gets here: it failed as a part.)
-    usableProviderItems<Match>('scoreboard', {
-      items: parts.flatMap((part) => part.items),
-      total: parts.reduce((n, part) => n + part.total, 0),
-      complete: parts.every((part) => part.complete),
-    });
+    usableProviderItems<Match>(
+      'scoreboard',
+      {
+        items: parts.flatMap((part) => part.items),
+        total: parts.reduce((n, part) => n + part.total, 0),
+        complete: parts.every((part) => part.complete),
+      },
+      undefined,
+      season,
+    );
     const seen = new Set<string>();
     const fixtures: Match[] = [];
     let complete = true;
@@ -478,7 +512,6 @@ export class EspnAdapter implements ProviderAdapter {
         fixtures.push(m);
       }
     }
-    const season = parts.find((part) => part.season)?.season;
     // `seen` is everything the parts held; the result can hold less (a month
     // narrowed to the window). What was read is stated beside it.
     return attachFetchMeta(fixtures, {
@@ -594,7 +627,7 @@ export class EspnAdapter implements ProviderAdapter {
 
   private async fetchScoreboard(dates?: string): Promise<Match[]> {
     const part = await this.readScoreboard(dates);
-    return attachFetchMeta(usableProviderItems<Match>('scoreboard', part), {
+    return attachFetchMeta(usableProviderItems<Match>('scoreboard', part, undefined, part.season), {
       complete: part.complete,
       ...(part.season ? { season: part.season } : {}),
     });
