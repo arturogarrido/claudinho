@@ -26,6 +26,7 @@ import {
   type Match,
 } from '@claudinho/core';
 import { ageMs, type CacheState } from './cache';
+import { scheduleGateOpen, scheduleView } from './scheduleSlice';
 
 // The live-window constant lives in core (shared with the market-relevance
 // gate); re-exported here so existing call sites keep importing from this file.
@@ -320,7 +321,10 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // countdown/syncing lines, so they get the same poisoned-cache defense.
   // Malformed entries (null, {}, missing kickoff/teams) are dropped, never
   // allowed to throw the whole statusline blank downstream.
-  const cachedFixtureList = sealFixtures(state?.fixtures);
+  // On the bundled competition they are the refresher's resolved knockout
+  // pairings; off it, the schedule slice's display records (the knockout slice
+  // is the bundle's and is never filled there).
+  const cachedFixtureList = sealFixtures(defaultCompetition ? state?.fixtures : state?.schedule?.fixtures);
   // A partial fixture overlay cannot prove a pairing is absent, but every
   // sealed pairing it does contain is safe to display.
   const cachedFixtures = [...cachedFixtureList.items];
@@ -373,7 +377,33 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // An incomplete scan only justifies "syncing" when the schedule says a match
   // may actually be on. On a quiet morning (or after the tournament), cache
   // junk must not turn into a false live-score outage claim.
-  if (!cacheFresh || !liveList.complete) {
+  if ((!cacheFresh || !liveList.complete) && !defaultCompetition) {
+    // Off the bundle the schedule slice's GATE says whether a match can be in
+    // play: a discovered fixture inside its window, or a match that was seen
+    // in play and not yet seen to end. Not a probe: that is the refresher
+    // asking a question, not a reason to say a match is on.
+    if (scheduleGateOpen(scheduleView(state?.schedule, nowMs), nowMs, { probe: false })) {
+      // The fixtures there is a full record for, inside their (flat) window.
+      const win = cachedFixtures
+        .filter((m) => {
+          const k = Date.parse(m.kickoff);
+          return m.status !== 'POSTPONED' && m.status !== 'CANCELLED' && k <= nowMs && nowMs < k + LIVE_WINDOW_MS;
+        })
+        .filter((m) => !team || m.home.code === team || m.away.code === team)
+        .sort(byKickoff);
+      const first = win[0];
+      // With a team filter the line is about that team's match or it is not
+      // shown: the gate does not know whose match keeps it open.
+      if (first || !team) {
+        const matchup =
+          first && isResolvedFixture(first)
+            ? `${teamTok(first.home, flags)} vs ${teamTok(first.away, flags)} `
+            : '';
+        const more = win.length - 1;
+        return `⚽ ${matchup}live · syncing…` + (more > 0 ? ` +${more}` : '');
+      }
+    }
+  } else if (!cacheFresh || !liveList.complete) {
     const win = fixturesInLiveWindow(nowMs, schedule).filter(
       (m) => !team || m.home.code === team || m.away.code === team,
     );
