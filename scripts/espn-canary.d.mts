@@ -12,7 +12,7 @@ export interface CanaryResult {
 }
 export const CANARY_COMPETITIONS: readonly string[];
 export const STANDING_STATS: readonly string[];
-export const CANARY_NO_TABLE: readonly string[];
+export const CANARY_TABLES: { readonly read: readonly string[]; readonly none: readonly string[] };
 export const CANARY_QUESTIONS: readonly { request: CanaryRow['request']; method: string; bundleOnly?: boolean }[];
 export function canaryWarnings(result: CanaryResult): string[];
 export function runCanary(options: {

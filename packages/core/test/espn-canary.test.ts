@@ -378,7 +378,10 @@ describe('found in review: every table shape, every row, every value', () => {
 
   it('a healthy nested shape (groups under a phase) is green, and its rows are counted', async () => {
     const nested = { children: [{ name: 'League Phase', children: [{ name: 'Group A', standings: { entries: [row()] } }] }] };
-    expect(await standingsCase(nested)).toEqual({ verdict: 'ok', detail: '1 row(s) in 1 table(s)' });
+    expect(await standingsCase(nested)).toEqual({
+      verdict: 'ok',
+      detail: '1 row(s) in 1 table(s) (a shape the table parser does not read yet)',
+    });
   });
 
   it('a row in a nested table is checked like any other', async () => {

@@ -84,12 +84,23 @@ export const CANARY_COMPETITIONS = Object.freeze([
 ]);
 
 /**
- * Competitions that have no table: knockout from the first round. Measured on
- * Oct 2 2026: the standings endpoint of the Concacaf Champions Cup answers 200
- * with its seasons and no table, while the other fourteen serve rows. For
- * every other competition, a payload with no rows is a finding.
+ * What the product does with each competition's tables, measured on the real
+ * feed on Oct 2 2026. A constant here until the supported-set table exists in
+ * core; the canary then reads that table.
+ *   read  lettered groups ("Group A") the table parser reads whole today. Its
+ *         own account of the payload is the verdict: a table or a row it
+ *         refuses is red, and so is a payload it can read none of.
+ *   none  knockout from the first round: the endpoint answers 200 with its
+ *         seasons and no table. Everywhere else, no rows is a finding.
+ * Every other competition serves a shape the parser does not read yet (one
+ * league table, numbered groups, groups under a league). There the rows are
+ * judged raw, and the row says so. If the parser reads SOME of such a payload
+ * anyway, its account must still be whole: a table read wrongly is a finding.
  */
-export const CANARY_NO_TABLE = Object.freeze(['concacaf.champions']);
+export const CANARY_TABLES = Object.freeze({
+  read: Object.freeze(['fifa.world', 'fifa.cwc', 'conmebol.libertadores', 'conmebol.america', 'concacaf.gold', 'uefa.euro']),
+  none: Object.freeze(['concacaf.champions']),
+});
 
 /**
  * The statistics the standings parser requires of every row. A copy of the
@@ -266,38 +277,46 @@ function checkStandings(core, body, adapter, result, competition) {
       }
     }
   }
-  // Absence is a finding, except where no table is expected (see
-  // CANARY_NO_TABLE). The day a competition that serves rows stops, a person
-  // decides what that means.
+  // Absence is a finding, except where no table is expected. The day a
+  // competition that serves rows stops, a person decides what that means.
   if (rows === 0) {
-    return CANARY_NO_TABLE.includes(competition)
+    return CANARY_TABLES.none.includes(competition)
       ? { verdict: 'ok', detail: 'no table (none expected: knockout only)' }
       : { verdict: 'changed', detail: 'the response holds no table rows' };
   }
 
-  // Where the ADAPTER says which tables it reads, its own account is asked too:
-  // rows can be well formed and still not be a table the product can show.
-  const expected = adapter.expectedStandingsGroups;
-  if (expected && expected.length > 0) {
-    if (!Array.isArray(result)) {
-      return { verdict: 'changed', detail: 'the adapter could not read the tables it expects' };
-    }
-    // The parser's own account first: a refused row marks its table partial,
-    // but a refused TABLE leaves the survivors whole.
-    if (core.fetchMeta(result)?.complete !== true) {
-      const partial = result.filter((t) => t.partial).map((t) => t.group);
-      return {
-        verdict: 'changed',
-        detail: partial.length
-          ? `the adapter could not read every row of Group ${partial.join(', ')}`
-          : `the adapter could not read every table (${tables.length} sent, ${result.length} read)`,
-      };
-    }
-    const got = new Set(result.map((t) => t.group));
-    const missing = expected.filter((g) => !got.has(g));
-    if (missing.length > 0) {
-      return { verdict: 'changed', detail: `the adapter expects group(s) ${missing.join(', ')} and did not get them` };
-    }
+  // Rows can be well formed and still not be a table the product can show, so
+  // the product's own parser is asked wherever it reads the tables: for the
+  // competitions it reads today (it MUST have an answer there), and for any
+  // other payload it returned tables from.
+  const expected = adapter.expectedStandingsGroups ?? [];
+  const mustRead = CANARY_TABLES.read.includes(competition) || expected.length > 0;
+  const didRead = Array.isArray(result) && result.length > 0;
+  if (mustRead && !didRead) {
+    return { verdict: 'changed', detail: 'the adapter could not read the tables it reads today' };
+  }
+  if (!didRead) {
+    return {
+      verdict: 'ok',
+      detail: `${rows} row(s) in ${tables.length} table(s) (a shape the table parser does not read yet)`,
+    };
+  }
+  // The parser's own account: a refused row marks its table partial, but a
+  // refused TABLE (a second one for a group already read, a name that is no
+  // group) leaves the survivors whole.
+  if (core.fetchMeta(result)?.complete !== true) {
+    const partial = result.filter((t) => t.partial).map((t) => t.group);
+    return {
+      verdict: 'changed',
+      detail: partial.length
+        ? `the adapter could not read every row of Group ${partial.join(', ')}`
+        : `the adapter could not read every table (${tables.length} sent, ${result.length} read)`,
+    };
+  }
+  const got = new Set(result.map((t) => t.group));
+  const missing = expected.filter((g) => !got.has(g));
+  if (missing.length > 0) {
+    return { verdict: 'changed', detail: `the adapter expects group(s) ${missing.join(', ')} and did not get them` };
   }
   return { verdict: 'ok', detail: `${rows} row(s) in ${tables.length} table(s)` };
 }
