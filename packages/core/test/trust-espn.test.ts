@@ -11,6 +11,7 @@ import {
   MAX_EVENTS,
   MAX_GROUPS,
   MAX_GROUP_ROWS,
+  MAX_TABLE_CHILDREN,
   parseEspnEvent,
   parseEspnEvents,
   parseEspnStandings,
@@ -204,19 +205,34 @@ describe('parseEspnEvents / parseEspnStandings — bounded before the work', () 
     // 200 x 4,000 logical shape, without the test itself allocating 800,000
     // objects before the bounded-work assertion even starts.
     const entries = Array.from({ length: 4_000 }, (_, row) => entry(row));
-    const children = Array.from({ length: 200 }, (_, i) => ({
-      get name() {
-        groupsTouched = Math.max(groupsTouched, i + 1);
-        return 'Group A';
-      },
-      standings: { entries },
-    }));
-    const list = parseEspnStandings({ children });
-    expect(list.items.length).toBe(1); // "Group A" is one group, not 200
-    expect(list.items[0]!.rows.length).toBeLessThanOrEqual(MAX_GROUP_ROWS);
-    expect(groupsTouched).toBeLessThanOrEqual(MAX_GROUPS * 4);
-    expect(rowsTouched).toBeLessThanOrEqual(MAX_GROUP_ROWS);
-    expect(list.complete).toBe(false);
+    const named = (name: (i: number) => string, n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        get name() {
+          groupsTouched = Math.max(groupsTouched, i + 1);
+          return name(i);
+        },
+        standings: { entries },
+      }));
+    // More children than are inspected: refused whole, and nothing is touched.
+    const refused = parseEspnStandings({ children: named(() => 'Group A', 200) });
+    expect(refused.items).toEqual([]);
+    expect(refused.complete).toBe(false);
+    expect(refused.truncated).toBe(true);
+    expect(groupsTouched).toBe(0);
+    expect(rowsTouched).toBe(0);
+    // Within the bound: every name is read, a key 64 children claim belongs to
+    // none, and not one row is parsed for it.
+    const collided = parseEspnStandings({ children: named(() => 'Group A', MAX_TABLE_CHILDREN) });
+    expect(collided.items).toEqual([]);
+    expect(groupsTouched).toBe(MAX_TABLE_CHILDREN);
+    expect(rowsTouched).toBe(0);
+    // One group of 4,000 rows: one table, and only the bound's worth of rows.
+    const one = parseEspnStandings({ children: named(() => 'Group A', 1) });
+    expect(one.items.length).toBe(1);
+    expect(one.items[0]!.rows.length).toBe(MAX_GROUP_ROWS);
+    expect(rowsTouched).toBe(MAX_GROUP_ROWS);
+    expect(one.complete).toBe(false);
+    expect(MAX_GROUPS * MAX_GROUP_ROWS).toBe(640);
   });
 
   it('lists a team at most once per table', () => {

@@ -22,7 +22,7 @@ import {
   adapterTablesProblem,
   CANARY_COMPETITIONS,
   CANARY_QUESTIONS,
-  CANARY_TABLES,
+
   canaryWarnings,
   formatCanary,
   runCanary,
@@ -102,7 +102,29 @@ function feed(handler: Handler) {
   }) as unknown as typeof fetch;
   return { fetchImpl, urls };
 }
-const healthy: Handler = (url) => json(url.includes('/standings') ? standings() : scoreboard(url));
+/** Twelve lettered groups of one team each: a healthy answer for any grouped competition. */
+const groupStandings = (letters = 'ABCDEFGHIJKL'.split('')) => ({
+  children: letters.map((g, i) => ({
+    name: `Group ${g}`,
+    standings: {
+      entries: [
+        {
+          team: { id: String(200 + i), abbreviation: `T${g}X`, displayName: `Team ${g}` },
+          stats: STATS.map((n) => ({ name: n, value: n === 'rank' ? 1 : 0 })),
+        },
+      ],
+    },
+  })),
+});
+/** A healthy standings answer for the competition a URL asks about: its own shape. */
+function standingsOf(url: string) {
+  const slug = /\/soccer\/([^/]+)\/standings/.exec(url)?.[1] ?? '';
+  const shape = core.STANDINGS_SHAPE[slug];
+  // What a competition with no table answers: its seasons, and no table list.
+  if (shape === 'none') return { name: 'Concacaf Champions Cup', season: { year: 2026 }, seasons: [{ year: 2016 }] };
+  return shape === 'league' ? standings() : groupStandings();
+}
+const healthy: Handler = (url) => json(url.includes('/standings') ? standingsOf(url) : scoreboard(url));
 
 const run = (handler: Handler, competitions = ['eng.1']) => {
   const f = feed(handler);
@@ -269,12 +291,19 @@ describe('a 2xx payload that no longer fits the parsers', () => {
     const missingId = await run((url) =>
       json(
         url.includes('/standings')
-          ? standings((e) => ({ ...e, team: { abbreviation: 'ARS', displayName: 'Arsenal' } }))
+          ? standings((e) => {
+              // Only the id goes: each row keeps its own team, so the product's
+              // parser (to which an id is optional) reads the table whole and
+              // the raw check is the only thing that can see this.
+              const { id: _id, ...team } = e.team as { id: string; abbreviation: string; displayName: string };
+              return { ...e, team };
+            })
           : scoreboard(url),
       ),
     );
     expect(missingId.red).toBe(true);
     expect(verdicts(missingId).standings).toBe('changed');
+    expect(missingId.rows.find((x) => x.request === 'standings')?.detail).toBe('Arsenal has no team id');
   });
 
   it('a body that is not JSON at all', async () => {
@@ -620,12 +649,11 @@ describe('found in review: every table shape, every row, every value', () => {
   });
   const table = (entries: unknown) => ({ children: [{ name: 'Group A', standings: { entries } }] });
 
-  it('a healthy nested shape (groups under a phase) is green, and its rows are counted', async () => {
+  it('a nested shape (groups under a phase) is red: its rows are well formed, and the product reads none of it', async () => {
+    // It used to be green as "a shape the table parser does not read yet". No
+    // shape is excused now: every competition with a table must be read whole.
     const nested = { children: [{ name: 'League Phase', children: [{ name: 'Group A', standings: { entries: [row()] } }] }] };
-    expect(await standingsCase(nested)).toEqual({
-      verdict: 'ok',
-      detail: '1 row(s) in 1 table(s) (a shape the table parser does not read yet)',
-    });
+    expect(await standingsCase(nested)).toEqual({ verdict: 'changed', detail: 'the adapter could not read the tables' });
   });
 
   it('a row in a nested table is checked like any other', async () => {
@@ -655,10 +683,12 @@ describe('found in review: every table shape, every row, every value', () => {
   });
 
   it('a statistic that is not a number is red', async () => {
+    // The product's parser refuses such a row too, so the VERDICT is red either
+    // way; what the raw check owns is the diagnosis, and that is what is pinned.
     const strings = row({ stats: STATS.map((n) => ({ name: n, displayValue: '0' })) });
-    expect((await standingsCase(table([strings]))).verdict).toBe('changed');
+    expect(await standingsCase(table([strings]))).toEqual({ verdict: 'changed', detail: 'Arsenal: the statistic gamesPlayed is not a number' });
     const text = row({ stats: STATS.map((n) => ({ name: n, value: '0' })) });
-    expect((await standingsCase(table([text]))).verdict).toBe('changed');
+    expect(await standingsCase(table([text]))).toEqual({ verdict: 'changed', detail: 'Arsenal: the statistic gamesPlayed is not a number' });
   });
 
   it('a statistic stated twice is red', async () => {
@@ -726,22 +756,41 @@ describe('found in review: absence is a finding, and the product’s own parser 
   it('and expected of a knockout-only competition, which is the only kind excused', async () => {
     // What the Concacaf Champions Cup's standings endpoint answers (Oct 2 2026).
     const seasonsOnly = { name: 'Concacaf Champions Cup', season: { year: 2026 }, seasons: [{ year: 2016 }] };
-    expect(CANARY_TABLES.none).toEqual(['concacaf.champions']);
+    const none = Object.keys(core.STANDINGS_SHAPE).filter((c) => core.STANDINGS_SHAPE[c] === 'none');
+    expect(none).toEqual(['concacaf.champions']);
     for (const competition of CANARY_COMPETITIONS) {
       const r = await run((url) => json(url.includes('/standings') ? seasonsOnly : scoreboard(url)), [competition]);
-      expect(verdicts(r).standings, competition).toBe(CANARY_TABLES.none.includes(competition) ? 'ok' : 'changed');
+      expect(verdicts(r).standings, competition).toBe(none.includes(competition) ? 'ok' : 'changed');
     }
   });
 
-  it('what the product reads today is written down, per competition (measured on the real feed)', () => {
-    // Lettered groups the table parser reads whole today. Every other
-    // competition is a shape it does not read yet (a league table, numbered
-    // groups, groups under a league), or has no table.
-    expect([...CANARY_TABLES.read].sort()).toEqual(
-      ['concacaf.gold', 'conmebol.america', 'conmebol.libertadores', 'fifa.cwc', 'fifa.world', 'uefa.euro'].sort(),
+  it('"no table" is an expectation the feed is checked against, not an exemption', async () => {
+    const champions = async (body: unknown) => {
+      const r = await run((url) => json(url.includes('/standings') ? body : scoreboard(url)), ['concacaf.champions']);
+      return r.rows.find((x) => x.request === 'standings');
+    };
+    // The day it serves a table, in any shape, a person decides what that means.
+    expect(await champions(standings())).toMatchObject({ verdict: 'changed', detail: '2 row(s) in 1 table(s), where no table was expected' });
+    expect((await champions(groupStandings(['A', 'B'])))?.verdict).toBe('changed');
+    // And "no rows" is healthy only when the product's own reader took the answer for an empty one:
+    // the competition's own document, with no table list or an empty one.
+    const doc = { name: 'Concacaf Champions Cup', season: { year: 2026 } };
+    expect((await champions({ ...doc, children: [] }))?.verdict).toBe('ok');
+    expect((await champions({ children: [] }))?.verdict).toBe('changed'); // not the competition's document
+    expect((await champions({ code: 404, message: 'Not Found' }))?.verdict).toBe('changed');
+    expect((await champions({ name: 'Error', code: 404, message: 'not found' }))?.verdict).toBe('changed'); // a name is not the document
+    // Nor is an error that happens to carry a season (found in review: it was green).
+    expect((await champions({ name: 'Error', season: { year: 2026 }, code: 500, message: 'standings unavailable' }))?.verdict).toBe('changed');
+    expect((await champions({ ...doc, children: [{ name: 'Group A', standings: { entries: [] } }] }))?.verdict).toBe('changed');
+    expect((await champions({ ...doc, children: 'x' }))?.verdict).toBe('changed');
+  });
+
+  it('the shape of every competition the canary watches is written down in core, and the canary reads it there', () => {
+    // A league serves one table; one competition has none; the rest are groups.
+    for (const c of Object.keys(core.STANDINGS_SHAPE)) expect(CANARY_COMPETITIONS, c).toContain(c);
+    expect(CANARY_COMPETITIONS.filter((c) => core.STANDINGS_SHAPE[c] === 'league').sort()).toEqual(
+      ['eng.1', 'esp.1', 'ger.1', 'ita.1', 'mex.1', 'uefa.champions'].sort(),
     );
-    for (const c of [...CANARY_TABLES.read, ...CANARY_TABLES.none]) expect(CANARY_COMPETITIONS, c).toContain(c);
-    expect(CANARY_TABLES.read.filter((c) => CANARY_TABLES.none.includes(c))).toEqual([]);
   });
 
   describe('found in review (round 2): the product’s parser is asked wherever it reads the tables, not only for the bundle', () => {
@@ -781,23 +830,32 @@ describe('found in review: absence is a finding, and the product’s own parser 
       expect((await groupsCase('uefa.nations', body))?.verdict).toBe('changed');
     });
 
-    it('groups under a league, read today as if the leagues were one: red, and it says how many were lost', async () => {
+    it('groups under a league are read as what they are: two leagues’ Group A are two tables', async () => {
       // The Concacaf Nations League's shape on the real feed (Oct 2 2026). The
-      // parser takes "League A, Group A" for group A and drops League B's.
+      // parser used to take "League A, Group A" for group A and drop League
+      // B's: this row was red ("2 sent, 1 read") until the tables were keyed.
       const body = wcStandings(['A', 'B']);
       const names = ['League A, Group A', 'League B, Group A'];
       body.children.forEach((child, i) => {
         child.name = names[i] as string;
       });
-      const row = await groupsCase('concacaf.nations.league', body);
-      expect(row?.verdict).toBe('changed');
-      expect(row?.detail).toBe('the adapter could not read every table (2 sent, 1 read)');
+      expect(await groupsCase('concacaf.nations.league', body)).toMatchObject({ verdict: 'ok', detail: '2 row(s) in 2 table(s)' });
     });
 
-    it('a league table, which the parser does not read yet, is judged on the raw rows and says so', async () => {
-      const row = await groupsCase('eng.1', standings());
-      expect(row?.verdict).toBe('ok');
-      expect(row?.detail).toBe('2 row(s) in 1 table(s) (a shape the table parser does not read yet)');
+    it('a league table is read, and the row says so plainly', async () => {
+      expect(await groupsCase('eng.1', standings())).toMatchObject({ verdict: 'ok', detail: '2 row(s) in 1 table(s)' });
+    });
+
+    it('a league that serves two tables is red: the product reads neither', async () => {
+      const two = standings();
+      two.children.push({ ...two.children[0], name: '2026 Torneo Clausura' } as (typeof two.children)[number]);
+      expect(await groupsCase('mex.1', two)).toMatchObject({ verdict: 'changed', detail: 'the adapter could not read the tables' });
+    });
+
+    it('a table that is partial is named by its key when it is not a lettered group', async () => {
+      const body = standings();
+      body.children[0]?.standings.entries.push(badRow('298', 'Third', 3));
+      expect((await groupsCase('eng.1', body))?.detail).toBe('the adapter could not read every row of table LEAGUE');
     });
   });
 
@@ -821,12 +879,28 @@ describe('found in review: absence is a finding, and the product’s own parser 
     (second?.standings.entries[0]?.team as { id: string }).id = '298';
     const duplicate = wcStandings();
     duplicate.children.push(second as (typeof duplicate.children)[number]);
-    expect(core.parseStandings(duplicate)).toHaveLength(12);
+    // A key two children claim belongs to neither: eleven tables are read.
+    expect(core.parseStandings(duplicate)).toHaveLength(11);
     expect((await wc(duplicate))?.verdict).toBe('changed');
 
     const unknownName = wcStandings();
-    unknownName.children.push({ ...(second as (typeof duplicate.children)[number]), name: 'Group A1' });
+    unknownName.children.push({ ...(second as (typeof duplicate.children)[number]), name: 'Second Phase' });
     expect((await wc(unknownName))?.verdict).toBe('changed');
+
+    // A table with a readable name that the bundled competition does not
+    // expect (a numbered group among the World Cup's twelve) is not read
+    // either: the adapter hands the parser its expected keys, and a child
+    // outside them is a child that did not become a table.
+    const extra = wcStandings();
+    extra.children.push({ ...(second as (typeof duplicate.children)[number]), name: 'Group A1' });
+    expect(core.parseStandings(extra)).toHaveLength(13); // read with no expectation
+    expect(await wc(extra)).toMatchObject({ verdict: 'changed', detail: 'the adapter could not read every table (13 sent, 12 read)' });
+    // A table at the ROOT beside the groups is a table the product does not read.
+    const atRoot = {
+      ...wcStandings(),
+      standings: { entries: [{ team: { id: '999', abbreviation: 'ZZZ', displayName: 'Root' }, stats: STATS.map((n) => ({ name: n, value: n === 'rank' ? 1 : 0 })) }] },
+    };
+    expect(await wc(atRoot)).toMatchObject({ verdict: 'changed', detail: 'the adapter could not read every table (13 sent, 12 read)' });
   });
 
   it('the adapter says so itself: a standings result states whether every table and row was read', async () => {

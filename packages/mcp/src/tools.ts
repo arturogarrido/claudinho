@@ -21,6 +21,7 @@ import {
   tableData,
   marketDisplayable,
   type MatchShareCard,
+  tableKeyArg,
   verdictExtras,
   verdictNotice,
   getBracket,
@@ -70,6 +71,14 @@ import {
 export interface ToolResult {
   text: string;
   data: unknown;
+  /**
+   * The end of `text` that a cut at a length keeps (see `toContent`): the
+   * attribution, when live data served the answer, and the non-affiliation
+   * disclaimer. Always a suffix of `text`. Required, so no tool can be written
+   * without stating it: `disclaimed` returns it with the text it ends, and a
+   * share snippet's is its footer paragraph (`snippetFooter`).
+   */
+  footer: string;
 }
 
 export interface CommonOpts {
@@ -313,12 +322,28 @@ function fmtOpts(args: CommonOpts) {
   };
 }
 
-function withDisclaimer(text: string, source?: string, lang?: string): string {
-  // Attribute the live-data provider when live data actually served the result.
+/**
+ * A tool's text: the body, then its footer (the attribution, when live data
+ * actually served the result, and the disclaimer). The footer is returned on
+ * its own too, so a text cut at a length keeps it (`toContent`).
+ */
+function disclaimed(body: string, source?: string, lang?: string): { text: string; footer: string } {
   const live = source
     ? `\n${t(lang, 'live.data', { source: liveSourceLabel(source) })}`
     : '';
-  return `${text}${live}\n\n${DISCLAIMER}`;
+  const footer = `${live}\n\n${DISCLAIMER}`;
+  return { text: `${body}${footer}`, footer };
+}
+
+/**
+ * A share snippet's footer, with the blank line before it: its last
+ * paragraph. Core's share formatters end every snippet with ONE footer
+ * paragraph (the attribution, the disclaimer with the hashtag, the run cue)
+ * that holds no blank line, so a cut keeps all of it.
+ */
+function snippetFooter(snippet: string): string {
+  const at = snippet.lastIndexOf('\n\n');
+  return at === -1 ? '' : snippet.slice(at);
 }
 
 /** today: fixtures for a date (default: today), with live overlay. */
@@ -339,7 +364,7 @@ export async function toolGetToday(
   }
   const shownToday = boundedRecords(todays);
   return {
-    text: withDisclaimer(text, source, args.lang),
+    ...disclaimed(text, source, args.lang),
     data: {
       date,
       degraded,
@@ -371,7 +396,7 @@ export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
     : `Live now:\n${matchList(matches, 'No matches in play right now.', opts)}`;
   const shownLive = boundedRecords(matches);
   return {
-    text: withDisclaimer(text, source, args.lang),
+    ...disclaimed(text, source, args.lang),
     data: {
       degraded,
       source: source ?? null,
@@ -393,7 +418,7 @@ export async function toolGetMatch(
   const { match, degraded, source: liveSource } = found;
   if (!match) {
     return {
-      text: withDisclaimer(
+      ...disclaimed(
         verdictNotice(found, args.lang) ?? `No match found with id ${args.id}.`,
         undefined,
         args.lang,
@@ -421,7 +446,7 @@ export async function toolGetMatch(
     text += '\n\n(Market data unavailable or incomplete — this match was not checked.)';
   }
   return {
-    text: withDisclaimer(text, liveSource, args.lang),
+    ...disclaimed(text, liveSource, args.lang),
     data: {
       degraded,
       source: liveSource ?? null,
@@ -440,7 +465,8 @@ export async function toolGetStandings(
   // Authoritative cumulative standings from the provider. A degraded bundled
   // roster is valid only for a declared compatible scope; open-scope outages
   // stay empty rather than borrowing World Cup teams.
-  const { tables, degraded, source } = await getStandings(resolveAdapter(args), args.group);
+  const result = await getStandings(resolveAdapter(args), args.group);
+  const { tables, degraded, source } = result;
 
   // Preserve the structured shape: { group, standings: StandingRow[] }.
   const boundedTables = boundedRecords(tables);
@@ -451,29 +477,42 @@ export async function toolGetStandings(
     const msg = degraded
       ? t(args.lang, 'standings.unavailable')
       : g
-        ? `No group "${g}".`
-        : 'No standings available.';
+        ? t(args.lang, 'standings.none', { group: g })
+        : t(args.lang, 'standings.empty');
     return {
-      text: withDisclaimer(msg, source, args.lang),
-      data: { degraded, source: source ?? null, tables: args.group ? null : [] },
+      ...disclaimed(msg, source, args.lang),
+      data: { degraded, source: source ?? null, tables: args.group ? null : [], ...verdictExtras(result) },
     };
   }
 
+  // Tables are missing: what is shown is not the whole competition. Said
+  // FIRST: a tool's text is cut at a fixed length from the end, and a verdict
+  // at the tail would be the first thing a long answer lost. (The footer is
+  // kept by the cut: `toContent`.)
+  const notice = verdictNotice(result, args.lang);
   let text = shaped
     .map((tb) => {
-      const block = standingsTable(tb.group, tb.standings);
-      // A table the provider served but we could not read in full says so (A01).
+      const block = standingsTable(tb, tb.standings);
+      // A table the provider served but we could not read in full says so
+      // (A01), BEFORE its table for the same reason: one league table of forty
+      // rows can be longer than the cut.
       return tb.partial
-        ? `${block}\n(${t(args.lang, 'standings.partial', { n: String(tb.partial.omitted) })})`
+        ? `(${t(args.lang, 'standings.partial', { n: String(tb.partial.omitted) })})\n${block}`
         : block;
     })
     .join('\n\n');
   // Stated, not silent — the same rule the match lists follow.
   text += truncationNote(boundedTables);
   if (degraded) text += '\n\n(Live standings unavailable — showing the group roster.)';
+  if (notice) text = `(${notice})\n\n${text}`;
   return {
-    text: withDisclaimer(text, source, args.lang),
-    data: { degraded, source: source ?? null, tables: args.group ? (shaped[0] ?? null) : shaped },
+    ...disclaimed(text, source, args.lang),
+    data: {
+      degraded,
+      source: source ?? null,
+      tables: args.group ? (shaped[0] ?? null) : shaped,
+      ...verdictExtras(result),
+    },
   };
 }
 
@@ -486,7 +525,7 @@ export async function toolGetBracket(
   const filter = args.stage?.toUpperCase();
   if (filter && !BRACKET_STAGES.has(filter)) {
     return {
-      text: withDisclaimer(
+      ...disclaimed(
         t(args.lang, 'bracket.unknownStage', { stage: args.stage ?? '' }),
         undefined,
         args.lang,
@@ -505,7 +544,7 @@ export async function toolGetBracket(
     // top-level key, like every other tool's (and still rides inside `view`,
     // where 0.10.1 put it before the schema could carry it).
     return {
-      text: withDisclaimer(notice, undefined, args.lang),
+      ...disclaimed(notice, undefined, args.lang),
       data: { degraded, standingsDegraded, source: null, view, ...verdictExtras(bracket) },
     };
   }
@@ -516,7 +555,7 @@ export async function toolGetBracket(
     text += `\n\n(${t(args.lang, 'bracket.standingsDegraded')})`;
   }
   return {
-    text: withDisclaimer(text, source, args.lang),
+    ...disclaimed(text, source, args.lang),
     data: { degraded, standingsDegraded, source: source ?? null, view, ...verdictExtras(bracket) },
   };
 }
@@ -531,17 +570,27 @@ export async function standingsResourceText(
   group: string,
   adapter: ProviderAdapter,
 ): Promise<string> {
-  const g = group.toUpperCase();
+  // A resource URI is typed by anyone: what is not a table key is refused
+  // here, before a request, with the grammar a key has.
+  const g = tableKeyArg(group);
+  if (!g) {
+    return disclaimed(
+      'Not a table. Use standings://A for a group, or a key such as standings://A1, standings://A-B or standings://LEAGUE.',
+      undefined,
+    ).text;
+  }
   const { tables, degraded, source } = await getStandings(adapter, g);
   const tb = tables[0];
   let text = tb
-    ? standingsTable(tb.group, tb.rows)
+    ? standingsTable(tb, tb.rows)
     : degraded
       ? 'Live standings unavailable.'
       : `No group ${g}.`;
-  if (tb?.partial) text += `\n(${t(undefined, 'standings.partial', { n: String(tb.partial.omitted) })})`;
+  // Before the table, as in `get_standings`: a reader meets what qualifies the
+  // rows before the rows.
+  if (tb?.partial) text = `(${t(undefined, 'standings.partial', { n: String(tb.partial.omitted) })})\n${text}`;
   if (degraded && tb) text += '\n\n(Live standings unavailable — showing the group roster.)';
-  return withDisclaimer(text, source);
+  return disclaimed(text, source).text;
 }
 
 /** next_fixture: a team's next match, live-resolved across the knockout phase. */
@@ -563,7 +612,7 @@ export async function toolGetNextFixture(
         ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
         : `No upcoming fixture found for ${code}.`);
     return {
-      text: withDisclaimer(msg, undefined, args.lang),
+      ...disclaimed(msg, undefined, args.lang),
       data: { team: code, fixture: null, degraded, source: source ?? null, ...verdictExtras(next) },
     };
   }
@@ -571,7 +620,7 @@ export async function toolGetNextFixture(
   return {
     // `source` in data mirrors the text's "Live data: …" attribution (parity
     // with CLI `next --json`); null for a static group fixture (no live source).
-    text: withDisclaimer(`Next up for ${code}:\n${matchLine(fixture, opts)}`, source, args.lang),
+    ...disclaimed(`Next up for ${code}:\n${matchLine(fixture, opts)}`, source, args.lang),
     data: { team: code, fixture, degraded, source: source ?? null, ...verdictExtras(next) },
   };
 }
@@ -594,7 +643,7 @@ export function toolGetTeam(args: { query: string }): ToolResult {
   } else {
     text = `No team found for "${args.query}". Use a nation name or 3-letter code (e.g. Mexico, MEX).`;
   }
-  return { text: withDisclaimer(text), data };
+  return { ...disclaimed(text), data };
 }
 
 /**
@@ -628,7 +677,7 @@ export async function toolGetMarketSignal(
         ? marketText(match, shown, args)
         : noSignalText(match, args, now);
     return {
-      text: withDisclaimer(text),
+      ...disclaimed(text),
       data: {
         matchId: args.matchId,
         informationalOnly: true,
@@ -667,7 +716,7 @@ export async function toolGetMarketSignal(
         ? marketText(fixture, shown, args)
         : noSignalText(fixture, args, now);
     return {
-      text: withDisclaimer(text),
+      ...disclaimed(text),
       data: {
         team: code,
         matchId: fixture?.id ?? null,
@@ -713,7 +762,7 @@ export async function toolGetMarketSignal(
     text += `\n\nMarket data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
   }
   return {
-    text: withDisclaimer(text),
+    ...disclaimed(text),
     data: {
       date,
       informationalOnly: true,
@@ -789,9 +838,10 @@ function shareResult(
   return {
     // The snippet is self-contained: it carries its own non-affiliation
     // disclaimer (and, for any market line, the "informational only" caveat +
-    // attribution), so it is deliberately NOT wrapped with withDisclaimer —
+    // attribution), so it is deliberately NOT wrapped with `disclaimed` —
     // that would duplicate the disclaimer inside a paste-ready artifact.
     text: snippet,
+    footer: snippetFooter(snippet),
     data: {
       kind: card.kind,
       target: card.target,
@@ -859,10 +909,11 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     // Capped like the structured payload beside it. Bounding `data.tables`
     // while the rendered SNIPPET came from the full list meant the surface a
     // reader actually sees was the unbounded one.
-    const card = tableShareCard(standings, group, boundedRecords(standings.tables).items);
+    const card = tableShareCard(standings, group, boundedRecords(standings.tables).items, args.lang);
     const snippet = formatShareTable(card.input, options);
     return {
       text: snippet,
+      footer: snippetFooter(snippet),
       data: {
         kind: 'table',
         target: 'table',
@@ -872,6 +923,8 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         informationalOnly: true,
         snippet,
         // The structured card keeps the verdict the snippet warns about (A01).
+        // (No batch verdict here: this card is always for ONE key, and a keyed
+        // read that found its table carries only that table's own `partial`.)
         tables: card.tables,
       },
     };
@@ -882,7 +935,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     const stageFilter = args.knockoutStage?.toUpperCase();
     if (stageFilter && !BRACKET_STAGES.has(stageFilter)) {
       return {
-        text: withDisclaimer(
+        ...disclaimed(
           t(args.lang, 'bracket.unknownStage', { stage: args.knockoutStage ?? '' }),
           undefined,
           args.lang,
@@ -900,6 +953,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     const snippet = formatShareBracket(card.input, { ...options, locale: args.lang, tz: args.tz });
     return {
       text: snippet,
+      footer: snippetFooter(snippet),
       data: {
         kind: 'bracket',
         target: 'bracket',

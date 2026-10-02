@@ -30,6 +30,7 @@ import type { Match, Stage, Status, Team } from '../types';
 import { type BoundedList, takeBounded } from './bounded';
 import { definitiveNone, malformed, type ParseResult, valid } from './result';
 import { MAX_GOALS, MAX_MINUTE, sealMatch, sealTeam } from './match';
+import { sealSeason } from './season';
 import {
   canonicalTimestamp,
   count,
@@ -48,13 +49,38 @@ const PROVIDER = 'espn';
 /** Events read from one scoreboard payload — we ask for `limit=300`. */
 export const MAX_EVENTS = 300;
 /**
- * Distinct group tables in a standings payload (a World Cup has 12). ESPN may
- * repeat a group across children, so the children list is sliced at four times
- * this before any per-group work; a letter is then read once.
+ * Children of a standings payload that are inspected. The largest competition
+ * has 14. A payload with more is refused whole: a child nobody inspected could
+ * claim a key that was accepted (see `parseEspnStandings`).
+ */
+export const MAX_TABLE_CHILDREN = 64;
+/**
+ * Tables whose ROWS are processed: sixteen slots, each taken before the first
+ * row of a table is parsed and never given back (a World Cup has 12 tables,
+ * the UEFA Nations League 14). With `MAX_GROUP_ROWS` this bounds the row work
+ * at 640 parses whatever the payload holds.
  */
 export const MAX_GROUPS = 16;
-/** Rows per group. A real group is 4. */
-export const MAX_GROUP_ROWS = 32;
+/** Rows per table. A group is 4; the Champions League's league phase is 36. */
+export const MAX_GROUP_ROWS = 40;
+/** A table's raw name is matched whole, and only up to this length. */
+const MAX_TABLE_NAME_UNITS = 64;
+/** Display columns of a table's label. */
+const MAX_TABLE_LABEL_COLUMNS = 60;
+
+/**
+ * How a competition's standings payload is read. `groups`: every table is
+ * named by one of the group grammars. `league`: the competition is authorised
+ * to serve exactly ONE table, whatever its name (a season, a phase). `none`:
+ * the competition has no table (knockout from the first round), and the
+ * provider answers with its own document and no table list at all; that
+ * answer is then an empty one, not an unreadable one. If such a competition
+ * ever serves a child or a table, nothing is read: it is not what was written
+ * down.
+ */
+export type StandingsShape = 'groups' | 'league' | 'none';
+/** The key of a league's one table. */
+export const LEAGUE_TABLE_KEY = 'LEAGUE';
 
 const STAGES = new Set<string>(['GROUP', 'R32', 'R16', 'QF', 'SF', '3P', 'F', 'FRIENDLY']);
 
@@ -461,60 +487,235 @@ function entryToRow(e: RawEntry): ParseResult<ParsedStandingRow> {
 }
 
 /**
- * A standings payload → group tables.
- *
- * The children list is bounded before any per-group work and a group letter is
- * read once, rows are bounded BEFORE the sort, and a team appears at most once
- * per table. Every one of those was a separate finding, and every one is the
- * same mistake: validating after doing the work.
+ * A parsed standings payload. Beside the batch vocabulary it states the
+ * INVENTORY: whether every table child the provider sent became a table. That
+ * is not `complete`, which is also false for a refused ROW of a table that was
+ * read: a partial table is still a table, and a reader may conclude from a
+ * complete inventory that a key it does not hold does not exist.
  */
-export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
-  // Children are per-group entries that may repeat a group name, so `total` is
-  // distinct GROUPS, not array length — but the raw length still decides whether
-  // we looked at all of them. Read before slicing, for the same reason as
-  // parseEspnEvents: a count taken after the slice can only report success.
+export interface EspnStandingsList extends BoundedList<GroupStandings> {
+  readonly inventory: 'complete' | 'incomplete';
+}
+
+/**
+ * A table's key, from its RAW name: whole, bounded, by an explicit grammar.
+ *
+ *   `Group A`            → `A`
+ *   `Group A1`           → `A1`     (numbered groups: the UEFA Nations League)
+ *   `League A, Group B`  → `A-B`    (groups under a league: Concacaf's)
+ *
+ * The raw name, not the sanitized label: sanitizing removes characters and
+ * cuts at a width, so `Group A` + an invisible character, and `Group A` + 150
+ * spaces + `1`, both BECAME "Group A" and were read as group A. And the whole
+ * name: matched as a substring, "League B, Group A" was group A, and four of
+ * Concacaf's nine tables were shown as the whole competition.
+ */
+function tableKey(name: unknown): string | undefined {
+  if (typeof name !== 'string' || name.length > MAX_TABLE_NAME_UNITS) return undefined;
+  // No `u` flag on purpose: without it, case-insensitive matching never folds a
+  // non-ASCII character into `a-z` (U+017F, U+212A), so only ASCII can match.
+  const group = /^group ([a-z][1-9]?)$/i.exec(name);
+  if (group?.[1]) return group[1].toUpperCase();
+  const nested = /^league ([a-z]), group ([a-z])$/i.exec(name);
+  if (nested?.[1] && nested[2]) return `${nested[1]}-${nested[2]}`.toUpperCase();
+  return undefined;
+}
+
+/** A child that will have its rows read: its key, its label (if it has one), its rows. */
+interface TableCandidate {
+  key: string;
+  label?: string;
+  entries: unknown[];
+}
+
+/**
+ * The root keys of the no-table document, as measured on the real feed
+ * (Oct 2 2026), plus `children` (an empty table list is the same answer).
+ * Any other key means the answer is not that document.
+ */
+const NO_TABLE_DOCUMENT_KEYS: ReadonlySet<string> = new Set([
+  'uid',
+  'id',
+  'name',
+  'abbreviation',
+  'season',
+  'seasons',
+  'children',
+]);
+
+/** True when every key of `doc` is in `allowed`; stops at the first that is not. */
+function onlyKeys(doc: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
+  for (const key in doc) if (!allowed.has(key)) return false;
+  return true;
+}
+
+/** The answer for a payload that is not read at all. */
+function refusedStandings(truncated: boolean): EspnStandingsList {
+  return { items: [], total: 0, shown: 0, truncated, complete: false, inventory: 'incomplete' };
+}
+
+/**
+ * A standings payload → tables.
+ *
+ * TWO passes. The first reads every child's NAME and shape and does no row
+ * work: it decides which children are tables, under which key, and which keys
+ * are claimed twice. The second parses rows, for at most `MAX_GROUPS` tables.
+ * So everything that can make a table unauthoritative is known before a row is
+ * parsed, and the row work is bounded whatever the payload holds.
+ *
+ * Every child either becomes a table (it may still turn out partial: rows
+ * refused) or makes the INVENTORY incomplete; nothing is skipped. A child does
+ * not become a table when: it is a named group (or a league's one child) with
+ * no usable rows; its name is outside the grammar, with rows or without; its
+ * rows are not a list; two children claim its key (it belongs to neither); or
+ * it comes after the last slot. A table at the payload's root, beside the
+ * children, is not read either, and makes the inventory incomplete.
+ *
+ * A payload with tables nobody can inspect is refused WHOLE: more children
+ * than the bound, or a child with children of its own (a non-empty list, or
+ * anything that is not a list). A table in there could claim a key that was
+ * accepted, so no table can be shown to be the only one with its key. This is
+ * the one exception to "a refused record is local": it is not a record that
+ * is refused, it is the claim that the records read are all there is.
+ */
+export function parseEspnStandings(
+  raw: unknown,
+  shape: StandingsShape = 'groups',
+  /**
+   * The keys this competition's tables may have, when the caller declares them
+   * (the World Cup's A to L). A child with any other key is not this
+   * competition's table: it gets no slot, none of its rows is parsed, and its
+   * teams never enter the identity ledger, so it cannot take a row away from
+   * an expected table or name a fixture's group.
+   */
+  expected?: readonly string[],
+): EspnStandingsList {
   const rawChildren = (raw as { children?: unknown })?.children;
-  const readable = Array.isArray(rawChildren);
-  const rawCount = readable ? rawChildren.length : 0;
-  const children = takeBounded<Record<string, unknown>>(rawChildren, MAX_GROUPS * 4);
-  const sawAllChildren = rawCount === children.length;
+  if (shape === 'none') {
+    // Measured (Oct 2 2026): a competition with no table answers 200 with its
+    // `uid`, `id`, `name`, `abbreviation`, its `season` (a year) and a list of
+    // past `seasons`, and NO `children` key. For a competition written down
+    // as having no table, and only for one, that document is an empty answer
+    // (anywhere else a missing list is an envelope that cannot be read). It
+    // must BE that document, as it was measured: an object that names the
+    // competition and states a season, whose keys are all among the measured
+    // ones (an allowlist: a table at its root, `standings`, is not one of
+    // them, and neither is anything an error body adds beside a name and a
+    // season). A name alone is not enough (an error body can carry one), nor
+    // a name and a season. And if a child or a table ever appears, the
+    // competition is not what was written down: nothing is read, and the
+    // canary says the shape changed.
+    const doc = raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : undefined;
+    const isDocument =
+      doc !== undefined &&
+      onlyKeys(doc, NO_TABLE_DOCUMENT_KEYS) &&
+      typeof doc.name === 'string' &&
+      humanLabel(doc.name) !== '' &&
+      // "States a season" is the one rule for a season: a year (`sealSeason`).
+      sealSeason(doc.season) !== undefined;
+    const empty = rawChildren === undefined || (Array.isArray(rawChildren) && rawChildren.length === 0);
+    return isDocument && empty
+      ? { items: [], total: 0, shown: 0, truncated: false, complete: true, inventory: 'complete' }
+      : refusedStandings(false);
+  }
+  if (!Array.isArray(rawChildren)) return refusedStandings(false);
+  if (rawChildren.length > MAX_TABLE_CHILDREN) return refusedStandings(true);
+  const children = rawChildren as unknown[];
+
+  let complete = true;
+  let inventoryComplete = true;
+  const refuseTable = () => {
+    complete = false;
+    inventoryComplete = false;
+  };
+  // A table at the ROOT, beside the children: nothing here reads it, so it is
+  // a table that was not read (no measured payload has one). Under the
+  // no-table shape above the same key refuses the document.
+  if ((raw as { standings?: unknown }).standings !== undefined) refuseTable();
+  /** How many children claim each key. A key claimed twice belongs to neither. */
+  const claims = new Map<string, number>();
+  const candidates: TableCandidate[] = [];
+
+  for (const node of children) {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) {
+      refuseTable();
+      continue;
+    }
+    const child = node as Record<string, unknown>;
+    // A table tree: its tables are not inspected, so nothing here is. An
+    // EMPTY list of children is not one: it holds no table, and refusing a
+    // whole competition for it would be one odd field blanking every table.
+    const nested = child.children;
+    if (nested !== undefined && !(Array.isArray(nested) && nested.length === 0)) {
+      return refusedStandings(false);
+    }
+    const standings = child.standings;
+    const entries =
+      standings && typeof standings === 'object' ? (standings as { entries?: unknown }).entries : undefined;
+    const hasRows = Array.isArray(entries) && entries.length > 0;
+    const name = typeof child.name === 'string' ? child.name : child.abbreviation;
+
+    if (shape === 'league') {
+      // Authorised by the competition, not inferred from the payload: exactly
+      // one child, and it is the table. Two children (an Apertura and a
+      // Clausura together) are not read as the first of them.
+      const label = humanLabel(name, MAX_TABLE_LABEL_COLUMNS);
+      if (children.length !== 1 || !label || !hasRows) {
+        refuseTable();
+        continue;
+      }
+      claims.set(LEAGUE_TABLE_KEY, 1);
+      candidates.push({ key: LEAGUE_TABLE_KEY, label, entries: entries as unknown[] });
+      continue;
+    }
+
+    const key = tableKey(name);
+    if (!key || (expected && !expected.includes(key))) {
+      // Nothing is skipped. A child with an empty rows list under a name the
+      // grammar does not know used to be waved through as "a knockout stage":
+      // a guess no measured payload supports, and exactly the door a name the
+      // grammar REJECTS (`Group A` + an invisible character) walks through.
+      // A key outside the declared scope is the same: an unread child.
+      refuseTable();
+      continue;
+    }
+    claims.set(key, (claims.get(key) ?? 0) + 1);
+    // The provider named this group, so it exists; with no rows it was not read.
+    if (!hasRows) {
+      refuseTable();
+      continue;
+    }
+    // A lettered group keeps its localized title and carries no label.
+    const label = /^[A-Z]$/.test(key) ? undefined : humanLabel(name, MAX_TABLE_LABEL_COLUMNS);
+    candidates.push({ key, ...(label ? { label } : {}), entries: entries as unknown[] });
+  }
+
   let rowsTruncated = false;
-  let complete = readable && sawAllChildren;
+  let tablesTruncated = false;
+  let slots = MAX_GROUPS;
   const out: GroupStandings[] = [];
-  const seenGroups = new Set<string>();
   // ESPN team ids identify a provider entity across the whole payload. Codes
   // remain table-local because distinct teams can share an abbreviation, but
   // one stable provider id cannot legitimately occupy two groups.
   const seenProviderIds = new Set<string>();
 
-  for (const child of children) {
-    const label = humanLabel(child?.name ?? child?.abbreviation);
-    // The letter must END the token: "Group A1" is a numbered sub-group, not
-    // group A (audit A05).
-    const letter = label.match(/Group\s+([A-L])(?![A-Za-z0-9])/i)?.[1]?.toUpperCase();
-    if (!letter) {
-      // A child that is not a lettered group but DOES carry rows is a table
-      // shape this parser does not understand yet (a single league table, a
-      // numbered sub-group): the batch is INCOMPLETE, never a healthy empty
-      // attributed to the provider (audit A02/A05). A rowless child (a knockout
-      // stage) is simply not a group and is skipped.
-      const rows = (child?.standings as { entries?: unknown } | undefined)?.entries;
-      if (Array.isArray(rows) && rows.length > 0) complete = false;
+  for (const candidate of candidates) {
+    // Withdrawn before any of its rows is read: it costs no slot and leaves
+    // nothing in the identity ledger above.
+    if ((claims.get(candidate.key) ?? 0) > 1) {
+      refuseTable();
       continue;
     }
-    if (seenGroups.has(letter)) {
-      complete = false;
+    // A slot is taken BEFORE the rows and kept whatever happens to them:
+    // counting accepted tables would let 64 children of malformed rows cost
+    // 2,560 row parses and no table.
+    if (slots === 0) {
+      tablesTruncated = true;
+      refuseTable();
       continue;
     }
-    seenGroups.add(letter);
-
-    // Bounded BEFORE the map and the sort: a 4,000-row group cost ~300ms to
-    // produce 32 rows because the cap was applied to the result.
-    const rawEntries = (child?.standings as { entries?: unknown } | undefined)?.entries;
-    if (!Array.isArray(rawEntries) || rawEntries.length === 0) {
-      complete = false;
-      continue;
-    }
+    slots -= 1;
+    const rawEntries = candidate.entries;
     // Detected AT THE SLICE: `ranked` is built from the already-bounded list, so
     // measuring it afterwards can only ever say nothing was dropped — the same
     // count-after-the-fact mistake as `total`.
@@ -579,21 +780,23 @@ export function parseEspnStandings(raw: unknown): BoundedList<GroupStandings> {
     // Readable sibling groups remain usable; a caller asking for this known
     // group will take the degraded roster fallback instead.
     if (ranked.length === 0) {
-      complete = false;
+      refuseTable();
       continue;
     }
     out.push({
-      group: letter,
+      group: candidate.key,
+      ...(candidate.label ? { label: candidate.label } : {}),
       rows: ranked.map((x) => x.row),
       ...(omitted > 0 ? { partial: { omitted } } : {}),
     });
   }
   return {
     items: out,
-    total: seenGroups.size,
+    total: claims.size,
     shown: out.length,
-    // We stopped early if the child list or any single group's rows were cut.
-    truncated: !sawAllChildren || rowsTruncated,
+    // We stopped early if a table's rows were cut or a table had no slot.
+    truncated: rowsTruncated || tablesTruncated,
     complete: complete && !rowsTruncated,
+    inventory: inventoryComplete ? 'complete' : 'incomplete',
   };
 }

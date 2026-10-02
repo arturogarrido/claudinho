@@ -36,13 +36,13 @@ All 104 fixtures ship bundled, so the schedule works offline; only live scores h
 claudinho today [date]      # a day's fixtures in your timezone (default: today), live scores inline
 claudinho live              # matches in play right now
 claudinho next [TEAM]       # a team's next fixture + countdown — TEAM is a name OR code (Mexico | MEX | "DR Congo"); default $CLAUDINHO_TEAM
-claudinho table [GROUP]     # live cumulative group standings (default: all groups)
+claudinho table [KEY]       # live cumulative standings (default: every table); KEY is a group letter, or A1, A-B, LEAGUE
 claudinho bracket [STAGE]   # knockout bracket (R32, R16, QF, SF, 3P, F); --tree for ASCII tree
 claudinho match <id>        # a single match's detail
 claudinho team <query>      # resolve a name/code to its FIFA code, flag, and group (e.g. team "DR Congo")
 claudinho markets [target]  # prediction-market signals: today | <date> | <id> | next <TEAM>
                             #   (next prefers the team's IN-PLAY match while one is live)
-claudinho share [target]    # copy-pasteable snippet: today | live | <date> | <id> | next <TEAM> | table <GROUP> | bracket [STAGE]
+claudinho share [target]    # copy-pasteable snippet: today | live | <date> | <id> | next <TEAM> | table <KEY> | bracket [STAGE]
 claudinho prompt            # one compact status line (for statusline/tmux/Starship)
 claudinho init cursor       # one-step Cursor setup: statusline + MCP paste (--print for snippets)
 claudinho init claude       # one-step Claude Code setup: statusline + hook + MCP one-liner

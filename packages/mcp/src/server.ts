@@ -19,6 +19,7 @@ import {
   fixturesByDate,
   groups,
   isValidDate,
+  TABLE_KEY_ARG,
 } from '@claudinho/core';
 import { DISCLAIMER, matchList } from './format';
 import {
@@ -47,9 +48,10 @@ const VOICE =
     ? ''
     : `\nVoice: when relaying scores, narrate with lively, regionally-appropriate football-commentary energy in the user's language. Each match line may end with a short exclamation ("— ¡GOOOOL!") — use it as a tone cue. Keep every fact exact; never invent details and never impersonate or name a real commentator.`;
 
-const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and group standings for the 2026 men's football tournament.
+const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and standings for the 2026 men's football tournament.
 The team-taking tools (get_next_fixture, get_market_signal, get_share_snippet) expect a 3-letter code (e.g. MEX). When the user gives a nation NAME, call get_team FIRST to resolve it — get_team is fuzzy ("Mexico", "DR Congo", "Türkiye"), offline, and returns candidates when the name is ambiguous.
-Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team, get_standings for group tables, and get_bracket for the knockout tree.
+Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team, get_standings for standings tables, and get_bracket for the knockout tree.
+get_standings with no group returns every table. One table is selected by its key, which every table's title shows in parentheses unless it is a plain group letter: A to L for lettered groups, A1 for a numbered group, A-B for group B of league A, LEAGUE for a league's single table.
 Use get_market_signal for read-only prediction-market signals (a match, a team's current-or-next fixture, or a date). Market data is informational only — relay the percentages factually and never frame it as betting or trading advice.
 Use get_share_snippet to produce a ready-to-paste match card (for a match, a team's next fixture, a date, or live matches) — hand the user the returned snippet text verbatim.${VOICE}
 ${DISCLAIMER}`;
@@ -60,7 +62,10 @@ ${DISCLAIMER}`;
 export const dateArg = z
   .string()
   .refine(isValidDate, 'must be a real calendar date in YYYY-MM-DD form');
-export const groupArg = z.string().regex(/^[A-La-l]$/, 'a group letter A–L');
+/** A table key: a group letter, or a key such as `A1`, `A-B`, `LEAGUE` (core `TABLE_KEY_ARG`). */
+export const groupArg = z
+  .string()
+  .regex(TABLE_KEY_ARG, 'a table key: a group letter (A), or a key such as A1, A-B or LEAGUE');
 export const teamArg = z.string().regex(/^[A-Za-z]{3}$/, 'a 3-letter team code, e.g. MEX');
 export const flavorArg = z.enum(['off', 'subtle', 'full']);
 
@@ -129,6 +134,20 @@ const verdictOut = {
     ),
 };
 
+/**
+ * The verdict of an all-tables standings read from which the provider's
+ * answer is missing a table (core `verdictExtras`). Declared for the same
+ * reason as `unsupported`: undeclared, the SDK would strip it.
+ */
+const incompleteOut = {
+  incomplete: z
+    .literal(true)
+    .optional()
+    .describe(
+      'Present (true) when the provider sent a table that could not be read: the tables returned are not the whole competition',
+    ),
+};
+
 const todayOut = {
   date: z.string(),
   degraded: z.boolean(),
@@ -170,6 +189,7 @@ const standingsOut = {
   degraded: z.boolean(),
   source: src,
   tables: z.union([anyObj, z.array(anyObj), z.null()]),
+  ...incompleteOut,
   ...responseMeta,
 };
 const bracketOut = {
@@ -261,17 +281,6 @@ export const OUTPUT_SCHEMAS = {
   get_team: teamOut,
 } as const;
 
-/**
- * Wrap a ToolResult into the MCP tool response shape.
- *
- * We emit the payload BOTH as `structuredContent` (schema-validated, for clients
- * that support it) AND as a JSON block inside `content` — deliberately, not by
- * oversight. MCP's backwards-compat guidance is that a tool with an outputSchema
- * SHOULD still serialize the same data into a text block, so clients that don't
- * read `structuredContent` (older/simple ones) still get the structured data.
- * The redundancy costs a few tokens for agents that read both; dropping the text
- * block would silently blind those older clients to everything but the prose.
- */
 /**
  * Ceiling on one tool response, in characters of serialized JSON.
  *
@@ -503,31 +512,57 @@ const MAX_TEXT_CHARS = 32_000;
  */
 const DUAL_EMIT_LIMIT = 16_000;
 
-export function toContent(r: ToolResult) {
+const TRUNCATED = '\n(truncated)';
+
+/**
+ * The prose block: a tool's text, then `tail` (a sentence about the response
+ * itself), within MAX_TEXT_CHARS. A text that fits is returned whole. One that
+ * does not is cut at a length, the cut is said, and what is lost is the end of
+ * the BODY, never the footer (`ToolResult.footer`: the attribution and the
+ * non-affiliation disclaimer, which every user-facing surface carries and a cut
+ * from the end used to take first). What qualifies the body is printed before
+ * it for the same reason (a verdict, a partial table).
+ */
+function boundText(r: { text: string; footer?: string }, tail: string): string {
+  if (r.text.length + tail.length <= MAX_TEXT_CHARS) return r.text + tail;
+  const room = Math.max(0, MAX_TEXT_CHARS - tail.length - TRUNCATED.length);
+  // A footer that is not the end of the text, or that would not fit, is not one.
+  const footer = r.footer && r.text.endsWith(r.footer) && r.footer.length <= room ? r.footer : '';
+  let cut = room - footer.length;
+  // Never half a character: a cut that lands inside a surrogate pair gives one unit back.
+  const last = r.text.charCodeAt(cut - 1);
+  if (last >= 0xd800 && last <= 0xdbff) cut -= 1;
+  return `${r.text.slice(0, cut)}${TRUNCATED}${footer}${tail}`;
+}
+
+/**
+ * A tool's result as the MCP tool response. The footer is optional HERE only:
+ * a tool handler must state one (`ToolResult`); a result built by hand (a
+ * test) need not, and is then cut from the end like any text.
+ *
+ * We emit the payload BOTH as `structuredContent` (schema-validated, for clients
+ * that support it) AND as a JSON block inside `content` — deliberately, not by
+ * oversight. MCP's backwards-compat guidance is that a tool with an outputSchema
+ * SHOULD still serialize the same data into a text block, so clients that don't
+ * read `structuredContent` (older/simple ones) still get the structured data.
+ * The redundancy costs a few tokens for agents that read both; dropping the text
+ * block would silently blind those older clients to everything but the prose.
+ */
+export function toContent(r: Omit<ToolResult, 'footer'> & { footer?: string }) {
   const data = boundResponse(r.data);
   const dataTruncated =
     !!data &&
     typeof data === 'object' &&
     (data as Record<string, unknown>).responseTruncated === true;
-  const marker = dataTruncated ? `\n\n(${RESPONSE_TRUNCATION})` : '';
-  const room = Math.max(0, MAX_TEXT_CHARS - marker.length - '\n(truncated)'.length);
-  const text =
-    r.text.length > room
-      ? `${r.text.slice(0, room)}\n(truncated)${marker}`
-      : r.text + marker;
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     const error =
       'Response data exceeded the MCP context limit and could not be reduced without violating its output schema.';
     return {
-      content: [
-        {
-          type: 'text' as const,
-          text: `${text.slice(0, Math.max(0, MAX_TEXT_CHARS - error.length - 2))}\n\n${error}`,
-        },
-      ],
+      content: [{ type: 'text' as const, text: boundText(r, `\n\n${error}`) }],
       isError: true,
     };
   }
+  const text = boundText(r, dataTruncated ? `\n\n(${RESPONSE_TRUNCATION})` : '');
   // The JSON text block DUPLICATES `structuredContent`; that dual-emit is
   // deliberate, so clients too old to read structuredContent still get the data
   // (see the note above). But duplicating a large payload doubles the context
@@ -597,11 +632,11 @@ export function buildServer(): McpServer {
   server.registerTool(
     'get_standings',
     {
-      title: 'Group standings',
+      title: 'Standings',
       description:
-        'Live cumulative group standings — pass a group letter A–L, or omit for all 12. Returns ranked rows (team, played, W/D/L, goal difference, points). Use get_today for fixtures/scores and get_next_fixture for one team. If unavailable, the default World Cup scope returns a roster at zero; competitions without a compatible bundled roster return no tables. Both are flagged degraded.',
+        'Live cumulative standings — omit group for every table, or pass one table\'s key: a group letter (A–L in the World Cup), A1 for a numbered group, A-B for group B of league A, LEAGUE for a league\'s single table. Each table that is not a lettered group carries a label (the provider\'s name) and its title shows the key in parentheses. Returns ranked rows (team, played, W/D/L, goal difference, points). incomplete:true means a table could not be read and the tables returned are not the whole competition; a table with partial is missing rows. Use get_today for fixtures/scores and get_next_fixture for one team. If unavailable, the default World Cup scope returns a roster at zero; competitions without a compatible bundled roster return no tables. Both are flagged degraded.',
       inputSchema: {
-        group: groupArg.optional().describe('Group letter A–L (omit for all)'),
+        group: groupArg.optional().describe('Table key: a group letter (A), or A1, A-B, LEAGUE (omit for all)'),
         ...commonArgs,
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -673,13 +708,13 @@ export function buildServer(): McpServer {
     {
       title: 'Shareable match snippet',
       description:
-        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), a group's standings table (group, e.g. \"A\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. marketComplete:false is stated inside the card as an incomplete optional read. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
+        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), one standings table (group: a table key, e.g. \"A\", \"A1\", \"A-B\" or \"LEAGUE\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. marketComplete:false is stated inside the card as an incomplete optional read. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
       inputSchema: {
         matchId: z.string().optional().describe('Match id (most specific)'),
         team: teamArg
           .optional()
           .describe("3-letter team code for that team's next fixture, e.g. MEX"),
-        group: groupArg.optional().describe('Group letter A–L for a standings card, e.g. A'),
+        group: groupArg.optional().describe('Table key for a standings card: a group letter (A), or A1, A-B, LEAGUE'),
         bracket: z.boolean().optional().describe('Knockout bracket card (use with optional knockoutStage)'),
         knockoutStage: z
           .enum(['R32', 'R16', 'QF', 'SF', '3P', 'F'])
@@ -723,13 +758,14 @@ export function buildServer(): McpServer {
   );
 
   // ---- Resources ----
-  // Group standings as a readable table: standings://A
+  // One standings table as readable text: standings://A
   server.registerResource(
     'standings',
     new ResourceTemplate('standings://{group}', { list: undefined }),
     {
-      title: 'Group standings',
-      description: 'Live group table for a group letter A–L.',
+      title: 'Standings table',
+      description:
+        'One live standings table, by its key: a group letter (standings://A), or A1, A-B, LEAGUE. There is no all-tables form: use get_standings.',
       mimeType: 'text/plain',
     },
     async (uri, variables) => {

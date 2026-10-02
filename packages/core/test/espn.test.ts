@@ -639,8 +639,15 @@ describe('mapEspnEvent / parseStandings — identity and outer bounds', () => {
         })),
       },
     }));
-    const out = parseStandings({ children } as never);
-    expect(out.length).toBe(1); // deduped: "Group A" is one group, not 200
-    expect(out[0]!.rows.length).toBeLessThanOrEqual(32);
+    // 200 children is more than the parser inspects: a child it did not look at
+    // could claim a key it accepted, so the payload is refused whole (it used
+    // to keep the first "Group A" of the 200).
+    expect(parseStandings({ children } as never)).toEqual([]);
+    // Within the bound, a key that many children claim belongs to none of them.
+    expect(parseStandings({ children: children.slice(0, 64) } as never)).toEqual([]);
+    // One child is one table, and its rows are bounded.
+    const one = parseStandings({ children: children.slice(0, 1) } as never);
+    expect(one.length).toBe(1);
+    expect(one[0]!.rows.length).toBe(40);
   });
 });
