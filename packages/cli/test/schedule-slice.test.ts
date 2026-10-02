@@ -131,9 +131,10 @@ describe('when discovery is due: every row is anchored on the latest ATTEMPT', (
 
   it('after the n-th consecutive failure: 5 minutes x 2^(n-1), at most 60', () => {
     expect(DISCOVERY_RETRY_MS).toBe(5 * MIN);
+    // Bounded: if the cap ever goes, this must FAIL, not count minutes for ever.
     const waits = [1, 2, 3, 4, 5, 6, 30].map((n) => {
       let wait = 0;
-      while (!discoveryDue(view(wait * MIN, n))) wait++;
+      while (wait <= 61 && !discoveryDue(view(wait * MIN, n))) wait++;
       return wait;
     });
     expect(waits).toEqual([5, 10, 20, 40, 60, 60, 60]);

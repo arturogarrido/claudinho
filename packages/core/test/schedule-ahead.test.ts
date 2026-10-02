@@ -176,6 +176,15 @@ describe('two months that state two seasons are two answers, not a refused windo
     expect(r.complete).toBe(true);
   });
 
+  it('when now is in the SECOND month the span touches, the season is that month’s', async () => {
+    // June 1: yesterday is May 31, so May is asked first; the month that holds now is June.
+    const june1 = new Date('2026-06-01T15:00:00Z');
+    const f = feed([may, june], { season: seasons });
+    const r = await getScheduleAhead(adapterOn(f, june1), june1);
+    expect([...f.dates].sort()).toEqual(['202605', '202606']);
+    expect(r.season).toMatchObject({ year: 2026 });
+  });
+
   it('control: the same two months as ONE window are refused by the adapter', async () => {
     const f = feed([may, june], { season: seasons });
     await expect(adapterOn(f, now).fetchWindow('2026-05-19', '2026-06-03')).rejects.toThrow(/spans seasons/);

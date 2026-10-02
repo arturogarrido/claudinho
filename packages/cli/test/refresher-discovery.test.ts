@@ -411,6 +411,14 @@ describe('discovery has its own cadence, anchored on the latest attempt', () => 
     expect(asked).toEqual([]);
   });
 
+  it('due, with the gate closed and a snapshot on disk: the trigger starts a refresher for it', () => {
+    seed(NOW, fresh(NOW, [], {}, 61 * MIN));
+    expect(wanted(NOW)).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+    seed(NOW, fresh(NOW, [], {}, 59 * MIN));
+    expect(wanted(NOW)).toBe(false);
+  });
+
   it('none during a backoff, in the snapshot or in the note', async () => {
     seed(NOW, fresh(NOW, [], {}, 61 * MIN), { backoffUntil: iso(NOW + 5 * MIN) });
     expect(wanted(NOW)).toBe(false);
@@ -425,7 +433,8 @@ describe('discovery has its own cadence, anchored on the latest attempt', () => 
   });
 
   it('a THROTTLED discovery is not a failure: no probe, no count, and it is due again when the backoff ends', async () => {
-    const before = fresh(NOW, [entry('1', NOW + 20 * HOUR)], { failures: 1 }, 61 * MIN);
+    // A fixture inside its window: the gate is open, and the cycle still stops at the throttle.
+    const before = fresh(NOW, [entry('1', NOW - 20 * MIN)], { failures: 1 }, 61 * MIN);
     seed(NOW, before);
     failing = (d) => (d.length === 6 ? json({}, 429, { 'retry-after': '600' }) : undefined);
     await refresh(NOW);
@@ -436,6 +445,8 @@ describe('discovery has its own cadence, anchored on the latest attempt', () => 
     expect(s?.schedule?.index).toEqual(before.index);
     const until = Date.parse(s?.backoffUntil ?? '');
     expect(until).toBeGreaterThanOrEqual(NOW + 600_000);
+    // The live slice was not touched: nobody read it.
+    expect(s).toMatchObject({ updatedAt: iso(NOW - HOUR), degraded: false });
     asked = [];
     failing = () => undefined;
     await refresh(NOW + 5 * MIN);
@@ -508,6 +519,15 @@ describe('the probe: one live read after a failed discovery, inside the same int
     await refresh(NOW + 20_000);
     expect(days()).toHaveLength(3); // no discovery (5 minutes are not up), and still polling
     expect(months()).toEqual([]);
+  });
+
+  it('a probe that is owed opens the gate for the trigger and the refresher, with no window and no discovery due', async () => {
+    seed(NOW, fresh(NOW, [], { probe: true, failures: 1 }, MIN));
+    expect(wanted(NOW)).toBe(true);
+    await refresh(NOW);
+    expect(months()).toEqual([]);
+    expect(days()).toHaveLength(3);
+    expect(state()?.schedule?.probe).toBeUndefined();
   });
 
   it('a probe that could not be made (a throttle reached the note during discovery) stays owed', async () => {
