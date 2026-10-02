@@ -220,9 +220,16 @@ export interface DiscoveredSchedule {
  * An unknown season is an ordinary state here, not a provider that forgot to
  * state one: for the sixteen days a span touches two seasons, every answer
  * states none. So only an answer KNOWN to be another season may delete what it
- * did not read. The stored season is the answer's, or none. (The bundled
- * path's knockout slice keeps its own rule: there a season unknown on either
- * side leaves the slice as it was.)
+ * did not read. (The bundled path's knockout slice keeps its own rule: there a
+ * season unknown on either side leaves the slice as it was.)
+ *
+ * The season STORED is a claim about every entry of the slice, so it is never
+ * given to an entry the answer did not read. It is the answer's (or none, if
+ * the answer stated none) when the answer is stored or replaces the slice, and
+ * after a union that kept nothing; after a union that KEPT entries, it is the
+ * answer's only when the slice's season and the answer's were already known to
+ * be the same, and none otherwise. A kept entry labelled with a season it was
+ * never read under could be deleted by the next answer of "another" season.
  *
  * The union: a relevant record the slice held and the answer did not READ
  * stays (unless it is further ahead than discovery reads: such an entry was
@@ -266,7 +273,11 @@ export function applyDiscovery(
   const fixtures = [...read, ...prev.fixtures.filter((m) => keptIds.has(m.id))]
     .sort(byKickoff)
     .slice(0, SCHEDULE_DISPLAY_MAX);
-  return { index, fixtures, ...(answer.season ? { season: answer.season } : {}), complete };
+  // Kept entries keep their provenance: the answer's season is theirs only if
+  // the two seasons were already known to be the same.
+  const sameSeason = !!answer.season && !!prev.season && answer.season.year === prev.season.year;
+  const season = kept.length === 0 || sameSeason ? answer.season : undefined;
+  return { index, fixtures, ...(season ? { season } : {}), complete };
 }
 
 /** The slice type, re-exported for the callers of these rules. */
