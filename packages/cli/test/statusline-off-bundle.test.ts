@@ -111,6 +111,11 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
     expect(line(state)).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing… +1');
   });
 
+  it('a postponed fixture beside one that is on: the line is about the one that is on, and counts only it', () => {
+    const state = snapshot(sched([nations('0', NOW - 40 * MIN, 'POSTPONED'), fixture('2', NOW - 30 * MIN, ['GER', 'Germany'], ['ITA', 'Italy'])]));
+    expect(line(state)).toBe('⚽ 🇩🇪 vs 🇮🇹 live · syncing…');
+  });
+
   it('with a team filter: only when a fixture in its window is that team’s', () => {
     expect(line(snapshot(inWindow), { team: 'FRA' })).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
     expect(line(snapshot(inWindow), { team: 'ITA' })).toBe('⚽ —');

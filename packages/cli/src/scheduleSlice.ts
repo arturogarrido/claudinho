@@ -106,10 +106,9 @@ export function scheduleView(raw: unknown, now: number): ScheduleView {
  * Whether a discovery is due. Anchored on the latest ATTEMPT in every case, so
  * no answer can make discovery due again at once: 60 minutes after a success,
  * 5 minutes × 2^(n−1) (at most 60) after the n-th consecutive failure, and now
- * when none was ever attempted.
+ * when none was ever attempted (an age of Infinity is past every wait).
  */
 export function discoveryDue(view: ScheduleView): boolean {
-  if (view.attemptAgeMs === Number.POSITIVE_INFINITY) return true;
   const wait =
     view.failures > 0
       ? Math.min(DISCOVERY_RETRY_MS * 2 ** (view.failures - 1), DISCOVERY_TTL_MS)
