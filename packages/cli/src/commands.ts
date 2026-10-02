@@ -742,8 +742,8 @@ export function cmdPrompt(
     // writes a snapshot, so this branch fires once, never per-tick forever).
     if (
       (!state && !isLockFresh()) ||
-      shouldRefresh(Date.now(), state, cfg.competition) ||
-      shouldRefreshFixtures(Date.now(), state, cfg.competition)
+      shouldRefresh(Date.now(), state, cfg.competition, cfg.source) ||
+      shouldRefreshFixtures(Date.now(), state, cfg.competition, cfg.source)
     ) {
       spawnRefresh(cfg.source, cfg.competition);
     }
@@ -778,8 +778,8 @@ export function cmdHook({ cfg }: Ctx): void {
     // branch is lock-deduped (see cmdPrompt).
     if (
       (!state && !isLockFresh()) ||
-      shouldRefresh(Date.now(), state, cfg.competition) ||
-      shouldRefreshFixtures(Date.now(), state, cfg.competition)
+      shouldRefresh(Date.now(), state, cfg.competition, cfg.source) ||
+      shouldRefreshFixtures(Date.now(), state, cfg.competition, cfg.source)
     ) {
       spawnRefresh(cfg.source, cfg.competition);
     }

@@ -22,11 +22,13 @@ import {
 import {
   acquireLock,
   ageMs,
-  backoffActive,
+  backoffInEffect,
+  believedDeadline,
   type CacheState,
   fixturesAgeMs,
   fixturesAttemptAgeMs,
   isLockFresh,
+  readBackoffNote,
   readState,
   releaseLock,
   writeState,
@@ -164,30 +166,50 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     return;
   }
 
-  const cached = readState(source, competition);
-  // A snapshot from a different source/competition can't be reused — start fresh
-  // (and refetch both parts) so e.g. a friendlies cache never bleeds into the WC.
-  // (The per-scope cache file already isolates this; defense in depth.)
-  const sameScope =
-    !!cached && cached.source === source && cached.competition === competition;
-  const base: CacheState | undefined = sameScope ? cached : undefined;
+  /**
+   * The scope's snapshot, read NOW. A snapshot from a different
+   * source/competition can't be reused — start fresh (and refetch both parts)
+   * so e.g. a friendlies cache never bleeds into the WC. (The per-scope cache
+   * file already isolates this; defense in depth.)
+   */
+  const readBase = (): CacheState | undefined => {
+    const cached = readState(source, competition);
+    return cached && cached.source === source && cached.competition === competition
+      ? cached
+      : undefined;
+  };
+  /**
+   * What a snapshot says is due.
+   *
+   * While a provider backoff (429/403) is in effect, NOTHING — retrying a
+   * block at the live cadence makes it worse. The statusline fails closed
+   * meanwhile (stale snapshot → countdown / `⚽ —`, never a wrong score). The
+   * backoff is the later of the snapshot's and the scope's note (a throttle a
+   * command met while a refresher held the lock).
+   *
+   * Two INDEPENDENT cadences: live scores (~12s, only in a live window) and
+   * resolved knockout fixtures (~15min, only in the knockout phase). Each part
+   * skips if its own slice is still fresh — a live write must not block a due
+   * fixtures fetch, or vice-versa.
+   */
+  const plan = (snapshot: CacheState | undefined) => {
+    const inBackoff = backoffInEffect(snapshot, source, competition, nowMs) !== undefined;
+    return {
+      needLive:
+        !inBackoff &&
+        liveWindowActive(nowMs, competition) &&
+        (!snapshot || ageMs(snapshot, nowMs) >= MIN_REFRESH_MS),
+      needFixtures:
+        !inBackoff && inKnockoutPhase(nowMs, competition) && fixturesStale(snapshot, nowMs),
+    };
+  };
 
-  // While a persisted provider backoff (429/403) is active, fetch NOTHING —
-  // retrying a block at the live cadence makes it worse. The statusline fails
-  // closed meanwhile (stale snapshot → countdown / `⚽ —`, never a wrong score).
-  const inBackoff = backoffActive(base, nowMs);
-
-  // Two INDEPENDENT cadences: live scores (~12s, only in a live window) and
-  // resolved knockout fixtures (~15min, only in the knockout phase). Each part
-  // skips if its own slice is still fresh — a live write must not block a due
-  // fixtures fetch, or vice-versa.
-  const needLive =
-    !inBackoff &&
-    liveWindowActive(nowMs, competition) &&
-    (!base || ageMs(base, nowMs) >= MIN_REFRESH_MS);
-  const needFixtures =
-    !inBackoff && inKnockoutPhase(nowMs, competition) && fixturesStale(base, nowMs);
-  if (!needLive && !needFixtures) {
+  // A first look, WITHOUT the lock. It may only decide not to ask: a snapshot
+  // gets fresher, never staler, so "nothing is due" cannot be wrong for long.
+  // A decision TO ask is never made here (see below).
+  const first = readBase();
+  const early = plan(first);
+  if (!early.needLive && !early.needFixtures) {
     // Nothing to fetch — but make sure a scope-stamped snapshot EXISTS. The
     // statusline spawns a refresher whenever it finds no cache, so a missing
     // file outside every window (post-tournament, off-hours, fresh installs)
@@ -195,18 +217,30 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     // forever (the post-final spawn loop — F5 review PERF-1). `live: []` is
     // honest by construction here: on the default competition the bundled
     // schedule says no match can be in play, and non-default competitions
-    // always take the fetch path above.
-    if (!base && acquireLock()) {
-      try {
-        writeState({
-          updatedAt: now.toISOString(),
-          live: [],
-          degraded: false,
-          source,
-          competition,
-        });
-      } finally {
-        releaseLock();
+    // always take the fetch path above — unless what stopped us is a backoff,
+    // and then the snapshot says so (degraded, with the deadline).
+    if (!first) {
+      const idle = claimLock();
+      if (idle) {
+        try {
+          // Under the lock, and only if nobody wrote one in the meantime.
+          if (!readBase()) {
+            const until = backoffInEffect(undefined, source, competition, nowMs);
+            publishState(
+              {
+                updatedAt: now.toISOString(),
+                live: [],
+                degraded: until !== undefined,
+                source,
+                competition,
+                ...(until !== undefined ? { backoffUntil: new Date(until).toISOString() } : {}),
+              },
+              idle,
+            );
+          }
+        } finally {
+          releaseLock(idle);
+        }
       }
     }
     return;
@@ -215,6 +249,15 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
   const token = claimLock();
   if (!token) return;
   try {
+    // THE decision, from the state as it is now that the lock is ours. The
+    // first look ran before the lock: between the two, another refresher can
+    // have published a fresh slice, or a backoff, and released. Acting on the
+    // first look fetched again inside the cadence, right after being told to
+    // stop.
+    const base = readBase();
+    const { needLive, needFixtures } = plan(base);
+    if (!needLive && !needFixtures) return;
+
     // Carry the slice we're NOT refreshing this cycle so a fixtures-only refresh
     // doesn't drop live (and vice-versa).
     let live: Match[] = base?.live ?? [];
@@ -261,7 +304,10 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       updatedAt = now.toISOString();
     }
 
-    if (needFixtures) {
+    // The note again, before the second lane: a command can have been told to
+    // stop while the first lane was in flight. (A throttle this cycle met
+    // itself is on the adapter, which then refuses without a request.)
+    if (needFixtures && readBackoffNote(source, competition, clock()) === undefined) {
       // Fail closed: getKnockoutFixtures returns degraded on a provider error —
       // KEEP the prior cached fixtures + timestamp rather than caching an empty
       // list as a real "no knockouts" (a transient outage must never read as
@@ -338,13 +384,20 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     // failure overwrites lastError while the window stands), and persist its
     // ABSOLUTE deadline: the provider's Retry-After counts from receipt, so a
     // slow response must not have its latency subtracted (review P2 on #128).
+    //
+    // EVERY writer of a deadline keeps the later of the ones it believes: the
+    // one this snapshot carried, the one this cycle was given, and the scope's
+    // note. An expired or unbelievable one takes no part, so it is dropped
+    // here rather than carried forever.
+    const at = clock();
     const armed = adapter.cooldownUntil;
-    if (armed !== undefined && armed > clock()) {
-      const jitter = opts.jitterMs ?? Math.floor(Math.random() * BACKOFF_JITTER_MS);
-      backoffUntil = new Date(Math.max(armed, nowMs + BACKOFF_MS) + jitter).toISOString();
-    } else if (backoffUntil && Date.parse(backoffUntil) <= nowMs) {
-      backoffUntil = undefined;
-    }
+    const jitter = opts.jitterMs ?? Math.floor(Math.random() * BACKOFF_JITTER_MS);
+    const deadlines = [
+      believedDeadline(backoffUntil ? Date.parse(backoffUntil) : undefined, at),
+      armed !== undefined && armed > at ? Math.max(armed, nowMs + BACKOFF_MS) + jitter : undefined,
+      readBackoffNote(source, competition, at),
+    ].filter((d): d is number => d !== undefined);
+    backoffUntil = deadlines.length > 0 ? new Date(Math.max(...deadlines)).toISOString() : undefined;
 
     // Fenced on ownership: if the lease went stale mid-fetch and a successor
     // took over, its snapshot is newer than ours and must stand (audit A10).
@@ -382,9 +435,12 @@ export function shouldRefresh(
   now: number,
   state: CacheState | undefined,
   competition: string,
+  source = 'espn',
 ): boolean {
   if (!liveWindowActive(now, competition)) return false;
-  if (backoffActive(state, now)) return false;
+  // The snapshot's backoff or the scope's note (one more small file, read
+  // only once a refresh would otherwise be started).
+  if (backoffInEffect(state, source, competition, now) !== undefined) return false;
   if (isLockFresh(now)) return false;
   return ageMs(state, now) > LIVE_TTL_MS;
 }
@@ -400,9 +456,10 @@ export function shouldRefreshFixtures(
   now: number,
   state: CacheState | undefined,
   competition: string,
+  source = 'espn',
 ): boolean {
   if (!inKnockoutPhase(now, competition)) return false;
-  if (backoffActive(state, now)) return false;
+  if (backoffInEffect(state, source, competition, now) !== undefined) return false;
   if (isLockFresh(now)) return false;
   return fixturesStale(state, now);
 }

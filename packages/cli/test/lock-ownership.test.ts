@@ -19,10 +19,12 @@ import {
  * while the successor still ran (repro: a deterministic interleaving on a
  * modeled fs). CONTAINED: the lock carries an owner token, release is a
  * no-op for anyone but the holder, and publication checks ownership first.
- * REMAINING (0.11, 2.6): both the check-then-unlink and the check-then-write
- * are still races — a takeover between the ownership check and the write
- * lets the stale owner's snapshot land; a cross-process coordinator with
- * atomic fencing closes it. This narrows the window, it does not close it.
+ * NOT CLOSED (stated in 0.11, 2.6a, see `claimLock`): both the
+ * check-then-unlink and the check-then-write are still races — a takeover
+ * between the ownership check and the write lets the stale owner's snapshot
+ * land. This narrows the window, it does not close it. What 2.6a did close is
+ * the common case, with no crash involved: a refresher deciding what to fetch
+ * before it held the lock (`refresher-lock.test.ts`).
  * This file uses a real temp dir and an injected clock — no sleeps, no processes.
  */
 const T = Date.parse('2026-09-15T12:00:00Z');

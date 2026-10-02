@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { claimLock, readState, releaseLock, writeState } from '../src/cache';
+import { backoffInEffect, claimLock, readState, releaseLock, writeState } from '../src/cache';
 import { cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
@@ -167,11 +167,15 @@ describe('the post-call fallback (an adapter with a retained window but no liste
 });
 
 describe('persistence bookkeeping (review round 2 on #128)', () => {
-  it('a write skipped because another owner holds the lock is retried by the post-call fallback', async () => {
-    // The test owns the lock while the 429 listener fires (its persist is
-    // skipped), and releases it — via a listener registered AFTER the wrapper's —
-    // before the command's own call settles. The fallback must then persist:
-    // a skipped write is not a persisted one.
+  it('a write made while another owner holds the lock is not skipped: the deadline is on disk', async () => {
+    // The test owns the lock while the 429 listener fires, and releases it —
+    // via a listener registered AFTER the wrapper's — before the command's own
+    // call settles. Until 0.11 (2.6a) that first persist was SKIPPED and the
+    // post-call fallback had to retry it into the snapshot; a command whose
+    // lock never came free lost the throttle. Now the first persist goes to
+    // the scope's note, which needs no lock, so there is nothing left to
+    // retry. What this test pins is unchanged: the deadline is on disk and in
+    // effect when the command returns.
     const held = claimLock(nowMs);
     expect(held).toBeDefined();
     let registered = false;
@@ -185,8 +189,9 @@ describe('persistence bookkeeping (review round 2 on #128)', () => {
     const adapter = new EspnAdapter({ fetchImpl: fetchImpl as unknown as FetchImpl, now: () => nowMs, enrichGroups: false });
     await cmdToday('2026-06-11', { cfg: cfg(), t: makeT('en'), adapter, now: NOW });
     expect(json().degraded).toBe(true);
-    expect(persistedDelay()).toBeGreaterThanOrEqual(600_000);
-    expect(persistedDelay()).toBeLessThanOrEqual(601_000);
+    const inEffect = (backoffInEffect(readState('espn', 'fifa.world'), 'espn', 'fifa.world', nowMs) ?? Number.NaN) - nowMs;
+    expect(inEffect).toBeGreaterThanOrEqual(600_000);
+    expect(inEffect).toBeLessThanOrEqual(601_000);
   });
 
   it('a cached deadline the cache rejects does not suppress a real throttle', async () => {

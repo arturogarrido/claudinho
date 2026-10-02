@@ -206,19 +206,113 @@ export function writeState(state: CacheState): void {
   );
 }
 
-/** True while a persisted provider backoff (429/403) is in effect. */
 /** Longest a provider backoff may hold, whatever the file claims. */
 const MAX_BACKOFF_MS = 30 * 60_000;
 
+/**
+ * A backoff deadline as epoch ms, if it is BELIEVED at `now`: in the future
+ * and at most `MAX_BACKOFF_MS` ahead. The one rule for every deadline, wherever
+ * it is stored and whoever reads or writes it.
+ *
+ * BOUNDED. `now < t` alone let a `backoffUntil` of 2099 suppress every refresh
+ * forever — a permanent silence written by whoever last wrote the file. The
+ * real backoff is 5-6 minutes (15 at most, from a Retry-After); anything past
+ * the ceiling is not a backoff we wrote. A value that is not believed takes no
+ * part in anything: it does not block, it does not beat a real throttle when
+ * two are compared, and it does not hide one.
+ */
+export function believedDeadline(untilMs: number | undefined, now: number): number | undefined {
+  if (untilMs === undefined || !Number.isFinite(untilMs)) return undefined;
+  return now < untilMs && untilMs - now <= MAX_BACKOFF_MS ? untilMs : undefined;
+}
+
+/** True while the snapshot's own provider backoff (429/403) is in effect. */
 export function backoffActive(state: CacheState | undefined, now = Date.now()): boolean {
   if (!state?.backoffUntil) return false;
-  const t = Date.parse(state.backoffUntil);
-  if (!Number.isFinite(t)) return false;
-  // BOUNDED. `now < t` alone let a `backoffUntil` of 2099 suppress every
-  // refresh forever — a permanent silence written by whoever last wrote the
-  // file. The real backoff is 5-6 minutes; anything past the ceiling is not a
-  // backoff we wrote.
-  return now < t && t - now <= MAX_BACKOFF_MS;
+  return believedDeadline(Date.parse(state.backoffUntil), now) !== undefined;
+}
+
+// ---- the throttle note ----
+//
+// A throttle is written into the snapshot under the refresh lock. A command
+// that meets one while a refresher holds that lock (for as long as a request
+// can take) could not write it, exited, and the throttle was lost: the next
+// refresh asked the provider that had just said stop. The note is where such
+// a throttle goes instead: a tiny file beside the snapshot, written
+// atomically and WITHOUT the lock, read by everything that reads a backoff.
+// It is never deleted (an expired one is simply not believed, and the next
+// writer writes over it), so no cleanup can remove a deadline it did not read.
+
+/** A note is `{"until":"<ISO>"}`: far below this. */
+const MAX_NOTE_BYTES = 256;
+
+/** The throttle note of a cache scope (same naming, and sanitizing, as its snapshot). */
+export function backoffNotePath(source = 'espn', competition = DEFAULT_COMPETITION): string {
+  if (source === 'espn' && competition === DEFAULT_COMPETITION) {
+    return join(cacheDir(), 'backoff.json');
+  }
+  const slug = `${source}.${competition}`.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '_');
+  return join(cacheDir(), `backoff.${slug}.json`);
+}
+
+/** The note's deadline if there is a readable note and it is believed at `now` (never throws). */
+export function readBackoffNote(source: string, competition: string, now = Date.now()): number | undefined {
+  try {
+    const path = backoffNotePath(source, competition);
+    const info = statSync(path);
+    if (!info.isFile() || info.size > MAX_NOTE_BYTES) return undefined;
+    const bytes = readFileSync(path);
+    if (bytes.byteLength > MAX_NOTE_BYTES) return undefined;
+    const parsed: unknown = JSON.parse(bytes.toString('utf8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    const until = (parsed as { until?: unknown }).until;
+    if (!validStamp(until)) return undefined;
+    return believedDeadline(Date.parse(until), now);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Write a throttle deadline to the scope's note, keeping the LATER of the
+ * believed deadline already there and this one. Needs no lock. Returns whether
+ * the note now holds a deadline at least as late as `untilMs` (false when
+ * `untilMs` itself is not believed, or the write failed: never throws).
+ *
+ * Read-then-write is two steps: two writers a few file operations apart can
+ * leave the earlier of two real deadlines. Both are throttles the provider
+ * sent; the difference is how long they last.
+ */
+export function writeBackoffNote(source: string, competition: string, untilMs: number, now = Date.now()): boolean {
+  const own = believedDeadline(untilMs, now);
+  if (own === undefined) return false;
+  const stored = readBackoffNote(source, competition, now);
+  if (stored !== undefined && stored >= own) return true;
+  try {
+    writeFileAtomic(backoffNotePath(source, competition), JSON.stringify({ until: new Date(own).toISOString() }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The backoff in effect for a scope: the later BELIEVED deadline of the
+ * snapshot's `backoffUntil` and the scope's note, as epoch ms. Every reader of
+ * a backoff asks this: the hot-path triggers, the refresher under its lock, a
+ * command arming its adapter. The two are validated separately, so an
+ * unbelieved value on one side never hides a believed one on the other.
+ */
+export function backoffInEffect(
+  state: CacheState | undefined,
+  source: string,
+  competition: string,
+  now = Date.now(),
+): number | undefined {
+  const snapshot = state?.backoffUntil ? believedDeadline(Date.parse(state.backoffUntil), now) : undefined;
+  const note = readBackoffNote(source, competition, now);
+  if (snapshot === undefined) return note;
+  return note === undefined ? snapshot : Math.max(snapshot, note);
 }
 
 /** Age of the latest fixtures ATTEMPT in ms (Infinity if never attempted). */
@@ -338,8 +432,16 @@ function writeExclusive(lp: string, token: LockToken): boolean {
  * audit A10: a release without ownership used to unlink whatever lock was
  * there, so a stale owner waking up removed its SUCCESSOR's lock and a third
  * refresher was admitted while the successor still ran.
- * REMAINING (0.11, 2.6): the stale-check-then-unlink below is still a race
- * window; a true cross-process coordinator closes it.
+ * NOT CLOSED (stated, 0.11 2.6a): stealing a stale lock is "judge it stale,
+ * remove it, create mine" — three steps. Two stealers, or a stealer and a
+ * fresh claimer, can both end up holding it, and several delayed stealers can
+ * remove successive owners. It takes a refresher that died or hung for more
+ * than `LOCK_STALE_MS` AND processes inside the same few file operations; each
+ * extra holder is one overlapping cycle of requests, and its publish is
+ * refused by the ownership check unless it lands inside that check's own
+ * window. Closing it takes lock names that are never reused (a generation per
+ * acquisition); a rename-and-restore takeover was designed and withdrawn,
+ * because it opens the lock path to a third process while it runs.
  */
 export function claimLock(now = Date.now()): LockToken | undefined {
   mkdirSync(cacheDir(), { recursive: true });
@@ -386,8 +488,9 @@ export function releaseLock(token: LockToken | undefined = heldToken): void {
  * Publish a snapshot only while the lock is still ours (audit A10). This is an
  * OWNERSHIP CHECK, not atomic fencing: a takeover that lands between the check
  * and the write still lets a stale owner's snapshot land. It narrows the
- * window a refresher that lost its lease has to overwrite its successor; a
- * cross-process coordinator with atomic fencing (0.11, 2.6) closes it.
+ * window a refresher that lost its lease has to overwrite its successor; it
+ * does not close it (two steps cannot, and Node offers no portable lock the
+ * operating system holds). Stated, with the takeover race in `claimLock`.
  * Returns whether the write happened.
  */
 export function publishState(state: CacheState, token: LockToken | undefined = heldToken): boolean {
