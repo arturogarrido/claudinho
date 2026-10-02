@@ -283,7 +283,9 @@ export function readBackoffNote(source: string, competition: string, now = Date.
  * sent; the difference is how long they last.
  */
 export function writeBackoffNote(source: string, competition: string, untilMs: number, now = Date.now()): boolean {
-  const own = believedDeadline(untilMs, now);
+  // A stamp holds whole milliseconds: compare what will be written, so the
+  // read-back below sees the same number.
+  const own = believedDeadline(Math.floor(untilMs), now);
   if (own === undefined) return false;
   const stored = readBackoffNote(source, competition, now);
   if (stored !== undefined && stored >= own) return true;
