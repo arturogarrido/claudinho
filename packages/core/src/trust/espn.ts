@@ -528,6 +528,27 @@ interface TableCandidate {
   entries: unknown[];
 }
 
+/**
+ * The root keys of the no-table document, as measured on the real feed
+ * (Oct 2 2026), plus `children` (an empty table list is the same answer).
+ * Any other key means the answer is not that document.
+ */
+const NO_TABLE_DOCUMENT_KEYS: ReadonlySet<string> = new Set([
+  'uid',
+  'id',
+  'name',
+  'abbreviation',
+  'season',
+  'seasons',
+  'children',
+]);
+
+/** True when every key of `doc` is in `allowed`; stops at the first that is not. */
+function onlyKeys(doc: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
+  for (const key in doc) if (!allowed.has(key)) return false;
+  return true;
+}
+
 /** The answer for a payload that is not read at all. */
 function refusedStandings(truncated: boolean): EspnStandingsList {
   return { items: [], total: 0, shown: 0, truncated, complete: false, inventory: 'incomplete' };
@@ -572,23 +593,26 @@ export function parseEspnStandings(
   const rawChildren = (raw as { children?: unknown })?.children;
   if (shape === 'none') {
     // Measured (Oct 2 2026): a competition with no table answers 200 with its
-    // name, its `season` (a year) and a list of past `seasons`, and NO
-    // `children` key. For a competition written down
+    // `uid`, `id`, `name`, `abbreviation`, its `season` (a year) and a list of
+    // past `seasons`, and NO `children` key. For a competition written down
     // as having no table, and only for one, that document is an empty answer
     // (anywhere else a missing list is an envelope that cannot be read). It
-    // must BE that document, as it was recorded: an object that names the
-    // competition and states a season, with no table of its own. A name alone
-    // is not enough (an error body can carry one). And if a child or a table
-    // ever appears, the competition is not what was written down: nothing is
-    // read, and the canary says the shape changed.
+    // must BE that document, as it was measured: an object that names the
+    // competition and states a season, whose keys are all among the measured
+    // ones (an allowlist: a table at its root, `standings`, is not one of
+    // them, and neither is anything an error body adds beside a name and a
+    // season). A name alone is not enough (an error body can carry one), nor
+    // a name and a season. And if a child or a table ever appears, the
+    // competition is not what was written down: nothing is read, and the
+    // canary says the shape changed.
     const doc = raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : undefined;
     const isDocument =
       doc !== undefined &&
+      onlyKeys(doc, NO_TABLE_DOCUMENT_KEYS) &&
       typeof doc.name === 'string' &&
       humanLabel(doc.name) !== '' &&
       // "States a season" is the one rule for a season: a year (`sealSeason`).
-      sealSeason(doc.season) !== undefined &&
-      doc.standings === undefined;
+      sealSeason(doc.season) !== undefined;
     const empty = rawChildren === undefined || (Array.isArray(rawChildren) && rawChildren.length === 0);
     return isDocument && empty
       ? { items: [], total: 0, shown: 0, truncated: false, complete: true, inventory: 'complete' }

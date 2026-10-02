@@ -613,7 +613,20 @@ export class EspnAdapter implements ProviderAdapter {
     }
     try {
       const tables = await this.sharedStandings();
-      const byCode = new Map<string, string | undefined>();
+      // A code two tables hold names neither group (two clubs share `CAR` in
+      // the Libertadores): the later table used to win. Ids decide. The tables
+      // are counted across EVERY table, lettered or not, before any is left
+      // out below: a code a lettered group shares with a numbered or nested
+      // table (`Group A` and `Group B1`) is two teams too.
+      const holders = new Map<string, Set<GroupStandings>>();
+      for (const t of tables) {
+        for (const r of t.rows) {
+          const held = holders.get(r.team.code) ?? new Set<GroupStandings>();
+          held.add(t);
+          holders.set(r.team.code, held);
+        }
+      }
+      const value: Record<string, string> = {};
       const byId: Record<string, string> = {};
       for (const t of tables) {
         // A table's key is not a fixture's group. Only a lettered group names
@@ -622,15 +635,10 @@ export class EspnAdapter implements ProviderAdapter {
         // carry the table's full label.
         if (!/^[A-Z]$/.test(t.group)) continue;
         for (const r of t.rows) {
-          const code = r.team.code;
-          // A code two tables hold names neither group (two clubs share `CAR`
-          // in the Libertadores): the later table used to win. Ids decide.
-          byCode.set(code, byCode.has(code) && byCode.get(code) !== t.group ? undefined : t.group);
+          if (holders.get(r.team.code)?.size === 1) value[r.team.code] = t.group;
           if (r.team.id !== undefined) byId[r.team.id] = t.group;
         }
       }
-      const value: Record<string, string> = {};
-      for (const [code, group] of byCode) if (group !== undefined) value[code] = group;
       this.groupMap = { at: Date.now(), value, byId };
       return this.groupMap;
     } catch {
