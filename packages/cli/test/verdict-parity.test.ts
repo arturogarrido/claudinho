@@ -104,6 +104,50 @@ describe('off the bundle: every command says "not available" in text AND in --js
   });
 });
 
+describe('found in review: `markets <date>` off the markets’ scope', () => {
+  beforeEach(() => {
+    process.env.CLAUDINHO_COMPETITION = 'eng.1';
+  });
+
+  it('says it in --json too, like the by-team and by-id reads', async () => {
+    await cmdMarkets('2026-10-01', undefined, ctx('eng.1', { json: true }));
+    expect(JSON.parse(text()).unsupported).toBe(true);
+    writes = [];
+    await cmdMarkets('2026-10-01', undefined, ctx('eng.1'));
+    expect(text()).toContain('Market signals cover the World Cup only');
+  });
+
+  it('and invents nothing where markets are read', async () => {
+    await cmdMarkets('2026-10-01', undefined, ctx('fifa.world', { json: true }));
+    expect('unsupported' in JSON.parse(text())).toBe(false);
+  });
+});
+
+describe('found in review: `share <date>` during an outage', () => {
+  const down = (competition: string): ProviderAdapter => ({
+    ...adapter(competition),
+    async fetchByDate(): Promise<Match[]> {
+      throw new Error('down');
+    },
+    async fetchWindow(): Promise<Match[]> {
+      throw new Error('down');
+    },
+  });
+
+  it('off the bundle the card says it could not ask, not that nothing is scheduled', async () => {
+    process.env.CLAUDINHO_COMPETITION = 'eng.1';
+    await cmdShare('2026-10-01', undefined, {}, { ...ctx('eng.1'), adapter: down('eng.1') });
+    expect(text()).toContain("Couldn't reach the data provider");
+    expect(text()).not.toContain('No matches scheduled');
+  });
+
+  it('on the bundle the schedule is known without the provider', async () => {
+    delete process.env.CLAUDINHO_COMPETITION;
+    await cmdShare('2026-10-01', undefined, {}, { ...ctx('fifa.world'), adapter: down('fifa.world') });
+    expect(text()).toContain('No matches scheduled for Oct 1.');
+  });
+});
+
 describe('on the bundle: no command invents the verdict', () => {
   beforeEach(() => {
     delete process.env.CLAUDINHO_COMPETITION;

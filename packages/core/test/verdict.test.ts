@@ -125,7 +125,7 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
 
   it('a date: today or an explicit day, with a caller-bounded list', () => {
     const today = dateShareCard(
-      { date: '2026-06-11', explicit: false, matches: [match], degraded: false, source: 'espn' },
+      { date: '2026-06-11', explicit: false, matches: [match], degraded: false, source: 'espn', scheduleKnown: true },
       noMarket,
       ctx,
     );
@@ -135,12 +135,28 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
     expect(today.input.installLine).toBe('npx @claudinho/cli today');
 
     const explicit = dateShareCard(
-      { date: '2026-06-11', explicit: true, matches: [], degraded: true, titleSuffix: ' (showing 20 of 31)' },
+      { date: '2026-06-11', explicit: true, matches: [], degraded: true, scheduleKnown: true, titleSuffix: ' (showing 20 of 31)' },
       noMarket,
       ctx,
     );
     expect(explicit.input.title).toBe('Matches · Jun 11 (showing 20 of 31)');
     expect(explicit.input.degraded).toBe(true);
+  });
+
+  it('a date: an outage reads as "no matches scheduled" only where the schedule is known without the provider', () => {
+    // Found in review. The empty note was unconditional, and the formatter adds
+    // its own outage notice only when there ARE matches: off the bundle, a feed
+    // that is down pasted as an empty day.
+    const day = { date: '2026-10-01', explicit: true, matches: [], degraded: true };
+    expect(dateShareCard({ ...day, scheduleKnown: false }, noMarket, ctx).input.emptyNote).toBe(
+      "Couldn't reach the data provider — no fixtures confirmed for Oct 1.",
+    );
+    expect(dateShareCard({ ...day, scheduleKnown: true }, noMarket, ctx).input.emptyNote).toBe(
+      'No matches scheduled for Oct 1.',
+    );
+    expect(dateShareCard({ ...day, degraded: false, scheduleKnown: false }, noMarket, ctx).input.emptyNote).toBe(
+      'No matches scheduled for Oct 1.',
+    );
   });
 
   it('live: nothing on, and a feed that is down, are different cards', () => {

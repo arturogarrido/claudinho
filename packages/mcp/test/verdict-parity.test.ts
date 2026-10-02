@@ -79,6 +79,47 @@ describe('on the bundle: no verdict is invented', () => {
   });
 });
 
+describe('found in review: a market read for a whole day, off the markets’ scope', () => {
+  // The by-team and by-id reads already carried the verdict; the by-date read
+  // said "Market signals cover the World Cup only" in text and returned `data`
+  // identical to a quiet World Cup day.
+  it('says it in data too', async () => {
+    const r = await toolGetMarketSignal({ date: '2026-10-01', ...common('eng.1') });
+    expect(r.text).toContain('Market signals cover the World Cup only');
+    expect((r.data as { unsupported?: unknown }).unsupported).toBe(true);
+    expect(() => z.object(OUTPUT_SCHEMAS.get_market_signal).strict().parse(r.data)).not.toThrow();
+  });
+
+  it('and invents nothing where markets are read', async () => {
+    const r = await toolGetMarketSignal({ date: '2026-10-01', ...common('fifa.world') });
+    expect('unsupported' in (r.data as object)).toBe(false);
+  });
+});
+
+describe('found in review: an outage never pastes as "no matches scheduled"', () => {
+  const down = (competition: string): ProviderAdapter => ({
+    ...adapter(competition),
+    async fetchByDate(): Promise<Match[]> {
+      throw new Error('down');
+    },
+    async fetchWindow(): Promise<Match[]> {
+      throw new Error('down');
+    },
+  });
+
+  it('off the bundle nothing but the provider knows the fixtures: the card says it could not ask', async () => {
+    const r = await toolGetShareSnippet({ date: '2026-10-01', tz: 'UTC', includeMarkets: false, ...common('eng.1'), adapter: down('eng.1') });
+    expect((r.data as { degraded?: boolean }).degraded).toBe(true);
+    expect(r.text).toContain("Couldn't reach the data provider");
+    expect(r.text).not.toContain('No matches scheduled');
+  });
+
+  it('on the bundle the schedule is known without the provider: an empty day is an empty day', async () => {
+    const r = await toolGetShareSnippet({ date: '2026-10-01', tz: 'UTC', includeMarkets: false, ...common('fifa.world'), adapter: down('fifa.world') });
+    expect(r.text).toContain('No matches scheduled for Oct 1.');
+  });
+});
+
 describe('the contract says so', () => {
   it('every tool that can answer "not available" declares the marker in its output schema', async () => {
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
