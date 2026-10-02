@@ -39,14 +39,6 @@ export const SHARE_HASHTAG = '#VibingLaVidaLoca';
  */
 export const SHARE_DISCLAIMER = 'Independent fan project · not affiliated with FIFA or Anthropic.';
 
-/**
- * The non-affiliation disclaimer that ends every MCP tool answer and the MCP
- * server's instructions (a share snippet carries {@link SHARE_DISCLAIMER}
- * instead). Here, in core, so a test or a surface names the one constant.
- */
-export const DISCLAIMER =
-  'Claudinho is an independent fan project — not affiliated with or endorsed by FIFA or Anthropic.';
-
 export interface ShareSnippetOptions {
   /** Snippet shape; defaults to `social`. */
   style?: ShareStyle;

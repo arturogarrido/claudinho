@@ -7,9 +7,10 @@
 import { readFileSync } from 'node:fs';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { DISCLAIMER, EspnAdapter, FakeMarketProvider } from '@claudinho/core';
+import { EspnAdapter, FakeMarketProvider } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v3';
+import { DISCLAIMER } from '../src/format';
 import { buildServer, OUTPUT_SCHEMAS, toContent } from '../src/server';
 import { standingsResourceText, toolGetShareSnippet, toolGetStandings } from '../src/tools';
 
@@ -228,7 +229,9 @@ describe('a long answer is cut at a length: what qualifies it, and its footer, a
   // tool's text. The partial-table sentence sat after the rows, and the
   // attribution and the disclaimer after that: all three were cut.
   const longName = (i: number) => `${String.fromCodePoint(0x41 + (i % 26))}${NAME}`;
-  const NAME = ('\u{1D400}' + '\u{1D185}'.repeat(3)).repeat(100);
+  // 99 of them and the first letter: 100 columns, 397 code points, the longest a label may be
+  // (one more and the sanitizer cuts the name, and no row holds `longName` whole).
+  const NAME = ('\u{1D400}' + '\u{1D185}'.repeat(3)).repeat(99);
   const stats = (rank: number) =>
     Object.entries({ gamesPlayed: 1, wins: 1, ties: 0, losses: 0, pointsFor: 2, pointsAgainst: 0, pointDifferential: 2, points: 3, rank }).map(
       ([name, value]) => ({ name, value }),

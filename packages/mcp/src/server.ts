@@ -16,13 +16,12 @@ import { z } from 'zod/v3';
 import {
   allFixtures,
   asFlavorLevel,
-  DISCLAIMER,
   fixturesByDate,
   groups,
   isValidDate,
   TABLE_KEY_ARG,
 } from '@claudinho/core';
-import { matchList } from './format';
+import { DISCLAIMER, matchList } from './format';
 import {
   resolveAdapter,
   standingsResourceText,
@@ -283,17 +282,6 @@ export const OUTPUT_SCHEMAS = {
 } as const;
 
 /**
- * Wrap a ToolResult into the MCP tool response shape.
- *
- * We emit the payload BOTH as `structuredContent` (schema-validated, for clients
- * that support it) AND as a JSON block inside `content` — deliberately, not by
- * oversight. MCP's backwards-compat guidance is that a tool with an outputSchema
- * SHOULD still serialize the same data into a text block, so clients that don't
- * read `structuredContent` (older/simple ones) still get the structured data.
- * The redundancy costs a few tokens for agents that read both; dropping the text
- * block would silently blind those older clients to everything but the prose.
- */
-/**
  * Ceiling on one tool response, in characters of serialized JSON.
  *
  * The record COUNT is bounded (40) and every field is bounded, but neither
@@ -540,13 +528,25 @@ function boundText(r: { text: string; footer?: string }, tail: string): string {
   const room = Math.max(0, MAX_TEXT_CHARS - tail.length - TRUNCATED.length);
   // A footer that is not the end of the text, or that would not fit, is not one.
   const footer = r.footer && r.text.endsWith(r.footer) && r.footer.length <= room ? r.footer : '';
-  return `${r.text.slice(0, room - footer.length)}${TRUNCATED}${footer}${tail}`;
+  let cut = room - footer.length;
+  // Never half a character: a cut that lands inside a surrogate pair gives one unit back.
+  const last = r.text.charCodeAt(cut - 1);
+  if (last >= 0xd800 && last <= 0xdbff) cut -= 1;
+  return `${r.text.slice(0, cut)}${TRUNCATED}${footer}${tail}`;
 }
 
 /**
  * A tool's result as the MCP tool response. The footer is optional HERE only:
  * a tool handler must state one (`ToolResult`); a result built by hand (a
  * test) need not, and is then cut from the end like any text.
+ *
+ * We emit the payload BOTH as `structuredContent` (schema-validated, for clients
+ * that support it) AND as a JSON block inside `content` — deliberately, not by
+ * oversight. MCP's backwards-compat guidance is that a tool with an outputSchema
+ * SHOULD still serialize the same data into a text block, so clients that don't
+ * read `structuredContent` (older/simple ones) still get the structured data.
+ * The redundancy costs a few tokens for agents that read both; dropping the text
+ * block would silently blind those older clients to everything but the prose.
  */
 export function toContent(r: Omit<ToolResult, 'footer'> & { footer?: string }) {
   const data = boundResponse(r.data);

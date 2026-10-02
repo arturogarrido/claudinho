@@ -130,6 +130,10 @@ export function standingsTable(table: { group: string; label?: string }, rows: S
   return [header, cols, ...lines].join('\n');
 }
 
+/** The persistent legal disclaimer appended to responses. */
+export const DISCLAIMER =
+  'Claudinho is an independent fan project — not affiliated with or endorsed by FIFA or Anthropic.';
+
 /**
  * Keep only the signals whose match survived `capRecords`. A signal keyed to a
  * match that is no longer in the payload is dead weight in model context, and

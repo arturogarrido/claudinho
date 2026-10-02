@@ -6,7 +6,6 @@
  */
 import {
   asFlavorLevel,
-  DISCLAIMER,
   fixturesByDate,
   formatDate,
   formatShareSnippet,
@@ -62,6 +61,7 @@ import {
 import {
   boundedRecords,
   capSignals,
+  DISCLAIMER,
   matchLine,
   matchList,
   standingsTable,

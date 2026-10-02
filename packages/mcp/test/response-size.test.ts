@@ -225,6 +225,18 @@ describe('a cut keeps the footer', () => {
     }
   });
 
+  it('a cut never leaves half a character', () => {
+    // Every character here is two UTF-16 units, so a cut at a fixed length
+    // lands inside one for one of the two paddings.
+    const r = toolGetTeam({ query: 'MEX' });
+    for (const pad of ['', 'x']) {
+      const sent = toContent({ ...r, text: `${pad}${'\u{1D400}'.repeat(20_000)}${r.text}` }).content[0]?.text ?? '';
+      expect(sent.length).toBeLessThanOrEqual(32_000);
+      expect(loneSurrogates(sent), `padding "${pad}"`).toBe(0);
+      expect(sent.endsWith(r.footer)).toBe(true);
+    }
+  });
+
   it('on the error path too', () => {
     const r = toolGetTeam({ query: 'MEX' });
     const out = toContent({ ...r, text: `${'x'.repeat(40_000)}${r.text}`, data: pathologicalData() });
@@ -236,6 +248,17 @@ describe('a cut keeps the footer', () => {
     expect(sent).toContain('could not be reduced without violating');
   });
 });
+
+/** How many UTF-16 units of `s` are half a character. */
+function loneSurrogates(s: string): number {
+  let n = 0;
+  // Iterating a string yields whole characters; a unit left alone comes out by itself.
+  for (const ch of s) {
+    const unit = ch.charCodeAt(0);
+    if (ch.length === 1 && unit >= 0xd800 && unit <= 0xdfff) n++;
+  }
+  return n;
+}
 
 /** Width that cannot be shrunk without deleting fields: the error path. */
 function pathologicalData(): Record<string, string> {

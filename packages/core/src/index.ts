@@ -141,8 +141,7 @@ export type {
 
 // Shareable terminal snippets (pure text artifacts; composes Match + the market
 // copy bank). The non-affiliation disclaimer is non-optional in every snippet.
-// `DISCLAIMER` is the longer form every MCP tool answer ends with.
-export { DISCLAIMER, formatShareSnippet, formatShareTable, SHARE_HASHTAG, SHARE_DISCLAIMER } from './share/format';
+export { formatShareSnippet, formatShareTable, SHARE_HASHTAG, SHARE_DISCLAIMER } from './share/format';
 export type {
   ShareStyle,
   ShareSnippetInput,
