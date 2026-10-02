@@ -304,6 +304,20 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     expect(codeHits('mcp', /\bunsupported\b/)).toEqual(['mcp/src/server.ts']);
   });
 
+  it('nor `incomplete`: a surface never writes that key or that sentence; the schema declares it once', () => {
+    // Found in review: the guard knew `unsupported` and `partial` only, so an
+    // emit site could have spelled the new verdict by hand unnoticed.
+    expect(codeHits('cli', /\bincomplete\s*:/)).toEqual([]);
+    expect(codeHits('mcp', /\bincomplete\s*:/)).toEqual(['mcp/src/server.ts']);
+    const sentence = /['"`]standings\.incomplete['"`]/;
+    expect(hits('cli', sentence)).toEqual([]);
+    expect(hits('mcp', sentence)).toEqual([]);
+    expect(verdictExtras({ incomplete: true })).toEqual({ incomplete: true });
+    expect(verdictNotice({ incomplete: true }, 'fr')).toBe("Certains classements n'ont pas pu être lus — ce n'est pas la compétition complète.");
+    // "Not available" replaces the body, so it is the one said when a result states both.
+    expect(verdictNotice({ unsupported: true, incomplete: true }, 'en')).toBe('Not available for this competition yet.');
+  });
+
   it('a surface never assembles a card: it does not write an empty note or a run cue', () => {
     for (const pkg of ['cli', 'mcp']) {
       expect(codeHits(pkg, /\bemptyNote\b/), pkg).toEqual([]);

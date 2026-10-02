@@ -774,11 +774,13 @@ describe('found in review: absence is a finding, and the product’s own parser 
     expect((await champions(groupStandings(['A', 'B'])))?.verdict).toBe('changed');
     // And "no rows" is healthy only when the product's own reader took the answer for an empty one:
     // the competition's own document, with no table list or an empty one.
-    expect((await champions({ name: 'Concacaf Champions Cup', children: [] }))?.verdict).toBe('ok');
+    const doc = { name: 'Concacaf Champions Cup', season: { year: 2026 } };
+    expect((await champions({ ...doc, children: [] }))?.verdict).toBe('ok');
     expect((await champions({ children: [] }))?.verdict).toBe('changed'); // not the competition's document
     expect((await champions({ code: 404, message: 'Not Found' }))?.verdict).toBe('changed');
-    expect((await champions({ name: 'Concacaf Champions Cup', children: [{ name: 'Group A', standings: { entries: [] } }] }))?.verdict).toBe('changed');
-    expect((await champions({ name: 'Concacaf Champions Cup', children: 'x' }))?.verdict).toBe('changed');
+    expect((await champions({ name: 'Error', code: 404, message: 'not found' }))?.verdict).toBe('changed'); // a name is not the document
+    expect((await champions({ ...doc, children: [{ name: 'Group A', standings: { entries: [] } }] }))?.verdict).toBe('changed');
+    expect((await champions({ ...doc, children: 'x' }))?.verdict).toBe('changed');
   });
 
   it('the shape of every competition the canary watches is written down in core, and the canary reads it there', () => {

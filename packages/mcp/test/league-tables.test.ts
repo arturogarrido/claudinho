@@ -117,6 +117,9 @@ describe('tables are missing: text and data both say so', () => {
     const r = await toolGetStandings(common('uefa.euro', shortOf('uefa.euro')));
     expect(r.text).toContain(`(${INCOMPLETE})`);
     expect(r.text).toContain('Group A');
+    // BEFORE the tables: the text of a tool answer is cut at a fixed length,
+    // from the end, and a verdict at the tail would be the first thing lost.
+    expect(r.text.indexOf(INCOMPLETE)).toBeLessThan(r.text.indexOf('Group A'));
     const data = r.data as { incomplete?: boolean; degraded: boolean; tables: Table[] };
     expect(data.incomplete).toBe(true);
     expect(data.degraded).toBe(false);

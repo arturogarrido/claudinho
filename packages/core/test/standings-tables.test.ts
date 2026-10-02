@@ -15,12 +15,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { EspnAdapter } from '../src/adapters/espn';
-import { fetchMeta } from '../src/adapters/meta';
+import { attachFetchMeta, fetchMeta } from '../src/adapters/meta';
 import { STANDINGS_SHAPE } from '../src/competition';
 import { getBracket, getStandings } from '../src/live';
 import { tableShareCard } from '../src/share/cards';
 import { formatShareTable } from '../src/share/format';
-import { tableData, tableKeyArg, tableTitle } from '../src/standings';
+import { type GroupStandings, tableData, tableKeyArg, tableTitle } from '../src/standings';
 import { verdictExtras, verdictNotice } from '../src/verdict';
 import { MAX_GROUP_ROWS, MAX_GROUPS, parseEspnStandings } from '../src/trust/espn';
 
@@ -197,21 +197,40 @@ describe('a competition with no table by design', () => {
   });
 
   it('an empty list of children is the same empty answer', async () => {
-    expect(await read('concacaf.champions', undefined, { name: 'Concacaf Champions Cup', children: [] })).toEqual({ tables: [], degraded: false, source: 'espn' });
+    expect(await read('concacaf.champions', undefined, { ...recorded('concacaf.champions'), children: [] })).toEqual({ tables: [], degraded: false, source: 'espn' });
   });
 
   it('and if it ever serves a child, the competition is not what was written down: nothing is read', async () => {
     for (const children of [[child('Group A', 4)], [{ name: 'Round of 16', standings: { entries: [] } }]]) {
-      const r = await read('concacaf.champions', undefined, { name: 'Concacaf Champions Cup', children });
+      const r = await read('concacaf.champions', undefined, { ...recorded('concacaf.champions'), children });
       expect(r, JSON.stringify(children).slice(0, 40)).toEqual({ tables: [], degraded: true });
     }
   });
 
-  it('only the competition’s own document is an empty answer: an object that does not name it is not', () => {
-    for (const body of [null, [], 'x', 0, {}, { code: 404, message: 'Not Found' }, { name: 7 }]) {
-      expect(parseEspnStandings(body, 'none').complete, JSON.stringify(body)).toBe(false);
+  it('only the competition’s own document is an empty answer', () => {
+    // What it is, as recorded: a name, a season, no table list, no table.
+    const doc = recorded('concacaf.champions') as unknown as Record<string, unknown>;
+    expect(parseEspnStandings(doc, 'none')).toMatchObject({ items: [], complete: true, inventory: 'complete' });
+    // Found in review: "an object with a name" was enough, so an error body
+    // that happens to carry one, and a document with a table at its root,
+    // were both a healthy "no standings".
+    const table = { entries: [row(1, 'One', 1), row(2, 'Two', 2)] };
+    for (const body of [
+      null,
+      [],
+      'x',
+      0,
+      {},
+      { code: 404, message: 'Not Found' },
+      { name: 7, season: doc.season },
+      { name: '', season: doc.season },
+      { name: 'Error', code: 404, message: 'not found' }, // a name, and nothing else of the document
+      { name: doc.name }, // no season
+      { ...doc, season: 'x' },
+      { ...doc, standings: table }, // the document, with a table at its root
+    ]) {
+      expect(parseEspnStandings(body, 'none').complete, JSON.stringify(body).slice(0, 60)).toBe(false);
     }
-    expect(parseEspnStandings({ name: 'Concacaf Champions Cup' }, 'none')).toMatchObject({ items: [], complete: true, inventory: 'complete' });
   });
 });
 
@@ -259,7 +278,7 @@ describe('a payload with tables the parser cannot inspect is refused whole', () 
   const nested = (inner: unknown[]) => ({ name: 'Another phase', children: inner, standings: { entries: [] } });
 
   it('a child with children of its own: nothing is read, beside a readable sibling too', async () => {
-    for (const tree of [nested([child('Group A')]), nested([]), { name: 'Another phase', children: 'x' }]) {
+    for (const tree of [nested([child('Group A')]), nested([null]), { name: 'Another phase', children: 'x' }, { name: 'Another phase', children: null }, { ...child('Group C', 4), children: [child('Group A')] }]) {
       const parsed = parseEspnStandings({ children: [child('Group A', 4), child('Group B', 4), tree] });
       expect(parsed.items, JSON.stringify(tree)).toEqual([]);
       expect(parsed.complete).toBe(false);
@@ -268,6 +287,26 @@ describe('a payload with tables the parser cannot inspect is refused whole', () 
       expect(await read('synthetic.cup', undefined, payload)).toEqual({ tables: [], degraded: true });
       expect(await read('synthetic.cup', 'B', payload)).toEqual({ tables: [], degraded: true });
     }
+  });
+
+  it('an EMPTY list of children holds no table: it refuses nothing', async () => {
+    // Found in review: the rule was wider than its reason. A child that says
+    // "I have no children" has no table nobody inspected, and it blanked every
+    // table of the competition (on the World Cup: all twelve, for the roster).
+    const wc = recorded('fifa.world');
+    const withEmpty = { children: wc.children.map((c, i) => (i === 5 ? { ...c, children: [] } : c)) };
+    const all = await read('fifa.world', undefined, withEmpty);
+    expect(all.degraded).toBe(false);
+    expect(all.tables).toHaveLength(12);
+    const euro = recorded('uefa.euro');
+    const open = await read('uefa.euro', undefined, { children: euro.children.map((c) => ({ ...c, children: [] })) });
+    expect(open).toMatchObject({ degraded: false, source: 'espn' });
+    expect(open.tables).toHaveLength(6);
+    expect(open.incomplete).toBeUndefined();
+    // A stage with no rows and no children is still an unread child, not a refusal.
+    const stage = await read('uefa.euro', undefined, { children: [...euro.children, { name: 'Knockout', children: [], standings: { entries: [] } }] });
+    expect(stage.tables).toHaveLength(6);
+    expect(stage.incomplete).toBe(true);
   });
 
   it('on the World Cup: twelve healthy groups and a phase whose children hold another Group A are not twelve live tables', async () => {
@@ -513,6 +552,22 @@ describe('with an expected list (the World Cup), the list decides', () => {
     expect(parsed.inventory).toBe('incomplete');
   });
 
+  it('for ANY adapter: an all-tables read with nothing read and tables missing is unavailable, not an empty answer with a verdict', async () => {
+    // Found in review. The ESPN adapter throws in this state; the rule must
+    // not live in one adapter. Text said "No standings available" with the
+    // provider's name, and structured output said `incomplete: true`.
+    const none: GroupStandings[] = [];
+    const other = {
+      name: 'other',
+      competition: 'synthetic.cup',
+      capabilities: { push: false, latencyHintSec: 0 },
+      fetchByDate: async () => [],
+      fetchLive: async () => [],
+      fetchStandings: async () => attachFetchMeta(none, { complete: false, inventoryComplete: false }),
+    };
+    expect(await getStandings(other)).toEqual({ tables: [], degraded: true });
+  });
+
   it('the list decides for ANY adapter: one that hands back a table outside its own list does not get it shown', async () => {
     // The ESPN adapter never parses such a table; another provider's adapter might return one.
     const table = (group: string) => ({ group, rows: [{ team: { code: 'AAA', name: 'A', flag: '🏳️' }, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0 }] });
@@ -719,7 +774,7 @@ describe('what every surface is built from', () => {
     expect(verdictNotice(short)).toBe('Some tables could not be read — this is not the whole competition.');
     expect(verdictNotice(short, 'es')).toBe('No se pudieron leer algunas tablas — esta no es la competición completa.');
     expect(verdictNotice(short, 'pt')).toBe('Algumas tabelas não puderam ser lidas — esta não é a competição completa.');
-    expect(verdictNotice(short, 'fr')).toBe("Certains tableaux n'ont pas pu être lus — ce n'est pas la compétition complète.");
+    expect(verdictNotice(short, 'fr')).toBe("Certains classements n'ont pas pu être lus — ce n'est pas la compétition complète.");
     const whole = await read('uefa.euro');
     expect(verdictExtras(whole)).toEqual({});
     expect(verdictNotice(whole)).toBeUndefined();

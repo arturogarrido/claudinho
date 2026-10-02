@@ -49,7 +49,7 @@ const INCOMPLETE = {
   en: 'Some tables could not be read — this is not the whole competition.',
   es: 'No se pudieron leer algunas tablas — esta no es la competición completa.',
   pt: 'Algumas tabelas não puderam ser lidas — esta não é a competição completa.',
-  fr: "Certains tableaux n'ont pas pu être lus — ce n'est pas la compétition complète.",
+  fr: "Certains classements n'ont pas pu être lus — ce n'est pas la compétition complète.",
 } as const;
 /** A flat sibling the parser inspects and cannot name: the inventory is not whole. */
 const shortOf = (slug: string) => {
@@ -183,6 +183,8 @@ describe('a table argument is a key, or it is refused before anything is asked',
       await expect(cmdTable(junk, ctx('uefa.euro')), JSON.stringify(junk)).rejects.toBeInstanceOf(InputError);
     }
     await expect(cmdTable('A B', ctx('uefa.euro', { lang: 'es' }))).rejects.toThrow(/No es una tabla/);
+    // French says "classement" for standings; "tableau" is this product's word for the bracket.
+    await expect(cmdTable('A B', ctx('uefa.euro', { lang: 'fr' }))).rejects.toThrow(/Ce n'est pas un classement/);
     expect(requests).toBe(0);
   });
 

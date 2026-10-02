@@ -453,8 +453,8 @@ export async function toolGetStandings(
     const msg = degraded
       ? t(args.lang, 'standings.unavailable')
       : g
-        ? `No group "${g}".`
-        : 'No standings available.';
+        ? t(args.lang, 'standings.none', { group: g })
+        : t(args.lang, 'standings.empty');
     return {
       text: withDisclaimer(msg, source, args.lang),
       data: { degraded, source: source ?? null, tables: args.group ? null : [], ...verdictExtras(result) },
@@ -878,7 +878,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     // Capped like the structured payload beside it. Bounding `data.tables`
     // while the rendered SNIPPET came from the full list meant the surface a
     // reader actually sees was the unbounded one.
-    const card = tableShareCard(standings, group, boundedRecords(standings.tables).items);
+    const card = tableShareCard(standings, group, boundedRecords(standings.tables).items, args.lang);
     const snippet = formatShareTable(card.input, options);
     return {
       text: snippet,

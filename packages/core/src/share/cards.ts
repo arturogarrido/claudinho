@@ -216,13 +216,16 @@ export function tableShareCard(
   group: string | undefined,
   /** The tables the surface will show (default: all of the result's). */
   tables: readonly GroupStandings[] = result.tables,
+  /** The reader's language, for the one localized sentence a card prints: a verdict's. */
+  lang?: string,
 ): TableShareCard {
   // Degraded ⇒ no live provider: no attribution. An open-scope outage has no
   // compatible bundled roster, so the empty card names the outage.
   const source = result.degraded ? undefined : result.source;
-  // Share copy is English (the card is pasted anywhere); the sentence is the
-  // one every surface prints for this verdict.
-  const incompleteNote = result.incomplete ? verdictNotice(result) : undefined;
+  // A card's copy is English (it is pasted anywhere). The sentence it prints
+  // for a VERDICT is the exception, on every card: the same localized
+  // sentence every other surface prints for it.
+  const incompleteNote = result.incomplete ? verdictNotice(result, lang) : undefined;
   return {
     ...(group ? { group } : {}),
     source,

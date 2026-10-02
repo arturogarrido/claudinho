@@ -1392,7 +1392,7 @@ export async function cmdShare(
     const group = tableKeyOrThrow(team, t);
     emitTableCard(
       ctx,
-      tableShareCard(await getStandings(adapterFor(ctx), group), group),
+      tableShareCard(await getStandings(adapterFor(ctx), group), group, undefined, cfg.lang),
       baseOptions,
       copy,
     );
