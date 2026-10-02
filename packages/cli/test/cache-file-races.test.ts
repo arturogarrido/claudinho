@@ -16,7 +16,7 @@
  *
  * Interleavings are forced through the file-system calls, not raced.
  */
-import { mkdtempSync, constants as fsConstants, rmSync as rmReal } from 'node:fs';
+import { mkdirSync, mkdtempSync, constants as fsConstants, rmSync as rmReal, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -222,6 +222,35 @@ describe('a small cache file is read through one descriptor, and the read is bou
       for (const o of reads) expect((o.flags as number) & NONBLOCK, path).toBe(NONBLOCK);
     }
   });
+});
+
+describe('a lock nobody can judge is stale: it never throws, and it is taken over', () => {
+  // Found while fixing: a stamp that is a number and not an instant (beyond the
+  // range of a date) threw out of `isLockFresh` and `claimLock`, on the hot
+  // path and in the refresher.
+  for (const [what, contents] of [
+    ['a stamp beyond the range of a date', '1 99999999999999999999 abc'],
+    ['a negative stamp beyond it', '1 -99999999999999999999 abc'],
+    ['no stamp at all, in a file written just now', 'not a lock'],
+    ['an empty file', ''],
+  ] as const) {
+    it(what, () => {
+      mkdirSync(cacheDir(), { recursive: true });
+      writeFileSync(lockFile(), contents);
+      // "Written just now" by the file system's clock, which is the real one: judge with it.
+      const now = Date.now();
+      const judged = what.startsWith('no stamp') || what.startsWith('an empty');
+      expect(() => isLockFresh(now)).not.toThrow();
+      // A lock with no stamp is judged by its mtime: fresh for a minute. One whose stamp is no instant is stale.
+      expect(isLockFresh(now)).toBe(judged);
+      const token = claimLock(now);
+      expect(token === undefined).toBe(judged);
+      if (token) {
+        expect(holdsLock(token)).toBe(true);
+        releaseLock(token);
+      }
+    });
+  }
 });
 
 describe('a lock that vanished is not removed', () => {
