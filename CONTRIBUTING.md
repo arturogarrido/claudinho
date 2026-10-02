@@ -96,7 +96,7 @@ it checks transport and an offline tool call, but does not compare the base and 
 
 Several AI coding agents work on this repo. If you used one, add a trailer in the last
 paragraph of the commit (and credit it in the PR), using the model actually in use — e.g.
-`Co-Authored-By: Claude Code (Opus 4.8) <noreply@anthropic.com>`. See `AGENTS.md` →
+`Co-Authored-By: Claude Code (<actual Claude model>) <noreply@anthropic.com>`. See `AGENTS.md` →
 "Commit attribution" for the convention.
 
 ## Code of conduct
