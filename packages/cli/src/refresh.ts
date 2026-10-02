@@ -22,12 +22,10 @@ import {
 import {
   ageMs,
   backoffInEffect,
-  believedDeadline,
   type CacheState,
   fixturesAgeMs,
   fixturesAttemptAgeMs,
   isLockFresh,
-  readBackoffNote,
   readState,
   releaseLock,
   claimLock,
@@ -275,7 +273,6 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     let fixtures = base?.fixtures;
     let fixturesUpdatedAt = base?.fixturesUpdatedAt;
     let fixturesAttemptedAt = base?.fixturesAttemptedAt;
-    let backoffUntil = base?.backoffUntil;
     // The snapshot's season: the cached one (sealed like any other value read
     // back from the file) until this cycle's live response replaces it.
     let season: SeasonInfo | undefined = sealSeason(base?.season);
@@ -313,10 +310,13 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       updatedAt = now.toISOString();
     }
 
-    // The note again, before the second lane: a command can have been told to
-    // stop while the first lane was in flight. (A throttle this cycle met
-    // itself is on the adapter, which then refuses without a request.)
-    if (needFixtures && readBackoffNote(source, competition, clock()) === undefined) {
+    // The backoff again, before the second lane, asked the way every reader
+    // asks it and at the time it is NOW: a command can have been told to stop
+    // while the first lane was in flight (the note), and a deadline the
+    // snapshot carried can have come inside the bound since the cycle decided.
+    // (A throttle this cycle met itself is on the adapter, which then refuses
+    // without a request.)
+    if (needFixtures && backoffInEffect(base, source, competition, clock()) === undefined) {
       // Fail closed: getKnockoutFixtures returns degraded on a provider error —
       // KEEP the prior cached fixtures + timestamp rather than caching an empty
       // list as a real "no knockouts" (a transient outage must never read as
@@ -402,11 +402,12 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     const armed = adapter.cooldownUntil;
     const jitter = opts.jitterMs ?? Math.floor(Math.random() * BACKOFF_JITTER_MS);
     const deadlines = [
-      believedDeadline(backoffUntil ? Date.parse(backoffUntil) : undefined, at),
+      // The one this snapshot carried and the scope's note: the same question
+      // every reader asks.
+      backoffInEffect(base, source, competition, at),
       armed !== undefined && armed > at ? Math.max(armed, nowMs + BACKOFF_MS) + jitter : undefined,
-      readBackoffNote(source, competition, at),
     ].filter((d): d is number => d !== undefined);
-    backoffUntil = deadlines.length > 0 ? new Date(Math.max(...deadlines)).toISOString() : undefined;
+    const backoffUntil = deadlines.length > 0 ? new Date(Math.max(...deadlines)).toISOString() : undefined;
 
     // Fenced on ownership: if the lease went stale mid-fetch and a successor
     // took over, its snapshot is newer than ours and must stand (audit A10).

@@ -17,7 +17,7 @@
  * change the disk at the exact moment between "decided" and "locked".
  */
 import { EspnAdapter } from '@claudinho/core';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -480,8 +480,32 @@ describe('found in review', () => {
 
   it.skipIf(!POSIX)('a note path that is not a regular file is never opened (a pipe there would block the hot path)', () => {
     mkdirSync(cacheDir(), { recursive: true });
-    execFileSync('mkfifo', [backoffNotePath(SOURCE, WC)]);
-    // Opening a pipe with no writer blocks for ever: this returns, or the test times out.
+    const pipe = backoffNotePath(SOURCE, WC);
+    execFileSync('mkfifo', [pipe]);
+    // Opening a pipe with no writer blocks for ever, and a blocked synchronous
+    // read cannot be timed out from here. So that a regression FAILS instead
+    // of hanging the suite, a helper process waits a moment and then writes a
+    // well-formed note into the pipe: a reader that was wrongly blocked on it
+    // wakes up holding a deadline, and the assertion below is red. With the
+    // rule in place nothing is reading, and the helper's open fails at once.
+    const helper = spawn(
+      process.execPath,
+      [
+        '-e',
+        `setTimeout(() => {
+           const fs = require('node:fs');
+           try {
+             const fd = fs.openSync(process.argv[1], fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+             fs.writeSync(fd, process.argv[2]);
+             fs.closeSync(fd);
+           } catch {}
+         }, 1500);`,
+        pipe,
+        JSON.stringify({ until: new Date(nowMs + 10 * MIN).toISOString() }),
+      ],
+      { detached: true, stdio: 'ignore' },
+    );
+    helper.unref();
     expect(readBackoffNote(SOURCE, WC, nowMs)).toBeUndefined();
     expect(backoffInEffect(undefined, SOURCE, WC, nowMs)).toBeUndefined();
   });
