@@ -10,13 +10,15 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { allFixtures, type Match, type ProviderAdapter } from '@claudinho/core';
+import { allFixtures, EspnAdapter, type Match, type ProviderAdapter } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CACHE_VERSION, cachePath, readState, writeState } from '../src/cache';
-import { cmdHook, cmdNext, cmdPrompt, cmdToday, InputError } from '../src/commands';
+import { cmdHook, cmdNext, cmdPrompt, cmdRefresh, cmdToday, InputError } from '../src/commands';
 import { type CliConfig, resolveConfig } from '../src/config';
 import { makeT } from '../src/i18n';
+import { withPersistedBackoff } from '../src/providerBackoff';
 import { runRefresh, shouldRefresh } from '../src/refresh';
+import { TOURNAMENT_COMPLETE_LINE } from '../src/statusline';
 
 // The statusline and hook spawn a detached refresher; a test must never fork one.
 vi.mock('node:child_process', () => ({
@@ -176,6 +178,54 @@ describe('the CLI resolves the competition once, in option resolution', () => {
     expect(spawn).toHaveBeenCalledTimes(1);
     const opts = vi.mocked(spawn).mock.calls[0]?.[2] as { env?: Record<string, string> } | undefined;
     expect(opts?.env?.CLAUDINHO_COMPETITION).toBe('eng.1');
+  });
+
+  it('the World Cup sign-off is for the World Cup: another competition never says goodbye', () => {
+    // Long after the final, with a fresh snapshot that holds nothing live.
+    const now = new Date();
+    for (const competition of ['fifa.world', 'eng.1']) {
+      writeState({ updatedAt: now.toISOString(), live: [], degraded: false, source: 'espn', competition });
+    }
+    process.env.CLAUDINHO_COMPETITION = 'eng.1'; // the environment is not asked
+    cmdPrompt({ cfg: cfg({ competition: 'fifa.world' }), t }, { cursor: undefined });
+    expect(out()).toContain(TOURNAMENT_COMPLETE_LINE);
+
+    stdout = [];
+    delete process.env.CLAUDINHO_COMPETITION;
+    cmdPrompt({ cfg: cfg({ competition: 'eng.1' }), t }, { cursor: undefined });
+    expect(out()).not.toContain('World Cup');
+    expect(out()).toContain('⚽ —');
+  });
+
+  it('a provider throttle is persisted for the adapter’s competition', async () => {
+    const adapter = new EspnAdapter({
+      competition: 'eng.1',
+      enrichGroups: false,
+      fetchImpl: (async () => ({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: { get: () => '120' },
+      })) as unknown as typeof fetch,
+    });
+    await expect(withPersistedBackoff(adapter, 'espn').fetchByDate('2026-10-10')).rejects.toBeTruthy();
+    expect(readState('espn', 'eng.1')?.backoffUntil).toBeDefined();
+    expect(readState('espn', 'fifa.world')).toBeUndefined();
+  });
+
+  it('the refresh command refreshes its config’s competition', async () => {
+    process.env.CLAUDINHO_COMPETITION = 'esp.1';
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: unknown) => {
+      urls.push(String(url));
+      return response({ leagues: [{ season: season(2026) }], events: [] });
+    });
+    await cmdRefresh({ cfg: cfg({ competition: 'eng.1' }), t });
+    expect(urls.length).toBeGreaterThan(0);
+    for (const u of urls) expect(u).toContain('/soccer/eng.1/');
+    expect(readState('espn', 'eng.1')?.competition).toBe('eng.1');
+    expect(readState('espn', 'esp.1')).toBeUndefined();
+    expect(readState('espn', 'fifa.world')).toBeUndefined();
   });
 
   it('refresh triggers take the competition as an argument', () => {
@@ -396,6 +446,42 @@ describe('season in the cache', () => {
     expect(state?.season?.year).toBe(2030);
     expect(state?.fixtures).toBeUndefined();
     expect(state?.fixturesUpdatedAt).toBeUndefined();
+  });
+
+  it('a slice the same cycle refetched is the new season’s, and is kept', async () => {
+    // A semi-final is in play and the next fixtures are knockouts, so this
+    // cycle refetches BOTH slices; the fixtures it just read are not "carried".
+    const SEMI_LIVE = new Date('2026-07-14T19:30:00Z');
+    writeState({
+      updatedAt: new Date(SEMI_LIVE.getTime() - 60_000).toISOString(),
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+      fixtures: [carried],
+      season: { year: 2026, label: '2026 FIFA World Cup' },
+    });
+    const final = {
+      id: '760517',
+      date: '2026-07-19T19:00Z',
+      season: { slug: 'final' },
+      status: { type: { name: 'STATUS_SCHEDULED', state: 'pre' } },
+      competitions: [
+        {
+          competitors: [
+            { homeAway: 'home', team: { id: '164', abbreviation: 'ESP', displayName: 'Spain' } },
+            { homeAway: 'away', team: { id: '202', abbreviation: 'ARG', displayName: 'Argentina' } },
+          ],
+        },
+      ],
+    };
+    vi.stubGlobal('fetch', async () => response({ leagues: [{ season: season(2030) }], events: [final] }));
+    await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+
+    const state = readState('espn', 'fifa.world');
+    expect(state?.season?.year).toBe(2030);
+    expect(state?.fixtures?.map((m) => m.id)).toEqual(['760517']);
+    expect(state?.fixtures?.[0]?.home.id).toBe('espn:164');
   });
 
   it('a dated query never writes the live cache', async () => {

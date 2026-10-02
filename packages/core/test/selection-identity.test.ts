@@ -433,6 +433,29 @@ describe('season — what the provider reported about ONE response', () => {
     expect(fetchMeta(matches)?.season?.year).toBe(2026);
   });
 
+  it('survives the adapter’s own filtering: fetchLive returns a new array with the same metadata', async () => {
+    const liveNow = {
+      ...event('1', '2026-10-10T11:30Z', ARSENAL, CHELSEA),
+      status: { type: { name: 'STATUS_IN_PROGRESS', state: 'in' }, displayClock: "12'" },
+      competitions: [
+        {
+          competitors: [
+            { homeAway: 'home', score: '1', team: ARSENAL },
+            { homeAway: 'away', score: '0', team: CHELSEA },
+          ],
+        },
+      ],
+    };
+    const adapter = new EspnAdapter({
+      competition: 'eng.1',
+      enrichGroups: false,
+      fetchImpl: (async () => response(scoreboard(SEASON_2026, [liveNow]))) as unknown as typeof fetch,
+    });
+    const live = await adapter.fetchLive();
+    expect(live).toHaveLength(1);
+    expect(fetchMeta(live)?.season?.year).toBe(2026);
+  });
+
   it('two overlapping calls on one adapter each keep their own', async () => {
     // The dated query for a past edition is answered LAST. A field on the
     // adapter (how `lastError` works, "best-effort under concurrency") would

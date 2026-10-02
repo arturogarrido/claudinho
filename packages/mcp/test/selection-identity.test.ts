@@ -75,6 +75,16 @@ describe('selection — the server resolves the competition once per request', (
     expect(resolveAdapter({ competition: 'eng.1' })).toBe(resolveAdapter({ competition: 'eng.1' }));
   });
 
+  it('one request resolves once: the environment changing mid-request changes nothing', () => {
+    const request = {}; // a request's args object IS the request
+    const first = resolveAdapter(request);
+    process.env.CLAUDINHO_COMPETITION = 'ita.1';
+    expect(resolveAdapter(request)).toBe(first);
+    expect(resolveAdapter(request).competition).toBe('fifa.world');
+    // A NEW request reads the environment at its own edge.
+    expect(resolveAdapter({}).competition).toBe('ita.1');
+  });
+
   it('a tool acts on its adapter’s competition, not the environment', async () => {
     // Environment says World Cup; the request is for a league → no World Cup
     // lookup happens and the answer is the honest "not available yet".
