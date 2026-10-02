@@ -3,7 +3,8 @@
  *
  *   pnpm -F @claudinho/core gen:schedule
  *
- * Fetches the full tournament window in weekly chunks, dedupes by id, sorts by
+ * Fetches the full tournament window in weekly chunks (the adapter asks for
+ * each by calendar month: the provider refuses date ranges), dedupes by id, sorts by
  * kickoff, and writes src/data/schedule.2026.json and src/data/bracket.2026.json.
  * Live scores and final results are stripped — the bundle is a resultless skeleton;
  * only team names, kickoffs, venues, and bracket structure ship in the package.

@@ -33,10 +33,10 @@ const USER_AGENT = `claudinho/${process.env.CLAUDINHO_VERSION ?? '0.0'} (+https:
 /**
  * Reject declared response bodies past this before JSON.parse — a hijacked
  * endpoint must not be able to balloon the refresher's memory every ~15s.
- * (Real scoreboard payloads are well under 1MB.) Shared by the Polymarket
- * provider. Known residual risk, accepted: a body WITHOUT a content-length
- * header (chunked) bypasses the cap — a streaming byte-count cap is
- * gateway-era work; the timeout still bounds how long such a body can flow.
+ * (A day's scoreboard is tens of KB; a month's, the largest thing asked for,
+ * was 845 KB for the World Cup's June.) Shared by the Polymarket provider. The
+ * bytes actually read are counted too (`readJsonBounded`), so a body with no
+ * declared length is cut at the same cap.
  */
 export const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 
@@ -82,9 +82,11 @@ function competitionOfBase(baseUrl: string): string {
 
 /**
  * Interactive commands must not hang for the old 15s default when the feed
- * black-holes — `bracket` chains up to two upstream requests, so the worst case
- * is ~2× this before degraded output. Callers with different budgets (tests,
- * the future gateway) still override via `timeoutMs`.
+ * black-holes. The requests of one window are sent together, so a window waits
+ * one of these, not one per part; a command that chains two reads (`bracket`:
+ * the knockout span, then standings; `markets next`: the span, then its
+ * candidate's days) can wait two before degraded output. Callers with
+ * different budgets (tests, the future gateway) still override via `timeoutMs`.
  */
 const DEFAULT_TIMEOUT_MS = 6000;
 

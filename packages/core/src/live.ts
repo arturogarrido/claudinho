@@ -121,9 +121,10 @@ export async function getMatchesForDate(
   try {
     // A local calendar day can straddle two adjacent UTC dates (a 01:00Z
     // kickoff is the previous evening in the Americas). Callers group by the
-    // *local* date, so fetch a ±1-day UTC window — one request, since ESPN
-    // takes a date range — and merge by id. Fetching only `day` would leave a
-    // boundary match showing from the static schedule with no live score.
+    // *local* date, so ask for a ±1-day window (the adapter composes it: the
+    // provider refuses date ranges) and merge by id. Asking only for `day`
+    // would leave a boundary match showing from the static schedule with no
+    // live score.
     const live = adapter.fetchWindow
       ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
       : await adapter.fetchByDate(day);
@@ -398,7 +399,7 @@ export interface NextFixtureResult {
  * {@link sanitizeBundledFixture}), so a purely static lookup goes blind the
  * moment a team's last GROUP game passes: `next MEX` answers "no upcoming
  * fixture" even after ESPN has confirmed Mexico's Round-of-32 tie. Overlay the
- * live knockout window (the SAME single fetch {@link getBracket} uses) so the
+ * live knockout window (the SAME window {@link getBracket} asks for) so the
  * merged set carries the resolved nations, then pick the team's next fixture
  * with kickoff ≥ now. (Strictly upcoming — the in-play match is `getLiveMatches`'
  * job, preserving the pre-overlay `next` semantics.)
