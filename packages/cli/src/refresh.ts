@@ -20,7 +20,6 @@ import {
   type SeasonInfo,
 } from '@claudinho/core';
 import {
-  acquireLock,
   ageMs,
   backoffInEffect,
   believedDeadline,
@@ -31,9 +30,9 @@ import {
   readBackoffNote,
   readState,
   releaseLock,
-  writeState,
   claimLock,
   publishState,
+  writeBackoffNote,
 } from './cache';
 import { inLiveWindow, LIVE_TTL_MS } from './statusline';
 
@@ -150,17 +149,27 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
   // statusline's no-cache spawn trigger goes quiet, and never touch the
   // network. Interactive commands error loudly for the same config.
   if (!(KNOWN_SOURCES as readonly string[]).includes(source)) {
-    if (!readState(source, competition) && acquireLock()) {
-      try {
-        writeState({
-          updatedAt: now.toISOString(),
-          live: [],
-          degraded: true, // no live provider served this scope — never claim otherwise
-          source,
-          competition,
-        });
-      } finally {
-        releaseLock();
+    if (!readState(source, competition)) {
+      const idle = claimLock();
+      if (idle) {
+        try {
+          // Under the lock, and only if nobody wrote one in the meantime (the
+          // same rule as the idle snapshot below).
+          if (!readState(source, competition)) {
+            publishState(
+              {
+                updatedAt: now.toISOString(),
+                live: [],
+                degraded: true, // no live provider served this scope — never claim otherwise
+                source,
+                competition,
+              },
+              idle,
+            );
+          }
+        } finally {
+          releaseLock(idle);
+        }
       }
     }
     return;
@@ -418,8 +427,15 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       },
       token,
     );
-    if (!published && process.env.CLAUDINHO_DEBUG) {
-      process.stderr.write('claudinho: refresh lease lost to a successor; snapshot not published\n');
+    if (!published) {
+      // The lease was lost and the snapshot is the successor's. A throttle this
+      // cycle was given is still a fact about the provider, and the successor
+      // may not have met it: it goes to the note, which needs no lock, like a
+      // command's that could not get one.
+      if (backoffUntil) writeBackoffNote(source, competition, Date.parse(backoffUntil), clock());
+      if (process.env.CLAUDINHO_DEBUG) {
+        process.stderr.write('claudinho: refresh lease lost to a successor; snapshot not published\n');
+      }
     }
   } finally {
     releaseLock(token);
@@ -438,11 +454,13 @@ export function shouldRefresh(
   source = 'espn',
 ): boolean {
   if (!liveWindowActive(now, competition)) return false;
-  // The snapshot's backoff or the scope's note (one more small file, read
-  // only once a refresh would otherwise be started).
-  if (backoffInEffect(state, source, competition, now) !== undefined) return false;
   if (isLockFresh(now)) return false;
-  return ageMs(state, now) > LIVE_TTL_MS;
+  if (!(ageMs(state, now) > LIVE_TTL_MS)) return false;
+  // LAST: the snapshot's backoff or the scope's note. The note is one more
+  // small file, so it is looked at only once a refresh would otherwise be
+  // started, not on every prompt inside a window (`backoff-hotpath.test.ts`
+  // counts the reads).
+  return backoffInEffect(state, source, competition, now) === undefined;
 }
 
 /**
@@ -459,9 +477,10 @@ export function shouldRefreshFixtures(
   source = 'espn',
 ): boolean {
   if (!inKnockoutPhase(now, competition)) return false;
-  if (backoffInEffect(state, source, competition, now) !== undefined) return false;
   if (isLockFresh(now)) return false;
-  return fixturesStale(state, now);
+  if (!fixturesStale(state, now)) return false;
+  // Last, like `shouldRefresh`.
+  return backoffInEffect(state, source, competition, now) === undefined;
 }
 
 /**

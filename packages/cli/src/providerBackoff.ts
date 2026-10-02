@@ -29,9 +29,11 @@ import {
 } from './cache';
 
 /**
- * Persist an absolute cooldown deadline as the cache's `backoffUntil`, under
- * the lock. Returns whether the write actually happened: a skipped or refused
- * write must NOT be remembered as persisted (review round 2 on #128).
+ * Persist an absolute cooldown deadline: as the snapshot's `backoffUntil`
+ * under the lock, or in the scope's note when the lock is someone else's.
+ * Returns whether a reader will find it: a write that failed, was refused, or
+ * cannot be read back must NOT be remembered as persisted (review round 2 on
+ * #128).
  */
 function persistBackoff(source: string, competition: string, until: number, nowMs: number): boolean {
   // Never wait, never clobber an unowned snapshot. A refresher may hold the
@@ -88,8 +90,9 @@ export function withPersistedBackoff(
   // two concurrent requests a 500 can land after a 429 and become lastError
   // while the cooldown stands, and a 429 can arrive after this command's own
   // call already returned (review P2 on #128). Every armed or extended window
-  // is persisted once — and only a write that HAPPENED counts, so a persist
-  // skipped while another owner held the lock is retried by the next chance.
+  // is persisted once — and only a write that HAPPENED counts: one that found
+  // the lock taken AND could not write the note, or whose publish was refused,
+  // is retried by the next chance.
   let persisted = accepted;
   const persistIfNewer = (until: number) => {
     if (!(until > nowMs) || (persisted !== undefined && until <= persisted)) return;

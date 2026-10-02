@@ -135,7 +135,7 @@ describe('a decision to ask the provider is made from the state read under the l
     expect(readState(SOURCE, WC)?.backoffUntil).toBe(until);
   });
 
-  it('the first snapshot of a scope is written under the lock too: a refresher that loses it writes nothing', async () => {
+  it('the first snapshot of a scope is written under the lock too: a refresher that finds one there, once it holds the lock, writes nothing', async () => {
     // No snapshot, outside every window: the refresher writes one idle
     // snapshot so the hot path stops starting it. Another one got there first.
     const quiet = new Date('2026-06-12T09:00:00Z');
@@ -177,8 +177,7 @@ describe('a throttle a command meets while a refresher holds the lock is not los
     requests = [];
     provider();
     await refresh(new Date(nowMs + 20_000));
-    expect(requests).toEqual([]);
-    // The refresher folded it into the snapshot it carries.
+    expect(requests).toEqual([]); // it returned at its first look: nothing was asked, nothing written
     await refresh(new Date(nowMs + 601_000));
     expect(days()).toHaveLength(3);
   });

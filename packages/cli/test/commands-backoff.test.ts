@@ -195,7 +195,7 @@ describe('persistence bookkeeping (review round 2 on #128)', () => {
   });
 
   it('a cached deadline the cache rejects does not suppress a real throttle', async () => {
-    // 31 min ahead is past the cache's 30-min bound: backoffActive rejects it, so
+    // 31 min ahead is past the cache's 30-min bound: it is not believed, so
     // nothing is pre-armed — and it must not count as "already persisted" either,
     // or a real 600 s throttle could never replace it.
     writeState({

@@ -102,11 +102,18 @@ const LOCK_STALE_MS = 60_000;
  * var and must never influence the path beyond a flat filename.
  */
 export function cachePath(source = 'espn', competition = DEFAULT_COMPETITION): string {
-  if (source === 'espn' && competition === DEFAULT_COMPETITION) {
-    return join(cacheDir(), 'state.json');
-  }
-  const slug = `${source}.${competition}`.replace(/[^a-zA-Z0-9._-]/g, '_');
-  return join(cacheDir(), `state.${slug}.json`);
+  return join(cacheDir(), `state${scopeSuffix(source, competition)}.json`);
+}
+
+/**
+ * What a scope adds to a cache file's name: nothing for the default scope,
+ * `.<source>.<competition>` (sanitized to a flat name) for any other. ONE rule
+ * for every per-scope file, so a scope's snapshot and its throttle note cannot
+ * be named apart.
+ */
+function scopeSuffix(source: string, competition: string): string {
+  if (source === 'espn' && competition === DEFAULT_COMPETITION) return '';
+  return `.${`${source}.${competition}`.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 }
 
 function lockPath(): string {
@@ -226,12 +233,6 @@ export function believedDeadline(untilMs: number | undefined, now: number): numb
   return now < untilMs && untilMs - now <= MAX_BACKOFF_MS ? untilMs : undefined;
 }
 
-/** True while the snapshot's own provider backoff (429/403) is in effect. */
-export function backoffActive(state: CacheState | undefined, now = Date.now()): boolean {
-  if (!state?.backoffUntil) return false;
-  return believedDeadline(Date.parse(state.backoffUntil), now) !== undefined;
-}
-
 // ---- the throttle note ----
 //
 // A throttle is written into the snapshot under the refresh lock. A command
@@ -246,13 +247,9 @@ export function backoffActive(state: CacheState | undefined, now = Date.now()): 
 /** A note is `{"until":"<ISO>"}`: far below this. */
 const MAX_NOTE_BYTES = 256;
 
-/** The throttle note of a cache scope (same naming, and sanitizing, as its snapshot). */
+/** The throttle note of a cache scope: named like its snapshot, by the same rule. */
 export function backoffNotePath(source = 'espn', competition = DEFAULT_COMPETITION): string {
-  if (source === 'espn' && competition === DEFAULT_COMPETITION) {
-    return join(cacheDir(), 'backoff.json');
-  }
-  const slug = `${source}.${competition}`.replace(/[^a-zA-Z0-9._-]/g, '_');
-  return join(cacheDir(), `backoff.${slug}.json`);
+  return join(cacheDir(), `backoff${scopeSuffix(source, competition)}.json`);
 }
 
 /** The note's deadline if there is a readable note and it is believed at `now` (never throws). */
@@ -276,8 +273,10 @@ export function readBackoffNote(source: string, competition: string, now = Date.
 /**
  * Write a throttle deadline to the scope's note, keeping the LATER of the
  * believed deadline already there and this one. Needs no lock. Returns whether
- * the note now holds a deadline at least as late as `untilMs` (false when
- * `untilMs` itself is not believed, or the write failed: never throws).
+ * the note now holds a deadline at least as late as `untilMs`, as a READER
+ * sees it (false when `untilMs` itself is not believed, when the write failed,
+ * or when what was written cannot be read back: never throws). A caller that
+ * gets false still has the throttle to place somewhere.
  *
  * Read-then-write is two steps: two writers a few file operations apart can
  * leave the earlier of two real deadlines. Both are throttles the provider
@@ -290,10 +289,13 @@ export function writeBackoffNote(source: string, competition: string, untilMs: n
   if (stored !== undefined && stored >= own) return true;
   try {
     writeFileAtomic(backoffNotePath(source, competition), JSON.stringify({ until: new Date(own).toISOString() }));
-    return true;
   } catch {
     return false;
   }
+  // Written is not readable: a replacement inherits the mode of the file it
+  // replaces, so a note nobody can read stays one. Ask what a reader would.
+  const readBack = readBackoffNote(source, competition, now);
+  return readBack !== undefined && readBack >= own;
 }
 
 /**
@@ -439,7 +441,10 @@ function writeExclusive(lp: string, token: LockToken): boolean {
  * than `LOCK_STALE_MS` AND processes inside the same few file operations; each
  * extra holder is one overlapping cycle of requests, and its publish is
  * refused by the ownership check unless it lands inside that check's own
- * window. Closing it takes lock names that are never reused (a generation per
+ * window. A single stealer is enough to take the lease of an owner that still
+ * runs (a suspended machine, a clock that stepped, a caller that judges with a
+ * clock more than `LOCK_STALE_MS` behind the lock's stamp): that owner's
+ * publish is then refused, and a throttle it met goes to the note. Closing it takes lock names that are never reused (a generation per
  * acquisition); a rename-and-restore takeover was designed and withdrawn,
  * because it opens the lock path to a third process while it runs.
  */
