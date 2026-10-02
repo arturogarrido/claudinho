@@ -40,9 +40,10 @@ export interface ProviderAdapter {
 
   /**
    * All fixtures/results for a single calendar date (provider's timezone
-   * semantics). A provider that knows which season a response belongs to
-   * attaches it to the returned array (`attachFetchMeta`); callers read it with
-   * `fetchMeta`. The same holds for every fetch below.
+   * semantics). What a provider knows about a response — the season it
+   * belongs to, whether every record in it could be read — it attaches to the
+   * returned array (`attachFetchMeta`); callers read it with `fetchMeta`. The
+   * same holds for every fetch below.
    */
   fetchByDate(dateISO: string): Promise<Match[]>;
 
