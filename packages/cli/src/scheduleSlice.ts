@@ -24,6 +24,7 @@ import {
   MAX_SCHEDULE_INDEX,
   type Match,
   parseCachedScheduleIndex,
+  SCHEDULE_AHEAD_DAYS,
   type ScheduleAheadResult,
   type ScheduleEntry,
   scheduleEntryOf,
@@ -44,6 +45,19 @@ export const DISCOVERY_TTL_MS = 60 * 60_000;
 export const DISCOVERY_RETRY_MS = 5 * 60_000;
 /** `failures` above this says nothing more: the wait is already at its cap. */
 const MAX_FAILURES = 32;
+/**
+ * How far ahead of now an index entry can be and still be believed. Discovery
+ * reads to the end of the provider's day `SCHEDULE_AHEAD_DAYS` after today:
+ * at most fifteen days from now (an hour more when the clocks change). One
+ * day more is the margin. An entry further out was not written by discovery,
+ * and a well-formed one would hold the gate open later than anything read.
+ */
+export const SCHEDULE_HORIZON_MS = (SCHEDULE_AHEAD_DAYS + 2) * 24 * 60 * 60_000;
+
+/** Whether an entry's kickoff is within the span discovery reads (an earlier one is not this rule's business). */
+function withinHorizon(entry: ScheduleEntry, now: number): boolean {
+  return Date.parse(entry.kickoff) <= now + SCHEDULE_HORIZON_MS;
+}
 
 /** A schedule slice as it is believed at a time. */
 export interface ScheduleView {
@@ -90,7 +104,9 @@ function trustedStamp(value: unknown, now: number): string | undefined {
  * Read a stored slice (its display records are not read here: they are sealed
  * by the one reader of cached fixtures, where they are shown). Each field is
  * believed on its own terms, so one bad field never takes the others with it:
- *   - the index is whole or absent (`parseCachedScheduleIndex`);
+ *   - the index is whole or absent (`parseCachedScheduleIndex`), and an entry
+ *     further ahead than discovery reads (`SCHEDULE_HORIZON_MS`) is not
+ *     believed;
  *   - the stamps go through `stampAgeMs` (one in the future is "never": a bad
  *     `attemptedAt` makes discovery due, not silent for years), and they are
  *     read even when the index is not believed, so a poisoned index is paced
@@ -109,7 +125,7 @@ export function scheduleView(raw: unknown, now: number): ScheduleView {
       ? Math.min(s.failures, MAX_FAILURES)
       : 0;
   return {
-    index: parseCachedScheduleIndex(s.index),
+    index: parseCachedScheduleIndex(s.index)?.filter((entry) => withinHorizon(entry, now)),
     attemptAgeMs: stampAgeMs(typeof s.attemptedAt === 'string' ? s.attemptedAt : undefined, now),
     attemptedAt: trustedStamp(s.attemptedAt, now),
     updatedAt: trustedStamp(s.updatedAt, now),
@@ -190,21 +206,31 @@ export interface DiscoveredSchedule {
 
 /**
  * What a discovery answer does to the slice, or `undefined` when the discovery
- * FAILED (the slice stands as it was, and the failure cadence applies).
+ * FAILED (the slice stands as it was, and the failure cadence applies): a
+ * degraded answer, or an index that would exceed its bound.
  *
  * "At stake" means the slice holds at least one relevant record.
  *
- *   answer                               nothing at stake   something at stake
- *   complete                             stored             replaces the slice
- *   incomplete, same season              stored             a union by id (below)
- *   incomplete, a season unknown         stored             FAILED: the slice stands
- *   incomplete, another season           stored             replaces the slice
+ *   answer                                    nothing at stake   something at stake
+ *   complete                                  stored             replaces the slice
+ *   incomplete, same season                   stored             a union by id (below)
+ *   incomplete, a season unknown either side  stored             a union by id (below)
+ *   incomplete, KNOWN to be another season    stored             replaces the slice
+ *
+ * An unknown season is an ordinary state here, not a provider that forgot to
+ * state one: for the sixteen days a span touches two seasons, every answer
+ * states none. So only an answer KNOWN to be another season may delete what it
+ * did not read. The stored season is the answer's, or none. (The bundled
+ * path's knockout slice keeps its own rule: there a season unknown on either
+ * side leaves the slice as it was.)
  *
  * The union: a relevant record the slice held and the answer did not READ
- * stays; everything read is taken from the answer. "Read" is asked of the
- * answer's own account (`mentioned`, taken before a month is narrowed to the
- * span): a fixture read as postponed gets `on: false`, and one moved beyond
- * the span is gone, not put back at its old kickoff.
+ * stays (unless it is further ahead than discovery reads: such an entry was
+ * never written by discovery); everything read is taken from the answer.
+ * "Read" is asked of the answer's own account (`mentioned`, taken before a
+ * month is narrowed to the span): a fixture read as postponed gets
+ * `on: false`, and one moved beyond the span is gone, not put back at its old
+ * kickoff.
  *
  * A result with more relevant fixtures than the index holds is a failed
  * discovery too: the index is whole or it does not exist.
@@ -221,16 +247,16 @@ export function applyDiscovery(
     const entry = scheduleEntryOf(m);
     return entry ? [entry] : [];
   });
-  const atStake = (prev.index ?? []).filter((entry) => relevant(entry.kickoff));
+  // A union never carries an entry beyond the span discovery reads.
+  const atStake = (prev.index ?? []).filter((entry) => relevant(entry.kickoff) && withinHorizon(entry, now));
   const complete = answer.complete === true;
 
   let kept: ScheduleEntry[] = [];
-  if (!complete && atStake.length > 0) {
-    if (!answer.season || !prev.season) return undefined;
-    if (answer.season.year === prev.season.year) {
-      const mentioned = new Set(answer.mentioned ?? answer.fixtures.map((m) => m.id));
-      kept = atStake.filter((entry) => !mentioned.has(entry.id));
-    }
+  // Only an answer KNOWN to be another season replaces what it did not read.
+  const anotherSeason = !!answer.season && !!prev.season && answer.season.year !== prev.season.year;
+  if (!complete && !anotherSeason) {
+    const mentioned = new Set(answer.mentioned ?? answer.fixtures.map((m) => m.id));
+    kept = atStake.filter((entry) => !mentioned.has(entry.id));
   }
   const index = [...readEntries, ...kept].sort((a, b) => a.kickoff.localeCompare(b.kickoff));
   if (index.length > MAX_SCHEDULE_INDEX) return undefined;

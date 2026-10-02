@@ -299,10 +299,25 @@ describe('what a discovery answer does to the slice', () => {
       expect(ids(r?.index)).toEqual(['1', '2']);
     });
 
-    it('with a season unknown on either side: the slice stands, and it is a failure for the cadence', () => {
+    it('with a season unknown on either side: a union all the same (an incomplete answer never deletes what it did not read, and what it read is taken)', () => {
+      // Found while fixing the season of a two-month answer. For the sixteen
+      // days a span touches two seasons EVERY answer states none, so this row
+      // is an ordinary state, not a provider that forgot its season. It used
+      // to be a failed discovery: the slice stood as it was, so a fixture the
+      // answer DID read (a kickoff that moved, a tie whose teams were set)
+      // was not taken while anything else lay ahead. Entries are bounded in
+      // time on both sides, so nothing of another season is carried for long.
       const incomplete = { complete: false, mentioned: ['2'] };
-      expect(applyDiscovery(stored([entry('1', HOUR)], null), answer([match('2', HOUR)], incomplete), NOW)).toBeUndefined();
-      expect(applyDiscovery(stored([entry('1', HOUR)]), answer([match('2', HOUR)], { ...incomplete, season: undefined }), NOW)).toBeUndefined();
+      const noneBefore = applyDiscovery(stored([entry('1', HOUR)], null), answer([match('2', 2 * HOUR)], incomplete), NOW);
+      expect(ids(noneBefore?.index)).toEqual(['1', '2']);
+      expect(noneBefore?.season).toMatchObject({ year: 2026 });
+      expect(noneBefore?.complete).toBe(false);
+      const noneNow = applyDiscovery(stored([entry('1', HOUR)]), answer([match('2', 2 * HOUR)], { ...incomplete, season: undefined }), NOW);
+      expect(ids(noneNow?.index)).toEqual(['1', '2']);
+      expect(noneNow?.season).toBeUndefined();
+      // What the answer read replaces what the slice held for it: a kickoff that moved.
+      const moved = applyDiscovery(stored([entry('1', HOUR), entry('2', 5 * HOUR)], null), answer([match('2', 2 * HOUR)], incomplete), NOW);
+      expect(moved?.index).toEqual([entry('1', HOUR), entry('2', 2 * HOUR)]);
     });
 
     it('known to be ANOTHER season replaces the slice', () => {
