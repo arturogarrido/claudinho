@@ -19,6 +19,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  adapterTablesProblem,
   CANARY_COMPETITIONS,
   CANARY_QUESTIONS,
   CANARY_TABLES,
@@ -525,7 +526,7 @@ describe('found in review: absence is a finding, and the product’s own parser 
     });
 
     it('a cup the parser reads: when it can read none of it, that is red, not "a shape it does not read"', async () => {
-      const body = wcStandings(['A', 'B'], (r, g) => badRow(g === 'A' ? '297' : '298', `Team ${g}`, 1));
+      const body = wcStandings(['A', 'B'], (_row, g) => badRow(g === 'A' ? '297' : '298', `Team ${g}`, 1));
       const row = await groupsCase('concacaf.gold', body);
       expect(row?.verdict).toBe('changed');
       expect(row?.detail).toMatch(/could not read the tables/);
@@ -593,6 +594,25 @@ describe('found in review: absence is a finding, and the product’s own parser 
     const duplicate = wcStandings();
     duplicate.children.push(second as (typeof duplicate.children)[number]);
     expect(core.fetchMeta(await adapterFor(duplicate).fetchStandings())?.complete).toBe(false);
+  });
+
+  it('only "complete, no partial table, nothing missing" is healthy: every other combination is a problem', () => {
+    // The three questions are independent; this is every way they can combine.
+    const whole = [{ group: 'A' }, { group: 'B' }];
+    const withPartial = [{ group: 'A', partial: { omitted: 1 } }, { group: 'B' }];
+    for (const complete of [true, false, undefined]) {
+      for (const tables of [whole, withPartial]) {
+        for (const expected of [['A', 'B'], ['A', 'B', 'C'], []]) {
+          const problem = adapterTablesProblem({ complete, tables, expected, sent: 3 });
+          const healthy = complete === true && tables === whole && !expected.includes('C');
+          expect(problem === undefined, JSON.stringify({ complete, partial: tables !== whole, expected })).toBe(healthy);
+        }
+      }
+    }
+    // And each names its own cause, the most specific first.
+    expect(adapterTablesProblem({ complete: false, tables: withPartial, expected: ['A', 'B', 'C'], sent: 3 })).toMatch(/every row of Group A/);
+    expect(adapterTablesProblem({ complete: false, tables: whole, expected: ['A', 'B', 'C'], sent: 3 })).toMatch(/every table \(3 sent, 2 read\)/);
+    expect(adapterTablesProblem({ complete: true, tables: whole, expected: ['A', 'B', 'C'], sent: 3 })).toMatch(/expects group\(s\) C/);
   });
 
   it('a row the parser leaves out is red even when it calls the batch complete', async () => {

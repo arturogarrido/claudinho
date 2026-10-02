@@ -240,6 +240,29 @@ function collectTables(node, depth, tables) {
 }
 
 /**
+ * What is wrong with the tables the adapter read, or nothing. THREE separate
+ * questions, because each can be the only one that knows:
+ *   - a table marked partial: a row was left out. The batch can still call
+ *     itself complete (a row the parser treats as "not a team" is left out
+ *     without being counted as refused);
+ *   - a batch that is not complete: a row or a whole TABLE was refused (a
+ *     second table for a group already read, a name that is no group). A
+ *     refused table leaves the survivors whole and unmarked;
+ *   - an expected group that is not there.
+ * Only "complete, no partial table, nothing missing" is healthy. An adapter
+ * that does not say whether the batch is complete has not said it is.
+ */
+export function adapterTablesProblem({ complete, tables, expected = [], sent }) {
+  const partial = tables.filter((t) => t.partial).map((t) => t.group);
+  if (partial.length > 0) return `the adapter could not read every row of Group ${partial.join(', ')}`;
+  if (complete !== true) return `the adapter could not read every table (${sent} sent, ${tables.length} read)`;
+  const got = new Set(tables.map((t) => t.group));
+  const missing = expected.filter((g) => !got.has(g));
+  if (missing.length > 0) return `the adapter expects group(s) ${missing.join(', ')} and did not get them`;
+  return undefined;
+}
+
+/**
  * Invariants of a served standings payload, read RAW (see the header). What
  * must hold for any table shape: every table has a list of rows, and every row
  * names its team by id and states each statistic the parser requires exactly
@@ -301,23 +324,13 @@ function checkStandings(core, body, adapter, result, competition) {
       detail: `${rows} row(s) in ${tables.length} table(s) (a shape the table parser does not read yet)`,
     };
   }
-  // The parser's own account: a refused row marks its table partial, but a
-  // refused TABLE (a second one for a group already read, a name that is no
-  // group) leaves the survivors whole.
-  if (core.fetchMeta(result)?.complete !== true) {
-    const partial = result.filter((t) => t.partial).map((t) => t.group);
-    return {
-      verdict: 'changed',
-      detail: partial.length
-        ? `the adapter could not read every row of Group ${partial.join(', ')}`
-        : `the adapter could not read every table (${tables.length} sent, ${result.length} read)`,
-    };
-  }
-  const got = new Set(result.map((t) => t.group));
-  const missing = expected.filter((g) => !got.has(g));
-  if (missing.length > 0) {
-    return { verdict: 'changed', detail: `the adapter expects group(s) ${missing.join(', ')} and did not get them` };
-  }
+  const unread = adapterTablesProblem({
+    complete: core.fetchMeta(result)?.complete,
+    tables: result,
+    expected,
+    sent: tables.length,
+  });
+  if (unread) return { verdict: 'changed', detail: unread };
   return { verdict: 'ok', detail: `${rows} row(s) in ${tables.length} table(s)` };
 }
 
