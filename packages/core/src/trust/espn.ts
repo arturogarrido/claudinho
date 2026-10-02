@@ -72,9 +72,10 @@ const MAX_TABLE_LABEL_COLUMNS = 60;
  * named by one of the group grammars. `league`: the competition is authorised
  * to serve exactly ONE table, whatever its name (a season, a phase). `none`:
  * the competition has no table (knockout from the first round), and the
- * provider answers with no table list at all; that answer is then an empty
- * one, not an unreadable one. If such a competition does serve a list, it is
- * read like any grouped one.
+ * provider answers with its own document and no table list at all; that
+ * answer is then an empty one, not an unreadable one. If such a competition
+ * ever serves a child or a table, nothing is read: it is not what was written
+ * down.
  */
 export type StandingsShape = 'groups' | 'league' | 'none';
 /** The key of a league's one table. */
@@ -548,9 +549,11 @@ function refusedStandings(truncated: boolean): EspnStandingsList {
  * it comes after the last slot.
  *
  * A payload with tables nobody can inspect is refused WHOLE: more children
- * than the bound, or a child with children of its own. A table in there could
- * claim a key that was accepted, so no table can be shown to be the only one
- * with its key.
+ * than the bound, or a child with children of its own (a non-empty list, or
+ * anything that is not a list). A table in there could claim a key that was
+ * accepted, so no table can be shown to be the only one with its key. This is
+ * the one exception to "a refused record is local": it is not a record that
+ * is refused, it is the claim that the records read are all there is.
  */
 export function parseEspnStandings(
   raw: unknown,
@@ -570,12 +573,22 @@ export function parseEspnStandings(
     // name and seasons and NO `children` key. For a competition written down
     // as having no table, and only for one, that document is an empty answer
     // (anywhere else a missing list is an envelope that cannot be read). It
-    // must BE that document: an object that names the competition. And if a
-    // child ever appears, the competition is not what was written down:
-    // nothing is read, and the canary says the shape changed.
-    const names = raw !== null && typeof raw === 'object' && !Array.isArray(raw) && typeof (raw as { name?: unknown }).name === 'string';
+    // must BE that document, as it was recorded: an object that names the
+    // competition and states a season, with no table of its own. A name alone
+    // is not enough (an error body can carry one). And if a child or a table
+    // ever appears, the competition is not what was written down: nothing is
+    // read, and the canary says the shape changed.
+    const doc = raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : undefined;
+    const isDocument =
+      doc !== undefined &&
+      typeof doc.name === 'string' &&
+      humanLabel(doc.name) !== '' &&
+      doc.season !== null &&
+      typeof doc.season === 'object' &&
+      !Array.isArray(doc.season) &&
+      doc.standings === undefined;
     const empty = rawChildren === undefined || (Array.isArray(rawChildren) && rawChildren.length === 0);
-    return names && empty
+    return isDocument && empty
       ? { items: [], total: 0, shown: 0, truncated: false, complete: true, inventory: 'complete' }
       : refusedStandings(false);
   }
@@ -599,8 +612,13 @@ export function parseEspnStandings(
       continue;
     }
     const child = node as Record<string, unknown>;
-    // A table tree: its tables are not inspected, so nothing here is.
-    if (child.children !== undefined) return refusedStandings(false);
+    // A table tree: its tables are not inspected, so nothing here is. An
+    // EMPTY list of children is not one: it holds no table, and refusing a
+    // whole competition for it would be one odd field blanking every table.
+    const nested = child.children;
+    if (nested !== undefined && !(Array.isArray(nested) && nested.length === 0)) {
+      return refusedStandings(false);
+    }
     const standings = child.standings;
     const entries =
       standings && typeof standings === 'object' ? (standings as { entries?: unknown }).entries : undefined;

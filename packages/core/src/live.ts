@@ -146,7 +146,7 @@ export async function getMatchesForDate(
 }
 
 export interface StandingsResult {
-  /** Group tables in group-letter order; each table's rows in standings order. */
+  /** The tables, sorted by key (`A`, `A1`, `A-B`, `LEAGUE`); each table's rows in standings order. */
   tables: GroupStandings[];
   /** True when no authoritative table was available; tables may be a static roster or empty. */
   degraded: boolean;
@@ -224,18 +224,19 @@ export async function getStandings(
         }
       } else {
         const inventoryComplete = fetchMeta(all)?.inventoryComplete !== false;
-        if (!want) {
+        // What was read is returned: every table with the verdict that some
+        // are missing, or the one table that was asked for (no verdict about
+        // the batch: it was read, and says `partial` itself if rows are
+        // missing). NOTHING read while a table is missing is neither "no such
+        // group" nor an empty answer that says it is not whole: it is
+        // unavailable, for any adapter, and takes the fallback below.
+        if (tables.length > 0 || inventoryComplete) {
           return {
             tables,
             degraded: false,
             source: adapter.name,
-            ...(inventoryComplete ? {} : { incomplete: true as const }),
+            ...(!want && !inventoryComplete ? { incomplete: true as const } : {}),
           };
-        }
-        // A key that was read is returned. One that was not is "no such
-        // group" only when no table can be missing.
-        if (tables.length > 0 || inventoryComplete) {
-          return { tables, degraded: false, source: adapter.name };
         }
       }
     } catch {

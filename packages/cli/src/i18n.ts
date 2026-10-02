@@ -161,7 +161,7 @@ const FR: Dict = {
   'table.unavailable': 'Classement en direct indisponible.',
   'table.empty': 'Aucun classement disponible.',
   'table.partial': 'Classement partiel — {n} lignes n\'ont pas pu être lues.',
-  'table.badKey': 'Ce n\'est pas un tableau : « {key} ». Utilisez la lettre d\'un groupe (A), ou une clé comme A1, A-B ou LEAGUE.',
+  'table.badKey': 'Ce n\'est pas un classement : « {key} ». Utilisez la lettre d\'un groupe (A), ou une clé comme A1, A-B ou LEAGUE.',
   'match.none': 'Aucun match trouvé avec id {id}.',
   'status.live': 'DIRECT',
   'status.ht': 'MT',

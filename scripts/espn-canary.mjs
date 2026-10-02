@@ -20,9 +20,9 @@
  *
  * It asks the product's parser what it could not read (the result's
  * completeness, see core `fetchMeta`) instead of keeping a second opinion.
- * The one place it reads raw is standings: the table parser does not accept
- * every competition's table shape yet, so its verdict there would say more
- * about us than about the feed.
+ * Standings are also read raw, row by row, for a diagnosis the parser does
+ * not give (which statistic a row lost, which team has no id); the verdict on
+ * whether the tables were read is the parser's, for every competition.
  *
  * What it asks, per competition: every question the adapter answers, with the
  * spans the product uses today. A window is composed of several requests (the

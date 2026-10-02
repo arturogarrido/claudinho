@@ -575,10 +575,12 @@ export class EspnAdapter implements ProviderAdapter {
   }
 
   /**
-   * Authoritative, cumulative group tables from the standings endpoint. Throws
-   * on fetch failure. Group-stage only: non-group `children` are filtered out
-   * by {@link parseStandings}; malformed rows are omitted without hiding their
-   * readable siblings.
+   * Authoritative, cumulative tables from the standings endpoint, read for the
+   * shape this competition is written down as (`STANDINGS_SHAPE`). Throws on
+   * fetch failure, and when nothing in the payload could be read. A malformed
+   * row is omitted without hiding its readable siblings (its table says
+   * `partial`); a child that did not become a table is omitted too, and the
+   * result's metadata then says the inventory is not complete.
    */
   async fetchStandings(): Promise<GroupStandings[]> {
     return this.sharedStandings();

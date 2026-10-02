@@ -461,6 +461,10 @@ export async function toolGetStandings(
     };
   }
 
+  // Tables are missing: what is shown is not the whole competition. Said
+  // FIRST: a tool's text is cut at a fixed length from the end, and a verdict
+  // at the tail would be the first thing a long answer lost.
+  const notice = verdictNotice(result, args.lang);
   let text = shaped
     .map((tb) => {
       const block = standingsTable(tb, tb.standings);
@@ -473,10 +477,7 @@ export async function toolGetStandings(
   // Stated, not silent — the same rule the match lists follow.
   text += truncationNote(boundedTables);
   if (degraded) text += '\n\n(Live standings unavailable — showing the group roster.)';
-  // Tables are missing: what is shown is not the whole competition. The
-  // sentence goes beside the tables, and its key into `data`.
-  const notice = verdictNotice(result, args.lang);
-  if (notice) text += `\n\n(${notice})`;
+  if (notice) text = `(${notice})\n\n${text}`;
   return {
     text: withDisclaimer(text, source, args.lang),
     data: {

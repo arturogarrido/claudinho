@@ -144,7 +144,7 @@ const FR: Dict = {
   'live.data': 'Données en direct : {source}',
   'standings.unavailable': 'Classement en direct indisponible.',
   'standings.partial': 'Classement partiel — {n} lignes n\'ont pas pu être lues.',
-  'standings.incomplete': 'Certains tableaux n\'ont pas pu être lus — ce n\'est pas la compétition complète.',
+  'standings.incomplete': 'Certains classements n\'ont pas pu être lus — ce n\'est pas la compétition complète.',
   'standings.none': 'Groupe "{group}" introuvable.',
   'standings.empty': 'Aucun classement disponible.',
   'competition.unsupported': 'Pas encore disponible pour cette compétition.',

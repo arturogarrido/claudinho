@@ -208,7 +208,7 @@ describe('the contract says so', () => {
       const marker = output?.properties?.incomplete;
       expect(marker?.const).toBe(true);
       expect(marker?.description).toMatch(/not the whole competition/);
-      // A key the old schema refused is accepted end to end (the call reaches the handler).
+      // The resource says what a key is, too.
       const { resourceTemplates } = await client.listResourceTemplates();
       expect(resourceTemplates.find((t) => t.uriTemplate === 'standings://{group}')?.description).toMatch(/LEAGUE/);
     } finally {

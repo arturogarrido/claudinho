@@ -124,7 +124,10 @@ a claim we cannot make.
   array contract. A malformed, duplicate, or truncated ESPN record is omitted while readable
   siblings keep their provider attribution; one odd record must not blank a matchday or standings
   table. A transport/JSON failure, an unreadable envelope, or a non-empty provider list with no
-  usable records still throws and reaches the domain's degraded fallback. Parser-local
+  usable records still throws and reaches the domain's degraded fallback. One stated exception,
+  in standings: a payload that holds tables the parser did not inspect (more than 64 children,
+  or a child that itself has children) is refused whole, because a table nobody inspected could
+  claim a key that was accepted; and a key that two tables claim is shown for neither. Parser-local
   `BoundedList.complete` remains a test and diagnostics property, not a batch-wide kill switch.
   Standings expected scope never authorizes static teams: only the separate
   `standingsFallbackGroups` contract permits a bundled roster. A custom competition therefore
@@ -132,7 +135,8 @@ a claim we cannot make.
   and never receives World Cup teams. An aggregate read uses one fallback verdict because its
   single attribution cannot describe mixed live and static provenance honestly. —
   `core/test/adapter-hardening.test.ts`, `core/test/espn.test.ts`,
-  `core/test/standings-live.test.ts`, `core/test/trust-espn.test.ts`
+  `core/test/standings-live.test.ts`, `core/test/trust-espn.test.ts`,
+  `core/test/standings-tables.test.ts`
 - **Derived values are recomputed, never trusted** — the market favorite and staleness are
   derived from the sealed data, so a crafted file cannot make the headline contradict the
   numbers, or an old reading claim to be fresh. A team's flag is derived the same way, from its
