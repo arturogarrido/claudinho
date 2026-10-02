@@ -364,8 +364,12 @@ describe('an answer that is not whole says so, and says what it READ', () => {
       // (Found in review: with no such statement the "says nothing" rule refused first and hid this one.)
       fetchWindow: async () => attachFetchMeta([{ id: '70', kickoff: 'soon' }] as never[], { complete: true }),
     } as unknown as ProviderAdapter;
-    const r = await getScheduleAhead(odd, now);
+    // A span inside ONE month: with two, the same record would come back twice
+    // and the "one fixture in two months" rule would refuse first (it did, and
+    // hid this rule from a mutation pass a second time).
+    const r = await getScheduleAhead(odd, NOW);
     expect(r).toMatchObject({ fixtures: [], degraded: false, complete: false });
+    expect(r.mentioned).toEqual(['70']);
   });
 
   it('what a month’s own window read and set aside is part of what the answer read', async () => {
