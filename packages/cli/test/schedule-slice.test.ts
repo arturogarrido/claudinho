@@ -20,6 +20,7 @@ import {
   raiseInPlay,
   RELEVANT_BACK_MS,
   SCHEDULE_DISPLAY_MAX,
+  SCHEDULE_HORIZON_MS,
   scheduleGateOpen,
   scheduleView,
 } from '../src/scheduleSlice';
@@ -117,6 +118,21 @@ describe('what is read back from the file is believed only within bounds', () =>
     const failures = (value: unknown) => scheduleView({ index: [], failures: value }, NOW).failures;
     expect(failures(3)).toBe(3);
     for (const bad of [-1, 1.5, '3', null, Number.NaN, 1e9]) expect(failures(bad), String(bad)).toBe(bad === 1e9 ? 32 : 0);
+  });
+
+  it('an index entry beyond the span discovery reads is not believed', () => {
+    // Found in review: a forged, well-formed index was bounded only by its
+    // length (256 windows of 140 minutes: 25 days of an open gate while
+    // discoveries stay incomplete, because a union keeps what it did not read).
+    // Discovery reads 14 provider days ahead; nothing it stores is further out.
+    expect(SCHEDULE_HORIZON_MS).toBe(16 * 24 * HOUR);
+    const inside = entry('1', SCHEDULE_HORIZON_MS - MIN);
+    const beyond = entry('2', SCHEDULE_HORIZON_MS + MIN);
+    expect(scheduleView({ index: [entry('0', HOUR), inside, beyond] }, NOW).index).toEqual([entry('0', HOUR), inside]);
+    // And a union does not carry one either.
+    const prev = { index: [entry('0', HOUR), beyond], fixtures: [], season: S2026 };
+    const r = applyDiscovery(prev, answer([match('3', 2 * HOUR)], { complete: false, mentioned: ['3'] }), NOW);
+    expect(ids(r?.index)).toEqual(['0', '3']);
   });
 
   it('`probe` is true only when it is `true`', () => {

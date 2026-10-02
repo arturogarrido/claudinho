@@ -263,6 +263,47 @@ describe('a discovery that cannot be had is a failed one, whatever the other mon
   });
 });
 
+describe('one refused record is not an outage: "no readable record" is asked of the whole discovery, not of each month', () => {
+  // Found in review. Each month is its own window, and a window whose list is
+  // not empty and holds no readable record is a failed window. So ONE record
+  // nobody can read, alone in next month's answer (a tie whose teams are not
+  // set yet, a malformed event), failed every discovery for as long as it was
+  // there: no schedule at all, with this month's fixtures read and thrown away.
+  const now = new Date('2026-10-25T15:00:00Z'); // span Oct 24 to Nov 8
+  const today: Ev = { id: '30', date: '2026-10-25T17:00Z' };
+  const oct: Ev = { id: '32', date: '2026-10-28T23:00Z' };
+  const unreadable: Array<[string, unknown]> = [
+    ['a malformed event', { id: 'not an id', date: 'garbage' }],
+    ['a tie whose teams are not set yet', { ...event({ id: '33', date: '2026-11-03T23:00Z' }), competitions: [{ competitors: [] }] }],
+  ];
+
+  for (const [what, record] of unreadable) {
+    it(`a month whose only record is ${what}, beside a readable month: the readable month, and not whole`, async () => {
+      const f = feed([today, oct], { extra: (d) => (d === '202611' ? [record] : []) });
+      const r = await getScheduleAhead(adapterOn(f, now), now);
+      expect(r.degraded).toBe(false);
+      expect(r.complete).toBe(false);
+      expect(ids(r.fixtures)).toEqual(['30', '32']);
+      expect([...(r.mentioned ?? [])].sort()).toEqual(['30', '32']);
+    });
+  }
+
+  it('BOTH months hold only records nobody can read: nothing was read, and that is a failed discovery', async () => {
+    const f = feed([], { extra: () => [{ id: 'not an id', date: 'garbage' }] });
+    expect(await getScheduleAhead(adapterOn(f, now), now)).toEqual({ fixtures: [], degraded: true });
+  });
+
+  it('one month alone, its only record unreadable: a failed discovery, as for any window', async () => {
+    const f = feed([], { extra: () => [{ id: 'not an id', date: 'garbage' }] });
+    expect(await getScheduleAhead(adapterOn(f, NOW), NOW)).toEqual({ fixtures: [], degraded: true });
+  });
+
+  it('a month whose ENVELOPE cannot be read is still a failed discovery: that is not a refused record', async () => {
+    const f = feed([today, oct], { fail: (d) => (d === '202611' ? json({}) : undefined) });
+    expect(await getScheduleAhead(adapterOn(f, now), now)).toEqual({ fixtures: [], degraded: true });
+  });
+});
+
 describe('an answer that is not whole says so, and says what it READ', () => {
   const now = new Date('2026-10-25T15:00:00Z'); // span Oct 24 to Nov 8
   const early: Ev = { id: '50', date: '2026-10-02T23:00Z', state: 'post' }; // October, before the span

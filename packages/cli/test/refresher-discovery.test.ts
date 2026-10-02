@@ -654,6 +654,19 @@ describe('what is read back from the cache is input', () => {
   });
 });
 
+describe('a source nobody can ask', () => {
+  it('once its idle snapshot exists the trigger starts nothing (it started a do-nothing refresher on every prompt)', async () => {
+    // Found in review: the refresher refuses an unknown source and writes one
+    // degraded snapshot with no schedule slice; "no slice" read as "discovery
+    // is due", for ever.
+    await runRefresh({ source: 'bogus', competition: MEX, now: new Date(NOW), jitterMs: 0 });
+    expect(asked).toEqual([]);
+    const s = readState('bogus', MEX);
+    expect(s?.degraded).toBe(true);
+    for (const at of [NOW, NOW + MIN, NOW + HOUR, NOW + 24 * HOUR]) expect(refreshWanted(at, s, MEX, 'bogus'), String(at - NOW)).toBe(false);
+  });
+});
+
 describe('on the bundled competition nothing changes', () => {
   const WC = 'fifa.world';
   const OPENER_LIVE = Date.parse('2026-06-11T19:30:00.000Z');
