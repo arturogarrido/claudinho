@@ -13,7 +13,10 @@ process.env.CLAUDINHO_MARKETS_SOURCE = 'none';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterAll } from 'vitest';
 
 const testCache = mkdtempSync(join(tmpdir(), 'claudinho-test-cache-'));
 process.env.XDG_CACHE_HOME = testCache;
-process.on('exit', () => rmSync(testCache, { recursive: true, force: true }));
+// Removed when the file's tests are done. (A `process.on('exit')` handler does
+// not run in a test worker: it left one empty directory per test file, per run.)
+afterAll(() => rmSync(testCache, { recursive: true, force: true }));

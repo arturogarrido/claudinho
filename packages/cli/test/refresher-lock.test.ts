@@ -425,9 +425,9 @@ describe('found in review', () => {
     releaseLock(successor); // the successor finishes, without having been throttled itself
     // The publish was refused: the snapshot is the one from before.
     expect(readState(SOURCE, WC)?.backoffUntil).toBeUndefined();
-    const until = inEffect(nowMs + 20_000) ?? 0;
-    expect(until).toBeGreaterThanOrEqual(nowMs + 600_000);
-    expect(until).toBeLessThan(nowMs + 602_000);
+    // A lower bound only: the refresher's clock is the injected time plus the
+    // real time elapsed, and a test never asserts how long something took.
+    expect(inEffect(nowMs + 20_000) ?? 0).toBeGreaterThanOrEqual(nowMs + 600_000);
     expect(shouldRefresh(nowMs + 20_000, readCurrentState(SOURCE, WC), WC, SOURCE)).toBe(false);
     requests = [];
     await refresh(new Date(nowMs + 20_000));
@@ -457,7 +457,9 @@ describe('found in review', () => {
     await refresh(OPENER_LIVE);
     const until = Date.parse(readState(SOURCE, WC)?.backoffUntil ?? '');
     expect(until).toBeGreaterThanOrEqual(nowMs + 600_000);
-    expect(until).toBeLessThan(nowMs + 602_000);
+    // The upper bound is what tells the real throttle from 2099; it is the
+    // product's own 30-minute bound, not a measure of how long the cycle took.
+    expect(until).toBeLessThanOrEqual(nowMs + 30 * MIN);
     // A healthy cycle drops it.
     rmSync(dir, { recursive: true, force: true });
     writeState(stale(OPENER_LIVE, { backoffUntil: never }));
@@ -524,6 +526,13 @@ describe('found in review', () => {
     }
   });
 
+  it('a deadline that is not a whole millisecond: what is written is what a reader sees, and it counts as written', () => {
+    // The note stores a stamp in whole milliseconds; the read-back compared it
+    // with the unrounded value and reported a real write as "not written".
+    expect(writeBackoffNote(SOURCE, WC, nowMs + 10 * MIN + 0.5, nowMs)).toBe(true);
+    expect(readBackoffNote(SOURCE, WC, nowMs)).toBe(nowMs + 10 * MIN);
+  });
+
   it('the note is named after its snapshot, by one rule: a scope cannot have one without the other', () => {
     for (const [source, competition] of [
       [SOURCE, WC],
@@ -550,6 +559,8 @@ describe('found in review', () => {
     await refresh(SEMI_LIVE);
     expect(days()).toHaveLength(3); // not believed when the cycle decided: the live lane ran
     expect(months()).toEqual([]); // believed by the time the second lane would start
+    // And at publish, asked at the time it is THEN: believed, so it is carried, not dropped.
+    expect(readState(SOURCE, WC)?.backoffUntil).toBe(new Date(semi + 30 * MIN + 50).toISOString());
   });
 
   it('an unknown source: its one idle snapshot is written under the lock too, after reading again', async () => {
