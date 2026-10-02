@@ -264,6 +264,39 @@ function checkScoreboard(core, adapter, parts, matches) {
   };
 }
 
+/**
+ * What is wrong with the responses that WERE served for a question whose
+ * other requests failed, or nothing. The question is asked again of an adapter
+ * that is given exactly those responses (and an honest empty one in place of
+ * each that failed): no request is made, and the verdict is the product's own
+ * (a record its parser refuses, one fixture in two parts, parts of two
+ * seasons, a response that filled its limit), not a copy of its rules.
+ */
+async function servedProblem(core, competition, askOf, request, served) {
+  const envelope = envelopeProblem(served);
+  if (envelope) return envelope;
+  const replay = async (input) => {
+    const part = served.find((p) => p.url === String(input));
+    return new Response(JSON.stringify(part ? part.json : { events: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  const again = new core.EspnAdapter({ competition, enrichGroups: false, fetchImpl: replay });
+  let result;
+  let failure;
+  try {
+    result = await askOf(again)[request]();
+  } catch (e) {
+    failure = e;
+  }
+  if (!Array.isArray(result)) {
+    return `the adapter refused what was served (${failure?.message ?? 'no reason given'})`;
+  }
+  const judged = checkScoreboard(core, again, served, result);
+  return judged.verdict === 'ok' ? undefined : judged.detail;
+}
+
 /** A served scoreboard response with no `events` list, or nothing. */
 function envelopeProblem(parts) {
   for (const part of parts) {
@@ -472,13 +505,15 @@ export async function runCanary({
     const today = isoDay(now);
     // The span the bracket, `next` and the countdown read: the bundle's own.
     const span = core.bundleApplies(competition) ? core.knockoutWindow() : null;
-    const calls = {
-      live: () => adapter.fetchLive(),
-      day: () => adapter.fetchByDate(today),
-      window: () => adapter.fetchWindow(isoDay(shiftDay(now, -1)), isoDay(shiftDay(now, 1))),
-      knockout: () => adapter.fetchWindow(span.start, span.end),
-      standings: () => adapter.fetchStandings(),
-    };
+    /** The questions, as asked of an adapter: the real one, or one replaying what was served. */
+    const askOf = (a) => ({
+      live: () => a.fetchLive(),
+      day: () => a.fetchByDate(today),
+      window: () => a.fetchWindow(isoDay(shiftDay(now, -1)), isoDay(shiftDay(now, 1))),
+      knockout: () => a.fetchWindow(span.start, span.end),
+      standings: () => a.fetchStandings(),
+    });
+    const calls = askOf(adapter);
     for (const { request, bundleOnly } of CANARY_QUESTIONS) {
       if (bundleOnly && !span) continue;
       const call = calls[request];
@@ -519,11 +554,14 @@ export async function runCanary({
         verdict = wrong.verdict;
         detail = `${wrong.detail}${which(wrong)}${beside}`;
       } else if (unseen) {
-        // The adapter had no answer to give, so nothing can be asked of it.
-        // What WAS served is still read: a defect in it is a finding.
+        // The adapter had no answer to give for the question as asked. What
+        // WAS served is still judged, and by the same code as a whole answer:
+        // a defect in it is a finding whatever happened to its sibling.
         const served = parts.filter((part) => part.verdict === 'ok');
         const seen =
-          request === 'standings' ? undefined : (envelopeProblem(served) ?? sentProblem(adapter, served));
+          request === 'standings' || served.length === 0
+            ? undefined
+            : await servedProblem(core, competition, askOf, request, served);
         verdict = seen ? 'changed' : unseen.verdict;
         detail = seen ? `${seen}${beside}` : `${unseen.detail}${which(unseen)}`;
       } else if (request === 'standings') {
