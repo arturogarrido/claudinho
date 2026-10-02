@@ -54,6 +54,14 @@ export interface ProviderAdapter {
   fetchWindow?(startDate: string, endDate: string): Promise<Match[]>;
 
   /**
+   * Optional: the provider's calendar day (`YYYY-MM-DD`) for an instant, i.e.
+   * the day a fixture kicking off then is filed under (ESPN: US/Eastern). A
+   * caller that counts a span in days counts THESE days when the adapter states
+   * them, and UTC days otherwise.
+   */
+  bucketDay?(instant: Date): string;
+
+  /**
    * Optional authoritative group tables (cumulative across the group stage).
    * Returned in standings order per group. Providers that can't supply a real
    * table omit this; callers then fail closed (degraded), using a roster at zero

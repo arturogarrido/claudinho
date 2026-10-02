@@ -554,6 +554,127 @@ export async function getMatchById(
   }
 }
 
+/** Discovery looks this many provider days back (a match that kicked off late yesterday can still be in play). */
+export const SCHEDULE_LOOKBACK_DAYS = 1;
+/** And this many ahead. */
+export const SCHEDULE_AHEAD_DAYS = 14;
+
+export interface ScheduleAheadResult {
+  /** Every fixture read in the span, in ANY status, by kickoff. */
+  fixtures: Match[];
+  /** The schedule could not be had (a failed request, a refused window): the caller keeps what it has. */
+  degraded: boolean;
+  /**
+   * The season stated by the response for the month that holds `now` (absent
+   * when it stated none, or on failure). Two months can state two seasons (the
+   * provider's season turns on June 1); the fixtures of both are returned.
+   */
+  season?: SeasonInfo;
+  /**
+   * False when the provider sent records this result does not hold (one it
+   * could not read, one fixture in both months), or when the adapter says
+   * nothing about its answer. A fixture absent from such a result is not known
+   * to be gone. Stated on every answer that is not `degraded`.
+   */
+  complete?: boolean;
+  /**
+   * Stated with `complete: false`: the id of every fixture either month's
+   * response held, BEFORE the months are narrowed to the span. A caller keeping
+   * a previous answer asks "was it read?" of this list, not of `fixtures` (a
+   * fixture moved beyond the span was read, and must not be put back).
+   */
+  mentioned?: readonly string[];
+}
+
+/** `YYYY-MM-DD` of the first and last day of the month a day is in. */
+function monthOf(day: string): { first: string; last: string } {
+  const y = Number(day.slice(0, 4));
+  const m = Number(day.slice(5, 7));
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { first: `${day.slice(0, 8)}01`, last: `${day.slice(0, 8)}${String(last).padStart(2, '0')}` };
+}
+
+/**
+ * The schedule ahead: every fixture from `SCHEDULE_LOOKBACK_DAYS` back to
+ * `SCHEDULE_AHEAD_DAYS` ahead, counted in the PROVIDER's calendar days and
+ * added as dates (a daylight-saving change does not move the span). What the
+ * cold-path refresher reads, about once an hour, to know when a match can be
+ * in play in a competition the bundled schedule does not describe.
+ *
+ * Each calendar month the span touches is its OWN window, asked whole (first
+ * day to last), so it is exactly one month request whatever part of the month
+ * is in the span (a two- or three-day fragment passed as itself would be asked
+ * a day at a time). One request, or two, sent together and both settled before
+ * this answers (a throttle on one is retained by the adapter whatever the
+ * other did). Two windows, not one window of two months: a response states the
+ * season of the dates asked, and a composed window refuses two seasons.
+ *
+ * If either window fails, discovery failed: `degraded`, nothing else.
+ */
+export async function getScheduleAhead(
+  adapter: ProviderAdapter,
+  now: Date = new Date(),
+): Promise<ScheduleAheadResult> {
+  if (!adapter.fetchWindow) return { fixtures: [], degraded: true };
+  const dayOf = (instant: Date): string =>
+    adapter.bucketDay?.(instant) || instant.toISOString().slice(0, 10);
+  const today = dayOf(now);
+  const start = shiftUtcDate(today, -SCHEDULE_LOOKBACK_DAYS);
+  const end = shiftUtcDate(today, SCHEDULE_AHEAD_DAYS);
+  // 16 days touch one month or two.
+  const months = [monthOf(start)];
+  if (monthOf(end).first !== months[0]?.first) months.push(monthOf(end));
+
+  const settled = await Promise.allSettled(
+    months.map((month) => (adapter.fetchWindow as NonNullable<typeof adapter.fetchWindow>)(month.first, month.last)),
+  );
+  if (settled.some((r) => r.status === 'rejected')) return { fixtures: [], degraded: true };
+  const windows = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+
+  let complete = true;
+  let season: SeasonInfo | undefined;
+  /** Every id read so far, by any month: what it returned and what its window set aside. */
+  const read = new Set<string>();
+  const fixtures: Match[] = [];
+  windows.forEach((window, i) => {
+    const meta = fetchMeta(window);
+    // Absent is not true: an adapter that says nothing about its answer has
+    // not said it is whole.
+    if (meta?.complete !== true) complete = false;
+    if (months[i]?.first === monthOf(today).first) season = meta?.season;
+    /** What EARLIER months read: the question "is this a second copy?" is asked of that, not of this month. */
+    const before = new Set(read);
+    for (const id of meta?.mentioned ?? []) read.add(id);
+    for (const m of window) {
+      read.add(m.id);
+      // One fixture is filed under one day, so two months cannot both hold it.
+      // If they do, the first copy, in month order, is the one that counts
+      // (the window's own rule for its parts) WHEREVER it fell, inside the
+      // span or not, and the answer is not whole.
+      if (before.has(m.id)) {
+        complete = false;
+        continue;
+      }
+      const kickoff = new Date(m.kickoff);
+      if (Number.isNaN(kickoff.getTime())) {
+        complete = false;
+        continue;
+      }
+      const day = dayOf(kickoff);
+      if (day < start || day > end) continue;
+      fixtures.push(m);
+    }
+  });
+  fixtures.sort(byKickoff);
+  return {
+    fixtures,
+    degraded: false,
+    ...(season ? { season } : {}),
+    complete,
+    ...(complete ? {} : { mentioned: [...read] }),
+  };
+}
+
 /**
  * Currently-live matches; empty + degraded on error.
  *
