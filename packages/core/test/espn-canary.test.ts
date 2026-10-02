@@ -763,10 +763,13 @@ describe('found in review: absence is a finding, and the product’s own parser 
     // The day it serves a table, in any shape, a person decides what that means.
     expect(await champions(standings())).toMatchObject({ verdict: 'changed', detail: '2 row(s) in 1 table(s), where no table was expected' });
     expect((await champions(groupStandings(['A', 'B'])))?.verdict).toBe('changed');
-    // And "no rows" is healthy only when the product's own reader took the answer for an empty one.
-    expect((await champions({ children: [] }))?.verdict).toBe('ok');
-    expect((await champions({ children: [{ name: 'Group A', standings: { entries: [] } }] }))?.verdict).toBe('changed');
-    expect((await champions({ children: 'x' }))?.verdict).toBe('changed');
+    // And "no rows" is healthy only when the product's own reader took the answer for an empty one:
+    // the competition's own document, with no table list or an empty one.
+    expect((await champions({ name: 'Concacaf Champions Cup', children: [] }))?.verdict).toBe('ok');
+    expect((await champions({ children: [] }))?.verdict).toBe('changed'); // not the competition's document
+    expect((await champions({ code: 404, message: 'Not Found' }))?.verdict).toBe('changed');
+    expect((await champions({ name: 'Concacaf Champions Cup', children: [{ name: 'Group A', standings: { entries: [] } }] }))?.verdict).toBe('changed');
+    expect((await champions({ name: 'Concacaf Champions Cup', children: 'x' }))?.verdict).toBe('changed');
   });
 
   it('the shape of every competition the canary watches is written down in core, and the canary reads it there', () => {
@@ -871,13 +874,14 @@ describe('found in review: absence is a finding, and the product’s own parser 
     unknownName.children.push({ ...(second as (typeof duplicate.children)[number]), name: 'Second Phase' });
     expect((await wc(unknownName))?.verdict).toBe('changed');
 
-    // A table the parser READS and the bundled competition does not expect
-    // (a numbered group among the World Cup's twelve) is a changed shape too:
-    // the product does not show it.
+    // A table with a readable name that the bundled competition does not
+    // expect (a numbered group among the World Cup's twelve) is not read
+    // either: the adapter hands the parser its expected keys, and a child
+    // outside them is a child that did not become a table.
     const extra = wcStandings();
     extra.children.push({ ...(second as (typeof duplicate.children)[number]), name: 'Group A1' });
-    expect(core.parseStandings(extra)).toHaveLength(13);
-    expect(await wc(extra)).toMatchObject({ verdict: 'changed', detail: 'the adapter read table(s) A1 that the product does not expect' });
+    expect(core.parseStandings(extra)).toHaveLength(13); // read with no expectation
+    expect(await wc(extra)).toMatchObject({ verdict: 'changed', detail: 'the adapter could not read every table (13 sent, 12 read)' });
   });
 
   it('the adapter says so itself: a standings result states whether every table and row was read', async () => {

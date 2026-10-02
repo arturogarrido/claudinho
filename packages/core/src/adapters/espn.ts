@@ -549,7 +549,7 @@ export class EspnAdapter implements ProviderAdapter {
       return this.standingsShared.promise;
     }
     const promise = this.get(this.standingsUrl()).then((d) => {
-      const parsed = parseEspnStandings(d, this.standingsShape);
+      const parsed = parseEspnStandings(d, this.standingsShape, this.expectedStandingsGroups);
       // The parser's own account rides on the result, as for a scoreboard: a
       // refused row marks its table partial, but a refused TABLE (a key two
       // children claim, a name that is no group) leaves no trace on the

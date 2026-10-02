@@ -552,14 +552,32 @@ function refusedStandings(truncated: boolean): EspnStandingsList {
  * claim a key that was accepted, so no table can be shown to be the only one
  * with its key.
  */
-export function parseEspnStandings(raw: unknown, shape: StandingsShape = 'groups'): EspnStandingsList {
+export function parseEspnStandings(
+  raw: unknown,
+  shape: StandingsShape = 'groups',
+  /**
+   * The keys this competition's tables may have, when the caller declares them
+   * (the World Cup's A to L). A child with any other key is not this
+   * competition's table: it gets no slot, none of its rows is parsed, and its
+   * teams never enter the identity ledger, so it cannot take a row away from
+   * an expected table or name a fixture's group.
+   */
+  expected?: readonly string[],
+): EspnStandingsList {
   const rawChildren = (raw as { children?: unknown })?.children;
-  // Measured (Oct 2 2026): a competition with no table answers 200 with its
-  // seasons and NO `children` key. Only for a competition written down as
-  // having no table is that an empty answer; anywhere else a missing list is
-  // an envelope that cannot be read.
-  if (shape === 'none' && rawChildren === undefined && raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
-    return { items: [], total: 0, shown: 0, truncated: false, complete: true, inventory: 'complete' };
+  if (shape === 'none') {
+    // Measured (Oct 2 2026): a competition with no table answers 200 with its
+    // name and seasons and NO `children` key. For a competition written down
+    // as having no table, and only for one, that document is an empty answer
+    // (anywhere else a missing list is an envelope that cannot be read). It
+    // must BE that document: an object that names the competition. And if a
+    // child ever appears, the competition is not what was written down:
+    // nothing is read, and the canary says the shape changed.
+    const names = raw !== null && typeof raw === 'object' && !Array.isArray(raw) && typeof (raw as { name?: unknown }).name === 'string';
+    const empty = rawChildren === undefined || (Array.isArray(rawChildren) && rawChildren.length === 0);
+    return names && empty
+      ? { items: [], total: 0, shown: 0, truncated: false, complete: true, inventory: 'complete' }
+      : refusedStandings(false);
   }
   if (!Array.isArray(rawChildren)) return refusedStandings(false);
   if (rawChildren.length > MAX_TABLE_CHILDREN) return refusedStandings(true);
@@ -604,11 +622,12 @@ export function parseEspnStandings(raw: unknown, shape: StandingsShape = 'groups
     }
 
     const key = tableKey(name);
-    if (!key) {
+    if (!key || (expected && !expected.includes(key))) {
       // Nothing is skipped. A child with an empty rows list under a name the
       // grammar does not know used to be waved through as "a knockout stage":
       // a guess no measured payload supports, and exactly the door a name the
       // grammar REJECTS (`Group A` + an invisible character) walks through.
+      // A key outside the declared scope is the same: an unread child.
       refuseTable();
       continue;
     }

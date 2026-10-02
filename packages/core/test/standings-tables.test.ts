@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { EspnAdapter } from '../src/adapters/espn';
 import { fetchMeta } from '../src/adapters/meta';
 import { STANDINGS_SHAPE } from '../src/competition';
-import { getStandings } from '../src/live';
+import { getBracket, getStandings } from '../src/live';
 import { tableShareCard } from '../src/share/cards';
 import { formatShareTable } from '../src/share/format';
 import { tableData, tableKeyArg, tableTitle } from '../src/standings';
@@ -196,13 +196,22 @@ describe('a competition with no table by design', () => {
     expect((await read('fifa.world', undefined, answer)).degraded).toBe(true);
   });
 
-  it('and if it ever serves groups they are read, not hidden', async () => {
-    const r = await read('concacaf.champions', undefined, { children: [child('Group A', 4)] });
-    expect(r.tables.map((t) => t.group)).toEqual(['A']);
+  it('an empty list of children is the same empty answer', async () => {
+    expect(await read('concacaf.champions', undefined, { name: 'Concacaf Champions Cup', children: [] })).toEqual({ tables: [], degraded: false, source: 'espn' });
   });
 
-  it('a body that is not an object is not an empty answer', () => {
-    for (const body of [null, [], 'x', 0]) expect(parseEspnStandings(body, 'none').complete, JSON.stringify(body)).toBe(false);
+  it('and if it ever serves a child, the competition is not what was written down: nothing is read', async () => {
+    for (const children of [[child('Group A', 4)], [{ name: 'Round of 16', standings: { entries: [] } }]]) {
+      const r = await read('concacaf.champions', undefined, { name: 'Concacaf Champions Cup', children });
+      expect(r, JSON.stringify(children).slice(0, 40)).toEqual({ tables: [], degraded: true });
+    }
+  });
+
+  it('only the competition’s own document is an empty answer: an object that does not name it is not', () => {
+    for (const body of [null, [], 'x', 0, {}, { code: 404, message: 'Not Found' }, { name: 7 }]) {
+      expect(parseEspnStandings(body, 'none').complete, JSON.stringify(body)).toBe(false);
+    }
+    expect(parseEspnStandings({ name: 'Concacaf Champions Cup' }, 'none')).toMatchObject({ items: [], complete: true, inventory: 'complete' });
   });
 });
 
@@ -350,6 +359,25 @@ describe('a key that two children claim belongs to neither', () => {
   });
 });
 
+describe('a contested group confirms nothing in the bracket', () => {
+  it('the bracket falls back to its topology when two children claim Group A (the first used to stay authoritative)', async () => {
+    const wc = recorded('fifa.world');
+    const bracketOn = (standings: unknown) =>
+      getBracket(
+        new EspnAdapter({
+          competition: 'fifa.world',
+          fetchImpl: (async (input: unknown) =>
+            new Response(JSON.stringify(String(input).includes('/standings') ? standings : { leagues: [{}], events: [] }))) as unknown as typeof fetch,
+        }),
+        {},
+      );
+    const healthy = await bracketOn(wc);
+    expect(healthy.standingsDegraded).toBe(false);
+    const contested = await bracketOn({ children: [...wc.children, { ...wc.children[0], name: 'group a' }] });
+    expect(contested.standingsDegraded).toBe(true);
+  });
+});
+
 describe('more children than the parser inspects is not a payload it reads', () => {
   it('twelve healthy groups, 52 stages and a 65th child contradicting Group A: refused, not twelve tables', async () => {
     const wc = recorded('fifa.world');
@@ -452,6 +480,52 @@ describe('with an expected list (the World Cup), the list decides', () => {
     expect(all.incomplete).toBeUndefined();
     expect(all.tables.map((t) => t.group)).toEqual('ABCDEFGHIJKL'.split(''));
     expect(await read('fifa.world', 'M', extra)).toEqual({ tables: [], degraded: false });
+  });
+
+  it('a table outside the list is not PARSED: it takes no row from an expected table and names no fixture group', async () => {
+    // Listed FIRST, with Group A's own teams: read, it would occupy the
+    // identity ledger, every row of Group A would be refused as a team seen
+    // twice, and the whole read would fall back to the roster.
+    const wc = recorded('fifa.world');
+    const stolen = { children: [{ ...wc.children[0], name: 'Group M' }, ...wc.children] };
+    const all = await read('fifa.world', undefined, stolen);
+    expect(all.degraded).toBe(false);
+    expect(all.tables).toHaveLength(12);
+    expect(all.tables[0]?.rows).toHaveLength(4);
+    expect(all.tables[0]?.partial).toBeUndefined();
+    const maps = await serving('fifa.world', stolen).fetchGroupMap();
+    expect(new Set(Object.values(maps))).toEqual(new Set('ABCDEFGHIJKL'.split('')));
+    // The parser says so itself: with a declared scope the child is an unread one, and costs no row.
+    const counter = { n: 0 };
+    const watched = entriesOf(wc, 0).map(
+      (e) =>
+        new Proxy(e, {
+          get(target, key, receiver) {
+            if (key === 'team') counter.n++;
+            return Reflect.get(target, key, receiver);
+          },
+        }),
+    );
+    const counted = { name: 'Group M', standings: { entries: watched } };
+    const parsed = parseEspnStandings({ children: [counted, ...wc.children] }, 'groups', 'ABCDEFGHIJKL'.split(''));
+    expect(parsed.items.map((t) => t.group)).toEqual('ABCDEFGHIJKL'.split(''));
+    expect(counter.n).toBe(0);
+    expect(parsed.inventory).toBe('incomplete');
+  });
+
+  it('the list decides for ANY adapter: one that hands back a table outside its own list does not get it shown', async () => {
+    // The ESPN adapter never parses such a table; another provider's adapter might return one.
+    const table = (group: string) => ({ group, rows: [{ team: { code: 'AAA', name: 'A', flag: '🏳️' }, played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0 }] });
+    const other = {
+      name: 'other',
+      competition: 'synthetic.cup',
+      capabilities: { push: false, latencyHintSec: 0 },
+      expectedStandingsGroups: ['A'],
+      fetchByDate: async () => [],
+      fetchLive: async () => [],
+      fetchStandings: async () => [table('A'), table('M')],
+    };
+    expect((await getStandings(other)).tables.map((t) => t.group)).toEqual(['A']);
   });
 
   it('nor does a child nobody can read', async () => {

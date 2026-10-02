@@ -371,9 +371,10 @@ function collectTables(node, depth, tables) {
  *   - a batch that is not complete: a row or a whole TABLE was refused (a
  *     second table for a group already read, a name that is no group). A
  *     refused table leaves the survivors whole and unmarked;
- *   - an expected group that is not there;
- *   - with an expected list, a table that is read and is not on it.
- * Only "complete, no partial table, nothing missing, nothing extra" is healthy. An adapter
+ *   - an expected group that is not there.
+ * (A table outside an expected list is not read by the parser at all, so it
+ * lands in the second question: a child that did not become a table.)
+ * Only "complete, no partial table, nothing missing" is healthy. An adapter
  * that does not say whether the batch is complete has not said it is.
  */
 export function adapterTablesProblem({ complete, tables, expected = [], sent }) {
@@ -387,10 +388,6 @@ export function adapterTablesProblem({ complete, tables, expected = [], sent }) 
   const got = new Set(tables.map((t) => t.group));
   const missing = expected.filter((g) => !got.has(g));
   if (missing.length > 0) return `the adapter expects group(s) ${missing.join(', ')} and did not get them`;
-  // With an expected list the product shows nothing outside it: a table it
-  // reads there and does not expect is a shape nobody has looked at.
-  const extra = expected.length > 0 ? [...got].filter((g) => !expected.includes(g)) : [];
-  if (extra.length > 0) return `the adapter read table(s) ${extra.join(', ')} that the product does not expect`;
   return undefined;
 }
 
