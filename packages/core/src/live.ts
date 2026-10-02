@@ -444,6 +444,12 @@ export interface KnockoutFixturesResult {
   degraded: boolean;
   /** Off the bundle there is no knockout window to fetch (audit A03). */
   unsupported?: true;
+  /**
+   * The season the provider reported for THIS response (absent when it stated
+   * none, or on failure). The fixtures belong to it — which need not be the
+   * season a live read made in the same breath answered for.
+   */
+  season?: SeasonInfo;
 }
 
 /**
@@ -482,7 +488,8 @@ export async function getKnockoutFixtures(
         isResolvedNation(m.away),
     )
     .sort(byKickoff);
-  return { fixtures, degraded: false };
+  const season = fetchMeta(live)?.season;
+  return { fixtures, degraded: false, ...(season ? { season } : {}) };
 }
 
 /**

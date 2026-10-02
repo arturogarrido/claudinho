@@ -228,7 +228,9 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     // read back from the file, and the season this cycle's response reports.
     const cachedSeason = sealSeason(base?.season);
     let season: SeasonInfo | undefined = cachedSeason;
-    let fixturesRefreshed = false;
+    // The season the `fixtures` slice belongs to: the cached state's while the
+    // slice is carried, its own response's once this cycle refetches it.
+    let fixturesSeason: SeasonInfo | undefined = cachedSeason;
     // The adapter runs on the refresher's clock (an injected `now` plus the
     // real time elapsed since), so its absolute cooldown deadline and the
     // snapshot's `backoffUntil` are on the same timeline.
@@ -247,7 +249,12 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
         const r = await getLiveMatches(adapter, now);
         live = r.matches;
         degraded = r.degraded;
-        if (r.season) season = r.season;
+        // The stored season describes the response that last refreshed `live`.
+        // A response that ANSWERED replaces it with whatever it stated — and if
+        // it stated no readable season, with nothing: fresh live data must not
+        // be published under the previous response's season. A fetch that
+        // failed replaced nothing, so the snapshot keeps the season it had.
+        if (!r.degraded) season = r.season;
       } catch {
         degraded = true;
       }
@@ -267,21 +274,23 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
         if (!r.degraded) {
           fixtures = r.fixtures;
           fixturesUpdatedAt = now.toISOString();
-          fixturesRefreshed = true;
+          fixturesSeason = r.season;
         }
       } catch {
         /* keep prior fixtures + timestamp; retry next cycle */
       }
     }
 
-    // ROLLOVER. The live response answered for a different season than the one
-    // the cached state was written for: that state describes another edition,
-    // and nothing of it is merged into this one. The live slice was just
-    // replaced by that response; the fixtures slice, unless this very cycle
-    // refetched it, is DROPPED rather than carried — the cache is replaced
-    // whole. (The hot path cannot detect a new season; it takes this one
-    // refresh. The backoff below is about the provider, not a season, and stays.)
-    if (season && cachedSeason && season.year !== cachedSeason.year && !fixturesRefreshed) {
+    // ONE SEASON PER SNAPSHOT. The state's season is the live response's. The
+    // fixtures slice stays only if nothing says it belongs to a DIFFERENT one:
+    // carried from a cache written for another season (a rollover), or just
+    // refetched but answered for another season (an old binary in a new
+    // edition: its bundled knockout window still answers for the bundle's
+    // year). Either way it is dropped, never merged — the cache is replaced
+    // whole. An unknown season on either side is not "different". (The hot
+    // path cannot detect a new season; it takes this one refresh. The backoff
+    // below is about the provider, not a season, and stays.)
+    if (season && fixturesSeason && season.year !== fixturesSeason.year) {
       fixtures = undefined;
       fixturesUpdatedAt = undefined;
       fixturesAttemptedAt = undefined;

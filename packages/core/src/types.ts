@@ -20,7 +20,8 @@ export interface Team {
    * (`espn:359`). The same for a club in every competition it plays. Present
    * on a team read from a live feed (and on that team read back from the
    * cache); ABSENT on the bundled schedule's teams and on a feed record that
-   * carried none. When both teams of a comparison have one, the ids decide.
+   * carried none. Two teams with the same id are one team, whatever they are
+   * called; the id never makes two teams of one code AND name (see `sameTeam`).
    */
   id?: string;
 }

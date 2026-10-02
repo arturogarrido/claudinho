@@ -28,9 +28,11 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
 - **A `Team` has one constructor and one identity.** `sealTeam` builds every
   team — feed competitors, standings rows, cache records. `id` is the provider's
   stable id, namespaced (`espn:359`), kept only when it matches the grammar and
-  dropped otherwise on every path alike. `code` is a display label, never an
-  identity and never matched against a shape (a real club is `O&M`; `CAR` is two
-  clubs in one competition). `sameTeam` decides self-play: the same id, OR the
+  dropped otherwise on every path alike. `code` is a display label: never
+  matched against a shape, and not an identity (a real club is `O&M`; `CAR` is
+  two clubs in one competition). The places that still select a team by its
+  letters (`fixturesByTeam`, the statusline/hook filter, the team argument) are
+  legacy World Cup behaviour, not a pattern to copy. `sameTeam` decides self-play: the same id, OR the
   same code and name — an id only ever adds a refusal.
 - **Response metadata rides on the result.** The season a response answered for
   is attached to the returned array (`adapters/meta.ts`), never stored on the

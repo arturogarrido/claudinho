@@ -12,14 +12,17 @@
  *   1. BOUND BEFORE WORK. Cardinality is checked, and collections are sliced,
  *      before anything is mapped, sorted or sanitized. Capping the result of an
  *      unbounded traversal is not a bound — it is the traversal that costs.
- *   2. IDENTITY IS THE PROVIDER'S, NOT OURS. A participant is the same team as
- *      another iff ESPN says so via `team.id` (present on 208/208 real
- *      competitors, 48 distinct). Comparing codes or names is a heuristic, and
- *      it broke both ways: it accepted `MEX vs MEX` and it rejected the real
- *      knockout pair `RD32 / Round of 32 1 Winner` vs `RD32 / Round of 32 3
- *      Winner`, which share an abbreviation because neither slot is filled yet.
- *      Since 0.11 that id rides ON the `Team` (`espn:<id>`), so the comparison
- *      is made once, in `sealMatch`, for the feed and the cache alike.
+ *   2. IDENTITY IS THE PROVIDER'S, NOT OURS. ESPN's `team.id` (present on
+ *      208/208 real competitors, 48 distinct) is the only stable way to know
+ *      that two participants are ONE team: comparing codes alone rejected the
+ *      real knockout pair `RD32 / Round of 32 1 Winner` vs `RD32 / Round of 32
+ *      3 Winner`, which share an abbreviation because neither slot is filled
+ *      yet, and comparing labels alone accepted one team twice under two
+ *      spellings. Since 0.11 the id rides ON the `Team` (`espn:<id>`), and the
+ *      comparison is made once, in `sealMatch` (`sameTeam`), for the feed and
+ *      the cache alike. The rule there is: the same id, OR the same code and
+ *      name. An id ADDS a refusal; two different ids never make `Mexico` vs
+ *      `Mexico` a fixture.
  */
 import { isFinished } from '../normalize';
 import type { GroupStandings, StandingRow } from '../standings';
@@ -73,12 +76,17 @@ interface RawCompetitor {
 }
 
 export interface MapContext {
-  /** Group letter by team CODE — the fallback for a team the feed gave no id. */
+  /**
+   * Group letter by team CODE. Used for a team the feed gave NO id, and for
+   * every team when there is no id map at all (standings rows that carried
+   * none). Never for a team that has an id while an id map exists.
+   */
   groupByTeam?: Record<string, string>;
   /**
-   * Group letter by team ID. Consulted first: two teams can share a code
-   * (`CAR` is two clubs in the Libertadores), and keyed by code the table read
-   * last would name both fixtures' group.
+   * Group letter by team ID. When present it is the ONLY source for a team
+   * that has an id: two teams can share a code (`CAR` is two clubs in the
+   * Libertadores), so a code that happens to match is another team's row, and
+   * a missing row means "no group known", not "try the letters".
    */
   groupByTeamId?: Record<string, string>;
 }
@@ -239,13 +247,18 @@ export function parseEspnEvent(raw: unknown, ctx: MapContext = {}): ParseResult<
   if (!status) return malformed('event status is not a status we recognize');
   const stage = member<Stage>(stageFromSlug((ev.season as { slug?: unknown })?.slug), STAGES) ?? 'FRIENDLY';
 
-  // By id first, by code only for a team the feed gave no id (or a table that
-  // carried none): a shared code must not put a fixture in another club's group.
+  // A team with an id is looked up BY ID, and only by id, whenever an id map
+  // exists: if its row is missing, the group is unknown — a code that matches
+  // is some other club's row (`CAR` is two clubs). Codes serve a team the feed
+  // gave no id, and every team when the standings carried no ids at all. A
+  // missing group letter is an absent enrichment; a wrong one is a wrong fact.
   let group: string | undefined;
   if (stage === 'GROUP') {
-    const byId = (t: Team) => (t.id !== undefined ? ctx.groupByTeamId?.[t.id] : undefined);
-    group =
-      byId(home) ?? byId(away) ?? ctx.groupByTeam?.[home.code] ?? ctx.groupByTeam?.[away.code];
+    const groupOf = (t: Team): string | undefined =>
+      t.id !== undefined && ctx.groupByTeamId
+        ? ctx.groupByTeamId[t.id]
+        : ctx.groupByTeam?.[t.code];
+    group = groupOf(home) ?? groupOf(away);
   }
 
   const hs = toGoals(homeRaw.score);

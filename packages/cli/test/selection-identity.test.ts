@@ -453,6 +453,36 @@ describe('season in the cache', () => {
     expect(state?.fixturesUpdatedAt).toBeUndefined();
   });
 
+  it('a response that states no readable season does not inherit the cached one', async () => {
+    // Found in review: `season` started from the cache and was replaced only
+    // when the new response HAD one, so fresh live data was published under the
+    // previous response's season. The stored season describes the response that
+    // last refreshed `live`; when that response states none, none is stored.
+    seed(2026);
+    vi.stubGlobal('fetch', async () =>
+      response({ leagues: [{ season: { year: '2030' } }], events: [] }),
+    );
+    await runRefresh({ source: 'espn', competition: 'fifa.world', now: OPENER_LIVE, jitterMs: 0 });
+    const state = readState('espn', 'fifa.world');
+    expect(state?.degraded).toBe(false);
+    expect(state?.updatedAt).toBe(OPENER_LIVE.toISOString());
+    expect(state?.season).toBeUndefined();
+    // Unknown is not "different": nothing says the edition changed, so the
+    // slice this cycle did not refetch is still carried.
+    expect(state?.fixtures).toHaveLength(1);
+  });
+
+  it('a failed live fetch keeps the season the snapshot was written for', async () => {
+    seed(2026);
+    vi.stubGlobal('fetch', async () => {
+      throw new Error('offline');
+    });
+    await runRefresh({ source: 'espn', competition: 'fifa.world', now: OPENER_LIVE, jitterMs: 0 });
+    const state = readState('espn', 'fifa.world');
+    expect(state?.degraded).toBe(true);
+    expect(state?.season?.year).toBe(2026);
+  });
+
   it('a slice the same cycle refetched is the new season’s, and is kept', async () => {
     // A semi-final is in play and the next fixtures are knockouts, so this
     // cycle refetches BOTH slices; the fixtures it just read are not "carried".
@@ -487,6 +517,49 @@ describe('season in the cache', () => {
     expect(state?.season?.year).toBe(2030);
     expect(state?.fixtures?.map((m) => m.id)).toEqual(['760517']);
     expect(state?.fixtures?.[0]?.home.id).toBe('espn:164');
+  });
+
+  it('a refetched slice is kept only if ITS response is the same season', async () => {
+    // Found in review: a slice the cycle refetched was exempt from the
+    // rollover whatever season its own response reported. An old binary in a
+    // new edition is exactly this: the live window answers for 2030, while the
+    // bundle's knockout window (2026 dates) answers for 2026 — and the cache
+    // then said "2030" while holding the 2026 final as the next match.
+    const SEMI_LIVE = new Date('2026-07-14T19:30:00Z');
+    writeState({
+      updatedAt: new Date(SEMI_LIVE.getTime() - 60_000).toISOString(),
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+      season: { year: 2026, label: '2026 FIFA World Cup' },
+    });
+    const final2026 = {
+      id: '760517',
+      date: '2026-07-19T19:00Z',
+      season: { slug: 'final' },
+      status: { type: { name: 'STATUS_SCHEDULED', state: 'pre' } },
+      competitions: [
+        {
+          competitors: [
+            { homeAway: 'home', team: { id: '164', abbreviation: 'ESP', displayName: 'Spain' } },
+            { homeAway: 'away', team: { id: '202', abbreviation: 'ARG', displayName: 'Argentina' } },
+          ],
+        },
+      ],
+    };
+    vi.stubGlobal('fetch', async (url: unknown) =>
+      // The knockout window starts on Jun 28; the live window is around "now".
+      String(url).includes('dates=20260628')
+        ? response({ leagues: [{ season: season(2026) }], events: [final2026] })
+        : response({ leagues: [{ season: season(2030) }], events: [] }),
+    );
+    await runRefresh({ source: 'espn', competition: 'fifa.world', now: SEMI_LIVE, jitterMs: 0 });
+
+    const state = readState('espn', 'fifa.world');
+    expect(state?.season?.year).toBe(2030);
+    expect(state?.fixtures).toBeUndefined();
+    expect(state?.fixturesUpdatedAt).toBeUndefined();
   });
 
   it('a dated query never writes the live cache', async () => {

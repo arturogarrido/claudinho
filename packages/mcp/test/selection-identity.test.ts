@@ -119,19 +119,39 @@ describe('identity — a team’s provider id is a declared part of the output',
     await Promise.all([server.connect(serverT), client.connect(clientT)]);
     try {
       const { tools } = await client.listTools();
-      type Schema = { properties?: Record<string, Schema>; items?: Schema; anyOf?: Schema[] };
-      const team = (tool: string, path: (s: Schema) => Schema | undefined): Schema | undefined => {
-        const out = tools.find((t) => t.name === tool)?.outputSchema as Schema | undefined;
-        return out ? path(out) : undefined;
+      type Schema = { properties?: Record<string, Schema>; items?: Schema; anyOf?: Schema[]; $ref?: string; type?: unknown };
+      // The advertised schema reuses shapes through `$ref` (a JSON pointer into
+      // the same tool's schema), so follow them: an assertion that stops at a
+      // `$ref`, or that greps for any `id`, can pass on the MATCH's id alone.
+      const deref = (root: Schema, node: Schema | undefined): Schema | undefined => {
+        let cur = node;
+        for (let hops = 0; cur?.$ref && hops < 8; hops++) {
+          cur = cur.$ref
+            .replace(/^#\//, '')
+            .split('/')
+            .reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], root) as Schema | undefined;
+        }
+        return cur;
       };
-      // `away` is a `$ref` to `home` in the advertised schema, so `home` is
-      // where the team shape is declared — for every tool that returns matches.
-      for (const tool of ['get_today', 'get_live']) {
-        const home = team(tool, (s) => s.properties?.matches?.items?.properties?.home);
-        expect(home?.properties?.id, tool).toEqual({ type: 'string' });
+      const teamShape = (tool: string, path: (root: Schema) => Schema | undefined): Schema | undefined => {
+        const root = tools.find((t) => t.name === tool)?.outputSchema as Schema | undefined;
+        if (!root) return undefined;
+        const match = deref(root, path(root));
+        // A nullable match is `anyOf: [match, null]`.
+        const object = match?.properties ? match : (match?.anyOf ?? []).map((v) => deref(root, v)).find((v) => v?.properties);
+        return deref(root, object?.properties?.home);
+      };
+      const everyMatchShape: Array<[string, (root: Schema) => Schema | undefined]> = [
+        ['get_today', (r) => r.properties?.matches?.items],
+        ['get_live', (r) => r.properties?.matches?.items],
+        ['get_match', (r) => r.properties?.match],
+        ['get_next_fixture', (r) => r.properties?.fixture],
+      ];
+      for (const [tool, path] of everyMatchShape) {
+        const home = teamShape(tool, path);
+        expect(home?.properties?.code, `${tool}: found the team shape`).toEqual({ type: 'string' });
+        expect(home?.properties?.id, `${tool}: team id declared`).toEqual({ type: 'string' });
       }
-      const fixture = team('get_next_fixture', (s) => s.properties?.fixture);
-      expect(JSON.stringify(fixture)).toContain('"id":{"type":"string"}');
     } finally {
       await client.close();
     }

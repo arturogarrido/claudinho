@@ -20,7 +20,7 @@ import { EspnAdapter } from '../src/adapters/espn';
 import { attachFetchMeta, fetchMeta } from '../src/adapters/meta';
 import type { ProviderAdapter } from '../src/adapters/types';
 import { bundleApplies } from '../src/competition';
-import { getLiveMatches, getMatchesForDate, makeAdapter } from '../src/live';
+import { getKnockoutFixtures, getLiveMatches, getMatchesForDate, makeAdapter } from '../src/live';
 import { FakeMarketProvider } from '../src/markets/fake';
 import { PolymarketProvider } from '../src/markets/polymarket';
 import { makeMarketProvider } from '../src/markets/provider';
@@ -202,6 +202,34 @@ describe('selection — decided once, at the edge', () => {
     it('the MCP server resolves it once, where it builds the request’s adapter', () => {
       const sites = callSites('mcp', /\bresolveCompetition\(/);
       expect(sites.map((s) => s.replace(/:\d+$/, ''))).toEqual(['mcp/src/tools.ts']);
+    });
+
+    it('scripts that call core do so with the current signatures', () => {
+      // Found in review: `scripts/release-qa.sh` still called
+      // `makeAdapter('espn')`. The script is not type-checked; the call threw
+      // before any fetch, its stderr is discarded, and the drift tripwire read
+      // the empty output as "feed unreachable" and SKIPPED — a broken check
+      // reporting itself as a quiet day.
+      const REPO = join(PACKAGES, '..');
+      const scriptDirs = [join(REPO, 'scripts'), ...['core', 'cli', 'mcp'].map((p) => join(PACKAGES, p, 'scripts'))];
+      const offenders: string[] = [];
+      for (const dir of scriptDirs) {
+        let names: string[] = [];
+        try {
+          names = readdirSync(dir);
+        } catch {
+          continue; // a package without scripts
+        }
+        for (const name of names) {
+          const path = join(dir, name);
+          if (!statSync(path).isFile()) continue;
+          const text = readFileSync(path, 'utf8');
+          // One-argument makeAdapter, or any argument-less resolver/gate call.
+          if (/\bmakeAdapter\(\s*(['"][^'"]*['"])?\s*\)/.test(text)) offenders.push(`${name}: makeAdapter without a competition`);
+          if (/\b(bundleApplies|marketsCoverCompetition|makeMarketProvider)\(\s*\)/.test(text)) offenders.push(`${name}: a competition-less call`);
+        }
+      }
+      expect(offenders).toEqual([]);
     });
 
     it('no call anywhere omits the argument', () => {
@@ -388,6 +416,71 @@ describe('identity — the provider’s stable id, on both paths', () => {
     });
   });
 
+  it('a team with an id is never given ANOTHER team’s group through a shared code', () => {
+    // Found in review: after both id lookups missed, enrichment fell back
+    // to codes unconditionally. Standings that carry Always Ready (`CAR`, Group
+    // B) but omit Carabobo's row then put Carabobo's fixture in Group B.
+    const carabobo = event(
+      '1001',
+      '2026-04-08T00:00Z',
+      { id: '17468', abbreviation: 'CAR', displayName: 'Carabobo' },
+      { id: '2674', abbreviation: 'BOT', displayName: 'Botafogo' },
+      'group-stage',
+    );
+    const r = parseEspnEvent(carabobo, {
+      groupByTeam: { CAR: 'B' },
+      groupByTeamId: { 'espn:9101': 'B' },
+    });
+    expect(r.kind).toBe('valid');
+    if (r.kind !== 'valid') return;
+    expect(r.value.group).toBeUndefined();
+  });
+
+  it('the code map still serves a team the feed gave no id, and a table that carried none', () => {
+    const noIds = event(
+      '1004',
+      '2026-04-08T00:00Z',
+      { abbreviation: 'CAR', displayName: 'Carabobo' },
+      { abbreviation: 'BOT', displayName: 'Botafogo' },
+      'group-stage',
+    );
+    const byCodeOnly = parseEspnEvent(noIds, { groupByTeam: { CAR: 'A' }, groupByTeamId: { 'espn:9101': 'B' } });
+    expect(byCodeOnly.kind === 'valid' && byCodeOnly.value.group).toBe('A');
+
+    // No id map at all (the standings rows carried no ids): codes are all there is.
+    const withIds = event(
+      '1005',
+      '2026-04-08T00:00Z',
+      { id: '17468', abbreviation: 'CAR', displayName: 'Carabobo' },
+      { id: '2674', abbreviation: 'BOT', displayName: 'Botafogo' },
+      'group-stage',
+    );
+    const noIdMap = parseEspnEvent(withIds, { groupByTeam: { CAR: 'A' } });
+    expect(noIdMap.kind === 'valid' && noIdMap.value.group).toBe('A');
+  });
+
+  it('standings that carry no ids at all still enrich by code, through the adapter', async () => {
+    // The adapter must not hand the parser an EMPTY id map: that would read as
+    // "ids are known, and this team's is in no group".
+    const row = (abbr: string, name: string, rank: number) => ({
+      team: { abbreviation: abbr, displayName: name },
+      stats: ['gamesPlayed', 'wins', 'ties', 'losses', 'pointsFor', 'pointsAgainst', 'pointDifferential', 'points']
+        .map((n) => ({ name: n, value: 0 }))
+        .concat([{ name: 'rank', value: rank }]),
+    });
+    const idless = { children: [{ name: 'Group C', standings: { entries: [row('CAR', 'Carabobo', 1), row('BOT', 'Botafogo', 2)] } }] };
+    const events = [
+      event('1001', '2026-04-08T00:00Z', { id: '17468', abbreviation: 'CAR', displayName: 'Carabobo' }, { id: '2674', abbreviation: 'BOT', displayName: 'Botafogo' }, 'group-stage'),
+    ];
+    const adapter = new EspnAdapter({
+      competition: 'conmebol.libertadores',
+      fetchImpl: (async (url: unknown) =>
+        response(String(url).includes('/standings') ? idless : scoreboard(SEASON_2026, events))) as unknown as typeof fetch,
+    });
+    const [match] = await adapter.fetchByDate('2026-04-08');
+    expect(match?.group).toBe('C');
+  });
+
   it('a code is a display label: a real abbreviation is neither refused nor rewritten', () => {
     // Universidad O&M plays the Concacaf Champions Cup as `O&M` (measured on
     // the real feed, Oct 2 2026). A `[A-Z0-9]{2,4}` grammar would have dropped
@@ -497,6 +590,28 @@ describe('season — what the provider reported about ONE response', () => {
     });
     const result = await getMatchesForDate(adapter, '2024-09-14');
     expect(result.season).toMatchObject({ year: 2024, label: '2024-25 English Premier League' });
+  });
+
+  it('the knockout-fixtures read returns its response’s season too', async () => {
+    // The refresher compares it with the live response's season: fixtures it
+    // just refetched are only "this season's" if their own response says so.
+    const final: Match = {
+      id: '760517',
+      stage: 'F',
+      kickoff: '2026-07-19T19:00:00.000Z',
+      venue: 'MetLife Stadium',
+      home: { code: 'ESP', name: 'Spain', flag: '🇪🇸', id: 'espn:164' },
+      away: { code: 'ARG', name: 'Argentina', flag: '🇦🇷', id: 'espn:202' },
+      status: 'SCHEDULED',
+      updatedAt: '2026-07-14T00:00:00.000Z',
+    };
+    const adapter = fakeAdapter('fifa.world', {
+      fetchWindow: async () =>
+        attachFetchMeta([final], { season: { year: 2026, label: '2026 FIFA World Cup' } }),
+    });
+    const r = await getKnockoutFixtures(adapter, new Date('2026-07-14T19:30:00Z'));
+    expect(r.fixtures.map((m) => m.id)).toEqual(['760517']);
+    expect(r.season?.year).toBe(2026);
   });
 
   describe('the bundle is the 2026 edition', () => {

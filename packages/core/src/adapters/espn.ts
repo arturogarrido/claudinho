@@ -361,9 +361,9 @@ export class EspnAdapter implements ProviderAdapter {
   }
 
   /**
-   * Both group maps from one standings read. The id map is what fixtures are
-   * enriched from; the code map is the fallback for a team with no id, and is
-   * the only one a shared abbreviation can corrupt.
+   * Both group maps from one standings read. A fixture's team that has an id
+   * is enriched from the id map alone; the code map serves a team with no id,
+   * and every team when the standings rows carried no ids (see `MapContext`).
    */
   private async groupMaps(
     force = false,
@@ -408,7 +408,12 @@ export class EspnAdapter implements ProviderAdapter {
     // parsing anything and drops what it cannot read. The adapter no longer
     // decides any of that — which is the point, since every duplicated rule was
     // a place for the two copies to drift.
-    const parsed = parseEspnEvents(data, { groupByTeam: groups.value, groupByTeamId: groups.byId });
+    const parsed = parseEspnEvents(data, {
+      groupByTeam: groups.value,
+      // An EMPTY id map means the standings carried no ids, not that no team is
+      // in a group: pass none, so codes are consulted.
+      ...(Object.keys(groups.byId).length > 0 ? { groupByTeamId: groups.byId } : {}),
+    });
     // What the provider said about THIS response rides on THIS result (see
     // adapters/meta.ts) — never on the adapter, where an overlapping call would
     // overwrite it. An unreadable season is simply absent; it is never guessed.
