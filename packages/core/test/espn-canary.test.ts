@@ -403,6 +403,75 @@ describe('a window takes several requests: each is judged, and the provider is b
   });
 });
 
+describe('found in review: a part that could not be seen does not hide a part that was seen to be wrong', () => {
+  // One verdict was picked for the question, "blocked" before "rejected" and
+  // "unreachable" before "changed": a defect the canary had in its hands went
+  // unreported, and the run stayed green, whenever a sibling request was
+  // throttled or down. The window here is Oct 9 to 11 (three requests).
+  const windowRow = (r: { rows: Array<{ request: string; verdict: string; detail: string }> }) => r.rows.find((x) => x.request === 'window');
+
+  it('a refused form beside a throttled part is red, and the run still stops asking', async () => {
+    const r = await run(
+      (url) =>
+        /dates=20261009(&|$)/.test(url)
+          ? json({ code: 400, message: 'Failed to get events endpoint.' }, 400)
+          : /dates=20261011(&|$)/.test(url)
+            ? json({}, 429)
+            : healthy(url),
+      ['eng.1', 'esp.1'],
+    );
+    expect(windowRow(r)?.verdict).toBe('rejected');
+    expect(windowRow(r)?.detail).toMatch(/HTTP 400/);
+    expect(windowRow(r)?.detail).toMatch(/blocked/);
+    expect(r.red).toBe(true);
+    // The throttle is still believed: nothing after the window is asked.
+    expect(r.urls).toHaveLength(5);
+    expect(r.rows.slice(3).every((row) => row.verdict === 'blocked' && row.requests === 0)).toBe(true);
+  });
+
+  it('a body that is not JSON beside a part that was down is red', async () => {
+    const r = await run((url) =>
+      /dates=20261009(&|$)/.test(url)
+        ? new Response('<html>', { status: 200 })
+        : /dates=20261011(&|$)/.test(url)
+          ? json({}, 503)
+          : healthy(url),
+    );
+    expect(windowRow(r)?.verdict).toBe('changed');
+    expect(windowRow(r)?.detail).toMatch(/not JSON/);
+    expect(windowRow(r)?.detail).toMatch(/unreachable/);
+    expect(r.red).toBe(true);
+  });
+
+  it('a part that WAS read is still checked when a sibling was down: a team without an id', async () => {
+    const noId = event('8', { date: '2026-10-09T15:00Z' });
+    (noId.competitions[0]?.competitors[0]?.team as { id?: string }).id = undefined;
+    const r = await run((url) =>
+      /dates=20261011(&|$)/.test(url) ? json({}, 503) : json(url.includes('/standings') ? standings() : scoreboard(url, [event('401878761'), noId])),
+    );
+    expect(windowRow(r)?.verdict).toBe('changed');
+    expect(windowRow(r)?.detail).toMatch(/without an id/);
+    expect(windowRow(r)?.detail).toMatch(/unreachable/);
+  });
+
+  it('and so is how it files a day', async () => {
+    // Filed under the 9th, kicking off on the provider's 10th.
+    const misfiled = { leagues: [{ season: SEASON }], events: [event('7', { date: '2026-10-10T15:00Z' })] };
+    const r = await run((url) =>
+      /dates=20261011(&|$)/.test(url) ? json({}, 429) : /dates=20261009(&|$)/.test(url) ? json(misfiled) : healthy(url),
+    );
+    expect(windowRow(r)?.verdict).toBe('changed');
+    expect(windowRow(r)?.detail).toMatch(/filed under 20261009 kicks off on provider day 20261010/);
+    expect(r.red).toBe(true);
+  });
+
+  it('nothing wrong in what was seen: the part that could not be seen decides, and the row is neutral', async () => {
+    const down = await run((url) => (/dates=20261011(&|$)/.test(url) ? json({}, 503) : healthy(url)));
+    expect(windowRow(down)?.verdict).toBe('unreachable');
+    expect(down.red).toBe(false);
+  });
+});
+
 describe('found in review: the default scoreboard is checked like the dated ones', () => {
   // `fetchLive` keeps only matches in play, so a refused or id-less SCHEDULED
   // event on the default scoreboard used to disappear before any check ran.
@@ -802,7 +871,7 @@ describe('found in review: it asks every request form the adapter has, with the 
 describe('found in review: a run that could not see says so', () => {
   it('blocked and unreachable rows are a warning for the person, not a green silence', async () => {
     const blocked = await run(() => json({}, 429), ['eng.1', 'esp.1']);
-    expect(canaryWarnings(blocked)).toEqual(['8 of 8 requests were not answered (8 blocked, 0 unreachable): the canary saw nothing of those']);
+    expect(canaryWarnings(blocked)).toEqual(['8 of 8 questions were not answered (8 blocked, 0 unreachable): the canary saw nothing of those']);
     const fine = await run(healthy);
     expect(canaryWarnings(fine)).toEqual([]);
   });

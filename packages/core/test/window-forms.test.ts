@@ -242,6 +242,67 @@ describe('one window, one account', () => {
   });
 });
 
+describe('a response that could not be read at all is a failed part', () => {
+  // Found in review. An unreadable ENVELOPE (no `events` list) is not a refused
+  // record: nothing says what the day holds. Judged with its siblings it passed
+  // as one, and "nothing live" was said over a day nobody had read.
+  for (const [what, garbage] of [
+    ['an empty object', {}],
+    ['`events` that is no list', { events: 'nope' }],
+  ] as const) {
+    it(`${what} beside a readable day fails the window`, async () => {
+      const f = feed([{ ...SAT_EARLY, state: 'post' }], { fail: (d) => (d === '20261011' ? json(garbage) : undefined) });
+      await expect(adapterOn(f).fetchWindow('2026-10-10', '2026-10-12')).rejects.toMatchObject({ kind: 'parse' });
+    });
+  }
+
+  it('so "nothing live" is never said over a day that was not read', async () => {
+    const f = feed([{ ...SAT_EARLY, state: 'post' }], { fail: (d) => (d === '20261011' ? json({}) : undefined) });
+    const r = await getLiveMatches(adapterOn(f), new Date('2026-10-11T20:00Z'));
+    expect(r.matches).toEqual([]);
+    expect(r.degraded).toBe(true);
+  });
+
+  it('a month that could not be read fails a long window too', async () => {
+    const f = feed(ALL, { fail: (d) => (d === '202611' ? json({ events: null }) : undefined) });
+    await expect(adapterOn(f).fetchWindow('2026-10-11', '2026-11-03')).rejects.toMatchObject({ kind: 'parse' });
+  });
+
+  it('a single read of one is the failure it always was', async () => {
+    await expect(adapterOn(feed([], { fail: () => json({}) })).fetchByDate('2026-10-10')).rejects.toMatchObject({ kind: 'parse' });
+  });
+});
+
+describe('one fixture under two parts, when a month is narrowed to the window', () => {
+  // Found in review. Records outside the window were dropped BEFORE ids were
+  // compared, so a second copy of a fixture that fell outside it (the same id,
+  // another kickoff) left the window calling itself complete.
+  const months = (june: Ev[], july: Ev[]) =>
+    (async (input: unknown) => {
+      const asked = new URL(String(input)).searchParams.get('dates') ?? '';
+      return json({ leagues: [{ season: SEASON }], events: (asked === '202606' ? june : asked === '202607' ? july : []).map(event) });
+    }) as unknown as typeof fetch;
+  const on = (fetchImpl: typeof fetch) => new EspnAdapter({ competition: 'mex.1', enrichGroups: false, fetchImpl });
+
+  it('the second copy is outside the window: the first is kept, and the window is not complete', async () => {
+    const got = await on(months([{ id: '9', date: '2026-06-29T19:00Z' }], [{ id: '9', date: '2026-07-20T19:00Z' }])).fetchWindow('2026-06-28', '2026-07-19');
+    expect(got.map((m) => [m.id, m.kickoff.slice(0, 10)])).toEqual([['9', '2026-06-29']]);
+    expect(fetchMeta(got)?.complete).toBe(false);
+  });
+
+  it('the FIRST copy is outside the window: it still decides (nothing is kept), and the window is not complete', async () => {
+    const got = await on(months([{ id: '9', date: '2026-06-20T19:00Z' }], [{ id: '9', date: '2026-07-05T19:00Z' }])).fetchWindow('2026-06-28', '2026-07-19');
+    expect(got).toEqual([]);
+    expect(fetchMeta(got)?.complete).toBe(false);
+  });
+
+  it('a fixture outside the window, held once, takes nothing from a complete answer', async () => {
+    const got = await on(months([{ id: '8', date: '2026-06-20T19:00Z' }], [{ id: '9', date: '2026-07-05T19:00Z' }])).fetchWindow('2026-06-28', '2026-07-19');
+    expect(ids(got)).toEqual(['9']);
+    expect(fetchMeta(got)?.complete).toBe(true);
+  });
+});
+
 describe('settled before it answers', () => {
   const later = <T,>(value: T, ms: number) => new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
 
@@ -279,6 +340,30 @@ describe('settled before it answers', () => {
     const a = adapterOn(f, now);
     await expect(a.fetchWindow('2026-10-10', '2026-10-12')).rejects.toMatchObject({ status: 429, retryAfterMs: 600_000 });
     expect(a.cooldownUntil).toBe(now.getTime() + 600_000);
+  });
+
+  it('of two throttles, the one whose silence ENDS later is the window’s error: a deadline counts from when it was received', async () => {
+    // Found in review: the two were compared by the delay each asked for, with
+    // the clock frozen. A 429 asking for 60s at t=0 ends before a 403 asking
+    // for 59s that arrives at t=5s.
+    const t0 = Date.parse('2026-10-11T12:00Z');
+    let clock = t0;
+    const f = feed(ALL, {
+      fail: (d) =>
+        d === '20261010'
+          ? json({}, 429, { 'retry-after': '60' })
+          : d === '20261012'
+            ? (new Promise<Response>((resolve) =>
+                setTimeout(() => {
+                  clock = t0 + 5_000;
+                  resolve(json({}, 403, { 'retry-after': '59' }));
+                }, 30),
+              ) as unknown as Response)
+            : undefined,
+    });
+    const a = new EspnAdapter({ competition: 'mex.1', enrichGroups: false, fetchImpl: f.fetchImpl, now: () => clock });
+    await expect(a.fetchWindow('2026-10-10', '2026-10-12')).rejects.toMatchObject({ status: 403, retryAfterMs: 59_000 });
+    expect(a.cooldownUntil).toBe(t0 + 64_000);
   });
 
   it('without a throttle, the error is the first failed part’s, in the order asked', async () => {
@@ -439,6 +524,95 @@ describe('the reads that were degraded, with the provider refusing every range',
     expect(r.match?.id).toBe('760517');
     expect(r.match?.home.name).toBe('Spain');
     expect(r.match?.away.name).toBe('Argentina');
+  });
+
+  it('a match that kicked off on the provider’s previous day is still found in play the next morning', async () => {
+    // 03:30Z is 23:30 the evening before for the provider; at 08:30Z (04:30
+    // there) the day either side of "now" is what holds it.
+    const late: Ev = { id: '760415', date: '2026-06-12T03:30Z', state: 'in' };
+    const urls: string[] = [];
+    const fetchImpl = (async (input: unknown) => {
+      const url = String(input);
+      urls.push(url);
+      const asked = new URL(url).searchParams.get('dates') ?? '';
+      if (asked.includes('-')) return json({ code: 400 }, 400);
+      return json({
+        leagues: [{ season: WC_SEASON }],
+        events: easternDay(late.date) === asked ? [wcEvent(late, ['203', 'MEX', 'Mexico'], ['467', 'RSA', 'South Africa'], 'group-stage')] : [],
+      });
+    }) as unknown as typeof fetch;
+    const r = await getLiveMatches(wcAdapter({ fetchImpl }), new Date('2026-06-12T08:30Z'));
+    expect(r.degraded).toBe(false);
+    expect(r.matches.map((m) => m.id)).toEqual(['760415']);
+  });
+
+  it('what a read costs when the standings request beside it FAILS: it is asked again by each later read of the same call', async () => {
+    // The one-standings-request figure holds when that request succeeds (its
+    // answer is shared for 30 seconds). A failure is never kept, so a call that
+    // reads twice asks twice. Counted, so the budget states both.
+    const row = (id: string, code: string, name: string, rank: number) => ({
+      team: { id, abbreviation: code, displayName: name },
+      stats: ['gamesPlayed', 'wins', 'ties', 'losses', 'pointsFor', 'pointsAgainst', 'pointDifferential', 'points']
+        .map((n) => ({ name: n, value: 0 }))
+        .concat({ name: 'rank', value: rank }),
+    });
+    const TABLES = {
+      children: [
+        {
+          name: 'Group A',
+          standings: { entries: [row('203', 'MEX', 'Mexico', 1), row('467', 'RSA', 'South Africa', 2), row('451', 'KOR', 'South Korea', 3), row('450', 'CZE', 'Czechia', 4)] },
+        },
+      ],
+    };
+    const count = async (run: (a: EspnAdapter) => Promise<unknown>, standingsStatus: number) => {
+      const f = wcFeed();
+      const urls: string[] = [];
+      const fetchImpl = (async (input: unknown) => {
+        const url = String(input);
+        urls.push(url);
+        if (url.includes('/standings')) return standingsStatus === 200 ? json(TABLES) : json({}, standingsStatus);
+        return f.fetchImpl(input as string);
+      }) as unknown as typeof fetch;
+      await run(new EspnAdapter({ competition: 'fifa.world', enrichGroups: true, fetchImpl }));
+      const standings = urls.filter((u) => u.includes('/standings')).length;
+      return { scoreboard: urls.length - standings, standings };
+    };
+    const final = new Date('2026-07-19T19:30Z');
+    // The bracket reads the span, then the tables.
+    expect(await count((a) => getBracket(a, {}), 200)).toEqual({ scoreboard: 2, standings: 1 });
+    expect(await count((a) => getBracket(a, {}), 503)).toEqual({ scoreboard: 2, standings: 2 });
+    // A market read for a team with a tie in play reads the span, then the tie's own days.
+    expect(await count((a) => marketFixtureForTeam(a, 'ESP', final), 200)).toEqual({ scoreboard: 5, standings: 1 });
+    expect(await count((a) => marketFixtureForTeam(a, 'ESP', final), 503)).toEqual({ scoreboard: 5, standings: 2 });
+    // A read that makes one window asks once either way.
+    expect(await count((a) => getMatchesForDate(a, '2026-06-11'), 503)).toEqual({ scoreboard: 3, standings: 1 });
+  });
+
+  it('an answer that left a record out also says which fixtures it DID read, whatever became of them', async () => {
+    // Found in review. The refresher keeps a held fixture the answer "does not
+    // mention". Asked of the upcoming, resolved list, a tie the answer read and
+    // set aside (postponed, cancelled, played, no longer resolved) looked
+    // unmentioned, and its old scheduled copy was put back.
+    const f = wcFeed();
+    const july = (async (input: unknown) => {
+      const res = await f.fetchImpl(input as string);
+      if (!String(input).includes('dates=202607')) return res;
+      const body = (await res.json()) as { events: unknown[] };
+      body.events.push(
+        wcEvent({ id: '760516', date: '2026-07-18T19:00Z', raw: { status: { type: { name: 'STATUS_POSTPONED', state: 'pre' } } } }, ['478', 'FRA', 'France'], ['205', 'BRA', 'Brazil'], '3rd-place-match'),
+        event({ id: '760514', date: '2026-07-14T19:00Z', raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } }),
+      );
+      return json(body);
+    }) as unknown as typeof fetch;
+    const r = await getKnockoutFixtures(new EspnAdapter({ competition: 'fifa.world', enrichGroups: false, fetchImpl: july }), new Date('2026-07-14T12:00Z'));
+    expect(r.complete).toBe(false);
+    expect(r.fixtures.map((m) => m.id)).toEqual(['760517']);
+    // The postponed tie was read; the refused record was not. (June's opener is
+    // outside the span the window asked for.)
+    expect([...(r.mentioned ?? [])].sort()).toEqual(['760516', '760517']);
+    // A whole answer has no need to say.
+    const whole = await getKnockoutFixtures(wcAdapter(wcFeed()), new Date('2026-07-14T12:00Z'));
+    expect(whole.mentioned).toBeUndefined();
   });
 
   it('an answer that left a record out says so, so a caller does not take an absence for a fact', async () => {
