@@ -17,9 +17,10 @@
  * change the disk at the exact moment between "decided" and "locked".
  */
 import { EspnAdapter } from '@claudinho/core';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let onClaim: (() => void) | undefined;
@@ -40,8 +41,10 @@ import {
   backoffInEffect,
   backoffNotePath,
   cacheDir,
+  cachePath,
   type CacheState,
   claimLock,
+  readBackoffNote,
   readCurrentState,
   readState,
   releaseLock,
@@ -391,5 +394,132 @@ describe('a note is small, bounded and never deleted', () => {
       expect(dirname(backoffNotePath(SOURCE, hostile)), hostile).toBe(cacheDir());
       expect(dirname(backoffNotePath(hostile, WC)), hostile).toBe(cacheDir());
     }
+  });
+});
+
+describe('found in review', () => {
+  const nowMs = OPENER_LIVE.getTime();
+  const POSIX = process.platform !== 'win32';
+  const throttled = (retryAfter: string) =>
+    new EspnAdapter({
+      competition: WC,
+      enrichGroups: false,
+      now: () => nowMs,
+      fetchImpl: (async () => throttle(retryAfter)) as unknown as typeof fetch,
+    });
+
+  it('a REFRESHER whose publish is refused still leaves the throttle it met on disk', async () => {
+    // "A throttle always has somewhere to be written" held for a command and
+    // not for the refresher: when its lease was taken over mid-cycle the
+    // publish was refused and the deadline it had just been given went nowhere.
+    writeState(stale(OPENER_LIVE));
+    let successor: ReturnType<typeof claimLock>;
+    let stolen = false;
+    provider(() => {
+      if (!stolen) {
+        stolen = true;
+        successor = claimLock(Date.now() + 61_000); // the lease is judged stale and taken over, mid-fetch
+      }
+      return throttle('600');
+    });
+    await refresh(OPENER_LIVE);
+    releaseLock(successor); // the successor finishes, without having been throttled itself
+    // The publish was refused: the snapshot is the one from before.
+    expect(readState(SOURCE, WC)?.backoffUntil).toBeUndefined();
+    const until = inEffect(nowMs + 20_000) ?? 0;
+    expect(until).toBeGreaterThanOrEqual(nowMs + 600_000);
+    expect(until).toBeLessThan(nowMs + 602_000);
+    expect(shouldRefresh(nowMs + 20_000, readCurrentState(SOURCE, WC), WC, SOURCE)).toBe(false);
+    requests = [];
+    await refresh(new Date(nowMs + 20_000));
+    expect(requests).toEqual([]);
+  });
+
+  it('only a write that HAPPENED counts: a throttle that could be written nowhere is retried', async () => {
+    // The rule from the review of #128. Its test was rewritten when the first
+    // persist stopped being skipped (it goes to the note); the rule still has
+    // a failing case, and this is it: the lock is someone else's AND the note
+    // cannot be written. Marking that throttle "persisted" would lose it.
+    writeState(stale(OPENER_LIVE));
+    mkdirSync(backoffNotePath(SOURCE, WC), { recursive: true }); // a directory where the note goes
+    const held = claimLock(nowMs);
+    const inner = throttled('600');
+    const adapter = withPersistedBackoff(inner, SOURCE, OPENER_LIVE);
+    // Registered AFTER the wrapper's listener: the lock comes free once the first persist has failed.
+    inner.onCooldown?.(() => releaseLock(held));
+    await expect(adapter.fetchByDate('2026-06-11')).rejects.toMatchObject({ status: 429 });
+    expect(Date.parse(readState(SOURCE, WC)?.backoffUntil ?? '')).toBe(nowMs + 600_000);
+  });
+
+  it('the refresher’s publish: a carried deadline nobody believes neither outranks the cycle’s real throttle nor is carried on', async () => {
+    const never = '2099-01-01T00:00:00.000Z';
+    writeState(stale(OPENER_LIVE, { backoffUntil: never }));
+    provider(() => throttle('600'));
+    await refresh(OPENER_LIVE);
+    const until = Date.parse(readState(SOURCE, WC)?.backoffUntil ?? '');
+    expect(until).toBeGreaterThanOrEqual(nowMs + 600_000);
+    expect(until).toBeLessThan(nowMs + 602_000);
+    // A healthy cycle drops it.
+    rmSync(dir, { recursive: true, force: true });
+    writeState(stale(OPENER_LIVE, { backoffUntil: never }));
+    requests = [];
+    provider();
+    await refresh(OPENER_LIVE);
+    expect(days()).toHaveLength(3);
+    expect(readState(SOURCE, WC)?.backoffUntil).toBeUndefined();
+  });
+
+  it('both sides believed: the backoff in effect is the LATER one, whichever side holds it', () => {
+    writeState(stale(OPENER_LIVE, { backoffUntil: new Date(nowMs + 5 * MIN).toISOString() }));
+    writeBackoffNote(SOURCE, WC, nowMs + 20 * MIN, nowMs);
+    expect(inEffect(nowMs)).toBe(nowMs + 20 * MIN);
+    rmSync(dir, { recursive: true, force: true });
+    writeState(stale(OPENER_LIVE, { backoffUntil: new Date(nowMs + 20 * MIN).toISOString() }));
+    writeBackoffNote(SOURCE, WC, nowMs + 5 * MIN, nowMs);
+    expect(inEffect(nowMs)).toBe(nowMs + 20 * MIN);
+  });
+
+  it.skipIf(!POSIX)('a note path that is not a regular file is never opened (a pipe there would block the hot path)', () => {
+    mkdirSync(cacheDir(), { recursive: true });
+    execFileSync('mkfifo', [backoffNotePath(SOURCE, WC)]);
+    // Opening a pipe with no writer blocks for ever: this returns, or the test times out.
+    expect(readBackoffNote(SOURCE, WC, nowMs)).toBeUndefined();
+    expect(backoffInEffect(undefined, SOURCE, WC, nowMs)).toBeUndefined();
+  });
+
+  it.skipIf(!POSIX || process.getuid?.() === 0)('a note that cannot be read back was not written: the caller is told, and retries', () => {
+    // An existing note nobody can read: the replacement inherits its mode (an
+    // atomic write preserves it), so the deadline is on disk and invisible.
+    mkdirSync(cacheDir(), { recursive: true });
+    const path = backoffNotePath(SOURCE, WC);
+    writeFileSync(path, '{}');
+    chmodSync(path, 0o000);
+    try {
+      expect(writeBackoffNote(SOURCE, WC, nowMs + 10 * MIN, nowMs)).toBe(false);
+    } finally {
+      chmodSync(path, 0o600);
+    }
+  });
+
+  it('the note is named after its snapshot, by one rule: a scope cannot have one without the other', () => {
+    for (const [source, competition] of [
+      [SOURCE, WC],
+      [SOURCE, 'eng.1'],
+      ['fake', WC],
+      [SOURCE, 'a/../b'],
+    ] as const) {
+      const snapshot = basename(cachePath(source, competition));
+      expect(basename(backoffNotePath(source, competition)), snapshot).toBe(snapshot.replace(/^state/, 'backoff'));
+    }
+  });
+
+  it('an unknown source: its one idle snapshot is written under the lock too, after reading again', async () => {
+    const quiet = new Date('2026-06-12T09:00:00Z');
+    provider();
+    const theirs: CacheState = { updatedAt: '2026-06-12T08:59:00.000Z', live: [], degraded: true, source: 'nope', competition: WC };
+    onClaim = () => writeState(theirs);
+    await runRefresh({ source: 'nope', competition: WC, now: quiet, jitterMs: 0 });
+    expect(requests).toEqual([]);
+    expect(readState('nope', WC)?.updatedAt).toBe(theirs.updatedAt); // the other one's, not overwritten
   });
 });
