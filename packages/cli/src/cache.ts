@@ -153,7 +153,8 @@ function lockPath(): string {
   return join(cacheDir(), 'refresh.lock');
 }
 
-function validStamp(value: unknown): value is string {
+/** A stamp exactly as this product writes one: a canonical UTC instant. */
+export function validStamp(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   const match = value.match(
     /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,3}))?Z$/,

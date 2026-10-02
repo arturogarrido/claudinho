@@ -30,7 +30,7 @@ import {
   sealSeason,
   type SeasonInfo,
 } from '@claudinho/core';
-import { type ScheduleSlice, stampAgeMs } from './cache';
+import { type ScheduleSlice, stampAgeMs, validStamp } from './cache';
 
 /** Full records kept for display (the countdown, the syncing line). The gate never depends on them. */
 export const SCHEDULE_DISPLAY_MAX = 64;
@@ -70,13 +70,6 @@ const NO_SCHEDULE: ScheduleView = {
   season: undefined,
 };
 
-/** A canonical stamp as epoch ms, or nothing. */
-function instant(value: unknown): number | undefined {
-  if (typeof value !== 'string') return undefined;
-  const t = Date.parse(value);
-  return Number.isFinite(t) && new Date(t).toISOString() === value ? t : undefined;
-}
-
 /**
  * Read a stored slice (its display records are not read here: they are sealed
  * by the one reader of cached fixtures, where they are shown). Each field is
@@ -93,7 +86,8 @@ function instant(value: unknown): number | undefined {
 export function scheduleView(raw: unknown, now: number): ScheduleView {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...NO_SCHEDULE };
   const s = raw as Record<string, unknown>;
-  const until = instant(s.inPlayUntil);
+  // A stamp as this product writes one (the cache's own rule), or nothing.
+  const until = validStamp(s.inPlayUntil) ? Date.parse(s.inPlayUntil) : undefined;
   const failures =
     typeof s.failures === 'number' && Number.isInteger(s.failures) && s.failures >= 0
       ? Math.min(s.failures, MAX_FAILURES)

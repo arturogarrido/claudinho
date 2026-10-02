@@ -660,9 +660,14 @@ async function refreshOffBundle(c: {
  * bundled competition the bundled schedule's windows; off it, the schedule
  * slice's gate (a discovered window, a match seen in play, or a probe owed).
  */
-function liveGateOpen(now: number, state: CacheState | undefined, competition: string): boolean {
+function liveGateOpen(
+  now: number,
+  state: CacheState | undefined,
+  competition: string,
+  view?: ScheduleView,
+): boolean {
   if (bundleApplies(competition)) return inLiveWindow(now);
-  return scheduleGateOpen(scheduleView(state?.schedule, now), now, { probe: true });
+  return scheduleGateOpen(view ?? scheduleView(state?.schedule, now), now, { probe: true });
 }
 
 /**
@@ -675,8 +680,10 @@ export function shouldRefresh(
   state: CacheState | undefined,
   competition: string,
   source = 'espn',
+  /** The schedule slice, already read (the hot path reads it once for both questions). */
+  view?: ScheduleView,
 ): boolean {
-  if (!liveGateOpen(now, state, competition)) return false;
+  if (!liveGateOpen(now, state, competition, view)) return false;
   if (isLockFresh(now)) return false;
   if (!(ageMs(state, now) > LIVE_TTL_MS)) return false;
   // LAST: the snapshot's backoff or the scope's note. The note is one more
@@ -716,10 +723,11 @@ export function shouldDiscover(
   state: CacheState | undefined,
   competition: string,
   source = 'espn',
+  view?: ScheduleView,
 ): boolean {
   if (bundleApplies(competition)) return false;
   if (isLockFresh(now)) return false;
-  if (!discoveryDue(scheduleView(state?.schedule, now))) return false;
+  if (!discoveryDue(view ?? scheduleView(state?.schedule, now))) return false;
   return backoffInEffect(state, source, competition, now) === undefined;
 }
 
@@ -738,10 +746,12 @@ export function refreshWanted(
   source = 'espn',
 ): boolean {
   if (!state) return !isLockFresh(now);
+  // Off the bundle the slice is read ONCE for both of its questions.
+  const view = bundleApplies(competition) ? undefined : scheduleView(state.schedule, now);
   return (
-    shouldRefresh(now, state, competition, source) ||
+    shouldRefresh(now, state, competition, source, view) ||
     shouldRefreshFixtures(now, state, competition, source) ||
-    shouldDiscover(now, state, competition, source)
+    shouldDiscover(now, state, competition, source, view)
   );
 }
 
