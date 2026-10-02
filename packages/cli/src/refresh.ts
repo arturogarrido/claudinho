@@ -14,7 +14,7 @@ import {
   getLiveMatches,
   getLiveRead,
   getScheduleAhead,
-  KNOWN_SOURCES,
+  isKnownSource,
   makeAdapter,
   sealSeason,
   type Match,
@@ -69,9 +69,23 @@ const FIXTURES_EMPTY_TTL_MS = 60_000;
  * How long the provider is left alone after it throttles/blocks us (429/403),
  * plus up to a minute of jitter so a fleet of statuslines doesn't retry in
  * lockstep. Persisted as `backoffUntil` and honored by every refresh trigger.
+ * The FLOOR every throttle gets, however short the wait the provider asked for
+ * (`Retry-After: 0` included); a longer one is honoured.
  */
 const BACKOFF_MS = 5 * 60_000;
 const BACKOFF_JITTER_MS = 60_000;
+
+/**
+ * Whether the cycle's adapter was throttled (429/403) in THIS cycle, however
+ * short the wait it was given. A cycle's adapter is built fresh, never armed
+ * from outside, and an armed cooldown is never cleared, so its deadline exists
+ * exactly when a throttle arrived. "Is the cooldown still running?" is another
+ * question: with `Retry-After: 0` it never is, and the throttle was counted as
+ * an ordinary failure with no backoff at all.
+ */
+function throttledThisCycle(adapter: ProviderAdapter): boolean {
+  return adapter.cooldownUntil !== undefined;
+}
 
 /**
  * Whether the cached knockout `fixtures` are stale enough to refetch. Uses the
@@ -151,9 +165,10 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
   // unknown source must never poll a provider it doesn't name (the cache scope
   // would be LABELED with the fake source while carrying ESPN data — review P2
   // on PR #78). Fail closed: write ONE idle DEGRADED snapshot so the
-  // statusline's no-cache spawn trigger goes quiet, and never touch the
-  // network. Interactive commands error loudly for the same config.
-  if (!(KNOWN_SOURCES as readonly string[]).includes(source)) {
+  // statusline's no-cache spawn trigger goes quiet (`refreshWanted` asks the
+  // same `isKnownSource` and starts nothing once it exists), and never touch
+  // the network. Interactive commands error loudly for the same config.
+  if (!isKnownSource(source)) {
     if (!readState(source, competition)) {
       const idle = claimLock();
       if (idle) {
@@ -330,9 +345,14 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     // asks it and at the time it is NOW: a command can have been told to stop
     // while the first lane was in flight (the note), and a deadline the
     // snapshot carried can have come inside the bound since the cycle decided.
-    // (A throttle this cycle met itself is on the adapter, which then refuses
-    // without a request.)
-    if (needFixtures && backoffInEffect(base, source, competition, clock()) === undefined) {
+    // A throttle this cycle met itself stops the lane too, however short its
+    // wait: the provider is not asked again before the floor every throttle
+    // gets (the adapter's own cooldown can already be over).
+    if (
+      needFixtures &&
+      !throttledThisCycle(adapter) &&
+      backoffInEffect(base, source, competition, clock()) === undefined
+    ) {
       // Fail closed: getKnockoutFixtures returns degraded on a provider error —
       // KEEP the prior cached fixtures + timestamp rather than caching an empty
       // list as a real "no knockouts" (a transient outage must never read as
@@ -429,15 +449,18 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
 }
 
 /**
- * The backoff a cycle publishes.
+ * The backoff a cycle publishes. ONE place, for the bundled cycle and the one
+ * off the bundle.
  *
  * The provider told us to go away (429/403) → persist a jittered backoff that
- * every refresh trigger honors, at least as long as the provider's own
- * Retry-After (already bounded by the adapter — audit A12). Read the adapter's
- * RETAINED window, not lastError (a later non-throttle failure overwrites
- * lastError while the window stands), and persist its ABSOLUTE deadline: the
- * provider's Retry-After counts from receipt, so a slow response must not have
- * its latency subtracted (review P2 on #128).
+ * every refresh trigger honors: never shorter than `BACKOFF_MS` from the
+ * cycle's start, however short the wait the provider asked for (a throttle
+ * with `Retry-After: 0` is still a throttle), and at least as long as the
+ * provider's own Retry-After (already bounded by the adapter — audit A12).
+ * Read the adapter's RETAINED window, not lastError (a later non-throttle
+ * failure overwrites lastError while the window stands), and persist its
+ * ABSOLUTE deadline: the provider's Retry-After counts from receipt, so a slow
+ * response must not have its latency subtracted (review P2 on #128).
  *
  * EVERY writer of a deadline keeps the later of the ones it believes: the one
  * the snapshot carried and the scope's note (the same question every reader
@@ -457,7 +480,7 @@ function backoffToPublish(
   const jitter = jitterMs ?? Math.floor(Math.random() * BACKOFF_JITTER_MS);
   const deadlines = [
     backoffInEffect(base, source, competition, at),
-    armed !== undefined && armed > at ? Math.max(armed, nowMs + BACKOFF_MS) + jitter : undefined,
+    throttledThisCycle(adapter) ? Math.max(armed ?? 0, nowMs + BACKOFF_MS) + jitter : undefined,
   ].filter((d): d is number => d !== undefined);
   return deadlines.length > 0 ? new Date(Math.max(...deadlines)).toISOString() : undefined;
 }
@@ -487,10 +510,17 @@ function settleBackoff(
  * One cycle for a competition the bundled schedule does not describe.
  *
  * Under the lock, from the state read under it: discovery if it is due (the
- * schedule ahead, on its own cadence); the backoff again; the gate, on the
- * slice as it now is; a live read if the gate is open and the live slice is at
- * least `MIN_REFRESH_MS` old; ONE publish. Every rule about the slice is in
- * `scheduleSlice.ts`; this is the order they are applied in.
+ * schedule ahead, on its own cadence; its attempt is written BEFORE the
+ * request, counted as a failure); the backoff again; the gate, on the slice as
+ * it now is; a live read if the gate is open and the live slice is at least
+ * `MIN_REFRESH_MS` old; then ONE final publish. Every rule about the slice is
+ * in `scheduleSlice.ts`; this is the order they are applied in.
+ *
+ * If that final publish is refused (the lease was lost), what stands is the
+ * attempt written before the request, unless a successor has published since:
+ * a discovery counted as failed, so the next one waits as after any failure
+ * (5 minutes × 2^n after n consecutive failures before it, at most 60), and
+ * what this cycle read is read again then.
  *
  * A cycle that only discovers copies the live slice and its stamp through
  * untouched. The knockout `fixtures` slice is the bundle's and is never filled
@@ -593,11 +623,12 @@ async function refreshOffBundle(c: {
       if (!written) return;
 
       const answer = await getScheduleAhead(adapter, now);
-      if ((adapter.cooldownUntil ?? 0) > clock()) {
-        // A throttle is not a failed discovery. It is not counted, the attempt
-        // is taken back (discovery is due again when the backoff ends, with no
-        // wait of its own on top), nothing else is asked in this cycle, and no
-        // probe is owed.
+      if (throttledThisCycle(adapter)) {
+        // A throttle is not a failed discovery, however short its wait. It is
+        // not counted, the attempt is taken back (discovery is due again when
+        // the backoff ends, with no wait of its own on top), nothing else is
+        // asked in this cycle, and no probe is owed. The backoff published
+        // below has the floor every throttle gets.
         throttled = true;
         attemptedAt = before.attemptedAt;
         failures = before.failures;
@@ -737,8 +768,10 @@ export function shouldDiscover(
  * one condition; it is one function now): start a refresher when there is no
  * snapshot, or a match can be in play and the live slice is stale, or the
  * knockout slice is due (on the bundle), or discovery is due (off it). Never
- * during a backoff, and never while a refresher is already running. Reads the
- * already-loaded `state` and, last, the scope's throttle note; no network.
+ * during a backoff (with a snapshot or without one), never while a refresher
+ * is already running, and, once its snapshot exists, never for a source nobody
+ * can ask. Reads the already-loaded `state` and, last, the scope's throttle
+ * note; no network.
  */
 export function refreshWanted(
   now: number,
@@ -746,7 +779,15 @@ export function refreshWanted(
   competition: string,
   source = 'espn',
 ): boolean {
-  if (!state) return !isLockFresh(now);
+  // No snapshot: start the refresher that writes one, unless one is running
+  // or a throttle is in the scope's note (the note exists without a snapshot).
+  // The backoff is asked last here too.
+  if (!state) return !isLockFresh(now) && backoffInEffect(undefined, source, competition, now) === undefined;
+  // A source nobody can ask: the refresher refuses it and writes one idle,
+  // degraded snapshot with no schedule (`runRefresh`, the same question). Once
+  // that exists there is nothing to start, ever: "no schedule" is not "discovery
+  // is due" for a provider that is never asked.
+  if (!isKnownSource(source)) return false;
   // Off the bundle the slice is read ONCE for both of its questions.
   const view = bundleApplies(competition) ? undefined : scheduleView(state.schedule, now);
   return (

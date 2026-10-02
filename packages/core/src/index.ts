@@ -63,6 +63,7 @@ export { readJsonBounded, ResponseTooLargeError } from './adapters/http';
 export {
   makeAdapter,
   KNOWN_SOURCES,
+  isKnownSource,
   knockoutWindow,
   mergeLive,
   getMatchesForDate,

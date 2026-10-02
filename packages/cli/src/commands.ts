@@ -69,6 +69,7 @@ import {
   getNextFixtureForTeam,
   getStandings,
   getBracket,
+  isKnownSource,
   KNOWN_SOURCES,
   makeAdapter,
 } from './data';
@@ -264,7 +265,7 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
   // An unknown --source/CLAUDINHO_SOURCE used to silently run ESPN — the flag
   // lied. Fail loud with the valid list (core makeAdapter also throws, as
   // defense in depth; this gives the localized, prefix-free message).
-  if (!(KNOWN_SOURCES as readonly string[]).includes(cfg.source)) {
+  if (!isKnownSource(cfg.source)) {
     throw new InputError(
       t('err.source', { source: cfg.source, sources: KNOWN_SOURCES.join(', ') }),
     );

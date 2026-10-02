@@ -28,6 +28,15 @@ import { bundleApplies } from './competition';
 /** Provider names {@link makeAdapter} can construct (the CLI validates against this). */
 export const KNOWN_SOURCES = ['espn'] as const;
 
+/**
+ * Whether a source names a provider {@link makeAdapter} can construct: THE
+ * question for every caller that must not ask a provider it does not name (a
+ * command's precheck, the refresher, the trigger that starts one).
+ */
+export function isKnownSource(source: string): boolean {
+  return (KNOWN_SOURCES as readonly string[]).includes(source);
+}
+
 export interface AdapterOptions {
   /**
    * The competition the adapter will fetch. REQUIRED: the caller is the edge
