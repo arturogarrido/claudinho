@@ -1,0 +1,125 @@
+/**
+ * 0.11 PR 2.0 — the MCP half of "one competition selection per request,
+ * stable team identity".
+ *
+ * The server's edge is where it builds a request's adapter (`resolveAdapter`).
+ * A tool acts on the competition of the adapter it was given; and a team's
+ * provider id is a DECLARED part of the output, not something that happens to
+ * survive `.passthrough()`.
+ */
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import type { Match, ProviderAdapter } from '@claudinho/core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildServer } from '../src/server';
+import { resolveAdapter, toolGetNextFixture, toolGetToday } from '../src/tools';
+
+const saved = process.env.CLAUDINHO_COMPETITION;
+beforeEach(() => {
+  delete process.env.CLAUDINHO_COMPETITION;
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  if (saved === undefined) delete process.env.CLAUDINHO_COMPETITION;
+  else process.env.CLAUDINHO_COMPETITION = saved;
+});
+
+function response(body: unknown) {
+  return { ok: true, status: 200, statusText: 'OK', headers: { get: () => null }, json: async () => body };
+}
+
+function fakeAdapter(competition: string, matches: Match[] = []): ProviderAdapter {
+  return {
+    name: 'fake',
+    competition,
+    capabilities: { push: false, latencyHintSec: 0 },
+    async fetchByDate(): Promise<Match[]> {
+      return matches;
+    },
+    async fetchLive(): Promise<Match[]> {
+      return matches;
+    },
+  };
+}
+
+const ARSENAL_CHELSEA: Match = {
+  id: '401878761',
+  stage: 'FRIENDLY',
+  kickoff: '2026-10-10T11:30:00.000Z',
+  venue: 'Emirates Stadium',
+  home: { code: 'ARS', name: 'Arsenal', flag: '🏳️', id: 'espn:359' },
+  away: { code: 'CHE', name: 'Chelsea', flag: '🏳️', id: 'espn:363' },
+  status: 'SCHEDULED',
+  updatedAt: '2026-10-10T10:00:00.000Z',
+};
+
+describe('selection — the server resolves the competition once per request', () => {
+  it('an explicit selection wins over the environment for every request it makes', async () => {
+    process.env.CLAUDINHO_COMPETITION = 'esp.1';
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: unknown) => {
+      urls.push(String(url));
+      return response({ leagues: [], events: [] });
+    });
+    await toolGetToday({ date: '2026-10-10', competition: 'eng.1' });
+    expect(urls.length).toBeGreaterThan(0);
+    for (const u of urls) expect(u).toContain('/soccer/eng.1/');
+  });
+
+  it('the adapter it builds states the competition it serves', () => {
+    expect(resolveAdapter({}).competition).toBe('fifa.world');
+    expect(resolveAdapter({ competition: 'eng.1' }).competition).toBe('eng.1');
+    process.env.CLAUDINHO_COMPETITION = 'ita.1';
+    expect(resolveAdapter({}).competition).toBe('ita.1');
+    // …and one scope keeps one server-lifetime adapter (the retained throttle).
+    expect(resolveAdapter({ competition: 'eng.1' })).toBe(resolveAdapter({ competition: 'eng.1' }));
+  });
+
+  it('a tool acts on its adapter’s competition, not the environment', async () => {
+    // Environment says World Cup; the request is for a league → no World Cup
+    // lookup happens and the answer is the honest "not available yet".
+    const league = await toolGetNextFixture({ team: 'ALA', adapter: fakeAdapter('eng.1') });
+    expect(league.data).toMatchObject({ fixture: null });
+    expect(league.text).toMatch(/Not available for this competition yet/);
+    expect(league.text).not.toMatch(/New Zealand/);
+
+    // Environment says a league; the request is for the World Cup → the bundle applies.
+    process.env.CLAUDINHO_COMPETITION = 'eng.1';
+    const worldCup = await toolGetToday({ date: '2026-06-11', adapter: fakeAdapter('fifa.world') });
+    expect((worldCup.data as { matches: unknown[] }).matches.length).toBeGreaterThan(0);
+  });
+});
+
+describe('identity — a team’s provider id is a declared part of the output', () => {
+  it('reaches structured content', async () => {
+    const { data } = await toolGetToday({
+      date: '2026-10-10',
+      tz: 'UTC',
+      adapter: fakeAdapter('eng.1', [ARSENAL_CHELSEA]),
+    });
+    const [match] = (data as { matches: Match[] }).matches;
+    expect(match?.home.id).toBe('espn:359');
+    expect(match?.away.id).toBe('espn:363');
+  });
+
+  it('is declared in the advertised output schema, not left to passthrough', async () => {
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+    const server = buildServer();
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    await Promise.all([server.connect(serverT), client.connect(clientT)]);
+    try {
+      const { tools } = await client.listTools();
+      type Schema = { properties?: Record<string, Schema>; items?: Schema; anyOf?: Schema[] };
+      const team = (tool: string, path: (s: Schema) => Schema | undefined): Schema | undefined => {
+        const out = tools.find((t) => t.name === tool)?.outputSchema as Schema | undefined;
+        return out ? path(out) : undefined;
+      };
+      const today = team('get_today', (s) => s.properties?.matches?.items?.properties?.home);
+      expect(today?.properties?.id).toEqual({ type: 'string' });
+      const live = team('get_live', (s) => s.properties?.matches?.items?.properties?.away);
+      expect(live?.properties?.id).toEqual({ type: 'string' });
+    } finally {
+      await client.close();
+    }
+  });
+});
