@@ -7,6 +7,7 @@ import { CACHE_VERSION, type CacheState, claimLock, readState, writeState } from
 import {
   inKnockoutPhase as inKnockoutPhaseFor,
   type RefreshOpts,
+  refreshWanted as refreshWantedFor,
   runRefresh as runRefreshFor,
   shouldRefresh as shouldRefreshFor,
   shouldRefreshFixtures as shouldRefreshFixturesFor,
@@ -49,11 +50,22 @@ describe('shouldRefresh — competition-aware live window', () => {
     expect(shouldRefresh(PRE_WC)).toBe(false);
   });
 
-  it('DOES refresh for a non-default competition (e.g. friendlies)', () => {
-    // The WC schedule can't describe friendly windows, so the gate is bypassed
-    // and a stale cache is allowed to refresh.
+  it('a non-default competition (e.g. friendlies) is not gated on the World Cup schedule: it has its own', () => {
+    // Until 0.11 (2.6b) the gate was simply bypassed off the bundle, and a
+    // stale cache refreshed around the clock. Now the competition's own
+    // schedule decides: with none yet, what starts a refresher is DISCOVERY
+    // (never a live read made blind), and once a discovered fixture is inside
+    // its window the live trigger opens.
     process.env.CLAUDINHO_COMPETITION = 'fifa.friendly';
-    expect(shouldRefresh(PRE_WC)).toBe(true);
+    expect(refreshWantedFor(PRE_WC, undefined, 'fifa.friendly')).toBe(true); // no snapshot at all
+    const stale = { updatedAt: new Date(PRE_WC - 3_600_000).toISOString(), live: [], degraded: false, source: 'espn', competition: 'fifa.friendly' };
+    expect(shouldRefresh(PRE_WC, stale)).toBe(false);
+    expect(refreshWantedFor(PRE_WC, stale, 'fifa.friendly')).toBe(true); // discovery is due
+    const at = new Date(PRE_WC - 600_000).toISOString();
+    const discovered = { ...stale, schedule: { index: [{ id: '1', kickoff: new Date(PRE_WC - 60_000).toISOString(), on: true }], attemptedAt: at, updatedAt: at, failures: 0 } };
+    expect(shouldRefresh(PRE_WC, discovered)).toBe(true);
+    const quiet = { ...stale, schedule: { index: [], attemptedAt: at, updatedAt: at, failures: 0 } };
+    expect(refreshWantedFor(PRE_WC, quiet, 'fifa.friendly')).toBe(false);
   });
 });
 

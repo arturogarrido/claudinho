@@ -12,6 +12,8 @@ import {
   byKickoff,
   getKnockoutFixtures,
   getLiveMatches,
+  getLiveRead,
+  getScheduleAhead,
   KNOWN_SOURCES,
   makeAdapter,
   sealSeason,
@@ -30,9 +32,18 @@ import {
   releaseLock,
   claimLock,
   publishState,
+  stampAgeMs,
   writeBackoffNote,
 } from './cache';
-import { inLiveWindow, LIVE_TTL_MS } from './statusline';
+import {
+  applyDiscovery,
+  discoveryDue,
+  raiseInPlay,
+  scheduleGateOpen,
+  type ScheduleView,
+  scheduleView,
+} from './scheduleSlice';
+import { inLiveWindow, LIVE_TTL_MS, sealFixtures } from './statusline';
 
 /** Don't re-fetch if the cache is younger than this (anti-stampede). */
 const MIN_REFRESH_MS = 12_000;
@@ -95,16 +106,19 @@ export function inKnockoutPhase(nowMs: number, competition: string): boolean {
 }
 
 /**
- * Whether to attempt a live fetch right now.
- *
- * For the World Cup we gate on the bundled static schedule (no pointless polling
- * 23h/day). But that schedule only knows World Cup fixtures — so when a
- * different competition is selected (e.g. CLAUDINHO_COMPETITION=fifa.friendly),
- * we can't know its windows statically and simply always allow the fetch.
+ * The stamp of a live slice that was never read. Off the bundle the first
+ * snapshot can be written by a cycle that only discovered: its live slice says
+ * "nothing in play" without anyone having asked, so its stamp must never look
+ * fresh (the statusline would trust it for five minutes, and a probe that is
+ * owed would be skipped as already answered).
  */
-function liveWindowActive(nowMs: number, competition: string): boolean {
-  if (!bundleApplies(competition)) return true;
-  return inLiveWindow(nowMs);
+const NEVER = new Date(0).toISOString();
+
+/** A stamp carried from the cache file, re-emitted in one form; nothing if it cannot be trusted. */
+function carriedStamp(value: string | undefined, now: number): string | undefined {
+  return value !== undefined && Number.isFinite(stampAgeMs(value, now))
+    ? new Date(Date.parse(value)).toISOString()
+    : undefined;
 }
 
 /**
@@ -186,6 +200,47 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       : undefined;
   };
   /**
+   * Nothing to fetch — but make sure a scope-stamped snapshot EXISTS. The
+   * statusline spawns a refresher whenever it finds no cache, so a missing
+   * file outside every window (post-tournament, off-hours, fresh installs)
+   * would otherwise fork a do-nothing child on EVERY statusline tick, forever
+   * (the post-final spawn loop — F5 review PERF-1). `live: []` is honest by
+   * construction here: on the bundled competition the bundled schedule says no
+   * match can be in play, and off it a missing snapshot always has a discovery
+   * due — unless what stopped us is a backoff, and then the snapshot says so
+   * (degraded, with the deadline). Written under the lock, and only if nobody
+   * wrote one in the meantime.
+   */
+  const writeIdleSnapshot = (): void => {
+    const idle = claimLock();
+    if (!idle) return;
+    try {
+      if (readBase()) return;
+      const until = backoffInEffect(undefined, source, competition, nowMs);
+      publishState(
+        {
+          updatedAt: now.toISOString(),
+          live: [],
+          degraded: until !== undefined,
+          source,
+          competition,
+          ...(until !== undefined ? { backoffUntil: new Date(until).toISOString() } : {}),
+        },
+        idle,
+      );
+    } finally {
+      releaseLock(idle);
+    }
+  };
+
+  // Off the bundled competition the bundled schedule says nothing: the cycle is
+  // discovery, then a live read only when a match can be in play.
+  if (!bundleApplies(competition)) {
+    await refreshOffBundle({ now, source, competition, readBase, writeIdleSnapshot, jitterMs: opts.jitterMs });
+    return;
+  }
+
+  /**
    * What a snapshot says is due.
    *
    * While a provider backoff (429/403) is in effect, NOTHING — retrying a
@@ -204,7 +259,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     return {
       needLive:
         !inBackoff &&
-        liveWindowActive(nowMs, competition) &&
+        inLiveWindow(nowMs) &&
         (!snapshot || ageMs(snapshot, nowMs) >= MIN_REFRESH_MS),
       needFixtures:
         !inBackoff && inKnockoutPhase(nowMs, competition) && fixturesStale(snapshot, nowMs),
@@ -217,39 +272,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
   const first = readBase();
   const early = plan(first);
   if (!early.needLive && !early.needFixtures) {
-    // Nothing to fetch — but make sure a scope-stamped snapshot EXISTS. The
-    // statusline spawns a refresher whenever it finds no cache, so a missing
-    // file outside every window (post-tournament, off-hours, fresh installs)
-    // would otherwise fork a do-nothing child on EVERY statusline tick,
-    // forever (the post-final spawn loop — F5 review PERF-1). `live: []` is
-    // honest by construction here: on the default competition the bundled
-    // schedule says no match can be in play, and non-default competitions
-    // always take the fetch path above — unless what stopped us is a backoff,
-    // and then the snapshot says so (degraded, with the deadline).
-    if (!first) {
-      const idle = claimLock();
-      if (idle) {
-        try {
-          // Under the lock, and only if nobody wrote one in the meantime.
-          if (!readBase()) {
-            const until = backoffInEffect(undefined, source, competition, nowMs);
-            publishState(
-              {
-                updatedAt: now.toISOString(),
-                live: [],
-                degraded: until !== undefined,
-                source,
-                competition,
-                ...(until !== undefined ? { backoffUntil: new Date(until).toISOString() } : {}),
-              },
-              idle,
-            );
-          }
-        } finally {
-          releaseLock(idle);
-        }
-      }
-    }
+    if (!first) writeIdleSnapshot();
     return;
   }
 
@@ -385,29 +408,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       fixturesSeason = undefined;
     }
 
-    // The provider told us to go away (429/403) → persist a jittered backoff
-    // that every refresh trigger honors, at least as long as the provider's
-    // own Retry-After (already bounded by the adapter — audit A12). An expired
-    // backoff is dropped so the snapshot doesn't carry it forever.
-    // Read the adapter's RETAINED window, not lastError (a later non-throttle
-    // failure overwrites lastError while the window stands), and persist its
-    // ABSOLUTE deadline: the provider's Retry-After counts from receipt, so a
-    // slow response must not have its latency subtracted (review P2 on #128).
-    //
-    // EVERY writer of a deadline keeps the later of the ones it believes: the
-    // one this snapshot carried, the one this cycle was given, and the scope's
-    // note. An expired or unbelievable one takes no part, so it is dropped
-    // here rather than carried forever.
-    const at = clock();
-    const armed = adapter.cooldownUntil;
-    const jitter = opts.jitterMs ?? Math.floor(Math.random() * BACKOFF_JITTER_MS);
-    const deadlines = [
-      // The one this snapshot carried and the scope's note: the same question
-      // every reader asks.
-      backoffInEffect(base, source, competition, at),
-      armed !== undefined && armed > at ? Math.max(armed, nowMs + BACKOFF_MS) + jitter : undefined,
-    ].filter((d): d is number => d !== undefined);
-    const backoffUntil = deadlines.length > 0 ? new Date(Math.max(...deadlines)).toISOString() : undefined;
+    const backoffUntil = backoffToPublish(base, adapter, source, competition, nowMs, clock(), opts.jitterMs);
 
     // Fenced on ownership: if the lease went stale mid-fetch and a successor
     // took over, its snapshot is newer than ours and must stand (audit A10).
@@ -428,19 +429,240 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       },
       token,
     );
-    if (!published) {
-      // The lease was lost and the snapshot is the successor's. A throttle this
-      // cycle was given is still a fact about the provider, and the successor
-      // may not have met it: it goes to the note, which needs no lock, like a
-      // command's that could not get one.
-      if (backoffUntil) writeBackoffNote(source, competition, Date.parse(backoffUntil), clock());
-      if (process.env.CLAUDINHO_DEBUG) {
-        process.stderr.write('claudinho: refresh lease lost to a successor; snapshot not published\n');
-      }
-    }
+    if (!published) noteRefusedPublish(backoffUntil, source, competition, clock());
   } finally {
     releaseLock(token);
   }
+}
+
+/**
+ * The backoff a cycle publishes.
+ *
+ * The provider told us to go away (429/403) → persist a jittered backoff that
+ * every refresh trigger honors, at least as long as the provider's own
+ * Retry-After (already bounded by the adapter — audit A12). Read the adapter's
+ * RETAINED window, not lastError (a later non-throttle failure overwrites
+ * lastError while the window stands), and persist its ABSOLUTE deadline: the
+ * provider's Retry-After counts from receipt, so a slow response must not have
+ * its latency subtracted (review P2 on #128).
+ *
+ * EVERY writer of a deadline keeps the later of the ones it believes: the one
+ * the snapshot carried and the scope's note (the same question every reader
+ * asks), and the one this cycle was given. An expired or unbelievable one
+ * takes no part, so it is dropped here rather than carried forever.
+ */
+function backoffToPublish(
+  base: CacheState | undefined,
+  adapter: ProviderAdapter,
+  source: string,
+  competition: string,
+  nowMs: number,
+  at: number,
+  jitterMs: number | undefined,
+): string | undefined {
+  const armed = adapter.cooldownUntil;
+  const jitter = jitterMs ?? Math.floor(Math.random() * BACKOFF_JITTER_MS);
+  const deadlines = [
+    backoffInEffect(base, source, competition, at),
+    armed !== undefined && armed > at ? Math.max(armed, nowMs + BACKOFF_MS) + jitter : undefined,
+  ].filter((d): d is number => d !== undefined);
+  return deadlines.length > 0 ? new Date(Math.max(...deadlines)).toISOString() : undefined;
+}
+
+/**
+ * A publish was refused: the lease was lost and the snapshot is the
+ * successor's. A throttle this cycle was given is still a fact about the
+ * provider, and the successor may not have met it: it goes to the note, which
+ * needs no lock, like a command's that could not get one.
+ */
+function noteRefusedPublish(backoffUntil: string | undefined, source: string, competition: string, at: number): void {
+  if (backoffUntil) writeBackoffNote(source, competition, Date.parse(backoffUntil), at);
+  if (process.env.CLAUDINHO_DEBUG) {
+    process.stderr.write('claudinho: refresh lease lost to a successor; snapshot not published\n');
+  }
+}
+
+/**
+ * One cycle for a competition the bundled schedule does not describe.
+ *
+ * Under the lock, from the state read under it: discovery if it is due (the
+ * schedule ahead, on its own cadence); the backoff again; the gate, on the
+ * slice as it now is; a live read if the gate is open and the live slice is at
+ * least `MIN_REFRESH_MS` old; ONE publish. Every rule about the slice is in
+ * `scheduleSlice.ts`; this is the order they are applied in.
+ *
+ * A cycle that only discovers copies the live slice and its stamp through
+ * untouched. The knockout `fixtures` slice is the bundle's and is never filled
+ * here.
+ */
+async function refreshOffBundle(c: {
+  now: Date;
+  source: string;
+  competition: string;
+  readBase: () => CacheState | undefined;
+  writeIdleSnapshot: () => void;
+  jitterMs: number | undefined;
+}): Promise<void> {
+  const { now, source, competition, readBase } = c;
+  const nowMs = now.getTime();
+  const plan = (snapshot: CacheState | undefined) => {
+    const view = scheduleView(snapshot?.schedule, nowMs);
+    const inBackoff = backoffInEffect(snapshot, source, competition, nowMs) !== undefined;
+    return {
+      view,
+      needDiscovery: !inBackoff && discoveryDue(view),
+      needLive:
+        !inBackoff &&
+        scheduleGateOpen(view, nowMs, { probe: true }) &&
+        ageMs(snapshot, nowMs) >= MIN_REFRESH_MS,
+    };
+  };
+
+  // A first look, WITHOUT the lock: it may only decide not to ask.
+  const first = readBase();
+  const early = plan(first);
+  if (!early.needDiscovery && !early.needLive) {
+    if (!first) c.writeIdleSnapshot();
+    return;
+  }
+
+  const token = claimLock();
+  if (!token) return;
+  try {
+    const base = readBase();
+    const { view, needDiscovery, needLive } = plan(base);
+    if (!needDiscovery && !needLive) return;
+
+    const realStart = Date.now();
+    const clock = () => nowMs + (Date.now() - realStart);
+    const adapter = liveAdapter(source, competition, clock);
+
+    // The live slice, carried unless this cycle reads it.
+    let live: Match[] = base?.live ?? [];
+    let degraded = base?.degraded ?? false;
+    let updatedAt = base?.updatedAt ?? NEVER;
+    let season: SeasonInfo | undefined = sealSeason(base?.season);
+    // The schedule slice AS IT IS BELIEVED (`scheduleView`): what is carried
+    // and written back is what was read through the rules, never the raw file.
+    let index = view.index;
+    let display: Match[] = [...sealFixtures(base?.schedule?.fixtures).items];
+    let scheduleSeason = view.season;
+    let complete = base?.schedule?.complete === true;
+    let scheduleUpdatedAt = carriedStamp(base?.schedule?.updatedAt, nowMs);
+    let attemptedAt = carriedStamp(base?.schedule?.attemptedAt, nowMs);
+    let failures = view.failures;
+    let inPlayUntil = view.inPlayUntil;
+    let probe = view.probe;
+    let throttled = false;
+
+    const snapshot = (backoffUntil: string | undefined): CacheState => ({
+      updatedAt,
+      live,
+      degraded,
+      source,
+      competition,
+      ...(backoffUntil ? { backoffUntil } : {}),
+      ...(season ? { season } : {}),
+      schedule: {
+        ...(index ? { index, complete } : {}),
+        ...(display.length > 0 ? { fixtures: display } : {}),
+        ...(scheduleUpdatedAt ? { updatedAt: scheduleUpdatedAt } : {}),
+        ...(attemptedAt ? { attemptedAt } : {}),
+        failures,
+        ...(scheduleSeason ? { season: scheduleSeason } : {}),
+        ...(inPlayUntil !== undefined ? { inPlayUntil: new Date(inPlayUntil).toISOString() } : {}),
+        ...(probe ? { probe: true } : {}),
+      },
+    });
+
+    if (needDiscovery) {
+      // The attempt is WRITTEN before the request is made, counted as a
+      // failure until an answer corrects it: a refresher that dies in the
+      // middle has still paced the next one. If it cannot be written, nothing
+      // is asked.
+      const before = { attemptedAt, failures };
+      attemptedAt = now.toISOString();
+      failures = before.failures + 1;
+      let written = false;
+      try {
+        written = publishState(snapshot(undefined), token);
+      } catch {
+        written = false;
+      }
+      if (!written) return;
+
+      const answer = await getScheduleAhead(adapter, now);
+      if ((adapter.cooldownUntil ?? 0) > clock()) {
+        // A throttle is not a failed discovery. It is not counted, the attempt
+        // is taken back (discovery is due again when the backoff ends, with no
+        // wait of its own on top), nothing else is asked in this cycle, and no
+        // probe is owed.
+        throttled = true;
+        attemptedAt = before.attemptedAt;
+        failures = before.failures;
+      } else {
+        const next = applyDiscovery({ index, fixtures: display, season: scheduleSeason }, answer, nowMs);
+        if (next) {
+          index = next.index;
+          display = next.fixtures;
+          scheduleSeason = next.season;
+          complete = next.complete;
+          scheduleUpdatedAt = now.toISOString();
+          failures = 0;
+          // A match in play that no window covers is found here.
+          inPlayUntil = raiseInPlay(inPlayUntil, answer.fixtures, nowMs);
+        } else {
+          // ONE path for every failure: the slice stands, the failure cadence
+          // applies, and one live read is owed.
+          probe = true;
+        }
+      }
+    }
+
+    // The backoff again (a command can have been told to stop while discovery
+    // was in flight), then the gate, on the slice as it now is.
+    const blocked = throttled || backoffInEffect(base, source, competition, clock()) !== undefined;
+    const viewNow: ScheduleView = { ...view, index, inPlayUntil, probe };
+    if (!blocked && scheduleGateOpen(viewNow, nowMs, { probe: true })) {
+      if (ageMs(base, nowMs) >= MIN_REFRESH_MS) {
+        // The stamp is the moment the read was ADMITTED, not the start of a
+        // cycle that first waited for discovery.
+        const admitted = clock();
+        try {
+          const r = await getLiveRead(adapter, now);
+          live = r.matches;
+          degraded = r.degraded;
+          if (!r.degraded) season = r.season;
+          // An observation never lowers the continuation; only a read that
+          // succeeded, was WHOLE and holds no match in play ends it.
+          if (r.matches.length > 0) inPlayUntil = raiseInPlay(inPlayUntil, r.matches, nowMs);
+          else if (!r.degraded && r.complete) inPlayUntil = undefined;
+        } catch {
+          degraded = true;
+        }
+        updatedAt = new Date(admitted).toISOString();
+      }
+      // Asked just now, or answered by a read less than `MIN_REFRESH_MS` old:
+      // either way the probe has its answer, whatever that was.
+      probe = false;
+    }
+
+    const backoffUntil = backoffToPublish(base, adapter, source, competition, nowMs, clock(), c.jitterMs);
+    const published = publishState(snapshot(backoffUntil), token);
+    if (!published) noteRefusedPublish(backoffUntil, source, competition, clock());
+  } finally {
+    releaseLock(token);
+  }
+}
+
+/**
+ * Whether a match can be in play, as far as the hot path can know: on the
+ * bundled competition the bundled schedule's windows; off it, the schedule
+ * slice's gate (a discovered window, a match seen in play, or a probe owed).
+ */
+function liveGateOpen(now: number, state: CacheState | undefined, competition: string): boolean {
+  if (bundleApplies(competition)) return inLiveWindow(now);
+  return scheduleGateOpen(scheduleView(state?.schedule, now), now, { probe: true });
 }
 
 /**
@@ -454,7 +676,7 @@ export function shouldRefresh(
   competition: string,
   source = 'espn',
 ): boolean {
-  if (!liveWindowActive(now, competition)) return false;
+  if (!liveGateOpen(now, state, competition)) return false;
   if (isLockFresh(now)) return false;
   if (!(ageMs(state, now) > LIVE_TTL_MS)) return false;
   // LAST: the snapshot's backoff or the scope's note. The note is one more
@@ -482,6 +704,45 @@ export function shouldRefreshFixtures(
   if (!fixturesStale(state, now)) return false;
   // Last, like `shouldRefresh`.
   return backoffInEffect(state, source, competition, now) === undefined;
+}
+
+/**
+ * Decide whether to DISCOVER: off the bundled competition, when the schedule
+ * ahead is due to be read again (its own cadence, anchored on the last
+ * attempt), no backoff is in effect, and nobody is already refreshing.
+ */
+export function shouldDiscover(
+  now: number,
+  state: CacheState | undefined,
+  competition: string,
+  source = 'espn',
+): boolean {
+  if (bundleApplies(competition)) return false;
+  if (isLockFresh(now)) return false;
+  if (!discoveryDue(scheduleView(state?.schedule, now))) return false;
+  return backoffInEffect(state, source, competition, now) === undefined;
+}
+
+/**
+ * THE trigger, for both hot-path surfaces (the statusline and the hook copied
+ * one condition; it is one function now): start a refresher when there is no
+ * snapshot, or a match can be in play and the live slice is stale, or the
+ * knockout slice is due (on the bundle), or discovery is due (off it). Never
+ * during a backoff, and never while a refresher is already running. Reads the
+ * already-loaded `state` and, last, the scope's throttle note; no network.
+ */
+export function refreshWanted(
+  now: number,
+  state: CacheState | undefined,
+  competition: string,
+  source = 'espn',
+): boolean {
+  if (!state) return !isLockFresh(now);
+  return (
+    shouldRefresh(now, state, competition, source) ||
+    shouldRefreshFixtures(now, state, competition, source) ||
+    shouldDiscover(now, state, competition, source)
+  );
 }
 
 /**

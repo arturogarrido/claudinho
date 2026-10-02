@@ -17,7 +17,7 @@ import { cmdHook, cmdNext, cmdPrompt, cmdRefresh, cmdToday, InputError } from '.
 import { type CliConfig, resolveConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 import { withPersistedBackoff } from '../src/providerBackoff';
-import { runRefresh, shouldRefresh, shouldRefreshFixtures } from '../src/refresh';
+import { refreshWanted, runRefresh, shouldRefresh, shouldRefreshFixtures } from '../src/refresh';
 import { TOURNAMENT_COMPLETE_LINE } from '../src/statusline';
 
 // The statusline and hook spawn a detached refresher; a test must never fork one.
@@ -230,8 +230,9 @@ describe('the CLI resolves the competition once, in option resolution', () => {
 
   it('refresh triggers take the competition as an argument', () => {
     const PRE_WC = new Date('2026-06-04T16:00:00Z').getTime(); // no World Cup window
-    // Off the bundle nothing describes the windows, so a stale cache refreshes…
-    expect(shouldRefresh(PRE_WC, undefined, 'eng.1')).toBe(true);
+    // Off the bundle the World Cup's schedule decides nothing: the competition's
+    // own schedule does, and until one is discovered a refresher is wanted…
+    expect(refreshWanted(PRE_WC, undefined, 'eng.1')).toBe(true);
     // …and the environment cannot turn the World Cup's schedule gate off.
     process.env.CLAUDINHO_COMPETITION = 'eng.1';
     expect(shouldRefresh(PRE_WC, undefined, 'fifa.world')).toBe(false);

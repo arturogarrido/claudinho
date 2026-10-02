@@ -256,7 +256,10 @@ describe('inside a window the live slice is refreshed at most every 12 seconds, 
     for (let t = 0; t < HOUR; t += 6000) await refresh(NOW + t);
     expect(months()).toHaveLength(1);
     expect(liveReads()).toBeLessThanOrEqual(300);
-    expect(liveReads()).toBeGreaterThanOrEqual(295);
+    // The lower bound is loose on purpose: a read's stamp is the moment it was
+    // admitted, a few real milliseconds into its cycle, so with cycles every 6
+    // seconds the next one falls at 12 or at 18. Never fewer than every 18.
+    expect(liveReads()).toBeGreaterThanOrEqual(200);
   });
 });
 

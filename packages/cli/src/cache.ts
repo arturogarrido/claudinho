@@ -30,8 +30,12 @@ export { cacheDir } from './paths';
  * version-2 file (0.10.1) is therefore an EMPTY cache to this binary: the hot
  * path renders as if no file existed — it never fetches — and the refresher
  * writes the new one.
+ *
+ * 4 (0.11): the `schedule` slice, and off the bundled competition a live stamp
+ * that can say "never read". An older binary would poll that scope around the
+ * clock from a version-4 file's live slice; it gets an empty cache instead.
  */
-export const CACHE_VERSION = 3;
+export const CACHE_VERSION = 4;
 
 /** Hard byte ceiling before JSON parsing on the statusline hot path. */
 export const MAX_STATE_BYTES = 1024 * 1024;
@@ -184,7 +188,7 @@ function isCacheState(value: unknown): value is CacheState {
   ) {
     return false;
   }
-  for (const key of ['season', 'fixturesSeason'] as const) {
+  for (const key of ['season', 'fixturesSeason', 'schedule'] as const) {
     const v = s[key];
     if (v !== undefined && (!v || typeof v !== 'object' || Array.isArray(v))) return false;
   }

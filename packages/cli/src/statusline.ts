@@ -187,7 +187,7 @@ const MAX_LIVE_EXAMINED = 512;
  * `events: false` — this surface renders a scoreline, not a timeline, and
  * sealing per-event labels is the dominant cost on a 150ms budget.
  */
-function sealFixtures(raw: unknown): BoundedList<Match> {
+export function sealFixtures(raw: unknown): BoundedList<Match> {
   if (raw === undefined) {
     return { items: [], total: 0, shown: 0, truncated: false, complete: true };
   }
