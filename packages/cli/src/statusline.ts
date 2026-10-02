@@ -12,6 +12,7 @@ import {
   byKickoff,
   countdown,
   fixturesInLiveWindow,
+  hasLiveWindow,
   isLive,
   isResolvedNation,
   isTournamentWindowOver,
@@ -328,8 +329,13 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // is the bundle's and is never filled there).
   const cachedFixtureList = sealFixtures(defaultCompetition ? state?.fixtures : state?.schedule?.fixtures);
   // A partial fixture overlay cannot prove a pairing is absent, but every
-  // sealed pairing it does contain is safe to display.
-  const cachedFixtures = [...cachedFixtureList.items];
+  // sealed pairing it does contain is safe to display. Off the bundle, a
+  // display record the provider says is postponed, cancelled or FINISHED has
+  // no window and nothing to count down to: it is named nowhere on the line,
+  // by the index's own rule (`hasLiveWindow`).
+  const cachedFixtures = defaultCompetition
+    ? [...cachedFixtureList.items]
+    : cachedFixtureList.items.filter((m) => hasLiveWindow(m.status));
   // Off the bundle the skeleton is ANOTHER competition's schedule: the
   // countdown may read cached fixtures only, never the bundle (audit A03).
   const bundle = defaultCompetition ? allFixtures() : [];
@@ -385,11 +391,12 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
     // in play and not yet seen to end. Not a probe: that is the refresher
     // asking a question, not a reason to say a match is on.
     if (scheduleGateOpen(scheduleView(state?.schedule, nowMs), nowMs, { probe: false })) {
-      // The fixtures there is a full record for, inside their (flat) window.
+      // The fixtures there is a full record for, inside their (flat) window
+      // (one that has none was left out above).
       const win = cachedFixtures
         .filter((m) => {
           const k = Date.parse(m.kickoff);
-          return m.status !== 'POSTPONED' && m.status !== 'CANCELLED' && k <= nowMs && nowMs < k + LIVE_WINDOW_MS;
+          return k <= nowMs && nowMs < k + LIVE_WINDOW_MS;
         })
         .filter((m) => !team || m.home.code === team || m.away.code === team)
         .sort(byKickoff);

@@ -228,6 +228,7 @@ export {
   unresolved,
   valid,
   type ScheduleEntry,
+  hasLiveWindow,
   MAX_SCHEDULE_INDEX,
   parseCachedScheduleIndex,
   scheduleEntryOf,

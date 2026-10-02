@@ -6,7 +6,7 @@
  * and nothing a file could use to stretch it: a window is always the kickoff
  * plus a fixed length, never a stored end.
  */
-import type { Match } from '../types';
+import type { Match, Status } from '../types';
 import { canonicalTimestamp, ESPN_ID, opaqueId } from './roles';
 
 /** One fixture the schedule knows: its id, its kickoff, and whether it has a live window. */
@@ -14,8 +14,19 @@ export interface ScheduleEntry {
   readonly id: string;
   /** A canonical instant. */
   readonly kickoff: string;
-  /** False for a postponed or cancelled fixture: known, and opening no window. */
+  /** False for a postponed, cancelled or finished fixture: known, and opening no window. */
   readonly on: boolean;
+}
+
+/**
+ * Whether a fixture in this status has a live window: not postponed, not
+ * cancelled, and not finished (nothing is left to poll for, and nothing to call
+ * live). THE rule, for the index (`scheduleEntryOf`) and for the statusline
+ * reading the slice's display records. A match seen IN PLAY is held by the
+ * refresher's continuation, not by its entry.
+ */
+export function hasLiveWindow(status: Status): boolean {
+  return status !== 'POSTPONED' && status !== 'CANCELLED' && status !== 'FT';
 }
 
 /**
@@ -40,7 +51,7 @@ export function scheduleEntryOf(m: Match): ScheduleEntry | undefined {
   return sealScheduleEntry({
     id: m.id,
     kickoff: m.kickoff,
-    on: m.status !== 'POSTPONED' && m.status !== 'CANCELLED',
+    on: hasLiveWindow(m.status),
   });
 }
 
