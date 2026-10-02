@@ -1,0 +1,8 @@
+# Scripts are checked out with LF on every platform.
+#
+# A test imports scripts/espn-canary.mjs, and under CRLF (a default Windows
+# checkout) the test transform has failed on that file twice: a `#!` line it did
+# not strip, and a stall on line comments that hold quote characters (no test
+# file ever finished, and the CI job ran to its time limit). Node itself runs
+# either form. This takes the difference away.
+scripts/** text eol=lf

@@ -801,6 +801,19 @@ describe('what it watches and how it reports', () => {
     expect(text).toMatch(/3 ok/);
   });
 
+  it('scripts are checked out with LF on every platform', () => {
+    // This test imports the script, and on a Windows checkout (CRLF) the test
+    // transform has failed on it twice: a `#!` line it did not strip, and then
+    // a STALL (no test file ever finished; the job ran to its 20-minute limit)
+    // on line comments that contain quote characters. Node itself runs either
+    // form. Reproduced by converting the file to CRLF; LF does not stall. The
+    // rule below takes the difference away instead of policing comments.
+    const attributes = readFileSync(fileURLToPath(new URL('../../../.gitattributes', import.meta.url)), 'utf8');
+    expect(attributes).toMatch(/^scripts\/\*\* text eol=lf$/m);
+    const script = readFileSync(fileURLToPath(new URL('../../../scripts/espn-canary.mjs', import.meta.url)), 'utf8');
+    expect(script.includes('\r\n')).toBe(false);
+  });
+
   it('the script has no shebang line', () => {
     // This test imports the script. Under vitest a module is wrapped before it
     // runs, so a `#!` line is only valid if the transform strips it, and on a
