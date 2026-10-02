@@ -52,7 +52,7 @@ describe('what is read back from the file is believed only within bounds', () =>
   it('no slice: no schedule, discovery never attempted, nothing in play, no probe', () => {
     for (const raw of [undefined, null, 'x', 7, []]) {
       const v = scheduleView(raw, NOW);
-      expect(v, String(raw)).toEqual({ index: undefined, fixtures: [], attemptAgeMs: Infinity, failures: 0, inPlayUntil: undefined, probe: false, season: undefined });
+      expect(v, String(raw)).toEqual({ index: undefined, attemptAgeMs: Infinity, failures: 0, inPlayUntil: undefined, probe: false, season: undefined });
     }
   });
 
@@ -72,7 +72,6 @@ describe('what is read back from the file is believed only within bounds', () =>
       NOW,
     );
     expect(v.index).toEqual([entry('1', HOUR), entry('2', 2 * HOUR, false)]);
-    expect(ids(v.fixtures)).toEqual(['1']);
     expect(v.attemptAgeMs).toBe(10 * MIN);
     expect(v.failures).toBe(0);
     expect(v.inPlayUntil).toBe(NOW + 2 * HOUR);
@@ -109,13 +108,10 @@ describe('what is read back from the file is believed only within bounds', () =>
     for (const bad of [-1, 1.5, '3', null, Number.NaN, 1e9]) expect(failures(bad), String(bad)).toBe(bad === 1e9 ? 32 : 0);
   });
 
-  it('`probe` is true only when it is `true`; display records are sealed like every cached match, 64 at most', () => {
+  it('`probe` is true only when it is `true`', () => {
     expect(scheduleView({ index: [], probe: 'yes' }, NOW).probe).toBe(false);
     expect(scheduleView({ index: [], probe: 1 }, NOW).probe).toBe(false);
-    const many = Array.from({ length: 80 }, (_, i) => match(String(100 + i), HOUR + i * MIN));
-    const v = scheduleView({ index: [], fixtures: [null, { id: 'x' }, ...many] }, NOW);
-    expect(v.fixtures).toHaveLength(SCHEDULE_DISPLAY_MAX);
-    expect(scheduleView({ index: [], fixtures: 'x' }, NOW).fixtures).toEqual([]);
+    expect(scheduleView({ index: [], probe: true }, NOW).probe).toBe(true);
   });
 });
 

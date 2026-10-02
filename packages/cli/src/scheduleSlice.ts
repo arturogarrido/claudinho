@@ -23,9 +23,7 @@ import {
   LIVE_WINDOW_MS,
   MAX_SCHEDULE_INDEX,
   type Match,
-  parseCachedMatch,
   parseCachedScheduleIndex,
-  parsedValue,
   type ScheduleAheadResult,
   type ScheduleEntry,
   scheduleEntryOf,
@@ -51,8 +49,6 @@ const MAX_FAILURES = 32;
 export interface ScheduleView {
   /** Every fixture the schedule knows, in kickoff order; `undefined` when there is no schedule. */
   index: ScheduleEntry[] | undefined;
-  /** Full records for display, sealed like every cached match; at most `SCHEDULE_DISPLAY_MAX`. */
-  fixtures: Match[];
   /** Age of the latest discovery ATTEMPT (Infinity: never, or a stamp that cannot be trusted). */
   attemptAgeMs: number;
   /** Consecutive failed discoveries. */
@@ -67,7 +63,6 @@ export interface ScheduleView {
 
 const NO_SCHEDULE: ScheduleView = {
   index: undefined,
-  fixtures: [],
   attemptAgeMs: Number.POSITIVE_INFINITY,
   failures: 0,
   inPlayUntil: undefined,
@@ -83,8 +78,9 @@ function instant(value: unknown): number | undefined {
 }
 
 /**
- * Read a stored slice. Each field is believed on its own terms, so one bad
- * field never takes the others with it:
+ * Read a stored slice (its display records are not read here: they are sealed
+ * by the one reader of cached fixtures, where they are shown). Each field is
+ * believed on its own terms, so one bad field never takes the others with it:
  *   - the index is whole or absent (`parseCachedScheduleIndex`);
  *   - the stamps go through `stampAgeMs` (one in the future is "never": a bad
  *     `attemptedAt` makes discovery due, not silent for years), and they are
@@ -104,26 +100,12 @@ export function scheduleView(raw: unknown, now: number): ScheduleView {
       : 0;
   return {
     index: parseCachedScheduleIndex(s.index),
-    fixtures: displayRecords(s.fixtures),
     attemptAgeMs: stampAgeMs(typeof s.attemptedAt === 'string' ? s.attemptedAt : undefined, now),
     failures,
     inPlayUntil: until !== undefined && now < until && until - now <= IN_PLAY_HOLD_MS ? until : undefined,
     probe: s.probe === true,
     season: sealSeason(s.season),
   };
-}
-
-/** Stored display records, sealed; unreadable ones dropped; bounded before and after the work. */
-function displayRecords(raw: unknown): Match[] {
-  if (!Array.isArray(raw)) return [];
-  const out: Match[] = [];
-  // Twice the bound may be looked at, so a few junk records cannot hide the real ones.
-  for (const rec of raw.slice(0, SCHEDULE_DISPLAY_MAX * 2)) {
-    if (out.length >= SCHEDULE_DISPLAY_MAX) break;
-    const sealed = parsedValue(parseCachedMatch(rec, { events: false }));
-    if (sealed) out.push(sealed);
-  }
-  return out.sort(byKickoff);
 }
 
 /**
