@@ -58,6 +58,7 @@ Claudinho surfaces the 2026 men's football tournament in developer environments:
 - `pnpm build` / `pnpm test` / `pnpm typecheck` / `pnpm lint` — across all packages (`lint` = Biome, no formatter)
 - `pnpm -F @claudinho/core test` — operate on a single package
 - `pnpm release:qa` — pre-tag surface renderer (see "Release readiness")
+- `pnpm canary` — after a build, asks the REAL feed the product's own questions through the adapter and names the kind of problem: a refused request form or a changed payload is red, a block or an outage is neutral (`scripts/espn-canary.mjs`). `.github/workflows/espn-canary.yml` runs it daily; it is unbadged and gates nothing. A red run means the feed changed, not that the build is broken.
 
 **Bumping `@biomejs/biome`?** Nothing to do — `biome.json`'s `$schema` points at
 `./node_modules/@biomejs/biome/configuration_schema.json`, so it follows the installed version.

@@ -1,0 +1,44 @@
+name: ESPN canary
+
+# Asks the REAL feed, once a day, the questions the product asks (through the
+# adapter) and fails when the provider refuses a request form or a payload no
+# longer fits the parsers. CI never touches the network, so without this a feed
+# change is found by a user. See scripts/espn-canary.mjs.
+#
+# Deliberately separate from ci.yml, unbadged, and triggered only by the clock
+# or by hand: it must never gate a pull request or turn the build badge red —
+# a red run here means "the feed changed", not "the build is broken".
+#
+# GitHub disables scheduled workflows after 60 days without repository
+# activity; re-enable it from the Actions tab if the project goes quiet.
+
+on:
+  schedule:
+    - cron: '17 6 * * *' # daily, 06:17 UTC (off the hour: scheduled runs queue at :00)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: espn-canary
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    name: ask the feed
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6 — reads pnpm version from package.json "packageManager"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -F @claudinho/core build
+      # A hosted runner that ESPN blocks (403) reports "blocked", which is
+      # neutral: only a refused request form or a changed payload fails the run.
+      - name: Ask the feed
+        run: node scripts/espn-canary.mjs
