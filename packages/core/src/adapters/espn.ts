@@ -13,7 +13,7 @@ import type { GroupStandings } from '../standings';
 import { groups as bundledGroups } from '../schedule';
 import { type MapContext, parseEspnEvent, parseEspnEvents, parseEspnStandings } from '../trust/espn';
 import { parseEspnSeason } from '../trust/season';
-import type { Match } from '../types';
+import type { Match, SeasonInfo } from '../types';
 import { readJsonBounded, ResponseTooLargeError } from './http';
 import { attachFetchMeta, fetchMeta } from './meta';
 import type { ProviderAdapter, ProviderCapabilities } from './types';
@@ -133,6 +133,77 @@ function toEspnDate(d: string): string {
   return d.replace(/\D/g, '').slice(0, 8);
 }
 
+/**
+ * How a window is asked for. ESPN refuses every date RANGE (`dates=A-B`, HTTP
+ * 400 since Oct 2 2026) and serves one day (`dates=YYYYMMDD`) and one calendar
+ * month (`dates=YYYYMM`). A year is served too, cut at 100 events: never used.
+ * So a short window is asked for a day at a time and a longer one a month at a
+ * time; a window that would take more requests than that is refused unasked.
+ */
+export const WINDOW_DAY_REQUESTS = 3;
+export const WINDOW_MONTH_REQUESTS = 3;
+/** The `limit` sent with every scoreboard request. A response that fills it may have been cut. */
+const SCOREBOARD_LIMIT = 300;
+
+/**
+ * The zone ESPN files a fixture's day in. Measured on the real feed (Oct 2
+ * 2026): over 16 day requests in three competitions, each of the 35 fixtures
+ * came back under its kickoff's date in this zone, 9 of them under a different
+ * UTC date; a month request holds nothing outside itself by this zone's date.
+ * The canary re-checks it daily.
+ */
+const PROVIDER_ZONE = 'America/New_York';
+const providerDay = new Intl.DateTimeFormat('en-CA', {
+  timeZone: PROVIDER_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** A calendar date given as `YYYY-MM-DD` or `YYYYMMDD`, as `YYYYMMDD`; nothing if it is not a real date. */
+function calendarDay(input: string): string | undefined {
+  const digits = typeof input === 'string' ? input.replace(/-/g, '') : '';
+  if (!/^\d{8}$/.test(digits)) return undefined;
+  const y = Number(digits.slice(0, 4));
+  const m = Number(digits.slice(4, 6));
+  const d = Number(digits.slice(6, 8));
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d
+    ? digits
+    : undefined;
+}
+
+const utcOf = (day: string) =>
+  Date.UTC(Number(day.slice(0, 4)), Number(day.slice(4, 6)) - 1, Number(day.slice(6, 8)));
+
+/** The requests a window takes: its days, or the months it touches. Bounded before anything is listed. */
+function windowAsks(start: string, end: string): { asks: string[]; byMonth: boolean } | undefined {
+  const days = Math.round((utcOf(end) - utcOf(start)) / 86_400_000) + 1;
+  if (days < 1) return undefined;
+  if (days <= WINDOW_DAY_REQUESTS) {
+    const asks: string[] = [];
+    for (let i = 0; i < days; i++) {
+      asks.push(new Date(utcOf(start) + i * 86_400_000).toISOString().slice(0, 10).replace(/-/g, ''));
+    }
+    return { asks, byMonth: false };
+  }
+  const asks: string[] = [];
+  let y = Number(start.slice(0, 4));
+  let m = Number(start.slice(4, 6));
+  const last = end.slice(0, 6);
+  for (;;) {
+    const month = `${String(y).padStart(4, '0')}${String(m).padStart(2, '0')}`;
+    asks.push(month);
+    if (month === last) return { asks, byMonth: true };
+    if (asks.length >= WINDOW_MONTH_REQUESTS) return undefined;
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+}
+
 /** Map a single ESPN event into the canonical Match model. Exported for tests. */
 export function mapEspnEvent(ev: unknown, ctx: MapContext = {}): Match | undefined {
   return parsedValue(parseEspnEvent(ev, ctx));
@@ -159,6 +230,16 @@ function usableProviderItems<T>(
     throw new ProviderError(`ESPN ${kind} payload had no readable records`, 'parse');
   }
   return [...parsed.items];
+}
+
+/** One parsed scoreboard response and the parser's account of it. */
+interface ScoreboardPart {
+  readonly items: readonly Match[];
+  readonly total: number;
+  readonly complete: boolean;
+  /** The response filled the request's limit: what came after its last record is unknown. */
+  readonly full: boolean;
+  readonly season?: SeasonInfo;
 }
 
 export interface EspnAdapterOptions {
@@ -289,8 +370,105 @@ export class EspnAdapter implements ProviderAdapter {
     return this.fetchScoreboard(toEspnDate(dateISO));
   }
 
+  /**
+   * The provider's calendar day (`YYYY-MM-DD`) for an instant: the day a
+   * fixture kicking off then is filed under. See {@link PROVIDER_ZONE}. Used
+   * to keep, from a month's response, the fixtures a window asked for; the
+   * canary checks the rule against the real feed.
+   */
+  bucketDay(instant: Date): string {
+    return Number.isNaN(instant.getTime()) ? '' : providerDay.format(instant);
+  }
+
+  /**
+   * Every fixture whose provider day is in `[startDate, endDate]`, composed
+   * from the request forms the provider accepts (see `WINDOW_DAY_REQUESTS`):
+   * never a range. The parts are sent together, so the wait is one timeout,
+   * not one per part, and EVERY part is settled before the window answers: a
+   * throttle that arrives after a sibling's quick failure has armed the
+   * cooldown by the time a caller looks at it.
+   *
+   * ONE result with ONE account, built in the order the parts were asked for
+   * (never the order they arrived in):
+   *   - any part's failure fails the window. If a part was throttled, the
+   *     window's error is a throttle (the one with the latest deadline);
+   *     otherwise it is the first failed part's.
+   *   - parts that state different seasons fail the window. "Unknown" would be
+   *     the wrong account of a known disagreement: an absent season lets the
+   *     bundled schedule apply, and lets a cached slice from another season
+   *     stand. A part that states none does not veto the ones that agree.
+   *   - a part that filled the request's limit fails the window: its tail is
+   *     unknown.
+   *   - it is complete only if every part is.
+   *   - a fixture is filed under exactly one day, so two parts cannot hold the
+   *     same one. If they ever do, it is the parser's rule for a duplicate:
+   *     the first is kept and the window says it is not complete.
+   * It is a union of responses taken moments apart, not one snapshot: a
+   * fixture moved between two parts being answered can be in neither.
+   */
   async fetchWindow(startDate: string, endDate: string): Promise<Match[]> {
-    return this.fetchScoreboard(`${toEspnDate(startDate)}-${toEspnDate(endDate)}`);
+    const start = calendarDay(startDate);
+    const end = calendarDay(endDate);
+    const plan = start && end ? windowAsks(start, end) : undefined;
+    if (!start || !end || !plan) {
+      // Refused before any request: not two real dates, reversed, or longer
+      // than the bound. A caller's mistake must not become provider traffic.
+      throw new ProviderError(`ESPN window refused: ${startDate}..${endDate}`, 'parse');
+    }
+    const settled = await Promise.allSettled(plan.asks.map((dates) => this.readScoreboard(dates)));
+    const failures = settled.flatMap((r) => (r.status === 'rejected' ? [r.reason as ProviderError] : []));
+    if (failures.length > 0) {
+      const throttles = failures.filter((e) => e instanceof ProviderError && e.throttled);
+      throw throttles.length > 0
+        ? throttles.reduce((a, b) => ((b.retryAfterMs ?? 0) > (a.retryAfterMs ?? 0) ? b : a))
+        : failures[0];
+    }
+    const parts = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+    // A part that filled its limit lost an unknown tail: later days of the
+    // window may be missing, and nothing in the part says which. That is not a
+    // refused record beside readable siblings; the window cannot be composed.
+    if (parts.some((part) => part.full)) {
+      throw new ProviderError(
+        `ESPN window ${startDate}..${endDate}: a response filled its limit of ${SCOREBOARD_LIMIT} events and may be cut`,
+        'parse',
+      );
+    }
+    const years = new Set(parts.flatMap((part) => (part.season ? [part.season.year] : [])));
+    if (years.size > 1) {
+      throw new ProviderError(
+        `ESPN window ${startDate}..${endDate} spans seasons ${[...years].sort().join(' and ')}`,
+        'parse',
+      );
+    }
+    // The window is ONE batch. "A non-empty payload with no readable record is
+    // a failure" is asked of all of it: a day whose only record is unreadable
+    // is a refused record beside readable siblings, not an outage.
+    usableProviderItems<Match>('scoreboard', {
+      items: parts.flatMap((part) => part.items),
+      total: parts.reduce((n, part) => n + part.total, 0),
+      complete: parts.every((part) => part.complete),
+    });
+    const seen = new Set<string>();
+    const fixtures: Match[] = [];
+    let complete = true;
+    for (const part of parts) {
+      if (!part.complete) complete = false;
+      for (const m of part.items) {
+        if (plan.byMonth) {
+          // A month holds more than the window: keep what the window asked for.
+          const day = this.bucketDay(new Date(m.kickoff)).replace(/-/g, '');
+          if (day < start || day > end) continue;
+        }
+        if (seen.has(m.id)) {
+          complete = false;
+          continue;
+        }
+        seen.add(m.id);
+        fixtures.push(m);
+      }
+    }
+    const season = parts.find((part) => part.season)?.season;
+    return attachFetchMeta(fixtures, { complete, ...(season ? { season } : {}) });
   }
 
   /**
@@ -398,8 +576,22 @@ export class EspnAdapter implements ProviderAdapter {
   }
 
   private async fetchScoreboard(dates?: string): Promise<Match[]> {
+    const part = await this.readScoreboard(dates);
+    return attachFetchMeta(usableProviderItems<Match>('scoreboard', part), {
+      complete: part.complete,
+      ...(part.season ? { season: part.season } : {}),
+    });
+  }
+
+  /**
+   * One scoreboard response, parsed, with the parser's account of it. The
+   * "a non-empty payload with no readable record is a failure" rule is NOT
+   * applied here: it belongs to the whole answer, and a window is one answer
+   * made of several of these.
+   */
+  private async readScoreboard(dates?: string): Promise<ScoreboardPart> {
     const url = new URL(`${this.base}/scoreboard`);
-    url.searchParams.set('limit', '300');
+    url.searchParams.set('limit', String(SCOREBOARD_LIMIT));
     if (dates) url.searchParams.set('dates', dates);
 
     // Group enrichment and the scoreboard are independent requests — run them
@@ -428,10 +620,22 @@ export class EspnAdapter implements ProviderAdapter {
     // So is the parser's own account of the payload: a refused record is
     // omitted (its readable siblings stay usable), and the result says that it
     // does not hold everything that was sent.
-    return attachFetchMeta(usableProviderItems<Match>('scoreboard', parsed), {
-      complete: parsed.complete,
-      ...(season ? { season } : {}),
-    });
+    // A response that fills the request's limit may have been cut by it, and a
+    // cut is silent: the records that are there all parse. Measured (Oct 2
+    // 2026): the provider returns a chronological prefix of exactly `limit`
+    // events (100 when none is sent; a month asked with limit=10 returns its
+    // first 10). So a full response is never called complete. Its readable
+    // prefix stays usable to a single read, as a payload over the parser's own
+    // cap always was; a WINDOW refuses it (see fetchWindow). The largest month
+    // measured holds 79 events.
+    const full = parsed.total >= SCOREBOARD_LIMIT;
+    return {
+      items: parsed.items,
+      total: parsed.total,
+      complete: parsed.complete && !full,
+      full,
+      season,
+    };
   }
 
   private async get(url: string): Promise<unknown> {

@@ -297,18 +297,19 @@ describe('knockout fixtures cadence (statusline countdown across the knockouts)'
   it('runRefresh re-polls an EMPTY fixtures cache only after the short TTL', async () => {
     // ESPN hasn't filed pairings yet → empty success. No live match at 12:00, so
     // every fetch here is a fixtures fetch — count them across three cycles.
+    // One ask of the knockout span is two requests: the two months it touches.
     const fetchSpy = vi.fn(async () => ({ ok: true, json: async () => ({ day: {}, events: [] }) }));
     vi.stubGlobal('fetch', fetchSpy);
     try {
-      await runRefresh({ now: new Date(KO_NOW), source: 'espn' }); // fetch #1 → empty
+      await runRefresh({ now: new Date(KO_NOW), source: 'espn' }); // ask #1 → empty
       expect(readState()?.fixtures).toEqual([]);
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
 
       await runRefresh({ now: new Date(KO_NOW + 30_000), source: 'espn' }); // within 60s → no fetch
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-
-      await runRefresh({ now: new Date(KO_NOW + 90_000), source: 'espn' }); // past 60s → refetch
       expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+      await runRefresh({ now: new Date(KO_NOW + 90_000), source: 'espn' }); // past 60s → ask #2
+      expect(fetchSpy).toHaveBeenCalledTimes(4);
     } finally {
       vi.unstubAllGlobals();
     }

@@ -366,7 +366,10 @@ export async function marketFixtureForTeam(
   });
   if (candidate) {
     const r = await getMatchById(adapter, candidate.id);
-    const m = r.match ?? candidate;
+    // A second read that fails hands back the BUNDLED fixture, which for a
+    // knockout tie is a placeholder. The candidate came from the overlay that
+    // did answer: keep it, and keep the failure's `degraded`.
+    const m = r.degraded ? candidate : (r.match ?? candidate);
     if (!isFinished(m.status)) return { ...r, match: m };
     // Confirmed finished → the team's market story has moved on.
   }
@@ -450,6 +453,13 @@ export interface KnockoutFixturesResult {
    * season a live read made in the same breath answered for.
    */
   season?: SeasonInfo;
+  /**
+   * False when the provider sent records this result does not hold (one it
+   * could not read, or two that contradict each other). A fixture that is
+   * absent from such a result is not known to be gone: a caller that keeps a
+   * previous answer must not let this one erase it. Absent or true otherwise.
+   */
+  complete?: boolean;
 }
 
 /**
@@ -488,8 +498,13 @@ export async function getKnockoutFixtures(
         isResolvedNation(m.away),
     )
     .sort(byKickoff);
-  const season = fetchMeta(live)?.season;
-  return { fixtures, degraded: false, ...(season ? { season } : {}) };
+  const meta = fetchMeta(live);
+  return {
+    fixtures,
+    degraded: false,
+    ...(meta?.season ? { season: meta.season } : {}),
+    ...(meta?.complete === false ? { complete: false } : {}),
+  };
 }
 
 /**

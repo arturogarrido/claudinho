@@ -24,15 +24,16 @@
  * every competition's table shape yet, so its verdict there would say more
  * about us than about the feed.
  *
- * What it asks, per competition: every request FORM the adapter has, with the
- * spans the product uses today.
+ * What it asks, per competition: every question the adapter answers, with the
+ * spans the product uses today. A window is composed of several requests (the
+ * provider refuses date ranges), and every one of them is judged.
  *   live       the default scoreboard bucket (the fallback of the live read)
  *   day        one calendar day
- *   window     yesterday to tomorrow: what `live`, `today` and the statusline
- *              refresher actually request
- *   knockout   the bundled bracket's whole span, asked only of the competition
- *              the bundle belongs to: what `bracket`, `next` and the countdown
- *              request
+ *   window     yesterday to tomorrow, a day at a time: what `live`, `today`,
+ *              `match` and the statusline's refresher request
+ *   knockout   the bundled bracket's whole span, a month at a time, asked only
+ *              of the competition the bundle belongs to: what `bracket`,
+ *              `next` and the countdown request
  *   standings  the tables
  * A test fails when the adapter gains a fetch method this list does not ask.
  *
@@ -48,9 +49,11 @@
  * A neutral row is a row the canary could not see: the run stays green and
  * says so in a warning.
  *
- * Work, worst case: 61 requests (15 competitions, 4 each, 5 for the bundled
- * one), each bounded by the adapter's timeout and byte limit, one at a time
- * with a pause between them.
+ * Work, worst case: 92 requests (15 competitions at 6 each: 1 + 1 + 3 + 1,
+ * and 2 more for the bundled one's knockout span), each bounded by the
+ * adapter's timeout and byte limit. Questions are asked one at a time with a
+ * pause between them; the requests of one question go together, so a throttle
+ * inside a window is seen after up to three requests, and ends the run.
  *
  *   pnpm -r build && node scripts/espn-canary.mjs
  *
@@ -184,25 +187,67 @@ function within(promise, ms, fallback) {
 }
 
 /**
- * Invariants of a served scoreboard: the envelope, every record, identity,
- * season. The same checks for the default scoreboard as for a dated one: the
- * live question keeps only matches in play, so what it filtered out is judged
- * on the parser's own account of the WHOLE response and on what was sent.
+ * What one response of a question is, before anything is compared: the kind of
+ * failure, or its body. A question can take several requests (a window is
+ * asked a day or a month at a time), and every one of them is judged.
  */
-function checkScoreboard(core, body, matches) {
-  if (!body || typeof body !== 'object' || !Array.isArray(body.events)) {
-    return { verdict: 'changed', detail: 'the response has no `events` list' };
+function judgePart(core, sent, copy, failure) {
+  if (sent.status === undefined) {
+    // No response: a network error or a timeout.
+    return { verdict: 'unreachable', detail: String(failure?.message ?? 'no response') };
   }
+  const byStatus = statusVerdict(sent.status);
+  if (byStatus !== 'ok') {
+    const message = typeof copy?.json?.message === 'string' ? copy.json.message.slice(0, 200) : '';
+    return { verdict: byStatus, detail: `HTTP ${sent.status}${message ? `: ${message}` : ''}` };
+  }
+  if (!copy || copy.failed !== undefined) {
+    // Served, and then the body did not arrive: an outage, not a changed feed.
+    return { verdict: 'unreachable', detail: `the response body could not be read${copy?.failed ? ` (${copy.failed})` : ''}` };
+  }
+  if (copy.tooLarge) {
+    return { verdict: 'changed', detail: `the response is larger than the adapter accepts (${core.MAX_RESPONSE_BYTES} bytes)` };
+  }
+  if (copy.notJson) return { verdict: 'changed', detail: 'the response is not JSON' };
+  return { verdict: 'ok', detail: '', json: copy.json };
+}
+
+/** A question's verdict is its worst part's: the provider said stop, refused, was not there, changed. */
+const WORST_FIRST = ['blocked', 'rejected', 'unreachable', 'changed'];
+
+/** What a request asked for: the `dates` parameter of its URL (empty for the default scoreboard). */
+function datesOf(url) {
+  try {
+    return new URL(url).searchParams.get('dates') ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Invariants of a served scoreboard answer, over EVERY response it took: the
+ * envelope, every record, identity, how a day is filed, season. The same
+ * checks for the default scoreboard as for a dated one: the live question
+ * keeps only matches in play, so what it filtered out is judged on the
+ * parser's own account of the whole answer and on what was sent.
+ */
+function checkScoreboard(core, adapter, parts, matches) {
+  for (const part of parts) {
+    if (!part.json || typeof part.json !== 'object' || !Array.isArray(part.json.events)) {
+      return { verdict: 'changed', detail: 'the response has no `events` list' };
+    }
+  }
+  const events = parts.flatMap((part) => part.json.events);
   const meta = core.fetchMeta(matches);
   if (meta?.complete !== true) {
     // The parser's verdict, not a count of ids: a record refused as unreadable
     // and one contradicting a sibling under the same id both land here.
     return {
       verdict: 'changed',
-      detail: `the adapter could not read every event (${body.events.length} sent, ${meta?.complete === false ? matches.length : 'unknown'} read)`,
+      detail: `the adapter could not read every event (${events.length} sent, ${meta?.complete === false ? matches.length : 'unknown'} read)`,
     };
   }
-  const sent = body.events.flatMap((e) => {
+  const sent = events.flatMap((e) => {
     const competitors = e?.competitions?.[0]?.competitors;
     return Array.isArray(competitors) ? competitors : [];
   });
@@ -211,10 +256,34 @@ function checkScoreboard(core, body, matches) {
     const first = rawNoId[0]?.team?.displayName ?? rawNoId[0]?.team?.abbreviation ?? 'unnamed';
     return { verdict: 'changed', detail: `${rawNoId.length} team(s) arrived without an id (first: ${first})` };
   }
+  // How the provider files a day: the adapter keeps, from a month's response,
+  // the fixtures whose PROVIDER day a window asked for, so that rule is checked
+  // on every dated response. A fixture filed under a day (or a month) it does
+  // not kick off on, by the adapter's rule, means the rule no longer holds.
+  // (This sees a fixture that is there and should not be. One that is missing
+  // from its day cannot be seen from one response.)
+  for (const part of parts) {
+    const asked = datesOf(part.url);
+    if (!/^\d{6}(\d{2})?$/.test(asked)) continue;
+    for (const e of part.json.events) {
+      const kickoff = new Date(e?.date);
+      if (Number.isNaN(kickoff.getTime())) continue;
+      const day = adapter.bucketDay(kickoff).replace(/-/g, '');
+      if (!day.startsWith(asked)) {
+        return {
+          verdict: 'changed',
+          detail: `a fixture filed under ${asked} kicks off on provider day ${day}: the provider no longer files a day the way the adapter assumes`,
+        };
+      }
+    }
+  }
   if (!meta.season) {
     return { verdict: 'changed', detail: 'the response states no readable season' };
   }
-  return { verdict: 'ok', detail: `${body.events.length} event(s)` };
+  return {
+    verdict: 'ok',
+    detail: `${events.length} event(s)${parts.length > 1 ? ` in ${parts.length} requests` : ''}`,
+  };
 }
 
 /**
@@ -388,7 +457,7 @@ export async function runCanary({
       if (bundleOnly && !span) continue;
       const call = calls[request];
       if (throttled) {
-        rows.push({ competition, request, url: '', verdict: 'blocked', detail: 'not asked: the provider throttled this runner earlier in the run' });
+        rows.push({ competition, request, url: '', requests: 0, verdict: 'blocked', detail: 'not asked: the provider throttled this runner earlier in the run' });
         continue;
       }
       seen = [];
@@ -399,49 +468,42 @@ export async function runCanary({
       } catch (e) {
         failure = e;
       }
-      const sent = seen[0];
-      const reading = sent?.unread ? readCopy(core, sent.unread, ERROR_BODY_BYTES) : sent?.copy;
-      const copy = reading
-        ? await within(reading, bodyDeadlineMs, { failed: 'the body did not finish in time' })
-        : undefined;
-      // An error body abandoned at the deadline stays open behind its reader
-      // until the process exits; nothing waits on it, and the verdict never
-      // depended on it.
+      // Every response the question took is read and judged. An error body
+      // abandoned at the deadline stays open behind its reader until the
+      // process exits; nothing waits on it, and no verdict depends on it.
+      const parts = [];
+      for (const sent of seen) {
+        const reading = sent.unread ? readCopy(core, sent.unread, ERROR_BODY_BYTES) : sent.copy;
+        const copy = reading
+          ? await within(reading, bodyDeadlineMs, { failed: 'the body did not finish in time' })
+          : undefined;
+        parts.push({ url: sent.url, ...judgePart(core, sent, copy, failure) });
+      }
+      const worst = WORST_FIRST.map((v) => parts.find((part) => part.verdict === v)).find(Boolean);
       let verdict;
       let detail;
-      if (!sent || sent.status === undefined) {
-        // No response: a network error or a timeout (or, were it ever to
-        // happen, a call that asked nothing). The run stops at the first
-        // throttle, so the adapter's own cooldown never gets to refuse a call.
+      if (parts.length === 0) {
+        // The call asked for nothing and has no answer.
         verdict = 'unreachable';
         detail = String(failure?.message ?? 'no response');
-      } else if (statusVerdict(sent.status) !== 'ok') {
-        verdict = statusVerdict(sent.status);
-        const message = typeof copy?.json?.message === 'string' ? copy.json.message.slice(0, 200) : '';
-        detail = `HTTP ${sent.status}${message ? `: ${message}` : ''}`;
-      } else if (!copy || copy.failed !== undefined) {
-        // Served, and then the body did not arrive: an outage, not a changed feed.
-        verdict = 'unreachable';
-        detail = `the response body could not be read${copy?.failed ? ` (${copy.failed})` : ''}`;
-      } else if (copy.tooLarge) {
-        verdict = 'changed';
-        detail = `the response is larger than the adapter accepts (${core.MAX_RESPONSE_BYTES} bytes)`;
-      } else if (copy.notJson) {
-        verdict = 'changed';
-        detail = 'the response is not JSON';
+      } else if (worst) {
+        verdict = worst.verdict;
+        const which = parts.length > 1 ? ` (${datesOf(worst.url) || 'no dates'}, 1 of ${parts.length} requests)` : '';
+        detail = `${worst.detail}${which}`;
       } else if (request === 'standings') {
-        ({ verdict, detail } = checkStandings(core, copy.json, adapter, result, competition));
+        ({ verdict, detail } = checkStandings(core, parts[0].json, adapter, result, competition));
       } else if (!Array.isArray(result)) {
         // Served, but the adapter could not turn it into fixtures at all.
         verdict = 'changed';
-        detail = Array.isArray(copy.json?.events)
+        detail = parts.every((part) => Array.isArray(part.json?.events))
           ? `the adapter refused the payload (${failure?.message ?? 'no reason given'})`
           : 'the response has no `events` list';
       } else {
-        ({ verdict, detail } = checkScoreboard(core, copy.json, result));
+        ({ verdict, detail } = checkScoreboard(core, adapter, parts, result));
       }
+      const sent = seen[0];
       if (verdict === 'blocked') throttled = true;
-      rows.push({ competition, request, url: sent?.url ?? '', verdict, detail });
+      rows.push({ competition, request, url: sent?.url ?? '', requests: seen.length, verdict, detail });
       if (pauseMs > 0 && sent && !throttled) await sleep(pauseMs);
     }
   }

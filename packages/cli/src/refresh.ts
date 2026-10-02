@@ -272,7 +272,20 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       try {
         const r = await getKnockoutFixtures(adapter, now);
         if (!r.degraded) {
-          fixtures = r.fixtures;
+          // An answer that left records out cannot prove a fixture is gone:
+          // what the slice already held, and this answer does not mention,
+          // stays, while it is still to be played and only when both are KNOWN
+          // to be the same season (an unknown season on either side replaces
+          // the slice, as a whole answer does).
+          const sameSeason =
+            !!r.season && !!fixturesSeason && r.season.year === fixturesSeason.year;
+          const kept =
+            r.complete === false && sameSeason
+              ? (fixtures ?? []).filter(
+                  (old) => !r.fixtures.some((m) => m.id === old.id) && isUpcoming(old, now),
+                )
+              : [];
+          fixtures = [...r.fixtures, ...kept].sort(byKickoff);
           fixturesUpdatedAt = now.toISOString();
           fixturesSeason = r.season;
         }

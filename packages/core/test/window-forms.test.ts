@@ -16,7 +16,15 @@
 import { describe, expect, it } from 'vitest';
 import { EspnAdapter, ProviderError } from '../src/adapters/espn';
 import { fetchMeta } from '../src/adapters/meta';
-import { getLiveMatches } from '../src/live';
+import {
+  getBracket,
+  getKnockoutFixtures,
+  getLiveMatches,
+  getMatchById,
+  getMatchesForDate,
+  getNextFixtureForTeam,
+  marketFixtureForTeam,
+} from '../src/live';
 
 const SEASON = { year: 2026, startDate: '2026-06-01T04:00Z', endDate: '2027-06-01T03:59Z', displayName: '2026-27 Liga MX' };
 
@@ -148,7 +156,11 @@ describe('a window is composed from the forms the provider accepts', () => {
     const f = feed(ALL);
     await expect(adapterOn(f).fetchWindow('2026-10-12', '2026-10-10')).rejects.toBeInstanceOf(ProviderError);
     await expect(adapterOn(f).fetchWindow('soon', '2026-10-10')).rejects.toBeInstanceOf(ProviderError);
-    await expect(adapterOn(f).fetchWindow('2026-02-30', '2026-03-01')).rejects.toBeInstanceOf(ProviderError);
+    // Dates that are not on the calendar. (Chosen so that reading them the way
+    // `Date` would, as Mar 2 and as Jan 1 of the next year, still gives a
+    // forward window: only the calendar check can refuse them.)
+    await expect(adapterOn(f).fetchWindow('2026-02-30', '2026-03-05')).rejects.toBeInstanceOf(ProviderError);
+    await expect(adapterOn(f).fetchWindow('2026-13-01', '2027-01-02')).rejects.toBeInstanceOf(ProviderError);
     expect(f.urls).toEqual([]);
   });
 });
@@ -202,13 +214,15 @@ describe('one window, one account', () => {
     expect(f.urls.length).toBe(sent);
   });
 
-  it('states a season only when its parts agree', async () => {
+  it('states the season its parts agree on; parts that state two seasons are a failure, not "unknown"', async () => {
     const agree = await adapterOn(feed(ALL)).fetchWindow('2026-10-10', '2026-10-12');
     expect(fetchMeta(agree)?.season?.year).toBe(2026);
+    // An absent season lets the bundled schedule apply and lets a cached slice
+    // of another season stand: a KNOWN disagreement must not look like that.
     const other = { ...SEASON, year: 2027, displayName: '2027-28 Liga MX' };
     const split = feed(ALL, { season: (d) => (d === '20261012' ? other : SEASON) });
-    expect(fetchMeta(await adapterOn(split).fetchWindow('2026-10-10', '2026-10-12'))?.season).toBeUndefined();
-    // A part that states none does not veto the ones that do.
+    await expect(adapterOn(split).fetchWindow('2026-10-10', '2026-10-12')).rejects.toThrow(/seasons 2026 and 2027/);
+    // A part that states none does not veto the ones that agree.
     const silent = feed(ALL, { season: (d) => (d === '20261011' ? undefined : SEASON) });
     expect(fetchMeta(await adapterOn(silent).fetchWindow('2026-10-10', '2026-10-12'))?.season?.year).toBe(2026);
   });
@@ -228,53 +242,219 @@ describe('one window, one account', () => {
   });
 });
 
-describe('the live read asks only for the provider days that can hold a match in play', () => {
-  const inPlay = (e: Ev): Ev => ({ ...e, state: 'in' });
+describe('settled before it answers', () => {
+  const later = <T,>(value: T, ms: number) => new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
 
-  it('one request for most of the day', async () => {
-    const f = feed([inPlay({ id: '9', date: '2026-10-10T17:00Z' }), SUN]);
-    const now = new Date('2026-10-10T18:00Z'); // 14:00 Eastern
-    const r = await getLiveMatches(adapterOn(f, now), now);
-    expect(f.dates).toEqual(['20261010']);
+  it('a throttle that arrives after a sibling’s quick failure is the window’s error, and the cooldown is armed', async () => {
+    // Fail-fast would have reported the 503 and returned before the 429 was
+    // read: the refresher then publishes with no backoff, and the next process
+    // asks again while the provider is saying stop.
+    const f = feed(ALL, {
+      fail: (d) =>
+        d === '20261010'
+          ? json({}, 503)
+          : d === '20261012'
+            ? (later(json({}, 429, { 'retry-after': '300' }), 30) as unknown as Response)
+            : undefined,
+    });
+    const now = new Date('2026-10-11T12:00Z');
+    const a = adapterOn(f, now);
+    await expect(a.fetchWindow('2026-10-10', '2026-10-12')).rejects.toMatchObject({ status: 429 });
+    expect(a.cooldownUntil).toBe(now.getTime() + 300_000);
+    const sent = f.urls.length;
+    await expect(a.fetchByDate('2026-10-11')).rejects.toMatchObject({ status: 429 });
+    expect(f.urls.length).toBe(sent);
+  });
+
+  it('of two throttles, the one that asks for the longer silence is kept, whichever arrives first', async () => {
+    const f = feed(ALL, {
+      fail: (d) =>
+        d === '20261010'
+          ? (later(json({}, 429, { 'retry-after': '60' }), 30) as unknown as Response)
+          : d === '20261011'
+            ? json({}, 429, { 'retry-after': '600' })
+            : undefined,
+    });
+    const now = new Date('2026-10-11T12:00Z');
+    const a = adapterOn(f, now);
+    await expect(a.fetchWindow('2026-10-10', '2026-10-12')).rejects.toMatchObject({ status: 429, retryAfterMs: 600_000 });
+    expect(a.cooldownUntil).toBe(now.getTime() + 600_000);
+  });
+
+  it('without a throttle, the error is the first failed part’s, in the order asked', async () => {
+    const f = feed(ALL, {
+      fail: (d) =>
+        d === '20261010'
+          ? (later(json({}, 500), 30) as unknown as Response)
+          : d === '20261011'
+            ? json({}, 503)
+            : undefined,
+    });
+    await expect(adapterOn(f).fetchWindow('2026-10-10', '2026-10-12')).rejects.toMatchObject({ status: 500 });
+  });
+});
+
+describe('what a response cannot be trusted to hold', () => {
+  it('a response that fills the request’s limit may be cut: a single read keeps its prefix and says it is not complete', async () => {
+    // Measured: the provider returns a chronological prefix of exactly `limit`
+    // events, and every record in a cut response parses.
+    const many: Ev[] = Array.from({ length: 300 }, (_, i) => ({ id: String(1000 + i), date: '2026-10-10T18:00Z' }));
+    const f = feed(many);
+    const full = await adapterOn(f).fetchByDate('2026-10-10');
+    expect(new URL(f.urls[0] ?? '').searchParams.get('limit')).toBe('300');
+    expect(full).toHaveLength(300);
+    expect(fetchMeta(full)?.complete).toBe(false);
+    // One fewer is a whole answer.
+    const whole = await adapterOn(feed(many.slice(1))).fetchByDate('2026-10-10');
+    expect(whole).toHaveLength(299);
+    expect(fetchMeta(whole)?.complete).toBe(true);
+  });
+
+  it('a window refuses it: the tail it lost may be the days the window asked for', async () => {
+    // 300 fixtures early in October and one on the 30th: a month's response cut
+    // at the limit would hold only the first 300, and every one of them parses.
+    const early: Ev[] = Array.from({ length: 300 }, (_, i) => ({ id: String(1000 + i), date: '2026-10-02T18:00Z' }));
+    const cut = (async (input: unknown) => {
+      const url = String(input);
+      return new URL(url).searchParams.get('dates') === '202610'
+        ? json({ leagues: [{ season: SEASON }], events: early.map(event) })
+        : json({ leagues: [{ season: SEASON }], events: [] });
+    }) as unknown as typeof fetch;
+    const a = new EspnAdapter({ competition: 'mex.1', enrichGroups: false, fetchImpl: cut });
+    await expect(a.fetchWindow('2026-10-25', '2026-10-31')).rejects.toThrow(/filled its limit/);
+    // The same for a day part of a short window.
+    const many: Ev[] = Array.from({ length: 300 }, (_, i) => ({ id: String(1000 + i), date: '2026-10-10T18:00Z' }));
+    await expect(adapterOn(feed(many)).fetchWindow('2026-10-10', '2026-10-11')).rejects.toThrow(/filled its limit/);
+  });
+});
+
+describe('the reads that were degraded, with the provider refusing every range', () => {
+  // Bundled World Cup ids, so the overlay lands on the schedule.
+  const OPENER: Ev = { id: '760415', date: '2026-06-11T19:00Z', state: 'post' };
+  const wcEvent = (e: Ev, home: [string, string, string], away: [string, string, string], slug: string) => ({
+    ...event(e),
+    season: { slug },
+    competitions: [
+      {
+        competitors: [
+          { homeAway: 'home', score: '2', team: { id: home[0], abbreviation: home[1], displayName: home[2] } },
+          { homeAway: 'away', score: '0', team: { id: away[0], abbreviation: away[1], displayName: away[2] } },
+        ],
+      },
+    ],
+  });
+  const WC_SEASON = { year: 2026, startDate: '2026-06-11T04:00Z', endDate: '2026-12-31T04:59Z', displayName: '2026 FIFA World Cup' };
+  function wcFeed() {
+    const urls: string[] = [];
+    const dates: string[] = [];
+    const events = [
+      wcEvent(OPENER, ['203', 'MEX', 'Mexico'], ['467', 'RSA', 'South Africa'], 'group-stage'),
+      wcEvent({ id: '760517', date: '2026-07-19T19:00Z' }, ['164', 'ESP', 'Spain'], ['202', 'ARG', 'Argentina'], 'final'),
+    ];
+    const fetchImpl = (async (input: unknown) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.includes('/standings')) return json({});
+      const asked = new URL(url).searchParams.get('dates') ?? '';
+      dates.push(asked);
+      if (asked.includes('-')) return json({ code: 400, message: 'Failed to get events endpoint.' }, 400);
+      const hit = (e: { date: string }) =>
+        asked.length === 8 ? easternDay(e.date) === asked : easternDay(e.date).startsWith(asked);
+      return json({ leagues: [{ season: WC_SEASON }], events: events.filter(hit) });
+    }) as unknown as typeof fetch;
+    return { fetchImpl, urls, dates };
+  }
+  const wcAdapter = (f: { fetchImpl: typeof fetch }, enrichGroups = false) =>
+    new EspnAdapter({ competition: 'fifa.world', enrichGroups, fetchImpl: f.fetchImpl });
+
+  it('a date: served, from three day requests', async () => {
+    const f = wcFeed();
+    const r = await getMatchesForDate(wcAdapter(f), '2026-06-11');
     expect(r.degraded).toBe(false);
-    expect(ids(r.matches)).toEqual(['9']);
+    expect(r.matches.find((m) => m.id === '760415')).toMatchObject({ status: 'FT', score: { home: 2, away: 0 } });
+    expect([...f.dates].sort()).toEqual(['20260610', '20260611', '20260612']);
   });
 
-  it('two in the hours after the provider’s midnight, and a match that kicked off before it is found', async () => {
-    // Kickoff 22:30 Eastern on the 10th; still in play at 00:10 Eastern on the 11th.
-    const late = inPlay({ id: '8', date: '2026-10-11T02:30Z' });
-    const f = feed([late, SUN]);
-    const now = new Date('2026-10-11T04:10Z');
-    const r = await getLiveMatches(adapterOn(f, now), now);
-    expect([...f.dates].sort()).toEqual(['20261010', '20261011']);
-    expect(ids(r.matches)).toEqual(['8']);
+  it('a match by id: served', async () => {
+    const f = wcFeed();
+    const r = await getMatchById(wcAdapter(f), '760415');
+    expect(r.degraded).toBe(false);
+    expect(r.match?.status).toBe('FT');
+    expect(f.dates.some((d) => d.includes('-'))).toBe(false);
   });
 
-  it('back to one once no match from the previous provider day can still be in play', async () => {
-    const f = feed(ALL);
-    const now = new Date('2026-10-11T08:30Z'); // 04:30 Eastern
-    await getLiveMatches(adapterOn(f, now), now);
-    expect(f.dates).toEqual(['20261011']);
+  it('live: served, and it still asks for a day either side (the conservative coverage is kept)', async () => {
+    const f = wcFeed();
+    const r = await getLiveMatches(wcAdapter(f), new Date('2026-06-11T20:00Z'));
+    expect(r.degraded).toBe(false);
+    expect([...f.dates].sort()).toEqual(['20260610', '20260611', '20260612']);
   });
 
-  it('an adapter that does not say how it files a day keeps the three-day window', async () => {
-    const asked: string[] = [];
-    const plain = {
-      name: 'other',
-      competition: 'mex.1',
-      capabilities: { push: false, latencyHintSec: 0 },
-      async fetchByDate() {
-        return [];
-      },
-      async fetchLive() {
-        return [];
-      },
-      async fetchWindow(start: string, end: string) {
-        asked.push(`${start}..${end}`);
-        return [];
-      },
+  it('the knockout span: served, from the two months it touches, and only its fixtures', async () => {
+    const f = wcFeed();
+    const r = await getKnockoutFixtures(wcAdapter(f), new Date('2026-07-14T12:00Z'));
+    expect(r.degraded).toBe(false);
+    expect(r.fixtures.map((m) => m.id)).toEqual(['760517']);
+    expect(r.fixtures[0]?.home.name).toBe('Spain');
+    expect([...f.dates].sort()).toEqual(['202606', '202607']);
+    expect(r.complete).toBeUndefined();
+  });
+
+  it('next and the bracket: served', async () => {
+    const next = await getNextFixtureForTeam(wcAdapter(wcFeed()), 'ESP', new Date('2026-07-14T12:00Z'));
+    expect(next).toMatchObject({ degraded: false, source: 'espn' });
+    expect(next.fixture?.id).toBe('760517');
+    const bracket = await getBracket(wcAdapter(wcFeed()), { stage: 'F' });
+    expect(bracket.degraded).toBe(false);
+  });
+
+  it('what each read costs, counted: the scoreboard requests and the one standings request beside them', async () => {
+    const count = async (run: (a: EspnAdapter) => Promise<unknown>, enrich: boolean) => {
+      const f = wcFeed();
+      await run(wcAdapter(f, enrich));
+      return { scoreboard: f.dates.length, standings: f.urls.filter((u) => u.includes('/standings')).length };
     };
-    await getLiveMatches(plain, new Date('2026-10-11T04:10Z'));
-    expect(asked).toEqual(['2026-10-10..2026-10-12']);
+    // The refresher's adapter (no group enrichment).
+    expect(await count((a) => getLiveMatches(a, new Date('2026-06-11T20:00Z')), false)).toEqual({ scoreboard: 3, standings: 0 });
+    expect(await count((a) => getKnockoutFixtures(a, new Date('2026-07-14T12:00Z')), false)).toEqual({ scoreboard: 2, standings: 0 });
+    // An interactive adapter (group letters from standings, shared by the parts of one call).
+    expect(await count((a) => getLiveMatches(a, new Date('2026-06-11T20:00Z')), true)).toEqual({ scoreboard: 3, standings: 1 });
+    expect(await count((a) => getMatchesForDate(a, '2026-06-11'), true)).toEqual({ scoreboard: 3, standings: 1 });
+    expect(await count((a) => getMatchById(a, '760415'), true)).toEqual({ scoreboard: 3, standings: 1 });
+    expect(await count((a) => getNextFixtureForTeam(a, 'ESP', new Date('2026-07-14T12:00Z')), true)).toEqual({ scoreboard: 2, standings: 1 });
+  });
+
+  it('a market read keeps the tie the overlay resolved when its second read fails', async () => {
+    // `markets next` reads the knockout span, then the candidate's own days.
+    // When that second read failed, the answer fell back to the BUNDLED
+    // fixture, which for a knockout tie is a placeholder.
+    const f = wcFeed();
+    const daysDown = (async (input: unknown) => {
+      const dates = new URL(String(input)).searchParams.get('dates') ?? '';
+      return dates.length === 8 ? json({}, 503) : f.fetchImpl(input as string);
+    }) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ competition: 'fifa.world', enrichGroups: false, fetchImpl: daysDown });
+    const r = await marketFixtureForTeam(adapter, 'ESP', new Date('2026-07-19T19:30Z'));
+    expect(r.degraded).toBe(true);
+    expect(r.match?.id).toBe('760517');
+    expect(r.match?.home.name).toBe('Spain');
+    expect(r.match?.away.name).toBe('Argentina');
+  });
+
+  it('an answer that left a record out says so, so a caller does not take an absence for a fact', async () => {
+    const f = wcFeed();
+    const withBroken = (async (input: unknown) => {
+      const res = await f.fetchImpl(input as string);
+      const url = String(input);
+      if (!url.includes('dates=202607')) return res;
+      const body = (await res.json()) as { events: unknown[] };
+      // Two teams, and a status the parser does not know: refused, not "not a fixture".
+      body.events.push(event({ id: '760516', date: '2026-07-18T19:00Z', raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } }));
+      return json(body);
+    }) as unknown as typeof fetch;
+    const r = await getKnockoutFixtures(new EspnAdapter({ competition: 'fifa.world', enrichGroups: false, fetchImpl: withBroken }), new Date('2026-07-14T12:00Z'));
+    expect(r.degraded).toBe(false);
+    expect(r.fixtures.map((m) => m.id)).toEqual(['760517']);
+    expect(r.complete).toBe(false);
   });
 });
