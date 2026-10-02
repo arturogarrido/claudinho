@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+/** Every path looked at: a `stat` by path, or an `open` (a small file is read through one descriptor). */
 const stats: string[] = [];
 vi.mock('node:fs', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs')>();
@@ -22,6 +23,10 @@ vi.mock('node:fs', async (importOriginal) => {
       stats.push(String(args[0]));
       return fs.statSync(...args);
     }) as typeof fs.statSync,
+    openSync: ((...args: Parameters<typeof fs.openSync>) => {
+      stats.push(String(args[0]));
+      return fs.openSync(...args);
+    }) as typeof fs.openSync,
   };
 });
 

@@ -1,17 +1,21 @@
 /**
  * Shared filesystem helpers for the CLI: the single home for the claudinho
- * cache directory (previously duplicated across cache/marketCache/starNudge)
- * and an atomic write for files a reader may observe mid-write (cache
- * snapshots, ~/.claude settings). tmp + rename on the same filesystem — a
- * crash can abandon a .tmp but never leave a truncated target.
+ * cache directory (previously duplicated across cache/marketCache/starNudge),
+ * an atomic write for files a reader may observe mid-write (cache snapshots,
+ * ~/.claude settings) — tmp + rename on the same filesystem, so a crash can
+ * abandon a .tmp but never leave a truncated target — and a bounded read for a
+ * small file the hot path reads.
  */
 import { randomBytes } from 'node:crypto';
 import {
   closeSync,
+  constants,
   fchmodSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
   openSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -31,6 +35,54 @@ import { dirname, join } from 'node:path';
 export function cacheDir(): string {
   const base = process.env.XDG_CACHE_HOME || join(homedir(), '.cache');
   return join(base, 'claudinho');
+}
+
+/**
+ * Open flags for a bounded read: read-only, and NON-BLOCKING where the platform
+ * has the flag. Opening a pipe that has no writer blocks for ever without it;
+ * Windows has no `O_NONBLOCK` (and no pipe can sit in a directory there).
+ */
+const READ_FLAGS = constants.O_RDONLY | (constants.O_NONBLOCK ?? 0);
+
+/**
+ * The contents of a small regular file, read through ONE descriptor and never
+ * more than `maxBytes + 1` bytes of it; `undefined` when there is no such file
+ * (absent, not a regular file, larger than `maxBytes`, grown since it was
+ * checked, unreadable). Never throws, never waits.
+ *
+ * A check by path followed by a read by path is two looks at what may be two
+ * files: between them the path can become a pipe (the read then blocks the
+ * statusline for ever) or a file far larger than the check allowed (read
+ * whole). Here the check and the read are of the same open file, and the read
+ * stops one byte past the size the check saw (at most the bound): a file that
+ * grew in place after it was checked is being written by someone who does not
+ * replace it atomically, and is not read further.
+ */
+export function readSmallFile(path: string, maxBytes: number): Buffer | undefined {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, READ_FLAGS);
+    const info = fstatSync(fd);
+    if (!info.isFile() || info.size > maxBytes) return undefined;
+    const buf = Buffer.alloc(info.size + 1);
+    let total = 0;
+    while (total < buf.length) {
+      const n = readSync(fd, buf, total, buf.length - total, null);
+      if (n === 0) break;
+      total += n;
+    }
+    return total > info.size ? undefined : buf.subarray(0, total);
+  } catch {
+    return undefined;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* nothing more to do with it */
+      }
+    }
+  }
 }
 
 export interface AtomicWriteOptions {

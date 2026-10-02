@@ -23,6 +23,7 @@ import {
   ageMs,
   backoffInEffect,
   type CacheState,
+  ensureBackoffVisible,
   fixturesAgeMs,
   fixturesAttemptAgeMs,
   isLockFresh,
@@ -30,7 +31,6 @@ import {
   releaseLock,
   claimLock,
   publishState,
-  writeBackoffNote,
 } from './cache';
 import { inLiveWindow, LIVE_TTL_MS } from './statusline';
 
@@ -428,15 +428,14 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       },
       token,
     );
-    if (!published) {
-      // The lease was lost and the snapshot is the successor's. A throttle this
-      // cycle was given is still a fact about the provider, and the successor
-      // may not have met it: it goes to the note, which needs no lock, like a
-      // command's that could not get one.
-      if (backoffUntil) writeBackoffNote(source, competition, Date.parse(backoffUntil), clock());
-      if (process.env.CLAUDINHO_DEBUG) {
-        process.stderr.write('claudinho: refresh lease lost to a successor; snapshot not published\n');
-      }
+    // A deadline this cycle holds counts only once a reader will find it. A
+    // refused publish (the lease was lost: the snapshot is the successor's,
+    // and the successor may not have met this throttle) and a publish into a
+    // snapshot nobody can read both leave it invisible: it goes to the note,
+    // which needs no lock, as a command's does.
+    if (backoffUntil) ensureBackoffVisible(source, competition, Date.parse(backoffUntil), clock());
+    if (!published && process.env.CLAUDINHO_DEBUG) {
+      process.stderr.write('claudinho: refresh lease lost to a successor; snapshot not published\n');
     }
   } finally {
     releaseLock(token);
