@@ -1,17 +1,22 @@
 /**
  * Shared filesystem helpers for the CLI: the single home for the claudinho
- * cache directory (previously duplicated across cache/marketCache/starNudge)
- * and an atomic write for files a reader may observe mid-write (cache
- * snapshots, ~/.claude settings). tmp + rename on the same filesystem — a
- * crash can abandon a .tmp but never leave a truncated target.
+ * cache directory (previously duplicated across cache/marketCache/starNudge),
+ * an atomic write for files a reader may observe mid-write (cache snapshots,
+ * ~/.claude settings) — tmp + rename on the same filesystem, so a crash can
+ * abandon a .tmp but never leave a truncated target — and the one bounded,
+ * non-blocking read for every file the CLI keeps (the snapshot, the throttle
+ * note, the refresh lock, the market cache, the run counter).
  */
 import { randomBytes } from 'node:crypto';
 import {
   closeSync,
+  constants,
   fchmodSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
   openSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -31,6 +36,85 @@ import { dirname, join } from 'node:path';
 export function cacheDir(): string {
   const base = process.env.XDG_CACHE_HOME || join(homedir(), '.cache');
   return join(base, 'claudinho');
+}
+
+/**
+ * Open flags for a bounded read: read-only, and NON-BLOCKING where the platform
+ * has the flag. Opening a pipe that has no writer blocks for ever without it;
+ * Windows has no `O_NONBLOCK` (and no pipe can sit in a directory there).
+ */
+const READ_FLAGS = constants.O_RDONLY | (constants.O_NONBLOCK ?? 0);
+
+/**
+ * What one look at a small file found: its bytes and its mtime (both from the
+ * one open file), or that NOTHING is at the path, or that something is there
+ * that cannot be read as such a file. The last two differ for a caller that
+ * must not remove what is absent and must take over what it cannot judge (the
+ * refresh lock).
+ */
+export type SmallFile =
+  | { kind: 'read'; bytes: Buffer; mtimeMs: number }
+  | { kind: 'absent' }
+  | { kind: 'unreadable' };
+
+const ABSENT: SmallFile = { kind: 'absent' };
+const UNREADABLE: SmallFile = { kind: 'unreadable' };
+
+/**
+ * Read a small regular file through ONE descriptor, never more than
+ * `maxBytes + 1` bytes of it. `absent` when the open finds nothing (ENOENT);
+ * `unreadable` for anything else that is not a regular file of at most
+ * `maxBytes` (a pipe, a directory, too large, grown since it was checked, no
+ * permission). Never throws, never waits. The ONE implementation for every
+ * file the CLI keeps; `readSmallFile` is its bytes-or-nothing form.
+ *
+ * A check by path followed by a read by path is two looks at what may be two
+ * files: between them the path can become a pipe (the read then blocks the
+ * statusline for ever) or a file far larger than the check allowed (read
+ * whole). Here the check and the read are of the same open file, and the read
+ * stops one byte past the size the check saw (at most the bound): a file that
+ * grew in place after it was checked is being written by someone who does not
+ * replace it atomically, and is not read further.
+ */
+export function lookAtSmallFile(path: string, maxBytes: number): SmallFile {
+  let fd: number | undefined;
+  try {
+    try {
+      fd = openSync(path, READ_FLAGS);
+    } catch (e) {
+      return (e as NodeJS.ErrnoException | undefined)?.code === 'ENOENT' ? ABSENT : UNREADABLE;
+    }
+    const info = fstatSync(fd);
+    if (!info.isFile() || info.size > maxBytes) return UNREADABLE;
+    const buf = Buffer.alloc(info.size + 1);
+    let total = 0;
+    while (total < buf.length) {
+      const n = readSync(fd, buf, total, buf.length - total, null);
+      if (n === 0) break;
+      total += n;
+    }
+    if (total > info.size) return UNREADABLE;
+    return { kind: 'read', bytes: buf.subarray(0, total), mtimeMs: info.mtimeMs };
+  } catch {
+    return UNREADABLE;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* nothing more to do with it */
+      }
+    }
+  }
+}
+
+/**
+ * The contents of a small regular file (see `lookAtSmallFile`), or `undefined`
+ * when there is no such file, whatever the reason. Never throws, never waits.
+ */
+export function readSmallFile(path: string, maxBytes: number): Buffer | undefined {
+  const file = lookAtSmallFile(path, maxBytes);
+  return file.kind === 'read' ? file.bytes : undefined;
 }
 
 export interface AtomicWriteOptions {

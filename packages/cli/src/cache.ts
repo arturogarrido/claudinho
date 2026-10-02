@@ -4,19 +4,11 @@
  * and fast. Writes are atomic (tmp + rename) so a reader never sees a partial
  * file. A lockfile serializes refreshers to prevent stampedes.
  */
-import {
-  closeSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeSync,
-} from 'node:fs';
+import { closeSync, mkdirSync, openSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_COMPETITION, type Match, type ScheduleEntry, type SeasonInfo } from '@claudinho/core';
 import { randomBytes } from 'node:crypto';
-import { cacheDir, writeFileAtomic } from './paths';
+import { cacheDir, lookAtSmallFile, readSmallFile, writeFileAtomic } from './paths';
 
 export { cacheDir } from './paths';
 
@@ -216,13 +208,9 @@ export function readState(
   competition = DEFAULT_COMPETITION,
 ): CacheState | undefined {
   try {
-    const path = cachePath(source, competition);
-    const info = statSync(path);
-    if (!info.isFile() || info.size > MAX_STATE_BYTES) return undefined;
-    const bytes = readFileSync(path);
-    // Re-check the bytes actually read: the stat and read are separate syscalls,
-    // so a concurrently replaced file must not bypass the pre-parse ceiling.
-    if (bytes.byteLength > MAX_STATE_BYTES) return undefined;
+    // One descriptor, a bounded read: the statusline reads this on every prompt.
+    const bytes = readSmallFile(cachePath(source, competition), MAX_STATE_BYTES);
+    if (!bytes) return undefined;
     const parsed: unknown = JSON.parse(bytes.toString('utf8'));
     return isCacheState(parsed) ? parsed : undefined;
   } catch {
@@ -276,9 +264,11 @@ export function believedDeadline(untilMs: number | undefined, now: number): numb
 // A throttle is written into the snapshot under the refresh lock. A command
 // that meets one while a refresher holds that lock (for as long as a request
 // can take) could not write it, exited, and the throttle was lost: the next
-// refresh asked the provider that had just said stop. The note is where such
-// a throttle goes instead: a tiny file beside the snapshot, written
-// atomically and WITHOUT the lock, read by everything that reads a backoff.
+// refresh asked the provider that had just said stop. The note is where a
+// throttle goes whenever a reader would not find it in the snapshot (the lock
+// was taken, the publish was refused, the snapshot cannot be read): a tiny
+// file beside the snapshot, written atomically and WITHOUT the lock, read by
+// everything that reads a backoff (`ensureBackoffVisible` decides).
 // It is never deleted (an expired one is simply not believed, and the next
 // writer writes over it), so no cleanup can remove a deadline it did not read.
 
@@ -293,11 +283,8 @@ export function backoffNotePath(source = 'espn', competition = DEFAULT_COMPETITI
 /** The note's deadline if there is a readable note and it is believed at `now` (never throws). */
 export function readBackoffNote(source: string, competition: string, now = Date.now()): number | undefined {
   try {
-    const path = backoffNotePath(source, competition);
-    const info = statSync(path);
-    if (!info.isFile() || info.size > MAX_NOTE_BYTES) return undefined;
-    const bytes = readFileSync(path);
-    if (bytes.byteLength > MAX_NOTE_BYTES) return undefined;
+    const bytes = readSmallFile(backoffNotePath(source, competition), MAX_NOTE_BYTES);
+    if (!bytes) return undefined;
     const parsed: unknown = JSON.parse(bytes.toString('utf8'));
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
     const until = (parsed as { until?: unknown }).until;
@@ -342,7 +329,8 @@ export function writeBackoffNote(source: string, competition: string, untilMs: n
  * The backoff in effect for a scope: the later BELIEVED deadline of the
  * snapshot's `backoffUntil` and the scope's note, as epoch ms. Every reader of
  * a backoff asks this: the hot-path triggers, the refresher under its lock, a
- * command arming its adapter. The two are validated separately, so an
+ * command arming its adapter; and every writer, to keep the later deadline and
+ * to know whether its own is in place. The two are validated separately, so an
  * unbelieved value on one side never hides a believed one on the other.
  */
 export function backoffInEffect(
@@ -355,6 +343,28 @@ export function backoffInEffect(
   const note = readBackoffNote(source, competition, now);
   if (snapshot === undefined) return note;
   return note === undefined ? snapshot : Math.max(snapshot, note);
+}
+
+/**
+ * Make a throttle visible: called by every writer of a deadline AFTER its
+ * attempt to publish one, whether the publish happened, was refused, or was
+ * never tried (the lock was someone else's). If the backoff a reader would
+ * find (`backoffInEffect` of the snapshot as it is now, and the note) is not at
+ * least as late as `untilMs`, the deadline goes to the note. Returns whether it
+ * is now visible: false when `untilMs` itself is not believed, or when the note
+ * could not be written or read back (never throws). In whole milliseconds, as
+ * a stamp stores it and as `writeBackoffNote` compares.
+ *
+ * A write that HAPPENED is not one a reader will find: an atomic replacement
+ * keeps the mode of the file it replaces, so a snapshot nobody can read stays
+ * one, and the deadline published into it is on disk and invisible.
+ */
+export function ensureBackoffVisible(source: string, competition: string, untilMs: number, now = Date.now()): boolean {
+  const own = believedDeadline(Math.floor(untilMs), now);
+  if (own === undefined) return false;
+  const found = backoffInEffect(readCurrentState(source, competition), source, competition, now);
+  if (found !== undefined && found >= own) return true;
+  return writeBackoffNote(source, competition, own, now);
 }
 
 /** Age of the latest fixtures ATTEMPT in ms (Infinity if never attempted). */
@@ -404,36 +414,53 @@ export function fixturesAgeMs(state: CacheState | undefined, now = Date.now()): 
 }
 
 /**
- * Age of the lock in ms. Uses the timestamp written *inside* the lock
- * (authoritative — survives copies/touch) and falls back to the file mtime.
- * Returns Infinity if there's no lock.
+ * A lock is `<pid> <stamp> <nonce>` (a few dozen bytes): far below this. It is
+ * read on every prompt (`isLockFresh`), through the one reader of kept files.
  */
-function lockAgeMs(now = Date.now()): number {
-  const lp = lockPath();
-  try {
-    const contents = readFileSync(lp, 'utf8');
-    const written = Number.parseInt(contents.split(/\s+/)[1] ?? '', 10);
-    // Through the shared guard: a lock written in the future never went
-    // stale, so it held the refresher silent forever.
-    if (Number.isFinite(written)) return stampAgeMs(new Date(written).toISOString(), now);
-  } catch {
-    return Infinity; // no lock
-  }
+const MAX_LOCK_BYTES = 256;
+
+/** The age of an epoch-ms instant, through `stampAgeMs`; Infinity if it is no instant at all. */
+function epochAgeMs(ms: number, now: number): number {
+  const at = new Date(ms);
+  // Beyond the range of a date: further from now than any stamp can be, so
+  // stale, like a stamp in the future. (`toISOString` would throw.)
+  return Number.isNaN(at.getTime()) ? Infinity : stampAgeMs(at.toISOString(), now);
+}
+
+/**
+ * Age of the lock in ms, or `undefined` when there is NO lock (nothing at the
+ * path). Read through ONE descriptor, without waiting: the hot path asks this
+ * on every prompt, and a pipe at the lock's path used to block it for ever.
+ * Uses the timestamp written *inside* the lock (authoritative — survives
+ * copies/touch) and falls back to the mtime of the same open file. A lock
+ * that is there but cannot be judged (a pipe, a directory, no permission,
+ * larger than `MAX_LOCK_BYTES`) is Infinity: stale. "Absent" and "stale" are
+ * different answers because `claimLock` must not remove a lock that is absent.
+ *
+ * Intended change (0.11 2.6a): a junk lock LARGER than the bound used to be
+ * read whole and judged by its mtime (fresh for a minute after it was
+ * written); it is now unreadable, so stale, and taken over.
+ */
+function lockAgeMs(now = Date.now()): number | undefined {
+  const lock = lookAtSmallFile(lockPath(), MAX_LOCK_BYTES);
+  if (lock.kind === 'absent') return undefined;
+  if (lock.kind === 'unreadable') return Infinity;
+  const written = Number.parseInt(lock.bytes.toString('utf8').split(/\s+/)[1] ?? '', 10);
+  // Through the shared guard: a lock written in the future never went stale,
+  // so it held the refresher silent forever.
+  if (Number.isFinite(written)) return epochAgeMs(written, now);
   // Lock exists but its content is unparseable — fall back to mtime, THROUGH
   // the same guard. Bypassing it here meant an unreadable lock dated 2099 was
   // permanently fresh and never released: `isLockFresh()` true and
   // `acquireLock()` false, forever. Third time a timestamp fix has missed a
   // sibling, which is why every one of them now routes through `stampAgeMs`.
-  try {
-    return stampAgeMs(new Date(statSync(lp).mtimeMs).toISOString(), now);
-  } catch {
-    return Infinity;
-  }
+  return epochAgeMs(lock.mtimeMs, now);
 }
 
 /** True if a refresher currently holds a non-stale lock. */
 export function isLockFresh(now = Date.now()): boolean {
-  return lockAgeMs(now) < LOCK_STALE_MS;
+  const age = lockAgeMs(now);
+  return age !== undefined && age < LOCK_STALE_MS;
 }
 
 /**
@@ -446,12 +473,9 @@ export type LockToken = string;
 /** The token this process last acquired through the no-argument API. */
 let heldToken: LockToken | undefined;
 
+/** The token in the lock file, read like its age (one descriptor, bounded, never waits). */
 function readLockToken(): string | undefined {
-  try {
-    return readFileSync(lockPath(), 'utf8').trim();
-  } catch {
-    return undefined;
-  }
+  return readSmallFile(lockPath(), MAX_LOCK_BYTES)?.toString('utf8').trim();
 }
 
 function writeExclusive(lp: string, token: LockToken): boolean {
@@ -469,32 +493,47 @@ function writeExclusive(lp: string, token: LockToken): boolean {
 }
 
 /**
- * Claim the refresh lock (atomic O_EXCL), stealing a stale one. Returns the
+ * Claim the refresh lock (atomic O_EXCL), taking over a stale one. Returns the
  * owner token, which `holdsLock`, `publishState` and `releaseLock` require —
  * audit A10: a release without ownership used to unlink whatever lock was
  * there, so a stale owner waking up removed its SUCCESSOR's lock and a third
  * refresher was admitted while the successor still ran.
- * NOT CLOSED (stated, 0.11 2.6a): stealing a stale lock is "judge it stale,
- * remove it, create mine" — three steps. Two stealers, or a stealer and a
- * fresh claimer, can both end up holding it, and several delayed stealers can
- * remove successive owners. It takes a refresher that died or hung for more
- * than `LOCK_STALE_MS` AND processes inside the same few file operations; each
- * extra holder is one overlapping cycle of requests, and its publish is
- * refused by the ownership check unless it lands inside that check's own
- * window. A single stealer is enough to take the lease of an owner that still
- * runs (a suspended machine, a clock that stepped, a caller that judges with a
- * clock more than `LOCK_STALE_MS` behind the lock's stamp): that owner's
- * publish is then refused, and a throttle it met goes to the note. Closing it takes lock names that are never reused (a generation per
- * acquisition); a rename-and-restore takeover was designed and withdrawn,
- * because it opens the lock path to a third process while it runs.
+ *
+ * A lock that is GONE when it is looked at (its owner released it, normally,
+ * just after this claimer's create failed) is not removed: it used to count
+ * as stale, and "remove it, create mine" removed whatever lock a third
+ * refresher had created in that instant, so two held it with no dead or hung
+ * owner anywhere. The claimer tries the exclusive create once more instead.
+ *
+ * NOT CLOSED (stated, 0.11 2.6a): taking over a lock that IS stale is "judge
+ * it stale, remove it, create mine" — three steps. Between the judgment and the
+ * removal the lock can be replaced (by another stealer of the same stale lock,
+ * or by a fresh claimer once the stale owner woke and released), and the
+ * removal then takes the new one: two can hold the lock, and several delayed
+ * stealers can remove successive owners. It takes a refresher that died or
+ * hung for more than `LOCK_STALE_MS` AND processes inside the same few file
+ * operations; each extra holder is one overlapping cycle of requests, and its
+ * publish is refused by the ownership check unless it lands inside that
+ * check's own window (check, then write: see `publishState`). A single stealer
+ * is enough to take the lease of an owner that still runs (a suspended
+ * machine, a clock that stepped, a caller that judges with a clock more than
+ * `LOCK_STALE_MS` behind the lock's stamp): that owner's publish is then
+ * refused, and a throttle it met goes to the note. Closing it takes lock names
+ * that are never reused (a generation per acquisition); a rename-and-restore
+ * takeover was designed and withdrawn, because it opens the lock path to a
+ * third process while it runs.
  */
 export function claimLock(now = Date.now()): LockToken | undefined {
   mkdirSync(cacheDir(), { recursive: true });
   const lp = lockPath();
   const token = `${process.pid} ${now} ${randomBytes(6).toString('hex')}`;
   if (writeExclusive(lp, token)) return token;
-  // Lock exists. Steal it only if it's stale (by written timestamp / mtime).
-  if (lockAgeMs(now) > LOCK_STALE_MS) {
+  const age = lockAgeMs(now);
+  // Gone since the create failed: nothing to remove. One more create; if
+  // someone else got there first, the lock is theirs.
+  if (age === undefined) return writeExclusive(lp, token) ? token : undefined;
+  // There, and stale (by written timestamp / mtime): take it over.
+  if (age > LOCK_STALE_MS) {
     try {
       rmSync(lp, { force: true });
     } catch {
@@ -536,7 +575,9 @@ export function releaseLock(token: LockToken | undefined = heldToken): void {
  * window a refresher that lost its lease has to overwrite its successor; it
  * does not close it (two steps cannot, and Node offers no portable lock the
  * operating system holds). Stated, with the takeover race in `claimLock`.
- * Returns whether the write happened.
+ * Returns whether the write happened, which is not whether a reader will find
+ * it (a snapshot nobody can read stays one): a writer with a throttle asks
+ * `ensureBackoffVisible` afterwards, refused or not.
  */
 export function publishState(state: CacheState, token: LockToken | undefined = heldToken): boolean {
   if (!holdsLock(token)) return false;

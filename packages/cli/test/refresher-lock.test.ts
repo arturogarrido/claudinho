@@ -18,12 +18,14 @@
  */
 import { EspnAdapter } from '@claudinho/core';
 import { execFileSync, spawn } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let onClaim: (() => void) | undefined;
+/** While true, every publish is refused (the lease was lost), as `publishState` reports it. */
+let refusePublish = false;
 vi.mock('../src/cache', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../src/cache')>();
   return {
@@ -34,6 +36,7 @@ vi.mock('../src/cache', async (importOriginal) => {
       hook?.();
       return mod.claimLock(...args);
     },
+    publishState: (...args: Parameters<typeof mod.publishState>) => (refusePublish ? false : mod.publishState(...args)),
   };
 });
 
@@ -44,6 +47,8 @@ import {
   cachePath,
   type CacheState,
   claimLock,
+  holdsLock,
+  isLockFresh,
   readBackoffNote,
   readCurrentState,
   readState,
@@ -98,6 +103,7 @@ beforeEach(() => {
   process.env.XDG_CACHE_HOME = dir;
   requests = [];
   onClaim = undefined;
+  refusePublish = false;
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -105,6 +111,34 @@ afterEach(() => {
   else process.env.XDG_CACHE_HOME = ORIG;
   rmSync(dir, { recursive: true, force: true });
 });
+
+/**
+ * After a moment, write `text` into the pipe at `path` from another process.
+ * The helper opens the pipe for reading AND writing, which never waits and
+ * needs nobody on the other end: a reader blocked on the pipe is let through
+ * and reads `text`; with nobody reading, the text is discarded when the helper
+ * closes. Either way the helper ends by itself.
+ */
+function feedPipeLater(path: string, text: string): void {
+  const helper = spawn(
+    process.execPath,
+    [
+      '-e',
+      `setTimeout(() => {
+         const fs = require('node:fs');
+         try {
+           const fd = fs.openSync(process.argv[1], fs.constants.O_RDWR | fs.constants.O_NONBLOCK);
+           fs.writeSync(fd, process.argv[2]);
+           setTimeout(() => fs.closeSync(fd), 200);
+         } catch {}
+       }, 1500);`,
+      path,
+      text,
+    ],
+    { detached: true, stdio: 'ignore' },
+  );
+  helper.unref();
+}
 
 describe('a decision to ask the provider is made from the state read under the lock', () => {
   it('control: a stale live slice in a live window is refreshed (three day requests)', async () => {
@@ -480,7 +514,7 @@ describe('found in review', () => {
     expect(inEffect(nowMs)).toBe(nowMs + 20 * MIN);
   });
 
-  it.skipIf(!POSIX)('a note path that is not a regular file is never opened (a pipe there would block the hot path)', () => {
+  it.skipIf(!POSIX)('a note path that is not a regular file is never read (a pipe there would block the hot path)', () => {
     mkdirSync(cacheDir(), { recursive: true });
     const pipe = backoffNotePath(SOURCE, WC);
     execFileSync('mkfifo', [pipe]);
@@ -489,27 +523,57 @@ describe('found in review', () => {
     // of hanging the suite, a helper process waits a moment and then writes a
     // well-formed note into the pipe: a reader that was wrongly blocked on it
     // wakes up holding a deadline, and the assertion below is red. With the
-    // rule in place nothing is reading, and the helper's open fails at once.
-    const helper = spawn(
-      process.execPath,
-      [
-        '-e',
-        `setTimeout(() => {
-           const fs = require('node:fs');
-           try {
-             const fd = fs.openSync(process.argv[1], fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
-             fs.writeSync(fd, process.argv[2]);
-             fs.closeSync(fd);
-           } catch {}
-         }, 1500);`,
-        pipe,
-        JSON.stringify({ until: new Date(nowMs + 10 * MIN).toISOString() }),
-      ],
-      { detached: true, stdio: 'ignore' },
-    );
-    helper.unref();
+    // rule in place nothing is reading, and what the helper wrote is discarded.
+    feedPipeLater(pipe, JSON.stringify({ until: new Date(nowMs + 10 * MIN).toISOString() }));
     expect(readBackoffNote(SOURCE, WC, nowMs)).toBeUndefined();
     expect(backoffInEffect(undefined, SOURCE, WC, nowMs)).toBeUndefined();
+  });
+
+  it.skipIf(!POSIX)('nor is a lock path that is not a regular file: it is a lock nobody can judge, so it is stale, and it is taken over', () => {
+    // The hot path asks the lock's age on every prompt, before the note or the
+    // snapshot matter. A reader blocked on a pipe there wakes holding the fresh
+    // lock the helper wrote, and says a refresher is running.
+    mkdirSync(cacheDir(), { recursive: true });
+    const pipe = join(cacheDir(), 'refresh.lock');
+    execFileSync('mkfifo', [pipe]);
+    feedPipeLater(pipe, `${process.pid} ${nowMs} 0123456789ab`);
+    expect(isLockFresh(nowMs)).toBe(false);
+    const token = claimLock(nowMs);
+    expect(token).toBeDefined();
+    expect(holdsLock(token)).toBe(true);
+    expect(statSync(pipe).isFile()).toBe(true); // the pipe is gone: a real lock is there
+    releaseLock(token);
+  });
+
+  it.skipIf(!POSIX)('nor a lock path that leads to a device: what reads as an empty file is not judged by its date', () => {
+    // A pipe reads differently from one system to the next (an error on one,
+    // an empty read on another). The null device reads as empty everywhere and
+    // carries the date of its last write: read as a lock, it is a lock with no
+    // stamp, written just now, so fresh for a minute. It is not a regular
+    // file, so it is not read at all.
+    mkdirSync(cacheDir(), { recursive: true });
+    const link = join(cacheDir(), 'refresh.lock');
+    symlinkSync('/dev/null', link);
+    writeFileSync('/dev/null', 'x'); // its date is now
+    const now = Date.now();
+    expect(isLockFresh(now)).toBe(false);
+    const token = claimLock(now);
+    expect(token).toBeDefined();
+    expect(lstatSync(link).isFile()).toBe(true); // the link is gone: a real lock is there
+    releaseLock(token);
+  });
+
+  it('the note writer itself keeps the later deadline: a shorter one written after a longer one changes nothing', () => {
+    // Asked of the writer directly. Every caller now asks first whether its
+    // deadline is already in effect, so through a caller this rule is covered
+    // twice and a test cannot see it go; the writer's own check is the one made
+    // right before the write.
+    expect(writeBackoffNote(SOURCE, WC, nowMs + 20 * MIN, nowMs)).toBe(true);
+    expect(writeBackoffNote(SOURCE, WC, nowMs + 10 * MIN, nowMs)).toBe(true);
+    expect(readBackoffNote(SOURCE, WC, nowMs)).toBe(nowMs + 20 * MIN);
+    // And a longer one after a shorter one replaces it.
+    expect(writeBackoffNote(SOURCE, WC, nowMs + 25 * MIN, nowMs)).toBe(true);
+    expect(readBackoffNote(SOURCE, WC, nowMs)).toBe(nowMs + 25 * MIN);
   });
 
   it.skipIf(!POSIX || process.getuid?.() === 0)('a note that cannot be read back was not written: the caller is told, and retries', () => {
@@ -571,5 +635,98 @@ describe('found in review', () => {
     await runRefresh({ source: 'nope', competition: WC, now: quiet, jitterMs: 0 });
     expect(requests).toEqual([]);
     expect(readState('nope', WC)?.updatedAt).toBe(theirs.updatedAt); // the other one's, not overwritten
+  });
+});
+
+describe('found in review, round 2', () => {
+  const nowMs = OPENER_LIVE.getTime();
+  const POSIX = process.platform !== 'win32';
+  const throttledCommand = (retryAfter: string) =>
+    withPersistedBackoff(
+      new EspnAdapter({
+        competition: WC,
+        enrichGroups: false,
+        now: () => nowMs,
+        fetchImpl: (async () => throttle(retryAfter)) as unknown as typeof fetch,
+      }),
+      SOURCE,
+      OPENER_LIVE,
+    );
+
+  it('a COMMAND that gets the lock and whose publish is then refused leaves its throttle in the note', async () => {
+    // The refresher's refused publish was given the note; the command's was
+    // not. A throttle that arrives late (after the command's own call
+    // returned) has no "next chance": it must be placed when it is met.
+    writeState(stale(OPENER_LIVE));
+    refusePublish = true;
+    await expect(throttledCommand('600').fetchByDate('2026-06-11')).rejects.toMatchObject({ status: 429 });
+    refusePublish = false;
+    expect(readState(SOURCE, WC)?.backoffUntil).toBeUndefined();
+    expect(readBackoffNote(SOURCE, WC, nowMs)).toBe(nowMs + 600_000);
+  });
+
+  it('a command under the lock keeps a LONGER deadline that is in the note, like every writer', async () => {
+    // It compared its throttle with the snapshot's deadline only.
+    writeState(stale(OPENER_LIVE));
+    const command = throttledCommand('600'); // wrapped before the note exists: not pre-armed
+    writeBackoffNote(SOURCE, WC, nowMs + 20 * MIN, nowMs);
+    await expect(command.fetchByDate('2026-06-11')).rejects.toBeDefined();
+    expect(Date.parse(readState(SOURCE, WC)?.backoffUntil ?? '')).toBe(nowMs + 20 * MIN);
+  });
+
+  it.skipIf(!POSIX || process.getuid?.() === 0)('a throttle written into a snapshot nobody can read is not "persisted": it goes to the note', async () => {
+    // The snapshot-side twin of the unreadable note: an atomic write keeps the
+    // mode of the file it replaces, so the deadline is on disk and invisible,
+    // and the next command asks the provider inside the backoff.
+    writeState(stale(OPENER_LIVE));
+    chmodSync(cachePath(SOURCE, WC), 0o000);
+    try {
+      await expect(throttledCommand('600').fetchByDate('2026-06-11')).rejects.toBeDefined();
+      expect(inEffect(nowMs + 1000)).toBe(nowMs + 600_000);
+      requests = [];
+      const next = withPersistedBackoff(
+        new EspnAdapter({
+          competition: WC,
+          enrichGroups: false,
+          now: () => nowMs + 30_000,
+          fetchImpl: (async (input: unknown) => {
+            requests.push(String(input));
+            return answer();
+          }) as unknown as typeof fetch,
+        }),
+        SOURCE,
+        new Date(nowMs + 30_000),
+      );
+      await expect(next.fetchByDate('2026-06-11')).rejects.toBeDefined();
+      expect(requests).toEqual([]);
+    } finally {
+      chmodSync(cachePath(SOURCE, WC), 0o600);
+    }
+  });
+
+  it.skipIf(!POSIX || process.getuid?.() === 0)('the refresher too: a throttle published into a snapshot nobody can read goes to the note', async () => {
+    writeState(stale(OPENER_LIVE));
+    chmodSync(cachePath(SOURCE, WC), 0o000);
+    try {
+      provider(() => throttle('600'));
+      await refresh(OPENER_LIVE);
+      expect(inEffect(nowMs + 20_000) ?? 0).toBeGreaterThanOrEqual(nowMs + 600_000);
+    } finally {
+      chmodSync(cachePath(SOURCE, WC), 0o600);
+    }
+  });
+
+  it('the refresher’s publish, the other way round: its own longer throttle beats a shorter note', async () => {
+    // A3 pinned a longer note against a shorter throttle only: a publish that
+    // kept the CARRIED deadline whatever came passed it.
+    writeState(stale(OPENER_LIVE));
+    provider(() => {
+      writeBackoffNote(SOURCE, WC, nowMs + MIN, nowMs);
+      return throttle('600');
+    });
+    await refresh(OPENER_LIVE);
+    const until = Date.parse(readState(SOURCE, WC)?.backoffUntil ?? '');
+    expect(until).toBeGreaterThanOrEqual(nowMs + 600_000);
+    expect(until).toBeLessThanOrEqual(nowMs + 30 * MIN);
   });
 });

@@ -25,6 +25,7 @@ import {
   ageMs,
   backoffInEffect,
   type CacheState,
+  ensureBackoffVisible,
   fixturesAgeMs,
   fixturesAttemptAgeMs,
   isLockFresh,
@@ -32,7 +33,6 @@ import {
   releaseLock,
   claimLock,
   publishState,
-  writeBackoffNote,
 } from './cache';
 import {
   applyDiscovery,
@@ -422,7 +422,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       },
       token,
     );
-    if (!published) noteRefusedPublish(backoffUntil, source, competition, clock());
+    settleBackoff(published, backoffUntil, source, competition, clock());
   } finally {
     releaseLock(token);
   }
@@ -463,14 +463,22 @@ function backoffToPublish(
 }
 
 /**
- * A publish was refused: the lease was lost and the snapshot is the
- * successor's. A throttle this cycle was given is still a fact about the
- * provider, and the successor may not have met it: it goes to the note, which
- * needs no lock, like a command's that could not get one.
+ * After a cycle's final publish, refused or not. A deadline the cycle holds
+ * counts only once a reader will find it. A refused publish (the lease was
+ * lost: the snapshot is the successor's, and the successor may not have met
+ * this throttle) and a publish into a snapshot nobody can read both leave it
+ * invisible: it goes to the note, which needs no lock, as a command's does.
+ * One place, for the bundled cycle and the one off the bundle.
  */
-function noteRefusedPublish(backoffUntil: string | undefined, source: string, competition: string, at: number): void {
-  if (backoffUntil) writeBackoffNote(source, competition, Date.parse(backoffUntil), at);
-  if (process.env.CLAUDINHO_DEBUG) {
+function settleBackoff(
+  published: boolean,
+  backoffUntil: string | undefined,
+  source: string,
+  competition: string,
+  at: number,
+): void {
+  if (backoffUntil) ensureBackoffVisible(source, competition, Date.parse(backoffUntil), at);
+  if (!published && process.env.CLAUDINHO_DEBUG) {
     process.stderr.write('claudinho: refresh lease lost to a successor; snapshot not published\n');
   }
 }
@@ -642,7 +650,7 @@ async function refreshOffBundle(c: {
 
     const backoffUntil = backoffToPublish(base, adapter, source, competition, nowMs, clock(), c.jitterMs);
     const published = publishState(snapshot(backoffUntil), token);
-    if (!published) noteRefusedPublish(backoffUntil, source, competition, clock());
+    settleBackoff(published, backoffUntil, source, competition, clock());
   } finally {
     releaseLock(token);
   }
