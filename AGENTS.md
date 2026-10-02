@@ -17,6 +17,9 @@ Guidance for AI coding agents working **in this repository**. (Standard [AGENTS.
 - Treat memory, prior reviews, and model recommendations as context. Verify changing facts against
   current source, configuration, and the live PR head before relying on them. Keep durable project
   rules here rather than copying them into personal memory or another agent guide.
+- Preserve the user's selected model and effort. Both are set and checked in the coding client; a
+  model recommendation in these guides does not change that setting or prove a model performs
+  better on this project.
 - Use an independent reviewer for the cases required under "Pre-PR self-review". Give each reviewer
   a bounded scope and reconcile their evidence. Other delegation follows the user's instructions
   and the coding client's rules.
@@ -176,10 +179,14 @@ Use the model **actually in use**, not a hardcoded one. Examples, one per agent 
 uses Anthropic's no-reply address; Cursor and Codex follow the same pattern with their own):
 
 ```
-Co-Authored-By: Claude Code (Opus 4.8) <noreply@anthropic.com>
+Co-Authored-By: Claude Code (<actual Claude model>) <noreply@anthropic.com>
 Co-Authored-By: Cursor (Composer 2.5) <...>
 Co-Authored-By: Codex (<actual GPT model>) <noreply@openai.com>
 ```
+
+Read the model from the current session; never infer it from an example, an older commit, or a
+global default that the session may override. Use this `<Agent> (<Model>)` form even when the
+coding client suggests a different trailer.
 
 ## Reviewing PRs (all agents)
 
@@ -197,19 +204,15 @@ Co-Authored-By: Codex (<actual GPT model>) <noreply@openai.com>
 - Claudinho exposes a model-independent MCP server; the shipped packages do not call an LLM API.
   An agent-model upgrade concerns the consuming client and these instructions. The AI pundit and
   gateway remain planned features, not migration prerequisites.
-- Preserve the user's selected model and effort. When asked to recommend a GPT-6 model, evaluate
-  `gpt-6-luna` for focused tasks where speed and cost matter, `gpt-6.1-sol` for complex work that
-  balances quality with time and cost, and `gpt-6-astra` for the most demanding reasoning/review.
+- When asked to recommend a GPT-6 model, evaluate `gpt-6-luna` for focused tasks where speed and
+  cost matter, `gpt-6.1-sol` for complex work that balances quality with time and cost, and
+  `gpt-6-astra` for the most demanding reasoning/review.
   Use the [model-selection guide](https://developers.openai.com/api/docs/guides/model-selection)
   as a starting point, then compare on representative project tasks at the same supported effort
   before tuning effort. The API model pages for
   [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) and
   [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra) list `low`, `medium`,
   `high`, `xhigh`, and `max`; neither supports `none` or `minimal` in the API.
-  Model availability and the effective session setting must be checked in the client. A Markdown
-  recommendation does not change that setting or prove a model performs better on this project.
-- Credit the actual model used in commits and PRs; never infer it from an example or a global
-  default that the session may override.
 
 GPT-6 guidance: [model and prompting recommendations](https://developers.openai.com/api/docs/guides/latest-model)
 and [maintaining agent instructions](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra).

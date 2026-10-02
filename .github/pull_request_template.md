@@ -18,7 +18,7 @@ no PR yet, draft this description locally. For other changes, state the intended
 <!-- Follow AGENTS.md → Validation scope. Mark inapplicable checks N/A with a reason;
 record actual results and any blocked checks. A skipped check is not a pass. -->
 
-- [ ] Prose-only changes: `git diff --check`, local links, stated contracts, and the `node --input-type=module` block in [AGENTS.md's private-document boundary check](../AGENTS.md#private-document-boundary-check) pass
+- [ ] Prose-only changes: `git diff --check`, local links, stated contracts, and the `node --input-type=module` block in [AGENTS.md's private-document boundary check](https://github.com/arturogarrido/claudinho/blob/main/AGENTS.md#private-document-boundary-check) pass
 - [ ] Code/dependency/executable-config changes: `pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint` all green locally (same order as CI — build first), plus relevant smoke/pack checks
 - [ ] New/changed behavior covered by meaningful tests, including failure modes
 - [ ] User-facing behavior: `pnpm release:qa` run after build and output inspected
