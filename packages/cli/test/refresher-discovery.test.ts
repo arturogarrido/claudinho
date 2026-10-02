@@ -419,6 +419,13 @@ describe('discovery has its own cadence, anchored on the latest attempt', () => 
     expect(wanted(NOW)).toBe(false);
   });
 
+  it('with NO snapshot and a throttle in the note, the trigger starts nothing: "never during a backoff" has no exception', () => {
+    expect(wanted(NOW)).toBe(true); // no snapshot, no backoff: start one
+    writeBackoffNote(SOURCE, MEX, NOW + 5 * MIN, NOW);
+    expect(wanted(NOW)).toBe(false);
+    expect(wanted(NOW + 6 * MIN)).toBe(true);
+  });
+
   it('none during a backoff, in the snapshot or in the note', async () => {
     seed(NOW, fresh(NOW, [], {}, 61 * MIN), { backoffUntil: iso(NOW + 5 * MIN) });
     expect(wanted(NOW)).toBe(false);
@@ -430,6 +437,23 @@ describe('discovery has its own cadence, anchored on the latest attempt', () => 
     expect(wanted(NOW)).toBe(false);
     await refresh(NOW);
     expect(asked).toEqual([]);
+  });
+
+  it('a throttle is a throttle however short its wait: `Retry-After: 0` is not a failed discovery either', async () => {
+    // Found in review: "was it throttled?" was asked as "is the cooldown still
+    // running?". With a wait of zero it was not, so the 429 was counted as a
+    // failure, a probe followed (three more requests to a provider that had
+    // just said stop), and no backoff was published at all.
+    const before = fresh(NOW, [entry('1', NOW - 20 * MIN)], { failures: 1 }, 61 * MIN);
+    seed(NOW, before);
+    failing = (d) => (d.length === 6 ? json({}, 429, { 'retry-after': '0' }) : undefined);
+    await refresh(NOW);
+    expect(asked).toEqual(['202610']);
+    const s = state();
+    expect(s?.schedule).toMatchObject({ failures: 1, attemptedAt: before.attemptedAt });
+    expect(s?.schedule?.probe).toBeUndefined();
+    // The provider is left alone for the floor every throttle gets.
+    expect(Date.parse(s?.backoffUntil ?? '')).toBeGreaterThanOrEqual(NOW + 5 * MIN);
   });
 
   it('a THROTTLED discovery is not a failure: no probe, no count, and it is due again when the backoff ends', async () => {
@@ -466,13 +490,40 @@ describe('the provider’s season turns on June 1: the two months are two answer
     season = (d) => (d.startsWith('202605') ? S2025 : S2026);
   });
 
-  it('exactly two month requests (never a day request for the three June days); both months’ fixtures; the season of the month that holds now', async () => {
+  it('exactly two month requests (never a day request for the three June days); both months’ fixtures; two seasons, so the slice states none', async () => {
     await refresh(MAY20);
     expect([...asked].sort()).toEqual(['202605', '202606']);
     const s = state();
     expect(s?.schedule?.index?.map((e) => e.id)).toEqual(['40', '41']);
-    expect(s?.schedule?.season).toMatchObject({ year: 2025 });
+    // Two seasons in one answer: the slice cannot say which its records belong to.
+    expect(s?.schedule?.season).toBeUndefined();
     expect(s?.schedule?.complete).toBe(true);
+  });
+
+  it('an INCOMPLETE answer after the turn of the season does not delete a fixture it did not read', async () => {
+    // Found in review. May 31: May (season 2025) and June (2026) are read; a
+    // June fixture kicks off on June 1 at 15:30Z. June 1, 15:00Z: June's answer
+    // holds that fixture as a record nobody can read, beside a readable one.
+    // The slice was stored as "season 2025" and the answer said "2026": another
+    // season, so it replaced the slice, and at 15:30Z nothing was polled.
+    const MAY31 = Date.parse('2026-05-31T15:00:00.000Z');
+    const JUNE1 = Date.parse('2026-06-01T15:00:00.000Z');
+    const KICKOFF = Date.parse('2026-06-01T15:30:00.000Z');
+    events = [
+      { id: '41', at: KICKOFF },
+      { id: '42', at: Date.parse('2026-06-03T23:00:00.000Z') },
+    ];
+    await refresh(MAY31);
+    expect(state()?.schedule?.index?.map((e) => e.id)).toEqual(['41', '42']);
+    // The next day's discovery: 41 comes back unreadable.
+    events = [{ id: '42', at: Date.parse('2026-06-03T23:00:00.000Z') }];
+    extra = (d) => (d === '202606' ? [{ id: 'not an id', date: iso(KICKOFF) }] : []);
+    await refresh(JUNE1);
+    expect(state()?.schedule?.index?.map((e) => e.id)).toContain('41');
+    expect(wanted(KICKOFF + MIN)).toBe(true);
+    asked = [];
+    await refresh(KICKOFF + MIN);
+    expect(days()).toHaveLength(3);
   });
 
   it('either month failing is a failed discovery: the slice stands, and ONE probe follows', async () => {
@@ -614,6 +665,13 @@ describe('on the bundled competition nothing changes', () => {
     expect(days()).toHaveLength(3);
     expect(months()).toEqual([]);
     expect(state(WC)?.schedule).toBeUndefined();
+  });
+
+  it('a throttle with a wait of zero still gets the floor every throttle gets, on this path too', async () => {
+    writeState({ updatedAt: iso(OPENER_LIVE - MIN), live: [], degraded: false, source: SOURCE, competition: WC });
+    failing = () => json({}, 429, { 'retry-after': '0' });
+    await refresh(OPENER_LIVE, WC);
+    expect(Date.parse(state(WC)?.backoffUntil ?? '')).toBeGreaterThanOrEqual(OPENER_LIVE + 5 * MIN);
   });
 
   it('outside every window nothing is asked, whatever a schedule slice in the file says', async () => {

@@ -167,22 +167,33 @@ describe('two months that state two seasons are two answers, not a refused windo
   const june: Ev = { id: '41', date: '2026-06-02T23:00Z' };
   const seasons = (dates: string) => (dates === '202605' ? S2025 : S2026);
 
-  it('both months’ fixtures are read; the season is that of the month that holds NOW', async () => {
+  it('both months’ fixtures are read; an answer whose months state TWO seasons states none', async () => {
+    // Found in review: the answer took the season of the month that holds now
+    // for all of it. June's fixtures were then stored as "season 2025", and the
+    // first incomplete answer after June 1 ("season 2026": another season)
+    // replaced the slice and dropped a June fixture it had not read. An answer
+    // can only state a season for all its fixtures when its months agree.
     const f = feed([may, june], { season: seasons });
     const r = await getScheduleAhead(adapterOn(f, now), now);
     expect(r.degraded).toBe(false);
     expect(ids(r.fixtures)).toEqual(['40', '41']);
-    expect(r.season).toMatchObject({ year: 2025 });
+    expect(r.season).toBeUndefined();
     expect(r.complete).toBe(true);
   });
 
-  it('when now is in the SECOND month the span touches, the season is that month’s', async () => {
-    // June 1: yesterday is May 31, so May is asked first; the month that holds now is June.
+  it('two months that state the SAME season: that season', async () => {
+    const f = feed([may, june], { season: () => S2025 });
+    const r = await getScheduleAhead(adapterOn(f, now), now);
+    expect(r.season).toMatchObject({ year: 2025 });
+  });
+
+  it('whichever month holds now: June 1 still touches May, and the answer still states no season', async () => {
+    // June 1: yesterday is May 31, so May is asked too.
     const june1 = new Date('2026-06-01T15:00:00Z');
     const f = feed([may, june], { season: seasons });
     const r = await getScheduleAhead(adapterOn(f, june1), june1);
     expect([...f.dates].sort()).toEqual(['202605', '202606']);
-    expect(r.season).toMatchObject({ year: 2026 });
+    expect(r.season).toBeUndefined();
   });
 
   it('control: the same two months as ONE window are refused by the adapter', async () => {
@@ -190,7 +201,7 @@ describe('two months that state two seasons are two answers, not a refused windo
     await expect(adapterOn(f, now).fetchWindow('2026-05-19', '2026-06-03')).rejects.toThrow(/spans seasons/);
   });
 
-  it('the month that holds now states no season: the answer states none', async () => {
+  it('one of two months states no season: the answer states none', async () => {
     const f = feed([may, june], { season: (dates) => (dates === '202605' ? undefined : S2026) });
     const r = await getScheduleAhead(adapterOn(f, now), now);
     expect(r.degraded).toBe(false);
