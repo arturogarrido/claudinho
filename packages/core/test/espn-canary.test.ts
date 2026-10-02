@@ -595,6 +595,29 @@ describe('found in review: absence is a finding, and the product’s own parser 
     expect(core.fetchMeta(await adapterFor(duplicate).fetchStandings())?.complete).toBe(false);
   });
 
+  it('a row the parser leaves out is red even when it calls the batch complete', async () => {
+    // Found in review (round 3), in my round 2 change: I had folded the partial
+    // check into the completeness check. A row with an id and no readable name
+    // is "not a team" to the parser: it is left out, its table is marked
+    // partial, and the batch still reports complete. Two verdicts, asked
+    // separately.
+    const body = wcStandings();
+    body.children[0]?.standings.entries.push({
+      team: { id: '999' } as { id: string; abbreviation: string; displayName: string },
+      stats: STATS.map((n) => ({ name: n, value: n === 'rank' ? 2 : 0 })),
+    });
+    const adapter = new core.EspnAdapter({
+      competition: 'fifa.world',
+      fetchImpl: (async () => json(body)) as unknown as typeof fetch,
+    });
+    const tables = await adapter.fetchStandings();
+    expect(core.fetchMeta(tables)?.complete).toBe(true);
+    expect(tables.find((t) => t.group === 'A')?.partial).toEqual({ omitted: 1 });
+    const row = await wc(body);
+    expect(row?.verdict).toBe('changed');
+    expect(row?.detail).toBe('the adapter could not read every row of Group A');
+  });
+
   it('a row the product’s parser refuses is red, though its statistics are all there', async () => {
     // Group C gets a second team with one win and no points: every statistic
     // present and numeric, the group still there, and a table the product
