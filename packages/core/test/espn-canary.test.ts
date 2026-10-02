@@ -779,6 +779,8 @@ describe('found in review: absence is a finding, and the product’s own parser 
     expect((await champions({ children: [] }))?.verdict).toBe('changed'); // not the competition's document
     expect((await champions({ code: 404, message: 'Not Found' }))?.verdict).toBe('changed');
     expect((await champions({ name: 'Error', code: 404, message: 'not found' }))?.verdict).toBe('changed'); // a name is not the document
+    // Nor is an error that happens to carry a season (found in review: it was green).
+    expect((await champions({ name: 'Error', season: { year: 2026 }, code: 500, message: 'standings unavailable' }))?.verdict).toBe('changed');
     expect((await champions({ ...doc, children: [{ name: 'Group A', standings: { entries: [] } }] }))?.verdict).toBe('changed');
     expect((await champions({ ...doc, children: 'x' }))?.verdict).toBe('changed');
   });

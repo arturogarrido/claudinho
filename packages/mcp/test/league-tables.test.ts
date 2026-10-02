@@ -7,10 +7,10 @@
 import { readFileSync } from 'node:fs';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { EspnAdapter, FakeMarketProvider } from '@claudinho/core';
+import { DISCLAIMER, EspnAdapter, FakeMarketProvider } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v3';
-import { buildServer, OUTPUT_SCHEMAS } from '../src/server';
+import { buildServer, OUTPUT_SCHEMAS, toContent } from '../src/server';
 import { standingsResourceText, toolGetShareSnippet, toolGetStandings } from '../src/tools';
 
 const recorded = (slug: string): { children: Array<Record<string, unknown>> } =>
@@ -219,5 +219,53 @@ describe('the contract says so', () => {
     } finally {
       await client.close();
     }
+  });
+});
+
+describe('a long answer is cut at a length: what qualifies it, and its footer, are not what is lost', () => {
+  // Found in review. A league table may hold forty rows now; with the longest
+  // names the sanitizer lets through, ONE table is longer than the cap on a
+  // tool's text. The partial-table sentence sat after the rows, and the
+  // attribution and the disclaimer after that: all three were cut.
+  const longName = (i: number) => `${String.fromCodePoint(0x41 + (i % 26))}${NAME}`;
+  const NAME = ('\u{1D400}' + '\u{1D185}'.repeat(3)).repeat(100);
+  const stats = (rank: number) =>
+    Object.entries({ gamesPlayed: 1, wins: 1, ties: 0, losses: 0, pointsFor: 2, pointsAgainst: 0, pointDifferential: 2, points: 3, rank }).map(
+      ([name, value]) => ({ name, value }),
+    );
+  const league = {
+    children: [
+      {
+        name: '2026-27 Long Names League',
+        standings: {
+          entries: Array.from({ length: 40 }, (_, i) => ({
+            team: { id: String(5000 + i), abbreviation: `T${i}`, displayName: longName(i) },
+            // The first row cannot be read: the table is partial.
+            stats: i === 0 ? [] : stats(i + 1),
+          })),
+        },
+      },
+    ],
+  };
+
+  it('the partial-table sentence, the attribution and the disclaimer are in the text a client receives', async () => {
+    const r = await toolGetStandings(common('eng.1', league));
+    const table = (r.data as { tables: Table[] }).tables[0];
+    expect(table?.standings).toHaveLength(39);
+    expect(table?.partial).toEqual({ omitted: 1 });
+    expect(r.text.length).toBeGreaterThan(32_000); // the case: longer than the cap
+    const sent = toContent(r).content[0]?.text ?? '';
+    expect(sent.length).toBeLessThanOrEqual(32_000);
+    expect(sent).toContain('Partial table');
+    expect(sent).toContain('(truncated)');
+    expect(sent).toContain('Live data: ESPN');
+    expect(sent).toContain(DISCLAIMER);
+    // In reading order: the sentence about the table comes before its rows.
+    expect(sent.indexOf('Partial table')).toBeLessThan(sent.indexOf(longName(1)));
+  });
+
+  it('a short answer is not touched', async () => {
+    const r = await toolGetStandings(common('eng.1'));
+    expect(toContent(r).content[0]?.text).toBe(r.text);
   });
 });

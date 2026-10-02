@@ -211,6 +211,9 @@ describe('a competition with no table by design', () => {
     // What it is, as recorded: a name, a season, no table list, no table.
     const doc = recorded('concacaf.champions') as unknown as Record<string, unknown>;
     expect(parseEspnStandings(doc, 'none')).toMatchObject({ items: [], complete: true, inventory: 'complete' });
+    // The real answer also carries a `uid` and the list of past `seasons` (measured; the recorder kept neither).
+    const whole = { ...doc, uid: 's:600~l:5699', seasons: [{ year: 2025 }, { year: 2024 }] };
+    expect(parseEspnStandings(whole, 'none')).toMatchObject({ items: [], complete: true, inventory: 'complete' });
     // Found in review: "an object with a name" was enough, so an error body
     // that happens to carry one, and a document with a table at its root,
     // were both a healthy "no standings".
@@ -225,6 +228,11 @@ describe('a competition with no table by design', () => {
       { name: 7, season: doc.season },
       { name: '', season: doc.season },
       { name: 'Error', code: 404, message: 'not found' }, // a name, and nothing else of the document
+      // Found in review: an error body that ALSO carries a season passed. The
+      // document is the one that was measured: its keys, and no others.
+      { name: 'Error', season: { year: 2026 }, code: 500, message: 'standings unavailable' },
+      { ...doc, somethingNew: 1 },
+      { ...doc, error: null },
       { name: doc.name }, // no season
       { ...doc, season: 'x' },
       // "States a season" is the product's one rule for a season (`sealSeason`): a year.
@@ -665,11 +673,13 @@ describe('bounds, applied before the work', () => {
 
   it('a key two children claim costs no slot: the sixteenth table after it is still read', () => {
     const counter = { rows: 0 };
-    const names = ['Group A', ...'BCDEFGHIJKLMNO'.split('').map((l) => `Group ${l}`), 'group a', 'Group P'];
-    expect(names).toHaveLength(17);
+    // SIXTEEN surviving tables (B to Q) beside the two claims on A: with
+    // fifteen, a parser that charged the collided key a slot still passed.
+    const names = ['Group A', ...'BCDEFGHIJKLMNOP'.split('').map((l) => `Group ${l}`), 'group a', 'Group Q'];
+    expect(names).toHaveLength(18);
     const parsed = parseEspnStandings({ children: names.map((name) => ({ name, standings: { entries: counted(4, counter) } })) });
-    expect(parsed.items.map((t) => t.group)).toEqual('BCDEFGHIJKLMNOP'.split(''));
-    expect(counter.rows).toBe(15 * 4);
+    expect(parsed.items.map((t) => t.group)).toEqual('BCDEFGHIJKLMNOPQ'.split(''));
+    expect(counter.rows).toBe(16 * 4);
     expect(parsed.inventory).toBe('incomplete');
   });
 
@@ -751,6 +761,28 @@ describe('a table key is not a fixture’s group', () => {
     const adapter = both('uefa.euro', payload, [fixture(a as [string, string, string], b as [string, string, string])]);
     const [m] = await adapter.fetchByDate('2026-10-10');
     expect(m?.group).toBe('C');
+  });
+
+  it('a code a lettered table shares with a NUMBERED or nested one names no group either', async () => {
+    // Found in review: tables that are not lettered were skipped BEFORE the
+    // shared codes were counted, so `CAR` in Group A and in Group B1 still
+    // mapped to A, and a Caracas fixture (Group B1) was labelled Group A.
+    for (const other of ['Group B1', 'League A, Group B']) {
+      const standings = {
+        children: [
+          { name: 'Group A', standings: { entries: [row(1, 'Carabobo', 1, 'CAR'), row(2, 'Alpha', 2, 'ALP')] } },
+          { name: other, standings: { entries: [row(3, 'Caracas', 1, 'CAR'), row(4, 'Beta', 2, 'BET')] } },
+        ],
+      };
+      const maps = await both('synthetic.cup', standings, []).fetchGroupMap();
+      expect(maps.CAR, other).toBeUndefined();
+      expect(maps.ALP, other).toBe('A');
+      expect(maps.BET, other).toBeUndefined(); // not a lettered group: it names no fixture's group
+      const noId = fixture(['', 'CAR', 'Caracas'], ['', 'BET', 'Beta']);
+      for (const side of noId.competitions[0]?.competitors ?? []) (side.team as { id?: string }).id = undefined;
+      const [anon] = await both('synthetic.cup', standings, [noId]).fetchByDate('2026-10-10');
+      expect(anon?.group, other).toBeUndefined();
+    }
   });
 
   it('a code that two tables hold names neither group; the same teams’ ids still do', async () => {
