@@ -115,6 +115,7 @@ export {
   marketFavoriteText,
   marketProbabilityText,
   marketAttributionText,
+  MARKETS_SCOPE_NOTE,
   marketSourceLabel,
   marketLine,
   marketBlock,

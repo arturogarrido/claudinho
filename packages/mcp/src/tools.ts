@@ -44,6 +44,7 @@ import {
   marketRelevant,
   marketsCoverCompetition,
   marketScopeVerdict,
+  MARKETS_SCOPE_NOTE,
   bundleApplies,
   marketSignalRendersFor,
   type Match,
@@ -155,12 +156,6 @@ function marketText(m: Match, sig: MarketSignal, args: CommonOpts): string {
   return `${marketHeader(m, args)}\n${marketBlock(sig, m).join('\n')}`;
 }
 
-/**
- * Market signals exist for the World Cup only (see `MARKET_COMPETITIONS`); on
- * any other competition the sidecar is a network-free no-op, and the copy says
- * so rather than reporting a "no signal" it never looked for.
- */
-const MARKETS_SCOPE_NOTE = 'Market signals cover the World Cup only; none are read for this competition.';
 
 /** Null/suppressed-signal text, specific about WHY when the match is finished. */
 function noSignalText(m: Match, args: CommonOpts, now: Date): string {

@@ -38,6 +38,7 @@ import {
   marketLine,
   marketsCoverCompetition,
   marketScopeVerdict,
+  MARKETS_SCOPE_NOTE,
   marketSignalRendersFor,
   marketRelevant,
   matchFlavor,
@@ -969,12 +970,6 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
 // Market copy is English-only in v1 (the approved legal copy bank); the base
 // FIFA/Anthropic disclaimer stays localized via t('disclaimer').
 const MARKET_INFO = 'Prediction-market data is informational only.';
-/**
- * Market signals exist for the World Cup only (core `MARKET_COMPETITIONS`); on
- * any other competition the sidecar is a network-free no-op, and the copy says
- * so rather than reporting a "no signal" it never looked for.
- */
-const MARKETS_SCOPE_NOTE = 'Market signals cover the World Cup only; none are read for this competition.';
 
 /**
  * Header for a market read. Includes the kickoff date — "South Korea (Jun 18)"

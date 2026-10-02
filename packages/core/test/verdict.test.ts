@@ -18,6 +18,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { MARKETS_SCOPE_NOTE } from '../src/markets/format';
 import { marketDisplayable } from '../src/markets/normalize';
 import { marketScopeVerdict } from '../src/markets/provider';
 import {
@@ -328,5 +329,12 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     const sentence = /['"`]competition\.unsupported['"`]/;
     expect(hits('cli', sentence)).toEqual([]);
     expect(hits('mcp', sentence)).toEqual([]);
+  });
+
+  it('the market scope sentence has one copy, in the copy bank', () => {
+    expect(MARKETS_SCOPE_NOTE).toBe('Market signals cover the World Cup only; none are read for this competition.');
+    const written = /cover the World Cup only/;
+    expect(codeHits('cli', written)).toEqual([]);
+    expect(codeHits('mcp', written)).toEqual([]);
   });
 });

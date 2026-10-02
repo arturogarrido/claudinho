@@ -14,6 +14,15 @@ function pct(p: number): number {
 }
 
 /**
+ * What a market read says about a competition outside the sidecar's scope
+ * (see `MARKET_COMPETITIONS`): there the sidecar is a network-free no-op, and
+ * the copy says so instead of reporting a "no signal" it never looked for.
+ * One sentence, in the copy bank: the CLI and the MCP server each had it. Its
+ * structured twin is `marketScopeVerdict`.
+ */
+export const MARKETS_SCOPE_NOTE = 'Market signals cover the World Cup only; none are read for this competition.';
+
+/**
  * Market sources that can legitimately produce a signal.
  *
  * `marketSourceLabel` falls through to the raw string for anything it does not
