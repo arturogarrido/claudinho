@@ -18,7 +18,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { CANARY_COMPETITIONS, formatCanary, runCanary } from '../../../scripts/espn-canary.mjs';
+import { CANARY_COMPETITIONS, formatCanary, runCanary, STANDING_STATS } from '../../../scripts/espn-canary.mjs';
 import * as core from '../src';
 
 const NOW = new Date('2026-10-10T12:00:00Z');
@@ -64,8 +64,8 @@ function standings(over: (entry: Record<string, unknown>) => Record<string, unkn
 }
 const healthyScoreboard = { leagues: [{ season: SEASON }], events: [event('401878761')] };
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 
 type Handler = (url: string) => Response | Promise<Response>;
 /** A fetch double that records what was asked. */
@@ -190,7 +190,7 @@ describe('a 2xx payload that no longer fits the parsers', () => {
     });
     expect(r.red).toBe(true);
     expect(day?.verdict).toBe('changed');
-    expect(day?.detail).toMatch(/1 of 2/);
+    expect(day?.detail).toMatch(/2 sent, 1 read/);
   });
 
   it('a team arrives without the id identity rests on', async () => {
@@ -236,6 +236,228 @@ describe('a 2xx payload that no longer fits the parsers', () => {
     const r = await run(() => new Response('<html>maintenance</html>', { status: 200 }));
     expect(r.red).toBe(true);
     expect(new Set(r.rows.map((row) => row.verdict))).toEqual(new Set(['changed']));
+  });
+});
+
+/** A body that fails as soon as it is read: the headers arrived, the payload never does. */
+const brokenBody = (status: number, headers: Record<string, string> = {}) =>
+  new Response(
+    new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error('socket hang up'));
+      },
+    }),
+    { status, headers },
+  );
+
+describe('found in review: the status is known from the headers', () => {
+  it('a refused request whose body never arrives is still a refused request', async () => {
+    const r = await run((url) => (/dates=\d{8}-\d{8}/.test(url) ? brokenBody(400) : healthy(url)));
+    expect(verdicts(r).window).toBe('rejected');
+    expect(r.red).toBe(true);
+    expect(r.rows.find((x) => x.request === 'window')?.detail).toContain('400');
+  });
+
+  it('a throttle whose body never arrives still reaches the adapter, which stops asking', async () => {
+    for (const status of [403, 429]) {
+      const r = await run(() => brokenBody(status));
+      expect(new Set(r.rows.map((row) => row.verdict)), `status ${status}`).toEqual(new Set(['blocked']));
+      expect(r.urls, `status ${status}`).toHaveLength(1);
+      expect(r.red).toBe(false);
+    }
+  });
+
+  it('a served response whose body fails midway is an outage, not a changed feed', async () => {
+    const r = await run((url) => (url.includes('dates=20261010') && !url.includes('-') ? brokenBody(200) : healthy(url)));
+    expect(verdicts(r).day).toBe('unreachable');
+    expect(r.red).toBe(false);
+  });
+});
+
+describe('found in review: a throttle is the provider speaking to the runner, not to one competition', () => {
+  it('stops the whole run: one request, and every later row says it was not asked', async () => {
+    for (const status of [403, 429]) {
+      const r = await run(() => json({}, status, { 'retry-after': '300' }), ['eng.1', 'esp.1', 'ita.1']);
+      expect(r.urls, `status ${status}`).toHaveLength(1);
+      expect(r.rows).toHaveLength(12);
+      expect(new Set(r.rows.map((row) => row.verdict))).toEqual(new Set(['blocked']));
+      expect(r.rows.at(-1)?.detail).toMatch(/not asked/);
+      expect(r.red).toBe(false);
+    }
+  });
+
+  it('a throttle in the middle of the run keeps what was learned before it', async () => {
+    const r = await run((url) => (url.includes('/esp.1/') ? json({}, 429) : healthy(url)), ['eng.1', 'esp.1', 'ita.1']);
+    expect(r.rows.slice(0, 4).map((row) => row.verdict)).toEqual(['ok', 'ok', 'ok', 'ok']);
+    expect(r.rows.slice(4).every((row) => row.verdict === 'blocked')).toBe(true);
+    expect(r.urls).toHaveLength(5);
+  });
+});
+
+describe('found in review: the default scoreboard is checked like the dated ones', () => {
+  // `fetchLive` keeps only matches in play, so a refused or id-less SCHEDULED
+  // event on the default scoreboard used to disappear before any check ran.
+  const onDefault = (events: unknown[]): Handler => (url) =>
+    url.includes('/scoreboard') && !url.includes('dates=')
+      ? json({ leagues: [{ season: SEASON }], events })
+      : healthy(url);
+
+  it('an event the parser refuses there is red', async () => {
+    const r = await run(
+      onDefault([event('1'), event('2', { status: { type: { name: 'STATUS_SOMETHING_NEW', state: 'limbo' } } })]),
+    );
+    expect(verdicts(r)).toEqual({ live: 'changed', day: 'ok', window: 'ok', standings: 'ok' });
+  });
+
+  it('a scheduled event there whose team has no id is red', async () => {
+    const noId = event('1');
+    (noId.competitions[0]?.competitors[1]?.team as { id?: string }).id = undefined;
+    const r = await run(onDefault([noId]));
+    expect(verdicts(r).live).toBe('changed');
+    expect(r.rows.find((x) => x.request === 'live')?.detail).toMatch(/id/);
+  });
+});
+
+describe('found in review: a refused record cannot hide behind a sibling', () => {
+  it('two records under one id, saying different things, are not one healthy record', async () => {
+    const r = await run((url) =>
+      json(
+        url.includes('/standings')
+          ? standings()
+          : { leagues: [{ season: SEASON }], events: [event('1'), event('1', { date: '2026-10-11T11:30Z' })] },
+      ),
+    );
+    expect(verdicts(r).day).toBe('changed');
+    expect(r.rows.find((x) => x.request === 'day')?.detail).toMatch(/2 sent, 1 read/);
+  });
+
+  it('the adapter says so itself: completeness rides on the result', async () => {
+    const adapterFor = (events: unknown[]) =>
+      new core.EspnAdapter({
+        competition: 'eng.1',
+        enrichGroups: false,
+        fetchImpl: (async () => json({ leagues: [{ season: SEASON }], events })) as unknown as typeof fetch,
+      });
+    const whole = await adapterFor([event('1'), event('2')]).fetchByDate('2026-10-10');
+    expect(core.fetchMeta(whole)?.complete).toBe(true);
+    const refused = await adapterFor([
+      event('1'),
+      event('2', { status: { type: { name: 'STATUS_SOMETHING_NEW', state: 'limbo' } } }),
+    ]).fetchByDate('2026-10-10');
+    expect(refused).toHaveLength(1);
+    expect(core.fetchMeta(refused)?.complete).toBe(false);
+    // The live question filters to matches in play; the verdict is the whole response's.
+    const live = await adapterFor([
+      event('1'),
+      event('2', { status: { type: { name: 'STATUS_SOMETHING_NEW', state: 'limbo' } } }),
+    ]).fetchLive();
+    expect(live).toHaveLength(0);
+    expect(core.fetchMeta(live)?.complete).toBe(false);
+  });
+});
+
+describe('found in review: every table shape, every row, every value', () => {
+  const standingsCase = async (body: unknown) => {
+    const r = await run((url) => json(url.includes('/standings') ? body : healthyScoreboard));
+    return { verdict: verdicts(r).standings, detail: r.rows.find((x) => x.request === 'standings')?.detail ?? '' };
+  };
+  const row = (over: Record<string, unknown> = {}) => ({
+    team: { id: '359', abbreviation: 'ARS', displayName: 'Arsenal' },
+    stats: STATS.map((n) => ({ name: n, value: n === 'rank' ? 1 : 0 })),
+    ...over,
+  });
+  const table = (entries: unknown) => ({ children: [{ name: 'Group A', standings: { entries } }] });
+
+  it('a healthy nested shape (groups under a phase) is green, and its rows are counted', async () => {
+    const nested = { children: [{ name: 'League Phase', children: [{ name: 'Group A', standings: { entries: [row()] } }] }] };
+    expect(await standingsCase(nested)).toEqual({ verdict: 'ok', detail: '1 row(s) in 1 table(s)' });
+  });
+
+  it('a row in a nested table is checked like any other', async () => {
+    const nested = {
+      children: [{ name: 'League Phase', children: [{ name: 'Group A', standings: { entries: [row({ team: { displayName: 'Arsenal' } })] } }] }],
+    };
+    expect((await standingsCase(nested)).verdict).toBe('changed');
+  });
+
+  it('a table whose rows are not a list is red, not "no table"', async () => {
+    expect((await standingsCase(table({ 0: row() }))).verdict).toBe('changed');
+    expect((await standingsCase({ children: { 0: {} } })).verdict).toBe('changed');
+  });
+
+  it('a row without statistics is red, not skipped', async () => {
+    const { verdict, detail } = await standingsCase(table([row({ stats: undefined })]));
+    expect(verdict).toBe('changed');
+    expect(detail).toMatch(/Arsenal/);
+  });
+
+  it('a statistic that is not a number is red', async () => {
+    const strings = row({ stats: STATS.map((n) => ({ name: n, displayValue: '0' })) });
+    expect((await standingsCase(table([strings]))).verdict).toBe('changed');
+    const text = row({ stats: STATS.map((n) => ({ name: n, value: '0' })) });
+    expect((await standingsCase(table([text]))).verdict).toBe('changed');
+  });
+
+  it('a statistic stated twice is red', async () => {
+    const twice = row({ stats: [...STATS.map((n) => ({ name: n, value: n === 'rank' ? 1 : 0 })), { name: 'points', value: 3 }] });
+    const { verdict, detail } = await standingsCase(table([twice]));
+    expect(verdict).toBe('changed');
+    expect(detail).toMatch(/points/);
+  });
+
+  it('the statistics the canary requires are the ones the table parser requires', () => {
+    // The list in the script is a copy of the parser's needs. Pinned both ways,
+    // through the real parser: each one is needed, and no other one is.
+    expect([...STANDING_STATS].sort()).toEqual([...STATS].sort());
+    const groupA = (stats: string[]) => ({
+      children: [
+        {
+          name: 'Group A',
+          standings: {
+            entries: [
+              { team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' }, stats: stats.map((n) => ({ name: n, value: n === 'rank' ? 1 : 0 })) },
+            ],
+          },
+        },
+      ],
+    });
+    const rows = (payload: unknown) => core.parseStandings(payload).flatMap((t) => t.rows).length;
+    expect(rows(groupA([...STANDING_STATS]))).toBe(1);
+    for (const gone of STANDING_STATS) {
+      expect(rows(groupA(STANDING_STATS.filter((n) => n !== gone))), gone).toBe(0);
+    }
+  });
+});
+
+describe('found in review: the canary reads no more than the adapter would', () => {
+  it('an oversized body is cancelled at the adapter’s limit, and reported', async () => {
+    const CHUNK = 256 * 1024;
+    let pulled = 0;
+    let cancelled = false;
+    const endless = () =>
+      new Response(
+        new ReadableStream<Uint8Array>(
+          {
+            pull(controller) {
+              if (pulled >= 64 * 1024 * 1024) return controller.close();
+              pulled += CHUNK;
+              controller.enqueue(new Uint8Array(CHUNK).fill(0x20));
+            },
+            cancel() {
+              cancelled = true;
+            },
+          },
+          { highWaterMark: 0 },
+        ),
+        { status: 200 },
+      );
+    const r = await run((url) => (url.includes('dates=20261010') && !url.includes('-') ? endless() : healthy(url)));
+    expect(core.MAX_RESPONSE_BYTES).toBe(5 * 1024 * 1024);
+    expect(cancelled).toBe(true);
+    // The bound is on the bytes taken from the provider, whoever is reading.
+    expect(pulled).toBeLessThanOrEqual(core.MAX_RESPONSE_BYTES + 4 * CHUNK);
+    expect(verdicts(r).day).toBe('changed');
+    expect(r.rows.find((x) => x.request === 'day')?.detail).toMatch(/larger/);
   });
 });
 
