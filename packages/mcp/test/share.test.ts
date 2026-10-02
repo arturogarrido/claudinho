@@ -12,6 +12,7 @@ import { toolGetShareSnippet } from '../src/tools';
 /** Offline match adapter → the date/live branches use the bundled static schedule. */
 const fakeAdapter: ProviderAdapter = {
   name: 'fake',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate(): Promise<Match[]> {
     return [];
@@ -34,6 +35,7 @@ const fakeAdapter: ProviderAdapter = {
  */
 const downAdapter: ProviderAdapter = {
   name: 'espn',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate(): Promise<Match[]> {
     throw new Error('ESPN 403');
@@ -150,6 +152,7 @@ describe('toolGetShareSnippet', () => {
     };
     const koAdapter: ProviderAdapter = {
       name: 'espn',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         return [];
@@ -394,6 +397,7 @@ describe('toolGetShareSnippet — degraded honesty (feed down)', () => {
     // a flat "no upcoming fixture" (which scans as the team being out).
     const windowDown: ProviderAdapter = {
       name: 'espn',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         throw new Error('ESPN 403');

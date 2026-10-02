@@ -345,19 +345,17 @@ describe('market sidecar scope — the World Cup only', () => {
     expect(marketsCoverCompetition('fifa.world')).toBe(true);
     expect(marketsCoverCompetition('eng.1')).toBe(false);
     expect(marketsCoverCompetition('uefa.champions')).toBe(false);
-    delete process.env.CLAUDINHO_COMPETITION;
-    expect(marketsCoverCompetition()).toBe(true);
+    // The competition is an argument: the environment cannot answer for it.
     process.env.CLAUDINHO_COMPETITION = 'eng.1';
-    expect(marketsCoverCompetition()).toBe(false);
+    expect(marketsCoverCompetition('fifa.world')).toBe(true);
   });
 
   it('constructs the network-free no-op provider off the default competition', async () => {
-    process.env.CLAUDINHO_COMPETITION = 'eng.1';
     const fetchSpy = vi.fn(async () => {
       throw new Error('the sidecar must not touch the network off the default competition');
     });
     vi.stubGlobal('fetch', fetchSpy);
-    const provider = makeMarketProvider('polymarket');
+    const provider = makeMarketProvider('polymarket', 'eng.1');
     expect(provider).not.toBeInstanceOf(PolymarketProvider);
     const batch = await provider.findSignals([match()]);
     expect(batch.complete).toBe(true); // a complete, honest "no signal" …
@@ -366,7 +364,6 @@ describe('market sidecar scope — the World Cup only', () => {
   });
 
   it('still constructs the real provider on the default competition', () => {
-    delete process.env.CLAUDINHO_COMPETITION;
-    expect(makeMarketProvider('polymarket')).toBeInstanceOf(PolymarketProvider);
+    expect(makeMarketProvider('polymarket', 'fifa.world')).toBeInstanceOf(PolymarketProvider);
   });
 });

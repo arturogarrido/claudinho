@@ -64,6 +64,12 @@ export interface CommonOpts {
   tz?: string;
   lang?: string;
   source?: string;
+  /**
+   * An explicit competition for this request (wins over `CLAUDINHO_COMPETITION`).
+   * Not yet a tool argument — no schema exposes it — but it is how a caller
+   * that already knows the competition hands it in.
+   */
+  competition?: string;
   /** Commentary flair level: 'off' | 'subtle' | 'full' (default: full). */
   flavor?: string;
   /** Injected adapter (tests). Defaults to makeAdapter(source). */
@@ -83,22 +89,45 @@ export interface CommonOpts {
  */
 const adapters = new Map<string, ProviderAdapter>();
 
+/** The adapter already resolved for a request, keyed by that request's args object. */
+const perRequest = new WeakMap<object, ProviderAdapter>();
+
+/**
+ * THE SERVER'S EDGE: the adapter for a request, and with it the competition
+ * the whole request is for.
+ *
+ * This is the one place the server lets the environment decide the
+ * competition, and it decides ONCE per request: the answer is remembered
+ * against the request's args, so every helper a tool calls gets the same
+ * adapter — and `competitionOf` the same competition — however many times it
+ * asks. Nothing else in the server resolves a competition.
+ */
 export function resolveAdapter(args: CommonOpts): ProviderAdapter {
   if (args.adapter) return args.adapter;
-  // Keyed by source AND competition: makeAdapter bakes the competition slug
-  // into the base URL at construction, so a cache keyed by source alone would
-  // pin the first competition seen for the whole session.
-  const key = `${args.source ?? 'espn'}::${resolveCompetition()}`;
+  const resolved = perRequest.get(args);
+  if (resolved) return resolved;
+  const source = args.source ?? 'espn';
+  const competition = resolveCompetition(args.competition);
+  // Keyed by source AND competition: an adapter serves exactly one
+  // competition, so a cache keyed by source alone would pin the first
+  // competition seen for the whole session.
+  const key = `${source}::${competition}`;
   let adapter = adapters.get(key);
   if (!adapter) {
-    adapter = makeAdapter(args.source);
+    adapter = makeAdapter(source, { competition });
     adapters.set(key, adapter);
   }
+  perRequest.set(args, adapter);
   return adapter;
 }
 
+/** The competition a request is for: its adapter's. */
+function competitionOf(args: CommonOpts): string {
+  return resolveAdapter(args).competition;
+}
+
 function resolveMarketProvider(args: CommonOpts): MarketProvider {
-  return args.marketProvider ?? makeMarketProvider();
+  return args.marketProvider ?? makeMarketProvider(undefined, competitionOf(args));
 }
 
 /**
@@ -139,7 +168,9 @@ const MARKETS_SCOPE_NOTE = 'Market signals cover the World Cup only; none are re
 
 /** Null/suppressed-signal text, specific about WHY when the match is finished. */
 function noSignalText(m: Match, args: CommonOpts, now: Date): string {
-  if (!marketsCoverCompetition()) return `${marketHeader(m, args)} — ${MARKETS_SCOPE_NOTE}`;
+  if (!marketsCoverCompetition(competitionOf(args))) {
+    return `${marketHeader(m, args)} — ${MARKETS_SCOPE_NOTE}`;
+  }
   if (marketRelevant(m, now)) return `No reliable market signal for ${marketHeader(m, args)}.`;
   // "has finished" only when a live overlay confirmed it; a static fixture
   // whose window merely lapsed gets the honest, hedged variant.
@@ -180,7 +211,7 @@ interface MarketSignalsResult {
   readonly signals: Map<string, MarketSignal>;
   readonly complete: boolean;
 }
-type MarketProviderFactory = (source?: string) => MarketProvider;
+type MarketProviderFactory = (source: string | undefined, competition: string) => MarketProvider;
 const marketMem = new Map<string, MarketMemEntry>();
 const MEM_POSITIVE_TTL = 10 * 60_000;
 const MEM_NEGATIVE_TTL = 3 * 60_000;
@@ -206,15 +237,15 @@ export async function cachedMarketSignals(
     return { signals: resolvedValues(batch), complete: batch.complete };
   }
   const source = resolveMarketSource();
+  const competition = competitionOf(args);
   if (source !== 'polymarket') {
     const batch = await getMarketSignals(
-      providerFactory(source),
+      providerFactory(source, competition),
       matches,
       DEFAULT_ON_MARKET_OPTS,
     );
     return { signals: resolvedValues(batch), complete: batch.complete };
   }
-  const competition = resolveCompetition();
   const now = Date.now();
   const result = new Map<string, MarketSignal>();
   const miss: Match[] = [];
@@ -237,7 +268,7 @@ export async function cachedMarketSignals(
   let complete = true;
   if (miss.length > 0) {
     const batch = await getMarketSignals(
-      providerFactory('polymarket'),
+      providerFactory('polymarket', competition),
       miss,
       DEFAULT_ON_MARKET_OPTS,
     );
@@ -688,7 +719,7 @@ export async function toolGetMarketSignal(
       // so "we could not reach the market data" rendered as the confident
       // "there is none", which is the failure this project refuses everywhere
       // else.
-      !marketsCoverCompetition()
+      !marketsCoverCompetition(competitionOf(args))
         ? `${MARKETS_SCOPE_NOTE} (${date})`
         : batch.complete
           ? `No reliable market signals on ${date}.`

@@ -34,6 +34,7 @@ function r32MexEcu(): Match {
 
 const overlayAdapter: ProviderAdapter = {
   name: 'espn',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate() {
     return [];

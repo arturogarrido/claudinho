@@ -32,6 +32,7 @@ const FULL: GroupStandings = {
 };
 const adapterServing = (tables: GroupStandings[]): ProviderAdapter => ({
   name: 'espn',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate(): Promise<Match[]> {
     return [];
@@ -44,7 +45,7 @@ const adapterServing = (tables: GroupStandings[]): ProviderAdapter => ({
   },
 });
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', flavor: 'off', ...over };
+  return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over };
 }
 const ctx = (adapter: ProviderAdapter, over: Partial<CliConfig> = {}) => ({
   cfg: cfg(over),

@@ -18,6 +18,7 @@ import { makeT } from '../src/i18n';
 /** Offline match adapter → commands fall back to the bundled static schedule. */
 const fakeAdapter: ProviderAdapter = {
   name: 'fake',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate(): Promise<Match[]> {
     return [];
@@ -65,7 +66,7 @@ const upcoming = (): Match =>
 const upcomingDate = () => upcoming().kickoff.slice(0, 10);
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', flavor: 'off', ...over };
+  return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over };
 }
 const ctx = (over: Partial<CliConfig>, marketProvider: MarketProvider, now: Date = TEST_NOW) => ({
   cfg: cfg(over),
@@ -271,10 +272,12 @@ describe('cmdMarkets — a competition without markets', () => {
     if (ORIG_SRC === undefined) delete process.env.CLAUDINHO_MARKETS_SOURCE;
     else process.env.CLAUDINHO_MARKETS_SOURCE = ORIG_SRC;
   });
+  // The competition is the config's and the adapter's (0.11 2.0); the
+  // environment above only mirrors what a real run's edge would have read.
   const noProviderCtx = (over: Partial<CliConfig>) => ({
-    cfg: cfg(over),
+    cfg: cfg({ competition: 'eng.1', ...over }),
     t: makeT('en'),
-    adapter: fakeAdapter,
+    adapter: { ...fakeAdapter, competition: 'eng.1' },
     now: TEST_NOW,
   });
 

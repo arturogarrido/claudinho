@@ -27,7 +27,7 @@ const throttled = vi.fn(async () => ({
 }));
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', flavor: 'off', markets: false, ...over };
+  return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', markets: false, ...over };
 }
 let dir: string;
 const ORIG = process.env.XDG_CACHE_HOME;
@@ -146,6 +146,7 @@ describe('the post-call fallback (an adapter with a retained window but no liste
     // window, never lastError (which here is the later 500).
     const fake: ProviderAdapter & { cooldownUntil?: number; lastError?: { kind: string; status?: number; throttled?: boolean } } = {
       name: 'espn',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate(): Promise<Match[]> {
         return [];

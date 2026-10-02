@@ -24,6 +24,7 @@ const TABLES: GroupStandings[] = [
 /** Offline adapter named "espn" that serves authoritative tables (happy path). */
 const liveAdapter: ProviderAdapter = {
   name: 'espn',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate(): Promise<Match[]> {
     return [];
@@ -46,6 +47,7 @@ const emptyStandingsAdapter: ProviderAdapter = {
 /** Adapter with NO fetchStandings → the degraded (roster) path. */
 const bareAdapter: ProviderAdapter = {
   name: 'espn',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   expectedStandingsGroups: ['A'],
   standingsFallbackGroups: ['A'],
@@ -65,7 +67,7 @@ const openScopeAdapter: ProviderAdapter = {
 };
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', flavor: 'off', ...over };
+  return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over };
 }
 const ctx = (adapter: ProviderAdapter, over: Partial<CliConfig> = {}) => ({
   cfg: cfg(over),

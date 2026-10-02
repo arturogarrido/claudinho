@@ -16,6 +16,7 @@ function cfg(over: Partial<CliConfig> = {}): CliConfig {
     json: false,
     color: false,
     source: 'espn',
+    competition: 'fifa.world',
     flavor: 'off',
     markets: true,
     ...over,

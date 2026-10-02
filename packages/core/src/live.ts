@@ -3,7 +3,8 @@
  * provider state is merged over it by match id. Used by every client (CLI, MCP,
  * notifier) so the overlay logic lives in exactly one place.
  */
-import { competitionBase, DEFAULT_COMPETITION, EspnAdapter } from './adapters/espn';
+import { EspnAdapter } from './adapters/espn';
+import { fetchMeta } from './adapters/meta';
 import type { ProviderAdapter } from './adapters/types';
 import { byKickoff, isFinished, isLive } from './normalize';
 import {
@@ -16,20 +17,24 @@ import {
 } from './schedule';
 import { rosterAtZero, type GroupStandings } from './standings';
 import { shiftUtcDate } from './time';
-import type { Match, Stage } from './types';
+import type { Match, SeasonInfo, Stage } from './types';
 import { isResolvedNation } from './bracket/placeholders';
 import { buildBracketView } from './bracket/resolve';
 import { loadBracketTopology } from './bracket/topology';
 import type { BracketResult, BracketView } from './bracket/types';
 
-import { bundleApplies, resolveCompetition } from './competition';
-
-export { resolveCompetition };
+import { bundleApplies } from './competition';
 
 /** Provider names {@link makeAdapter} can construct (the CLI validates against this). */
 export const KNOWN_SOURCES = ['espn'] as const;
 
 export interface AdapterOptions {
+  /**
+   * The competition the adapter will fetch. REQUIRED: the caller is the edge
+   * that resolved it (see `resolveCompetition`), and an adapter that picked a
+   * default here would be a second place where the competition is decided.
+   */
+  competition: string;
   /**
    * Enrich group-stage fixtures with their group letter (one extra standings
    * request per poll). Default on; the statusline refresher turns it off because
@@ -46,14 +51,14 @@ export interface AdapterOptions {
  * previously no-op'd, which lied about what the flag did (attribution stayed
  * honest, but the advertised knob did nothing).
  */
-export function makeAdapter(source = 'espn', opts: AdapterOptions = {}): ProviderAdapter {
+export function makeAdapter(source: string, opts: AdapterOptions): ProviderAdapter {
   switch (source) {
-    case 'espn': {
-      const competition = resolveCompetition();
-      const baseUrl =
-        competition === DEFAULT_COMPETITION ? undefined : competitionBase(competition);
-      return new EspnAdapter({ baseUrl, enrichGroups: opts.enrichGroups, now: opts.now });
-    }
+    case 'espn':
+      return new EspnAdapter({
+        competition: opts.competition,
+        enrichGroups: opts.enrichGroups,
+        now: opts.now,
+      });
     default:
       throw new Error(
         `Unknown data source "${source}" (available: ${KNOWN_SOURCES.join(', ')})`,
@@ -81,6 +86,21 @@ export interface LiveResult {
    * by no live provider, must not be attributed to one.
    */
   source?: string;
+  /**
+   * The season the provider reported for the response behind this result.
+   * Absent when the provider stated none or the fetch failed. A fact about
+   * THIS result: `today 2024-06-14` reports the season of that day.
+   */
+  season?: SeasonInfo;
+}
+
+/**
+ * The bundled fixtures a result may be merged over: all of them when the
+ * bundle describes this competition AND, once a provider has answered, the
+ * season it answered for; none otherwise.
+ */
+function skeletonFor(adapter: ProviderAdapter, season?: SeasonInfo): Match[] {
+  return bundleApplies(adapter.competition, season) ? allFixtures() : [];
 }
 
 /** Human label for a live-data provider name (attribution). Text only. */
@@ -97,9 +117,6 @@ export async function getMatchesForDate(
   adapter: ProviderAdapter,
   dateISO: string,
 ): Promise<LiveResult> {
-  // The skeleton is merged ONLY when it is this competition's schedule; off the
-  // bundle the day is whatever the provider served, and nothing else (A03).
-  const base = bundleApplies() ? allFixtures() : [];
   const day = dateISO.slice(0, 10);
   try {
     // A local calendar day can straddle two adjacent UTC dates (a 01:00Z
@@ -110,9 +127,20 @@ export async function getMatchesForDate(
     const live = adapter.fetchWindow
       ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
       : await adapter.fetchByDate(day);
-    return { matches: mergeLive(base, live), degraded: false, source: adapter.name };
+    const season = fetchMeta(live)?.season;
+    // The skeleton is merged ONLY when it is this competition's schedule AND
+    // this response's edition; otherwise the day is whatever the provider
+    // served, and nothing else (A03).
+    return {
+      matches: mergeLive(skeletonFor(adapter, season), live),
+      degraded: false,
+      source: adapter.name,
+      ...(season ? { season } : {}),
+    };
   } catch {
-    return { matches: base, degraded: true };
+    // No provider answer: nothing reported a season, so the bundle stays what
+    // it is — the edition it was built from.
+    return { matches: skeletonFor(adapter), degraded: true };
   }
 }
 
@@ -221,7 +249,7 @@ export async function getBracket(
   adapter: ProviderAdapter,
   opts: { stage?: Stage; lang?: string } = {},
 ): Promise<BracketResult> {
-  if (!bundleApplies()) {
+  if (!bundleApplies(adapter.competition)) {
     // No topology, no fetch, no attribution: the bracket is a World Cup
     // feature and off the bundle it does not exist yet (audit A03).
     const view: BracketView = { stages: [], degraded: false, standingsDegraded: false, unsupported: true };
@@ -310,7 +338,7 @@ export async function marketFixtureForTeam(
   code: string,
   now: Date = new Date(),
 ): Promise<MatchByIdResult> {
-  if (!bundleApplies()) return { match: undefined, degraded: false, unsupported: true };
+  if (!bundleApplies(adapter.competition)) return { match: undefined, degraded: false, unsupported: true };
   const nowMs = now.getTime();
   // Overlay the live knockout window so a knockout team's fixtures RESOLVE — the
   // bundle's KO slots are 🏳️ placeholders, so a purely static lookup answers "no
@@ -381,7 +409,7 @@ export async function getNextFixtureForTeam(
   code: string,
   now: Date = new Date(),
 ): Promise<NextFixtureResult> {
-  if (!bundleApplies()) return { fixture: undefined, degraded: false, unsupported: true };
+  if (!bundleApplies(adapter.competition)) return { fixture: undefined, degraded: false, unsupported: true };
   const base = allFixtures();
   let matches = base;
   let degraded = true;
@@ -435,7 +463,7 @@ export async function getKnockoutFixtures(
   adapter: ProviderAdapter,
   now: Date = new Date(),
 ): Promise<KnockoutFixturesResult> {
-  if (!bundleApplies()) return { fixtures: [], degraded: true, unsupported: true };
+  if (!bundleApplies(adapter.competition)) return { fixtures: [], degraded: true, unsupported: true };
   const win = knockoutWindow();
   if (!adapter.fetchWindow || !win) return { fixtures: [], degraded: true };
   let live: Match[];
@@ -471,7 +499,7 @@ export async function getMatchById(
   adapter: ProviderAdapter,
   id: string,
 ): Promise<MatchByIdResult> {
-  if (!bundleApplies()) return { match: undefined, degraded: false, unsupported: true };
+  if (!bundleApplies(adapter.competition)) return { match: undefined, degraded: false, unsupported: true };
   const base = allFixtures().find((m) => m.id === id);
   if (!base) return { match: undefined, degraded: false };
   const day = base.kickoff.slice(0, 10);
@@ -508,12 +536,12 @@ export async function getLiveMatches(
 ): Promise<LiveResult> {
   try {
     const day = now.toISOString().slice(0, 10);
-    const matches = (
-      adapter.fetchWindow
-        ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
-        : await adapter.fetchLive()
-    ).filter((m) => isLive(m.status));
-    return { matches, degraded: false, source: adapter.name };
+    const fetched = adapter.fetchWindow
+      ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
+      : await adapter.fetchLive();
+    const season = fetchMeta(fetched)?.season;
+    const matches = fetched.filter((m) => isLive(m.status));
+    return { matches, degraded: false, source: adapter.name, ...(season ? { season } : {}) };
   } catch {
     return { matches: [], degraded: true };
   }

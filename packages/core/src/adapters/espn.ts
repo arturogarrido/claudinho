@@ -12,8 +12,10 @@
 import type { GroupStandings } from '../standings';
 import { groups as bundledGroups } from '../schedule';
 import { type MapContext, parseEspnEvent, parseEspnEvents, parseEspnStandings } from '../trust/espn';
+import { parseEspnSeason } from '../trust/season';
 import type { Match } from '../types';
 import { readJsonBounded, ResponseTooLargeError } from './http';
+import { attachFetchMeta, fetchMeta } from './meta';
 import type { ProviderAdapter, ProviderCapabilities } from './types';
 
 export type { MapContext };
@@ -24,7 +26,6 @@ import { parsedValue } from '../trust/result';
 const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 /** Default competition slug (the 2026 World Cup). */
 export const DEFAULT_COMPETITION = 'fifa.world';
-const DEFAULT_BASE = `${ESPN_SOCCER}/${DEFAULT_COMPETITION}`;
 // Versioned so upstream can distinguish releases (and a block aimed at one bad
 // version need not be a block on all of them). Inlined at build time via the
 // tsup define; '0.0' appears only on unbuilt dev/test runs.
@@ -66,6 +67,17 @@ export function retryAfterMs(header: string | null | undefined, nowMs: number): 
 /** Build an ESPN soccer base URL for a competition slug (e.g. "fifa.friendly"). */
 export function competitionBase(slug: string): string {
   return `${ESPN_SOCCER}/${slug}`;
+}
+
+/**
+ * The competition a bare base URL serves: its last path segment, which is what
+ * {@link competitionBase} put there. Only for an adapter constructed from a
+ * `baseUrl` alone (tests, a custom host); anything that is not a flat slug
+ * reads as `custom`, which is never the bundled competition.
+ */
+function competitionOfBase(baseUrl: string): string {
+  const last = baseUrl.replace(/[?#].*$/, '').split('/').filter(Boolean).pop() ?? '';
+  return /^[a-zA-Z0-9._-]{1,64}$/.test(last) ? last : 'custom';
 }
 
 /**
@@ -150,6 +162,12 @@ function usableProviderItems<T>(
 }
 
 export interface EspnAdapterOptions {
+  /**
+   * The competition to fetch (an ESPN slug). Default: the 2026 World Cup. The
+   * base URL is derived from it unless `baseUrl` overrides where to fetch.
+   */
+  competition?: string;
+  /** Override the base URL (tests, a custom host). Implies a non-default competition. */
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
@@ -172,12 +190,15 @@ export interface EspnAdapterOptions {
 
 export class EspnAdapter implements ProviderAdapter {
   readonly name = 'espn';
+  readonly competition: string;
+  /** Where this adapter fetches; fixed at construction, like the competition. */
+  private readonly base: string;
   readonly capabilities: ProviderCapabilities = { push: false, latencyHintSec: 45 };
   readonly expectedStandingsGroups?: readonly string[];
   readonly standingsFallbackGroups?: readonly string[];
 
-  /** Short-lived team-code -> group-letter map (built lazily from standings). */
-  private groupMap?: { at: number; value: Record<string, string> };
+  /** Short-lived group-letter maps, by team code and by team id (built lazily from standings). */
+  private groupMap?: { at: number; value: Record<string, string>; byId: Record<string, string> };
 
   /**
    * One in-flight/recent standings fetch shared by fetchStandings and
@@ -208,13 +229,18 @@ export class EspnAdapter implements ProviderAdapter {
 
   constructor(private readonly opts: EspnAdapterOptions = {}) {
     this.clock = opts.now ?? (() => Date.now());
-    const expected =
-      opts.expectedStandingsGroups ?? (opts.baseUrl === undefined ? bundledGroups() : undefined);
+    this.competition =
+      opts.competition ??
+      (opts.baseUrl === undefined ? DEFAULT_COMPETITION : competitionOfBase(opts.baseUrl));
+    this.base = opts.baseUrl ?? competitionBase(this.competition);
+    // The bundled groups and roster describe the default competition only, and
+    // only when nothing redirected where we fetch.
+    const bundled = this.competition === DEFAULT_COMPETITION && opts.baseUrl === undefined;
+    const expected = opts.expectedStandingsGroups ?? (bundled ? bundledGroups() : undefined);
     this.expectedStandingsGroups = expected ? [...expected] : undefined;
-    // A custom base can declare its expected letters for completeness without
-    // claiming that its teams match the bundled World Cup roster.
-    this.standingsFallbackGroups =
-      opts.baseUrl === undefined && expected ? [...expected] : undefined;
+    // A custom competition can declare its expected letters for completeness
+    // without claiming that its teams match the bundled World Cup roster.
+    this.standingsFallbackGroups = bundled && expected ? [...expected] : undefined;
   }
 
   /** Epoch ms until which requests are refused, when a cooldown is armed. */
@@ -275,13 +301,16 @@ export class EspnAdapter implements ProviderAdapter {
    */
   async fetchLive(): Promise<Match[]> {
     const today = await this.fetchScoreboard();
-    return today.filter((m) => isLive(m.status));
+    // The filter makes a new array; the response's metadata goes with it.
+    return attachFetchMeta(
+      today.filter((m) => isLive(m.status)),
+      fetchMeta(today),
+    );
   }
 
   /** Standings endpoint URL (lives under apis/v2, not site/v2; derived from base). */
   private standingsUrl(): string {
-    const base = this.opts.baseUrl ?? DEFAULT_BASE;
-    return `${base.replace('/apis/site/v2/', '/apis/v2/')}/standings`;
+    return `${this.base.replace('/apis/site/v2/', '/apis/v2/')}/standings`;
   }
 
   /** The shared standings fetch (see {@link standingsShared}). */
@@ -328,43 +357,63 @@ export class EspnAdapter implements ProviderAdapter {
    * drift and one command never fetches standings twice.
    */
   async fetchGroupMap(force = false): Promise<Record<string, string>> {
+    return (await this.groupMaps(force)).value;
+  }
+
+  /**
+   * Both group maps from one standings read. The id map is what fixtures are
+   * enriched from; the code map is the fallback for a team with no id, and is
+   * the only one a shared abbreviation can corrupt.
+   */
+  private async groupMaps(
+    force = false,
+  ): Promise<{ value: Record<string, string>; byId: Record<string, string> }> {
     const now = Date.now();
     if (!force && this.groupMap && now - this.groupMap.at < STANDINGS_SHARE_MS) {
-      return this.groupMap.value;
+      return this.groupMap;
     }
     try {
       const tables = await this.sharedStandings();
-      const map: Record<string, string> = {};
-      for (const t of tables) for (const r of t.rows) map[r.team.code] = t.group;
-      this.groupMap = { at: Date.now(), value: map };
-      return map;
+      const value: Record<string, string> = {};
+      const byId: Record<string, string> = {};
+      for (const t of tables) {
+        for (const r of t.rows) {
+          value[r.team.code] = t.group;
+          if (r.team.id !== undefined) byId[r.team.id] = t.group;
+        }
+      }
+      this.groupMap = { at: Date.now(), value, byId };
+      return this.groupMap;
     } catch {
       // standings optional — group letters absent for THIS call; retry next call
-      return {};
+      return { value: {}, byId: {} };
     }
   }
 
   private async fetchScoreboard(dates?: string): Promise<Match[]> {
-    const base = this.opts.baseUrl ?? DEFAULT_BASE;
-    const url = new URL(`${base}/scoreboard`);
+    const url = new URL(`${this.base}/scoreboard`);
     url.searchParams.set('limit', '300');
     if (dates) url.searchParams.set('dates', dates);
 
     // Group enrichment and the scoreboard are independent requests — run them
     // concurrently so an interactive command pays max(latency), not the sum.
     // fetchGroupMap never rejects, so only a scoreboard failure propagates.
-    const [groupByTeam, data] = await Promise.all([
+    const [groups, data] = await Promise.all([
       this.opts.enrichGroups === false
-        ? Promise.resolve<Record<string, string>>({})
-        : this.fetchGroupMap(),
+        ? Promise.resolve({ value: {}, byId: {} })
+        : this.groupMaps(),
       this.get(url.toString()),
     ]);
     // One call, one boundary: `parseEspnEvents` bounds the record count BEFORE
     // parsing anything and drops what it cannot read. The adapter no longer
     // decides any of that — which is the point, since every duplicated rule was
     // a place for the two copies to drift.
-    const parsed = parseEspnEvents(data, { groupByTeam });
-    return usableProviderItems<Match>('scoreboard', parsed);
+    const parsed = parseEspnEvents(data, { groupByTeam: groups.value, groupByTeamId: groups.byId });
+    // What the provider said about THIS response rides on THIS result (see
+    // adapters/meta.ts) — never on the adapter, where an overlapping call would
+    // overwrite it. An unreadable season is simply absent; it is never guessed.
+    const season = parsedValue(parseEspnSeason(data));
+    return attachFetchMeta(usableProviderItems<Match>('scoreboard', parsed), season ? { season } : undefined);
   }
 
   private async get(url: string): Promise<unknown> {

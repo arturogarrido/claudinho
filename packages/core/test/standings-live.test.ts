@@ -107,6 +107,7 @@ function standingsAdapter(
 ): ProviderAdapter {
   return {
     name: 'fake',
+    competition: 'fifa.world',
     capabilities: { push: false, latencyHintSec: 0 },
     expectedStandingsGroups,
     standingsFallbackGroups,
@@ -126,6 +127,7 @@ function standingsAdapter(
 /** World Cup adapter with NO fetchStandings (the compatible static fallback path). */
 const noStandings: ProviderAdapter = {
   name: 'bare',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   expectedStandingsGroups: groups(),
   standingsFallbackGroups: groups(),
@@ -140,6 +142,7 @@ const noStandings: ProviderAdapter = {
 /** Open-scope adapter with no standings capability and therefore no compatible roster. */
 const openScopeNoStandings: ProviderAdapter = {
   name: 'open',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate() {
     return [];

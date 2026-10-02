@@ -12,6 +12,7 @@ import { getBracket, getNextFixtureForTeam, marketFixtureForTeam } from '../src/
 const calls: string[] = [];
 const noWindow: ProviderAdapter = {
   name: 'synthetic-other-competition',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate() {
     calls.push('date');
@@ -52,6 +53,7 @@ describe('A06 — missing window capability', () => {
 describe('A06 — empty standings must not attribute a static-only bracket (review P2)', () => {
   const noWindowEmptyStandings: ProviderAdapter = {
     name: 'espn',
+    competition: 'fifa.world',
     capabilities: { push: false, latencyHintSec: 0 },
     async fetchByDate() {
       return [];

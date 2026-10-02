@@ -12,6 +12,7 @@ import { toolGetMarketSignal, toolGetMatch, toolGetToday } from '../src/tools';
 /** Offline match adapter → the date branch uses the bundled static schedule. */
 const fakeAdapter: ProviderAdapter = {
   name: 'fake',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate(): Promise<Match[]> {
     return [];
@@ -215,12 +216,15 @@ describe('toolGetMarketSignal — a competition without markets', () => {
     consulted.mockImplementation(async () => {
       throw new Error('Polymarket must not be consulted on eng.1');
     });
-    const byDate = await toolGetMarketSignal({ date: upcomingDate(), adapter: fakeAdapter, now: TEST_NOW });
+    // The competition is the request's adapter's (0.11 2.0); the environment
+    // above only mirrors what a real run's edge would have read.
+    const league = { ...fakeAdapter, competition: 'eng.1' };
+    const byDate = await toolGetMarketSignal({ date: upcomingDate(), adapter: league, now: TEST_NOW });
     expect(byDate.text).toContain('Market signals cover the World Cup only');
     expect((byDate.data as { complete: boolean }).complete).toBe(true);
     // A World Cup fixture id is not a fixture of eng.1: off the bundle the id
     // lookup is unsupported (audit A03), and the provider is still never asked.
-    const byId = await toolGetMarketSignal({ matchId: upcoming().id, adapter: fakeAdapter, now: TEST_NOW });
+    const byId = await toolGetMarketSignal({ matchId: upcoming().id, adapter: league, now: TEST_NOW });
     expect(byId.text).toContain('Not available for this competition yet.');
     expect(byId.data as { signal: unknown; complete: boolean }).toMatchObject({ signal: null, complete: true });
     expect(consulted).not.toHaveBeenCalled();

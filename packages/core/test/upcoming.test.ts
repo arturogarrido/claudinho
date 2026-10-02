@@ -49,6 +49,7 @@ describe('A07 — every selector', () => {
   it('getKnockoutFixtures excludes a cancelled resolved tie', async () => {
     const adapter: ProviderAdapter = {
       name: 'espn',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         return [];

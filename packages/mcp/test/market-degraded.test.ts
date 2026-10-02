@@ -66,6 +66,7 @@ const provider = () => new FakeMarketProvider({ signals: { [KO_ID]: cachedSignal
 function adapterFor(window: Match[]): ProviderAdapter {
   return {
     name: 'espn',
+    competition: 'fifa.world',
     capabilities: { push: false, latencyHintSec: 0 },
     async fetchByDate() {
       return window;

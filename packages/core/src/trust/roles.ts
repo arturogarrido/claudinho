@@ -214,6 +214,21 @@ export function opaqueId(value: unknown, grammar: RegExp): string | undefined {
 
 /** Real ESPN event ids and every bundled fixture id: 6-9 digits, measured. */
 export const ESPN_ID = /^[0-9]{1,20}$/;
+/**
+ * A team id as the domain carries it: the provider's name, a colon, the
+ * provider's own id (`espn:359`). Namespaced so two providers' ids can never
+ * collide, and exact so it stays an identifier — it lands verbatim in `--json`
+ * and MCP `structuredContent`. Measured Oct 2 2026: 432 ESPN team rows across
+ * 15 competitions, every id numeric and the same for a club in each of them.
+ */
+export const TEAM_ID = /^[a-z][a-z0-9]{1,15}:[0-9]{1,20}$/;
+
+/** Build a domain team id from a provider's raw id, or nothing if it is not one. */
+export function providerTeamId(provider: string, raw: unknown, grammar: RegExp): string | undefined {
+  const id = opaqueId(raw, grammar);
+  return id === undefined ? undefined : opaqueId(`${provider}:${id}`, TEAM_ID);
+}
+
 /** Real Gamma event and market ids: numeric strings, measured across 36,243 markets. */
 export const GAMMA_ID = /^[0-9]{1,32}$/;
 /** The event slug this code derives for itself. */

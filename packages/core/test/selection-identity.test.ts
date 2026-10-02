@@ -25,8 +25,7 @@ import { FakeMarketProvider } from '../src/markets/fake';
 import { PolymarketProvider } from '../src/markets/polymarket';
 import { makeMarketProvider } from '../src/markets/provider';
 import { allFixtures } from '../src/schedule';
-import { parseEspnEvent, parseEspnSeason, parseEspnStandings } from '../src/trust/espn';
-import { parseCachedMatch } from '../src/trust/match';
+import { parseCachedMatch, parseEspnEvent, parseEspnSeason, parseEspnStandings } from '../src/trust';
 import type { Match } from '../src/types';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -281,15 +280,26 @@ describe('identity — the provider’s stable id, on both paths', () => {
       expect(r.kind).not.toBe('valid');
     });
 
-    it('when both sides have an id, the ids decide — two ids are two teams', () => {
+    it('a shared code is not sameness: two clubs, two ids, two names', () => {
       // Libertadores: Always Ready and Carabobo are both `CAR`.
       const r = parseCachedMatch(
         cached(
           { code: 'CAR', name: 'Carabobo', flag: '🏳️', id: 'espn:17468' },
-          { code: 'CAR', name: 'Carabobo', flag: '🏳️', id: 'espn:9101' },
+          { code: 'CAR', name: 'Always Ready', flag: '🏳️', id: 'espn:9101' },
         ),
       );
       expect(r.kind).toBe('valid');
+    });
+
+    it('an id never licenses what the labels refuse: one code and name is one team', () => {
+      // A reader cannot tell "Mexico" from "Mexico", whatever ids ride along.
+      const r = parseCachedMatch(
+        cached(
+          { code: 'MEX', name: 'Mexico', flag: '🇲🇽', id: 'espn:203' },
+          { code: 'MEX', name: 'Mexico', flag: '🇲🇽', id: 'espn:999' },
+        ),
+      );
+      expect(r.kind).not.toBe('valid');
     });
 
     it('when either side lacks an id, the code-and-name comparison stands', () => {
@@ -367,7 +377,7 @@ describe('identity — the provider’s stable id, on both paths', () => {
       const adapter = new EspnAdapter({
         competition: 'conmebol.libertadores',
         fetchImpl: (async (url: unknown) =>
-          response(String(url).includes('/standings') ? standings : scoreboard(SEASON_2026, events))) as typeof fetch,
+          response(String(url).includes('/standings') ? standings : scoreboard(SEASON_2026, events))) as unknown as typeof fetch,
       });
       const matches = await adapter.fetchByDate('2026-04-08');
       expect(matches.map((m) => [m.id, m.group])).toEqual([
@@ -416,7 +426,7 @@ describe('season — what the provider reported about ONE response', () => {
     const adapter = new EspnAdapter({
       competition: 'eng.1',
       enrichGroups: false,
-      fetchImpl: (async () => response(scoreboard(SEASON_2026, [event('1', '2026-10-10T11:30Z', ARSENAL, CHELSEA)]))) as typeof fetch,
+      fetchImpl: (async () => response(scoreboard(SEASON_2026, [event('1', '2026-10-10T11:30Z', ARSENAL, CHELSEA)]))) as unknown as typeof fetch,
     });
     const matches = await adapter.fetchByDate('2026-10-10');
     expect(matches).toHaveLength(1);
@@ -441,7 +451,7 @@ describe('season — what the provider reported about ONE response', () => {
             ? scoreboard(SEASON_2024, [event('24', '2024-09-14T11:30Z', ARSENAL, CHELSEA)])
             : scoreboard(SEASON_2026, [event('26', '2026-10-10T11:30Z', ARSENAL, CHELSEA)]),
         );
-      }) as typeof fetch,
+      }) as unknown as typeof fetch,
     });
     const pastCall = adapter.fetchByDate('2024-09-14');
     const nowCall = adapter.fetchByDate('2026-10-10');
@@ -459,7 +469,7 @@ describe('season — what the provider reported about ONE response', () => {
     const adapter = new EspnAdapter({
       competition: 'eng.1',
       enrichGroups: false,
-      fetchImpl: (async () => response(scoreboard(SEASON_2024, [event('24', '2024-09-14T11:30Z', ARSENAL, CHELSEA)]))) as typeof fetch,
+      fetchImpl: (async () => response(scoreboard(SEASON_2024, [event('24', '2024-09-14T11:30Z', ARSENAL, CHELSEA)]))) as unknown as typeof fetch,
     });
     const result = await getMatchesForDate(adapter, '2024-09-14');
     expect(result.season).toMatchObject({ year: 2024, label: '2024-25 English Premier League' });

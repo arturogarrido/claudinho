@@ -33,6 +33,7 @@ const pl: Match = {
 };
 const adapter: ProviderAdapter = {
   name: 'espn',
+  competition: 'eng.1',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate() {
     return [pl];

@@ -14,7 +14,7 @@ import { cmdHook } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 
-const cfg: CliConfig = { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', flavor: 'off' };
+const cfg: CliConfig = { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off' };
 
 /** A LaLiga match in play: ESPN's Espanyol is `ESP`, which is also Spain's code. */
 function espanyolLive(now: Date): Match {
@@ -69,7 +69,7 @@ describe('cmdHook — the roster is pinned only for the competition it describes
       source: 'espn',
       competition: 'esp.1',
     });
-    cmdHook({ cfg, t: makeT('en') });
+    cmdHook({ cfg: { ...cfg, competition: 'esp.1' }, t: makeT('en') });
     const out = writes.join('');
     expect(out).toContain('Espanyol 1–0 Girona');
     expect(out).not.toContain('Spain');

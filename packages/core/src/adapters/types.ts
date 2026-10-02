@@ -16,6 +16,15 @@ export interface ProviderCapabilities {
  */
 export interface ProviderAdapter {
   readonly name: string;
+  /**
+   * The competition this adapter fetches (a provider slug, e.g. `fifa.world`,
+   * `eng.1`). An adapter serves exactly one, decided when it is built, and
+   * everything below the edge asks the ADAPTER — never the environment — which
+   * competition a request is for. That is what keeps a request from changing
+   * its mind halfway through, and what lets "does the bundled schedule apply?"
+   * be a question about a value.
+   */
+  readonly competition: string;
   readonly capabilities: ProviderCapabilities;
   /**
    * Expected group-table scope for omission checks. Omit when the competition's
@@ -29,7 +38,12 @@ export interface ProviderAdapter {
    */
   readonly standingsFallbackGroups?: readonly string[];
 
-  /** All fixtures/results for a single calendar date (provider's timezone semantics). */
+  /**
+   * All fixtures/results for a single calendar date (provider's timezone
+   * semantics). A provider that knows which season a response belongs to
+   * attaches it to the returned array (`attachFetchMeta`); callers read it with
+   * `fetchMeta`. The same holds for every fetch below.
+   */
   fetchByDate(dateISO: string): Promise<Match[]>;
 
   /** Currently in-progress matches (poll path). */

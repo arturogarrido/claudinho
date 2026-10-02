@@ -1,4 +1,4 @@
-import { asFlavorLevel, type FlavorLevel } from '@claudinho/core';
+import { asFlavorLevel, type FlavorLevel, resolveCompetition } from '@claudinho/core';
 
 /** Resolved global options, derived from flags + env + system defaults. */
 export interface CliConfig {
@@ -7,6 +7,13 @@ export interface CliConfig {
   json: boolean;
   color: boolean;
   source: string;
+  /**
+   * The competition this invocation is for (a provider slug, e.g. `fifa.world`,
+   * `eng.1`). Resolved HERE, once — this is the CLI's edge — and read from the
+   * config by every command, the statusline, the hook and the refresher.
+   * Nothing below asks the environment again.
+   */
+  competition: string;
   /** Commentary flair intensity (default: full). */
   flavor: FlavorLevel;
   /**
@@ -25,6 +32,8 @@ export interface RawGlobalOpts {
   json?: boolean;
   color?: boolean;
   source?: string;
+  /** An explicit competition (wins over `CLAUDINHO_COMPETITION`). No flag sets it yet. */
+  competition?: string;
   flavor?: string;
   /** false when --no-markets is passed (commander negatable option). */
   markets?: boolean;
@@ -75,6 +84,8 @@ export function resolveConfig(opts: RawGlobalOpts): CliConfig {
     json: opts.json ?? false,
     color: pickColor(opts.color),
     source: opts.source ?? process.env.CLAUDINHO_SOURCE ?? 'espn',
+    // The ONE place the CLI lets the environment decide the competition.
+    competition: resolveCompetition(opts.competition),
     flavor: asFlavorLevel(opts.flavor ?? process.env.CLAUDINHO_FLAVOR),
     markets: pickMarkets(opts.markets),
     langRequestedUnsupported,

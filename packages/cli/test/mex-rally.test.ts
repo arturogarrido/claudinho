@@ -29,6 +29,7 @@ const notMex = m({
 function adapter(window: Match[]): ProviderAdapter {
   return {
     name: 'espn',
+    competition: 'fifa.world',
     capabilities: { push: false, latencyHintSec: 0 },
     async fetchByDate() {
       return window;
@@ -43,7 +44,7 @@ function adapter(window: Match[]): ProviderAdapter {
 }
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', flavor: 'full', ...over };
+  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'full', ...over };
 }
 const ctx = (window: Match[], over: Partial<CliConfig> = {}) => ({
   cfg: cfg(over),

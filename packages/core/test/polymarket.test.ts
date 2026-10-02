@@ -591,15 +591,15 @@ describe('makeMarketProvider', () => {
   });
 
   it('defaults to Polymarket and switches to fake / none on demand', () => {
-    expect(makeMarketProvider()).toBeInstanceOf(PolymarketProvider);
-    expect(makeMarketProvider('polymarket')).toBeInstanceOf(PolymarketProvider);
-    expect(makeMarketProvider('fake')).toBeInstanceOf(FakeMarketProvider);
-    expect(makeMarketProvider('none')).toBeInstanceOf(FakeMarketProvider);
+    expect(makeMarketProvider(undefined, 'fifa.world')).toBeInstanceOf(PolymarketProvider);
+    expect(makeMarketProvider('polymarket', 'fifa.world')).toBeInstanceOf(PolymarketProvider);
+    expect(makeMarketProvider('fake', 'fifa.world')).toBeInstanceOf(FakeMarketProvider);
+    expect(makeMarketProvider('none', 'fifa.world')).toBeInstanceOf(FakeMarketProvider);
   });
 
   it('honors CLAUDINHO_MARKETS_SOURCE=fake', () => {
     process.env.CLAUDINHO_MARKETS_SOURCE = 'fake';
-    expect(makeMarketProvider()).toBeInstanceOf(FakeMarketProvider);
+    expect(makeMarketProvider(undefined, 'fifa.world')).toBeInstanceOf(FakeMarketProvider);
   });
 });
 

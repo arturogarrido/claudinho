@@ -95,6 +95,7 @@ describe('getMatchById', () => {
     const windows: Array<[string, string]> = [];
     const adapter: ProviderAdapter = {
       name: 'fake',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         throw new Error('should use fetchWindow when available');
@@ -122,6 +123,7 @@ describe('getMatchById', () => {
   it('falls back to the static fixture on provider errors (degraded)', async () => {
     const adapter: ProviderAdapter = {
       name: 'boom',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         throw new Error('down');
@@ -145,6 +147,7 @@ describe('getMatchById', () => {
     let called = false;
     const adapter: ProviderAdapter = {
       name: 'fake',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         called = true;
@@ -172,6 +175,7 @@ describe('marketFixtureForTeam (live-confirmed selection)', () => {
   function adapterReturning(overlay: Match[] | 'throw'): ProviderAdapter {
     return {
       name: 'fake',
+      competition: 'fifa.world',
       capabilities: { push: false, latencyHintSec: 0 },
       async fetchByDate() {
         if (overlay === 'throw') throw new Error('down');

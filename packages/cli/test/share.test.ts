@@ -16,6 +16,7 @@ import { makeT } from '../src/i18n';
 /** Offline match adapter → commands fall back to the bundled static schedule. */
 const fakeAdapter: ProviderAdapter = {
   name: 'fake',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate(): Promise<Match[]> {
     return [];
@@ -38,6 +39,7 @@ const fakeAdapter: ProviderAdapter = {
  */
 const downAdapter: ProviderAdapter = {
   name: 'espn',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate(): Promise<Match[]> {
     throw new Error('ESPN 403');
@@ -101,7 +103,7 @@ const incompleteProvider: MarketProvider = {
 };
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', flavor: 'off', ...over };
+  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over };
 }
 type Over = Partial<CliConfig>;
 const ctx = (over: Over = {}, marketProvider: MarketProvider = provider(), copy?: (t: string) => boolean) => ({
@@ -286,6 +288,7 @@ describe('cmdShare — clipboard', () => {
 describe('cmdShare table — standings card', () => {
   const standingsAdapter: ProviderAdapter = {
     name: 'espn',
+    competition: 'fifa.world',
     capabilities: { push: false, latencyHintSec: 0 },
     async fetchByDate() {
       return [];

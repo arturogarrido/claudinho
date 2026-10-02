@@ -114,10 +114,14 @@ describe('identity — a team’s provider id is a declared part of the output',
         const out = tools.find((t) => t.name === tool)?.outputSchema as Schema | undefined;
         return out ? path(out) : undefined;
       };
-      const today = team('get_today', (s) => s.properties?.matches?.items?.properties?.home);
-      expect(today?.properties?.id).toEqual({ type: 'string' });
-      const live = team('get_live', (s) => s.properties?.matches?.items?.properties?.away);
-      expect(live?.properties?.id).toEqual({ type: 'string' });
+      // `away` is a `$ref` to `home` in the advertised schema, so `home` is
+      // where the team shape is declared — for every tool that returns matches.
+      for (const tool of ['get_today', 'get_live']) {
+        const home = team(tool, (s) => s.properties?.matches?.items?.properties?.home);
+        expect(home?.properties?.id, tool).toEqual({ type: 'string' });
+      }
+      const fixture = team('get_next_fixture', (s) => s.properties?.fixture);
+      expect(JSON.stringify(fixture)).toContain('"id":{"type":"string"}');
     } finally {
       await client.close();
     }

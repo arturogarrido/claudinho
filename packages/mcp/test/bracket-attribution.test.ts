@@ -10,6 +10,7 @@ import { toolGetBracket } from '../src/tools';
  */
 const adapter: ProviderAdapter = {
   name: 'espn',
+  competition: 'fifa.world',
   capabilities: { push: false, latencyHintSec: 0 },
   async fetchByDate(): Promise<Match[]> {
     return [];
