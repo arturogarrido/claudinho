@@ -224,13 +224,13 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     let fixturesUpdatedAt = base?.fixturesUpdatedAt;
     let fixturesAttemptedAt = base?.fixturesAttemptedAt;
     let backoffUntil = base?.backoffUntil;
-    // The season the cached state was written for, sealed like any other value
-    // read back from the file, and the season this cycle's response reports.
-    const cachedSeason = sealSeason(base?.season);
-    let season: SeasonInfo | undefined = cachedSeason;
-    // The season the `fixtures` slice belongs to: the cached state's while the
-    // slice is carried, its own response's once this cycle refetches it.
-    let fixturesSeason: SeasonInfo | undefined = cachedSeason;
+    // The snapshot's season: the cached one (sealed like any other value read
+    // back from the file) until this cycle's live response replaces it.
+    let season: SeasonInfo | undefined = sealSeason(base?.season);
+    // The season the `fixtures` slice belongs to: what was STORED WITH IT while
+    // the slice is carried, its own response's once this cycle refetches it.
+    // Never re-derived from the live season, which can go unknown in between.
+    let fixturesSeason: SeasonInfo | undefined = sealSeason(base?.fixturesSeason);
     // The adapter runs on the refresher's clock (an injected `now` plus the
     // real time elapsed since), so its absolute cooldown deadline and the
     // snapshot's `backoffUntil` are on the same timeline.
@@ -294,6 +294,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       fixtures = undefined;
       fixturesUpdatedAt = undefined;
       fixturesAttemptedAt = undefined;
+      fixturesSeason = undefined;
     }
 
     // The provider told us to go away (429/403) → persist a jittered backoff
@@ -326,6 +327,8 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
         ...(fixturesAttemptedAt ? { fixturesAttemptedAt } : {}),
         ...(backoffUntil ? { backoffUntil } : {}),
         ...(season ? { season } : {}),
+        // Stored with the slice it describes, and only while that slice exists.
+        ...(fixtures && fixturesSeason ? { fixturesSeason } : {}),
       },
       token,
     );

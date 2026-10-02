@@ -436,6 +436,24 @@ describe('identity — the provider’s stable id, on both paths', () => {
     expect(r.value.group).toBeUndefined();
   });
 
+  it('a known id on either side outranks a code on the other', () => {
+    // Found in review of the fix above: home-then-away meant an id-less home
+    // team's CODE (shared with another club, in another group) was consulted
+    // before the away team's ID, which names the fixture's group for certain.
+    const idlessHome = event(
+      '1006',
+      '2026-04-08T00:00Z',
+      { abbreviation: 'CAR', displayName: 'Carabobo' },
+      { id: '2674', abbreviation: 'BOT', displayName: 'Botafogo' },
+      'group-stage',
+    );
+    const r = parseEspnEvent(idlessHome, {
+      groupByTeam: { CAR: 'B', BOT: 'A' }, // `CAR` here is Always Ready's row
+      groupByTeamId: { 'espn:2674': 'A', 'espn:9101': 'B' },
+    });
+    expect(r.kind === 'valid' && r.value.group).toBe('A');
+  });
+
   it('the code map still serves a team the feed gave no id, and a table that carried none', () => {
     const noIds = event(
       '1004',

@@ -79,6 +79,15 @@ export interface CacheState {
    * Sealed by its reader (`sealSeason`), like every `Match` in this file.
    */
   season?: SeasonInfo;
+  /**
+   * The season of the response that produced `fixtures` — its OWN provenance,
+   * stored beside it. It is not derivable from `season`: the live slice
+   * refreshes every few seconds and can lose its season (a response that states
+   * none) while the fixtures it sits beside are carried for fifteen minutes.
+   * Re-deriving it from `season` each cycle is how a carried slice from one
+   * edition survived into a snapshot labelled with another.
+   */
+  fixturesSeason?: SeasonInfo;
 }
 
 const LOCK_STALE_MS = 60_000;
@@ -139,8 +148,9 @@ function isCacheState(value: unknown): value is CacheState {
   ) {
     return false;
   }
-  if (s.season !== undefined && (!s.season || typeof s.season !== 'object' || Array.isArray(s.season))) {
-    return false;
+  for (const key of ['season', 'fixturesSeason'] as const) {
+    const v = s[key];
+    if (v !== undefined && (!v || typeof v !== 'object' || Array.isArray(v))) return false;
   }
   for (const key of [
     'fixturesUpdatedAt',

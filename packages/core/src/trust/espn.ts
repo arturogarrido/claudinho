@@ -250,15 +250,19 @@ export function parseEspnEvent(raw: unknown, ctx: MapContext = {}): ParseResult<
   // A team with an id is looked up BY ID, and only by id, whenever an id map
   // exists: if its row is missing, the group is unknown — a code that matches
   // is some other club's row (`CAR` is two clubs). Codes serve a team the feed
-  // gave no id, and every team when the standings carried no ids at all. A
-  // missing group letter is an absent enrichment; a wrong one is a wrong fact.
+  // gave no id, and every team when the standings carried no ids at all.
+  //
+  // IDS FIRST, ON BOTH SIDES, THEN CODES. An id names the group for certain; a
+  // code may be another club's. Home-then-away let an id-less home team's
+  // shared code answer before the away team's id was asked. A missing group
+  // letter is an absent enrichment; a wrong one is a wrong fact.
   let group: string | undefined;
   if (stage === 'GROUP') {
-    const groupOf = (t: Team): string | undefined =>
-      t.id !== undefined && ctx.groupByTeamId
-        ? ctx.groupByTeamId[t.id]
-        : ctx.groupByTeam?.[t.code];
-    group = groupOf(home) ?? groupOf(away);
+    const byId = (t: Team): string | undefined =>
+      t.id !== undefined ? ctx.groupByTeamId?.[t.id] : undefined;
+    const byCode = (t: Team): string | undefined =>
+      t.id === undefined || !ctx.groupByTeamId ? ctx.groupByTeam?.[t.code] : undefined;
+    group = byId(home) ?? byId(away) ?? byCode(home) ?? byCode(away);
   }
 
   const hs = toGoals(homeRaw.score);

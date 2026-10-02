@@ -426,6 +426,8 @@ describe('season in the cache', () => {
         startDate: `${year}-06-11T04:00:00.000Z`,
         endDate: `${year}-12-31T04:59:00.000Z`,
       },
+      // The slice records the season of the response that produced it.
+      fixturesSeason: { year, label: `${year} FIFA World Cup` },
     });
   }
   const refresh = (year: number) => {
@@ -472,6 +474,32 @@ describe('season in the cache', () => {
     expect(state?.fixtures).toHaveLength(1);
   });
 
+  it('a carried slice keeps its OWN season across cycles, even while the live season is unknown', async () => {
+    // Found in review of the fix above: the fixtures' season was re-derived
+    // each cycle from the snapshot's (live) season. One live response with no
+    // readable season cleared it; the next, readable and DIFFERENT, then found
+    // nothing to compare the carried fixtures against and kept them.
+    seed(2026);
+    vi.stubGlobal('fetch', async () => response({ leagues: [{ season: { year: '2030' } }], events: [] }));
+    await runRefresh({ source: 'espn', competition: 'fifa.world', now: OPENER_LIVE, jitterMs: 0 });
+    const between = readState('espn', 'fifa.world');
+    expect(between?.season).toBeUndefined();
+    expect(between?.fixtures).toHaveLength(1);
+    expect(between?.fixturesSeason?.year).toBe(2026); // its provenance survives
+
+    vi.stubGlobal('fetch', async () => response({ leagues: [{ season: season(2030) }], events: [] }));
+    await runRefresh({
+      source: 'espn',
+      competition: 'fifa.world',
+      now: new Date(OPENER_LIVE.getTime() + 20_000),
+      jitterMs: 0,
+    });
+    const after = readState('espn', 'fifa.world');
+    expect(after?.season?.year).toBe(2030);
+    expect(after?.fixtures).toBeUndefined();
+    expect(after?.fixturesSeason).toBeUndefined();
+  });
+
   it('a failed live fetch keeps the season the snapshot was written for', async () => {
     seed(2026);
     vi.stubGlobal('fetch', async () => {
@@ -495,6 +523,7 @@ describe('season in the cache', () => {
       competition: 'fifa.world',
       fixtures: [carried],
       season: { year: 2026, label: '2026 FIFA World Cup' },
+      fixturesSeason: { year: 2026, label: '2026 FIFA World Cup' },
     });
     const final = {
       id: '760517',
@@ -517,6 +546,7 @@ describe('season in the cache', () => {
     expect(state?.season?.year).toBe(2030);
     expect(state?.fixtures?.map((m) => m.id)).toEqual(['760517']);
     expect(state?.fixtures?.[0]?.home.id).toBe('espn:164');
+    expect(state?.fixturesSeason?.year).toBe(2030);
   });
 
   it('a refetched slice is kept only if ITS response is the same season', async () => {
