@@ -5,7 +5,8 @@
  * was always open: a live read (three requests) every cycle, around the clock.
  * Now a cycle is: discovery if due (the schedule ahead, about once an hour);
  * the backoff again; the gate, on the slice as it now is; a live read if the
- * gate is open and the live slice is at least 12 seconds old; one publish.
+ * gate is open and the live slice is at least 12 seconds old; one final publish
+ * (the discovery's attempt is written before its request).
  *
  * Requests are pinned by their URLs: a MONTH request (`dates=YYYYMM`) is
  * discovery, DAY requests (`dates=YYYYMMDD`, three of them) are a live read.
