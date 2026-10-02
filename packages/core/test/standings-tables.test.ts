@@ -18,6 +18,10 @@ import { EspnAdapter } from '../src/adapters/espn';
 import { fetchMeta } from '../src/adapters/meta';
 import { STANDINGS_SHAPE } from '../src/competition';
 import { getStandings } from '../src/live';
+import { tableShareCard } from '../src/share/cards';
+import { formatShareTable } from '../src/share/format';
+import { tableData, tableKeyArg, tableTitle } from '../src/standings';
+import { verdictExtras, verdictNotice } from '../src/verdict';
 import { MAX_GROUP_ROWS, MAX_GROUPS, parseEspnStandings } from '../src/trust/espn';
 
 type RecordedTeam = { id: string; abbreviation: string; displayName: string };
@@ -605,5 +609,65 @@ describe('a table key is not a fixture’s group', () => {
     const withIds = both('synthetic.cup', standings, [fixture(['3', 'CAR', 'Caracas'], ['4', 'BET', 'Beta'])]);
     const [m] = await withIds.fetchByDate('2026-10-10');
     expect(m?.group).toBe('B');
+  });
+});
+
+describe('what every surface is built from', () => {
+  const shortEuro = () => {
+    const payload = recorded('uefa.euro');
+    return { children: [...payload.children.slice(0, 2), { ...payload.children[2], name: 'Second Phase' }] };
+  };
+
+  it('a table’s structured form carries its label, and only when it has one', async () => {
+    const league = (await read('eng.1')).tables[0];
+    expect(league && tableData(league)).toMatchObject({ group: 'LEAGUE', label: '2026-27 English Premier League' });
+    const lettered = (await read('uefa.euro', 'A')).tables[0];
+    expect(lettered && Object.keys(tableData(lettered))).toEqual(['group', 'standings']);
+  });
+
+  it('a title: "Group A" for a lettered group, the label and the key for any other table', () => {
+    expect(tableTitle({ group: 'A' })).toBe('Group A');
+    expect(tableTitle({ group: 'A1', label: 'Group A1' })).toBe('Group A1 (A1)');
+    expect(tableTitle({ group: 'A-B', label: 'League A, Group B' })).toBe('League A, Group B (A-B)');
+    expect(tableTitle({ group: 'LEAGUE', label: 'League Phase' })).toBe('League Phase (LEAGUE)');
+  });
+
+  it('an argument is a key (1 to 12 letters, digits or -), upper-cased, or it is nothing', () => {
+    expect(['A', 'l', 'a1', 'A-B', 'league', 'ABCDEFGHIJKL'].map(tableKeyArg)).toEqual(['A', 'L', 'A1', 'A-B', 'LEAGUE', 'ABCDEFGHIJKL']);
+    for (const junk of ['', 'A B', 'Group A', 'A/B', 'A_B', '../A', 'A\u200b', 'ABCDEFGHIJKLM', 'Á', undefined, null, 7]) {
+      expect(tableKeyArg(junk), JSON.stringify(junk)).toBeUndefined();
+    }
+  });
+
+  it('the missing-table verdict: a key and a sentence, in four languages, only when the read states it', async () => {
+    const short = await read('uefa.euro', undefined, shortEuro());
+    expect(verdictExtras(short)).toEqual({ incomplete: true });
+    expect(verdictNotice(short)).toBe('Some tables could not be read — this is not the whole competition.');
+    expect(verdictNotice(short, 'es')).toBe('No se pudieron leer algunas tablas — esta no es la competición completa.');
+    expect(verdictNotice(short, 'pt')).toBe('Algumas tabelas não puderam ser lidas — esta não é a competição completa.');
+    expect(verdictNotice(short, 'fr')).toBe("Certains tableaux n'ont pas pu être lus — ce n'est pas la compétition complète.");
+    const whole = await read('uefa.euro');
+    expect(verdictExtras(whole)).toEqual({});
+    expect(verdictNotice(whole)).toBeUndefined();
+  });
+
+  it('a share card: the title, the verdict, and the sentence beside the tables', async () => {
+    const league = await read('eng.1', 'LEAGUE');
+    const card = tableShareCard(league, 'LEAGUE');
+    expect(card.verdict).toEqual({});
+    expect(card.tables[0]).toMatchObject({ group: 'LEAGUE', label: '2026-27 English Premier League' });
+    const snippet = formatShareTable(card.input);
+    expect(snippet.split('\n')[0]).toBe('2026-27 English Premier League (LEAGUE) · standings');
+    expect(snippet).not.toContain('could not be read');
+
+    const short = tableShareCard(await read('uefa.euro', undefined, shortEuro()), undefined);
+    expect(short.verdict).toEqual({ incomplete: true });
+    const text = formatShareTable(short.input);
+    expect(text).toContain('Group A · standings');
+    // English, like the card, whatever the reader's language.
+    expect(text).toContain('(Some tables could not be read — this is not the whole competition.)');
+    // And it comes before the footer, not instead of the tables.
+    expect(text.indexOf('could not be read')).toBeGreaterThan(text.indexOf('Group B · standings'));
+    expect(text.indexOf('could not be read')).toBeLessThan(text.indexOf('Live data: ESPN'));
   });
 });

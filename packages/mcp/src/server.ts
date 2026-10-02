@@ -240,7 +240,6 @@ const shareOut = {
   group: z.string().optional(),
   stage: z.string().optional(),
   tables: z.union([anyObj, z.array(anyObj), z.null()]).optional(),
-  ...incompleteOut,
   view: anyObj.nullable().optional(),
   matches: z.array(matchOut).optional(),
   marketSignals: z.record(anyObj).optional(),

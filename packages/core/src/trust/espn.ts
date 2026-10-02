@@ -510,8 +510,8 @@ export interface EspnStandingsList extends BoundedList<GroupStandings> {
  */
 function tableKey(name: unknown): string | undefined {
   if (typeof name !== 'string' || name.length > MAX_TABLE_NAME_UNITS) return undefined;
-  // Printable ASCII only, so case-insensitive matching cannot fold anything in.
-  if (!/^[\x20-\x7e]+$/.test(name)) return undefined;
+  // No `u` flag on purpose: without it, case-insensitive matching never folds a
+  // non-ASCII character into `a-z` (U+017F, U+212A), so only ASCII can match.
   const group = /^group ([a-z][1-9]?)$/i.exec(name);
   if (group?.[1]) return group[1].toUpperCase();
   const nested = /^league ([a-z]), group ([a-z])$/i.exec(name);

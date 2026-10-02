@@ -891,8 +891,9 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         informationalOnly: true,
         snippet,
         // The structured card keeps the verdict the snippet warns about (A01).
+        // (No batch verdict here: this card is always for ONE key, and a keyed
+        // read that found its table carries only that table's own `partial`.)
         tables: card.tables,
-        ...card.verdict,
       },
     };
   }
