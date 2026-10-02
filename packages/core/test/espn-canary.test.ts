@@ -498,6 +498,32 @@ describe('found in review: absence is a finding, and the product’s own parser 
     expect(row?.detail).toMatch(/\bL\b/);
   });
 
+  it('a whole table the product’s parser refuses is red, though every expected group survives', async () => {
+    // Found in review (round 2): a second, contradictory Group A is dropped by
+    // the parser. The twelve survivors are all there and none is partial; only
+    // the parser's own account says something was left out.
+    const second = wcStandings(['A']).children[0];
+    (second?.standings.entries[0]?.team as { id: string }).id = '298';
+    const duplicate = wcStandings();
+    duplicate.children.push(second as (typeof duplicate.children)[number]);
+    expect(core.parseStandings(duplicate)).toHaveLength(12);
+    expect((await wc(duplicate))?.verdict).toBe('changed');
+
+    const unknownName = wcStandings();
+    unknownName.children.push({ ...(second as (typeof duplicate.children)[number]), name: 'Group A1' });
+    expect((await wc(unknownName))?.verdict).toBe('changed');
+  });
+
+  it('the adapter says so itself: a standings result states whether every table and row was read', async () => {
+    const adapterFor = (body: unknown) =>
+      new core.EspnAdapter({ competition: 'fifa.world', fetchImpl: (async () => json(body)) as unknown as typeof fetch });
+    expect(core.fetchMeta(await adapterFor(wcStandings()).fetchStandings())?.complete).toBe(true);
+    const second = wcStandings(['A']).children[0];
+    const duplicate = wcStandings();
+    duplicate.children.push(second as (typeof duplicate.children)[number]);
+    expect(core.fetchMeta(await adapterFor(duplicate).fetchStandings())?.complete).toBe(false);
+  });
+
   it('a row the product’s parser refuses is red, though its statistics are all there', async () => {
     // Group C gets a second team with one win and no points: every statistic
     // present and numeric, the group still there, and a table the product
@@ -566,6 +592,36 @@ describe('found in review: a run that could not see says so', () => {
   });
 });
 
+describe('found in review (round 2): an error body cannot hold the run', () => {
+  // The first fix read a CLONE of every body. A clone's two branches only finish
+  // cancelling together, and the adapter never reads an error body: once the
+  // canary's branch passed its limit, its cancel waited forever on the other.
+  const big = (bytes: number) => JSON.stringify({ message: 'x'.repeat(bytes) });
+
+  it('a large error body: the run completes and the status decides', { timeout: 2000 }, async () => {
+    const body = big(70 * 1024);
+    const r = await run((url) =>
+      /dates=\d{8}-\d{8}/.test(url)
+        ? new Response(body, { status: 400, headers: { 'content-length': String(Buffer.byteLength(body)) } })
+        : healthy(url),
+    );
+    expect(verdicts(r)).toEqual({ live: 'ok', day: 'ok', window: 'rejected', standings: 'ok' });
+  });
+
+  it('a large throttle body, with no declared length: one request, the run stops', { timeout: 2000 }, async () => {
+    const r = await run(() => new Response(big(128 * 1024), { status: 429 }), ['eng.1', 'esp.1']);
+    expect(r.urls).toHaveLength(1);
+    expect(new Set(r.rows.map((row) => row.verdict))).toEqual(new Set(['blocked']));
+  });
+
+  it('an error body that never ends is abandoned at a deadline, and the next question is asked', { timeout: 2000 }, async () => {
+    const stalled = () => new Response(new ReadableStream<Uint8Array>({ pull() {} }), { status: 400 });
+    const f = feed((url) => (/dates=\d{8}-\d{8}/.test(url) ? stalled() : healthy(url)));
+    const r = await runCanary({ core, competitions: ['eng.1'], fetchImpl: f.fetchImpl, now: NOW, pauseMs: 0, bodyDeadlineMs: 20 });
+    expect(verdicts(r)).toEqual({ live: 'ok', day: 'ok', window: 'rejected', standings: 'ok' });
+  });
+});
+
 describe('found in review: the canary reads no more than the adapter would', () => {
   it('an oversized body is cancelled at the adapter’s limit, and reported', async () => {
     const CHUNK = 256 * 1024;
@@ -629,6 +685,15 @@ describe('what it watches and how it reports', () => {
     expect(text).toMatch(/eng\.1\s+window\s+REJECTED/);
     expect(text).toMatch(/1 red/);
     expect(text).toMatch(/3 ok/);
+  });
+
+  it('the script has no shebang line', () => {
+    // This test imports the script. Under vitest a module is wrapped before it
+    // runs, so a `#!` line is only valid if the transform strips it, and on a
+    // Windows checkout (CRLF) it does not: the suite failed there with
+    // "Invalid or unexpected token". It is run as `node scripts/espn-canary.mjs`.
+    const script = readFileSync(fileURLToPath(new URL('../../../scripts/espn-canary.mjs', import.meta.url)), 'utf8');
+    expect(script.startsWith('#!')).toBe(false);
   });
 
   it('the workflow is scheduled, manual, unbadged, and never gates a pull request', () => {

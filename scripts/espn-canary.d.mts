@@ -21,5 +21,6 @@ export function runCanary(options: {
   fetchImpl?: typeof fetch;
   now?: Date;
   pauseMs?: number;
+  bodyDeadlineMs?: number;
 }): Promise<CanaryResult>;
 export function formatCanary(result: CanaryResult): string;
