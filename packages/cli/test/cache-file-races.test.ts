@@ -336,6 +336,24 @@ describe('every state the lock path can be in: what it is, and what a contender 
     expect(fresh).toBe(true);
   });
 
+  it('a file caught mid-write is not parsed, even when the bytes that were read happen to parse', () => {
+    // The note becomes, right after it was checked, a text whose first bytes are a
+    // well-formed note with ANOTHER believed deadline, and then more. A reader
+    // that parsed what it caught would believe twenty minutes.
+    writeBackoffNote(SOURCE, WC, NOW + 10 * MIN, NOW);
+    const path = backoffNotePath(SOURCE, WC);
+    let grown = false;
+    onPath = (kind, p) => {
+      if (p === path && kind === 'checked' && !grown) {
+        grown = true;
+        writeFileSync(path, `{"until":"${new Date(NOW + 20 * MIN).toISOString()}"}${' '.repeat(100)}`);
+      }
+    };
+    expect(readBackoffNote(SOURCE, WC, NOW)).toBeUndefined();
+    onPath = undefined;
+    expect(grown).toBe(true);
+  });
+
   it('the other kept files are not the lock: one that grows while it is read is simply not read', () => {
     writeBackoffNote(SOURCE, WC, NOW + 10 * MIN, NOW);
     const path = backoffNotePath(SOURCE, WC);
@@ -381,6 +399,41 @@ describe('a lock that vanished is not removed', () => {
     expect(step).toBe(3); // the interleaving happened as written
     expect(third).toBeDefined();
     // The third refresher holds it. The contender must not have removed a fresh lock to take it.
+    expect(holdsLock(third)).toBe(true);
+    expect(contender).toBeUndefined();
+  });
+
+  it('a fresh lock that appears BETWEEN the two looks at a path that answered "no such file" is not removed either', () => {
+    // "No such file" from the read is checked against the entry itself (a link
+    // to nothing is there, and stale). Between those two looks a third
+    // refresher can create a real lock: the entry is then THERE, and it is a
+    // fresh lock, not something nobody can judge. It must read as "absent"
+    // (try to create, fail, leave it), never as stale.
+    const lock = lockFile();
+    const owner = claimLock(NOW);
+    expect(owner).toBeDefined();
+    let third: ReturnType<typeof claimLock>;
+    let step = 0;
+    onPath = (kind, p, flags) => {
+      if (p !== lock) return;
+      if (step === 0 && kind === 'open' && flags === 'wx') {
+        step = 1; // the contender's exclusive create is about to fail: the owner holds a fresh lock
+        return;
+      }
+      if (step === 1 && kind === 'open' && flags !== 'wx') {
+        step = 2;
+        releaseLock(owner); // released just before the contender opens the lock to read it: "no such file"
+        return;
+      }
+      if (step === 2 && kind === 'look') {
+        step = 3;
+        third = claimLock(NOW); // created just before the contender looks at the entry itself
+      }
+    };
+    const contender = claimLock(NOW);
+    onPath = undefined;
+    expect(step).toBe(3); // the interleaving happened as written
+    expect(third).toBeDefined();
     expect(holdsLock(third)).toBe(true);
     expect(contender).toBeUndefined();
   });
