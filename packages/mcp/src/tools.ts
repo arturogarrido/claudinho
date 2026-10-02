@@ -43,6 +43,8 @@ import {
   marketFixtureForTeam,
   marketRelevant,
   marketsCoverCompetition,
+  marketScopeVerdict,
+  bundleApplies,
   marketSignalRendersFor,
   type Match,
   type MarketProvider,
@@ -431,6 +433,7 @@ export async function toolGetMatch(
       match,
       marketComplete,
       marketSignal: marketSignal ? marketData(marketSignal) : null,
+      ...verdictExtras(found),
     },
   };
 }
@@ -519,7 +522,7 @@ export async function toolGetBracket(
   }
   return {
     text: withDisclaimer(text, source, args.lang),
-    data: { degraded, standingsDegraded, source: source ?? null, view },
+    data: { degraded, standingsDegraded, source: source ?? null, view, ...verdictExtras(bracket) },
   };
 }
 
@@ -574,7 +577,7 @@ export async function toolGetNextFixture(
     // `source` in data mirrors the text's "Live data: …" attribution (parity
     // with CLI `next --json`); null for a static group fixture (no live source).
     text: withDisclaimer(`Next up for ${code}:\n${matchLine(fixture, opts)}`, source, args.lang),
-    data: { team: code, fixture, degraded, source: source ?? null },
+    data: { team: code, fixture, degraded, source: source ?? null, ...verdictExtras(next) },
   };
 }
 
@@ -728,6 +731,8 @@ export async function toolGetMarketSignal(
       // "we could not check them all".
       complete: batch.complete,
       signals: shown.items.map(({ signal }) => marketData(signal)),
+      // Off the markets' scope, "none" means "not read for this competition".
+      ...verdictExtras(marketScopeVerdict(competitionOf(args))),
     },
   };
 }
@@ -947,6 +952,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         matches: shownToday.items,
         degraded: day.degraded,
         source: day.source,
+        scheduleKnown: bundleApplies(competitionOf(args)),
         titleSuffix: truncationNote(shownToday),
       },
       market,

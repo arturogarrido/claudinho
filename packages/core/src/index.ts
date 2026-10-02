@@ -123,6 +123,7 @@ export {
   makeMarketProvider,
   MARKET_COMPETITIONS,
   marketsCoverCompetition,
+  marketScopeVerdict,
   resolveMarketSource,
   getMarketSignal,
   getMarketSignals,

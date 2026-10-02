@@ -158,6 +158,12 @@ export function dateShareCard(
     matches: readonly Match[];
     degraded: boolean;
     source?: string;
+    /**
+     * Whether the day's fixture list is known WITHOUT the provider: true where
+     * the bundled schedule covers the competition, false where the provider is
+     * the only source. Decides what an empty, degraded day may say.
+     */
+    scheduleKnown: boolean;
     /** Appended to the title, e.g. " (showing 20 of 31)". */
     titleSuffix?: string;
   },
@@ -177,7 +183,13 @@ export function dateShareCard(
       marketComplete: market.complete,
       source: day.source,
       degraded: day.degraded,
-      emptyNote: `No matches scheduled for ${human}.`,
+      // Fail closed: when the provider is the only source of fixtures and it
+      // could not be reached, the card must not paste as an empty day. (The
+      // formatter adds its own outage line only when there ARE matches.)
+      emptyNote:
+        day.degraded && !day.scheduleKnown
+          ? `Couldn't reach the data provider — no fixtures confirmed for ${human}.`
+          : `No matches scheduled for ${human}.`,
       installLine: 'npx @claudinho/cli today',
       tz: ctx.tz,
       locale: ctx.locale,

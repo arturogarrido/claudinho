@@ -37,6 +37,7 @@ import {
   marketFixtureForTeam,
   marketLine,
   marketsCoverCompetition,
+  marketScopeVerdict,
   marketSignalRendersFor,
   marketRelevant,
   matchFlavor,
@@ -659,6 +660,7 @@ export async function cmdBracket(
       standingsDegraded,
       source: source ?? null,
       view,
+      ...verdictExtras(bracket),
     });
     return;
   }
@@ -1142,7 +1144,14 @@ export async function cmdMarkets(
     // `complete` distinguishes "checked everything, found none" from "could not
     // check". Without it a consumer of `--json` cannot tell an outage from a
     // quiet day, which is the same gap the text branch had.
-    emitJson({ date, informationalOnly: true, complete, marketSignals });
+    emitJson({
+      date,
+      informationalOnly: true,
+      complete,
+      marketSignals,
+      // Off the markets' scope, "none" means "not read for this competition".
+      ...verdictExtras(marketScopeVerdict(cfg.competition)),
+    });
     return;
   }
 
@@ -1436,7 +1445,14 @@ export async function cmdShare(
   emitMatchCard(
     ctx,
     dateShareCard(
-      { date, explicit: explicitDate !== undefined, matches: todays, degraded, source },
+      {
+        date,
+        explicit: explicitDate !== undefined,
+        matches: todays,
+        degraded,
+        source,
+        scheduleKnown: bundleApplies(cfg.competition),
+      },
       market,
       where,
     ),

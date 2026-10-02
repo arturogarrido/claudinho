@@ -19,6 +19,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { marketDisplayable } from '../src/markets/normalize';
+import { marketScopeVerdict } from '../src/markets/provider';
 import {
   bracketShareCard,
   dateShareCard,
@@ -60,6 +61,14 @@ describe('verdictExtras — the structured keys, from one place', () => {
     expect(verdictExtras(result)).toEqual({ unsupported: true });
     const healthy: { degraded: boolean; source: string; unsupported?: boolean } = { degraded: true, source: 'espn' };
     expect(Object.keys(verdictExtras(healthy))).toEqual([]);
+  });
+});
+
+describe('marketScopeVerdict — what a market read says about its competition before any request', () => {
+  it('states the verdict outside the sidecar’s scope, and nothing inside it', () => {
+    expect(marketScopeVerdict('fifa.world')).toEqual({});
+    expect(marketScopeVerdict('eng.1')).toEqual({ unsupported: true });
+    expect(verdictExtras(marketScopeVerdict('uefa.nations'))).toEqual({ unsupported: true });
   });
 });
 
@@ -273,6 +282,46 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     const rewrapped = /verdict(Extras|Notice)\(\s*\{/;
     expect(hits('cli', rewrapped)).toEqual([]);
     expect(hits('mcp', rewrapped)).toEqual([]);
+  });
+
+  // Found in review: the patterns above name the forms that were actually
+  // written, and an equivalent form walks past them
+  // (`found.unsupported === true ? { unsupported: true } : {}`). The checks
+  // below are about the VOCABULARY instead: a surface has no reason to spell
+  // these words at all, so any spelling of the copy is caught.
+  const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+  const codeHits = (pkg: string, pattern: RegExp): string[] =>
+    sources(join(PACKAGES, pkg, 'src'))
+      .filter((f) => pattern.test(stripComments(readFileSync(f, 'utf8'))))
+      .map((f) => relative(PACKAGES, f).split(sep).join('/'));
+
+  it('a surface never names a verdict: the only code that says `unsupported` is the schema that declares it', () => {
+    expect(codeHits('cli', /\bunsupported\b/)).toEqual([]);
+    expect(codeHits('mcp', /\bunsupported\b/)).toEqual(['mcp/src/server.ts']);
+  });
+
+  it('a surface never assembles a card: it does not write an empty note or a run cue', () => {
+    for (const pkg of ['cli', 'mcp']) {
+      expect(codeHits(pkg, /\bemptyNote\b/), pkg).toEqual([]);
+      expect(codeHits(pkg, /\binstallLine\s*:/), pkg).toEqual([]);
+    }
+    // And it does call the builders, every one, from the one file that shares.
+    const builders = ['liveShareCard', 'dateShareCard', 'nextShareCard', 'matchShareCard', 'tableShareCard', 'bracketShareCard'];
+    for (const [pkg, file] of [['cli', 'commands.ts'], ['mcp', 'tools.ts']] as const) {
+      const code = stripComments(readFileSync(join(PACKAGES, pkg, 'src', file), 'utf8'));
+      for (const b of builders) expect(code.includes(`${b}(`), `${pkg} ${b}`).toBe(true);
+    }
+  });
+
+  it('a surface never builds a table’s structured form or re-derives the display rule', () => {
+    for (const pkg of ['cli', 'mcp']) expect(codeHits(pkg, /\bpartial\s*:/), pkg).toEqual([]);
+    // The display rule's last condition, in the two files that render signals.
+    // (The CLI's market cache also checks a distribution, when it READS a
+    // cached signal: a different rule, about a different thing.)
+    for (const [pkg, file] of [['cli', 'commands.ts'], ['mcp', 'tools.ts']] as const) {
+      const code = stripComments(readFileSync(join(PACKAGES, pkg, 'src', file), 'utf8'));
+      expect(/\bhasSaneDistribution\b/.test(code), `${pkg}/${file}`).toBe(false);
+    }
   });
 
   it('no surface writes the "not available" sentence itself', () => {
