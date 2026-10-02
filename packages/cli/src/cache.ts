@@ -251,7 +251,7 @@ export function backoffNotePath(source = 'espn', competition = DEFAULT_COMPETITI
   if (source === 'espn' && competition === DEFAULT_COMPETITION) {
     return join(cacheDir(), 'backoff.json');
   }
-  const slug = `${source}.${competition}`.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '_');
+  const slug = `${source}.${competition}`.replace(/[^a-zA-Z0-9._-]/g, '_');
   return join(cacheDir(), `backoff.${slug}.json`);
 }
 

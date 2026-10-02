@@ -19,7 +19,7 @@
 import { EspnAdapter } from '@claudinho/core';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let onClaim: (() => void) | undefined;
@@ -39,6 +39,7 @@ vi.mock('../src/cache', async (importOriginal) => {
 import {
   backoffInEffect,
   backoffNotePath,
+  cacheDir,
   type CacheState,
   claimLock,
   readCurrentState,
@@ -328,7 +329,20 @@ describe('a note is small, bounded and never deleted', () => {
 
   it('a note that is corrupt, oversized or the wrong shape is no note: it never throws, blocks or unblocks', () => {
     const snapshot = nowMs + 10 * MIN;
-    for (const body of ['', 'not json', '[]', 'null', '{}', '{"until":7}', '{"until":"soon"}', '{"until":"2026-06-11T19:40:00Z","x":1}'.padEnd(5000, ' ')]) {
+    for (const body of [
+      '',
+      'not json',
+      '[]',
+      'null',
+      '{}',
+      '{"until":7}',
+      '{"until":"soon"}',
+      // A real instant ten minutes ahead, but not written the way this product writes a stamp.
+      '{"until":"June 11, 2026 19:40:00 UTC"}',
+      '{"until":"2026-06-11T19:40:00+00:00"}',
+      // The right shape, in a file far larger than a note is.
+      '{"until":"2026-06-11T19:40:00.000Z","x":1}'.padEnd(5000, ' '),
+    ]) {
       rmSync(dir, { recursive: true, force: true });
       writeState(stale(OPENER_LIVE));
       writeFileSync(backoffNotePath(SOURCE, WC), body);
@@ -339,10 +353,43 @@ describe('a note is small, bounded and never deleted', () => {
     }
   });
 
+  it('a well-formed note IS read (the control for the list above)', () => {
+    writeState(stale(OPENER_LIVE));
+    writeFileSync(backoffNotePath(SOURCE, WC), '{"until":"2026-06-11T19:40:00.000Z"}');
+    expect(inEffect(nowMs)).toBe(Date.parse('2026-06-11T19:40:00.000Z'));
+  });
+
+  it('a note with no snapshot beside it: the first snapshot says the provider said stop, not that nothing is on', async () => {
+    // Inside the opener's live window. A command was throttled before any
+    // refresher ever ran for this scope.
+    writeBackoffNote(SOURCE, WC, nowMs + 10 * MIN, nowMs);
+    provider();
+    await refresh(OPENER_LIVE);
+    expect(requests).toEqual([]);
+    const state = readState(SOURCE, WC);
+    expect(state?.degraded).toBe(true);
+    expect(Date.parse(state?.backoffUntil ?? '')).toBe(nowMs + 10 * MIN);
+  });
+
+  it('both triggers honour the note', () => {
+    const semi = SEMI_LIVE.getTime();
+    writeState(stale(SEMI_LIVE));
+    const state = readCurrentState(SOURCE, WC);
+    expect(shouldRefresh(semi, state, WC, SOURCE)).toBe(true);
+    expect(shouldRefreshFixtures(semi, state, WC, SOURCE)).toBe(true);
+    writeBackoffNote(SOURCE, WC, semi + 10 * MIN, semi);
+    expect(shouldRefresh(semi, state, WC, SOURCE)).toBe(false);
+    expect(shouldRefreshFixtures(semi, state, WC, SOURCE)).toBe(false);
+  });
+
   it('a note belongs to its scope: another competition’s throttle is not this one’s', () => {
     writeBackoffNote(SOURCE, 'eng.1', nowMs + 10 * MIN, nowMs);
     expect(backoffInEffect(undefined, SOURCE, WC, nowMs)).toBeUndefined();
     expect(backoffInEffect(undefined, SOURCE, 'eng.1', nowMs)).toBe(nowMs + 10 * MIN);
-    expect(backoffNotePath(SOURCE, 'a/../b')).not.toContain('..');
+    // The scope comes from an environment variable: it names a file in the cache directory, never a path.
+    for (const hostile of ['a/../b', '../../etc/x', '..\\..\\x', 'a/b']) {
+      expect(dirname(backoffNotePath(SOURCE, hostile)), hostile).toBe(cacheDir());
+      expect(dirname(backoffNotePath(hostile, WC)), hostile).toBe(cacheDir());
+    }
   });
 });
