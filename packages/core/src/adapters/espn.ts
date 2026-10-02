@@ -321,10 +321,17 @@ export class EspnAdapter implements ProviderAdapter {
     }
     const promise = this.get(this.standingsUrl()).then((d) => {
       const parsed = parseEspnStandings(d);
-      return usableProviderItems<GroupStandings>(
-        'standings',
-        parsed,
-        parsed.items.some((table) => table.rows.length > 0),
+      // The parser's own account rides on the result, as for a scoreboard: a
+      // refused row marks its table partial, but a refused TABLE (a second one
+      // contradicting the first, a name that is no group) leaves no trace on
+      // the survivors.
+      return attachFetchMeta(
+        usableProviderItems<GroupStandings>(
+          'standings',
+          parsed,
+          parsed.items.some((table) => table.rows.length > 0),
+        ),
+        { complete: parsed.complete },
       );
     });
     this.standingsShared = { at: now, promise };

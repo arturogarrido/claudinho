@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * The ESPN canary: ask the real feed, once a day, the same questions the
  * product asks, and say which KIND of problem it met.
@@ -14,8 +13,10 @@
  * `fetch` only to see what was asked and what came back, and hands the adapter
  * the provider's response untouched: the adapter's own status handling (the
  * cooldown a 403/429 arms) and its own bounded reader see exactly what the
- * product would see. The canary reads a COPY of the body, through that same
- * bounded reader.
+ * product would see. The canary reads a COPY of a served body through that same
+ * bounded reader, and an error body (which the adapter never reads) from the
+ * response itself once the adapter is done with it. Every body it waits for
+ * has a deadline.
  *
  * It asks the product's parser what it could not read (the result's
  * completeness, see core `fetchMeta`) instead of keeping a second opinion.
@@ -111,6 +112,8 @@ export const STANDING_STATS = Object.freeze([
 const RAW_TEAM_ID = /^[0-9]{1,20}$/;
 /** An error body is read for its message only. */
 const ERROR_BODY_BYTES = 64 * 1024;
+/** How long the canary waits for a body it is reading for itself. */
+const BODY_DEADLINE_MS = 6000;
 /** More tables, rows or nesting than any competition has is a changed shape, not more work. */
 const MAX_TABLES = 64;
 const MAX_ROWS = 128;
@@ -154,6 +157,19 @@ async function readCopy(core, res, maxBytes) {
     if (e instanceof SyntaxError) return { notJson: true };
     return { failed: String(e?.message ?? e) };
   }
+}
+
+/**
+ * A promise, or `fallback` once `ms` have passed. The canary never waits on a
+ * body without one: the adapter's own deadline ends with the response headers
+ * of an error, and a body can stall after them.
+ */
+function within(promise, ms, fallback) {
+  let timer;
+  const deadline = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(fallback), ms);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
 }
 
 /**
@@ -219,7 +235,7 @@ function collectTables(node, depth, tables) {
  * once, as a number. Nothing is skipped for being malformed: malformed IS the
  * finding.
  */
-function checkStandings(body, adapter, result, competition) {
+function checkStandings(core, body, adapter, result, competition) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return { verdict: 'changed', detail: 'the response is not an object' };
   }
@@ -266,17 +282,21 @@ function checkStandings(body, adapter, result, competition) {
     if (!Array.isArray(result)) {
       return { verdict: 'changed', detail: 'the adapter could not read the tables it expects' };
     }
+    // The parser's own account first: a refused row marks its table partial,
+    // but a refused TABLE leaves the survivors whole.
+    if (core.fetchMeta(result)?.complete !== true) {
+      const partial = result.filter((t) => t.partial).map((t) => t.group);
+      return {
+        verdict: 'changed',
+        detail: partial.length
+          ? `the adapter could not read every row of Group ${partial.join(', ')}`
+          : `the adapter could not read every table (${tables.length} sent, ${result.length} read)`,
+      };
+    }
     const got = new Set(result.map((t) => t.group));
     const missing = expected.filter((g) => !got.has(g));
     if (missing.length > 0) {
       return { verdict: 'changed', detail: `the adapter expects group(s) ${missing.join(', ')} and did not get them` };
-    }
-    const partial = result.filter((t) => t.partial);
-    if (partial.length > 0) {
-      return {
-        verdict: 'changed',
-        detail: `the adapter could not read every row of Group ${partial.map((t) => t.group).join(', ')}`,
-      };
     }
   }
   return { verdict: 'ok', detail: `${rows} row(s) in ${tables.length} table(s)` };
@@ -292,6 +312,7 @@ export async function runCanary({
   fetchImpl = fetch,
   now = new Date(),
   pauseMs = 250,
+  bodyDeadlineMs = BODY_DEADLINE_MS,
 } = {}) {
   const rows = [];
   // A 403/429 is the provider speaking to this RUNNER, not to one competition:
@@ -301,13 +322,21 @@ export async function runCanary({
     /** What the adapter asked during the current call, and what came back. */
     let seen = [];
     const recording = async (input, init) => {
-      const entry = { url: String(input), status: undefined, copy: undefined };
+      const entry = { url: String(input), status: undefined, copy: undefined, unread: undefined };
       seen.push(entry);
       const res = await fetchImpl(input, init);
       // Known from the headers. Whatever happens to the body cannot take it back.
       entry.status = res.status;
-      if (typeof res.clone === 'function') {
-        entry.copy = readCopy(core, res.clone(), res.ok ? core.MAX_RESPONSE_BYTES : ERROR_BODY_BYTES);
+      if (!res.ok) {
+        // The adapter does not read an error body, so no copy is made: a
+        // clone's two branches only finish cancelling TOGETHER, and a branch
+        // nobody reads would hold the other one's cancel forever. The body is
+        // read from the response itself, after the adapter is done with it.
+        entry.unread = res;
+      } else if (typeof res.clone === 'function') {
+        // The adapter reads its branch to the end or cancels it at the same
+        // limit, so the two finish together.
+        entry.copy = readCopy(core, res.clone(), core.MAX_RESPONSE_BYTES);
       }
       // The provider's response, untouched: status, headers, body stream.
       return res;
@@ -339,7 +368,13 @@ export async function runCanary({
         failure = e;
       }
       const sent = seen[0];
-      const copy = sent?.copy ? await sent.copy : undefined;
+      const reading = sent?.unread ? readCopy(core, sent.unread, ERROR_BODY_BYTES) : sent?.copy;
+      const copy = reading
+        ? await within(reading, bodyDeadlineMs, { failed: 'the body did not finish in time' })
+        : undefined;
+      // An error body abandoned at the deadline stays open behind its reader
+      // until the process exits; nothing waits on it, and the verdict never
+      // depended on it.
       let verdict;
       let detail;
       if (!sent || sent.status === undefined) {
@@ -363,7 +398,7 @@ export async function runCanary({
         verdict = 'changed';
         detail = 'the response is not JSON';
       } else if (request === 'standings') {
-        ({ verdict, detail } = checkStandings(copy.json, adapter, result, competition));
+        ({ verdict, detail } = checkStandings(core, copy.json, adapter, result, competition));
       } else if (!Array.isArray(result)) {
         // Served, but the adapter could not turn it into fixtures at all.
         verdict = 'changed';
