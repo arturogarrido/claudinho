@@ -227,6 +227,11 @@ export {
   sealSeason,
   unresolved,
   valid,
+  type ScheduleEntry,
+  MAX_SCHEDULE_INDEX,
+  parseCachedScheduleIndex,
+  scheduleEntryOf,
+  sealScheduleEntry,
 } from './trust';
 export { BUNDLE_COMPETITION, bundleApplies, bundleSeasonYear, resolveCompetition } from './competition';
 export { attachFetchMeta, fetchMeta, type FetchMeta } from './adapters/meta';
