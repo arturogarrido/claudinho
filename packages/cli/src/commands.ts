@@ -12,11 +12,19 @@ import {
   formatShareBracket,
   formatBracketList,
   formatBracketTree,
+  bracketShareCard,
+  dateShareCard,
+  liveShareCard,
+  matchShareCard,
+  nextShareCard,
+  tableShareCard,
+  marketDisplayable,
+  verdictExtras,
+  verdictNotice,
   cacheableKeys,
   getMarketSignals,
   resolvedValues,
   getMatchById,
-  hasSaneDistribution,
   isFinished,
   isReliableMarketSignal,
   isValidDate,
@@ -65,13 +73,14 @@ import { readMarketCache, writeMarketCache } from './marketCache';
 import { bumpRunCount, REPO_URL, shouldNudge } from './starNudge';
 import { copyToClipboard } from './clipboard';
 import type {
-  GroupStandings,
+  BracketShareCard,
   Match,
+  MatchShareCard,
   MarketProvider,
   MarketSignal,
   ProviderAdapter,
-  ShareSnippetInput,
   ShareSnippetOptions,
+  TableShareCard,
   ShareBracketOptions,
   ShareStyle,
 } from '@claudinho/core';
@@ -446,7 +455,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
       fixture: fixture ?? null,
       degraded,
       source: source ?? null,
-      ...(unsupported ? { unsupported: true } : {}),
+      ...verdictExtras({ unsupported }),
     });
     return;
   }
@@ -460,11 +469,8 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
     out(
       c.dim(
         '  ' +
-          (unsupported
-            ? t('competition.unsupported')
-            : degraded
-              ? t('live.degraded')
-              : t('next.none', { team: code })),
+          (verdictNotice({ unsupported }, cfg.lang) ??
+            (degraded ? t('live.degraded') : t('next.none', { team: code }))),
       ),
     );
     out();
@@ -640,12 +646,12 @@ export async function cmdBracket(
   if (unsupported) {
     // No World Cup topology off the bundle: the notice, nothing else (A03).
     if (cfg.json) {
-      emitJson({ degraded, standingsDegraded, source: null, view, unsupported: true });
+      emitJson({ degraded, standingsDegraded, source: null, view, ...verdictExtras({ unsupported }) });
       return;
     }
     const c = painterFor(cfg);
     out();
-    out(c.dim(`  ${i18n(cfg.lang, 'competition.unsupported')}`));
+    out(c.dim(`  ${verdictNotice({ unsupported }, cfg.lang)}`));
     out();
     out(disclaimer(t, c));
     return;
@@ -914,7 +920,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
       source: liveSource ?? null,
       marketComplete: market.complete,
       marketSignal: market.signal ?? null,
-      ...(unsupported ? { unsupported: true } : {}),
+      ...verdictExtras({ unsupported }),
     });
     return;
   }
@@ -922,7 +928,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   const c = painterFor(cfg);
   out();
   if (!match) {
-    out(c.dim('  ' + (unsupported ? t('competition.unsupported') : t('match.none', { id }))));
+    out(c.dim('  ' + (verdictNotice({ unsupported }, cfg.lang) ?? t('match.none', { id }))));
     out();
     out(disclaimer(t, c));
     return;
@@ -970,21 +976,6 @@ const MARKET_INFO = 'Prediction-market data is informational only.';
  * so rather than reporting a "no signal" it never looked for.
  */
 const MARKETS_SCOPE_NOTE = 'Market signals cover the World Cup only; none are read for this competition.';
-
-/**
- * Show a signal only if it maps cleanly, has a determinable favorite, AND still
- * matches the fixture being rendered — the last check (`marketSignalRendersFor`)
- * re-validates a cached signal against the current Match so it can't print
- * against a degraded knockout placeholder (display labels come from the Match).
- */
-function marketDisplayable(match: Match, sig: MarketSignal): boolean {
-  return (
-    marketSignalRendersFor(match, sig) &&
-    !sig.ambiguous &&
-    sig.favorite != null &&
-    hasSaneDistribution(sig.outcomes)
-  );
-}
 
 /**
  * Header for a market read. Includes the kickoff date — "South Korea (Jun 18)"
@@ -1061,7 +1052,7 @@ export async function cmdMarkets(
         signal: shown ?? null,
         // Review P2 on #129: a JSON consumer must tell "not available for this
         // competition" from a successful empty result; the text branch already did.
-        ...(unsupported ? { unsupported: true } : {}),
+        ...verdictExtras({ unsupported }),
       });
       return;
     }
@@ -1072,11 +1063,8 @@ export async function cmdMarkets(
       out(
         c.dim(
           '  ' +
-            (unsupported
-              ? t('competition.unsupported')
-              : degraded
-                ? t('live.degraded')
-                : t('next.none', { team: code })),
+            (verdictNotice({ unsupported }, cfg.lang) ??
+              (degraded ? t('live.degraded') : t('next.none', { team: code }))),
         ),
       );
     } else {
@@ -1111,14 +1099,14 @@ export async function cmdMarkets(
         informationalOnly: true,
         complete: market.complete,
         signal: shown ?? null,
-        ...(unsupported ? { unsupported: true } : {}),
+        ...verdictExtras({ unsupported }),
       });
       return;
     }
     const c = painterFor(cfg);
     out();
     if (!match) {
-      out(c.dim('  ' + (unsupported ? t('competition.unsupported') : t('match.none', { id: target }))));
+      out(c.dim('  ' + (verdictNotice({ unsupported }, cfg.lang) ?? t('match.none', { id: target }))));
     } else {
       out(header(marketHeaderLine(match, cfg), c));
       out();
@@ -1225,38 +1213,19 @@ async function reliableShareSignals(
   return { signals: out, complete: raw.complete };
 }
 
-type ShareEmit = {
-  kind: 'today' | 'live' | 'next' | 'match';
-  target: string;
-  team?: string;
-  input: ShareSnippetInput;
-  options: ShareSnippetOptions;
-  /** Off the bundle the feature does not exist yet (A03); the JSON says so. */
-  unsupported?: boolean;
-};
-
-/** Render + emit a snippet (text or JSON), then best-effort copy to clipboard. */
-function emitShare(ctx: Ctx, e: ShareEmit, copy: boolean): void {
-  const snippet = formatShareSnippet(e.input, e.options);
-  if (ctx.cfg.json) {
-    emitJson({
-      kind: e.kind,
-      target: e.target,
-      ...(e.team ? { team: e.team } : {}),
-      source: e.input.source ?? null,
-      degraded: e.input.degraded ?? false,
-      informationalOnly: true,
-      style: e.options.style ?? 'social',
-      snippet,
-      matches: e.input.matches,
-      marketComplete: e.input.marketComplete ?? true,
-      marketSignals: Object.fromEntries(e.input.marketSignals ?? new Map()),
-      // The structured card keeps the verdict the snippet's note carries.
-      ...(e.unsupported ? { unsupported: true } : {}),
-    });
-  } else {
-    out(snippet);
-  }
+/**
+ * Emit one share card — the snippet as text, or the snippet plus its structured
+ * twin as JSON — then best-effort copy the snippet to the clipboard.
+ *
+ * ONE emitter for every kind of card. Three near-copies used to differ only in
+ * which fields their JSON carried, and each had to remember the card's verdict
+ * for itself (a review found `share --json` dropping one twice). The cards come
+ * assembled from core (`*ShareCard`), verdict included; the JSON builders below
+ * only fix the key order `--json` has always had.
+ */
+function emitCard(ctx: Ctx, snippet: string, json: Record<string, unknown>, copy: boolean): void {
+  if (ctx.cfg.json) emitJson(json);
+  else out(snippet);
   // Clipboard is additive and orthogonal to the output mode; its status goes to
   // stderr so stdout stays a clean, pasteable artifact (and clean JSON).
   if (copy) {
@@ -1269,102 +1238,91 @@ function emitShare(ctx: Ctx, e: ShareEmit, copy: boolean): void {
   }
 }
 
-interface ShareTableEmit {
-  group?: string;
-  tables: GroupStandings[];
-  source?: string;
-  degraded: boolean;
-  installLine: string;
-  emptyNote: string;
-  options: ShareSnippetOptions;
+/** A match card: today's fixtures, live matches, a team's next fixture, one match. */
+function emitMatchCard(
+  ctx: Ctx,
+  card: MatchShareCard,
+  options: ShareSnippetOptions,
+  copy: boolean,
+): void {
+  const snippet = formatShareSnippet(card.input, options);
+  emitCard(
+    ctx,
+    snippet,
+    {
+      kind: card.kind,
+      target: card.target,
+      ...(card.team ? { team: card.team } : {}),
+      source: card.input.source ?? null,
+      degraded: card.input.degraded ?? false,
+      informationalOnly: true,
+      style: options.style ?? 'social',
+      snippet,
+      matches: card.input.matches,
+      marketComplete: card.input.marketComplete ?? true,
+      marketSignals: Object.fromEntries(card.input.marketSignals ?? new Map()),
+      // The structured card keeps the verdict the snippet's note carries.
+      ...card.verdict,
+    },
+    copy,
+  );
 }
 
-function emitShareTable(ctx: Ctx, e: ShareTableEmit, copy: boolean): void {
-  const snippet = formatShareTable(
+/** A standings card. */
+function emitTableCard(
+  ctx: Ctx,
+  card: TableShareCard,
+  options: ShareSnippetOptions,
+  copy: boolean,
+): void {
+  const snippet = formatShareTable(card.input, options);
+  emitCard(
+    ctx,
+    snippet,
     {
-      tables: e.tables,
-      source: e.source,
-      installLine: e.installLine,
-      emptyNote: e.emptyNote,
-      degraded: e.degraded,
-    },
-    e.options,
-  );
-  if (ctx.cfg.json) {
-    emitJson({
       kind: 'table',
       target: 'table',
-      ...(e.group ? { group: e.group } : {}),
-      source: e.source ?? null,
-      degraded: e.degraded,
+      ...(card.group ? { group: card.group } : {}),
+      source: card.source ?? null,
+      degraded: card.degraded,
       informationalOnly: true,
       snippet,
       // The structured card keeps the verdict the snippet warns about (A01).
-      tables: e.tables.map((tb) => ({
+      tables: card.input.tables.map((tb) => ({
         group: tb.group,
         standings: tb.rows,
         ...(tb.partial ? { partial: tb.partial } : {}),
       })),
-    });
-  } else {
-    out(snippet);
-  }
-  if (copy) {
-    const ok = (ctx.copy ?? copyToClipboard)(snippet);
-    process.stderr.write(
-      (ok
-        ? 'Copied share snippet to clipboard.'
-        : 'Clipboard unavailable; printed snippet instead.') + '\n',
-    );
-  }
-}
-
-interface ShareBracketEmit {
-  stage?: string;
-  view: import('@claudinho/core').BracketView;
-  source?: string;
-  degraded: boolean;
-  installLine: string;
-  emptyNote: string;
-  options: ShareBracketOptions;
-  /** Off the bundle there is no bracket (A03); top-level like `bracket --json`. */
-  unsupported?: boolean;
-}
-
-/** Emit a `share bracket` snippet. */
-function emitShareBracket(ctx: Ctx, e: ShareBracketEmit, copy: boolean): void {
-  const snippet = formatShareBracket(
-    {
-      view: e.view,
-      source: e.source,
-      installLine: e.installLine,
-      emptyNote: e.emptyNote,
     },
-    e.options,
+    copy,
   );
-  if (ctx.cfg.json) {
-    emitJson({
+}
+
+/** A knockout bracket card. */
+function emitBracketCard(
+  ctx: Ctx,
+  card: BracketShareCard,
+  options: ShareBracketOptions,
+  copy: boolean,
+): void {
+  const snippet = formatShareBracket(card.input, options);
+  emitCard(
+    ctx,
+    snippet,
+    {
       kind: 'bracket',
       target: 'bracket',
-      ...(e.stage ? { stage: e.stage } : {}),
-      source: e.source ?? null,
-      degraded: e.degraded,
+      ...(card.stage ? { stage: card.stage } : {}),
+      source: card.source ?? null,
+      degraded: card.degraded,
       informationalOnly: true,
       snippet,
-      view: e.view,
-      ...(e.unsupported ? { unsupported: true } : {}),
-    });
-  } else {
-    out(snippet);
-  }
-  if (copy) {
-    const ok = (ctx.copy ?? copyToClipboard)(snippet);
-    process.stderr.write(
-      (ok
-        ? 'Copied share snippet to clipboard.'
-        : 'Clipboard unavailable; printed snippet instead.') + '\n',
-    );
-  }
+      view: card.input.view,
+      // Top-level, like `bracket --json`.
+      ...card.verdict,
+    },
+    copy,
+  );
 }
 
 /**
@@ -1394,33 +1352,13 @@ export async function cmdShare(
   };
   const copy = opts.copy === true;
 
-  // share live
+  const where = { tz: cfg.tz, locale: cfg.lang };
+
+  // share live — lean: no market enrichment (and no extra fetch).
   if (target === 'live') {
     precheck(cfg, t);
-    const { matches, degraded, source } = await getLiveMatches(adapterFor(ctx));
-    emitShare(
-      ctx,
-      {
-        kind: 'live',
-        target: 'live',
-        input: {
-          title: 'Live match pulse',
-          matches,
-          source,
-          degraded,
-          // Degraded ⇒ feed down, not "nothing's on" — say so on the public card.
-          emptyNote: degraded
-            ? "Live scores unavailable right now — couldn't reach the data provider."
-            : 'No matches in play right now.',
-          installLine: 'npx @claudinho/cli live',
-          tz: cfg.tz,
-          locale: cfg.lang,
-        },
-        // Live snippets stay lean: no market enrichment (and no extra fetch).
-        options: { ...baseOptions, includeMarkets: false },
-      },
-      copy,
-    );
+    const live = await getLiveMatches(adapterFor(ctx));
+    emitMatchCard(ctx, liveShareCard(live, where), { ...baseOptions, includeMarkets: false }, copy);
     return;
   }
 
@@ -1428,24 +1366,10 @@ export async function cmdShare(
   if (target === 'table') {
     precheck(cfg, t);
     const group = team?.toUpperCase();
-    const { tables, degraded, source } = await getStandings(adapterFor(ctx), group);
-    emitShareTable(
+    emitTableCard(
       ctx,
-      {
-        group,
-        tables,
-        // Degraded ⇒ no live provider: no attribution. Open-scope outages
-        // have no compatible bundled roster, so name the outage in the empty card.
-        source: degraded ? undefined : source,
-        degraded,
-        installLine: group ? `npx @claudinho/cli table ${group}` : 'npx @claudinho/cli table',
-        emptyNote: degraded
-          ? 'Live standings unavailable.'
-          : group
-            ? `No group ${group}.`
-            : 'No standings available.',
-        options: baseOptions,
-      },
+      tableShareCard(await getStandings(adapterFor(ctx), group), group),
+      baseOptions,
       copy,
     );
     return;
@@ -1458,33 +1382,21 @@ export async function cmdShare(
     if (stageFilter && !BRACKET_STAGES.has(stageFilter)) {
       throw new InputError(i18n(cfg.lang, 'bracket.invalidStage'));
     }
-    const { view, degraded, source, unsupported } = await getBracket(
+    const bracket = await getBracket(
       adapterFor(ctx),
       stageFilter
         ? { stage: stageFilter as Stage, lang: cfg.lang }
         : { lang: cfg.lang },
     );
-    emitShareBracket(
+    emitBracketCard(
       ctx,
+      bracketShareCard(bracket, stageFilter, cfg.lang),
       {
-        stage: stageFilter,
-        view,
-        source: degraded ? undefined : source,
-        degraded,
-        installLine: stageFilter
-          ? `npx @claudinho/cli bracket ${stageFilter}`
-          : 'npx @claudinho/cli bracket',
-        emptyNote: unsupported
-          ? i18n(cfg.lang, 'competition.unsupported')
-          : i18n(cfg.lang, 'bracket.empty'),
-        unsupported,
-        options: {
-          includeHashtag: baseOptions.includeHashtag,
-          includeInstallLine: baseOptions.includeInstallLine,
-          locale: cfg.lang,
-          style: baseOptions.style,
-          tz: cfg.tz,
-        },
+        includeHashtag: baseOptions.includeHashtag,
+        includeInstallLine: baseOptions.includeInstallLine,
+        locale: cfg.lang,
+        style: baseOptions.style,
+        tz: cfg.tz,
       },
       copy,
     );
@@ -1502,48 +1414,9 @@ export async function cmdShare(
     );
     // Live-resolved (see cmdNext): overlay the knockout window so a confirmed
     // R32+ tie pastes here too, not just group games.
-    const { fixture, degraded, source, unsupported } = await getNextFixtureForTeam(
-      adapterFor(ctx),
-      code,
-      ctx.now ?? new Date(),
-    );
-    const matches = fixture ? [fixture] : [];
-    const market = await reliableShareSignals(ctx, matches);
-    const teamName = fixture
-      ? fixture.home.code === code
-        ? fixture.home.name
-        : fixture.away.name
-      : code;
-    emitShare(
-      ctx,
-      {
-        kind: 'next',
-        target: 'next',
-        team: code,
-        input: {
-          title: `Next up for ${teamName}`,
-          matches,
-          marketSignals: market.signals,
-          marketComplete: market.complete,
-          // Attribute the provider when the overlay resolved the tie (knockout);
-          // undefined for a static group fixture — parity with CLI `next`.
-          source,
-          degraded,
-          // Fail-closed: an outage must never paste as "no fixture" (eliminated).
-          emptyNote: unsupported
-            ? i18n(cfg.lang, 'competition.unsupported')
-            : degraded
-              ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
-              : `No upcoming fixture found for ${code}.`,
-          installLine: `npx @claudinho/cli next ${code}`,
-          tz: cfg.tz,
-          locale: cfg.lang,
-        },
-        options: baseOptions,
-        unsupported,
-      },
-      copy,
-    );
+    const next = await getNextFixtureForTeam(adapterFor(ctx), code, ctx.now ?? new Date());
+    const market = await reliableShareSignals(ctx, next.fixture ? [next.fixture] : []);
+    emitMatchCard(ctx, nextShareCard(next, code, market, where), baseOptions, copy);
     return;
   }
 
@@ -1552,33 +1425,9 @@ export async function cmdShare(
     precheck(cfg, t);
     // ±1-day window fetch (see cmdMatch): the provider's scoreboard day can
     // differ from the fixture's UTC date.
-    const { match, degraded, source, unsupported } = await getMatchById(adapterFor(ctx), target);
-    const matches = match ? [match] : [];
-    const market = await reliableShareSignals(ctx, matches);
-    emitShare(
-      ctx,
-      {
-        kind: 'match',
-        target,
-        input: {
-          title: 'Match pulse',
-          matches,
-          marketSignals: market.signals,
-          marketComplete: market.complete,
-          source,
-          degraded,
-          emptyNote: unsupported
-            ? i18n(cfg.lang, 'competition.unsupported')
-            : `No match found with id ${target}.`,
-          installLine: `npx @claudinho/cli match ${target}`,
-          tz: cfg.tz,
-          locale: cfg.lang,
-        },
-        options: baseOptions,
-        unsupported,
-      },
-      copy,
-    );
+    const found = await getMatchById(adapterFor(ctx), target);
+    const market = await reliableShareSignals(ctx, found.match ? [found.match] : []);
+    emitMatchCard(ctx, matchShareCard(found, target, market, where), baseOptions, copy);
     return;
   }
 
@@ -1589,28 +1438,14 @@ export async function cmdShare(
   const { matches: all, degraded, source } = await getMatchesForDate(adapterFor(ctx), date);
   const todays = fixturesByDate(date, all, cfg.tz);
   const market = await reliableShareSignals(ctx, todays);
-  // Human date label from a stable midday-UTC instant (avoids tz day flips).
-  const human = formatDate(`${date}T12:00:00.000Z`, { tz: cfg.tz, locale: cfg.lang });
-  const title = explicitDate ? `Matches · ${human}` : `Today's matches · ${human}`;
-  emitShare(
+  emitMatchCard(
     ctx,
-    {
-      kind: 'today',
-      target: date,
-      input: {
-        title,
-        matches: todays,
-        marketSignals: market.signals,
-        marketComplete: market.complete,
-        source,
-        degraded,
-        emptyNote: `No matches scheduled for ${human}.`,
-        installLine: 'npx @claudinho/cli today',
-        tz: cfg.tz,
-        locale: cfg.lang,
-      },
-      options: baseOptions,
-    },
+    dateShareCard(
+      { date, explicit: explicitDate !== undefined, matches: todays, degraded, source },
+      market,
+      where,
+    ),
+    baseOptions,
     copy,
   );
 }

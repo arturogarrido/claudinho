@@ -57,7 +57,8 @@ describe('verdictExtras — the structured keys, from one place', () => {
   it('takes only verdicts: the rest of a result is not its business', () => {
     const result = { fixture: undefined, degraded: false, source: 'espn', unsupported: true as const };
     expect(verdictExtras(result)).toEqual({ unsupported: true });
-    expect(Object.keys(verdictExtras({ degraded: true, source: 'espn' }))).toEqual([]);
+    const healthy: { degraded: boolean; source: string; unsupported?: boolean } = { degraded: true, source: 'espn' };
+    expect(Object.keys(verdictExtras(healthy))).toEqual([]);
   });
 });
 
@@ -71,7 +72,8 @@ describe('verdictNotice — the sentence, in the reader’s language', () => {
 
   it('is absent when the result states no verdict', () => {
     expect(verdictNotice({}, 'en')).toBeUndefined();
-    expect(verdictNotice({ degraded: true }, 'en')).toBeUndefined();
+    const outage: { degraded: boolean; unsupported?: boolean } = { degraded: true };
+    expect(verdictNotice(outage, 'en')).toBeUndefined();
   });
 });
 
