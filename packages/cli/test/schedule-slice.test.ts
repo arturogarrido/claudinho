@@ -310,7 +310,8 @@ describe('what a discovery answer does to the slice', () => {
       const incomplete = { complete: false, mentioned: ['2'] };
       const noneBefore = applyDiscovery(stored([entry('1', HOUR)], null), answer([match('2', 2 * HOUR)], incomplete), NOW);
       expect(ids(noneBefore?.index)).toEqual(['1', '2']);
-      expect(noneBefore?.season).toMatchObject({ year: 2026 });
+      // '1' was kept, not read under 2026: the slice states no season (the test below says why).
+      expect(noneBefore?.season).toBeUndefined();
       expect(noneBefore?.complete).toBe(false);
       const noneNow = applyDiscovery(stored([entry('1', HOUR)]), answer([match('2', 2 * HOUR)], { ...incomplete, season: undefined }), NOW);
       expect(ids(noneNow?.index)).toEqual(['1', '2']);
