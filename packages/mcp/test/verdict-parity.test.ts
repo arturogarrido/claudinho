@@ -94,6 +94,33 @@ describe('found in review: a market read for a whole day, off the markets’ sco
     const r = await toolGetMarketSignal({ date: '2026-10-01', ...common('fifa.world') });
     expect('unsupported' in (r.data as object)).toBe(false);
   });
+
+  it('nor where signals WERE shown: the demo source reads any competition, and text and data must agree', async () => {
+    // Found in review (round 2): with CLAUDINHO_MARKETS_SOURCE=fake the provider
+    // synthesizes signals whatever the competition. The text then shows them
+    // and says nothing about scope, while `data` said `unsupported: true`.
+    const fixture: Match = {
+      id: '800000001',
+      stage: 'FRIENDLY',
+      kickoff: '2026-10-01T19:00:00.000Z',
+      venue: 'Emirates Stadium',
+      home: { code: 'ARS', name: 'Arsenal', flag: '🏳️' },
+      away: { code: 'CHE', name: 'Chelsea', flag: '🏳️' },
+      status: 'SCHEDULED',
+      updatedAt: NOW.toISOString(),
+    };
+    const withFixture: ProviderAdapter = { ...adapter('eng.1'), fetchByDate: async () => [fixture], fetchWindow: async () => [fixture] };
+    const r = await toolGetMarketSignal({
+      date: '2026-10-01',
+      tz: 'UTC',
+      adapter: withFixture,
+      marketProvider: new FakeMarketProvider({ synthesize: true }),
+      now: NOW,
+    });
+    expect((r.data as { signals: unknown[] }).signals).toHaveLength(1);
+    expect(r.text).not.toContain('cover the World Cup only');
+    expect('unsupported' in (r.data as object)).toBe(false);
+  });
 });
 
 describe('found in review: an outage never pastes as "no matches scheduled"', () => {

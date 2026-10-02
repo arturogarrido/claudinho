@@ -121,6 +121,32 @@ describe('found in review: `markets <date>` off the markets’ scope', () => {
     await cmdMarkets('2026-10-01', undefined, ctx('fifa.world', { json: true }));
     expect('unsupported' in JSON.parse(text())).toBe(false);
   });
+
+  it('nor where signals WERE shown: the demo source reads any competition, and text and --json must agree', async () => {
+    const fixture: Match = {
+      id: '800000001',
+      stage: 'FRIENDLY',
+      kickoff: '2026-10-01T19:00:00.000Z',
+      venue: 'Emirates Stadium',
+      home: { code: 'ARS', name: 'Arsenal', flag: '🏳️' },
+      away: { code: 'CHE', name: 'Chelsea', flag: '🏳️' },
+      status: 'SCHEDULED',
+      updatedAt: NOW.toISOString(),
+    };
+    const withFixture: ProviderAdapter = { ...adapter('eng.1'), fetchByDate: async () => [fixture], fetchWindow: async () => [fixture] };
+    const demo = (json: boolean) => ({
+      ...ctx('eng.1', { json, markets: true }),
+      adapter: withFixture,
+      marketProvider: new FakeMarketProvider({ synthesize: true }),
+    });
+    await cmdMarkets('2026-10-01', undefined, demo(true));
+    const data = JSON.parse(text());
+    expect(Object.keys(data.marketSignals)).toEqual(['800000001']);
+    expect('unsupported' in data).toBe(false);
+    writes = [];
+    await cmdMarkets('2026-10-01', undefined, demo(false));
+    expect(text()).not.toContain('cover the World Cup only');
+  });
 });
 
 describe('found in review: `share <date>` during an outage', () => {
