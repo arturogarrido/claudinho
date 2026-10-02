@@ -473,6 +473,72 @@ describe('found in review: a part that could not be seen does not hide a part th
     expect(r.red).toBe(true);
   });
 
+  describe('what was served is put to the product’s own parser, like a whole answer is (round 2)', () => {
+    // The first fix read the served parts raw (envelope, team ids, filing). A
+    // record the parser REFUSES passed all three, so it went unreported
+    // whenever a sibling request was down or throttled.
+    const on9 = (over: Record<string, unknown>) => event('9', { date: '2026-10-09T15:00Z', ...over });
+    const withOct9 = (first: unknown, last: Response) => (url: string) =>
+      /dates=20261011(&|$)/.test(url)
+        ? last
+        : /dates=20261009(&|$)/.test(url)
+          ? json({ leagues: [{ season: SEASON }], events: [first] })
+          : healthy(url);
+
+    for (const [what, last] of [
+      ['down', () => json({}, 503)],
+      ['throttled', () => json({}, 429)],
+    ] as const) {
+      it(`a record with a status the parser does not know, beside a part that was ${what}`, async () => {
+        const r = await run(withOct9(on9({ status: { type: { name: 'STATUS_SOMETHING_NEW', state: 'limbo' } } }), last()));
+        expect(windowRow(r)?.verdict).toBe('changed');
+        expect(windowRow(r)?.detail).toMatch(/could not read every event/);
+        expect(r.red).toBe(true);
+      });
+    }
+
+    it('a record with an empty id, beside a part that was down', async () => {
+      const r = await run(withOct9(on9({ id: '' }), json({}, 503)));
+      expect(windowRow(r)?.verdict).toBe('changed');
+      expect(r.red).toBe(true);
+    });
+
+    it('one fixture in two served parts, beside a part that was down', async () => {
+      // Each copy is filed under the day it kicks off on, so only the window's
+      // own rule (one fixture, one part) can see it.
+      const twice = (url: string) =>
+        /dates=20261011(&|$)/.test(url)
+          ? json({}, 503)
+          : /dates=20261009(&|$)/.test(url)
+            ? json({ leagues: [{ season: SEASON }], events: [event('5', { date: '2026-10-09T15:00Z' })] })
+            : /dates=20261010(&|$)/.test(url)
+              ? json({ leagues: [{ season: SEASON }], events: [event('5', { date: '2026-10-10T15:00Z' })] })
+              : healthy(url);
+      const r = await run(twice);
+      expect(windowRow(r)?.verdict).toBe('changed');
+      expect(windowRow(r)?.detail).toMatch(/could not read every event/);
+    });
+
+    it('served parts that state two seasons, beside a part that was down', async () => {
+      const other = { ...SEASON, year: 2027, displayName: '2027-28 English Premier League' };
+      const split = (url: string) =>
+        /dates=20261011(&|$)/.test(url)
+          ? json({}, 503)
+          : /dates=20261009(&|$)/.test(url)
+            ? json({ leagues: [{ season: other }], events: [] })
+            : healthy(url);
+      const r = await run(split);
+      expect(windowRow(r)?.verdict).toBe('changed');
+      expect(windowRow(r)?.detail).toMatch(/seasons 2026 and 2027/);
+    });
+
+    it('asks the provider nothing more to do so', async () => {
+      const r = await run(withOct9(on9({ id: '' }), json({}, 503)));
+      // live, day, the window's three, standings: the same six as a healthy run.
+      expect(r.urls).toHaveLength(6);
+    });
+  });
+
   it('nothing wrong in what was seen: the part that could not be seen decides, and the row is neutral', async () => {
     const down = await run((url) => (/dates=20261011(&|$)/.test(url) ? json({}, 503) : healthy(url)));
     expect(windowRow(down)?.verdict).toBe('unreachable');
