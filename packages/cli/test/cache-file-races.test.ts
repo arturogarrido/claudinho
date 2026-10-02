@@ -6,6 +6,7 @@
  *      and then READ by path. Between the two the path can become another
  *      file: a pipe blocks the hot path for ever, a large file is read whole.
  *      A file is now read through ONE descriptor, and the read is bounded.
+ *      The lock is such a file too: the hot path reads it on every prompt.
  *   2. A lock that vanished while a contender was looking at it (its owner
  *      released it, normally) was treated like a stale one: "remove it, create
  *      mine". If a third refresher had created the lock in that instant, the
@@ -15,7 +16,7 @@
  *
  * Interleavings are forced through the file-system calls, not raced.
  */
-import { mkdtempSync, rmSync as rmReal } from 'node:fs';
+import { mkdtempSync, constants as fsConstants, rmSync as rmReal } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,10 +29,17 @@ type Kind = 'open' | 'look' | 'remove' | 'checked';
  */
 let onPath: ((kind: Kind, path: string, flags?: unknown) => void) | undefined;
 let busy = false;
-/** Every whole-file read by path, and every byte handed out per descriptor. */
+/** One record per OPEN (a descriptor number is reused; an open is not). */
+interface Open {
+  path: string;
+  flags: unknown;
+  /** Bytes handed out through this open. */
+  bytes: number;
+}
+let opens: Open[] = [];
+let openByFd = new Map<number, Open>();
+/** Every whole-file read: by path, or of a descriptor (the path it was opened on). */
 let wholeReads: string[] = [];
-let bytesByFd = new Map<number, number>();
-let pathByFd = new Map<number, string>();
 
 vi.mock('node:fs', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs')>();
@@ -49,22 +57,31 @@ vi.mock('node:fs', async (importOriginal) => {
     openSync: ((path: Parameters<typeof fs.openSync>[0], ...rest: unknown[]) => {
       before('open', path, rest[0]);
       const fd = (fs.openSync as (...a: unknown[]) => number)(path, ...rest);
-      if (typeof path === 'string') pathByFd.set(fd, path);
+      if (typeof path === 'string') {
+        const record = { path, flags: rest[0], bytes: 0 };
+        opens.push(record);
+        openByFd.set(fd, record);
+      } else {
+        openByFd.delete(fd);
+      }
       return fd;
     }) as typeof fs.openSync,
     fstatSync: ((fd: number, ...rest: unknown[]) => {
       const info = (fs.fstatSync as (...a: unknown[]) => unknown)(fd, ...rest);
-      before('checked', pathByFd.get(fd));
+      before('checked', openByFd.get(fd)?.path);
       return info;
     }) as typeof fs.fstatSync,
     readSync: ((fd: number, ...rest: unknown[]) => {
       const n = (fs.readSync as (...a: unknown[]) => number)(fd, ...rest);
-      bytesByFd.set(fd, (bytesByFd.get(fd) ?? 0) + n);
+      const record = openByFd.get(fd);
+      if (record) record.bytes += n;
       return n;
     }) as typeof fs.readSync,
     readFileSync: ((path: Parameters<typeof fs.readFileSync>[0], ...rest: unknown[]) => {
       before('look', path);
-      if (typeof path === 'string' && !busy) wholeReads.push(path);
+      // A whole read OF A DESCRIPTOR is a whole read of the file it was opened on.
+      const named = typeof path === 'number' ? openByFd.get(path)?.path : path;
+      if (typeof named === 'string' && !busy) wholeReads.push(named);
       return (fs.readFileSync as (...a: unknown[]) => unknown)(path, ...rest);
     }) as typeof fs.readFileSync,
     statSync: ((path: Parameters<typeof fs.statSync>[0], ...rest: unknown[]) => {
@@ -96,6 +113,7 @@ import {
   cachePath,
   claimLock,
   holdsLock,
+  isLockFresh,
   readBackoffNote,
   readState,
   releaseLock,
@@ -115,8 +133,8 @@ beforeEach(() => {
   process.env.XDG_CACHE_HOME = dir;
   onPath = undefined;
   wholeReads = [];
-  bytesByFd = new Map();
-  pathByFd = new Map();
+  opens = [];
+  openByFd = new Map();
 });
 afterEach(() => {
   onPath = undefined;
@@ -124,8 +142,13 @@ afterEach(() => {
   else process.env.XDG_CACHE_HOME = ORIG;
   rmReal(dir, { recursive: true, force: true });
 });
-/** The most bytes any one descriptor opened on `path` handed out. */
-const mostRead = (path: string) => Math.max(0, ...[...pathByFd].filter(([, p]) => p === path).map(([fd]) => bytesByFd.get(fd) ?? 0));
+/** The most bytes any ONE open of `path` handed out. */
+const mostRead = (path: string) => Math.max(0, ...opens.filter((o) => o.path === path).map((o) => o.bytes));
+/** The opens of `path` made to READ it (a write is opened with a string mode: `wx`, `w`). */
+const readOpens = (path: string) => opens.filter((o) => o.path === path && typeof o.flags === 'number');
+/** Where the platform has the flag (Windows has none, and no pipe can sit in a directory there). */
+const NONBLOCK = fsConstants.O_NONBLOCK ?? 0;
+const lockFile = () => join(cacheDir(), 'refresh.lock');
 
 describe('a small cache file is read through one descriptor, and the read is bounded', () => {
   it('the throttle note: never a whole-file read by path; a valid note is still read', () => {
@@ -165,11 +188,45 @@ describe('a small cache file is read through one descriptor, and the read is bou
     // Its bound is a megabyte: one byte past it at most.
     expect(mostRead(cachePath(SOURCE, WC))).toBeLessThanOrEqual(1024 * 1024 + 1);
   });
+
+  it('the lock too: the hot path asks its age on every prompt, and a contender and an owner read it', () => {
+    const owner = claimLock(NOW);
+    expect(owner).toBeDefined();
+    opens = [];
+    wholeReads = [];
+    expect(isLockFresh(NOW)).toBe(true); // the statusline and the hook, before they start a refresher
+    expect(holdsLock(owner)).toBe(true); // an owner, before it publishes
+    expect(claimLock(NOW)).toBeUndefined(); // a contender, judging the lock's age
+    expect(readOpens(lockFile()).length).toBeGreaterThanOrEqual(3);
+    expect(wholeReads).not.toContain(lockFile());
+    // A lock is a pid, a stamp and a few random bytes: its bound is small.
+    expect(mostRead(lockFile())).toBeLessThanOrEqual(257);
+  });
+
+  it('none of the three is opened in a way that can wait: a pipe at any of these paths must not block a prompt', () => {
+    // Opening a pipe that has no writer blocks for ever unless the open says
+    // not to. (Pinned on the flags, which is the rule; a real pipe is tried in
+    // refresher-lock.test.ts, where a regression fails after a moment.)
+    writeBackoffNote(SOURCE, WC, NOW + 10 * MIN, NOW);
+    writeState({ updatedAt: new Date(NOW).toISOString(), live: [], degraded: false, source: SOURCE, competition: WC });
+    const owner = claimLock(NOW);
+    opens = [];
+    readBackoffNote(SOURCE, WC, NOW);
+    readState(SOURCE, WC);
+    isLockFresh(NOW);
+    holdsLock(owner);
+    claimLock(NOW);
+    for (const path of [backoffNotePath(SOURCE, WC), cachePath(SOURCE, WC), lockFile()]) {
+      const reads = readOpens(path);
+      expect(reads.length, path).toBeGreaterThan(0);
+      for (const o of reads) expect((o.flags as number) & NONBLOCK, path).toBe(NONBLOCK);
+    }
+  });
 });
 
 describe('a lock that vanished is not removed', () => {
   it('the owner releases while a contender is looking, and a third refresher takes the lock: the contender does not take it too', () => {
-    const lock = join(cacheDir(), 'refresh.lock');
+    const lock = lockFile();
     const owner = claimLock(NOW);
     expect(owner).toBeDefined();
     let third: ReturnType<typeof claimLock>;
@@ -180,12 +237,13 @@ describe('a lock that vanished is not removed', () => {
         step = 1; // the contender's exclusive create is about to fail: the owner holds a fresh lock
         return;
       }
-      if (step === 1 && kind === 'look') {
+      // The contender looks at the lock's age: a look by path, or an open to read it.
+      if (step === 1 && (kind === 'look' || (kind === 'open' && flags !== 'wx'))) {
         step = 2;
         releaseLock(owner); // released normally, just before the contender looks at the lock's age
         return;
       }
-      if (step === 2 && (kind === 'remove' || kind === 'open')) {
+      if (step === 2 && (kind === 'remove' || (kind === 'open' && flags === 'wx'))) {
         step = 3;
         third = claimLock(NOW); // a third refresher creates the lock in that instant
       }
@@ -209,11 +267,11 @@ describe('a lock that vanished is not removed', () => {
   });
 
   it('control: a lock that vanished and that nobody else took is simply claimed', () => {
-    const lock = join(cacheDir(), 'refresh.lock');
+    const lock = lockFile();
     const owner = claimLock(NOW);
     let released = false;
-    onPath = (kind, p) => {
-      if (p === lock && kind === 'look' && !released) {
+    onPath = (kind, p, flags) => {
+      if (p === lock && !released && (kind === 'look' || (kind === 'open' && flags !== 'wx'))) {
         released = true;
         releaseLock(owner);
       }

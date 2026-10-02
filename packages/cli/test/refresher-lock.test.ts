@@ -18,7 +18,7 @@
  */
 import { EspnAdapter } from '@claudinho/core';
 import { execFileSync, spawn } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -47,6 +47,8 @@ import {
   cachePath,
   type CacheState,
   claimLock,
+  holdsLock,
+  isLockFresh,
   readBackoffNote,
   readCurrentState,
   readState,
@@ -109,6 +111,34 @@ afterEach(() => {
   else process.env.XDG_CACHE_HOME = ORIG;
   rmSync(dir, { recursive: true, force: true });
 });
+
+/**
+ * After a moment, write `text` into the pipe at `path` from another process.
+ * The helper opens the pipe for reading AND writing, which never waits and
+ * needs nobody on the other end: a reader blocked on the pipe is let through
+ * and reads `text`; with nobody reading, the text is discarded when the helper
+ * closes. Either way the helper ends by itself.
+ */
+function feedPipeLater(path: string, text: string): void {
+  const helper = spawn(
+    process.execPath,
+    [
+      '-e',
+      `setTimeout(() => {
+         const fs = require('node:fs');
+         try {
+           const fd = fs.openSync(process.argv[1], fs.constants.O_RDWR | fs.constants.O_NONBLOCK);
+           fs.writeSync(fd, process.argv[2]);
+           setTimeout(() => fs.closeSync(fd), 200);
+         } catch {}
+       }, 1500);`,
+      path,
+      text,
+    ],
+    { detached: true, stdio: 'ignore' },
+  );
+  helper.unref();
+}
 
 describe('a decision to ask the provider is made from the state read under the lock', () => {
   it('control: a stale live slice in a live window is refreshed (three day requests)', async () => {
@@ -484,7 +514,7 @@ describe('found in review', () => {
     expect(inEffect(nowMs)).toBe(nowMs + 20 * MIN);
   });
 
-  it.skipIf(!POSIX)('a note path that is not a regular file is never opened (a pipe there would block the hot path)', () => {
+  it.skipIf(!POSIX)('a note path that is not a regular file is never read (a pipe there would block the hot path)', () => {
     mkdirSync(cacheDir(), { recursive: true });
     const pipe = backoffNotePath(SOURCE, WC);
     execFileSync('mkfifo', [pipe]);
@@ -493,27 +523,26 @@ describe('found in review', () => {
     // of hanging the suite, a helper process waits a moment and then writes a
     // well-formed note into the pipe: a reader that was wrongly blocked on it
     // wakes up holding a deadline, and the assertion below is red. With the
-    // rule in place nothing is reading, and the helper's open fails at once.
-    const helper = spawn(
-      process.execPath,
-      [
-        '-e',
-        `setTimeout(() => {
-           const fs = require('node:fs');
-           try {
-             const fd = fs.openSync(process.argv[1], fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
-             fs.writeSync(fd, process.argv[2]);
-             fs.closeSync(fd);
-           } catch {}
-         }, 1500);`,
-        pipe,
-        JSON.stringify({ until: new Date(nowMs + 10 * MIN).toISOString() }),
-      ],
-      { detached: true, stdio: 'ignore' },
-    );
-    helper.unref();
+    // rule in place nothing is reading, and what the helper wrote is discarded.
+    feedPipeLater(pipe, JSON.stringify({ until: new Date(nowMs + 10 * MIN).toISOString() }));
     expect(readBackoffNote(SOURCE, WC, nowMs)).toBeUndefined();
     expect(backoffInEffect(undefined, SOURCE, WC, nowMs)).toBeUndefined();
+  });
+
+  it.skipIf(!POSIX)('nor is a lock path that is not a regular file: it is a lock nobody can judge, so it is stale, and it is taken over', () => {
+    // The hot path asks the lock's age on every prompt, before the note or the
+    // snapshot matter. A reader blocked on a pipe there wakes holding the fresh
+    // lock the helper wrote, and says a refresher is running.
+    mkdirSync(cacheDir(), { recursive: true });
+    const pipe = join(cacheDir(), 'refresh.lock');
+    execFileSync('mkfifo', [pipe]);
+    feedPipeLater(pipe, `${process.pid} ${nowMs} 0123456789ab`);
+    expect(isLockFresh(nowMs)).toBe(false);
+    const token = claimLock(nowMs);
+    expect(token).toBeDefined();
+    expect(holdsLock(token)).toBe(true);
+    expect(statSync(pipe).isFile()).toBe(true); // the pipe is gone: a real lock is there
+    releaseLock(token);
   });
 
   it.skipIf(!POSIX || process.getuid?.() === 0)('a note that cannot be read back was not written: the caller is told, and retries', () => {
