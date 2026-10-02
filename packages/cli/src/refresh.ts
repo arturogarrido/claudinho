@@ -425,23 +425,31 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
 
     // Fenced on ownership: if the lease went stale mid-fetch and a successor
     // took over, its snapshot is newer than ours and must stand (audit A10).
-    const published = publishState(
-      {
-        updatedAt,
-        live,
-        degraded,
-        source,
-        competition,
-        ...(fixtures ? { fixtures } : {}),
-        ...(fixturesUpdatedAt ? { fixturesUpdatedAt } : {}),
-        ...(fixturesAttemptedAt ? { fixturesAttemptedAt } : {}),
-        ...(backoffUntil ? { backoffUntil } : {}),
-        ...(season ? { season } : {}),
-        // Stored with the slice it describes, and only while that slice exists.
-        ...(fixtures && fixturesSeason ? { fixturesSeason } : {}),
-      },
-      token,
-    );
+    // A publish that THROWS (a failed atomic write) published nothing: for
+    // everything that follows it is a publish that did not happen, and the
+    // throttle this cycle met is still settled below.
+    let published = false;
+    try {
+      published = publishState(
+        {
+          updatedAt,
+          live,
+          degraded,
+          source,
+          competition,
+          ...(fixtures ? { fixtures } : {}),
+          ...(fixturesUpdatedAt ? { fixturesUpdatedAt } : {}),
+          ...(fixturesAttemptedAt ? { fixturesAttemptedAt } : {}),
+          ...(backoffUntil ? { backoffUntil } : {}),
+          ...(season ? { season } : {}),
+          // Stored with the slice it describes, and only while that slice exists.
+          ...(fixtures && fixturesSeason ? { fixturesSeason } : {}),
+        },
+        token,
+      );
+    } catch {
+      published = false;
+    }
     settleBackoff(published, backoffUntil, source, competition, clock());
   } finally {
     releaseLock(token);
@@ -486,12 +494,17 @@ function backoffToPublish(
 }
 
 /**
- * After a cycle's final publish, refused or not. A deadline the cycle holds
- * counts only once a reader will find it. A refused publish (the lease was
- * lost: the snapshot is the successor's, and the successor may not have met
- * this throttle) and a publish into a snapshot nobody can read both leave it
+ * After a cycle's final publish, refused, failed or done. A deadline the cycle
+ * holds counts only once a reader will find it. A refused publish (the lease
+ * was lost: the snapshot is the successor's, and the successor may not have
+ * met this throttle), a failed one (the write THREW: the caller passes it as
+ * not published), and a publish into a snapshot nobody can read all leave it
  * invisible: it goes to the note, which needs no lock, as a command's does.
  * One place, for the bundled cycle and the one off the bundle.
+ *
+ * The two idle-snapshot writers (`runRefresh`'s, for an unknown source and for
+ * a cycle with nothing to ask) settle nothing: no request was made, so the
+ * only deadline they write is one already in effect, the note's.
  */
 function settleBackoff(
   published: boolean,
@@ -502,7 +515,7 @@ function settleBackoff(
 ): void {
   if (backoffUntil) ensureBackoffVisible(source, competition, Date.parse(backoffUntil), at);
   if (!published && process.env.CLAUDINHO_DEBUG) {
-    process.stderr.write('claudinho: refresh lease lost to a successor; snapshot not published\n');
+    process.stderr.write('claudinho: refresh snapshot not published (lease lost to a successor, or the write failed)\n');
   }
 }
 
@@ -680,7 +693,14 @@ async function refreshOffBundle(c: {
     }
 
     const backoffUntil = backoffToPublish(base, adapter, source, competition, nowMs, clock(), c.jitterMs);
-    const published = publishState(snapshot(backoffUntil), token);
+    // A publish that THROWS (a failed atomic write) is one that did not
+    // happen: the throttle this cycle met is still settled.
+    let published = false;
+    try {
+      published = publishState(snapshot(backoffUntil), token);
+    } catch {
+      published = false;
+    }
     settleBackoff(published, backoffUntil, source, competition, clock());
   } finally {
     releaseLock(token);

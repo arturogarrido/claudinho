@@ -11,10 +11,11 @@
  * A throttle always has somewhere to be written (0.11, 2.6a). Under the
  * refresh lock it goes into the snapshot; whenever a reader would not find it
  * there (a refresher holds the lock for as long as a request can take, the
- * publish was refused, the snapshot cannot be read) it goes to the scope's
- * note, which needs no lock. It used to be dropped, and the next refresh asked
- * the provider that had just said stop. Every writer keeps the later of the
- * deadlines it believes: the backoff in effect, the note included.
+ * publish was refused or its write failed, the snapshot cannot be read) it
+ * goes to the scope's note, which needs no lock. It used to be dropped, and the
+ * next refresh asked the provider that had just said stop. Every writer keeps
+ * the later of the deadlines it believes: the backoff in effect, the note
+ * included.
  */
 import type { ProviderAdapter } from '@claudinho/core';
 import {
@@ -56,12 +57,19 @@ function persistBackoff(source: string, competition: string, until: number, nowM
       // a stored value nobody believes must not outrank a real one.
       const inEffect = backoffInEffect(base, source, competition, nowMs);
       const later = inEffect !== undefined && inEffect > until ? inEffect : until;
-      publishState({ ...base, backoffUntil: new Date(later).toISOString() }, token);
+      try {
+        publishState({ ...base, backoffUntil: new Date(later).toISOString() }, token);
+      } catch {
+        // A publish that THROWS (a failed atomic write) published nothing:
+        // the note below is where the deadline goes, as for a refused one.
+        // Thrown on, it would also leave this listener and become the
+        // command's error in place of the provider's throttle.
+      }
     } finally {
       releaseLock(token);
     }
   }
-  // Refused, unreadable or never tried: what counts is what a reader will find.
+  // Refused, failed, unreadable or never tried: what counts is what a reader will find.
   return ensureBackoffVisible(source, competition, until, nowMs);
 }
 

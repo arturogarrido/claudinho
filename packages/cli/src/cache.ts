@@ -266,9 +266,10 @@ export function believedDeadline(untilMs: number | undefined, now: number): numb
 // can take) could not write it, exited, and the throttle was lost: the next
 // refresh asked the provider that had just said stop. The note is where a
 // throttle goes whenever a reader would not find it in the snapshot (the lock
-// was taken, the publish was refused, the snapshot cannot be read): a tiny
-// file beside the snapshot, written atomically and WITHOUT the lock, read by
-// everything that reads a backoff (`ensureBackoffVisible` decides).
+// was taken, the publish was refused or its write failed, the snapshot cannot
+// be read): a tiny file beside the snapshot, written atomically and WITHOUT
+// the lock, read by everything that reads a backoff (`ensureBackoffVisible`
+// decides).
 // It is never deleted (an expired one is simply not believed, and the next
 // writer writes over it), so no cleanup can remove a deadline it did not read.
 
@@ -347,13 +348,14 @@ export function backoffInEffect(
 
 /**
  * Make a throttle visible: called by every writer of a deadline AFTER its
- * attempt to publish one, whether the publish happened, was refused, or was
- * never tried (the lock was someone else's). If the backoff a reader would
- * find (`backoffInEffect` of the snapshot as it is now, and the note) is not at
- * least as late as `untilMs`, the deadline goes to the note. Returns whether it
- * is now visible: false when `untilMs` itself is not believed, or when the note
- * could not be written or read back (never throws). In whole milliseconds, as
- * a stamp stores it and as `writeBackoffNote` compares.
+ * attempt to publish one, whether the publish happened, was refused, failed
+ * (it threw), or was never tried (the lock was someone else's). If the backoff
+ * a reader would find (`backoffInEffect` of the snapshot as it is now, and the
+ * note) is not at least as late as `untilMs`, the deadline goes to the note.
+ * Returns whether it is now visible: false when `untilMs` itself is not
+ * believed, or when the note could not be written or read back (never throws).
+ * In whole milliseconds, as a stamp stores it and as `writeBackoffNote`
+ * compares.
  *
  * A write that HAPPENED is not one a reader will find: an atomic replacement
  * keeps the mode of the file it replaces, so a snapshot nobody can read stays
@@ -586,7 +588,9 @@ export function releaseLock(token: LockToken | undefined = heldToken): void {
  * operating system holds). Stated, with the takeover race in `claimLock`.
  * Returns whether the write happened, which is not whether a reader will find
  * it (a snapshot nobody can read stays one): a writer with a throttle asks
- * `ensureBackoffVisible` afterwards, refused or not.
+ * `ensureBackoffVisible` afterwards, refused or not. It THROWS when the write
+ * fails (an atomic write's rename can): every writer with a throttle catches
+ * that, as a publish that did not happen, and still asks.
  */
 export function publishState(state: CacheState, token: LockToken | undefined = heldToken): boolean {
   if (!holdsLock(token)) return false;
