@@ -40,6 +40,8 @@ The bundled schedule's knockout slots are **resultless placeholders** (codes lik
 | MCP `get_share_snippet{bracket,next}` | `toolGetShareSnippet` | same |
 | **statusline** | `renderPrompt` + `runRefresh` | hot path, NO network — indirect: refresher caches `getKnockoutFixtures` → `CacheState.fixtures`; `renderPrompt` merges them, **failing closed to `⚽ —`** when the cache lacks the pairing; unresolved placeholders dropped in syncing (never 🏳️). Empty successful fetch uses a **short TTL** (~60s); provider errors keep prior cache. **`cmdPrompt` and `cmdHook`** both spawn fixtures refresh in knockout phase. |
 
+Off the bundled competition the statusline reads the cache's `schedule` slice instead (display records for a countdown, the slice's gate for `live · syncing…`; rules in `packages/cli/src/scheduleSlice.ts`), and the knockout `fixtures` slice is never filled there. `refreshWanted` (`packages/cli/src/refresh.ts`) is the one trigger for the statusline and the hook.
+
 **Executable guard:** `packages/{cli,mcp}/test/knockout-surface-coverage.test.ts` pins one fake resolved tie (Mexico vs Ecuador) and asserts every surface renders the real nations, not `🏳️` (statusline from a seeded cache). **`statusline.test.ts` / `refresh.test.ts`** cover syncing + empty-cache TTL. **Adding a team-facing surface? Add it to that test and this table.**
 
 ## Format opts invariant
