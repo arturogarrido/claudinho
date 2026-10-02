@@ -6,25 +6,28 @@ alwaysApply: true
 
 # Change discipline
 
-The canonical text is **`AGENTS.md` → "Change discipline"**, and the "Definition
-of Done" section beside it. This file exists only because Cursor reads
-`.cursor/rules` and not `AGENTS.md` — Claude Code reads AGENTS.md via
-`CLAUDE.md`, and it is Codex's source of truth. Keep the two in sync; if they
-disagree, AGENTS.md wins.
+The canonical text is **`AGENTS.md` → "Working agreement", "Validation scope",
+"Change discipline", and "Definition of Done"**. This file mirrors those rules
+for Cursor; keep it in sync. If the guides disagree, AGENTS.md wins.
 
 The short form:
 
-1. **Acceptance criteria in the PR before the first commit**, plus an explicit
-   statement of what the change does NOT cover. Skipping this is what turned
-   PR #97 into twelve review rounds: with no written finish line every round
-   ended at "I fixed what was reported" and the next round moved it, and with no
-   stated boundary, findings equally true of `main` arrived as blockers.
-2. **Put a shared rule where every path reaches it, then delete the other copy** —
+1. **Complete authorized work through validation and self-review.** Resolve routine
+   choices from the code; ask about missing information that changes scope or behavior.
+   Plans, audits, and reviews stay read-only unless edits are requested.
+2. **For user-facing features, write 3–5 acceptance criteria and explicit exclusions
+   before implementation.** Put them in the PR description before the first commit;
+   draft the description locally if there is no PR yet.
+3. **Put a shared rule where every path reaches it, then delete the other copy** —
    not at the site the report happened to mention.
-3. **Grep for siblings before calling a class closed.** Every single-instance fix
-   in #97 had two or three.
-4. **Make a test fail before trusting it, and pin the CALL, not just the
-   function.** Delete the call site and confirm red.
-5. **Never assert wall-clock time.** Assert the observable consequence instead.
-6. **Run the gates and READ the output** — build, typecheck, test, lint, the three
-   CI smokes, `release:qa` — then wait for CI on the SHA you actually pushed.
+4. **Search for sibling paths**, including live/cache and statusline/hook readers.
+5. **Make a new regression test fail before trusting it.** For call-site bugs,
+   remove the call and confirm red; restore it afterward and preserve unrelated edits.
+6. **Never assert wall-clock time.** Assert the observable consequence instead.
+7. **Use AGENTS.md's validation scope and read the output.** Prose-only edits need
+   `git diff --check`, link/contract checks, and the `node --input-type=module` block in
+   [AGENTS.md's private-document boundary check](../../AGENTS.md#private-document-boundary-check).
+   Code, dependency, and executable config
+   changes need build → typecheck → test → lint plus relevant CI smoke/pack checks.
+   User-facing behavior and releases also need `release:qa` after build. Rerun checks
+   for new changes, failures, or unresolved concerns; after a push, verify CI on that SHA.

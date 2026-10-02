@@ -12,7 +12,7 @@ export type SlotRef =
 export interface BracketMatchNode {
   matchId: string;
   stage: Stage;
-  /** 1-based index within the stage, ordered by kickoff. */
+  /** 1-based index within the stage, ordered by ascending numeric ESPN event id. */
   index: number;
   home: SlotRef;
   away: SlotRef;

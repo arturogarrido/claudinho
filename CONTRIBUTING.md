@@ -43,8 +43,54 @@ node packages/cli/dist/index.js today --tz America/Mexico_City --lang es
   **read-only and informational only** — never betting/trading framing.
 - **Shared types live in `@claudinho/core`** — don't duplicate them; run
   `pnpm -r typecheck` after changing them.
-- **Tests + the full gate must pass** (`build` / `test` / `typecheck` / `lint`). For
-  user-facing changes, also run `pnpm release:qa` and eyeball the output.
+- **Use [`AGENTS.md` → Validation scope](AGENTS.md#validation-scope).** Code, dependency,
+  and executable configuration changes require the full gate (`build` → `typecheck` →
+  `test` → `lint`) plus relevant smoke checks. User-facing behavior also requires
+  `pnpm release:qa` and an output review. Prose-only changes use diff, link, contract,
+  and private-document-boundary checks.
+
+## Comparing MCP tool contracts
+
+For MCP contract or schema-dependency changes, compare the actual `tools/list` output from the PR
+base and head. Use separate checkouts at the recorded base/head SHAs, the same Node version and
+environment, and each checkout's own `pnpm install --frozen-lockfile` followed by `pnpm -r build`.
+
+From the base checkout's repository root, run the following. Run it again from the head checkout,
+changing the output path to `/tmp/claudinho-tools-head.json`. The request sequence matches the
+stdio smoke test, and listing tools makes no provider calls.
+
+```bash
+node --input-type=module > /tmp/claudinho-tools-base.json <<'NODE'
+import { execFileSync } from 'node:child_process';
+const requests = [
+  { jsonrpc: '2.0', id: 1, method: 'initialize', params: {
+    protocolVersion: '2024-11-05', capabilities: {},
+    clientInfo: { name: 'contract-comparison', version: '1' },
+  } },
+  { jsonrpc: '2.0', method: 'notifications/initialized' },
+  { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
+];
+const output = execFileSync(process.execPath, ['packages/mcp/dist/index.js'], {
+  input: requests.map((request) => JSON.stringify(request)).join('\n') + '\n',
+  encoding: 'utf8', timeout: 30_000,
+});
+const replies = output.split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
+const initialized = replies.find((reply) => reply.id === 1);
+const listing = replies.find((reply) => reply.id === 2);
+if (replies.some((reply) => reply.jsonrpc !== '2.0') || !initialized?.result ||
+    !Array.isArray(listing?.result?.tools) || listing.result.nextCursor) {
+  throw new Error('Incomplete or invalid MCP response; inspect before comparing');
+}
+process.stdout.write(JSON.stringify(listing.result.tools, null, 2) + '\n');
+NODE
+```
+
+Both captures must exit successfully. Then run
+`diff -u /tmp/claudinho-tools-base.json /tmp/claudinho-tools-head.json` and inspect every difference,
+including descriptions, annotations, input/output schemas, `additionalProperties`, and ordering.
+Record both SHAs and explain intentional changes in the PR; a dependency-only upgrade should not
+silently change the contract. Also run `pnpm -F @claudinho/mcp smoke:stdio` on the built head:
+it checks transport and an offline tool call, but does not compare the base and head listings.
 
 ## Commit attribution
 

@@ -12,7 +12,8 @@ This project uses **AGENTS.md** as the primary agent guide. Read it first:
   pnpm -F @claudinho/mcp build
   claude mcp add claudinho-dev -- node packages/mcp/dist/index.js
   ```
-- When changing shared types, update `@claudinho/core` and run `pnpm -r typecheck` before committing.
-- Run `pnpm lint` (Biome) before committing; CI gates on it. The setup is lint-only (no formatter) — keep style consistent with the surrounding code.
-- **Before declaring any change "done," run the "Pre-PR self-review" rubric in `AGENTS.md`** — verify external API shapes against a *real* response (fixtures included); apply the change to every surface (CLI text **and** `--json`, MCP `data` **and** text, READMEs); audit against the Hard Constraints (existing code too); do an adversarial failure-mode pass (fail-closed; never cache transient errors); and bound default-on latency. For money/legal/external-API changes, do an independent reviewer pass and self-classify findings **P1/P2/P3**.
-- **After any push to a branch with CI, always watch the run and confirm it's green** (`gh run watch <id> --exit-status`); report the per-job result. Don't consider a push "done" until CI passes.
+- Follow `AGENTS.md` → "Working agreement", "Validation scope", and "Pre-PR self-review".
+  They define completion, checks by change type, and when an independent reviewer is required.
+- **After a push to a branch with CI**, confirm the run's `headSha` matches the pushed commit,
+  wait for completion, and report the per-job result. A successful watch command alone is not
+  proof that a queued run passed.
