@@ -572,7 +572,8 @@ export function parseEspnStandings(
   const rawChildren = (raw as { children?: unknown })?.children;
   if (shape === 'none') {
     // Measured (Oct 2 2026): a competition with no table answers 200 with its
-    // name and seasons and NO `children` key. For a competition written down
+    // name, its `season` (a year) and a list of past `seasons`, and NO
+    // `children` key. For a competition written down
     // as having no table, and only for one, that document is an empty answer
     // (anywhere else a missing list is an envelope that cannot be read). It
     // must BE that document, as it was recorded: an object that names the

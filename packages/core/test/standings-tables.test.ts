@@ -334,6 +334,12 @@ describe('a payload with tables the parser cannot inspect is refused whole', () 
     expect(wc).toMatchObject({ degraded: false, source: 'espn' });
     expect(wc.tables).toHaveLength(12);
     expect(wc.incomplete).toBeUndefined();
+    // ANY value at the root but an absent key: nobody decided what it is, so it was not read.
+    for (const root of [null, {}, [], 0, '', { entries: [] }]) {
+      const r = await read('uefa.euro', undefined, { ...recorded('uefa.euro'), standings: root });
+      expect(r.incomplete, JSON.stringify(root)).toBe(true);
+      expect(r.tables, JSON.stringify(root)).toHaveLength(6);
+    }
     // The control: the same payloads without it are whole.
     expect((await read('uefa.euro')).incomplete).toBeUndefined();
     expect((await read('eng.1')).incomplete).toBeUndefined();
