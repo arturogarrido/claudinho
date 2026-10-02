@@ -134,6 +134,11 @@ describe('`table` shows the table the competition has', () => {
     await cmdTable(undefined, ctx('concacaf.champions'));
     expect(text()).toContain('No standings available.');
     expect(text()).not.toContain('unavailable');
+    // In every language "none" is not the outage sentence (found in review: Portuguese said "indisponível" for both).
+    writes = [];
+    await cmdTable(undefined, ctx('concacaf.champions', { lang: 'pt' }));
+    expect(text()).toContain('Não há classificação disponível.');
+    expect(text()).not.toContain('indisponível');
     writes = [];
     await cmdTable(undefined, ctx('concacaf.champions', { json: true }));
     expect(json()).toEqual({ degraded: false, source: 'espn', tables: [] });

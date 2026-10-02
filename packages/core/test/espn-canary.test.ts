@@ -893,6 +893,12 @@ describe('found in review: absence is a finding, and the product’s own parser 
     extra.children.push({ ...(second as (typeof duplicate.children)[number]), name: 'Group A1' });
     expect(core.parseStandings(extra)).toHaveLength(13); // read with no expectation
     expect(await wc(extra)).toMatchObject({ verdict: 'changed', detail: 'the adapter could not read every table (13 sent, 12 read)' });
+    // A table at the ROOT beside the groups is a table the product does not read.
+    const atRoot = {
+      ...wcStandings(),
+      standings: { entries: [{ team: { id: '999', abbreviation: 'ZZZ', displayName: 'Root' }, stats: STATS.map((n) => ({ name: n, value: n === 'rank' ? 1 : 0 })) }] },
+    };
+    expect(await wc(atRoot)).toMatchObject({ verdict: 'changed', detail: 'the adapter could not read every table (13 sent, 12 read)' });
   });
 
   it('the adapter says so itself: a standings result states whether every table and row was read', async () => {

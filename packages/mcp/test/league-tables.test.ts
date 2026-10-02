@@ -107,6 +107,11 @@ describe('get_standings shows the table the competition has', () => {
     expect(pt.text).toContain('Grupo "A" não encontrado.');
     const fr = await toolGetStandings({ lang: 'fr', ...common('concacaf.champions') });
     expect(fr.text).toContain('Aucun classement disponible.');
+    // Found in review: in Portuguese "none" read as an outage ("Classificação
+    // indisponível." beside "Classificação ao vivo indisponível.").
+    const none = await toolGetStandings({ lang: 'pt', ...common('concacaf.champions') });
+    expect(none.text).toContain('Não há classificação disponível.');
+    expect(none.text).not.toContain('indisponível');
     // English is what it was.
     expect((await toolGetStandings({ group: 'A', ...common('uefa.nations') })).text).toContain('No group "A".');
   });

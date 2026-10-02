@@ -227,6 +227,12 @@ describe('a competition with no table by design', () => {
       { name: 'Error', code: 404, message: 'not found' }, // a name, and nothing else of the document
       { name: doc.name }, // no season
       { ...doc, season: 'x' },
+      // "States a season" is the product's one rule for a season (`sealSeason`): a year.
+      { ...doc, season: null },
+      { ...doc, season: [] },
+      { ...doc, season: {} }, // an object is not a season
+      { ...doc, season: { year: 'x' } },
+      { ...doc, season: { year: 20260 } },
       { ...doc, standings: table }, // the document, with a table at its root
     ]) {
       expect(parseEspnStandings(body, 'none').complete, JSON.stringify(body).slice(0, 60)).toBe(false);
@@ -307,6 +313,30 @@ describe('a payload with tables the parser cannot inspect is refused whole', () 
     const stage = await read('uefa.euro', undefined, { children: [...euro.children, { name: 'Knockout', children: [], standings: { entries: [] } }] });
     expect(stage.tables).toHaveLength(6);
     expect(stage.incomplete).toBe(true);
+  });
+
+  it('a table at the ROOT, beside the children, is a table nobody read: the inventory is not whole', async () => {
+    // Found in review: only `children` was read, so a table the provider put
+    // at the root was skipped in silence, against "nothing is skipped" (and
+    // against the no-table shape, which refuses a root table). No recorded
+    // payload has one.
+    const table = { entries: [row(1, 'One', 1), row(2, 'Two', 2)] };
+    const euro = { ...recorded('uefa.euro'), standings: table };
+    const all = await read('uefa.euro', undefined, euro);
+    expect(all.tables).toHaveLength(6);
+    expect(all.incomplete).toBe(true);
+    expect(await read('uefa.euro', 'Z', euro)).toEqual({ tables: [], degraded: true });
+    const league = await read('eng.1', undefined, { ...recorded('eng.1'), standings: table });
+    expect(league.tables).toHaveLength(1);
+    expect(league.incomplete).toBe(true);
+    // With a declared scope the scope decides, as for any table outside it.
+    const wc = await read('fifa.world', undefined, { ...recorded('fifa.world'), standings: table });
+    expect(wc).toMatchObject({ degraded: false, source: 'espn' });
+    expect(wc.tables).toHaveLength(12);
+    expect(wc.incomplete).toBeUndefined();
+    // The control: the same payloads without it are whole.
+    expect((await read('uefa.euro')).incomplete).toBeUndefined();
+    expect((await read('eng.1')).incomplete).toBeUndefined();
   });
 
   it('on the World Cup: twelve healthy groups and a phase whose children hold another Group A are not twelve live tables', async () => {
