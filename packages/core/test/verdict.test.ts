@@ -155,14 +155,31 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
     expect(down.input.title).toBe('Live match pulse (showing 0 of 0)');
   });
 
+  it('live: a surface that bounds its payload gets a card of the bounded list', () => {
+    const other: Match = { ...match, id: '760416' };
+    const all = { matches: [match, other], degraded: false, source: 'espn' };
+    expect(liveShareCard(all, ctx).input.matches).toEqual([match, other]);
+    expect(liveShareCard(all, ctx, { matches: [match] }).input.matches).toEqual([match]);
+  });
+
   it('a table: no attribution when degraded, and the empty note names what is missing', () => {
     const live = tableShareCard({ tables: [], degraded: false, source: 'espn' }, 'Z');
     expect(live.input).toMatchObject({ source: 'espn', installLine: 'npx @claudinho/cli table Z', emptyNote: 'No group Z.' });
     const all = tableShareCard({ tables: [], degraded: false, source: 'espn' }, undefined);
     expect(all.input).toMatchObject({ installLine: 'npx @claudinho/cli table', emptyNote: 'No standings available.' });
-    const down = tableShareCard({ tables: [], degraded: true }, 'A');
+    // A degraded result may still name the provider it tried; the card must not.
+    const down = tableShareCard({ tables: [], degraded: true, source: 'espn' }, 'A');
+    expect(down.source).toBeUndefined();
     expect(down.input.source).toBeUndefined();
+    expect(down.degraded).toBe(true);
     expect(down.input.emptyNote).toBe('Live standings unavailable.');
+  });
+
+  it('a table: a surface that bounds its payload gets a card of the bounded tables', () => {
+    const table = (group: string) => ({ group, rows: [] });
+    const result = { tables: [table('A'), table('B')], degraded: false, source: 'espn' };
+    expect(tableShareCard(result, undefined).input.tables).toHaveLength(2);
+    expect(tableShareCard(result, undefined, [table('A')]).input.tables).toEqual([table('A')]);
   });
 
   it('a bracket: the unsupported verdict rides on the card', () => {
@@ -178,6 +195,11 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
     expect(off.input.installLine).toBe('npx @claudinho/cli bracket');
     expect(off.input.emptyNote).toBe('Pas encore disponible pour cette compétition.');
     expect(off.verdict).toEqual({ unsupported: true });
+    // Structure only (the feed was down): no provider is attributed.
+    const down = bracketShareCard({ view, degraded: true, standingsDegraded: true, source: 'espn' }, undefined, 'en');
+    expect(down.source).toBeUndefined();
+    expect(down.input.source).toBeUndefined();
+    expect(down.degraded).toBe(true);
   });
 });
 
@@ -205,6 +227,15 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     const byHand = /unsupported\s*\?\s*\{\s*unsupported:\s*true\s*\}/;
     expect(hits('cli', byHand)).toEqual([]);
     expect(hits('mcp', byHand)).toEqual([]);
+  });
+
+  it('a surface hands over the RESULT, not the fields it remembers', () => {
+    // `verdictExtras({ unsupported })` compiles and works today, and silently
+    // drops the next verdict a result learns to state. The functions are given
+    // the result itself (or a card's verdict), never an object built on the spot.
+    const rewrapped = /verdict(Extras|Notice)\(\s*\{/;
+    expect(hits('cli', rewrapped)).toEqual([]);
+    expect(hits('mcp', rewrapped)).toEqual([]);
   });
 
   it('no surface writes the "not available" sentence itself', () => {

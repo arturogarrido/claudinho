@@ -443,11 +443,8 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   // Live-resolved: the bundled knockout slots are resultless placeholders, so a
   // static lookup goes blind once a team's group games pass — overlay the live
   // knockout window so a confirmed R32+ tie (e.g. MEX vs ECU) surfaces here too.
-  const { fixture, degraded, source, unsupported } = await getNextFixtureForTeam(
-    adapterFor(ctx),
-    code,
-    now ?? new Date(),
-  );
+  const next = await getNextFixtureForTeam(adapterFor(ctx), code, now ?? new Date());
+  const { fixture, degraded, source } = next;
 
   if (cfg.json) {
     emitJson({
@@ -455,7 +452,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
       fixture: fixture ?? null,
       degraded,
       source: source ?? null,
-      ...verdictExtras({ unsupported }),
+      ...verdictExtras(next),
     });
     return;
   }
@@ -469,7 +466,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
     out(
       c.dim(
         '  ' +
-          (verdictNotice({ unsupported }, cfg.lang) ??
+          (verdictNotice(next, cfg.lang) ??
             (degraded ? t('live.degraded') : t('next.none', { team: code }))),
       ),
     );
@@ -639,19 +636,21 @@ export async function cmdBracket(
   if (filter && !BRACKET_STAGES.has(filter)) {
     throw new InputError(i18n(cfg.lang, 'bracket.invalidStage'));
   }
-  const { view, degraded, standingsDegraded, source, unsupported } = await getBracket(
+  const bracket = await getBracket(
     adapterFor(ctx),
     filter ? { stage: filter as Stage, lang: cfg.lang } : { lang: cfg.lang },
   );
-  if (unsupported) {
+  const { view, degraded, standingsDegraded, source } = bracket;
+  const notice = verdictNotice(bracket, cfg.lang);
+  if (notice !== undefined) {
     // No World Cup topology off the bundle: the notice, nothing else (A03).
     if (cfg.json) {
-      emitJson({ degraded, standingsDegraded, source: null, view, ...verdictExtras({ unsupported }) });
+      emitJson({ degraded, standingsDegraded, source: null, view, ...verdictExtras(bracket) });
       return;
     }
     const c = painterFor(cfg);
     out();
-    out(c.dim(`  ${verdictNotice({ unsupported }, cfg.lang)}`));
+    out(c.dim(`  ${notice}`));
     out();
     out(disclaimer(t, c));
     return;
@@ -907,7 +906,8 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   precheck(cfg, t);
   // ±1-day window fetch: the provider buckets scoreboard days in its own zone,
   // so fetching only the fixture's UTC date can miss its live/final state.
-  const { match, degraded, source: liveSource, unsupported } = await getMatchById(adapterFor(ctx), id);
+  const found = await getMatchById(adapterFor(ctx), id);
+  const { match, degraded, source: liveSource } = found;
 
   const market = match
     ? await reliableMarketSignalFor(ctx, match)
@@ -920,7 +920,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
       source: liveSource ?? null,
       marketComplete: market.complete,
       marketSignal: market.signal ?? null,
-      ...verdictExtras({ unsupported }),
+      ...verdictExtras(found),
     });
     return;
   }
@@ -928,7 +928,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   const c = painterFor(cfg);
   out();
   if (!match) {
-    out(c.dim('  ' + (verdictNotice({ unsupported }, cfg.lang) ?? t('match.none', { id }))));
+    out(c.dim('  ' + (verdictNotice(found, cfg.lang) ?? t('match.none', { id }))));
     out();
     out(disclaimer(t, c));
     return;
@@ -1034,7 +1034,8 @@ export async function cmdMarkets(
     const now = ctx.now ?? new Date();
     // Live-confirmed selection: handles extra time past the static window AND
     // early FTs inside it (the static fixture's status is forever SCHEDULED).
-    const { match: fixture, degraded, unsupported } = await marketFixtureForTeam(adapterFor(ctx), code, now);
+    const picked = await marketFixtureForTeam(adapterFor(ctx), code, now);
+    const { match: fixture, degraded } = picked;
     const market =
       fixture && marketRelevant(fixture, now)
         ? await marketSignalsFor(ctx, [fixture], MARKETS_CMD_OPTS)
@@ -1052,7 +1053,7 @@ export async function cmdMarkets(
         signal: shown ?? null,
         // Review P2 on #129: a JSON consumer must tell "not available for this
         // competition" from a successful empty result; the text branch already did.
-        ...verdictExtras({ unsupported }),
+        ...verdictExtras(picked),
       });
       return;
     }
@@ -1063,7 +1064,7 @@ export async function cmdMarkets(
       out(
         c.dim(
           '  ' +
-            (verdictNotice({ unsupported }, cfg.lang) ??
+            (verdictNotice(picked, cfg.lang) ??
               (degraded ? t('live.degraded') : t('next.none', { team: code }))),
         ),
       );
@@ -1086,7 +1087,8 @@ export async function cmdMarkets(
     precheck(cfg, t);
     const now = ctx.now ?? new Date();
     // Live overlay (±1-day window) so FT gates the resolved market correctly.
-    const { match, unsupported } = await getMatchById(adapterFor(ctx), target);
+    const found = await getMatchById(adapterFor(ctx), target);
+    const { match } = found;
     const market =
       match && marketRelevant(match, now)
         ? await marketSignalsFor(ctx, [match], MARKETS_CMD_OPTS)
@@ -1099,14 +1101,14 @@ export async function cmdMarkets(
         informationalOnly: true,
         complete: market.complete,
         signal: shown ?? null,
-        ...verdictExtras({ unsupported }),
+        ...verdictExtras(found),
       });
       return;
     }
     const c = painterFor(cfg);
     out();
     if (!match) {
-      out(c.dim('  ' + (verdictNotice({ unsupported }, cfg.lang) ?? t('match.none', { id: target }))));
+      out(c.dim('  ' + (verdictNotice(found, cfg.lang) ?? t('match.none', { id: target }))));
     } else {
       out(header(marketHeaderLine(match, cfg), c));
       out();
