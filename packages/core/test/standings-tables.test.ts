@@ -165,8 +165,30 @@ describe('the lettered competitions read as they did', () => {
     });
   }
 
-  it('a competition with no table by design answers a healthy empty', async () => {
+});
+
+describe('a competition with no table by design', () => {
+  it('answers with no table list at all, and that is an empty answer, not an outage', async () => {
+    // What the Concacaf Champions Cup's endpoint answers: its seasons, no `children`.
+    expect(recorded('concacaf.champions')).not.toHaveProperty('children');
     expect(await read('concacaf.champions')).toEqual({ tables: [], degraded: false, source: 'espn' });
+    expect(await read('concacaf.champions', 'A')).toEqual({ tables: [], degraded: false, source: 'espn' });
+  });
+
+  it('only there: a missing table list anywhere else is an answer that cannot be read', async () => {
+    const answer = recorded('concacaf.champions');
+    expect(await read('eng.1', undefined, answer)).toEqual({ tables: [], degraded: true });
+    expect(await read('uefa.nations', undefined, answer)).toEqual({ tables: [], degraded: true });
+    expect((await read('fifa.world', undefined, answer)).degraded).toBe(true);
+  });
+
+  it('and if it ever serves groups they are read, not hidden', async () => {
+    const r = await read('concacaf.champions', undefined, { children: [child('Group A', 4)] });
+    expect(r.tables.map((t) => t.group)).toEqual(['A']);
+  });
+
+  it('a body that is not an object is not an empty answer', () => {
+    for (const body of [null, [], 'x', 0]) expect(parseEspnStandings(body, 'none').complete, JSON.stringify(body)).toBe(false);
   });
 });
 
@@ -280,7 +302,7 @@ describe('a key that two children claim belongs to neither', () => {
     for (const [first, second] of [
       ['Group A', 'group a'],
       ['group a', 'Group A'],
-    ]) {
+    ] as const) {
       const r = await read('synthetic.cup', undefined, { children: pair(first, second) });
       expect(r.tables.map((t) => t.group)).toEqual(['B']);
       expect(r.incomplete).toBe(true);
@@ -377,6 +399,11 @@ describe('two kinds of "not whole", kept apart', () => {
     expect(parseEspnStandings(alone).inventory).toBe('incomplete');
     expect(await read('synthetic.cup', undefined, alone)).toEqual({ tables: [], degraded: true });
     expect(await read('synthetic.cup', 'B', alone)).toEqual({ tables: [], degraded: true });
+  });
+
+  it('no children at all is a healthy empty answer, attributed', async () => {
+    expect(parseEspnStandings({ children: [] })).toMatchObject({ items: [], complete: true, inventory: 'complete' });
+    expect(await read('synthetic.cup', undefined, { children: [] })).toEqual({ tables: [], degraded: false, source: 'espn' });
   });
 
   it('a child that is positively not a table (an empty rows list under a name that is no group) is skipped', async () => {

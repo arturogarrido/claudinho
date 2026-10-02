@@ -152,6 +152,14 @@ export interface StandingsResult {
   degraded: boolean;
   /** Provider that served the authoritative result, including an empty one (absent when degraded). */
   source?: string;
+  /**
+   * The verdict of an ALL-TABLES read whose provider sent a table that could
+   * not be read: `tables` holds the ones that were, and is not the whole
+   * competition. Never set on a keyed read: a table that was found was read
+   * (it says `partial` itself if rows are missing), and one that was not found
+   * while a table may be missing is `degraded`, not "no such group".
+   */
+  incomplete?: true;
 }
 
 /**
@@ -176,6 +184,18 @@ export interface StandingsResult {
  * mix of live tables and static roster tables. Transport failure without
  * explicit bundled-roster compatibility stays empty and degraded; it must
  * never borrow the bundled World Cup roster.
+ *
+ * `group` is a table KEY (`A`, `A1`, `A-B`, `LEAGUE`), matched in any case.
+ *
+ * Two different things can be "not whole". A table whose rows were refused is
+ * `partial` (on the table). A provider result from which a whole TABLE is
+ * missing has an incomplete inventory (`fetchMeta`), and what that means
+ * depends on what was asked:
+ *   - with an expected scope, the scope decides, as above (and a table outside
+ *     it is not shown);
+ *   - without one, an all-tables read returns the tables that were read and
+ *     says `incomplete`; a keyed read returns the table if it was read, and is
+ *     `degraded` if it was not: the missing table may be the one asked for.
  */
 export async function getStandings(
   adapter: ProviderAdapter,
@@ -189,15 +209,34 @@ export async function getStandings(
   if (adapter.fetchStandings) {
     try {
       const all = await adapter.fetchStandings();
-      const tables = (want ? all.filter((t) => t.group === want) : all).sort((a, b) =>
+      // With an expected scope a table outside it is not this competition's.
+      const inScope = expected ? all.filter((t) => expected.includes(t.group)) : all;
+      const tables = (want ? inScope.filter((t) => t.group === want) : [...inScope]).sort((a, b) =>
         a.group.localeCompare(b.group),
       );
-      const availableGroups = new Set(tables.map((table) => table.group));
-      const expectedGroupWasOmitted = want
-        ? (expected?.includes(want) ?? false) && tables.length === 0
-        : (expected?.some((group) => !availableGroups.has(group)) ?? false);
-      if (!expectedGroupWasOmitted) {
-        return { tables, degraded: false, source: adapter.name };
+      if (expected) {
+        const availableGroups = new Set(tables.map((table) => table.group));
+        const expectedGroupWasOmitted = want
+          ? expected.includes(want) && tables.length === 0
+          : expected.some((group) => !availableGroups.has(group));
+        if (!expectedGroupWasOmitted) {
+          return { tables, degraded: false, source: adapter.name };
+        }
+      } else {
+        const inventoryComplete = fetchMeta(all)?.inventoryComplete !== false;
+        if (!want) {
+          return {
+            tables,
+            degraded: false,
+            source: adapter.name,
+            ...(inventoryComplete ? {} : { incomplete: true as const }),
+          };
+        }
+        // A key that was read is returned. One that was not is "no such
+        // group" only when no table can be missing.
+        if (tables.length > 0 || inventoryComplete) {
+          return { tables, degraded: false, source: adapter.name };
+        }
       }
     } catch {
       // fall through to the degraded fallback

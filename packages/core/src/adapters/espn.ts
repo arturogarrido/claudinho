@@ -11,7 +11,13 @@
  */
 import type { GroupStandings } from '../standings';
 import { groups as bundledGroups } from '../schedule';
-import { type MapContext, parseEspnEvent, parseEspnEvents, parseEspnStandings } from '../trust/espn';
+import {
+  type MapContext,
+  type StandingsShape,
+  parseEspnEvent,
+  parseEspnEvents,
+  parseEspnStandings,
+} from '../trust/espn';
 import { parseEspnSeason } from '../trust/season';
 import type { Match, SeasonInfo } from '../types';
 import { readJsonBounded, ResponseTooLargeError } from './http';
@@ -26,6 +32,30 @@ import { parsedValue } from '../trust/result';
 const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 /** Default competition slug (the 2026 World Cup). */
 export const DEFAULT_COMPETITION = 'fifa.world';
+
+/**
+ * What a competition's standings are, where it is not lettered or numbered
+ * GROUPS (the default, also for a competition that is not listed):
+ *   - `league`: the competition is authorised to serve exactly ONE table (a
+ *     season, a league phase). That is a fact about the competition, written
+ *     down here; it is never inferred from a payload having one child, because
+ *     a grouped competition whose payload shrinks to one group is not a league.
+ *   - `none`: the competition has no table (knockout from the first round).
+ *     The provider then answers with no table list at all, and for such a
+ *     competition, and only for one, that is an empty answer rather than an
+ *     unreadable one. The canary checks the feed against it: the day it serves
+ *     a table, that is a changed shape.
+ * Adding a league to the product is one line here.
+ */
+export const STANDINGS_SHAPE: Readonly<Record<string, 'league' | 'none'>> = Object.freeze({
+  'eng.1': 'league',
+  'esp.1': 'league',
+  'ita.1': 'league',
+  'ger.1': 'league',
+  'mex.1': 'league',
+  'uefa.champions': 'league',
+  'concacaf.champions': 'none',
+});
 // Versioned so upstream can distinguish releases (and a block aimed at one bad
 // version need not be a block on all of them). Inlined at build time via the
 // tsup define; '0.0' appears only on unbuilt dev/test runs.
@@ -280,6 +310,9 @@ export class EspnAdapter implements ProviderAdapter {
   readonly expectedStandingsGroups?: readonly string[];
   readonly standingsFallbackGroups?: readonly string[];
 
+  /** How this competition's standings payload is read (see `STANDINGS_SHAPE`). */
+  private readonly standingsShape: StandingsShape;
+
   /** Short-lived group-letter maps, by team code and by team id (built lazily from standings). */
   private groupMap?: { at: number; value: Record<string, string>; byId: Record<string, string> };
 
@@ -316,6 +349,7 @@ export class EspnAdapter implements ProviderAdapter {
       opts.competition ??
       (opts.baseUrl === undefined ? DEFAULT_COMPETITION : competitionOfBase(opts.baseUrl));
     this.base = opts.baseUrl ?? competitionBase(this.competition);
+    this.standingsShape = STANDINGS_SHAPE[this.competition] ?? 'groups';
     // The bundled groups and roster describe the default competition only, and
     // only when nothing redirected where we fetch.
     const bundled = this.competition === DEFAULT_COMPETITION && opts.baseUrl === undefined;
@@ -515,18 +549,19 @@ export class EspnAdapter implements ProviderAdapter {
       return this.standingsShared.promise;
     }
     const promise = this.get(this.standingsUrl()).then((d) => {
-      const parsed = parseEspnStandings(d);
+      const parsed = parseEspnStandings(d, this.standingsShape);
       // The parser's own account rides on the result, as for a scoreboard: a
-      // refused row marks its table partial, but a refused TABLE (a second one
-      // contradicting the first, a name that is no group) leaves no trace on
-      // the survivors.
+      // refused row marks its table partial, but a refused TABLE (a key two
+      // children claim, a name that is no group) leaves no trace on the
+      // survivors. Two facts, kept apart: `complete` (every record read) and
+      // the inventory (every table child became a table).
       return attachFetchMeta(
         usableProviderItems<GroupStandings>(
           'standings',
           parsed,
           parsed.items.some((table) => table.rows.length > 0),
         ),
-        { complete: parsed.complete },
+        { complete: parsed.complete, inventoryComplete: parsed.inventory === 'complete' },
       );
     });
     this.standingsShared = { at: now, promise };
@@ -576,14 +611,24 @@ export class EspnAdapter implements ProviderAdapter {
     }
     try {
       const tables = await this.sharedStandings();
-      const value: Record<string, string> = {};
+      const byCode = new Map<string, string | undefined>();
       const byId: Record<string, string> = {};
       for (const t of tables) {
+        // A table's key is not a fixture's group. Only a lettered group names
+        // one: a league table would put "Group LEAGUE" on a fixture, and a
+        // numbered or nested key (`A1`, `A-B`) stays out until a fixture can
+        // carry the table's full label.
+        if (!/^[A-Z]$/.test(t.group)) continue;
         for (const r of t.rows) {
-          value[r.team.code] = t.group;
+          const code = r.team.code;
+          // A code two tables hold names neither group (two clubs share `CAR`
+          // in the Libertadores): the later table used to win. Ids decide.
+          byCode.set(code, byCode.has(code) && byCode.get(code) !== t.group ? undefined : t.group);
           if (r.team.id !== undefined) byId[r.team.id] = t.group;
         }
       }
+      const value: Record<string, string> = {};
+      for (const [code, group] of byCode) if (group !== undefined) value[code] = group;
       this.groupMap = { at: Date.now(), value, byId };
       return this.groupMap;
     } catch {

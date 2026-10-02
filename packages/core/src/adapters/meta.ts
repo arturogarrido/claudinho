@@ -35,6 +35,13 @@ export interface FetchMeta {
    * everything that was read.
    */
   readonly mentioned?: readonly string[];
+  /**
+   * Standings only: whether every table child the provider sent became a
+   * table. A different fact from `complete`, which is also false for a refused
+   * ROW of a table that was read. False means a table may be missing from the
+   * result, so a key it does not hold is not known to be absent.
+   */
+  readonly inventoryComplete?: boolean;
 }
 
 const META = new WeakMap<object, FetchMeta>();
