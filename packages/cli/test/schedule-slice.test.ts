@@ -216,7 +216,8 @@ describe('a match seen in play raises the continuation to its kickoff + 6 hours;
 
 describe('what a discovery answer does to the slice', () => {
   const none = { index: undefined, fixtures: [] as Match[], season: undefined };
-  const stored = (index: ScheduleEntry[], season: typeof S2026 | undefined = S2026, fixtures: Match[] = []) => ({ index, fixtures, season });
+  // `null` is "no season": a default parameter would replace an explicit `undefined`.
+  const stored = (index: ScheduleEntry[], season: typeof S2026 | null = S2026, fixtures: Match[] = []) => ({ index, fixtures, season: season ?? undefined });
 
   it('"relevant" is a kickoff no earlier than six hours ago: the match in play is exactly what must not be lost', () => {
     expect(RELEVANT_BACK_MS).toBe(6 * HOUR);
@@ -244,7 +245,7 @@ describe('what a discovery answer does to the slice', () => {
   describe('an incomplete answer', () => {
     it('with nothing at stake is stored, with or without a season', () => {
       for (const season of [S2026, undefined]) {
-        for (const prev of [none, stored([entry('0', -7 * HOUR)], undefined)]) {
+        for (const prev of [none, stored([entry('0', -7 * HOUR)], null)]) {
           const r = applyDiscovery(prev, answer([match('1', HOUR)], { complete: false, mentioned: ['1'], season }), NOW);
           expect(r?.index, String(season?.year)).toEqual([entry('1', HOUR)]);
           expect(r?.complete).toBe(false);
@@ -276,7 +277,7 @@ describe('what a discovery answer does to the slice', () => {
 
     it('with a season unknown on either side: the slice stands, and it is a failure for the cadence', () => {
       const incomplete = { complete: false, mentioned: ['2'] };
-      expect(applyDiscovery(stored([entry('1', HOUR)], undefined), answer([match('2', HOUR)], incomplete), NOW)).toBeUndefined();
+      expect(applyDiscovery(stored([entry('1', HOUR)], null), answer([match('2', HOUR)], incomplete), NOW)).toBeUndefined();
       expect(applyDiscovery(stored([entry('1', HOUR)]), answer([match('2', HOUR)], { ...incomplete, season: undefined }), NOW)).toBeUndefined();
     });
 

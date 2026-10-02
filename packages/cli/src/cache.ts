@@ -14,7 +14,7 @@ import {
   writeSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { DEFAULT_COMPETITION, type Match, type SeasonInfo } from '@claudinho/core';
+import { DEFAULT_COMPETITION, type Match, type ScheduleEntry, type SeasonInfo } from '@claudinho/core';
 import { randomBytes } from 'node:crypto';
 import { cacheDir, writeFileAtomic } from './paths';
 
@@ -88,6 +88,35 @@ export interface CacheState {
    * edition survived into a snapshot labelled with another.
    */
   fixturesSeason?: SeasonInfo;
+  /**
+   * The schedule ahead, for a competition the bundle does not describe: what
+   * decides when a match can be in play there (see `scheduleSlice.ts`, which
+   * holds every rule about it). Never filled on the bundled competition, where
+   * the bundled schedule decides. Read through `scheduleView`, never directly.
+   */
+  schedule?: ScheduleSlice;
+}
+
+/** The stored schedule slice. Every field is input when read back: see `scheduleView`. */
+export interface ScheduleSlice {
+  /** One record per relevant fixture, in kickoff order: all of them, or the slice has no index. */
+  index?: ScheduleEntry[];
+  /** Full records, for display only (the earliest relevant ones at hand). */
+  fixtures?: Match[];
+  /** ISO 8601: the last discovery that succeeded. */
+  updatedAt?: string;
+  /** ISO 8601: the last discovery ATTEMPT, written before its request is made. */
+  attemptedAt?: string;
+  /** Consecutive failed discoveries. */
+  failures?: number;
+  /** The season of the response that produced the slice. */
+  season?: SeasonInfo;
+  /** Whether the answer that produced the index was whole. */
+  complete?: boolean;
+  /** ISO 8601: a match was seen in play; the gate stays open until then. */
+  inPlayUntil?: string;
+  /** A discovery failed and no live read has asked since. */
+  probe?: boolean;
 }
 
 const LOCK_STALE_MS = 60_000;
