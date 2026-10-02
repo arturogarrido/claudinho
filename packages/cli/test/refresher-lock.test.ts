@@ -545,6 +545,19 @@ describe('found in review', () => {
     releaseLock(token);
   });
 
+  it('the note writer itself keeps the later deadline: a shorter one written after a longer one changes nothing', () => {
+    // Asked of the writer directly. Every caller now asks first whether its
+    // deadline is already in effect, so through a caller this rule is covered
+    // twice and a test cannot see it go; the writer's own check is the one made
+    // right before the write.
+    expect(writeBackoffNote(SOURCE, WC, nowMs + 20 * MIN, nowMs)).toBe(true);
+    expect(writeBackoffNote(SOURCE, WC, nowMs + 10 * MIN, nowMs)).toBe(true);
+    expect(readBackoffNote(SOURCE, WC, nowMs)).toBe(nowMs + 20 * MIN);
+    // And a longer one after a shorter one replaces it.
+    expect(writeBackoffNote(SOURCE, WC, nowMs + 25 * MIN, nowMs)).toBe(true);
+    expect(readBackoffNote(SOURCE, WC, nowMs)).toBe(nowMs + 25 * MIN);
+  });
+
   it.skipIf(!POSIX || process.getuid?.() === 0)('a note that cannot be read back was not written: the caller is told, and retries', () => {
     // An existing note nobody can read: the replacement inherits its mode (an
     // atomic write preserves it), so the deadline is on disk and invisible.
