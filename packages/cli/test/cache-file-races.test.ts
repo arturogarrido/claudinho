@@ -16,7 +16,7 @@
  *
  * Interleavings are forced through the file-system calls, not raced.
  */
-import { mkdirSync, mkdtempSync, constants as fsConstants, rmSync as rmReal, writeFileSync } from 'node:fs';
+import { constants as fsConstants, lstatSync, mkdirSync, mkdtempSync, rmSync as rmReal, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -224,33 +224,132 @@ describe('a small cache file is read through one descriptor, and the read is bou
   });
 });
 
-describe('a lock nobody can judge is stale: it never throws, and it is taken over', () => {
-  // Found while fixing: a stamp that is a number and not an instant (beyond the
-  // range of a date) threw out of `isLockFresh` and `claimLock`, on the hot
-  // path and in the refresher.
-  for (const [what, contents] of [
-    ['a stamp beyond the range of a date', '1 99999999999999999999 abc'],
-    ['a negative stamp beyond it', '1 -99999999999999999999 abc'],
-    ['no stamp at all, in a file written just now', 'not a lock'],
-    ['an empty file', ''],
-  ] as const) {
-    it(what, () => {
+describe('every state the lock path can be in: what it is, and what a contender does', () => {
+  // Found in review, twice over: the reader that replaced the by-path read
+  // sorted the path into "absent", "unreadable" (so stale) and "read", and two
+  // ordinary states fell on the wrong side. A lock whose owner has created it
+  // and not yet written its token GREW while it was read: "unreadable", so
+  // stale, so a contender removed a lock a second old and both held it. A link
+  // to nothing answered "no such file" to the read and "exists" to the create:
+  // "absent", so never removed, and no refresher could take the lock again.
+  // The table is every state, so the next change is made against all of them.
+  const POSIX = process.platform !== 'win32';
+  const junk = 'x'.repeat(300);
+  interface Case {
+    name: string;
+    /** Puts the lock path in the state; `now` is the real clock (a file's date is the file system's). */
+    arrange: (lock: string, now: number) => void;
+    /** `isLockFresh`: a refresher is running, start none. */
+    fresh: boolean;
+    /** `claimLock`: whether a contender gets the lock. */
+    claimed: boolean;
+    posix?: boolean;
+  }
+  const cases: Case[] = [
+    { name: 'nothing there', arrange: () => {}, fresh: false, claimed: true },
+    { name: 'a lock stamped now', arrange: (l, now) => writeFileSync(l, `1 ${now} abcdef012345`), fresh: true, claimed: false },
+    { name: 'a lock stamped 61 seconds ago', arrange: (l, now) => writeFileSync(l, `1 ${now - 61_000} abcdef012345`), fresh: false, claimed: true },
+    { name: 'a lock just created, its token not written yet (an empty file)', arrange: (l) => writeFileSync(l, ''), fresh: true, claimed: false },
+    { name: 'no stamp, written just now: judged by its date', arrange: (l) => writeFileSync(l, 'not a lock'), fresh: true, claimed: false },
+    { name: 'a stamp beyond the range of a date', arrange: (l) => writeFileSync(l, '1 99999999999999999999 abc'), fresh: false, claimed: true },
+    { name: 'a negative stamp beyond it', arrange: (l) => writeFileSync(l, '1 -99999999999999999999 abc'), fresh: false, claimed: true },
+    { name: 'larger than a lock can be (stale at once: stated)', arrange: (l) => writeFileSync(l, junk), fresh: false, claimed: true },
+    {
+      name: 'a link to nothing',
+      arrange: (l) => symlinkSync(join(dir, 'nowhere'), l),
+      fresh: false,
+      claimed: true,
+      posix: true,
+    },
+    {
+      name: 'a link to a lock stamped now (read through, as before)',
+      arrange: (l, now) => {
+        writeFileSync(join(dir, 'elsewhere'), `1 ${now} abcdef012345`);
+        symlinkSync(join(dir, 'elsewhere'), l);
+      },
+      fresh: true,
+      claimed: false,
+      posix: true,
+    },
+    {
+      // Stated, and as on `main`: a directory cannot be removed like a file, so nothing takes the lock.
+      name: 'a directory (cannot be taken over: stated)',
+      arrange: (l) => mkdirSync(l),
+      fresh: false,
+      claimed: false,
+    },
+  ];
+  for (const c of cases) {
+    it.skipIf(c.posix === true && !POSIX)(c.name, () => {
       mkdirSync(cacheDir(), { recursive: true });
-      writeFileSync(lockFile(), contents);
-      // "Written just now" by the file system's clock, which is the real one: judge with it.
       const now = Date.now();
-      const judged = what.startsWith('no stamp') || what.startsWith('an empty');
+      c.arrange(lockFile(), now);
       expect(() => isLockFresh(now)).not.toThrow();
-      // A lock with no stamp is judged by its mtime: fresh for a minute. One whose stamp is no instant is stale.
-      expect(isLockFresh(now)).toBe(judged);
+      expect(isLockFresh(now)).toBe(c.fresh);
       const token = claimLock(now);
-      expect(token === undefined).toBe(judged);
+      expect(token !== undefined).toBe(c.claimed);
       if (token) {
+        // What is at the path now is a real lock, and it is the contender's.
+        expect(lstatSync(lockFile()).isFile()).toBe(true);
         expect(holdsLock(token)).toBe(true);
         releaseLock(token);
       }
     });
   }
+
+  it('a lock that GROWS while it is read (its owner is writing its token) is not stale: the contender gets nothing', () => {
+    mkdirSync(cacheDir(), { recursive: true });
+    const lock = lockFile();
+    writeFileSync(lock, ''); // the owner's exclusive create has happened; its token is not written yet
+    const now = Date.now();
+    const owner = `${process.pid} ${now} 0123456789ab`;
+    let wrote = false;
+    onPath = (kind, p) => {
+      // Right after the contender has looked at the open lock (its size: zero), the owner writes its token.
+      if (p === lock && kind === 'checked' && !wrote) {
+        wrote = true;
+        writeFileSync(lock, owner);
+      }
+    };
+    const contender = claimLock(now);
+    onPath = undefined;
+    expect(wrote).toBe(true); // the interleaving happened
+    expect(contender).toBeUndefined();
+    expect(holdsLock(owner)).toBe(true); // the owner's lock is still there, and still the owner's
+  });
+
+  it('and the hot path, in the same instant, says a refresher is running', () => {
+    mkdirSync(cacheDir(), { recursive: true });
+    const lock = lockFile();
+    writeFileSync(lock, '');
+    const now = Date.now();
+    let wrote = false;
+    onPath = (kind, p) => {
+      if (p === lock && kind === 'checked' && !wrote) {
+        wrote = true;
+        writeFileSync(lock, `${process.pid} ${now} 0123456789ab`);
+      }
+    };
+    const fresh = isLockFresh(now);
+    onPath = undefined;
+    expect(wrote).toBe(true);
+    expect(fresh).toBe(true);
+  });
+
+  it('the other kept files are not the lock: one that grows while it is read is simply not read', () => {
+    writeBackoffNote(SOURCE, WC, NOW + 10 * MIN, NOW);
+    const path = backoffNotePath(SOURCE, WC);
+    let grown = false;
+    onPath = (kind, p) => {
+      if (p === path && kind === 'checked' && !grown) {
+        grown = true;
+        writeFileSync(path, `${' '.repeat(100)}{"until":"${new Date(NOW + 10 * MIN).toISOString()}"}`);
+      }
+    };
+    expect(readBackoffNote(SOURCE, WC, NOW)).toBeUndefined();
+    onPath = undefined;
+    expect(grown).toBe(true);
+  });
 });
 
 describe('a lock that vanished is not removed', () => {
