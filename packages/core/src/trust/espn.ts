@@ -30,6 +30,7 @@ import type { Match, Stage, Status, Team } from '../types';
 import { type BoundedList, takeBounded } from './bounded';
 import { definitiveNone, malformed, type ParseResult, valid } from './result';
 import { MAX_GOALS, MAX_MINUTE, sealMatch, sealTeam } from './match';
+import { sealSeason } from './season';
 import {
   canonicalTimestamp,
   count,
@@ -546,7 +547,8 @@ function refusedStandings(truncated: boolean): EspnStandingsList {
  * not become a table when: it is a named group (or a league's one child) with
  * no usable rows; its name is outside the grammar, with rows or without; its
  * rows are not a list; two children claim its key (it belongs to neither); or
- * it comes after the last slot.
+ * it comes after the last slot. A table at the payload's root, beside the
+ * children, is not read either, and makes the inventory incomplete.
  *
  * A payload with tables nobody can inspect is refused WHOLE: more children
  * than the bound, or a child with children of its own (a non-empty list, or
@@ -583,9 +585,8 @@ export function parseEspnStandings(
       doc !== undefined &&
       typeof doc.name === 'string' &&
       humanLabel(doc.name) !== '' &&
-      doc.season !== null &&
-      typeof doc.season === 'object' &&
-      !Array.isArray(doc.season) &&
+      // "States a season" is the one rule for a season: a year (`sealSeason`).
+      sealSeason(doc.season) !== undefined &&
       doc.standings === undefined;
     const empty = rawChildren === undefined || (Array.isArray(rawChildren) && rawChildren.length === 0);
     return isDocument && empty
@@ -602,6 +603,10 @@ export function parseEspnStandings(
     complete = false;
     inventoryComplete = false;
   };
+  // A table at the ROOT, beside the children: nothing here reads it, so it is
+  // a table that was not read (no measured payload has one). Under the
+  // no-table shape above the same key refuses the document.
+  if ((raw as { standings?: unknown }).standings !== undefined) refuseTable();
   /** How many children claim each key. A key claimed twice belongs to neither. */
   const claims = new Map<string, number>();
   const candidates: TableCandidate[] = [];

@@ -126,7 +126,7 @@ a claim we cannot make.
   table. A transport/JSON failure, an unreadable envelope, or a non-empty provider list with no
   usable records still throws and reaches the domain's degraded fallback. One stated exception,
   in standings: a payload that holds tables the parser did not inspect (more than 64 children,
-  or a child that itself has children) is refused whole, because a table nobody inspected could
+  or a child carrying a `children` value other than an empty list) is refused whole, because a table nobody inspected could
   claim a key that was accepted; and a key that two tables claim is shown for neither. Parser-local
   `BoundedList.complete` remains a test and diagnostics property, not a batch-wide kill switch.
   Standings expected scope never authorizes static teams: only the separate

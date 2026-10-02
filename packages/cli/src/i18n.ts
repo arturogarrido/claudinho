@@ -115,7 +115,7 @@ const PT: Dict = {
   'table.none': 'Grupo {group} não encontrado.',
   'table.degraded': 'Classificação ao vivo indisponível — mostrando os times do grupo.',
   'table.unavailable': 'Classificação ao vivo indisponível.',
-  'table.empty': 'Classificação indisponível.',
+  'table.empty': 'Não há classificação disponível.',
   'table.partial': 'Tabela parcial — {n} linhas não puderam ser lidas.',
   'table.badKey': 'Não é uma tabela: "{key}". Use a letra de um grupo (A), ou uma chave como A1, A-B ou LEAGUE.',
   'match.none': 'Nenhum jogo encontrado com id {id}.',

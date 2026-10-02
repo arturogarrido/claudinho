@@ -28,7 +28,7 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   children claim from both, and counts the INVENTORY (did every child become a
   table?) apart from `partial` (rows missing from a table). A payload that
   holds tables nobody inspected (more than `MAX_TABLE_CHILDREN` children, or a
-  child whose `children` is anything but an empty list) is refused whole: that
+  child that carries a `children` value other than an empty list) is refused whole: that
   is not a record being refused, it is the claim "these are all the tables"
   that cannot be made. A league's one table is authorised per competition
   (`STANDINGS_SHAPE`), never inferred from a payload.

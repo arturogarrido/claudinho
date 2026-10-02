@@ -194,8 +194,9 @@ export interface StandingsResult {
  *   - with an expected scope, the scope decides, as above (and a table outside
  *     it is not shown);
  *   - without one, an all-tables read returns the tables that were read and
- *     says `incomplete`; a keyed read returns the table if it was read, and is
- *     `degraded` if it was not: the missing table may be the one asked for.
+ *     says `incomplete` (when NO table was read it is `degraded`: there is
+ *     nothing to qualify); a keyed read returns the table if it was read, and
+ *     is `degraded` if it was not: the missing table may be the one asked for.
  */
 export async function getStandings(
   adapter: ProviderAdapter,

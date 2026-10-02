@@ -108,7 +108,7 @@ const PT: Dict = {
   'standings.partial': 'Tabela parcial — {n} linhas não puderam ser lidas.',
   'standings.incomplete': 'Algumas tabelas não puderam ser lidas — esta não é a competição completa.',
   'standings.none': 'Grupo "{group}" não encontrado.',
-  'standings.empty': 'Classificação indisponível.',
+  'standings.empty': 'Não há classificação disponível.',
   'competition.unsupported': 'Ainda não disponível para esta competição.',
   'share.tryIt': 'Experimente: {line}',
   'stage.group': 'Grupo {group}',
