@@ -60,7 +60,8 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   states it too) are request-local, never cached: a surface reads them to say
   what an empty day means and to attribute the fixtures it displays
   (`dayAttribution`), and `served` rides in the structured twins as a plain
-  field beside `source`, only beside `partial` (`servedExtras`).
+  field beside `source`, only beside `partial` and bounded to the shown
+  fixtures (`servedExtras(result, shown)`).
   A caller that composes windows itself (discovery: a window per month) asks
   "no readable record" of the whole too: a window refused because its list
   held no readable record carries `ProviderError.noReadableRecord` and read
