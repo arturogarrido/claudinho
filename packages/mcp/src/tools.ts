@@ -13,8 +13,12 @@ import {
   formatShareBracket,
   formatBracketList,
   bracketShareCard,
+  dateNoneRead,
   dateShareCard,
+  dayAttribution,
+  liveNoneRead,
   liveShareCard,
+  marketsNoneRead,
   EARLIER_RECORD_NOTE,
   matchNoneReadSentence,
   matchShareCard,
@@ -353,8 +357,10 @@ function disclaimed(body: string, source?: string, lang?: string): { text: strin
  * the first thing a long answer lost. Nothing is added when the result states
  * no qualifier, or states a replacement (which stands instead of the body).
  */
-function qualified(body: string, result: VerdictSource, lang?: string): string {
-  const qualifiers = verdictQualifiers(result, lang);
+function qualified(body: string, result: VerdictSource, lang?: string, also?: string): string {
+  // `also`: a sentence core built beside the verdict's (a day's count of shown
+  // rows the read did not serve), said with it, after it.
+  const qualifiers = [...verdictQualifiers(result, lang), ...(also ? [also] : [])];
   return qualifiers.length > 0 ? `${qualifiers.join('\n')}\n\n${body}` : body;
 }
 
@@ -380,18 +386,29 @@ export async function toolGetToday(
   const day = await getMatchesForDate(adapter, date, resolveTz(args.tz));
   const { matches, degraded, source } = day;
   const todays = fixturesByDate(date, matches, args.tz);
+  // ONE bounded view: what the text lists, what `data` carries, and what the
+  // day's attribution is decided over.
+  const shownToday = boundedRecords(todays);
   const opts = fmtOpts(args);
-  // A verdict (between editions) stands instead of the empty line.
-  let text = `Matches on ${date}:\n${matchList(todays, verdictNotice(day, args.lang) ?? 'No matches scheduled.', opts)}`;
+  // A verdict (between editions) stands instead of the empty line; a read that
+  // was not whole and merged no bundled schedule says none was READ.
+  let text = `Matches on ${date}:\n${matchList(todays, verdictNotice(day, args.lang) ?? dateNoneRead(day, date, args.lang) ?? 'No matches scheduled.', opts)}`;
   // Degraded ⇒ the live overlay failed; these are static fixtures with no live scores.
   if (degraded) text += '\n\n(Live scores unavailable — showing the bundled schedule.)';
   const market = await reliableMarketData(args, todays);
   if (!market.complete) {
     text += '\n\n(Market data unavailable or incomplete — not all fixtures were checked.)';
   }
-  const shownToday = boundedRecords(todays);
+  // On a read that was not whole: the verdict first (kept by a cut), with the
+  // count of shown rows it did not serve; the footer names the provider only
+  // for a day it served something of. `data.source` keeps the provider.
+  const attribution = dayAttribution(day, shownToday.items, args.lang);
   return {
-    ...disclaimed(text, source, args.lang),
+    ...disclaimed(
+      qualified(text, day, args.lang, attribution.unserved),
+      attribution.attributed ? source : undefined,
+      args.lang,
+    ),
     data: {
       date,
       degraded,
@@ -420,13 +437,15 @@ export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
   const opts = fmtOpts(args);
   // Degraded ⇒ the live feed failed, NOT "nothing is on". Distinguish them so the
   // agent doesn't tell the user no matches are live when the provider is unreachable.
-  // A verdict (between editions) stands instead of the empty line.
+  // A verdict (between editions) stands instead of the empty line; a read that
+  // was not whole says none in play was READ. The read's own verdict is said
+  // first (kept by a cut).
   const text = degraded
     ? 'Live scores unavailable right now — could not reach the data provider.'
-    : `Live now:\n${matchList(matches, verdictNotice(live, args.lang) ?? 'No matches in play right now.', opts)}`;
+    : `Live now:\n${matchList(matches, verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? 'No matches in play right now.', opts)}`;
   const shownLive = boundedRecords(matches);
   return {
-    ...disclaimed(text, source, args.lang),
+    ...disclaimed(qualified(text, live, args.lang), source, args.lang),
     data: {
       degraded,
       source: source ?? null,
@@ -779,7 +798,9 @@ export async function toolGetMarketSignal(
         ? marketText(match, shown, args)
         : noSignalText(match, args, now);
     return {
-      ...disclaimed(text),
+      // The fixture read was not whole: said first, apart from `complete`
+      // (the market requests' own completeness).
+      ...disclaimed(qualified(text, found, args.lang)),
       data: {
         matchId: args.matchId,
         informationalOnly: true,
@@ -818,7 +839,9 @@ export async function toolGetMarketSignal(
         ? marketText(fixture, shown, args)
         : noSignalText(fixture, args, now);
     return {
-      ...disclaimed(text),
+      // Either read the pick was made from was not whole: said first, apart
+      // from `complete` (the market requests' own completeness).
+      ...disclaimed(qualified(text, picked, args.lang)),
       data: {
         team: code,
         matchId: fixture?.id ?? null,
@@ -833,8 +856,11 @@ export async function toolGetMarketSignal(
 
   // A date's matches (default: today).
   const date = args.date ?? localDate(now.toISOString(), args.tz);
-  const { matches } = await getMatchesForDate(resolveAdapter(args), date, resolveTz(args.tz));
-  const todays = fixturesByDate(date, matches, args.tz).filter((m) => marketRelevant(m, now));
+  const day = await getMatchesForDate(resolveAdapter(args), date, resolveTz(args.tz));
+  // The fixture read's verdict is part of the answer where markets are read
+  // (off their scope the scope verdict is the whole answer, as before).
+  const fixtureRead = marketsCoverCompetition(competitionOf(args)) ? day : {};
+  const todays = fixturesByDate(date, day.matches, args.tz).filter((m) => marketRelevant(m, now));
   const batch = await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS);
   const signals = resolvedValues(batch);
   const all = todays
@@ -855,16 +881,17 @@ export async function toolGetMarketSignal(
       // so "we could not reach the market data" rendered as the confident
       // "there is none", which is the failure this project refuses everywhere
       // else.
+      // A fixture read that was not whole: none among the fixtures READ.
       !marketsCoverCompetition(competitionOf(args))
         ? `${MARKETS_SCOPE_NOTE} (${date})`
         : batch.complete
-          ? `No reliable market signals on ${date}.`
+          ? (marketsNoneRead(day, date, args.lang) ?? `No reliable market signals on ${date}.`)
           : `Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
   if (shown.shown > 0 && !batch.complete) {
     text += `\n\nMarket data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
   }
   return {
-    ...disclaimed(text),
+    ...disclaimed(qualified(text, fixtureRead, args.lang)),
     data: {
       date,
       informationalOnly: true,
@@ -879,6 +906,7 @@ export async function toolGetMarketSignal(
       signals: shown.items.map(({ signal }) => marketData(signal)),
       // Off the markets' scope, "none" means "not read for this competition".
       ...verdictExtras(marketScopeVerdict(competitionOf(args), shown.shown)),
+      ...verdictExtras(fixtureRead),
     },
   };
 }
@@ -1115,8 +1143,9 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         matches: shownToday.items,
         degraded: day.degraded,
         source: day.source,
-        scheduleKnown: bundleApplies(competitionOf(args)),
         titleSuffix: truncationNote(shownToday),
+        // The read decides what an empty day says (whether it merged the
+        // bundled schedule) and the card's attribution, over the bounded list.
         read: day,
       },
       market,

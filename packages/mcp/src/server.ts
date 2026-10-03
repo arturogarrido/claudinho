@@ -207,7 +207,7 @@ const partialOut = {
     .object({ omitted: z.number().int().positive().optional() })
     .optional()
     .describe(
-      'Present when the provider sent records that could not be used: what is returned is what was read, and may not be the whole answer (absence is not elimination). omitted is how many provider records were left out, when known; they may have lain outside what was asked for, so the count is a bound, not a loss',
+      'Present when the provider sent records that could not be used: what is returned is what could be read, and may not be the whole answer (absence is not elimination). omitted is how many provider records were left out, when known; they may have lain outside what was asked for, so the count is a bound, not a loss',
     ),
 };
 
@@ -227,6 +227,7 @@ const todayOut = {
     .optional()
     .describe('False when optional market enrichment did not check every relevant fixture'),
   ...verdictOut,
+  ...partialOut,
   ...responseMeta,
 };
 const liveOut = {
@@ -236,6 +237,7 @@ const liveOut = {
   truncated: z.boolean(),
   matches: z.array(matchOut),
   ...verdictOut,
+  ...partialOut,
   ...responseMeta,
 };
 /** The span a whole read searched, in the provider's calendar days (plain fields, not verdicts). */
@@ -311,6 +313,7 @@ const marketOut = {
     .optional()
     .describe('False when the market provider did not complete every relevant read'),
   ...verdictOut,
+  ...partialOut,
   ...responseMeta,
 };
 const shareOut = {
@@ -685,7 +688,7 @@ export function buildServer(): McpServer {
     {
       title: "Today's matches",
       description:
-        "All fixtures for a date (default: today), with live score and minute overlaid on any match in play. Optional prediction-market enrichment carries marketComplete; false means the read was incomplete, not that no signal exists. Off the World Cup, betweenEditions means the competition's edition ended before that date. Use this for a whole day's card; for only in-play matches use get_live, for one team's match use get_next_fixture, for a single match's detail use get_match. Kickoffs render in tz; lang localizes dates, attribution, and commentary (en/es/pt/fr); flavor sets commentary tone.",
+        "All fixtures for a date (default: today), with live score and minute overlaid on any match in play. Optional prediction-market enrichment carries marketComplete; false means the read was incomplete, not that no signal exists. Off the World Cup, betweenEditions means the competition's edition ended before that date. partial means the provider sent records that could not be used: on the World Cup a fixture may then show from the bundled schedule without its live state (the text counts them, and names no provider when none shown was served), and elsewhere an empty day means no fixture could be read for it, not that none is scheduled. Use this for a whole day's card; for only in-play matches use get_live, for one team's match use get_next_fixture, for a single match's detail use get_match. Kickoffs render in tz; lang localizes dates, attribution, and commentary (en/es/pt/fr); flavor sets commentary tone.",
       inputSchema: {
         date: dateArg.optional().describe('Date as YYYY-MM-DD (default: today)'),
         ...commonArgs,
@@ -702,7 +705,7 @@ export function buildServer(): McpServer {
     {
       title: 'Live matches',
       description:
-        'Only matches in play right now — each with current score and minute (empty when nothing is live). Off the World Cup, betweenEditions means the competition\'s edition has ended and the next has not started. Use during matches for in-play state; for a full day\'s schedule including upcoming and finished, use get_today. tz/lang/flavor affect formatting only.',
+        'Only matches in play right now — each with current score and minute (empty when nothing is live). Off the World Cup, betweenEditions means the competition\'s edition has ended and the next has not started. partial means the provider sent records that could not be used: an empty list then means no match in play could be read, not that none is. Use during matches for in-play state; for a full day\'s schedule including upcoming and finished, use get_today. tz/lang/flavor affect formatting only.',
       inputSchema: { ...commonArgs },
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: liveOut,
@@ -763,7 +766,7 @@ export function buildServer(): McpServer {
     {
       title: 'Next fixture for a team',
       description:
-        "A team's next match. World Cup: a nation's code or name (MEX, Mexico); a confirmed knockout tie is read from the live overlay, group fixtures from the bundled schedule. A club competition: a club's name or code (Arsenal, ARS), resolved against the competition's roster; its earliest match not yet finished in the 14 days ahead (in play included), with team (the club resolved), candidates when several teams match (no fixture is picked), horizon when none falls in that span, unknownTeam when neither the competition's table (read whole) nor its fixtures over those 14 days hold such a team, rosterIncomplete when the roster could not be read whole and the name (a code or a partial name) could not be resolved without it: ask again with the club's full name. partial means the provider sent records that could not be used: the answer is what was read, and no fixture then does not mean the team is out.",
+        "A team's next match. World Cup: a nation's code or name (MEX, Mexico); a confirmed knockout tie is read from the live overlay, group fixtures from the bundled schedule. A club competition: a club's name or code (Arsenal, ARS), resolved against the competition's roster; its earliest match not yet finished in the 14 days ahead (in play included), with team (the club resolved), candidates when several teams match (no fixture is picked), horizon when none falls in that span, unknownTeam when neither the competition's table (read whole) nor its fixtures over those 14 days hold such a team, rosterIncomplete when the roster could not be read whole and the name (a code or a partial name) could not be resolved without it: ask again with the club's full name. partial means the provider sent records that could not be used: the answer is what could be read, and no fixture then does not mean the team is out.",
       inputSchema: { team: clubArg.describe('A team name or code: a club (Arsenal, ARS) or a nation (Mexico, MEX)'), ...commonArgs },
       // Read-only; overlays live provider data for knockout pairings, so open-world.
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -777,7 +780,7 @@ export function buildServer(): McpServer {
     {
       title: 'Prediction-market signal',
       description:
-        "Read-only prediction-market signals for a match (by id), a team's current-or-next fixture, or a date (default: today). Returns market-implied percentages with attribution; complete:false means the provider read was incomplete, not that no signal exists. Shown only before and during a match — finished matches have no market read. Informational only — relay the numbers factually; do not add betting, trading, or 'value' advice, and do not invent links.",
+        "Read-only prediction-market signals for a match (by id), a team's current-or-next fixture, or a date (default: today). Returns market-implied percentages with attribution; complete:false means the provider read was incomplete, not that no signal exists; partial says the same of the fixture read behind the answer (the provider sent fixture records that could not be used). Shown only before and during a match — finished matches have no market read. Informational only — relay the numbers factually; do not add betting, trading, or 'value' advice, and do not invent links.",
       inputSchema: {
         matchId: z.string().optional().describe('Match id (most specific)'),
         team: teamArg
@@ -802,7 +805,7 @@ export function buildServer(): McpServer {
     {
       title: 'Shareable match snippet',
       description:
-        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), one standings table (group: a table key, e.g. \"A\", \"A1\", \"A-B\" or \"LEAGUE\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. marketComplete:false is stated inside the card as an incomplete optional read; partial (a next, match or bracket card) is stated inside the card too: the provider sent records that could not be used. Off the World Cup a next card names the club resolved, and an empty card says the span searched (horizon, window) or that the competition is between editions. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
+        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), one standings table (group: a table key, e.g. \"A\", \"A1\", \"A-B\" or \"LEAGUE\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. marketComplete:false is stated inside the card as an incomplete optional read; partial (on any match card, live and date included) is stated inside the card too: the provider sent records that could not be used. Off the World Cup a next card names the club resolved, and an empty card says the span searched (horizon, window) or that the competition is between editions. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
       inputSchema: {
         matchId: z.string().optional().describe('Match id (most specific)'),
         team: clubArg

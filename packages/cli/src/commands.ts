@@ -13,8 +13,12 @@ import {
   formatBracketList,
   formatBracketTree,
   bracketShareCard,
+  dateNoneRead,
   dateShareCard,
+  dayAttribution,
+  liveNoneRead,
   liveShareCard,
+  marketsNoneRead,
   matchNoneReadSentence,
   matchShareCard,
   matchWindowSentence,
@@ -387,6 +391,8 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   const todays = fixturesByDate(targetDate, matches, cfg.tz);
   const market = await reliableMarketSignals(ctx, todays);
 
+  // `--json` keeps the overlay's provider in `source` and states the verdict;
+  // the text names the provider only for a day it served something of.
   if (cfg.json) {
     emitJson({
       date: targetDate,
@@ -408,8 +414,9 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   out(header(`${title} · ${targetDate}`, c));
   out();
   if (todays.length === 0) {
-    // A verdict (between editions) stands instead of the empty note.
-    out(c.dim('  ' + (verdictNotice(day, cfg.lang) ?? t('today.none'))));
+    // A verdict (between editions) stands instead of the empty note; a read
+    // that was not whole and merged no bundled schedule says none was READ.
+    out(c.dim('  ' + (verdictNotice(day, cfg.lang) ?? dateNoneRead(day, targetDate, cfg.lang) ?? t('today.none'))));
   } else {
     for (const m of todays) {
       out(matchLine(m, cfg, t, c, flags));
@@ -423,7 +430,13 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   out();
   // Live overlay failed → these are static fixtures with no live scores. Say so.
   if (degraded) out(c.dim('  ' + t('feed.degraded')));
-  const src = dataSource(source, cfg.lang, c);
+  // The read was not whole: said after the list and before the attribution
+  // (where `table` says it), with the count of shown rows it did not serve.
+  // A day none of whose shown fixtures it served names no provider.
+  const attribution = dayAttribution(day, todays, cfg.lang);
+  for (const q of verdictQualifiers(day, cfg.lang)) out(c.dim('  ' + q));
+  if (attribution.unserved) out(c.dim('  ' + attribution.unserved));
+  const src = attribution.attributed ? dataSource(source, cfg.lang, c) : '';
   if (src) out(src);
   out(disclaimer(t, c));
   endScoreCommand(ctx);
@@ -452,12 +465,16 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   if (degraded) {
     out(c.dim('  ' + t('live.degraded')));
   } else if (matches.length === 0) {
-    // A verdict (between editions) stands instead of the empty note.
-    out(c.dim('  ' + (verdictNotice(live, cfg.lang) ?? t('live.none'))));
+    // A verdict (between editions) stands instead of the empty note; a read
+    // that was not whole says none in play was READ, not that none is.
+    out(c.dim('  ' + (verdictNotice(live, cfg.lang) ?? liveNoneRead(live, cfg.lang) ?? t('live.none'))));
   } else {
     for (const m of matches) out(matchLine(m, cfg, t, c, flags));
   }
   out();
+  // The read was not whole: said after the list and before the attribution,
+  // where `table` says its tables are not all of them.
+  for (const q of verdictQualifiers(live, cfg.lang)) out(c.dim('  ' + q));
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
@@ -1157,6 +1174,10 @@ export async function cmdMarkets(
     }
     const c = painterFor(cfg);
     out();
+    // The fixture read was not whole (either of the two reads the pick was
+    // made from): said before the answer, apart from the market's own
+    // completeness, which is about the market requests.
+    for (const q of verdictQualifiers(picked, cfg.lang)) out(c.dim('  ' + q));
     if (!fixture) {
       // Feed unavailable can't resolve a knockout tie — say so, vs "no fixture".
       out(
@@ -1228,6 +1249,9 @@ export async function cmdMarkets(
     }
     const c = painterFor(cfg);
     out();
+    // The fixture read was not whole: said before the answer (as `match` says
+    // it), apart from the market's own completeness.
+    for (const q of verdictQualifiers(found, cfg.lang)) out(c.dim('  ' + q));
     if (!match) {
       out(c.dim('  ' + (verdictNotice(found, cfg.lang) ?? t('match.none', { id: target }))));
     } else {
@@ -1249,8 +1273,8 @@ export async function cmdMarkets(
   precheck(cfg, t, explicitDate);
   const now = ctx.now ?? new Date();
   const date = explicitDate ?? localDate(now.toISOString(), cfg.tz);
-  const { matches } = await getMatchesForDate(adapterFor(ctx), date, resolveTz(cfg.tz));
-  const todays = fixturesByDate(date, matches, cfg.tz);
+  const day = await getMatchesForDate(adapterFor(ctx), date, resolveTz(cfg.tz));
+  const todays = fixturesByDate(date, day.matches, cfg.tz);
   const relevant = todays.filter((m) => marketRelevant(m, now));
   const { signals, complete } = await marketSignalsFor(ctx, relevant, MARKETS_CMD_OPTS);
   const rows = relevant
@@ -1259,13 +1283,17 @@ export async function cmdMarkets(
       (r): r is { match: Match; signal: MarketSignal } =>
         !!r.signal && marketDisplayable(r.match, r.signal),
     );
+  // The fixture read's verdict is part of the answer where markets are read
+  // (off their scope the scope verdict is the whole answer, as before).
+  const fixtureRead = marketsCoverCompetition(cfg.competition) ? day : {};
 
   if (cfg.json) {
     const marketSignals: Record<string, MarketSignal> = {};
     for (const r of rows) marketSignals[r.match.id] = r.signal;
     // `complete` distinguishes "checked everything, found none" from "could not
     // check". Without it a consumer of `--json` cannot tell an outage from a
-    // quiet day, which is the same gap the text branch had.
+    // quiet day, which is the same gap the text branch had. It describes the
+    // market requests; the fixture read's own verdict rides beside it.
     emitJson({
       date,
       informationalOnly: true,
@@ -1273,6 +1301,7 @@ export async function cmdMarkets(
       marketSignals,
       // Off the markets' scope, "none" means "not read for this competition".
       ...verdictExtras(marketScopeVerdict(cfg.competition, rows.length)),
+      ...verdictExtras(fixtureRead),
     });
     return;
   }
@@ -1281,13 +1310,16 @@ export async function cmdMarkets(
   out();
   out(header(`Market signals · ${date}`, c));
   out();
+  // The fixture read was not whole: said before the answer, apart from the
+  // market's own completeness.
+  for (const q of verdictQualifiers(fixtureRead, cfg.lang)) out(c.dim('  ' + q));
   if (rows.length === 0) {
     out(
       c.dim(
         !marketsCoverCompetition(cfg.competition)
           ? `  ${MARKETS_SCOPE_NOTE}`
           : complete
-            ? `  No market signals available for ${date}.`
+            ? `  ${marketsNoneRead(day, date, cfg.lang) ?? `No market signals available for ${date}.`}`
             : `  Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`,
       ),
     );
@@ -1579,7 +1611,8 @@ export async function cmdShare(
         matches: todays,
         degraded,
         source,
-        scheduleKnown: bundleApplies(cfg.competition),
+        // The read decides what an empty day says (whether it merged the
+        // bundled schedule) and the card's attribution (what it served).
         read: day,
       },
       market,
