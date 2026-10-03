@@ -135,6 +135,53 @@ describe('a verdict REPLACES the body or QUALIFIES it, and the module says which
       expect(verdictQualifiers({ partial: { omitted } }, 'en'), String(omitted)).toEqual(['Fixture data may be incomplete.']);
     }
   });
+  it('three more replacements (0.11 2.1c): `inapplicable`, `unknownTeam`, `betweenEditions`, in that precedence after `unsupported`; each a sentence and a key', () => {
+    expect(verdictNotice({ inapplicable: true }, 'en')).toBe('This competition has no bracket.');
+    expect(verdictExtras({ inapplicable: true })).toEqual({ inapplicable: true });
+    expect(verdictNotice({ unknownTeam: true }, 'en')).toMatch(/^No team called/);
+    // Review round 4: the sentence names its evidence. A table read whole is not the whole competition (a club
+    // out in a qualifying round is in no table), so the claim is about the table and the span, not the competition.
+    expect(verdictNotice({ unknownTeam: true, query: 'Everton', rosterEvidence: 'table' } as never, 'en')).toBe(
+      "No team called Everton in the competition's table or in its fixtures over the next 14 days.",
+    );
+    // On the World Cup the evidence is the bundled roster of nations, and the sentence says that, not the span.
+    const nation = verdictNotice({ unknownTeam: true, query: 'Italy', rosterEvidence: 'bundle' } as never, 'en') ?? '';
+    expect(nation).toMatch(/^No team called Italy/);
+    expect(nation).toMatch(/nations|World Cup/);
+    expect(nation).not.toContain('14 days');
+    expect(verdictExtras({ unknownTeam: true, rosterEvidence: 'bundle' } as never)).toEqual({ unknownTeam: true, rosterEvidence: 'bundle' });
+    expect(verdictExtras({ unknownTeam: true })).toEqual({ unknownTeam: true });
+    // `ended` is the provider's end DAY (the rule decides on it), printed as it is.
+    const between = { betweenEditions: { ended: '2026-10-08', label: '2026 Concacaf Champions Cup' } };
+    expect(verdictNotice(between, 'en')).toBe('Between editions: the 2026 Concacaf Champions Cup edition ended on 2026-10-08.');
+    expect(verdictExtras(between)).toEqual(between);
+    // An end that is not a timestamp is not believed: no sentence, no key.
+    expect(verdictNotice({ betweenEditions: { ended: 'yesterday' } } as never, 'en')).toBeUndefined();
+    expect(verdictExtras({ betweenEditions: { ended: 'yesterday' } } as never)).toEqual({});
+    // An empty label names the year of the end date instead.
+    expect(verdictNotice({ betweenEditions: { ended: '2026-10-08' } }, 'en')).toBe('Between editions: the 2026 edition ended on 2026-10-08.');
+    // A replacement suppresses the qualifiers, as `unsupported` does.
+    expect(verdictQualifiers({ ...between, partial: { omitted: 1 } }, 'en')).toEqual([]);
+    expect(verdictQualifiers({ inapplicable: true, incomplete: true }, 'en')).toEqual([]);
+    // Precedence when a result states more than one: unsupported, inapplicable, unknownTeam, betweenEditions.
+    expect(verdictNotice({ unsupported: true, inapplicable: true }, 'en')).toBe('Not available for this competition yet.');
+    expect(verdictNotice({ inapplicable: true, unknownTeam: true }, 'en')).toBe('This competition has no bracket.');
+    expect(verdictNotice({ unknownTeam: true, ...between }, 'en')).toMatch(/^No team called/);
+    // A fifth replacement (review round 2): the roster could not be read whole, so the club could not be resolved.
+    expect(verdictNotice({ rosterIncomplete: true, query: 'ARS' } as never, 'en')).toMatch(/roster/i);
+    expect(verdictNotice({ rosterIncomplete: true } as never, 'en')).not.toMatch(/reach the data provider/);
+    expect(verdictExtras({ rosterIncomplete: true } as never)).toEqual({ rosterIncomplete: true });
+    expect(verdictQualifiers({ rosterIncomplete: true, partial: {} } as never, 'en')).toEqual([]);
+    expect(verdictNotice({ unknownTeam: true, rosterIncomplete: true } as never, 'en')).toMatch(/^No team called/);
+    for (const lang of ['es', 'pt', 'fr']) {
+      expect(verdictNotice({ rosterIncomplete: true } as never, lang), lang).not.toMatch(/roster could not/i);
+      expect(verdictNotice({ inapplicable: true }, lang), lang).not.toBe('This competition has no bracket.');
+      expect(verdictNotice(between, lang), lang).not.toMatch(/^Between editions/);
+      expect(verdictNotice(between, lang), lang).toContain('2026 Concacaf Champions Cup');
+      expect(verdictNotice({ unknownTeam: true }, lang), lang).not.toMatch(/^No team called/);
+      expect(verdictNotice({ unknownTeam: true, query: 'Everton' } as never, lang), lang).toMatch(/14/);
+    }
+  });
 });
 
 describe('share cards — assembled once, for the CLI and the MCP server alike', () => {
@@ -431,6 +478,28 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     const sentence = /['"`]competition\.unsupported['"`]/;
     expect(hits('cli', sentence)).toEqual([]);
     expect(hits('mcp', sentence)).toEqual([]);
+  });
+
+  it('nor the three verdicts of 0.11 2.1c: the keys are declared once, in the MCP schema; the sentences and their i18n keys nowhere at a surface', () => {
+    for (const key of ['inapplicable', 'unknownTeam', 'betweenEditions', 'rosterIncomplete']) {
+      const written = new RegExp(`\\b${key}\\s*:`);
+      expect(codeHits('cli', written), key).toEqual([]);
+      expect(codeHits('mcp', written), key).toEqual(['mcp/src/server.ts']);
+    }
+    for (const i18nKey of ['competition.noBracket', 'team.unknown', 'edition.between', 'roster.incomplete']) {
+      const written = new RegExp(`['"\`]${i18nKey.replace('.', '\\.')}['"\`]`);
+      expect(hits('cli', written), i18nKey).toEqual([]);
+      expect(hits('mcp', written), i18nKey).toEqual([]);
+    }
+    for (const sentence of [/no bracket/, /No team called/, /Between editions/]) {
+      expect(codeHits('cli', sentence), String(sentence)).toEqual([]);
+      expect(codeHits('mcp', sentence), String(sentence)).toEqual([]);
+    }
+    // The horizon and window sentences belong to the card builder, like the empty notes: a surface never spells them.
+    for (const sentence of [/within the next/, /Not found between/]) {
+      expect(codeHits('cli', sentence), String(sentence)).toEqual([]);
+      expect(codeHits('mcp', sentence), String(sentence)).toEqual([]);
+    }
   });
 
   it('the market scope sentence has one copy, in the copy bank', () => {

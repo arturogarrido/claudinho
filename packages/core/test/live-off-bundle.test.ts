@@ -18,9 +18,11 @@ import type { Match } from '../src/types';
  * skeleton — an empty foreign day showed 104 World Cup fixtures with foreign
  * attribution (S1), a non-bundled id never fetched (S2), a September `next`
  * fetched the June–July window (S3). Now the bundle is merged ONLY when it
- * applies; off-bundle, the paths that are built on it answer "unsupported"
- * (no fetch, no attribution, no topology) and the date path is live-only.
- * Real support (horizons, discovery, `match <id>` windows) is 0.11 (2.1/D6).
+ * applies; off-bundle, the paths that are built on it never read it, and the
+ * date path is live-only. Since 0.11 (2.1c) `next` and `match <id>` read the
+ * competition's own schedule ahead (discovery, around the day asked: never the
+ * World Cup's knockout window), and `bracket` says which of three things it is
+ * (no bracket for a league season like this one; not offered yet elsewhere).
  */
 const NOW = new Date('2026-09-15T00:00:00Z');
 const foreign: Match = {
@@ -79,28 +81,31 @@ describe('off-bundle (an adapter for eng.1)', () => {
     expect(r.matches.map((m) => m.id)).toEqual([foreign.id]); // what the provider served
   });
 
-  it('S2: a World Cup id is not found and nothing is fetched', async () => {
-    const r = await getMatchById(adapter, WC_OPENER_ID);
+  it('S2: a World Cup id is never the bundled fixture; only this competition\u2019s schedule ahead is read', async () => {
+    const r = await getMatchById(adapter, WC_OPENER_ID, NOW);
     expect(r.match).toBeUndefined();
-    expect(r.unsupported).toBe(true);
-    expect(r.degraded).toBe(false);
-    expect(calls).toEqual([]);
+    expect(r.source).toBeUndefined();
+    // Discovery's month around NOW, nothing of June or July.
+    expect(calls).toEqual(['window:2026-09-01-2026-09-30']);
   });
 
   it('S3: next never fetches the World Cup knockout window', async () => {
     const r = await getNextFixtureForTeam(adapter, 'MEX', NOW);
     expect(r.fixture).toBeUndefined();
-    expect(r.unsupported).toBe(true);
     expect(r.source).toBeUndefined();
-    expect(calls).toEqual([]);
+    expect(calls).toEqual(['window:2026-09-01-2026-09-30']);
   });
 
-  it('the bracket is unsupported: no topology, no fetch, no attribution', async () => {
+  it('the bracket: a league with none says so; a competition that may have one is not offered yet; no topology, no fetch, no attribution', async () => {
     const r = await getBracket(adapter);
-    expect(r.unsupported).toBe(true);
+    expect(r.inapplicable).toBe(true);
+    expect(r.unsupported).toBeUndefined();
     expect(r.view.stages).toEqual([]);
     expect(r.source).toBeUndefined();
     expect(r.view.source).toBeUndefined();
+    const cup = await getBracket({ ...adapter, competition: 'ger.1' });
+    expect(cup.unsupported).toBe(true);
+    expect(cup.view.stages).toEqual([]);
     expect(calls).toEqual([]);
   });
 

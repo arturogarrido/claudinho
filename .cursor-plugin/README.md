@@ -19,10 +19,10 @@ package is [`@claudinho/mcp`](https://www.npmjs.com/package/@claudinho/mcp).
 - `get_match` — one match by id
 - `get_standings` — standings: every table, or one by its key (a group letter, or `A1`, `A-B`, `LEAGUE`)
 - `get_bracket` — knockout tree (optional stage filter)
-- `get_next_fixture` — team's next match (offline schedule)
+- `get_next_fixture` — a team's next match, by name or code (a nation, or a club in a club competition)
 - `get_market_signal` — read-only market-implied % (informational only)
 - `get_share_snippet` — copy-paste plain-text card (match, standings, bracket, …)
-- `get_team` — resolve a name/code to its FIFA code, flag, group (fuzzy; offline)
+- `get_team` — the World Cup roster: resolve a nation's name/code to its FIFA code, flag, group (fuzzy; offline)
 
 All tools are `readOnlyHint`; the match tools take optional `tz` / `lang` / `flavor`, while `get_team` is offline and takes just a `query`. No API keys.
 

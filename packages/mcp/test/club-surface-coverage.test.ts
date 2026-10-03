@@ -13,13 +13,16 @@ import {
 } from '../src/tools';
 
 /**
- * Club-surface coverage, MCP half (audit A03, CONTAINED): off the bundle every
- * tool built on the World Cup skeleton says "not available for this
- * competition yet" in text. 0.10.1 could only carry the marker inside the
- * bracket's passthrough `view` (a top-level key needed a schema change); since
- * 0.11 every such tool declares and returns a top-level `unsupported: true`
- * (see verdict-parity.test.ts, which owns that contract), and the bracket keeps
- * the marker inside `view` as well. Mirrors knockout-surface-coverage.test.ts.
+ * Club-surface coverage, MCP half (audit A03, CONTAINED): off the bundle no
+ * tool reads the World Cup skeleton. Since 0.11 (2.1c) `get_next_fixture` and
+ * `get_match` read the competition's own schedule ahead, and `get_bracket`
+ * says a league season has none (`inapplicable`, top level and inside `view`);
+ * the market tool still says "not available for this competition yet" (see
+ * verdict-parity.test.ts, which owns that contract). Mirrors
+ * knockout-surface-coverage.test.ts.
+ *
+ * The adapter below states nothing about its answers (no metadata) and has no
+ * standings: every read of it is "not whole", which is what it is answered as.
  */
 const NOW = new Date('2026-09-16T12:00:00Z');
 const NOTICE = 'Not available for this competition yet.';
@@ -63,33 +66,43 @@ describe('club surface coverage (MCP) — no World Cup leakage off the bundle', 
     expect(r.text).not.toMatch(WC);
   });
 
-  it('get_next_fixture, get_match and get_market_signal say the feature is not available here', async () => {
+  it('get_next_fixture and get_match read this competition, never the World Cup; get_market_signal is not available here', async () => {
     const next = await toolGetNextFixture({ team: 'ARS', adapter, now: NOW });
-    expect(next.text).toContain(NOTICE);
-    expect(next.data).toMatchObject({ fixture: null, degraded: false });
+    expect(next.text).toContain('roster could not be read whole');
+    expect(next.text).not.toContain(NOTICE);
+    expect(next.data).toMatchObject({ fixture: null, degraded: false, rosterIncomplete: true });
     const match = await toolGetMatch({ id: '760415', adapter, now: NOW });
-    expect(match.text).toContain(NOTICE);
+    expect(match.text).toContain('may be incomplete');
+    expect(match.text).not.toContain(NOTICE);
     expect(match.text).not.toMatch(WC);
+    expect(() => z.object(OUTPUT_SCHEMAS.get_match).strict().parse(match.data)).not.toThrow();
     const market = await toolGetMarketSignal({ team: 'ARS', adapter, marketProvider: new FakeMarketProvider(), now: NOW });
     expect(market.text).toContain(NOTICE);
   });
 
-  it('get_bracket carries the notice in text and the marker in the view; the schema still accepts it', async () => {
+  it('get_bracket says a league season has none, in text and in the view; the schema still accepts it', async () => {
     const r = await toolGetBracket({ adapter });
-    expect(r.text).toContain(NOTICE);
+    expect(r.text).toContain('This competition has no bracket.');
     expect(r.text).not.toMatch(WC);
-    const data = r.data as { view: { stages: unknown[]; unsupported?: boolean }; source: string | null };
+    const data = r.data as { view: { stages: unknown[]; inapplicable?: boolean }; source: string | null; inapplicable?: boolean };
     expect(data.view.stages).toEqual([]);
-    expect(data.view.unsupported).toBe(true);
+    expect(data.view.inapplicable).toBe(true);
+    expect(data.inapplicable).toBe(true);
     expect(data.source).toBeNull();
     expect(() => z.object(OUTPUT_SCHEMAS.get_bracket).strict().parse(r.data)).not.toThrow();
   });
 
-  it('get_share_snippet for next, bracket and a World Cup id carries the notice, never the skeleton', async () => {
-    for (const args of [{ team: 'ARS' }, { bracket: true }, { matchId: '760415' }]) {
+  it('get_share_snippet for next, bracket and a World Cup id never pastes the skeleton', async () => {
+    const said = [
+      [{ team: 'ARS' }, 'roster could not be read whole'],
+      [{ bracket: true }, 'This competition has no bracket.'],
+      [{ matchId: '760415' }, 'may be incomplete'],
+    ] as const;
+    for (const [args, sentence] of said) {
       const r = await toolGetShareSnippet({ ...args, adapter, marketProvider: new FakeMarketProvider(), now: NOW });
-      expect(r.text).toContain(NOTICE);
-      expect(r.text).not.toMatch(WC);
+      expect(r.text, JSON.stringify(args)).toContain(sentence);
+      expect(r.text, JSON.stringify(args)).not.toContain(NOTICE);
+      expect(r.text, JSON.stringify(args)).not.toMatch(WC);
     }
   });
 });

@@ -61,9 +61,26 @@ const CASES: Case[] = [
   ['get_bracket', 'get_bracket', (c) => toolGetBracket(common(c))],
 ];
 
+// Since 0.11 (2.1c) `get_next_fixture`, `get_match` and their share cards read
+// the competition's own schedule ahead off the bundle, and a league season like
+// `eng.1` says it has NO bracket (`off-bundle-surfaces.test.ts` pins those
+// answers, text and data). "Not available yet" stays on the market reads and
+// on the bracket where a competition may have one (`ger.1`).
+const UNSUPPORTED: [label: string, competition: string][] = [
+  ['get_market_signal by team', 'eng.1'],
+  ['get_market_signal by id', 'eng.1'],
+  ['get_share_snippet bracket', 'ger.1'],
+  ['get_bracket', 'ger.1'],
+];
+const OFF_CASES = UNSUPPORTED.map(([label, competition]) => {
+  const found = CASES.find(([l]) => l === label);
+  if (!found) throw new Error(label);
+  return [label, competition, found[1], found[2]] as const;
+});
+
 describe('off the bundle: the "not available" verdict is in the structured output', () => {
-  it.each(CASES)('%s says it in text AND in data, and the advertised schema accepts it', async (_label, schema, call) => {
-    const r = await call('eng.1');
+  it.each(OFF_CASES)('%s (%s) says it in text AND in data, and the advertised schema accepts it', async (_label, competition, schema, call) => {
+    const r = await call(competition);
     expect(r.text).toContain(NOTICE);
     expect((r.data as { unsupported?: unknown }).unsupported).toBe(true);
     // `.strict()`: the schema must DECLARE the key, or structuredContent drops it.

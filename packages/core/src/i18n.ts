@@ -27,6 +27,15 @@ const EN = {
   'standings.none': 'No group "{group}".',
   'standings.empty': 'No standings available.',
   'competition.unsupported': 'Not available for this competition yet.',
+  'competition.noBracket': 'This competition has no bracket.',
+  'team.unknown': "No team called {team} in the competition's table or in its fixtures over the next {days} days.",
+  'team.unknownNation': "No team called {team} among the World Cup's nations.",
+  'roster.incomplete': "The competition's roster could not be read whole, so {team} could not be resolved; try the club's full name.",
+  'edition.between': 'Between editions: the {label} edition ended on {date}.',
+  'next.horizon': 'No fixture for {team} within the next {days} days.',
+  'match.notFoundBetween': 'Not found between {from} and {to}: no match with id {id} in that span.',
+  'next.noneRead': 'No fixture for {team} was read in this span.',
+  'match.noneRead': 'No match with id {id} was read in this span.',
   'read.partial': 'Fixture data may be incomplete.',
   'read.partial.one': 'Fixture data may be incomplete ({n} provider record omitted).',
   'read.partial.other': 'Fixture data may be incomplete ({n} provider records omitted).',
@@ -75,6 +84,15 @@ const ES: Dict = {
   'standings.none': 'No se encontró el grupo "{group}".',
   'standings.empty': 'No hay clasificación disponible.',
   'competition.unsupported': 'Aún no disponible para esta competición.',
+  'competition.noBracket': 'Esta competición no tiene cuadro de eliminatorias.',
+  'team.unknown': 'Ningún equipo se llama {team} en la tabla de la competición ni en sus partidos de los próximos {days} días.',
+  'team.unknownNation': 'Ninguna selección se llama {team} entre las del Mundial.',
+  'roster.incomplete': 'No se pudo leer completa la lista de equipos de la competición, así que no se pudo identificar a {team}; prueba con el nombre completo del club.',
+  'edition.between': 'Entre ediciones: la edición {label} terminó el {date}.',
+  'next.horizon': 'Ningún partido de {team} en los próximos {days} días.',
+  'match.notFoundBetween': 'No se encontró entre {from} y {to}: ningún partido con id {id} en ese período.',
+  'next.noneRead': 'No se leyó ningún partido de {team} en este período.',
+  'match.noneRead': 'No se leyó ningún partido con id {id} en este período.',
   'read.partial': 'Los datos de los partidos pueden estar incompletos.',
   'read.partial.one': 'Los datos de los partidos pueden estar incompletos (se omitió {n} registro del proveedor).',
   'read.partial.other': 'Los datos de los partidos pueden estar incompletos (se omitieron {n} registros del proveedor).',
@@ -116,6 +134,15 @@ const PT: Dict = {
   'standings.none': 'Grupo "{group}" não encontrado.',
   'standings.empty': 'Não há classificação disponível.',
   'competition.unsupported': 'Ainda não disponível para esta competição.',
+  'competition.noBracket': 'Esta competição não tem chave de mata-mata.',
+  'team.unknown': 'Nenhum time chamado {team} na tabela da competição nem nos seus jogos dos próximos {days} dias.',
+  'team.unknownNation': 'Nenhuma seleção chamada {team} entre as da Copa do Mundo.',
+  'roster.incomplete': 'Não foi possível ler por completo a lista de times da competição, então {team} não pôde ser identificado; tente o nome completo do clube.',
+  'edition.between': 'Entre edições: a edição {label} terminou em {date}.',
+  'next.horizon': 'Nenhum jogo de {team} nos próximos {days} dias.',
+  'match.notFoundBetween': 'Não encontrado entre {from} e {to}: nenhum jogo com id {id} nesse período.',
+  'next.noneRead': 'Nenhum jogo de {team} foi lido neste período.',
+  'match.noneRead': 'Nenhum jogo com id {id} foi lido neste período.',
   'read.partial': 'Os dados dos jogos podem estar incompletos.',
   'read.partial.one': 'Os dados dos jogos podem estar incompletos ({n} registro do provedor omitido).',
   'read.partial.other': 'Os dados dos jogos podem estar incompletos ({n} registros do provedor omitidos).',
@@ -157,6 +184,15 @@ const FR: Dict = {
   'standings.none': 'Groupe "{group}" introuvable.',
   'standings.empty': 'Aucun classement disponible.',
   'competition.unsupported': 'Pas encore disponible pour cette compétition.',
+  'competition.noBracket': 'Cette compétition n’a pas de tableau à élimination directe.',
+  'team.unknown': 'Aucune équipe nommée {team} dans le classement de la compétition ni dans ses matchs des {days} prochains jours.',
+  'team.unknownNation': 'Aucune nation nommée {team} parmi celles de la Coupe du monde.',
+  'roster.incomplete': 'La liste des équipes de la compétition n’a pas pu être lue en entier : {team} n’a pas pu être identifié ; essayez le nom complet du club.',
+  'edition.between': 'Entre deux éditions : l’édition {label} s’est terminée le {date}.',
+  'next.horizon': 'Aucun match pour {team} dans les {days} prochains jours.',
+  'match.notFoundBetween': 'Introuvable entre le {from} et le {to} : aucun match avec l’id {id} sur cette période.',
+  'next.noneRead': 'Aucun match de {team} n’a été lu sur cette période.',
+  'match.noneRead': 'Aucun match avec l’id {id} n’a été lu sur cette période.',
   'read.partial': 'Les données des matchs peuvent être incomplètes.',
   'read.partial.one': 'Les données des matchs peuvent être incomplètes ({n} enregistrement du fournisseur omis).',
   'read.partial.other': 'Les données des matchs peuvent être incomplètes ({n} enregistrements du fournisseur omis).',
@@ -186,11 +222,14 @@ export function t(lang: string | undefined, key: string, vars?: Record<string, s
   // Widen for lookup: callers pass arbitrary string keys (unknown → key echo).
   const dict: Record<string, string> = CATALOGS[normalizeLang(lang)];
   const en: Record<string, string> = EN;
-  let s = dict[key] ?? en[key] ?? key;
-  if (vars) {
-    for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, v);
-  }
-  return s;
+  const s = dict[key] ?? en[key] ?? key;
+  if (!vars) return s;
+  // ONE pass over the template: a value is inserted as it is and never read
+  // again as a template, so a reader's query that looks like a placeholder
+  // ("Club {days}") is printed as typed. A placeholder with no value stays.
+  return s.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    Object.hasOwn(vars, name) ? (vars[name] as string) : whole,
+  );
 }
 
 const STAGE_KEYS: Record<string, string> = {

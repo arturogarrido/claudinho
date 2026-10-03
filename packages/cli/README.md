@@ -35,7 +35,7 @@ All 104 fixtures ship bundled, so the schedule works offline; only live scores h
 ```bash
 claudinho today [date]      # a day's fixtures in your timezone (default: today), live scores inline
 claudinho live              # matches in play right now
-claudinho next [TEAM]       # a team's next fixture + countdown — TEAM is a name OR code (Mexico | MEX | "DR Congo"); default $CLAUDINHO_TEAM
+claudinho next [TEAM]       # a team's next fixture + countdown — TEAM is a name OR code (Mexico | MEX | "DR Congo", or a club: Arsenal | ARS); default $CLAUDINHO_TEAM
 claudinho table [KEY]       # live cumulative standings (default: every table); KEY is a group letter, or A1, A-B, LEAGUE
 claudinho bracket [STAGE]   # knockout bracket (R32, R16, QF, SF, 3P, F); --tree for ASCII tree
 claudinho match <id>        # a single match's detail
@@ -53,6 +53,14 @@ claudinho init-hook         # (granular) make Claude itself score-aware (UserPro
 claudinho vibe              # a matchday-coder one-liner (#VibingLaVidaLoca)
 claudinho star              # how to support the project (star the repo ⭐)
 ```
+
+In a club competition, `next` resolves a club's name or code against the
+competition's own table and answers its next match within 14 days (several teams
+matching a name are listed, never guessed); `match <id>` looks from yesterday to
+14 days ahead and names the days it searched when the match is not there;
+`bracket` says when a league season has no bracket; and `today`, `live`, `next`
+and `match` say "between editions" once a competition's edition has ended and
+the next has not started.
 
 ### Examples
 

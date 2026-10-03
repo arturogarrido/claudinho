@@ -15,12 +15,19 @@ import {
   bracketShareCard,
   dateShareCard,
   liveShareCard,
+  EARLIER_RECORD_NOTE,
+  matchNoneReadSentence,
   matchShareCard,
+  matchWindowSentence,
+  nationArg,
+  nextHorizonSentence,
+  nextNoneReadSentence,
   nextShareCard,
   tableShareCard,
   tableData,
   marketDisplayable,
   type MatchShareCard,
+  type NextFixtureResult,
   tableKeyArg,
   verdictExtras,
   verdictNotice,
@@ -54,7 +61,9 @@ import {
   type MarketSignal,
   type ProviderAdapter,
   resolveCompetition,
+  humanLabel,
   resolveMarketSource,
+  resolveTz,
   t,
   type ShareSnippetOptions,
   type Stage,
@@ -365,11 +374,15 @@ export async function toolGetToday(
   args: { date?: string } & CommonOpts,
 ): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
-  const date = args.date ?? localDate(new Date().toISOString(), args.tz);
-  const { matches, degraded, source } = await getMatchesForDate(adapter, date);
+  const date = args.date ?? localDate((args.now ?? new Date()).toISOString(), args.tz);
+  // The viewer's zone, the one the day is filed by below: the read judges
+  // "nothing on this date" in it too.
+  const day = await getMatchesForDate(adapter, date, resolveTz(args.tz));
+  const { matches, degraded, source } = day;
   const todays = fixturesByDate(date, matches, args.tz);
   const opts = fmtOpts(args);
-  let text = `Matches on ${date}:\n${matchList(todays, 'No matches scheduled.', opts)}`;
+  // A verdict (between editions) stands instead of the empty line.
+  let text = `Matches on ${date}:\n${matchList(todays, verdictNotice(day, args.lang) ?? 'No matches scheduled.', opts)}`;
   // Degraded ⇒ the live overlay failed; these are static fixtures with no live scores.
   if (degraded) text += '\n\n(Live scores unavailable — showing the bundled schedule.)';
   const market = await reliableMarketData(args, todays);
@@ -394,6 +407,7 @@ export async function toolGetToday(
       // Capped in step with `matches`: a signal keyed to a match that is no
       // longer in the payload is dead weight in model context.
       ...(market.data ? { marketSignals: capSignals(market.data, shownToday.items) } : {}),
+      ...verdictExtras(day),
     },
   };
 }
@@ -401,13 +415,15 @@ export async function toolGetToday(
 /** live: in-progress matches right now. */
 export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
-  const { matches, degraded, source } = await getLiveMatches(adapter);
+  const live = await getLiveMatches(adapter, args.now ?? new Date());
+  const { matches, degraded, source } = live;
   const opts = fmtOpts(args);
   // Degraded ⇒ the live feed failed, NOT "nothing is on". Distinguish them so the
   // agent doesn't tell the user no matches are live when the provider is unreachable.
+  // A verdict (between editions) stands instead of the empty line.
   const text = degraded
     ? 'Live scores unavailable right now — could not reach the data provider.'
-    : `Live now:\n${matchList(matches, 'No matches in play right now.', opts)}`;
+    : `Live now:\n${matchList(matches, verdictNotice(live, args.lang) ?? 'No matches in play right now.', opts)}`;
   const shownLive = boundedRecords(matches);
   return {
     ...disclaimed(text, source, args.lang),
@@ -417,6 +433,7 @@ export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
       count: shownLive.total,
       truncated: shownLive.truncated,
       matches: shownLive.items,
+      ...verdictExtras(live),
     },
   };
 }
@@ -428,18 +445,30 @@ export async function toolGetMatch(
   // ±1-day window fetch: the provider buckets scoreboard days in its own zone
   // (ESPN: US/Eastern), so fetching only the fixture's UTC date can miss its
   // live/final state and silently render the match as still scheduled.
-  const found = await getMatchById(resolveAdapter(args), args.id);
+  const adapter = resolveAdapter(args);
+  const found = await getMatchById(adapter, args.id, args.now);
   const { match, degraded, source: liveSource } = found;
   if (!match) {
+    // A verdict first; then the span a whole read searched; an outage is
+    // never "no such match". What qualifies the answer (a read that was not
+    // whole) is said before it.
+    const msg =
+      verdictNotice(found, args.lang) ??
+      matchWindowSentence(found, args.id, args.lang) ??
+      matchNoneReadSentence(found, args.id, args.lang) ??
+      (degraded
+        ? `Couldn't reach the data provider — match ${args.id} could not be looked up.`
+        : `No match found with id ${args.id}.`);
     return {
-      ...disclaimed(
-        verdictNotice(found, args.lang) ?? `No match found with id ${args.id}.`,
-        undefined,
-        args.lang,
-      ),
+      ...disclaimed(qualified(msg, found, args.lang), undefined, args.lang),
       // "Not available for this competition" is not "no such id": the verdict
-      // the text states is in the structured answer too.
-      data: { match: null, ...verdictExtras(found) },
+      // the text states is in the structured answer too, and so is an outage.
+      data: {
+        match: null,
+        degraded,
+        ...(found.window ? { window: found.window } : {}),
+        ...verdictExtras(found),
+      },
     };
   }
   const opts = fmtOpts(args);
@@ -454,13 +483,19 @@ export async function toolGetMatch(
   }
   const base = matchLine(match, opts);
   let text = marketSignal ? `${base}\n${marketBlock(marketSignal, match).join('\n')}` : base;
-  // Degraded ⇒ the live overlay failed; this is the static fixture, no live state.
-  if (degraded) text += '\n\n(Live state unavailable — showing the scheduled fixture.)';
+  // Degraded ⇒ the live overlay failed; this is the static fixture, no live
+  // state. Off the bundled competition there is no static fixture: it is the
+  // provider's own earlier record, whose state could not be refreshed.
+  if (degraded) {
+    text += found.earlierRecord
+      ? `\n\n${EARLIER_RECORD_NOTE}`
+      : '\n\n(Live state unavailable — showing the scheduled fixture.)';
+  }
   if (!marketComplete) {
     text += '\n\n(Market data unavailable or incomplete — this match was not checked.)';
   }
   return {
-    ...disclaimed(text, liveSource, args.lang),
+    ...disclaimed(qualified(text, found, args.lang), liveSource, args.lang),
     data: {
       degraded,
       source: liveSource ?? null,
@@ -609,35 +644,70 @@ export async function standingsResourceText(
 }
 
 /** next_fixture: a team's next match, live-resolved across the knockout phase. */
+/** "Did you mean" for a name that matched more than one team, as `get_team` says it. */
+function ambiguousText(query: string, teams: readonly { name: string; code: string }[]): string {
+  return `"${query}" is ambiguous. Did you mean: ${teams.map((t) => `${t.name} (${t.code})`).join(', ')}?`;
+}
+
+/**
+ * What a `next` answer names: the club it resolved to, the query as asked,
+ * or the nation's code (the World Cup).
+ */
+function nextTeamLabel(next: NextFixtureResult, fallback: string): string {
+  return next.team?.name ?? next.query ?? fallback;
+}
+
 export async function toolGetNextFixture(
   args: { team: string } & CommonOpts,
 ): Promise<ToolResult> {
-  const code = args.team.toUpperCase();
+  const adapter = resolveAdapter(args);
+  // The World Cup: a nation's code, or a name resolved against the bundled
+  // roster (`nationArg`); a name that is no single nation is answered without
+  // a request (the candidates, or no such team). Off the bundled competition
+  // the query goes through as asked: core resolves the club against the
+  // competition's roster and the schedule ahead. Never the RAW argument: a
+  // direct call bypasses the input schema, and what is carried into the text,
+  // a card or a run cue is the bounded label.
+  const query = humanLabel(args.team, 40);
+  const asked = bundleApplies(adapter.competition) ? nationArg(query) : { code: query };
+  const code = 'code' in asked ? asked.code : query;
   // Overlay the live knockout window so a confirmed R32+ tie resolves: the
   // bundled knockout slots are placeholders, so a static lookup goes blind once
   // a team's group games pass (it would answer "no upcoming fixture" even after
   // ESPN confirmed the tie). Fails closed to the static result on a feed outage.
   // The caller's clock is still threaded for deterministic tests.
-  const next = await getNextFixtureForTeam(resolveAdapter(args), code, args.now ?? new Date());
+  const next = 'code' in asked ? await getNextFixtureForTeam(adapter, code, args.now ?? new Date()) : asked.answer;
   const { fixture, degraded, source } = next;
+  const label = nextTeamLabel(next, code);
+  // The answer's own fields beside the verdicts: who it is about, the
+  // candidates of an ambiguous name, the span a whole read searched, the season.
+  const about = {
+    team: next.team ?? next.query ?? code,
+    ...(next.candidates ? { candidates: next.candidates } : {}),
+    ...(next.horizon ? { horizon: next.horizon } : {}),
+    ...(next.season ? { season: next.season } : {}),
+  };
   if (!fixture) {
     const msg =
       verdictNotice(next, args.lang) ??
+      nextHorizonSentence(next, code, args.lang) ??
+      nextNoneReadSentence(next, code, args.lang) ??
+      (next.candidates ? ambiguousText(next.query ?? code, next.candidates) : undefined) ??
       (degraded
-        ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
-        : `No upcoming fixture found for ${code}.`);
+        ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${label}.`
+        : `No upcoming fixture found for ${label}.`);
     return {
       // "None found" from a window that was not whole says so: it is not elimination.
       ...disclaimed(qualified(msg, next, args.lang), undefined, args.lang),
-      data: { team: code, fixture: null, degraded, source: source ?? null, ...verdictExtras(next) },
+      data: { ...about, fixture: null, degraded, source: source ?? null, ...verdictExtras(next) },
     };
   }
   const opts = fmtOpts(args);
   return {
     // `source` in data mirrors the text's "Live data: …" attribution (parity
     // with CLI `next --json`); null for a static group fixture (no live source).
-    ...disclaimed(qualified(`Next up for ${code}:\n${matchLine(fixture, opts)}`, next, args.lang), source, args.lang),
-    data: { team: code, fixture, degraded, source: source ?? null, ...verdictExtras(next) },
+    ...disclaimed(qualified(`Next up for ${label}:\n${matchLine(fixture, opts)}`, next, args.lang), source, args.lang),
+    data: { ...about, fixture, degraded, source: source ?? null, ...verdictExtras(next) },
   };
 }
 
@@ -676,6 +746,22 @@ export async function toolGetMarketSignal(
   // Most specific: a single match by id — with live overlay so FT gates the
   // resolved market correctly (the static fixture's status never changes).
   if (args.matchId) {
+    // The market's scope is asked BEFORE any match lookup: off it nothing is
+    // read for this competition, so no request is made to find the match.
+    const scope = marketScopeVerdict(competitionOf(args), 0);
+    const outOfScope = verdictNotice(scope, args.lang);
+    if (outOfScope !== undefined) {
+      return {
+        ...disclaimed(outOfScope),
+        data: {
+          matchId: args.matchId,
+          informationalOnly: true,
+          complete: true,
+          signal: null,
+          ...verdictExtras(scope),
+        },
+      };
+    }
     const found = await getMatchById(resolveAdapter(args), args.matchId);
     const { match } = found;
     const relevant = match ? marketRelevant(match, now) : false;
@@ -747,7 +833,7 @@ export async function toolGetMarketSignal(
 
   // A date's matches (default: today).
   const date = args.date ?? localDate(now.toISOString(), args.tz);
-  const { matches } = await getMatchesForDate(resolveAdapter(args), date);
+  const { matches } = await getMatchesForDate(resolveAdapter(args), date, resolveTz(args.tz));
   const todays = fixturesByDate(date, matches, args.tz).filter((m) => marketRelevant(m, now));
   const batch = await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS);
   const signals = resolvedValues(batch);
@@ -862,6 +948,7 @@ function shareResult(
       kind: card.kind,
       target: card.target,
       ...(card.team ? { team: card.team } : {}),
+      ...(card.candidates ? { candidates: card.candidates } : {}),
       source: input.source ?? null,
       degraded: input.degraded ?? false,
       informationalOnly: true,
@@ -877,6 +964,8 @@ function shareResult(
         ]),
       ),
       marketComplete: input.marketComplete ?? true,
+      // The span an empty card says was searched (horizon, window): plain fields.
+      ...card.span,
       // The verdict the card's note stands for (e.g. not available for this competition).
       ...card.verdict,
     },
@@ -900,11 +989,12 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       ? Promise.resolve({ signals: new Map(), complete: true })
       : reliableSignalMap(args, ms);
 
-  const where = { tz: args.tz, locale: args.lang };
+  // The competition goes on the card: off the bundle its run cue names it.
+  const where = { tz: args.tz, locale: args.lang, competition: competitionOf(args) };
 
   // live: matches in play right now (no market enrichment, matching the CLI).
   if (args.live) {
-    const live = await getLiveMatches(resolveAdapter(args));
+    const live = await getLiveMatches(resolveAdapter(args), args.now ?? new Date());
     // Bounded like the date branch: a share card is returned through MCP
     // before a human ever sees it. The count is STATED, not silently lost.
     const shownLive = boundedRecords(live.matches);
@@ -925,7 +1015,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     // Capped like the structured payload beside it. Bounding `data.tables`
     // while the rendered SNIPPET came from the full list meant the surface a
     // reader actually sees was the unbounded one.
-    const card = tableShareCard(standings, group, boundedRecords(standings.tables).items, args.lang);
+    const card = tableShareCard(standings, group, boundedRecords(standings.tables).items, args.lang, competitionOf(args));
     const snippet = formatShareTable(card.input, options);
     return {
       text: snippet,
@@ -965,7 +1055,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         ? { stage: stageFilter as Stage, lang: args.lang }
         : { lang: args.lang },
     );
-    const card = bracketShareCard(bracket, stageFilter, args.lang);
+    const card = bracketShareCard(bracket, stageFilter, args.lang, competitionOf(args));
     const snippet = formatShareBracket(card.input, { ...options, locale: args.lang, tz: args.tz });
     return {
       text: snippet,
@@ -986,24 +1076,32 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
 
   // a single match by id, with live overlay (±1-day window — see toolGetMatch).
   if (args.matchId) {
-    const found = await getMatchById(resolveAdapter(args), args.matchId);
+    const found = await getMatchById(resolveAdapter(args), args.matchId, args.now);
     const market = await signalsFor(found.match ? [found.match] : []);
     return shareResult(matchShareCard(found, args.matchId, market, where), options);
   }
 
   // a team's next fixture, live-resolved across the knockout phase (+ market read).
   if (args.team) {
-    const code = args.team.toUpperCase();
+    const adapter = resolveAdapter(args);
+    // The World Cup takes a nation's code or name, resolved as get_next_fixture
+    // resolves it (`nationArg`): a name that is no single nation is the
+    // candidates card, or the no-such-team card, with no request. Off the
+    // bundle the query goes through as asked (core resolves the club). The
+    // bounded label, never the raw argument: it is pasted into the run cue.
+    const query = humanLabel(args.team, 40);
+    const asked = bundleApplies(adapter.competition) ? nationArg(query) : { code: query };
+    const code = 'code' in asked ? asked.code : query;
     // Overlay the live knockout window so a confirmed R32+ tie pastes too (see
     // getNextFixtureForTeam / toolGetNextFixture); fail closed on an outage.
-    const next = await getNextFixtureForTeam(resolveAdapter(args), code, args.now ?? new Date());
+    const next = 'code' in asked ? await getNextFixtureForTeam(adapter, code, args.now ?? new Date()) : asked.answer;
     const market = await signalsFor(next.fixture ? [next.fixture] : []);
     return shareResult(nextShareCard(next, code, market, where), options);
   }
 
   // a date's matches (default: today).
-  const date = args.date ?? localDate(new Date().toISOString(), args.tz);
-  const day = await getMatchesForDate(resolveAdapter(args), date);
+  const date = args.date ?? localDate((args.now ?? new Date()).toISOString(), args.tz);
+  const day = await getMatchesForDate(resolveAdapter(args), date, resolveTz(args.tz));
   const todays = fixturesByDate(date, day.matches, args.tz);
   // Bounded like every other model-facing payload — a share card is
   // returned through MCP before a human ever sees it.
@@ -1019,6 +1117,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         source: day.source,
         scheduleKnown: bundleApplies(competitionOf(args)),
         titleSuffix: truncationNote(shownToday),
+        read: day,
       },
       market,
       where,

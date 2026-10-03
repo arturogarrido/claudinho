@@ -305,9 +305,11 @@ describe('across a season turn (0.11 2.1b): the LIVE read composes, every other 
     expect(live.season).toBeUndefined();
   });
 
-  it('the dated read, which merges the bundle on the bundled competition, asks strictly: still degraded on a turn day (2.1c)', async () => {
+  it('the dated read merges nothing off the bundle, so it composes across the turn too (0.11 2.1c); on the bundle it stays strict', async () => {
     const dated = await getMatchesForDate(adapterOn(feed(ALL, { season: turn })), '2026-10-11');
-    expect(dated.degraded).toBe(true);
+    expect(dated.degraded).toBe(false);
+    expect(dated.season).toBeUndefined();
+    expect(ids(dated.matches)).toEqual(['1', '2', '3', '4']); // provider days Oct 10 to 12
   });
 });
 

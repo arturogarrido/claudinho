@@ -19,21 +19,92 @@
  * A verdict does one of two things to the body it is about, and the module
  * says which, because a surface that treated every sentence the same either
  * hid a readable answer or lost the sentence beside a populated one:
- *   - it REPLACES the body ({@link verdictNotice}: `unsupported`). The one
- *     sentence stands instead of the answer, which does not exist.
+ *   - it REPLACES the body ({@link verdictNotice}). The one sentence stands
+ *     instead of the answer, which does not exist. Five of them, and when a
+ *     result states more than one, the first in this order is said:
+ *       `unsupported`      the feature is not offered for this competition yet;
+ *       `inapplicable`     the competition has no such thing (no bracket);
+ *       `unknownTeam`      the roster the competition has holds no team by
+ *                          that name (`query` names it): the bundled nations
+ *                          on the World Cup, elsewhere the table read whole
+ *                          and the fixtures over discovery's span. The
+ *                          sentence names that evidence (`rosterEvidence`),
+ *                          not the competition: a club out in a qualifying
+ *                          round is in no table;
+ *       `rosterIncomplete` the roster could not be read whole, and the name
+ *                          was not one that could be answered without it
+ *                          (`query` names it); not an outage;
+ *       `betweenEditions`  the read's edition ended before the day asked, and
+ *                          nothing in it is scheduled or in play.
  *   - it QUALIFIES the body ({@link verdictQualifiers}: `incomplete`,
  *     `partial`). The answer holds what could be read and is printed; the
  *     sentences go beside it, on a populated body and an empty one alike.
  * When a result states a replacement, its qualifiers are not printed: the one
  * sentence stands for the whole answer. The structured keys
  * ({@link verdictExtras}) carry every verdict stated, whichever it is.
+ *
+ * NOT verdicts: an answer's own empty sentences ("no fixture for X within the
+ * next 14 days", "not found between A and B"). They are the body's text, from
+ * the card builders, with their span as a plain field (`horizon`, `window`);
+ * they never suppress a qualifier, and a verdict replaces them.
  */
 import { t } from './i18n';
+import { SCHEDULE_AHEAD_DAYS } from './span';
+
+/** The edition a read's season says has ended (see `betweenEditions`). */
+export interface BetweenEditions {
+  /**
+   * The provider's calendar day (`YYYY-MM-DD`) of the season's STATED end:
+   * the day the rule decides on, printed as it is. An administrative date the
+   * provider states for its season, not the day of the last match.
+   */
+  readonly ended: string;
+  /** The season's label (e.g. "2026 Concacaf Champions Cup"); absent when the provider gave none. */
+  readonly label?: string;
+}
 
 /** Any result that may state a verdict. Results state more than this; these are the verdicts. */
 export interface VerdictSource {
   /** The feature does not exist for this competition yet (off the bundled schedule). */
   readonly unsupported?: boolean;
+  /**
+   * The competition has no such thing at all (a league season with no knockout
+   * tie of its own has no bracket). Not "not yet": a capability that does not
+   * apply.
+   */
+  readonly inapplicable?: boolean;
+  /**
+   * The competition's table, read WHOLE, and its fixtures over discovery's
+   * span hold no team by the name asked for. A claim about that evidence, not
+   * the competition (a club out in a qualifying round is in no table). Never
+   * stated from a roster that is not whole (a refused row, a missing table, a
+   * row with no id): that is not knowing (`rosterIncomplete`).
+   */
+  readonly unknownTeam?: boolean;
+  /**
+   * The evidence an `unknownTeam` rests on, which its sentence names: the
+   * competition's table read whole and its fixtures over discovery's span
+   * (`table`), or the bundled roster of the World Cup's nations (`bundle`).
+   * Forwarded with the key; not a verdict of its own.
+   */
+  readonly rosterEvidence?: 'table' | 'bundle';
+  /**
+   * The competition's roster was asked for and could not be read whole (a
+   * table missing or partial, a row with no id, no answer), and the name could
+   * not be answered without it: no club matched, or only by a code or a fuzzy
+   * name the unread rest may share. Not "no such team", and not an outage.
+   */
+  readonly rosterIncomplete?: boolean;
+  /**
+   * The name a team-scoped verdict names (`unknownTeam`, `rosterIncomplete`):
+   * the query as the reader typed it, bounded as a label. Not a verdict.
+   */
+  readonly query?: string;
+  /**
+   * The read's edition ended before the day asked and nothing in it is
+   * scheduled or in play (see `live.ts`, `betweenEditionsOf`).
+   */
+  readonly betweenEditions?: BetweenEditions;
   /**
    * The result holds what could be read and is not the whole answer: the
    * provider sent a table that did not become one (an all-tables standings
@@ -55,9 +126,27 @@ export interface VerdictSource {
 /** The structured keys of the verdicts a result states. Empty when it states none. */
 export interface VerdictExtras {
   unsupported?: true;
+  inapplicable?: true;
+  unknownTeam?: true;
+  rosterEvidence?: 'table' | 'bundle';
+  rosterIncomplete?: true;
+  betweenEditions?: { ended: string; label?: string };
   incomplete?: true;
   /** `omitted` present only when the count is known (a positive integer). */
   partial?: { omitted?: number };
+}
+
+/**
+ * The `betweenEditions` a result states: an object with an `ended` that is a
+ * calendar day (`YYYY-MM-DD`, the provider's end day) or a timestamp (whose
+ * date is taken), and a label only when it is a non-empty string. The
+ * sentence prints its `YYYY-MM-DD` as it is. Anything else states nothing.
+ */
+function statedEdition(result: VerdictSource): { ended: string; label?: string } | undefined {
+  const b = result.betweenEditions;
+  if (!b || typeof b !== 'object' || typeof b.ended !== 'string') return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}/.test(b.ended) || Number.isNaN(Date.parse(b.ended))) return undefined;
+  return typeof b.label === 'string' && b.label !== '' ? { ended: b.ended, label: b.label } : { ended: b.ended };
 }
 
 /** Whether a result states `partial` (an object; anything else states nothing). */
@@ -97,6 +186,16 @@ export function partialOfRead(
 export function verdictExtras(result: VerdictSource): VerdictExtras {
   const out: VerdictExtras = {};
   if (result.unsupported === true) out.unsupported = true;
+  if (result.inapplicable === true) out.inapplicable = true;
+  if (result.unknownTeam === true) {
+    out.unknownTeam = true;
+    if (result.rosterEvidence === 'table' || result.rosterEvidence === 'bundle') {
+      out.rosterEvidence = result.rosterEvidence;
+    }
+  }
+  if (result.rosterIncomplete === true) out.rosterIncomplete = true;
+  const between = statedEdition(result);
+  if (between) out.betweenEditions = between;
   if (result.incomplete === true) out.incomplete = true;
   if (statesPartial(result)) {
     const omitted = omittedCount(result.partial);
@@ -114,6 +213,33 @@ export function verdictExtras(result: VerdictSource): VerdictExtras {
  */
 export function verdictNotice(result: VerdictSource, lang?: string): string | undefined {
   if (result.unsupported === true) return t(lang, 'competition.unsupported');
+  if (result.inapplicable === true) return t(lang, 'competition.noBracket');
+  if (result.unknownTeam === true) {
+    // The name as asked; a result that does not say it still gets a sentence.
+    const team = typeof result.query === 'string' ? result.query : '';
+    // It names its evidence, not the competition: on the World Cup the
+    // bundled nations; elsewhere the table read whole and the fixtures of
+    // discovery's span (a club out in a qualifying round is in no table).
+    const sentence =
+      result.rosterEvidence === 'bundle'
+        ? t(lang, 'team.unknownNation', { team })
+        : t(lang, 'team.unknown', { team, days: String(SCHEDULE_AHEAD_DAYS) });
+    return team ? sentence : sentence.replace(/\s{2,}/g, ' ');
+  }
+  if (result.rosterIncomplete === true) {
+    const team = typeof result.query === 'string' ? result.query : '';
+    const sentence = t(lang, 'roster.incomplete', { team });
+    // Without a name the sentence closes up its gap; a name is printed as typed.
+    return team ? sentence : sentence.replace(/\s{2,}/g, ' ');
+  }
+  const between = statedEdition(result);
+  if (between) {
+    // The label names the edition; without one, the year it ended does.
+    return t(lang, 'edition.between', {
+      label: between.label || between.ended.slice(0, 4),
+      date: between.ended.slice(0, 10),
+    });
+  }
   return undefined;
 }
 

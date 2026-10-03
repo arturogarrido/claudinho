@@ -69,12 +69,19 @@ export interface BracketView {
   source?: string;
   /** The bracket is a World Cup feature; off the bundle there is none (audit A03). */
   unsupported?: true;
+  /** This competition has no bracket at all (a league season with no knockout tie of its own). */
+  inapplicable?: true;
 }
 
 export interface BracketResult {
   view: BracketView;
   /** Off the bundle there is no bracket (audit A03); `view.stages` is empty. */
   unsupported?: true;
+  /**
+   * This competition has no bracket at all (`bracketCapability`: a league
+   * season with no knockout tie of its own); `view.stages` is empty.
+   */
+  inapplicable?: true;
   degraded: boolean;
   standingsDegraded: boolean;
   source?: string;
