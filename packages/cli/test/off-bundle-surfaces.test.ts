@@ -107,7 +107,7 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
   });
 
   it('two clubs with one code: the candidates are listed and no fixture is picked; `--json` carries them', async () => {
-    const LIB = table('Copa Libertadores', [CARABOBO, ALWAYS_READY]);
+    const LIB = table('Group A', [CARABOBO, ALWAYS_READY]);
     const events: Ev[] = [{ id: '20', date: '2026-10-12T22:00Z', home: ALWAYS_READY, away: { id: '7003', abbr: 'BOC', name: 'Boca Juniors' } }];
     const season = () => ({ year: 2026, displayName: '2026 Copa Libertadores', endDate: '2026-11-30T05:00Z' });
     await cmdNext('CAR', ctxFor(feed('conmebol.libertadores', { events, standings: LIB, season }).adapter));
@@ -132,27 +132,27 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
   });
 
   it('a known club with nothing in a whole span: the horizon sentence names the days; `--json` carries `horizon`, never a verdict', async () => {
-    await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [upcoming[1]] }).adapter));
+    await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter));
     expect(text()).toContain('14 days');
     expect(text()).toContain('Arsenal');
     expect(text()).not.toContain('No team called');
     writes = [];
-    await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [upcoming[1]] }).adapter, { json: true }));
+    await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter, { json: true }));
     expect(parsed()).toMatchObject({ fixture: null, horizon: { days: 14 }, degraded: false });
     expect(parsed().unknownTeam).toBeUndefined();
   });
 
   it('an incomplete discovery: the partial sentence beside the fixture, or beside an empty body with no horizon sentence', async () => {
     const broken: Ev = { id: '16', date: '2026-10-14T19:00Z', home: CHE, away: LIV, raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } };
-    await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [broken, upcoming[0]] }).adapter));
+    await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [broken, upcoming[0] as Ev] }).adapter));
     expect(text()).toContain('Liverpool');
     expect(text()).toContain('may be incomplete');
     writes = [];
-    await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [broken, upcoming[1]] }).adapter));
+    await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [broken, upcoming[1] as Ev] }).adapter));
     expect(text()).toContain('may be incomplete');
     expect(text()).not.toContain('14 days');
     writes = [];
-    await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [broken, upcoming[1]] }).adapter, { json: true }));
+    await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [broken, upcoming[1] as Ev] }).adapter, { json: true }));
     expect(parsed()).toMatchObject({ fixture: null, partial: { omitted: 1 } });
     expect(parsed().horizon).toBeUndefined();
   });
@@ -169,7 +169,7 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
   it('the sentences are localized (es, pt, fr): the horizon and "no team called"', async () => {
     for (const lang of ['es', 'pt', 'fr'] as const) {
       writes = [];
-      await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [upcoming[1]] }).adapter, { lang }));
+      await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter, { lang }));
       expect(text(), lang).not.toContain('within the next 14 days');
       expect(text(), lang).toContain('14');
       writes = [];
@@ -180,7 +180,7 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
   });
 
   it('`share next <name>`: the card titles the resolved side and carries the key in `--json`', async () => {
-    const LIB = table('Copa Libertadores', [CARABOBO, ALWAYS_READY]);
+    const LIB = table('Group A', [CARABOBO, ALWAYS_READY]);
     const events: Ev[] = [{ id: '21', date: '2026-10-15T22:00Z', home: ALWAYS_READY, away: CARABOBO }];
     const season = () => ({ year: 2026, displayName: '2026 Copa Libertadores', endDate: '2026-11-30T05:00Z' });
     await cmdShare('next', 'Carabobo', {}, ctxFor(feed('conmebol.libertadores', { events, standings: LIB, season }).adapter));
@@ -188,10 +188,10 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
     expect(t).toContain('Carabobo');
     expect(t.indexOf('Carabobo')).toBeLessThan(t.indexOf('Always Ready'));
     writes = [];
-    await cmdShare('next', 'Arsenal', {}, ctxFor(feed('eng.1', { events: [upcoming[1]] }).adapter));
+    await cmdShare('next', 'Arsenal', {}, ctxFor(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter));
     expect(text()).toContain('14 days');
     writes = [];
-    await cmdShare('next', 'Arsenal', {}, ctxFor(feed('eng.1', { events: [upcoming[1]] }).adapter, { json: true }));
+    await cmdShare('next', 'Arsenal', {}, ctxFor(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter, { json: true }));
     expect(parsed()).toMatchObject({ horizon: { days: 14 } });
   });
 });
@@ -335,10 +335,23 @@ describe('between editions on the CLI (0.11 2.1c)', () => {
     expect(parsed()).toMatchObject({ betweenEditions: { label: '2026 Concacaf Champions Cup' } });
   });
 
-  it('a date on or before the end day is historical: its records, no sentence', async () => {
-    await cmdToday('2026-10-08', ctxFor(cup([finalFT])));
+  it('a date on or before the end day is historical: its records, no sentence (in the provider’s zone, where the final is Oct 8)', async () => {
+    await cmdToday('2026-10-08', ctxFor(cup([finalFT]), { tz: 'America/New_York' }));
     expect(text()).toContain('Toluca');
     expect(text()).not.toContain('Between editions');
+  });
+
+  it('a UTC viewer asking the final’s UTC date sees it (no sentence); the day after, the sentence', async () => {
+    await cmdToday('2026-10-09', ctxFor(cup([finalFT]), { tz: 'UTC' }));
+    expect(text()).toContain('Toluca');
+    expect(text()).not.toContain('Between editions');
+    writes = [];
+    await cmdToday('2026-10-09', ctxFor(cup([finalFT]), { tz: 'UTC', json: true }));
+    expect(parsed().betweenEditions).toBeUndefined();
+    writes = [];
+    await cmdToday('2026-10-10', ctxFor(cup([finalFT]), { tz: 'UTC' }));
+    expect(text()).toContain('Between editions');
+    expect(text()).not.toContain('Toluca');
   });
 
   it('a scheduled fixture beside an ended season: shown, no sentence', async () => {

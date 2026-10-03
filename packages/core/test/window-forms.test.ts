@@ -309,7 +309,7 @@ describe('across a season turn (0.11 2.1b): the LIVE read composes, every other 
     const dated = await getMatchesForDate(adapterOn(feed(ALL, { season: turn })), '2026-10-11');
     expect(dated.degraded).toBe(false);
     expect(dated.season).toBeUndefined();
-    expect(ids(dated.matches)).toEqual(['2', '3', '4']);
+    expect(ids(dated.matches)).toEqual(['1', '2', '3', '4']); // provider days Oct 10 to 12
   });
 });
 

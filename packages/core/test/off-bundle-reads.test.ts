@@ -265,7 +265,7 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
     expect(r.fixture?.status).toBe('LIVE');
     // Postponed and cancelled are not "unfinished".
     const r2 = await getNextFixtureForTeam(
-      feed('eng.1', { events: [{ ...live, state: 'postponed' }, { ...upcoming[1], state: 'cancelled' }, upcoming[2]] }).adapter,
+      feed('eng.1', { events: [{ ...live, state: 'postponed' }, { ...(upcoming[1] as Ev), state: 'cancelled' }, upcoming[2] as Ev] }).adapter,
       'ARS',
       NOW,
     );
@@ -278,7 +278,7 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
   });
 
   it('two clubs with one code: `next Carabobo` is Carabobo’s match, never Always Ready’s; `next CAR` is two candidates and no fixture', async () => {
-    const LIB = table('Copa Libertadores', [
+    const LIB = table('Group A', [
       { side: CARABOBO, rank: 1 },
       { side: ALWAYS_READY, rank: 2 },
     ]);
@@ -295,7 +295,7 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
     expect(amb.candidates?.map((t) => t.name).sort()).toEqual(['Always Ready', 'Carabobo']);
     expect(amb.degraded).toBe(false);
     // One of the two rows refused: the roster is not complete and the code is not "unique".
-    const oneRefused = table('Copa Libertadores', [
+    const oneRefused = table('Group A', [
       { side: CARABOBO, rank: 1 },
       { side: ALWAYS_READY, rank: 2, raw: { stats: [{ name: 'rank', value: 'two' }] } },
     ]);
@@ -317,7 +317,7 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
   });
 
   it('a known club with nothing in a whole span: the horizon, as a plain field, never a verdict', async () => {
-    const r = await getNextFixtureForTeam(feed('eng.1', { events: [upcoming[3]] }).adapter, 'Arsenal', NOW);
+    const r = await getNextFixtureForTeam(feed('eng.1', { events: [upcoming[3] as Ev] }).adapter, 'Arsenal', NOW);
     expect(r.fixture).toBeUndefined();
     expect(r.degraded).toBe(false);
     expect(r.horizon).toEqual({ days: 14 });
@@ -335,10 +335,10 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
 
   it('an incomplete discovery: the readable fixture with partial, or an empty body with partial and no horizon', async () => {
     const broken: Ev = { id: '16', date: '2026-10-14T19:00Z', home: CHE, away: LIV, raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } };
-    const withFixture = await getNextFixtureForTeam(feed('eng.1', { events: [broken, upcoming[1]] }).adapter, 'ARS', NOW);
+    const withFixture = await getNextFixtureForTeam(feed('eng.1', { events: [broken, upcoming[1] as Ev] }).adapter, 'ARS', NOW);
     expect(withFixture.fixture?.id).toBe('11');
     expect(withFixture.partial).toEqual({ omitted: 1 });
-    const none = await getNextFixtureForTeam(feed('eng.1', { events: [broken, upcoming[3]] }).adapter, 'ARS', NOW);
+    const none = await getNextFixtureForTeam(feed('eng.1', { events: [broken, upcoming[3] as Ev] }).adapter, 'ARS', NOW);
     expect(none.fixture).toBeUndefined();
     expect(none.partial).toEqual({ omitted: 1 });
     expect(none.horizon).toBeUndefined();
@@ -413,7 +413,14 @@ describe('match <id> off the bundle (0.11 2.1c): every transition', () => {
     expect(r.partial).toBeUndefined();
     const broken = feed('eng.1', {
       events: [inSpan, other],
-      fail: (d) => (d.length === 8 ? json({ leagues: [{ season: S2026 }], events: [event({ id: '44', date: '2026-10-17T20:00Z', home: CHE, away: OM, raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } })] }) : undefined),
+      // The match's own day holds a readable sibling and a refused record, and neither is the id; the other days are empty
+      // (a day whose only records are unreadable is a refused read, not an incomplete one).
+      fail: (d) =>
+        d === '20261017'
+          ? json({ leagues: [{ season: S2026 }], events: [event({ id: '45', date: '2026-10-17T18:00Z', home: LIV, away: OM }), event({ id: '44', date: '2026-10-17T20:00Z', home: CHE, away: OM, raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } })] })
+          : d.length === 8
+            ? json({ leagues: [{ season: S2026 }], events: [] })
+            : undefined,
     });
     const r2 = await getMatchById(broken.adapter, '41');
     expect(r2.match?.id).toBe('41');
@@ -512,6 +519,25 @@ describe('between editions (0.11 2.1c): one rule for every surface', () => {
     expect(after.betweenEditions).toMatchObject({ label: '2026 Concacaf Champions Cup' });
   });
 
+  it('the dated read judges "nothing to present" on the asked LOCAL date, a finished result included: a UTC user still sees the final', async () => {
+    // Found by the coder: the final at 02:00Z on Oct 9 is Oct 8 for the
+    // provider and Oct 9 for a UTC viewer. Dropping the window's records
+    // whenever the edition had ended hid it from that viewer on every date.
+    // The window's records are kept; the verdict is stated only when the asked
+    // local date holds nothing at all (a finished result is that day's body).
+    const utc9 = await getMatchesForDate(cup({ events: [finalFT] }).adapter, '2026-10-09', 'UTC');
+    expect(ids(utc9.matches)).toContain('50');
+    expect(utc9.betweenEditions).toBeUndefined();
+    const utc10 = await getMatchesForDate(cup({ events: [finalFT] }).adapter, '2026-10-10', 'UTC');
+    expect(utc10.betweenEditions).toMatchObject({ label: '2026 Concacaf Champions Cup' });
+    const ny9 = await getMatchesForDate(cup({ events: [finalFT] }).adapter, '2026-10-09', 'America/New_York');
+    expect(ny9.betweenEditions).toMatchObject({ label: '2026 Concacaf Champions Cup' });
+    // The window's records are still there for the surface's own filter, and a scheduled one still blocks.
+    expect(ids(ny9.matches)).toContain('50');
+    const ny8 = await getMatchesForDate(cup({ events: [finalFT] }).adapter, '2026-10-08', 'America/New_York');
+    expect(ny8.betweenEditions).toBeUndefined();
+  });
+
   it('a scheduled or in-play fixture of any club: shown, and the sentence not stated (the provider owns the contradiction)', async () => {
     const scheduled: Ev = { id: '51', date: '2026-10-14T02:00Z', home: { id: '8001', abbr: 'TOL', name: 'Toluca' }, away: { id: '8003', abbr: 'MTY', name: 'Monterrey' } };
     const next = await getNextFixtureForTeam(cup({ events: [finalFT, scheduled] }).adapter, 'Toluca', NOW);
@@ -541,7 +567,8 @@ describe('between editions (0.11 2.1c): one rule for every surface', () => {
     const incomplete = await getLiveMatches(cup({ events: [broken] }).adapter, NOW);
     expect(incomplete.matches).toEqual([]);
     expect(incomplete.betweenEditions).toBeUndefined();
-    const incompleteNext = await getNextFixtureForTeam(cup({ events: [broken] }).adapter, 'Toluca', NOW);
+    // A readable sibling keeps the discovery an incomplete read rather than a refused one.
+    const incompleteNext = await getNextFixtureForTeam(cup({ events: [broken, finalFT] }).adapter, 'Toluca', NOW);
     expect(incompleteNext.betweenEditions).toBeUndefined();
     expect(incompleteNext.partial).toEqual({ omitted: 1 });
   });

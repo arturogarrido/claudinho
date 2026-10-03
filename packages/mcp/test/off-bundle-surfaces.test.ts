@@ -95,7 +95,7 @@ describe('get_next_fixture off the bundle (0.11 2.1c)', () => {
   });
 
   it('two clubs with one code: the candidates in data and text, no fixture', async () => {
-    const LIB = table('Copa Libertadores', [CARABOBO, ALWAYS_READY]);
+    const LIB = table('Group A', [CARABOBO, ALWAYS_READY]);
     const events: Ev[] = [{ id: '20', date: '2026-10-12T22:00Z', home: ALWAYS_READY, away: { id: '7003', abbr: 'BOC', name: 'Boca Juniors' } }];
     const season = () => ({ year: 2026, displayName: '2026 Copa Libertadores', endDate: '2026-11-30T05:00Z' });
     const r = await toolGetNextFixture({ team: 'CAR', now: NOW, adapter: feed('conmebol.libertadores', { events, standings: LIB, season }).adapter });
@@ -114,13 +114,13 @@ describe('get_next_fixture off the bundle (0.11 2.1c)', () => {
     expect(unknown.text).toContain('No team called');
     expect(unknown.data).toMatchObject({ unknownTeam: true, fixture: null });
     strict('get_next_fixture', unknown.data);
-    const horizon = await toolGetNextFixture({ team: 'Arsenal', now: NOW, adapter: feed('eng.1', { events: [upcoming[1]] }).adapter });
+    const horizon = await toolGetNextFixture({ team: 'Arsenal', now: NOW, adapter: feed('eng.1', { events: [upcoming[1] as Ev] }).adapter });
     expect(horizon.text).toContain('14 days');
     expect(horizon.data).toMatchObject({ fixture: null, horizon: { days: 14 }, degraded: false });
     expect((horizon.data as { unknownTeam?: unknown }).unknownTeam).toBeUndefined();
     strict('get_next_fixture', horizon.data);
     const broken: Ev = { id: '16', date: '2026-10-14T19:00Z', home: CHE, away: LIV, raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } };
-    const partial = await toolGetNextFixture({ team: 'Arsenal', now: NOW, adapter: feed('eng.1', { events: [broken, upcoming[1]] }).adapter });
+    const partial = await toolGetNextFixture({ team: 'Arsenal', now: NOW, adapter: feed('eng.1', { events: [broken, upcoming[1] as Ev] }).adapter });
     expect(partial.text).toContain('may be incomplete');
     expect(partial.text).not.toContain('14 days');
     expect(partial.data).toMatchObject({ fixture: null, partial: { omitted: 1 } });
@@ -227,13 +227,23 @@ describe('between editions on MCP (0.11 2.1c)', () => {
   });
 
   it('a historical date and a scheduled fixture: no sentence', async () => {
-    const hist = await toolGetToday({ date: '2026-10-08', adapter: cup([finalFT]) });
+    const hist = await toolGetToday({ date: '2026-10-08', tz: 'America/New_York', adapter: cup([finalFT]) });
     expect(hist.text).toContain('Toluca');
     expect(hist.text).not.toContain('Between editions');
     const scheduled: Ev = { id: '51', date: '2026-10-14T02:00Z', home: { id: '8001', abbr: 'TOL', name: 'Toluca' }, away: { id: '8003', abbr: 'MTY', name: 'Monterrey' } };
     const next = await toolGetNextFixture({ team: 'Toluca', now: NOW, adapter: cup([finalFT, scheduled]) });
     expect(next.text).toContain('Monterrey');
     expect(next.text).not.toContain('Between editions');
+  });
+
+  it('a UTC viewer asking the final’s UTC date sees it (no key); the day after, the key', async () => {
+    const utc9 = await toolGetToday({ date: '2026-10-09', tz: 'UTC', adapter: cup([finalFT]) });
+    expect(utc9.text).toContain('Toluca');
+    expect(utc9.text).not.toContain('Between editions');
+    expect((utc9.data as { betweenEditions?: unknown }).betweenEditions).toBeUndefined();
+    const utc10 = await toolGetToday({ date: '2026-10-10', tz: 'UTC', adapter: cup([finalFT]) });
+    expect(utc10.text).toContain('Between editions');
+    expect(utc10.data).toMatchObject({ betweenEditions: KEY });
   });
 
   it('localized (pt): the sentence is not English and names the label', async () => {
