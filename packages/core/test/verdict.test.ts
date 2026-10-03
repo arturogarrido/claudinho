@@ -502,6 +502,36 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     }
   });
 
+  it('the sentences of 0.11 2.1d come from one place too: "none read" for live and a date, the unserved rows, the market empty body', async () => {
+    // Red first: the builders do not exist. They live beside the next and match ones in the card builder.
+    const cards = await import('../src/share/cards');
+    const live = (cards as Record<string, unknown>).liveNoneReadSentence as ((lang?: string) => string) | undefined;
+    const date = (cards as Record<string, unknown>).dateNoneReadSentence as ((date: string, lang?: string) => string) | undefined;
+    const unserved = (cards as Record<string, unknown>).unservedSentence as ((n: number, lang?: string) => string) | undefined;
+    expect(typeof live).toBe('function');
+    expect(typeof date).toBe('function');
+    expect(typeof unserved).toBe('function');
+    expect(live?.('en')).toMatch(/read/i);
+    expect(live?.('en')).not.toMatch(/No matches in play right now/);
+    expect(date?.('2026-10-10', 'en')).toMatch(/read/i);
+    expect(date?.('2026-10-10', 'en')).toContain('2026-10-10');
+    expect(unserved?.(2, 'en')).toMatch(/2 fixtures? .*bundled schedule/);
+    expect(unserved?.(2, 'en')).toMatch(/unconfirmed/);
+    for (const lang of ['es', 'pt', 'fr']) {
+      expect(live?.(lang), lang).not.toBe(live?.('en'));
+      expect(unserved?.(2, lang), lang).toMatch(/2/);
+    }
+    for (const i18nKey of ['live.noneRead', 'today.noneRead', 'today.unserved', 'markets.noneRead']) {
+      const written = new RegExp(`['"\`]${i18nKey.replace('.', '\\.')}['"\`]`);
+      expect(hits('cli', written), i18nKey).toEqual([]);
+      expect(hits('mcp', written), i18nKey).toEqual([]);
+    }
+    for (const sentence of [/was read/, /bundled schedule; their live state/, /among the fixtures read/]) {
+      expect(codeHits('cli', sentence), String(sentence)).toEqual([]);
+      expect(codeHits('mcp', sentence), String(sentence)).toEqual([]);
+    }
+  });
+
   it('the market scope sentence has one copy, in the copy bank', () => {
     expect(MARKETS_SCOPE_NOTE).toBe('Market signals cover the World Cup only; none are read for this competition.');
     const written = /cover the World Cup only/;
