@@ -54,7 +54,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "gen:schedule": "tsx scripts/build-schedule.ts"
+    "gen:schedule": "tsx scripts/gen-schedule.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",

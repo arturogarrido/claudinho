@@ -1,30 +1,55 @@
 /**
- * Generate the bundled static schedule from the ESPN feed.
+ * Build the bundled static schedule from the provider's feed (run by
+ * `scripts/gen-schedule.ts`: `pnpm -F @claudinho/core gen:schedule`).
  *
- *   pnpm -F @claudinho/core gen:schedule
+ * Fetches the tournament's windows (the adapter asks for each by calendar
+ * month: the provider refuses date ranges), dedupes by id, sorts by kickoff,
+ * and writes src/data/schedule.2026.json and src/data/bracket.2026.json. Live
+ * scores and final results are stripped — the bundle is a resultless
+ * skeleton; only team names, kickoffs, venues, and bracket structure ship in
+ * the package.
  *
- * Fetches the full tournament window in weekly chunks (the adapter asks for
- * each by calendar month: the provider refuses date ranges), dedupes by id, sorts by
- * kickoff, and writes src/data/schedule.2026.json and src/data/bracket.2026.json.
- * Live scores and final results are stripped — the bundle is a resultless skeleton;
- * only team names, kickoffs, venues, and bracket structure ship in the package.
+ * FAILS LOUD. The schedule is built only from reads that said they were whole
+ * and of this edition: a window that failed, that carried no account of
+ * itself, that was not whole (a record left out, even one whose loss the
+ * shape checks below would not notice, like a refused duplicate), or that
+ * states a season other than {@link SEASON_YEAR} (or none) stops the run at
+ * once, naming the window and the reason, and nothing is written. Then the
+ * merged result is checked against the tournament's named facts below and
+ * core's canonical knockout counts (never against this run's own topology,
+ * which would compare the fetch to itself, nor the file being replaced).
+ *
+ * This module only exports; it runs nothing on import.
  */
-import { writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { EspnAdapter } from '../src/adapters/espn';
+import { fetchMeta } from '../src/adapters/meta';
+import type { ProviderAdapter } from '../src/adapters/types';
 import { buildBracketTopology } from '../src/bracket/build';
-import type { BracketTopology } from '../src/bracket/types';
 import { isResolvedNation } from '../src/bracket/placeholders';
+import type { BracketTopology } from '../src/bracket/types';
+import { EXPECTED_KNOCKOUT_COUNTS } from '../src/bracket/types';
 import { sanitizeBundledFixture } from '../src/schedule';
 import type { Match } from '../src/types';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const OUT = join(here, '..', 'src', 'data', 'schedule.2026.json');
-const BRACKET_OUT = join(here, '..', 'src', 'data', 'bracket.2026.json');
+/** The edition the bundle describes: every window must state this season. */
+export const SEASON_YEAR = 2026;
+/** The group stage: twelve groups of four, each a single round robin. */
+export const GROUPS = 12;
+export const TEAMS_PER_GROUP = 4;
+/** Group matches: every pair in a group plays once. */
+const GROUP_MATCHES = (GROUPS * TEAMS_PER_GROUP * (TEAMS_PER_GROUP - 1)) / 2;
+/** Every stage's count: the group stage, then core's canonical knockout rounds. */
+const EXPECTED_STAGE_COUNTS: Readonly<Record<string, number>> = {
+  GROUP: GROUP_MATCHES,
+  ...(EXPECTED_KNOCKOUT_COUNTS as Record<string, number>),
+};
+/** The tournament's fixtures: the sum of its stages. */
+const EXPECTED_FIXTURES = Object.values(EXPECTED_STAGE_COUNTS).reduce((a, b) => a + b, 0);
 
-// Tournament runs 2026-06-11 .. 2026-07-19; fetch in ~weekly windows.
-const WINDOWS: ReadonlyArray<readonly [string, string]> = [
+/**
+ * The tournament's calendar, in ~weekly windows (inclusive, `YYYYMMDD`): it
+ * runs from June 11 to July 19. Written down, like the facts above.
+ */
+export const WINDOWS: ReadonlyArray<readonly [string, string]> = [
   ['20260611', '20260617'],
   ['20260618', '20260624'],
   ['20260625', '20260701'],
@@ -33,18 +58,59 @@ const WINDOWS: ReadonlyArray<readonly [string, string]> = [
   ['20260716', '20260719'],
 ];
 
-async function main(): Promise<void> {
-  const adapter = new EspnAdapter();
+/** Where the two files go, relative to the core package (forward slashes on every platform). */
+export const SCHEDULE_FILE = 'src/data/schedule.2026.json';
+export const BRACKET_FILE = 'src/data/bracket.2026.json';
+
+export interface BuildScheduleIO {
+  /** The provider, asked one window at a time (strictly: two seasons in a window are refused). */
+  adapter: ProviderAdapter;
+  /** Writes a file: a path relative to the core package, and its contents. Called only once every check passed. */
+  write: (path: string, body: string) => void;
+  log: (line: string) => void;
+  error: (line: string) => void;
+}
+
+/** Why a window's read cannot be built from, or undefined when it can. */
+function refusal(window: string, read: Match[]): string | undefined {
+  const meta = fetchMeta(read);
+  if (!meta) {
+    return `window ${window}: the response carried no account of itself, so it is not known to be whole`;
+  }
+  if (meta.complete !== true) {
+    const count =
+      meta.omitted !== undefined
+        ? ` (${meta.omitted} provider record(s) left out in the response for this window)`
+        : ' (the count of records left out is not known)';
+    return `window ${window}: the read was not whole${count}`;
+  }
+  if (meta.season?.year !== SEASON_YEAR) {
+    return `window ${window}: the response states season ${meta.season?.year ?? 'none'}, not ${SEASON_YEAR}`;
+  }
+  return undefined;
+}
+
+/**
+ * Fetch every window, validate, and write both files, or throw an Error that
+ * names what failed. The writer is never called before every check passed.
+ */
+export async function buildSchedule({ adapter, write, log, error }: BuildScheduleIO): Promise<void> {
+  if (!adapter.fetchWindow) throw new Error('the adapter cannot fetch a window; nothing written');
   const byId = new Map<string, Match>();
 
   for (const [start, end] of WINDOWS) {
+    const window = `${start}-${end}`;
+    let matches: Match[];
     try {
-      const matches = await adapter.fetchWindow(start, end);
-      for (const m of matches) byId.set(m.id, m);
-      console.log(`  ${start}-${end}: ${matches.length} fixtures`);
+      matches = await adapter.fetchWindow(start, end);
     } catch (err) {
-      console.error(`  ${start}-${end}: FAILED — ${(err as Error).message}`);
+      // At once: no further window is asked, and nothing is written.
+      throw new Error(`window ${window}: the request failed (${(err as Error).message}); nothing written`);
     }
+    const why = refusal(window, matches);
+    if (why) throw new Error(`${why}; nothing written`);
+    for (const m of matches) byId.set(m.id, m);
+    log(`  ${window}: ${matches.length} fixtures`);
   }
 
   const raw = [...byId.values()];
@@ -53,10 +119,9 @@ async function main(): Promise<void> {
   try {
     topology = buildBracketTopology(raw, generatedAt);
   } catch (err) {
-    console.error('\n⚠️  bracket topology FAILED:');
-    console.error(`   ${(err as Error).message}`);
-    console.error('Not writing files. Update bracket parsers in src/bracket/parse.ts.');
-    process.exit(1);
+    throw new Error(
+      `bracket topology failed: ${(err as Error).message}; nothing written (update the bracket parsers in src/bracket/parse.ts)`,
+    );
   }
 
   const nodeById = new Map(topology.matches.map((n) => [n.matchId, n]));
@@ -87,41 +152,33 @@ async function main(): Promise<void> {
     return acc;
   }, {});
   const groupLetters = new Set(all.filter((m) => m.group).map((m) => m.group));
-  const EXPECTED: Record<string, number> = {
-    GROUP: 72, R32: 16, R16: 8, QF: 4, SF: 2, '3P': 1, F: 1,
-  };
 
-  if (all.length !== 104) problems.push(`expected 104 fixtures, got ${all.length}`);
-  if (groupLetters.size !== 12) {
-    problems.push(`expected 12 groups, got ${groupLetters.size} (${[...groupLetters].sort().join(',')})`);
+  if (all.length !== EXPECTED_FIXTURES) problems.push(`expected ${EXPECTED_FIXTURES} fixtures, got ${all.length}`);
+  // The match formula does not imply the letters: count the distinct ones.
+  if (groupLetters.size !== GROUPS) {
+    problems.push(`expected ${GROUPS} groups, got ${groupLetters.size} (${[...groupLetters].sort().join(',')})`);
   }
-  for (const [stage, n] of Object.entries(EXPECTED)) {
+  for (const [stage, n] of Object.entries(EXPECTED_STAGE_COUNTS)) {
     if ((stageCounts[stage] ?? 0) !== n) {
       problems.push(`stage ${stage}: expected ${n}, got ${stageCounts[stage] ?? 0}`);
     }
   }
 
-  console.log(`\nstage counts: ${JSON.stringify(stageCounts)}`);
-  console.log(`groups (${groupLetters.size}): ${[...groupLetters].sort().join(', ')}`);
+  log(`\nstage counts: ${JSON.stringify(stageCounts)}`);
+  log(`groups (${groupLetters.size}): ${[...groupLetters].sort().join(', ')}`);
 
   if (problems.length > 0) {
-    console.error('\n⚠️  schedule validation FAILED:');
-    for (const p of problems) console.error(`   - ${p}`);
-    console.error('Not writing the file. Re-check the ESPN feed / mapping.');
-    process.exit(1);
+    error('\nschedule validation FAILED:');
+    for (const p of problems) error(`   - ${p}`);
+    throw new Error(`schedule validation failed (${problems.length} problem(s)); nothing written`);
   }
 
-  writeFileSync(OUT, JSON.stringify(all, null, 2) + '\n');
-  writeFileSync(BRACKET_OUT, JSON.stringify(topology, null, 2) + '\n');
-  console.log(`\n✓ wrote ${all.length} fixtures -> ${OUT}`);
-  console.log(`✓ wrote ${topology.matches.length} bracket nodes -> ${BRACKET_OUT}`);
+  write(SCHEDULE_FILE, `${JSON.stringify(all, null, 2)}\n`);
+  write(BRACKET_FILE, `${JSON.stringify(topology, null, 2)}\n`);
+  log(`\nwrote ${all.length} fixtures -> ${SCHEDULE_FILE}`);
+  log(`wrote ${topology.matches.length} bracket nodes -> ${BRACKET_FILE}`);
   for (const m of all.slice(0, 3)) {
     const g = m.group ? ` [${m.group}]` : '';
-    console.log(`  e.g. ${m.kickoff}${g}  ${m.home.flag} ${m.home.name} vs ${m.away.name} ${m.away.flag}  @ ${m.venue}`);
+    log(`  e.g. ${m.kickoff}${g}  ${m.home.flag} ${m.home.name} vs ${m.away.name} ${m.away.flag}  @ ${m.venue}`);
   }
 }
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
