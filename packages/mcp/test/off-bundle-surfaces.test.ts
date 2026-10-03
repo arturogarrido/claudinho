@@ -242,6 +242,11 @@ describe('get_match off the bundle (0.11 2.1c)', () => {
     expect(r.text).not.toContain('Ars\n\n');
     expect(r.footer.trim().length).toBeGreaterThan(20);
     expect(r.text.endsWith(r.footer)).toBe(true);
+    // The next tool the same: the query it names is the bounded label.
+    const n = await toolGetNextFixture({ team: 'Everton\n\n', now: NOW, adapter: feed('eng.1', { events: upcoming }).adapter });
+    expect(n.text).not.toContain('Everton\n\n');
+    expect(n.text).toContain('No team called Everton');
+    expect(JSON.stringify(n.data)).not.toContain('\\n');
   });
 
   it('on the World Cup, get_next_fixture carries the candidates of an ambiguous name in data (review round 2)', async () => {
