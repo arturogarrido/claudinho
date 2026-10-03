@@ -171,8 +171,15 @@ export type {
 // attribution, and the verdict the card carries).
 export {
   bracketShareCard,
+  dateNoneRead,
+  dateNoneReadSentence,
   dateShareCard,
+  dayAttribution,
+  liveNoneRead,
+  liveNoneReadSentence,
   liveShareCard,
+  marketsNoneRead,
+  marketsNoneReadSentence,
   matchShareCard,
   matchNoneReadSentence,
   matchWindowSentence,
@@ -180,10 +187,13 @@ export {
   nextNoneReadSentence,
   nextShareCard,
   tableShareCard,
+  unservedSentence,
 } from './share/cards';
 export type {
   BracketShareCard,
+  DayAttribution,
   MatchShareCard,
+  ReadAccount,
   ShareCardContext,
   ShareCardMarket,
   ShareCardView,

@@ -116,15 +116,29 @@ export interface LiveResult {
    * holds none of them. Never stated on the bundled competition.
    */
   betweenEditions?: BetweenEditions;
-}
-
-/**
- * The bundled fixtures a result may be merged over: all of them when the
- * bundle describes this competition AND, once a provider has answered, the
- * season it answered for; none otherwise.
- */
-function skeletonFor(adapter: ProviderAdapter, season?: SeasonInfo): Match[] {
-  return bundleApplies(adapter.competition, season) ? allFixtures() : [];
+  /**
+   * The read behind the result said it was not whole (see
+   * `VerdictSource.partial`): the provider sent records the result does not
+   * hold. `omitted` is how many, when the read knew it. Absent for a whole
+   * read, for an adapter that said nothing about its answer, and for a failed
+   * read (which is `degraded`).
+   */
+  partial?: { omitted?: number };
+  /**
+   * The dated read only: the bundled skeleton was merged under the provider's
+   * records (the bundled competition, and no season stated or the bundle's
+   * own). The day's list is then the bundle's, whole, and a fixture whose
+   * record was left out shows without its live state; without it, a record
+   * left out is simply absent. Request-local: never written to a cache.
+   */
+  skeleton?: true;
+  /**
+   * The dated read only, when it succeeded: the ids of the records the
+   * provider's window held (what the overlay served). A surface compares it
+   * with the fixtures it displays (see `dayAttribution`). Request-local: never
+   * written to a cache.
+   */
+  served?: readonly string[];
 }
 
 /**
@@ -219,6 +233,12 @@ export function liveSourceLabel(source: string): string {
  * `matches` is the window's records in every case: the surface files them by
  * the viewer's date.
  *
+ * The result also says what it is made of: `partial` when the window said it
+ * was not whole (the count when it knew it), `skeleton` when the bundled
+ * schedule was merged under the records, and `served`, the ids the window
+ * held. The last two are request-local: a surface reads them to attribute the
+ * day it displays (`dayAttribution`) and to say what an empty day means.
+ *
  * `tz` is the viewer's zone, the one the surface files the records by (pass
  * the same effective zone: `resolveTz`). A caller that names none asks in the
  * provider's zone, the days the window is counted in.
@@ -251,18 +271,27 @@ export async function getMatchesForDate(
     const between = betweenEditionsOf(adapter, meta, live, day, onDate);
     // The skeleton is merged ONLY when it is this competition's schedule AND
     // this response's edition; otherwise the day is whatever the provider
-    // served, and nothing else (A03).
+    // served, and nothing else (A03). The result says which (`skeleton`): on a
+    // read that was not whole, a merged day is still whole (a fixture whose
+    // record was left out shows without its live state), and an unmerged one
+    // simply lacks the record.
+    const merged = bundleApplies(adapter.competition, season);
     return {
-      matches: mergeLive(skeletonFor(adapter, season), live),
+      matches: mergeLive(merged ? allFixtures() : [], live),
       degraded: false,
       source: adapter.name,
       ...(season ? { season } : {}),
       ...(between ? { betweenEditions: between } : {}),
+      ...partialOfRead(meta),
+      ...(merged ? { skeleton: true as const } : {}),
+      // What the overlay held, for the day's attribution (`dayAttribution`).
+      served: live.map((m) => m.id),
     };
   } catch {
     // No provider answer: nothing reported a season, so the bundle stays what
     // it is — the edition it was built from.
-    return { matches: skeletonFor(adapter), degraded: true };
+    const merged = bundleApplies(adapter.competition);
+    return { matches: merged ? allFixtures() : [], degraded: true, ...(merged ? { skeleton: true as const } : {}) };
   }
 }
 
@@ -553,10 +582,14 @@ export async function marketFixtureForTeam(
   // successful fetch — the same rule as getBracket/getNextFixtureForTeam
   // (audit A06, sibling found by the call-site sweep).
   let overlayFailed = false;
+  /** The knockout window's verdict on its answer (nothing when it was whole, said nothing, or failed). */
+  let windowRead: { partial?: { omitted?: number } } = {};
   const win = knockoutWindow();
   if (adapter.fetchWindow && win) {
     try {
-      fixtures = mergeLive(fixtures, await adapter.fetchWindow(win.start, win.end));
+      const live = await adapter.fetchWindow(win.start, win.end);
+      fixtures = mergeLive(fixtures, live);
+      windowRead = partialOfRead(fetchMeta(live));
     } catch {
       overlayFailed = true; // KO overlay unavailable — a knockout tie may be unresolvable
     }
@@ -567,20 +600,42 @@ export async function marketFixtureForTeam(
     const k = Date.parse(m.kickoff);
     return nowMs >= k && nowMs <= k + LIVE_WINDOW_MS + EXTRA_TIME_SLACK_MS;
   });
+  /** The candidate's own-day refresh's verdict, when one was made. */
+  let refreshRead: { partial?: { omitted?: number } } = {};
   if (candidate) {
-    const r = await getMatchById(adapter, candidate.id);
+    const { partial, ...r } = await getMatchById(adapter, candidate.id);
+    refreshRead = partial ? { partial } : {};
     // A second read that fails hands back the BUNDLED fixture, which for a
     // knockout tie is a placeholder. The candidate came from the overlay that
     // did answer: keep it, and keep the failure's `degraded`.
     const m = r.degraded ? candidate : (r.match ?? candidate);
-    if (!isFinished(m.status)) return { ...r, match: m };
+    if (!isFinished(m.status)) return { ...r, match: m, ...bothReads(windowRead, refreshRead) };
     // Confirmed finished → the team's market story has moved on.
   }
   const next = nextFixtureForTeam(code, { from: now, fixtures });
   // When the overlay fetch failed the static skeleton can't resolve a knockout
   // tie, so flag degraded — lets a caller say "feed unavailable" rather than the
-  // misleading "no upcoming fixture" for a team past its group stage.
-  return { match: next, degraded: overlayFailed };
+  // misleading "no upcoming fixture" for a team past its group stage. Whatever
+  // is returned, the reads it was chosen from say whether they were whole.
+  return { match: next, degraded: overlayFailed, ...bothReads(windowRead, refreshRead) };
+}
+
+/**
+ * The `partial` verdict of an answer chosen from two reads (the knockout
+ * window, then a candidate's own day): stated when EITHER read stated it.
+ * Each read counts what IT left out (one refused record seen by both is two),
+ * so the counts are summed, and only when every read that stated the verdict
+ * knew its count; otherwise the verdict stands with no count. A read that
+ * failed, was whole, or said nothing contributes nothing.
+ */
+function bothReads(
+  ...reads: ReadonlyArray<{ partial?: { omitted?: number } }>
+): { partial?: { omitted?: number } } {
+  const stated = reads.flatMap((r) => (r.partial ? [r.partial] : []));
+  if (stated.length === 0) return {};
+  let omitted: number | undefined = 0;
+  for (const p of stated) omitted = omitted === undefined || p.omitted === undefined ? undefined : omitted + p.omitted;
+  return partialOfRead({ complete: false, omitted });
 }
 
 export interface NextFixtureResult {
@@ -880,8 +935,15 @@ export async function getMatchById(
     const hit = live.find((m) => m.id === id);
     // Attribute the provider only when live data actually served the match —
     // a static fixture rendered after a successful-but-missing fetch is not
-    // "Live data: ESPN".
-    return { match: hit ?? base, degraded: false, source: hit ? adapter.name : undefined };
+    // "Live data: ESPN". The window's own verdict rides beside it: a record it
+    // left out may be this match's (then the bundle's row is shown, with no
+    // live state and no attribution) or a sibling's.
+    return {
+      match: hit ?? base,
+      degraded: false,
+      source: hit ? adapter.name : undefined,
+      ...partialOfRead(fetchMeta(live)),
+    };
   } catch {
     return { match: base, degraded: true };
   }
@@ -1134,8 +1196,9 @@ export async function getLiveMatches(
   adapter: ProviderAdapter,
   now: Date = new Date(),
 ): Promise<LiveResult> {
-  // No surface prints the read's own verdict (yet): what they get is what
-  // they got, key for key.
+  // The surfaces get the read's VERDICT (`partial`, stated when the response
+  // said it was not whole), not the refresher's boolean, which is also false
+  // for an adapter that said nothing and for a failed read.
   const { complete: _complete, ...result } = await getLiveRead(adapter, now);
   return result;
 }
@@ -1186,6 +1249,11 @@ export async function getLiveRead(
       source: adapter.name,
       ...(season ? { season } : {}),
       ...(between ? { betweenEditions: between } : {}),
+      // The read's own verdict, for the surfaces: stated only when the
+      // response SAID it was not whole (with the count when it knew it). The
+      // boolean below is the refresher's, unchanged: false for that, for an
+      // adapter that said nothing, and for a failed read alike.
+      ...partialOfRead(meta),
       complete: meta?.complete === true,
     };
   } catch {

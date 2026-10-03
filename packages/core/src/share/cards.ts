@@ -25,6 +25,13 @@
  * {@link nextNoneReadSentence}, {@link matchNoneReadSentence}) for every
  * surface: the CLI and the MCP tools print the same sentence, from this one
  * place, and a card carries its span as a plain field (`span`).
+ *
+ * The same holds for the live and dated reads (0.11 2.1d): an empty body after
+ * a read that was not whole says nothing was READ ({@link liveNoneRead},
+ * {@link dateNoneRead}, {@link marketsNoneRead}), and a day's attribution on
+ * such a read is decided over the fixtures a surface displays
+ * ({@link dayAttribution}: the "Live data" line, and the sentence counting
+ * the bundled rows the read did not serve).
  */
 import type { ShareBracketInput } from '../bracket/format';
 import type { BracketResult } from '../bracket/types';
@@ -36,7 +43,14 @@ import { formatDate } from '../time';
 import { bundleApplies } from '../competition';
 import { isTeam } from '../trust/match';
 import type { Match, Team } from '../types';
-import { type VerdictExtras, type VerdictSource, verdictExtras, verdictNotice, verdictQualifiers } from '../verdict';
+import {
+  statesPartial,
+  type VerdictExtras,
+  type VerdictSource,
+  verdictExtras,
+  verdictNotice,
+  verdictQualifiers,
+} from '../verdict';
 import type { ShareSnippetInput, ShareTableInput } from './format';
 
 /**
@@ -98,6 +112,116 @@ export function nextNoneReadSentence(
 export function matchNoneReadSentence(result: MatchByIdResult, id: string, lang: string | undefined): string | undefined {
   if (result.match || result.degraded || !result.partial) return undefined;
   return t(lang, 'match.noneRead', { id });
+}
+
+/**
+ * "No match in play was read", in the reader's language: an EMPTY live body
+ * after a read that was not whole, which is not "nothing is in play". (When
+ * it applies: {@link liveNoneRead}.)
+ */
+export function liveNoneReadSentence(lang?: string): string {
+  return t(lang, 'live.noneRead');
+}
+
+/**
+ * "No fixture was read for {date}", in the reader's language: an EMPTY day
+ * after a read that was not whole and merged no bundled schedule, which is not
+ * "no matches scheduled". (When it applies: {@link dateNoneRead}.)
+ */
+export function dateNoneReadSentence(date: string, lang?: string): string {
+  return t(lang, 'today.noneRead', { date });
+}
+
+/**
+ * The sentence beside a day's partial verdict that counts the displayed
+ * fixtures the read did not serve: they are the bundled schedule's rows, and
+ * their live state is unconfirmed. Singular and plural, in the reader's
+ * language. (When it applies: {@link dayAttribution}.)
+ */
+export function unservedSentence(n: number, lang?: string): string {
+  return t(lang, n === 1 ? 'today.unserved.one' : 'today.unserved.other', { n: String(n) });
+}
+
+/**
+ * "No market signal among the fixtures read for {date}", in the reader's
+ * language: an EMPTY dated market answer whose fixture read was not whole,
+ * which is not "none for the date". (When it applies: {@link marketsNoneRead}.)
+ */
+export function marketsNoneReadSentence(date: string, lang?: string): string {
+  return t(lang, 'markets.noneRead', { date });
+}
+
+/**
+ * What a live or dated read says about itself, as the empty bodies and the
+ * day's attribution read it: its verdicts, whether it failed, whether it
+ * merged the bundled schedule, and what the provider's window held.
+ */
+export type ReadAccount = VerdictSource & {
+  readonly degraded?: boolean;
+  readonly skeleton?: true;
+  readonly served?: readonly string[];
+};
+
+/**
+ * The empty body of a live read that was not whole (`partial` stated, not
+ * degraded): {@link liveNoneReadSentence}. Undefined otherwise: a whole read
+ * with nothing in play says so in the surface's own words.
+ */
+export function liveNoneRead(result: ReadAccount, lang?: string): string | undefined {
+  return !result.degraded && statesPartial(result) ? liveNoneReadSentence(lang) : undefined;
+}
+
+/**
+ * The empty body of a dated read that was not whole and merged NO bundled
+ * schedule (off the bundle, or the bundle's slug answering for another
+ * edition): {@link dateNoneReadSentence}. Undefined otherwise: where the
+ * skeleton was merged the day's list is the bundle's, whole, and its empty
+ * body is the bundle's answer.
+ */
+export function dateNoneRead(result: ReadAccount, date: string, lang?: string): string | undefined {
+  return !result.degraded && statesPartial(result) && result.skeleton !== true
+    ? dateNoneReadSentence(date, lang)
+    : undefined;
+}
+
+/**
+ * The empty body of a dated MARKET answer whose fixture read was not whole:
+ * {@link marketsNoneReadSentence}. Undefined otherwise. Separate from the
+ * market requests' own completeness (`complete`), which says something else.
+ */
+export function marketsNoneRead(result: ReadAccount, date: string, lang?: string): string | undefined {
+  return !result.degraded && statesPartial(result) ? marketsNoneReadSentence(date, lang) : undefined;
+}
+
+/** What a day's surface says about the provider, for the fixtures it displays. */
+export interface DayAttribution {
+  /** Whether the "Live data" line is printed (the structured `source` keeps the provider either way). */
+  attributed: boolean;
+  /** The sentence counting the displayed fixtures the read did not serve, when there are any. */
+  unserved?: string;
+}
+
+/**
+ * The day's attribution, ONE rule for the CLI, the MCP tool and the date card,
+ * computed over the fixtures the surface finally DISPLAYS (after the date
+ * filter and any bound). A whole read, a degraded one, and a read that does not
+ * say what it served change nothing: the line is printed as it always was. On
+ * a read that was not whole:
+ *   - when some displayed fixtures are not among the ids the window held
+ *     (`served`), they are the bundled schedule's rows, whose live state is
+ *     unconfirmed: the sentence says how many;
+ *   - when NONE of the displayed fixtures was served, the "Live data" line is
+ *     not printed: a provider is never named for a day it served nothing of.
+ *     (An empty day attributes no fixture, and keeps the line.)
+ */
+export function dayAttribution(read: ReadAccount, shown: readonly Match[], lang?: string): DayAttribution {
+  if (!statesPartial(read) || !Array.isArray(read.served)) return { attributed: true };
+  const served = new Set(read.served);
+  const unserved = shown.filter((m) => !served.has(m.id)).length;
+  return {
+    attributed: shown.length === 0 || unserved < shown.length,
+    ...(unserved > 0 ? { unserved: unservedSentence(unserved, lang) } : {}),
+  };
 }
 
 /**
@@ -184,12 +308,15 @@ export function liveShareCard(
       source: result.source,
       degraded: result.degraded,
       // Degraded ⇒ the feed is down, not "nothing is on" — say so on a public card.
-      // A verdict (between editions) stands instead of either.
+      // A verdict (between editions) stands instead of either; a read that was
+      // not whole says none in play was READ.
       emptyNote:
         verdictNotice(result, ctx.locale) ??
         (result.degraded
           ? "Live scores unavailable right now — couldn't reach the data provider."
-          : 'No matches in play right now.'),
+          : (liveNoneRead(result, ctx.locale) ?? 'No matches in play right now.')),
+      // The read was not whole: said beside the matches, or beside "none read".
+      ...qualifierNote(result, ctx.locale),
       installLine: runCue(ctx.competition, 'live'),
       tz: ctx.tz,
       locale: ctx.locale,
@@ -307,22 +434,30 @@ export function dateShareCard(
     degraded: boolean;
     source?: string;
     /**
-     * Whether the day's fixture list is known WITHOUT the provider: true where
-     * the bundled schedule covers the competition, false where the provider is
-     * the only source. Decides what an empty, degraded day may say.
+     * For a caller that hands no `read`: whether the day's list holds the
+     * bundled schedule (decides what an empty, degraded day may say). With a
+     * `read`, the read's own `skeleton` decides: a surface passes the read.
      */
-    scheduleKnown: boolean;
+    scheduleKnown?: boolean;
     /** Appended to the title, e.g. " (showing 20 of 31)". */
     titleSuffix?: string;
-    /** The dated read itself, whose verdicts the card states (between editions). */
-    read?: VerdictSource;
+    /**
+     * The dated read itself: the verdicts the card states (between editions,
+     * partial), whether it merged the bundled schedule, and what it served
+     * (the card's attribution, over the fixtures it shows).
+     */
+    read?: ReadAccount;
   },
   market: ShareCardMarket,
   ctx: ShareCardContext,
 ): MatchShareCard {
-  const read = day.read ?? {};
+  const read: ReadAccount = day.read ?? (day.scheduleKnown ? { skeleton: true } : {});
   // Human date label from a stable midday-UTC instant (avoids tz day flips).
   const human = formatDate(`${day.date}T12:00:00.000Z`, { tz: ctx.tz, locale: ctx.locale });
+  // On a read that was not whole: the card names its provider only when a
+  // fixture it shows was served, and counts the rows that were not.
+  const attribution = dayAttribution(read, day.matches, ctx.locale);
+  const note = [...verdictQualifiers(read, ctx.locale), ...(attribution.unserved ? [attribution.unserved] : [])];
   return {
     kind: 'today',
     target: day.date,
@@ -332,16 +467,20 @@ export function dateShareCard(
       matches: day.matches,
       marketSignals: market.signals,
       marketComplete: market.complete,
-      source: day.source,
+      source: attribution.attributed ? day.source : undefined,
       degraded: day.degraded,
       // Fail closed: when the provider is the only source of fixtures and it
       // could not be reached, the card must not paste as an empty day. (The
-      // formatter adds its own outage line only when there ARE matches.)
+      // formatter adds its own outage line only when there ARE matches.) A
+      // read that was not whole and merged no schedule says none was READ.
       emptyNote:
         verdictNotice(read, ctx.locale) ??
-        (day.degraded && !day.scheduleKnown
+        (day.degraded && read.skeleton !== true
           ? `Couldn't reach the data provider — no fixtures confirmed for ${human}.`
-          : `No matches scheduled for ${human}.`),
+          : (dateNoneRead(read, day.date, ctx.locale) ?? `No matches scheduled for ${human}.`)),
+      // The read was not whole (and which shown rows it did not serve): said
+      // beside the fixtures, or beside "none read".
+      ...(note.length > 0 ? { note: note.join(' ') } : {}),
       installLine: runCue(ctx.competition, 'today'),
       tz: ctx.tz,
       locale: ctx.locale,
