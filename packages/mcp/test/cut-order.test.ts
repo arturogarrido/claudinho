@@ -238,7 +238,8 @@ describe('the live and date cards: the list’s cap is a note after the verdict,
   it('the date card: title, the verdict, the cap, the rows', async () => {
     const r = await toolGetShareSnippet({ date: '2026-06-11', tz: 'UTC', adapter: feed({ events: [{ ...OPENER, raw: REFUSED }, ...many()] }) });
     expect(r.text.split('\n')[0] ?? '').not.toContain('showing');
-    precedes(r.text, 'may be incomplete', 'list truncated');
+    precedes(r.text, 'may be incomplete', 'bundled schedule'); // the verdict, then the unserved count (as get_today)
+    precedes(r.text, 'bundled schedule', 'list truncated'); // then the cap
     precedes(r.text, 'list truncated', 'Mexico');
   });
 });
