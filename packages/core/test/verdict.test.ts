@@ -258,7 +258,7 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
 
   it('a date: today or an explicit day, with a caller-bounded list', () => {
     const today = dateShareCard(
-      { date: '2026-06-11', explicit: false, matches: [match], degraded: false, source: 'espn', scheduleKnown: true },
+      { date: '2026-06-11', explicit: false, matches: [match], degraded: false, source: 'espn', read: { skeleton: true } },
       noMarket,
       ctx,
     );
@@ -268,7 +268,7 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
     expect(today.input.installLine).toBe('npx @claudinho/cli today');
 
     const explicit = dateShareCard(
-      { date: '2026-06-11', explicit: true, matches: [], degraded: true, scheduleKnown: true, titleSuffix: ' (showing 20 of 31)' },
+      { date: '2026-06-11', explicit: true, matches: [], degraded: true, read: { skeleton: true }, titleSuffix: ' (showing 20 of 31)' },
       noMarket,
       ctx,
     );
@@ -276,18 +276,19 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
     expect(explicit.input.degraded).toBe(true);
   });
 
-  it('a date: an outage reads as "no matches scheduled" only where the schedule is known without the provider', () => {
+  it('a date: an outage reads as "no matches scheduled" only where the read merged the bundled schedule', () => {
     // Found in review. The empty note was unconditional, and the formatter adds
     // its own outage notice only when there ARE matches: off the bundle, a feed
-    // that is down pasted as an empty day.
+    // that is down pasted as an empty day. The READ says whether the skeleton
+    // was merged (`skeleton`); the card has no second input for the same fact.
     const day = { date: '2026-10-01', explicit: true, matches: [], degraded: true };
-    expect(dateShareCard({ ...day, scheduleKnown: false }, noMarket, ctx).input.emptyNote).toBe(
+    expect(dateShareCard({ ...day, read: {} }, noMarket, ctx).input.emptyNote).toBe(
       "Couldn't reach the data provider — no fixtures confirmed for Oct 1.",
     );
-    expect(dateShareCard({ ...day, scheduleKnown: true }, noMarket, ctx).input.emptyNote).toBe(
+    expect(dateShareCard({ ...day, read: { skeleton: true } }, noMarket, ctx).input.emptyNote).toBe(
       'No matches scheduled for Oct 1.',
     );
-    expect(dateShareCard({ ...day, degraded: false, scheduleKnown: false }, noMarket, ctx).input.emptyNote).toBe(
+    expect(dateShareCard({ ...day, degraded: false, read: {} }, noMarket, ctx).input.emptyNote).toBe(
       'No matches scheduled for Oct 1.',
     );
   });
@@ -508,9 +509,15 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     const live = (cards as Record<string, unknown>).liveNoneReadSentence as ((lang?: string) => string) | undefined;
     const date = (cards as Record<string, unknown>).dateNoneReadSentence as ((date: string, lang?: string) => string) | undefined;
     const unserved = (cards as Record<string, unknown>).unservedSentence as ((n: number, lang?: string) => string) | undefined;
+    const unreached = (cards as Record<string, unknown>).dateUnreachedSentence as ((date: string, lang?: string) => string) | undefined;
     expect(typeof live).toBe('function');
     expect(typeof date).toBe('function');
     expect(typeof unserved).toBe('function');
+    expect(typeof unreached).toBe('function');
+    // The outage sentence of a day with no bundled schedule: the date card's, now every date surface's.
+    expect(unreached?.('2026-10-10', 'en')).toMatch(/no fixtures confirmed/);
+    expect(unreached?.('2026-10-10', 'en')).toContain('2026-10-10');
+    expect(unreached?.('2026-10-10', 'es')).not.toBe(unreached?.('2026-10-10', 'en'));
     expect(live?.('en')).toMatch(/read/i);
     expect(live?.('en')).not.toMatch(/No matches in play right now/);
     expect(date?.('2026-10-10', 'en')).toMatch(/read/i);
@@ -521,12 +528,13 @@ describe('one definition of each rule the two surfaces used to copy', () => {
       expect(live?.(lang), lang).not.toBe(live?.('en'));
       expect(unserved?.(2, lang), lang).toMatch(/2/);
     }
-    for (const i18nKey of ['live.noneRead', 'today.noneRead', 'today.unserved', 'markets.noneRead']) {
+    for (const i18nKey of ['live.noneRead', 'today.noneRead', 'today.unserved', 'markets.noneRead', 'today.unreached']) {
       const written = new RegExp(`['"\`]${i18nKey.replace('.', '\\.')}['"\`]`);
       expect(hits('cli', written), i18nKey).toEqual([]);
       expect(hits('mcp', written), i18nKey).toEqual([]);
     }
-    for (const sentence of [/was read/, /bundled schedule; their live state/, /among the fixtures read/]) {
+    // The sentences, not the phrase: a tool description may say what "was read" in prose.
+    for (const sentence of [/(in play|fixture) was read/, /bundled schedule; (its|their) live state/, /among the fixtures read/, /no fixtures confirmed/]) {
       expect(codeHits('cli', sentence), String(sentence)).toEqual([]);
       expect(codeHits('mcp', sentence), String(sentence)).toEqual([]);
     }

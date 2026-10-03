@@ -60,7 +60,6 @@ function feed(competition: string, opts: FeedOpts = {}) {
 /** The World Cup's opener (a real bundled id) and the next day's first match. */
 const OPENER: Ev = { id: '760415', date: '2026-06-11T19:00Z', home: MEX, away: RSA };
 const KOR_CZE: Ev = { id: '760414', date: '2026-06-12T02:00Z', home: KOR, away: CZE };
-const CAN_BIH: Ev = { id: '760416', date: '2026-06-12T19:00Z', home: CAN, away: BIH };
 const OPENER_DAY = new Date('2026-06-11T20:00:00Z');
 
 /** An adapter with no window: a single read whose account is what it says. */
@@ -150,10 +149,12 @@ describe('the dated read states its verdict, whether it merged the skeleton, and
   it('off the bundle: no skeleton, the refused record absent, the verdict stated', async () => {
     const S = { year: 2026, displayName: '2026-27 English Premier League', startDate: '2026-08-01T04:00Z', endDate: '2027-06-01T03:59Z' };
     const ARS: Side = { id: '359', abbr: 'ARS', name: 'Arsenal' }; const CHE: Side = { id: '363', abbr: 'CHE', name: 'Chelsea' };
-    const f = feed('eng.1', { season: S, events: [{ id: '41', date: '2026-10-17T14:00Z', home: ARS, away: CHE, raw: REFUSED }] });
+    // The readable record on the adjacent day keeps the window a PARTIAL read (a window whose only record is
+    // refused is a failed read); the dated read returns the window's records, the surface files them by day.
+    const f = feed('eng.1', { season: S, events: [{ id: '41', date: '2026-10-17T14:00Z', home: ARS, away: CHE, raw: REFUSED }, { id: '42', date: '2026-10-18T14:00Z', home: CHE, away: ARS }] });
     const r = await getMatchesForDate(f.adapter, '2026-10-17', 'UTC');
     expect(r.skeleton).toBeUndefined();
-    expect(r.matches).toEqual([]);
+    expect(r.matches.map((m) => m.id)).toEqual(['42']);
     expect(r.partial).toEqual({ omitted: 1 });
     expect(r.degraded).toBe(false);
   });
@@ -180,7 +181,8 @@ describe('the bundled match read states its verdict; attribution unchanged (0.11
 
 describe('the market fixture read keeps both accounts (0.11 2.1d)', () => {
   // The knockout window (two months) and the candidate's own day are two reads; the verdict is theirs together.
-  const KO_NOW = new Date('2026-07-14T12:00:00Z');
+  // The own-day refresh is made only for a candidate IN PLAY, so the clock sits inside the final.
+  const KO_NOW = new Date('2026-07-19T19:30:00Z');
   const FINAL: Ev = { id: '760517', date: '2026-07-19T19:00Z', home: { id: '164', abbr: 'ESP', name: 'Spain' }, away: { id: '202', abbr: 'ARG', name: 'Argentina' } };
   const broken = (id: string, date: string): Ev => ({ id, date, home: CAN, away: BIH, raw: REFUSED });
 

@@ -28,11 +28,12 @@ const REFUSED = { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } };
 const eastern = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
 const easternDay = (iso: string) => eastern.format(new Date(iso)).replace(/-/g, '');
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-function feed(competition: string, opts: { events?: Ev[]; season?: unknown } = {}) {
+function feed(competition: string, opts: { events?: Ev[]; season?: unknown; fail?: boolean } = {}) {
   const events = opts.events ?? [];
   const fetchImpl = (async (input: unknown) => {
     const url = String(input);
     if (url.includes('/standings')) return json({});
+    if (opts.fail) return json({ code: 503 }, 503);
     const asked = new URL(url).searchParams.get('dates') ?? '';
     if (asked.includes('-')) return json({ code: 400 }, 400);
     const inBucket = (e: Ev) => (asked.length === 8 ? easternDay(e.date) === asked : asked.length === 6 ? easternDay(e.date).startsWith(asked) : false);
@@ -84,15 +85,35 @@ describe('get_live and get_today (0.11 2.1d)', () => {
   });
 
   it('today off the bundle, and on the bundle’s slug for another year: the empty partial body says no fixture was read for the date', async () => {
-    const off = await toolGetToday({ date: '2026-10-17', tz: 'UTC', adapter: feed('eng.1', { season: PL, events: [{ id: '41', date: '2026-10-17T14:00Z', home: ARS, away: CHE, raw: REFUSED }] }) });
+    // A readable record on the adjacent day keeps each three-day window a PARTIAL read (a window whose only
+    // record is refused is a failed read); it is outside the displayed UTC date, so the day's body is empty.
+    const off = await toolGetToday({ date: '2026-10-17', tz: 'UTC', adapter: feed('eng.1', { season: PL, events: [{ id: '41', date: '2026-10-17T14:00Z', home: ARS, away: CHE, raw: REFUSED }, { id: '42', date: '2026-10-18T14:00Z', home: CHE, away: ARS }] }) });
     expect(off.text).toContain(SENTENCE);
     expect(off.text).not.toContain('No matches scheduled');
+    expect(off.text).not.toContain('Chelsea');
     expect(off.data).toMatchObject({ partial: { omitted: 1 } });
     strict('get_today', off.data);
-    const other = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: feed('fifa.world', { season: { ...WC_SEASON, year: 2022 }, events: [{ ...OPENER, raw: REFUSED }] }) });
+    const other = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: feed('fifa.world', { season: { ...WC_SEASON, year: 2022 }, events: [{ ...OPENER, raw: REFUSED }, KOR_CZE] }) });
     expect(other.text).not.toContain('No matches scheduled');
     expect(other.text).not.toContain('Mexico');
+    expect(other.text).not.toContain('Korea');
     expect(other.text).toContain(SENTENCE);
+  });
+
+  it('a FAILED read off the bundle: the text says the provider could not be reached, never "No matches scheduled" nor "showing the bundled schedule"; on the bundle unchanged', async () => {
+    const off = await toolGetToday({ date: '2026-10-17', tz: 'UTC', adapter: feed('eng.1', { season: PL, fail: true }) });
+    expect(off.text).toMatch(/no fixtures confirmed/);
+    expect(off.text).not.toContain('No matches scheduled');
+    expect(off.text).not.toContain('bundled schedule');
+    expect(off.data).toMatchObject({ degraded: true, source: null });
+    expect(off.data).not.toHaveProperty('partial');
+    strict('get_today', off.data);
+    const es = await toolGetToday({ date: '2026-10-17', tz: 'UTC', lang: 'es', adapter: feed('eng.1', { season: PL, fail: true }) } as never);
+    expect(es.text).not.toMatch(/no fixtures confirmed/);
+    expect(es.text).not.toContain('No matches scheduled');
+    const on = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: feed('fifa.world', { fail: true }) });
+    expect(on.text).toContain('Mexico');
+    expect(on.text).toContain('showing the bundled schedule');
   });
 
   it('the share cards: live and date carry the note and the key; the date card drops its source with the line', async () => {

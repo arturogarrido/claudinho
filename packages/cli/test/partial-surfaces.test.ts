@@ -31,11 +31,12 @@ const REFUSED = { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } };
 const eastern = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
 const easternDay = (iso: string) => eastern.format(new Date(iso)).replace(/-/g, '');
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-function feed(competition: string, opts: { events?: Ev[]; season?: unknown } = {}) {
+function feed(competition: string, opts: { events?: Ev[]; season?: unknown; fail?: boolean } = {}) {
   const events = opts.events ?? [];
   const fetchImpl = (async (input: unknown) => {
     const url = String(input);
     if (url.includes('/standings')) return json({});
+    if (opts.fail) return json({ code: 503 }, 503);
     const asked = new URL(url).searchParams.get('dates') ?? '';
     if (asked.includes('-')) return json({ code: 400 }, 400);
     const inBucket = (e: Ev) => (asked.length === 8 ? easternDay(e.date) === asked : asked.length === 6 ? easternDay(e.date).startsWith(asked) : false);
@@ -161,7 +162,9 @@ describe('today (0.11 2.1d)', () => {
   });
 
   it('off the bundle, the day’s only fixture refused: the empty body says no fixture was READ for that date, never "No matches scheduled"', async () => {
-    const adapter = feed('eng.1', { season: PL, events: [{ id: '41', date: '2026-10-17T14:00Z', home: ARS, away: CHE, raw: REFUSED }] });
+    // A readable record on the adjacent day keeps the three-day window a PARTIAL read (a window whose
+    // only record is refused is a failed read, not a partial one); it is outside the displayed date.
+    const adapter = feed('eng.1', { season: PL, events: [{ id: '41', date: '2026-10-17T14:00Z', home: ARS, away: CHE, raw: REFUSED }, { id: '42', date: '2026-10-18T14:00Z', home: CHE, away: ARS }] });
     await cmdToday('2026-10-17', ctxFor(adapter, {}, new Date('2026-10-17T12:00:00Z')));
     expect(text()).toContain(SENTENCE);
     expect(text()).not.toContain('No matches scheduled');
@@ -172,12 +175,40 @@ describe('today (0.11 2.1d)', () => {
     expect(text()).not.toContain('No matches scheduled');
   });
 
+  it('a FAILED read off the bundle: the empty body says the provider could not be reached (the date card’s sentence, localized), never "No matches scheduled" nor "showing the bundled schedule"; on the bundle the skeleton and its line as today', async () => {
+    // Seen while building 2.1d: off the bundle a degraded day printed the bundle's empty answer and
+    // "showing the bundled schedule", though no bundled schedule applies there. The read now says
+    // whether it merged the skeleton, so the surfaces can say what an outage leaves them with.
+    const off = feed('eng.1', { season: PL, fail: true });
+    await cmdToday('2026-10-17', ctxFor(off, {}, new Date('2026-10-17T12:00:00Z')));
+    expect(text()).toMatch(/no fixtures confirmed/);
+    expect(text()).not.toContain('No matches scheduled');
+    expect(text()).not.toContain('bundled schedule');
+    expect(text()).not.toContain('Live data');
+    writes = [];
+    await cmdToday('2026-10-17', ctxFor(off, { lang: 'es' }, new Date('2026-10-17T12:00:00Z')));
+    expect(text()).not.toMatch(/no fixtures confirmed/);
+    expect(text()).not.toContain('No matches scheduled');
+    expect(text()).toContain('2026-10-17');
+    writes = [];
+    await cmdToday('2026-10-17', ctxFor(off, { json: true }, new Date('2026-10-17T12:00:00Z')));
+    expect(parsed()).toMatchObject({ degraded: true, matches: [] });
+    expect(parsed()).not.toHaveProperty('partial');
+    writes = [];
+    await cmdToday('2026-06-11', ctxFor(feed('fifa.world', { fail: true })));
+    expect(text()).toContain('Mexico');
+    expect(text()).toContain('showing the bundled schedule');
+    expect(text()).not.toMatch(/no fixtures confirmed/);
+  });
+
   it('the bundle’s slug stating another year (no skeleton merged): the same none-read body', async () => {
-    const adapter = feed('fifa.world', { season: { ...WC_SEASON, year: 2022, displayName: '2022 FIFA World Cup' }, events: [{ ...OPENER, raw: REFUSED }] });
+    // KOR-CZE (02:00Z the next day) is the readable sibling that keeps the read partial; it is not on the displayed UTC date.
+    const adapter = feed('fifa.world', { season: { ...WC_SEASON, year: 2022, displayName: '2022 FIFA World Cup' }, events: [{ ...OPENER, raw: REFUSED }, KOR_CZE] });
     await cmdToday('2026-06-11', ctxFor(adapter));
     expect(text()).toContain(SENTENCE);
     expect(text()).not.toContain('No matches scheduled');
     expect(text()).not.toContain('Mexico');
+    expect(text()).not.toContain('Korea');
   });
 });
 

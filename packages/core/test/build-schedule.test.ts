@@ -111,6 +111,32 @@ describe('gen:schedule fails loud (0.11 2.1d)', () => {
     expect(none.ok === false && none.message).toMatch(/20260702/);
   });
 
+  it('a fixture served by two windows is refused, naming it and both windows: the windows partition the calendar, and a second copy is never silently the one kept', async () => {
+    // The adapter's own duplicate rule covers a fixture twice in ONE window; across windows the
+    // generator merged by id and the later copy won without a word.
+    const { adapter, asked } = feed(whole);
+    const inner = adapter.fetchWindow;
+    if (!inner) throw new Error('the fake has a window');
+    const stray = allFixtures().find((m) => dayOf(m.kickoff) === '20260611');
+    if (!stray) throw new Error('the bundle has an opening day');
+    adapter.fetchWindow = async (start: string, end: string) => {
+      const matches = await inner(start, end);
+      if (start !== '20260618') return matches;
+      return attachFetchMeta([...matches, stray], { complete: true, season: SEASON });
+    };
+    const written: Array<{ path: string }> = [];
+    const r = await buildSchedule({ adapter, write: (path: string) => void written.push({ path }), log: () => undefined, error: () => undefined }).then(
+      () => ({ ok: true as const, message: '' }),
+      (err: unknown) => ({ ok: false as const, message: String((err as Error).message ?? err) }),
+    );
+    expect(r.ok).toBe(false);
+    expect(written).toEqual([]);
+    expect(r.message).toMatch(/20260611-20260617/);
+    expect(r.message).toMatch(/20260618-20260624/);
+    expect(r.message).toContain(stray.id);
+    expect(asked.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('the expected numbers are named facts and the canonical knockout counts: the literals 104 and 12 are in no check', () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const src = readFileSync(join(here, '..', 'scripts', 'build-schedule.ts'), 'utf8');
