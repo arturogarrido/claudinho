@@ -15,7 +15,7 @@ Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r
 - `sanitizeBundledFixture` must restore topology placeholders for KO home/away.
 - `gen:schedule` must **fail** if any knockout fixture carries a real nation flag, and at once,
   writing nothing, on a window that failed, carried no account, was not whole, or stated another
-  season, and on a fixture served by two windows; its expected counts are named facts (`GROUPS`, `TEAMS_PER_GROUP`) and core's
+  season (or none), and on a fixture served by two windows; its expected counts are named facts (`GROUPS`, `TEAMS_PER_GROUP`) and core's
   `EXPECTED_KNOCKOUT_COUNTS`, never literals or this run's own topology.
 - Test degraded `getBracket()` on the bundle: seed/winner slots stay `tbd`, never `confirmed`.
 
