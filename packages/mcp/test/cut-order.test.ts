@@ -141,6 +141,24 @@ describe('get_market_signal (date): the incomplete notice before the signals (D7
   });
 });
 
+describe('get_market_signal (date): the list’s truncation note keeps its place before the incomplete notice (review, round 1)', () => {
+  it('42 signals, the batch not whole: truncation, then incomplete, then the title and the signals', async () => {
+    // Found in review: the incomplete notice went through the qualifier helper while the truncation note stayed
+    // on the title line, so the two siblings swapped (the base printed truncation first).
+    const at12 = new Date('2026-06-11T12:00:00Z');
+    const fake = new FakeMarketProvider({ synthesize: true, now: at12 });
+    const partial = {
+      name: 'half',
+      findSignal: (...a: Parameters<MarketProvider['findSignal']>) => fake.findSignal(...a),
+      findSignals: async (...a: Parameters<MarketProvider['findSignals']>) => ({ ...(await fake.findSignals(...a)), complete: false }),
+    } as unknown as MarketProvider;
+    const r = await toolGetMarketSignal({ date: '2026-06-11', tz: 'UTC', adapter: feed({ events: [OPENER, ...many()] }), marketProvider: partial, now: at12 } as never);
+    precedes(r.text, 'list truncated', 'unavailable or incomplete');
+    precedes(r.text, 'unavailable or incomplete', 'Market signals on');
+    precedes(r.text, 'Market signals on', 'Mexico');
+  });
+});
+
 describe('get_standings: the roster note before the tables (D7)', () => {
   it('a degraded roster', async () => {
     const r = await toolGetStandings({ adapter: feed({ standingsFail: true }) } as never);
