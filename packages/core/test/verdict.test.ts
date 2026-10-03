@@ -101,6 +101,8 @@ describe('a verdict REPLACES the body or QUALIFIES it, and the module says which
   it('`unsupported` replaces; `incomplete` and `partial` qualify, in a fixed order', () => {
     expect(verdictNotice({ unsupported: true }, 'en')).toBe('Not available for this competition yet.');
     expect(verdictQualifiers({ unsupported: true }, 'en')).toEqual([]);
+    // A stated replacement stands for the whole answer: its qualifiers are not printed.
+    expect(verdictQualifiers({ unsupported: true, partial: { omitted: 1 }, incomplete: true }, 'en')).toEqual([]);
     expect(verdictNotice({ partial: { omitted: 2 } }, 'en')).toBeUndefined();
     expect(verdictQualifiers({ partial: { omitted: 2 } }, 'en')).toEqual(['Fixture data may be incomplete (2 provider records omitted).']);
     expect(verdictQualifiers({ partial: { omitted: 1 } }, 'en')).toEqual(['Fixture data may be incomplete (1 provider record omitted).']);
