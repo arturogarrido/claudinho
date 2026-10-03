@@ -61,6 +61,7 @@ import {
   type MarketSignal,
   type ProviderAdapter,
   resolveCompetition,
+  humanLabel,
   resolveMarketSource,
   resolveTz,
   t,
@@ -664,9 +665,12 @@ export async function toolGetNextFixture(
   // roster (`nationArg`); a name that is no single nation is answered without
   // a request (the candidates, or no such team). Off the bundled competition
   // the query goes through as asked: core resolves the club against the
-  // competition's roster and the schedule ahead.
-  const asked = bundleApplies(adapter.competition) ? nationArg(args.team) : { code: args.team };
-  const code = 'code' in asked ? asked.code : args.team;
+  // competition's roster and the schedule ahead. Never the RAW argument: a
+  // direct call bypasses the input schema, and what is carried into the text,
+  // a card or a run cue is the bounded label.
+  const query = humanLabel(args.team, 40);
+  const asked = bundleApplies(adapter.competition) ? nationArg(query) : { code: query };
+  const code = 'code' in asked ? asked.code : query;
   // Overlay the live knockout window so a confirmed R32+ tie resolves: the
   // bundled knockout slots are placeholders, so a static lookup goes blind once
   // a team's group games pass (it would answer "no upcoming fixture" even after
@@ -1083,9 +1087,11 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     // The World Cup takes a nation's code or name, resolved as get_next_fixture
     // resolves it (`nationArg`): a name that is no single nation is the
     // candidates card, or the no-such-team card, with no request. Off the
-    // bundle the query goes through as asked (core resolves the club).
-    const asked = bundleApplies(adapter.competition) ? nationArg(args.team) : { code: args.team };
-    const code = 'code' in asked ? asked.code : args.team;
+    // bundle the query goes through as asked (core resolves the club). The
+    // bounded label, never the raw argument: it is pasted into the run cue.
+    const query = humanLabel(args.team, 40);
+    const asked = bundleApplies(adapter.competition) ? nationArg(query) : { code: query };
+    const code = 'code' in asked ? asked.code : query;
     // Overlay the live knockout window so a confirmed R32+ tie pastes too (see
     // getNextFixtureForTeam / toolGetNextFixture); fail closed on an outage.
     const next = 'code' in asked ? await getNextFixtureForTeam(adapter, code, args.now ?? new Date()) : asked.answer;

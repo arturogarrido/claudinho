@@ -18,6 +18,7 @@ import {
   asFlavorLevel,
   fixturesByDate,
   groups,
+  humanLabel,
   isHumanLabel,
   isValidDate,
   TABLE_KEY_ARG,
@@ -912,17 +913,21 @@ export function buildServer(): McpServer {
         "Focus on one World Cup nation's next match, group situation, and the prediction-market read (market signals are read for the World Cup alone).",
       argsSchema: { team: clubArg.describe("A World Cup nation's 3-letter code or name, e.g. MEX or Mexico") },
     },
-    ({ team }) => ({
-      messages: [
-        {
-          role: 'user',
-          content: {
-            type: 'text',
-            text: `Using get_next_fixture, get_standings, and get_market_signal, tell me about ${team}'s next World Cup match, their current group standing, and what prediction markets currently say about that match. ${team} is a nation's code or name: get_next_fixture takes either; get_market_signal takes the 3-letter code (get_team gives it for a name), and prediction-market signals are read for the World Cup alone. Always state each fixture's date so a market read is never mistaken for a different match. Treat the market percentages as informational context only — relay them factually, never as betting or trading advice.`,
+    ({ team: asked }) => {
+      // The bounded label, never the raw argument, goes into the prompt.
+      const team = humanLabel(asked, 40);
+      return {
+        messages: [
+          {
+            role: 'user',
+            content: {
+              type: 'text',
+              text: `Using get_next_fixture, get_standings, and get_market_signal, tell me about ${team}'s next World Cup match, their current group standing, and what prediction markets currently say about that match. ${team} is a nation's code or name: get_next_fixture takes either; get_market_signal takes the 3-letter code (get_team gives it for a name), and prediction-market signals are read for the World Cup alone. Always state each fixture's date so a market read is never mistaken for a different match. Treat the market percentages as informational context only — relay them factually, never as betting or trading advice.`,
+            },
           },
-        },
-      ],
-    }),
+        ],
+      };
+    },
   );
 
   return server;
