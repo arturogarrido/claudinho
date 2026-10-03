@@ -41,11 +41,16 @@ describe('mcpb manifest', () => {
     const blurb = (name: string) => (manifest.tools ?? []).find((t) => t.name === name)?.description ?? '';
     expect(blurb('get_live')).not.toMatch(/none are live|nothing is live/);
     for (const name of ['get_live', 'get_today', 'get_share_snippet']) expect(blurb(name), name).toMatch(/partial/);
-    // The "none read" reading of an empty day holds only where no bundled schedule was merged (off the World Cup);
-    // on a World Cup rest day whose window was not whole the day is still "none scheduled". A blurb that says
-    // "none read" must scope it (a review found the first rewording claimed it for every empty day).
+    // The "none read" reading of an empty day holds exactly where no bundled schedule was merged: a club
+    // competition, or the World Cup slug answering for another edition. On a World Cup rest day whose window was
+    // not whole the day is still "none scheduled". A blurb that says "none read" scopes it by the schedule, not by
+    // the competition (two reviews: the first rewording claimed it for every empty day, the second said "off the
+    // World Cup", which leaves the other-edition case out).
     for (const name of ['get_today', 'get_share_snippet']) {
-      if (/none read/.test(blurb(name))) expect(blurb(name), name).toMatch(/off the World Cup|bundled schedule/);
+      if (/none read/.test(blurb(name))) {
+        expect(blurb(name), name).toMatch(/bundled schedule/);
+        expect(blurb(name), name).not.toMatch(/off the World Cup/);
+      }
     }
   });
 
