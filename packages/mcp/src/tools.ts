@@ -80,8 +80,9 @@ import {
   boundedRecords,
   capSignals,
   DISCLAIMER,
+  listTruncation,
   matchLine,
-  matchList,
+  matchRows,
   standingsTable,
   truncationNote,
 } from './format';
@@ -95,6 +96,16 @@ export interface ToolResult {
    * disclaimer. Always a suffix of `text`. Required, so no tool can be written
    * without stating it: `disclaimed` returns it with the text it ends, and a
    * share snippet's is its footer paragraph (`snippetFooter`).
+   *
+   * Since the cut takes the end of the body first, the rule for every text a
+   * cut can reach (a tool's, and a share card's): each sentence that QUALIFIES
+   * the body is printed BEFORE it, and nothing follows the body but this
+   * footer. First the verdict's qualifiers, then the sentence counting the
+   * shown rows a read did not serve, then the rest (a degraded line, a market
+   * notice, a list's truncation, a roster note, a bracket's note) in the order
+   * they used to follow the body (`qualified`; the standings text and the share
+   * formatters keep the same order themselves). A table's own partial line is
+   * printed before that table.
    *
    * What a cut keeps of it is {@link cutFooter} when the result names one. The
    * rule, for a DATE's list (`get_today`, the date card) on a read that was not
@@ -373,16 +384,19 @@ function disclaimed(
 }
 
 /**
- * A tool's text with the sentences that QUALIFY it (core `verdictQualifiers`:
- * the read was not whole) said FIRST, the body kept. First, because a tool's
- * text is cut at a fixed length from the end: a verdict at the tail would be
- * the first thing a long answer lost. Nothing is added when the result states
- * no qualifier, or states a replacement (which stands instead of the body).
+ * A tool's text with the sentences that QUALIFY it said FIRST, the body kept
+ * (the rule on `ToolResult.footer`). First, because a tool's text is cut at a
+ * fixed length from the end: a sentence at the tail would be the first thing
+ * a long answer lost. In this order: the verdict's (core `verdictQualifiers`:
+ * the read was not whole), then `also`, in the order given: the sentence core
+ * built beside the verdict's (a day's count of shown rows the read did not
+ * serve) first, then the tool's own notes (a degraded line, a market notice,
+ * the list's truncation), in the order they used to follow the body. An absent
+ * one is skipped. Nothing is added when there is none; a result that states a
+ * replacement states no qualifier (it stands instead of the body).
  */
-function qualified(body: string, result: VerdictSource, lang?: string, also?: string): string {
-  // `also`: a sentence core built beside the verdict's (a day's count of shown
-  // rows the read did not serve), said with it, after it.
-  const qualifiers = [...verdictQualifiers(result, lang), ...(also ? [also] : [])];
+function qualified(body: string, result: VerdictSource, lang?: string, ...also: Array<string | undefined>): string {
+  const qualifiers = [...verdictQualifiers(result, lang), ...also.filter((s): s is string => !!s)];
   return qualifiers.length > 0 ? `${qualifiers.join('\n')}\n\n${body}` : body;
 }
 
@@ -420,25 +434,27 @@ export async function toolGetToday(
     dateUnreached(day, date, args.lang) ??
     dateNoneRead(day, date, args.lang) ??
     'No matches scheduled.';
-  let text = `Matches on ${date}:\n${matchList(todays, empty, opts)}`;
+  const text = `Matches on ${date}:\n${matchRows(todays, empty, opts)}`;
   // Degraded ⇒ the live overlay failed: on the bundle these are static fixtures
   // with no live scores; off it there is no schedule to show.
-  if (degraded) {
-    text += day.skeleton
-      ? '\n\n(Live scores unavailable — showing the bundled schedule.)'
-      : "\n\n(Live scores unavailable — couldn't reach the data provider.)";
-  }
+  const degradedLine = degraded
+    ? day.skeleton
+      ? '(Live scores unavailable — showing the bundled schedule.)'
+      : "(Live scores unavailable — couldn't reach the data provider.)"
+    : undefined;
   const market = await reliableMarketData(args, todays);
-  if (!market.complete) {
-    text += '\n\n(Market data unavailable or incomplete — not all fixtures were checked.)';
-  }
+  const marketLine = market.complete
+    ? undefined
+    : '(Market data unavailable or incomplete — not all fixtures were checked.)';
   // On a read that was not whole: the verdict first (kept by a cut), with the
   // count of shown rows it did not serve; the footer names the provider only
-  // for a day it served something of. `data.source` keeps the provider.
+  // for a day it served something of. `data.source` keeps the provider. Then
+  // the list's own notes, before the rows too (in the order they used to
+  // follow them: the truncation, the outage, the markets).
   const attribution = dayAttribution(day, shownToday.items, args.lang);
   return {
     ...disclaimed(
-      qualified(text, day, args.lang, attribution.unserved),
+      qualified(text, day, args.lang, attribution.unserved, listTruncation(todays), degradedLine, marketLine),
       attribution.attributed ? source : undefined,
       args.lang,
       day,
@@ -480,11 +496,12 @@ export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
   // first (kept by a cut).
   const text = degraded
     ? 'Live scores unavailable right now — could not reach the data provider.'
-    : `Live now:\n${matchList(matches, verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? 'No matches in play right now.', opts)}`;
+    : `Live now:\n${matchRows(matches, verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? 'No matches in play right now.', opts)}`;
   const shownLive = boundedRecords(matches);
   return {
-    // Every row a live list shows was served: a cut keeps its attribution (`ToolResult.footer`).
-    ...disclaimed(qualified(text, live, args.lang), source, args.lang),
+    // Every row a live list shows was served: a cut keeps its attribution
+    // (`ToolResult.footer`). The list's truncation is said before its rows.
+    ...disclaimed(qualified(text, live, args.lang, degraded ? undefined : listTruncation(matches)), source, args.lang),
     data: {
       degraded,
       source: source ?? null,
@@ -543,20 +560,22 @@ export async function toolGetMatch(
   // record the window did not hold is the bundle's row, its live state unconfirmed.
   const attribution = dayAttribution(found, [match], args.lang);
   const base = matchLine(match, opts);
-  let text = marketSignal ? `${base}\n${marketBlock(marketSignal, match).join('\n')}` : base;
+  const text = marketSignal ? `${base}\n${marketBlock(marketSignal, match).join('\n')}` : base;
   // Degraded ⇒ the live overlay failed; this is the static fixture, no live
   // state. Off the bundled competition there is no static fixture: it is the
   // provider's own earlier record, whose state could not be refreshed.
-  if (degraded) {
-    text += found.earlierRecord
-      ? `\n\n${EARLIER_RECORD_NOTE}`
-      : '\n\n(Live state unavailable — showing the scheduled fixture.)';
-  }
-  if (!marketComplete) {
-    text += '\n\n(Market data unavailable or incomplete — this match was not checked.)';
-  }
+  const degradedLine = degraded
+    ? found.earlierRecord
+      ? EARLIER_RECORD_NOTE
+      : '(Live state unavailable — showing the scheduled fixture.)'
+    : undefined;
+  const marketLine = marketComplete
+    ? undefined
+    : '(Market data unavailable or incomplete — this match was not checked.)';
   return {
-    ...disclaimed(qualified(text, found, args.lang, attribution.unserved), liveSource, args.lang),
+    // Every sentence that qualifies the match before it (`qualified`): the
+    // verdict, the unserved count, then the outage and the markets.
+    ...disclaimed(qualified(text, found, args.lang, attribution.unserved, degradedLine, marketLine), liveSource, args.lang),
     data: {
       degraded,
       source: liveSource ?? null,
@@ -602,7 +621,7 @@ export async function toolGetStandings(
   // at the tail would be the first thing a long answer lost. (The footer is
   // kept by the cut: `toContent`.) In parentheses, as it always was here.
   const qualifiers = verdictQualifiers(result, args.lang);
-  let text = shaped
+  const text = shaped
     .map((tb) => {
       const block = standingsTable(tb, tb.standings);
       // A table the provider served but we could not read in full says so
@@ -613,12 +632,17 @@ export async function toolGetStandings(
         : block;
     })
     .join('\n\n');
-  // Stated, not silent — the same rule the match lists follow.
-  text += truncationNote(boundedTables);
-  if (degraded) text += '\n\n(Live standings unavailable — showing the group roster.)';
-  if (qualifiers.length > 0) text = `${qualifiers.map((q) => `(${q})`).join('\n')}\n\n${text}`;
+  // Before the tables too, after the verdict, in the order they used to
+  // follow them: the list's truncation (stated, not silent — the same rule the
+  // match lists follow; its own line here, not the tail of the last table),
+  // then the roster note.
+  const before = [
+    ...qualifiers.map((q) => `(${q})`),
+    ...(boundedTables.truncated ? [truncationNote(boundedTables)] : []),
+    ...(degraded ? ['(Live standings unavailable — showing the group roster.)'] : []),
+  ];
   return {
-    ...disclaimed(text, source, args.lang),
+    ...disclaimed(before.length > 0 ? `${before.join('\n')}\n\n${text}` : text, source, args.lang),
     data: {
       degraded,
       source: source ?? null,
@@ -661,14 +685,16 @@ export async function toolGetBracket(
       data: { degraded, standingsDegraded, source: null, view, ...verdictExtras(bracket) },
     };
   }
-  let text = formatBracketList(view, { footer: false, locale: args.lang, tz: args.tz });
-  if (degraded) {
-    text += `\n\n(${t(args.lang, 'bracket.degraded')})`;
-  } else if (standingsDegraded) {
-    text += `\n\n(${t(args.lang, 'bracket.standingsDegraded')})`;
-  }
+  const text = formatBracketList(view, { footer: false, locale: args.lang, tz: args.tz });
+  // The tree is structure only, or its group slots wait on standings: said
+  // before the tree, after the verdict (`qualified`).
+  const note = degraded
+    ? `(${t(args.lang, 'bracket.degraded')})`
+    : standingsDegraded
+      ? `(${t(args.lang, 'bracket.standingsDegraded')})`
+      : undefined;
   return {
-    ...disclaimed(qualified(text, bracket, args.lang), source, args.lang),
+    ...disclaimed(qualified(text, bracket, args.lang, note), source, args.lang),
     data: { degraded, standingsDegraded, source: source ?? null, view, ...verdictExtras(bracket) },
   };
 }
@@ -915,8 +941,8 @@ export async function toolGetMarketSignal(
     );
   // Bounded: this branch serialized one object per fixture into model context.
   const shown = boundedRecords(all);
-  let text = shown.shown
-    ? `Market signals on ${date}:${truncationNote(shown)}\n${shown.items
+  const text = shown.shown
+    ? `Market signals on ${date}:\n${shown.items
         .map(({ match, signal }) => marketText(match, signal, args))
         .join('\n\n')}`
     : // An empty result and an INCOMPLETE one are different answers. The batch
@@ -931,11 +957,16 @@ export async function toolGetMarketSignal(
         : batch.complete
           ? (marketsNoneRead(day, date) ?? `No reliable market signals on ${date}.`)
           : `Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
-  if (shown.shown > 0 && !batch.complete) {
-    text += `\n\nMarket data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
-  }
+  // Before the signals, after the fixture read's verdict (`qualified`), in the
+  // order they used to have: the list's truncation (it was on the title line),
+  // then the notice that the batch did not finish.
+  const truncated = shown.truncated ? truncationNote(shown) : undefined;
+  const incomplete =
+    shown.shown > 0 && !batch.complete
+      ? `Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`
+      : undefined;
   return {
-    ...disclaimed(qualified(text, fixtureRead, args.lang)),
+    ...disclaimed(qualified(text, fixtureRead, args.lang, truncated, incomplete)),
     data: {
       date,
       informationalOnly: true,
@@ -1084,7 +1115,8 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     return shareResult(
       liveShareCard(live, where, {
         matches: shownLive.items,
-        titleSuffix: truncationNote(shownLive),
+        // The cap qualifies the list: in the card's note, after the verdict.
+        cap: truncationNote(shownLive),
       }),
       { ...options, includeMarkets: false },
       live.matches.length,
@@ -1198,7 +1230,8 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         matches: shownToday.items,
         degraded: day.degraded,
         source: day.source,
-        titleSuffix: truncationNote(shownToday),
+        // The cap qualifies the list: in the card's note, after the verdict.
+        cap: truncationNote(shownToday),
         // The read decides what an empty day says (whether it merged the
         // bundled schedule) and the card's attribution, over the bounded list.
         read: day,

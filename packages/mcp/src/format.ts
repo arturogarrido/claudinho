@@ -80,29 +80,58 @@ export function boundedRecords<T>(rows: T[], max = MAX_LIST_MATCHES): BoundedLis
 }
 
 /**
- * The line to append when `capRecords` dropped something.
+ * The sentence to state when `capRecords` dropped something, "(showing N of
+ * M — list truncated)": a sentence that QUALIFIES the body, so every caller
+ * says it before the body (`get_standings`, the dated `get_market_signal`, the
+ * live and date cards' note), never after it or in a title.
  *
  * A cap that drops records silently reads as a complete list, which is the same
  * failure as losing the statusline's "+N" marker: the reader cannot tell. Returns
- * '' when nothing was dropped, so call sites can append unconditionally.
+ * '' when nothing was dropped.
  *
  * English, matching the surrounding MCP text labels ("Matches on {date}:",
  * "No matches scheduled.") which are hardcoded English today. Localizing one
  * line of an English block would be inconsistent; the block is a separate change.
  */
 export function truncationNote(list: BoundedList<unknown>): string {
-  return list.truncated ? `\n(showing ${list.shown} of ${list.total} — list truncated)` : '';
+  return list.truncated ? `(showing ${list.shown} of ${list.total} — list truncated)` : '';
 }
 
-/** A list of matches as a text block (or an empty-state message). */
-export function matchList(matches: Match[], empty: string, opts: FmtOpts = {}): string {
+/**
+ * The rows of a list of matches (at most `MAX_LIST_MATCHES`), or an
+ * empty-state message. Says nothing about the rows it did not show: a text a
+ * cut can reach states that BEFORE the rows ({@link listTruncation}), and
+ * {@link matchList} states it after them.
+ */
+export function matchRows(matches: Match[], empty: string, opts: FmtOpts = {}): string {
   if (matches.length === 0) return empty;
-  const shown = matches.slice(0, MAX_LIST_MATCHES);
-  const lines = shown.map((m) => `• ${matchLine(m, opts)}`).join('\n');
-  const overflow = matches.length - shown.length;
-  // Truncation is STATED. Silently dropping matches would read as a complete
-  // list of the day's fixtures, which is a worse failure than a long one.
-  return overflow > 0 ? `${lines}\n• (list truncated — ${overflow} more not shown)` : lines;
+  return matches
+    .slice(0, MAX_LIST_MATCHES)
+    .map((m) => `• ${matchLine(m, opts)}`)
+    .join('\n');
+}
+
+/**
+ * The sentence a list of matches states when it shows fewer than it holds
+ * ("(list truncated — N more not shown)"); undefined when it shows them all.
+ * Truncation is STATED. Silently dropping matches would read as a complete
+ * list of the day's fixtures, which is a worse failure than a long one.
+ */
+export function listTruncation(matches: readonly Match[]): string | undefined {
+  const overflow = matches.length - MAX_LIST_MATCHES;
+  return overflow > 0 ? `(list truncated — ${overflow} more not shown)` : undefined;
+}
+
+/**
+ * A list of matches as a text block (or an empty-state message), its
+ * truncation line after the rows: for a text no cut reaches (the
+ * `fixtures://` resource). A tool's text says the truncation first:
+ * {@link matchRows} after {@link listTruncation}.
+ */
+export function matchList(matches: Match[], empty: string, opts: FmtOpts = {}): string {
+  const rows = matchRows(matches, empty, opts);
+  const truncated = listTruncation(matches);
+  return truncated ? `${rows}\n• ${truncated}` : rows;
 }
 
 /** A group table as a monospace-friendly text block. */

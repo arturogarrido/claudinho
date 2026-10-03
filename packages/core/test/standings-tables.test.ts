@@ -866,8 +866,9 @@ describe('what every surface is built from', () => {
     const es = tableShareCard(await read('uefa.euro', undefined, shortEuro()), undefined, undefined, 'es');
     expect(formatShareTable(es.input)).toContain('(No se pudieron leer algunas tablas — esta no es la competición completa.)');
     expect(formatShareTable(es.input)).toContain('Group A · standings');
-    // And it comes before the footer, not instead of the tables.
-    expect(text.indexOf('could not be read')).toBeGreaterThan(text.indexOf('Group B · standings'));
+    // And it comes BEFORE the tables (what qualifies the body precedes it, since a card is cut from the end),
+    // not instead of them, and before the footer.
+    expect(text.indexOf('could not be read')).toBeLessThan(text.indexOf('Group A · standings'));
     expect(text.indexOf('could not be read')).toBeLessThan(text.indexOf('Live data: ESPN'));
   });
 });

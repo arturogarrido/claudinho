@@ -267,12 +267,15 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
     expect(today.input.emptyNote).toBe('No matches scheduled for Jun 11.');
     expect(today.input.installLine).toBe('npx @claudinho/cli today');
 
+    // A bounded list's cap is a note after the verdict's, never the title's suffix (a card is cut from the end;
+    // what qualifies the body follows the verdict).
     const explicit = dateShareCard(
-      { date: '2026-06-11', explicit: true, matches: [], degraded: true, read: { skeleton: true }, titleSuffix: ' (showing 20 of 31)' },
+      { date: '2026-06-11', explicit: true, matches: [], degraded: true, read: { skeleton: true }, cap: '(showing 20 of 31 — list truncated)' },
       noMarket,
       ctx,
     );
-    expect(explicit.input.title).toBe('Matches · Jun 11 (showing 20 of 31)');
+    expect(explicit.input.title).toBe('Matches · Jun 11');
+    expect(explicit.input.note).toBe('(showing 20 of 31 — list truncated)');
     expect(explicit.input.degraded).toBe(true);
   });
 
@@ -346,9 +349,10 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
       emptyNote: 'No matches in play right now.',
       installLine: 'npx @claudinho/cli live',
     });
-    const down = liveShareCard({ matches: [], degraded: true }, ctx, { titleSuffix: ' (showing 0 of 0)' });
+    const down = liveShareCard({ matches: [], degraded: true }, ctx, { cap: '(showing 0 of 0 — list truncated)' });
     expect(down.input.emptyNote).toBe("Live scores unavailable right now — couldn't reach the data provider.");
-    expect(down.input.title).toBe('Live match pulse (showing 0 of 0)');
+    expect(down.input.title).toBe('Live match pulse');
+    expect(down.input.note).toBe('(showing 0 of 0 — list truncated)');
   });
 
   it('live: a surface that bounds its payload gets a card of the bounded list', () => {
