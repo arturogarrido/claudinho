@@ -276,6 +276,22 @@ describe('discovery’s question: the schedule ahead, a month at a time, off the
     expect(discovery(r2)?.verdict).toBe('changed');
   });
 
+  it('two months stating two seasons are a turn only as the window’s parts are: one step up within the cadence; a step down or a jump is changed', async () => {
+    // Found in review: each month judged alone, the pair's seasons were never compared, while the window row
+    // refuses "seasons that are not a turn". The same rule, on the months in order.
+    const at = new Date('2026-10-25T12:00:00Z');
+    const months = (nov: number) => (url: string) =>
+      json(url.includes('/standings') ? standings() : asked(url) === '202611' ? { leagues: [{ season: { ...SEASON, year: nov } }], events: [] } : scoreboard(url));
+    const up = await runCanary({ core, competitions: ['eng.1'], fetchImpl: feed(months(2027)).fetchImpl, now: at, pauseMs: 0 });
+    expect(discovery(up)?.verdict).toBe('ok');
+    const down = await runCanary({ core, competitions: ['eng.1'], fetchImpl: feed(months(2025)).fetchImpl, now: at, pauseMs: 0 });
+    expect(discovery(down)?.verdict).toBe('changed');
+    expect(discovery(down)?.detail).toMatch(/not a turn|2025/);
+    const jump = await runCanary({ core, competitions: ['eng.1'], fetchImpl: feed(months(2028)).fetchImpl, now: at, pauseMs: 0 });
+    expect(discovery(jump)?.verdict).toBe('changed');
+    expect(jump.red).toBe(true);
+  });
+
   it('a throttle on the first question leaves every discovery row not asked, counted as not answered', async () => {
     const r = await run(() => json({}, 429, { 'retry-after': '300' }), ['eng.1', 'esp.1']);
     const rows = r.rows.filter((row) => row.request === 'discovery');
