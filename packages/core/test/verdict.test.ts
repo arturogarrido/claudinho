@@ -141,9 +141,15 @@ describe('a verdict REPLACES the body or QUALIFIES it, and the module says which
     expect(verdictNotice({ unknownTeam: true }, 'en')).toMatch(/^No team called/);
     // Review round 4: the sentence names its evidence. A table read whole is not the whole competition (a club
     // out in a qualifying round is in no table), so the claim is about the table and the span, not the competition.
-    expect(verdictNotice({ unknownTeam: true, query: 'Everton' } as never, 'en')).toBe(
+    expect(verdictNotice({ unknownTeam: true, query: 'Everton', rosterEvidence: 'table' } as never, 'en')).toBe(
       "No team called Everton in the competition's table or in its fixtures over the next 14 days.",
     );
+    // On the World Cup the evidence is the bundled roster of nations, and the sentence says that, not the span.
+    const nation = verdictNotice({ unknownTeam: true, query: 'Italy', rosterEvidence: 'bundle' } as never, 'en') ?? '';
+    expect(nation).toMatch(/^No team called Italy/);
+    expect(nation).toMatch(/nations|World Cup/);
+    expect(nation).not.toContain('14 days');
+    expect(verdictExtras({ unknownTeam: true, rosterEvidence: 'bundle' } as never)).toEqual({ unknownTeam: true, rosterEvidence: 'bundle' });
     expect(verdictExtras({ unknownTeam: true })).toEqual({ unknownTeam: true });
     // `ended` is the provider's end DAY (the rule decides on it), printed as it is.
     const between = { betweenEditions: { ended: '2026-10-08', label: '2026 Concacaf Champions Cup' } };

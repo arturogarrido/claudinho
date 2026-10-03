@@ -379,6 +379,30 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
     expect(r.query).not.toContain('\u0007');
   });
 
+  it('"no team called" is asserted only after a WHOLE discovery: the refused record may be the club’s fixture (review round 5)', async () => {
+    // A complete table without Everton, and discovery with one readable fixture beside a refused record.
+    const broken: Ev = { id: '16', date: '2026-10-14T19:00Z', home: CHE, away: LIV, raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } };
+    const r = await getNextFixtureForTeam(feed('eng.1', { events: [broken, upcoming[1] as Ev] }).adapter, 'Everton', NOW);
+    expect(r.unknownTeam).toBeUndefined();
+    expect(r.fixture).toBeUndefined();
+    expect(r.partial).toEqual({ omitted: 1 });
+    expect(r.degraded).toBe(false);
+    expect(r.horizon).toBeUndefined();
+    // The same query against a whole discovery is the claim, with the evidence it rests on.
+    const whole = await getNextFixtureForTeam(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter, 'Everton', NOW);
+    expect(whole).toMatchObject({ unknownTeam: true, rosterEvidence: 'table' });
+  });
+
+  it('the query is interpolated once: a query that looks like a placeholder is not re-read (review round 5)', async () => {
+    const { verdictNotice } = await import('../src/verdict');
+    const r = await getNextFixtureForTeam(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter, 'Club {days}', NOW);
+    expect(r.unknownTeam).toBe(true);
+    expect(r.query).toBe('Club {days}');
+    const sentence = verdictNotice(r, 'en') ?? '';
+    expect(sentence).toContain('Club {days}');
+    expect(sentence).not.toContain('Club 14');
+  });
+
   it('a known club with nothing in a whole span: the horizon, as a plain field, never a verdict', async () => {
     const r = await getNextFixtureForTeam(feed('eng.1', { events: [upcoming[3] as Ev] }).adapter, 'Arsenal', NOW);
     expect(r.fixture).toBeUndefined();

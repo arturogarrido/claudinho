@@ -257,6 +257,20 @@ describe('get_match off the bundle (0.11 2.1c)', () => {
     strict('get_next_fixture', r.data);
   });
 
+  it('on the World Cup an unknown nation’s sentence names the bundled roster, not a table or a span (review round 5)', async () => {
+    const f = feed('fifa.world');
+    const r = await toolGetNextFixture({ team: 'Italy', now: new Date('2026-06-13T12:00:00Z'), adapter: f.adapter });
+    expect(r.text).toMatch(/No team called Italy/);
+    expect(r.text).not.toContain('14 days');
+    expect(r.text).not.toContain('table');
+    expect(r.data).toMatchObject({ unknownTeam: true, rosterEvidence: 'bundle' });
+    expect(f.urls).toEqual([]);
+    strict('get_next_fixture', r.data);
+    const card = await toolGetShareSnippet({ team: 'Italy', now: new Date('2026-06-13T12:00:00Z'), adapter: feed('fifa.world').adapter });
+    expect(card.text).not.toContain('14 days');
+    strict('get_share_snippet', card.data);
+  });
+
   it('get_market_signal by id stays unsupported off the bundle, with no request', async () => {
     const f = feed('eng.1', { events: [inSpan, other] });
     const r = await toolGetMarketSignal({ matchId: '41', adapter: f.adapter });
