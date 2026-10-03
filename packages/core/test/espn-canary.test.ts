@@ -1203,4 +1203,25 @@ describe('the window across a season turn (0.11 2.1b): the canary asks it the wa
     expect(windowRow(r)?.detail).toMatch(/no readable season/);
     expect(r.red).toBe(true);
   });
+
+  it('two seasons that are not a turn (a gap, a backward pair, three in three days): changed, with the years named', async () => {
+    // Found in review: any two distinct seasons passed. A turn is the next
+    // season on a later day; a day stating a season two years on, or an
+    // earlier day stating the later season, is a feed the dated reads refuse.
+    const stating = (by: Record<string, number>) => (url: string) => {
+      const m = /dates=(202610\d\d)(&|$)/.exec(url);
+      const year = m?.[1] ? by[m[1]] : undefined;
+      return year ? json({ leagues: [{ season: { ...SEASON, year, displayName: `${year} season` } }], events: [] }) : healthy(url);
+    };
+    const gap = await run(stating({ '20261011': 2028 }));
+    expect(windowRow(gap)?.verdict).toBe('changed');
+    expect(windowRow(gap)?.detail).toMatch(/2026 and 2028/);
+    expect(gap.red).toBe(true);
+    const backward = await run(stating({ '20261009': 2027 }));
+    expect(windowRow(backward)?.verdict).toBe('changed');
+    expect(windowRow(backward)?.detail).toMatch(/2027 and 2026/);
+    const three = await run(stating({ '20261009': 2025, '20261011': 2027 }));
+    expect(windowRow(three)?.verdict).toBe('changed');
+    expect(windowRow(three)?.detail).toMatch(/2025, 2026 and 2027|2025 and 2026 and 2027/);
+  });
 });

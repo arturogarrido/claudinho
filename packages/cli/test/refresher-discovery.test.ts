@@ -869,8 +869,10 @@ describe('the live read across the provider’s season turn (0.11 2.1b)', () => 
       source: SOURCE,
       competition: WC,
       fixtures: [tie],
-      fixturesUpdatedAt: iso(R32 - 10 * MIN),
-      fixturesAttemptedAt: iso(R32 - 10 * MIN),
+      // Older than the slice's TTL (15 minutes), so the knockout read IS made
+      // this cycle: seeded fresher, the test passed without ever asking it.
+      fixturesUpdatedAt: iso(R32 - 20 * MIN),
+      fixturesAttemptedAt: iso(R32 - 20 * MIN),
       fixturesSeason: { year: 2026, label: 'FIFA World Cup 2026' },
       season: { year: 2026, label: 'FIFA World Cup 2026' },
     } as CacheState);
@@ -883,7 +885,15 @@ describe('the live read across the provider’s season turn (0.11 2.1b)', () => 
     expect(s?.live.map((m) => m.id)).toEqual(['900002']);
     expect(s?.degraded).toBe(false);
     expect(s?.season).toBeUndefined();
+    // The knockout span was asked (both months) and refused: the slice stands
+    // with its own stamp and season, and the attempt stamp paces the next ask.
+    // Asked across seasons instead, a composed whole answer would REPLACE the
+    // slice with its (empty) list and no season: that is the hazard the strict
+    // mode of every reader that keeps a slice exists to prevent.
+    expect([...months()].sort()).toEqual(['202606', '202607']);
     expect(s?.fixtures?.map((m) => m.id)).toEqual(['900001']);
+    expect(s?.fixturesUpdatedAt).toBe(iso(R32 - 20 * MIN));
+    expect(s?.fixturesAttemptedAt).toBe(iso(R32));
     expect(s?.fixturesSeason).toMatchObject({ year: 2026 });
   });
 });

@@ -255,12 +255,19 @@ function checkScoreboard(core, adapter, parts, matches) {
   if (sent) return { verdict: 'changed', detail: sent };
   // A window asked across a season turn states no season when its parts
   // stated two, and names both: a normal answer on the days a competition
-  // turns. No season stated at all is still a changed feed.
+  // turns. No season stated at all is still a changed feed, and so are two
+  // seasons that are not a turn: a turn is the NEXT season on a LATER day
+  // (`seasons` is in the order asked), so a gap, a backward pair or three in
+  // three days is a feed the dated reads refuse, not a turn.
   const seasons = Array.isArray(meta.seasons) ? meta.seasons : [];
   if (!meta.season && seasons.length < 2) {
     return { verdict: 'changed', detail: 'the response states no readable season' };
   }
-  const turn = meta.season ? '' : `; across a season turn (${seasons.map((s) => s.year).join(' and ')})`;
+  const years = seasons.map((s) => s.year);
+  if (!meta.season && (years.length !== 2 || years[1] !== years[0] + 1)) {
+    return { verdict: 'changed', detail: `the parts state seasons that are not a turn (${years.join(' and ')})` };
+  }
+  const turn = meta.season ? '' : `; across a season turn (${years.join(' and ')})`;
   return {
     verdict: 'ok',
     detail: `${events.length} event(s)${parts.length > 1 ? ` in ${parts.length} requests` : ''}${turn}`,
