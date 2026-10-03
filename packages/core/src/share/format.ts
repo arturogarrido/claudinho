@@ -84,8 +84,8 @@ export interface ShareSnippetInput {
    * True when the live fetch failed and these are static fixtures (no live
    * scores). A pasted card must say so — otherwise a "no matches" / scheduled
    * card reads as authoritative when the feed is actually down. When set with
-   * matches present, a not-live notice is appended; for the empty case the
-   * caller picks a feed-down `emptyNote`.
+   * matches present, a not-live notice is printed before the matches (after
+   * the `note`); for the empty case the caller picks a feed-down `emptyNote`.
    */
   degraded?: boolean;
   /**
@@ -182,8 +182,20 @@ export function formatShareSnippet(
   const single = input.matches.length === 1;
 
   const blocks: string[] = [input.title];
-  // Before the body: what qualifies the card is read before what it qualifies.
+  // Before the body: what qualifies the card is read before what it qualifies,
+  // and a card pasted into a tool's text is cut from the end, so nothing but
+  // the footer follows the body. The verdict's note first, then the card's own
+  // notes, in this order.
   if (input.note) blocks.push(input.note);
+  // Degraded with matches present ⇒ these are static fixtures, no live scores.
+  // (For the empty case the caller picks a feed-down emptyNote.) Never let a
+  // pasted card imply live data when the feed was unreachable.
+  if (input.degraded && input.matches.length > 0) {
+    blocks.push(input.degradedNote ?? '(Live data unavailable — showing the bundled schedule, not live scores.)');
+  }
+  if (includeMarkets && input.marketComplete === false) {
+    blocks.push('(Market data unavailable or incomplete — not all fixtures were checked.)');
+  }
 
   if (input.matches.length === 0) {
     // No matches → a clear empty-state line (when provided) instead of a void.
@@ -202,16 +214,6 @@ export function formatShareSnippet(
       }
       blocks.push(card.join('\n'));
     }
-  }
-
-  // Degraded with matches present ⇒ these are static fixtures, no live scores.
-  // (For the empty case the caller picks a feed-down emptyNote.) Never let a
-  // pasted card imply live data when the feed was unreachable.
-  if (input.degraded && input.matches.length > 0) {
-    blocks.push(input.degradedNote ?? '(Live data unavailable — showing the bundled schedule, not live scores.)');
-  }
-  if (includeMarkets && input.marketComplete === false) {
-    blocks.push('(Market data unavailable or incomplete — not all fixtures were checked.)');
   }
 
   blocks.push(
@@ -273,7 +275,7 @@ export interface ShareTableInput {
   /** Body line when there are no tables (e.g. "No group Z."). */
   emptyNote?: string;
   /**
-   * Stated beside the tables when they are not the whole competition (a table
+   * Stated before the tables when they are not the whole competition (a table
    * the provider sent could not be read). A card is pasted where nobody can
    * ask: the tables that were read must not look like all of them.
    */
@@ -304,22 +306,28 @@ export function formatShareTable(input: ShareTableInput, options: ShareSnippetOp
         (input.degraded ? 'Live standings unavailable.' : 'No standings available.'),
     );
   } else {
-    for (const { group, label, rows, partial } of input.tables) {
-      // The provider's rank, never the array position: on a partial table the
-      // survivors are not 1..n (audit A01). A computed table has no rank and
-      // prints its order.
-      const lines = [`${tableTitle({ group, label })} · standings`, '', ...rows.map((r, i) => tableRow(r, r.rank ?? i + 1))];
-      if (partial) {
-        const n = partial.omitted;
-        lines.push('', `(partial table — ${n} row${n === 1 ? '' : 's'} unreadable; positions are the provider's ranks)`);
-      }
-      blocks.push(lines.join('\n'));
-    }
+    // Before the tables: a card pasted into a tool's text is cut from the end,
+    // so nothing but the footer follows the body. The verdict's sentence first
+    // (tables are missing), then the card's own note. (The two never meet: a
+    // roster is the fallback of a read that served no table.)
+    if (input.incompleteNote) blocks.push(`(${input.incompleteNote})`);
     // Never let a static roster paste as if it were live results.
     if (input.degraded) {
       blocks.push('(Live standings unavailable — group roster, not live results.)');
     }
-    if (input.incompleteNote) blocks.push(`(${input.incompleteNote})`);
+    for (const { group, label, rows, partial } of input.tables) {
+      // The provider's rank, never the array position: on a partial table the
+      // survivors are not 1..n (audit A01). A computed table has no rank and
+      // prints its order.
+      const lines = [`${tableTitle({ group, label })} · standings`, ''];
+      // A table that is not whole says so before its rows, for the same reason.
+      if (partial) {
+        const n = partial.omitted;
+        lines.push(`(partial table — ${n} row${n === 1 ? '' : 's'} unreadable; positions are the provider's ranks)`, '');
+      }
+      lines.push(...rows.map((r, i) => tableRow(r, r.rank ?? i + 1)));
+      blocks.push(lines.join('\n'));
+    }
   }
   blocks.push(
     shareFooter({ source: input.source, installLine: input.installLine, includeHashtag, includeInstall }),

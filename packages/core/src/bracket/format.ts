@@ -151,28 +151,29 @@ export function formatShareBracket(
   const includeInstall = options.includeInstallLine !== false;
   const locale = options.locale;
   const blocks: string[] = [t(locale, 'bracket.shareTitle'), ''];
-  // Before the body: what qualifies the card is read before what it qualifies.
+  // Before the body: what qualifies the card is read before what it qualifies,
+  // and a card pasted into a tool's text is cut from the end, so nothing but
+  // the footer follows the tree. The verdict's note first, then the card's own
+  // note (the tree is structure only, or its group slots wait on standings),
+  // in both styles.
   if (input.note) blocks.push(input.note, '');
 
   if (input.view.stages.length === 0) {
     blocks.push(input.emptyNote ?? t(locale, 'bracket.empty'));
-  } else if ((options.style ?? 'social') === 'compact') {
-    const fmtOpts = { locale, tz: options.tz };
-    const lines = input.view.stages.flatMap((stage) =>
-      stage.matches.map((mv) => formatBracketCompactLine(mv, fmtOpts)),
-    );
-    blocks.push(lines.join('\n'));
-    if (input.view.degraded) {
-      blocks.push(`(${t(locale, 'bracket.degraded')})`);
-    } else if (input.view.standingsDegraded) {
-      blocks.push(`(${t(locale, 'bracket.standingsDegraded')})`);
-    }
   } else {
-    blocks.push(formatBracketList(input.view, { footer: false, locale, tz: options.tz }));
     if (input.view.degraded) {
-      blocks.push(`(${t(locale, 'bracket.degraded')})`);
+      blocks.push(`(${t(locale, 'bracket.degraded')})`, '');
     } else if (input.view.standingsDegraded) {
-      blocks.push(`(${t(locale, 'bracket.standingsDegraded')})`);
+      blocks.push(`(${t(locale, 'bracket.standingsDegraded')})`, '');
+    }
+    if ((options.style ?? 'social') === 'compact') {
+      const fmtOpts = { locale, tz: options.tz };
+      const lines = input.view.stages.flatMap((stage) =>
+        stage.matches.map((mv) => formatBracketCompactLine(mv, fmtOpts)),
+      );
+      blocks.push(lines.join('\n'));
+    } else {
+      blocks.push(formatBracketList(input.view, { footer: false, locale, tz: options.tz }));
     }
   }
 
