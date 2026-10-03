@@ -1101,9 +1101,9 @@ describe('found in review: it asks every request form the adapter has, with the 
     expect(r.urls.some((u) => /dates=\d+-\d+/.test(u))).toBe(false);
   });
 
-  it('a competition with no bundled bracket is not asked for one', async () => {
+  it('a competition with no bundled bracket is not asked for one (it is asked discovery’s month instead)', async () => {
     const r = await run(healthy);
-    expect(r.rows.map((row) => row.request)).toEqual(['live', 'day', 'window', 'standings']);
+    expect(r.rows.map((row) => row.request)).toEqual(['live', 'day', 'window', 'discovery', 'standings']);
   });
 
   it('a provider that serves days and refuses a month is red', async () => {
@@ -1136,7 +1136,7 @@ describe('found in review: it asks every request form the adapter has, with the 
 describe('found in review: a run that could not see says so', () => {
   it('blocked and unreachable rows are a warning for the person, not a green silence', async () => {
     const blocked = await run(() => json({}, 429), ['eng.1', 'esp.1']);
-    expect(canaryWarnings(blocked)).toEqual(['8 of 8 questions were not answered (8 blocked, 0 unreachable): the canary saw nothing of those']);
+    expect(canaryWarnings(blocked)).toEqual(['10 of 10 questions were not answered (10 blocked, 0 unreachable): the canary saw nothing of those']);
     const fine = await run(healthy);
     expect(canaryWarnings(fine)).toEqual([]);
   });
@@ -1241,7 +1241,7 @@ describe('what it watches and how it reports', () => {
     expect(text).toMatch(/eng\.1\s+day\s+REJECTED/);
     expect(text).toMatch(/eng\.1\s+window\s+REJECTED/);
     expect(text).toMatch(/2 red/);
-    expect(text).toMatch(/2 ok/);
+    expect(text).toMatch(/3 ok/); // live, discovery (a month, not a day), standings
   });
 
   it('scripts are checked out with LF on every platform', () => {
