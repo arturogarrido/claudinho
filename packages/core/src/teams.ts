@@ -14,7 +14,8 @@
  */
 import { STANDINGS_SHAPE } from './adapters/espn';
 import type { ProviderAdapter } from './adapters/types';
-import { getStandings } from './live';
+import { getStandings, type NextFixtureResult } from './live';
+import { humanLabel } from './trust/roles';
 import { allFixtures } from './schedule';
 import type { Match, Team } from './types';
 
@@ -242,4 +243,24 @@ export function resolveClub(query: string, roster: Roster, schedule: readonly Ma
   if (hit?.id !== undefined) return { outcome: 'resolved', team: hit };
   if (hit) return { outcome: 'unresolved', idless: [hit] };
   return roster.complete ? { outcome: 'unknown' } : { outcome: 'unresolved', idless: [] };
+}
+
+/**
+ * The World Cup's team argument where a surface also takes club names (the MCP
+ * tools): a 3-letter token is a code, uppercased, as it always was (an unknown
+ * code still passes through: the escape hatch for other feeds); a NAME
+ * resolves against the bundled roster. A name that resolves to no single
+ * nation is answered here, with no request: two or more nations are the
+ * `candidates`, none is `unknownTeam` (the bundled roster is the competition's
+ * whole roster). The same answer for every tool that takes a team.
+ */
+export function nationArg(query: string): { code: string } | { answer: NextFixtureResult } {
+  const raw = query.trim();
+  if (/^[A-Za-z]{3}$/.test(raw)) return { code: raw.toUpperCase() };
+  const { team, matches } = lookupTeam(raw);
+  if (team) return { code: team.code };
+  const named = humanLabel(raw, 40);
+  return matches.length > 1
+    ? { answer: { degraded: false, ...(named ? { query: named } : {}), candidates: matches } }
+    : { answer: { degraded: false, ...(named ? { query: named } : {}), unknownTeam: true } };
 }

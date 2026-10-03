@@ -166,3 +166,41 @@ describe('match <id>: a WHOLE refresh that does not hold the record does not pre
     expect(r.partial).toBeUndefined();
   });
 });
+
+describe('review round 1 (coder): the selection predicate, the World Cup name argument, the vocabulary', () => {
+  it('isTeam: equal ids decide when both carry one; otherwise the same code and name; sameTeam is unchanged', async () => {
+    const { isTeam, sameTeam } = await import('../src/trust/match');
+    const carabobo: Team = { id: 'espn:7001', code: 'CAR', name: 'Carabobo', flag: '' };
+    const mislabelled: Team = { id: 'espn:7002', code: 'CAR', name: 'Carabobo', flag: '' };
+    const idless: Team = { code: 'CAR', name: 'Carabobo', flag: '' };
+    const renamed: Team = { id: 'espn:7001', code: 'CRB', name: 'Carabobo FC', flag: '' };
+    expect(isTeam(mislabelled, carabobo)).toBe(false);
+    expect(sameTeam(mislabelled, carabobo)).toBe(true); // the pairing refusal is the generous one, as written
+    expect(isTeam(idless, carabobo)).toBe(true);
+    expect(isTeam(renamed, carabobo)).toBe(true);
+  });
+
+  it('nationArg: a code passes as it always did; a name resolves; an ambiguous or unknown name is answered without a request', async () => {
+    const { nationArg } = await import('../src/teams');
+    expect(nationArg('mex')).toEqual({ code: 'MEX' });
+    expect(nationArg('ZZZ')).toEqual({ code: 'ZZZ' });
+    expect(nationArg('Mexico')).toEqual({ code: 'MEX' });
+    const south = nationArg('South');
+    expect('answer' in south && south.answer.candidates?.map((t) => t.code).sort()).toEqual(['KOR', 'RSA']);
+    expect(nationArg('Narnia')).toEqual({ answer: { degraded: false, query: 'Narnia', unknownTeam: true } });
+  });
+
+  it('no surface spells the "none read" sentences or their keys: they come from the card builders', async () => {
+    const { readdirSync, readFileSync, statSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const root = new URL('../../', import.meta.url).pathname;
+    const sources = (dir: string): string[] =>
+      readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? sources(join(dir, n)) : n.endsWith('.ts') ? [join(dir, n)] : []));
+    for (const pkg of ['cli', 'mcp']) {
+      for (const f of sources(join(root, pkg, 'src'))) {
+        const code = readFileSync(f, 'utf8');
+        expect(/was read in this span|['"`](next|match)\.noneRead['"`]|earlier record\.\)/.test(code), f).toBe(false);
+      }
+    }
+  });
+});

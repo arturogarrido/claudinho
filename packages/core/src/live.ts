@@ -26,7 +26,7 @@ import type { BracketResult, BracketView } from './bracket/types';
 import { bracketCapability, bundleApplies } from './competition';
 import { resolveClub, rosterFor } from './teams';
 import { agreedSeason } from './trust/season';
-import { sameTeam } from './trust/match';
+import { isTeam } from './trust/match';
 import { humanLabel } from './trust/roles';
 import { type BetweenEditions, partialOfRead } from './verdict';
 
@@ -496,7 +496,18 @@ export interface MatchByIdResult {
   partial?: { omitted?: number };
   /** The read's edition ended and nothing in it is current (a replacement verdict). */
   betweenEditions?: BetweenEditions;
+  /**
+   * Off the bundle, with `degraded`: `match` is the provider's own EARLIER
+   * record (read by discovery in this command), whose state could not be
+   * refreshed: the refresh failed, or did not hold it. Not the bundled
+   * schedule, which is what a degraded match is on the bundle. Says which
+   * not-live sentence a surface prints; not a verdict.
+   */
+  earlierRecord?: true;
 }
+
+/** The not-live sentence for a match that is the provider's earlier record (`earlierRecord`): English, one copy for the MCP text and the share card. */
+export const EARLIER_RECORD_NOTE = "(Live state could not be refreshed — showing the provider's earlier record.)";
 
 /**
  * Extra slack past the static live window for team-query candidate selection:
@@ -678,7 +689,8 @@ function stillToComplete(m: Match): boolean {
  *      club the read decides about, like a known one;
  *   4. the fixture: the club's earliest by kickoff that is not finished,
  *      cancelled or postponed (in play included, with its score), selected by
- *      `sameTeam` with the resolved team;
+ *      `isTeam` with the resolved team (equal ids decide when both carry one;
+ *      a side with another club's id is never this club's fixture);
  *   5. a read that was not whole: the fixture with `partial`, or none with
  *      `partial` and no horizon (none READ is not none);
  *   6. a whole read and none: `horizon`, the span's days ahead.
@@ -705,7 +717,7 @@ async function nextOffBundle(adapter: ProviderAdapter, asked: string, now: Date)
   }
   const team = resolution.outcome === 'resolved' ? resolution.team : undefined;
   const fixture = team
-    ? discovery.fixtures.find((m) => stillToComplete(m) && (sameTeam(m.home, team) || sameTeam(m.away, team)))
+    ? discovery.fixtures.find((m) => stillToComplete(m) && (isTeam(m.home, team) || isTeam(m.away, team)))
     : undefined;
   const whole = discovery.complete === true;
   return {
@@ -881,9 +893,9 @@ async function matchOffBundle(adapter: ProviderAdapter, id: string, now: Date): 
     const hit = fresh.find((m) => m.id === id);
     return hit
       ? { match: hit, degraded: false, source: adapter.name, ...partial }
-      : { match: record, degraded: true, source: adapter.name, ...partial };
+      : { match: record, degraded: true, source: adapter.name, ...partial, earlierRecord: true };
   } catch {
-    return { match: record, degraded: true, source: adapter.name };
+    return { match: record, degraded: true, source: adapter.name, earlierRecord: true };
   }
 }
 

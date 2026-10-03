@@ -88,6 +88,13 @@ export interface ShareSnippetInput {
    * caller picks a feed-down `emptyNote`.
    */
   degraded?: boolean;
+  /**
+   * The not-live sentence a degraded card with records prints, when its
+   * builder knows better than the default (which says the records are the
+   * bundled schedule's): off the bundled competition a match card's record is
+   * the provider's own earlier one.
+   */
+  degradedNote?: string;
   /** Timezone for kickoff date/time (date/time only — copy stays English). */
   tz?: string;
   /** Locale for kickoff date/time. */
@@ -201,7 +208,7 @@ export function formatShareSnippet(
   // (For the empty case the caller picks a feed-down emptyNote.) Never let a
   // pasted card imply live data when the feed was unreachable.
   if (input.degraded && input.matches.length > 0) {
-    blocks.push('(Live data unavailable — showing the bundled schedule, not live scores.)');
+    blocks.push(input.degradedNote ?? '(Live data unavailable — showing the bundled schedule, not live scores.)');
   }
   if (includeMarkets && input.marketComplete === false) {
     blocks.push('(Market data unavailable or incomplete — not all fixtures were checked.)');

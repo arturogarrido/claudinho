@@ -138,6 +138,23 @@ export function sameTeam(a: Team, b: Team): boolean {
   return a.code === b.code && a.name === b.name;
 }
 
+/**
+ * Is this side THE team a reader asked about — for SELECTING a team's fixture
+ * (`next`, the next card's label), never for the pairing question
+ * {@link sameTeam} answers.
+ *
+ * When both carry a provider id, the ids decide, alone: a side carrying
+ * another club's id is that other club, whatever its labels say (contradictory
+ * data is not this team's fixture). When either has none, the same code AND
+ * name (a side the provider sent without an id). `sameTeam` is the generous
+ * one, by design: for "can these two play each other" a shared label is
+ * already a refusal.
+ */
+export function isTeam(side: Team, team: Team): boolean {
+  if (side.id !== undefined && team.id !== undefined) return side.id === team.id;
+  return side.code === team.code && side.name === team.name;
+}
+
 function sealScorePair(raw: unknown): { home: number; away: number } | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const v = raw as { home?: unknown; away?: unknown };

@@ -46,6 +46,7 @@ export {
 export {
   allTeams,
   lookupTeam,
+  nationArg,
   resolveClub,
   rosterFor,
   type ClubResolution,
@@ -83,6 +84,7 @@ export {
   scheduleSpan,
   SCHEDULE_AHEAD_DAYS,
   SCHEDULE_LOOKBACK_DAYS,
+  EARLIER_RECORD_NOTE,
   getMatchById,
   getStandings,
   getBracket,
@@ -172,8 +174,10 @@ export {
   dateShareCard,
   liveShareCard,
   matchShareCard,
+  matchNoneReadSentence,
   matchWindowSentence,
   nextHorizonSentence,
+  nextNoneReadSentence,
   nextShareCard,
   tableShareCard,
 } from './share/cards';

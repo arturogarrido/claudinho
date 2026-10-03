@@ -16,22 +16,25 @@
  * that replaces the body becomes the card's `emptyNote`; the ones that qualify
  * it become its `note`, printed beside a populated body and an empty one.
  *
- * Two empty bodies off the bundled competition say what span was searched:
- * `next` ("no fixture for X within the next 14 days") and `match <id>` ("not
- * found between A and B"). They are the BODY's own text, not verdicts, and
- * they are built here ({@link nextHorizonSentence}, {@link matchWindowSentence})
- * for every surface: the CLI and the MCP tools print the same sentence, from
- * this one place, and a card carries its span as a plain field (`span`).
+ * The empty bodies off the bundled competition say what was searched: `next`
+ * ("no fixture for X within the next 14 days") and `match <id>` ("not found
+ * between A and B") after a whole read, and "none read" after one that was not
+ * whole ("no fixture for X was read in this span", beside the partial
+ * sentence). They are the BODY's own text, not verdicts, and they are built
+ * here ({@link nextHorizonSentence}, {@link matchWindowSentence},
+ * {@link nextNoneReadSentence}, {@link matchNoneReadSentence}) for every
+ * surface: the CLI and the MCP tools print the same sentence, from this one
+ * place, and a card carries its span as a plain field (`span`).
  */
 import type { ShareBracketInput } from '../bracket/format';
 import type { BracketResult } from '../bracket/types';
 import { t } from '../i18n';
-import type { LiveResult, MatchByIdResult, NextFixtureResult, StandingsResult } from '../live';
+import { EARLIER_RECORD_NOTE, type LiveResult, type MatchByIdResult, type NextFixtureResult, type StandingsResult } from '../live';
 import type { MarketSignal } from '../markets/types';
 import { type GroupStandings, type TableData, tableData } from '../standings';
 import { formatDate } from '../time';
-import { sameTeam } from '../trust/match';
-import type { Match } from '../types';
+import { isTeam } from '../trust/match';
+import type { Match, Team } from '../types';
 import { type VerdictExtras, type VerdictSource, verdictExtras, verdictNotice, verdictQualifiers } from '../verdict';
 import type { ShareSnippetInput, ShareTableInput } from './format';
 
@@ -72,6 +75,31 @@ export function matchWindowSentence(result: MatchByIdResult, id: string, lang: s
 }
 
 /**
+ * The sentence for an EMPTY `next` off the bundled competition whose read was
+ * not whole (`partial` stated, no fixture, not degraded): no fixture for the
+ * club was READ in the span, which is not "none exists". Undefined otherwise.
+ * (On the bundle the partial empty card keeps its own sentence.)
+ */
+export function nextNoneReadSentence(
+  result: NextFixtureResult,
+  fallback: string,
+  lang: string | undefined,
+): string | undefined {
+  if (result.fixture || result.degraded || !result.partial || result.query === undefined) return undefined;
+  return t(lang, 'next.noneRead', { team: result.team?.name ?? result.query ?? fallback });
+}
+
+/**
+ * The sentence for an EMPTY `match <id>` whose read was not whole (`partial`
+ * stated, no record, not degraded): no match with that id was READ in the
+ * span, which is not "no such match". Undefined otherwise.
+ */
+export function matchNoneReadSentence(result: MatchByIdResult, id: string, lang: string | undefined): string | undefined {
+  if (result.match || result.degraded || !result.partial) return undefined;
+  return t(lang, 'match.noneRead', { id });
+}
+
+/**
  * An argument as a shell would need it in a run cue: a plain token as it is
  * (a nation's code, a match id), anything else quoted (a club's name has
  * spaces, and `O&M` would background the command).
@@ -104,7 +132,14 @@ export interface ShareCardView {
 export interface MatchShareCard {
   kind: 'today' | 'live' | 'next' | 'match';
   target: string;
-  team?: string;
+  /**
+   * A next card's team: the club the query resolved to (its provider id,
+   * code and name) when one was, the query (a nation's code on the World Cup)
+   * otherwise.
+   */
+  team?: string | Team;
+  /** A next card for a name two or more teams match: them, and no fixture. */
+  candidates?: Team[];
   input: ShareSnippetInput;
   /** The structured verdict keys the card's note stands for (see `verdictExtras`). */
   verdict: VerdictExtras;
@@ -155,9 +190,9 @@ export function nextShareCard(
 ): MatchShareCard {
   const { fixture, team } = result;
   // The selected side: the resolved club by identity when the result names
-  // one (two clubs can share a code), by code otherwise (a nation).
+  // one (two clubs can share a code; equal ids decide), by code otherwise (a nation).
   const teamName = fixture
-    ? (team ? sameTeam(fixture.home, team) : fixture.home.code === code)
+    ? (team ? isTeam(fixture.home, team) : fixture.home.code === code)
       ? fixture.home.name
       : fixture.away.name
     : (team?.name ?? code);
@@ -168,7 +203,8 @@ export function nextShareCard(
   return {
     kind: 'next',
     target: 'next',
-    team: code,
+    team: team ?? code,
+    ...(result.candidates && result.candidates.length > 0 ? { candidates: result.candidates } : {}),
     input: {
       title: `Next up for ${teamName}`,
       matches: fixture ? [fixture] : [],
@@ -179,11 +215,12 @@ export function nextShareCard(
       source: result.source,
       degraded: result.degraded,
       // Fail closed: an outage must never paste as "no fixture" (= eliminated).
-      // A verdict stands first; then the span a whole read searched; then the
-      // candidates of an ambiguous name.
+      // A verdict stands first; then the span a whole read searched, or "none
+      // read" for one that was not whole; then the candidates of an ambiguous name.
       emptyNote:
         verdictNotice(result, ctx.locale) ??
         nextHorizonSentence(result, code, ctx.locale) ??
+        nextNoneReadSentence(result, code, ctx.locale) ??
         ambiguous ??
         (result.degraded
           ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
@@ -217,11 +254,15 @@ export function matchShareCard(
       marketComplete: market.complete,
       source: result.source,
       degraded: result.degraded,
-      // A verdict stands first; then the span a whole read searched; an
-      // outage never pastes as "no such match".
+      // A record that is the provider's own earlier one (off the bundle) is
+      // not the bundled schedule: the not-live sentence says which it is.
+      ...(result.earlierRecord ? { degradedNote: EARLIER_RECORD_NOTE } : {}),
+      // A verdict stands first; then the span a whole read searched, or "none
+      // read" for one that was not whole; an outage never pastes as "no such match".
       emptyNote:
         verdictNotice(result, ctx.locale) ??
         matchWindowSentence(result, id, ctx.locale) ??
+        matchNoneReadSentence(result, id, ctx.locale) ??
         (result.degraded
           ? `Couldn't reach the data provider — match ${id} could not be looked up.`
           : `No match found with id ${id}.`),
