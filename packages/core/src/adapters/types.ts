@@ -64,9 +64,9 @@ export interface ProviderAdapter {
    * parts state two seasons is refused: an absent season would let the bundled
    * schedule apply and a cached slice stand. `acrossSeasons` asks it to compose
    * them instead (the result then states no `season`, and `seasons` lists
-   * both): only for a caller that merges nothing and keeps no slice, which
-   * today is the live read alone. An adapter that ignores the option behaves
-   * as without it.
+   * both): only for a caller that merges nothing and keeps no slice: the live
+   * read, and off the bundled competition the dated read and the match read.
+   * An adapter that ignores the option behaves as without it.
    */
   fetchWindow?(startDate: string, endDate: string, opts?: FetchWindowOptions): Promise<Match[]>;
 
@@ -77,6 +77,14 @@ export interface ProviderAdapter {
    * them, and UTC days otherwise.
    */
   bucketDay?(instant: Date): string;
+
+  /**
+   * Optional: the clock this adapter counts time by (epoch ms), the one its
+   * cooldown window is armed on. A read whose caller passed no clock asks this
+   * one, so the adapter and the reads it serves agree on "now" (and a test
+   * that injects the adapter's clock injects the read's).
+   */
+  now?(): number;
 
   /**
    * Optional authoritative group tables (cumulative across the group stage).

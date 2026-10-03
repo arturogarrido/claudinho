@@ -18,7 +18,7 @@ import {
   parseEspnEvents,
   parseEspnStandings,
 } from '../trust/espn';
-import { parseEspnSeason } from '../trust/season';
+import { agreedSeason, parseEspnSeason } from '../trust/season';
 import type { Match, SeasonInfo } from '../types';
 import { readJsonBounded, ResponseTooLargeError } from './http';
 import { attachFetchMeta, fetchMeta } from './meta';
@@ -389,6 +389,11 @@ export class EspnAdapter implements ProviderAdapter {
     this.standingsFallbackGroups = bundled && expected ? [...expected] : undefined;
   }
 
+  /** The clock this adapter counts by (see `ProviderAdapter.now`). */
+  now(): number {
+    return this.clock();
+  }
+
   /** Epoch ms until which requests are refused, when a cooldown is armed. */
   get cooldownUntil(): number | undefined {
     return this.cooldownUntilMs;
@@ -466,16 +471,22 @@ export class EspnAdapter implements ProviderAdapter {
    *     competition turns on its own date (June 1, July 1, January 1, ...), so
    *     the parts of a window can state two. The window states the one its
    *     stating parts agree on; a part that states none does not veto them.
-   *     `seasons` lists every distinct season the parts stated, in the order
-   *     asked (empty: none stated). Two seasons are then one of two answers:
+   *     Its start and end date are kept only when every stating part stated
+   *     the same one (`agreedSeason`): agreeing on the year is not agreeing on
+   *     when the edition ends. `seasons` lists every distinct season the parts
+   *     stated, in the order asked (empty: none stated). Two seasons are then
+   *     one of two answers:
    *       strictly (the default): a failure. "Unknown" would be the wrong
    *         account of a known disagreement: an absent season lets the bundled
    *         schedule apply, and lets a cached slice from another season stand.
    *         Every caller that merges the bundle or keeps a slice asks this way.
    *       `acrossSeasons`: the window is composed, states no `season`, and
-   *         `seasons` names both. For the live read alone, which keeps only the
-   *         matches in play and merges nothing: a refusal there spent its
-   *         requests on a verdict nobody can act on.
+   *         `seasons` names both. A window composes across seasons only when
+   *         its caller merges nothing and keeps no slice, where a refusal would
+   *         spend its requests on a verdict nobody can act on. Three callers
+   *         do: the live read (it keeps only the matches in play); the dated
+   *         read OFF the bundle (there is no skeleton to merge); and the match
+   *         read off the bundle (it refreshes one record it found itself).
    *     (Discovery states a season by a different rule, every month the same;
    *     see `getScheduleAhead`. The two stay two.)
    *   - it is complete only if every part is. `omitted` is the parts' counts
@@ -540,8 +551,15 @@ export class EspnAdapter implements ProviderAdapter {
       );
     }
     // The season the stating parts agree on; none when none stated one, or
-    // when two were stated and the window was asked across them.
-    const season = seasons.length === 1 ? seasons[0] : undefined;
+    // when two were stated and the window was asked across them. Agreeing on
+    // the YEAR is not agreeing on the dates: the composed season keeps its
+    // start and end date only when every stating part stated the same one
+    // (`agreedSeason`), so an end date one day disputes or leaves out is not
+    // read as the edition's end ("between editions" decides from it).
+    const season =
+      seasons.length === 1
+        ? agreedSeason(parts.flatMap((part) => (part.season ? [part.season] : [])))
+        : undefined;
     // The window is ONE batch. "A non-empty payload with no readable record is
     // a failure" is asked of all of it: a day whose only RECORD is unreadable
     // is a refused record beside readable siblings, not an outage. (A day

@@ -61,3 +61,29 @@ export function bundleApplies(competition: string, season?: SeasonInfo): boolean
   if (competition !== BUNDLE_COMPETITION) return false;
   return season === undefined || season.year === bundleSeasonYear();
 }
+
+/**
+ * The competitions that HAVE NO BRACKET: league seasons with no knockout tie of
+ * their own, where "no bracket" is the answer, not a gap. Written down, one
+ * fact each, never inferred from the standings shape (`STANDINGS_SHAPE` says
+ * how a table is read, not whether a knockout follows it: `uefa.champions` and
+ * `mex.1` read as one league table and both have one).
+ *   - `eng.1`: the Premier League; a 38-round league, no play-off.
+ *   - `esp.1`: LaLiga; a 38-round league, no play-off.
+ * Deliberately NOT here: `ita.1` (championship and relegation play-offs since
+ * the FIGC's May 2026 decision), `ger.1` (the relegation play-off), `mex.1`
+ * (the Liguilla), `uefa.champions` (a knockout after the league phase). A
+ * competition joins by a written fact.
+ */
+export const NO_BRACKET: ReadonlySet<string> = new Set(['eng.1', 'esp.1']);
+
+/**
+ * What `bracket` is for a competition, one of three values:
+ *   - `offered`: the bundled competition, whose topology ships in the clients;
+ *   - `inapplicable`: the competition has no bracket ({@link NO_BRACKET});
+ *   - `unsupported`: it may have one, and it is not offered yet.
+ */
+export function bracketCapability(competition: string): 'offered' | 'inapplicable' | 'unsupported' {
+  if (bundleApplies(competition)) return 'offered';
+  return NO_BRACKET.has(competition) ? 'inapplicable' : 'unsupported';
+}

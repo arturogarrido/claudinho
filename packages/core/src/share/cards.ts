@@ -15,6 +15,13 @@
  * are a verdict's, which are the same sentences on every surface. A verdict
  * that replaces the body becomes the card's `emptyNote`; the ones that qualify
  * it become its `note`, printed beside a populated body and an empty one.
+ *
+ * Two empty bodies off the bundled competition say what span was searched:
+ * `next` ("no fixture for X within the next 14 days") and `match <id>` ("not
+ * found between A and B"). They are the BODY's own text, not verdicts, and
+ * they are built here ({@link nextHorizonSentence}, {@link matchWindowSentence})
+ * for every surface: the CLI and the MCP tools print the same sentence, from
+ * this one place, and a card carries its span as a plain field (`span`).
  */
 import type { ShareBracketInput } from '../bracket/format';
 import type { BracketResult } from '../bracket/types';
@@ -23,6 +30,7 @@ import type { LiveResult, MatchByIdResult, NextFixtureResult, StandingsResult } 
 import type { MarketSignal } from '../markets/types';
 import { type GroupStandings, type TableData, tableData } from '../standings';
 import { formatDate } from '../time';
+import { sameTeam } from '../trust/match';
 import type { Match } from '../types';
 import { type VerdictExtras, type VerdictSource, verdictExtras, verdictNotice, verdictQualifiers } from '../verdict';
 import type { ShareSnippetInput, ShareTableInput } from './format';
@@ -34,6 +42,42 @@ import type { ShareSnippetInput, ShareTableInput } from './format';
 function qualifierNote(result: VerdictSource, lang: string | undefined): { note?: string } {
   const qualifiers = verdictQualifiers(result, lang);
   return qualifiers.length > 0 ? { note: qualifiers.join(' ') } : {};
+}
+
+/**
+ * The sentence for a `next` whose WHOLE read of the span held no fixture for
+ * the club (`horizon` stated), in the reader's language; undefined otherwise.
+ * It names the resolved club, else the query as asked, else `fallback`.
+ */
+export function nextHorizonSentence(
+  result: NextFixtureResult,
+  fallback: string,
+  lang: string | undefined,
+): string | undefined {
+  if (!result.horizon) return undefined;
+  return t(lang, 'next.horizon', {
+    team: result.team?.name ?? result.query ?? fallback,
+    days: String(result.horizon.days),
+  });
+}
+
+/**
+ * The sentence for a `match <id>` that a WHOLE read of the span did not hold
+ * (`window` stated), in the reader's language; undefined otherwise. Not "no
+ * such match": the id was not in the provider days searched.
+ */
+export function matchWindowSentence(result: MatchByIdResult, id: string, lang: string | undefined): string | undefined {
+  if (!result.window) return undefined;
+  return t(lang, 'match.notFoundBetween', { from: result.window.from, to: result.window.to, id });
+}
+
+/**
+ * An argument as a shell would need it in a run cue: a plain token as it is
+ * (a nation's code, a match id), anything else quoted (a club's name has
+ * spaces, and `O&M` would background the command).
+ */
+function cueArg(arg: string): string {
+  return /^[A-Za-z0-9._-]+$/.test(arg) ? arg : `"${arg.replace(/["\\$`]/g, '')}"`;
 }
 
 /** Where and in which language a card's dates are rendered. */
@@ -64,6 +108,12 @@ export interface MatchShareCard {
   input: ShareSnippetInput;
   /** The structured verdict keys the card's note stands for (see `verdictExtras`). */
   verdict: VerdictExtras;
+  /**
+   * The span an empty card says was searched, as plain fields for the
+   * structured twin (`horizon` for `next`, `window` for a match id); empty
+   * when the card states none. Not a verdict.
+   */
+  span: { horizon?: { days: number }; window?: { from: string; to: string } };
 }
 
 /** Matches in play right now. No market lines: a live card stays lean. */
@@ -81,14 +131,18 @@ export function liveShareCard(
       source: result.source,
       degraded: result.degraded,
       // Degraded ⇒ the feed is down, not "nothing is on" — say so on a public card.
-      emptyNote: result.degraded
-        ? "Live scores unavailable right now — couldn't reach the data provider."
-        : 'No matches in play right now.',
+      // A verdict (between editions) stands instead of either.
+      emptyNote:
+        verdictNotice(result, ctx.locale) ??
+        (result.degraded
+          ? "Live scores unavailable right now — couldn't reach the data provider."
+          : 'No matches in play right now.'),
       installLine: 'npx @claudinho/cli live',
       tz: ctx.tz,
       locale: ctx.locale,
     },
-    verdict: {},
+    verdict: verdictExtras(result),
+    span: {},
   };
 }
 
@@ -99,12 +153,18 @@ export function nextShareCard(
   market: ShareCardMarket,
   ctx: ShareCardContext,
 ): MatchShareCard {
-  const { fixture } = result;
+  const { fixture, team } = result;
+  // The selected side: the resolved club by identity when the result names
+  // one (two clubs can share a code), by code otherwise (a nation).
   const teamName = fixture
-    ? fixture.home.code === code
+    ? (team ? sameTeam(fixture.home, team) : fixture.home.code === code)
       ? fixture.home.name
       : fixture.away.name
-    : code;
+    : (team?.name ?? code);
+  const ambiguous =
+    result.candidates && result.candidates.length > 0
+      ? `"${code}" is ambiguous. Did you mean: ${result.candidates.map((c) => `${c.name} (${c.code})`).join(', ')}?`
+      : undefined;
   return {
     kind: 'next',
     target: 'next',
@@ -119,19 +179,24 @@ export function nextShareCard(
       source: result.source,
       degraded: result.degraded,
       // Fail closed: an outage must never paste as "no fixture" (= eliminated).
+      // A verdict stands first; then the span a whole read searched; then the
+      // candidates of an ambiguous name.
       emptyNote:
         verdictNotice(result, ctx.locale) ??
+        nextHorizonSentence(result, code, ctx.locale) ??
+        ambiguous ??
         (result.degraded
           ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
           : `No upcoming fixture found for ${code}.`),
       // The window was not whole: said beside the fixture, or beside "none
       // found" (which is then not "eliminated").
       ...qualifierNote(result, ctx.locale),
-      installLine: `npx @claudinho/cli next ${code}`,
+      installLine: `npx @claudinho/cli next ${cueArg(code)}`,
       tz: ctx.tz,
       locale: ctx.locale,
     },
     verdict: verdictExtras(result),
+    span: result.horizon ? { horizon: result.horizon } : {},
   };
 }
 
@@ -152,12 +217,22 @@ export function matchShareCard(
       marketComplete: market.complete,
       source: result.source,
       degraded: result.degraded,
-      emptyNote: verdictNotice(result, ctx.locale) ?? `No match found with id ${id}.`,
-      installLine: `npx @claudinho/cli match ${id}`,
+      // A verdict stands first; then the span a whole read searched; an
+      // outage never pastes as "no such match".
+      emptyNote:
+        verdictNotice(result, ctx.locale) ??
+        matchWindowSentence(result, id, ctx.locale) ??
+        (result.degraded
+          ? `Couldn't reach the data provider — match ${id} could not be looked up.`
+          : `No match found with id ${id}.`),
+      // The read was not whole: said beside the record, or beside the empty card.
+      ...qualifierNote(result, ctx.locale),
+      installLine: `npx @claudinho/cli match ${cueArg(id)}`,
       tz: ctx.tz,
       locale: ctx.locale,
     },
     verdict: verdictExtras(result),
+    span: result.window ? { window: result.window } : {},
   };
 }
 
@@ -180,10 +255,13 @@ export function dateShareCard(
     scheduleKnown: boolean;
     /** Appended to the title, e.g. " (showing 20 of 31)". */
     titleSuffix?: string;
+    /** The dated read itself, whose verdicts the card states (between editions). */
+    read?: VerdictSource;
   },
   market: ShareCardMarket,
   ctx: ShareCardContext,
 ): MatchShareCard {
+  const read = day.read ?? {};
   // Human date label from a stable midday-UTC instant (avoids tz day flips).
   const human = formatDate(`${day.date}T12:00:00.000Z`, { tz: ctx.tz, locale: ctx.locale });
   return {
@@ -201,14 +279,16 @@ export function dateShareCard(
       // could not be reached, the card must not paste as an empty day. (The
       // formatter adds its own outage line only when there ARE matches.)
       emptyNote:
-        day.degraded && !day.scheduleKnown
+        verdictNotice(read, ctx.locale) ??
+        (day.degraded && !day.scheduleKnown
           ? `Couldn't reach the data provider — no fixtures confirmed for ${human}.`
-          : `No matches scheduled for ${human}.`,
+          : `No matches scheduled for ${human}.`),
       installLine: 'npx @claudinho/cli today',
       tz: ctx.tz,
       locale: ctx.locale,
     },
-    verdict: {},
+    verdict: verdictExtras(read),
+    span: {},
   };
 }
 

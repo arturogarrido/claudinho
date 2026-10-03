@@ -43,7 +43,16 @@ export {
   sanitizeBundledFixture,
 } from './schedule';
 
-export { allTeams, lookupTeam, type TeamInfo, type TeamLookup } from './teams';
+export {
+  allTeams,
+  lookupTeam,
+  resolveClub,
+  rosterFor,
+  type ClubResolution,
+  type Roster,
+  type TeamInfo,
+  type TeamLookup,
+} from './teams';
 
 export { computeStandings, tableData, tableKeyArg, tableTitle, TABLE_KEY_ARG } from './standings';
 export type { StandingRow, GroupStandings, TableData } from './standings';
@@ -71,6 +80,7 @@ export {
   getLiveMatches,
   getLiveRead,
   getScheduleAhead,
+  scheduleSpan,
   SCHEDULE_AHEAD_DAYS,
   SCHEDULE_LOOKBACK_DAYS,
   getMatchById,
@@ -162,6 +172,8 @@ export {
   dateShareCard,
   liveShareCard,
   matchShareCard,
+  matchWindowSentence,
+  nextHorizonSentence,
   nextShareCard,
   tableShareCard,
 } from './share/cards';
@@ -176,7 +188,7 @@ export type {
 // The one place a verdict (e.g. "not available for this competition") becomes
 // a structured key and a localized sentence.
 export { verdictExtras, verdictNotice, verdictQualifiers } from './verdict';
-export type { VerdictExtras, VerdictSource } from './verdict';
+export type { BetweenEditions, VerdictExtras, VerdictSource } from './verdict';
 
 export { buildBracketTopology, matchKey } from './bracket/build';
 export { parseTeamSlot } from './bracket/parse';
@@ -236,5 +248,12 @@ export {
   scheduleEntryOf,
   sealScheduleEntry,
 } from './trust';
-export { BUNDLE_COMPETITION, bundleApplies, bundleSeasonYear, resolveCompetition } from './competition';
+export {
+  BUNDLE_COMPETITION,
+  bracketCapability,
+  bundleApplies,
+  bundleSeasonYear,
+  NO_BRACKET,
+  resolveCompetition,
+} from './competition';
 export { attachFetchMeta, fetchMeta, type FetchMeta } from './adapters/meta';

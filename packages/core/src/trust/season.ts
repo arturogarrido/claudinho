@@ -39,6 +39,29 @@ export function sealSeason(raw: unknown): SeasonInfo | undefined {
   return out;
 }
 
+/**
+ * The ONE season several responses state together (the parts of a window, the
+ * months of a discovery), once the caller's year rule has said they state one:
+ * the first stated season, with each of its dates kept only when EVERY stating
+ * response stated that same date. A date one response disputes or leaves out
+ * is not the season's: "between editions" reads the end date, and must not
+ * believe a date only some of the answers gave. Undefined when nothing was
+ * stated, or when two years were (the year rule belongs to the caller; this
+ * never picks one).
+ */
+export function agreedSeason(stated: readonly SeasonInfo[]): SeasonInfo | undefined {
+  const first = stated[0];
+  if (!first || stated.some((s) => s.year !== first.year)) return undefined;
+  const out: SeasonInfo = { year: first.year, label: first.label };
+  if (first.startDate !== undefined && stated.every((s) => s.startDate === first.startDate)) {
+    out.startDate = first.startDate;
+  }
+  if (first.endDate !== undefined && stated.every((s) => s.endDate === first.endDate)) {
+    out.endDate = first.endDate;
+  }
+  return out;
+}
+
 /** The season an ESPN scoreboard payload reports for itself (`leagues[0].season`). */
 export function parseEspnSeason(payload: unknown): ParseResult<SeasonInfo> {
   const leagues = (payload as { leagues?: unknown } | undefined)?.leagues;
