@@ -53,20 +53,21 @@ const BROKEN: Ev = { id: '760516', date: '2026-07-18T19:00Z', home: CAN, away: B
 const IN_FINAL = new Date('2026-07-19T19:30:00Z');
 
 describe('the market fixture read: the two reads together, on every return (0.11 2.1d)', () => {
-  it('the retained candidate: the window and its own day each counted the refused record', async () => {
+  it('the retained candidate: the window and its own day each counted the same refused record, which is one record', async () => {
     const f = feed([FINAL, BROKEN]);
     const r = await marketFixtureForTeam(f.adapter, 'ESP', IN_FINAL);
     expect(r.match?.id).toBe('760517');
     expect(r.degraded).toBe(false);
     expect(f.asked).toEqual(['202606', '202607', '20260718', '20260719', '20260720']);
-    expect(r.partial).toEqual({ omitted: 2 });
+    // The refresh's days lie inside the window's months: the larger count, never the sum.
+    expect(r.partial).toEqual({ omitted: 1 });
   });
 
   it('a finished candidate falling through: the answer it falls to still carries both accounts', async () => {
     const f = feed([{ ...FINAL, state: 'post' }, BROKEN]);
     const r = await marketFixtureForTeam(f.adapter, 'ESP', IN_FINAL);
     expect(r.match).toBeUndefined(); // the final was the team's last
-    expect(r.partial).toEqual({ omitted: 2 });
+    expect(r.partial).toEqual({ omitted: 1 });
   });
 
   it('a window that was not whole, then a refresh that FAILED: the window\'s account, and the failure\'s `degraded`', async () => {
@@ -157,7 +158,8 @@ describe('the day\'s attribution and the "none read" bodies, at their edges (0.1
     expect(dateNoneRead({ ...partial }, '2026-10-17', 'en')).toBe('No fixture was read for 2026-10-17.');
     expect(dateNoneRead({ ...partial, skeleton: true }, '2026-06-11', 'en')).toBeUndefined();
     expect(dateNoneRead({}, '2026-10-17', 'en')).toBeUndefined();
-    expect(marketsNoneRead({ ...partial, skeleton: true }, '2026-06-11', 'en')).toBe('No market signal among the fixtures read for 2026-06-11.');
-    expect(marketsNoneRead({}, '2026-06-11', 'en')).toBeUndefined();
+    // Market copy: English on every locale (the approved bank), so it takes no language.
+    expect(marketsNoneRead({ ...partial, skeleton: true }, '2026-06-11')).toBe('No market signal among the fixtures read for 2026-06-11.');
+    expect(marketsNoneRead({}, '2026-06-11')).toBeUndefined();
   });
 });

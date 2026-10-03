@@ -534,6 +534,14 @@ export interface MatchByIdResult {
   /** The read's edition ended and nothing in it is current (a replacement verdict). */
   betweenEditions?: BetweenEditions;
   /**
+   * On the bundle, when the read succeeded: the ids of the records its window
+   * held (what the overlay served), as the dated read states them. A shown
+   * match not among them is the bundled schedule's row, its live state
+   * unconfirmed: the surfaces say so through the day's rule
+   * (`dayAttribution`). Request-local: never written to a cache. Not a verdict.
+   */
+  served?: readonly string[];
+  /**
    * Off the bundle, with `degraded`: `match` is the provider's own EARLIER
    * record (read by discovery in this command), whose state could not be
    * refreshed: the refresh failed, or did not hold it. Not the bundled
@@ -603,7 +611,9 @@ export async function marketFixtureForTeam(
   /** The candidate's own-day refresh's verdict, when one was made. */
   let refreshRead: { partial?: { omitted?: number } } = {};
   if (candidate) {
-    const { partial, ...r } = await getMatchById(adapter, candidate.id);
+    // The refresh's verdict is merged with the window's below; what it served
+    // describes the refresh alone, not the market answer, and is not kept.
+    const { partial, served: _served, ...r } = await getMatchById(adapter, candidate.id);
     refreshRead = partial ? { partial } : {};
     // A second read that fails hands back the BUNDLED fixture, which for a
     // knockout tie is a placeholder. The candidate came from the overlay that
@@ -623,9 +633,10 @@ export async function marketFixtureForTeam(
 /**
  * The `partial` verdict of an answer chosen from two reads (the knockout
  * window, then a candidate's own day): stated when EITHER read stated it.
- * Each read counts what IT left out (one refused record seen by both is two),
- * so the counts are summed, and only when every read that stated the verdict
- * knew its count; otherwise the verdict stands with no count. A read that
+ * The count is the LARGER of the two, not their sum: the refresh's three days
+ * lie inside the knockout window's months, so a record refused by both is one
+ * record left out, and a sum would read as two lost. Stated with no count
+ * when a read that stated the verdict did not know its count. A read that
  * failed, was whole, or said nothing contributes nothing.
  */
 function bothReads(
@@ -634,7 +645,7 @@ function bothReads(
   const stated = reads.flatMap((r) => (r.partial ? [r.partial] : []));
   if (stated.length === 0) return {};
   let omitted: number | undefined = 0;
-  for (const p of stated) omitted = omitted === undefined || p.omitted === undefined ? undefined : omitted + p.omitted;
+  for (const p of stated) omitted = omitted === undefined || p.omitted === undefined ? undefined : Math.max(omitted, p.omitted);
   return partialOfRead({ complete: false, omitted });
 }
 
@@ -943,6 +954,8 @@ export async function getMatchById(
       degraded: false,
       source: hit ? adapter.name : undefined,
       ...partialOfRead(fetchMeta(live)),
+      // What the overlay held: a shown record not among them is the bundle's.
+      served: live.map((m) => m.id),
     };
   } catch {
     return { match: base, degraded: true };
