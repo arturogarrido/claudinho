@@ -249,7 +249,8 @@ describe('the day’s attribution is decided over what the text finally shows (0
       const body = 'x'.repeat(MAX + over - footer.length);
       const text = toContent({ text: body + footer, footer, cutFooter, data: { ok: true } }).content[0]?.text ?? '';
       expect(text.length, String(over)).toBeLessThanOrEqual(MAX);
-      const before = text.slice(0, text.indexOf('(truncated)'));
+      // The marker is "\n(truncated)": what precedes its newline is body only.
+      const before = text.slice(0, text.indexOf('\n(truncated)'));
       expect(before, String(over)).toMatch(/^x+$/);
       expect(text, String(over)).not.toMatch(/Live data|\nL/);
       expect(text, String(over)).toMatch(/not affiliated/);
@@ -257,7 +258,7 @@ describe('the day’s attribution is decided over what the text finally shows (0
     // Without a cut footer the whole footer is kept and the prefix still ends in the body.
     const body = 'x'.repeat(MAX + 1 - footer.length);
     const text = toContent({ text: body + footer, footer, data: { ok: true } }).content[0]?.text ?? '';
-    expect(text.slice(0, text.indexOf('(truncated)'))).toMatch(/^x+$/);
+    expect(text.slice(0, text.indexOf('\n(truncated)'))).toMatch(/^x+$/);
     expect(text).toContain('Live data: ESPN');
   });
 
