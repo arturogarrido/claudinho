@@ -203,7 +203,7 @@ describe('discovery’s question: the schedule ahead, a month at a time, off the
     expect(CANARY_QUESTIONS.map((q) => q.request)).toContain('discovery');
   });
 
-  it('one month when the span lies in one; two requests in one row when it touches two, ok when each passes, the seasons free to differ', async () => {
+  it('one month when the span lies in one; two requests in one row when it touches two, ok when each passes and the two seasons are a turn (one step up)', async () => {
     const one = await run(healthy);
     expect(discovery(one)?.verdict).toBe('ok');
     expect(discovery(one)?.requests).toBe(1);
