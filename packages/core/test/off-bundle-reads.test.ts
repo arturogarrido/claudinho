@@ -272,6 +272,20 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
     expect(r2.fixture?.id).toBe('12');
   });
 
+  it('a fixture side whose id differs from the resolved club’s is never its fixture, whatever its labels say (review round 1)', async () => {
+    // Contradictory provider data: a side labelled Carabobo carrying Always Ready's id.
+    const LIB = table('Group A', [
+      { side: CARABOBO, rank: 1 },
+      { side: ALWAYS_READY, rank: 2 },
+    ]);
+    const mislabelled: Ev = { id: '22', date: '2026-10-12T22:00Z', home: { id: '7002', abbr: 'CAR', name: 'Carabobo' }, away: { id: '7003', abbr: 'BOC', name: 'Boca Juniors' } };
+    const season = () => ({ year: 2026, displayName: '2026 Copa Libertadores', startDate: '2026-01-20T05:00Z', endDate: '2026-11-30T05:00Z' });
+    const r = await getNextFixtureForTeam(feed('conmebol.libertadores', { events: [mislabelled], standings: LIB, season }).adapter, 'Carabobo', NOW);
+    expect(r.team?.id).toBe('espn:7001');
+    expect(r.fixture).toBeUndefined();
+    expect(r.horizon).toEqual({ days: 14 });
+  });
+
   it('an id-less fixture side with the club’s code and name is its fixture (sameTeam as written)', async () => {
     const r = await getNextFixtureForTeam(feed('eng.1', { events: [{ id: '15', date: '2026-10-13T19:00Z', home: { abbr: 'ARS', name: 'Arsenal' }, away: CHE }] }).adapter, 'Arsenal', NOW);
     expect(r.fixture?.id).toBe('15');
@@ -571,6 +585,16 @@ describe('between editions (0.11 2.1c): one rule for every surface', () => {
     const incompleteNext = await getNextFixtureForTeam(cup({ events: [broken, finalFT] }).adapter, 'Toluca', NOW);
     expect(incompleteNext.betweenEditions).toBeUndefined();
     expect(incompleteNext.partial).toEqual({ omitted: 1 });
+  });
+
+  it('a match asked for by id is answered as asked: the previous final, found inside the lookback, is the body, with no sentence (review round 1: deliberate)', async () => {
+    // Like `today <date in the old edition>`: a historical question gets its record. Asked the day after the final.
+    const r = await getMatchById(cup({ events: [finalFT] }).adapter, '50', new Date('2026-10-09T15:00:00Z'));
+    expect(r.match?.id).toBe('50');
+    expect(r.match?.status).toBe('FT');
+    expect(r.source).toBe('espn');
+    expect(r.degraded).toBe(false);
+    expect(r.betweenEditions).toBeUndefined();
   });
 
   it('the provider day after the end day is between editions; the end day itself is not', async () => {

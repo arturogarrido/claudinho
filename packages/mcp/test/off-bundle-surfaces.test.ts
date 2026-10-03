@@ -164,6 +164,47 @@ describe('get_match off the bundle (0.11 2.1c)', () => {
     strict('get_match', stale.data);
   });
 
+  it('the share card after a failed refresh says the provider’s earlier record, never "the bundled schedule"; an incomplete empty read says "none read" (review round 1)', async () => {
+    const stale = await toolGetShareSnippet({ matchId: '41', adapter: feed('eng.1', { events: [inSpan, other], fail: (d) => (d.length === 8 ? json({}, 503) : undefined) }).adapter });
+    expect(stale.text).toContain('Arsenal');
+    expect(stale.text).not.toContain('bundled schedule');
+    expect(stale.text).toContain('earlier record');
+    strict('get_share_snippet', stale.data);
+    const broken: Ev = { id: '45', date: '2026-10-14T19:00Z', home: CHE, away: LIV, raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } };
+    const none = await toolGetMatch({ id: '41', adapter: feed('eng.1', { events: [broken, other] }).adapter });
+    expect(none.text).toContain('may be incomplete');
+    expect(none.text).not.toContain('No match found');
+    const noneNext = await toolGetNextFixture({ team: 'Arsenal', now: NOW, adapter: feed('eng.1', { events: [broken, upcoming[1] as Ev] }).adapter });
+    expect(noneNext.text).toContain('may be incomplete');
+    expect(noneNext.text).not.toContain('No upcoming fixture');
+  });
+
+  it('get_share_snippet carries the resolved team and the candidates in data (review round 1)', async () => {
+    const resolved = await toolGetShareSnippet({ team: 'arsen', now: NOW, adapter: feed('eng.1', { events: [upcoming[1] as Ev] }).adapter });
+    expect(resolved.data).toMatchObject({ team: { id: 'espn:359', name: 'Arsenal' }, horizon: { days: 14 } });
+    strict('get_share_snippet', resolved.data);
+    const LIB = table('Group A', [CARABOBO, ALWAYS_READY]);
+    const events: Ev[] = [{ id: '20', date: '2026-10-12T22:00Z', home: ALWAYS_READY, away: { id: '7003', abbr: 'BOC', name: 'Boca Juniors' } }];
+    const season = () => ({ year: 2026, displayName: '2026 Copa Libertadores', endDate: '2026-11-30T05:00Z' });
+    const amb = await toolGetShareSnippet({ team: 'CAR', now: NOW, adapter: feed('conmebol.libertadores', { events, standings: LIB, season }).adapter });
+    expect((amb.data as { candidates: Array<{ name: string }> }).candidates.map((c) => c.name).sort()).toEqual(['Always Ready', 'Carabobo']);
+    strict('get_share_snippet', amb.data);
+  });
+
+  it('on the World Cup, get_share_snippet resolves a nation name the way get_next_fixture does: an ambiguous name is the candidates and no request (review round 1)', async () => {
+    const f = feed('fifa.world');
+    const r = await toolGetShareSnippet({ team: 'South', now: new Date('2026-06-13T12:00:00Z'), adapter: f.adapter });
+    expect(r.text).toContain('South Africa');
+    expect(r.text).toContain('South Korea');
+    expect(r.text).not.toContain('SOUTH');
+    expect(f.urls).toEqual([]);
+    expect((r.data as { candidates: Array<{ code: string }> }).candidates.map((c) => c.code).sort()).toEqual(['KOR', 'RSA']);
+    strict('get_share_snippet', r.data);
+    const unknown = await toolGetShareSnippet({ team: 'Narnia', now: new Date('2026-06-13T12:00:00Z'), adapter: feed('fifa.world').adapter });
+    expect(unknown.text).not.toContain('NARNIA');
+    expect(unknown.text).toMatch(/No team/);
+  });
+
   it('get_market_signal by id stays unsupported off the bundle, with no request', async () => {
     const f = feed('eng.1', { events: [inSpan, other] });
     const r = await toolGetMarketSignal({ matchId: '41', adapter: f.adapter });

@@ -179,6 +179,30 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
     }
   });
 
+  it('an incomplete empty `next`: the "none read" sentence, never "no upcoming fixture" (review round 1)', async () => {
+    const broken: Ev = { id: '16', date: '2026-10-14T19:00Z', home: CHE, away: LIV, raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } };
+    await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [broken, upcoming[1] as Ev] }).adapter));
+    expect(text()).toContain('may be incomplete');
+    expect(text()).not.toContain('No upcoming fixture');
+    expect(text()).toContain('Arsenal');
+    writes = [];
+    await cmdShare('next', 'Arsenal', {}, ctxFor(feed('eng.1', { events: [broken, upcoming[1] as Ev] }).adapter));
+    expect(text()).toContain('may be incomplete');
+    expect(text()).not.toContain('No upcoming fixture');
+  });
+
+  it('`share next` carries the resolved team and the candidates in `--json` (review round 1)', async () => {
+    await cmdShare('next', 'arsen', {}, ctxFor(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter, { json: true }));
+    expect(parsed()).toMatchObject({ team: { id: 'espn:359', name: 'Arsenal' }, horizon: { days: 14 } });
+    const LIB = table('Group A', [CARABOBO, ALWAYS_READY]);
+    const events: Ev[] = [{ id: '20', date: '2026-10-12T22:00Z', home: ALWAYS_READY, away: { id: '7003', abbr: 'BOC', name: 'Boca Juniors' } }];
+    const season = () => ({ year: 2026, displayName: '2026 Copa Libertadores', endDate: '2026-11-30T05:00Z' });
+    writes = [];
+    await cmdShare('next', 'CAR', {}, ctxFor(feed('conmebol.libertadores', { events, standings: LIB, season }).adapter, { json: true }));
+    expect((parsed().candidates as Array<{ name: string }>).map((c) => c.name).sort()).toEqual(['Always Ready', 'Carabobo']);
+    expect((parsed().matches as unknown[]).length).toBe(0);
+  });
+
   it('`share next <name>`: the card titles the resolved side and carries the key in `--json`', async () => {
     const LIB = table('Group A', [CARABOBO, ALWAYS_READY]);
     // Carabobo at HOME: a card that labels the side by code (the query is a name, not a code) would title Always Ready.
@@ -234,6 +258,29 @@ describe('match <id> off the bundle (0.11 2.1c)', () => {
     expect(text()).toContain('Arsenal');
     expect(text()).not.toContain('bundled');
     expect(text()).toContain('earlier record');
+  });
+
+  it('`share <id>` after a failed refresh: the card says the provider’s earlier record, never "the bundled schedule" (review round 1)', async () => {
+    const stale = feed('eng.1', { events: [inSpan, other], fail: (d) => (d.length === 8 ? json({}, 503) : undefined) });
+    await cmdShare('41', undefined, {}, ctxFor(stale.adapter));
+    expect(text()).toContain('Arsenal');
+    expect(text()).not.toContain('bundled schedule');
+    expect(text()).toContain('earlier record');
+    writes = [];
+    await cmdShare('41', undefined, { style: 'compact' } as never, ctxFor(feed('eng.1', { events: [inSpan, other], fail: (d) => (d.length === 8 ? json({}, 503) : undefined) }).adapter));
+    expect(text()).not.toContain('bundled schedule');
+  });
+
+  it('an incomplete empty `match`: the "none read" sentence, never "no match found" (review round 1)', async () => {
+    const broken: Ev = { id: '45', date: '2026-10-14T19:00Z', home: CHE, away: LIV, raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } };
+    await cmdMatch('41', ctxFor(feed('eng.1', { events: [broken, other] }).adapter));
+    expect(text()).toContain('may be incomplete');
+    expect(text()).not.toContain('No match found');
+    expect(text()).toContain('41');
+    writes = [];
+    await cmdShare('41', undefined, {}, ctxFor(feed('eng.1', { events: [broken, other] }).adapter));
+    expect(text()).toContain('may be incomplete');
+    expect(text()).not.toContain('No match found');
   });
 
   it('`share <id>`: the card for a found match; the window sentence on the empty card', async () => {
