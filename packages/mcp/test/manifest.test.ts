@@ -68,6 +68,11 @@ describe('mcpb manifest', () => {
       expect(live).toMatch(/partial/);
       expect(live).toMatch(/degraded/);
       expect(live).not.toMatch(/nothing is in play unless partial says/);
+      // The same scope rule as the manifest's: "none read" is where no bundled schedule was merged, which is not
+      // "elsewhere than the World Cup" (its slug answering for another edition merges none either).
+      const today = tools.find((t) => t.name === 'get_today')?.description ?? '';
+      expect(today).toMatch(/no bundled schedule/);
+      expect(today).not.toMatch(/elsewhere/);
     } finally {
       await client.close();
       await server.close();
