@@ -37,11 +37,14 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   any part failed, when a part's envelope is unreadable, or when a part filled
   the request's `limit` (its tail is unknown); asked strictly (the default, and
   every caller that merges the bundle or keeps a slice), also when parts state
-  two seasons. Asked `acrossSeasons` (the live read alone, which merges
-  nothing), two seasons are composed: the answer states no `season`, and
+  two seasons. Asked `acrossSeasons` (a caller that merges nothing and keeps
+  no slice: the live read, and off the bundle the dated read and the match
+  read), two seasons are composed: the answer states no `season`, and
   `seasons` names both. The window's season is the one its stating parts agree
   on (a silent part does not veto); discovery's is a different rule (every
-  month the same) and stays separate. A refused record, or one fixture in two
+  month the same) and stays separate. Either way the composed season keeps its
+  start and end date only when every stating part stated the same one
+  (`agreedSeason`). A refused record, or one fixture in two
   parts, leaves the answer `complete: false` with `omitted` counting the
   records left out (`fetchMeta`; the parser counts at the boundary, 0 exactly
   when complete; counted over the responses asked, a month whole, so a record
@@ -49,8 +52,9 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   missing). A caller that keeps a previous answer must carry that
   verdict: an incomplete answer never erases what it did not read. The
   knockout-facing results (`next`, `bracket`, their share cards) carry it as
-  the `partial` verdict; `today`, `live` and `match` still drop it, until the
-  verdict reaches them too (`AGENTS.md`, the window bullet, names the scope).
+  the `partial` verdict, and so do `next` and `match <id>` off the bundle;
+  `today`, `live` and `match` on the bundle still drop it, until the verdict
+  reaches them too (`AGENTS.md`, the window bullet, names the scope).
   A caller that composes windows itself (discovery: a window per month) asks
   "no readable record" of the whole too: a window refused because its list
   held no readable record carries `ProviderError.noReadableRecord` and read
