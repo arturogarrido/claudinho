@@ -267,5 +267,5 @@ export function nationArg(query: string): { code: string } | { answer: NextFixtu
   const named = humanLabel(raw, 40);
   return matches.length > 1
     ? { answer: { degraded: false, ...(named ? { query: named } : {}), candidates: matches } }
-    : { answer: { degraded: false, ...(named ? { query: named } : {}), unknownTeam: true } };
+    : { answer: { degraded: false, ...(named ? { query: named } : {}), unknownTeam: true, rosterEvidence: 'bundle' } };
 }

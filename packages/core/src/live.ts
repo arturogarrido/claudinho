@@ -600,8 +600,14 @@ export interface NextFixtureResult {
   team?: Team;
   /** Off the bundle: two or more clubs matched the query; no fixture is picked. */
   candidates?: Team[];
-  /** Off the bundle: the competition's whole roster holds no team by that name (a replacement verdict). */
+  /**
+   * The roster the competition has holds no team by that name (a replacement
+   * verdict): off the bundle the table read whole and a whole read of the
+   * span; on the World Cup the bundled nations (`nationArg`).
+   */
   unknownTeam?: true;
+  /** What `unknownTeam` rests on, which its sentence names (see `VerdictSource.rosterEvidence`). */
+  rosterEvidence?: 'table' | 'bundle';
   /**
    * Off the bundle: the roster was asked for and could not be read whole (a
    * table missing or partial, a row with no id, or no answer), and the query
@@ -724,7 +730,16 @@ async function nextOffBundle(adapter: ProviderAdapter, asked: string, now: Date)
   if (resolution.outcome === 'ambiguous') {
     return { degraded: false, ...named, ...season, candidates: resolution.candidates };
   }
-  if (resolution.outcome === 'unknown') return { degraded: false, ...named, ...season, unknownTeam: true };
+  if (resolution.outcome === 'unknown') {
+    // "No such team" is claimed only from a WHOLE read: a refused record of an
+    // incomplete one may be the club's fixture (a club in no table, out in a
+    // qualifying round). Not whole: the partial empty body, as for a known
+    // club with nothing read.
+    if (discovery.complete !== true) {
+      return { degraded: false, ...named, ...season, ...partialOfRead({ complete: false, omitted: discovery.omitted }) };
+    }
+    return { degraded: false, ...named, ...season, unknownTeam: true, rosterEvidence: 'table' };
+  }
   if (resolution.outcome === 'unresolved' && roster.tableAsked) {
     // Not knowing is not "no such team": the roster could not be read whole.
     // Nor is it an outage: the provider answered (its own verdict).

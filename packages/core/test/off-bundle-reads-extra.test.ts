@@ -187,7 +187,7 @@ describe('review round 1 (coder): the selection predicate, the World Cup name ar
     expect(nationArg('Mexico')).toEqual({ code: 'MEX' });
     const south = nationArg('South');
     expect('answer' in south && south.answer.candidates?.map((t) => t.code).sort()).toEqual(['KOR', 'RSA']);
-    expect(nationArg('Narnia')).toEqual({ answer: { degraded: false, query: 'Narnia', unknownTeam: true } });
+    expect(nationArg('Narnia')).toEqual({ answer: { degraded: false, query: 'Narnia', unknownTeam: true, rosterEvidence: 'bundle' } });
   });
 
   it('no surface spells the "none read" sentences or their keys: they come from the card builders', async () => {
@@ -204,5 +204,16 @@ describe('review round 1 (coder): the selection predicate, the World Cup name ar
         expect(/was read in this span|['"`](next|match)\.noneRead['"`]|earlier record\.\)/.test(code), f).toBe(false);
       }
     }
+  });
+});
+
+describe('review round 5 (coder): one-pass interpolation', () => {
+  it('a value that looks like a placeholder is inserted as it is, in any sentence that takes a typed value', async () => {
+    const { t } = await import('../src/i18n');
+    expect(t('en', 'next.horizon', { team: 'Club {days}', days: '14' })).toBe('No fixture for Club {days} within the next 14 days.');
+    expect(t('en', 'next.noneRead', { team: '{team}' })).toBe('No fixture for {team} was read in this span.');
+    expect(t('en', 'match.notFoundBetween', { from: '{to}', to: '2026-10-24', id: '{from}' })).toBe(
+      'Not found between {to} and 2026-10-24: no match with id {from} in that span.',
+    );
   });
 });

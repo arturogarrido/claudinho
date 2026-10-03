@@ -24,11 +24,13 @@
  *     result states more than one, the first in this order is said:
  *       `unsupported`      the feature is not offered for this competition yet;
  *       `inapplicable`     the competition has no such thing (no bracket);
- *       `unknownTeam`      the competition's table, read whole, and its
- *                          fixtures over discovery's span hold no team by
- *                          that name (`query` names it; the sentence names
- *                          that evidence, not the competition: a club out in
- *                          a qualifying round is in no table);
+ *       `unknownTeam`      the roster the competition has holds no team by
+ *                          that name (`query` names it): the bundled nations
+ *                          on the World Cup, elsewhere the table read whole
+ *                          and the fixtures over discovery's span. The
+ *                          sentence names that evidence (`rosterEvidence`),
+ *                          not the competition: a club out in a qualifying
+ *                          round is in no table;
  *       `rosterIncomplete` the roster could not be read whole, and the name
  *                          was not one that could be answered without it
  *                          (`query` names it); not an outage;
@@ -80,6 +82,13 @@ export interface VerdictSource {
    */
   readonly unknownTeam?: boolean;
   /**
+   * The evidence an `unknownTeam` rests on, which its sentence names: the
+   * competition's table read whole and its fixtures over discovery's span
+   * (`table`), or the bundled roster of the World Cup's nations (`bundle`).
+   * Forwarded with the key; not a verdict of its own.
+   */
+  readonly rosterEvidence?: 'table' | 'bundle';
+  /**
    * The competition's roster was asked for and could not be read whole (a
    * table missing or partial, a row with no id, no answer), and the name could
    * not be answered without it: no club matched, or only by a code or a fuzzy
@@ -119,6 +128,7 @@ export interface VerdictExtras {
   unsupported?: true;
   inapplicable?: true;
   unknownTeam?: true;
+  rosterEvidence?: 'table' | 'bundle';
   rosterIncomplete?: true;
   betweenEditions?: { ended: string; label?: string };
   incomplete?: true;
@@ -177,7 +187,12 @@ export function verdictExtras(result: VerdictSource): VerdictExtras {
   const out: VerdictExtras = {};
   if (result.unsupported === true) out.unsupported = true;
   if (result.inapplicable === true) out.inapplicable = true;
-  if (result.unknownTeam === true) out.unknownTeam = true;
+  if (result.unknownTeam === true) {
+    out.unknownTeam = true;
+    if (result.rosterEvidence === 'table' || result.rosterEvidence === 'bundle') {
+      out.rosterEvidence = result.rosterEvidence;
+    }
+  }
   if (result.rosterIncomplete === true) out.rosterIncomplete = true;
   const between = statedEdition(result);
   if (between) out.betweenEditions = between;
@@ -202,14 +217,20 @@ export function verdictNotice(result: VerdictSource, lang?: string): string | un
   if (result.unknownTeam === true) {
     // The name as asked; a result that does not say it still gets a sentence.
     const team = typeof result.query === 'string' ? result.query : '';
-    // It names its evidence, not the competition: the table read whole and
-    // the fixtures of discovery's span (a club out in a qualifying round is
-    // in no table).
-    return t(lang, 'team.unknown', { team, days: String(SCHEDULE_AHEAD_DAYS) }).replace(/\s{2,}/g, ' ');
+    // It names its evidence, not the competition: on the World Cup the
+    // bundled nations; elsewhere the table read whole and the fixtures of
+    // discovery's span (a club out in a qualifying round is in no table).
+    const sentence =
+      result.rosterEvidence === 'bundle'
+        ? t(lang, 'team.unknownNation', { team })
+        : t(lang, 'team.unknown', { team, days: String(SCHEDULE_AHEAD_DAYS) });
+    return team ? sentence : sentence.replace(/\s{2,}/g, ' ');
   }
   if (result.rosterIncomplete === true) {
     const team = typeof result.query === 'string' ? result.query : '';
-    return t(lang, 'roster.incomplete', { team }).replace(/\s{2,}/g, ' ');
+    const sentence = t(lang, 'roster.incomplete', { team });
+    // Without a name the sentence closes up its gap; a name is printed as typed.
+    return team ? sentence : sentence.replace(/\s{2,}/g, ' ');
   }
   const between = statedEdition(result);
   if (between) {
