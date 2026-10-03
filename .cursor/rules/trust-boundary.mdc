@@ -56,9 +56,11 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   and their share cards and MCP twins (`AGENTS.md`, the window bullet, names
   the scope). The statusline, the hook and the cache do not: the cache's live
   slice carries no verdict. The dated read's `skeleton` (the bundled schedule
-  was merged) and `served` (the ids the window held) are request-local, never
-  cached: a day's surface reads them to say what an empty day means and to
-  attribute the fixtures it displays (`dayAttribution`).
+  was merged) and `served` (the ids the window held; the bundled match read
+  states it too) are request-local, never cached: a surface reads them to say
+  what an empty day means and to attribute the fixtures it displays
+  (`dayAttribution`), and `served` rides in the structured twins as a plain
+  field beside `source`.
   A caller that composes windows itself (discovery: a window per month) asks
   "no readable record" of the whole too: a window refused because its list
   held no readable record carries `ProviderError.noReadableRecord` and read
