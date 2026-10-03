@@ -123,12 +123,22 @@ export const STANDING_STATS = Object.freeze([
 /** A provider team id, as the adapter accepts it. */
 const RAW_TEAM_ID = /^[0-9]{1,20}$/;
 /**
- * The longest cadence among the supported competitions, in years: the World
- * Cup, the Euro, the Copa America and the Club World Cup are four-yearly, the
- * Nations League and the Gold Cup two-yearly, the rest yearly. A season turn
- * steps up by at most this much.
+ * How often each supported competition has an edition, in years; a season turn
+ * steps up by at most that (at most, not exactly: the Copa America went 2021,
+ * 2024, 2028). The World Cup, the Euro, the Copa America and the Club World
+ * Cup are four-yearly, the Nations League and the Gold Cup two-yearly, every
+ * other competition in `CANARY_COMPETITIONS` yearly. A yearly league stating a
+ * season two years on has skipped an edition: a changed feed, not a turn.
  */
-const LONGEST_CADENCE_YEARS = 4;
+const CADENCE_YEARS = Object.freeze({
+  'fifa.world': 4,
+  'uefa.euro': 4,
+  'conmebol.america': 4,
+  'fifa.cwc': 4,
+  'uefa.nations': 2,
+  'concacaf.gold': 2,
+});
+const cadenceOf = (competition) => CADENCE_YEARS[competition] ?? 1;
 /** An error body is read for its message only. */
 const ERROR_BODY_BYTES = 64 * 1024;
 /** How long the canary waits for a body it is reading for itself. */
@@ -264,12 +274,12 @@ function checkScoreboard(core, adapter, parts, matches) {
   // stated two, and names both: a normal answer on the days a competition
   // turns. No season stated at all is still a changed feed, and so are two
   // seasons that are not a turn. A turn is ONE step up, on a later day, of at
-  // most the longest cadence among the supported competitions (four years:
-  // the World Cup's; the Nations League's is two). The adapter lists DISTINCT
-  // seasons, which cannot show a day stating the earlier season again after
-  // the later one, so the steps are read from each part's own envelope in the
-  // order of the days asked: a step down, a second step, or a jump past every
-  // cadence is a feed the dated reads refuse, not a turn.
+  // most this competition's cadence (`CADENCE_YEARS`: a yearly league turns by
+  // one, the Nations League by two). The adapter lists DISTINCT seasons, which
+  // cannot show a day stating the earlier season again after the later one,
+  // so the steps are read from each part's own envelope in the order of the
+  // days asked: a step down, a second step, or a jump past the cadence is a
+  // feed the dated reads refuse, not a turn.
   const seasons = Array.isArray(meta.seasons) ? meta.seasons : [];
   if (!meta.season && seasons.length < 2) {
     return { verdict: 'changed', detail: 'the response states no readable season' };
@@ -280,7 +290,7 @@ function checkScoreboard(core, adapter, parts, matches) {
       .map((part) => part.json?.leagues?.[0]?.season?.year)
       .filter((year) => Number.isInteger(year));
     const steps = stated.slice(1).map((year, i) => year - stated[i]).filter((step) => step !== 0);
-    if (steps.length !== 1 || steps[0] < 1 || steps[0] > LONGEST_CADENCE_YEARS) {
+    if (steps.length !== 1 || steps[0] < 1 || steps[0] > cadenceOf(adapter.competition)) {
       return { verdict: 'changed', detail: `the parts state seasons that are not a turn (${stated.join(', ')})` };
     }
   }
