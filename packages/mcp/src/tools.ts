@@ -15,6 +15,7 @@ import {
   bracketShareCard,
   dateNoneRead,
   dateShareCard,
+  dateUnreached,
   dayAttribution,
   liveNoneRead,
   liveShareCard,
@@ -390,11 +391,22 @@ export async function toolGetToday(
   // day's attribution is decided over.
   const shownToday = boundedRecords(todays);
   const opts = fmtOpts(args);
-  // A verdict (between editions) stands instead of the empty line; a read that
-  // was not whole and merged no bundled schedule says none was READ.
-  let text = `Matches on ${date}:\n${matchList(todays, verdictNotice(day, args.lang) ?? dateNoneRead(day, date, args.lang) ?? 'No matches scheduled.', opts)}`;
-  // Degraded ⇒ the live overlay failed; these are static fixtures with no live scores.
-  if (degraded) text += '\n\n(Live scores unavailable — showing the bundled schedule.)';
+  // A verdict (between editions) stands instead of the empty line. Where no
+  // bundled schedule was merged, a failed read says the provider could not be
+  // reached, and a read that was not whole says none was READ.
+  const empty =
+    verdictNotice(day, args.lang) ??
+    dateUnreached(day, date, args.lang) ??
+    dateNoneRead(day, date, args.lang) ??
+    'No matches scheduled.';
+  let text = `Matches on ${date}:\n${matchList(todays, empty, opts)}`;
+  // Degraded ⇒ the live overlay failed: on the bundle these are static fixtures
+  // with no live scores; off it there is no schedule to show.
+  if (degraded) {
+    text += day.skeleton
+      ? '\n\n(Live scores unavailable — showing the bundled schedule.)'
+      : "\n\n(Live scores unavailable — couldn't reach the data provider.)";
+  }
   const market = await reliableMarketData(args, todays);
   if (!market.complete) {
     text += '\n\n(Market data unavailable or incomplete — not all fixtures were checked.)';

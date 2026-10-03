@@ -133,6 +133,18 @@ export function dateNoneReadSentence(date: string, lang?: string): string {
 }
 
 /**
+ * "Couldn't reach the data provider — no fixtures confirmed for {date}", in
+ * the reader's language: the EMPTY day of a read that FAILED and merged no
+ * bundled schedule (off the bundle), where nothing but the provider knows the
+ * fixtures, so an outage must not read as "no matches scheduled". `date` is
+ * printed as given: the card passes its human label, the CLI and MCP the date
+ * they print. (When it applies: {@link dateUnreached}.)
+ */
+export function dateUnreachedSentence(date: string, lang?: string): string {
+  return t(lang, 'today.unreached', { date });
+}
+
+/**
  * The sentence beside a day's partial verdict that counts the displayed
  * fixtures the read did not serve: they are the bundled schedule's rows, and
  * their live state is unconfirmed. Singular and plural, in the reader's
@@ -182,6 +194,16 @@ export function dateNoneRead(result: ReadAccount, date: string, lang?: string): 
   return !result.degraded && statesPartial(result) && result.skeleton !== true
     ? dateNoneReadSentence(date, lang)
     : undefined;
+}
+
+/**
+ * The empty body of a dated read that FAILED and merged no bundled schedule:
+ * {@link dateUnreachedSentence}. Undefined otherwise: a failed read on the
+ * bundle shows the bundle's day (the schedule is known without the provider),
+ * and a read that answered says what it read.
+ */
+export function dateUnreached(result: ReadAccount, date: string, lang?: string): string | undefined {
+  return result.degraded === true && result.skeleton !== true ? dateUnreachedSentence(date, lang) : undefined;
 }
 
 /**
@@ -433,25 +455,22 @@ export function dateShareCard(
     matches: readonly Match[];
     degraded: boolean;
     source?: string;
-    /**
-     * For a caller that hands no `read`: whether the day's list holds the
-     * bundled schedule (decides what an empty, degraded day may say). With a
-     * `read`, the read's own `skeleton` decides: a surface passes the read.
-     */
-    scheduleKnown?: boolean;
     /** Appended to the title, e.g. " (showing 20 of 31)". */
     titleSuffix?: string;
     /**
      * The dated read itself: the verdicts the card states (between editions,
-     * partial), whether it merged the bundled schedule, and what it served
-     * (the card's attribution, over the fixtures it shows).
+     * partial), whether it merged the bundled schedule (`skeleton`: the ONE
+     * input for what an empty day may say), and what it served (the card's
+     * attribution, over the fixtures it shows). A card handed no read is a
+     * whole read that merged no schedule.
      */
     read?: ReadAccount;
   },
   market: ShareCardMarket,
   ctx: ShareCardContext,
 ): MatchShareCard {
-  const read: ReadAccount = day.read ?? (day.scheduleKnown ? { skeleton: true } : {});
+  // The read's account, with the outcome the surface states beside it.
+  const read: ReadAccount = { ...(day.read ?? {}), degraded: day.degraded };
   // Human date label from a stable midday-UTC instant (avoids tz day flips).
   const human = formatDate(`${day.date}T12:00:00.000Z`, { tz: ctx.tz, locale: ctx.locale });
   // On a read that was not whole: the card names its provider only when a
@@ -470,14 +489,15 @@ export function dateShareCard(
       source: attribution.attributed ? day.source : undefined,
       degraded: day.degraded,
       // Fail closed: when the provider is the only source of fixtures and it
-      // could not be reached, the card must not paste as an empty day. (The
-      // formatter adds its own outage line only when there ARE matches.) A
-      // read that was not whole and merged no schedule says none was READ.
+      // could not be reached, the card must not paste as an empty day (the
+      // same sentence every date surface prints; the formatter adds its own
+      // outage line only when there ARE matches). A read that was not whole
+      // and merged no schedule says none was READ.
       emptyNote:
         verdictNotice(read, ctx.locale) ??
-        (day.degraded && read.skeleton !== true
-          ? `Couldn't reach the data provider — no fixtures confirmed for ${human}.`
-          : (dateNoneRead(read, day.date, ctx.locale) ?? `No matches scheduled for ${human}.`)),
+        dateUnreached(read, human, ctx.locale) ??
+        dateNoneRead(read, day.date, ctx.locale) ??
+        `No matches scheduled for ${human}.`,
       // The read was not whole (and which shown rows it did not serve): said
       // beside the fixtures, or beside "none read".
       ...(note.length > 0 ? { note: note.join(' ') } : {}),

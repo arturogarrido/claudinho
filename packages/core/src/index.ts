@@ -174,6 +174,8 @@ export {
   dateNoneRead,
   dateNoneReadSentence,
   dateShareCard,
+  dateUnreached,
+  dateUnreachedSentence,
   dayAttribution,
   liveNoneRead,
   liveNoneReadSentence,

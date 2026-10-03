@@ -15,6 +15,7 @@ import {
   bracketShareCard,
   dateNoneRead,
   dateShareCard,
+  dateUnreached,
   dayAttribution,
   liveNoneRead,
   liveShareCard,
@@ -414,9 +415,18 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   out(header(`${title} · ${targetDate}`, c));
   out();
   if (todays.length === 0) {
-    // A verdict (between editions) stands instead of the empty note; a read
-    // that was not whole and merged no bundled schedule says none was READ.
-    out(c.dim('  ' + (verdictNotice(day, cfg.lang) ?? dateNoneRead(day, targetDate, cfg.lang) ?? t('today.none'))));
+    // A verdict (between editions) stands instead of the empty note. Where no
+    // bundled schedule was merged, a failed read says the provider could not
+    // be reached, and a read that was not whole says none was READ.
+    out(
+      c.dim(
+        '  ' +
+          (verdictNotice(day, cfg.lang) ??
+            dateUnreached(day, targetDate, cfg.lang) ??
+            dateNoneRead(day, targetDate, cfg.lang) ??
+            t('today.none')),
+      ),
+    );
   } else {
     for (const m of todays) {
       out(matchLine(m, cfg, t, c, flags));
@@ -428,8 +438,9 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
     out(c.dim('  Market data unavailable or incomplete — not all fixtures were checked.'));
   }
   out();
-  // Live overlay failed → these are static fixtures with no live scores. Say so.
-  if (degraded) out(c.dim('  ' + t('feed.degraded')));
+  // Live overlay failed → on the bundle these are static fixtures with no live
+  // scores; off it there is no schedule to show, only the provider was missed.
+  if (degraded) out(c.dim('  ' + t(day.skeleton ? 'feed.degraded' : 'live.degraded')));
   // The read was not whole: said after the list and before the attribution
   // (where `table` says it), with the count of shown rows it did not serve.
   // A day none of whose shown fixtures it served names no provider.
