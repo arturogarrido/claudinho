@@ -168,7 +168,7 @@ describe('today (0.11 2.1d)', () => {
     expect(text()).not.toContain('Live data');
     writes = [];
     await cmdShare('2026-06-11', undefined, {}, ctxFor(adapter, { json: true }));
-    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, served: ['760414'] });
+    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, served: [] }); // the shown rows the window held: none
     expect(parsed().source).toBeNull();
   });
 
@@ -257,6 +257,9 @@ describe('the bundled match and the markets (0.11 2.1d)', () => {
     expect(text()).not.toContain('Live data');
     writes = [];
     await cmdMatch('760415', ctxFor(adapter, { json: true }));
+    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, served: [] });
+    writes = [];
+    await cmdMatch('760414', ctxFor(adapter, { json: true }));
     expect(parsed()).toMatchObject({ partial: { omitted: 1 }, served: ['760414'] });
     writes = [];
     await cmdShare('760415', undefined, {}, ctxFor(adapter));

@@ -192,9 +192,10 @@ describe('the market fixture read keeps both accounts (0.11 2.1d)', () => {
     const f = feed('fifa.world', { events: [FINAL, broken('760516', '2026-07-18T19:00Z')] });
     const r = await marketFixtureForTeam(f.adapter, 'ESP', KO_NOW);
     expect(r.match?.id).toBe('760517');
-    // The day refresh's window lies inside the knockout window's: a record refused by both is ONE record, so the
-    // answer carries the larger of the two counts, never their sum (a review found the sum read as two lost).
-    expect(r.partial).toEqual({ omitted: 1 });
+    // The count is over the RESPONSES, as the window's own is (a fixture in two parts counts its second copy): the
+    // two reads' counts are summed, so a record both refused counts in each. An upper bound on the records left
+    // out, never a lower one: the larger of the two under-counted when the reads refused different records.
+    expect(r.partial).toEqual({ omitted: 2 });
   });
 
   it('whole reads: no key; a refused record only in the candidate’s day: partial', async () => {
@@ -209,20 +210,30 @@ describe('the market fixture read keeps both accounts (0.11 2.1d)', () => {
     expect(r.partial).toEqual({ omitted: 1 });
   });
 
-  it('two reads with different counts: the larger one; a whole first read and a partial refresh: the refresh’s', async () => {
+  it('two reads with different counts: summed (over the responses); a whole first read and a partial refresh: the refresh’s', async () => {
     const f = feed('fifa.world', {
       events: [FINAL, broken('760516', '2026-07-18T19:00Z')],
       fail: (d) => (d === '20260719' ? json({ leagues: [{ season: WC_SEASON }], events: [event(FINAL), event(broken('760598', '2026-07-19T15:00Z')), event(broken('760599', '2026-07-19T16:00Z'))] }) : undefined),
     });
     const r = await marketFixtureForTeam(f.adapter, 'ESP', KO_NOW);
-    expect(r.partial).toEqual({ omitted: 3 }); // the month saw one; the refresh (Jul 18 to 20) saw that one and two more: the larger
+    expect(r.partial).toEqual({ omitted: 4 }); // the month saw one; the refresh (Jul 18 to 20) saw that one and two more: 1 + 3
   });
 
-  it('the knockout window’s count is the larger: two refused records in June and July, the refresh seeing one', async () => {
+  it('two refused records in June and July, the refresh seeing one of them: the sum, three, never two', async () => {
     const f = feed('fifa.world', { events: [FINAL, broken('760416', '2026-06-20T19:00Z'), broken('760516', '2026-07-18T19:00Z')] });
     const r = await marketFixtureForTeam(f.adapter, 'ESP', KO_NOW);
     expect(r.match?.id).toBe('760517');
-    expect(r.partial).toEqual({ omitted: 2 }); // the two months saw two; the refresh (Jul 18 to 20) one of them
+    expect(r.partial).toEqual({ omitted: 3 }); // the two months saw two; the refresh (Jul 18 to 20) one of them: 2 + 1
+  });
+
+  it('the two reads refusing DIFFERENT records: both counted (the larger of the two would say one)', async () => {
+    const f = feed('fifa.world', {
+      events: [FINAL, broken('760510', '2026-07-10T19:00Z')],
+      fail: (d) => (d === '20260719' ? json({ leagues: [{ season: WC_SEASON }], events: [event(FINAL), event(broken('760599', '2026-07-19T15:00Z'))] }) : undefined),
+    });
+    const r = await marketFixtureForTeam(f.adapter, 'ESP', KO_NOW);
+    expect(r.match?.id).toBe('760517');
+    expect(r.partial).toEqual({ omitted: 2 });
   });
 
   it('a finished candidate falling through keeps the refresh’s account: no next fixture, partial from the day refresh', async () => {

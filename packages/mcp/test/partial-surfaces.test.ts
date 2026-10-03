@@ -82,7 +82,9 @@ describe('get_live and get_today (0.11 2.1d)', () => {
     expect(allStatic.text).toContain(SENTENCE);
     expect(allStatic.text).not.toContain('Live data');
     expect(allStatic.footer).not.toContain('Live data');
-    expect(allStatic.data).toMatchObject({ partial: { omitted: 1 }, source: 'espn' });
+    // `served` is the SHOWN fixtures the window held (bounded like the rows it interprets): none here, the window's
+    // other record being on another date.
+    expect(allStatic.data).toMatchObject({ partial: { omitted: 1 }, source: 'espn', served: [] });
     strict('get_today', allStatic.data);
   });
 
@@ -132,7 +134,7 @@ describe('get_live and get_today (0.11 2.1d)', () => {
     expect(date.text).toContain(SENTENCE);
     expect(date.text).toMatch(/1 fixture .*bundled schedule/);
     expect(date.text).not.toContain('Live data');
-    expect(date.data).toMatchObject({ partial: { omitted: 1 }, source: null, served: ['760414'] });
+    expect(date.data).toMatchObject({ partial: { omitted: 1 }, source: null, served: [] });
     strict('get_share_snippet', date.data);
     // A MIXED day: the count sentence is the only thing on the card that qualifies its provider line.
     const second: Ev = { id: '760414', date: '2026-06-11T22:00Z', home: KOR, away: CZE, state: 'in' };
@@ -151,8 +153,10 @@ describe('the bundled get_match and get_market_signal (0.11 2.1d)', () => {
     expect(r.text).toContain(SENTENCE);
     expect(r.text).toMatch(/1 fixture .*bundled schedule/);
     expect(r.footer ?? '').not.toContain('Live data');
-    expect(r.data).toMatchObject({ partial: { omitted: 1 }, source: null, served: ['760414'] });
+    expect(r.data).toMatchObject({ partial: { omitted: 1 }, source: null, served: [] });
     strict('get_match', r.data);
+    const sibling = await toolGetMatch({ id: '760414', adapter });
+    expect(sibling.data).toMatchObject({ partial: { omitted: 1 }, source: 'espn', served: ['760414'] });
     const card = await toolGetShareSnippet({ matchId: '760415', adapter } as never);
     expect(card.text).toMatch(/1 fixture .*bundled schedule/);
     strict('get_share_snippet', card.data);
@@ -232,6 +236,20 @@ describe('the day’s attribution is decided over what the text finally shows (0
     const wholeCard = await toolGetShareSnippet({ date: '2026-06-11', tz: 'UTC', adapter: feed('fifa.world', { events: [OPENER, ...many] }) });
     expect(textOf(wholeCard)).toContain('(truncated)');
     expect(textOf(wholeCard)).toContain('Live data');
+  });
+
+  it('a cut LIVE list keeps its attribution on a partial read: every row it shows was served (the line is true), and a provider is attributed where it served', async () => {
+    // Found in review: the rule had been applied to live lists for uniformity, dropping a true line.
+    const inPlay = many.map((m) => ({ ...m, state: 'in' as const }));
+    const live = await toolGetLive({ adapter: feed('fifa.world', { events: [{ ...KOR_CZE, raw: REFUSED }, ...inPlay] }), now: new Date('2026-06-11T23:30:00Z') } as never);
+    const cut = textOf(live as never);
+    expect(cut).toContain('(truncated)');
+    expect(cut).toContain(SENTENCE);
+    expect(cut).toContain('Live data');
+    expect(cut).toMatch(/not affiliated/i);
+    const card = await toolGetShareSnippet({ live: true, now: new Date('2026-06-11T23:30:00Z'), adapter: feed('fifa.world', { events: [{ ...KOR_CZE, raw: REFUSED }, ...inPlay] }) } as never);
+    expect(textOf(card as never)).toContain('(truncated)');
+    expect(textOf(card as never)).toContain('Live data');
   });
 
   // Found in review: a share card prints its zone beside every time, verbatim, and the MCP schema took any string
