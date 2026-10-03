@@ -640,7 +640,9 @@ const TRUNCATED = '\n(truncated)';
  * the BODY, never the footer (`ToolResult.footer`: the attribution and the
  * non-affiliation disclaimer, which every user-facing surface carries and a cut
  * from the end used to take first). What qualifies the body is printed before
- * it for the same reason (a verdict, a partial table).
+ * it for the same reason (a verdict, a partial table, a degraded line, a market
+ * notice, a list's truncation: the rule on `ToolResult.footer`), so nothing but
+ * the footer follows the body.
  */
 function boundText(r: { text: string; footer?: string; cutFooter?: string }, tail: string): string {
   if (r.text.length + tail.length <= MAX_TEXT_CHARS) return r.text + tail;
