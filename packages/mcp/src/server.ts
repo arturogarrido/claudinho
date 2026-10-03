@@ -21,6 +21,7 @@ import {
   humanLabel,
   isHumanLabel,
   isValidDate,
+  isValidTimeZone,
   TABLE_KEY_ARG,
 } from '@claudinho/core';
 import { DISCLAIMER, matchList } from './format';
@@ -87,10 +88,22 @@ export const clubArg = z
     'a team name or code (1 to 40 characters, no invisible or control characters), e.g. Arsenal or ARS',
   );
 export const flavorArg = z.enum(['off', 'subtle', 'full']);
+/**
+ * A time zone is an IDENTIFIER (a text role, like a team code), not prose: an
+ * IANA zone the runtime can resolve, checked at the edge, so the SDK refuses
+ * anything else before a handler runs or a request is made. The share
+ * formatter prints the zone verbatim beside every time; a 40,000-character
+ * "zone" pushed a date card past the text cut, which dropped the row the
+ * provider served and kept the attribution beside a bundled one. The set the
+ * runtime knows bounds its length (IANA's longest names are 30 characters).
+ */
+export const tzArg = z
+  .string()
+  .refine((v) => isValidTimeZone(v), 'an IANA time zone, e.g. America/Mexico_City');
 
 // Shared optional args every tool accepts.
 const commonArgs = {
-  tz: z.string().optional().describe('IANA timezone for kickoff times, e.g. America/Mexico_City'),
+  tz: tzArg.optional().describe('IANA timezone for kickoff times, e.g. America/Mexico_City'),
   lang: z
     .string()
     .optional()
