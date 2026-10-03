@@ -135,6 +135,30 @@ describe('a verdict REPLACES the body or QUALIFIES it, and the module says which
       expect(verdictQualifiers({ partial: { omitted } }, 'en'), String(omitted)).toEqual(['Fixture data may be incomplete.']);
     }
   });
+  it('three more replacements (0.11 2.1c): `inapplicable`, `unknownTeam`, `betweenEditions`, in that precedence after `unsupported`; each a sentence and a key', () => {
+    expect(verdictNotice({ inapplicable: true }, 'en')).toBe('This competition has no bracket.');
+    expect(verdictExtras({ inapplicable: true })).toEqual({ inapplicable: true });
+    expect(verdictNotice({ unknownTeam: true }, 'en')).toMatch(/^No team called/);
+    expect(verdictExtras({ unknownTeam: true })).toEqual({ unknownTeam: true });
+    const between = { betweenEditions: { ended: '2026-10-09T03:59:00.000Z', label: '2026 Concacaf Champions Cup' } };
+    expect(verdictNotice(between, 'en')).toBe('Between editions: the 2026 Concacaf Champions Cup edition ended on 2026-10-09.');
+    expect(verdictExtras(between)).toEqual(between);
+    // An empty label names the year of the end date instead.
+    expect(verdictNotice({ betweenEditions: { ended: '2026-10-09T03:59:00.000Z' } }, 'en')).toBe('Between editions: the 2026 edition ended on 2026-10-09.');
+    // A replacement suppresses the qualifiers, as `unsupported` does.
+    expect(verdictQualifiers({ ...between, partial: { omitted: 1 } }, 'en')).toEqual([]);
+    expect(verdictQualifiers({ inapplicable: true, incomplete: true }, 'en')).toEqual([]);
+    // Precedence when a result states more than one: unsupported, inapplicable, unknownTeam, betweenEditions.
+    expect(verdictNotice({ unsupported: true, inapplicable: true }, 'en')).toBe('Not available for this competition yet.');
+    expect(verdictNotice({ inapplicable: true, unknownTeam: true }, 'en')).toBe('This competition has no bracket.');
+    expect(verdictNotice({ unknownTeam: true, ...between }, 'en')).toMatch(/^No team called/);
+    for (const lang of ['es', 'pt', 'fr']) {
+      expect(verdictNotice({ inapplicable: true }, lang), lang).not.toBe('This competition has no bracket.');
+      expect(verdictNotice(between, lang), lang).not.toMatch(/^Between editions/);
+      expect(verdictNotice(between, lang), lang).toContain('2026 Concacaf Champions Cup');
+      expect(verdictNotice({ unknownTeam: true }, lang), lang).not.toMatch(/^No team called/);
+    }
+  });
 });
 
 describe('share cards — assembled once, for the CLI and the MCP server alike', () => {
@@ -431,6 +455,28 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     const sentence = /['"`]competition\.unsupported['"`]/;
     expect(hits('cli', sentence)).toEqual([]);
     expect(hits('mcp', sentence)).toEqual([]);
+  });
+
+  it('nor the three verdicts of 0.11 2.1c: the keys are declared once, in the MCP schema; the sentences and their i18n keys nowhere at a surface', () => {
+    for (const key of ['inapplicable', 'unknownTeam', 'betweenEditions']) {
+      const written = new RegExp(`\\b${key}\\s*:`);
+      expect(codeHits('cli', written), key).toEqual([]);
+      expect(codeHits('mcp', written), key).toEqual(['mcp/src/server.ts']);
+    }
+    for (const i18nKey of ['competition.noBracket', 'team.unknown', 'edition.between']) {
+      const written = new RegExp(`['"\`]${i18nKey.replace('.', '\\.')}['"\`]`);
+      expect(hits('cli', written), i18nKey).toEqual([]);
+      expect(hits('mcp', written), i18nKey).toEqual([]);
+    }
+    for (const sentence of [/no bracket/, /No team called/, /Between editions/]) {
+      expect(codeHits('cli', sentence), String(sentence)).toEqual([]);
+      expect(codeHits('mcp', sentence), String(sentence)).toEqual([]);
+    }
+    // The horizon and window sentences belong to the card builder, like the empty notes: a surface never spells them.
+    for (const sentence of [/within the next/, /Not found between/]) {
+      expect(codeHits('cli', sentence), String(sentence)).toEqual([]);
+      expect(codeHits('mcp', sentence), String(sentence)).toEqual([]);
+    }
   });
 
   it('the market scope sentence has one copy, in the copy bank', () => {
