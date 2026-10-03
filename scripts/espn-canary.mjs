@@ -36,7 +36,19 @@
  *              `match` request the same span strictly
  *   knockout   the bundled bracket's whole span, a month at a time, asked only
  *              of the competition the bundle belongs to: what `bracket`,
- *              `next` and the countdown request. Asked strictly, as they ask
+ *              `next` and the countdown request. Asked strictly, as they ask.
+ *              It is the bundled competition's month form: discovery is not
+ *              asked of it
+ *   discovery  the schedule ahead (yesterday to 14 provider days ahead), each
+ *              calendar month it touches one strict request, asked only of
+ *              the competitions the product DISCOVERS (every one but the
+ *              bundled competition): what the refresher, `next` and `match`
+ *              request off the bundle. Core's `getScheduleAhead` chooses the
+ *              requests, so they are discovery's own; each month is judged by
+ *              its OWN window, asked again of exactly that response, and
+ *              discovery's account of the whole must be whole too (a fixture
+ *              served by two months is one it drops). Two months may state
+ *              two seasons: no season is required of the whole
  *   standings  the tables
  * A test fails when the adapter gains a fetch method this list does not ask.
  *
@@ -52,11 +64,13 @@
  * A neutral row is a row the canary could not see: the run stays green and
  * says so in a warning.
  *
- * Work, worst case: 92 requests (15 competitions at 6 each: 1 + 1 + 3 + 1,
- * and 2 more for the bundled one's knockout span), each bounded by the
- * adapter's timeout and byte limit. Questions are asked one at a time with a
- * pause between them; the requests of one question go together, so a throttle
- * inside a window is seen after up to three requests, and ends the run.
+ * Work, worst case: 120 requests (15 × 6 + 14 × 2 + 2: the 15 competitions
+ * at 6 each, 1 + 1 + 3 + 1 for live, day, window and standings; the 14 off the
+ * bundle at up to 2 more each, discovery's two months; and 2 more for the
+ * bundled one's knockout span), each bounded by the adapter's timeout and byte
+ * limit. Questions are asked one at a time with a pause between them; the
+ * requests of one question go together, so a throttle inside a window is seen
+ * after up to three requests, and ends the run.
  *
  *   pnpm -r build && node scripts/espn-canary.mjs
  *
@@ -154,13 +168,14 @@ const MAX_DEPTH = 4;
 /**
  * The questions, in the order they are asked. `method` is the adapter method a
  * question goes through; `bundleOnly` questions are asked of the competition
- * the bundled schedule belongs to.
+ * the bundled schedule belongs to, `offBundleOnly` ones of every other.
  */
 export const CANARY_QUESTIONS = Object.freeze([
   { request: 'live', method: 'fetchLive' },
   { request: 'day', method: 'fetchByDate' },
   { request: 'window', method: 'fetchWindow' },
   { request: 'knockout', method: 'fetchWindow', bundleOnly: true },
+  { request: 'discovery', method: 'fetchWindow', offBundleOnly: true },
   { request: 'standings', method: 'fetchStandings' },
 ]);
 
@@ -316,14 +331,7 @@ function checkScoreboard(core, adapter, parts, matches) {
 async function servedProblem(core, competition, askOf, request, served) {
   const envelope = envelopeProblem(served);
   if (envelope) return envelope;
-  const replay = async (input) => {
-    const part = served.find((p) => p.url === String(input));
-    return new Response(JSON.stringify(part ? part.json : { events: [] }), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    });
-  };
-  const again = new core.EspnAdapter({ competition, enrichGroups: false, fetchImpl: replay });
+  const again = replayAdapter(core, competition, served);
   let result;
   let failure;
   try {
@@ -336,6 +344,125 @@ async function servedProblem(core, competition, askOf, request, served) {
   }
   const judged = checkScoreboard(core, again, served, result);
   return judged.verdict === 'ok' ? undefined : judged.detail;
+}
+
+/**
+ * An adapter given exactly the responses that were served, and an honest
+ * empty answer in place of any other request: asking it makes no request.
+ */
+function replayAdapter(core, competition, served) {
+  const replay = async (input) => {
+    const part = served.find((p) => p.url === String(input));
+    return new Response(JSON.stringify(part ? part.json : { events: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  return new core.EspnAdapter({ competition, enrichGroups: false, fetchImpl: replay });
+}
+
+/** The calendar month a `dates=YYYYMM` request asked for, as its first and last day; nothing for any other request. */
+function monthAsked(url) {
+  const dates = datesOf(url);
+  if (!/^\d{6}$/.test(dates)) return undefined;
+  const year = Number(dates.slice(0, 4));
+  const month = Number(dates.slice(4, 6));
+  if (month < 1 || month > 12) return undefined;
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const prefix = `${dates.slice(0, 4)}-${dates.slice(4, 6)}`;
+  return { first: `${prefix}-01`, last: `${prefix}-${String(days).padStart(2, '0')}` };
+}
+
+/**
+ * Discovery's months, each judged as what it is: one strict window of its own
+ * month (`fetchWindow(first, last)`, as `getScheduleAhead` asks it), asked
+ * again of an adapter given only that month's response, and judged by the
+ * scoreboard checks with THAT window's own account. Discovery's aggregate is
+ * never what is judged here: it swallows a month's refusal into
+ * `complete: false`, and its object is not a scoreboard answer.
+ *
+ * The first month with a problem, named by `which`; otherwise, per month, the
+ * ids its response held (before the span narrowed it) and the season it
+ * stated, which is what the whole is judged on next.
+ */
+async function discoveryMonths(core, competition, served, which) {
+  const months = [];
+  for (const part of served) {
+    const month = monthAsked(part.url);
+    if (!month) return { problem: `the request was not one calendar month${which(part)}` };
+    const envelope = envelopeProblem([part]);
+    if (envelope) return { problem: `${envelope}${which(part)}` };
+    const again = replayAdapter(core, competition, [part]);
+    let result;
+    let failure;
+    try {
+      result = await again.fetchWindow(month.first, month.last);
+    } catch (e) {
+      failure = e;
+    }
+    if (!Array.isArray(result)) {
+      // A month whose list held only records the parser refuses lands here
+      // (`noReadableRecord`): discovery itself takes it as "not whole".
+      return { problem: `the adapter refused what was served (${failure?.message ?? 'no reason given'})${which(part)}` };
+    }
+    const judged = checkScoreboard(core, again, [part], result);
+    if (judged.verdict !== 'ok') return { problem: `${judged.detail}${which(part)}` };
+    const meta = core.fetchMeta(result);
+    months.push({
+      dates: datesOf(part.url),
+      ids: Array.isArray(meta?.mentioned) ? meta.mentioned : result.map((m) => m.id),
+      year: meta?.season?.year,
+    });
+  }
+  return { months };
+}
+
+/** What discovery said of its own answer, as a row reports it. */
+function discoveryState(result) {
+  if (!result || typeof result !== 'object') return 'discovery gave no answer';
+  if (result.degraded === true) return 'discovery degraded';
+  return `discovery complete: ${result.complete === true}`;
+}
+
+/**
+ * The discovery row when every request was served: each month by its own
+ * window, then discovery's account of the whole. The row is ok only when
+ * every month passed AND that account is whole and not degraded: discovery
+ * refuses what no single month can show (one fixture served by two months: it
+ * keeps the first copy, wherever it fell, and an in-span fixture can vanish
+ * behind a copy outside the span). No season is asked of the whole.
+ */
+async function judgeDiscovery(core, competition, parts, result, which, span) {
+  const judged = await discoveryMonths(core, competition, parts, which);
+  if (judged.problem) return { verdict: 'changed', detail: judged.problem };
+  const { months } = judged;
+  if (!result || typeof result !== 'object' || result.degraded === true) {
+    return { verdict: 'changed', detail: 'every month was read, and discovery still could not use them' };
+  }
+  if (result.complete !== true) {
+    // Discovery does not say which fixture it set aside; the months' own
+    // records do. An id two months both held is the contradiction.
+    const where = new Map();
+    for (const { dates, ids } of months) {
+      for (const id of ids) where.set(id, [...(where.get(id) ?? []), dates]);
+    }
+    const twice = [...where].filter(([, held]) => held.length > 1);
+    const left = Number.isInteger(result.omitted) ? `, ${result.omitted} record(s) left out` : '';
+    return {
+      verdict: 'changed',
+      detail:
+        twice.length > 0
+          ? `discovery is not whole${left}: ${twice
+              .slice(0, 5)
+              .map(([id, held]) => `fixture ${id} was served by ${held.length} months (${held.join(' and ')})`)
+              .join('; ')}${twice.length > 5 ? `; and ${twice.length - 5} more` : ''}`
+          : `discovery is not whole${left}`,
+    };
+  }
+  const fixtures = Array.isArray(result.fixtures) ? result.fixtures.length : 0;
+  const years = [...new Set(months.map((m) => m.year).filter((y) => Number.isInteger(y)))];
+  const seasons = years.length > 1 ? `; the months state seasons ${years.join(' and ')}` : '';
+  return { verdict: 'ok', detail: `${fixtures} fixture(s) in the span ${span.start} to ${span.end}${seasons}` };
 }
 
 /** A served scoreboard response with no `events` list, or nothing. */
@@ -547,8 +674,9 @@ export async function runCanary({
     };
     const adapter = new core.EspnAdapter({ competition, enrichGroups: false, fetchImpl: recording });
     const today = isoDay(now);
+    const bundled = core.bundleApplies(competition);
     // The span the bracket, `next` and the countdown read: the bundle's own.
-    const span = core.bundleApplies(competition) ? core.knockoutWindow() : null;
+    const span = bundled ? core.knockoutWindow() : null;
     /** The questions, as asked of an adapter: the real one, or one replaying what was served. */
     const askOf = (a) => ({
       live: () => a.fetchLive(),
@@ -557,11 +685,16 @@ export async function runCanary({
       window: () => a.fetchWindow(isoDay(shiftDay(now, -1)), isoDay(shiftDay(now, 1)), { acrossSeasons: true }),
       // Strict, as the bracket, `next` and the countdown ask it.
       knockout: () => a.fetchWindow(span.start, span.end),
+      // Discovery's own call: it CHOOSES the requests (a strict window per
+      // calendar month of its span). What it returns is reported, never judged
+      // as the months' answer: each month is judged by its own window.
+      discovery: () => core.getScheduleAhead(a, now),
       standings: () => a.fetchStandings(),
     });
     const calls = askOf(adapter);
-    for (const { request, bundleOnly } of CANARY_QUESTIONS) {
+    for (const { request, bundleOnly, offBundleOnly } of CANARY_QUESTIONS) {
       if (bundleOnly && !span) continue;
+      if (offBundleOnly && bundled) continue;
       const call = calls[request];
       if (throttled) {
         rows.push({ competition, request, url: '', requests: 0, verdict: 'blocked', detail: 'not asked: the provider throttled this runner earlier in the run' });
@@ -588,7 +721,14 @@ export async function runCanary({
       }
       const wrong = firstOf(parts, SEEN_WRONG);
       const unseen = firstOf(parts, NOT_SEEN);
-      const which = (part) => (parts.length > 1 ? ` (${datesOf(part.url) || 'no dates'}, 1 of ${parts.length} requests)` : '');
+      // A request is named past one request, and always for discovery: its
+      // requests are calendar months, and the month is where the finding is.
+      const which = (part) =>
+        parts.length > 1
+          ? ` (${datesOf(part.url) || 'no dates'}, 1 of ${parts.length} requests)`
+          : request === 'discovery'
+            ? ` (${datesOf(part.url) || 'no dates'})`
+            : '';
       const beside = unseen ? `; another request was ${unseen.verdict} (${unseen.detail})` : '';
       let verdict;
       let detail;
@@ -604,14 +744,22 @@ export async function runCanary({
         // WAS served is still judged, and by the same code as a whole answer:
         // a defect in it is a finding whatever happened to its sibling.
         const served = parts.filter((part) => part.verdict === 'ok');
+        // Discovery's served months are judged one at a time, each by its own
+        // window (which names the month): never by asking discovery again.
         const seen =
           request === 'standings' || served.length === 0
             ? undefined
-            : await servedProblem(core, competition, askOf, request, served);
+            : request === 'discovery'
+              ? (await discoveryMonths(core, competition, served, which)).problem
+              : await servedProblem(core, competition, askOf, request, served);
         verdict = seen ? 'changed' : unseen.verdict;
         detail = seen ? `${seen}${beside}` : `${unseen.detail}${which(unseen)}`;
       } else if (request === 'standings') {
         ({ verdict, detail } = checkStandings(core, parts[0].json, adapter, result, competition));
+      } else if (request === 'discovery') {
+        // `result` is discovery's own object, not a scoreboard answer: the
+        // months are judged by their own windows, then its account of the whole.
+        ({ verdict, detail } = await judgeDiscovery(core, competition, parts, result, which, core.scheduleSpan(adapter, now)));
       } else if (!Array.isArray(result)) {
         // Served, but the adapter could not turn it into fixtures at all.
         verdict = 'changed';
@@ -620,6 +768,12 @@ export async function runCanary({
           : 'the response has no `events` list';
       } else {
         ({ verdict, detail } = checkScoreboard(core, adapter, parts, result));
+      }
+      // Discovery's row says how many months it asked and what discovery said
+      // of its own answer, whatever the verdict: a month refused, throttled or
+      // unreadable leaves the whole degraded or not whole, and the row says so.
+      if (request === 'discovery' && parts.length > 0) {
+        detail = `${detail}; requests: ${seen.length}; ${discoveryState(result)}`;
       }
       const sent = seen[0];
       // Believed on any part, whatever the row's own verdict turned out to be.
