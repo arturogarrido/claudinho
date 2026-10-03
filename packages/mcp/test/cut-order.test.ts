@@ -10,7 +10,7 @@
 import { EspnAdapter, FakeMarketProvider, allFixtures, attachFetchMeta, type GroupStandings, type MarketProvider, type Match, type ProviderAdapter, type StandingRow } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import { toContent } from '../src/server';
-import { toolGetBracket, toolGetLive, toolGetMarketSignal, toolGetMatch, toolGetStandings, toolGetToday } from '../src/tools';
+import { toolGetBracket, toolGetLive, toolGetMarketSignal, toolGetMatch, toolGetShareSnippet, toolGetStandings, toolGetToday } from '../src/tools';
 
 const WC_SEASON = { year: 2026, startDate: '2026-06-11T04:00Z', endDate: '2026-12-31T04:59Z', displayName: '2026 FIFA World Cup' };
 type Side = { id: string; abbr: string; name: string };
@@ -215,5 +215,30 @@ describe('the orderings a mutation pass found reachable and unpinned (review, ro
     expect(r.text).toMatch(/(^|\n)\(showing 40 of 41 — list truncated\)\n/);
     expect(r.text).not.toContain('((showing');
     precedes(r.text, 'list truncated', 'League 1 (A1)');
+  });
+});
+
+describe('the live and date cards: the list’s cap is a note after the verdict, never a title suffix before it (review, rounds 2 and 3)', () => {
+  // Found in review: the two bounded cards printed "(showing 40 of 41 — list truncated)" as the title's suffix,
+  // before the verdict's note, the one place the rule "the verdict first, then what qualifies the body" was not
+  // kept. The cap is a qualifying sentence like the tools' and takes the same place; the title is bare.
+  const inPlay = many('in');
+
+  it('the live card: title, the verdict, the cap, the rows', async () => {
+    const r = await toolGetShareSnippet({ live: true, now: new Date('2026-06-11T23:30:00Z'), adapter: feed({ events: [{ id: '760414', date: '2026-06-11T22:00Z', home: MEX, away: RSA, raw: REFUSED }, ...inPlay] }) } as never);
+    const title = r.text.split('\n')[0] ?? '';
+    expect(title).not.toContain('showing');
+    precedes(r.text, 'may be incomplete', 'list truncated');
+    precedes(r.text, 'list truncated', ' — LIVE ');
+    const whole = await toolGetShareSnippet({ live: true, now: new Date('2026-06-11T23:30:00Z'), adapter: feed({ events: inPlay }) } as never);
+    expect(whole.text.split('\n')[0] ?? '').not.toContain('showing');
+    precedes(whole.text, 'list truncated', ' — LIVE ');
+  });
+
+  it('the date card: title, the verdict, the cap, the rows', async () => {
+    const r = await toolGetShareSnippet({ date: '2026-06-11', tz: 'UTC', adapter: feed({ events: [{ ...OPENER, raw: REFUSED }, ...many()] }) });
+    expect(r.text.split('\n')[0] ?? '').not.toContain('showing');
+    precedes(r.text, 'may be incomplete', 'list truncated');
+    precedes(r.text, 'list truncated', 'Mexico');
   });
 });
