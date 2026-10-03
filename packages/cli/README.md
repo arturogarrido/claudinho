@@ -187,7 +187,8 @@ was a second copy of a fixture, or lay beyond the bound Claudinho reads), `next`
 is then not "eliminated". `today`, `live`, `match`, `markets` and their share cards do the
 same for their own reads: an empty answer then says nothing was *read*, never that nothing
 exists, and a World Cup day names the fixtures shown from the bundled schedule without
-their live state (with no "Live data" line when none shown was served).
+their live state (with no "Live data" line when none shown was served). Off the World Cup a day
+the provider could not be asked for says so, never "no matches scheduled".
 No clipboard tool? `claudinho share … | pbcopy` works too.
 
 ### Want an image?
