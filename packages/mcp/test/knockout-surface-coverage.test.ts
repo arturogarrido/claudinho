@@ -175,4 +175,15 @@ describe('a knockout window that was not whole says so beside what it holds (0.1
       expect(res.success, `${name}: ${res.success ? '' : JSON.stringify(res.error.issues)}`).toBe(true);
     }
   });
+
+  it('the declared schema states the count’s grammar (a positive integer, or absent), which is what a client is told', async () => {
+    // The handler never emits anything else (core believes a count only as a
+    // positive integer); the schema is the contract a client reads, so it says so.
+    const r = await toolGetNextFixture({ team: 'MEX', now: KNOCKOUT_NOW, adapter: partial });
+    const schema = z.object(OUTPUT_SCHEMAS.get_next_fixture).strict();
+    expect(schema.safeParse({ ...r.data, partial: {} }).success).toBe(true);
+    for (const omitted of [0, -1, 1.5, Number.NaN, '1']) {
+      expect(schema.safeParse({ ...r.data, partial: { omitted } }).success, String(omitted)).toBe(false);
+    }
+  });
 });
