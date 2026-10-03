@@ -37,6 +37,7 @@ import type { ShareBracketInput } from '../bracket/format';
 import type { BracketResult } from '../bracket/types';
 import { t } from '../i18n';
 import { EARLIER_RECORD_NOTE, type LiveResult, type MatchByIdResult, type NextFixtureResult, type StandingsResult } from '../live';
+import { marketsNoneReadNote } from '../markets/format';
 import type { MarketSignal } from '../markets/types';
 import { type GroupStandings, type TableData, tableData } from '../standings';
 import { formatDate } from '../time';
@@ -157,12 +158,13 @@ export function unservedSentence(n: number, lang?: string): string {
 }
 
 /**
- * "No market signal among the fixtures read for {date}", in the reader's
- * language: an EMPTY dated market answer whose fixture read was not whole,
- * which is not "none for the date". (When it applies: {@link marketsNoneRead}.)
+ * "No market signal among the fixtures read for {date}": an EMPTY dated
+ * market answer whose fixture read was not whole, which is not "none for the
+ * date". Market copy from the approved bank (`marketsNoneReadNote`), English
+ * on every locale. (When it applies: {@link marketsNoneRead}.)
  */
-export function marketsNoneReadSentence(date: string, lang?: string): string {
-  return t(lang, 'markets.noneRead', { date });
+export function marketsNoneReadSentence(date: string): string {
+  return marketsNoneReadNote(date);
 }
 
 /**
@@ -210,11 +212,12 @@ export function dateUnreached(result: ReadAccount, date: string, lang?: string):
 
 /**
  * The empty body of a dated MARKET answer whose fixture read was not whole:
- * {@link marketsNoneReadSentence}. Undefined otherwise. Separate from the
- * market requests' own completeness (`complete`), which says something else.
+ * {@link marketsNoneReadSentence} (market copy, English). Undefined otherwise.
+ * Separate from the market requests' own completeness (`complete`), which
+ * says something else.
  */
-export function marketsNoneRead(result: ReadAccount, date: string, lang?: string): string | undefined {
-  return !result.degraded && statesPartial(result) ? marketsNoneReadSentence(date, lang) : undefined;
+export function marketsNoneRead(result: ReadAccount, date: string): string | undefined {
+  return !result.degraded && statesPartial(result) ? marketsNoneReadSentence(date) : undefined;
 }
 
 /** What a day's surface says about the provider, for the fixtures it displays. */
@@ -315,6 +318,22 @@ export interface MatchShareCard {
    * when the card states none. Not a verdict.
    */
   span: { horizon?: { days: number }; window?: { from: string; to: string } };
+  /**
+   * The ids the provider's window held, when the card's read states them (a
+   * dated read, a bundled match read): a plain field for the structured twin,
+   * beside `source`, not a verdict. A shown fixture not among them is the
+   * bundled schedule's row, its live state unconfirmed.
+   */
+  served?: readonly string[];
+}
+
+/**
+ * The qualifying sentences of a read, then the count of shown rows it did not
+ * serve (see {@link dayAttribution}), as one note for a card.
+ */
+function noteWith(result: VerdictSource, unserved: string | undefined, lang: string | undefined): { note?: string } {
+  const note = [...verdictQualifiers(result, lang), ...(unserved ? [unserved] : [])];
+  return note.length > 0 ? { note: note.join(' ') } : {};
 }
 
 /** Matches in play right now. No market lines: a live card stays lean. */
@@ -413,6 +432,9 @@ export function matchShareCard(
   market: ShareCardMarket,
   ctx: ShareCardContext,
 ): MatchShareCard {
+  // The day's rule, over the one record the card shows: on a read that was not
+  // whole, a record the window did not hold is the bundle's row.
+  const attribution = dayAttribution(result, result.match ? [result.match] : [], ctx.locale);
   return {
     kind: 'match',
     target: id,
@@ -435,14 +457,16 @@ export function matchShareCard(
         (result.degraded
           ? `Couldn't reach the data provider — match ${id} could not be looked up.`
           : `No match found with id ${id}.`),
-      // The read was not whole: said beside the record, or beside the empty card.
-      ...qualifierNote(result, ctx.locale),
+      // The read was not whole: said beside the record, or beside the empty
+      // card, with the record named as the bundle's when the read did not hold it.
+      ...noteWith(result, attribution.unserved, ctx.locale),
       installLine: runCue(ctx.competition, `match ${cueArg(id)}`),
       tz: ctx.tz,
       locale: ctx.locale,
     },
     verdict: verdictExtras(result),
     span: result.window ? { window: result.window } : {},
+    ...(result.served ? { served: result.served } : {}),
   };
 }
 
@@ -478,7 +502,6 @@ export function dateShareCard(
   // On a read that was not whole: the card names its provider only when a
   // fixture it shows was served, and counts the rows that were not.
   const attribution = dayAttribution(read, day.matches, ctx.locale);
-  const note = [...verdictQualifiers(read, ctx.locale), ...(attribution.unserved ? [attribution.unserved] : [])];
   return {
     kind: 'today',
     target: day.date,
@@ -504,13 +527,14 @@ export function dateShareCard(
         `No matches scheduled for ${human}.`,
       // The read was not whole (and which shown rows it did not serve): said
       // beside the fixtures, or beside "none read".
-      ...(note.length > 0 ? { note: note.join(' ') } : {}),
+      ...noteWith(read, attribution.unserved, ctx.locale),
       installLine: runCue(ctx.competition, 'today'),
       tz: ctx.tz,
       locale: ctx.locale,
     },
     verdict: verdictExtras(read),
     span: {},
+    ...(read.served ? { served: read.served } : {}),
   };
 }
 

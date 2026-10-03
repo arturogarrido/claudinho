@@ -224,10 +224,17 @@ const partialOut = {
     ),
 };
 
+/** The ids a read's window held: a plain field of the answer, not a verdict. */
+const servedOut = z
+  .array(z.string())
+  .describe(
+    "The ids the provider's window held; a shown fixture not among them is the bundled schedule's row, its live state unconfirmed",
+  );
 const todayOut = {
   date: z.string(),
   degraded: z.boolean(),
   source: src,
+  served: servedOut.optional(),
   // `count` is the TRUE total and `matches` may be a bounded view of it, so the
   // payload states whether it was cut rather than leaving a consumer to infer
   // it from two numbers.
@@ -264,6 +271,7 @@ const matchDetailOut = {
   match: matchOut.nullable(),
   degraded: z.boolean().optional(),
   source: src.optional(),
+  served: servedOut.optional(),
   marketSignal: anyObj.nullable().optional(),
   marketComplete: z
     .boolean()
@@ -334,6 +342,7 @@ const shareOut = {
   target: z.string().optional(),
   snippet: z.string().optional(), // absent on the bracket "unknown stage" error branch
   source: src.optional(),
+  served: servedOut.optional(),
   informationalOnly: z.boolean().optional(),
   degraded: z.boolean().optional(),
   style: z.string().optional(),
@@ -633,11 +642,15 @@ const TRUNCATED = '\n(truncated)';
  * from the end used to take first). What qualifies the body is printed before
  * it for the same reason (a verdict, a partial table).
  */
-function boundText(r: { text: string; footer?: string }, tail: string): string {
+function boundText(r: { text: string; footer?: string; cutFooter?: string }, tail: string): string {
   if (r.text.length + tail.length <= MAX_TEXT_CHARS) return r.text + tail;
   const room = Math.max(0, MAX_TEXT_CHARS - tail.length - TRUNCATED.length);
-  // A footer that is not the end of the text, or that would not fit, is not one.
-  const footer = r.footer && r.text.endsWith(r.footer) && r.footer.length <= room ? r.footer : '';
+  // A footer that is not the end of the text is not one. What the cut keeps of
+  // it is `cutFooter` when the result names one (a day on a read that was not
+  // whole keeps the disclaimer, not the attribution: `ToolResult.footer`), and
+  // what would not fit is not kept.
+  const kept = r.footer && r.text.endsWith(r.footer) ? (r.cutFooter ?? r.footer) : '';
+  const footer = kept.length <= room ? kept : '';
   let cut = room - footer.length;
   // Never half a character: a cut that lands inside a surrogate pair gives one unit back.
   const last = r.text.charCodeAt(cut - 1);
@@ -718,7 +731,7 @@ export function buildServer(): McpServer {
     {
       title: 'Live matches',
       description:
-        'Only matches in play right now — each with current score and minute (empty when nothing is live). Off the World Cup, betweenEditions means the competition\'s edition has ended and the next has not started. partial means the provider sent records that could not be used: an empty list then means no match in play could be read, not that none is. Use during matches for in-play state; for a full day\'s schedule including upcoming and finished, use get_today. tz/lang/flavor affect formatting only.',
+        'Only matches in play right now — each with current score and minute; an empty list means nothing is in play unless partial says the read was not whole. Off the World Cup, betweenEditions means the competition\'s edition has ended and the next has not started. partial means the provider sent records that could not be used: an empty list then means no match in play could be read, not that none is. Use during matches for in-play state; for a full day\'s schedule including upcoming and finished, use get_today. tz/lang/flavor affect formatting only.',
       inputSchema: { ...commonArgs },
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: liveOut,

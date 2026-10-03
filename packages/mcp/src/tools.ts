@@ -72,6 +72,7 @@ import {
   t,
   type ShareSnippetOptions,
   type Stage,
+  statesPartial,
   type VerdictSource,
 } from '@claudinho/core';
 import {
@@ -93,8 +94,17 @@ export interface ToolResult {
    * disclaimer. Always a suffix of `text`. Required, so no tool can be written
    * without stating it: `disclaimed` returns it with the text it ends, and a
    * share snippet's is its footer paragraph (`snippetFooter`).
+   *
+   * What a cut keeps of it is {@link cutFooter} when the result names one. The
+   * rule, for a DAY (a date or live list) on a read that was not whole: the cut
+   * keeps the disclaimer and DROPS the attribution line, because the rows it
+   * drops may be every row the provider served (the attribution was decided
+   * over the whole bounded list, not over what survives the cut). A whole read
+   * keeps the whole footer. The structured `source` names the provider either way.
    */
   footer: string;
+  /** The footer a cut keeps, when it is not the whole footer (see {@link footer}). */
+  cutFooter?: string;
 }
 
 export interface CommonOpts {
@@ -343,12 +353,19 @@ function fmtOpts(args: CommonOpts) {
  * actually served the result, and the disclaimer). The footer is returned on
  * its own too, so a text cut at a length keeps it (`toContent`).
  */
-function disclaimed(body: string, source?: string, lang?: string): { text: string; footer: string } {
+function disclaimed(
+  body: string,
+  source?: string,
+  lang?: string,
+  /** The day's read, for a date or live list: on one that was not whole a cut drops the attribution (see `ToolResult.footer`). */
+  read?: VerdictSource,
+): { text: string; footer: string; cutFooter?: string } {
   const live = source
     ? `\n${t(lang, 'live.data', { source: liveSourceLabel(source) })}`
     : '';
   const footer = `${live}\n\n${DISCLAIMER}`;
-  return { text: `${body}${footer}`, footer };
+  const cut = live && read && statesPartial(read) ? { cutFooter: `\n\n${DISCLAIMER}` } : {};
+  return { text: `${body}${footer}`, footer, ...cut };
 }
 
 /**
@@ -420,11 +437,15 @@ export async function toolGetToday(
       qualified(text, day, args.lang, attribution.unserved),
       attribution.attributed ? source : undefined,
       args.lang,
+      day,
     ),
     data: {
       date,
       degraded,
       source: source ?? null,
+      // The ids the overlay held (a plain field, not a verdict): a shown row
+      // not among them is the bundled schedule's.
+      ...(day.served ? { served: day.served } : {}),
       // ONE bounded view, so `count`, `matches` and the signal set cannot
       // disagree about the same payload. `count` is the TRUE total; bounding
       // only the TEXT would leave structuredContent unbounded, and that is
@@ -457,7 +478,7 @@ export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
     : `Live now:\n${matchList(matches, verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? 'No matches in play right now.', opts)}`;
   const shownLive = boundedRecords(matches);
   return {
-    ...disclaimed(qualified(text, live, args.lang), source, args.lang),
+    ...disclaimed(qualified(text, live, args.lang), source, args.lang, live),
     data: {
       degraded,
       source: source ?? null,
@@ -512,6 +533,9 @@ export async function toolGetMatch(
     const s = market.signals.get(match.id);
     if (s && isReliableMarketSignal(s, { now }) && marketSignalRendersFor(match, s)) marketSignal = s;
   }
+  // The day's rule over the one record shown: on a read that was not whole, a
+  // record the window did not hold is the bundle's row, its live state unconfirmed.
+  const attribution = dayAttribution(found, [match], args.lang);
   const base = matchLine(match, opts);
   let text = marketSignal ? `${base}\n${marketBlock(marketSignal, match).join('\n')}` : base;
   // Degraded ⇒ the live overlay failed; this is the static fixture, no live
@@ -526,10 +550,12 @@ export async function toolGetMatch(
     text += '\n\n(Market data unavailable or incomplete — this match was not checked.)';
   }
   return {
-    ...disclaimed(qualified(text, found, args.lang), liveSource, args.lang),
+    ...disclaimed(qualified(text, found, args.lang, attribution.unserved), liveSource, args.lang),
     data: {
       degraded,
       source: liveSource ?? null,
+      // The ids the overlay held (a plain field, not a verdict).
+      ...(found.served ? { served: found.served } : {}),
       match,
       marketComplete,
       marketSignal: marketSignal ? marketData(marketSignal) : null,
@@ -897,7 +923,7 @@ export async function toolGetMarketSignal(
       !marketsCoverCompetition(competitionOf(args))
         ? `${MARKETS_SCOPE_NOTE} (${date})`
         : batch.complete
-          ? (marketsNoneRead(day, date, args.lang) ?? `No reliable market signals on ${date}.`)
+          ? (marketsNoneRead(day, date) ?? `No reliable market signals on ${date}.`)
           : `Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
   if (shown.shown > 0 && !batch.complete) {
     text += `\n\nMarket data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
@@ -974,9 +1000,17 @@ function shareResult(
   options: ShareSnippetOptions,
   /** Records BEFORE capping, so the payload can say what it dropped. */
   total = card.input.matches.length,
+  /** A day's card (a date or live list): on a read that was not whole a cut drops the attribution (see `ToolResult.footer`). */
+  day = false,
 ): ToolResult {
   const { input } = card;
   const snippet = formatShareSnippet(input, options);
+  // The footer a cut keeps: the same card's footer with no provider line (one
+  // extra render, only for a day's card on a read that was not whole).
+  const cut =
+    day && input.source && statesPartial(card.verdict)
+      ? { cutFooter: snippetFooter(formatShareSnippet({ ...input, source: undefined }, options)) }
+      : {};
   return {
     // The snippet is self-contained: it carries its own non-affiliation
     // disclaimer (and, for any market line, the "informational only" caveat +
@@ -984,12 +1018,15 @@ function shareResult(
     // that would duplicate the disclaimer inside a paste-ready artifact.
     text: snippet,
     footer: snippetFooter(snippet),
+    ...cut,
     data: {
       kind: card.kind,
       target: card.target,
       ...(card.team ? { team: card.team } : {}),
       ...(card.candidates ? { candidates: card.candidates } : {}),
       source: input.source ?? null,
+      // The ids the card's read held (a plain field, not a verdict).
+      ...(card.served ? { served: card.served } : {}),
       degraded: input.degraded ?? false,
       informationalOnly: true,
       style: options.style ?? 'social',
@@ -1045,6 +1082,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       }),
       { ...options, includeMarkets: false },
       live.matches.length,
+      true,
     );
   }
 
@@ -1165,5 +1203,6 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     ),
     options,
     todays.length,
+    true,
   );
 }

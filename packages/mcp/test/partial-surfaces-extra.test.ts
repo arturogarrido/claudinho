@@ -14,8 +14,8 @@
 import { describe, expect, it } from 'vitest';
 import { attachFetchMeta, EspnAdapter, FakeMarketProvider, type Match, type ProviderAdapter } from '@claudinho/core';
 import { z } from 'zod/v3';
-import { OUTPUT_SCHEMAS } from '../src/server';
-import { toolGetMarketSignal, toolGetShareSnippet, toolGetToday } from '../src/tools';
+import { OUTPUT_SCHEMAS, toContent } from '../src/server';
+import { toolGetLive, toolGetMarketSignal, toolGetShareSnippet, toolGetToday } from '../src/tools';
 
 const WC_SEASON = { year: 2026, startDate: '2026-06-11T04:00Z', endDate: '2026-12-31T04:59Z', displayName: '2026 FIFA World Cup' };
 const PL = { year: 2026, displayName: '2026-27 English Premier League', startDate: '2026-08-01T04:00Z', endDate: '2027-06-01T03:59Z' };
@@ -178,5 +178,49 @@ describe('get_today: the day’s attribution is decided over the rows the tool S
     expect(r.text).toContain('may be incomplete');
     expect(r.text).not.toContain('bundled schedule;');
     expect(r.text).toContain('Live data');
+  });
+});
+
+describe('a LIVE list cut on a read that was not whole keeps the disclaimer and drops the attribution line (0.11 2.1d)', () => {
+  // The rule is the day's (ToolResult.footer): the live list shows only served rows, so the dropped line would
+  // be true, but under-attributing is the safe direction and the rule is one sentence for every list.
+  const LONG = Array.from({ length: 50 }, () => 'b\u0301\u0301\u0301\u0301\u0301\u0301\u0301').join('');
+  function inPlay(i: number) {
+    // Two codes: a side with the other's code and name would be the same team, and the record refused.
+    const side = (id: number, homeAway: string) => ({ homeAway, score: '1', team: { id: String(id), abbreviation: homeAway === 'home' ? 'LNG' : 'LNA', displayName: LONG } });
+    return { id: String(9_100_000 + i), date: '2026-06-11T19:00Z', season: { slug: 'group-stage' }, status: { type: { name: 'STATUS_IN_PROGRESS', state: 'in' }, displayClock: "55'", period: 2 }, competitions: [{ competitors: [side(1000 + i, 'home'), side(2000 + i, 'away')] }] };
+  }
+  const refused = { ...inPlay(99), id: '9199999', status: { type: { name: 'STATUS_NEW', state: 'limbo' } } };
+  function liveFeed(events: unknown[]): ProviderAdapter {
+    const fetchImpl = (async (input: unknown) => {
+      const url = String(input);
+      if (url.includes('/standings')) return json({});
+      const asked = new URL(url).searchParams.get('dates') ?? '';
+      return json({ leagues: [{ season: WC_SEASON }], events: asked === '20260611' ? events : [] });
+    }) as unknown as typeof fetch;
+    return new EspnAdapter({ competition: 'fifa.world', enrichGroups: false, fetchImpl }) as ProviderAdapter;
+  }
+  const NOW = new Date('2026-06-11T20:00:00Z');
+  const rows = Array.from({ length: 41 }, (_, i) => inPlay(i));
+  const textOf = (r: { text: string; footer: string; data: unknown; cutFooter?: string }) => toContent(r).content[0]?.text ?? '';
+
+  it('get_live and the live card: cut, no "Live data", the disclaimer and the sentence kept; a whole read keeps the line', async () => {
+    const partial = await toolGetLive({ adapter: liveFeed([...rows, refused]), now: NOW } as never);
+    const cut = textOf(partial);
+    expect(cut).toContain('(truncated)');
+    expect(cut).not.toContain('Live data');
+    expect(cut).toMatch(/not affiliated/i);
+    expect(cut).toContain('Fixture data may be incomplete (1 provider record omitted).');
+    expect(partial.data).toMatchObject({ source: 'espn', partial: { omitted: 1 } });
+    const whole = textOf(await toolGetLive({ adapter: liveFeed(rows), now: NOW } as never));
+    expect(whole).toContain('(truncated)');
+    expect(whole).toContain('Live data');
+    const card = textOf(await toolGetShareSnippet({ live: true, now: NOW, adapter: liveFeed([...rows, refused]) } as never));
+    expect(card).toContain('(truncated)');
+    expect(card).not.toContain('Live data');
+    expect(card).toMatch(/not affiliated/i);
+    const wholeCard = textOf(await toolGetShareSnippet({ live: true, now: NOW, adapter: liveFeed(rows) } as never));
+    expect(wholeCard).toContain('(truncated)');
+    expect(wholeCard).toContain('Live data');
   });
 });

@@ -399,6 +399,9 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
       date: targetDate,
       degraded,
       source: source ?? null,
+      // The ids the overlay held (a plain field, not a verdict): a shown row
+      // not among them is the bundled schedule's.
+      ...(day.served ? { served: day.served } : {}),
       matches: todays,
       marketComplete: market.complete,
       marketSignals: Object.fromEntries(market.signals),
@@ -1030,6 +1033,8 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
       degraded,
       match: match ?? null,
       source: liveSource ?? null,
+      // The ids the overlay held (a plain field, not a verdict).
+      ...(found.served ? { served: found.served } : {}),
       marketComplete: market.complete,
       marketSignal: market.signal ?? null,
       // The span a whole read searched for an id it did not hold (a plain field).
@@ -1063,6 +1068,10 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
     return;
   }
   for (const q of qualifiers) out(c.dim('  ' + q));
+  // The day's rule over the one record shown: on a read that was not whole, a
+  // record the window did not hold is the bundle's row, its live state unconfirmed.
+  const attribution = dayAttribution(found, [match], cfg.lang);
+  if (attribution.unserved) out(c.dim('  ' + attribution.unserved));
   const stageLabelText = stageLabelI18n(cfg.lang, match.stage, match.group ?? undefined);
   out(header(`${match.home.name} ${scoreline(match)} ${match.away.name}`, c));
   out('  ' + c.dim(`${stageLabelText} · ${matchLocation(match)}`));
@@ -1330,7 +1339,7 @@ export async function cmdMarkets(
         !marketsCoverCompetition(cfg.competition)
           ? `  ${MARKETS_SCOPE_NOTE}`
           : complete
-            ? `  ${marketsNoneRead(day, date, cfg.lang) ?? `No market signals available for ${date}.`}`
+            ? `  ${marketsNoneRead(day, date) ?? `No market signals available for ${date}.`}`
             : `  Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`,
       ),
     );
@@ -1428,6 +1437,8 @@ function emitMatchCard(
       ...(card.team ? { team: card.team } : {}),
       ...(card.candidates ? { candidates: card.candidates } : {}),
       source: card.input.source ?? null,
+      // The ids the card's read held (a plain field, not a verdict).
+      ...(card.served ? { served: card.served } : {}),
       degraded: card.input.degraded ?? false,
       informationalOnly: true,
       style: options.style ?? 'social',

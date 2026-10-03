@@ -23,6 +23,16 @@ function pct(p: number): number {
 export const MARKETS_SCOPE_NOTE = 'Market signals cover the World Cup only; none are read for this competition.';
 
 /**
+ * The empty body of a dated market answer whose FIXTURE read was not whole:
+ * no signal among the fixtures that were read, which is not "none for the
+ * date". Market copy, so English on every locale like the rest of the bank;
+ * the card builder's `marketsNoneRead` says when it applies.
+ */
+export function marketsNoneReadNote(date: string): string {
+  return `No market signal among the fixtures read for ${date}.`;
+}
+
+/**
  * Market sources that can legitimately produce a signal.
  *
  * `marketSourceLabel` falls through to the raw string for anything it does not

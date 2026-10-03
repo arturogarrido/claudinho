@@ -136,6 +136,7 @@ export {
   marketProbabilityText,
   marketAttributionText,
   MARKETS_SCOPE_NOTE,
+  marketsNoneReadNote,
   marketSourceLabel,
   marketLine,
   marketBlock,
@@ -203,7 +204,7 @@ export type {
 } from './share/cards';
 // The one place a verdict (e.g. "not available for this competition") becomes
 // a structured key and a localized sentence.
-export { verdictExtras, verdictNotice, verdictQualifiers } from './verdict';
+export { statesPartial, verdictExtras, verdictNotice, verdictQualifiers } from './verdict';
 export type { BetweenEditions, VerdictExtras, VerdictSource } from './verdict';
 
 export { buildBracketTopology, matchKey } from './bracket/build';
