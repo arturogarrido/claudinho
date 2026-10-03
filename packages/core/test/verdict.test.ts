@@ -303,6 +303,23 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
     expect(card.input.emptyNote).toMatch(/read/);
   });
 
+  it('a date card names its calendar date whatever the viewer’s zone: the title, the none-read line and the outage line', () => {
+    // Found in review: the label was noon UTC of the date formatted in the viewer's zone, which in a zone past
+    // UTC+12 (Auckland in summer, Kiritimati) is the NEXT day: a card for 2026-10-17 said "Oct 18" in its title
+    // (pre-existing) and, since this PR, in its empty-day sentences. A calendar date has no zone.
+    for (const tz of ['Pacific/Kiritimati', 'Pacific/Auckland', 'Pacific/Pago_Pago', 'UTC']) {
+      const far = { tz, locale: 'en' };
+      const day = { date: '2026-10-17', explicit: true, matches: [], degraded: false, source: 'espn' };
+      const partial = dateShareCard({ ...day, read: { partial: { omitted: 1 }, served: [] } }, noMarket, far);
+      expect(partial.input.title, tz).toBe('Matches · Oct 17');
+      expect(partial.input.emptyNote, tz).toContain('Oct 17');
+      expect(partial.input.emptyNote, tz).not.toContain('Oct 18');
+      expect(partial.input.emptyNote, tz).not.toContain('Oct 16');
+      const outage = dateShareCard({ ...day, degraded: true, read: {} }, noMarket, far);
+      expect(outage.input.emptyNote, tz).toContain('Oct 17');
+    }
+  });
+
   it('live: nothing on, and a feed that is down, are different cards', () => {
     const quiet = liveShareCard({ matches: [], degraded: false, source: 'espn' }, ctx);
     expect(quiet).toMatchObject({ kind: 'live', target: 'live' });

@@ -238,6 +238,29 @@ describe('the day’s attribution is decided over what the text finally shows (0
     expect(textOf(wholeCard)).toContain('Live data');
   });
 
+  it('a cut barely over the limit keeps nothing of the discarded footer: the prefix ends at the body’s end', () => {
+    // Found in review (two readers): the prefix allowance was computed from the SHORTER cut footer and sliced the
+    // whole text, so at 32,001 characters it ran into the original footer and kept "Li" of "Live data" before
+    // "(truncated)". The retained prefix is capped at the original body's end.
+    const MAX = 32_000;
+    const footer = '\nLive data: ESPN\n\nClaudinho is an independent fan project — not affiliated with or endorsed by FIFA or Anthropic.';
+    const cutFooter = '\n\nClaudinho is an independent fan project — not affiliated with or endorsed by FIFA or Anthropic.';
+    for (const over of [1, 2, 5, 12, 15, 16, 17, 40]) {
+      const body = 'x'.repeat(MAX + over - footer.length);
+      const text = toContent({ text: body + footer, footer, cutFooter, data: { ok: true } }).content[0]?.text ?? '';
+      expect(text.length, String(over)).toBeLessThanOrEqual(MAX);
+      const before = text.slice(0, text.indexOf('(truncated)'));
+      expect(before, String(over)).toMatch(/^x+$/);
+      expect(text, String(over)).not.toMatch(/Live data|\nL/);
+      expect(text, String(over)).toMatch(/not affiliated/);
+    }
+    // Without a cut footer the whole footer is kept and the prefix still ends in the body.
+    const body = 'x'.repeat(MAX + 1 - footer.length);
+    const text = toContent({ text: body + footer, footer, data: { ok: true } }).content[0]?.text ?? '';
+    expect(text.slice(0, text.indexOf('(truncated)'))).toMatch(/^x+$/);
+    expect(text).toContain('Live data: ESPN');
+  });
+
   it('a cut LIVE list keeps its attribution on a partial read: every row it shows was served (the line is true), and a provider is attributed where it served', async () => {
     // Found in review: the rule had been applied to live lists for uniformity, dropping a true line.
     const inPlay = many.map((m) => ({ ...m, state: 'in' as const }));
