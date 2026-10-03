@@ -638,7 +638,7 @@ export async function toolGetStandings(
   // then the roster note.
   const before = [
     ...qualifiers.map((q) => `(${q})`),
-    ...(boundedTables.truncated ? [truncationNote(boundedTables).trimStart()] : []),
+    ...(boundedTables.truncated ? [truncationNote(boundedTables)] : []),
     ...(degraded ? ['(Live standings unavailable — showing the group roster.)'] : []),
   ];
   return {
@@ -960,7 +960,7 @@ export async function toolGetMarketSignal(
   // Before the signals, after the fixture read's verdict (`qualified`), in the
   // order they used to have: the list's truncation (it was on the title line),
   // then the notice that the batch did not finish.
-  const truncated = shown.truncated ? truncationNote(shown).trimStart() : undefined;
+  const truncated = shown.truncated ? truncationNote(shown) : undefined;
   const incomplete =
     shown.shown > 0 && !batch.complete
       ? `Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`
@@ -1115,7 +1115,8 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     return shareResult(
       liveShareCard(live, where, {
         matches: shownLive.items,
-        titleSuffix: truncationNote(shownLive),
+        // The cap qualifies the list: in the card's note, after the verdict.
+        cap: truncationNote(shownLive),
       }),
       { ...options, includeMarkets: false },
       live.matches.length,
@@ -1229,7 +1230,8 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         matches: shownToday.items,
         degraded: day.degraded,
         source: day.source,
-        titleSuffix: truncationNote(shownToday),
+        // The cap qualifies the list: in the card's note, after the verdict.
+        cap: truncationNote(shownToday),
         // The read decides what an empty day says (whether it merged the
         // bundled schedule) and the card's attribution, over the bounded list.
         read: day,

@@ -294,8 +294,13 @@ export interface ShareCardMarket {
 export interface ShareCardView {
   /** The records the surface will show (default: all of the result's). */
   matches?: readonly Match[];
-  /** Appended to the title, e.g. " (showing 20 of 31)". */
-  titleSuffix?: string;
+  /**
+   * The sentence a surface that bounds the list states, e.g. "(showing 20 of
+   * 31 — list truncated)". It QUALIFIES the body, so it is printed in the
+   * card's `note`, after the verdict's sentences and before the body, like a
+   * tool's; the title stays bare.
+   */
+  cap?: string;
 }
 
 /** A match card: what to format, what it is, and the verdict it carries. */
@@ -328,11 +333,12 @@ export interface MatchShareCard {
 }
 
 /**
- * The qualifying sentences of a read, then the count of shown rows it did not
- * serve (see {@link dayAttribution}), as one note for a card.
+ * The qualifying sentences of a read, then `also` in the order given (the
+ * count of shown rows the read did not serve, see {@link dayAttribution}; the
+ * list's cap), as one note for a card. An absent one is skipped.
  */
-function noteWith(result: VerdictSource, unserved: string | undefined, lang: string | undefined): { note?: string } {
-  const note = [...verdictQualifiers(result, lang), ...(unserved ? [unserved] : [])];
+function noteWith(result: VerdictSource, lang: string | undefined, ...also: Array<string | undefined>): { note?: string } {
+  const note = [...verdictQualifiers(result, lang), ...also.filter((s): s is string => !!s)];
   return note.length > 0 ? { note: note.join(' ') } : {};
 }
 
@@ -346,7 +352,7 @@ export function liveShareCard(
     kind: 'live',
     target: 'live',
     input: {
-      title: `Live match pulse${view.titleSuffix ?? ''}`,
+      title: 'Live match pulse',
       matches: view.matches ?? result.matches,
       source: result.source,
       degraded: result.degraded,
@@ -358,8 +364,9 @@ export function liveShareCard(
         (result.degraded
           ? "Live scores unavailable right now — couldn't reach the data provider."
           : (liveNoneRead(result, ctx.locale) ?? 'No matches in play right now.')),
-      // The read was not whole: said beside the matches, or beside "none read".
-      ...qualifierNote(result, ctx.locale),
+      // The read was not whole: said beside the matches, or beside "none read";
+      // then the list's cap, when the surface bounded it.
+      ...noteWith(result, ctx.locale, view.cap),
       installLine: runCue(ctx.competition, 'live'),
       tz: ctx.tz,
       locale: ctx.locale,
@@ -461,7 +468,7 @@ export function matchShareCard(
           : `No match found with id ${id}.`),
       // The read was not whole: said beside the record, or beside the empty
       // card, with the record named as the bundle's when the read did not hold it.
-      ...noteWith(result, attribution.unserved, ctx.locale),
+      ...noteWith(result, ctx.locale, attribution.unserved),
       installLine: runCue(ctx.competition, `match ${cueArg(id)}`),
       tz: ctx.tz,
       locale: ctx.locale,
@@ -493,8 +500,8 @@ export function dateShareCard(
     matches: readonly Match[];
     degraded: boolean;
     source?: string;
-    /** Appended to the title, e.g. " (showing 20 of 31)". */
-    titleSuffix?: string;
+    /** The list's cap when the surface bounded it (see `ShareCardView.cap`): in the note, not the title. */
+    cap?: string;
     /**
      * The dated read itself: the verdicts the card states (between editions,
      * partial), whether it merged the bundled schedule (`skeleton`: the ONE
@@ -520,8 +527,7 @@ export function dateShareCard(
     kind: 'today',
     target: day.date,
     input: {
-      title:
-        (day.explicit ? `Matches · ${human}` : `Today's matches · ${human}`) + (day.titleSuffix ?? ''),
+      title: day.explicit ? `Matches · ${human}` : `Today's matches · ${human}`,
       matches: day.matches,
       marketSignals: market.signals,
       marketComplete: market.complete,
@@ -542,8 +548,8 @@ export function dateShareCard(
             `No matches scheduled for ${human}.`,
         ),
       // The read was not whole (and which shown rows it did not serve): said
-      // beside the fixtures, or beside "none read".
-      ...noteWith(read, attribution.unserved, ctx.locale),
+      // beside the fixtures, or beside "none read"; then the list's cap.
+      ...noteWith(read, ctx.locale, attribution.unserved, day.cap),
       installLine: runCue(ctx.competition, 'today'),
       tz: ctx.tz,
       locale: ctx.locale,

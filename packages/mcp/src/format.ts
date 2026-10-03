@@ -80,21 +80,21 @@ export function boundedRecords<T>(rows: T[], max = MAX_LIST_MATCHES): BoundedLis
 }
 
 /**
- * The line to add when `capRecords` dropped something: after a card's title
- * (it starts with a newline), or, trimmed, as its own sentence before a tool's
- * body (`get_standings`, the dated `get_market_signal`: what qualifies a body
- * is printed before it).
+ * The sentence to state when `capRecords` dropped something, "(showing N of
+ * M — list truncated)": a sentence that QUALIFIES the body, so every caller
+ * says it before the body (`get_standings`, the dated `get_market_signal`, the
+ * live and date cards' note), never after it or in a title.
  *
  * A cap that drops records silently reads as a complete list, which is the same
  * failure as losing the statusline's "+N" marker: the reader cannot tell. Returns
- * '' when nothing was dropped, so call sites can append unconditionally.
+ * '' when nothing was dropped.
  *
  * English, matching the surrounding MCP text labels ("Matches on {date}:",
  * "No matches scheduled.") which are hardcoded English today. Localizing one
  * line of an English block would be inconsistent; the block is a separate change.
  */
 export function truncationNote(list: BoundedList<unknown>): string {
-  return list.truncated ? `\n(showing ${list.shown} of ${list.total} — list truncated)` : '';
+  return list.truncated ? `(showing ${list.shown} of ${list.total} — list truncated)` : '';
 }
 
 /**
