@@ -53,21 +53,21 @@ const BROKEN: Ev = { id: '760516', date: '2026-07-18T19:00Z', home: CAN, away: B
 const IN_FINAL = new Date('2026-07-19T19:30:00Z');
 
 describe('the market fixture read: the two reads together, on every return (0.11 2.1d)', () => {
-  it('the retained candidate: the window and its own day each counted the same refused record, which is one record', async () => {
+  it('the retained candidate: the window and its own day each counted the same refused record, summed over the responses', async () => {
     const f = feed([FINAL, BROKEN]);
     const r = await marketFixtureForTeam(f.adapter, 'ESP', IN_FINAL);
     expect(r.match?.id).toBe('760517');
     expect(r.degraded).toBe(false);
     expect(f.asked).toEqual(['202606', '202607', '20260718', '20260719', '20260720']);
-    // The refresh's days lie inside the window's months: the larger count, never the sum.
-    expect(r.partial).toEqual({ omitted: 1 });
+    // A count over the responses, like the window's own: the record both reads refused counts in each (an upper bound).
+    expect(r.partial).toEqual({ omitted: 2 });
   });
 
   it('a finished candidate falling through: the answer it falls to still carries both accounts', async () => {
     const f = feed([{ ...FINAL, state: 'post' }, BROKEN]);
     const r = await marketFixtureForTeam(f.adapter, 'ESP', IN_FINAL);
     expect(r.match).toBeUndefined(); // the final was the team's last
-    expect(r.partial).toEqual({ omitted: 1 });
+    expect(r.partial).toEqual({ omitted: 2 });
   });
 
   it('a window that was not whole, then a refresh that FAILED: the window\'s account, and the failure\'s `degraded`', async () => {

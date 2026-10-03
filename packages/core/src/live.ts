@@ -633,11 +633,13 @@ export async function marketFixtureForTeam(
 /**
  * The `partial` verdict of an answer chosen from two reads (the knockout
  * window, then a candidate's own day): stated when EITHER read stated it.
- * The count is the LARGER of the two, not their sum: the refresh's three days
- * lie inside the knockout window's months, so a record refused by both is one
- * record left out, and a sum would read as two lost. Stated with no count
- * when a read that stated the verdict did not know its count. A read that
- * failed, was whole, or said nothing contributes nothing.
+ * The counts are SUMMED, over the responses, like the window's own count (a
+ * fixture in two parts counts its second copy): a record both reads refused
+ * counts in each. An upper bound on the records left out, never a lower one
+ * (the larger of the two under-counted when the reads refused different
+ * records). Stated with no count when a read that stated the verdict did not
+ * know its count. A read that failed, was whole, or said nothing contributes
+ * nothing.
  */
 function bothReads(
   ...reads: ReadonlyArray<{ partial?: { omitted?: number } }>
@@ -645,7 +647,7 @@ function bothReads(
   const stated = reads.flatMap((r) => (r.partial ? [r.partial] : []));
   if (stated.length === 0) return {};
   let omitted: number | undefined = 0;
-  for (const p of stated) omitted = omitted === undefined || p.omitted === undefined ? undefined : Math.max(omitted, p.omitted);
+  for (const p of stated) omitted = omitted === undefined || p.omitted === undefined ? undefined : omitted + p.omitted;
   return partialOfRead({ complete: false, omitted });
 }
 
