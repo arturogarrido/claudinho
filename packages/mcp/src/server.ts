@@ -159,7 +159,13 @@ const verdictOut = {
     .literal(true)
     .optional()
     .describe(
-      "Present (true) when the competition's table, read whole, and its fixtures over the next 14 days hold no team by that name (a claim about that table and span, not the whole competition: a club out in a qualifying round is in no table); never stated when the table could not be read whole",
+      "Present (true) when the roster the competition has holds no team by that name: the bundled nations on the World Cup; the table read whole and the next 14 days' fixtures elsewhere (a claim about that evidence, not the whole competition: a club out in a qualifying round is in no table). Never stated when the table or the span could not be read whole",
+    ),
+  rosterEvidence: z
+    .enum(['table', 'bundle'])
+    .optional()
+    .describe(
+      "With unknownTeam: the evidence it rests on, the competition's table and span (table) or the World Cup's bundled nations (bundle)",
     ),
   rosterIncomplete: z
     .literal(true)
