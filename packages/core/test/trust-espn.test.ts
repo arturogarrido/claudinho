@@ -180,6 +180,31 @@ describe('parseEspnEvents / parseEspnStandings — bounded before the work', () 
     expect(list.complete).toBe(true);
   });
 
+  it('counts the records it left out, and not the ones that were not fixtures (0.11 2.1b)', () => {
+    // `omitted` is what made the account not whole: a record that could not be
+    // read, one beyond the bound, a second record under an id already accepted.
+    // A readable record that is not a fixture is not left out, and a whole
+    // account states 0.
+    const sameTeam = {
+      ...withCompetitors([
+        { homeAway: 'home', team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' } },
+        { homeAway: 'away', team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico' } },
+      ]),
+      id: '700002',
+    };
+    const other = { ...EV, id: '700003' };
+    expect(parseEspnEvents({ events: [EV, other] })).toMatchObject({ complete: true, omitted: 0 });
+    expect(parseEspnEvents({ events: [EV, sameTeam] })).toMatchObject({ complete: true, omitted: 0 });
+    expect(parseEspnEvents({ events: [EV, { id: 'not an id', date: 'garbage' }] })).toMatchObject({ complete: false, omitted: 1 });
+    expect(parseEspnEvents({ events: [EV, { ...EV }] })).toMatchObject({ complete: false, omitted: 1 });
+    expect(parseEspnEvents({ events: [EV, { ...EV }, { id: 'x' }, sameTeam] })).toMatchObject({ complete: false, omitted: 2 });
+    // Beyond the bound: every record past it is left out, read or not.
+    const many = Array.from({ length: MAX_EVENTS + 3 }, (_, i) => ({ ...EV, id: String(800000 + i) }));
+    expect(parseEspnEvents({ events: many })).toMatchObject({ complete: false, truncated: true, omitted: 3 });
+    // An envelope nobody can read states nothing it could count.
+    expect(parseEspnEvents({ events: 'nope' })).toMatchObject({ complete: false, readable: false, omitted: 0 });
+  });
+
   it('bounds and dedupes standings groups AND their rows', () => {
     const stats = (i: number) => [
       { name: 'gamesPlayed', value: 0 },

@@ -214,7 +214,7 @@ describe('one window, one account', () => {
     expect(f.urls.length).toBe(sent);
   });
 
-  it('states the season its parts agree on; parts that state two seasons are a failure, not "unknown"', async () => {
+  it('states the season its parts agree on; asked strictly, parts that state two seasons are a failure, not "unknown"', async () => {
     const agree = await adapterOn(feed(ALL)).fetchWindow('2026-10-10', '2026-10-12');
     expect(fetchMeta(agree)?.season?.year).toBe(2026);
     // An absent season lets the bundled schedule apply and lets a cached slice
@@ -239,6 +239,102 @@ describe('one window, one account', () => {
     const got = await new EspnAdapter({ competition: 'mex.1', enrichGroups: false, fetchImpl: twice }).fetchWindow('2026-10-10', '2026-10-11');
     expect(ids(got)).toEqual(['3']);
     expect(fetchMeta(got)?.complete).toBe(false);
+  });
+});
+
+describe('across a season turn (0.11 2.1b): the LIVE read composes, every other window keeps refusing', () => {
+  // Measured Oct 3 2026: a day response states the season of the DATE asked,
+  // and each competition turns on its own date (June 1 for `mex.1`). The
+  // three-day live window then holds two seasons on two UTC dates a year. A
+  // refusal there is a verdict nobody can act on after the three requests were
+  // spent: the live read keeps only matches in play and merges nothing. Every
+  // caller that merges the bundle or publishes a cached slice keeps the strict
+  // window, where an absent season must never hide a known disagreement.
+  const other = { ...SEASON, year: 2027, displayName: '2027-28 Liga MX' };
+  const turn = (d: string) => (d === '20261012' ? other : SEASON); // Oct 12 is of the next season
+
+  it('asked across seasons: every fixture its parts held, no season, and which seasons were stated', async () => {
+    const got = await adapterOn(feed(ALL, { season: turn })).fetchWindow('2026-10-10', '2026-10-12', { acrossSeasons: true });
+    expect(ids(got)).toEqual(['1', '2', '3', '4']);
+    const meta = fetchMeta(got);
+    expect(meta?.complete).toBe(true);
+    expect(meta?.season).toBeUndefined();
+    expect(meta?.seasons?.map((s) => s.year)).toEqual([2026, 2027]);
+  });
+
+  it('asked strictly (the default, and what every adapter that ignores the option does): refused, as today', async () => {
+    await expect(adapterOn(feed(ALL, { season: turn })).fetchWindow('2026-10-10', '2026-10-12')).rejects.toThrow(/seasons 2026 and 2027/);
+    await expect(adapterOn(feed(ALL, { season: turn })).fetchWindow('2026-10-10', '2026-10-12', { acrossSeasons: false })).rejects.toThrow(/seasons/);
+  });
+
+  it('parts that agree state that season in both modes, and `seasons` lists it once; a silent part does not veto', async () => {
+    for (const across of [true, false]) {
+      const agree = await adapterOn(feed(ALL)).fetchWindow('2026-10-10', '2026-10-12', { acrossSeasons: across });
+      expect(fetchMeta(agree)?.season?.year, String(across)).toBe(2026);
+      expect(fetchMeta(agree)?.seasons?.map((s) => s.year), String(across)).toEqual([2026]);
+      const silent = feed(ALL, { season: (d) => (d === '20261011' ? undefined : SEASON) });
+      const got = await adapterOn(silent).fetchWindow('2026-10-10', '2026-10-12', { acrossSeasons: across });
+      expect(fetchMeta(got)?.season?.year, String(across)).toBe(2026);
+      expect(fetchMeta(got)?.seasons?.map((s) => s.year), String(across)).toEqual([2026]);
+    }
+    // Parts that state none at all: no season, and an empty list (which a reader must tell from "two").
+    const none = await adapterOn(feed(ALL, { season: () => undefined })).fetchWindow('2026-10-10', '2026-10-12', { acrossSeasons: true });
+    expect(fetchMeta(none)?.season).toBeUndefined();
+    expect(fetchMeta(none)?.seasons).toEqual([]);
+  });
+
+  it('across seasons, everything else about the window is as strict: a refused record, a limit-full part, a down part', async () => {
+    const broken = { raw: { status: { type: { name: 'STATUS_SOMETHING_NEW', state: 'limbo' } } } };
+    const refused = await adapterOn(feed([SAT_EARLY, { ...SUN, ...broken }, MON_LATE], { season: turn })).fetchWindow('2026-10-10', '2026-10-12', { acrossSeasons: true });
+    expect(ids(refused)).toEqual(['1', '4']);
+    expect(fetchMeta(refused)).toMatchObject({ complete: false, omitted: 1 });
+    const down = feed(ALL, { season: turn, fail: (d) => (d === '20261011' ? json({}, 503) : undefined) });
+    await expect(adapterOn(down).fetchWindow('2026-10-10', '2026-10-12', { acrossSeasons: true })).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('the live read asks across seasons: on a turn day the match in play is served, attributed', async () => {
+    const live = await getLiveMatches(adapterOn(feed([{ ...SUN, state: 'in' }, MON_LATE], { season: turn }), new Date('2026-10-11T23:30:00Z')));
+    expect(live.degraded).toBe(false);
+    expect(live.matches.map((m) => m.id)).toEqual(['3']);
+    expect(live.source).toBe('espn');
+    expect(live.season).toBeUndefined();
+  });
+
+  it('the dated read, which merges the bundle on the bundled competition, asks strictly: still degraded on a turn day (2.1c)', async () => {
+    const dated = await getMatchesForDate(adapterOn(feed(ALL, { season: turn })), '2026-10-11');
+    expect(dated.degraded).toBe(true);
+  });
+});
+
+describe('what a window counts as left out (0.11 2.1b)', () => {
+  const broken = { raw: { status: { type: { name: 'STATUS_SOMETHING_NEW', state: 'limbo' } } } };
+
+  it('0 exactly when the window is whole', async () => {
+    expect(fetchMeta(await adapterOn(feed(ALL)).fetchWindow('2026-10-10', '2026-10-12'))?.omitted).toBe(0);
+    expect(fetchMeta(await adapterOn(feed([])).fetchWindow('2026-10-10', '2026-10-11'))?.omitted).toBe(0);
+  });
+
+  it('a refused record in one part, and a second copy of a fixture across parts, each count one', async () => {
+    const refused = await adapterOn(feed([SAT_EARLY, { ...SUN, ...broken }, MON_LATE])).fetchWindow('2026-10-10', '2026-10-12');
+    expect(fetchMeta(refused)).toMatchObject({ complete: false, omitted: 1 });
+    // Two parts holding one fixture: the first copy counts, the second is left out.
+    const f = feed([]);
+    const twice = (async (input: unknown) => {
+      f.urls.push(String(input));
+      return json({ leagues: [{ season: SEASON }], events: [event(SUN)] });
+    }) as unknown as typeof fetch;
+    const got = await new EspnAdapter({ competition: 'mex.1', enrichGroups: false, fetchImpl: twice }).fetchWindow('2026-10-10', '2026-10-11');
+    expect(ids(got)).toEqual(['3']);
+    expect(fetchMeta(got)).toMatchObject({ complete: false, omitted: 1 });
+  });
+
+  it('a single day read states it too; a read that filled its limit does not know its count', async () => {
+    const day = await adapterOn(feed([SAT_EARLY, { ...SAT_LATE, ...broken }])).fetchByDate('2026-10-10');
+    expect(fetchMeta(day)).toMatchObject({ complete: false, omitted: 1 });
+    const full = Array.from({ length: 300 }, (_, i) => ({ id: String(1000 + i), date: '2026-10-10T23:00Z' }));
+    const cut = await adapterOn(feed(full)).fetchByDate('2026-10-10');
+    expect(fetchMeta(cut)?.complete).toBe(false);
+    expect(fetchMeta(cut)?.omitted).toBeUndefined();
   });
 });
 
