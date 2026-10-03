@@ -560,7 +560,12 @@ export class EspnAdapter implements ProviderAdapter {
     const fixtures: Match[] = [];
     let complete = true;
     // Unknown (undefined) if any part's count is: none is here, since a part
-    // that filled its limit was refused above.
+    // that filled its limit was refused above. The count is over the RESPONSES
+    // the window was composed from, a month response whole: a record the
+    // provider sent outside the span counts too (a refused record often has
+    // no readable date, which is why it was refused), as it already makes
+    // `complete` false. So it bounds what the span may be missing; it is not
+    // a count of what the span lost.
     let omitted: number | undefined = 0;
     for (const part of parts) {
       if (!part.complete) complete = false;

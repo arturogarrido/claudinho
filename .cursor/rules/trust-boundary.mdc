@@ -44,7 +44,9 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   month the same) and stays separate. A refused record, or one fixture in two
   parts, leaves the answer `complete: false` with `omitted` counting the
   records left out (`fetchMeta`; the parser counts at the boundary, 0 exactly
-  when complete). A caller that keeps a previous answer must carry that
+  when complete; counted over the responses asked, a month whole, so a record
+  refused outside the span counts and the count bounds what the span may be
+  missing). A caller that keeps a previous answer must carry that
   verdict: an incomplete answer never erases what it did not read. The
   knockout-facing results (`next`, `bracket`, their share cards) carry it as
   the `partial` verdict; `today`, `live` and `match` still drop it, until the

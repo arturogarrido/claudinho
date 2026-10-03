@@ -762,6 +762,34 @@ describe('the reads that were degraded, with the provider refusing every range',
     expect(r.complete).toBe(false);
   });
 
+  it('the count is over the responses asked, a month whole: a record refused OUTSIDE the span counts, and the verdict says "may" (0.11 2.1b)', async () => {
+    // Found in review: June's month response holds a refused group-stage
+    // record (June 15) beside a readable one; July is empty. Nothing inside
+    // the knockout span was left out, yet the answer is `complete: false`
+    // with `omitted: 1` (the refusal makes it incomplete on main already; a
+    // refused record often has no readable date), and the surfaces say the
+    // data MAY be incomplete. The count bounds what the span may be missing.
+    const f = wcFeed();
+    const juneBroken = (async (input: unknown) => {
+      const url = String(input);
+      if (url.includes('/standings') || !url.includes('dates=202606')) return f.fetchImpl(input as string);
+      return json({
+        leagues: [{ season: WC_SEASON }],
+        events: [
+          event({ id: '760420', date: '2026-06-15T19:00Z', raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } }),
+          wcEvent({ id: '760421', date: '2026-06-16T19:00Z' }, ['203', 'MEX', 'Mexico'], ['467', 'RSA', 'South Africa'], 'group-stage'),
+        ],
+      });
+    }) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ competition: 'fifa.world', enrichGroups: false, fetchImpl: juneBroken });
+    const r = await getKnockoutFixtures(adapter, new Date('2026-07-14T12:00Z'));
+    expect(r.degraded).toBe(false);
+    expect(r.fixtures.map((m) => m.id)).toEqual(['760517']);
+    expect(r).toMatchObject({ complete: false, partial: { omitted: 1 } });
+    const bracket = await getBracket(adapter, { stage: 'F' });
+    expect(bracket.partial).toEqual({ omitted: 1 });
+  });
+
   it('every reader that merges the bundle or keeps a slice asks strictly: at a turn of the bundled competition each is degraded and shows nothing of the window (0.11 2.1b)', async () => {
     // A synthetic turn: July's month response and the days from July 19 state
     // the next season. Every window these reads compose then holds two.

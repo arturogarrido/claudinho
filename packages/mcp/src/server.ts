@@ -160,7 +160,7 @@ const partialOut = {
     .object({ omitted: z.number().int().positive().optional() })
     .optional()
     .describe(
-      'Present when the provider sent records that could not be used: what is returned is what was read, and is not the whole answer (absence is not elimination). omitted is how many provider records were left out, when known',
+      'Present when the provider sent records that could not be used: what is returned is what was read, and may not be the whole answer (absence is not elimination). omitted is how many provider records were left out, when known; they may have lain outside what was asked for, so the count is a bound, not a loss',
     ),
 };
 
@@ -669,7 +669,7 @@ export function buildServer(): McpServer {
     {
       title: 'Knockout bracket',
       description:
-        'Knockout bracket from the Round of 32 through the final, with live scores overlaid. Group slots project from live standings once a group has started; winner slots need a confirmed FT result. Pass an optional stage (R32, R16, QF, SF, 3P, F) to filter one round. partial means the provider sent records that could not be used: the ties shown are the ones read, not the whole answer. Falls back to structure-only when live data is unavailable.',
+        'Knockout bracket from the Round of 32 through the final, with live scores overlaid. Group slots project from live standings once a group has started; winner slots need a confirmed FT result. Pass an optional stage (R32, R16, QF, SF, 3P, F) to filter one round. partial means the provider sent records that could not be used: the ties shown are the ones read, and may not be all of them. Falls back to structure-only when live data is unavailable.',
       inputSchema: {
         stage: z
           .enum(['R32', 'R16', 'QF', 'SF', '3P', 'F'])
