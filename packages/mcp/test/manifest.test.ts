@@ -41,6 +41,32 @@ describe('mcpb manifest', () => {
     const blurb = (name: string) => (manifest.tools ?? []).find((t) => t.name === name)?.description ?? '';
     expect(blurb('get_live')).not.toMatch(/none are live|nothing is live/);
     for (const name of ['get_live', 'get_today', 'get_share_snippet']) expect(blurb(name), name).toMatch(/partial/);
+    // The "none read" reading of an empty day holds only where no bundled schedule was merged (off the World Cup);
+    // on a World Cup rest day whose window was not whole the day is still "none scheduled". A blurb that says
+    // "none read" must scope it (a review found the first rewording claimed it for every empty day).
+    for (const name of ['get_today', 'get_share_snippet']) {
+      if (/none read/.test(blurb(name))) expect(blurb(name), name).toMatch(/off the World Cup|bundled schedule/);
+    }
+  });
+
+  it('the server’s get_live description does not read an outage as "nothing in play" (0.11 2.1d)', async () => {
+    // Found in review: "an empty list means nothing is in play unless partial says the read was not whole" forgot
+    // the failed read (`degraded`, no `partial`).
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+    const server = buildServer();
+    await server.connect(serverT);
+    const client = new Client({ name: 'manifest-test', version: '0.0.0' });
+    await client.connect(clientT);
+    try {
+      const { tools } = await client.listTools();
+      const live = tools.find((t) => t.name === 'get_live')?.description ?? '';
+      expect(live).toMatch(/partial/);
+      expect(live).toMatch(/degraded/);
+      expect(live).not.toMatch(/nothing is in play unless partial says/);
+    } finally {
+      await client.close();
+      await server.close();
+    }
   });
 
   it('lists exactly the tools the server exposes', async () => {
