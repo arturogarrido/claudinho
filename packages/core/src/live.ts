@@ -97,8 +97,9 @@ export interface LiveResult {
   source?: string;
   /**
    * The season the provider reported for the response behind this result.
-   * Absent when the provider stated none or the fetch failed. A fact about
-   * THIS result: `today 2024-06-14` reports the season of that day.
+   * Absent when the provider stated none or the fetch failed, and for a live
+   * read at a season turn, whose days state two. A fact about THIS result:
+   * `today 2024-06-14` reports the season of that day.
    */
   season?: SeasonInfo;
 }
@@ -661,8 +662,10 @@ function monthOf(day: string): { first: string; last: string } {
  * a day at a time). One request, or two, sent together and both settled before
  * this answers (a throttle on one is retained by the adapter whatever the
  * other did). Two windows, not one window of two months: a response states the
- * season of the dates asked, and a composed window refuses two seasons. So the
- * answer states a season only when every month stated the same one.
+ * season of the dates asked, and a composed window asked strictly (as these
+ * are) refuses two seasons. So the answer states a season only when every
+ * month stated the same one: discovery's own rule, not the window's (a window
+ * states the season its stating parts agree on).
  *
  * "A list that is not empty and holds no readable record is a failure" is
  * asked of the WHOLE discovery, as a window asks it of all its parts: a month
@@ -797,8 +800,15 @@ export async function getLiveRead(
 ): Promise<LiveReadResult> {
   try {
     const day = now.toISOString().slice(0, 10);
+    // The ONE caller that asks a window across seasons. A day response states
+    // the season of the date asked, so at a competition's season turn the
+    // three days state two; a strict window refuses that, and the score of a
+    // match played those days was lost after three requests were spent. This
+    // read keeps only the matches in play and merges nothing (no bundle, no
+    // kept slice), so both editions are a usable answer. The result then
+    // states no season: no one season describes it.
     const fetched = adapter.fetchWindow
-      ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1))
+      ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1), { acrossSeasons: true })
       : await adapter.fetchLive();
     const meta = fetchMeta(fetched);
     const season = meta?.season;
