@@ -828,8 +828,9 @@ describe('the live read across the provider’s season turn (0.11 2.1b)', () => 
     expect(s?.degraded).toBe(false);
     expect(s?.live.map((m) => m.id)).toEqual(['41']);
     expect(s?.season).toBeUndefined();
-    expect(renderPrompt(s, { defaultCompetition: false, now: new Date(JUNE1) })).toBe('⚽ AME 1–0 GDL 55\'');
-    expect(renderHook(s, { defaultCompetition: false, now: new Date(JUNE1) })).toContain('AME 1–0 GDL');
+    // As the base renders a club: codes on a flagless statusline, names in the hook.
+    expect(renderPrompt(s, { defaultCompetition: false, now: new Date(JUNE1), flags: false })).toBe('⚽ AME 1–0 GDL 55\'');
+    expect(renderHook(s, { defaultCompetition: false, now: new Date(JUNE1) })).toContain('América 1–0 Guadalajara');
     // The day after: every day of the window is of the new season.
     events = [{ id: '42', at: JUNE2 - 30 * MIN, state: 'in' }];
     await refresh(JUNE2);

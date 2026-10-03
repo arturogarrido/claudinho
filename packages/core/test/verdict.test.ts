@@ -414,7 +414,8 @@ describe('one definition of each rule the two surfaces used to copy', () => {
   });
 
   it('a surface never builds a table’s structured form or re-derives the display rule', () => {
-    for (const pkg of ['cli', 'mcp']) expect(codeHits(pkg, /\bpartial\s*:/), pkg).toEqual([]);
+    // The MCP schema declares the read's `partial` verdict (0.11 2.1b); no surface writes the key.
+    for (const pkg of ['cli', 'mcp']) expect(codeHits(pkg, /\bpartial\s*:/), pkg).toEqual(pkg === 'mcp' ? ['mcp/src/server.ts'] : []);
     // The display rule's last condition, in the two files that render signals.
     // (The CLI's market cache also checks a distribution, when it READS a
     // cached signal: a different rule, about a different thing.)

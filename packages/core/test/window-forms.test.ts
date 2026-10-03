@@ -293,7 +293,7 @@ describe('across a season turn (0.11 2.1b): the LIVE read composes, every other 
   });
 
   it('the live read asks across seasons: on a turn day the match in play is served, attributed', async () => {
-    const live = await getLiveMatches(adapterOn(feed([{ ...SUN, state: 'in' }, MON_LATE], { season: turn }), new Date('2026-10-11T23:30:00Z')));
+    const live = await getLiveMatches(adapterOn(feed([{ ...SUN, state: 'in' }, MON_LATE], { season: turn })), new Date('2026-10-11T23:30:00Z'));
     expect(live.degraded).toBe(false);
     expect(live.matches.map((m) => m.id)).toEqual(['3']);
     expect(live.source).toBe('espn');

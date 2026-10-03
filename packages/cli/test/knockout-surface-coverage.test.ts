@@ -258,13 +258,16 @@ describe('a knockout window that was not whole says so beside what it holds (0.1
   });
 
   it('an adapter that says nothing about its answer, or says it is whole: no sentence, no key (as today)', async () => {
+    // The adapter is passed directly: `partialCtx({}, undefined)` would take
+    // the helper's DEFAULT (a partial answer), because a default parameter
+    // replaces an explicit `undefined`.
     for (const meta of [undefined, { complete: true, omitted: 0 }]) {
       writes = [];
-      await cmdNext('MEX', partialCtx({}, meta));
+      await cmdNext('MEX', { ...partialCtx({}), adapter: partialAdapter(meta) });
       expect(text(), JSON.stringify(meta)).toContain('Ecuador');
       expect(text(), JSON.stringify(meta)).not.toContain('incomplete');
       writes = [];
-      await cmdNext('MEX', partialCtx({ json: true }, meta));
+      await cmdNext('MEX', { ...partialCtx({ json: true }), adapter: partialAdapter(meta) });
       expect(JSON.parse(text()), JSON.stringify(meta)).not.toHaveProperty('partial');
     }
   });
