@@ -70,6 +70,14 @@ export interface ShareSnippetInput {
    * ZZZ."), so an unknown/empty target yields a clear card instead of a void.
    */
   emptyNote?: string;
+  /**
+   * A sentence that QUALIFIES the card (a verdict's, e.g. "Fixture data may
+   * be incomplete."): printed whenever it is set, right after the title and
+   * BEFORE the body, on a populated card and an empty one alike. A card is
+   * pasted where nobody can ask, so what it holds must not look like all
+   * there was. (A verdict that REPLACES the body is the `emptyNote`.)
+   */
+  note?: string;
   /** Exact run cue to advertise, e.g. "npx @claudinho/cli next MEX". */
   installLine?: string;
   /**
@@ -167,6 +175,8 @@ export function formatShareSnippet(
   const single = input.matches.length === 1;
 
   const blocks: string[] = [input.title];
+  // Before the body: what qualifies the card is read before what it qualifies.
+  if (input.note) blocks.push(input.note);
 
   if (input.matches.length === 0) {
     // No matches → a clear empty-state line (when provided) instead of a void.

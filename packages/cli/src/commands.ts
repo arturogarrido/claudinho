@@ -24,6 +24,7 @@ import {
   marketDisplayable,
   verdictExtras,
   verdictNotice,
+  verdictQualifiers,
   cacheableKeys,
   getMarketSignals,
   resolvedValues,
@@ -465,8 +466,13 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
 
   const c = painterFor(cfg);
   const flags = flagsEnabled();
+  // What qualifies the answer (the window was not whole) is said BEFORE it, on
+  // a found fixture and on "none found" alike: absence from a window that was
+  // not whole is not elimination.
+  const qualifiers = verdictQualifiers(next, cfg.lang);
   out();
   if (!fixture) {
+    for (const q of qualifiers) out(c.dim('  ' + q));
     // Fail-closed honesty: a feed outage must read as "couldn't reach the
     // provider", never as "this team has no upcoming fixture" (= eliminated).
     out(
@@ -486,6 +492,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   }
   out(header(t('next.label', { team: code }), c));
   out();
+  for (const q of qualifiers) out(c.dim('  ' + q));
   out(matchLine(fixture, cfg, t, c, flags));
   // Localized (stageLabelI18n, like cmdBracket) — EN-only stageLabel here made
   // `next MEX --lang es` render "Round of 32" beside otherwise-Spanish copy.
@@ -625,9 +632,10 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
   out();
   // Degraded ⇒ rows are a static roster, not real results — say so, don't imply zeros are live.
   if (degraded) out(c.dim('  ' + t('table.degraded')));
-  // Tables are missing: what is shown is not the whole competition.
-  const notice = verdictNotice(result, cfg.lang);
-  if (notice) out(c.dim('  ' + notice));
+  // Tables are missing: what is shown is not the whole competition. (After the
+  // tables here, where it always was; the surfaces that learned a qualifier
+  // later print it before the body.)
+  for (const q of verdictQualifiers(result, cfg.lang)) out(c.dim('  ' + q));
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
@@ -665,6 +673,7 @@ export async function cmdBracket(
     filter ? { stage: filter as Stage, lang: cfg.lang } : { lang: cfg.lang },
   );
   const { view, degraded, standingsDegraded, source } = bracket;
+  // A verdict that REPLACES the tree; one that qualifies it is printed beside it (below).
   const notice = verdictNotice(bracket, cfg.lang);
   if (notice !== undefined) {
     // No World Cup topology off the bundle: the notice, nothing else (A03).
@@ -716,6 +725,8 @@ export async function cmdBracket(
       : i18n(cfg.lang, 'bracket.title'),
     c,
   ));
+  // The window was not whole: said before the tree it qualifies, which is kept.
+  for (const q of verdictQualifiers(bracket, cfg.lang)) out(c.dim(`  ${q}`));
   out(body);
   out();
   if (degraded) out(c.dim(`  ${i18n(cfg.lang, 'bracket.degraded')}`));

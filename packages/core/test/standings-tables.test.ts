@@ -21,7 +21,7 @@ import { getBracket, getStandings } from '../src/live';
 import { tableShareCard } from '../src/share/cards';
 import { formatShareTable } from '../src/share/format';
 import { type GroupStandings, tableData, tableKeyArg, tableTitle } from '../src/standings';
-import { verdictExtras, verdictNotice } from '../src/verdict';
+import { verdictExtras, verdictQualifiers } from '../src/verdict';
 import { MAX_GROUP_ROWS, MAX_GROUPS, parseEspnStandings } from '../src/trust/espn';
 
 type RecordedTeam = { id: string; abbreviation: string; displayName: string };
@@ -839,13 +839,13 @@ describe('what every surface is built from', () => {
   it('the missing-table verdict: a key and a sentence, in four languages, only when the read states it', async () => {
     const short = await read('uefa.euro', undefined, shortEuro());
     expect(verdictExtras(short)).toEqual({ incomplete: true });
-    expect(verdictNotice(short)).toBe('Some tables could not be read — this is not the whole competition.');
-    expect(verdictNotice(short, 'es')).toBe('No se pudieron leer algunas tablas — esta no es la competición completa.');
-    expect(verdictNotice(short, 'pt')).toBe('Algumas tabelas não puderam ser lidas — esta não é a competição completa.');
-    expect(verdictNotice(short, 'fr')).toBe("Certains classements n'ont pas pu être lus — ce n'est pas la compétition complète.");
+    expect(verdictQualifiers(short)).toEqual(['Some tables could not be read — this is not the whole competition.']);
+    expect(verdictQualifiers(short, 'es')).toEqual(['No se pudieron leer algunas tablas — esta no es la competición completa.']);
+    expect(verdictQualifiers(short, 'pt')).toEqual(['Algumas tabelas não puderam ser lidas — esta não é a competição completa.']);
+    expect(verdictQualifiers(short, 'fr')).toEqual(["Certains classements n'ont pas pu être lus — ce n'est pas la compétition complète."]);
     const whole = await read('uefa.euro');
     expect(verdictExtras(whole)).toEqual({});
-    expect(verdictNotice(whole)).toBeUndefined();
+    expect(verdictQualifiers(whole)).toEqual([]);
   });
 
   it('a share card: the title, the verdict, and the sentence beside the tables', async () => {

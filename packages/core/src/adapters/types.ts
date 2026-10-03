@@ -9,6 +9,15 @@ export interface ProviderCapabilities {
   latencyHintSec: number;
 }
 
+/** How a window is asked for (see {@link ProviderAdapter.fetchWindow}). */
+export interface FetchWindowOptions {
+  /**
+   * Compose parts that state two seasons instead of refusing them. Only for a
+   * caller that applies no bundled schedule and publishes no cached slice.
+   */
+  readonly acrossSeasons?: boolean;
+}
+
 /**
  * The single swap-point for data vendors. Every provider (ESPN, API-Football,
  * Goalserve, …) implements this and maps INTO the canonical Match model, so the
@@ -50,8 +59,16 @@ export interface ProviderAdapter {
   /** Currently in-progress matches (poll path). */
   fetchLive(): Promise<Match[]>;
 
-  /** Optional inclusive date-range fetch (used for schedule generation). */
-  fetchWindow?(startDate: string, endDate: string): Promise<Match[]>;
+  /**
+   * Optional inclusive date-range fetch. By default (strictly) a window whose
+   * parts state two seasons is refused: an absent season would let the bundled
+   * schedule apply and a cached slice stand. `acrossSeasons` asks it to compose
+   * them instead (the result then states no `season`, and `seasons` lists
+   * both): only for a caller that merges nothing and keeps no slice, which
+   * today is the live read alone. An adapter that ignores the option behaves
+   * as without it.
+   */
+  fetchWindow?(startDate: string, endDate: string, opts?: FetchWindowOptions): Promise<Match[]>;
 
   /**
    * Optional: the provider's calendar day (`YYYY-MM-DD`) for an instant, i.e.

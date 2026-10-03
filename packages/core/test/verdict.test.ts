@@ -32,7 +32,9 @@ import {
 import type { MarketSignal } from '../src/markets/types';
 import type { Match } from '../src/types';
 import { tableData } from '../src/standings';
-import { verdictExtras, verdictNotice } from '../src/verdict';
+import { verdictExtras, verdictNotice, verdictQualifiers } from '../src/verdict';
+import { formatShareSnippet } from '../src/share/format';
+import { formatShareBracket } from '../src/bracket/format';
 
 const PACKAGES = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -91,7 +93,78 @@ describe('verdictNotice — the sentence, in the reader’s language', () => {
   });
 });
 
+describe('a verdict REPLACES the body or QUALIFIES it, and the module says which (0.11 2.1b)', () => {
+  // Found in the plan gate: `cmdBracket` and `toolGetBracket` treated ANY
+  // sentence as the whole answer, and `next` and the share cards printed one
+  // only on an empty body. A qualifying verdict sent through the one function
+  // would have hidden a readable tree, or vanished beside a populated card.
+  it('`unsupported` replaces; `incomplete` and `partial` qualify, in a fixed order', () => {
+    expect(verdictNotice({ unsupported: true }, 'en')).toBe('Not available for this competition yet.');
+    expect(verdictQualifiers({ unsupported: true }, 'en')).toEqual([]);
+    // A stated replacement stands for the whole answer: its qualifiers are not printed.
+    expect(verdictQualifiers({ unsupported: true, partial: { omitted: 1 }, incomplete: true }, 'en')).toEqual([]);
+    expect(verdictNotice({ partial: { omitted: 2 } }, 'en')).toBeUndefined();
+    expect(verdictQualifiers({ partial: { omitted: 2 } }, 'en')).toEqual(['Fixture data may be incomplete (2 provider records omitted).']);
+    expect(verdictQualifiers({ partial: { omitted: 1 } }, 'en')).toEqual(['Fixture data may be incomplete (1 provider record omitted).']);
+    expect(verdictQualifiers({ partial: {} }, 'en')).toEqual(['Fixture data may be incomplete.']);
+    expect(verdictQualifiers({ incomplete: true, partial: { omitted: 1 } }, 'en')).toEqual([
+      'Some tables could not be read — this is not the whole competition.',
+      'Fixture data may be incomplete (1 provider record omitted).',
+    ]);
+    expect(verdictQualifiers({}, 'en')).toEqual([]);
+    expect(verdictQualifiers({ degraded: true } as { degraded: boolean }, 'en')).toEqual([]);
+  });
+
+  it('the partial sentence in every language, counted and not, and the key in the structured output', () => {
+    for (const lang of ['es', 'pt', 'fr']) {
+      const [counted] = verdictQualifiers({ partial: { omitted: 3 } }, lang);
+      const [plain] = verdictQualifiers({ partial: {} }, lang);
+      expect(counted, lang).toMatch(/\b3\b/);
+      expect(counted, lang).not.toBe('Fixture data may be incomplete (3 provider records omitted).');
+      expect(plain, lang).not.toBe('Fixture data may be incomplete.');
+      expect(plain, lang).not.toBe(counted);
+    }
+    expect(verdictExtras({ partial: { omitted: 1 } })).toEqual({ partial: { omitted: 1 } });
+    expect(verdictExtras({ partial: {} })).toEqual({ partial: {} });
+    expect(verdictExtras({ unsupported: true, partial: { omitted: 1 } })).toEqual({ unsupported: true, partial: { omitted: 1 } });
+  });
+
+  it('a count is believed only as a finite positive integer; otherwise the verdict stands without one', () => {
+    for (const omitted of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY] as number[]) {
+      expect(verdictExtras({ partial: { omitted } }), String(omitted)).toEqual({ partial: {} });
+      expect(verdictQualifiers({ partial: { omitted } }, 'en'), String(omitted)).toEqual(['Fixture data may be incomplete.']);
+    }
+  });
+});
+
 describe('share cards — assembled once, for the CLI and the MCP server alike', () => {
+  it('next and bracket: a partial read puts the sentence on the card beside the body, and the formatters print it (0.11 2.1b)', () => {
+    const partial = { partial: { omitted: 1 } };
+    const next = nextShareCard({ fixture: match, degraded: false, source: 'espn', ...partial }, 'MEX', noMarket, ctx);
+    expect(next.verdict).toEqual(partial);
+    expect(next.input.note).toBe('Fixture data may be incomplete (1 provider record omitted).');
+    const snippet = formatShareSnippet(next.input);
+    expect(snippet).toContain('Mexico');
+    expect(snippet).toContain('Fixture data may be incomplete (1 provider record omitted).');
+    // Empty body: the empty note AND the qualifier.
+    const none = nextShareCard({ fixture: undefined, degraded: false, source: 'espn', ...partial }, 'ARG', noMarket, ctx);
+    expect(none.input.emptyNote).toBe('No upcoming fixture found for ARG.');
+    expect(none.input.note).toBe('Fixture data may be incomplete (1 provider record omitted).');
+    expect(formatShareSnippet(none.input)).toContain('Fixture data may be incomplete (1 provider record omitted).');
+    // Localized, like the replacing sentence.
+    const es = nextShareCard({ fixture: match, degraded: false, source: 'espn', ...partial }, 'MEX', noMarket, { tz: 'UTC', locale: 'es' });
+    expect(es.input.note).not.toBe(next.input.note);
+    const view = { stages: [], degraded: false, standingsDegraded: false };
+    const bracket = bracketShareCard({ view, degraded: false, standingsDegraded: false, source: 'espn', ...partial }, 'R32', 'en');
+    expect(bracket.verdict).toEqual(partial);
+    expect(bracket.input.note).toBe('Fixture data may be incomplete (1 provider record omitted).');
+    expect(formatShareBracket(bracket.input)).toContain('Fixture data may be incomplete (1 provider record omitted).');
+    // A card without one has no note, and the formatters print none (the existing output, unchanged).
+    const plain = nextShareCard({ fixture: match, degraded: false, source: 'espn' }, 'MEX', noMarket, ctx);
+    expect(plain.input.note).toBeUndefined();
+    expect(formatShareSnippet(plain.input)).not.toContain('incomplete');
+  });
+
   it('next: a fixture', () => {
     const card = nextShareCard({ fixture: match, degraded: false, source: 'espn' }, 'MEX', noMarket, ctx);
     expect(card).toMatchObject({ kind: 'next', target: 'next', team: 'MEX', verdict: {} });
@@ -279,11 +352,20 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     expect(hits('mcp', byHand)).toEqual([]);
   });
 
+  it('nor the `partial` verdict of a read (0.11 2.1b): the key is declared once, in the MCP schema; the sentence is nowhere', () => {
+    expect(codeHits('cli', /\bpartial\s*:/)).toEqual([]);
+    expect(codeHits('mcp', /\bpartial\s*:/)).toEqual(['mcp/src/server.ts']);
+    expect(hits('cli', /['"`]read\.partial/)).toEqual([]);
+    expect(hits('mcp', /['"`]read\.partial/)).toEqual([]);
+    expect(hits('cli', /may be incomplete/)).toEqual([]);
+    expect(hits('mcp', /may be incomplete/)).toEqual([]);
+  });
+
   it('a surface hands over the RESULT, not the fields it remembers', () => {
     // `verdictExtras({ unsupported })` compiles and works today, and silently
     // drops the next verdict a result learns to state. The functions are given
     // the result itself (or a card's verdict), never an object built on the spot.
-    const rewrapped = /verdict(Extras|Notice)\(\s*\{/;
+    const rewrapped = /verdict(Extras|Notice|Qualifiers)\(\s*\{/;
     expect(hits('cli', rewrapped)).toEqual([]);
     expect(hits('mcp', rewrapped)).toEqual([]);
   });
@@ -313,7 +395,9 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     expect(hits('cli', sentence)).toEqual([]);
     expect(hits('mcp', sentence)).toEqual([]);
     expect(verdictExtras({ incomplete: true })).toEqual({ incomplete: true });
-    expect(verdictNotice({ incomplete: true }, 'fr')).toBe("Certains classements n'ont pas pu être lus — ce n'est pas la compétition complète.");
+    expect(verdictQualifiers({ incomplete: true }, 'fr')).toEqual(["Certains classements n'ont pas pu être lus — ce n'est pas la compétition complète."]);
+    // A qualifier is printed BESIDE the body, never instead of it: it is not a replacement.
+    expect(verdictNotice({ incomplete: true }, 'en')).toBeUndefined();
     // "Not available" replaces the body, so it is the one said when a result states both.
     expect(verdictNotice({ unsupported: true, incomplete: true }, 'en')).toBe('Not available for this competition yet.');
   });
@@ -332,7 +416,8 @@ describe('one definition of each rule the two surfaces used to copy', () => {
   });
 
   it('a surface never builds a table’s structured form or re-derives the display rule', () => {
-    for (const pkg of ['cli', 'mcp']) expect(codeHits(pkg, /\bpartial\s*:/), pkg).toEqual([]);
+    // The MCP schema declares the read's `partial` verdict (0.11 2.1b); no surface writes the key.
+    for (const pkg of ['cli', 'mcp']) expect(codeHits(pkg, /\bpartial\s*:/), pkg).toEqual(pkg === 'mcp' ? ['mcp/src/server.ts'] : []);
     // The display rule's last condition, in the two files that render signals.
     // (The CLI's market cache also checks a distribution, when it READS a
     // cached signal: a different rule, about a different thing.)

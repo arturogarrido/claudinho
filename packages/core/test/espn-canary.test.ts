@@ -548,17 +548,22 @@ describe('found in review: a part that could not be seen does not hide a part th
       expect(windowRow(r)?.detail).toMatch(/could not read every event/);
     });
 
-    it('served parts that state two seasons, beside a part that was down', async () => {
-      const other = { ...SEASON, year: 2027, displayName: '2027-28 English Premier League' };
-      const split = (url: string) =>
+    it('a served part that filled its limit, beside a part that was down', async () => {
+      // (This case used to be "parts that state two seasons"; since 0.11 2.1b
+      // that is a normal answer for the window the live read asks: below.)
+      const full = (url: string) =>
         /dates=20261011(&|$)/.test(url)
           ? json({}, 503)
           : /dates=20261009(&|$)/.test(url)
-            ? json({ leagues: [{ season: other }], events: [] })
+            ? json({
+                leagues: [{ season: SEASON }],
+                events: Array.from({ length: 300 }, (_, i) => event(String(500000 + i), { date: '2026-10-09T15:00Z' })),
+              })
             : healthy(url);
-      const r = await run(split);
+      const r = await run(full);
       expect(windowRow(r)?.verdict).toBe('changed');
-      expect(windowRow(r)?.detail).toMatch(/seasons 2026 and 2027/);
+      expect(windowRow(r)?.detail).toMatch(/filled its limit/);
+      expect(r.red).toBe(true);
     });
 
     it('asks the provider nothing more to do so', async () => {
@@ -1165,5 +1170,84 @@ describe('what it watches and how it reports', () => {
     }
     const readme = readFileSync(fileURLToPath(new URL('../../../README.md', import.meta.url)), 'utf8');
     expect(readme).not.toMatch(/espn-canary\.yml\/badge/);
+  });
+});
+
+
+describe('the window across a season turn (0.11 2.1b): the canary asks it the way the live read does', () => {
+  // Measured Oct 3 2026: a day response states the season of the DATE asked and
+  // each competition turns on its own date (June 1 for `eng.1`). The live read
+  // composes across the turn (no season, both seasons stated); every other
+  // window keeps refusing. A healthy turn day must not be red.
+  const windowRow = (r: { rows: Array<{ request: string; verdict: string; detail: string }> }) => r.rows.find((x) => x.request === 'window');
+  const other = { ...SEASON, year: 2027, displayName: '2027-28 English Premier League' };
+  const turn = (url: string) => (/dates=20261011(&|$)/.test(url) ? json({ leagues: [{ season: other }], events: [] }) : healthy(url));
+
+  it('two healthy parts stating two seasons: ok, and the detail names both years', async () => {
+    const r = await run(turn);
+    expect(windowRow(r)?.verdict).toBe('ok');
+    expect(windowRow(r)?.detail).toMatch(/2026/);
+    expect(windowRow(r)?.detail).toMatch(/2027/);
+    expect(r.red).toBe(false);
+  });
+
+  it('the same beside a part that was down: unreachable, not red', async () => {
+    const r = await run((url) => (/dates=20261010(&|$)/.test(url) ? json({}, 503) : turn(url)));
+    expect(windowRow(r)?.verdict).toBe('unreachable');
+    expect(r.red).toBe(false);
+  });
+
+  it('parts that state no season at all: changed, as before', async () => {
+    const r = await run((url) => (url.includes('/standings') ? healthy(url) : json({ leagues: [{}], events: filed(url, [event('401878761')]) })));
+    expect(windowRow(r)?.verdict).toBe('changed');
+    expect(windowRow(r)?.detail).toMatch(/no readable season/);
+    expect(r.red).toBe(true);
+  });
+
+  it('two seasons that are not a turn (a skipped edition, a backward pair, a reversal, three in three days): changed, with the years named', async () => {
+    // Found in review: any two distinct seasons passed. A turn is the next
+    // edition on a later day, at most the competition's cadence on (a yearly
+    // league turns by one; the Nations League by two): a yearly league stating
+    // a season two years on has skipped an edition; an earlier day stating the
+    // later season, or a third day stating the earlier one again (the adapter
+    // lists DISTINCT seasons, so that reversal is invisible in `seasons`), is
+    // a feed the dated reads refuse, not a turn.
+    const stating = (by: Record<string, number>) => (url: string) => {
+      const m = /dates=(202610\d\d)(&|$)/.exec(url);
+      const year = m?.[1] ? by[m[1]] : undefined;
+      return year ? json({ leagues: [{ season: { ...SEASON, year, displayName: `${year} season` } }], events: [] }) : healthy(url);
+    };
+    const skipped = await run(stating({ '20261011': 2028 }));
+    expect(windowRow(skipped)?.verdict).toBe('changed');
+    expect(windowRow(skipped)?.detail).toMatch(/2026, 2026, 2028/);
+    expect(skipped.red).toBe(true);
+    const backward = await run(stating({ '20261009': 2027 }));
+    expect(windowRow(backward)?.verdict).toBe('changed');
+    expect(windowRow(backward)?.detail).toMatch(/2027, 2026, 2026/);
+    const reversal = await run(stating({ '20261010': 2027 }));
+    expect(windowRow(reversal)?.verdict).toBe('changed');
+    expect(windowRow(reversal)?.detail).toMatch(/2026, 2027, 2026/);
+    const three = await run(stating({ '20261009': 2025, '20261011': 2027 }));
+    expect(windowRow(three)?.verdict).toBe('changed');
+    expect(windowRow(three)?.detail).toMatch(/2025, 2026, 2027/);
+  });
+
+  it('a biennial turn (the Nations League: 2024 to 2026) is a turn for that competition: ok; past its cadence: changed', async () => {
+    const to = (year: number) => (url: string) =>
+      /dates=20261011(&|$)/.test(url) ? json({ leagues: [{ season: { ...SEASON, year, displayName: `${year} season` } }], events: [] }) : healthy(url);
+    const r = await run(to(2028), ['uefa.nations']);
+    expect(windowRow(r)?.verdict).toBe('ok');
+    expect(windowRow(r)?.detail).toMatch(/2026 and 2028/);
+    expect(r.red).toBe(false);
+    const past = await run(to(2029), ['uefa.nations']);
+    expect(windowRow(past)?.verdict).toBe('changed');
+    expect(windowRow(past)?.detail).toMatch(/2026, 2026, 2029/);
+    // The same two-year step is a skipped edition for a yearly league (above).
+    // The Concacaf Nations League is biennial too (2026/27, then 2028/29, by
+    // Concacaf's published calendar), and so is the Gold Cup.
+    for (const biennial of ['concacaf.nations.league', 'concacaf.gold']) {
+      const r2 = await run(to(2028), [biennial]);
+      expect(windowRow(r2)?.verdict, biennial).toBe('ok');
+    }
   });
 });

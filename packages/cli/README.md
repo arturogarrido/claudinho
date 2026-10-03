@@ -172,6 +172,11 @@ advice**) and disappears when no reliable market exists. Per-command options:
 (`{ kind, snippet, matches, marketSignals, marketComplete, … }`) for scripts and
 future reuse. An incomplete optional market read is stated in the snippet and reported
 as `marketComplete: false`; it is never presented as a confident empty market result.
+When the provider's knockout answer was not whole (a record it sent could not be read,
+was a second copy of a fixture, or lay beyond the bound Claudinho reads), `next`,
+`bracket` and their share cards say so before what was read, and `--json` carries
+`partial` (`{ omitted }`, the count of provider records left out, when known): no fixture
+is then not "eliminated".
 No clipboard tool? `claudinho share … | pbcopy` works too.
 
 ### Want an image?

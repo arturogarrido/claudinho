@@ -57,7 +57,10 @@ Most tools are **read-only** (`readOnlyHint`) and accept optional `tz`, `lang`
 (`en`/`es`/`pt`/`fr`), and `flavor` (`off`/`subtle`/`full`); `get_team` is read-only
 **and** offline. Every response carries
 human-readable text **and** structured content, validated against each tool's
-declared `outputSchema`.
+declared `outputSchema`. When the provider's knockout answer was not whole,
+`get_next_fixture`, `get_bracket` and the next/bracket share cards say so before
+what was read and carry `partial` (`omitted`: the count of provider records left
+out, when known); no fixture is then not "eliminated".
 
 Resources: `standings://{group}`, `fixtures://{date}`. Prompts: `tournament_today`,
 and `my_team` (give it a 3-letter team code; combines next fixture, standings, and

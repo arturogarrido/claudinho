@@ -29,11 +29,14 @@
  * provider refuses date ranges), and every one of them is judged.
  *   live       the default scoreboard bucket (the fallback of the live read)
  *   day        one calendar day
- *   window     yesterday to tomorrow, a day at a time: what `live`, `today`,
- *              `match` and the statusline's refresher request
+ *   window     yesterday to tomorrow, a day at a time: what `live` and the
+ *              statusline's refresher request, asked as they ask it, across a
+ *              season turn (on the days a competition turns, its days state
+ *              two seasons, and the live read composes them). `today` and
+ *              `match` request the same span strictly
  *   knockout   the bundled bracket's whole span, a month at a time, asked only
  *              of the competition the bundle belongs to: what `bracket`,
- *              `next` and the countdown request
+ *              `next` and the countdown request. Asked strictly, as they ask
  *   standings  the tables
  * A test fails when the adapter gains a fetch method this list does not ask.
  *
@@ -119,6 +122,26 @@ export const STANDING_STATS = Object.freeze([
 
 /** A provider team id, as the adapter accepts it. */
 const RAW_TEAM_ID = /^[0-9]{1,20}$/;
+/**
+ * How often each supported competition has an edition, in years; a season turn
+ * steps up by at most that (at most, not exactly: the Copa America went 2021,
+ * 2024, 2028). The World Cup, the Euro, the Copa America and the Club World
+ * Cup are four-yearly; both Nations Leagues and the Gold Cup two-yearly (the
+ * Concacaf Nations League's next editions are 2026/27 and 2028/29, by
+ * Concacaf's published 2026 to 2030 calendar); every other competition in
+ * `CANARY_COMPETITIONS` yearly. A yearly league stating a season two years on
+ * has skipped an edition: a changed feed, not a turn.
+ */
+const CADENCE_YEARS = Object.freeze({
+  'fifa.world': 4,
+  'uefa.euro': 4,
+  'conmebol.america': 4,
+  'fifa.cwc': 4,
+  'uefa.nations': 2,
+  'concacaf.nations.league': 2,
+  'concacaf.gold': 2,
+});
+const cadenceOf = (competition) => CADENCE_YEARS[competition] ?? 1;
 /** An error body is read for its message only. */
 const ERROR_BODY_BYTES = 64 * 1024;
 /** How long the canary waits for a body it is reading for itself. */
@@ -250,12 +273,34 @@ function checkScoreboard(core, adapter, parts, matches) {
   }
   const sent = sentProblem(adapter, parts);
   if (sent) return { verdict: 'changed', detail: sent };
-  if (!meta.season) {
+  // A window asked across a season turn states no season when its parts
+  // stated two, and names both: a normal answer on the days a competition
+  // turns. No season stated at all is still a changed feed, and so are two
+  // seasons that are not a turn. A turn is ONE step up, on a later day, of at
+  // most this competition's cadence (`CADENCE_YEARS`: a yearly league turns by
+  // one, the Nations League by two). The adapter lists DISTINCT seasons, which
+  // cannot show a day stating the earlier season again after the later one,
+  // so the steps are read from each part's own envelope in the order of the
+  // days asked: a step down, a second step, or a jump past the cadence is a
+  // feed the dated reads refuse, not a turn.
+  const seasons = Array.isArray(meta.seasons) ? meta.seasons : [];
+  if (!meta.season && seasons.length < 2) {
     return { verdict: 'changed', detail: 'the response states no readable season' };
   }
+  if (!meta.season) {
+    const stated = [...parts]
+      .sort((a, b) => datesOf(a.url).localeCompare(datesOf(b.url)))
+      .map((part) => part.json?.leagues?.[0]?.season?.year)
+      .filter((year) => Number.isInteger(year));
+    const steps = stated.slice(1).map((year, i) => year - stated[i]).filter((step) => step !== 0);
+    if (steps.length !== 1 || steps[0] < 1 || steps[0] > cadenceOf(adapter.competition)) {
+      return { verdict: 'changed', detail: `the parts state seasons that are not a turn (${stated.join(', ')})` };
+    }
+  }
+  const turn = meta.season ? '' : `; across a season turn (${seasons.map((s) => s.year).join(' and ')})`;
   return {
     verdict: 'ok',
-    detail: `${events.length} event(s)${parts.length > 1 ? ` in ${parts.length} requests` : ''}`,
+    detail: `${events.length} event(s)${parts.length > 1 ? ` in ${parts.length} requests` : ''}${turn}`,
   };
 }
 
@@ -265,7 +310,8 @@ function checkScoreboard(core, adapter, parts, matches) {
  * that is given exactly those responses (and an honest empty one in place of
  * each that failed): no request is made, and the verdict is the product's own
  * (a record its parser refuses, one fixture in two parts, parts of two
- * seasons, a response that filled its limit), not a copy of its rules.
+ * seasons where the question is asked strictly, a response that filled its
+ * limit), not a copy of its rules.
  */
 async function servedProblem(core, competition, askOf, request, served) {
   const envelope = envelopeProblem(served);
@@ -507,7 +553,9 @@ export async function runCanary({
     const askOf = (a) => ({
       live: () => a.fetchLive(),
       day: () => a.fetchByDate(today),
-      window: () => a.fetchWindow(isoDay(shiftDay(now, -1)), isoDay(shiftDay(now, 1))),
+      // The live read's call: across a season turn (core `getLiveRead`).
+      window: () => a.fetchWindow(isoDay(shiftDay(now, -1)), isoDay(shiftDay(now, 1)), { acrossSeasons: true }),
+      // Strict, as the bracket, `next` and the countdown ask it.
       knockout: () => a.fetchWindow(span.start, span.end),
       standings: () => a.fetchStandings(),
     });

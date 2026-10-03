@@ -11,8 +11,10 @@
  * the bounded one.
  *
  * Copy stays English (see AGENTS.md: share snippets are English-only in v1,
- * except the localized bracket card); the one sentence that IS localized here
- * is the verdict notice, which is the same sentence on every surface.
+ * except the localized bracket card); the sentences that ARE localized here
+ * are a verdict's, which are the same sentences on every surface. A verdict
+ * that replaces the body becomes the card's `emptyNote`; the ones that qualify
+ * it become its `note`, printed beside a populated body and an empty one.
  */
 import type { ShareBracketInput } from '../bracket/format';
 import type { BracketResult } from '../bracket/types';
@@ -22,8 +24,17 @@ import type { MarketSignal } from '../markets/types';
 import { type GroupStandings, type TableData, tableData } from '../standings';
 import { formatDate } from '../time';
 import type { Match } from '../types';
-import { type VerdictExtras, verdictExtras, verdictNotice } from '../verdict';
+import { type VerdictExtras, type VerdictSource, verdictExtras, verdictNotice, verdictQualifiers } from '../verdict';
 import type { ShareSnippetInput, ShareTableInput } from './format';
+
+/**
+ * The qualifying sentences of a result, as one note for a card; nothing when
+ * it states none (or states a replacement, which is the empty note instead).
+ */
+function qualifierNote(result: VerdictSource, lang: string | undefined): { note?: string } {
+  const qualifiers = verdictQualifiers(result, lang);
+  return qualifiers.length > 0 ? { note: qualifiers.join(' ') } : {};
+}
 
 /** Where and in which language a card's dates are rendered. */
 export interface ShareCardContext {
@@ -113,6 +124,9 @@ export function nextShareCard(
         (result.degraded
           ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
           : `No upcoming fixture found for ${code}.`),
+      // The window was not whole: said beside the fixture, or beside "none
+      // found" (which is then not "eliminated").
+      ...qualifierNote(result, ctx.locale),
       installLine: `npx @claudinho/cli next ${code}`,
       tz: ctx.tz,
       locale: ctx.locale,
@@ -225,7 +239,7 @@ export function tableShareCard(
   // A card's copy is English (it is pasted anywhere). The sentence it prints
   // for a VERDICT is the exception, on every card: the same localized
   // sentence every other surface prints for it.
-  const incompleteNote = result.incomplete ? verdictNotice(result, lang) : undefined;
+  const incompleteNote = qualifierNote(result, lang).note;
   return {
     ...(group ? { group } : {}),
     source,
@@ -271,6 +285,8 @@ export function bracketShareCard(
       source,
       installLine: stage ? `npx @claudinho/cli bracket ${stage}` : 'npx @claudinho/cli bracket',
       emptyNote: verdictNotice(result, lang) ?? t(lang, 'bracket.empty'),
+      // The knockout window was not whole: said beside the ties that were read.
+      ...qualifierNote(result, lang),
     },
     verdict: verdictExtras(result),
   };

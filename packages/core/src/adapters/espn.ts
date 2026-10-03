@@ -22,7 +22,7 @@ import { parseEspnSeason } from '../trust/season';
 import type { Match, SeasonInfo } from '../types';
 import { readJsonBounded, ResponseTooLargeError } from './http';
 import { attachFetchMeta, fetchMeta } from './meta';
-import type { ProviderAdapter, ProviderCapabilities } from './types';
+import type { FetchWindowOptions, ProviderAdapter, ProviderCapabilities } from './types';
 
 export type { MapContext };
 
@@ -298,6 +298,8 @@ interface ScoreboardPart {
   readonly complete: boolean;
   /** The response filled the request's limit: what came after its last record is unknown. */
   readonly full: boolean;
+  /** The parser's count of records left out (see `parseEspnEvents`); absent when `full`: the tail is not counted. */
+  readonly omitted?: number;
   readonly season?: SeasonInfo;
 }
 
@@ -458,23 +460,43 @@ export class EspnAdapter implements ProviderAdapter {
    *     hold. If a part was throttled, the window's error is the throttle the
    *     adapter retains (the one whose deadline is latest, counted from when
    *     each was received); otherwise it is the first failed part's.
-   *   - parts that state different seasons fail the window. "Unknown" would be
-   *     the wrong account of a known disagreement: an absent season lets the
-   *     bundled schedule apply, and lets a cached slice from another season
-   *     stand. A part that states none does not veto the ones that agree.
    *   - a part that filled the request's limit fails the window: its tail is
    *     unknown.
-   *   - it is complete only if every part is.
+   *   - the season. A response states the season of the DATE asked, and a
+   *     competition turns on its own date (June 1, July 1, January 1, ...), so
+   *     the parts of a window can state two. The window states the one its
+   *     stating parts agree on; a part that states none does not veto them.
+   *     `seasons` lists every distinct season the parts stated, in the order
+   *     asked (empty: none stated). Two seasons are then one of two answers:
+   *       strictly (the default): a failure. "Unknown" would be the wrong
+   *         account of a known disagreement: an absent season lets the bundled
+   *         schedule apply, and lets a cached slice from another season stand.
+   *         Every caller that merges the bundle or keeps a slice asks this way.
+   *       `acrossSeasons`: the window is composed, states no `season`, and
+   *         `seasons` names both. For the live read alone, which keeps only the
+   *         matches in play and merges nothing: a refusal there spent its
+   *         requests on a verdict nobody can act on.
+   *     (Discovery states a season by a different rule, every month the same;
+   *     see `getScheduleAhead`. The two stay two.)
+   *   - it is complete only if every part is. `omitted` is the parts' counts
+   *     summed (see `parseEspnEvents`), plus each second copy across parts;
+   *     0 exactly when the window is complete.
    *   - a fixture is filed under exactly one day, so two parts cannot hold the
    *     same one. If they ever do, it is the parser's rule for a duplicate:
-   *     the first copy, in the order asked, is the one that counts, and the
-   *     window says it is not complete. Copies are compared BEFORE a month is
-   *     narrowed to the window, so a second copy that falls outside it (the
-   *     same id, another kickoff) is still a contradiction.
-   * It is a union of responses taken moments apart, not one snapshot: a
-   * fixture moved between two parts being answered can be in neither.
+   *     the first copy, in the order asked, is the one that counts, the second
+   *     is counted as omitted, and the window says it is not complete. Copies
+   *     are compared BEFORE a month is narrowed to the window, so a second copy
+   *     that falls outside it (the same id, another kickoff) is still a
+   *     contradiction.
+   * Everything but the season is the same in both modes. It is a union of
+   * responses taken moments apart, not one snapshot: a fixture moved between
+   * two parts being answered can be in neither.
    */
-  async fetchWindow(startDate: string, endDate: string): Promise<Match[]> {
+  async fetchWindow(
+    startDate: string,
+    endDate: string,
+    opts: FetchWindowOptions = {},
+  ): Promise<Match[]> {
     const start = calendarDay(startDate);
     const end = calendarDay(endDate);
     const plan = start && end ? windowAsks(start, end) : undefined;
@@ -502,15 +524,24 @@ export class EspnAdapter implements ProviderAdapter {
         'parse',
       );
     }
-    const years = new Set(parts.flatMap((part) => (part.season ? [part.season.year] : [])));
-    if (years.size > 1) {
+    // Every distinct season the parts stated, by year, in the order asked.
+    const seasons: SeasonInfo[] = [];
+    for (const part of parts) {
+      const stated = part.season;
+      if (stated && !seasons.some((s) => s.year === stated.year)) seasons.push(stated);
+    }
+    if (seasons.length > 1 && opts.acrossSeasons !== true) {
       throw new ProviderError(
-        `ESPN window ${startDate}..${endDate} spans seasons ${[...years].sort().join(' and ')}`,
+        `ESPN window ${startDate}..${endDate} spans seasons ${seasons
+          .map((s) => s.year)
+          .sort()
+          .join(' and ')}`,
         'parse',
       );
     }
-    // One season or none (two were refused above).
-    const season = parts.find((part) => part.season)?.season;
+    // The season the stating parts agree on; none when none stated one, or
+    // when two were stated and the window was asked across them.
+    const season = seasons.length === 1 ? seasons[0] : undefined;
     // The window is ONE batch. "A non-empty payload with no readable record is
     // a failure" is asked of all of it: a day whose only RECORD is unreadable
     // is a refused record beside readable siblings, not an outage. (A day
@@ -528,13 +559,23 @@ export class EspnAdapter implements ProviderAdapter {
     const seen = new Set<string>();
     const fixtures: Match[] = [];
     let complete = true;
+    // Unknown (undefined) if any part's count is: none is here, since a part
+    // that filled its limit was refused above. The count is over the RESPONSES
+    // the window was composed from, a month response whole: a record the
+    // provider sent outside the span counts too (a refused record often has
+    // no readable date, which is why it was refused), as it already makes
+    // `complete` false. So it bounds what the span may be missing; it is not
+    // a count of what the span lost.
+    let omitted: number | undefined = 0;
     for (const part of parts) {
       if (!part.complete) complete = false;
+      omitted = omitted === undefined || part.omitted === undefined ? undefined : omitted + part.omitted;
       for (const m of part.items) {
         // Identity first, over everything the parts hold: a second copy is a
-        // contradiction wherever its kickoff puts it.
+        // contradiction wherever its kickoff puts it, and a record left out.
         if (seen.has(m.id)) {
           complete = false;
+          if (omitted !== undefined) omitted += 1;
           continue;
         }
         seen.add(m.id);
@@ -551,6 +592,8 @@ export class EspnAdapter implements ProviderAdapter {
     return attachFetchMeta(fixtures, {
       complete,
       ...(season ? { season } : {}),
+      seasons,
+      ...(omitted !== undefined ? { omitted } : {}),
       ...(seen.size > fixtures.length ? { mentioned: [...seen] } : {}),
     });
   }
@@ -685,6 +728,9 @@ export class EspnAdapter implements ProviderAdapter {
     return attachFetchMeta(usableProviderItems<Match>('scoreboard', part, undefined, part.season), {
       complete: part.complete,
       ...(part.season ? { season: part.season } : {}),
+      seasons: part.season ? [part.season] : [],
+      // A response that filled its limit states no count: its tail is unknown.
+      ...(part.omitted !== undefined ? { omitted: part.omitted } : {}),
     });
   }
 
@@ -744,6 +790,8 @@ export class EspnAdapter implements ProviderAdapter {
       total: parsed.total,
       complete: parsed.complete && !full,
       full,
+      // What a full response left out is not known: its tail was never sent.
+      ...(full ? {} : { omitted: parsed.omitted }),
       season,
     };
   }

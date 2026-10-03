@@ -148,6 +148,22 @@ const incompleteOut = {
     ),
 };
 
+/**
+ * The verdict of a read whose provider answer was not whole (core
+ * `verdictExtras`): the result holds what was read, and the window held more.
+ * `omitted` is the count of provider records left out, present only when it is
+ * known. Declared for the same reason as `unsupported`: undeclared, the SDK
+ * would strip it.
+ */
+const partialOut = {
+  partial: z
+    .object({ omitted: z.number().int().positive().optional() })
+    .optional()
+    .describe(
+      'Present when the provider sent records that could not be used: what is returned is what was read, and may not be the whole answer (absence is not elimination). omitted is how many provider records were left out, when known; they may have lain outside what was asked for, so the count is a bound, not a loss',
+    ),
+};
+
 const todayOut = {
   date: z.string(),
   degraded: z.boolean(),
@@ -198,6 +214,7 @@ const bracketOut = {
   standingsDegraded: z.boolean().optional(),
   source: src.optional(),
   ...verdictOut,
+  ...partialOut,
   ...responseMeta,
 };
 const nextOut = {
@@ -206,6 +223,7 @@ const nextOut = {
   degraded: z.boolean(),
   source: src,
   ...verdictOut,
+  ...partialOut,
   ...responseMeta,
 };
 const marketOut = {
@@ -250,6 +268,7 @@ const shareOut = {
   count: z.number().optional(),
   truncated: z.boolean().optional(),
   ...verdictOut,
+  ...partialOut,
   ...responseMeta,
 };
 const teamInfo = z
@@ -650,7 +669,7 @@ export function buildServer(): McpServer {
     {
       title: 'Knockout bracket',
       description:
-        'Knockout bracket from the Round of 32 through the final, with live scores overlaid. Group slots project from live standings once a group has started; winner slots need a confirmed FT result. Pass an optional stage (R32, R16, QF, SF, 3P, F) to filter one round. Falls back to structure-only when live data is unavailable.',
+        'Knockout bracket from the Round of 32 through the final, with live scores overlaid. Group slots project from live standings once a group has started; winner slots need a confirmed FT result. Pass an optional stage (R32, R16, QF, SF, 3P, F) to filter one round. partial means the provider sent records that could not be used: the ties shown are the ones read, and may not be all of them. Falls back to structure-only when live data is unavailable.',
       inputSchema: {
         stage: z
           .enum(['R32', 'R16', 'QF', 'SF', '3P', 'F'])
@@ -669,7 +688,7 @@ export function buildServer(): McpServer {
     {
       title: 'Next fixture for a team',
       description:
-        "A team's next match, live-resolved: a confirmed knockout tie (Round of 32 onward) is read from the live overlay, group fixtures from the bundled schedule. Use a 3-letter code, e.g. MEX, BRA, USA. Falls back to the bundled schedule if the provider is unreachable.",
+        "A team's next match, live-resolved: a confirmed knockout tie (Round of 32 onward) is read from the live overlay, group fixtures from the bundled schedule. Use a 3-letter code, e.g. MEX, BRA, USA. partial means the provider sent records that could not be used: the answer is what was read, and no fixture then does not mean the team is out. Falls back to the bundled schedule if the provider is unreachable.",
       inputSchema: { team: teamArg.describe('3-letter team code, e.g. MEX'), ...commonArgs },
       // Read-only; overlays live provider data for knockout pairings, so open-world.
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -708,7 +727,7 @@ export function buildServer(): McpServer {
     {
       title: 'Shareable match snippet',
       description:
-        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), one standings table (group: a table key, e.g. \"A\", \"A1\", \"A-B\" or \"LEAGUE\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. marketComplete:false is stated inside the card as an incomplete optional read. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
+        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), one standings table (group: a table key, e.g. \"A\", \"A1\", \"A-B\" or \"LEAGUE\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. marketComplete:false is stated inside the card as an incomplete optional read; partial (a next or bracket card) is stated inside the card too: the provider sent records that could not be used. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
       inputSchema: {
         matchId: z.string().optional().describe('Match id (most specific)'),
         team: teamArg

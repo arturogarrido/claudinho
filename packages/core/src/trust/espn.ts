@@ -356,6 +356,15 @@ export function parseEspnEvent(raw: unknown, ctx: MapContext = {}): ParseResult<
  */
 export interface EspnEventList extends BoundedList<Match> {
   readonly readable: boolean;
+  /**
+   * How many records made this account not whole: each considered record
+   * whose parse was neither `valid` nor `definitive-none`, each second record
+   * under an id already accepted, and every record beyond the bound (none of
+   * those is parsed: `total` minus the records considered). A readable record
+   * that is not a fixture is not counted. 0 exactly when `complete` is true;
+   * 0 for an envelope that could not be read, which holds nothing to count.
+   */
+  readonly omitted: number;
 }
 
 export function parseEspnEvents(raw: unknown, ctx: MapContext = {}): EspnEventList {
@@ -372,17 +381,18 @@ export function parseEspnEvents(raw: unknown, ctx: MapContext = {}): EspnEventLi
   const considered = takeBounded<unknown>(all, MAX_EVENTS);
   const items: Match[] = [];
   const seenIds = new Set<string>();
-  let complete = readable && considered.length === total;
+  // Beyond the bound: counted, never parsed (the bound is on the work).
+  let omitted = total - considered.length;
   for (const event of considered) {
     const parsed = parseEspnEvent(event, ctx);
     if (parsed.kind !== 'valid') {
-      if (parsed.kind !== 'definitive-none') complete = false;
+      if (parsed.kind !== 'definitive-none') omitted += 1;
       continue;
     }
     // Two records asserting different facts about one fixture are ambiguous.
     // Keeping whichever arrived last made live scores order-dependent.
     if (seenIds.has(parsed.value.id)) {
-      complete = false;
+      omitted += 1;
       continue;
     }
     seenIds.add(parsed.value.id);
@@ -395,9 +405,11 @@ export function parseEspnEvents(raw: unknown, ctx: MapContext = {}): EspnEventLi
     truncated: total > considered.length,
     // Some record was unreadable, or the window did not cover the payload, or
     // the envelope itself was not a list — none of those is a complete account
-    // of what the provider sent.
-    complete,
+    // of what the provider sent. ONE count decides it, so the verdict and the
+    // number can never disagree.
+    complete: readable && omitted === 0,
     readable,
+    omitted,
   };
 }
 

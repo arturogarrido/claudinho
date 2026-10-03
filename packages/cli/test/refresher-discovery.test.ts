@@ -49,6 +49,8 @@ vi.mock('../src/cache', async (importOriginal) => {
 
 import { cachePath, type CacheState, readState, type ScheduleSlice, writeBackoffNote, writeState } from '../src/cache';
 import { refreshWanted, runRefresh } from '../src/refresh';
+import { renderHook } from '../src/hook';
+import { renderPrompt } from '../src/statusline';
 
 const SOURCE = 'espn';
 const MEX = 'mex.1';
@@ -803,6 +805,96 @@ describe('a source nobody can ask', () => {
     const s = readState('bogus', MEX);
     expect(s?.degraded).toBe(true);
     for (const at of [NOW, NOW + MIN, NOW + HOUR, NOW + 24 * HOUR]) expect(refreshWanted(at, s, MEX, 'bogus'), String(at - NOW)).toBe(false);
+  });
+});
+
+describe('the live read across the provider’s season turn (0.11 2.1b)', () => {
+  // Measured Oct 3 2026: a day response states the season of the DATE asked;
+  // `mex.1` turns on June 1. The live read's window is three UTC dates, so on
+  // May 31 and June 1 its parts state two seasons, and a composed window
+  // refused that (#139): no score for a match played on those days. The live
+  // read keeps only matches in play and merges nothing: it composes across the
+  // turn; the knockout read, which publishes a slice, keeps refusing.
+  const JUNE1 = Date.parse('2026-06-01T15:00:00.000Z');
+  const JUNE2 = Date.parse('2026-06-02T15:00:00.000Z');
+  const atTurn = (d: string) => (d.startsWith('202605') ? S2025 : S2026);
+
+  it('off the bundle, with the gate open at the turn: the live read succeeds, the score is shown, the snapshot states no season; the day after it states one', async () => {
+    events = [{ id: '41', at: JUNE1 - 30 * MIN, state: 'in' }];
+    season = atTurn;
+    await refresh(JUNE1);
+    expect(days()).toHaveLength(3); // the live read was made, inside its window
+    const s = state();
+    expect(s?.degraded).toBe(false);
+    expect(s?.live.map((m) => m.id)).toEqual(['41']);
+    expect(s?.season).toBeUndefined();
+    // As the base renders a club: codes on a flagless statusline, names in the hook.
+    expect(renderPrompt(s, { defaultCompetition: false, now: new Date(JUNE1), flags: false })).toBe('⚽ AME 1–0 GDL 55\'');
+    expect(renderHook(s, { defaultCompetition: false, now: new Date(JUNE1) })).toContain('América 1–0 Guadalajara');
+    // The day after: every day of the window is of the new season.
+    events = [{ id: '42', at: JUNE2 - 30 * MIN, state: 'in' }];
+    await refresh(JUNE2);
+    expect(state()?.live.map((m) => m.id)).toEqual(['42']);
+    expect(state()?.season).toMatchObject({ year: 2026 });
+  });
+
+  it('control: on main the same cycle was degraded, so this pins the repair', async () => {
+    // The strict window at the turn is still a refusal: asked as the dated read asks it, it fails.
+    events = [{ id: '41', at: JUNE1 - 30 * MIN, state: 'in' }];
+    season = atTurn;
+    const { EspnAdapter } = await import('@claudinho/core');
+    const a = new EspnAdapter({ competition: MEX, enrichGroups: false, now: () => JUNE1 });
+    await expect(a.fetchWindow('2026-05-31', '2026-06-02')).rejects.toThrow(/seasons 2025 and 2026/);
+  });
+
+  it('on the bundle, a synthetic turn during an admitted live and knockout window: the live read succeeds, the knockout read is refused and the cached slice stands', async () => {
+    const WC = 'fifa.world';
+    // The World Cup's slug states 2026 on every date probed; the design must
+    // not depend on that. A knockout tie resolved earlier is in the cache.
+    const R32 = Date.parse('2026-06-28T19:00:00.000Z');
+    const tie = {
+      id: '900001',
+      stage: 'R32',
+      kickoff: iso(R32 + 2 * HOUR),
+      venue: 'Stadium',
+      home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽', id: 'espn:203' },
+      away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨', id: 'espn:210' },
+      status: 'SCHEDULED',
+      updatedAt: iso(R32 - HOUR),
+    } as CacheState['fixtures'] extends (infer M)[] | undefined ? M : never;
+    writeState({
+      updatedAt: iso(R32 - MIN),
+      live: [],
+      degraded: false,
+      source: SOURCE,
+      competition: WC,
+      fixtures: [tie],
+      // Older than the slice's TTL (15 minutes), so the knockout read IS made
+      // this cycle: seeded fresher, the test passed without ever asking it.
+      fixturesUpdatedAt: iso(R32 - 20 * MIN),
+      fixturesAttemptedAt: iso(R32 - 20 * MIN),
+      fixturesSeason: { year: 2026, label: 'FIFA World Cup 2026' },
+      season: { year: 2026, label: 'FIFA World Cup 2026' },
+    } as CacheState);
+    events = [{ id: '900002', at: R32 - 30 * MIN, state: 'in' }];
+    // June states 2026, July states 2027: the knockout span (a month each) and
+    // the live window (June 27, 28, 29) are asked at the turn placed on June 28.
+    season = (d) => (d === '202606' || d === '20260627' ? S2026 : { year: 2027, displayName: 'FIFA World Cup 2027' });
+    await refresh(R32, WC);
+    const s = state(WC);
+    expect(s?.live.map((m) => m.id)).toEqual(['900002']);
+    expect(s?.degraded).toBe(false);
+    expect(s?.season).toBeUndefined();
+    // The knockout span was asked (both months) and refused: the slice stands
+    // with its own stamp and season, and the attempt stamp paces the next ask.
+    // Asked across seasons instead, a composed whole answer would REPLACE the
+    // slice with its (empty) list and no season: that is the hazard the strict
+    // mode of every reader that keeps a slice exists to prevent.
+    expect([...months()].sort()).toEqual(['202606', '202607']);
+    expect(s?.fixtures?.map((m) => m.id)).toEqual(['900001']);
+    expect(s?.fixturesUpdatedAt).toBe(iso(R32 - 20 * MIN));
+    expect(s?.fixturesAttemptedAt).toBe(iso(R32));
+    expect(s?.fixturesSeason).toMatchObject({ year: 2026 });
   });
 });
 
