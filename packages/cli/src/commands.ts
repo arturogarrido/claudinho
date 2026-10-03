@@ -51,6 +51,7 @@ import {
   matchLocation,
   SHARE_HASHTAG,
   resolveMarketSource,
+  resolveTz,
   scoreline,
   t as i18n,
   stageLabelI18n,
@@ -377,7 +378,9 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   precheck(cfg, t, date);
   const adapter = adapterFor(ctx);
   const targetDate = date ?? localDate((ctx.now ?? new Date()).toISOString(), cfg.tz);
-  const day = await getMatchesForDate(adapter, targetDate);
+  // The viewer's zone, the one the day is filed by below: the read judges
+  // "nothing on this date" in it too.
+  const day = await getMatchesForDate(adapter, targetDate, resolveTz(cfg.tz));
   const { matches, degraded, source } = day;
   const todays = fixturesByDate(targetDate, matches, cfg.tz);
   const market = await reliableMarketSignals(ctx, todays);
@@ -1243,7 +1246,7 @@ export async function cmdMarkets(
   precheck(cfg, t, explicitDate);
   const now = ctx.now ?? new Date();
   const date = explicitDate ?? localDate(now.toISOString(), cfg.tz);
-  const { matches } = await getMatchesForDate(adapterFor(ctx), date);
+  const { matches } = await getMatchesForDate(adapterFor(ctx), date, resolveTz(cfg.tz));
   const todays = fixturesByDate(date, matches, cfg.tz);
   const relevant = todays.filter((m) => marketRelevant(m, now));
   const { signals, complete } = await marketSignalsFor(ctx, relevant, MARKETS_CMD_OPTS);
@@ -1558,7 +1561,7 @@ export async function cmdShare(
   const explicitDate = target && target !== 'today' ? target : undefined;
   precheck(cfg, t, explicitDate);
   const date = explicitDate ?? localDate((ctx.now ?? new Date()).toISOString(), cfg.tz);
-  const day = await getMatchesForDate(adapterFor(ctx), date);
+  const day = await getMatchesForDate(adapterFor(ctx), date, resolveTz(cfg.tz));
   const { matches: all, degraded, source } = day;
   const todays = fixturesByDate(date, all, cfg.tz);
   const market = await reliableShareSignals(ctx, todays);

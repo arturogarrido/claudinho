@@ -127,3 +127,19 @@ describe('the advertised input: a team-taking tool that resolves a club takes a 
     }
   });
 });
+
+describe('the date card judges "nothing on this date" in the viewer’s zone, as get_today does', () => {
+  const ENDED = { year: 2026, displayName: '2026 Concacaf Champions Cup', startDate: '2026-02-01T05:00Z', endDate: '2026-10-09T03:59Z' };
+  const NONE = { name: 'Concacaf Champions Cup', season: { year: 2026 }, seasons: [{ year: 2016 }] };
+  const finalFT: Ev = { id: '50', date: '2026-10-09T02:00Z', home: { id: '8001', abbr: 'TOL', name: 'Toluca' }, away: { id: '8002', abbr: 'LAFC', name: 'Los Angeles FC' }, state: 'post' };
+  const cup = () => feed('concacaf.champions', { events: [finalFT], standings: NONE, season: () => ENDED }).adapter;
+
+  it('a UTC viewer: the final’s UTC date is the final, with no key; the day after, the key', async () => {
+    const day9 = await toolGetShareSnippet({ date: '2026-10-09', tz: 'UTC', now: NOW, adapter: cup() });
+    expect(day9.text).toContain('Toluca');
+    expect((day9.data as { betweenEditions?: unknown }).betweenEditions).toBeUndefined();
+    const day10 = await toolGetShareSnippet({ date: '2026-10-10', tz: 'UTC', now: NOW, adapter: cup() });
+    expect(day10.data).toMatchObject({ betweenEditions: { label: '2026 Concacaf Champions Cup' } });
+    strict('get_share_snippet', day10.data);
+  });
+});

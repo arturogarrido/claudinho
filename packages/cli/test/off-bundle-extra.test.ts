@@ -120,3 +120,19 @@ describe('match <id>: an outage is never "no such match"', () => {
     expect(parsed()).toMatchObject({ degraded: true, match: { id: '41' }, source: 'espn' });
   });
 });
+
+describe('the date card judges "nothing on this date" in the viewer’s zone, as `today` does', () => {
+  const ENDED = { year: 2026, displayName: '2026 Concacaf Champions Cup', startDate: '2026-02-01T05:00Z', endDate: '2026-10-09T03:59Z' };
+  const NONE = { name: 'Concacaf Champions Cup', season: { year: 2026 }, seasons: [{ year: 2016 }] };
+  const finalFT: Ev = { id: '50', date: '2026-10-09T02:00Z', home: { id: '8001', abbr: 'TOL', name: 'Toluca' }, away: { id: '8002', abbr: 'LAFC', name: 'Los Angeles FC' }, state: 'post' };
+  const cup = () => feed('concacaf.champions', { events: [finalFT], standings: NONE, season: () => ENDED }).adapter;
+
+  it('a UTC viewer: the final’s UTC date is the final, with no key; the day after, the key', async () => {
+    await cmdShare('2026-10-09', undefined, {}, ctxFor(cup(), { tz: 'UTC', json: true }));
+    expect(parsed().betweenEditions).toBeUndefined();
+    expect(parsed().snippet).toContain('Toluca');
+    writes = [];
+    await cmdShare('2026-10-10', undefined, {}, ctxFor(cup(), { tz: 'UTC', json: true }));
+    expect(parsed()).toMatchObject({ betweenEditions: { label: '2026 Concacaf Champions Cup' } });
+  });
+});

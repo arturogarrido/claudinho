@@ -16,7 +16,7 @@ import {
   isUpcoming,
 } from './schedule';
 import { rosterAtZero, type GroupStandings } from './standings';
-import { shiftUtcDate } from './time';
+import { localDate, shiftUtcDate } from './time';
 import type { Match, SeasonInfo, Stage, Team } from './types';
 import { isResolvedNation } from './bracket/placeholders';
 import { buildBracketView } from './bracket/resolve';
@@ -109,8 +109,10 @@ export interface LiveResult {
   season?: SeasonInfo;
   /**
    * The read says its competition is between editions (see
-   * {@link betweenEditionsOf}): a replacement verdict, `matches` is then empty.
-   * Never stated on the bundled competition.
+   * {@link betweenEditionsOf}): a replacement verdict. The live read's
+   * `matches` is then empty (it keeps the matches in play); the dated read
+   * keeps the window's records, and states it only when the asked local date
+   * holds none of them. Never stated on the bundled competition.
    */
   betweenEditions?: BetweenEditions;
 }
@@ -132,8 +134,13 @@ function clockOf(adapter: ProviderAdapter): Date {
   return new Date(adapter.now?.() ?? Date.now());
 }
 
-/** The provider's calendar day (`YYYY-MM-DD`) for an instant; the UTC day when the adapter states none. */
+/**
+ * The provider's calendar day (`YYYY-MM-DD`) for an instant; the UTC day when
+ * the adapter states none; '' for an instant that is not one (it files under
+ * no day).
+ */
 function providerDayOf(adapter: ProviderAdapter, instant: Date): string {
+  if (Number.isNaN(instant.getTime())) return '';
   return adapter.bucketDay?.(instant) || instant.toISOString().slice(0, 10);
 }
 
@@ -147,10 +154,17 @@ function providerDayOf(adapter: ProviderAdapter, instant: Date): string {
  *       when every stating response stated the same one (`agreedSeason`);
  *   (c) the provider's day of that end date is STRICTLY before the day asked
  *       (the end day itself is still the edition's);
- *   (d) nothing in the whole read, before the surface's own filter, is
- *       scheduled or in play. A finished, cancelled or postponed record (the
- *       previous final, inside the lookback) does not block it, and is not
- *       shown: it is neither current nor the answer.
+ *   (d) the surface has nothing to present. Nothing in the whole read, before
+ *       the surface's own filter, is scheduled or in play (a fixture of ANY
+ *       club still to be played means the competition is not between
+ *       editions). For the live read, `next` and `match`, a finished,
+ *       cancelled or postponed record (the previous final, inside the
+ *       lookback) does not block it: it is neither current nor their answer.
+ *       For the DATED read the body is the asked LOCAL date's records (`onDate`,
+ *       the viewer's zone): any record on that date, a finished result
+ *       included, is that day's body and blocks it. So a UTC viewer asking the
+ *       final's UTC date (the day after the provider's end day) sees the final,
+ *       and the day after says "between editions".
  * A verdict about a RESPONSE, not a competition: the day a dormant slug states
  * its next edition, it stops being said. Never on the bundled competition,
  * whose edition the bundle decides.
@@ -160,8 +174,10 @@ function betweenEditionsOf(
   read: { readonly complete?: boolean; readonly season?: SeasonInfo } | undefined,
   records: readonly Match[],
   dayAsked: string,
+  onDate: readonly Match[] = [],
 ): BetweenEditions | undefined {
   if (bundleApplies(adapter.competition)) return undefined;
+  if (onDate.length > 0) return undefined;
   if (read?.complete !== true) return undefined;
   const ended = read.season?.endDate;
   if (!ended) return undefined;
@@ -189,13 +205,20 @@ export function liveSourceLabel(source: string): string {
  * its own day, and the result states no season. On the bundle it is asked
  * strictly: two seasons there would let the skeleton merge over another
  * edition's day, and the refusal protects it. Off the bundle a read whose
- * edition ended before the asked date, with nothing current in it, says
- * "between editions" instead of its records ({@link betweenEditionsOf}); a
- * date on or before the end day is a historical question, answered as asked.
+ * edition ended before the asked date, with nothing current in it and NOTHING
+ * on the asked local date, says "between editions" ({@link betweenEditionsOf});
+ * a date on or before the end day is a historical question, answered as asked.
+ * `matches` is the window's records in every case: the surface files them by
+ * the viewer's date.
+ *
+ * `tz` is the viewer's zone, the one the surface files the records by (pass
+ * the same effective zone: `resolveTz`). A caller that names none asks in the
+ * provider's zone, the days the window is counted in.
  */
 export async function getMatchesForDate(
   adapter: ProviderAdapter,
   dateISO: string,
+  tz?: string,
 ): Promise<LiveResult> {
   const day = dateISO.slice(0, 10);
   const merges = bundleApplies(adapter.competition);
@@ -213,12 +236,16 @@ export async function getMatchesForDate(
       : await adapter.fetchByDate(day);
     const meta = fetchMeta(live);
     const season = meta?.season;
-    const between = betweenEditionsOf(adapter, meta, live, day);
+    // The asked local date's records: what the surface will present as the day.
+    const onDate = live.filter(
+      (m) => (tz ? localDate(m.kickoff, tz) : providerDayOf(adapter, new Date(m.kickoff))) === day,
+    );
+    const between = betweenEditionsOf(adapter, meta, live, day, onDate);
     // The skeleton is merged ONLY when it is this competition's schedule AND
     // this response's edition; otherwise the day is whatever the provider
     // served, and nothing else (A03).
     return {
-      matches: between ? [] : mergeLive(skeletonFor(adapter, season), live),
+      matches: mergeLive(skeletonFor(adapter, season), live),
       degraded: false,
       source: adapter.name,
       ...(season ? { season } : {}),

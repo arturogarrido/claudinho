@@ -111,12 +111,24 @@ describe('between editions is asked of the WHOLE read, before a surface filters 
     expect(live.betweenEditions).toBeUndefined();
   });
 
-  it('the dated read: the previous final inside the window is not shown under the sentence', async () => {
+  it('the dated read: the previous final inside the window, on ANOTHER local date, does not block it, and the window\u2019s records are kept', async () => {
     const finalFT: Ev = { id: '50', date: '2026-10-09T02:00Z', home: TOL, away: LAFC, state: 'post' };
-    // Oct 9 asks the provider days Oct 8 to 10: the final (Eastern Oct 8) is in the read.
+    // Oct 9 asks the provider days Oct 8 to 10: the final (Eastern Oct 8) is
+    // in the read. With no zone named, the asked date is the provider's.
     const r = await getMatchesForDate(feed('concacaf.champions', { events: [finalFT] }), '2026-10-09');
     expect(r.betweenEditions).toBeDefined();
-    expect(r.matches).toEqual([]);
+    expect(r.matches.map((m) => m.id)).toEqual(['50']);
+    // Named zones decide the asked date: Oct 9 in New York holds nothing, in UTC the final.
+    expect((await getMatchesForDate(feed('concacaf.champions', { events: [finalFT] }), '2026-10-09', 'America/New_York')).betweenEditions).toBeDefined();
+    expect((await getMatchesForDate(feed('concacaf.champions', { events: [finalFT] }), '2026-10-09', 'UTC')).betweenEditions).toBeUndefined();
+  });
+
+  it('the dated read: a scheduled record anywhere in the window still blocks it, also off the asked local date', async () => {
+    // Oct 11 asks provider days Oct 10 to 12; this one is Oct 12 (Eastern and UTC), not the asked UTC date.
+    const scheduled: Ev = { id: '62', date: '2026-10-12T20:00Z', home: TOL, away: MTY };
+    const r = await getMatchesForDate(feed('concacaf.champions', { events: [scheduled] }), '2026-10-11', 'UTC');
+    expect(r.matches.map((m) => m.id)).toEqual(['62']);
+    expect(r.betweenEditions).toBeUndefined();
   });
 });
 

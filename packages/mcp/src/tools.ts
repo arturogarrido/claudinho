@@ -59,6 +59,7 @@ import {
   type ProviderAdapter,
   resolveCompetition,
   resolveMarketSource,
+  resolveTz,
   t,
   type ShareSnippetOptions,
   type Stage,
@@ -370,7 +371,9 @@ export async function toolGetToday(
 ): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
   const date = args.date ?? localDate((args.now ?? new Date()).toISOString(), args.tz);
-  const day = await getMatchesForDate(adapter, date);
+  // The viewer's zone, the one the day is filed by below: the read judges
+  // "nothing on this date" in it too.
+  const day = await getMatchesForDate(adapter, date, resolveTz(args.tz));
   const { matches, degraded, source } = day;
   const todays = fixturesByDate(date, matches, args.tz);
   const opts = fmtOpts(args);
@@ -850,7 +853,7 @@ export async function toolGetMarketSignal(
 
   // A date's matches (default: today).
   const date = args.date ?? localDate(now.toISOString(), args.tz);
-  const { matches } = await getMatchesForDate(resolveAdapter(args), date);
+  const { matches } = await getMatchesForDate(resolveAdapter(args), date, resolveTz(args.tz));
   const todays = fixturesByDate(date, matches, args.tz).filter((m) => marketRelevant(m, now));
   const batch = await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS);
   const signals = resolvedValues(batch);
@@ -1114,7 +1117,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
 
   // a date's matches (default: today).
   const date = args.date ?? localDate((args.now ?? new Date()).toISOString(), args.tz);
-  const day = await getMatchesForDate(resolveAdapter(args), date);
+  const day = await getMatchesForDate(resolveAdapter(args), date, resolveTz(args.tz));
   const todays = fixturesByDate(date, day.matches, args.tz);
   // Bounded like every other model-facing payload — a share card is
   // returned through MCP before a human ever sees it.
