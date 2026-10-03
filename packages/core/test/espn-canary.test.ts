@@ -1204,24 +1204,40 @@ describe('the window across a season turn (0.11 2.1b): the canary asks it the wa
     expect(r.red).toBe(true);
   });
 
-  it('two seasons that are not a turn (a gap, a backward pair, three in three days): changed, with the years named', async () => {
+  it('two seasons that are not a turn (a jump past every cadence, a backward pair, a reversal, three in three days): changed, with the years named', async () => {
     // Found in review: any two distinct seasons passed. A turn is the next
-    // season on a later day; a day stating a season two years on, or an
-    // earlier day stating the later season, is a feed the dated reads refuse.
+    // edition on a later day, at most four years on (the longest cadence among
+    // the supported competitions; the Nations League's is two): a day stating
+    // a season five years on, an earlier day stating the later season, or a
+    // third day stating the earlier one again (the adapter lists DISTINCT
+    // seasons, so that reversal is invisible in `seasons`) is a feed the dated
+    // reads refuse, not a turn.
     const stating = (by: Record<string, number>) => (url: string) => {
       const m = /dates=(202610\d\d)(&|$)/.exec(url);
       const year = m?.[1] ? by[m[1]] : undefined;
       return year ? json({ leagues: [{ season: { ...SEASON, year, displayName: `${year} season` } }], events: [] }) : healthy(url);
     };
-    const gap = await run(stating({ '20261011': 2028 }));
-    expect(windowRow(gap)?.verdict).toBe('changed');
-    expect(windowRow(gap)?.detail).toMatch(/2026 and 2028/);
-    expect(gap.red).toBe(true);
+    const jump = await run(stating({ '20261011': 2031 }));
+    expect(windowRow(jump)?.verdict).toBe('changed');
+    expect(windowRow(jump)?.detail).toMatch(/2026, 2026, 2031/);
+    expect(jump.red).toBe(true);
     const backward = await run(stating({ '20261009': 2027 }));
     expect(windowRow(backward)?.verdict).toBe('changed');
-    expect(windowRow(backward)?.detail).toMatch(/2027 and 2026/);
+    expect(windowRow(backward)?.detail).toMatch(/2027, 2026, 2026/);
+    const reversal = await run(stating({ '20261010': 2027 }));
+    expect(windowRow(reversal)?.verdict).toBe('changed');
+    expect(windowRow(reversal)?.detail).toMatch(/2026, 2027, 2026/);
     const three = await run(stating({ '20261009': 2025, '20261011': 2027 }));
     expect(windowRow(three)?.verdict).toBe('changed');
-    expect(windowRow(three)?.detail).toMatch(/2025, 2026 and 2027|2025 and 2026 and 2027/);
+    expect(windowRow(three)?.detail).toMatch(/2025, 2026, 2027/);
+  });
+
+  it('a biennial turn (the Nations League: 2024 to 2026) is a turn: ok', async () => {
+    const biennial = (url: string) =>
+      /dates=20261011(&|$)/.test(url) ? json({ leagues: [{ season: { ...SEASON, year: 2028, displayName: '2028 season' } }], events: [] }) : healthy(url);
+    const r = await run(biennial);
+    expect(windowRow(r)?.verdict).toBe('ok');
+    expect(windowRow(r)?.detail).toMatch(/2026 and 2028/);
+    expect(r.red).toBe(false);
   });
 });

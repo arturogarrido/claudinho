@@ -122,6 +122,13 @@ export const STANDING_STATS = Object.freeze([
 
 /** A provider team id, as the adapter accepts it. */
 const RAW_TEAM_ID = /^[0-9]{1,20}$/;
+/**
+ * The longest cadence among the supported competitions, in years: the World
+ * Cup, the Euro, the Copa America and the Club World Cup are four-yearly, the
+ * Nations League and the Gold Cup two-yearly, the rest yearly. A season turn
+ * steps up by at most this much.
+ */
+const LONGEST_CADENCE_YEARS = 4;
 /** An error body is read for its message only. */
 const ERROR_BODY_BYTES = 64 * 1024;
 /** How long the canary waits for a body it is reading for itself. */
@@ -256,18 +263,28 @@ function checkScoreboard(core, adapter, parts, matches) {
   // A window asked across a season turn states no season when its parts
   // stated two, and names both: a normal answer on the days a competition
   // turns. No season stated at all is still a changed feed, and so are two
-  // seasons that are not a turn: a turn is the NEXT season on a LATER day
-  // (`seasons` is in the order asked), so a gap, a backward pair or three in
-  // three days is a feed the dated reads refuse, not a turn.
+  // seasons that are not a turn. A turn is ONE step up, on a later day, of at
+  // most the longest cadence among the supported competitions (four years:
+  // the World Cup's; the Nations League's is two). The adapter lists DISTINCT
+  // seasons, which cannot show a day stating the earlier season again after
+  // the later one, so the steps are read from each part's own envelope in the
+  // order of the days asked: a step down, a second step, or a jump past every
+  // cadence is a feed the dated reads refuse, not a turn.
   const seasons = Array.isArray(meta.seasons) ? meta.seasons : [];
   if (!meta.season && seasons.length < 2) {
     return { verdict: 'changed', detail: 'the response states no readable season' };
   }
-  const years = seasons.map((s) => s.year);
-  if (!meta.season && (years.length !== 2 || years[1] !== years[0] + 1)) {
-    return { verdict: 'changed', detail: `the parts state seasons that are not a turn (${years.join(' and ')})` };
+  if (!meta.season) {
+    const stated = [...parts]
+      .sort((a, b) => datesOf(a.url).localeCompare(datesOf(b.url)))
+      .map((part) => part.json?.leagues?.[0]?.season?.year)
+      .filter((year) => Number.isInteger(year));
+    const steps = stated.slice(1).map((year, i) => year - stated[i]).filter((step) => step !== 0);
+    if (steps.length !== 1 || steps[0] < 1 || steps[0] > LONGEST_CADENCE_YEARS) {
+      return { verdict: 'changed', detail: `the parts state seasons that are not a turn (${stated.join(', ')})` };
+    }
   }
-  const turn = meta.season ? '' : `; across a season turn (${years.join(' and ')})`;
+  const turn = meta.season ? '' : `; across a season turn (${seasons.map((s) => s.year).join(' and ')})`;
   return {
     verdict: 'ok',
     detail: `${events.length} event(s)${parts.length > 1 ? ` in ${parts.length} requests` : ''}${turn}`,
