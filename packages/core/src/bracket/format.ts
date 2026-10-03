@@ -124,6 +124,13 @@ export interface ShareBracketInput {
   source?: string;
   installLine?: string;
   emptyNote?: string;
+  /**
+   * A sentence that QUALIFIES the card (a verdict's, e.g. "Fixture data may
+   * be incomplete."): printed whenever it is set, after the title and BEFORE
+   * the tree, on a populated card and an empty one alike. (A verdict that
+   * REPLACES the tree is the `emptyNote`.)
+   */
+  note?: string;
 }
 
 export interface ShareBracketOptions {
@@ -144,6 +151,8 @@ export function formatShareBracket(
   const includeInstall = options.includeInstallLine !== false;
   const locale = options.locale;
   const blocks: string[] = [t(locale, 'bracket.shareTitle'), ''];
+  // Before the body: what qualifies the card is read before what it qualifies.
+  if (input.note) blocks.push(input.note, '');
 
   if (input.view.stages.length === 0) {
     blocks.push(input.emptyNote ?? t(locale, 'bracket.empty'));

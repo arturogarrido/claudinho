@@ -175,7 +175,7 @@ export type {
 } from './share/cards';
 // The one place a verdict (e.g. "not available for this competition") becomes
 // a structured key and a localized sentence.
-export { verdictExtras, verdictNotice } from './verdict';
+export { verdictExtras, verdictNotice, verdictQualifiers } from './verdict';
 export type { VerdictExtras, VerdictSource } from './verdict';
 
 export { buildBracketTopology, matchKey } from './bracket/build';

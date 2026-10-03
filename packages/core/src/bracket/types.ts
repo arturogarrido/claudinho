@@ -78,6 +78,13 @@ export interface BracketResult {
   degraded: boolean;
   standingsDegraded: boolean;
   source?: string;
+  /**
+   * The knockout window said its answer was not whole (see
+   * `VerdictSource.partial`): the view holds the ties that were read, and a
+   * tie whose record was left out shows its bundled slot. Absent when the
+   * window was whole, failed, or said nothing.
+   */
+  partial?: { omitted?: number };
 }
 
 /** Lookup a team object from a merged knockout match when the slot is already resolved. */

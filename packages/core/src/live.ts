@@ -24,6 +24,7 @@ import { loadBracketTopology } from './bracket/topology';
 import type { BracketResult, BracketView } from './bracket/types';
 
 import { bundleApplies } from './competition';
+import { partialOfRead } from './verdict';
 
 /** Provider names {@link makeAdapter} can construct (the CLI validates against this). */
 export const KNOWN_SOURCES = ['espn'] as const;
@@ -313,6 +314,8 @@ export async function getBracket(
   let matches = base;
   let liveDegraded = true;
   let source: string | undefined;
+  /** The window's own verdict on its answer, when it said the answer was not whole. */
+  let partial: { partial?: { omitted?: number } } = {};
 
   // No window capability (or no window) means no overlay fetch happened, so
   // the result is degraded and attributes no provider — the bundled skeleton
@@ -324,6 +327,7 @@ export async function getBracket(
       matches = mergeLive(base, live);
       liveDegraded = false;
       source = adapter.name;
+      partial = partialOfRead(fetchMeta(live));
     } catch {
       // static skeleton only
     }
@@ -354,6 +358,9 @@ export async function getBracket(
     degraded: liveDegraded,
     standingsDegraded: standings.degraded,
     source,
+    // The ties that were read are in the view; the verdict says the window
+    // held more than that. Never `degraded`: the read succeeded.
+    ...partial,
   };
 }
 
@@ -440,6 +447,13 @@ export interface NextFixtureResult {
   source?: string;
   /** Off the bundle "next" is built on a schedule we do not have yet (audit A03). */
   unsupported?: true;
+  /**
+   * The knockout window said its answer was not whole: a record it was sent
+   * is not in it (see `VerdictSource.partial`). `fixture` is still what was
+   * read; a team whose tie was the record left out has none, and that is not
+   * "eliminated". Absent when the window was whole, failed, or said nothing.
+   */
+  partial?: { omitted?: number };
 }
 
 /**
@@ -469,6 +483,7 @@ export async function getNextFixtureForTeam(
   let matches = base;
   let degraded = true;
   let liveById: Set<string> | undefined;
+  let partial: { partial?: { omitted?: number } } = {};
   // Without a window capability nothing was fetched: stay degraded, attribute
   // nothing (audit A06; mirrors getKnockoutFixtures).
   const win = knockoutWindow();
@@ -478,18 +493,22 @@ export async function getNextFixtureForTeam(
       matches = mergeLive(base, live);
       degraded = false;
       liveById = new Set(live.map((m) => m.id));
+      partial = partialOfRead(fetchMeta(live));
     } catch {
       // Static skeleton only — fail closed; never invent a knockout pairing.
     }
   }
   // Strictly the next UPCOMING fixture (kickoff ≥ now), preserving the pre-overlay
-  // `next` semantics — the in-play match is `live`'s job, not `next`'s.
+  // `next` semantics — the in-play match is `live`'s job, not `next`'s. With a
+  // window that was not whole, the tie of a team whose record was left out is
+  // the bundle's placeholder, which carries slot codes, never the team's: it
+  // is not selected, and the answer is "none read" with the verdict.
   const fixture = nextFixtureForTeam(code, { from: now, fixtures: matches });
   // Attribute the provider only when the live overlay actually served the chosen
   // fixture — a static group game (not in the knockout-window fetch) is not
   // "Live data: ESPN". Mirrors getMatchById's hit-based attribution.
   const source = fixture && liveById?.has(fixture.id) ? adapter.name : undefined;
-  return { fixture, degraded, source };
+  return { fixture, degraded, source, ...partial };
 }
 
 export interface KnockoutFixturesResult {
@@ -522,6 +541,12 @@ export interface KnockoutFixturesResult {
    * or it puts back what the provider just took away.
    */
   mentioned?: readonly string[];
+  /**
+   * The verdict a surface prints for `complete: false` (see
+   * `VerdictSource.partial`), with the count of records left out when the
+   * window knew it. Stated exactly when `complete` is false.
+   */
+  partial?: { omitted?: number };
 }
 
 /**
@@ -570,6 +595,7 @@ export async function getKnockoutFixtures(
     ...(meta?.complete === false
       ? { complete: false, mentioned: meta.mentioned ?? live.map((m) => m.id) }
       : {}),
+    ...partialOfRead(meta),
   };
 }
 

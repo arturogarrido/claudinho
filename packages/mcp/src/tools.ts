@@ -24,6 +24,7 @@ import {
   tableKeyArg,
   verdictExtras,
   verdictNotice,
+  verdictQualifiers,
   getBracket,
   getLiveMatches,
   cacheableKeys,
@@ -57,6 +58,7 @@ import {
   t,
   type ShareSnippetOptions,
   type Stage,
+  type VerdictSource,
 } from '@claudinho/core';
 import {
   boundedRecords,
@@ -336,6 +338,18 @@ function disclaimed(body: string, source?: string, lang?: string): { text: strin
 }
 
 /**
+ * A tool's text with the sentences that QUALIFY it (core `verdictQualifiers`:
+ * the read was not whole) said FIRST, the body kept. First, because a tool's
+ * text is cut at a fixed length from the end: a verdict at the tail would be
+ * the first thing a long answer lost. Nothing is added when the result states
+ * no qualifier, or states a replacement (which stands instead of the body).
+ */
+function qualified(body: string, result: VerdictSource, lang?: string): string {
+  const qualifiers = verdictQualifiers(result, lang);
+  return qualifiers.length > 0 ? `${qualifiers.join('\n')}\n\n${body}` : body;
+}
+
+/**
  * A share snippet's footer, with the blank line before it: its last
  * paragraph. Core's share formatters end every snippet with ONE footer
  * paragraph (the attribution, the disclaimer with the hashtag, the run cue)
@@ -488,8 +502,8 @@ export async function toolGetStandings(
   // Tables are missing: what is shown is not the whole competition. Said
   // FIRST: a tool's text is cut at a fixed length from the end, and a verdict
   // at the tail would be the first thing a long answer lost. (The footer is
-  // kept by the cut: `toContent`.)
-  const notice = verdictNotice(result, args.lang);
+  // kept by the cut: `toContent`.) In parentheses, as it always was here.
+  const qualifiers = verdictQualifiers(result, args.lang);
   let text = shaped
     .map((tb) => {
       const block = standingsTable(tb, tb.standings);
@@ -504,7 +518,7 @@ export async function toolGetStandings(
   // Stated, not silent — the same rule the match lists follow.
   text += truncationNote(boundedTables);
   if (degraded) text += '\n\n(Live standings unavailable — showing the group roster.)';
-  if (notice) text = `(${notice})\n\n${text}`;
+  if (qualifiers.length > 0) text = `${qualifiers.map((q) => `(${q})`).join('\n')}\n\n${text}`;
   return {
     ...disclaimed(text, source, args.lang),
     data: {
@@ -538,6 +552,7 @@ export async function toolGetBracket(
     filter ? { stage: filter as Stage, lang: args.lang } : { lang: args.lang },
   );
   const { view, degraded, standingsDegraded, source } = bracket;
+  // A verdict that REPLACES the tree; one that qualifies it is said before it (below).
   const notice = verdictNotice(bracket, args.lang);
   if (notice) {
     // No World Cup topology off the bundle (A03). The marker is a declared
@@ -555,7 +570,7 @@ export async function toolGetBracket(
     text += `\n\n(${t(args.lang, 'bracket.standingsDegraded')})`;
   }
   return {
-    ...disclaimed(text, source, args.lang),
+    ...disclaimed(qualified(text, bracket, args.lang), source, args.lang),
     data: { degraded, standingsDegraded, source: source ?? null, view, ...verdictExtras(bracket) },
   };
 }
@@ -612,7 +627,8 @@ export async function toolGetNextFixture(
         ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${code}.`
         : `No upcoming fixture found for ${code}.`);
     return {
-      ...disclaimed(msg, undefined, args.lang),
+      // "None found" from a window that was not whole says so: it is not elimination.
+      ...disclaimed(qualified(msg, next, args.lang), undefined, args.lang),
       data: { team: code, fixture: null, degraded, source: source ?? null, ...verdictExtras(next) },
     };
   }
@@ -620,7 +636,7 @@ export async function toolGetNextFixture(
   return {
     // `source` in data mirrors the text's "Live data: …" attribution (parity
     // with CLI `next --json`); null for a static group fixture (no live source).
-    ...disclaimed(`Next up for ${code}:\n${matchLine(fixture, opts)}`, source, args.lang),
+    ...disclaimed(qualified(`Next up for ${code}:\n${matchLine(fixture, opts)}`, next, args.lang), source, args.lang),
     data: { team: code, fixture, degraded, source: source ?? null, ...verdictExtras(next) },
   };
 }
