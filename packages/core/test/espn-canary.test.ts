@@ -1243,5 +1243,11 @@ describe('the window across a season turn (0.11 2.1b): the canary asks it the wa
     expect(windowRow(past)?.verdict).toBe('changed');
     expect(windowRow(past)?.detail).toMatch(/2026, 2026, 2029/);
     // The same two-year step is a skipped edition for a yearly league (above).
+    // The Concacaf Nations League is biennial too (2026/27, then 2028/29, by
+    // Concacaf's published calendar), and so is the Gold Cup.
+    for (const biennial of ['concacaf.nations.league', 'concacaf.gold']) {
+      const r2 = await run(to(2028), [biennial]);
+      expect(windowRow(r2)?.verdict, biennial).toBe('ok');
+    }
   });
 });

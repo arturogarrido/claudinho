@@ -126,9 +126,11 @@ const RAW_TEAM_ID = /^[0-9]{1,20}$/;
  * How often each supported competition has an edition, in years; a season turn
  * steps up by at most that (at most, not exactly: the Copa America went 2021,
  * 2024, 2028). The World Cup, the Euro, the Copa America and the Club World
- * Cup are four-yearly, the Nations League and the Gold Cup two-yearly, every
- * other competition in `CANARY_COMPETITIONS` yearly. A yearly league stating a
- * season two years on has skipped an edition: a changed feed, not a turn.
+ * Cup are four-yearly; both Nations Leagues and the Gold Cup two-yearly (the
+ * Concacaf Nations League's next editions are 2026/27 and 2028/29, by
+ * Concacaf's published 2026 to 2030 calendar); every other competition in
+ * `CANARY_COMPETITIONS` yearly. A yearly league stating a season two years on
+ * has skipped an edition: a changed feed, not a turn.
  */
 const CADENCE_YEARS = Object.freeze({
   'fifa.world': 4,
@@ -136,6 +138,7 @@ const CADENCE_YEARS = Object.freeze({
   'conmebol.america': 4,
   'fifa.cwc': 4,
   'uefa.nations': 2,
+  'concacaf.nations.league': 2,
   'concacaf.gold': 2,
 });
 const cadenceOf = (competition) => CADENCE_YEARS[competition] ?? 1;
