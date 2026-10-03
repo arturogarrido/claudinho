@@ -18,7 +18,7 @@ import {
   asFlavorLevel,
   fixturesByDate,
   groups,
-  humanLabel,
+  isHumanLabel,
   isValidDate,
   TABLE_KEY_ARG,
 } from '@claudinho/core';
@@ -72,7 +72,7 @@ export const teamArg = z.string().regex(/^[A-Za-z]{3}$/, 'a 3-letter team code, 
 /**
  * A team as a reader names it: a code or a name ("ARS", "Arsenal", "O&M"),
  * bounded like a human label (1 to 40 characters, no control or invisible
- * character). The team-taking tools that resolve a club take it; the market
+ * character: core's `isHumanLabel`). The team-taking tools that resolve a club take it; the market
  * tool keeps `teamArg` (markets cover the World Cup's nations only).
  */
 export const clubArg = z
@@ -80,8 +80,10 @@ export const clubArg = z
   .min(1)
   .max(40)
   .refine(
-    (v) => !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Cs}\p{Co}]/u.test(v) && humanLabel(v, 40) !== '',
-    'a team name or code (1 to 40 characters, no control characters), e.g. Arsenal or ARS',
+    // Core's human-label grammar, asked as a question: a value it would have
+    // to repair (an invisible, control or emoji character) is refused.
+    (v) => isHumanLabel(v, 40),
+    'a team name or code (1 to 40 characters, no invisible or control characters), e.g. Arsenal or ARS',
   );
 export const flavorArg = z.enum(['off', 'subtle', 'full']);
 
@@ -158,11 +160,17 @@ const verdictOut = {
     .describe(
       "Present (true) when the competition's whole roster was read and holds no team by that name; never stated when the roster could not be read whole",
     ),
+  rosterIncomplete: z
+    .literal(true)
+    .optional()
+    .describe(
+      "Present (true) when the competition's roster could not be read whole and the name could not be resolved without it (no match, or only by a code or a partial name); not an outage: ask with the club's full name",
+    ),
   betweenEditions: z
     .object({ ended: z.string(), label: z.string().optional() })
     .optional()
     .describe(
-      'Present when the competition is between editions: the edition named by label ended on ended (ISO 8601), and nothing in the read is scheduled or in play',
+      "Present when the competition is between editions: the edition named by label ended on ended (the provider's calendar day, YYYY-MM-DD, the season end it states), and nothing in the read is scheduled or in play",
     ),
 };
 
@@ -748,7 +756,7 @@ export function buildServer(): McpServer {
     {
       title: 'Next fixture for a team',
       description:
-        "A team's next match. World Cup: a nation's code or name (MEX, Mexico); a confirmed knockout tie is read from the live overlay, group fixtures from the bundled schedule. A club competition: a club's name or code (Arsenal, ARS), resolved against the competition's roster; its earliest match not yet finished in the 14 days ahead (in play included), with team (the club resolved), candidates when several teams match (no fixture is picked), horizon when none falls in that span, unknownTeam when the whole roster holds no such team. partial means the provider sent records that could not be used: the answer is what was read, and no fixture then does not mean the team is out.",
+        "A team's next match. World Cup: a nation's code or name (MEX, Mexico); a confirmed knockout tie is read from the live overlay, group fixtures from the bundled schedule. A club competition: a club's name or code (Arsenal, ARS), resolved against the competition's roster; its earliest match not yet finished in the 14 days ahead (in play included), with team (the club resolved), candidates when several teams match (no fixture is picked), horizon when none falls in that span, unknownTeam when the whole roster holds no such team, rosterIncomplete when the roster could not be read whole and the name (a code or a partial name) could not be resolved without it: ask again with the club's full name. partial means the provider sent records that could not be used: the answer is what was read, and no fixture then does not mean the team is out.",
       inputSchema: { team: clubArg.describe('A team name or code: a club (Arsenal, ARS) or a nation (Mexico, MEX)'), ...commonArgs },
       // Read-only; overlays live provider data for knockout pairings, so open-world.
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -900,8 +908,9 @@ export function buildServer(): McpServer {
     'my_team',
     {
       title: 'My team',
-      description: "Focus on one team's next match, group situation, and the prediction-market read.",
-      argsSchema: { team: teamArg.describe('3-letter team code, e.g. MEX') },
+      description:
+        "Focus on one World Cup nation's next match, group situation, and the prediction-market read (market signals are read for the World Cup alone).",
+      argsSchema: { team: clubArg.describe("A World Cup nation's 3-letter code or name, e.g. MEX or Mexico") },
     },
     ({ team }) => ({
       messages: [
@@ -909,7 +918,7 @@ export function buildServer(): McpServer {
           role: 'user',
           content: {
             type: 'text',
-            text: `Using get_next_fixture, get_standings, and get_market_signal, tell me about ${team}'s next match in the 2026 tournament, their current group standing, and what prediction markets currently say about that match. Always state each fixture's date so a market read is never mistaken for a different match. Treat the market percentages as informational context only — relay them factually, never as betting or trading advice.`,
+            text: `Using get_next_fixture, get_standings, and get_market_signal, tell me about ${team}'s next World Cup match, their current group standing, and what prediction markets currently say about that match. ${team} is a nation's code or name: get_next_fixture takes either; get_market_signal takes the 3-letter code (get_team gives it for a name), and prediction-market signals are read for the World Cup alone. Always state each fixture's date so a market read is never mistaken for a different match. Treat the market percentages as informational context only — relay them factually, never as betting or trading advice.`,
           },
         },
       ],

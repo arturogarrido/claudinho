@@ -164,3 +164,16 @@ describe('review round 1 (coder): get_next_fixture on the World Cup resolves a n
     expect((r.data as { team?: unknown }).team).toBe('MEX');
   });
 });
+
+describe('review round 2 (coder): every card’s run cue names the competition off the bundle', () => {
+  it('the table, bracket, match and date cards too', async () => {
+    const table = await toolGetShareSnippet({ group: 'LEAGUE', now: NOW, adapter: feed('eng.1').adapter });
+    expect(table.text).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli table LEAGUE/);
+    const bracket = await toolGetShareSnippet({ bracket: true, now: NOW, adapter: feed('eng.1').adapter });
+    expect(bracket.text).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli bracket/);
+    const match = await toolGetShareSnippet({ matchId: '41', now: NOW, adapter: feed('eng.1').adapter });
+    expect(match.text).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli match 41/);
+    const day = await toolGetShareSnippet({ date: '2026-10-11', now: NOW, adapter: feed('eng.1').adapter });
+    expect(day.text).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli today/);
+  });
+});

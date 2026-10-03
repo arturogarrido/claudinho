@@ -68,9 +68,9 @@ describe('club surface coverage (MCP) — no World Cup leakage off the bundle', 
 
   it('get_next_fixture and get_match read this competition, never the World Cup; get_market_signal is not available here', async () => {
     const next = await toolGetNextFixture({ team: 'ARS', adapter, now: NOW });
-    expect(next.text).toContain("Couldn't reach the data provider");
+    expect(next.text).toContain('roster could not be read whole');
     expect(next.text).not.toContain(NOTICE);
-    expect(next.data).toMatchObject({ fixture: null, degraded: true });
+    expect(next.data).toMatchObject({ fixture: null, degraded: false, rosterIncomplete: true });
     const match = await toolGetMatch({ id: '760415', adapter, now: NOW });
     expect(match.text).toContain('may be incomplete');
     expect(match.text).not.toContain(NOTICE);
@@ -94,7 +94,7 @@ describe('club surface coverage (MCP) — no World Cup leakage off the bundle', 
 
   it('get_share_snippet for next, bracket and a World Cup id never pastes the skeleton', async () => {
     const said = [
-      [{ team: 'ARS' }, "Couldn't reach the data provider"],
+      [{ team: 'ARS' }, 'roster could not be read whole'],
       [{ bracket: true }, 'This competition has no bracket.'],
       [{ matchId: '760415' }, 'may be incomplete'],
     ] as const;

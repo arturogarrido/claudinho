@@ -985,7 +985,8 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       ? Promise.resolve({ signals: new Map(), complete: true })
       : reliableSignalMap(args, ms);
 
-  const where = { tz: args.tz, locale: args.lang };
+  // The competition goes on the card: off the bundle its run cue names it.
+  const where = { tz: args.tz, locale: args.lang, competition: competitionOf(args) };
 
   // live: matches in play right now (no market enrichment, matching the CLI).
   if (args.live) {
@@ -1010,7 +1011,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     // Capped like the structured payload beside it. Bounding `data.tables`
     // while the rendered SNIPPET came from the full list meant the surface a
     // reader actually sees was the unbounded one.
-    const card = tableShareCard(standings, group, boundedRecords(standings.tables).items, args.lang);
+    const card = tableShareCard(standings, group, boundedRecords(standings.tables).items, args.lang, competitionOf(args));
     const snippet = formatShareTable(card.input, options);
     return {
       text: snippet,
@@ -1050,7 +1051,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         ? { stage: stageFilter as Stage, lang: args.lang }
         : { lang: args.lang },
     );
-    const card = bracketShareCard(bracket, stageFilter, args.lang);
+    const card = bracketShareCard(bracket, stageFilter, args.lang, competitionOf(args));
     const snippet = formatShareBracket(card.input, { ...options, locale: args.lang, tz: args.tz });
     return {
       text: snippet,
