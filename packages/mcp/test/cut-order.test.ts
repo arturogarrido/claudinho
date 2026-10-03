@@ -229,10 +229,10 @@ describe('the live and date cards: the list’s cap is a note after the verdict,
     const title = r.text.split('\n')[0] ?? '';
     expect(title).not.toContain('showing');
     precedes(r.text, 'may be incomplete', 'list truncated');
-    precedes(r.text, 'list truncated', ' — LIVE ');
+    precedes(r.text, 'list truncated', '0–0');
     const whole = await toolGetShareSnippet({ live: true, now: new Date('2026-06-11T23:30:00Z'), adapter: feed({ events: inPlay }) } as never);
     expect(whole.text.split('\n')[0] ?? '').not.toContain('showing');
-    precedes(whole.text, 'list truncated', ' — LIVE ');
+    precedes(whole.text, 'list truncated', '0–0');
   });
 
   it('the date card: title, the verdict, the cap, the rows', async () => {
