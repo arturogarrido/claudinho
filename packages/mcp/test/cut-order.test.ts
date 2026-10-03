@@ -49,7 +49,7 @@ const at = (text: string, needle: string | RegExp): number => {
   expect(i, `${String(needle)} in:\n${text.slice(0, 600)}`).toBeGreaterThanOrEqual(0);
   return i;
 };
-const before = (text: string, a: string | RegExp, b: string | RegExp) => expect(at(text, a)).toBeLessThan(at(text, b));
+const precedes = (text: string, a: string | RegExp, b: string | RegExp) => expect(at(text, a)).toBeLessThan(at(text, b));
 /** Forty-one served rows of 400-code-point names: past the record bound, and past the text cut. */
 const LONG = Array.from({ length: 50 }, () => 'b́́́́́́́').join('');
 const many = (state: Ev['state'] = 'pre'): Ev[] => Array.from({ length: 41 }, (_, i) => ({ id: String(9_000_000 + i), date: '2026-06-11T23:00Z', home: { id: String(100 + i), abbr: 'LNG', name: LONG }, away: { id: String(200 + i), abbr: 'LNA', name: LONG }, state }));
@@ -58,17 +58,17 @@ const cutText = (r: Parameters<typeof toContent>[0]) => toContent(r).content[0]?
 describe('get_today: every qualifying sentence before the rows (D7)', () => {
   it('the degraded line (the bundled schedule)', async () => {
     const r = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: feed({ fail: true }) });
-    before(r.text, 'showing the bundled schedule', 'Mexico');
+    precedes(r.text, 'showing the bundled schedule', 'Mexico');
   });
 
   it('the market-incomplete notice', async () => {
     const r = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: feed({ events: [OPENER] }), marketProvider: markets(false), now: NOW } as never);
-    before(r.text, 'Market data unavailable or incomplete', 'Mexico');
+    precedes(r.text, 'Market data unavailable or incomplete', 'Mexico');
   });
 
   it('the list-truncation line, which survives a cut that drops the rows', async () => {
     const r = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: feed({ events: [OPENER, ...many()] }) });
-    before(r.text, 'list truncated', 'Mexico');
+    precedes(r.text, 'list truncated', 'Mexico');
     const cut = cutText(r);
     expect(cut).toContain('(truncated)');
     expect(cut).toContain('list truncated');
@@ -78,14 +78,14 @@ describe('get_today: every qualifying sentence before the rows (D7)', () => {
   it('the verdict first, the unserved count next, then the rest, in that order', async () => {
     const r = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: feed({ events: [{ ...OPENER, state: 'in' }, { id: '760414', date: '2026-06-11T22:00Z', home: MEX, away: RSA, state: 'in' }] }), marketProvider: markets(false), now: NOW } as never);
     // No verdict here (a whole read): the market notice precedes the rows.
-    before(r.text, 'Market data unavailable', 'Mexico');
+    precedes(r.text, 'Market data unavailable', 'Mexico');
   });
 });
 
 describe('get_live: the list-truncation line before the rows, surviving a cut (D7)', () => {
   it('41 in play', async () => {
     const r = await toolGetLive({ adapter: feed({ events: many('in') }), now: new Date('2026-06-11T23:30:00Z') } as never);
-    before(r.text, 'list truncated', ' — LIVE ');
+    precedes(r.text, 'list truncated', ' — LIVE ');
     const cut = cutText(r);
     expect(cut).toContain('(truncated)');
     expect(cut).toContain('list truncated');
@@ -95,12 +95,12 @@ describe('get_live: the list-truncation line before the rows, surviving a cut (D
 describe('get_match: the degraded line and the market notice before the match (D7)', () => {
   it('the scheduled fixture shown while the live state is unavailable', async () => {
     const r = await toolGetMatch({ id: '760415', adapter: feed({ fail: true }) });
-    before(r.text, 'Live state unavailable', 'Mexico');
+    precedes(r.text, 'Live state unavailable', 'Mexico');
   });
 
   it('the market-incomplete notice', async () => {
     const r = await toolGetMatch({ id: '760415', adapter: feed({ events: [OPENER] }), marketProvider: markets(false), now: NOW } as never);
-    before(r.text, 'Market data unavailable or incomplete', 'Mexico');
+    precedes(r.text, 'Market data unavailable or incomplete', 'Mexico');
   });
 });
 
@@ -116,13 +116,13 @@ describe('get_bracket: its two notes before the tree (D7)', () => {
   it('the window failed: structure only', async () => {
     const adapter: ProviderAdapter = { ...base, fetchWindow: async () => { throw new Error('503'); } };
     const r = await toolGetBracket({ stage: 'R32', now: KO, adapter });
-    before(r.text, 'bracket structure only', /Round of 32|R32/);
+    precedes(r.text, 'bracket structure only', /Round of 32|R32/);
   });
 
   it('the standings failed: group slots TBD', async () => {
     const adapter: ProviderAdapter = { ...base, fetchWindow: async () => [tie()], fetchStandings: async () => { throw new Error('503'); } };
     const r = await toolGetBracket({ stage: 'R32', now: KO, adapter });
-    before(r.text, 'Live standings unavailable', 'Mexico');
+    precedes(r.text, 'Live standings unavailable', 'Mexico');
   });
 });
 
@@ -137,13 +137,13 @@ describe('get_market_signal (date): the incomplete notice before the signals (D7
       findSignals: async (...a: Parameters<MarketProvider['findSignals']>) => ({ ...(await fake.findSignals(...a)), complete: false }),
     } as unknown as MarketProvider;
     const r = await toolGetMarketSignal({ date: '2026-06-11', tz: 'UTC', adapter: feed({ events: [OPENER] }), marketProvider: partial, now: at12 } as never);
-    before(r.text, 'unavailable or incomplete', 'Mexico');
+    precedes(r.text, 'unavailable or incomplete', 'Mexico');
   });
 });
 
 describe('get_standings: the roster note before the tables (D7)', () => {
   it('a degraded roster', async () => {
     const r = await toolGetStandings({ adapter: feed({ standingsFail: true }) } as never);
-    before(r.text, 'Live standings unavailable', /Group A/);
+    precedes(r.text, 'Live standings unavailable', /Group A/);
   });
 });

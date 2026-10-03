@@ -31,7 +31,7 @@ const at = (text: string, needle: string | RegExp): number => {
   expect(i, `${String(needle)} in:\n${text}`).toBeGreaterThanOrEqual(0);
   return i;
 };
-const before = (text: string, a: string | RegExp, b: string | RegExp) => expect(at(text, a)).toBeLessThan(at(text, b));
+const precedes = (text: string, a: string | RegExp, b: string | RegExp) => expect(at(text, a)).toBeLessThan(at(text, b));
 
 describe('a date or live card: its qualifying notes come before the rows (D7)', () => {
   const base = { title: 'Matches · Jun 11', matches: [match], tz: 'UTC', locale: 'en' };
@@ -40,24 +40,24 @@ describe('a date or live card: its qualifying notes come before the rows (D7)', 
     for (const style of ['social', 'compact'] as const) {
       const out = formatShareSnippet({ ...base, degraded: true }, { style });
       // A compact row prints the code, a social one the name.
-      before(out, 'Live data unavailable', style === 'compact' ? 'MEX' : 'Mexico');
+      precedes(out, 'Live data unavailable', style === 'compact' ? 'MEX' : 'Mexico');
     }
   });
 
   it('a caller-given degraded note (the earlier record)', () => {
     const out = formatShareSnippet({ ...base, degraded: true, degradedNote: '(Showing the earlier record.)' });
-    before(out, 'earlier record', 'Mexico');
+    precedes(out, 'earlier record', 'Mexico');
   });
 
   it('the market-incomplete note', () => {
     const out = formatShareSnippet({ ...base, degraded: false, marketComplete: false });
-    before(out, 'Market data unavailable or incomplete', 'Mexico');
+    precedes(out, 'Market data unavailable or incomplete', 'Mexico');
   });
 
   it('after the verdict note, which stays first', () => {
     const out = formatShareSnippet({ ...base, degraded: true, note: 'Fixture data may be incomplete.' });
-    before(out, 'may be incomplete', 'Live data unavailable');
-    before(out, 'Live data unavailable', 'Mexico');
+    precedes(out, 'may be incomplete', 'Live data unavailable');
+    precedes(out, 'Live data unavailable', 'Mexico');
   });
 });
 
@@ -69,12 +69,12 @@ describe('a table card: the roster note, the inventory note and each partial lin
 
   it('the roster note, degraded', () => {
     const out = formatShareTable({ tables: [{ group: 'A', rows }], degraded: true });
-    before(out, 'Live standings unavailable', 'MEX');
+    precedes(out, 'Live standings unavailable', 'MEX');
   });
 
   it('the inventory note (tables missing)', () => {
     const out = formatShareTable({ tables: [{ group: 'A', rows }], source: 'espn', incompleteNote: 'Some tables could not be read' });
-    before(out, 'Some tables could not be read', 'MEX');
+    precedes(out, 'Some tables could not be read', 'MEX');
   });
 
   it('a partial line before ITS table, between two tables', () => {
@@ -86,9 +86,9 @@ describe('a table card: the roster note, the inventory note and each partial lin
       source: 'espn',
     });
     // Group A's rows, then group B's title, its partial line, then its rows.
-    before(out, 'MEX', 'Group B');
-    before(out, 'Group B', 'partial table');
-    before(out, 'partial table', 'ARG');
+    precedes(out, 'MEX', 'Group B');
+    precedes(out, 'Group B', 'partial table');
+    precedes(out, 'partial table', 'ARG');
   });
 });
 
@@ -108,19 +108,19 @@ describe('a bracket card: its two notes come before the tree, in both styles (D7
   for (const style of ['social', 'compact'] as const) {
     it(`degraded, ${style}`, () => {
       const out = formatShareBracket({ view: { stages, degraded: true, standingsDegraded: false } }, { style, locale: 'en', tz: 'UTC' });
-      before(out, /structure only|unavailable/i, 'Czechia');
+      precedes(out, /structure only|unavailable/i, 'Czechia');
     });
     it(`standings degraded, ${style}`, () => {
       const out = formatShareBracket({ view: { stages, degraded: false, standingsDegraded: true } }, { style, locale: 'en', tz: 'UTC' });
-      before(out, /standings/i, 'Czechia');
+      precedes(out, /standings/i, 'Czechia');
     });
     it(`both, after the verdict note, ${style}`, () => {
       const out = formatShareBracket(
         { view: { stages, degraded: true, standingsDegraded: true }, note: 'Fixture data may be incomplete.' },
         { style, locale: 'en', tz: 'UTC' },
       );
-      before(out, 'may be incomplete', /structure only|unavailable/i);
-      before(out, /structure only|unavailable/i, 'Czechia');
+      precedes(out, 'may be incomplete', /structure only|unavailable/i);
+      precedes(out, /structure only|unavailable/i, 'Czechia');
     });
   }
 });
