@@ -10,7 +10,7 @@ import { buildServer } from '../src/server';
 const read = (rel: string) =>
   JSON.parse(readFileSync(new URL(rel, import.meta.url), 'utf8')) as {
     version: string;
-    tools?: { name: string }[];
+    tools?: { name: string; description?: string }[];
     privacy_policies?: unknown;
   };
 

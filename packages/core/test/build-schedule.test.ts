@@ -66,6 +66,24 @@ function run(account: (start: string, end: string) => Account) {
   );
 }
 const whole = () => ({ complete: true });
+/** Runs the generator on a whole feed whose MERGED fixtures are rewritten by `edit` (applied to the first window's list). */
+async function buildWith(edit: (all: Match[]) => Match[]) {
+  const { adapter } = feed(whole);
+  const inner = adapter.fetchWindow;
+  if (!inner) throw new Error('the fake has a window');
+  const edited = edit(allFixtures());
+  adapter.fetchWindow = async (start: string, end: string) => {
+    await inner(start, end);
+    const inWindow = edited.filter((m) => dayOf(m.kickoff) >= start && dayOf(m.kickoff) <= end);
+    return attachFetchMeta(inWindow, { complete: true, season: SEASON });
+  };
+  const written: Array<{ path: string }> = [];
+  const said: string[] = [];
+  return buildSchedule({ adapter, write: (path: string) => void written.push({ path }), log: () => undefined, error: (line: string) => void said.push(line) }).then(
+    () => ({ ok: true as const, written, message: '', said }),
+    (err: unknown) => ({ ok: false as const, written, message: String((err as Error).message ?? err), said }),
+  );
+}
 
 describe('gen:schedule fails loud (0.11 2.1d)', () => {
   it('a whole feed of the right shape writes both files', async () => {
@@ -135,6 +153,21 @@ describe('gen:schedule fails loud (0.11 2.1d)', () => {
     expect(r.message).toMatch(/20260618-20260624/);
     expect(r.message).toContain(stray.id);
     expect(asked.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('the shape checks each refuse what only they can see: an extra fixture under an unexpected stage (the total), a group fixture filed under another stage (the stage counts)', async () => {
+    // Found in review: both checks existed and neither had a feed that only it refuses.
+    const extra = { ...allFixtures()[0], id: '7999999', stage: 'FRIENDLY' } as unknown as Match;
+    const total = await buildWith((matches) => [...matches, extra]);
+    expect(total.ok).toBe(false);
+    expect(total.written).toEqual([]);
+    expect(total.said.join('\n')).toMatch(/expected \d+ fixtures, got 105/);
+    const first = allFixtures().find((m) => m.stage === 'GROUP');
+    if (!first) throw new Error('the bundle has a group fixture');
+    const shifted = await buildWith((matches) => matches.map((m) => (m.id === first.id ? ({ ...m, stage: 'FRIENDLY' } as unknown as Match) : m)));
+    expect(shifted.ok).toBe(false);
+    expect(shifted.written).toEqual([]);
+    expect(shifted.said.join('\n')).toMatch(/stage GROUP: expected \d+, got \d+/);
   });
 
   it('the expected numbers are named facts and the canonical knockout counts: the literals 104 and 12 are in no check', () => {

@@ -138,7 +138,17 @@ describe('today (0.11 2.1d)', () => {
     expect(count(t, 'may be incomplete')).toBe(1);
     writes = [];
     await cmdToday('2026-06-11', ctxFor(adapter, { json: true }));
-    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, source: 'espn' });
+    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, source: 'espn', served: ['760414'] });
+    // The date card on a MIXED day: the count sentence beside the partial one (the only thing on the card that
+    // qualifies its provider line), and the ids the overlay held in its structured form.
+    writes = [];
+    await cmdShare('2026-06-11', undefined, {}, ctxFor(adapter));
+    expect(text()).toContain(SENTENCE);
+    expect(text()).toMatch(/1 fixture .*bundled schedule/);
+    expect(text()).toContain('Live data');
+    writes = [];
+    await cmdShare('2026-06-11', undefined, {}, ctxFor(adapter, { json: true }));
+    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, source: 'espn', served: ['760414'] });
   });
 
   it('on the bundle, the day’s only record refused (an adjacent day readable): the day is the bundle’s, no "Live data" line, --json keeps the provider', async () => {
@@ -158,7 +168,7 @@ describe('today (0.11 2.1d)', () => {
     expect(text()).not.toContain('Live data');
     writes = [];
     await cmdShare('2026-06-11', undefined, {}, ctxFor(adapter, { json: true }));
-    expect(parsed()).toMatchObject({ partial: { omitted: 1 } });
+    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, served: ['760414'] });
     expect(parsed().source).toBeNull();
   });
 
@@ -227,6 +237,29 @@ describe('today (0.11 2.1d)', () => {
 });
 
 describe('the bundled match and the markets (0.11 2.1d)', () => {
+  it('match <id> whose OWN record was refused: the bundle’s row, the partial sentence, and the row named as the bundle’s (as `today` names it), no provider; the share card the same', async () => {
+    // Found in review: `today` said "1 fixture shown from the bundled schedule; its live state is unconfirmed"
+    // for the same row that `match` showed with only the partial sentence.
+    const adapter = feed('fifa.world', { events: [{ ...OPENER, raw: REFUSED }, { ...KOR_CZE, state: 'in' }] });
+    await cmdMatch('760415', ctxFor(adapter));
+    expect(text()).toContain('Mexico');
+    expect(text()).toContain(SENTENCE);
+    expect(text()).toMatch(/1 fixture .*bundled schedule/);
+    expect(text()).not.toContain('Live data');
+    writes = [];
+    await cmdMatch('760415', ctxFor(adapter, { json: true }));
+    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, served: ['760414'] });
+    writes = [];
+    await cmdShare('760415', undefined, {}, ctxFor(adapter));
+    expect(text()).toContain(SENTENCE);
+    expect(text()).toMatch(/1 fixture .*bundled schedule/);
+    // A served match carries no such sentence.
+    writes = [];
+    await cmdMatch('760414', ctxFor(adapter));
+    expect(text()).not.toMatch(/bundled schedule/);
+    expect(text()).toContain('Live data');
+  });
+
   it('match <id> with a refused sibling: exactly one sentence beside the match, the key; attribution unchanged', async () => {
     const adapter = feed('fifa.world', { events: [{ ...OPENER, state: 'in' }, { ...KOR_CZE, raw: REFUSED }] });
     await cmdMatch('760415', ctxFor(adapter));
@@ -254,6 +287,16 @@ describe('the bundled match and the markets (0.11 2.1d)', () => {
     writes = [];
     await cmdMarkets('next', 'MEX', ctxFor(adapter, { markets: true, json: true }, new Date('2026-06-11T12:00:00Z')));
     expect(parsed()).toMatchObject({ partial: { omitted: 1 } });
+  });
+
+  it('the market empty-body sentence is market copy: English on every locale, from the copy bank', async () => {
+    // Found in review: market-facing copy is English-only in v1 (the approved copy bank), and this sentence had
+    // gone into the localized catalog, so `markets <date> --lang es` changed language with the read's wholeness.
+    const adapter = feed('fifa.world', { events: [{ ...OPENER, raw: REFUSED }, { ...KOR_CZE, state: 'post' }] });
+    const at = new Date('2026-06-11T21:30:00Z');
+    await cmdMarkets('2026-06-11', undefined, ctxFor(adapter, { markets: true, lang: 'es' }, at));
+    expect(text()).toMatch(/No market signal among the fixtures read for 2026-06-11\./);
+    expect(text()).not.toMatch(/señal/);
   });
 
   it('markets <date> on a partial fixture read with nothing relevant: the empty body says no signal among the fixtures READ, never none for the date', async () => {

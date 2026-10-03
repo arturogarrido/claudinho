@@ -169,14 +169,16 @@ describe('the bundled match read states its verdict; attribution unchanged (0.11
     expect(r.partial).toEqual({ omitted: 1 });
   });
 
-  it('the match itself refused: the bundle’s row, no attribution, partial', async () => {
+  it('the match itself refused: the bundle’s row, no attribution, partial; the read says what it served', async () => {
     const f = feed('fifa.world', { events: [{ ...OPENER, raw: REFUSED }, { ...KOR_CZE }] });
     const r = await getMatchById(f.adapter, '760415');
     expect(r.match?.id).toBe('760415');
     expect(r.source).toBeUndefined();
     expect(r.degraded).toBe(false);
     expect(r.partial).toEqual({ omitted: 1 });
+    expect(r.served).toEqual(['760414']); // the ids the window held: the surfaces name the shown row as the bundle's
   });
+
 });
 
 describe('the market fixture read keeps both accounts (0.11 2.1d)', () => {
@@ -190,7 +192,9 @@ describe('the market fixture read keeps both accounts (0.11 2.1d)', () => {
     const f = feed('fifa.world', { events: [FINAL, broken('760516', '2026-07-18T19:00Z')] });
     const r = await marketFixtureForTeam(f.adapter, 'ESP', KO_NOW);
     expect(r.match?.id).toBe('760517');
-    expect(r.partial).toEqual({ omitted: 2 }); // the month's refused record, and the day refresh's (the same record on Jul 18)
+    // The day refresh's window lies inside the knockout window's: a record refused by both is ONE record, so the
+    // answer carries the larger of the two counts, never their sum (a review found the sum read as two lost).
+    expect(r.partial).toEqual({ omitted: 1 });
   });
 
   it('whole reads: no key; a refused record only in the candidate’s day: partial', async () => {
@@ -203,5 +207,14 @@ describe('the market fixture read keeps both accounts (0.11 2.1d)', () => {
     const r = await marketFixtureForTeam(f.adapter, 'ESP', KO_NOW);
     expect(r.match?.id).toBe('760517');
     expect(r.partial).toEqual({ omitted: 1 });
+  });
+
+  it('two reads with different counts: the larger one; a whole first read and a partial refresh: the refresh’s', async () => {
+    const f = feed('fifa.world', {
+      events: [FINAL, broken('760516', '2026-07-18T19:00Z')],
+      fail: (d) => (d === '20260719' ? json({ leagues: [{ season: WC_SEASON }], events: [event(FINAL), event(broken('760598', '2026-07-19T15:00Z')), event(broken('760599', '2026-07-19T16:00Z'))] }) : undefined),
+    });
+    const r = await marketFixtureForTeam(f.adapter, 'ESP', KO_NOW);
+    expect(r.partial).toEqual({ omitted: 3 }); // the month saw one; the refresh (Jul 18 to 20) saw that one and two more: the larger
   });
 });
