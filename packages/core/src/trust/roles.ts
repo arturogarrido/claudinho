@@ -94,6 +94,26 @@ export function humanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): stri
 }
 
 /**
+ * Is this value ALREADY a human label, as a reader typed it: the role leaves
+ * it as it is (up to NFC and surrounding spaces). A value the role would have
+ * to change, by dropping an invisible or control character, an emoji, or a
+ * tail past the column bound, is not one. For INPUT that must be refused
+ * rather than repaired (a tool argument): the same grammar `humanLabel`
+ * applies, asked as a question.
+ */
+export function isHumanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): boolean {
+  if (typeof value !== 'string' || value === '') return false;
+  let nfc: string;
+  try {
+    nfc = value.normalize('NFC');
+  } catch {
+    return false;
+  }
+  const label = humanLabel(value, maxColumns);
+  return label !== '' && label === nfc.trim();
+}
+
+/**
  * A label has to be SEEN to be a label.
  *
  * Combining marks with no base survive every other rule — they are not controls,

@@ -20,14 +20,17 @@
  * says which, because a surface that treated every sentence the same either
  * hid a readable answer or lost the sentence beside a populated one:
  *   - it REPLACES the body ({@link verdictNotice}). The one sentence stands
- *     instead of the answer, which does not exist. Four of them, and when a
+ *     instead of the answer, which does not exist. Five of them, and when a
  *     result states more than one, the first in this order is said:
- *       `unsupported`     the feature is not offered for this competition yet;
- *       `inapplicable`    the competition has no such thing (no bracket);
- *       `unknownTeam`     the competition's whole roster was read and holds
- *                         no team by that name (`query` names it);
- *       `betweenEditions` the read's edition ended before the day asked, and
- *                         nothing in it is scheduled or in play.
+ *       `unsupported`      the feature is not offered for this competition yet;
+ *       `inapplicable`     the competition has no such thing (no bracket);
+ *       `unknownTeam`      the competition's whole roster was read and holds
+ *                          no team by that name (`query` names it);
+ *       `rosterIncomplete` the roster could not be read whole, and the name
+ *                          was not one that could be answered without it
+ *                          (`query` names it); not an outage;
+ *       `betweenEditions`  the read's edition ended before the day asked, and
+ *                          nothing in it is scheduled or in play.
  *   - it QUALIFIES the body ({@link verdictQualifiers}: `incomplete`,
  *     `partial`). The answer holds what could be read and is printed; the
  *     sentences go beside it, on a populated body and an empty one alike.
@@ -44,7 +47,11 @@ import { t } from './i18n';
 
 /** The edition a read's season says has ended (see `betweenEditions`). */
 export interface BetweenEditions {
-  /** The season's end, ISO 8601 UTC, as the provider stated it. */
+  /**
+   * The provider's calendar day (`YYYY-MM-DD`) of the season's STATED end:
+   * the day the rule decides on, printed as it is. An administrative date the
+   * provider states for its season, not the day of the last match.
+   */
   readonly ended: string;
   /** The season's label (e.g. "2026 Concacaf Champions Cup"); absent when the provider gave none. */
   readonly label?: string;
@@ -67,8 +74,15 @@ export interface VerdictSource {
    */
   readonly unknownTeam?: boolean;
   /**
-   * The name a team-scoped verdict names (`unknownTeam`): the query as the
-   * reader typed it, bounded as a label. Not a verdict.
+   * The competition's roster was asked for and could not be read whole (a
+   * table missing or partial, a row with no id, no answer), and the name could
+   * not be answered without it: no club matched, or only by a code or a fuzzy
+   * name the unread rest may share. Not "no such team", and not an outage.
+   */
+  readonly rosterIncomplete?: boolean;
+  /**
+   * The name a team-scoped verdict names (`unknownTeam`, `rosterIncomplete`):
+   * the query as the reader typed it, bounded as a label. Not a verdict.
    */
   readonly query?: string;
   /**
@@ -99,6 +113,7 @@ export interface VerdictExtras {
   unsupported?: true;
   inapplicable?: true;
   unknownTeam?: true;
+  rosterIncomplete?: true;
   betweenEditions?: { ended: string; label?: string };
   incomplete?: true;
   /** `omitted` present only when the count is known (a positive integer). */
@@ -106,9 +121,10 @@ export interface VerdictExtras {
 }
 
 /**
- * The `betweenEditions` a result states: an object with an `ended` that reads
- * as a timestamp (its `YYYY-MM-DD` is what the sentence prints), and a label
- * only when it is a non-empty string. Anything else states nothing.
+ * The `betweenEditions` a result states: an object with an `ended` that is a
+ * calendar day (`YYYY-MM-DD`, the provider's end day) or a timestamp (whose
+ * date is taken), and a label only when it is a non-empty string. The
+ * sentence prints its `YYYY-MM-DD` as it is. Anything else states nothing.
  */
 function statedEdition(result: VerdictSource): { ended: string; label?: string } | undefined {
   const b = result.betweenEditions;
@@ -156,6 +172,7 @@ export function verdictExtras(result: VerdictSource): VerdictExtras {
   if (result.unsupported === true) out.unsupported = true;
   if (result.inapplicable === true) out.inapplicable = true;
   if (result.unknownTeam === true) out.unknownTeam = true;
+  if (result.rosterIncomplete === true) out.rosterIncomplete = true;
   const between = statedEdition(result);
   if (between) out.betweenEditions = between;
   if (result.incomplete === true) out.incomplete = true;
@@ -180,6 +197,10 @@ export function verdictNotice(result: VerdictSource, lang?: string): string | un
     // The name as asked; a result that does not say it still gets a sentence.
     const team = typeof result.query === 'string' ? result.query : '';
     return t(lang, 'team.unknown', { team }).replace(/\s{2,}/g, ' ');
+  }
+  if (result.rosterIncomplete === true) {
+    const team = typeof result.query === 'string' ? result.query : '';
+    return t(lang, 'roster.incomplete', { team }).replace(/\s{2,}/g, ' ');
   }
   const between = statedEdition(result);
   if (between) {

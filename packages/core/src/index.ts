@@ -232,6 +232,7 @@ export {
   emptyBatch,
   isCacheable,
   humanLabel,
+  isHumanLabel,
   malformed,
   parsedValue,
   parseCachedMarketSignal,

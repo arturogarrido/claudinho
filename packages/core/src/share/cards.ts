@@ -33,6 +33,7 @@ import { EARLIER_RECORD_NOTE, type LiveResult, type MatchByIdResult, type NextFi
 import type { MarketSignal } from '../markets/types';
 import { type GroupStandings, type TableData, tableData } from '../standings';
 import { formatDate } from '../time';
+import { bundleApplies } from '../competition';
 import { isTeam } from '../trust/match';
 import type { Match, Team } from '../types';
 import { type VerdictExtras, type VerdictSource, verdictExtras, verdictNotice, verdictQualifiers } from '../verdict';
@@ -112,6 +113,23 @@ function cueArg(arg: string): string {
 export interface ShareCardContext {
   tz?: string;
   locale?: string;
+  /**
+   * The competition the card is about. Off the bundled competition the run cue
+   * names it (`CLAUDINHO_COMPETITION=eng.1 npx @claudinho/cli next Arsenal`):
+   * a recipient without that setting would otherwise be sent to the World Cup.
+   */
+  competition?: string;
+}
+
+/**
+ * A card's run cue: `npx @claudinho/cli <args>`, prefixed off the bundled
+ * competition with the setting that selects it, so the cue a card pastes
+ * asks what the card answered. On the bundle (or when no competition is
+ * given) it is what it always was.
+ */
+function runCue(competition: string | undefined, args: string): string {
+  const prefix = competition && !bundleApplies(competition) ? `CLAUDINHO_COMPETITION=${cueArg(competition)} ` : '';
+  return `${prefix}npx @claudinho/cli ${args}`;
 }
 
 /** Display-ready market signals for a card, and whether every fixture was checked. */
@@ -172,7 +190,7 @@ export function liveShareCard(
         (result.degraded
           ? "Live scores unavailable right now — couldn't reach the data provider."
           : 'No matches in play right now.'),
-      installLine: 'npx @claudinho/cli live',
+      installLine: runCue(ctx.competition, 'live'),
       tz: ctx.tz,
       locale: ctx.locale,
     },
@@ -228,7 +246,7 @@ export function nextShareCard(
       // The window was not whole: said beside the fixture, or beside "none
       // found" (which is then not "eliminated").
       ...qualifierNote(result, ctx.locale),
-      installLine: `npx @claudinho/cli next ${cueArg(code)}`,
+      installLine: runCue(ctx.competition, `next ${cueArg(code)}`),
       tz: ctx.tz,
       locale: ctx.locale,
     },
@@ -268,7 +286,7 @@ export function matchShareCard(
           : `No match found with id ${id}.`),
       // The read was not whole: said beside the record, or beside the empty card.
       ...qualifierNote(result, ctx.locale),
-      installLine: `npx @claudinho/cli match ${cueArg(id)}`,
+      installLine: runCue(ctx.competition, `match ${cueArg(id)}`),
       tz: ctx.tz,
       locale: ctx.locale,
     },
@@ -324,7 +342,7 @@ export function dateShareCard(
         (day.degraded && !day.scheduleKnown
           ? `Couldn't reach the data provider — no fixtures confirmed for ${human}.`
           : `No matches scheduled for ${human}.`),
-      installLine: 'npx @claudinho/cli today',
+      installLine: runCue(ctx.competition, 'today'),
       tz: ctx.tz,
       locale: ctx.locale,
     },
@@ -353,6 +371,8 @@ export function tableShareCard(
   tables: readonly GroupStandings[] = result.tables,
   /** The reader's language, for the one localized sentence a card prints: a verdict's. */
   lang?: string,
+  /** The competition the card is about: off the bundle the run cue names it (see `ShareCardContext`). */
+  competition?: string,
 ): TableShareCard {
   // Degraded ⇒ no live provider: no attribution. An open-scope outage has no
   // compatible bundled roster, so the empty card names the outage.
@@ -370,7 +390,7 @@ export function tableShareCard(
     input: {
       tables,
       source,
-      installLine: group ? `npx @claudinho/cli table ${group}` : 'npx @claudinho/cli table',
+      installLine: runCue(competition, group ? `table ${group}` : 'table'),
       emptyNote: result.degraded
         ? 'Live standings unavailable.'
         : group
@@ -395,6 +415,8 @@ export function bracketShareCard(
   result: BracketResult,
   stage: string | undefined,
   lang: string | undefined,
+  /** The competition the card is about: off the bundle the run cue names it (see `ShareCardContext`). */
+  competition?: string,
 ): BracketShareCard {
   const source = result.degraded ? undefined : result.source;
   return {
@@ -404,7 +426,7 @@ export function bracketShareCard(
     input: {
       view: result.view,
       source,
-      installLine: stage ? `npx @claudinho/cli bracket ${stage}` : 'npx @claudinho/cli bracket',
+      installLine: runCue(competition, stage ? `bracket ${stage}` : 'bracket'),
       emptyNote: verdictNotice(result, lang) ?? t(lang, 'bracket.empty'),
       // The knockout window was not whole: said beside the ties that were read.
       ...qualifierNote(result, lang),

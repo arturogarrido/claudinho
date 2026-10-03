@@ -153,7 +153,12 @@ function providerDayOf(adapter: ProviderAdapter, instant: Date): string {
  *   (b) its season states an end date, which a composed season keeps only
  *       when every stating response stated the same one (`agreedSeason`);
  *   (c) the provider's day of that end date is STRICTLY before the day asked
- *       (the end day itself is still the edition's);
+ *       (the end day itself is still the edition's). That day is what is
+ *       stated (`ended`). It is the provider's STATED season end, an
+ *       administrative date, not the last match: on the real feed the World
+ *       Cup's slug states Dec 31 and league seasons follow each other, so the
+ *       sentence is said where the provider says a season ended and no next
+ *       one has started;
  *   (d) the surface has nothing to present. Nothing in the whole read, before
  *       the surface's own filter, is scheduled or in play (a fixture of ANY
  *       club still to be played means the competition is not between
@@ -179,11 +184,13 @@ function betweenEditionsOf(
   if (bundleApplies(adapter.competition)) return undefined;
   if (onDate.length > 0) return undefined;
   if (read?.complete !== true) return undefined;
-  const ended = read.season?.endDate;
+  const endDate = read.season?.endDate;
+  if (!endDate) return undefined;
+  // The provider's END DAY: what the rule decides on, and what is stated (an
+  // instant at 03:59Z on Oct 9 is the provider's Oct 8).
+  const ended = providerDayOf(adapter, new Date(endDate));
   if (!ended) return undefined;
-  const endAt = new Date(ended);
-  if (Number.isNaN(endAt.getTime())) return undefined;
-  if (!(providerDayOf(adapter, endAt) < dayAsked)) return undefined;
+  if (!(ended < dayAsked)) return undefined;
   if (records.some((m) => m.status === 'SCHEDULED' || isLive(m.status))) return undefined;
   const label = read.season?.label;
   return label ? { ended, label } : { ended };
@@ -595,6 +602,13 @@ export interface NextFixtureResult {
   /** Off the bundle: the competition's whole roster holds no team by that name (a replacement verdict). */
   unknownTeam?: true;
   /**
+   * Off the bundle: the roster was asked for and could not be read whole (a
+   * table missing or partial, a row with no id, or no answer), and the query
+   * matched no club, or only by a code or a fuzzy name that the unread rest
+   * may share. A replacement verdict, not an outage: the provider answered.
+   */
+  rosterIncomplete?: true;
+  /**
    * Off the bundle: a WHOLE read of the span held no fixture for the club. The
    * span in provider days ahead (discovery's): a plain field of the answer,
    * whose sentence is the empty body's own text, never a verdict.
@@ -683,10 +697,10 @@ function stillToComplete(m: Match): boolean {
  *   3. the roster (`rosterFor`, after discovery: the adapter's shared
  *      standings read serves both) and the resolution (`resolveClub`):
  *      `ambiguous` is the candidates and no fixture; `unknown` is a
- *      replacement verdict; `unresolved` is `degraded` when a table was asked
- *      for (it was not whole, or a row had no id) or when the query matched a
- *      club the read cannot identify; on a competition with no table it is a
- *      club the read decides about, like a known one;
+ *      replacement verdict; `unresolved` with a table asked for (not read
+ *      whole, or a row with no id) is the `rosterIncomplete` verdict, and with
+ *      no table it is `degraded` when the query matched a club the read cannot
+ *      identify, else a club the read decides about, like a known one;
  *   4. the fixture: the club's earliest by kickoff that is not finished,
  *      cancelled or postponed (in play included, with its score), selected by
  *      `isTeam` with the resolved team (equal ids decide when both carry one;
@@ -710,9 +724,14 @@ async function nextOffBundle(adapter: ProviderAdapter, asked: string, now: Date)
     return { degraded: false, ...named, ...season, candidates: resolution.candidates };
   }
   if (resolution.outcome === 'unknown') return { degraded: false, ...named, ...season, unknownTeam: true };
-  if (resolution.outcome === 'unresolved' && (roster.tableAsked || resolution.idless.length > 0)) {
-    // Not knowing is not "no such team", and a club the read holds but cannot
-    // identify is not "no fixture within the span".
+  if (resolution.outcome === 'unresolved' && roster.tableAsked) {
+    // Not knowing is not "no such team": the roster could not be read whole.
+    // Nor is it an outage: the provider answered (its own verdict).
+    return { degraded: false, ...named, ...season, rosterIncomplete: true };
+  }
+  if (resolution.outcome === 'unresolved' && resolution.idless.length > 0) {
+    // A club the read holds but cannot identify (no table, no id) is not "no
+    // fixture within the span".
     return { degraded: true, ...named, ...season };
   }
   const team = resolution.outcome === 'resolved' ? resolution.team : undefined;
@@ -1129,13 +1148,14 @@ export async function getLiveRead(
 ): Promise<LiveReadResult> {
   try {
     const day = now.toISOString().slice(0, 10);
-    // The ONE caller that asks a window across seasons. A day response states
-    // the season of the date asked, so at a competition's season turn the
-    // three days state two; a strict window refuses that, and the score of a
-    // match played those days was lost after three requests were spent. This
-    // read keeps only the matches in play and merges nothing (no bundle, no
-    // kept slice), so both editions are a usable answer. The result then
-    // states no season: no one season describes it.
+    // Asked ACROSS seasons, as the other two callers that merge nothing ask
+    // (off the bundled competition, the dated read and the match refresh). A
+    // day response states the season of the date asked, so at a competition's
+    // season turn the three days state two; a strict window refuses that, and
+    // the score of a match played those days was lost after three requests
+    // were spent. This read keeps only the matches in play and merges nothing
+    // (no bundle, no kept slice), so both editions are a usable answer. The
+    // result then states no season: no one season describes it.
     const fetched = adapter.fetchWindow
       ? await adapter.fetchWindow(shiftUtcDate(day, -1), shiftUtcDate(day, 1), { acrossSeasons: true })
       : await adapter.fetchLive();

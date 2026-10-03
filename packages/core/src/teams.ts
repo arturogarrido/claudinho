@@ -195,10 +195,11 @@ export type ClubResolution =
  * an id. Precedence as {@link lookupTeam}, with no alias table for clubs:
  * exact code (any case), exact name (normalized), then the name by prefix or
  * substring for a query of 3+ letters. One hit with an id resolves (one hit
- * BY CODE only when the roster was read whole, or no table exists: a code is
- * not known to be unique otherwise); two or more are `ambiguous` (never a
- * silent pick); none is `unknown` only when the roster can prove it
- * (`complete`), and `unresolved` otherwise.
+ * by CODE or by a FUZZY name only when the roster was read whole, or no table
+ * exists: it is not known to be unique otherwise; an exact name resolves
+ * anyway); two or more are `ambiguous` (never a silent pick); none is
+ * `unknown` only when the roster can prove it (`complete`), and `unresolved`
+ * otherwise.
  */
 export function resolveClub(query: string, roster: Roster, schedule: readonly Match[]): ClubResolution {
   const candidates: Team[] = [];
@@ -223,6 +224,8 @@ export function resolveClub(query: string, roster: Roster, schedule: readonly Ma
   const q = norm(raw);
   const byCode = raw ? pool.filter((t) => t.code.toLowerCase() === raw.toLowerCase()) : [];
   const byName = q ? pool.filter((t) => norm(t.name) === q) : [];
+  // Which pass found the hits: an exact code, an exact name, or the fuzzy pass.
+  const byExactName = byCode.length === 0 && byName.length > 0;
   let hits = byCode.length > 0 ? byCode : byName;
   if (hits.length === 0 && q.length >= 3) {
     const prefix = pool.filter((t) => norm(t.name).startsWith(q));
@@ -231,13 +234,15 @@ export function resolveClub(query: string, roster: Roster, schedule: readonly Ma
   }
   if (hits.length > 1) return { outcome: 'ambiguous', candidates: hits };
   const hit = hits[0];
-  // A code is shared by real clubs (two Libertadores clubs are both `CAR`), so
-  // ONE hit by code proves the code unique only against a roster that was read
+  // A code is shared by real clubs (two Libertadores clubs are both `CAR`),
+  // and a fuzzy name by clubs whose names share a word, so ONE hit by code or
+  // by a fuzzy name proves it unique only against a roster that was read
   // whole: with a table asked for and not read whole, the other club may be
-  // the row that was refused, or a club with no match in the span. Not knowing
-  // is not a pick. (With no table at all, the schedule is the only evidence
-  // there will ever be, and a code it holds once is answered.)
-  if (hit && byCode.length === 1 && roster.tableAsked && !roster.complete) {
+  // the row that was refused, or a club with no match in the span. Not
+  // knowing is not a pick. An EXACT name is specific enough to answer. (With
+  // no table at all, the schedule is the only evidence there will ever be,
+  // and a code or name it holds once is answered.)
+  if (hit && !byExactName && roster.tableAsked && !roster.complete) {
     return { outcome: 'unresolved', idless: [] };
   }
   if (hit?.id !== undefined) return { outcome: 'resolved', team: hit };
