@@ -15,16 +15,19 @@ import {
   bracketShareCard,
   dateShareCard,
   liveShareCard,
+  EARLIER_RECORD_NOTE,
+  matchNoneReadSentence,
   matchShareCard,
   matchWindowSentence,
+  nationArg,
   nextHorizonSentence,
+  nextNoneReadSentence,
   nextShareCard,
   tableShareCard,
   tableData,
   marketDisplayable,
   type MatchShareCard,
   type NextFixtureResult,
-  type TeamInfo,
   tableKeyArg,
   verdictExtras,
   verdictNotice,
@@ -451,6 +454,7 @@ export async function toolGetMatch(
     const msg =
       verdictNotice(found, args.lang) ??
       matchWindowSentence(found, args.id, args.lang) ??
+      matchNoneReadSentence(found, args.id, args.lang) ??
       (degraded
         ? `Couldn't reach the data provider — match ${args.id} could not be looked up.`
         : `No match found with id ${args.id}.`);
@@ -482,9 +486,9 @@ export async function toolGetMatch(
   // state. Off the bundled competition there is no static fixture: it is the
   // provider's own earlier record, whose state could not be refreshed.
   if (degraded) {
-    text += bundleApplies(adapter.competition)
-      ? '\n\n(Live state unavailable — showing the scheduled fixture.)'
-      : "\n\n(Live state could not be refreshed — showing the provider's earlier record.)";
+    text += found.earlierRecord
+      ? `\n\n${EARLIER_RECORD_NOTE}`
+      : '\n\n(Live state unavailable — showing the scheduled fixture.)';
   }
   if (!marketComplete) {
     text += '\n\n(Market data unavailable or incomplete — this match was not checked.)';
@@ -639,19 +643,6 @@ export async function standingsResourceText(
 }
 
 /** next_fixture: a team's next match, live-resolved across the knockout phase. */
-/**
- * The World Cup's team argument: a nation's 3-letter code as given (upper-
- * cased, as it always was), or a nation's NAME resolved against the bundled
- * roster (the schema takes names since a club competition needs them).
- */
-type BundledTeam = { code: string } | { ambiguous: TeamInfo[] } | { none: true };
-function bundledTeam(query: string): BundledTeam {
-  if (/^[A-Za-z]{3}$/.test(query)) return { code: query.toUpperCase() };
-  const { team, matches } = lookupTeam(query);
-  if (team) return { code: team.code };
-  return matches.length > 1 ? { ambiguous: matches } : { none: true };
-}
-
 /** "Did you mean" for a name that matched more than one team, as `get_team` says it. */
 function ambiguousText(query: string, teams: readonly { name: string; code: string }[]): string {
   return `"${query}" is ambiguous. Did you mean: ${teams.map((t) => `${t.name} (${t.code})`).join(', ')}?`;
@@ -669,35 +660,19 @@ export async function toolGetNextFixture(
   args: { team: string } & CommonOpts,
 ): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
-  let code = args.team;
-  if (bundleApplies(adapter.competition)) {
-    const asked = bundledTeam(args.team);
-    if (!('code' in asked)) {
-      const text =
-        'ambiguous' in asked
-          ? ambiguousText(args.team, asked.ambiguous)
-          : `No team found for "${args.team}". Use a nation name or 3-letter code (e.g. Mexico, MEX).`;
-      return {
-        ...disclaimed(text, undefined, args.lang),
-        data: {
-          team: args.team,
-          fixture: null,
-          degraded: false,
-          source: null,
-          ...('ambiguous' in asked ? { candidates: asked.ambiguous } : {}),
-        },
-      };
-    }
-    code = asked.code;
-  }
+  // The World Cup: a nation's code, or a name resolved against the bundled
+  // roster (`nationArg`); a name that is no single nation is answered without
+  // a request (the candidates, or no such team). Off the bundled competition
+  // the query goes through as asked: core resolves the club against the
+  // competition's roster and the schedule ahead.
+  const asked = bundleApplies(adapter.competition) ? nationArg(args.team) : { code: args.team };
+  const code = 'code' in asked ? asked.code : args.team;
   // Overlay the live knockout window so a confirmed R32+ tie resolves: the
   // bundled knockout slots are placeholders, so a static lookup goes blind once
   // a team's group games pass (it would answer "no upcoming fixture" even after
   // ESPN confirmed the tie). Fails closed to the static result on a feed outage.
-  // Off the bundled competition the query goes through as asked: core resolves
-  // the club against the competition's roster and the schedule ahead.
   // The caller's clock is still threaded for deterministic tests.
-  const next = await getNextFixtureForTeam(adapter, code, args.now ?? new Date());
+  const next = 'code' in asked ? await getNextFixtureForTeam(adapter, code, args.now ?? new Date()) : asked.answer;
   const { fixture, degraded, source } = next;
   const label = nextTeamLabel(next, code);
   // The answer's own fields beside the verdicts: who it is about, the
@@ -712,6 +687,7 @@ export async function toolGetNextFixture(
     const msg =
       verdictNotice(next, args.lang) ??
       nextHorizonSentence(next, code, args.lang) ??
+      nextNoneReadSentence(next, code, args.lang) ??
       (next.candidates ? ambiguousText(next.query ?? code, next.candidates) : undefined) ??
       (degraded
         ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${label}.`
@@ -968,6 +944,7 @@ function shareResult(
       kind: card.kind,
       target: card.target,
       ...(card.team ? { team: card.team } : {}),
+      ...(card.candidates ? { candidates: card.candidates } : {}),
       source: input.source ?? null,
       degraded: input.degraded ?? false,
       informationalOnly: true,
@@ -1102,15 +1079,15 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
   // a team's next fixture, live-resolved across the knockout phase (+ market read).
   if (args.team) {
     const adapter = resolveAdapter(args);
-    // The World Cup takes a nation's code or name (see `bundledTeam`); a name
-    // that resolves to no single nation is passed on uppercased, as a code
-    // always was, and the card says no fixture was found for it. Off the
+    // The World Cup takes a nation's code or name, resolved as get_next_fixture
+    // resolves it (`nationArg`): a name that is no single nation is the
+    // candidates card, or the no-such-team card, with no request. Off the
     // bundle the query goes through as asked (core resolves the club).
-    const asked = bundleApplies(adapter.competition) ? bundledTeam(args.team) : undefined;
-    const code = asked ? ('code' in asked ? asked.code : args.team.toUpperCase()) : args.team;
+    const asked = bundleApplies(adapter.competition) ? nationArg(args.team) : { code: args.team };
+    const code = 'code' in asked ? asked.code : args.team;
     // Overlay the live knockout window so a confirmed R32+ tie pastes too (see
     // getNextFixtureForTeam / toolGetNextFixture); fail closed on an outage.
-    const next = await getNextFixtureForTeam(adapter, code, args.now ?? new Date());
+    const next = 'code' in asked ? await getNextFixtureForTeam(adapter, code, args.now ?? new Date()) : asked.answer;
     const market = await signalsFor(next.fixture ? [next.fixture] : []);
     return shareResult(nextShareCard(next, code, market, where), options);
   }

@@ -306,7 +306,13 @@ const shareOut = {
   informationalOnly: z.boolean().optional(),
   degraded: z.boolean().optional(),
   style: z.string().optional(),
-  team: z.string().optional(),
+  // A next card's team: the club resolved (provider id, code, name) when one
+  // was, the query (a nation's code on the World Cup) otherwise.
+  team: z.union([z.string(), teamRef]).optional(),
+  candidates: z
+    .array(teamRef)
+    .optional()
+    .describe('A next card for a name two or more teams match: them, and no fixture is picked'),
   group: z.string().optional(),
   stage: z.string().optional(),
   tables: z.union([anyObj, z.array(anyObj), z.null()]).optional(),
@@ -781,7 +787,7 @@ export function buildServer(): McpServer {
     {
       title: 'Shareable match snippet',
       description:
-        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), one standings table (group: a table key, e.g. \"A\", \"A1\", \"A-B\" or \"LEAGUE\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. marketComplete:false is stated inside the card as an incomplete optional read; partial (a next or bracket card) is stated inside the card too: the provider sent records that could not be used. Off the World Cup a next card names the club resolved, and an empty card says the span searched (horizon, window) or that the competition is between editions. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
+        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), one standings table (group: a table key, e.g. \"A\", \"A1\", \"A-B\" or \"LEAGUE\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. marketComplete:false is stated inside the card as an incomplete optional read; partial (a next, match or bracket card) is stated inside the card too: the provider sent records that could not be used. Off the World Cup a next card names the club resolved, and an empty card says the span searched (horizon, window) or that the competition is between editions. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
       inputSchema: {
         matchId: z.string().optional().describe('Match id (most specific)'),
         team: clubArg

@@ -143,3 +143,24 @@ describe('the date card judges "nothing on this date" in the viewer’s zone, as
     strict('get_share_snippet', day10.data);
   });
 });
+
+describe('review round 1 (coder): get_next_fixture on the World Cup resolves a name as the share card does, with no request', () => {
+  it('an ambiguous name is the candidates; an unknown one is "no team called"; neither asks the provider', async () => {
+    const f = feed('fifa.world');
+    const amb = await toolGetNextFixture({ team: 'South', now: new Date('2026-06-13T12:00:00Z'), adapter: f.adapter });
+    expect(amb.text).toContain('South Africa (RSA)');
+    expect((amb.data as { candidates: Array<{ code: string }> }).candidates.map((c) => c.code).sort()).toEqual(['KOR', 'RSA']);
+    strict('get_next_fixture', amb.data);
+    const unknown = await toolGetNextFixture({ team: 'Narnia', now: new Date('2026-06-13T12:00:00Z'), adapter: f.adapter });
+    expect(unknown.text).toContain('No team called Narnia');
+    expect(unknown.data).toMatchObject({ unknownTeam: true, fixture: null, team: 'Narnia' });
+    strict('get_next_fixture', unknown.data);
+    expect(f.urls).toEqual([]);
+  });
+
+  it('a share card with a whole name resolves to the nation’s code', async () => {
+    const f = feed('fifa.world');
+    const r = await toolGetShareSnippet({ team: 'Mexico', now: new Date('2026-06-13T12:00:00Z'), adapter: f.adapter });
+    expect((r.data as { team?: unknown }).team).toBe('MEX');
+  });
+});
