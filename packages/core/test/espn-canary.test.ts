@@ -258,6 +258,24 @@ describe('discovery’s question: the schedule ahead, a month at a time, off the
     expect(r.rows.filter((row) => row.competition === 'esp.1').every((row) => row.verdict === 'blocked' && row.requests === 0)).toBe(true);
   });
 
+  it('every month passes but discovery itself is not whole (one id in two months): changed, naming the id; the first copy outside the span too', async () => {
+    // Found in the plan gate: discovery drops the second copy of an id served by two months and states
+    // `complete: false`; judged month by month alone the row would be ok. The row is ok only when every month
+    // passed AND discovery's own account is whole and not degraded (its season is not required).
+    const octo = event('51', { date: '2026-10-28T15:00Z' });
+    const nov = event('51', { date: '2026-11-05T15:00Z' });
+    const f = feed((url) => json(url.includes('/standings') ? standings() : asked(url) === '202610' ? { leagues: [{ season: SEASON }], events: [octo] } : asked(url) === '202611' ? { leagues: [{ season: SEASON }], events: [nov] } : scoreboard(url)));
+    const r = await runCanary({ core, competitions: ['eng.1'], fetchImpl: f.fetchImpl, now: new Date('2026-10-25T12:00:00Z'), pauseMs: 0 });
+    expect(discovery(r)?.verdict).toBe('changed');
+    expect(discovery(r)?.detail).toMatch(/51/);
+    expect(r.red).toBe(true);
+    // The first copy before the span (Oct 1), the second inside it: discovery keeps the first and drops the in-span one.
+    const early = event('51', { date: '2026-10-01T15:00Z' });
+    const g = feed((url) => json(url.includes('/standings') ? standings() : asked(url) === '202610' ? { leagues: [{ season: SEASON }], events: [early] } : asked(url) === '202611' ? { leagues: [{ season: SEASON }], events: [nov] } : scoreboard(url)));
+    const r2 = await runCanary({ core, competitions: ['eng.1'], fetchImpl: g.fetchImpl, now: new Date('2026-10-25T12:00:00Z'), pauseMs: 0 });
+    expect(discovery(r2)?.verdict).toBe('changed');
+  });
+
   it('a throttle on the first question leaves every discovery row not asked, counted as not answered', async () => {
     const r = await run(() => json({}, 429, { 'retry-after': '300' }), ['eng.1', 'esp.1']);
     const rows = r.rows.filter((row) => row.request === 'discovery');
