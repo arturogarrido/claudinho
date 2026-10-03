@@ -45,13 +45,13 @@ Then just ask your agent naturally — it picks the right tool and answers with 
 |---|---|
 | `get_today` | fixtures for a date (default: today), grouped in the caller's `tz`, live scores overlaid |
 | `get_live` | matches in play right now |
-| `get_match` | a single match by id |
+| `get_match` | a single match by id — in a club competition, looked for from yesterday to 14 days ahead (`window` names the days searched when it is not there) |
 | `get_standings` | live cumulative standings — every table, or one by its key (a group letter, or `A1`, `A-B`, `LEAGUE`) |
-| `get_bracket` | knockout bracket from the Round of 32 through the final — optional `stage` filter (`R32`, `R16`, `QF`, `SF`, `3P`, `F`) |
-| `get_next_fixture` | a team's next match (3-letter code, e.g. `MEX`) — live-resolves a confirmed knockout tie from the feed; group fixtures offline, fails back to the bundled schedule if the feed is down |
+| `get_bracket` | knockout bracket from the Round of 32 through the final — optional `stage` filter (`R32`, `R16`, `QF`, `SF`, `3P`, `F`); a league season with no knockout answers `inapplicable` |
+| `get_next_fixture` | a team's next match, by name or code — a nation (`Mexico`, `MEX`): live-resolves a confirmed knockout tie from the feed, group fixtures offline, fails back to the bundled schedule if the feed is down; a club (`Arsenal`, `ARS`): its next match within 14 days, `candidates` when several teams match, `horizon` when it has none in that span |
 | `get_market_signal` | read-only prediction-market signal for a match, a team's current-or-next fixture (in-play preferred while live), or a date — informational only |
 | `get_share_snippet` | a copy-pasteable plain-text card — for a match, a team's next fixture, a group's standings table (`group`), the knockout bracket (`bracket: true`, optional `knockoutStage`), a date, or live — hand the returned snippet to the user as-is |
-| `get_team` | resolve a nation name or code to its FIFA 3-letter code, flag, and group — fuzzy (`Mexico`, `mex`, `DR Congo`, `Türkiye`); call it first to turn a user's team name into the code the other tools need. Offline (no network) |
+| `get_team` | the World Cup roster: resolve a nation name or code to its FIFA 3-letter code, flag, and group — fuzzy (`Mexico`, `mex`, `DR Congo`, `Türkiye`); handy for the code `get_market_signal` needs. It knows no clubs. Offline (no network) |
 
 Most tools are **read-only** (`readOnlyHint`) and accept optional `tz`, `lang`
 (`en`/`es`/`pt`/`fr`), and `flavor` (`off`/`subtle`/`full`); `get_team` is read-only
@@ -60,7 +60,9 @@ human-readable text **and** structured content, validated against each tool's
 declared `outputSchema`. When the provider's knockout answer was not whole,
 `get_next_fixture`, `get_bracket` and the next/bracket share cards say so before
 what was read and carry `partial` (`omitted`: the count of provider records left
-out, when known); no fixture is then not "eliminated".
+out, when known); no fixture is then not "eliminated". In a club competition whose
+edition has ended (and the next has not started), `get_today`, `get_live`,
+`get_next_fixture` and `get_match` say so and carry `betweenEditions`.
 
 Resources: `standings://{group}`, `fixtures://{date}`. Prompts: `tournament_today`,
 and `my_team` (give it a 3-letter team code; combines next fixture, standings, and

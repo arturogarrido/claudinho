@@ -87,11 +87,11 @@ describe('selection — the server resolves the competition once per request', (
 
   it('a tool acts on its adapter’s competition, not the environment', async () => {
     // Environment says World Cup; the request is for a league → no World Cup
-    // lookup happens and the answer is the honest "not available yet".
+    // lookup happens: the query goes to the league's own reader (since 0.11
+    // 2.1c), which this adapter cannot serve a schedule ahead to.
     const league = await toolGetNextFixture({ team: 'ALA', adapter: fakeAdapter('eng.1') });
-    expect(league.data).toMatchObject({ fixture: null });
-    expect(league.text).toMatch(/Not available for this competition yet/);
-    expect(league.text).not.toMatch(/New Zealand/);
+    expect(league.data).toMatchObject({ team: 'ALA', fixture: null, degraded: true });
+    expect(league.text).not.toMatch(/New Zealand|NZL/);
 
     // Environment says a league; the request is for the World Cup → the bundle applies.
     process.env.CLAUDINHO_COMPETITION = 'eng.1';
