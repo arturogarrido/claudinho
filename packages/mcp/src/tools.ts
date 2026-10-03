@@ -942,7 +942,7 @@ export async function toolGetMarketSignal(
   // Bounded: this branch serialized one object per fixture into model context.
   const shown = boundedRecords(all);
   const text = shown.shown
-    ? `Market signals on ${date}:${truncationNote(shown)}\n${shown.items
+    ? `Market signals on ${date}:\n${shown.items
         .map(({ match, signal }) => marketText(match, signal, args))
         .join('\n\n')}`
     : // An empty result and an INCOMPLETE one are different answers. The batch
@@ -957,14 +957,16 @@ export async function toolGetMarketSignal(
         : batch.complete
           ? (marketsNoneRead(day, date) ?? `No reliable market signals on ${date}.`)
           : `Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
-  // Signals shown from a batch that did not finish: said before them, after
-  // the fixture read's verdict (`qualified`).
+  // Before the signals, after the fixture read's verdict (`qualified`), in the
+  // order they used to have: the list's truncation (it was on the title line),
+  // then the notice that the batch did not finish.
+  const truncated = shown.truncated ? truncationNote(shown).trimStart() : undefined;
   const incomplete =
     shown.shown > 0 && !batch.complete
       ? `Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`
       : undefined;
   return {
-    ...disclaimed(qualified(text, fixtureRead, args.lang, incomplete)),
+    ...disclaimed(qualified(text, fixtureRead, args.lang, truncated, incomplete)),
     data: {
       date,
       informationalOnly: true,

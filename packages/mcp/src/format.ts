@@ -80,9 +80,10 @@ export function boundedRecords<T>(rows: T[], max = MAX_LIST_MATCHES): BoundedLis
 }
 
 /**
- * The line to add when `capRecords` dropped something: after a title (it
- * starts with a newline), or, trimmed, as its own line before the tables
- * (`get_standings`: what qualifies a body is printed before it).
+ * The line to add when `capRecords` dropped something: after a card's title
+ * (it starts with a newline), or, trimmed, as its own sentence before a tool's
+ * body (`get_standings`, the dated `get_market_signal`: what qualifies a body
+ * is printed before it).
  *
  * A cap that drops records silently reads as a complete list, which is the same
  * failure as losing the statusline's "+N" marker: the reader cannot tell. Returns
