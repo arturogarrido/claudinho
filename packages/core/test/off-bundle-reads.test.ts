@@ -220,6 +220,15 @@ describe('the roster and the resolver (0.11 2.1c)', () => {
     expect(resolveClub('boca j', two, []).outcome).toBe('resolved');
   });
 
+  it('the fuzzy pass is a prefix, then a substring; a query under three letters gets no fuzzy pass', () => {
+    const two = complete([T({ id: '31', abbr: 'NAC', name: 'Nacional' }), T({ id: '32', abbr: 'ATN', name: 'Atletico Nacional' })]);
+    expect(resolveClub('Nacional', two, [])).toMatchObject({ outcome: 'resolved', team: { id: 'espn:31' } }); // the exact name
+    expect(resolveClub('nacio', two, []).outcome).toBe('ambiguous'); // prefix of one, substring of the other: two hits
+    expect(resolveClub('atleti', two, [])).toMatchObject({ outcome: 'resolved', team: { id: 'espn:32' } });
+    expect(resolveClub('tico', two, [])).toMatchObject({ outcome: 'resolved', team: { id: 'espn:32' } }); // substring
+    expect(resolveClub('na', two, []).outcome).toBe('unknown'); // two letters: no fuzzy pass, and the roster is whole
+  });
+
   it('two clubs sharing a code are two candidates, never a pick; so are two fuzzy hits', () => {
     const LIB = complete([T(CARABOBO), T(ALWAYS_READY)]);
     const r = resolveClub('CAR', LIB, []);
@@ -229,6 +238,17 @@ describe('the roster and the resolver (0.11 2.1c)', () => {
     const two = complete([T(CHE), T({ id: '9', abbr: 'CHT', name: 'Cheltenham' })]);
     expect(resolveClub('che', two, []).outcome).toBe('resolved'); // the exact code wins
     expect(resolveClub('chel', two, []).outcome).toBe('ambiguous');
+  });
+
+  it('a single code or fuzzy hit resolves only against a roster read whole (or a competition with no table); an exact name resolves anyway', () => {
+    // The other club may be the refused row: with the roster not whole, one hit by code or by a fuzzy name is not known to be unique.
+    const partialRoster = { ...complete([T({ id: '21', abbr: 'UCH', name: 'Universidad de Chile' })]), complete: false };
+    expect(resolveClub('universidad', partialRoster, []).outcome).toBe('unresolved');
+    expect(resolveClub('UCH', partialRoster, []).outcome).toBe('unresolved');
+    expect(resolveClub('Universidad de Chile', partialRoster, [])).toMatchObject({ outcome: 'resolved', team: { id: 'espn:21' } });
+    const noTable = { teams: [], complete: false, tableAsked: false };
+    const fixture = { id: '9', kickoff: '2026-10-12T19:00Z', home: T({ id: '21', abbr: 'UCH', name: 'Universidad de Chile' }), away: T(ARS) };
+    expect(resolveClub('universidad', noTable, [fixture as never])).toMatchObject({ outcome: 'resolved', team: { id: 'espn:21' } });
   });
 
   it('"unknown" needs a complete roster; without one the miss is "unresolved"', () => {
@@ -330,17 +350,25 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
     expect(half.fixture?.id).not.toBe('20');
   });
 
-  it('an unknown name: "no team called" only with a complete roster; a degraded, partial or id-less table is degraded instead', async () => {
+  it('an unknown name: "no team called" only with a complete roster; with a degraded, partial or id-less table the miss is "roster not whole", its own verdict, not an outage', async () => {
     const unknown = await getNextFixtureForTeam(feed('eng.1', { events: upcoming }).adapter, 'Everton', NOW);
     expect(unknown).toMatchObject({ unknownTeam: true, degraded: false });
     expect(unknown.fixture).toBeUndefined();
     expect(unknown.horizon).toBeUndefined();
     for (const standings of [() => json({}, 503), table('2026-27 English Premier League', [{ side: { abbr: 'ARS', name: 'Arsenal' }, rank: 1 }])]) {
       const r = await getNextFixtureForTeam(feed('eng.1', { events: upcoming, standings }).adapter, 'Everton', NOW);
-      expect(r.degraded).toBe(true);
+      // The provider was reached and answered; the roster could not be read whole. Not "couldn't reach the provider".
+      expect(r.degraded).toBe(false);
+      expect(r.rosterIncomplete).toBe(true);
       expect(r.unknownTeam).toBeUndefined();
       expect(r.horizon).toBeUndefined();
     }
+    // The same for a single code hit against a roster not read whole (the other club may be the refused row).
+    const byCode = await getNextFixtureForTeam(feed('eng.1', { events: upcoming, standings: () => json({}, 503) }).adapter, 'ARS', NOW);
+    expect(byCode).toMatchObject({ rosterIncomplete: true, degraded: false });
+    // But an exact name resolves, and its fixture is served.
+    const byName = await getNextFixtureForTeam(feed('eng.1', { events: upcoming, standings: () => json({}, 503) }).adapter, 'Arsenal', NOW);
+    expect(byName.fixture?.id).toBe('11');
   });
 
   it('the query is bounded like a human label before it names anything', async () => {
@@ -423,6 +451,18 @@ describe('match <id> off the bundle (0.11 2.1c): every transition', () => {
     expect(r.match?.id).toBe('47');
     expect(r.degraded).toBe(false);
     expect([...f.days()].sort()).toEqual(['20261016', '20261017', '20261018']);
+  });
+
+  it('found: the REFRESHED record is answered (the day read’s state, not the month’s)', async () => {
+    const f = feed('eng.1', {
+      events: [inSpan, other],
+      // The day read says the match is in play; the month said scheduled.
+      fail: (d) => (d === '20261017' ? json({ leagues: [{ season: S2026 }], events: [event({ ...inSpan, state: 'in' })] }) : d.length === 8 ? json({ leagues: [{ season: S2026 }], events: [] }) : undefined),
+    });
+    const r = await getMatchById(f.adapter, '41', new Date('2026-10-17T15:00:00Z'));
+    expect(r.match?.id).toBe('41');
+    expect(r.match?.status).toBe('LIVE');
+    expect(r.degraded).toBe(false);
   });
 
   it('found, and the refresh was not whole (a refused sibling; a conflicting duplicate of the id): the record with partial', async () => {
@@ -530,7 +570,8 @@ describe('between editions (0.11 2.1c): one rule for every surface', () => {
     const live = await getLiveMatches(cup().adapter, NOW);
     expect(live.matches).toEqual([]);
     expect(live.degraded).toBe(false);
-    expect(live.betweenEditions).toEqual({ ended: '2026-10-09T03:59:00.000Z', label: '2026 Concacaf Champions Cup' });
+    // `ended` is the PROVIDER's end day (the rule decides on it; 03:59Z on Oct 9 is Eastern Oct 8), not the UTC date of the instant.
+    expect(live.betweenEditions).toEqual({ ended: '2026-10-08', label: '2026 Concacaf Champions Cup' });
     const next = await getNextFixtureForTeam(cup().adapter, 'Toluca', NOW);
     expect(next.fixture).toBeUndefined();
     expect(next.betweenEditions).toMatchObject({ label: '2026 Concacaf Champions Cup' });
@@ -636,6 +677,17 @@ describe('between editions (0.11 2.1c): one rule for every surface', () => {
     expect(after.betweenEditions).toBeDefined();
   });
 
+  it('the day asked by next and match is the provider’s, not the UTC date (02:00Z on Oct 9 is still the end day)', async () => {
+    const at = new Date('2026-10-09T02:00:00Z'); // Eastern Oct 8 22:00: the end day itself
+    const next = await getNextFixtureForTeam(cup().adapter, 'Toluca', at);
+    expect(next.betweenEditions).toBeUndefined();
+    const match = await getMatchById(cup().adapter, '99', at);
+    expect(match.betweenEditions).toBeUndefined();
+    const later = new Date('2026-10-09T12:00:00Z'); // Eastern Oct 9: after it
+    expect((await getNextFixtureForTeam(cup().adapter, 'Toluca', later)).betweenEditions).toBeDefined();
+    expect((await getMatchById(cup().adapter, '99', later)).betweenEditions).toBeDefined();
+  });
+
   it('on the bundle the verdict is never stated', async () => {
     const f = feed('fifa.world', { season: () => ({ year: 2026, displayName: '2026 FIFA World Cup', startDate: '2026-06-11T04:00Z', endDate: '2026-07-20T03:59Z' }) });
     const r = await getLiveMatches(f.adapter, NOW);
@@ -653,6 +705,23 @@ describe('a composed season carries its end date only when every stating part ag
     expect(m?.endDate).toBeUndefined();
     const missing = await feed('eng.1', { season: (d) => (d === '20261010' ? { year: 2026, displayName: S2026.displayName } : S2026) }).adapter.fetchWindow?.('2026-10-09', '2026-10-11');
     expect(fetchMeta(missing ?? [])?.season?.endDate).toBeUndefined();
+  });
+
+  it('a discovery across two months counts a fixture filed in both as a record left out', async () => {
+    const late = new Date('2026-10-25T15:00:00.000Z');
+    const twice: Ev = { id: '60', date: '2026-11-01T15:00Z', home: ARS, away: CHE };
+    // Both month responses hold the same fixture (the provider filed it under one day; two months cannot both hold it).
+    const both = (async (input: unknown) => {
+      const url = String(input);
+      if (url.includes('/standings')) return json(PL_TABLE);
+      const asked = new URL(url).searchParams.get('dates') ?? '';
+      if (asked === '202610' || asked === '202611') return json({ leagues: [{ season: S2026 }], events: [event(twice)] });
+      return json({ leagues: [{ season: S2026 }], events: [] });
+    }) as unknown as typeof fetch;
+    const adapter = new EspnAdapter({ competition: 'eng.1', fetchImpl: both, now: () => late.getTime() });
+    const r = await getScheduleAhead(adapter, late);
+    expect(r.complete).toBe(false);
+    expect(r.omitted).toBe(1);
   });
 
   it('a discovery across two months: the same rule', async () => {

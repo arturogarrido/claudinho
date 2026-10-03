@@ -140,14 +140,15 @@ describe('a verdict REPLACES the body or QUALIFIES it, and the module says which
     expect(verdictExtras({ inapplicable: true })).toEqual({ inapplicable: true });
     expect(verdictNotice({ unknownTeam: true }, 'en')).toMatch(/^No team called/);
     expect(verdictExtras({ unknownTeam: true })).toEqual({ unknownTeam: true });
-    const between = { betweenEditions: { ended: '2026-10-09T03:59:00.000Z', label: '2026 Concacaf Champions Cup' } };
-    expect(verdictNotice(between, 'en')).toBe('Between editions: the 2026 Concacaf Champions Cup edition ended on 2026-10-09.');
+    // `ended` is the provider's end DAY (the rule decides on it), printed as it is.
+    const between = { betweenEditions: { ended: '2026-10-08', label: '2026 Concacaf Champions Cup' } };
+    expect(verdictNotice(between, 'en')).toBe('Between editions: the 2026 Concacaf Champions Cup edition ended on 2026-10-08.');
     expect(verdictExtras(between)).toEqual(between);
     // An end that is not a timestamp is not believed: no sentence, no key.
     expect(verdictNotice({ betweenEditions: { ended: 'yesterday' } } as never, 'en')).toBeUndefined();
     expect(verdictExtras({ betweenEditions: { ended: 'yesterday' } } as never)).toEqual({});
     // An empty label names the year of the end date instead.
-    expect(verdictNotice({ betweenEditions: { ended: '2026-10-09T03:59:00.000Z' } }, 'en')).toBe('Between editions: the 2026 edition ended on 2026-10-09.');
+    expect(verdictNotice({ betweenEditions: { ended: '2026-10-08' } }, 'en')).toBe('Between editions: the 2026 edition ended on 2026-10-08.');
     // A replacement suppresses the qualifiers, as `unsupported` does.
     expect(verdictQualifiers({ ...between, partial: { omitted: 1 } }, 'en')).toEqual([]);
     expect(verdictQualifiers({ inapplicable: true, incomplete: true }, 'en')).toEqual([]);
@@ -155,7 +156,14 @@ describe('a verdict REPLACES the body or QUALIFIES it, and the module says which
     expect(verdictNotice({ unsupported: true, inapplicable: true }, 'en')).toBe('Not available for this competition yet.');
     expect(verdictNotice({ inapplicable: true, unknownTeam: true }, 'en')).toBe('This competition has no bracket.');
     expect(verdictNotice({ unknownTeam: true, ...between }, 'en')).toMatch(/^No team called/);
+    // A fifth replacement (review round 2): the roster could not be read whole, so the club could not be resolved.
+    expect(verdictNotice({ rosterIncomplete: true, query: 'ARS' } as never, 'en')).toMatch(/roster/i);
+    expect(verdictNotice({ rosterIncomplete: true } as never, 'en')).not.toMatch(/reach the data provider/);
+    expect(verdictExtras({ rosterIncomplete: true } as never)).toEqual({ rosterIncomplete: true });
+    expect(verdictQualifiers({ rosterIncomplete: true, partial: {} } as never, 'en')).toEqual([]);
+    expect(verdictNotice({ unknownTeam: true, rosterIncomplete: true } as never, 'en')).toMatch(/^No team called/);
     for (const lang of ['es', 'pt', 'fr']) {
+      expect(verdictNotice({ rosterIncomplete: true } as never, lang), lang).not.toMatch(/roster could not/i);
       expect(verdictNotice({ inapplicable: true }, lang), lang).not.toBe('This competition has no bracket.');
       expect(verdictNotice(between, lang), lang).not.toMatch(/^Between editions/);
       expect(verdictNotice(between, lang), lang).toContain('2026 Concacaf Champions Cup');
@@ -461,12 +469,12 @@ describe('one definition of each rule the two surfaces used to copy', () => {
   });
 
   it('nor the three verdicts of 0.11 2.1c: the keys are declared once, in the MCP schema; the sentences and their i18n keys nowhere at a surface', () => {
-    for (const key of ['inapplicable', 'unknownTeam', 'betweenEditions']) {
+    for (const key of ['inapplicable', 'unknownTeam', 'betweenEditions', 'rosterIncomplete']) {
       const written = new RegExp(`\\b${key}\\s*:`);
       expect(codeHits('cli', written), key).toEqual([]);
       expect(codeHits('mcp', written), key).toEqual(['mcp/src/server.ts']);
     }
-    for (const i18nKey of ['competition.noBracket', 'team.unknown', 'edition.between']) {
+    for (const i18nKey of ['competition.noBracket', 'team.unknown', 'edition.between', 'roster.incomplete']) {
       const written = new RegExp(`['"\`]${i18nKey.replace('.', '\\.')}['"\`]`);
       expect(hits('cli', written), i18nKey).toEqual([]);
       expect(hits('mcp', written), i18nKey).toEqual([]);

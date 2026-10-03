@@ -148,6 +148,36 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
     expect(parsed()).toMatchObject({ unknownTeam: true, fixture: null });
   });
 
+  it('the share cards’ run cue carries the competition off the bundle (review round 2)', async () => {
+    await cmdShare('next', 'Arsenal', {}, ctxFor(feed('eng.1', { events: upcoming }).adapter));
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli next/);
+    writes = [];
+    await cmdShare('41', undefined, {}, ctxFor(feed('eng.1', { events: [{ id: '41', date: '2026-10-17T14:00Z', home: LIV, away: ARS }] }).adapter));
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli match 41/);
+    writes = [];
+    await cmdShare('live', undefined, {}, ctxFor(feed('eng.1', { events: upcoming }).adapter));
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli live/);
+  });
+
+  it('a roster that could not be read whole is its own sentence, not an outage; a code hit then needs the full name (review round 2)', async () => {
+    await cmdNext('ARS', ctxFor(feed('eng.1', { events: upcoming, standings: () => json({}, 503) }).adapter));
+    expect(text()).not.toContain('reach the data provider');
+    expect(text()).toMatch(/roster/i);
+    writes = [];
+    await cmdNext('ARS', ctxFor(feed('eng.1', { events: upcoming, standings: () => json({}, 503) }).adapter, { json: true }));
+    expect(parsed()).toMatchObject({ rosterIncomplete: true, degraded: false, fixture: null });
+    writes = [];
+    await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: upcoming, standings: () => json({}, 503) }).adapter));
+    expect(text()).toContain('Liverpool');
+  });
+
+  it('the between-editions sentence prints the provider’s end day (review round 2)', async () => {
+    const cupAdapter = feed('concacaf.champions', { standings: NO_TABLE, season: () => ENDED }).adapter;
+    await cmdLive(ctxFor(cupAdapter, { tz: 'America/New_York' }));
+    expect(text()).toContain('ended on 2026-10-08');
+    expect(text()).not.toContain('2026-10-09');
+  });
+
   it('a known club with nothing in a whole span: the horizon sentence names the days; `--json` carries `horizon`, never a verdict', async () => {
     await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter));
     expect(text()).toContain('14 days');
@@ -241,6 +271,16 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
 describe('match <id> off the bundle (0.11 2.1c)', () => {
   const inSpan: Ev = { id: '41', date: '2026-10-17T14:00Z', home: LIV, away: ARS };
   const other: Ev = { id: '42', date: '2026-10-11T15:00Z', home: CHE, away: LIV };
+
+  it('found, the refresh not whole: the partial sentence beside the record, text and `--json` (review round 2)', async () => {
+    const broken: Ev = { id: '43', date: '2026-10-17T16:00Z', home: CHE, away: { id: '4501', abbr: 'O&M', name: 'Oriente y Mar' }, raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } };
+    await cmdMatch('41', ctxFor(feed('eng.1', { events: [inSpan, broken] }).adapter));
+    expect(text()).toContain('Arsenal');
+    expect(text()).toContain('may be incomplete');
+    writes = [];
+    await cmdMatch('41', ctxFor(feed('eng.1', { events: [inSpan, broken] }).adapter, { json: true }));
+    expect(parsed()).toMatchObject({ match: { id: '41' }, partial: { omitted: 1 } });
+  });
 
   it('found: the match, attributed, no "not available"', async () => {
     await cmdMatch('41', ctxFor(feed('eng.1', { events: [inSpan, other] }).adapter));
@@ -365,7 +405,7 @@ describe('between editions on the CLI (0.11 2.1c)', () => {
     expect(text()).not.toContain('Toluca');
     writes = [];
     await cmdToday(undefined, ctxFor(cup([finalFT]), { json: true }));
-    expect(parsed()).toMatchObject({ betweenEditions: { ended: '2026-10-09T03:59:00.000Z', label: '2026 Concacaf Champions Cup' } });
+    expect(parsed()).toMatchObject({ betweenEditions: { ended: '2026-10-08', label: '2026 Concacaf Champions Cup' } });
     writes = [];
     await cmdLive(ctxFor(cup([finalFT])));
     expect(text()).toContain('Between editions');

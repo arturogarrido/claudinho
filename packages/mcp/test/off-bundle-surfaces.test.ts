@@ -85,6 +85,7 @@ describe('get_next_fixture off the bundle (0.11 2.1c)', () => {
   });
 
   it('the input takes a bounded label (a code or a name); the market tool keeps the code', () => {
+    expect(clubArg.safeParse('Ars\u200benal').success).toBe(false); // an invisible character is not a label
     expect(clubArg.safeParse('Arsenal').success).toBe(true);
     expect(clubArg.safeParse('O&M').success).toBe(true);
     expect(clubArg.safeParse('ARS').success).toBe(true);
@@ -205,6 +206,36 @@ describe('get_match off the bundle (0.11 2.1c)', () => {
     expect(unknown.text).toMatch(/No team/);
   });
 
+  it('found, the refresh not whole: the partial sentence beside the record in text, the key in data (review round 2)', async () => {
+    const broken: Ev = { id: '43', date: '2026-10-17T16:00Z', home: CHE, away: LIV, raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } };
+    const r = await toolGetMatch({ id: '41', adapter: feed('eng.1', { events: [inSpan, broken] }).adapter });
+    expect(r.text).toContain('Arsenal');
+    expect(r.text).toContain('may be incomplete');
+    expect(r.data).toMatchObject({ match: { id: '41' }, partial: { omitted: 1 } });
+    strict('get_match', r.data);
+  });
+
+  it('a roster that could not be read whole is its own verdict in data and text, not an outage (review round 2)', async () => {
+    const r = await toolGetNextFixture({ team: 'ARS', now: NOW, adapter: feed('eng.1', { events: upcoming, standings: () => json({}, 503) }).adapter });
+    expect(r.text).not.toContain('reach the data provider');
+    expect(r.text).toMatch(/roster/i);
+    expect(r.data).toMatchObject({ rosterIncomplete: true, degraded: false });
+    strict('get_next_fixture', r.data);
+  });
+
+  it('the share cards’ run cue carries the competition off the bundle (review round 2)', async () => {
+    const r = await toolGetShareSnippet({ team: 'Arsenal', now: NOW, adapter: feed('eng.1', { events: upcoming }).adapter });
+    expect(r.text).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli next/);
+  });
+
+  it('on the World Cup, get_next_fixture carries the candidates of an ambiguous name in data (review round 2)', async () => {
+    const f = feed('fifa.world');
+    const r = await toolGetNextFixture({ team: 'South', now: new Date('2026-06-13T12:00:00Z'), adapter: f.adapter });
+    expect((r.data as { candidates: Array<{ code: string }> }).candidates.map((c) => c.code).sort()).toEqual(['KOR', 'RSA']);
+    expect(f.urls).toEqual([]);
+    strict('get_next_fixture', r.data);
+  });
+
   it('get_market_signal by id stays unsupported off the bundle, with no request', async () => {
     const f = feed('eng.1', { events: [inSpan, other] });
     const r = await toolGetMarketSignal({ matchId: '41', adapter: f.adapter });
@@ -238,7 +269,7 @@ describe('get_bracket off the bundle: three values (0.11 2.1c)', () => {
 describe('between editions on MCP (0.11 2.1c)', () => {
   const cup = (events: Ev[] = []) => feed('concacaf.champions', { events, standings: NO_TABLE, season: () => ENDED }).adapter;
   const finalFT: Ev = { id: '50', date: '2026-10-09T02:00Z', home: { id: '8001', abbr: 'TOL', name: 'Toluca' }, away: { id: '8002', abbr: 'LAFC', name: 'Los Angeles FC' }, state: 'post' };
-  const KEY = { ended: '2026-10-09T03:59:00.000Z', label: '2026 Concacaf Champions Cup' };
+  const KEY = { ended: '2026-10-08', label: '2026 Concacaf Champions Cup' };
 
   it('get_today, get_live, get_next_fixture, get_match and the share cards say so, text and data, the schemas hold', async () => {
     const today = await toolGetToday({ date: '2026-10-10', adapter: cup([finalFT]) });
