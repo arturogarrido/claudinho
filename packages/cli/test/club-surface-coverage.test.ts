@@ -10,10 +10,14 @@ import { renderPrompt } from '../src/statusline';
 /**
  * Club-surface coverage, first version (audit A03, CONTAINED): under a
  * competition other than the bundled World Cup, NO surface may leak the
- * World Cup skeleton, and the paths built on it say "not available for this
- * competition yet" instead of "no fixture" / a World Cup bracket. Mirrors
- * knockout-surface-coverage.test.ts. 0.11 (2.2) grows this into the full club
- * rendering test (no 🏳️, no nation rename, no "Friendly").
+ * World Cup skeleton. Since 0.11 (2.1c) `next` and `match <id>` read the
+ * competition's own schedule ahead and `bracket` says a league season has none;
+ * the market sidecar still says "not available for this competition yet".
+ * Mirrors knockout-surface-coverage.test.ts. 0.11 (2.2) grows this into the
+ * full club rendering test (no 🏳️, no nation rename, no "Friendly").
+ *
+ * The adapter below states nothing about its answers (no metadata) and has no
+ * standings: every read of it is "not whole", which is what it is answered as.
  */
 const NOW = new Date('2026-09-16T12:00:00Z');
 const NOTICE = 'Not available for this competition yet.';
@@ -83,27 +87,31 @@ describe('club surface coverage — no World Cup leakage off the bundle', () => 
     expect(text()).not.toMatch(WC);
   });
 
-  it('`next` says the feature is not available here, not "no fixture"', async () => {
+  it('`next` reads this competition, never the World Cup: a club it cannot identify is "couldn\'t reach", not "no fixture"', async () => {
     await cmdNext('ARS', ctx());
-    expect(text()).toContain(NOTICE);
+    expect(text()).toContain("couldn't reach the data provider");
+    expect(text()).not.toContain(NOTICE);
     expect(text()).not.toContain('No upcoming fixture');
     expect(text()).not.toMatch(WC);
   });
 
-  it('`next --json` carries the marker', async () => {
+  it('`next --json` says it is degraded, with no verdict', async () => {
     await cmdNext('ARS', ctx({ json: true }));
-    expect(JSON.parse(text())).toMatchObject({ fixture: null, degraded: false, unsupported: true });
+    const data = JSON.parse(text());
+    expect(data).toMatchObject({ fixture: null, degraded: true, source: null });
+    expect('unsupported' in data).toBe(false);
   });
 
-  it('`bracket` shows the notice and no World Cup topology', async () => {
+  it('`bracket` says a league season has none, and shows no World Cup topology', async () => {
     await cmdBracket(undefined, {}, ctx());
-    expect(text()).toContain(NOTICE);
+    expect(text()).toContain('This competition has no bracket.');
     expect(text()).not.toMatch(WC);
   });
 
-  it('`match <World Cup id>` says the feature is not available here', async () => {
+  it('`match <World Cup id>` is never the World Cup opener: the read was not whole, and says so', async () => {
     await cmdMatch('760415', ctx());
-    expect(text()).toContain(NOTICE);
+    expect(text()).toContain('may be incomplete');
+    expect(text()).not.toContain(NOTICE);
     expect(text()).not.toMatch(WC);
   });
 
@@ -113,12 +121,18 @@ describe('club surface coverage — no World Cup leakage off the bundle', () => 
     expect(text()).not.toMatch(WC);
   });
 
-  it('`share next`, `share bracket` and `share <World Cup id>` carry the notice, never the skeleton', async () => {
-    for (const args of [['next', 'ARS'], ['bracket', undefined], ['760415', undefined]] as const) {
+  it('`share next`, `share bracket` and `share <World Cup id>` never paste the skeleton', async () => {
+    const said = [
+      [['next', 'ARS'], "Couldn't reach the data provider"],
+      [['bracket', undefined], 'This competition has no bracket.'],
+      [['760415', undefined], 'may be incomplete'],
+    ] as const;
+    for (const [args, sentence] of said) {
       writes = [];
       await cmdShare(args[0], args[1], {}, ctx());
-      expect(text()).toContain(NOTICE);
-      expect(text()).not.toMatch(WC);
+      expect(text(), args[0]).toContain(sentence);
+      expect(text(), args[0]).not.toContain(NOTICE);
+      expect(text(), args[0]).not.toMatch(WC);
     }
   });
 
@@ -133,15 +147,21 @@ describe('club surface coverage — no World Cup leakage off the bundle', () => 
     }
   });
 
-  it('`share next --json`, `share <World Cup id> --json` and `share bracket --json` carry the marker', async () => {
+  it('`share next --json`, `share <World Cup id> --json` and `share bracket --json` carry what the snippet says', async () => {
     // The sibling of the market P2: the snippet text warns, the structured
     // half must say so too (the batch-1 `partial` lesson, same shape).
-    for (const args of [['next', 'ARS'], ['760415', undefined], ['bracket', undefined]] as const) {
+    const said = [
+      [['next', 'ARS'], { degraded: true, source: null }],
+      [['760415', undefined], { degraded: false, source: null, partial: {} }],
+      [['bracket', undefined], { degraded: false, source: null, inapplicable: true }],
+    ] as const;
+    for (const [args, keys] of said) {
       writes = [];
       await cmdShare(args[0], args[1], {}, ctx({ json: true }));
       const data = JSON.parse(text()) as { snippet: string };
-      expect(data).toMatchObject({ degraded: false, source: null, unsupported: true });
-      expect(data.snippet).toContain(NOTICE);
+      expect(data, args[0]).toMatchObject(keys);
+      expect('unsupported' in data, args[0]).toBe(false);
+      expect(data.snippet, args[0]).not.toMatch(WC);
     }
   });
 });

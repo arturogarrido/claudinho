@@ -16,6 +16,8 @@ import {
   dateShareCard,
   liveShareCard,
   matchShareCard,
+  matchWindowSentence,
+  nextHorizonSentence,
   nextShareCard,
   tableShareCard,
   tableData,
@@ -30,6 +32,7 @@ import {
   resolvedValues,
   getMatchById,
   isFinished,
+  isLive,
   isReliableMarketSignal,
   isValidDate,
   isValidTimeZone,
@@ -309,10 +312,10 @@ function resolveTeamArg(
   if (!raw) throw new InputError(usage);
   // The bundled roster names the World Cup's nations and nothing else. Off the
   // bundle it is ANOTHER competition's roster and is never consulted: `ALA`
-  // fuzzy-matched New Zealand there, and `RAC` Curaçao. No lookup exists for
-  // this competition yet (club lookup arrives with 0.11's `next <club>`), so
-  // the token passes through — a code uppercased, anything else as a bounded
-  // label — and the command answers "not available for this competition yet".
+  // fuzzy-matched New Zealand there, and `RAC` Curaçao. The token passes
+  // through (a code uppercased, anything else as a bounded label) to a command
+  // that answers "not available for this competition" (the market sidecar);
+  // `next` takes the query as typed instead (`teamQuery`).
   if (!bundleApplies(competition)) {
     if (/^[A-Za-z]{3}$/.test(raw)) return raw.toUpperCase();
     const label = humanLabel(raw, 40);
@@ -333,6 +336,20 @@ function resolveTeamArg(
   }
   if (/^[A-Za-z]{3}$/.test(raw)) return raw.toUpperCase();
   throw new InputError(t('team.none', { query: raw }));
+}
+
+/**
+ * The team a `next` is about. On the bundled competition, a nation resolved as
+ * {@link resolveTeamArg} resolves it. Off it, the query AS TYPED, bounded like
+ * a human label: core resolves a club against the competition's own roster
+ * (by name or code, any case: `Arsenal`, `ars`, `O&M`), and answers with the
+ * candidates when several match.
+ */
+function teamQuery(team: string | undefined, usage: string, t: Translator, competition: string): string {
+  if (bundleApplies(competition)) return resolveTeamArg(team, usage, t, competition);
+  const label = humanLabel(team ?? process.env.CLAUDINHO_TEAM ?? '', 40);
+  if (!label) throw new InputError(usage);
+  return label;
 }
 
 /**
@@ -359,8 +376,9 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   const { cfg, t } = ctx;
   precheck(cfg, t, date);
   const adapter = adapterFor(ctx);
-  const targetDate = date ?? localDate(new Date().toISOString(), cfg.tz);
-  const { matches, degraded, source } = await getMatchesForDate(adapter, targetDate);
+  const targetDate = date ?? localDate((ctx.now ?? new Date()).toISOString(), cfg.tz);
+  const day = await getMatchesForDate(adapter, targetDate);
+  const { matches, degraded, source } = day;
   const todays = fixturesByDate(targetDate, matches, cfg.tz);
   const market = await reliableMarketSignals(ctx, todays);
 
@@ -372,6 +390,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
       matches: todays,
       marketComplete: market.complete,
       marketSignals: Object.fromEntries(market.signals),
+      ...verdictExtras(day),
     });
     return;
   }
@@ -384,7 +403,8 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   out(header(`${title} · ${targetDate}`, c));
   out();
   if (todays.length === 0) {
-    out(c.dim('  ' + t('today.none')));
+    // A verdict (between editions) stands instead of the empty note.
+    out(c.dim('  ' + (verdictNotice(day, cfg.lang) ?? t('today.none'))));
   } else {
     for (const m of todays) {
       out(matchLine(m, cfg, t, c, flags));
@@ -409,10 +429,11 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   const { cfg, t } = ctx;
   precheck(cfg, t);
   const adapter = adapterFor(ctx);
-  const { matches, degraded, source } = await getLiveMatches(adapter);
+  const live = await getLiveMatches(adapter, ctx.now ?? new Date());
+  const { matches, degraded, source } = live;
 
   if (cfg.json) {
-    emitJson({ degraded, source: source ?? null, matches });
+    emitJson({ degraded, source: source ?? null, matches, ...verdictExtras(live) });
     return;
   }
 
@@ -426,7 +447,8 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   if (degraded) {
     out(c.dim('  ' + t('live.degraded')));
   } else if (matches.length === 0) {
-    out(c.dim('  ' + t('live.none')));
+    // A verdict (between editions) stands instead of the empty note.
+    out(c.dim('  ' + (verdictNotice(live, cfg.lang) ?? t('live.none'))));
   } else {
     for (const m of matches) out(matchLine(m, cfg, t, c, flags));
   }
@@ -441,7 +463,7 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
 export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void> {
   const { cfg, t, now } = ctx;
   precheck(cfg, t);
-  const code = resolveTeamArg(
+  const code = teamQuery(
     team,
     'Usage: claudinho next <team> (or set CLAUDINHO_TEAM)',
     t,
@@ -450,15 +472,24 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   // Live-resolved: the bundled knockout slots are resultless placeholders, so a
   // static lookup goes blind once a team's group games pass — overlay the live
   // knockout window so a confirmed R32+ tie (e.g. MEX vs ECU) surfaces here too.
+  // Off the bundled competition core resolves the club and reads the schedule
+  // ahead (yesterday to 14 days ahead).
   const next = await getNextFixtureForTeam(adapterFor(ctx), code, now ?? new Date());
   const { fixture, degraded, source } = next;
+  // Who the answer is about: the club resolved, else the query, else the nation's code.
+  const label = next.team?.name ?? next.query ?? code;
 
   if (cfg.json) {
     emitJson({
-      team: code,
+      team: next.team ?? code,
       fixture: fixture ?? null,
       degraded,
       source: source ?? null,
+      // The answer's own fields (not verdicts): the candidates of an ambiguous
+      // name, the span a whole read searched, the season the read stated.
+      ...(next.candidates ? { candidates: next.candidates } : {}),
+      ...(next.horizon ? { horizon: next.horizon } : {}),
+      ...(next.season ? { season: next.season } : {}),
       ...verdictExtras(next),
     });
     return;
@@ -473,15 +504,29 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   out();
   if (!fixture) {
     for (const q of qualifiers) out(c.dim('  ' + q));
-    // Fail-closed honesty: a feed outage must read as "couldn't reach the
-    // provider", never as "this team has no upcoming fixture" (= eliminated).
-    out(
-      c.dim(
-        '  ' +
-          (verdictNotice(next, cfg.lang) ??
-            (degraded ? t('live.degraded') : t('next.none', { team: code }))),
-      ),
-    );
+    const notice = verdictNotice(next, cfg.lang);
+    if (notice === undefined && next.candidates && next.candidates.length > 0) {
+      // Two or more teams match: name them, pick none.
+      out(
+        c.dim(
+          `  ${t('team.ambiguous', { query: code })} ${next.candidates
+            .map((m) => `${m.name} (${m.code})`)
+            .join(', ')}`,
+        ),
+      );
+    } else {
+      // Fail-closed honesty: a feed outage must read as "couldn't reach the
+      // provider", never as "this team has no upcoming fixture" (= eliminated).
+      // A whole read with nothing for the club says the span it searched.
+      out(
+        c.dim(
+          '  ' +
+            (notice ??
+              nextHorizonSentence(next, code, cfg.lang) ??
+              (degraded ? t('live.degraded') : t('next.none', { team: label }))),
+        ),
+      );
+    }
     out();
     out(disclaimer(t, c));
     // Post-tournament this is the ONLY branch `next` takes (no team has an
@@ -490,7 +535,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
     endScoreCommand(ctx);
     return;
   }
-  out(header(t('next.label', { team: code }), c));
+  out(header(t('next.label', { team: label }), c));
   out();
   for (const q of qualifiers) out(c.dim('  ' + q));
   out(matchLine(fixture, cfg, t, c, flags));
@@ -498,11 +543,14 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   // `next MEX --lang es` render "Round of 32" beside otherwise-Spanish copy.
   const stage =
     fixture.stage !== 'GROUP' ? `${stageLabelI18n(cfg.lang, fixture.stage)} · ` : '';
+  // A match in play (off the bundle, `next` answers with it) has no countdown.
+  const when = formatKickoff(fixture.kickoff, { tz: cfg.tz, locale: cfg.lang });
   out(
     '  ' +
       c.dim(
-        `${stage}${formatKickoff(fixture.kickoff, { tz: cfg.tz, locale: cfg.lang })} · ` +
-          t('next.in', { countdown: countdown(fixture.kickoff) }),
+        isLive(fixture.status)
+          ? `${stage}${when}`
+          : `${stage}${when} · ` + t('next.in', { countdown: countdown(fixture.kickoff) }),
       ),
   );
   out();
@@ -934,7 +982,8 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   precheck(cfg, t);
   // ±1-day window fetch: the provider buckets scoreboard days in its own zone,
   // so fetching only the fixture's UTC date can miss its live/final state.
-  const found = await getMatchById(adapterFor(ctx), id);
+  // Off the bundled competition the id is looked for in the schedule ahead.
+  const found = await getMatchById(adapterFor(ctx), id, ctx.now);
   const { match, degraded, source: liveSource } = found;
 
   const market = match
@@ -948,19 +997,36 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
       source: liveSource ?? null,
       marketComplete: market.complete,
       marketSignal: market.signal ?? null,
+      // The span a whole read searched for an id it did not hold (a plain field).
+      ...(found.window ? { window: found.window } : {}),
       ...verdictExtras(found),
     });
     return;
   }
 
   const c = painterFor(cfg);
+  // What qualifies the answer (a read that was not whole) is said before it.
+  const qualifiers = verdictQualifiers(found, cfg.lang);
   out();
   if (!match) {
-    out(c.dim('  ' + (verdictNotice(found, cfg.lang) ?? t('match.none', { id }))));
+    for (const q of qualifiers) out(c.dim('  ' + q));
+    // An outage is never "no such match"; a verdict, then the span a whole
+    // read searched, then "no match found".
+    out(
+      c.dim(
+        '  ' +
+          (degraded
+            ? t('live.degraded')
+            : (verdictNotice(found, cfg.lang) ??
+              matchWindowSentence(found, id, cfg.lang) ??
+              t('match.none', { id }))),
+      ),
+    );
     out();
     out(disclaimer(t, c));
     return;
   }
+  for (const q of qualifiers) out(c.dim('  ' + q));
   const stageLabelText = stageLabelI18n(cfg.lang, match.stage, match.group ?? undefined);
   out(header(`${match.home.name} ${scoreline(match)} ${match.away.name}`, c));
   out('  ' + c.dim(`${stageLabelText} · ${matchLocation(match)}`));
@@ -987,8 +1053,12 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
     out(c.dim('  Market data unavailable or incomplete — this match could not be checked.'));
   }
   out();
-  // Live overlay failed → this is the static fixture with no live state. Say so.
-  if (degraded) out(c.dim('  ' + t('feed.degraded')));
+  // Live overlay failed → this is the static fixture with no live state. Say
+  // so. Off the bundled competition there is no static fixture: it is the
+  // provider's own earlier record, whose state could not be refreshed.
+  if (degraded) {
+    out(c.dim('  ' + t(bundleApplies(cfg.competition) ? 'feed.degraded' : 'feed.earlierRecord')));
+  }
   const src = dataSource(liveSource, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
@@ -1108,6 +1178,29 @@ export async function cmdMarkets(
   if (target && target !== 'today' && !isValidDate(target)) {
     precheck(cfg, t);
     const now = ctx.now ?? new Date();
+    // The market's scope is asked BEFORE any match lookup: off it nothing is
+    // read for this competition, so no request is made to find the match.
+    const scope = marketScopeVerdict(cfg.competition, 0);
+    const outOfScope = verdictNotice(scope, cfg.lang);
+    if (outOfScope !== undefined) {
+      if (cfg.json) {
+        emitJson({
+          matchId: target,
+          informationalOnly: true,
+          complete: true,
+          signal: null,
+          ...verdictExtras(scope),
+        });
+        return;
+      }
+      const c = painterFor(cfg);
+      out();
+      out(c.dim('  ' + outOfScope));
+      out();
+      out(disclaimer(t, c));
+      out(c.dim(MARKET_INFO));
+      return;
+    }
     // Live overlay (±1-day window) so FT gates the resolved market correctly.
     const found = await getMatchById(adapterFor(ctx), target);
     const { match } = found;
@@ -1292,6 +1385,8 @@ function emitMatchCard(
       matches: card.input.matches,
       marketComplete: card.input.marketComplete ?? true,
       marketSignals: Object.fromEntries(card.input.marketSignals ?? new Map()),
+      // The span an empty card says was searched (horizon, window): plain fields.
+      ...card.span,
       // The structured card keeps the verdict the snippet's note carries.
       ...card.verdict,
     },
@@ -1385,7 +1480,7 @@ export async function cmdShare(
   // share live — lean: no market enrichment (and no extra fetch).
   if (target === 'live') {
     precheck(cfg, t);
-    const live = await getLiveMatches(adapterFor(ctx));
+    const live = await getLiveMatches(adapterFor(ctx), ctx.now ?? new Date());
     emitMatchCard(ctx, liveShareCard(live, where), { ...baseOptions, includeMarkets: false }, copy);
     return;
   }
@@ -1434,7 +1529,7 @@ export async function cmdShare(
   // share next <team>
   if (target === 'next') {
     precheck(cfg, t);
-    const code = resolveTeamArg(
+    const code = teamQuery(
       team,
       'Usage: claudinho share next <team> (or set CLAUDINHO_TEAM)',
       t,
@@ -1453,7 +1548,7 @@ export async function cmdShare(
     precheck(cfg, t);
     // ±1-day window fetch (see cmdMatch): the provider's scoreboard day can
     // differ from the fixture's UTC date.
-    const found = await getMatchById(adapterFor(ctx), target);
+    const found = await getMatchById(adapterFor(ctx), target, ctx.now);
     const market = await reliableShareSignals(ctx, found.match ? [found.match] : []);
     emitMatchCard(ctx, matchShareCard(found, target, market, where), baseOptions, copy);
     return;
@@ -1462,8 +1557,9 @@ export async function cmdShare(
   // share [today | <date>]
   const explicitDate = target && target !== 'today' ? target : undefined;
   precheck(cfg, t, explicitDate);
-  const date = explicitDate ?? localDate(new Date().toISOString(), cfg.tz);
-  const { matches: all, degraded, source } = await getMatchesForDate(adapterFor(ctx), date);
+  const date = explicitDate ?? localDate((ctx.now ?? new Date()).toISOString(), cfg.tz);
+  const day = await getMatchesForDate(adapterFor(ctx), date);
+  const { matches: all, degraded, source } = day;
   const todays = fixturesByDate(date, all, cfg.tz);
   const market = await reliableShareSignals(ctx, todays);
   emitMatchCard(
@@ -1476,6 +1572,7 @@ export async function cmdShare(
         degraded,
         source,
         scheduleKnown: bundleApplies(cfg.competition),
+        read: day,
       },
       market,
       where,

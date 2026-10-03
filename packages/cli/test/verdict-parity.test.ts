@@ -71,16 +71,16 @@ afterEach(() => {
 const text = () => writes.join('');
 
 // 760415 is a bundled World Cup id: under another competition it must read as
-// "not available", never as the World Cup opener.
-const CASES: [label: string, run: (c: Ctx) => Promise<void>][] = [
-  ['next <team>', (c) => cmdNext('ARS', c)],
-  ['match <id>', (c) => cmdMatch('760415', c)],
-  ['bracket', (c) => cmdBracket(undefined, {}, c)],
-  ['markets next <team>', (c) => cmdMarkets('next', 'ARS', c)],
-  ['markets <id>', (c) => cmdMarkets('760415', undefined, c)],
-  ['share next <team>', (c) => cmdShare('next', 'ARS', {}, c)],
-  ['share <id>', (c) => cmdShare('760415', undefined, {}, c)],
-  ['share bracket', (c) => cmdShare('bracket', undefined, {}, c)],
+// "not available", never as the World Cup opener. Since 0.11 (2.1c) `next`,
+// `match <id>` and their share cards read the competition's own schedule ahead
+// off the bundle, and a league season like `eng.1` says it has NO bracket
+// (`off-bundle-surfaces.test.ts` pins those answers, text and --json); the
+// bracket stays "not available yet" where a competition may have one (`ger.1`).
+const CASES: [label: string, competition: string, run: (c: Ctx) => Promise<void>][] = [
+  ['bracket', 'ger.1', (c) => cmdBracket(undefined, {}, c)],
+  ['markets next <team>', 'eng.1', (c) => cmdMarkets('next', 'ARS', c)],
+  ['markets <id>', 'eng.1', (c) => cmdMarkets('760415', undefined, c)],
+  ['share bracket', 'ger.1', (c) => cmdShare('bracket', undefined, {}, c)],
 ];
 
 describe('off the bundle: every command says "not available" in text AND in --json', () => {
@@ -88,18 +88,18 @@ describe('off the bundle: every command says "not available" in text AND in --js
     process.env.CLAUDINHO_COMPETITION = 'eng.1';
   });
 
-  it.each(CASES)('%s: the text says it', async (_label, run) => {
-    await run(ctx('eng.1'));
+  it.each(CASES)('%s: the text says it', async (_label, competition, run) => {
+    await run(ctx(competition));
     expect(text()).toContain(NOTICE.en);
   });
 
-  it.each(CASES)('%s: the text says it in the reader’s language', async (_label, run) => {
-    await run(ctx('eng.1', { lang: 'es' }));
+  it.each(CASES)('%s: the text says it in the reader’s language', async (_label, competition, run) => {
+    await run(ctx(competition, { lang: 'es' }));
     expect(text()).toContain(NOTICE.es);
   });
 
-  it.each(CASES)('%s: --json carries `unsupported: true` at the top level', async (_label, run) => {
-    await run(ctx('eng.1', { json: true }));
+  it.each(CASES)('%s: --json carries `unsupported: true` at the top level', async (_label, competition, run) => {
+    await run(ctx(competition, { json: true }));
     expect(JSON.parse(text()).unsupported).toBe(true);
   });
 });

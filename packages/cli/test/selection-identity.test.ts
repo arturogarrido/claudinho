@@ -310,20 +310,22 @@ describe.each(['eng.1', 'uefa.nations', 'concacaf.nations.league'])(
     });
     const ctx = () => ({ cfg: cfg({ competition, json: true }), t, adapter: fakeAdapter(competition) });
 
+    // Since 0.11 (2.1c) the query goes to THIS competition's reader as typed
+    // (this adapter cannot read a schedule ahead, so the answer is degraded).
     it('`next ALA` is not New Zealand, `next rac` is not Curaçao', async () => {
       await cmdNext('ALA', ctx());
-      expect(json()).toMatchObject({ team: 'ALA', fixture: null, unsupported: true });
+      expect(json()).toMatchObject({ team: 'ALA', fixture: null, degraded: true });
       expect(out()).not.toMatch(/NZL|New Zealand/);
 
       stdout = [];
       await cmdNext('rac', ctx());
-      expect(json()).toMatchObject({ team: 'RAC', unsupported: true });
+      expect(json()).toMatchObject({ team: 'rac', degraded: true });
       expect(out()).not.toMatch(/CUW|Cura/);
     });
 
-    it('a name gets the honest "not available yet", not a World Cup lookup error', async () => {
+    it('a name goes to this competition\u2019s own reader, not a World Cup lookup error', async () => {
       await cmdNext('Arsenal', ctx());
-      expect(json()).toMatchObject({ team: 'Arsenal', fixture: null, unsupported: true });
+      expect(json()).toMatchObject({ team: 'Arsenal', fixture: null, degraded: true });
     });
 
     it('an argument with nothing readable in it is no team at all', async () => {
