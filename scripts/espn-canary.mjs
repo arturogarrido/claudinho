@@ -48,7 +48,8 @@
  *              its OWN window, asked again of exactly that response, and
  *              discovery's account of the whole must be whole too (a fixture
  *              served by two months is one it drops). Two months may state
- *              two seasons: no season is required of the whole
+ *              two seasons (no season is required of the whole), but only as
+ *              a turn, by the window's rule: one step up, within the cadence
  *   standings  the tables
  * A test fails when the adapter gains a fetch method this list does not ask.
  *
@@ -156,6 +157,17 @@ const CADENCE_YEARS = Object.freeze({
   'concacaf.gold': 2,
 });
 const cadenceOf = (competition) => CADENCE_YEARS[competition] ?? 1;
+/**
+ * Whether the seasons a competition's responses stated, in the order of the
+ * dates asked, are NOT a turn: a turn is ONE step up, of at most the
+ * competition's cadence, wherever it falls. A step down, a second step, or a
+ * jump past the cadence is a feed the dated reads refuse. Asked of a window's
+ * days and of discovery's months alike, where they state more than one season.
+ */
+function notATurn(competition, years) {
+  const steps = years.slice(1).map((year, i) => year - years[i]).filter((step) => step !== 0);
+  return steps.length !== 1 || steps[0] < 1 || steps[0] > cadenceOf(competition);
+}
 /** An error body is read for its message only. */
 const ERROR_BODY_BYTES = 64 * 1024;
 /** How long the canary waits for a body it is reading for itself. */
@@ -307,8 +319,7 @@ function checkScoreboard(core, adapter, parts, matches) {
       .sort((a, b) => datesOf(a.url).localeCompare(datesOf(b.url)))
       .map((part) => part.json?.leagues?.[0]?.season?.year)
       .filter((year) => Number.isInteger(year));
-    const steps = stated.slice(1).map((year, i) => year - stated[i]).filter((step) => step !== 0);
-    if (steps.length !== 1 || steps[0] < 1 || steps[0] > cadenceOf(adapter.competition)) {
+    if (notATurn(adapter.competition, stated)) {
       return { verdict: 'changed', detail: `the parts state seasons that are not a turn (${stated.join(', ')})` };
     }
   }
@@ -430,7 +441,9 @@ function discoveryState(result) {
  * every month passed AND that account is whole and not degraded: discovery
  * refuses what no single month can show (one fixture served by two months: it
  * keeps the first copy, wherever it fell, and an in-span fixture can vanish
- * behind a copy outside the span). No season is asked of the whole.
+ * behind a copy outside the span). No season is asked of the whole, but two
+ * months stating two seasons must be a turn, by the window's rule
+ * (`notATurn`): one step up, within the competition's cadence.
  */
 async function judgeDiscovery(core, competition, parts, result, which, span) {
   const judged = await discoveryMonths(core, competition, parts, which);
@@ -459,8 +472,17 @@ async function judgeDiscovery(core, competition, parts, result, which, span) {
           : `discovery is not whole${left}`,
     };
   }
+  // Two months may state two seasons (no season is asked of the whole), but
+  // only as a window's days may: a turn, read in the order of the months.
+  const stated = [...months]
+    .sort((a, b) => a.dates.localeCompare(b.dates))
+    .map((m) => m.year)
+    .filter((y) => Number.isInteger(y));
+  const years = [...new Set(stated)];
+  if (years.length > 1 && notATurn(competition, stated)) {
+    return { verdict: 'changed', detail: `the months state seasons that are not a turn (${stated.join(', ')})` };
+  }
   const fixtures = Array.isArray(result.fixtures) ? result.fixtures.length : 0;
-  const years = [...new Set(months.map((m) => m.year).filter((y) => Number.isInteger(y)))];
   const seasons = years.length > 1 ? `; the months state seasons ${years.join(' and ')}` : '';
   return { verdict: 'ok', detail: `${fixtures} fixture(s) in the span ${span.start} to ${span.end}${seasons}` };
 }
