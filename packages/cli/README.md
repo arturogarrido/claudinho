@@ -184,7 +184,10 @@ When the provider's knockout answer was not whole (a record it sent could not be
 was a second copy of a fixture, or lay beyond the bound Claudinho reads), `next`,
 `bracket` and their share cards say so before what was read, and `--json` carries
 `partial` (`{ omitted }`, the count of provider records left out, when known): no fixture
-is then not "eliminated".
+is then not "eliminated". `today`, `live`, `match`, `markets` and their share cards do the
+same for their own reads: an empty answer then says nothing was *read*, never that nothing
+exists, and a World Cup day names the fixtures shown from the bundled schedule without
+their live state (with no "Live data" line when none shown was served).
 No clipboard tool? `claudinho share … | pbcopy` works too.
 
 ### Want an image?
