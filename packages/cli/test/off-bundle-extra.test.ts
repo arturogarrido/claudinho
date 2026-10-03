@@ -150,3 +150,16 @@ describe('review round 1 (coder): a refresh that does not hold the id shows the 
     expect(text()).not.toContain('bundled schedule');
   });
 });
+
+describe('review round 2 (coder): every card’s run cue names the competition off the bundle', () => {
+  it('the table, bracket and date cards too', async () => {
+    await cmdShare('table', undefined, {}, ctxFor(feed('eng.1').adapter));
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli table/);
+    writes = [];
+    await cmdShare('bracket', undefined, {}, ctxFor(feed('eng.1').adapter));
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli bracket/);
+    writes = [];
+    await cmdShare('2026-10-11', undefined, {}, ctxFor(feed('eng.1').adapter));
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli today/);
+  });
+});

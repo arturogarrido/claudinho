@@ -1482,7 +1482,8 @@ export async function cmdShare(
   };
   const copy = opts.copy === true;
 
-  const where = { tz: cfg.tz, locale: cfg.lang };
+  // The competition goes on the card: off the bundle its run cue names it.
+  const where = { tz: cfg.tz, locale: cfg.lang, competition: cfg.competition };
 
   // share live — lean: no market enrichment (and no extra fetch).
   if (target === 'live') {
@@ -1498,7 +1499,7 @@ export async function cmdShare(
     const group = tableKeyOrThrow(team, t);
     emitTableCard(
       ctx,
-      tableShareCard(await getStandings(adapterFor(ctx), group), group, undefined, cfg.lang),
+      tableShareCard(await getStandings(adapterFor(ctx), group), group, undefined, cfg.lang, cfg.competition),
       baseOptions,
       copy,
     );
@@ -1520,7 +1521,7 @@ export async function cmdShare(
     );
     emitBracketCard(
       ctx,
-      bracketShareCard(bracket, stageFilter, cfg.lang),
+      bracketShareCard(bracket, stageFilter, cfg.lang, cfg.competition),
       {
         includeHashtag: baseOptions.includeHashtag,
         includeInstallLine: baseOptions.includeInstallLine,

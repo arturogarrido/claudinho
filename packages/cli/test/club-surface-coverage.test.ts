@@ -87,18 +87,18 @@ describe('club surface coverage — no World Cup leakage off the bundle', () => 
     expect(text()).not.toMatch(WC);
   });
 
-  it('`next` reads this competition, never the World Cup: a club it cannot identify is "couldn\'t reach", not "no fixture"', async () => {
+  it('`next` reads this competition, never the World Cup: with its roster unread, a code it cannot place says so, not "no fixture"', async () => {
     await cmdNext('ARS', ctx());
-    expect(text()).toContain("couldn't reach the data provider");
+    expect(text()).toContain('roster could not be read whole');
     expect(text()).not.toContain(NOTICE);
     expect(text()).not.toContain('No upcoming fixture');
     expect(text()).not.toMatch(WC);
   });
 
-  it('`next --json` says it is degraded, with no verdict', async () => {
+  it('`next --json` carries the roster verdict, not an outage', async () => {
     await cmdNext('ARS', ctx({ json: true }));
     const data = JSON.parse(text());
-    expect(data).toMatchObject({ fixture: null, degraded: true, source: null });
+    expect(data).toMatchObject({ fixture: null, degraded: false, source: null, rosterIncomplete: true });
     expect('unsupported' in data).toBe(false);
   });
 
@@ -123,7 +123,7 @@ describe('club surface coverage — no World Cup leakage off the bundle', () => 
 
   it('`share next`, `share bracket` and `share <World Cup id>` never paste the skeleton', async () => {
     const said = [
-      [['next', 'ARS'], "Couldn't reach the data provider"],
+      [['next', 'ARS'], 'roster could not be read whole'],
       [['bracket', undefined], 'This competition has no bracket.'],
       [['760415', undefined], 'may be incomplete'],
     ] as const;
@@ -151,7 +151,7 @@ describe('club surface coverage — no World Cup leakage off the bundle', () => 
     // The sibling of the market P2: the snippet text warns, the structured
     // half must say so too (the batch-1 `partial` lesson, same shape).
     const said = [
-      [['next', 'ARS'], { degraded: true, source: null }],
+      [['next', 'ARS'], { degraded: false, source: null, rosterIncomplete: true }],
       [['760415', undefined], { degraded: false, source: null, partial: {} }],
       [['bracket', undefined], { degraded: false, source: null, inapplicable: true }],
     ] as const;
