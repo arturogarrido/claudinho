@@ -288,6 +288,11 @@ describe('across a season turn (0.11 2.1b): the LIVE read composes, every other 
     const refused = await adapterOn(feed([SAT_EARLY, { ...SUN, ...broken }, MON_LATE], { season: turn })).fetchWindow('2026-10-10', '2026-10-12', { acrossSeasons: true });
     expect(ids(refused)).toEqual(['1', '4']);
     expect(fetchMeta(refused)).toMatchObject({ complete: false, omitted: 1 });
+    // A part that filled its limit (300 fixtures on Oct 11, Eastern) fails the window in this mode too.
+    const many: Ev[] = Array.from({ length: 300 }, (_, i) => ({ id: String(1000 + i), date: '2026-10-11T18:00Z' }));
+    await expect(adapterOn(feed([SAT_EARLY, ...many, MON_LATE], { season: turn })).fetchWindow('2026-10-10', '2026-10-12', { acrossSeasons: true })).rejects.toThrow(
+      /filled its limit/,
+    );
     const down = feed(ALL, { season: turn, fail: (d) => (d === '20261011' ? json({}, 503) : undefined) });
     await expect(adapterOn(down).fetchWindow('2026-10-10', '2026-10-12', { acrossSeasons: true })).rejects.toMatchObject({ status: 503 });
   });
@@ -538,7 +543,7 @@ describe('the reads that were degraded, with the provider refusing every range',
     ],
   });
   const WC_SEASON = { year: 2026, startDate: '2026-06-11T04:00Z', endDate: '2026-12-31T04:59Z', displayName: '2026 FIFA World Cup' };
-  function wcFeed() {
+  function wcFeed(season: (asked: string) => typeof WC_SEASON = () => WC_SEASON) {
     const urls: string[] = [];
     const dates: string[] = [];
     const events = [
@@ -554,7 +559,7 @@ describe('the reads that were degraded, with the provider refusing every range',
       if (asked.includes('-')) return json({ code: 400, message: 'Failed to get events endpoint.' }, 400);
       const hit = (e: { date: string }) =>
         asked.length === 8 ? easternDay(e.date) === asked : easternDay(e.date).startsWith(asked);
-      return json({ leagues: [{ season: WC_SEASON }], events: events.filter(hit) });
+      return json({ leagues: [{ season: season(asked) }], events: events.filter(hit) });
     }) as unknown as typeof fetch;
     return { fetchImpl, urls, dates };
   }
@@ -755,5 +760,33 @@ describe('the reads that were degraded, with the provider refusing every range',
     expect(r.degraded).toBe(false);
     expect(r.fixtures.map((m) => m.id)).toEqual(['760517']);
     expect(r.complete).toBe(false);
+  });
+
+  it('every reader that merges the bundle or keeps a slice asks strictly: at a turn of the bundled competition each is degraded and shows nothing of the window (0.11 2.1b)', async () => {
+    // A synthetic turn: July's month response and the days from July 19 state
+    // the next season. Every window these reads compose then holds two.
+    const turn = (asked: string) => (asked === '202607' || (asked.length === 8 && asked >= '20260719') ? { ...WC_SEASON, year: 2027 } : WC_SEASON);
+    const at = new Date('2026-07-19T19:30Z');
+    const knockout = await getKnockoutFixtures(wcAdapter(wcFeed(turn)), at);
+    expect(knockout.degraded).toBe(true);
+    expect(knockout.fixtures).toEqual([]);
+    expect(knockout.partial).toBeUndefined();
+    const next = await getNextFixtureForTeam(wcAdapter(wcFeed(turn)), 'ESP', at);
+    expect(next.degraded).toBe(true);
+    expect(next.fixture?.home.name).not.toBe('Spain');
+    expect(next.partial).toBeUndefined();
+    const bracket = await getBracket(wcAdapter(wcFeed(turn)), { stage: 'F' });
+    expect(bracket.degraded).toBe(true);
+    expect(bracket.partial).toBeUndefined();
+    const match = await getMatchById(wcAdapter(wcFeed(turn)), '760517');
+    expect(match.degraded).toBe(true);
+    expect(match.match?.home.name).not.toBe('Spain');
+    const market = await marketFixtureForTeam(wcAdapter(wcFeed(turn)), 'ESP', at);
+    expect(market.degraded).toBe(true);
+    expect(market.match?.home.name).not.toBe('Spain');
+    // The live read on the same feed, the same dates: served, and it states no season.
+    const live = await getLiveMatches(wcAdapter(wcFeed(turn)), at);
+    expect(live.degraded).toBe(false);
+    expect(live.season).toBeUndefined();
   });
 });

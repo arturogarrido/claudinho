@@ -45,8 +45,10 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   parts, leaves the answer `complete: false` with `omitted` counting the
   records left out (`fetchMeta`; the parser counts at the boundary, 0 exactly
   when complete). A caller that keeps a previous answer must carry that
-  verdict: an incomplete answer never erases what it did not read. A result
-  that shows the answer to a reader carries it as the `partial` verdict.
+  verdict: an incomplete answer never erases what it did not read. The
+  knockout-facing results (`next`, `bracket`, their share cards) carry it as
+  the `partial` verdict; `today`, `live` and `match` still drop it, until the
+  verdict reaches them too (`AGENTS.md`, the window bullet, names the scope).
   A caller that composes windows itself (discovery: a window per month) asks
   "no readable record" of the whole too: a window refused because its list
   held no readable record carries `ProviderError.noReadableRecord` and read
