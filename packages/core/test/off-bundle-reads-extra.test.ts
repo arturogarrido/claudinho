@@ -192,8 +192,10 @@ describe('review round 1 (coder): the selection predicate, the World Cup name ar
 
   it('no surface spells the "none read" sentences or their keys: they come from the card builders', async () => {
     const { readdirSync, readFileSync, statSync } = await import('node:fs');
-    const { join } = await import('node:path');
-    const root = new URL('../../', import.meta.url).pathname;
+    const { dirname, join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    // A file URL's pathname is not a filesystem path on Windows (`/D:/...`): convert it, as the vocabulary guard does.
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
     const sources = (dir: string): string[] =>
       readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? sources(join(dir, n)) : n.endsWith('.ts') ? [join(dir, n)] : []));
     for (const pkg of ['cli', 'mcp']) {

@@ -139,6 +139,11 @@ describe('a verdict REPLACES the body or QUALIFIES it, and the module says which
     expect(verdictNotice({ inapplicable: true }, 'en')).toBe('This competition has no bracket.');
     expect(verdictExtras({ inapplicable: true })).toEqual({ inapplicable: true });
     expect(verdictNotice({ unknownTeam: true }, 'en')).toMatch(/^No team called/);
+    // Review round 4: the sentence names its evidence. A table read whole is not the whole competition (a club
+    // out in a qualifying round is in no table), so the claim is about the table and the span, not the competition.
+    expect(verdictNotice({ unknownTeam: true, query: 'Everton' } as never, 'en')).toBe(
+      "No team called Everton in the competition's table or in its fixtures over the next 14 days.",
+    );
     expect(verdictExtras({ unknownTeam: true })).toEqual({ unknownTeam: true });
     // `ended` is the provider's end DAY (the rule decides on it), printed as it is.
     const between = { betweenEditions: { ended: '2026-10-08', label: '2026 Concacaf Champions Cup' } };
@@ -168,6 +173,7 @@ describe('a verdict REPLACES the body or QUALIFIES it, and the module says which
       expect(verdictNotice(between, lang), lang).not.toMatch(/^Between editions/);
       expect(verdictNotice(between, lang), lang).toContain('2026 Concacaf Champions Cup');
       expect(verdictNotice({ unknownTeam: true }, lang), lang).not.toMatch(/^No team called/);
+      expect(verdictNotice({ unknownTeam: true, query: 'Everton' } as never, lang), lang).toMatch(/14/);
     }
   });
 });
