@@ -320,6 +320,24 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
     }
   });
 
+  it('a date card’s sentences end with one period in every locale: the label’s abbreviation dot (fr "17 oct.", pt "17 de out.") is not doubled', () => {
+    // Found in review: pre-existing in the card's "No matches scheduled for <label>.", carried into the two new
+    // sentences once they took the label.
+    for (const locale of ['fr', 'pt', 'es', 'en']) {
+      const far = { tz: 'UTC', locale };
+      const day = { date: '2026-10-17', explicit: true, matches: [], degraded: false, source: 'espn' };
+      const notes = [
+        dateShareCard({ ...day, read: { partial: { omitted: 1 }, served: [] } }, noMarket, far).input.emptyNote,
+        dateShareCard({ ...day, degraded: true, read: {} }, noMarket, far).input.emptyNote,
+        dateShareCard({ ...day, read: { skeleton: true } }, noMarket, far).input.emptyNote,
+      ];
+      for (const note of notes) {
+        expect(note, `${locale}: ${note}`).not.toMatch(/\.\./);
+        expect(note, `${locale}: ${note}`).toMatch(/\.$/);
+      }
+    }
+  });
+
   it('live: nothing on, and a feed that is down, are different cards', () => {
     const quiet = liveShareCard({ matches: [], degraded: false, source: 'espn' }, ctx);
     expect(quiet).toMatchObject({ kind: 'live', target: 'live' });
