@@ -172,11 +172,20 @@ describe('today (0.11 2.1d)', () => {
     expect(parsed().source).toBeNull();
   });
 
-  it('a whole read with skeleton rows the overlay did not hold: unchanged (attributed, no sentence)', async () => {
-    await cmdToday('2026-06-11', ctxFor(feed('fifa.world', { events: [{ ...OPENER, state: 'in' }] })));
+  it('a whole read with skeleton rows the overlay did not hold: unchanged (attributed, no sentence, no `served` in --json)', async () => {
+    const adapter = feed('fifa.world', { events: [{ ...OPENER, state: 'in' }] });
+    await cmdToday('2026-06-11', ctxFor(adapter));
     expect(text()).toContain('Live data');
     expect(text()).not.toContain('may be incomplete');
     expect(text()).not.toContain('bundled schedule');
+    // `served` interprets the partial sentence: it rides beside `partial` only, so a whole read's structured
+    // output is what it was (the parity claim).
+    for (const run of [() => cmdToday('2026-06-11', ctxFor(adapter, { json: true })), () => cmdShare('2026-06-11', undefined, {}, ctxFor(adapter, { json: true })), () => cmdMatch('760415', ctxFor(adapter, { json: true }))]) {
+      writes = [];
+      await run();
+      expect(parsed()).not.toHaveProperty('served');
+      expect(parsed()).not.toHaveProperty('partial');
+    }
   });
 
   it('off the bundle, the day’s only fixture refused: the empty body says no fixture was READ for that date, never "No matches scheduled"', async () => {

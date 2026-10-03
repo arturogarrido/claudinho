@@ -158,6 +158,17 @@ describe('the bundled get_match and get_market_signal (0.11 2.1d)', () => {
     strict('get_share_snippet', card.data);
   });
 
+  it('a whole read carries no `served`: it rides beside `partial` only, so whole reads keep their shape', async () => {
+    const adapter = feed('fifa.world', { events: [{ ...OPENER, state: 'in' }] });
+    const today = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter });
+    expect(today.data).not.toHaveProperty('served');
+    expect(today.data).not.toHaveProperty('partial');
+    const match = await toolGetMatch({ id: '760415', adapter });
+    expect(match.data).not.toHaveProperty('served');
+    const card = await toolGetShareSnippet({ date: '2026-06-11', tz: 'UTC', adapter });
+    expect(card.data).not.toHaveProperty('served');
+  });
+
   it('get_match with a refused sibling: exactly one sentence, the key, attribution unchanged', async () => {
     const r = await toolGetMatch({ id: '760415', adapter: feed('fifa.world', { events: [{ ...OPENER, state: 'in' }, { ...KOR_CZE, raw: REFUSED }] }) });
     expect(count(r.text, 'may be incomplete')).toBe(1);
