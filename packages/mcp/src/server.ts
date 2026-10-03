@@ -159,7 +159,7 @@ const verdictOut = {
     .literal(true)
     .optional()
     .describe(
-      "Present (true) when the competition's whole roster was read and holds no team by that name; never stated when the roster could not be read whole",
+      "Present (true) when the competition's table, read whole, and its fixtures over the next 14 days hold no team by that name (a claim about that table and span, not the whole competition: a club out in a qualifying round is in no table); never stated when the table could not be read whole",
     ),
   rosterIncomplete: z
     .literal(true)
@@ -757,7 +757,7 @@ export function buildServer(): McpServer {
     {
       title: 'Next fixture for a team',
       description:
-        "A team's next match. World Cup: a nation's code or name (MEX, Mexico); a confirmed knockout tie is read from the live overlay, group fixtures from the bundled schedule. A club competition: a club's name or code (Arsenal, ARS), resolved against the competition's roster; its earliest match not yet finished in the 14 days ahead (in play included), with team (the club resolved), candidates when several teams match (no fixture is picked), horizon when none falls in that span, unknownTeam when the whole roster holds no such team, rosterIncomplete when the roster could not be read whole and the name (a code or a partial name) could not be resolved without it: ask again with the club's full name. partial means the provider sent records that could not be used: the answer is what was read, and no fixture then does not mean the team is out.",
+        "A team's next match. World Cup: a nation's code or name (MEX, Mexico); a confirmed knockout tie is read from the live overlay, group fixtures from the bundled schedule. A club competition: a club's name or code (Arsenal, ARS), resolved against the competition's roster; its earliest match not yet finished in the 14 days ahead (in play included), with team (the club resolved), candidates when several teams match (no fixture is picked), horizon when none falls in that span, unknownTeam when neither the competition's table (read whole) nor its fixtures over those 14 days hold such a team, rosterIncomplete when the roster could not be read whole and the name (a code or a partial name) could not be resolved without it: ask again with the club's full name. partial means the provider sent records that could not be used: the answer is what was read, and no fixture then does not mean the team is out.",
       inputSchema: { team: clubArg.describe('A team name or code: a club (Arsenal, ARS) or a nation (Mexico, MEX)'), ...commonArgs },
       // Read-only; overlays live provider data for knockout pairings, so open-world.
       annotations: { readOnlyHint: true, openWorldHint: true },
