@@ -28,6 +28,7 @@ import { resolveClub, rosterFor } from './teams';
 import { agreedSeason } from './trust/season';
 import { isTeam } from './trust/match';
 import { humanLabel } from './trust/roles';
+import { SCHEDULE_AHEAD_DAYS, SCHEDULE_LOOKBACK_DAYS } from './span';
 import { type BetweenEditions, partialOfRead } from './verdict';
 
 /** Provider names {@link makeAdapter} can construct (the CLI validates against this). */
@@ -918,10 +919,8 @@ async function matchOffBundle(adapter: ProviderAdapter, id: string, now: Date): 
   }
 }
 
-/** Discovery looks this many provider days back (a match that kicked off late yesterday can still be in play). */
-export const SCHEDULE_LOOKBACK_DAYS = 1;
-/** And this many ahead. */
-export const SCHEDULE_AHEAD_DAYS = 14;
+// Discovery's span: its own module (the verdict sentences name it too).
+export { SCHEDULE_AHEAD_DAYS, SCHEDULE_LOOKBACK_DAYS } from './span';
 
 export interface ScheduleAheadResult {
   /** Every fixture read in the span, in ANY status, by kickoff. */

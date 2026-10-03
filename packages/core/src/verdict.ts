@@ -24,8 +24,11 @@
  *     result states more than one, the first in this order is said:
  *       `unsupported`      the feature is not offered for this competition yet;
  *       `inapplicable`     the competition has no such thing (no bracket);
- *       `unknownTeam`      the competition's whole roster was read and holds
- *                          no team by that name (`query` names it);
+ *       `unknownTeam`      the competition's table, read whole, and its
+ *                          fixtures over discovery's span hold no team by
+ *                          that name (`query` names it; the sentence names
+ *                          that evidence, not the competition: a club out in
+ *                          a qualifying round is in no table);
  *       `rosterIncomplete` the roster could not be read whole, and the name
  *                          was not one that could be answered without it
  *                          (`query` names it); not an outage;
@@ -44,6 +47,7 @@
  * they never suppress a qualifier, and a verdict replaces them.
  */
 import { t } from './i18n';
+import { SCHEDULE_AHEAD_DAYS } from './span';
 
 /** The edition a read's season says has ended (see `betweenEditions`). */
 export interface BetweenEditions {
@@ -68,9 +72,11 @@ export interface VerdictSource {
    */
   readonly inapplicable?: boolean;
   /**
-   * The competition's roster was read WHOLE and holds no team by the name
-   * asked for. Never stated from a roster that is not whole (a refused row, a
-   * missing table, a row with no id): that is not knowing, not "no such team".
+   * The competition's table, read WHOLE, and its fixtures over discovery's
+   * span hold no team by the name asked for. A claim about that evidence, not
+   * the competition (a club out in a qualifying round is in no table). Never
+   * stated from a roster that is not whole (a refused row, a missing table, a
+   * row with no id): that is not knowing (`rosterIncomplete`).
    */
   readonly unknownTeam?: boolean;
   /**
@@ -196,7 +202,10 @@ export function verdictNotice(result: VerdictSource, lang?: string): string | un
   if (result.unknownTeam === true) {
     // The name as asked; a result that does not say it still gets a sentence.
     const team = typeof result.query === 'string' ? result.query : '';
-    return t(lang, 'team.unknown', { team }).replace(/\s{2,}/g, ' ');
+    // It names its evidence, not the competition: the table read whole and
+    // the fixtures of discovery's span (a club out in a qualifying round is
+    // in no table).
+    return t(lang, 'team.unknown', { team, days: String(SCHEDULE_AHEAD_DAYS) }).replace(/\s{2,}/g, ' ');
   }
   if (result.rosterIncomplete === true) {
     const team = typeof result.query === 'string' ? result.query : '';
