@@ -95,14 +95,22 @@ export function humanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): stri
 
 /**
  * Is this value ALREADY a human label, as a reader typed it: the role leaves
- * it as it is (up to NFC and surrounding spaces). A value the role would have
- * to change, by dropping an invisible or control character, an emoji, or a
- * tail past the column bound, is not one. For INPUT that must be refused
- * rather than repaired (a tool argument): the same grammar `humanLabel`
- * applies, asked as a question.
+ * it as it is, up to NFC and ordinary spaces at its ends (`' Arsenal '` is a
+ * label). For INPUT that must be refused rather than repaired (a tool
+ * argument): the same grammar `humanLabel` applies, asked as a question, of
+ * the RAW value. So a code point the role forbids is refused ANYWHERE, ends
+ * included (a control such as a tab or a newline, a format character such as
+ * a byte-order mark, a line or paragraph separator, anything invisible):
+ * comparing after a trim would hide one at an end, and a newline at the end
+ * of an argument splits the run cue it is pasted into. Then an emoji, or a
+ * tail past the column bound, which the role would drop, is refused too.
  */
 export function isHumanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): boolean {
   if (typeof value !== 'string' || value === '') return false;
+  if (value.length > MAX_LABEL_INPUT_UNITS) return false;
+  for (const ch of value) {
+    if (FORBIDDEN_IN_LABEL.test(ch)) return false;
+  }
   let nfc: string;
   try {
     nfc = value.normalize('NFC');
@@ -110,7 +118,9 @@ export function isHumanLabel(value: unknown, maxColumns = MAX_LABEL_COLUMNS): bo
     return false;
   }
   const label = humanLabel(value, maxColumns);
-  return label !== '' && label === nfc.trim();
+  // Only ordinary spaces can be left at the ends now: every other whitespace
+  // character is a control or a separator, refused above.
+  return label !== '' && label === nfc.replace(/^ +| +$/g, '');
 }
 
 /**
