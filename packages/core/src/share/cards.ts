@@ -472,6 +472,16 @@ export function matchShareCard(
   };
 }
 
+/**
+ * A sentence whose last word is the card's date label ends with ONE period:
+ * a label that ends with an abbreviation dot (fr "17 oct.", pt "17 de out.")
+ * is not followed by a second. Where a label ends a sentence on a card; the
+ * CLI and MCP print an ISO date there, which has no dot.
+ */
+function endSentence(sentence: string): string {
+  return sentence.replace(/\.\.$/, '.');
+}
+
 /** A day's matches: today's, or an explicitly requested date's. */
 export function dateShareCard(
   day: {
@@ -526,9 +536,11 @@ export function dateShareCard(
       // their own header.
       emptyNote:
         verdictNotice(read, ctx.locale) ??
-        dateUnreached(read, human, ctx.locale) ??
-        dateNoneRead(read, human, ctx.locale) ??
-        `No matches scheduled for ${human}.`,
+        endSentence(
+          dateUnreached(read, human, ctx.locale) ??
+            dateNoneRead(read, human, ctx.locale) ??
+            `No matches scheduled for ${human}.`,
+        ),
       // The read was not whole (and which shown rows it did not serve): said
       // beside the fixtures, or beside "none read".
       ...noteWith(read, attribution.unserved, ctx.locale),
