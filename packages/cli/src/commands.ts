@@ -15,9 +15,11 @@ import {
   bracketShareCard,
   dateShareCard,
   liveShareCard,
+  matchNoneReadSentence,
   matchShareCard,
   matchWindowSentence,
   nextHorizonSentence,
+  nextNoneReadSentence,
   nextShareCard,
   tableShareCard,
   tableData,
@@ -520,12 +522,14 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
     } else {
       // Fail-closed honesty: a feed outage must read as "couldn't reach the
       // provider", never as "this team has no upcoming fixture" (= eliminated).
-      // A whole read with nothing for the club says the span it searched.
+      // A whole read with nothing for the club says the span it searched; one
+      // that was not whole says none was READ.
       out(
         c.dim(
           '  ' +
             (notice ??
               nextHorizonSentence(next, code, cfg.lang) ??
+              nextNoneReadSentence(next, code, cfg.lang) ??
               (degraded ? t('live.degraded') : t('next.none', { team: label }))),
         ),
       );
@@ -1014,7 +1018,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   if (!match) {
     for (const q of qualifiers) out(c.dim('  ' + q));
     // An outage is never "no such match"; a verdict, then the span a whole
-    // read searched, then "no match found".
+    // read searched (or "none read" for one that was not whole), then "no match found".
     out(
       c.dim(
         '  ' +
@@ -1022,6 +1026,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
             ? t('live.degraded')
             : (verdictNotice(found, cfg.lang) ??
               matchWindowSentence(found, id, cfg.lang) ??
+              matchNoneReadSentence(found, id, cfg.lang) ??
               t('match.none', { id }))),
       ),
     );
@@ -1059,9 +1064,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   // Live overlay failed → this is the static fixture with no live state. Say
   // so. Off the bundled competition there is no static fixture: it is the
   // provider's own earlier record, whose state could not be refreshed.
-  if (degraded) {
-    out(c.dim('  ' + t(bundleApplies(cfg.competition) ? 'feed.degraded' : 'feed.earlierRecord')));
-  }
+  if (degraded) out(c.dim('  ' + t(found.earlierRecord ? 'feed.earlierRecord' : 'feed.degraded')));
   const src = dataSource(liveSource, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
@@ -1380,6 +1383,7 @@ function emitMatchCard(
       kind: card.kind,
       target: card.target,
       ...(card.team ? { team: card.team } : {}),
+      ...(card.candidates ? { candidates: card.candidates } : {}),
       source: card.input.source ?? null,
       degraded: card.input.degraded ?? false,
       informationalOnly: true,

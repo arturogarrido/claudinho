@@ -136,3 +136,17 @@ describe('the date card judges "nothing on this date" in the viewer’s zone, as
     expect(parsed()).toMatchObject({ betweenEditions: { label: '2026 Concacaf Champions Cup' } });
   });
 });
+
+describe('review round 1 (coder): a refresh that does not hold the id shows the earlier record, said as such', () => {
+  it('`match` and `share <id>` when the whole refresh of its days did not hold it', async () => {
+    const inSpan: Ev = { id: '41', date: '2026-10-17T14:00Z', home: LIV, away: ARS };
+    const moved = () => feed('eng.1', { events: [inSpan], fail: (d) => (d.length === 8 ? json({ leagues: [{ season: S2026 }], events: [] }) : undefined) }).adapter;
+    await cmdMatch('41', ctxFor(moved()));
+    expect(text()).toContain('Arsenal');
+    expect(text()).toContain('earlier record');
+    writes = [];
+    await cmdShare('41', undefined, {}, ctxFor(moved()));
+    expect(text()).toContain('earlier record');
+    expect(text()).not.toContain('bundled schedule');
+  });
+});
