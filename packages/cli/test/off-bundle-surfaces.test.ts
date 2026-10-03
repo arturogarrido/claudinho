@@ -181,12 +181,13 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
 
   it('`share next <name>`: the card titles the resolved side and carries the key in `--json`', async () => {
     const LIB = table('Group A', [CARABOBO, ALWAYS_READY]);
-    const events: Ev[] = [{ id: '21', date: '2026-10-15T22:00Z', home: ALWAYS_READY, away: CARABOBO }];
+    // Carabobo at HOME: a card that labels the side by code (the query is a name, not a code) would title Always Ready.
+    const events: Ev[] = [{ id: '21', date: '2026-10-15T22:00Z', home: CARABOBO, away: ALWAYS_READY }];
     const season = () => ({ year: 2026, displayName: '2026 Copa Libertadores', endDate: '2026-11-30T05:00Z' });
     await cmdShare('next', 'Carabobo', {}, ctxFor(feed('conmebol.libertadores', { events, standings: LIB, season }).adapter));
     const t = text();
-    expect(t).toContain('Carabobo');
-    expect(t.indexOf('Carabobo')).toBeLessThan(t.indexOf('Always Ready'));
+    expect(t).toContain('Next up for Carabobo');
+    expect(t).not.toContain('Next up for Always Ready');
     writes = [];
     await cmdShare('next', 'Arsenal', {}, ctxFor(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter));
     expect(text()).toContain('14 days');
