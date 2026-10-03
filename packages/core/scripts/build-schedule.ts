@@ -97,6 +97,8 @@ function refusal(window: string, read: Match[]): string | undefined {
 export async function buildSchedule({ adapter, write, log, error }: BuildScheduleIO): Promise<void> {
   if (!adapter.fetchWindow) throw new Error('the adapter cannot fetch a window; nothing written');
   const byId = new Map<string, Match>();
+  /** The window that first served each fixture: the windows partition the calendar. */
+  const servedBy = new Map<string, string>();
 
   for (const [start, end] of WINDOWS) {
     const window = `${start}-${end}`;
@@ -109,7 +111,20 @@ export async function buildSchedule({ adapter, write, log, error }: BuildSchedul
     }
     const why = refusal(window, matches);
     if (why) throw new Error(`${why}; nothing written`);
-    for (const m of matches) byId.set(m.id, m);
+    for (const m of matches) {
+      // A second copy is a contradiction, never silently the one kept: the
+      // adapter refuses one within a window, this refuses one across them.
+      const first = servedBy.get(m.id);
+      if (first !== undefined) {
+        throw new Error(
+          first === window
+            ? `fixture ${m.id} was served twice by window ${window}; nothing written`
+            : `fixture ${m.id} was served by two windows (${first} and ${window}); nothing written`,
+        );
+      }
+      servedBy.set(m.id, window);
+      byId.set(m.id, m);
+    }
     log(`  ${window}: ${matches.length} fixtures`);
   }
 
