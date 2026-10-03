@@ -106,6 +106,23 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
     expect(j.unsupported).toBeUndefined();
   });
 
+  it('the header and the horizon sentence name the resolved club, not the query or the code; a club in play has its score and no countdown', async () => {
+    await cmdNext('arsen', ctxFor(feed('eng.1', { events: upcoming }).adapter));
+    expect(text()).toContain('Next up for Arsenal');
+    expect(text()).not.toMatch(/for (arsen|ARSEN|ARS)\b/);
+    writes = [];
+    await cmdNext('arsen', ctxFor(feed('eng.1', { events: [upcoming[1] as Ev] }).adapter));
+    const t = text();
+    expect(t).toContain('Arsenal within the next 14 days');
+    expect(t).not.toMatch(/(arsen|ARSEN|ARS) within/);
+    writes = [];
+    const live: Ev = { id: '14', date: '2026-10-10T14:30Z', home: ARS, away: CHE, state: 'in' };
+    await cmdNext('Arsenal', ctxFor(feed('eng.1', { events: [live, ...upcoming] }).adapter));
+    const u = text();
+    expect(u).toContain('1–0');
+    expect(u).not.toMatch(/\bin \d+[dhm]/);
+  });
+
   it('two clubs with one code: the candidates are listed and no fixture is picked; `--json` carries them', async () => {
     const LIB = table('Group A', [CARABOBO, ALWAYS_READY]);
     const events: Ev[] = [{ id: '20', date: '2026-10-12T22:00Z', home: ALWAYS_READY, away: { id: '7003', abbr: 'BOC', name: 'Boca Juniors' } }];
