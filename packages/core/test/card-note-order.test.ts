@@ -39,7 +39,8 @@ describe('a date or live card: its qualifying notes come before the rows (D7)', 
   it('the degraded note, in both styles', () => {
     for (const style of ['social', 'compact'] as const) {
       const out = formatShareSnippet({ ...base, degraded: true }, { style });
-      before(out, 'Live data unavailable', 'Mexico');
+      // A compact row prints the code, a social one the name.
+      before(out, 'Live data unavailable', style === 'compact' ? 'MEX' : 'Mexico');
     }
   });
 
