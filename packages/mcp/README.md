@@ -60,7 +60,11 @@ human-readable text **and** structured content, validated against each tool's
 declared `outputSchema`. When the provider's knockout answer was not whole,
 `get_next_fixture`, `get_bracket` and the next/bracket share cards say so before
 what was read and carry `partial` (`omitted`: the count of provider records left
-out, when known); no fixture is then not "eliminated". In a club competition whose
+out, when known); no fixture is then not "eliminated". `get_today`, `get_live`,
+`get_match`, `get_market_signal` and their share cards carry `partial` for their own
+reads too: an empty answer then means nothing was read, not that nothing exists, and a
+World Cup day counts the fixtures shown from the bundled schedule without their live
+state. In a club competition whose
 edition has ended (and the next has not started), `get_today`, `get_live`,
 `get_next_fixture` and `get_match` say so and carry `betweenEditions`.
 

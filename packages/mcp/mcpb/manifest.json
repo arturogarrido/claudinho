@@ -24,14 +24,14 @@
     }
   },
   "tools": [
-    { "name": "get_today", "description": "All fixtures for a date (default: today), with live scores overlaid; optional market enrichment reports marketComplete." },
-    { "name": "get_live", "description": "Matches in play right now, with score and minute (empty when none are live)." },
+    { "name": "get_today", "description": "All fixtures for a date (default: today), with live scores overlaid; partial means a provider record was left out (an empty day with no bundled schedule merged is then none read, not none scheduled); optional market enrichment reports marketComplete." },
+    { "name": "get_live", "description": "Matches in play right now, with score and minute; an empty list with partial means none in play could be read, not that none is." },
     { "name": "get_match", "description": "A single match by id, with live score/minute when in play and optional marketComplete enrichment." },
     { "name": "get_standings", "description": "Live cumulative standings — every table, or one by its key (a group letter, or A1, A-B, LEAGUE)." },
     { "name": "get_bracket", "description": "Knockout bracket from the Round of 32 through the final, with live scores overlaid." },
     { "name": "get_next_fixture", "description": "A team's next match, by name or code (a nation: Mexico, MEX; in a club competition, a club: Arsenal, ARS)." },
     { "name": "get_market_signal", "description": "Read-only prediction-market signals for a match, a team's next fixture, or a date. Reports completeness; informational only; no links." },
-    { "name": "get_share_snippet", "description": "A copy-pasteable snippet for a match, a team's next fixture, one standings table (group: a table key such as A, A1, A-B or LEAGUE), the knockout bracket, a date, or live. Reports marketComplete; plain text; carries the disclaimer." },
+    { "name": "get_share_snippet", "description": "A copy-pasteable snippet for a match, a team's next fixture, one standings table (group: a table key such as A, A1, A-B or LEAGUE), the knockout bracket, a date, or live. Reports marketComplete and partial (an empty live card, or an empty date card with no bundled schedule merged, is then none read); plain text; carries the disclaimer." },
     { "name": "get_team", "description": "The World Cup roster: resolve a nation name or code to its FIFA 3-letter code, flag, and group (fuzzy: 'Mexico', 'mex', 'DR Congo', 'Türkiye'). Offline; knows no clubs." }
   ],
   "compatibility": {

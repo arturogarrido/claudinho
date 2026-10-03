@@ -442,12 +442,12 @@ describe('a live read says whether it was whole (the refresher needs it; no surf
     expect((await getLiveRead(silent, now)).complete).toBe(false);
   });
 
-  it('`getLiveMatches` is what it was: the same result without the verdict, key for key', async () => {
+  it('`getLiveMatches` is the same result without the refresher\'s boolean, key for key; a read that was not whole states `partial` (0.11 2.1d)', async () => {
     const whole = await getLiveMatches(adapterOn(feed([inPlay, later]), now), now);
     expect(Object.keys(whole).sort()).toEqual(['degraded', 'matches', 'season', 'source']);
     const refused = { id: 'not an id', date: '2026-10-10T18:00Z' };
     const partial = await getLiveMatches(adapterOn(feed([later], { extra: (d) => (d === '20261010' ? [refused] : []) }), now), now);
-    expect(Object.keys(partial).sort()).toEqual(['degraded', 'matches', 'season', 'source']);
+    expect(Object.keys(partial).sort()).toEqual(['degraded', 'matches', 'partial', 'season', 'source']);
     const failed = await getLiveMatches(adapterOn(feed([inPlay], { fail: () => json({}, 500) }), now), now);
     expect(failed).toEqual({ matches: [], degraded: true });
   });

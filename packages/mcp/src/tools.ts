@@ -13,8 +13,13 @@ import {
   formatShareBracket,
   formatBracketList,
   bracketShareCard,
+  dateNoneRead,
   dateShareCard,
+  dateUnreached,
+  dayAttribution,
+  liveNoneRead,
   liveShareCard,
+  marketsNoneRead,
   EARLIER_RECORD_NOTE,
   matchNoneReadSentence,
   matchShareCard,
@@ -26,6 +31,7 @@ import {
   tableShareCard,
   tableData,
   marketDisplayable,
+  servedExtras,
   type MatchShareCard,
   type NextFixtureResult,
   tableKeyArg,
@@ -67,6 +73,7 @@ import {
   t,
   type ShareSnippetOptions,
   type Stage,
+  statesPartial,
   type VerdictSource,
 } from '@claudinho/core';
 import {
@@ -88,8 +95,20 @@ export interface ToolResult {
    * disclaimer. Always a suffix of `text`. Required, so no tool can be written
    * without stating it: `disclaimed` returns it with the text it ends, and a
    * share snippet's is its footer paragraph (`snippetFooter`).
+   *
+   * What a cut keeps of it is {@link cutFooter} when the result names one. The
+   * rule, for a DATE's list (`get_today`, the date card) on a read that was not
+   * whole: the cut keeps the disclaimer and DROPS the attribution line, because
+   * the rows it drops may be every row the provider served (the attribution
+   * was decided over the whole bounded list, not over what survives the cut).
+   * A whole read keeps the whole footer, and so does a LIVE list: every row it
+   * shows was served, so its line is true after any cut, and a provider is
+   * attributed where it served. The structured `source` names the provider
+   * either way.
    */
   footer: string;
+  /** The footer a cut keeps, when it is not the whole footer (see {@link footer}). */
+  cutFooter?: string;
 }
 
 export interface CommonOpts {
@@ -338,12 +357,19 @@ function fmtOpts(args: CommonOpts) {
  * actually served the result, and the disclaimer). The footer is returned on
  * its own too, so a text cut at a length keeps it (`toContent`).
  */
-function disclaimed(body: string, source?: string, lang?: string): { text: string; footer: string } {
+function disclaimed(
+  body: string,
+  source?: string,
+  lang?: string,
+  /** A date's read, for its list: on one that was not whole a cut drops the attribution (see `ToolResult.footer`). Never a live list's. */
+  read?: VerdictSource,
+): { text: string; footer: string; cutFooter?: string } {
   const live = source
     ? `\n${t(lang, 'live.data', { source: liveSourceLabel(source) })}`
     : '';
   const footer = `${live}\n\n${DISCLAIMER}`;
-  return { text: `${body}${footer}`, footer };
+  const cut = live && read && statesPartial(read) ? { cutFooter: `\n\n${DISCLAIMER}` } : {};
+  return { text: `${body}${footer}`, footer, ...cut };
 }
 
 /**
@@ -353,8 +379,10 @@ function disclaimed(body: string, source?: string, lang?: string): { text: strin
  * the first thing a long answer lost. Nothing is added when the result states
  * no qualifier, or states a replacement (which stands instead of the body).
  */
-function qualified(body: string, result: VerdictSource, lang?: string): string {
-  const qualifiers = verdictQualifiers(result, lang);
+function qualified(body: string, result: VerdictSource, lang?: string, also?: string): string {
+  // `also`: a sentence core built beside the verdict's (a day's count of shown
+  // rows the read did not serve), said with it, after it.
+  const qualifiers = [...verdictQualifiers(result, lang), ...(also ? [also] : [])];
   return qualifiers.length > 0 ? `${qualifiers.join('\n')}\n\n${body}` : body;
 }
 
@@ -380,22 +408,49 @@ export async function toolGetToday(
   const day = await getMatchesForDate(adapter, date, resolveTz(args.tz));
   const { matches, degraded, source } = day;
   const todays = fixturesByDate(date, matches, args.tz);
+  // ONE bounded view: what the text lists, what `data` carries, and what the
+  // day's attribution is decided over.
+  const shownToday = boundedRecords(todays);
   const opts = fmtOpts(args);
-  // A verdict (between editions) stands instead of the empty line.
-  let text = `Matches on ${date}:\n${matchList(todays, verdictNotice(day, args.lang) ?? 'No matches scheduled.', opts)}`;
-  // Degraded ⇒ the live overlay failed; these are static fixtures with no live scores.
-  if (degraded) text += '\n\n(Live scores unavailable — showing the bundled schedule.)';
+  // A verdict (between editions) stands instead of the empty line. Where no
+  // bundled schedule was merged, a failed read says the provider could not be
+  // reached, and a read that was not whole says none was READ.
+  const empty =
+    verdictNotice(day, args.lang) ??
+    dateUnreached(day, date, args.lang) ??
+    dateNoneRead(day, date, args.lang) ??
+    'No matches scheduled.';
+  let text = `Matches on ${date}:\n${matchList(todays, empty, opts)}`;
+  // Degraded ⇒ the live overlay failed: on the bundle these are static fixtures
+  // with no live scores; off it there is no schedule to show.
+  if (degraded) {
+    text += day.skeleton
+      ? '\n\n(Live scores unavailable — showing the bundled schedule.)'
+      : "\n\n(Live scores unavailable — couldn't reach the data provider.)";
+  }
   const market = await reliableMarketData(args, todays);
   if (!market.complete) {
     text += '\n\n(Market data unavailable or incomplete — not all fixtures were checked.)';
   }
-  const shownToday = boundedRecords(todays);
+  // On a read that was not whole: the verdict first (kept by a cut), with the
+  // count of shown rows it did not serve; the footer names the provider only
+  // for a day it served something of. `data.source` keeps the provider.
+  const attribution = dayAttribution(day, shownToday.items, args.lang);
   return {
-    ...disclaimed(text, source, args.lang),
+    ...disclaimed(
+      qualified(text, day, args.lang, attribution.unserved),
+      attribution.attributed ? source : undefined,
+      args.lang,
+      day,
+    ),
     data: {
       date,
       degraded,
       source: source ?? null,
+      // The shown (bounded) rows the overlay held (a plain field, not a
+      // verdict), beside `partial` only: a shown row not among them is the
+      // bundled schedule's.
+      ...servedExtras(day, shownToday.items),
       // ONE bounded view, so `count`, `matches` and the signal set cannot
       // disagree about the same payload. `count` is the TRUE total; bounding
       // only the TEXT would leave structuredContent unbounded, and that is
@@ -420,13 +475,16 @@ export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
   const opts = fmtOpts(args);
   // Degraded ⇒ the live feed failed, NOT "nothing is on". Distinguish them so the
   // agent doesn't tell the user no matches are live when the provider is unreachable.
-  // A verdict (between editions) stands instead of the empty line.
+  // A verdict (between editions) stands instead of the empty line; a read that
+  // was not whole says none in play was READ. The read's own verdict is said
+  // first (kept by a cut).
   const text = degraded
     ? 'Live scores unavailable right now — could not reach the data provider.'
-    : `Live now:\n${matchList(matches, verdictNotice(live, args.lang) ?? 'No matches in play right now.', opts)}`;
+    : `Live now:\n${matchList(matches, verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? 'No matches in play right now.', opts)}`;
   const shownLive = boundedRecords(matches);
   return {
-    ...disclaimed(text, source, args.lang),
+    // Every row a live list shows was served: a cut keeps its attribution (`ToolResult.footer`).
+    ...disclaimed(qualified(text, live, args.lang), source, args.lang),
     data: {
       degraded,
       source: source ?? null,
@@ -481,6 +539,9 @@ export async function toolGetMatch(
     const s = market.signals.get(match.id);
     if (s && isReliableMarketSignal(s, { now }) && marketSignalRendersFor(match, s)) marketSignal = s;
   }
+  // The day's rule over the one record shown: on a read that was not whole, a
+  // record the window did not hold is the bundle's row, its live state unconfirmed.
+  const attribution = dayAttribution(found, [match], args.lang);
   const base = matchLine(match, opts);
   let text = marketSignal ? `${base}\n${marketBlock(marketSignal, match).join('\n')}` : base;
   // Degraded ⇒ the live overlay failed; this is the static fixture, no live
@@ -495,10 +556,12 @@ export async function toolGetMatch(
     text += '\n\n(Market data unavailable or incomplete — this match was not checked.)';
   }
   return {
-    ...disclaimed(qualified(text, found, args.lang), liveSource, args.lang),
+    ...disclaimed(qualified(text, found, args.lang, attribution.unserved), liveSource, args.lang),
     data: {
       degraded,
       source: liveSource ?? null,
+      // The match, if the overlay held it (a plain field, not a verdict), beside `partial` only.
+      ...servedExtras(found, [match]),
       match,
       marketComplete,
       marketSignal: marketSignal ? marketData(marketSignal) : null,
@@ -779,7 +842,9 @@ export async function toolGetMarketSignal(
         ? marketText(match, shown, args)
         : noSignalText(match, args, now);
     return {
-      ...disclaimed(text),
+      // The fixture read was not whole: said first, apart from `complete`
+      // (the market requests' own completeness).
+      ...disclaimed(qualified(text, found, args.lang)),
       data: {
         matchId: args.matchId,
         informationalOnly: true,
@@ -818,7 +883,9 @@ export async function toolGetMarketSignal(
         ? marketText(fixture, shown, args)
         : noSignalText(fixture, args, now);
     return {
-      ...disclaimed(text),
+      // Either read the pick was made from was not whole: said first, apart
+      // from `complete` (the market requests' own completeness).
+      ...disclaimed(qualified(text, picked, args.lang)),
       data: {
         team: code,
         matchId: fixture?.id ?? null,
@@ -833,8 +900,11 @@ export async function toolGetMarketSignal(
 
   // A date's matches (default: today).
   const date = args.date ?? localDate(now.toISOString(), args.tz);
-  const { matches } = await getMatchesForDate(resolveAdapter(args), date, resolveTz(args.tz));
-  const todays = fixturesByDate(date, matches, args.tz).filter((m) => marketRelevant(m, now));
+  const day = await getMatchesForDate(resolveAdapter(args), date, resolveTz(args.tz));
+  // The fixture read's verdict is part of the answer where markets are read
+  // (off their scope the scope verdict is the whole answer, as before).
+  const fixtureRead = marketsCoverCompetition(competitionOf(args)) ? day : {};
+  const todays = fixturesByDate(date, day.matches, args.tz).filter((m) => marketRelevant(m, now));
   const batch = await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS);
   const signals = resolvedValues(batch);
   const all = todays
@@ -855,16 +925,17 @@ export async function toolGetMarketSignal(
       // so "we could not reach the market data" rendered as the confident
       // "there is none", which is the failure this project refuses everywhere
       // else.
+      // A fixture read that was not whole: none among the fixtures READ.
       !marketsCoverCompetition(competitionOf(args))
         ? `${MARKETS_SCOPE_NOTE} (${date})`
         : batch.complete
-          ? `No reliable market signals on ${date}.`
+          ? (marketsNoneRead(day, date) ?? `No reliable market signals on ${date}.`)
           : `Market data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
   if (shown.shown > 0 && !batch.complete) {
     text += `\n\nMarket data unavailable or incomplete for ${date} — not all fixtures could be checked.`;
   }
   return {
-    ...disclaimed(text),
+    ...disclaimed(qualified(text, fixtureRead, args.lang)),
     data: {
       date,
       informationalOnly: true,
@@ -879,6 +950,7 @@ export async function toolGetMarketSignal(
       signals: shown.items.map(({ signal }) => marketData(signal)),
       // Off the markets' scope, "none" means "not read for this competition".
       ...verdictExtras(marketScopeVerdict(competitionOf(args), shown.shown)),
+      ...verdictExtras(fixtureRead),
     },
   };
 }
@@ -934,9 +1006,17 @@ function shareResult(
   options: ShareSnippetOptions,
   /** Records BEFORE capping, so the payload can say what it dropped. */
   total = card.input.matches.length,
+  /** A date's card: on a read that was not whole a cut drops the attribution (see `ToolResult.footer`). Never the live card. */
+  date = false,
 ): ToolResult {
   const { input } = card;
   const snippet = formatShareSnippet(input, options);
+  // The footer a cut keeps: the same card's footer with no provider line (one
+  // extra render, only for a date's card on a read that was not whole).
+  const cut =
+    date && input.source && statesPartial(card.verdict)
+      ? { cutFooter: snippetFooter(formatShareSnippet({ ...input, source: undefined }, options)) }
+      : {};
   return {
     // The snippet is self-contained: it carries its own non-affiliation
     // disclaimer (and, for any market line, the "informational only" caveat +
@@ -944,12 +1024,15 @@ function shareResult(
     // that would duplicate the disclaimer inside a paste-ready artifact.
     text: snippet,
     footer: snippetFooter(snippet),
+    ...cut,
     data: {
       kind: card.kind,
       target: card.target,
       ...(card.team ? { team: card.team } : {}),
       ...(card.candidates ? { candidates: card.candidates } : {}),
       source: input.source ?? null,
+      // The card's read's plain fields (the ids it held, beside `partial` only).
+      ...card.readFields,
       degraded: input.degraded ?? false,
       informationalOnly: true,
       style: options.style ?? 'social',
@@ -1115,8 +1198,9 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         matches: shownToday.items,
         degraded: day.degraded,
         source: day.source,
-        scheduleKnown: bundleApplies(competitionOf(args)),
         titleSuffix: truncationNote(shownToday),
+        // The read decides what an empty day says (whether it merged the
+        // bundled schedule) and the card's attribution, over the bounded list.
         read: day,
       },
       market,
@@ -1124,5 +1208,6 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     ),
     options,
     todays.length,
+    true,
   );
 }

@@ -258,7 +258,7 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
 
   it('a date: today or an explicit day, with a caller-bounded list', () => {
     const today = dateShareCard(
-      { date: '2026-06-11', explicit: false, matches: [match], degraded: false, source: 'espn', scheduleKnown: true },
+      { date: '2026-06-11', explicit: false, matches: [match], degraded: false, source: 'espn', read: { skeleton: true } },
       noMarket,
       ctx,
     );
@@ -268,7 +268,7 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
     expect(today.input.installLine).toBe('npx @claudinho/cli today');
 
     const explicit = dateShareCard(
-      { date: '2026-06-11', explicit: true, matches: [], degraded: true, scheduleKnown: true, titleSuffix: ' (showing 20 of 31)' },
+      { date: '2026-06-11', explicit: true, matches: [], degraded: true, read: { skeleton: true }, titleSuffix: ' (showing 20 of 31)' },
       noMarket,
       ctx,
     );
@@ -276,20 +276,66 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
     expect(explicit.input.degraded).toBe(true);
   });
 
-  it('a date: an outage reads as "no matches scheduled" only where the schedule is known without the provider', () => {
+  it('a date: an outage reads as "no matches scheduled" only where the read merged the bundled schedule', () => {
     // Found in review. The empty note was unconditional, and the formatter adds
     // its own outage notice only when there ARE matches: off the bundle, a feed
-    // that is down pasted as an empty day.
+    // that is down pasted as an empty day. The READ says whether the skeleton
+    // was merged (`skeleton`); the card has no second input for the same fact.
     const day = { date: '2026-10-01', explicit: true, matches: [], degraded: true };
-    expect(dateShareCard({ ...day, scheduleKnown: false }, noMarket, ctx).input.emptyNote).toBe(
+    expect(dateShareCard({ ...day, read: {} }, noMarket, ctx).input.emptyNote).toBe(
       "Couldn't reach the data provider — no fixtures confirmed for Oct 1.",
     );
-    expect(dateShareCard({ ...day, scheduleKnown: true }, noMarket, ctx).input.emptyNote).toBe(
+    expect(dateShareCard({ ...day, read: { skeleton: true } }, noMarket, ctx).input.emptyNote).toBe(
       'No matches scheduled for Oct 1.',
     );
-    expect(dateShareCard({ ...day, degraded: false, scheduleKnown: false }, noMarket, ctx).input.emptyNote).toBe(
+    expect(dateShareCard({ ...day, degraded: false, read: {} }, noMarket, ctx).input.emptyNote).toBe(
       'No matches scheduled for Oct 1.',
     );
+  });
+
+  it('a date: an empty partial card that merged no schedule names the date as the card does (its label), like its outage line', () => {
+    // Found in review: the none-read line printed the ISO date while the title and the outage line print "Oct 17".
+    const day = { date: '2026-10-17', explicit: true, matches: [], degraded: false, source: 'espn' };
+    const card = dateShareCard({ ...day, read: { partial: { omitted: 1 }, served: [] } }, noMarket, ctx);
+    expect(card.input.title).toBe('Matches · Oct 17');
+    expect(card.input.emptyNote).toContain('Oct 17');
+    expect(card.input.emptyNote).not.toContain('2026-10-17');
+    expect(card.input.emptyNote).toMatch(/read/);
+  });
+
+  it('a date card names its calendar date whatever the viewer’s zone: the title, the none-read line and the outage line', () => {
+    // Found in review: the label was noon UTC of the date formatted in the viewer's zone, which in a zone past
+    // UTC+12 (Auckland in summer, Kiritimati) is the NEXT day: a card for 2026-10-17 said "Oct 18" in its title
+    // (pre-existing) and, since this PR, in its empty-day sentences. A calendar date has no zone.
+    for (const tz of ['Pacific/Kiritimati', 'Pacific/Auckland', 'Pacific/Pago_Pago', 'UTC']) {
+      const far = { tz, locale: 'en' };
+      const day = { date: '2026-10-17', explicit: true, matches: [], degraded: false, source: 'espn' };
+      const partial = dateShareCard({ ...day, read: { partial: { omitted: 1 }, served: [] } }, noMarket, far);
+      expect(partial.input.title, tz).toBe('Matches · Oct 17');
+      expect(partial.input.emptyNote, tz).toContain('Oct 17');
+      expect(partial.input.emptyNote, tz).not.toContain('Oct 18');
+      expect(partial.input.emptyNote, tz).not.toContain('Oct 16');
+      const outage = dateShareCard({ ...day, degraded: true, read: {} }, noMarket, far);
+      expect(outage.input.emptyNote, tz).toContain('Oct 17');
+    }
+  });
+
+  it('a date card’s sentences end with one period in every locale: the label’s abbreviation dot (fr "17 oct.", pt "17 de out.") is not doubled', () => {
+    // Found in review: pre-existing in the card's "No matches scheduled for <label>.", carried into the two new
+    // sentences once they took the label.
+    for (const locale of ['fr', 'pt', 'es', 'en']) {
+      const far = { tz: 'UTC', locale };
+      const day = { date: '2026-10-17', explicit: true, matches: [], degraded: false, source: 'espn' };
+      const notes = [
+        dateShareCard({ ...day, read: { partial: { omitted: 1 }, served: [] } }, noMarket, far).input.emptyNote,
+        dateShareCard({ ...day, degraded: true, read: {} }, noMarket, far).input.emptyNote,
+        dateShareCard({ ...day, read: { skeleton: true } }, noMarket, far).input.emptyNote,
+      ];
+      for (const note of notes) {
+        expect(note, `${locale}: ${note}`).not.toMatch(/\.\./);
+        expect(note, `${locale}: ${note}`).toMatch(/\.$/);
+      }
+    }
   });
 
   it('live: nothing on, and a feed that is down, are different cards', () => {
@@ -497,6 +543,49 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     }
     // The horizon and window sentences belong to the card builder, like the empty notes: a surface never spells them.
     for (const sentence of [/within the next/, /Not found between/]) {
+      expect(codeHits('cli', sentence), String(sentence)).toEqual([]);
+      expect(codeHits('mcp', sentence), String(sentence)).toEqual([]);
+    }
+  });
+
+  it('the sentences of 0.11 2.1d come from one place too: "none read" for live and a date, the unserved rows, the market empty body', async () => {
+    // Red first: the builders do not exist. They live beside the next and match ones in the card builder.
+    const cards = await import('../src/share/cards');
+    const live = (cards as Record<string, unknown>).liveNoneReadSentence as ((lang?: string) => string) | undefined;
+    const date = (cards as Record<string, unknown>).dateNoneReadSentence as ((date: string, lang?: string) => string) | undefined;
+    const unserved = (cards as Record<string, unknown>).unservedSentence as ((n: number, lang?: string) => string) | undefined;
+    const unreached = (cards as Record<string, unknown>).dateUnreachedSentence as ((date: string, lang?: string) => string) | undefined;
+    expect(typeof live).toBe('function');
+    expect(typeof date).toBe('function');
+    expect(typeof unserved).toBe('function');
+    expect(typeof unreached).toBe('function');
+    // The outage sentence of a day with no bundled schedule: the date card's, now every date surface's.
+    expect(unreached?.('2026-10-10', 'en')).toMatch(/no fixtures confirmed/);
+    expect(unreached?.('2026-10-10', 'en')).toContain('2026-10-10');
+    expect(unreached?.('2026-10-10', 'es')).not.toBe(unreached?.('2026-10-10', 'en'));
+    expect(live?.('en')).toMatch(/read/i);
+    expect(live?.('en')).not.toMatch(/No matches in play right now/);
+    expect(date?.('2026-10-10', 'en')).toMatch(/read/i);
+    expect(date?.('2026-10-10', 'en')).toContain('2026-10-10');
+    expect(unserved?.(2, 'en')).toMatch(/2 fixtures? .*bundled schedule/);
+    expect(unserved?.(2, 'en')).toMatch(/unconfirmed/);
+    for (const lang of ['es', 'pt', 'fr']) {
+      expect(live?.(lang), lang).not.toBe(live?.('en'));
+      expect(unserved?.(2, lang), lang).toMatch(/2/);
+      // The singular is its own string in every language: not the English one, not the language's plural.
+      expect(unserved?.(1, lang), lang).toMatch(/1/);
+      expect(unserved?.(1, lang), lang).not.toBe(unserved?.(1, 'en'));
+      expect(unserved?.(1, lang), lang).not.toBe(unserved?.(2, lang)?.replace('2', '1'));
+    }
+    // The keys as they EXIST (`today.unserved` is a prefix: the catalog holds `.one` and `.other`), so a surface
+    // spelling either real key is caught; a review found the quoted-prefix form matched neither.
+    for (const i18nKey of ['live.noneRead', 'today.noneRead', 'today.unserved.one', 'today.unserved.other', 'markets.noneRead', 'today.unreached']) {
+      const written = new RegExp(`['"\`]${i18nKey.replace(/\./g, '\\.')}['"\`]`);
+      expect(hits('cli', written), i18nKey).toEqual([]);
+      expect(hits('mcp', written), i18nKey).toEqual([]);
+    }
+    // The sentences, not the phrase: a tool description may say what "was read" in prose.
+    for (const sentence of [/(in play|fixture) was read/, /bundled schedule; (its|their) live state/, /among the fixtures read/, /no fixtures confirmed/]) {
       expect(codeHits('cli', sentence), String(sentence)).toEqual([]);
       expect(codeHits('mcp', sentence), String(sentence)).toEqual([]);
     }

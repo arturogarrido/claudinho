@@ -10,7 +10,7 @@ import { buildServer } from '../src/server';
 const read = (rel: string) =>
   JSON.parse(readFileSync(new URL(rel, import.meta.url), 'utf8')) as {
     version: string;
-    tools?: { name: string }[];
+    tools?: { name: string; description?: string }[];
     privacy_policies?: unknown;
   };
 
@@ -32,6 +32,50 @@ describe('mcpb manifest', () => {
     for (const url of policies as string[]) {
       expect(typeof url).toBe('string');
       expect(url).toMatch(/^https:\/\//);
+    }
+  });
+
+  it('its blurbs do not contradict the tools: an empty live list may be a read that was not whole (0.11 2.1d)', () => {
+    // Found in review: the manifest is a second copy of the descriptions, and `get_live`'s said "empty when none
+    // are live" after the tool learned to answer an empty list with `partial` ("no match in play was read").
+    const blurb = (name: string) => (manifest.tools ?? []).find((t) => t.name === name)?.description ?? '';
+    expect(blurb('get_live')).not.toMatch(/none are live|nothing is live/);
+    for (const name of ['get_live', 'get_today', 'get_share_snippet']) expect(blurb(name), name).toMatch(/partial/);
+    // The "none read" reading of an empty day holds exactly where no bundled schedule was merged: a club
+    // competition, or the World Cup slug answering for another edition. On a World Cup rest day whose window was
+    // not whole the day is still "none scheduled". A blurb that says "none read" scopes it by the schedule, not by
+    // the competition (two reviews: the first rewording claimed it for every empty day, the second said "off the
+    // World Cup", which leaves the other-edition case out).
+    for (const name of ['get_today', 'get_share_snippet']) {
+      if (/none read/.test(blurb(name))) {
+        expect(blurb(name), name).toMatch(/bundled schedule/);
+        expect(blurb(name), name).not.toMatch(/off the World Cup/);
+      }
+    }
+  });
+
+  it('the server’s get_live description does not read an outage as "nothing in play" (0.11 2.1d)', async () => {
+    // Found in review: "an empty list means nothing is in play unless partial says the read was not whole" forgot
+    // the failed read (`degraded`, no `partial`).
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+    const server = buildServer();
+    await server.connect(serverT);
+    const client = new Client({ name: 'manifest-test', version: '0.0.0' });
+    await client.connect(clientT);
+    try {
+      const { tools } = await client.listTools();
+      const live = tools.find((t) => t.name === 'get_live')?.description ?? '';
+      expect(live).toMatch(/partial/);
+      expect(live).toMatch(/degraded/);
+      expect(live).not.toMatch(/nothing is in play unless partial says/);
+      // The same scope rule as the manifest's: "none read" is where no bundled schedule was merged, which is not
+      // "elsewhere than the World Cup" (its slug answering for another edition merges none either).
+      const today = tools.find((t) => t.name === 'get_today')?.description ?? '';
+      expect(today).toMatch(/no bundled schedule/);
+      expect(today).not.toMatch(/elsewhere/);
+    } finally {
+      await client.close();
+      await server.close();
     }
   });
 

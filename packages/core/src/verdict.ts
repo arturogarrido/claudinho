@@ -44,9 +44,11 @@
  * ({@link verdictExtras}) carry every verdict stated, whichever it is.
  *
  * NOT verdicts: an answer's own empty sentences ("no fixture for X within the
- * next 14 days", "not found between A and B"). They are the body's text, from
- * the card builders, with their span as a plain field (`horizon`, `window`);
- * they never suppress a qualifier, and a verdict replaces them.
+ * next 14 days", "not found between A and B", and after a read that was not
+ * whole "no match in play was read", "no fixture was read for D"), and a
+ * day's attribution on such a read. They are the body's text, from the card
+ * builders, with their span as a plain field (`horizon`, `window`); they never
+ * suppress a qualifier, and a verdict replaces them.
  */
 import { t } from './i18n';
 import { SCHEDULE_AHEAD_DAYS } from './span';
@@ -149,8 +151,14 @@ function statedEdition(result: VerdictSource): { ended: string; label?: string }
   return typeof b.label === 'string' && b.label !== '' ? { ended: b.ended, label: b.label } : { ended: b.ended };
 }
 
-/** Whether a result states `partial` (an object; anything else states nothing). */
-function statesPartial(result: VerdictSource): result is VerdictSource & { readonly partial: { readonly omitted?: number } } {
+/**
+ * Whether a result states `partial` (an object; anything else states nothing).
+ * The one test of it, for the sentences built beside the verdict's (an empty
+ * body after a read that was not whole says nothing was READ).
+ */
+export function statesPartial<T extends VerdictSource>(
+  result: T,
+): result is T & { readonly partial: { readonly omitted?: number } } {
   return typeof result.partial === 'object' && result.partial !== null;
 }
 
@@ -202,6 +210,27 @@ export function verdictExtras(result: VerdictSource): VerdictExtras {
     out.partial = omitted !== undefined ? { omitted } : {};
   }
   return out;
+}
+
+/**
+ * `served` for a structured twin: the SHOWN fixtures whose record the read's
+ * window held, in the order shown (a shown fixture not among them is the
+ * bundled schedule's row, its live state unconfirmed). Bounded like the rows
+ * it interprets: `shown` is what the surface finally displays (the day's rows,
+ * the bounded list, the card's matches, the one match), never the window's
+ * every id, which can hold other dates. A plain field, not a verdict, carried
+ * only BESIDE the `partial` verdict it interprets: empty on a whole read,
+ * whose structured output keeps its shape, and when the result states none.
+ * The results state the window's ids on every successful read (the read's
+ * fact); this is the one rule for what a surface carries of them.
+ */
+export function servedExtras(
+  result: VerdictSource & { readonly served?: readonly string[] },
+  shown: ReadonlyArray<{ readonly id: string }>,
+): { served?: readonly string[] } {
+  if (!statesPartial(result) || !Array.isArray(result.served)) return {};
+  const held = new Set(result.served);
+  return { served: shown.filter((m) => held.has(m.id)).map((m) => m.id) };
 }
 
 /**

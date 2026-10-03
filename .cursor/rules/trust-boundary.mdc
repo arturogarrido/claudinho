@@ -51,10 +51,17 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   refused outside the span counts and the count bounds what the span may be
   missing). A caller that keeps a previous answer must carry that
   verdict: an incomplete answer never erases what it did not read. The
-  knockout-facing results (`next`, `bracket`, their share cards) carry it as
-  the `partial` verdict, and so do `next` and `match <id>` off the bundle;
-  `today`, `live` and `match` on the bundle still drop it, until the verdict
-  reaches them too (`AGENTS.md`, the window bullet, names the scope).
+  interactive results carry it as the `partial` verdict: `next`, `bracket`,
+  `today`, `live`, `match` (on the bundle and off it), the market surfaces,
+  and their share cards and MCP twins (`AGENTS.md`, the window bullet, names
+  the scope). The statusline, the hook and the cache do not: the cache's live
+  slice carries no verdict. The dated read's `skeleton` (the bundled schedule
+  was merged) and `served` (the ids the window held; the bundled match read
+  states it too) are request-local, never cached: a surface reads them to say
+  what an empty day means and to attribute the fixtures it displays
+  (`dayAttribution`), and `served` rides in the structured twins as a plain
+  field beside `source`, only beside `partial` and bounded to the shown
+  fixtures (`servedExtras(result, shown)`).
   A caller that composes windows itself (discovery: a window per month) asks
   "no readable record" of the whole too: a window refused because its list
   held no readable record carries `ProviderError.noReadableRecord` and read

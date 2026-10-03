@@ -136,6 +136,7 @@ export {
   marketProbabilityText,
   marketAttributionText,
   MARKETS_SCOPE_NOTE,
+  marketsNoneReadNote,
   marketSourceLabel,
   marketLine,
   marketBlock,
@@ -171,8 +172,17 @@ export type {
 // attribution, and the verdict the card carries).
 export {
   bracketShareCard,
+  dateNoneRead,
+  dateNoneReadSentence,
   dateShareCard,
+  dateUnreached,
+  dateUnreachedSentence,
+  dayAttribution,
+  liveNoneRead,
+  liveNoneReadSentence,
   liveShareCard,
+  marketsNoneRead,
+  marketsNoneReadSentence,
   matchShareCard,
   matchNoneReadSentence,
   matchWindowSentence,
@@ -180,10 +190,13 @@ export {
   nextNoneReadSentence,
   nextShareCard,
   tableShareCard,
+  unservedSentence,
 } from './share/cards';
 export type {
   BracketShareCard,
+  DayAttribution,
   MatchShareCard,
+  ReadAccount,
   ShareCardContext,
   ShareCardMarket,
   ShareCardView,
@@ -191,7 +204,7 @@ export type {
 } from './share/cards';
 // The one place a verdict (e.g. "not available for this competition") becomes
 // a structured key and a localized sentence.
-export { verdictExtras, verdictNotice, verdictQualifiers } from './verdict';
+export { servedExtras, statesPartial, verdictExtras, verdictNotice, verdictQualifiers } from './verdict';
 export type { BetweenEditions, VerdictExtras, VerdictSource } from './verdict';
 
 export { buildBracketTopology, matchKey } from './bracket/build';
