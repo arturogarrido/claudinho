@@ -143,6 +143,9 @@ describe('a verdict REPLACES the body or QUALIFIES it, and the module says which
     const between = { betweenEditions: { ended: '2026-10-09T03:59:00.000Z', label: '2026 Concacaf Champions Cup' } };
     expect(verdictNotice(between, 'en')).toBe('Between editions: the 2026 Concacaf Champions Cup edition ended on 2026-10-09.');
     expect(verdictExtras(between)).toEqual(between);
+    // An end that is not a timestamp is not believed: no sentence, no key.
+    expect(verdictNotice({ betweenEditions: { ended: 'yesterday' } } as never, 'en')).toBeUndefined();
+    expect(verdictExtras({ betweenEditions: { ended: 'yesterday' } } as never)).toEqual({});
     // An empty label names the year of the end date instead.
     expect(verdictNotice({ betweenEditions: { ended: '2026-10-09T03:59:00.000Z' } }, 'en')).toBe('Between editions: the 2026 edition ended on 2026-10-09.');
     // A replacement suppresses the qualifiers, as `unsupported` does.

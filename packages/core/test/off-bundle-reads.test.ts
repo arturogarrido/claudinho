@@ -189,6 +189,12 @@ describe('the roster and the resolver (0.11 2.1c)', () => {
     expect(refused.complete).toBe(false);
   });
 
+  it('two rows sharing a code are two teams in the roster (deduplicated by id, never by code)', async () => {
+    const roster = await rosterFor(feed('conmebol.libertadores', { standings: table('Group A', [{ side: CARABOBO, rank: 1 }, { side: ALWAYS_READY, rank: 2 }]) }).adapter);
+    expect(roster.complete).toBe(true);
+    expect(roster.teams.map((t) => t.id).sort()).toEqual(['espn:7001', 'espn:7002']);
+  });
+
   it('a competition with no table has no roster: nothing asked for was read, so it is never complete', async () => {
     const roster = await rosterFor(feed('concacaf.champions', { standings: NO_TABLE }).adapter);
     expect(roster).toMatchObject({ complete: false, tableAsked: false });
@@ -205,6 +211,13 @@ describe('the roster and the resolver (0.11 2.1c)', () => {
     expect(resolveClub('arsen', PL, [])).toMatchObject({ outcome: 'resolved', team: { id: 'espn:359' } });
     expect(resolveClub('O&M', PL, [])).toMatchObject({ outcome: 'resolved', team: { id: 'espn:4501' } });
     expect(resolveClub('oriente', PL, [])).toMatchObject({ outcome: 'resolved', team: { id: 'espn:4501' } });
+  });
+
+  it('an exact name wins over a fuzzy pair it is a prefix of', () => {
+    const two = complete([T({ id: '11', abbr: 'BOC', name: 'Boca' }), T({ id: '12', abbr: 'BOJ', name: 'Boca Juniors' })]);
+    expect(resolveClub('Boca', two, [])).toMatchObject({ outcome: 'resolved', team: { id: 'espn:11' } });
+    expect(resolveClub('boc', two, [])).toMatchObject({ outcome: 'resolved', team: { id: 'espn:11' } }); // the exact code
+    expect(resolveClub('boca j', two, []).outcome).toBe('resolved');
   });
 
   it('two clubs sharing a code are two candidates, never a pick; so are two fuzzy hits', () => {
@@ -330,6 +343,14 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
     }
   });
 
+  it('the query is bounded like a human label before it names anything', async () => {
+    const r = await getNextFixtureForTeam(feed('eng.1', { events: upcoming }).adapter, `${'x'.repeat(60)}\u0007`, NOW);
+    expect(r.unknownTeam).toBe(true);
+    expect(typeof r.query).toBe('string');
+    expect((r.query as string).length).toBeLessThanOrEqual(40);
+    expect(r.query).not.toContain('\u0007');
+  });
+
   it('a known club with nothing in a whole span: the horizon, as a plain field, never a verdict', async () => {
     const r = await getNextFixtureForTeam(feed('eng.1', { events: [upcoming[3] as Ev] }).adapter, 'Arsenal', NOW);
     expect(r.fixture).toBeUndefined();
@@ -392,6 +413,16 @@ describe('match <id> off the bundle (0.11 2.1c): every transition', () => {
     expect(f.months()).toEqual(['202610']);
     expect([...f.days()].sort()).toEqual(['20261016', '20261017', '20261018']);
     expect(r.partial).toBeUndefined();
+  });
+
+  it('the refresh is asked around the PROVIDER’s day of the kickoff, not the UTC date', async () => {
+    // 01:00Z on Oct 18 is Oct 17 for the provider: the refresh asks Oct 16 to 18, not 17 to 19.
+    const late: Ev = { id: '47', date: '2026-10-18T01:00Z', home: LIV, away: ARS };
+    const f = feed('eng.1', { events: [late, other] });
+    const r = await getMatchById(f.adapter, '47');
+    expect(r.match?.id).toBe('47');
+    expect(r.degraded).toBe(false);
+    expect([...f.days()].sort()).toEqual(['20261016', '20261017', '20261018']);
   });
 
   it('found, and the refresh was not whole (a refused sibling; a conflicting duplicate of the id): the record with partial', async () => {
