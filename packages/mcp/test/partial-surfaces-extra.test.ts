@@ -224,3 +224,18 @@ describe('a LIVE list cut on a read that was not whole keeps the disclaimer and 
     expect(wholeCard).toContain('Live data');
   });
 });
+
+describe('the match card: its structured twin carries `served` beside `partial` only (0.11 2.1d)', () => {
+  const OPENER_REFUSED: Ev = { id: '760415', date: '2026-06-11T19:00Z', home: MEX, away: RSA, raw: REFUSED };
+  const KOR_CZE: Ev = { id: '760414', date: '2026-06-12T02:00Z', home: KOR, away: CZE };
+  const OPENER: Ev = { id: '760415', date: '2026-06-11T19:00Z', home: MEX, away: RSA };
+
+  it('get_share_snippet {matchId}: the ids the read held when it was not whole; nothing on a whole read', async () => {
+    const partial = await toolGetShareSnippet({ matchId: '760415', adapter: feed('fifa.world', WC_SEASON, [OPENER_REFUSED, KOR_CZE]) } as never);
+    expect(partial.data).toMatchObject({ partial: { omitted: 1 }, served: ['760414'] });
+    strict('get_share_snippet', partial.data);
+    const whole = await toolGetShareSnippet({ matchId: '760415', adapter: feed('fifa.world', WC_SEASON, [OPENER, KOR_CZE]) } as never);
+    expect(whole.data).not.toHaveProperty('served');
+    expect(whole.data).not.toHaveProperty('partial');
+  });
+});

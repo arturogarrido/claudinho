@@ -31,6 +31,7 @@ import {
   tableShareCard,
   tableData,
   marketDisplayable,
+  servedExtras,
   type MatchShareCard,
   type NextFixtureResult,
   tableKeyArg,
@@ -443,9 +444,9 @@ export async function toolGetToday(
       date,
       degraded,
       source: source ?? null,
-      // The ids the overlay held (a plain field, not a verdict): a shown row
-      // not among them is the bundled schedule's.
-      ...(day.served ? { served: day.served } : {}),
+      // The ids the overlay held (a plain field, not a verdict), beside
+      // `partial` only: a shown row not among them is the bundled schedule's.
+      ...servedExtras(day),
       // ONE bounded view, so `count`, `matches` and the signal set cannot
       // disagree about the same payload. `count` is the TRUE total; bounding
       // only the TEXT would leave structuredContent unbounded, and that is
@@ -554,8 +555,8 @@ export async function toolGetMatch(
     data: {
       degraded,
       source: liveSource ?? null,
-      // The ids the overlay held (a plain field, not a verdict).
-      ...(found.served ? { served: found.served } : {}),
+      // The ids the overlay held (a plain field, not a verdict), beside `partial` only.
+      ...servedExtras(found),
       match,
       marketComplete,
       marketSignal: marketSignal ? marketData(marketSignal) : null,
@@ -1025,8 +1026,8 @@ function shareResult(
       ...(card.team ? { team: card.team } : {}),
       ...(card.candidates ? { candidates: card.candidates } : {}),
       source: input.source ?? null,
-      // The ids the card's read held (a plain field, not a verdict).
-      ...(card.served ? { served: card.served } : {}),
+      // The card's read's plain fields (the ids it held, beside `partial` only).
+      ...card.readFields,
       degraded: input.degraded ?? false,
       informationalOnly: true,
       style: options.style ?? 'social',

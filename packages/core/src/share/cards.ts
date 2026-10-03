@@ -45,6 +45,7 @@ import { bundleApplies } from '../competition';
 import { isTeam } from '../trust/match';
 import type { Match, Team } from '../types';
 import {
+  servedExtras,
   statesPartial,
   type VerdictExtras,
   type VerdictSource,
@@ -319,12 +320,11 @@ export interface MatchShareCard {
    */
   span: { horizon?: { days: number }; window?: { from: string; to: string } };
   /**
-   * The ids the provider's window held, when the card's read states them (a
-   * dated read, a bundled match read): a plain field for the structured twin,
-   * beside `source`, not a verdict. A shown fixture not among them is the
-   * bundled schedule's row, its live state unconfirmed.
+   * Plain fields of the card's read for its structured twin, spread beside
+   * `source`: the ids the provider's window held, beside `partial` only
+   * (`servedExtras`); empty otherwise. Not a verdict.
    */
-  served?: readonly string[];
+  readFields: { served?: readonly string[] };
 }
 
 /**
@@ -366,6 +366,7 @@ export function liveShareCard(
     },
     verdict: verdictExtras(result),
     span: {},
+    readFields: {},
   };
 }
 
@@ -422,6 +423,7 @@ export function nextShareCard(
     },
     verdict: verdictExtras(result),
     span: result.horizon ? { horizon: result.horizon } : {},
+    readFields: {},
   };
 }
 
@@ -466,7 +468,7 @@ export function matchShareCard(
     },
     verdict: verdictExtras(result),
     span: result.window ? { window: result.window } : {},
-    ...(result.served ? { served: result.served } : {}),
+    readFields: servedExtras(result),
   };
 }
 
@@ -534,7 +536,7 @@ export function dateShareCard(
     },
     verdict: verdictExtras(read),
     span: {},
-    ...(read.served ? { served: read.served } : {}),
+    readFields: servedExtras(read),
   };
 }
 

@@ -31,6 +31,7 @@ import {
   tableKeyArg,
   tableTitle,
   marketDisplayable,
+  servedExtras,
   verdictExtras,
   verdictNotice,
   verdictQualifiers,
@@ -399,9 +400,9 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
       date: targetDate,
       degraded,
       source: source ?? null,
-      // The ids the overlay held (a plain field, not a verdict): a shown row
-      // not among them is the bundled schedule's.
-      ...(day.served ? { served: day.served } : {}),
+      // The ids the overlay held (a plain field, not a verdict), beside
+      // `partial` only: a shown row not among them is the bundled schedule's.
+      ...servedExtras(day),
       matches: todays,
       marketComplete: market.complete,
       marketSignals: Object.fromEntries(market.signals),
@@ -1033,8 +1034,8 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
       degraded,
       match: match ?? null,
       source: liveSource ?? null,
-      // The ids the overlay held (a plain field, not a verdict).
-      ...(found.served ? { served: found.served } : {}),
+      // The ids the overlay held (a plain field, not a verdict), beside `partial` only.
+      ...servedExtras(found),
       marketComplete: market.complete,
       marketSignal: market.signal ?? null,
       // The span a whole read searched for an id it did not hold (a plain field).
@@ -1437,8 +1438,8 @@ function emitMatchCard(
       ...(card.team ? { team: card.team } : {}),
       ...(card.candidates ? { candidates: card.candidates } : {}),
       source: card.input.source ?? null,
-      // The ids the card's read held (a plain field, not a verdict).
-      ...(card.served ? { served: card.served } : {}),
+      // The card's read's plain fields (the ids it held, beside `partial` only).
+      ...card.readFields,
       degraded: card.input.degraded ?? false,
       informationalOnly: true,
       style: options.style ?? 'social',

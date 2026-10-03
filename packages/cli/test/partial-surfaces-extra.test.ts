@@ -155,3 +155,19 @@ describe('markets <date> off the markets’ scope (0.11 2.1d)', () => {
     expect(text()).not.toContain('may be incomplete');
   });
 });
+
+describe('the match card: its structured twin carries `served` beside `partial` only (0.11 2.1d)', () => {
+  const OPENER_REFUSED: Ev = { id: '760415', date: '2026-06-11T19:00Z', home: MEX, away: RSA, raw: REFUSED };
+  const KOR_CZE: Ev = { id: '760414', date: '2026-06-12T02:00Z', home: KOR, away: CZE };
+  const OPENER: Ev = { id: '760415', date: '2026-06-11T19:00Z', home: MEX, away: RSA };
+  const at = new Date('2026-06-11T12:00:00Z');
+
+  it('share <id> --json: the ids the read held when it was not whole; nothing on a whole read', async () => {
+    await cmdShare('760415', undefined, {}, ctx(feed('fifa.world', WC_SEASON, [OPENER_REFUSED, KOR_CZE]), { json: true }, at));
+    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, served: ['760414'] });
+    writes = [];
+    await cmdShare('760415', undefined, {}, ctx(feed('fifa.world', WC_SEASON, [OPENER, KOR_CZE]), { json: true }, at));
+    expect(parsed()).not.toHaveProperty('served');
+    expect(parsed()).not.toHaveProperty('partial');
+  });
+});

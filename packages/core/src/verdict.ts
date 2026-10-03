@@ -213,6 +213,21 @@ export function verdictExtras(result: VerdictSource): VerdictExtras {
 }
 
 /**
+ * The ids a read's window held (`served`), for a structured twin: a plain
+ * field, not a verdict, carried only BESIDE the `partial` verdict it
+ * interprets (a shown fixture not among them is the bundled schedule's row,
+ * its live state unconfirmed). Empty on a whole read, whose structured output
+ * keeps its shape, and when the result states none. The results state
+ * `served` on every successful read (it is the read's fact); this is the one
+ * rule for when a surface carries it.
+ */
+export function servedExtras(
+  result: VerdictSource & { readonly served?: readonly string[] },
+): { served?: readonly string[] } {
+  return statesPartial(result) && Array.isArray(result.served) ? { served: result.served } : {};
+}
+
+/**
  * The sentence that REPLACES the body, in the reader's language — or
  * undefined when the result states none, and the surface prints its body (or
  * says what it would have said anyway: "no fixture found", "couldn't reach the
