@@ -217,4 +217,23 @@ describe('the market fixture read keeps both accounts (0.11 2.1d)', () => {
     const r = await marketFixtureForTeam(f.adapter, 'ESP', KO_NOW);
     expect(r.partial).toEqual({ omitted: 3 }); // the month saw one; the refresh (Jul 18 to 20) saw that one and two more: the larger
   });
+
+  it('the knockout window’s count is the larger: two refused records in June and July, the refresh seeing one', async () => {
+    const f = feed('fifa.world', { events: [FINAL, broken('760416', '2026-06-20T19:00Z'), broken('760516', '2026-07-18T19:00Z')] });
+    const r = await marketFixtureForTeam(f.adapter, 'ESP', KO_NOW);
+    expect(r.match?.id).toBe('760517');
+    expect(r.partial).toEqual({ omitted: 2 }); // the two months saw two; the refresh (Jul 18 to 20) one of them
+  });
+
+  it('a finished candidate falling through keeps the refresh’s account: no next fixture, partial from the day refresh', async () => {
+    const done = { ...FINAL, state: 'post' as const };
+    const f = feed('fifa.world', {
+      events: [done],
+      fail: (d) => (d === '20260719' ? json({ leagues: [{ season: WC_SEASON }], events: [event(done), event(broken('760599', '2026-07-19T15:00Z'))] }) : undefined),
+    });
+    const r = await marketFixtureForTeam(f.adapter, 'ESP', KO_NOW);
+    expect(r.match).toBeUndefined();
+    expect(r.degraded).toBe(false);
+    expect(r.partial).toEqual({ omitted: 1 });
+  });
 });
