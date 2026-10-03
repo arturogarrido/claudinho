@@ -199,6 +199,12 @@ describe('today (0.11 2.1d)', () => {
     expect(text()).toContain('Mexico');
     expect(text()).toContain('showing the bundled schedule');
     expect(text()).not.toMatch(/no fixtures confirmed/);
+    // A rest day on the bundle, the provider unreachable: the bundle's answer (it knows the day is empty), as today.
+    writes = [];
+    await cmdToday('2026-06-10', ctxFor(feed('fifa.world', { fail: true }), {}, new Date('2026-06-10T12:00:00Z')));
+    expect(text()).toContain('No matches scheduled');
+    expect(text()).toContain('showing the bundled schedule');
+    expect(text()).not.toMatch(/no fixtures confirmed/);
   });
 
   it('the bundle’s slug stating another year (no skeleton merged): the same none-read body', async () => {
@@ -234,6 +240,9 @@ describe('the bundled match and the markets (0.11 2.1d)', () => {
     writes = [];
     await cmdMarkets('760415', undefined, ctxFor(adapter, { markets: true, json: true }, new Date('2026-06-11T12:00:00Z')));
     expect(parsed()).toMatchObject({ partial: { omitted: 1 }, complete: true });
+    writes = [];
+    await cmdMarkets('next', 'MEX', ctxFor(adapter, { markets: true }, new Date('2026-06-11T12:00:00Z')));
+    expect(text()).toContain(SENTENCE);
     writes = [];
     await cmdMarkets('next', 'MEX', ctxFor(adapter, { markets: true, json: true }, new Date('2026-06-11T12:00:00Z')));
     expect(parsed()).toMatchObject({ partial: { omitted: 1 } });

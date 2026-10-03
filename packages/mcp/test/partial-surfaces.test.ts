@@ -114,6 +114,11 @@ describe('get_live and get_today (0.11 2.1d)', () => {
     const on = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: feed('fifa.world', { fail: true }) });
     expect(on.text).toContain('Mexico');
     expect(on.text).toContain('showing the bundled schedule');
+    // A rest day on the bundle, the provider unreachable: the bundle's answer, as today.
+    const rest = await toolGetToday({ date: '2026-06-10', tz: 'UTC', adapter: feed('fifa.world', { fail: true }) });
+    expect(rest.text).toContain('No matches scheduled');
+    expect(rest.text).toContain('showing the bundled schedule');
+    expect(rest.text).not.toMatch(/no fixtures confirmed/);
   });
 
   it('the share cards: live and date carry the note and the key; the date card drops its source with the line', async () => {
