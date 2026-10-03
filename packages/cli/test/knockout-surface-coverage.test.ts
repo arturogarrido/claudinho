@@ -20,7 +20,7 @@
  * when the cache lacks the pairing. Both contracts are asserted at the bottom.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeMarketProvider, type Match, type ProviderAdapter } from '@claudinho/core';
+import { attachFetchMeta, FakeMarketProvider, type Match, type ProviderAdapter } from '@claudinho/core';
 import { cmdBracket, cmdMarkets, cmdNext, cmdShare } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
@@ -166,5 +166,117 @@ describe('statusline hot-path contract — live-resolve from cache, else fail cl
     const line = renderPrompt(baseCache(), { team: 'MEX', now: KNOCKOUT_NOW });
     expect(line).toBe('⚽ —');
     expect(renderPrompt(baseCache(), { now: KNOCKOUT_NOW })).toBe('⚽ —'); // no-team too
+  });
+});
+
+describe('a knockout window that was not whole says so beside what it holds (0.11 2.1b, ledger D1)', () => {
+  // The provider sent a record the parser could not read, beside the readable
+  // tie. The statusline keeps a tie its cache held (the #139 rule) and says
+  // nothing; the interactive surfaces read only this answer, and used to say
+  // nothing either: two surfaces disagreed and neither said why. Now every
+  // interactive surface qualifies its answer with ONE sentence, beside what
+  // was read, never instead of it, and carries the verdict in its structured
+  // output. `next` for a team whose tie was the refused record has no fixture
+  // (the bundle's placeholder carries slot codes, not the team's) and the
+  // sentence: absence never means elimination.
+  const SENTENCE = 'Fixture data may be incomplete (1 provider record omitted).';
+  const UNCOUNTED = 'Fixture data may be incomplete.';
+  const partialAdapter = (meta: { complete?: boolean; omitted?: number } | undefined): ProviderAdapter => ({
+    ...overlayAdapter([]),
+    async fetchWindow() {
+      const window = [r32MexEcu()];
+      return meta ? attachFetchMeta(window, meta) : window;
+    },
+  });
+  const partialCtx = (over: Partial<CliConfig> = {}, meta: { complete?: boolean; omitted?: number } | undefined = { complete: false, omitted: 1 }) => ({
+    ...ctx(),
+    cfg: cfg(over),
+    adapter: partialAdapter(meta),
+  });
+
+  it('`next <team>` for the team of the readable tie: the fixture AND the sentence; `--json` carries both', async () => {
+    await cmdNext('MEX', partialCtx());
+    expect(text()).toContain('Ecuador');
+    expect(text()).toContain(SENTENCE);
+    writes = [];
+    await cmdNext('MEX', partialCtx({ json: true }));
+    const out = JSON.parse(text()) as { fixture: { id: string } | null; partial?: unknown };
+    expect(out.fixture?.id).toBe(RESOLVED_R32_ID);
+    expect(out.partial).toEqual({ omitted: 1 });
+  });
+
+  it('`next <team>` for a team whose tie was the refused record: no fixture, the sentence, no elimination', async () => {
+    await cmdNext('ARG', partialCtx());
+    expect(text()).toContain(SENTENCE);
+    expect(text()).not.toContain(PLACEHOLDER_FLAG);
+    expect(text().toLowerCase()).not.toContain('eliminated');
+    writes = [];
+    await cmdNext('ARG', partialCtx({ json: true }));
+    expect(JSON.parse(text())).toMatchObject({ fixture: null, partial: { omitted: 1 } });
+  });
+
+  it('`bracket`: the tree with the tie that was read, and the sentence before it; `--json` carries the verdict', async () => {
+    await cmdBracket('R32', {}, partialCtx());
+    const t = text();
+    expect(t).toContain('Mexico');
+    expect(t).toContain('Ecuador');
+    expect(t).toContain(SENTENCE);
+    expect(t.indexOf(SENTENCE)).toBeLessThan(t.indexOf('Mexico'));
+    writes = [];
+    await cmdBracket('R32', {}, partialCtx({ json: true }));
+    expect(JSON.parse(text())).toMatchObject({ partial: { omitted: 1 } });
+  });
+
+  it('`share next` and `share bracket`: the card carries the sentence beside a populated body, and the key in `--json`', async () => {
+    await cmdShare('next', 'MEX', {}, partialCtx());
+    expect(text()).toContain('Ecuador');
+    expect(text()).toContain(SENTENCE);
+    writes = [];
+    await cmdShare('next', 'ARG', {}, partialCtx());
+    expect(text()).toContain(SENTENCE); // the empty card, with the note
+    writes = [];
+    await cmdShare('bracket', 'R32', {}, partialCtx());
+    expect(text()).toContain('Mexico');
+    expect(text()).toContain(SENTENCE);
+    for (const [kind, arg] of [
+      ['next', 'MEX'],
+      ['bracket', 'R32'],
+    ] as const) {
+      writes = [];
+      await cmdShare(kind, arg, {}, partialCtx({ json: true }));
+      expect(JSON.parse(text()), kind).toMatchObject({ partial: { omitted: 1 } });
+    }
+  });
+
+  it('an adapter that says the answer is not whole without a count: the uncounted sentence and `partial: {}`', async () => {
+    await cmdNext('MEX', partialCtx({}, { complete: false }));
+    expect(text()).toContain(UNCOUNTED);
+    expect(text()).not.toContain('omitted)');
+    writes = [];
+    await cmdNext('MEX', partialCtx({ json: true }, { complete: false }));
+    expect(JSON.parse(text())).toMatchObject({ partial: {} });
+  });
+
+  it('an adapter that says nothing about its answer, or says it is whole: no sentence, no key (as today)', async () => {
+    for (const meta of [undefined, { complete: true, omitted: 0 }]) {
+      writes = [];
+      await cmdNext('MEX', partialCtx({}, meta));
+      expect(text(), JSON.stringify(meta)).toContain('Ecuador');
+      expect(text(), JSON.stringify(meta)).not.toContain('incomplete');
+      writes = [];
+      await cmdNext('MEX', partialCtx({ json: true }, meta));
+      expect(JSON.parse(text()), JSON.stringify(meta)).not.toHaveProperty('partial');
+    }
+  });
+
+  it('the sentence is localized, and the count is in every language', async () => {
+    for (const lang of ['es', 'pt', 'fr']) {
+      writes = [];
+      await cmdNext('MEX', partialCtx({ lang }));
+      const t = text();
+      expect(t, lang).not.toContain(SENTENCE);
+      expect(t, lang).toMatch(/\b1\b/);
+      expect(t, lang).toContain('Ecuador');
+    }
   });
 });
