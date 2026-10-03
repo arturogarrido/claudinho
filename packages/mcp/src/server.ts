@@ -649,9 +649,13 @@ function boundText(r: { text: string; footer?: string; cutFooter?: string }, tai
   // it is `cutFooter` when the result names one (a day on a read that was not
   // whole keeps the disclaimer, not the attribution: `ToolResult.footer`), and
   // what would not fit is not kept.
-  const kept = r.footer && r.text.endsWith(r.footer) ? (r.cutFooter ?? r.footer) : '';
+  const real = !!r.footer && r.text.endsWith(r.footer);
+  const kept = real ? (r.cutFooter ?? r.footer ?? '') : '';
   const footer = kept.length <= room ? kept : '';
-  let cut = room - footer.length;
+  // The prefix ends at the body's end: a kept footer SHORTER than the original
+  // (a cut footer) must not let the slice run into the footer it replaced.
+  const bodyEnd = real ? r.text.length - (r.footer ?? '').length : r.text.length;
+  let cut = Math.min(room - footer.length, bodyEnd);
   // Never half a character: a cut that lands inside a surrogate pair gives one unit back.
   const last = r.text.charCodeAt(cut - 1);
   if (last >= 0xd800 && last <= 0xdbff) cut -= 1;

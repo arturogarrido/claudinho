@@ -499,8 +499,10 @@ export function dateShareCard(
 ): MatchShareCard {
   // The read's account, with the outcome the surface states beside it.
   const read: ReadAccount = { ...(day.read ?? {}), degraded: day.degraded };
-  // Human date label from a stable midday-UTC instant (avoids tz day flips).
-  const human = formatDate(`${day.date}T12:00:00.000Z`, { tz: ctx.tz, locale: ctx.locale });
+  // The label of a CALENDAR date, which has no zone: midday UTC formatted IN
+  // UTC (the locale still applies). Formatted in the viewer's zone, a zone
+  // past UTC+12 (Kiritimati, Auckland in summer) named the next day.
+  const human = formatDate(`${day.date}T12:00:00.000Z`, { tz: 'UTC', locale: ctx.locale });
   // On a read that was not whole: the card names its provider only when a
   // fixture it shows was served, and counts the rows that were not.
   const attribution = dayAttribution(read, day.matches, ctx.locale);
