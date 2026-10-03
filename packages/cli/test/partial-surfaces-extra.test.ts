@@ -84,7 +84,8 @@ describe('an empty day whose read was not whole and merged no bundled schedule (
     writes = [];
     await cmdShare('2026-10-17', undefined, {}, ctx(league()));
     expect(text()).toContain(SENTENCE);
-    expect(text()).toContain('No fixture was read for 2026-10-17.');
+    // The card names the date as its title does (its label); the CLI prints the ISO date of its header.
+    expect(text()).toContain('No fixture was read for Oct 17.');
     writes = [];
     await cmdToday('2026-10-17', ctx(league(), { json: true }));
     expect(parsed()).toMatchObject({ degraded: false, partial: { omitted: 1 }, source: 'espn', matches: [] });

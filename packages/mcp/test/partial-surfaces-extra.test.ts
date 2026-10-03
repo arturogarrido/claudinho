@@ -69,7 +69,8 @@ describe('an empty day whose read was not whole and merged no bundled schedule (
     strict('get_today', today.data);
     const card = await toolGetShareSnippet({ date: '2026-10-17', tz: 'UTC', adapter: league() });
     expect(card.text).toContain(SENTENCE);
-    expect(card.text).toContain('No fixture was read for 2026-10-17.');
+    // The card names the date as its title does (its label); the tool prints the ISO date of its header.
+    expect(card.text).toContain('No fixture was read for Oct 17.');
     strict('get_share_snippet', card.data);
   });
 

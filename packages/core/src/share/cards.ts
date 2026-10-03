@@ -126,7 +126,9 @@ export function liveNoneReadSentence(lang?: string): string {
 /**
  * "No fixture was read for {date}", in the reader's language: an EMPTY day
  * after a read that was not whole and merged no bundled schedule, which is not
- * "no matches scheduled". (When it applies: {@link dateNoneRead}.)
+ * "no matches scheduled". `date` is printed as given: the card passes its
+ * human label, the CLI and MCP the date they print. (When it applies:
+ * {@link dateNoneRead}.)
  */
 export function dateNoneReadSentence(date: string, lang?: string): string {
   return t(lang, 'today.noneRead', { date });
@@ -492,11 +494,13 @@ export function dateShareCard(
       // could not be reached, the card must not paste as an empty day (the
       // same sentence every date surface prints; the formatter adds its own
       // outage line only when there ARE matches). A read that was not whole
-      // and merged no schedule says none was READ.
+      // and merged no schedule says none was READ. Both name the date as the
+      // card's title does (its label); the CLI and MCP print the ISO date of
+      // their own header.
       emptyNote:
         verdictNotice(read, ctx.locale) ??
         dateUnreached(read, human, ctx.locale) ??
-        dateNoneRead(read, day.date, ctx.locale) ??
+        dateNoneRead(read, human, ctx.locale) ??
         `No matches scheduled for ${human}.`,
       // The read was not whole (and which shown rows it did not serve): said
       // beside the fixtures, or beside "none read".
