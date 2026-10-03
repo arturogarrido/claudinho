@@ -86,6 +86,12 @@ describe('get_next_fixture off the bundle (0.11 2.1c)', () => {
 
   it('the input takes a bounded label (a code or a name); the market tool keeps the code', () => {
     expect(clubArg.safeParse('Ars\u200benal').success).toBe(false); // an invisible character is not a label
+    // Review round 3: a control or invisible character at either END is refused too (trimming must not hide it:
+    // the raw argument reaches the run cue and the my_team prompt).
+    for (const bad of ['\nArsenal', 'Arsenal\r', '\uFEFFArsenal', 'Arsenal\uFEFF', '\tArsenal', 'Ars\n\n', '\u2028Arsenal']) {
+      expect(clubArg.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+    expect(clubArg.safeParse(' Arsenal ').success).toBe(true); // ordinary spaces at the ends are a label
     expect(clubArg.safeParse('Arsenal').success).toBe(true);
     expect(clubArg.safeParse('O&M').success).toBe(true);
     expect(clubArg.safeParse('ARS').success).toBe(true);
@@ -226,6 +232,16 @@ describe('get_match off the bundle (0.11 2.1c)', () => {
   it('the share cards’ run cue carries the competition off the bundle (review round 2)', async () => {
     const r = await toolGetShareSnippet({ team: 'Arsenal', now: NOW, adapter: feed('eng.1', { events: upcoming }).adapter });
     expect(r.text).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli next/);
+  });
+
+  it('the handlers never carry a raw argument into a card or a prompt: the run cue holds the bounded label (review round 3)', async () => {
+    // Below the schema (a direct call), a query with a trailing newline reaches the handler; the cue must not split.
+    const r = await toolGetShareSnippet({ team: 'Ars\n\n', now: NOW, adapter: feed('eng.1', { events: upcoming }).adapter });
+    const cue = r.text.split('\n').find((line) => line.includes('@claudinho/cli next')) ?? '';
+    expect(cue).toMatch(/next "?Ars"?$/);
+    expect(r.text).not.toContain('Ars\n\n');
+    expect(r.footer.trim().length).toBeGreaterThan(20);
+    expect(r.text.endsWith(r.footer)).toBe(true);
   });
 
   it('on the World Cup, get_next_fixture carries the candidates of an ambiguous name in data (review round 2)', async () => {

@@ -538,6 +538,18 @@ describe('match <id> off the bundle (0.11 2.1c): every transition', () => {
   });
 });
 
+describe('a tool argument asked as a label (0.11 2.1c, review round 3)', () => {
+  it('isHumanLabel refuses a control or invisible character at either end: trimming must not hide one', async () => {
+    const { isHumanLabel } = await import('../src/trust/roles');
+    expect(isHumanLabel('Arsenal')).toBe(true);
+    expect(isHumanLabel(' Arsenal ')).toBe(true);
+    expect(isHumanLabel('O&M')).toBe(true);
+    for (const bad of ['\nArsenal', 'Arsenal\r', '\uFEFFArsenal', 'Arsenal\uFEFF', '\tArsenal', 'Ars\n\n', '\u2028Arsenal', 'Ars\u200benal', 'Ars\u0007enal', '']) {
+      expect(isHumanLabel(bad), JSON.stringify(bad)).toBe(false);
+    }
+  });
+});
+
 describe('bracket off the bundle: a capability with three values (0.11 2.1c)', () => {
   it('the list is written down: the league seasons with no knockout tie of their own', () => {
     expect([...NO_BRACKET].sort()).toEqual(['eng.1', 'esp.1']);
