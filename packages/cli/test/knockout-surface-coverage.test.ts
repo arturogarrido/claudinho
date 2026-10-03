@@ -194,10 +194,12 @@ describe('a knockout window that was not whole says so beside what it holds (0.1
     adapter: partialAdapter(meta),
   });
 
-  it('`next <team>` for the team of the readable tie: the fixture AND the sentence; `--json` carries both', async () => {
+  it('`next <team>` for the team of the readable tie: the fixture AND the sentence, said before it; `--json` carries both', async () => {
     await cmdNext('MEX', partialCtx());
-    expect(text()).toContain('Ecuador');
-    expect(text()).toContain(SENTENCE);
+    const t = text();
+    expect(t).toContain('Ecuador');
+    expect(t).toContain(SENTENCE);
+    expect(t.indexOf(SENTENCE)).toBeLessThan(t.indexOf('Ecuador'));
     writes = [];
     await cmdNext('MEX', partialCtx({ json: true }));
     const out = JSON.parse(text()) as { fixture: { id: string } | null; partial?: unknown };
