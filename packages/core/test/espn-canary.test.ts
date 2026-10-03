@@ -290,6 +290,13 @@ describe('discovery’s question: the schedule ahead, a month at a time, off the
     const jump = await runCanary({ core, competitions: ['eng.1'], fetchImpl: feed(months(2028)).fetchImpl, now: at, pauseMs: 0 });
     expect(discovery(jump)?.verdict).toBe('changed');
     expect(jump.red).toBe(true);
+    // The cadence is the COMPETITION's (a review found the call site unpinned): the Nations League turns by two.
+    const biennial = (nov: number) => (url: string) =>
+      json(url.includes('/standings') ? groupStandings() : asked(url) === '202611' ? { leagues: [{ season: { ...SEASON, year: nov } }], events: [] } : scoreboard(url));
+    const twoUp = await runCanary({ core, competitions: ['uefa.nations'], fetchImpl: feed(biennial(2028)).fetchImpl, now: at, pauseMs: 0 });
+    expect(discovery(twoUp)?.verdict).toBe('ok');
+    const threeUp = await runCanary({ core, competitions: ['uefa.nations'], fetchImpl: feed(biennial(2029)).fetchImpl, now: at, pauseMs: 0 });
+    expect(discovery(threeUp)?.verdict).toBe('changed');
   });
 
   it('a throttle on the first question leaves every discovery row not asked, counted as not answered', async () => {
