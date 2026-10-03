@@ -72,7 +72,9 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   two clubs in one competition). The places that still select a team by its
   letters (`fixturesByTeam`, the statusline/hook filter, the team argument) are
   legacy World Cup behaviour, not a pattern to copy. `sameTeam` decides self-play: the same id, OR the
-  same code and name — an id only ever adds a refusal.
+  same code and name — an id only ever adds a refusal. Selecting a team's own
+  fixture is `isTeam`: when both carry an id, equal ids decide (a side with
+  another club's id is never this club's, whatever its labels).
 - **Response metadata rides on the result.** The season (or seasons) a response
   answered for, and the count of records it left out, are attached to the
   returned array (`adapters/meta.ts`), never stored on the adapter, where an
