@@ -321,8 +321,8 @@ export interface MatchShareCard {
   span: { horizon?: { days: number }; window?: { from: string; to: string } };
   /**
    * Plain fields of the card's read for its structured twin, spread beside
-   * `source`: the ids the provider's window held, beside `partial` only
-   * (`servedExtras`); empty otherwise. Not a verdict.
+   * `source`: the card's shown fixtures whose record the window held, beside
+   * `partial` only (`servedExtras`); empty otherwise. Not a verdict.
    */
   readFields: { served?: readonly string[] };
 }
@@ -468,7 +468,7 @@ export function matchShareCard(
     },
     verdict: verdictExtras(result),
     span: result.window ? { window: result.window } : {},
-    readFields: servedExtras(result),
+    readFields: servedExtras(result, result.match ? [result.match] : []),
   };
 }
 
@@ -536,7 +536,7 @@ export function dateShareCard(
     },
     verdict: verdictExtras(read),
     span: {},
-    readFields: servedExtras(read),
+    readFields: servedExtras(read, day.matches),
   };
 }
 

@@ -213,18 +213,24 @@ export function verdictExtras(result: VerdictSource): VerdictExtras {
 }
 
 /**
- * The ids a read's window held (`served`), for a structured twin: a plain
- * field, not a verdict, carried only BESIDE the `partial` verdict it
- * interprets (a shown fixture not among them is the bundled schedule's row,
- * its live state unconfirmed). Empty on a whole read, whose structured output
- * keeps its shape, and when the result states none. The results state
- * `served` on every successful read (it is the read's fact); this is the one
- * rule for when a surface carries it.
+ * `served` for a structured twin: the SHOWN fixtures whose record the read's
+ * window held, in the order shown (a shown fixture not among them is the
+ * bundled schedule's row, its live state unconfirmed). Bounded like the rows
+ * it interprets: `shown` is what the surface finally displays (the day's rows,
+ * the bounded list, the card's matches, the one match), never the window's
+ * every id, which can hold other dates. A plain field, not a verdict, carried
+ * only BESIDE the `partial` verdict it interprets: empty on a whole read,
+ * whose structured output keeps its shape, and when the result states none.
+ * The results state the window's ids on every successful read (the read's
+ * fact); this is the one rule for what a surface carries of them.
  */
 export function servedExtras(
   result: VerdictSource & { readonly served?: readonly string[] },
+  shown: ReadonlyArray<{ readonly id: string }>,
 ): { served?: readonly string[] } {
-  return statesPartial(result) && Array.isArray(result.served) ? { served: result.served } : {};
+  if (!statesPartial(result) || !Array.isArray(result.served)) return {};
+  const held = new Set(result.served);
+  return { served: shown.filter((m) => held.has(m.id)).map((m) => m.id) };
 }
 
 /**

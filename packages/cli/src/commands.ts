@@ -400,9 +400,9 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
       date: targetDate,
       degraded,
       source: source ?? null,
-      // The ids the overlay held (a plain field, not a verdict), beside
+      // The day's rows the overlay held (a plain field, not a verdict), beside
       // `partial` only: a shown row not among them is the bundled schedule's.
-      ...servedExtras(day),
+      ...servedExtras(day, todays),
       matches: todays,
       marketComplete: market.complete,
       marketSignals: Object.fromEntries(market.signals),
@@ -1034,8 +1034,8 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
       degraded,
       match: match ?? null,
       source: liveSource ?? null,
-      // The ids the overlay held (a plain field, not a verdict), beside `partial` only.
-      ...servedExtras(found),
+      // The match, if the overlay held it (a plain field, not a verdict), beside `partial` only.
+      ...servedExtras(found, match ? [match] : []),
       marketComplete: market.complete,
       marketSignal: market.signal ?? null,
       // The span a whole read searched for an id it did not hold (a plain field).

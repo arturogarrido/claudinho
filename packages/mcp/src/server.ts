@@ -228,7 +228,7 @@ const partialOut = {
 const servedOut = z
   .array(z.string())
   .describe(
-    "The ids the provider's window held; a shown fixture not among them is the bundled schedule's row, its live state unconfirmed",
+    "The shown fixtures whose record the provider's window held; a shown fixture not among them is the bundled schedule's row, its live state unconfirmed",
   );
 const todayOut = {
   date: z.string(),
@@ -731,7 +731,7 @@ export function buildServer(): McpServer {
     {
       title: 'Live matches',
       description:
-        'Only matches in play right now — each with current score and minute; an empty list means nothing is in play unless partial says the read was not whole. Off the World Cup, betweenEditions means the competition\'s edition has ended and the next has not started. partial means the provider sent records that could not be used: an empty list then means no match in play could be read, not that none is. Use during matches for in-play state; for a full day\'s schedule including upcoming and finished, use get_today. tz/lang/flavor affect formatting only.',
+        'Only matches in play right now — each with current score and minute; an empty list means nothing is in play only when the read was whole (neither partial nor degraded says otherwise). Off the World Cup, betweenEditions means the competition\'s edition has ended and the next has not started. partial means the provider sent records that could not be used: an empty list then means no match in play could be read, not that none is. Use during matches for in-play state; for a full day\'s schedule including upcoming and finished, use get_today. tz/lang/flavor affect formatting only.',
       inputSchema: { ...commonArgs },
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: liveOut,

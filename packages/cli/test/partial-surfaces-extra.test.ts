@@ -163,7 +163,11 @@ describe('the match card: its structured twin carries `served` beside `partial` 
   const at = new Date('2026-06-11T12:00:00Z');
 
   it('share <id> --json: the ids the read held when it was not whole; nothing on a whole read', async () => {
+    // `served` is the card's shown fixture when the window held it: the refused opener's row is the bundle's.
     await cmdShare('760415', undefined, {}, ctx(feed('fifa.world', WC_SEASON, [OPENER_REFUSED, KOR_CZE]), { json: true }, at));
+    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, served: [] });
+    writes = [];
+    await cmdShare('760414', undefined, {}, ctx(feed('fifa.world', WC_SEASON, [OPENER_REFUSED, KOR_CZE]), { json: true }, at));
     expect(parsed()).toMatchObject({ partial: { omitted: 1 }, served: ['760414'] });
     writes = [];
     await cmdShare('760415', undefined, {}, ctx(feed('fifa.world', WC_SEASON, [OPENER, KOR_CZE]), { json: true }, at));

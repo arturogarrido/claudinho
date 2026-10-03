@@ -175,15 +175,17 @@ describe('get_today: the day’s attribution is decided over the rows the tool S
     const r = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter });
     expect(r.data).toMatchObject({ truncated: true, partial: { omitted: 1 }, source: 'espn' });
     expect((r.data as { matches: Match[] }).matches.some((m) => m.id === '760415')).toBe(false);
+    // `served` is bounded like the rows it interprets: the forty shown, all served.
+    expect((r.data as { served: string[] }).served).toEqual(served.map((m) => m.id));
     expect(r.text).toContain('may be incomplete');
     expect(r.text).not.toContain('bundled schedule;');
     expect(r.text).toContain('Live data');
   });
 });
 
-describe('a LIVE list cut on a read that was not whole keeps the disclaimer and drops the attribution line (0.11 2.1d)', () => {
-  // The rule is the day's (ToolResult.footer): the live list shows only served rows, so the dropped line would
-  // be true, but under-attributing is the safe direction and the rule is one sentence for every list.
+describe('a LIVE list cut on a read that was not whole keeps its attribution line (0.11 2.1d)', () => {
+  // The cut rule is a DATE's (ToolResult.footer): every row a live list shows was served, so its line is true
+  // after any cut, and a provider is attributed where it served.
   const LONG = Array.from({ length: 50 }, () => 'b\u0301\u0301\u0301\u0301\u0301\u0301\u0301').join('');
   function inPlay(i: number) {
     // Two codes: a side with the other's code and name would be the same team, and the record refused.
@@ -204,11 +206,11 @@ describe('a LIVE list cut on a read that was not whole keeps the disclaimer and 
   const rows = Array.from({ length: 41 }, (_, i) => inPlay(i));
   const textOf = (r: { text: string; footer: string; data: unknown; cutFooter?: string }) => toContent(r).content[0]?.text ?? '';
 
-  it('get_live and the live card: cut, no "Live data", the disclaimer and the sentence kept; a whole read keeps the line', async () => {
+  it('get_live and the live card: cut, "Live data", the disclaimer and the sentence kept; a whole read the same', async () => {
     const partial = await toolGetLive({ adapter: liveFeed([...rows, refused]), now: NOW } as never);
     const cut = textOf(partial);
     expect(cut).toContain('(truncated)');
-    expect(cut).not.toContain('Live data');
+    expect(cut).toContain('Live data');
     expect(cut).toMatch(/not affiliated/i);
     expect(cut).toContain('Fixture data may be incomplete (1 provider record omitted).');
     expect(partial.data).toMatchObject({ source: 'espn', partial: { omitted: 1 } });
@@ -217,7 +219,7 @@ describe('a LIVE list cut on a read that was not whole keeps the disclaimer and 
     expect(whole).toContain('Live data');
     const card = textOf(await toolGetShareSnippet({ live: true, now: NOW, adapter: liveFeed([...rows, refused]) } as never));
     expect(card).toContain('(truncated)');
-    expect(card).not.toContain('Live data');
+    expect(card).toContain('Live data');
     expect(card).toMatch(/not affiliated/i);
     const wholeCard = textOf(await toolGetShareSnippet({ live: true, now: NOW, adapter: liveFeed(rows) } as never));
     expect(wholeCard).toContain('(truncated)');
@@ -231,9 +233,12 @@ describe('the match card: its structured twin carries `served` beside `partial` 
   const OPENER: Ev = { id: '760415', date: '2026-06-11T19:00Z', home: MEX, away: RSA };
 
   it('get_share_snippet {matchId}: the ids the read held when it was not whole; nothing on a whole read', async () => {
+    // `served` is the card's shown fixture when the window held it: the refused opener's row is the bundle's.
     const partial = await toolGetShareSnippet({ matchId: '760415', adapter: feed('fifa.world', WC_SEASON, [OPENER_REFUSED, KOR_CZE]) } as never);
-    expect(partial.data).toMatchObject({ partial: { omitted: 1 }, served: ['760414'] });
+    expect(partial.data).toMatchObject({ partial: { omitted: 1 }, served: [] });
     strict('get_share_snippet', partial.data);
+    const sibling = await toolGetShareSnippet({ matchId: '760414', adapter: feed('fifa.world', WC_SEASON, [OPENER_REFUSED, KOR_CZE]) } as never);
+    expect(sibling.data).toMatchObject({ partial: { omitted: 1 }, served: ['760414'] });
     const whole = await toolGetShareSnippet({ matchId: '760415', adapter: feed('fifa.world', WC_SEASON, [OPENER, KOR_CZE]) } as never);
     expect(whole.data).not.toHaveProperty('served');
     expect(whole.data).not.toHaveProperty('partial');

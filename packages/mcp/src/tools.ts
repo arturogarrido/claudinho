@@ -97,11 +97,14 @@ export interface ToolResult {
    * share snippet's is its footer paragraph (`snippetFooter`).
    *
    * What a cut keeps of it is {@link cutFooter} when the result names one. The
-   * rule, for a DAY (a date or live list) on a read that was not whole: the cut
-   * keeps the disclaimer and DROPS the attribution line, because the rows it
-   * drops may be every row the provider served (the attribution was decided
-   * over the whole bounded list, not over what survives the cut). A whole read
-   * keeps the whole footer. The structured `source` names the provider either way.
+   * rule, for a DATE's list (`get_today`, the date card) on a read that was not
+   * whole: the cut keeps the disclaimer and DROPS the attribution line, because
+   * the rows it drops may be every row the provider served (the attribution
+   * was decided over the whole bounded list, not over what survives the cut).
+   * A whole read keeps the whole footer, and so does a LIVE list: every row it
+   * shows was served, so its line is true after any cut, and a provider is
+   * attributed where it served. The structured `source` names the provider
+   * either way.
    */
   footer: string;
   /** The footer a cut keeps, when it is not the whole footer (see {@link footer}). */
@@ -358,7 +361,7 @@ function disclaimed(
   body: string,
   source?: string,
   lang?: string,
-  /** The day's read, for a date or live list: on one that was not whole a cut drops the attribution (see `ToolResult.footer`). */
+  /** A date's read, for its list: on one that was not whole a cut drops the attribution (see `ToolResult.footer`). Never a live list's. */
   read?: VerdictSource,
 ): { text: string; footer: string; cutFooter?: string } {
   const live = source
@@ -444,9 +447,10 @@ export async function toolGetToday(
       date,
       degraded,
       source: source ?? null,
-      // The ids the overlay held (a plain field, not a verdict), beside
-      // `partial` only: a shown row not among them is the bundled schedule's.
-      ...servedExtras(day),
+      // The shown (bounded) rows the overlay held (a plain field, not a
+      // verdict), beside `partial` only: a shown row not among them is the
+      // bundled schedule's.
+      ...servedExtras(day, shownToday.items),
       // ONE bounded view, so `count`, `matches` and the signal set cannot
       // disagree about the same payload. `count` is the TRUE total; bounding
       // only the TEXT would leave structuredContent unbounded, and that is
@@ -479,7 +483,8 @@ export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
     : `Live now:\n${matchList(matches, verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? 'No matches in play right now.', opts)}`;
   const shownLive = boundedRecords(matches);
   return {
-    ...disclaimed(qualified(text, live, args.lang), source, args.lang, live),
+    // Every row a live list shows was served: a cut keeps its attribution (`ToolResult.footer`).
+    ...disclaimed(qualified(text, live, args.lang), source, args.lang),
     data: {
       degraded,
       source: source ?? null,
@@ -555,8 +560,8 @@ export async function toolGetMatch(
     data: {
       degraded,
       source: liveSource ?? null,
-      // The ids the overlay held (a plain field, not a verdict), beside `partial` only.
-      ...servedExtras(found),
+      // The match, if the overlay held it (a plain field, not a verdict), beside `partial` only.
+      ...servedExtras(found, [match]),
       match,
       marketComplete,
       marketSignal: marketSignal ? marketData(marketSignal) : null,
@@ -1001,15 +1006,15 @@ function shareResult(
   options: ShareSnippetOptions,
   /** Records BEFORE capping, so the payload can say what it dropped. */
   total = card.input.matches.length,
-  /** A day's card (a date or live list): on a read that was not whole a cut drops the attribution (see `ToolResult.footer`). */
-  day = false,
+  /** A date's card: on a read that was not whole a cut drops the attribution (see `ToolResult.footer`). Never the live card. */
+  date = false,
 ): ToolResult {
   const { input } = card;
   const snippet = formatShareSnippet(input, options);
   // The footer a cut keeps: the same card's footer with no provider line (one
-  // extra render, only for a day's card on a read that was not whole).
+  // extra render, only for a date's card on a read that was not whole).
   const cut =
-    day && input.source && statesPartial(card.verdict)
+    date && input.source && statesPartial(card.verdict)
       ? { cutFooter: snippetFooter(formatShareSnippet({ ...input, source: undefined }, options)) }
       : {};
   return {
@@ -1083,7 +1088,6 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       }),
       { ...options, includeMarkets: false },
       live.matches.length,
-      true,
     );
   }
 
