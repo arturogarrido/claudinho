@@ -137,40 +137,133 @@ const verdicts = (r: { rows: Array<{ request: string; verdict: string }> }) =>
   Object.fromEntries(r.rows.map((row) => [row.request, row.verdict]));
 
 describe('a healthy feed', () => {
-  it('asks the four questions the product asks, per competition, and is green', async () => {
+  it('asks the five questions the product asks off the bundle, per competition, and is green', async () => {
     const r = await run(healthy, ['eng.1', 'uefa.nations']);
     expect(r.red).toBe(false);
-    expect(r.rows).toHaveLength(8);
+    expect(r.rows).toHaveLength(10);
     expect(r.rows.map((row) => `${row.competition}:${row.request}:${row.verdict}`)).toEqual([
       'eng.1:live:ok',
       'eng.1:day:ok',
       'eng.1:window:ok',
+      'eng.1:discovery:ok',
       'eng.1:standings:ok',
       'uefa.nations:live:ok',
       'uefa.nations:day:ok',
       'uefa.nations:window:ok',
+      'uefa.nations:discovery:ok',
       'uefa.nations:standings:ok',
     ]);
   });
 
   it('uses the adapter’s own request shapes, for the competition it was given', async () => {
     const r = await run(healthy);
-    expect(r.urls).toHaveLength(6);
+    expect(r.urls).toHaveLength(7);
     for (const u of r.urls) expect(u).toContain('/soccer/eng.1/');
-    // bare bucket · one day · a three-day window, a day at a time · the standings endpoint
+    // bare bucket · one day · a three-day window, a day at a time · discovery's month · the standings endpoint
     expect(r.urls.filter((u) => u.includes('/scoreboard') && !u.includes('dates='))).toHaveLength(1);
     expect(r.urls.filter((u) => /dates=20261010(&|$)/.test(u))).toHaveLength(2); // the day, and the window's middle day
     expect(r.urls.filter((u) => /dates=20261009(&|$)/.test(u))).toHaveLength(1);
     expect(r.urls.filter((u) => /dates=20261011(&|$)/.test(u))).toHaveLength(1);
+    expect(r.urls.filter((u) => /dates=202610(&|$)/.test(u))).toHaveLength(1); // the span Oct 9 to 24 touches one month
     expect(r.urls.filter((u) => u.includes('/standings'))).toHaveLength(1);
     // The form the provider refuses is never asked.
     expect(r.urls.some((u) => /dates=\d+-\d+/.test(u))).toBe(false);
-    expect(r.rows.map((row) => row.requests)).toEqual([1, 1, 3, 1]);
+    expect(r.rows.map((row) => row.requests)).toEqual([1, 1, 3, 1, 1]);
   });
 
   it('a competition with no fixtures in the window is still green', async () => {
     const r = await run((url) => json(url.includes('/standings') ? standings() : { leagues: [{ season: SEASON }], events: [] }));
     expect(r.red).toBe(false);
+  });
+});
+
+describe('discovery’s question: the schedule ahead, a month at a time, off the bundle (0.11, ledger row D5)', () => {
+  // The refresher, `next` and `match` discover off the bundle through `getScheduleAhead`: each calendar month the
+  // span (yesterday to 14 provider days ahead) touches, one strict request. `getScheduleAhead` chooses the
+  // requests; each month is judged by its OWN `fetchWindow` result through the scoreboard checks (discovery's
+  // aggregate is never what is judged: it swallows a month's refusal into `complete: false`).
+  const discovery = (r: { rows: Array<{ request: string; verdict: string; detail: string; requests: number; url: string }> }) =>
+    r.rows.find((x) => x.request === 'discovery');
+  const REFUSED = () => json({ code: 400, message: 'Failed to get events endpoint.' }, 400);
+
+  it('is asked of every competition the product discovers, and not of the bundled one (its month form is the knockout question)', async () => {
+    const r = await run(healthy, ['fifa.world', 'eng.1']);
+    expect(r.rows.map((row) => `${row.competition}:${row.request}`)).toEqual([
+      'fifa.world:live',
+      'fifa.world:day',
+      'fifa.world:window',
+      'fifa.world:knockout',
+      'fifa.world:standings',
+      'eng.1:live',
+      'eng.1:day',
+      'eng.1:window',
+      'eng.1:discovery',
+      'eng.1:standings',
+    ]);
+    expect(CANARY_QUESTIONS.map((q) => q.request)).toContain('discovery');
+  });
+
+  it('one month when the span lies in one; two requests in one row when it touches two, ok when each passes, the seasons free to differ', async () => {
+    const one = await run(healthy);
+    expect(discovery(one)?.verdict).toBe('ok');
+    expect(discovery(one)?.requests).toBe(1);
+    expect(discovery(one)?.url).toMatch(/dates=202610(&|$)/);
+    // Oct 25: the span (Oct 24 to Nov 8) touches October and November.
+    const f = feed((url) => json(url.includes('/standings') ? standings() : asked(url) === '202611' ? { leagues: [{ season: { ...SEASON, year: 2027 } }], events: [] } : scoreboard(url)));
+    const two = await runCanary({ core, competitions: ['eng.1'], fetchImpl: f.fetchImpl, now: new Date('2026-10-25T12:00:00Z'), pauseMs: 0 });
+    expect(discovery(two)?.verdict).toBe('ok');
+    expect(discovery(two)?.requests).toBe(2);
+    expect(f.urls.filter((u) => /dates=202610(&|$)/.test(u))).toHaveLength(1);
+    expect(f.urls.filter((u) => /dates=202611(&|$)/.test(u))).toHaveLength(1);
+    expect(two.red).toBe(false);
+  });
+
+  it('a month request the provider refuses is rejected, naming the month', async () => {
+    const r = await run((url) => (/dates=\d{6}(&|$)/.test(url) ? REFUSED() : healthy(url)));
+    expect(discovery(r)?.verdict).toBe('rejected');
+    expect(discovery(r)?.detail).toContain('400');
+    expect(discovery(r)?.url).toMatch(/dates=202610/);
+    expect(r.red).toBe(true);
+    // The window (days) is untouched by a refused month form.
+    expect(verdicts(r).window).toBe('ok');
+  });
+
+  it('a month whose only records are refused, beside a readable sibling month, is changed and names the month', async () => {
+    // Oct 25, two months; November's list holds one record the adapter refuses (no readable status).
+    const broken = event('9', { date: '2026-11-02T15:00Z', status: { type: { name: 'STATUS_NEW', state: 'limbo' } } });
+    const f = feed((url) => json(url.includes('/standings') ? standings() : asked(url) === '202611' ? { leagues: [{ season: SEASON }], events: [broken] } : scoreboard(url)));
+    const r = await runCanary({ core, competitions: ['eng.1'], fetchImpl: f.fetchImpl, now: new Date('2026-10-25T12:00:00Z'), pauseMs: 0 });
+    expect(discovery(r)?.verdict).toBe('changed');
+    expect(discovery(r)?.detail).toMatch(/202611/);
+    expect(r.red).toBe(true);
+  });
+
+  it('a month with readable records and no fixture inside the span is ok, and says so', async () => {
+    // October's only fixture is on Oct 1: read, and outside Oct 9 to 24.
+    const early = event('8', { date: '2026-10-01T15:00Z' });
+    const r = await run((url) => json(url.includes('/standings') ? standings() : asked(url).length === 6 ? { leagues: [{ season: SEASON }], events: [early] } : scoreboard(url)));
+    expect(discovery(r)?.verdict).toBe('ok');
+    expect(discovery(r)?.detail).toMatch(/\b0 fixture/);
+  });
+
+  it('a malformed month beside a throttled sibling is red, the throttle reported beside it, and nothing more is asked', async () => {
+    const f = feed((url) =>
+      url.includes('/standings') ? json(standings()) : asked(url) === '202610' ? json({ leagues: [{ season: SEASON }] }) : asked(url) === '202611' ? json({}, 429) : healthy(url),
+    );
+    const r = await runCanary({ core, competitions: ['eng.1', 'esp.1'], fetchImpl: f.fetchImpl, now: new Date('2026-10-25T12:00:00Z'), pauseMs: 0 });
+    expect(discovery(r)?.verdict).toBe('changed');
+    expect(discovery(r)?.detail).toMatch(/events|blocked/);
+    expect(discovery(r)?.detail).toMatch(/blocked/);
+    expect(r.red).toBe(true);
+    expect(r.rows.filter((row) => row.competition === 'esp.1').every((row) => row.verdict === 'blocked' && row.requests === 0)).toBe(true);
+  });
+
+  it('a throttle on the first question leaves every discovery row not asked, counted as not answered', async () => {
+    const r = await run(() => json({}, 429, { 'retry-after': '300' }), ['eng.1', 'esp.1']);
+    const rows = r.rows.filter((row) => row.request === 'discovery');
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.verdict === 'blocked' && /not asked/.test(row.detail))).toBe(true);
+    expect(canaryWarnings(r).join(' ')).toMatch(/not answered/);
   });
 });
 
@@ -182,7 +275,7 @@ describe('the provider refuses a request form', () => {
   it('is red, and says which request and why', async () => {
     const r = await run(DAY_REJECTED);
     expect(r.red).toBe(true);
-    expect(verdicts(r)).toEqual({ live: 'ok', day: 'rejected', window: 'rejected', standings: 'ok' });
+    expect(verdicts(r)).toEqual({ live: 'ok', day: 'rejected', window: 'rejected', discovery: 'ok', standings: 'ok' });
     const row = r.rows.find((x) => x.request === 'day');
     expect(row?.detail).toContain('400');
     expect(row?.detail).toContain('Failed to get events endpoint.');
@@ -198,7 +291,7 @@ describe('the provider refuses a request form', () => {
   it('a window is judged on every request it takes, not on the first', async () => {
     // The first day answers; the third is refused.
     const third = await run((url) => (/dates=20261011(&|$)/.test(url) ? REFUSED() : healthy(url)));
-    expect(verdicts(third)).toEqual({ live: 'ok', day: 'ok', window: 'rejected', standings: 'ok' });
+    expect(verdicts(third)).toEqual({ live: 'ok', day: 'ok', window: 'rejected', discovery: 'ok', standings: 'ok' });
     expect(third.rows.find((x) => x.request === 'window')?.detail).toMatch(/20261011, 1 of 3 requests/);
     // The first day answers; the second is not JSON.
     const second = await run((url) =>
@@ -354,7 +447,7 @@ describe('found in review: a throttle is the provider speaking to the runner, no
     for (const status of [403, 429]) {
       const r = await run(() => json({}, status, { 'retry-after': '300' }), ['eng.1', 'esp.1', 'ita.1']);
       expect(r.urls, `status ${status}`).toHaveLength(1);
-      expect(r.rows).toHaveLength(12);
+      expect(r.rows).toHaveLength(15);
       expect(new Set(r.rows.map((row) => row.verdict))).toEqual(new Set(['blocked']));
       expect(r.rows.at(-1)?.detail).toMatch(/not asked/);
       expect(r.red).toBe(false);
@@ -363,22 +456,23 @@ describe('found in review: a throttle is the provider speaking to the runner, no
 
   it('a throttle in the middle of the run keeps what was learned before it', async () => {
     const r = await run((url) => (url.includes('/esp.1/') ? json({}, 429) : healthy(url)), ['eng.1', 'esp.1', 'ita.1']);
-    expect(r.rows.slice(0, 4).map((row) => row.verdict)).toEqual(['ok', 'ok', 'ok', 'ok']);
-    expect(r.rows.slice(4).every((row) => row.verdict === 'blocked')).toBe(true);
-    expect(r.urls).toHaveLength(7); // six for the first competition, one for the second
+    expect(r.rows.slice(0, 5).map((row) => row.verdict)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok']);
+    expect(r.rows.slice(5).every((row) => row.verdict === 'blocked')).toBe(true);
+    expect(r.urls).toHaveLength(8); // seven for the first competition, one for the second
   });
 });
 
 describe('a window takes several requests: each is judged, and the provider is believed on the first "stop"', () => {
   it('a throttle on a later part of a window is a block, and ends the run', async () => {
     const r = await run((url) => (/dates=20261011(&|$)/.test(url) ? json({}, 429) : healthy(url)), ['eng.1', 'esp.1']);
-    expect(r.rows.slice(0, 4).map((row) => `${row.request}:${row.verdict}`)).toEqual([
+    expect(r.rows.slice(0, 5).map((row) => `${row.request}:${row.verdict}`)).toEqual([
       'live:ok',
       'day:ok',
       'window:blocked',
+      'discovery:blocked',
       'standings:blocked',
     ]);
-    expect(r.rows.slice(4).every((row) => row.verdict === 'blocked' && row.requests === 0)).toBe(true);
+    expect(r.rows.slice(5).every((row) => row.verdict === 'blocked' && row.requests === 0)).toBe(true);
     // Its three parts had gone together; nothing after them is asked.
     expect(r.urls).toHaveLength(5);
     expect(r.red).toBe(false);
@@ -568,8 +662,8 @@ describe('found in review: a part that could not be seen does not hide a part th
 
     it('asks the provider nothing more to do so', async () => {
       const r = await run(withOct9(on9({ id: '' }), json({}, 503)));
-      // live, day, the window's three, standings: the same six as a healthy run.
-      expect(r.urls).toHaveLength(6);
+      // live, day, the window's three, discovery's month, standings: the same seven as a healthy run.
+      expect(r.urls).toHaveLength(7);
     });
   });
 
@@ -592,7 +686,7 @@ describe('found in review: the default scoreboard is checked like the dated ones
     const r = await run(
       onDefault([event('1'), event('2', { status: { type: { name: 'STATUS_SOMETHING_NEW', state: 'limbo' } } })]),
     );
-    expect(verdicts(r)).toEqual({ live: 'changed', day: 'ok', window: 'ok', standings: 'ok' });
+    expect(verdicts(r)).toEqual({ live: 'changed', day: 'ok', window: 'ok', discovery: 'ok', standings: 'ok' });
   });
 
   it('a scheduled event there whose team has no id is red', async () => {
@@ -1043,7 +1137,7 @@ describe('found in review (round 2): an error body cannot hold the run', () => {
         ? new Response(body, { status: 400, headers: { 'content-length': String(Buffer.byteLength(body)) } })
         : healthy(url),
     );
-    expect(verdicts(r)).toEqual({ live: 'ok', day: 'ok', window: 'rejected', standings: 'ok' });
+    expect(verdicts(r)).toEqual({ live: 'ok', day: 'ok', window: 'rejected', discovery: 'ok', standings: 'ok' });
   });
 
   it('a large throttle body, with no declared length: one request, the run stops', { timeout: 2000 }, async () => {
@@ -1056,7 +1150,7 @@ describe('found in review (round 2): an error body cannot hold the run', () => {
     const stalled = () => new Response(new ReadableStream<Uint8Array>({ pull() {} }), { status: 400 });
     const f = feed((url) => (/dates=20261011(&|$)/.test(url) ? stalled() : healthy(url)));
     const r = await runCanary({ core, competitions: ['eng.1'], fetchImpl: f.fetchImpl, now: NOW, pauseMs: 0, bodyDeadlineMs: 20 });
-    expect(verdicts(r)).toEqual({ live: 'ok', day: 'ok', window: 'rejected', standings: 'ok' });
+    expect(verdicts(r)).toEqual({ live: 'ok', day: 'ok', window: 'rejected', discovery: 'ok', standings: 'ok' });
   });
 });
 
