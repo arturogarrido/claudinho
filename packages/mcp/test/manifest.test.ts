@@ -35,6 +35,14 @@ describe('mcpb manifest', () => {
     }
   });
 
+  it('its blurbs do not contradict the tools: an empty live list may be a read that was not whole (0.11 2.1d)', () => {
+    // Found in review: the manifest is a second copy of the descriptions, and `get_live`'s said "empty when none
+    // are live" after the tool learned to answer an empty list with `partial` ("no match in play was read").
+    const blurb = (name: string) => (manifest.tools ?? []).find((t) => t.name === name)?.description ?? '';
+    expect(blurb('get_live')).not.toMatch(/none are live|nothing is live/);
+    for (const name of ['get_live', 'get_today', 'get_share_snippet']) expect(blurb(name), name).toMatch(/partial/);
+  });
+
   it('lists exactly the tools the server exposes', async () => {
     // Drive the real MCP protocol so the manifest is checked against what
     // clients actually discover — robust to refactors, no SDK internals poked.

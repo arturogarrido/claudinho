@@ -293,6 +293,16 @@ describe('share cards — assembled once, for the CLI and the MCP server alike',
     );
   });
 
+  it('a date: an empty partial card that merged no schedule names the date as the card does (its label), like its outage line', () => {
+    // Found in review: the none-read line printed the ISO date while the title and the outage line print "Oct 17".
+    const day = { date: '2026-10-17', explicit: true, matches: [], degraded: false, source: 'espn' };
+    const card = dateShareCard({ ...day, read: { partial: { omitted: 1 }, served: [] } }, noMarket, ctx);
+    expect(card.input.title).toBe('Matches · Oct 17');
+    expect(card.input.emptyNote).toContain('Oct 17');
+    expect(card.input.emptyNote).not.toContain('2026-10-17');
+    expect(card.input.emptyNote).toMatch(/read/);
+  });
+
   it('live: nothing on, and a feed that is down, are different cards', () => {
     const quiet = liveShareCard({ matches: [], degraded: false, source: 'espn' }, ctx);
     expect(quiet).toMatchObject({ kind: 'live', target: 'live' });
@@ -527,9 +537,15 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     for (const lang of ['es', 'pt', 'fr']) {
       expect(live?.(lang), lang).not.toBe(live?.('en'));
       expect(unserved?.(2, lang), lang).toMatch(/2/);
+      // The singular is its own string in every language: not the English one, not the language's plural.
+      expect(unserved?.(1, lang), lang).toMatch(/1/);
+      expect(unserved?.(1, lang), lang).not.toBe(unserved?.(1, 'en'));
+      expect(unserved?.(1, lang), lang).not.toBe(unserved?.(2, lang)?.replace('2', '1'));
     }
-    for (const i18nKey of ['live.noneRead', 'today.noneRead', 'today.unserved', 'markets.noneRead', 'today.unreached']) {
-      const written = new RegExp(`['"\`]${i18nKey.replace('.', '\\.')}['"\`]`);
+    // The keys as they EXIST (`today.unserved` is a prefix: the catalog holds `.one` and `.other`), so a surface
+    // spelling either real key is caught; a review found the quoted-prefix form matched neither.
+    for (const i18nKey of ['live.noneRead', 'today.noneRead', 'today.unserved.one', 'today.unserved.other', 'markets.noneRead', 'today.unreached']) {
+      const written = new RegExp(`['"\`]${i18nKey.replace(/\./g, '\\.')}['"\`]`);
       expect(hits('cli', written), i18nKey).toEqual([]);
       expect(hits('mcp', written), i18nKey).toEqual([]);
     }

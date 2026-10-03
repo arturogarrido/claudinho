@@ -104,6 +104,14 @@ describe('live (0.11 2.1d)', () => {
     await cmdLive(ctxFor(feed('fifa.world', { events: [{ ...OPENER, state: 'in' }] }), { json: true }));
     expect(parsed().partial).toBeUndefined();
     expect(text()).not.toContain('may be incomplete');
+    writes = [];
+    await cmdLive(ctxFor(feed('fifa.world', { fail: true }), { json: true }));
+    expect(parsed()).toMatchObject({ degraded: true });
+    expect(parsed().partial).toBeUndefined();
+    writes = [];
+    await cmdLive(ctxFor(feed('fifa.world', { fail: true })));
+    expect(text()).not.toContain('may be incomplete');
+    expect(text()).not.toMatch(/was read/);
   });
 
   it('localized (es): the sentence and the none-read line are not English', async () => {

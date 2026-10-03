@@ -3,10 +3,12 @@
  * tools: `get_live`, `get_today`, the bundled `get_match`, `get_market_signal`,
  * and their share cards; `data` against the declared schemas, strictly.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { EspnAdapter, FakeMarketProvider, type ProviderAdapter } from '@claudinho/core';
 import { z } from 'zod/v3';
-import { OUTPUT_SCHEMAS } from '../src/server';
+import { buildServer, OUTPUT_SCHEMAS } from '../src/server';
 import { toolGetLive, toolGetMarketSignal, toolGetMatch, toolGetShareSnippet, toolGetToday } from '../src/tools';
 
 const WC_SEASON = { year: 2026, startDate: '2026-06-11T04:00Z', endDate: '2026-12-31T04:59Z', displayName: '2026 FIFA World Cup' };
@@ -159,5 +161,39 @@ describe('the bundled get_match and get_market_signal (0.11 2.1d)', () => {
     expect(dated.text).toMatch(/read/i);
     expect(dated.data).toMatchObject({ partial: { omitted: 1 } });
     strict('get_market_signal', dated.data);
+  });
+});
+
+describe('the day’s attribution is decided over what the text finally shows (0.11 2.1d)', () => {
+  // Found in review: a share card prints its zone beside every time, verbatim, and the MCP schema took any string
+  // as `tz`; a 40,000-character "zone" pushed the card past the text cut, which then dropped the one served row
+  // and kept "Live data" beside the bundled one. The zone is an IDENTIFIER (a text role, like a team code): it
+  // is checked against its grammar at the edge, so no tool prints a zone the formatter cannot resolve, and a
+  // date card of bounded rows never reaches the character cut (the record bound is the only cut it meets).
+  afterEach(() => vi.restoreAllMocks());
+
+  it('every tool refuses a tz that is not a time zone, before any request is made', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.reject(new Error('no network in this test')));
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+    const server = buildServer();
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    await Promise.all([server.connect(serverT), client.connect(clientT)]);
+    try {
+      for (const tz of ['Not/AZone', 'X'.repeat(40_000), 'America/Mexico_City\u200b']) {
+        for (const [name, extra] of [
+          ['get_share_snippet', { date: '2026-06-11' }],
+          ['get_today', { date: '2026-06-11' }],
+          ['get_live', {}],
+        ] as const) {
+          const r = (await client.callTool({ name, arguments: { ...extra, tz } })) as { isError?: boolean; content: Array<{ text?: string }> };
+          expect(r.isError, `${name} ${tz.slice(0, 20)}`).toBe(true);
+          expect(r.content.map((c) => c.text ?? '').join(' ')).toMatch(/tz|time zone/i);
+        }
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      await client.close();
+      await server.close();
+    }
   });
 });
