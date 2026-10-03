@@ -34,11 +34,19 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   (`STANDINGS_SHAPE`), never inferred from a payload.
 - **A composed window fails as a whole on what no sibling can stand in for.**
   `EspnAdapter.fetchWindow` is several responses and one answer. It throws when
-  any part failed, when a part's envelope is unreadable, when parts state two
-  seasons, or when a part filled the request's `limit` (its tail is unknown).
-  A refused record, or one fixture in two parts, leaves the answer
-  `complete: false` (`fetchMeta`). A caller that keeps a previous answer must
-  carry that verdict: an incomplete answer never erases what it did not read.
+  any part failed, when a part's envelope is unreadable, or when a part filled
+  the request's `limit` (its tail is unknown); asked strictly (the default, and
+  every caller that merges the bundle or keeps a slice), also when parts state
+  two seasons. Asked `acrossSeasons` (the live read alone, which merges
+  nothing), two seasons are composed: the answer states no `season`, and
+  `seasons` names both. The window's season is the one its stating parts agree
+  on (a silent part does not veto); discovery's is a different rule (every
+  month the same) and stays separate. A refused record, or one fixture in two
+  parts, leaves the answer `complete: false` with `omitted` counting the
+  records left out (`fetchMeta`; the parser counts at the boundary, 0 exactly
+  when complete). A caller that keeps a previous answer must carry that
+  verdict: an incomplete answer never erases what it did not read. A result
+  that shows the answer to a reader carries it as the `partial` verdict.
   A caller that composes windows itself (discovery: a window per month) asks
   "no readable record" of the whole too: a window refused because its list
   held no readable record carries `ProviderError.noReadableRecord` and read
@@ -57,9 +65,10 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   letters (`fixturesByTeam`, the statusline/hook filter, the team argument) are
   legacy World Cup behaviour, not a pattern to copy. `sameTeam` decides self-play: the same id, OR the
   same code and name — an id only ever adds a refusal.
-- **Response metadata rides on the result.** The season a response answered for
-  is attached to the returned array (`adapters/meta.ts`), never stored on the
-  adapter, where an overlapping call would overwrite it.
+- **Response metadata rides on the result.** The season (or seasons) a response
+  answered for, and the count of records it left out, are attached to the
+  returned array (`adapters/meta.ts`), never stored on the adapter, where an
+  overlapping call would overwrite it.
 - **Text has roles.** `humanLabel` is prose — no controls, no format characters,
   **no emoji**, bounded by display columns *and* code points. `opaqueId` is
   checked against an exact grammar. `canonicalTimestamp` re-emits one form and
