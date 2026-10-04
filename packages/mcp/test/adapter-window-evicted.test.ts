@@ -35,8 +35,9 @@ describe('an evicted adapter still held by a request', () => {
     expect(deadline).toBeGreaterThan(Date.now());
     // The held adapter carries the window and asks nothing.
     expect(until(held)).toBe(deadline);
-    await held.fetchByDate(new Date('2026-10-10T00:00:00Z')).catch(() => undefined);
-    await held.fetchWindow?.(new Date('2026-10-09T00:00:00Z'), new Date('2026-10-11T00:00:00Z')).catch(() => undefined);
+    // ISO dates, as the adapter takes them: a Date throws in the date formatting before any request.
+    await held.fetchByDate('2026-10-10').catch(() => undefined);
+    await held.fetchWindow?.('2026-10-09', '2026-10-11').catch(() => undefined);
     expect(requests).toBe(armed);
   });
 });
