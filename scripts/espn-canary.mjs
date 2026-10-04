@@ -70,11 +70,11 @@
  * A neutral row is a row the canary could not see: the run stays green and
  * says so in a warning.
  *
- * Work, worst case: 120 requests (15 × 6 + 14 × 2 + 2: the 15 competitions
- * at 6 each, 1 + 1 + 3 + 1 for live, day, window and standings; the 14 off the
- * bundle at up to 2 more each, discovery's two months; and 2 more for the
- * bundled one's knockout span), each bounded by the adapter's timeout and byte
- * limit. Questions are asked one at a time with a pause between them; the
+ * Work, worst case: the table's rows × 6 requests (1 + 1 + 3 + 1 for live,
+ * day, window and standings), plus up to 2 more for each row off the bundle
+ * (discovery's two months), plus 2 for the bundled one's knockout span; each
+ * bounded by the adapter's timeout and byte limit, and growing by 8 with each
+ * row added to the table. Questions are asked one at a time with a pause between them; the
  * requests of one question go together, so a throttle inside a window is seen
  * after up to three requests, and ends the run.
  *

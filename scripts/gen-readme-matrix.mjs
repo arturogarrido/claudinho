@@ -8,10 +8,12 @@
  *
  *   pnpm -r build && pnpm gen:readme-matrix
  *
- * `renderMatrix(table)` is pure and takes the table as its input, so a row
- * added to the table renders with no change here. Run as a script, it loads
- * core's BUILT package (the table travels with it), renders it, and rewrites
- * the block between the markers in `README.md`.
+ * `renderMatrix(table, capabilitiesOf)` is pure: it takes the table and core's
+ * capability rule as its inputs and renders what the rule answers for each
+ * row, so the matrix, `list_competitions` and the commands read ONE rule, and
+ * a row added to the table renders with no change here. Run as a script, it
+ * loads core's BUILT package (the table and the rule travel with it), renders
+ * it, and rewrites the block between the markers in `README.md`.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -24,34 +26,20 @@ export const END = '<!-- competitions:end -->';
 const CELL = Object.freeze({ offered: 'yes', 'not-offered-yet': 'not yet', 'not-applicable': 'n/a' });
 const TEAMS = Object.freeze({ nation: 'nations', club: 'clubs' });
 
-/**
- * A row's five capabilities, by core's definition (`capabilitiesOf`): scores
- * and the next fixture are the generic reads, offered on every competition;
- * standings are offered unless the competition has no table; bracket and
- * markets are the row's own. Read off the row so the renderer needs nothing
- * but the table; the readme-matrix test compares every rendered row with
- * core's `capabilitiesOf`, so the two cannot disagree unnoticed.
- */
-function capabilitiesOfRow(entry) {
-  return {
-    scores: 'offered',
-    next: 'offered',
-    standings: entry.standings === 'none' ? 'not-applicable' : 'offered',
-    bracket: entry.bracket,
-    markets: entry.markets,
-  };
-}
-
 const cell = (capability) => (Object.hasOwn(CELL, capability) ? CELL[capability] : String(capability));
 
-/** The matrix as Markdown: a header naming the five capabilities, one row per entry, then the legend. */
-export function renderMatrix(table) {
+/**
+ * The matrix as Markdown: a header naming the five capabilities, one row per
+ * entry with what `capabilitiesOf(slug, table)` (core's rule, handed in)
+ * answers for it, then the legend.
+ */
+export function renderMatrix(table, capabilitiesOf) {
   const lines = [
     '| Alias | Competition | Teams | Scores | Next | Standings | Bracket | Markets |',
     '|---|---|---|---|---|---|---|---|',
   ];
   for (const entry of table) {
-    const caps = capabilitiesOfRow(entry);
+    const caps = capabilitiesOf(entry.slug, table);
     const teams = Object.hasOwn(TEAMS, entry.teams) ? TEAMS[entry.teams] : String(entry.teams);
     lines.push(
       `| \`${entry.alias}\` | ${entry.name} | ${teams} | ${cell(caps.scores)} | ${cell(caps.next)} | ${cell(caps.standings)} | ${cell(caps.bracket)} | ${cell(caps.markets)} |`,
@@ -93,7 +81,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const core = await import(pathToFileURL(dist).href);
   const path = resolve(root, 'README.md');
   const before = readFileSync(path, 'utf8');
-  const after = withMatrix(before, renderMatrix(core.SUPPORTED));
+  const after = withMatrix(before, renderMatrix(core.SUPPORTED, core.capabilitiesOf));
   if (after !== before) writeFileSync(path, after);
   console.log(after === before ? 'README.md: the matrix is current.' : 'README.md: the matrix was rewritten.');
 }

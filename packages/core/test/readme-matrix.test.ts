@@ -15,13 +15,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { SUPPORTED } from '../src';
+import { type Capabilities, capabilitiesOf, SUPPORTED } from '../src';
 
 const README = fileURLToPath(new URL('../../../README.md', import.meta.url));
 const SCRIPT = fileURLToPath(new URL('../../../scripts/gen-readme-matrix.mjs', import.meta.url));
 const START = '<!-- competitions:start -->';
 const END = '<!-- competitions:end -->';
-type Generator = { renderMatrix: (table: readonly unknown[]) => string; withMatrix: (readme: string, block: string) => string };
+// The generator takes core's capability rule as its second argument (0.11 · 2.5a: one copy of the rule).
+type Generator = { renderMatrix: (table: readonly unknown[], caps: (slug: string, table: never) => Capabilities) => string; withMatrix: (readme: string, block: string) => string };
 
 /** The block between the markers of a README text, line endings normalized. */
 const blockOf = (readme: string) => {
@@ -40,7 +41,7 @@ describe('the README matrix', () => {
   it('the committed block equals the generator\'s output from the table', async () => {
     const { renderMatrix } = (await import(SCRIPT)) as Generator;
     const committed = blockOf(readFileSync(README, 'utf8'));
-    expect(committed).toBe(renderMatrix(SUPPORTED).trim());
+    expect(committed).toBe(renderMatrix(SUPPORTED, capabilitiesOf).trim());
     // Fifteen rows, each naming its alias, and the five capabilities as columns.
     expect(committed.split('\n').filter((l) => l.startsWith('| `')).length).toBe(15);
     expect(committed).toContain('premier-league');
@@ -56,14 +57,14 @@ describe('the README matrix', () => {
     const crlf = join(tmp, 'README.crlf.md');
     writeFileSync(crlf, lf.replace(/\n/g, '\r\n'));
     expect(readFileSync(crlf, 'utf8')).toContain('\r\n');
-    expect(blockOf(readFileSync(crlf, 'utf8'))).toBe(renderMatrix(SUPPORTED).trim());
-    expect(blockOf(lf)).toBe(renderMatrix(SUPPORTED).trim());
+    expect(blockOf(readFileSync(crlf, 'utf8'))).toBe(renderMatrix(SUPPORTED, capabilitiesOf).trim());
+    expect(blockOf(lf)).toBe(renderMatrix(SUPPORTED, capabilitiesOf).trim());
   });
 
   it('a sixteenth row renders with no other change', async () => {
     const { renderMatrix } = (await import(SCRIPT)) as Generator;
     const fake = { slug: 'fra.1', alias: 'ligue-1', name: 'Ligue 1', teams: 'club', kind: 'league', seasonSlug: 'ligue-1', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 };
-    const out = renderMatrix([...SUPPORTED, fake]);
+    const out = renderMatrix([...SUPPORTED, fake], capabilitiesOf);
     expect(out.split('\n').filter((l) => l.startsWith('| `')).length).toBe(16);
     expect(out).toContain('ligue-1');
     expect(out).toContain('Ligue 1');
@@ -71,7 +72,7 @@ describe('the README matrix', () => {
 
   it('the generator writes the block with the README\'s own line ending, never a mixed file', async () => {
     const { renderMatrix, withMatrix } = (await import(SCRIPT)) as Generator;
-    const block = renderMatrix(SUPPORTED);
+    const block = renderMatrix(SUPPORTED, capabilitiesOf);
     const lfReadme = `# Title\n\n${START}\nstale\n${END}\n\ntail\n`;
     const lfOut = withMatrix(lfReadme, block);
     expect(lfOut).not.toContain('\r');
