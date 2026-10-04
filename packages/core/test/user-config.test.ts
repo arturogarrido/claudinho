@@ -31,6 +31,9 @@ describe('the path', () => {
     expect(configPath({}, 'linux', '/home/a')).toBe(join('/home/a', '.config', 'claudinho', 'config.json'));
     // An empty variable is absent.
     expect(configPath({ XDG_CONFIG_HOME: '' }, 'linux', '/home/a')).toBe(join('/home/a', '.config', 'claudinho', 'config.json'));
+    // APPDATA is Windows' alone: set on another platform it is not read.
+    expect(configPath({ APPDATA: 'C:\\x' }, 'darwin', '/Users/a')).toBe(join('/Users/a', '.config', 'claudinho', 'config.json'));
+    expect(configPath({ APPDATA: 'C:\\x' }, 'linux', '/home/a')).toBe(join('/home/a', '.config', 'claudinho', 'config.json'));
   });
 
   it('the cache directory gains the same Windows leg: %LOCALAPPDATA% when set and XDG_CACHE_HOME is not', () => {
