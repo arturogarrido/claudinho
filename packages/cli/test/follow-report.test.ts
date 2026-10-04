@@ -274,7 +274,7 @@ describe('the environment has three states: unset, set, refused', () => {
 });
 
 describe('CLAUDINHO_TEAM has three states: unset, set and readable, set with nothing readable', () => {
-  it('a present CLAUDINHO_TEAM with no readable team is in `refused.team` (never in `sources`), the sentence says the next command refuses it, and the JSON is not the unset one', async () => {
+  it('a present CLAUDINHO_TEAM with no readable team is in `refused.team` (never in `sources`), the sentence says the team-taking commands refuse it, and the JSON is not the unset one', async () => {
     await cmdFollow('world-cup', { team: 'Spain' }, ctxOf());
     writes = [];
     await cmdFollow(undefined, {}, ctxOf({ json: true }));
@@ -295,7 +295,7 @@ describe('CLAUDINHO_TEAM has three states: unset, set and readable, set with not
       expect(text()).toMatch(/CLAUDINHO_TEAM is set but names no team; the team-taking commands refuse it while it is set\./);
       expect(text()).not.toMatch(/it wins over the saved team/);
     }
-    // Without a pin the next command refuses it all the same: said, and carried.
+    // Without a pin the team-taking commands refuse it all the same: said, and carried.
     delete process.env.CLAUDINHO_TEAM;
     await cmdFollow('world-cup', {}, ctxOf());
     process.env.CLAUDINHO_TEAM = ' ';
@@ -402,7 +402,7 @@ describe('the text says every source the JSON names (the fourth reader\'s round-
     delete process.env.CLAUDINHO_TEAM;
   });
 
-  it('a readable CLAUDINHO_TEAM with NO saved team is said in the text too (the next command takes it), with the "wins over the saved team" sentence kept for a pin', async () => {
+  it('a readable CLAUDINHO_TEAM with NO saved team is said in the text too (the team-taking commands take it), with the "wins over the saved team" sentence kept for a pin', async () => {
     await cmdFollow('world-cup', {}, ctxOf());
     process.env.CLAUDINHO_TEAM = 'Mexico';
     writes = [];
@@ -458,5 +458,45 @@ describe('the team sentence asks whether the pin APPLIES, not whether the file h
     await cmdFollow(undefined, {}, ctxOf());
     expect(text()).toMatch(/wins over the saved team/);
     delete process.env.CLAUDINHO_TEAM;
+  });
+});
+
+describe('the team sentence is about the NEXT command (the one without this command\'s flag)', () => {
+  it('under a flag naming the pin\'s competition while the environment names another, the next command has no pin: the plain sentence; the reverse prints the wins one', async () => {
+    await cmdFollow('world-cup', { team: 'Spain' }, ctxOf());
+    process.env.CLAUDINHO_TEAM = 'Mexico';
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));
+    expect(text()).toMatch(/Following: World Cup/);
+    expect(text()).toMatch(/take it as their team/);
+    expect(text()).not.toMatch(/wins over the saved team/);
+    // The environment names the pin's competition, the flag another: the next command is under the pin's.
+    process.env.CLAUDINHO_COMPETITION = 'world-cup';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'laliga' }));
+    expect(text()).toMatch(/Following: LALIGA/);
+    expect(text()).toMatch(/wins over the saved team/);
+    expect(text()).not.toMatch(/take it as their team/);
+    delete process.env.CLAUDINHO_COMPETITION;
+    delete process.env.CLAUDINHO_TEAM;
+  });
+});
+
+describe('with-file sentences keep the saved choice (the fourth reader\'s round-5 survivors)', () => {
+  it('a refused flag with a file and no environment: "without it the saved choice decides", whole; a flag with the environment set: the environment, then the saved choice; the environment alone: wins over the saved choice', async () => {
+    await cmdFollow('premier-league', {}, ctxOf());
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'foo' }));
+    expect(text()).toMatch(/--competition was refused for this command only; without it the saved choice decides\./);
+    expect(text()).not.toMatch(/nothing is chosen/);
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));
+    expect(text()).toMatch(/--competition decides this command; without it CLAUDINHO_COMPETITION decides, then the saved choice\./);
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION is set, and it wins over the saved choice while it is\./);
+    delete process.env.CLAUDINHO_COMPETITION;
   });
 });

@@ -91,6 +91,16 @@ describe('the usage sentence', () => {
     expect(fetched).toBe(0);
   });
 
+  it('the environment\'s query is the value AS SET, resolved exactly as the argument would be (a leading blank refuses on both paths)', async () => {
+    follow({ version: 1, competition: 'world-cup' });
+    const asArgument = await cmdNext(' zzz', ctxOf('world-cup')).catch((e: Error) => e.message);
+    process.env.CLAUDINHO_TEAM = ' zzz';
+    const fromEnv = await cmdNext(undefined, ctxOf('world-cup')).catch((e: Error) => e.message);
+    expect(fromEnv).toEqual(asArgument);
+    expect(String(fromEnv)).toMatch(/No team found for " zzz"/);
+    delete process.env.CLAUDINHO_TEAM;
+  });
+
   it('with no pin at all: the three ways to give a team', async () => {
     follow({ version: 1, competition: 'laliga' });
     for (const [name, run] of commands) {
