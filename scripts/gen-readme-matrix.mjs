@@ -64,14 +64,23 @@ export function renderMatrix(table) {
   return `${lines.join('\n')}\n`;
 }
 
-/** The README with the block between the markers replaced; throws when the markers are missing. */
+/**
+ * The README with the block between the markers replaced; throws when the
+ * markers are missing. The block (rendered with LF) is written with the
+ * README's OWN line ending, and so are the newlines around it: CRLF when the
+ * README has any CRLF (a default Windows checkout), LF otherwise: a README
+ * with one ending stays a file with one ending, and a second run on its own
+ * output changes nothing.
+ */
 export function withMatrix(readme, block) {
   const start = readme.indexOf(START);
   const end = readme.indexOf(END);
   if (start === -1 || end === -1 || end < start) {
     throw new Error(`README.md has no ${START} … ${END} block`);
   }
-  return `${readme.slice(0, start + START.length)}\n${block.trimEnd()}\n${readme.slice(end)}`;
+  const eol = readme.includes('\r\n') ? '\r\n' : '\n';
+  const body = block.trimEnd().replace(/\r?\n/g, eol);
+  return `${readme.slice(0, start + START.length)}${eol}${body}${eol}${readme.slice(end)}`;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
