@@ -48,13 +48,16 @@ describe('the README matrix', () => {
     expect(committed).toMatch(/scores.*next.*standings.*bracket.*markets/i);
   });
 
-  it('the guard reads the README under either line ending: a CRLF checkout of the committed README passes it', async () => {
+  it('the guard reads the README under either line ending: a CRLF copy and an LF copy of the committed README both pass it', async () => {
     const { renderMatrix } = (await import(SCRIPT)) as Generator;
-    const lf = readFileSync(README, 'utf8');
+    // The checkout's own ending is the platform's (CRLF on a default Windows checkout), so both copies are built from a normalized text.
+    const lf = readFileSync(README, 'utf8').replace(/\r\n/g, '\n');
     expect(lf).not.toContain('\r');
     const crlf = join(tmp, 'README.crlf.md');
     writeFileSync(crlf, lf.replace(/\n/g, '\r\n'));
+    expect(readFileSync(crlf, 'utf8')).toContain('\r\n');
     expect(blockOf(readFileSync(crlf, 'utf8'))).toBe(renderMatrix(SUPPORTED).trim());
+    expect(blockOf(lf)).toBe(renderMatrix(SUPPORTED).trim());
   });
 
   it('a sixteenth row renders with no other change', async () => {
