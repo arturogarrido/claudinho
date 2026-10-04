@@ -341,7 +341,12 @@ locales**, and ends with tripwires for known regression classes (bracket shows a
 feed, so a network blip never blocks a release). Build, run it, **read the output**, then tag. It
 does not replace the eyeball — its job is to put every surface in front of you so nothing ships
 unseen. (It covers CLI/share rendering; MCP arg-threading is guarded by
-`packages/mcp/test/tools.test.ts` — keep that green too.)
+`packages/mcp/test/tools.test.ts` — keep that green too.) It sets no competition: with none in
+the environment it renders the CLI's default (the World Cup, its mode line naming no source), and
+`CLAUDINHO_COMPETITION=<alias|slug> pnpm release:qa` renders another. What it decides about the
+competition (the bundle-drift tripwire runs only when the competition the built CLI RESOLVED is
+the bundled one; an unresolved competition or an unreadable verdict FAILS, never SKIPs) lives in
+`scripts/release-qa-lib.mjs`, tested offline by `packages/core/test/release-qa.test.ts`.
 
 ## Release cadence — batch, don't dot-release per fix
 
