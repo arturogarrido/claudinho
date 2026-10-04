@@ -315,3 +315,58 @@ describe('CLAUDINHO_TEAM has three states: unset, set and readable, set with not
     delete process.env.CLAUDINHO_TEAM;
   });
 });
+
+describe('with no believed saved choice (no file, a link, an unreadable one), the sentence still says what the next command does', () => {
+  it('a flag with the environment set, unset or refused; a refused flag; the environment alone; after `off`: each cell its own sentence, none naming a saved choice', async () => {
+    // A flag that ran, the environment set: the next command follows the environment.
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));
+    const envSet = text();
+    expect(envSet).toMatch(/Following: World Cup/);
+    expect(envSet).toMatch(/--competition decides this command; without it CLAUDINHO_COMPETITION decides\./);
+    expect(envSet).not.toMatch(/saved choice/);
+    // The same command with the environment unset: the next command has nothing chosen.
+    delete process.env.CLAUDINHO_COMPETITION;
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));
+    const envUnset = text();
+    expect(envUnset).not.toEqual(envSet);
+    expect(envUnset).toMatch(/--competition decides this command; without it nothing is chosen/);
+    expect(envUnset).not.toMatch(/saved choice decides/);
+    // A refused flag, the environment set and unset.
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'foo' }));
+    expect(text()).toMatch(/"foo"/);
+    expect(text()).toMatch(/--competition was refused for this command only; without it CLAUDINHO_COMPETITION decides\./);
+    delete process.env.CLAUDINHO_COMPETITION;
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'foo' }));
+    expect(text()).toMatch(/--competition was refused for this command only; without it nothing is chosen/);
+    // The environment alone: the next command follows it; nothing about a saved choice it wins over.
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/Following: LALIGA/);
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION is set, and the next command follows it while it is\./);
+    expect(text()).not.toMatch(/over the saved choice/);
+    // After `off` the file is gone: the same cell.
+    await cmdFollow('world-cup', {}, ctxOf());
+    writes = [];
+    await cmdFollow('off', {}, ctxOf());
+    expect(text()).toMatch(/Saved choice removed/);
+    expect(text()).toMatch(/the next command follows it while it is\./);
+    expect(text()).not.toMatch(/over the saved choice/);
+    // The environment refused, no file: its own sentence, as before.
+    process.env.CLAUDINHO_COMPETITION = 'bar';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION is refused/);
+    delete process.env.CLAUDINHO_COMPETITION;
+    // With a file, the sentences that name the saved choice are unchanged.
+    await cmdFollow('premier-league', {}, ctxOf());
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));
+    expect(text()).toMatch(/the saved choice decides the next one without it/);
+  });
+});
