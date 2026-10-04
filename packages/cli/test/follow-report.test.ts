@@ -581,11 +581,23 @@ describe('the "later" sentences name the gate the next command stops at', () => 
     await cmdFollow(undefined, {}, ctxOf());
     expect(text()).toMatch(/CLAUDINHO_TEAM is set but names no team; the team-taking commands refuse it once CLAUDINHO_COMPETITION names a competition or is unset\./);
     expect(text()).not.toMatch(/once a competition is chosen/);
-    // The same refused environment with no file: still the variable's gate (it is met first).
+    // The same refused environment with NO file: unsetting the variable alone leaves nothing chosen, so the
+    // sentence names both gates (the variable naming a competition, or unset AND a competition chosen).
     await cmdFollow('off', {}, ctxOf());
     writes = [];
     await cmdFollow(undefined, {}, ctxOf());
-    expect(text()).toMatch(/refuse it once CLAUDINHO_COMPETITION names a competition or is unset\./);
+    expect(text()).toMatch(/CLAUDINHO_TEAM is set but names no team; the team-taking commands refuse it once CLAUDINHO_COMPETITION names a competition, or is unset and a competition is chosen\./);
+    expect(text()).not.toMatch(/or is unset\./);
+    process.env.CLAUDINHO_TEAM = 'Spain';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/CLAUDINHO_TEAM is set, and the team-taking commands take it as their team once CLAUDINHO_COMPETITION names a competition, or is unset and a competition is chosen\./);
+    expect(text()).not.toMatch(/or is unset\./);
+    // Under a flag with no file the next command is the same: the same sentence.
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));
+    expect(text()).toMatch(/or is unset and a competition is chosen\./);
+    process.env.CLAUDINHO_TEAM = '   ';
     // Nothing chosen, the environment unset: the choice's gate.
     delete process.env.CLAUDINHO_COMPETITION;
     writes = [];
