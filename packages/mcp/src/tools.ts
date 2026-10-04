@@ -262,10 +262,11 @@ function broadcast(source: string, met: Throttleable, deadline: number): void {
  * clock: a past one arms nothing; the deadline is remembered per source
  * because every adapter that met it may since have been collected), and a
  * throttle it meets is remembered for the source and arms every other adapter
- * of the source still alive, kept or evicted (`builtAdapters`; `armCooldown`
- * keeps the latest deadline and is silent on an earlier or equal one, so the
- * arming never loops). An adapter with neither method (a fake) is kept as it
- * is: feature-detected, never an error, and never in the set.
+ * of the source still alive, kept or evicted (`builtAdapters`), in ONE
+ * non-reentrant walk ({@link broadcast}): arming an adapter fires its own
+ * listener, which records the deadline and returns while the walk runs. An
+ * adapter with neither method (a fake) is kept as it is: feature-detected,
+ * never an error, and never in the set.
  */
 function keepAdapter(source: string, competition: string, key: string): ProviderAdapter {
   const adapter = makeAdapter(source, { competition });
