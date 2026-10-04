@@ -96,6 +96,9 @@ describe('the read', () => {
     expect(lib).toEqual({ kind: 'read', config: { version: 1, competition: 'conmebol.libertadores' } });
     const alias = readUserConfig(write('pl-noid.json', JSON.stringify({ version: 1, competition: 'premier-league', team: { code: 'ARS', name: 'Arsenal' } })));
     expect(alias).toEqual({ kind: 'read', config: { version: 1, competition: 'premier-league' } });
+    // On the bundle an id KEY that is not an id is still no pin (never read as id-less).
+    const badId = readUserConfig(write('wc-badid.json', JSON.stringify({ version: 1, competition: 'world-cup', team: { id: 'not an id', code: 'MEX', name: 'Mexico' } })));
+    expect(badId).toEqual({ kind: 'read', config: { version: 1, competition: 'world-cup' } });
     const withId = readUserConfig(write('lib-id.json', JSON.stringify({ version: 1, competition: 'libertadores', team: { id: 'espn:7001', code: 'CAR', name: 'Carabobo' } })));
     expect(withId).toEqual({ kind: 'read', config: { version: 1, competition: 'libertadores', team: { id: 'espn:7001', code: 'CAR', name: 'Carabobo' } } });
   });
