@@ -6,7 +6,8 @@
  * (`userConfig.ts`). It lives in core so both packages read the same file the
  * same way; the CLI re-exports it from `paths.ts` for its own callers.
  */
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, type Stats } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { closeSync, constants, fchmodSync, fstatSync, lstatSync, openSync, readSync, rmSync, type Stats } from 'node:fs';
 
 /**
  * Open flags for a bounded read: read-only, and NON-BLOCKING where the platform
@@ -102,14 +103,68 @@ export type FileEntry = 'absent' | 'file' | 'replaceable' | 'unhealable';
 const OWNER_READ = 0o400;
 
 /**
+ * Whether a file made where an atomic write makes its replacement of `path`
+ * (the same directory), with these mode bits, reads back: what the writer does
+ * short of the rename, MEASURED. A probe `<path>.<pid>.<random hex>.probe` is
+ * created exclusively at `mode`, given exactly those bits on its descriptor
+ * (as the writer does), closed, opened read-only (non-blocking, nothing read),
+ * closed, and removed. The probe gets whatever the directory gives a new file
+ * (an inherited access-control entry, allow or deny), which is exactly what
+ * the replacement gets: that is why it is measured there, not predicted from
+ * the bits. True exactly when the read open succeeded; false on any failure (a
+ * create that fails: the directory refuses a new file, so a publish's rename
+ * would fail too; a read open that fails: the replacement would not read
+ * back). The probe is removed whatever happened once this call created it (a
+ * create that failed made nothing; a name that existed is not this call's).
+ * Its name ends in `.probe`, like no file anyone keeps. Never throws, never
+ * waits (a regular file of this process's own, opened non-blocking).
+ */
+function replacementReadsBack(path: string, mode: number): boolean {
+  const probe = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.probe`;
+  let created = false;
+  try {
+    const fd = openSync(probe, 'wx', mode);
+    created = true;
+    try {
+      fchmodSync(fd, mode);
+    } finally {
+      closeSync(fd);
+    }
+    const read = openSync(probe, READ_FLAGS);
+    try {
+      closeSync(read);
+    } catch {
+      /* it opened: that is the answer */
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (created) {
+      try {
+        rmSync(probe, { force: true });
+      } catch {
+        /* nothing more to do with it */
+      }
+    }
+  }
+}
+
+/**
  * What a RENAME onto `path` would do, from one look at the entry (`lstat`,
- * never following a link) and, for a regular file only, one open; nothing is
- * read. The replacement (an atomic write: a temporary file renamed over the
- * path) is this process's own file and keeps the mode bits of whatever it
- * replaces but a link, and nothing else of it (no access-control entry, no
- * other owner): so for every entry that is neither a link nor a directory, the
- * OWNER-READ BIT decides whether the replacement reads back, and it is asked
- * before any open. In this order:
+ * never following a link), one open for a regular file whose owner-read bit is
+ * set, and one probe where that bit is clear; nothing is read. The replacement
+ * (an atomic write: a temporary file made in the same directory and renamed
+ * over the path) is this process's own file and keeps the mode bits of
+ * whatever it replaces but a link, and nothing else of the entry (no
+ * access-control entry of its own, no other owner); what the DIRECTORY gives a
+ * new file (an inherited access-control entry) it gets too. So the owner-read
+ * bit decides nothing on its own where it is clear: there the look MEASURES
+ * whether a file made beside the path with those bits reads back, before any
+ * open of the entry (a probe, made with those bits, opened, and removed:
+ * nothing is left behind). Where it is set the replacement is taken to read
+ * back (steps 5 and 6; a directory whose inherited entries deny a new file a
+ * read is not measured there). In this order:
  * 1. the `lstat` fails: no entry → `absent` (a rename creates a fresh file);
  *    anything else → `unhealable` (nobody can look at it: the directory above
  *    cannot be searched);
@@ -117,10 +172,13 @@ const OWNER_READ = 0o400;
  *    itself and keeps nothing of it; its target is never followed, a link to
  *    nothing included);
  * 3. a directory → `unhealable` (a rename cannot replace it);
- * 4. the owner-read bit clear (mode 000, 200, 044) → `unhealable`, whatever the
- *    kind: a regular file refused, or one that opens through its other bits or
- *    an access-control entry; a pipe, a socket, a device. The replacement keeps
- *    the bits and none of what let this process read, so it stays unreadable;
+ * 4. the owner-read bit clear (mode 000, 200, 044), whatever the kind (a
+ *    regular file refused, or one that opens through its other bits or an
+ *    access-control entry of its own; a pipe, a socket, a device): the
+ *    replacement keeps the bits and none of what let this process read the
+ *    entry, so whether it reads back is measured (`replacementReadsBack`): a
+ *    probe made there with those bits reads back (the directory's inherited
+ *    permissions let a new file be read) → `replaceable`; else → `unhealable`;
  * 5. a regular file → opened (read-only, non-blocking where the platform has
  *    it, on one descriptor, closed before returning, nothing read): it opens →
  *    `file`, whatever its size or content; refused → `replaceable` (an
@@ -130,10 +188,10 @@ const OWNER_READ = 0o400;
  *    `replaceable` (the rename replaces the entry with a regular file of ours
  *    with those bits, which reads back).
  *
- * On Windows every mode reports the owner-read bit, so a file that cannot be
- * opened there is `replaceable`; if the rename itself then fails, the atomic
- * write throws, and the publish that called it is one that did not happen, as
- * before.
+ * On Windows every mode reports the owner-read bit, so step 4 never runs there
+ * (no probe is made) and a file that cannot be opened is `replaceable`; if the
+ * rename itself then fails, the atomic write throws, and the publish that
+ * called it is one that did not happen, as before.
  *
  * The bounded reader cannot answer this: `lookAtSmallFile` says `unreadable`
  * for a file it cannot open, for a regular file larger than its bound, and for
@@ -149,8 +207,9 @@ export function lookAtEntry(path: string): FileEntry {
   }
   if (entry.isSymbolicLink()) return 'replaceable';
   if (entry.isDirectory()) return 'unhealable';
-  // Before any open: the replacement keeps these bits, whatever let this process read the entry.
-  if ((entry.mode & OWNER_READ) === 0) return 'unhealable';
+  // Before any open of the entry: the replacement keeps these bits, whatever let
+  // this process read the entry, and gets what the directory gives a new file.
+  if ((entry.mode & OWNER_READ) === 0) return replacementReadsBack(path, entry.mode & 0o777) ? 'replaceable' : 'unhealable';
   if (!entry.isFile()) return 'replaceable';
   let fd: number | undefined;
   try {
