@@ -436,6 +436,37 @@ describe('admission that cannot be made visible: the gate fails closed only wher
     expect(readCurrentState(SOURCE, WC)).toBeUndefined();
   });
 
+  // Review round 5. The mirror of the deny case: a directory whose inheritable entries ALLOW this user a read makes a
+  // replacement at mode 000 readable, so a mode-000 snapshot this reader rejected (bad JSON) IS healed by a publish
+  // there, and the gate must let the cycle through: what a replacement with those bits would read back as is
+  // measured where it would be made, not predicted from the bits.
+  it.skipIf(process.platform !== 'darwin' || !unprivileged)('an inherited allow-read ACL on the cache directory: a mode-000 snapshot with bad JSON under a broken record is healed by one cycle, at mode 000, readable', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const { userInfo } = await import('node:os');
+    const cacheDirPath = join(dir, 'claudinho');
+    mkdirSync(cacheDirPath, { recursive: true });
+    try {
+      execFileSync('chmod', ['+a', `${userInfo().username} allow read,file_inherit,only_inherit`, cacheDirPath]);
+    } catch {
+      return; // no ACL support here: nothing to test
+    }
+    mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
+    writeFileSync(cachePath(SOURCE, WC), '{ not json');
+    chmodSync(cachePath(SOURCE, WC), 0o000);
+    let readable = true;
+    try {
+      readFileSync(cachePath(SOURCE, WC));
+    } catch {
+      readable = false;
+    }
+    if (!readable) return; // the entry did not take: nothing to test
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined(); // readable, rejected
+    await refresh(LIVE);
+    expect(asked).toHaveLength(3);
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
+    expect(statSync(cachePath(SOURCE, WC)).mode & 0o777).toBe(0);
+  });
+
   it.skipIf(!unprivileged)('a regular file whose owner-read bit is clear (mode 000, 200 or 044) under a broken record: nothing', async () => {
     mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
     mkdirSync(join(dir, 'claudinho'), { recursive: true });

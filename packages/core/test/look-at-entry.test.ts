@@ -14,7 +14,7 @@
  * look never waits (a pipe with no writer included).
  */
 import { execFileSync } from 'node:child_process';
-import { chmodSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -154,6 +154,46 @@ describe('lookAtEntry: what a rename onto the path would do', () => {
     try {
       if (lookAtSmallFile(p, 1024).kind !== 'read') return; // the entry did not take: nothing to test
       expect(lookAtEntry(p)).toBe('unhealable');
+    } finally {
+      chmodSync(p, 0o644);
+    }
+  });
+
+  // Review round 5. The bits are not the whole answer either: a directory whose inheritable access-control entries
+  // ALLOW this user a read makes a replacement at mode 000 readable (the entry is inherited at the create and kept by
+  // the rename). So where the bits say "unreadable", what a replacement with those bits would read back as is
+  // MEASURED where it would be made: a probe file created beside the path with those bits, opened, removed; nothing
+  // is left behind, whichever way it answered.
+  it.skipIf(process.platform !== 'darwin' || !unprivileged)('under a directory with an inherited allow-read entry, a mode-000 file and a mode-000 pipe are replaceable (the replacement would read back), and the look leaves nothing behind', () => {
+    const d = join(tmp, 'allow-inherit');
+    mkdirSync(d);
+    try {
+      execFileSync('chmod', ['+a', `${userInfo().username} allow read,file_inherit,only_inherit`, d]);
+    } catch {
+      return; // no access-control lists here: nothing to test
+    }
+    const p = join(d, 'state.json');
+    writeFileSync(p, '{ not json');
+    chmodSync(p, 0o000);
+    if (lookAtSmallFile(p, 1024).kind !== 'read') return; // the entry did not take (a file made here at 000 does not read): nothing to test
+    expect(lookAtEntry(p)).toBe('replaceable');
+    expect(readdirSync(d)).toEqual(['state.json']);
+    const fifo = join(d, 'pipe.json');
+    execFileSync('mkfifo', [fifo]);
+    chmodSync(fifo, 0o000);
+    expect(lookAtEntry(fifo)).toBe('replaceable');
+    expect(readdirSync(d).sort()).toEqual(['pipe.json', 'state.json']);
+  });
+
+  it.skipIf(!unprivileged)('where the bits say unreadable and nothing lets a replacement read back, the look still leaves nothing behind', () => {
+    const d = join(tmp, 'plain-dir');
+    mkdirSync(d);
+    const p = join(d, 'state.json');
+    writeFileSync(p, '{}');
+    chmodSync(p, 0o000);
+    try {
+      expect(lookAtEntry(p)).toBe('unhealable');
+      expect(readdirSync(d)).toEqual(['state.json']);
     } finally {
       chmodSync(p, 0o644);
     }
