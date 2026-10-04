@@ -308,6 +308,31 @@ describe('admission that cannot be made visible: the gate fails closed only wher
     expect(readCurrentState('nope', WC)).toBeDefined();
   });
 
+  // The snapshot file is PRESENT and this reader READ it but rejected its content (bad JSON; another format):
+  // a publish replaces it and keeps its readable mode, so one cycle heals; the gate does not apply.
+  it('a readable-but-rejected snapshot and a record path that is a directory: the cycle proceeds and heals (bad JSON; another format version)', async () => {
+    mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
+    mkdirSync(join(dir, 'claudinho'), { recursive: true });
+    writeFileSync(cachePath(SOURCE, WC), '{ not json');
+    await refresh(LIVE);
+    expect(asked).toHaveLength(3);
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
+    // Another format version, no throttle in it: replaced by the publish, read back.
+    asked = [];
+    writeFileSync(cachePath(SOURCE, WC), JSON.stringify({ version: 4, source: SOURCE, competition: WC, updatedAt: iso(LIVE - HOUR), live: [], degraded: false }));
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined();
+    await refresh(LIVE + 5 * MIN);
+    expect(asked).toHaveLength(3);
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
+    // A file over the small-file bound: the same.
+    asked = [];
+    writeFileSync(cachePath(SOURCE, WC), `{"pad":"${'x'.repeat(2 * 1024 * 1024)}"}`);
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined();
+    await refresh(LIVE + 10 * MIN);
+    expect(asked).toHaveLength(3);
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
+  });
+
   it('an ABSENT snapshot with a working record is still paced by it: two cycles, one set of requests, then the count settles when the snapshot reads back', async () => {
     // The first cycle admits (count 1), publishes a readable snapshot, settles to 0.
     await refresh(LIVE);
