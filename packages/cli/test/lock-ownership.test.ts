@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +10,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * the read opens are refused (`'wx'` is the lock's create).
  */
 let denyReadsOf: string | undefined;
+/**
+ * The read-back's other answer: a READ open of `of`, while an entry is there,
+ * opens `to` instead (another claimer's token). With no entry the read goes to
+ * the real path (ENOENT: `absent`), so the claimer's "gone" path is reachable.
+ */
+let readsFrom: { of: string; to: string } | undefined;
+/** The next exclusive create of this path fails as if a lock were there (EEXIST), once. */
+let createFailsOnce: string | undefined;
 vi.mock('node:fs', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs')>();
   return {
@@ -19,6 +27,15 @@ vi.mock('node:fs', async (importOriginal) => {
         const err = new Error('EACCES: permission denied') as NodeJS.ErrnoException;
         err.code = 'EACCES';
         throw err;
+      }
+      if (createFailsOnce !== undefined && String(args[0]) === createFailsOnce && args[1] === 'wx') {
+        createFailsOnce = undefined;
+        const err = new Error('EEXIST: file already exists') as NodeJS.ErrnoException;
+        err.code = 'EEXIST';
+        throw err;
+      }
+      if (readsFrom !== undefined && String(args[0]) === readsFrom.of && args[1] !== 'wx' && fs.existsSync(readsFrom.of)) {
+        return fs.openSync(readsFrom.to, args[1], args[2]);
       }
       return fs.openSync(...args);
     }) as typeof fs.openSync,
@@ -65,9 +82,13 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'claudinho-lock-own-'));
   process.env.XDG_CACHE_HOME = dir;
   denyReadsOf = undefined;
+  readsFrom = undefined;
+  createFailsOnce = undefined;
 });
 afterEach(() => {
   denyReadsOf = undefined;
+  readsFrom = undefined;
+  createFailsOnce = undefined;
   if (ORIG === undefined) delete process.env.XDG_CACHE_HOME;
   else process.env.XDG_CACHE_HOME = ORIG;
   rmSync(dir, { recursive: true, force: true });
@@ -153,6 +174,37 @@ describe('a claim the claimer cannot read back is no claim', () => {
     expect(later).toBeDefined();
     expect(holdsLock(later)).toBe(true);
     releaseLock(later);
+  });
+
+  // The coder's additions (round 4): the rule's other answer (a token that is
+  // not the one written) and its third create (after the lock was found gone).
+  const otherToken = () => {
+    const p = join(dir, 'other.lock');
+    writeFileSync(p, `1 ${T} deadbeef`);
+    return p;
+  };
+
+  it("a read-back that returns another's token is no claim either; the entry is left", () => {
+    readsFrom = { of: lockPath(), to: otherToken() };
+    expect(claimLock(T)).toBeUndefined();
+    expect(existsSync(lockPath())).toBe(true);
+  });
+
+  it('the create after the lock was found gone is read back too', () => {
+    // Control: the first create fails (a lock was there) and the lock is gone
+    // when looked at, so the claimer creates once more, and that claim reads back.
+    createFailsOnce = lockPath();
+    const ok = claimLock(T);
+    expect(ok).toBeDefined();
+    expect(holdsLock(ok)).toBe(true);
+    releaseLock(ok);
+    expect(existsSync(lockPath())).toBe(false);
+    // The same path, with a read-back that is another's token: no claim, the entry left.
+    createFailsOnce = lockPath();
+    readsFrom = { of: lockPath(), to: otherToken() };
+    expect(claimLock(T)).toBeUndefined();
+    expect(createFailsOnce).toBeUndefined(); // the gone path was taken: its failing create was spent
+    expect(existsSync(lockPath())).toBe(true);
   });
 
   it('a claim that reads back is unchanged: the token is held, publishes, releases', () => {
