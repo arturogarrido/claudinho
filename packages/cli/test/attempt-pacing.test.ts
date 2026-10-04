@@ -335,6 +335,50 @@ describe('admission that cannot be made visible: the gate fails closed only wher
     expect(readCurrentState(SOURCE, WC)).toBeDefined();
   });
 
+  // What a RENAME can replace with a readable file is healable: a link (to anything), a pipe. A directory
+  // (the rename fails) and a regular file this user cannot open (its mode is kept) are not.
+  it.skipIf(!POSIX)('a dangling symlink, a symlink to an unopenable file, and a FIFO at the snapshot path, under a broken record: the cycle proceeds and heals (the rename replaces them)', async () => {
+    const { symlinkSync } = await import('node:fs');
+    const { execFileSync } = await import('node:child_process');
+    mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
+    mkdirSync(join(dir, 'claudinho'), { recursive: true });
+    // A link to nothing.
+    symlinkSync(join(dir, 'claudinho', 'nowhere.json'), cachePath(SOURCE, WC));
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined();
+    await refresh(LIVE);
+    expect(asked).toHaveLength(3);
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
+    // A link to a file this user cannot open (the link itself is replaced).
+    if (unprivileged) {
+      asked = [];
+      rmSync(cachePath(SOURCE, WC), { force: true });
+      writeFileSync(join(dir, 'claudinho', 'locked.json'), '{}');
+      chmodSync(join(dir, 'claudinho', 'locked.json'), 0o000);
+      symlinkSync(join(dir, 'claudinho', 'locked.json'), cachePath(SOURCE, WC));
+      expect(readCurrentState(SOURCE, WC)).toBeUndefined();
+      await refresh(LIVE + 5 * MIN);
+      expect(asked).toHaveLength(3);
+      expect(readCurrentState(SOURCE, WC)).toBeDefined();
+      chmodSync(join(dir, 'claudinho', 'locked.json'), 0o644);
+    }
+    // A FIFO.
+    asked = [];
+    rmSync(cachePath(SOURCE, WC), { force: true });
+    execFileSync('mkfifo', [cachePath(SOURCE, WC)]);
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined();
+    await refresh(LIVE + 10 * MIN);
+    expect(asked).toHaveLength(3);
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
+  });
+
+  it('a directory at the snapshot path under a broken record: nothing (the rename could not replace it)', async () => {
+    mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
+    mkdirSync(cachePath(SOURCE, WC), { recursive: true });
+    await refresh(LIVE);
+    expect(asked).toHaveLength(0);
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined();
+  });
+
   it('an ABSENT snapshot with a working record: the first cycle admits, heals and settles to 0; a settled record is due at once', async () => {
     // The first cycle admits (count 1), publishes a readable snapshot, settles to 0.
     await refresh(LIVE);
