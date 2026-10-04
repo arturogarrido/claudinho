@@ -78,7 +78,7 @@ edition has ended (and the next has not started), `get_today`, `get_live`,
 match's `stage` is the written one (`REGULAR` for a league's season, `LEAGUE` for a cup's
 league phase, `PO` for play-offs), or `OTHER` with the provider's own words in `stageLabel`.
 
-Resources: `standings://{group}`, `fixtures://{date}`. Prompts: `tournament_today`,
+Resources: `standings://{group}` (its text starts with the competition it is for, like a tool's), `fixtures://{date}` (the bundled World Cup schedule, named first, whatever the competition). Prompts: `tournament_today`,
 and `my_team` (give it a 3-letter team code; combines next fixture, standings, and
 the prediction-market read).
 
