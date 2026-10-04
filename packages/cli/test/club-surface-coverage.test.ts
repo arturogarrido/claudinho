@@ -606,14 +606,19 @@ describe('club rendering — the cache-only surfaces (statusline, hook, vibe)', 
       expect(text()).toContain('🇦🇱 Albania 2–1 Latvia 🇱🇻');
     });
 
+    // `cmdPrompt` reads the Cursor payload from standard input when it is not a
+    // TTY (`readFileSync(0)`): on the Windows runner that read never returns
+    // (an open pipe with no writer), which is where the first two CI runs of
+    // this PR stalled for 20 minutes. The payload is handed in, as `index.ts`
+    // does after its own bounded read.
     it('`prompt`: the club line by codes; a nation off the bundle by flags', () => {
       seed('eng.1', [live()]);
-      cmdPrompt(ctxOf('eng.1'));
+      cmdPrompt(ctxOf('eng.1'), { cursor: undefined });
       expect(text()).toContain("⚽ ARS 2–1 CHE 50'");
       noLeak(text(), 'prompt');
       writes = [];
       seed('uefa.nations', [albania()]);
-      cmdPrompt(ctxOf('uefa.nations'));
+      cmdPrompt(ctxOf('uefa.nations'), { cursor: undefined });
       expect(text()).toContain("⚽ 🇦🇱 2–1 🇱🇻 50'");
     });
 
