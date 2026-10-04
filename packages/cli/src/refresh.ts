@@ -175,8 +175,8 @@ export interface RefreshOpts {
  * (`admitNoBaseCycle`, then `settleNoBaseCycle`):
  *   1. the record believed and not due → return: nothing written, nothing asked;
  *   2. RECORD the attempt (`admitAttempt`: `{ at, count + 1 }` written and read
- *      back). The gate fails closed only where a publish could not heal
- *      (`snapshotUnhealable`): with a directory, or an entry that is not a
+ *      back). The gate fails closed only where the look sees that a publish
+ *      could not heal (`snapshotUnhealable`): with a directory, or an entry that is not a
  *      link whose own mode denies its owner a read (a regular file, a pipe, a
  *      socket: the replacement keeps the bits) where a file made there with
  *      those bits does not read back (measured: the directory's inherited
@@ -541,11 +541,11 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
 /**
  * The gate of a cycle whose base read is undefined (0.11, ledger row D8),
  * under the lock and before anything else the cycle does. One rule for every
- * lane; `unhealable` is whether a publish could NOT heal what is at the
- * snapshot's path (`snapshotUnhealable`: a directory, or an entry that is not
- * a link whose own mode denies its owner a read where a file made there with
- * those bits does not read back). False (the caller then publishes nothing,
- * asks nothing, and releases the lock):
+ * lane; `unhealable` is whether the look SEES that a publish could not heal
+ * what is at the snapshot's path (`snapshotUnhealable`: a directory, or an
+ * entry that is not a link whose own mode denies its owner a read where a
+ * file made there with those bits does not read back). False (the caller then
+ * publishes nothing, asks nothing, and releases the lock):
  * - when the scope's attempt record is believed and not due (nothing is
  *   written), in every case: a snapshot that is absent or rejected, with a
  *   working record, stays paced;
@@ -559,16 +559,22 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
  *   which `lookAtEntry` measures with a probe), so an attempt nobody can see
  *   would be a cycle per tick.
  * Everywhere else the attempt is recorded when it can be, and the cycle goes
- * on either way: the rename replaces what is there with a file of ours that
- * reads back, so one cycle heals it: no entry; a link (nothing of it is
- * kept); any other entry whose owner-read bit is set (the replacement keeps
- * that bit, and none of an access-control list or another owner): a pipe or a
- * socket, a cache file refused (an access-control list, another owner's
- * 0600), and a cache file that opened and was rejected (bad JSON, another
- * format version, over the reader's bound, another scope's); and an entry
- * whose bit is clear where a file made with those bits reads back (an
- * inherited allow-read entry on the directory). Gating those left a scope
- * whose record could not be written or read with no usable snapshot ever (the statusline
+ * on either way. Where the rename lands it replaces what is there with a file
+ * of ours that reads back, so one cycle heals it: no entry; a link (nothing
+ * of it is kept); any other entry whose owner-read bit is set (the
+ * replacement keeps that bit, and none of an access-control list or another
+ * owner): a pipe or a socket, a cache file refused (an access-control list,
+ * another owner's 0600), and a cache file that opened and was rejected (bad
+ * JSON, another format version, over the reader's bound, another scope's);
+ * and an entry whose bit is clear where a file made with those bits reads
+ * back (an inherited allow-read entry on the directory). The look cannot see
+ * a flag the system keeps beside the mode (an immutable or append-only flag
+ * on a file that opens), so that entry is not gated although the rename over
+ * it is refused: its publish is one that did not happen, and the record left
+ * as its admission paces the next cycle where the record works; where it does
+ * not, each cycle runs as before this record existed. Gating the states a
+ * publish heals left a scope whose record could not be written or read with
+ * no usable snapshot ever (the statusline
  * rendering with no snapshot: on the World Cup the bundled schedule's
  * countdown, `live · syncing…` or its sign-off; off it `⚽ —`; until the
  * record was removed too), where the base healed in a cycle.

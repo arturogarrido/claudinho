@@ -191,7 +191,10 @@ function replacementReadsBack(path: string, mode: number): boolean {
  * On Windows every mode reports the owner-read bit, so step 4 never runs there
  * (no probe is made) and a file that cannot be opened is `replaceable`; if the
  * rename itself then fails, the atomic write throws, and the publish that
- * called it is one that did not happen, as before.
+ * called it is one that did not happen, as before. The look cannot see a flag
+ * the system keeps beside the mode (an immutable or append-only flag: Node's
+ * `lstat` reports none); under one the rename is refused whatever it answers,
+ * with the same outcome.
  *
  * The bounded reader cannot answer this: `lookAtSmallFile` says `unreadable`
  * for a file it cannot open, for a regular file larger than its bound, and for

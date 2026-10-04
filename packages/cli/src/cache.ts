@@ -476,30 +476,37 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
 // pays nothing, an old record on disk or not. Such a cycle records its attempt
 // first, under the lock, before any publish or request: `{ at: now, count:
 // previous + 1 }`, read back through the bounded reader (as `writeBackoffNote`
-// tells written from visible). The gate FAILS CLOSED ONLY WHERE A PUBLISH
-// COULD NOT HEAL. A publish is an atomic write, a temporary file made in the
-// cache directory and renamed over the snapshot's path: the replacement is
-// ours, keeps the mode bits of whatever it replaces but a link and nothing
-// else of the entry (no access-control entry of its own, no other owner), and
-// gets what the directory gives a new file (an inherited access-control
-// entry). So a publish heals what the rename replaces with a file this process
-// can read, and only two states survive it (`snapshotUnhealable`): a directory
-// (the rename cannot replace it) and an entry that is not a link whose own
-// mode denies its owner a read (the owner-read bit clear, mode 000, 200 or
-// 044, whatever the kind: a regular file, refused or opened through its other
-// bits or an access-control entry of its own; a pipe; a socket), unless a file
-// made there with those bits still reads back (the directory's inherited
-// permissions: MEASURED with a probe file, never assumed). There the attempt
-// is admitted only when what is read back is what was written, else nothing
-// is done. Everywhere else a publish heals in one cycle, so the cycle goes on
-// whether or not its attempt could be recorded: no entry; a symbolic link to
-// anything (nothing of it is kept); any other entry whose owner-read bit is
-// set: a pipe or a socket (replaced by a file of ours with those bits), a
-// cache file refused (an access-control list, another owner's 0600), and a
-// cache file this reader opened and rejected (bad JSON, another format
-// version, larger than the reader's bound, another scope's); and an entry
-// whose bit is clear where a file made with those bits reads back. A believed
-// record that is not due stops the cycle in every case.
+// tells written from visible). The gate FAILS CLOSED ONLY WHERE THE LOOK SEES
+// THAT A PUBLISH COULD NOT HEAL. A publish is an atomic write, a temporary file
+// made in the cache directory and renamed over the snapshot's path: the
+// replacement is ours, keeps the mode bits of whatever it replaces but a link
+// and nothing else of the entry (no access-control entry of its own, no other
+// owner), and gets what the directory gives a new file (an inherited
+// access-control entry). So a publish heals what the rename replaces with a
+// file this process can read. The look (`snapshotUnhealable`) answers from the
+// entry's kind, its own bits, and a probe of what a new file there reads back
+// as, and names two states a publish cannot heal: a directory (the rename
+// cannot replace it) and an entry that is not a link whose own mode denies its
+// owner a read (the owner-read bit clear, mode 000, 200 or 044, whatever the
+// kind: a regular file, refused or opened through its other bits or an
+// access-control entry of its own; a pipe; a socket) where a file made there
+// with those bits does not read back (the directory's inherited permissions:
+// MEASURED with a probe file, never assumed). There the attempt is admitted
+// only when what is read back is what was written, else nothing is done. In
+// every other state the cycle goes on whether or not its attempt could be
+// recorded, and its publish heals in one cycle where the rename lands: no
+// entry; a symbolic link to anything (nothing of it is kept); any other entry
+// whose owner-read bit is set: a pipe or a socket (replaced by a file of ours
+// with those bits), a cache file refused (an access-control list, another
+// owner's 0600), and a cache file this reader opened and rejected (bad JSON,
+// another format version, larger than the reader's bound, another scope's);
+// and an entry whose bit is clear where a file made with those bits reads
+// back. The look cannot see a flag the system keeps beside the mode (an
+// immutable or append-only flag, on a file that opens: the rename is refused),
+// so that entry is not gated: its cycle goes on, its publish is one that did
+// not happen (the write throws), and the record left as its admission paces it
+// (see the stated limit). A believed record that is not due stops the cycle in
+// every case.
 // When the cycle's snapshot then reads back usable, the record is settled to
 // `count: 0`. `count` is "admissions since the last persisted reset": a
 // conservative pacing state, not a history.
@@ -515,19 +522,25 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
 // The pace: one minute, doubling per admission, at most thirty
 // (`attemptDelayMs`). The throttle is independent of it and settled as before.
 //
-// STATED LIMIT: where a publish could not heal the snapshot's path (above), a
-// record nobody can read (its own mode 000, a directory at its path) admits
-// nothing. The provider is then not asked and nothing is published, but the
-// hot path, which cannot read the record either, still starts a refresher on
-// every tick, until a publish could heal the path (the entry removed, its
-// owner-read bit set, or the directory's inherited permissions letting a new
-// file with those bits be read) or the record works again: never because the
-// snapshot file can be opened (a mode-000 file with its own allow-read entry
-// opens, and its replacement, with the bits and without the entry, would not). So does a cache directory whose new files
-// nobody can read (an inherited deny-read ACL): no cycle asks or publishes (the
-// lock cannot be read back by its claimer, so `claimLock` claims nothing); the
-// spawn per tick stays. In every other state the cycle proceeds as it did
-// before this record existed, and its publish ends the loop.
+// STATED LIMIT: where the look sees that a publish could not heal the
+// snapshot's path (above), a record nobody can read (its own mode 000, a
+// directory at its path) admits nothing. The provider is then not asked and
+// nothing is published, but the hot path, which cannot read the record either,
+// still starts a refresher on every tick, until a publish could heal the path
+// (the entry removed, its owner-read bit set, or the directory's inherited
+// permissions letting a new file with those bits be read) or the record works
+// again: never because the snapshot file can be opened (a mode-000 file with
+// its own allow-read entry opens, and its replacement, with the bits and
+// without the entry, would not). A cache directory whose new files nobody can
+// read (an inherited deny-read ACL) also starts a refresher on every tick: no
+// cycle asks or publishes (the lock cannot be read back by its claimer, so
+// `claimLock` claims nothing). In every other state the cycle proceeds as it
+// did before this record existed, and its publish ends the loop where the
+// rename lands. Where the system refuses the rename for a reason the look
+// cannot see (an immutable or append-only flag on a file that opens), the
+// publish never lands: with a working record the cycles are paced; with a
+// record nobody can read, each tick's cycle runs as before this record
+// existed (asking the provider whenever its lane has a read due).
 
 /** A record is `{"at":"<ISO>","count":n}`: far below this (the note's bound). */
 const MAX_ATTEMPT_BYTES = MAX_NOTE_BYTES;
@@ -630,7 +643,12 @@ export function settleAttempt(source: string, competition: string, now: number):
 }
 
 /**
- * Whether a publish could NOT heal what is at the scope's snapshot path. A
+ * Whether a publish could NOT heal what is at the scope's snapshot path, as
+ * far as the look can SEE: it answers from the entry's kind, its own mode
+ * bits, and a probe of what a new file there reads back as, and cannot see a
+ * flag the system keeps beside the mode (an immutable or append-only flag:
+ * Node's `lstat` reports none), so a file that opens under such a flag is
+ * `false` here although the rename over it is refused. A
  * publish (an atomic write, its temporary file made in the cache directory)
  * heals what its rename replaces with a file this process can read: the
  * replacement is ours, keeps the mode bits of whatever it replaces but a link
