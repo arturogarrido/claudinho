@@ -269,25 +269,44 @@ function envelopeDeadline(env: Record<string, unknown> | undefined, now: number)
 
 /**
  * Atomically write the cached state (version-stamped, to its scope's file).
+ * Returns whether the snapshot was written; THROWS when the write itself fails
+ * (an atomic write's rename can). A `false` is a write that did not happen,
+ * exactly as a throw is, for every caller.
  *
  * Before it REPLACES a snapshot of another format version, the throttle that
- * snapshot carries (if believed at `now`) is put in the scope's note: a
- * reader of that other version rejects the new snapshot whole, and must still
- * find the deadline the provider set (`writeBackoffNote` keeps the later of
- * the note's and this one). A snapshot of this version is not re-noted: its
- * readers find its deadline in it. `now` is the writer's clock; by default the
- * instant the new snapshot is stamped with (`updatedAt`), else the system's.
+ * snapshot carries (if believed at `now`) is put in the scope's note: a reader
+ * of that other version rejects the new snapshot whole, and must still find
+ * the deadline the provider set (`writeBackoffNote` keeps the later of the
+ * note's and this one). When the note cannot be made to hold it (the write
+ * failed, or what was written cannot be read back), the older snapshot is NOT
+ * replaced: it is the one place that deadline is still kept. A snapshot of
+ * this version is not re-noted here: its own writer settled its deadline in
+ * the note (`ensureBackoffVisible`).
+ *
+ * The file this would replace, and what the next reader of each format finds:
+ *
+ * | the file             | its believed deadline | the note             | written? | this format's reader                      | the other format's reader     |
+ * |----------------------|-----------------------|----------------------|----------|-------------------------------------------|-------------------------------|
+ * | none                 | -                     | -                    | yes      | the new snapshot                          | rejects it; the note if any   |
+ * | this version         | -                     | -                    | yes      | the new snapshot                          | rejects it; the note if any   |
+ * | another version      | none                  | -                    | yes      | the new snapshot                          | rejects it: nothing to protect |
+ * | another version      | yes                   | written, or as late  | yes      | the new snapshot, and the note            | rejects it; the deadline in the note |
+ * | another version      | yes                   | cannot be written    | NO       | rejects the old one; its deadline through `backoffInEffect` (no state read) | its own snapshot, deadline included |
+ *
+ * `now` is the writer's clock; by default the instant the new snapshot is
+ * stamped with (`updatedAt`), else the system's.
  */
-export function writeState(state: CacheState, now: number = stampOrNow(state.updatedAt)): void {
+export function writeState(state: CacheState, now: number = stampOrNow(state.updatedAt)): boolean {
   const replaced = snapshotEnvelope(state.source, state.competition);
   if (replaced !== undefined && replaced.version !== CACHE_VERSION) {
     const until = envelopeDeadline(replaced, now);
-    if (until !== undefined) writeBackoffNote(state.source, state.competition, until, now);
+    if (until !== undefined && !writeBackoffNote(state.source, state.competition, until, now)) return false;
   }
   writeFileAtomic(
     cachePath(state.source, state.competition),
     JSON.stringify({ ...state, version: CACHE_VERSION }),
   );
+  return true;
 }
 
 /** A stamp as epoch ms when it is one this product writes, else the system clock. */
@@ -656,11 +675,13 @@ export function releaseLock(token: LockToken | undefined = heldToken): void {
  * window a refresher that lost its lease has to overwrite its successor; it
  * does not close it (two steps cannot, and Node offers no portable lock the
  * operating system holds). Stated, with the takeover race in `claimLock`.
- * Returns whether the write happened, which is not whether a reader will find
- * it (a snapshot nobody can read stays one): a writer with a throttle asks
- * `ensureBackoffVisible` afterwards, refused or not. It THROWS when the write
- * fails (an atomic write's rename can): every writer with a throttle catches
- * that, as a publish that did not happen, and still asks.
+ * Returns whether the write happened (`false`: the lock is not ours, or
+ * `writeState` refused to replace an older snapshot whose throttle could not
+ * be noted), which is not whether a reader will find it (a snapshot nobody can
+ * read stays one): a writer with a throttle asks `ensureBackoffVisible`
+ * afterwards, refused or not. It THROWS when the write fails (an atomic
+ * write's rename can): every writer catches that as a publish that did not
+ * happen, like a `false`, and a writer with a throttle still asks.
  */
 export function publishState(
   state: CacheState,
@@ -668,7 +689,5 @@ export function publishState(
   /** The writer's clock (see `writeState`); by default the snapshot's own stamp. */
   now?: number,
 ): boolean {
-  if (!holdsLock(token)) return false;
-  writeState(state, now);
-  return true;
+  return holdsLock(token) && writeState(state, now);
 }

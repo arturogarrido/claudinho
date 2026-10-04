@@ -58,6 +58,9 @@ function persistBackoff(source: string, competition: string, until: number, nowM
       const inEffect = backoffInEffect(base, source, competition, nowMs);
       const later = inEffect !== undefined && inEffect > until ? inEffect : until;
       try {
+        // `false` (the lock is not ours, or an older snapshot whose throttle
+        // could not be noted was not replaced) is a publish that did not
+        // happen, like a throw: the note below decides what counts.
         publishState({ ...base, backoffUntil: new Date(later).toISOString() }, token, nowMs);
       } catch {
         // A publish that THROWS (a failed atomic write) published nothing:

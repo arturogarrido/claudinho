@@ -176,7 +176,10 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       if (idle) {
         try {
           // Under the lock, and only if nobody wrote one in the meantime (the
-          // same rule as the idle snapshot below).
+          // same rule as the idle snapshot below). A publish that did not
+          // happen (refused: an older snapshot's throttle could not be noted)
+          // leaves that snapshot, whose deadline every trigger still reads;
+          // nothing was asked, so there is nothing to settle.
           if (!readState(source, competition)) {
             publishState(
               {
@@ -226,6 +229,9 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     if (!idle) return;
     try {
       if (readBase()) return;
+      // A publish that did not happen (refused: an older snapshot's throttle
+      // could not be noted, so that snapshot stays and still carries it) needs
+      // nothing more: no request was made, and the next trigger asks again.
       const until = backoffInEffect(undefined, source, competition, nowMs);
       publishState(
         {
@@ -525,7 +531,9 @@ function settleBackoff(
 ): void {
   if (backoffUntil) ensureBackoffVisible(source, competition, Date.parse(backoffUntil), at);
   if (!published && process.env.CLAUDINHO_DEBUG) {
-    process.stderr.write('claudinho: refresh snapshot not published (lease lost to a successor, or the write failed)\n');
+    process.stderr.write(
+      'claudinho: refresh snapshot not published (lease lost to a successor, the write failed, or an older snapshot\'s throttle could not be noted)\n',
+    );
   }
 }
 
