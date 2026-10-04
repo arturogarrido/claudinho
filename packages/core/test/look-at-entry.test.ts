@@ -3,17 +3,19 @@
  * RENAME onto a path would do. The CLI's refresher asks it of a snapshot it
  * could not use, to know whether a publish (an atomic write: a temporary file
  * renamed over the path) can heal it. Only a directory (the rename fails) and
- * a regular file this user cannot open (the replacement keeps its mode) are
- * `unhealable`; a link to anything and a pipe are `replaceable` (the rename
- * replaces the entry, never following it); a regular file that opens is
- * `file`, whatever its size or content. The bounded reader's kinds cannot
+ * a regular file whose own mode denies its owner a read (refused, with the
+ * owner-read bit clear: the replacement is ours and keeps the bits) are
+ * `unhealable`; a link to anything, a pipe, and a regular file refused with
+ * the owner-read bit set (an access-control list, another owner's 0600: the
+ * replacement is ours, readable) are `replaceable`; a regular file that opens
+ * is `file`, whatever its size or content. The bounded reader's kinds cannot
  * answer it: `lookAtSmallFile` says `unreadable` alike for a file it cannot
  * open, one over its bound, and a link to nothing. Nothing is read, and the
  * look never waits (a pipe with no writer included).
  */
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { lookAtEntry, lookAtSmallFile } from '../src';
@@ -48,15 +50,30 @@ describe('lookAtEntry: what a rename onto the path would do', () => {
     expect(lookAtEntry(d)).toBe('unhealable');
   });
 
-  it.skipIf(!unprivileged)('a regular file this user cannot open: unhealable (the replacement keeps its mode)', () => {
-    const p = join(tmp, 'locked.json');
-    writeFileSync(p, '{}');
-    chmodSync(p, 0o000);
-    try {
-      expect(lookAtEntry(p)).toBe('unhealable');
-    } finally {
-      chmodSync(p, 0o644);
+  it.skipIf(!unprivileged)('a regular file refused with its owner-read bit clear (mode 000, mode 200): unhealable (the replacement is ours and keeps the bits)', () => {
+    for (const mode of [0o000, 0o200]) {
+      const p = join(tmp, `locked-${mode.toString(8)}.json`);
+      writeFileSync(p, '{}');
+      chmodSync(p, mode);
+      try {
+        expect(lookAtEntry(p), mode.toString(8)).toBe('unhealable');
+      } finally {
+        chmodSync(p, 0o644);
+      }
     }
+  });
+
+  it.skipIf(process.platform !== 'darwin' || !unprivileged)('a regular file refused by a deny-read access-control list, its owner-read bit set: replaceable (the replacement is ours, readable)', () => {
+    const p = join(tmp, 'acl-denied.json');
+    writeFileSync(p, '{}');
+    try {
+      execFileSync('chmod', ['+a', `${userInfo().username} deny read`, p]);
+    } catch {
+      return; // no access-control lists here: nothing to test
+    }
+    expect(lstatSync(p).mode & 0o400).toBe(0o400);
+    expect(lookAtSmallFile(p, 1024).kind).toBe('unreadable'); // the list refuses the open
+    expect(lookAtEntry(p)).toBe('replaceable');
   });
 
   it.skipIf(!POSIX)('a symbolic link to anything: replaceable, never followed (a link to nothing, to a file, to a directory, to a locked file)', () => {
