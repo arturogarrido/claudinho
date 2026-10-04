@@ -572,7 +572,7 @@ describe('under a refused environment the team sentence is the future-tense one 
 });
 
 describe('the "later" sentences name the gate the next command stops at', () => {
-  it('nothing chosen: "once a competition is chosen"; a refused CLAUDINHO_COMPETITION: "once CLAUDINHO_COMPETITION names a competition or is unset", for a readable and an unreadable team', async () => {
+  it('three gates: nothing chosen, "once a competition is chosen"; a refused CLAUDINHO_COMPETITION with a saved choice, "once CLAUDINHO_COMPETITION names a competition or is unset"; with none, "…, or is unset and a competition is chosen"; for a readable and an unreadable team', async () => {
     // A refused environment with a saved competition: choosing is not the fix.
     await cmdFollow('world-cup', { team: 'Spain' }, ctxOf());
     process.env.CLAUDINHO_COMPETITION = 'bar';
@@ -583,7 +583,12 @@ describe('the "later" sentences name the gate the next command stops at', () => 
     expect(text()).not.toMatch(/once a competition is chosen/);
     // The same refused environment with NO file: unsetting the variable alone leaves nothing chosen, so the
     // sentence names both gates (the variable naming a competition, or unset AND a competition chosen).
+    writes = [];
     await cmdFollow('off', {}, ctxOf());
+    // The `off` command's own report is already the no-file cell's.
+    expect(text()).toMatch(/Saved choice removed/);
+    expect(text()).toMatch(/refuse it once CLAUDINHO_COMPETITION names a competition, or is unset and a competition is chosen\./);
+    expect(text()).not.toMatch(/or is unset\./);
     writes = [];
     await cmdFollow(undefined, {}, ctxOf());
     expect(text()).toMatch(/CLAUDINHO_TEAM is set but names no team; the team-taking commands refuse it once CLAUDINHO_COMPETITION names a competition, or is unset and a competition is chosen\./);
@@ -607,6 +612,30 @@ describe('the "later" sentences name the gate the next command stops at', () => 
     writes = [];
     await cmdFollow(undefined, {}, ctxOf());
     expect(text()).toMatch(/take it as their team once a competition is chosen\./);
+    delete process.env.CLAUDINHO_TEAM;
+  });
+});
+
+describe('the refused gate with a saved choice and NO pin (the fourth reader\'s survivor)', () => {
+  it('a saved competition without a team, a refused CLAUDINHO_COMPETITION and a set CLAUDINHO_TEAM: the shorter sentence (unsetting falls back to the file), for a readable and an unreadable team', async () => {
+    await cmdFollow('world-cup', {}, ctxOf());
+    process.env.CLAUDINHO_COMPETITION = 'bar';
+    process.env.CLAUDINHO_TEAM = 'Spain';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/CLAUDINHO_TEAM is set, and the team-taking commands take it as their team once CLAUDINHO_COMPETITION names a competition or is unset\./);
+    expect(text()).not.toMatch(/and a competition is chosen/);
+    process.env.CLAUDINHO_TEAM = '   ';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/refuse it once CLAUDINHO_COMPETITION names a competition or is unset\./);
+    expect(text()).not.toMatch(/and a competition is chosen/);
+    // A write without --team under the same: the same cell.
+    process.env.CLAUDINHO_TEAM = 'Spain';
+    writes = [];
+    await cmdFollow('premier-league', {}, ctxOf());
+    expect(text()).toMatch(/take it as their team once CLAUDINHO_COMPETITION names a competition or is unset\./);
+    delete process.env.CLAUDINHO_COMPETITION;
     delete process.env.CLAUDINHO_TEAM;
   });
 });
