@@ -246,7 +246,7 @@ describe('club rendering (MCP) — the live state', () => {
     const card = await toolGetShareSnippet({ group: 'LEAGUE', adapter: LIVE_FEED(), marketProvider: new FakeMarketProvider(), now: CLUB_NOW });
     expect(card.text).toContain('1. ARS');
     noLeak(card.text, 'share group');
-    const resource = await standingsResourceText('LEAGUE', LIVE_FEED(), selectedCompetition('eng.1', 'default'));
+    const resource = await standingsResourceText('LEAGUE', LIVE_FEED(), selectedCompetition('eng.1', 'saved'));
     // The resource names its competition first (0.11 · 2.5a), like a tool's text.
     expect(resource.split('\n')[0]).toBe('Premier League');
     expect(resource).toContain('Arsenal');

@@ -17,11 +17,14 @@
 #   CLAUDINHO_COMPETITION=fifa.friendly ./scripts/release-qa.sh   # another competition
 #
 # The competition is the CLI's own: the caller's CLAUDINHO_COMPETITION when set
-# (an alias or a slug), else nothing is set and the CLI's default (the World Cup)
-# answers, its mode line naming no source. The script exports nothing, and what
-# it decides about the competition (the drift tripwire's gate) is decided on the
-# selection the built CLI RESOLVED, through scripts/release-qa-lib.mjs, whose
-# rules a test runs offline.
+# (an alias or a slug), else the World Cup, FOLLOWED for the run in a config
+# directory the script creates (and removes): the CLI has no default (nothing
+# chosen is no competition), so the run chooses as a user does, and the mode
+# line reads `World Cup`, saved, with no source. The environment still wins
+# over that saved choice, as it does for a user. The script exports no
+# competition, and what it decides about the competition (the drift tripwire's
+# gate) is decided on the selection the built CLI RESOLVED, through
+# scripts/release-qa-lib.mjs, whose rules a test runs offline.
 #
 # Exit code: non-zero if a tripwire FAILS (real regression). A degraded/unreachable
 # feed downgrades tripwires to SKIP (exit 0) — a network blip must not block a release.
@@ -67,7 +70,19 @@ if [ -z "${CLI:-}" ] && [ ! -f "$DIST" ]; then
   echo "✗ build first:  pnpm -r build   (or run with CLI=claudinho)"; exit 1
 fi
 
-bold "release-qa · competition=$(qa label) · $(cli --version 2>/dev/null)"
+# The run's own config directory: the World Cup followed in it, as a user
+# would (`claudinho follow world-cup`), never the developer's own choice.
+QA_CONFIG="$(mktemp -d "${TMPDIR:-/tmp}/claudinho-release-qa.XXXXXX")"
+trap 'rm -rf "$QA_CONFIG"' EXIT
+export XDG_CONFIG_HOME="$QA_CONFIG"
+if ! cli follow world-cup >/dev/null 2>&1; then
+  # A CLI from before 0.11 has no `follow` (and answers its own default).
+  printf '\033[33m⚠\033[0m could not follow the World Cup in %s (a CLI without `follow`?)\n' "$QA_CONFIG"
+fi
+
+# The competition as the built CLI resolved it (read back, never assumed: a
+# failed follow must not print "saved (World Cup)").
+bold "release-qa · competition=$(cli table Z --json 2>/dev/null | qa label) · $(cli --version 2>/dev/null)"
 echo "Read every section below. Then run the release. Tripwires summarized at the end."
 
 # ── 1. The knockout bracket (the surface that sprawled) ──────────────────────

@@ -120,7 +120,7 @@ describe('renderHook', () => {
       m(['MEX', '🇲🇽'], ['RSA', '🇿🇦'], { minute: 10, score: { home: 0, away: 0 } }),
       m(['BRA', '🇧🇷'], ['MAR', '🇲🇦'], { minute: 80, score: { home: 3, away: 1 } }),
     ]);
-    const out = renderHook(s, { now: NOW, team: 'BRA' });
+    const out = renderHook(s, { now: NOW, pick: { code: 'BRA' } });
     const lines = out.split('\n');
     // Header is line 0; first match line should be Brazil.
     expect(lines[1]).toContain('🇧🇷');

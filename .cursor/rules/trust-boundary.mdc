@@ -77,7 +77,7 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   dropped otherwise on every path alike. `code` is a display label: never
   matched against a shape, and not an identity (a real club is `O&M`; `CAR` is
   two clubs in one competition). The places that still select a team by its
-  letters (`fixturesByTeam`, the statusline/hook filter, the team argument) are
+  letters (`fixturesByTeam`, the ambient pick's `CLAUDINHO_TEAM` code: a preference, the picked match first and the others kept, the team argument) are
   legacy World Cup behaviour, not a pattern to copy. `sameTeam` decides self-play: the same id, OR the
   same code and name — an id only ever adds a refusal. Selecting a team's own
   fixture is `isTeam`: when both carry an id, equal ids decide (a side with

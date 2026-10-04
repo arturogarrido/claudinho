@@ -407,7 +407,7 @@ describe('toolGetBracket', () => {
 describe('standingsResourceText (standings:// resource)', () => {
   const DISCLAIMER = 'not affiliated'; // matches the get_standings tool path
   // The selection the server resolved for the read (0.11 · 2.5a): the text names it first.
-  const WC = selectedCompetition('fifa.world', 'default');
+  const WC = selectedCompetition('fifa.world', 'saved');
 
   it('attributes the live provider on an authoritative table', async () => {
     const text = await standingsResourceText('a', fakeAdapter({ standings: [A_TABLE] }), WC);

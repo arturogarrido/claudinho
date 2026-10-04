@@ -1,0 +1,321 @@
+/**
+ * The edges of the saved choice and the pin (0.11 · 2.5b) that the main
+ * suites do not reach, each a rule a revert left green:
+ *   - on the ambient surfaces `CLAUDINHO_TEAM` wins over the saved pin;
+ *   - `follow <alias>` saves what it was given, whatever the environment says
+ *     (the target is resolved as the flag would be; the environment decides
+ *     what is ANSWERED, never what is saved);
+ *   - `follow` never writes THROUGH a link at the config path: the link is
+ *     replaced by the user's own file, and what it pointed at is untouched;
+ *   - a refused environment's refusal is said once in `follow`'s report (the
+ *     headline when it decides what is reported, else its own line after
+ *     the headline), its sentence is said with no file too (after `off`),
+ *     and `refused.env` is bounded as a label;
+ *   - the `Team:` line asks whether the pin applies to the headline's
+ *     competition (a flag included), not the next command's;
+ *   - the sentence table's empty cell (no flag, no environment) says no
+ *     sentence, with a believed saved choice or without one;
+ *   - with nothing chosen `_refresh` asks nobody and writes nothing, and
+ *     `vibe` reads no cache;
+ *   - the cache directory takes the Windows leg (`%LOCALAPPDATA%`) through
+ *     core's one path rule.
+ */
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { Match } from '@claudinho/core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('node:child_process', () => ({ spawn: vi.fn(() => ({ unref: vi.fn() })) }));
+vi.mock('../src/cache', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/cache')>();
+  return { ...real, readCurrentState: vi.fn(real.readCurrentState) };
+});
+import { readCurrentState, writeState } from '../src/cache';
+import { cmdFollow, cmdPrompt, cmdRefresh, cmdVibe } from '../src/commands';
+import { resolveConfig } from '../src/config';
+import { makeT } from '../src/i18n';
+import { cacheDir } from '../src/paths';
+
+const NOW = new Date('2026-10-10T15:00:00.000Z');
+const m = (over: Partial<Match>): Match => ({
+  id: '800000001',
+  stage: 'REGULAR',
+  kickoff: '2026-10-10T14:20:00.000Z',
+  venue: 'Emirates Stadium',
+  home: { code: 'AFC', name: 'Arsenal FC', id: 'espn:359' },
+  away: { code: 'CHE', name: 'Chelsea', id: 'espn:363' },
+  status: 'LIVE',
+  minute: 40,
+  score: { home: 2, away: 1 },
+  updatedAt: NOW.toISOString(),
+  ...over,
+});
+const mine = () => m({});
+const other = () =>
+  m({ id: '800000002', kickoff: '2026-10-10T14:10:00.000Z', home: { code: 'BRE', name: 'Brentford', id: 'espn:337' }, away: { code: 'LIV', name: 'Liverpool', id: 'espn:364' }, minute: 50, score: { home: 1, away: 0 } });
+
+let tmp: string;
+const ENV = ['XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'CLAUDINHO_COMPETITION', 'CLAUDINHO_TEAM', 'LOCALAPPDATA'] as const;
+const saved: Record<string, string | undefined> = {};
+const outSpy = vi.spyOn(process.stdout, 'write');
+let writes: string[] = [];
+beforeEach(() => {
+  tmp = mkdtempSync(join(tmpdir(), 'claudinho-follow-edges-'));
+  for (const k of ENV) {
+    saved[k] = process.env[k];
+    delete process.env[k];
+  }
+  process.env.XDG_CONFIG_HOME = join(tmp, 'config');
+  process.env.XDG_CACHE_HOME = join(tmp, 'cache');
+  writes = [];
+  outSpy.mockImplementation((c: unknown) => {
+    writes.push(String(c));
+    return true;
+  });
+  vi.mocked(readCurrentState).mockClear();
+});
+afterEach(() => {
+  outSpy.mockReset();
+  vi.unstubAllGlobals();
+  for (const k of ENV) {
+    if (saved[k] === undefined) delete process.env[k];
+    else process.env[k] = saved[k];
+  }
+  rmSync(tmp, { recursive: true, force: true });
+});
+const text = () => writes.join('');
+const configFile = () => join(tmp, 'config', 'claudinho', 'config.json');
+const follow = (body: Record<string, unknown>) => {
+  mkdirSync(join(tmp, 'config', 'claudinho'), { recursive: true });
+  writeFileSync(configFile(), JSON.stringify(body));
+};
+const ctxOf = () => {
+  const cfg = resolveConfig({ tz: 'UTC', color: false, source: 'espn', flavor: 'off', markets: false });
+  return { cfg, t: makeT('en'), now: NOW };
+};
+
+describe('the ambient pick', () => {
+  it('CLAUDINHO_TEAM wins over the saved pin', () => {
+    follow({ version: 1, competition: 'eng.1', team: { id: 'espn:359', code: 'ARS', name: 'Arsenal' } });
+    // Cached with the pinned match SECOND, so no preference and the pin read differently.
+    writeState({ updatedAt: NOW.toISOString(), live: [other(), mine()], degraded: false, source: 'espn', competition: 'eng.1' }, NOW.getTime());
+    process.env.CLAUDINHO_TEAM = 'BRE';
+    cmdPrompt(ctxOf(), { cursor: undefined });
+    expect(text()).toMatch(/^⚽ BRE 1–0 LIV 50'/);
+    expect(text()).toContain('+1');
+    // Without it, the pin decides.
+    writes = [];
+    delete process.env.CLAUDINHO_TEAM;
+    cmdPrompt(ctxOf(), { cursor: undefined });
+    expect(text()).toMatch(/^⚽ AFC 2–1 CHE 40'/);
+    // An empty one is absent: the pin decides.
+    writes = [];
+    process.env.CLAUDINHO_TEAM = '';
+    cmdPrompt(ctxOf(), { cursor: undefined });
+    expect(text()).toMatch(/^⚽ AFC 2–1 CHE 40'/);
+  });
+});
+
+describe('follow writes what it was given, as its own file', () => {
+  it('the environment decides what is answered, never what is saved', async () => {
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    await cmdFollow('premier-league', {}, ctxOf());
+    expect(JSON.parse(readFileSync(configFile(), 'utf8'))).toEqual({ version: 1, competition: 'eng.1' });
+    // And it says the environment wins while it is set.
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION is set/);
+  });
+
+  it('a link at the config path is replaced, never written through', async () => {
+    if (process.platform === 'win32') return;
+    const target = join(tmp, 'elsewhere.json');
+    writeFileSync(target, 'not mine');
+    mkdirSync(join(tmp, 'config', 'claudinho'), { recursive: true });
+    symlinkSync(target, configFile());
+    await cmdFollow('premier-league', {}, ctxOf());
+    expect(readFileSync(target, 'utf8')).toBe('not mine');
+    expect(lstatSync(configFile()).isSymbolicLink()).toBe(false);
+    expect(JSON.parse(readFileSync(configFile(), 'utf8'))).toEqual({ version: 1, competition: 'eng.1' });
+  });
+});
+
+describe('the pin and the override, beside the main suites', () => {
+  it('a refused override carries no pin (the refusal is the answer), whatever the file holds', () => {
+    follow({ version: 1, competition: 'eng.1', team: { id: 'espn:359', code: 'ARS', name: 'Arsenal' } });
+    process.env.CLAUDINHO_COMPETITION = 'foo';
+    const cfg = resolveConfig({});
+    expect(cfg.selection.kind).toBe('refused');
+    expect(cfg.pin).toBeUndefined();
+    // And an empty environment is absent: the file chooses, and its pin applies.
+    process.env.CLAUDINHO_COMPETITION = '';
+    expect(resolveConfig({}).pin).toEqual({ id: 'espn:359', code: 'ARS', name: 'Arsenal' });
+  });
+
+  it('`follow off --json` under the environment: the environment is what the next command follows (its source the override), nothing is saved', async () => {
+    follow({ version: 1, competition: 'eng.1' });
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    await cmdFollow('off', {}, { ...ctxOf(), cfg: { ...ctxOf().cfg, json: true } });
+    const j = JSON.parse(text());
+    expect(j.competition).toMatchObject({ slug: 'esp.1', chosenBy: 'env' });
+    expect(j.saved).toBeNull();
+    // `override` is the reported competition's source when it is not the saved choice, in every form.
+    expect(j.override).toBe('env');
+    expect(j.sources).toEqual({ env: 'esp.1' });
+    expect(j.removed).toBe(true);
+    expect(existsSync(configFile())).toBe(false);
+  });
+});
+
+describe('a refused environment, beside the main report suite', () => {
+  const ctxWith = (opts: { competition?: string; json?: boolean }) => {
+    const cfg = resolveConfig({ tz: 'UTC', color: false, source: 'espn', flavor: 'off', markets: false, ...opts });
+    return { cfg, t: makeT('en'), now: NOW };
+  };
+  const count = (needle: string) => text().split(needle).length - 1;
+
+  it('its refusal is printed once: as the headline when it decides what is reported, else on its own line after it', async () => {
+    follow({ version: 1, competition: 'eng.1' });
+    process.env.CLAUDINHO_COMPETITION = 'foo';
+    // `follow` alone and a write: the environment's refusal is the headline, said once.
+    await cmdFollow(undefined, {}, ctxWith({}));
+    expect(count('"foo"')).toBe(1);
+    writes = [];
+    await cmdFollow('serie-a', {}, ctxWith({}));
+    expect(count('"foo"')).toBe(1);
+    // Under a refused flag: the flag's refusal is the headline, the environment's after it, each once.
+    writes = [];
+    await cmdFollow(undefined, {}, ctxWith({ competition: 'bar' }));
+    expect(count('"bar"')).toBe(1);
+    expect(count('"foo"')).toBe(1);
+    expect(text().indexOf('"bar"')).toBeLessThan(text().indexOf('"foo"'));
+    // A write under both: the environment's refusal decides the next command (the headline), then the flag's.
+    writes = [];
+    await cmdFollow('laliga', {}, ctxWith({ competition: 'bar' }));
+    expect(count('"bar"')).toBe(1);
+    expect(count('"foo"')).toBe(1);
+    expect(text().indexOf('"foo"')).toBeLessThan(text().indexOf('"bar"'));
+  });
+
+  it('its sentence is said with no file too (after `off`, or none saved): the next command meets the refusal, file or not', async () => {
+    follow({ version: 1, competition: 'eng.1' });
+    process.env.CLAUDINHO_COMPETITION = 'foo';
+    await cmdFollow('off', {}, ctxWith({}));
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION is refused, and nothing is followed/);
+    expect(text()).not.toMatch(/is set, and it wins/);
+    expect(count('"foo"')).toBe(1);
+    // No file, `follow` alone: the same sentence.
+    writes = [];
+    await cmdFollow(undefined, {}, ctxWith({}));
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION is refused, and nothing is followed/);
+    // No file, a flag that ran: its own refused cell.
+    writes = [];
+    await cmdFollow(undefined, {}, ctxWith({ competition: 'world-cup' }));
+    expect(text()).toMatch(/--competition decides this command; without it CLAUDINHO_COMPETITION is refused/);
+    // No file and the environment SET: no sentence naming a saved choice there is not.
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxWith({}));
+    expect(text()).not.toMatch(/saved choice while it is|then the saved choice/);
+  });
+
+  it('`refused.env` is the value as given, bounded as a label', async () => {
+    follow({ version: 1, competition: 'eng.1' });
+    process.env.CLAUDINHO_COMPETITION = `${'x'.repeat(300)}!`;
+    await cmdFollow(undefined, {}, ctxWith({ json: true }));
+    const j = JSON.parse(text());
+    expect(Object.keys(j.refused)).toEqual(['env']);
+    expect(j.refused.env.length).toBeGreaterThan(0);
+    expect(j.refused.env.length).toBeLessThanOrEqual(40);
+    expect(j.sources).toBeUndefined();
+  });
+});
+
+describe('two questions about the pin: the Team: line asks the headline\'s competition, the team sentence the next command\'s', () => {
+  const ctxWith = (opts: { competition?: string }) => {
+    const cfg = resolveConfig({ tz: 'UTC', color: false, source: 'espn', flavor: 'off', markets: false, ...opts });
+    return { cfg, t: makeT('en'), now: NOW };
+  };
+
+  it('under a flag naming another competition the pin is the saved team, though the next command (the saved choice) applies it', async () => {
+    follow({ version: 1, competition: 'fifa.world', team: { code: 'ESP', name: 'Spain' } });
+    await cmdFollow(undefined, {}, ctxWith({ competition: 'premier-league' }));
+    expect(text()).toMatch(/Following: Premier League/);
+    expect(text()).not.toMatch(/^\s*Team: Spain/m);
+    expect(text()).toMatch(/Saved team: Spain/);
+  });
+
+  it('under a flag naming the pin\'s competition the pin is the team in effect, though the next command (the environment) does not apply it', async () => {
+    follow({ version: 1, competition: 'fifa.world', team: { code: 'ESP', name: 'Spain' } });
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    await cmdFollow(undefined, {}, ctxWith({ competition: 'world-cup' }));
+    expect(text()).toMatch(/Following: World Cup/);
+    expect(text()).toMatch(/^\s*Team: Spain/m);
+    expect(text()).not.toMatch(/Saved team/);
+  });
+});
+
+describe("the sentence table's empty cell: no flag, no environment", () => {
+  // Every sentence of `follow`'s table, in English: none is said in this cell.
+  const SENTENCES = [
+    'follow.flagWins', 'follow.flagEnvWins', 'follow.flagEnvRefused', 'follow.flagRefused', 'follow.flagRefusedEnv',
+    'follow.flagRefusedEnvRefused', 'follow.envWins', 'follow.envRefused', 'follow.flagNone', 'follow.flagEnv',
+    'follow.flagRefusedNone', 'follow.flagRefusedEnvOnly', 'follow.envDecides',
+  ] as const;
+  const en = makeT('en');
+  const saysNone = () => {
+    for (const key of SENTENCES) expect(text()).not.toContain(en(key));
+  };
+
+  it('says no sentence, with a believed saved choice or without one (the reason line says why there is none)', async () => {
+    // No file.
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/No saved choice/);
+    saysNone();
+    // A file: the saved choice is followed, and nothing overrides it.
+    follow({ version: 1, competition: 'eng.1' });
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/Following: Premier League/);
+    saysNone();
+    // After `off`: no file again.
+    writes = [];
+    await cmdFollow('off', {}, ctxOf());
+    expect(text()).toMatch(/Saved choice removed/);
+    saysNone();
+  });
+});
+
+describe('nothing chosen, beside the main first-run suite', () => {
+  it('`_refresh` asks nobody and writes nothing', async () => {
+    let fetched = 0;
+    vi.stubGlobal('fetch', async () => {
+      fetched++;
+      return new Response('{}', { status: 200 });
+    });
+    const ctx = ctxOf();
+    expect(ctx.cfg.selection).toEqual({ kind: 'none' });
+    await cmdRefresh(ctx);
+    expect(fetched).toBe(0);
+    const dir = join(tmp, 'cache', 'claudinho');
+    expect(existsSync(dir) ? readdirSync(dir) : []).toEqual([]);
+  });
+
+  it('`vibe` reads no cache', () => {
+    cmdVibe(ctxOf());
+    expect(text()).toContain('#VibingLaVidaLoca');
+    expect(readCurrentState).not.toHaveBeenCalled();
+  });
+});
+
+describe('the cache directory', () => {
+  it('takes %LOCALAPPDATA% on Windows when XDG_CACHE_HOME is not set (core cacheDirFor)', () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+    delete process.env.XDG_CACHE_HOME;
+    process.env.LOCALAPPDATA = join(tmp, 'local');
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try {
+      expect(cacheDir()).toBe(join(tmp, 'local', 'claudinho'));
+    } finally {
+      if (platform) Object.defineProperty(process, 'platform', platform);
+    }
+  });
+});

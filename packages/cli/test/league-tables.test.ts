@@ -146,7 +146,7 @@ describe('`table` shows the table the competition has', () => {
       degraded: false,
       source: 'espn',
       tables: [],
-      competition: { slug: 'concacaf.champions', alias: 'concacaf-champions-cup', name: 'Concacaf Champions Cup', chosenBy: 'default' },
+      competition: { slug: 'concacaf.champions', alias: 'concacaf-champions-cup', name: 'Concacaf Champions Cup', chosenBy: 'saved' },
     });
   });
 });
@@ -188,7 +188,7 @@ describe('tables are missing: the read says so, in text and in `--json`', () => 
       degraded: true,
       source: null,
       tables: null,
-      competition: { slug: 'uefa.euro', alias: 'euro', name: 'EURO', chosenBy: 'default' },
+      competition: { slug: 'uefa.euro', alias: 'euro', name: 'EURO', chosenBy: 'saved' },
     });
   });
 });

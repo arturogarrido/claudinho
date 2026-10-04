@@ -25,7 +25,7 @@ package is [`@claudinho/mcp`](https://www.npmjs.com/package/@claudinho/mcp).
 - `get_team` — the World Cup roster: resolve a nation's name/code to its FIFA code, flag, group (fuzzy; offline)
 - `list_competitions` — the supported competitions: aliases, names, what each offers, and the current one (offline)
 
-All tools are `readOnlyHint`; the match tools take optional `tz` / `lang` / `flavor` and `competition` (an alias such as `premier-league`, or an ESPN slug such as `eng.1`; default: the World Cup), while `get_team` is offline and takes just a `query`. No API keys.
+All tools are `readOnlyHint`; the match tools take optional `tz` / `lang` / `flavor` and `competition` (an alias such as `premier-league`, or an ESPN slug such as `eng.1`; without it, the server's `CLAUDINHO_COMPETITION`, else the user's saved choice from `claudinho follow`; with none, a tool answers `noCompetition`), while `get_team` is offline and takes just a `query`. No API keys.
 
 ## Verify locally
 

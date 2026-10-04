@@ -48,7 +48,7 @@ Then just ask your agent naturally — it picks the right tool and answers with 
 | `get_match` | a single match by id — in a club competition, looked for from yesterday to 14 days ahead (`window` names the days searched when it is not there) |
 | `get_standings` | live cumulative standings — every table, or one by its key (a group letter, or `A1`, `A-B`, `LEAGUE`) |
 | `get_bracket` | knockout bracket from the Round of 32 through the final — optional `stage` filter (`R32`, `R16`, `QF`, `SF`, `3P`, `F`); a league season with no knockout answers `inapplicable` |
-| `get_next_fixture` | a team's next match, by name or code — a nation (`Mexico`, `MEX`): live-resolves a confirmed knockout tie from the feed, group fixtures offline, fails back to the bundled schedule if the feed is down; a club (`Arsenal`, `ARS`): its next match within 14 days, `candidates` when several teams match, `horizon` when it has none in that span |
+| `get_next_fixture` | a team's next match, by name or code — a nation (`Mexico`, `MEX`): live-resolves a confirmed knockout tie from the feed, group fixtures offline, fails back to the bundled schedule if the feed is down; a club (`Arsenal`, `ARS`): its next match within 14 days, `candidates` when several teams match, `horizon` when it has none in that span. With no `team`: the server's `CLAUDINHO_TEAM`, else the team the user pinned (`claudinho follow <alias> --team <name>`) when the request is for its competition |
 | `get_market_signal` | read-only prediction-market signal for a match, a team's current-or-next fixture (in-play preferred while live), or a date — informational only |
 | `get_share_snippet` | a copy-pasteable plain-text card — for a match, a team's next fixture, a group's standings table (`group`), the knockout bracket (`bracket: true`, optional `knockoutStage`), a date, or live — hand the returned snippet to the user as-is |
 | `get_team` | the World Cup roster: resolve a nation name or code to its FIFA 3-letter code, flag, and group — fuzzy (`Mexico`, `mex`, `DR Congo`, `Türkiye`); handy for the code `get_market_signal` needs. It knows no clubs. Offline (no network) |
@@ -57,8 +57,12 @@ Then just ask your agent naturally — it picks the right tool and answers with 
 Most tools are **read-only** (`readOnlyHint`) and accept optional `tz`, `lang`
 (`en`/`es`/`pt`/`fr`), `flavor` (`off`/`subtle`/`full`), and `competition`: an alias
 such as `premier-league` (from `list_competitions`) or an ESPN slug such as `eng.1`
-(default: the server's `CLAUDINHO_COMPETITION`, else the 2026 World Cup; an unknown
-value is a tool error listing the aliases). Every competition-answering tool's text
+(without it: the server's `CLAUDINHO_COMPETITION`, else the user's saved choice, the one
+`claudinho follow <alias>` saves; an unknown value is a tool error listing the aliases).
+With none of the three, every competition-answering tool answers, before it reads
+anything, `noCompetition: true` and `competition: null` beside its empty shape, and a
+sentence saying what to do (pass `competition`, or the user runs `claudinho follow
+<alias>`); `list_competitions` answers `current: null`, and `get_team` answers as ever. Every competition-answering tool's text
 starts with the competition it is for (`Premier League · from the request`; a share
 card says it in its title instead) and its structured content carries it as
 `competition`. `get_team` (the World Cup's roster, whatever the competition) and

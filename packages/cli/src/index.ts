@@ -19,6 +19,7 @@ import {
   cmdTable,
   cmdTeam,
   cmdBracket,
+  cmdFollow,
   cmdStar,
   cmdToday,
   cmdVibe,
@@ -76,7 +77,7 @@ program
   .option('--no-color', 'disable ANSI colors')
   .option(
     '-c, --competition <alias|slug>',
-    'the competition: an alias such as premier-league, or an ESPN slug such as eng.1 (default: $CLAUDINHO_COMPETITION, else the World Cup)',
+    'the competition: an alias such as premier-league, or an ESPN slug such as eng.1 (else $CLAUDINHO_COMPETITION, else the one saved with `claudinho follow`)',
   )
   .option('--source <name>', 'live data provider (advanced)')
   .option('--flavor <level>', 'commentary flair: off, subtle, full (default: full)')
@@ -110,10 +111,24 @@ program
 program
   .command('next')
   .description("show a team's next fixture")
-  .argument('[team]', 'team name or code, e.g. Mexico or MEX (default: $CLAUDINHO_TEAM)')
+  .argument('[team]', 'team name or code, e.g. Mexico or MEX (default: $CLAUDINHO_TEAM, else the team pinned with `follow --team`)')
   .action(async (team, _opts, cmd) => {
     try {
       await cmdNext(team, ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
+  });
+
+program
+  .command('follow')
+  .description('choose the competition every surface follows (saved); `follow` shows it, `follow off` forgets it')
+  .argument('[competition]', 'an alias such as premier-league, an ESPN slug such as eng.1, or "off"')
+  .option('--team <name>', "pin a team of that competition (the default for `next`, first on the statusline)")
+  .option('--list', 'list the supported competitions, the one followed marked')
+  .action(async (competition, opts, cmd) => {
+    try {
+      await cmdFollow(competition, opts, ctxFrom(cmd));
     } catch (e) {
       fail(e);
     }
@@ -172,7 +187,7 @@ program
   .command('markets')
   .description('show prediction-market signals (read-only, informational only)')
   .argument('[target]', 'date (YYYY-MM-DD), match id, "today", or "next"')
-  .argument('[team]', 'team name or code when target is "next", e.g. Mexico or MEX (default: $CLAUDINHO_TEAM)')
+  .argument('[team]', 'team name or code when target is "next", e.g. Mexico or MEX (default: $CLAUDINHO_TEAM, else the pinned team)')
   .action(async (target, team, _opts, cmd) => {
     try {
       await cmdMarkets(target, team, ctxFrom(cmd));
@@ -187,7 +202,7 @@ program
   .argument('[target]', '"today" (default), "live", a date, a match id, "next", "table", or "bracket"')
   .argument(
     '[team]',
-    'team name or code for "next" (default: $CLAUDINHO_TEAM), table key for "table" (A, A1, A-B, LEAGUE), or stage for "bracket"',
+    'team name or code for "next" (default: $CLAUDINHO_TEAM, else the pinned team), table key for "table" (A, A1, A-B, LEAGUE), or stage for "bracket"',
   )
   .option('--style <style>', 'snippet style: social (default) or compact')
   .option('--copy', 'also copy the snippet to the clipboard (best-effort)')

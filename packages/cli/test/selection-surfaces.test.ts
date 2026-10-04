@@ -80,7 +80,7 @@ const cfgOf = (opts: { competition?: string; json?: boolean; lang?: string } = {
 const ctxOf = (cfg: CliConfig) => ({ cfg, t: makeT(cfg.lang), adapter: adapterFor(cfg.competition), now: NOW, marketProvider: new FakeMarketProvider() });
 
 describe('the edge: resolveConfig', () => {
-  it('the flag, by alias or slug; the environment; the default', () => {
+  it('the flag, by alias or slug; the environment; the saved choice (the World Cup this suite follows: test/setup.ts)', () => {
     expect(resolveConfig({ competition: 'premier-league' })).toMatchObject({ competition: 'eng.1', selection: { kind: 'selected', slug: 'eng.1', alias: 'premier-league', chosenBy: 'flag' } });
     expect(resolveConfig({ competition: 'eng.1' })).toMatchObject({ competition: 'eng.1', selection: { chosenBy: 'flag' } });
     process.env.CLAUDINHO_COMPETITION = 'laliga';
@@ -88,7 +88,7 @@ describe('the edge: resolveConfig', () => {
     process.env.CLAUDINHO_COMPETITION = 'fifa.friendly';
     expect(resolveConfig({})).toMatchObject({ competition: 'fifa.friendly', selection: { chosenBy: 'env', experimental: true } });
     delete process.env.CLAUDINHO_COMPETITION;
-    expect(resolveConfig({})).toMatchObject({ competition: 'fifa.world', selection: { chosenBy: 'default', name: 'World Cup' } });
+    expect(resolveConfig({})).toMatchObject({ competition: 'fifa.world', selection: { chosenBy: 'saved', name: 'World Cup' } });
   });
 
   it('a value that is no alias and no slug is carried as refused, never as a competition', () => {
@@ -135,7 +135,7 @@ describe('the mode line', () => {
     expect(errs.join('')).not.toMatch(/different competition than the bundled/);
   });
 
-  it('from the environment; the default is the World Cup with no suffix; a raw slug: source, then experimental', async () => {
+  it('from the environment; a saved World Cup with no suffix; a raw slug: source, then experimental', async () => {
     process.env.CLAUDINHO_COMPETITION = 'eng.1';
     await cmdToday('2026-10-04', ctxOf(cfgOf()));
     expect(text()).toContain('Premier League · from the environment');

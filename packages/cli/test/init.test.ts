@@ -105,6 +105,18 @@ describe('cmdInitClaude — write path (isolated HOME)', () => {
     expect(text()).toContain('claude mcp add claudinho -- npx -y @claudinho/mcp');
   });
 
+  it('with no competition chosen it says so after installing: the statusline would read `claudinho follow` until one is', () => {
+    // The config has none chosen (the edge's `none`); `init` needs no competition and still installs.
+    cmdInitClaude({}, { ...ctx(), cfg: { ...ctx().cfg, competition: '', selection: { kind: 'none' } } });
+    expect(settings().statusLine?.command).toContain('claudinho prompt');
+    expect(text()).toContain('claudinho follow');
+    expect(text()).toContain('follow --list');
+    // With one chosen, no such line.
+    writes = [];
+    cmdInitClaude({}, ctx());
+    expect(text()).not.toContain('follow --list');
+  });
+
   it('is idempotent — a second run reports already-configured, no duplicate hook', () => {
     cmdInitClaude({}, ctx());
     writes = [];

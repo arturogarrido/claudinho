@@ -268,7 +268,9 @@ describe('inside a window the live slice is refreshed at most every 12 seconds, 
     expect(days()).toHaveLength(3);
   });
 
-  it('over a simulated hour with a discovery falling due in it: at most 300 live reads, and one discovery', async () => {
+  // 300 cycles, each a refresh through the real lock and cache files: 3 to 5.4 s on the Windows runner (a 5 s
+  // default timed out once), so the limit is the work's, not the default.
+  it('over a simulated hour with a discovery falling due in it: at most 300 live reads, and one discovery', { timeout: 30_000 }, async () => {
     events = [{ id: '1', at: NOW - 10 * MIN, state: 'in' }];
     // Discovered 5 minutes ago: due again 55 minutes into the hour.
     seed(NOW, fresh(NOW, [entry('1', NOW - 10 * MIN)], {}, 5 * MIN));

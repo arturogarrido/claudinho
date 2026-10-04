@@ -78,10 +78,12 @@ jobs:
         with:
           node-version: 20
       - name: Exercise the built CLI on Node 20
+        # Nothing is followed on a fresh runner (0.11: no default competition),
+        # so the competition is chosen per command, by its alias.
         run: |
           node --version
-          node packages/cli/dist/index.js next MEX
-          node packages/cli/dist/index.js table A
+          node packages/cli/dist/index.js --competition world-cup next MEX
+          node packages/cli/dist/index.js --competition world-cup table A
           node packages/cli/dist/index.js vibe
           echo "Node 20 runtime OK"
       # The engines floor applies to the MCP server and the statusline too —
@@ -115,9 +117,11 @@ jobs:
       - run: pnpm -r build
       - run: pnpm -r test
       - name: Offline CLI smoke (bundled schedule, no network)
+        # Nothing is followed on a fresh runner (0.11: no default competition),
+        # so the competition is chosen per command, by its alias.
         run: |
-          node packages/cli/dist/index.js next MEX
-          node packages/cli/dist/index.js table A
+          node packages/cli/dist/index.js --competition world-cup next MEX
+          node packages/cli/dist/index.js --competition world-cup table A
       - name: Statusline smoke (seeded cache)
         run: node scripts/smoke-statusline.mjs
       - name: MCP server stdio smoke

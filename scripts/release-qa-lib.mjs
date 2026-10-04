@@ -5,7 +5,10 @@
  *
  *   - The competition the run is FOR is the one the built CLI resolved, never
  *     the raw `CLAUDINHO_COMPETITION`: an alias (`world-cup`) is the World Cup
- *     too, and with nothing set the CLI's default is. The script asks the CLI
+ *     too, and with nothing set the run FOLLOWS the World Cup in a config
+ *     directory of its own (the CLI has no default since 0.11: nothing chosen is
+ *     no competition), which the caller's environment still overrides, as it
+ *     does for a user. The script asks the CLI
  *     itself (`--json` on a competition-answering command carries
  *     `competition.slug`) and hands the answer to {@link resolvedSlug}.
  *   - The bundle-to-live drift tripwire runs only for the bundled competition
@@ -14,7 +17,7 @@
  *     the script behind "feed unreachable".
  *
  * The script calls this file's command line:
- *   node scripts/release-qa-lib.mjs label            the header's competition (from the environment)
+ *   node scripts/release-qa-lib.mjs label  < json    the header's competition, as the CLI resolved it
  *   node scripts/release-qa-lib.mjs slug   < json    the slug the CLI resolved, or nothing
  *   node scripts/release-qa-lib.mjs gate <slug>      run | skip:<why> | fail:<why>
  *   node scripts/release-qa-lib.mjs verdict < out    ok:<detail> | fail:<detail> | skip:<detail> | broken
@@ -23,9 +26,23 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-/** The header's competition: what the caller set, or the CLI's default. */
-export function competitionLabel(env) {
-  return typeof env === 'string' && env !== '' ? env : 'default (World Cup)';
+/**
+ * The header's competition, read back from the CLI's `--json` answer (never
+ * assumed from the environment): where the choice came from and its name
+ * (`saved (World Cup)`, `env (Premier League)`); `none chosen` when the CLI
+ * answered `noCompetition` (the run's `follow` failed and nothing else chose);
+ * `unresolved` when the answer carries no competition (a refused value).
+ */
+export function competitionLabel(jsonText) {
+  try {
+    const answer = JSON.parse(jsonText);
+    if (answer?.noCompetition === true) return 'none chosen';
+    const c = answer?.competition;
+    if (c && typeof c.chosenBy === 'string' && typeof c.name === 'string' && c.name !== '') return `${c.chosenBy} (${c.name})`;
+  } catch {
+    // Not JSON: nothing was resolved.
+  }
+  return 'unresolved';
 }
 
 /**
@@ -79,7 +96,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     }
   };
   if (question === 'label') {
-    process.stdout.write(competitionLabel(process.env.CLAUDINHO_COMPETITION));
+    process.stdout.write(competitionLabel(stdin()));
   } else if (question === 'slug') {
     process.stdout.write(resolvedSlug(stdin()) ?? '');
   } else if (question === 'gate') {

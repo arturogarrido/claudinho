@@ -53,8 +53,22 @@ import {
   marketsCoverCompetition,
   marketScopeVerdict,
   modeLine,
+  nextFixtureForPin,
+  selectedCompetition,
   selectionExtras,
   selectionRefusal,
+  selectionVerdict,
+  capabilitiesOf,
+  listCompetitions,
+  SUPPORTED,
+  type CompetitionSelection,
+  type NextFixtureResult,
+  type Pin,
+  pinUnder,
+  savedSlug,
+  competitionLabel,
+  type UserConfig,
+  type UserConfigRead,
   MARKETS_SCOPE_NOTE,
   marketSignalRendersFor,
   marketRelevant,
@@ -72,7 +86,7 @@ import {
   type Stage,
 } from '@claudinho/core';
 import Table from 'cli-table3';
-import type { CliConfig } from './config';
+import { type CliConfig, edgeSelection, readSavedChoice } from './config';
 import type { Translator } from './i18n';
 import {
   dataSource,
@@ -111,7 +125,14 @@ import type {
   ShareStyle,
 } from '@claudinho/core';
 import { readCurrentState } from './cache';
-import { flagsEnabled, liveMatchesFromCache, renderPrompt } from './statusline';
+import {
+  type AmbientPick,
+  FIRST_RUN_LINE,
+  flagsEnabled,
+  liveMatchesFromCache,
+  pickAmbientMatch,
+  renderPrompt,
+} from './statusline';
 import { renderHook } from './hook';
 import { refreshWanted, runRefresh, spawnRefresh } from './refresh';
 import {
@@ -121,6 +142,8 @@ import {
 } from './cursorPayload';
 import { type InitResult, initCursorStatusline, initHook, initStatusline } from './install';
 import { withPersistedBackoff } from './providerBackoff';
+import { writeFileAtomic } from './paths';
+import { rmSync } from 'node:fs';
 
 /**
  * Command context. `adapter` is an optional injection seam: production leaves
@@ -146,19 +169,24 @@ type Ctx = {
  * either way armed from the persisted provider backoff and persisting a
  * throttle it meets (audit A12; see providerBackoff.ts).
  */
-function adapterFor({ cfg, adapter, now }: Ctx): ProviderAdapter {
+function adapterFor(ctx: Ctx): ProviderAdapter {
+  return adapterServing(ctx, ctx.cfg.competition);
+}
+
+/**
+ * {@link adapterFor} for a stated competition: the selection's for every
+ * competition-answering command; for `follow --team`, the competition being
+ * followed (resolved exactly as the flag would be).
+ */
+function adapterServing({ cfg, adapter, now }: Ctx, competition: string): ProviderAdapter {
   // An injected adapter for another competition would answer one competition
   // under another's name: refused before it is wrapped or read.
-  if (adapter && adapter.competition !== cfg.competition) {
+  if (adapter && adapter.competition !== competition) {
     throw new InputError(
-      `The injected adapter serves ${adapter.competition}; the command selected ${cfg.competition}.`,
+      `The injected adapter serves ${adapter.competition}; the command selected ${competition}.`,
     );
   }
-  return withPersistedBackoff(
-    adapter ?? makeAdapter(cfg.source, { competition: cfg.competition }),
-    cfg.source,
-    now,
-  );
+  return withPersistedBackoff(adapter ?? makeAdapter(cfg.source, { competition }), cfg.source, now);
 }
 
 /** Per-fetch budgets so optional market enrichment never blocks core output. */
@@ -304,9 +332,19 @@ export class InputError extends Error {}
  *    back to the system zone anyway).
  *  - a refused competition (`--competition foo`) → throw InputError naming it
  *    and the aliases, before any request.
+ *  - NO competition chosen (no flag, no environment, no saved choice) → throw
+ *    InputError with the one sentence that says how to choose, before any
+ *    request or cache read; on `--json` the valid object
+ *    `{ competition: null, noCompetition: true }` goes to stdout first. A
+ *    command that needs no competition (`team`) passes `{ competition: false }`.
  *  - an explicit date that isn't strict YYYY-MM-DD → throw InputError.
  */
-function precheck(cfg: CliConfig, t: Translator, date?: string): void {
+function precheck(
+  cfg: CliConfig,
+  t: Translator,
+  date?: string,
+  { competition = true }: { competition?: boolean } = {},
+): void {
   if (cfg.langRequestedUnsupported) {
     process.stderr.write(t('warn.lang', { lang: cfg.langRequestedUnsupported }) + '\n');
   }
@@ -316,9 +354,16 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
   // A value that is neither an alias nor a slug (from `--competition` or
   // CLAUDINHO_COMPETITION) is refused with the aliases, before any request:
   // an unknown value is never a request. (What a valid one selects is said on
-  // stdout, by the mode line; nothing is warned on stderr.)
+  // stdout, by the mode line; nothing is warned on stderr.) Nothing chosen is
+  // the first run: the sentence says `claudinho follow`.
   const refusal = selectionRefusal(cfg.selection, cfg.lang);
-  if (refusal !== undefined) throw new InputError(refusal);
+  if (refusal !== undefined && (cfg.selection.kind !== 'none' || competition)) {
+    // The structured twin of the sentence: what `--json` reads, through core.
+    if (cfg.json && cfg.selection.kind === 'none') {
+      emitJson({ ...selectionExtras(cfg.selection), ...verdictExtras(selectionVerdict(cfg.selection)) });
+    }
+    throw new InputError(refusal);
+  }
   // An unknown --source/CLAUDINHO_SOURCE used to silently run ESPN — the flag
   // lied. Fail loud with the valid list (core makeAdapter also throws, as
   // defense in depth; this gives the localized, prefix-free message).
@@ -333,8 +378,65 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
 }
 
 /**
- * Resolve an optional team argument to a FIFA code, falling back to CLAUDINHO_TEAM
- * (the same env the statusline/hook honor, so "my team" is configured once).
+ * What a team-taking command (`next`, `share next`, `markets next`) is about,
+ * by ONE precedence: the argument, then `CLAUDINHO_TEAM` (an empty one is
+ * absent), then the saved pin (`cfg.pin`: a pin belongs to its competition,
+ * core `pinUnder`, so it is set whenever the selected competition is the
+ * file's, whoever chose it, and never under another). A query is
+ * resolved as it always was; the pin is a team already resolved when it was
+ * saved, and is never resolved again. Nothing of the three: undefined (the
+ * command's usage error).
+ */
+type TeamAsked = { readonly query: string; readonly from: 'argument' | 'env' } | { readonly pin: Pin };
+function teamAsked(team: string | undefined, cfg: CliConfig): TeamAsked | undefined {
+  if (team !== undefined) return { query: team, from: 'argument' };
+  const env = teamEnvOf();
+  // Set with nothing readable in it: it names no team, and says so (it is
+  // still the override: never the pin).
+  if (env.kind === 'refused') throw new InputError(ENV_TEAM_UNREADABLE);
+  if (env.kind === 'set') return { query: env.query, from: 'env' };
+  return cfg.pin ? { pin: cfg.pin } : undefined;
+}
+
+/**
+ * `CLAUDINHO_TEAM` in one of three states, the ONE reading the team-taking
+ * commands and `follow`'s report share: unset (or empty); set with a readable
+ * label (bounded as a label, 40 columns); set with nothing readable (the
+ * bounded label is empty: blanks, a tab, an invisible character, an emoji),
+ * which the team-taking commands refuse.
+ */
+type TeamEnv =
+  | { readonly kind: 'unset' }
+  | { readonly kind: 'set'; readonly query: string; readonly label: string }
+  | { readonly kind: 'refused'; readonly label: string };
+function teamEnvOf(): TeamEnv {
+  const raw = process.env.CLAUDINHO_TEAM;
+  if (!raw) return { kind: 'unset' };
+  const label = humanLabel(raw, 40);
+  return label ? { kind: 'set', query: raw, label } : { kind: 'refused', label };
+}
+
+/** CLAUDINHO_TEAM set with nothing readable in it (English, like the usage sentences). */
+const ENV_TEAM_UNREADABLE = "CLAUDINHO_TEAM names no team: pass one as the argument, or set CLAUDINHO_TEAM to a team's name or code.";
+
+/**
+ * A team-taking command's usage sentence, TRUE in each state it is said in:
+ * a team pinned for ANOTHER competition is named as such (it is not "none
+ * pinned": the pin belongs to its competition); otherwise the three ways to
+ * give a team.
+ */
+function teamUsage(command: string, cfg: CliConfig): string {
+  const file = cfg.userConfig?.read.kind === 'read' ? cfg.userConfig.read.config : undefined;
+  const at = file?.team && !cfg.pin ? savedSlug(file.competition) : undefined;
+  if (file?.team && at !== undefined) {
+    return `Usage: claudinho ${command} <team> (the pinned team, ${file.team.name}, is ${competitionLabel(at)}'s, not this competition's)`;
+  }
+  return `Usage: claudinho ${command} <team> (or set CLAUDINHO_TEAM, or pin one: claudinho follow <alias> --team <name>)`;
+}
+
+/**
+ * Resolve a team query (an argument or CLAUDINHO_TEAM, the same env the
+ * statusline/hook honor, so "my team" is configured once) to a FIFA code.
  *
  * Accepts a nation NAME as well as a code — "mexico" / "DR Congo" / "Türkiye" all
  * resolve via {@link lookupTeam}, so `claudinho next mexico` just works. An exact
@@ -342,13 +444,7 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
  * guessing; a raw 3-letter code not in the bundled roster still passes through
  * uppercased (the escape hatch for CLAUDINHO_COMPETITION / other feeds).
  */
-function resolveTeamArg(
-  team: string | undefined,
-  usage: string,
-  t: Translator,
-  competition: string,
-): string {
-  const raw = team ?? process.env.CLAUDINHO_TEAM;
+function resolveTeamArg(raw: string, usage: string, t: Translator, competition: string): string {
   if (!raw) throw new InputError(usage);
   // The bundled roster names the World Cup's nations and nothing else. Off the
   // bundle it is ANOTHER competition's roster and is never consulted: `ALA`
@@ -366,16 +462,15 @@ function resolveTeamArg(
   }
   const { team: hit, matches } = lookupTeam(raw);
   if (hit) return hit.code;
-  if (matches.length > 1) {
-    // Localized via the same keys cmdTeam renders (team.ambiguous ends in ":").
-    throw new InputError(
-      `${t('team.ambiguous', { query: raw })} ${matches
-        .map((m) => `${m.name} (${m.code})`)
-        .join(', ')}`,
-    );
-  }
+  if (matches.length > 1) throw new InputError(ambiguousTeams(t, raw, matches));
   if (/^[A-Za-z]{3}$/.test(raw)) return raw.toUpperCase();
   throw new InputError(t('team.none', { query: raw }));
+}
+
+/** "X is ambiguous. Did you mean: A (AAA), B (BBB)", localized via the keys cmdTeam renders. */
+function ambiguousTeams(t: Translator, query: string, teams: ReadonlyArray<{ name: string; code: string }>): string {
+  // team.ambiguous ends in ":".
+  return `${t('team.ambiguous', { query })} ${teams.map((m) => `${m.name} (${m.code})`).join(', ')}`;
 }
 
 /**
@@ -385,30 +480,92 @@ function resolveTeamArg(
  * (by name or code, any case: `Arsenal`, `ars`, `O&M`), and answers with the
  * candidates when several match.
  */
-function teamQuery(team: string | undefined, usage: string, t: Translator, competition: string): string {
-  if (bundleApplies(competition)) return resolveTeamArg(team, usage, t, competition);
-  const label = humanLabel(team ?? process.env.CLAUDINHO_TEAM ?? '', 40);
+function teamQuery(raw: string, usage: string, t: Translator, competition: string): string {
+  if (bundleApplies(competition)) return resolveTeamArg(raw, usage, t, competition);
+  const label = humanLabel(raw, 40);
   if (!label) throw new InputError(usage);
   return label;
 }
 
 /**
- * Resolve CLAUDINHO_TEAM for the statusline/hook. Same offline lookup as the
- * commands (`CLAUDINHO_TEAM=mexico` filters, not just `MEX`); an unknown
- * 3-letter value still passes through uppercased (the CLAUDINHO_COMPETITION
- * escape hatch), and anything unresolvable yields no filter — showing all
- * matches beats a dead filter that blanks the statusline. Pure and offline
- * (bundled roster only), so it's safe on the no-network hot path.
+ * The next fixture `next` and `share next` answer with, for the team asked
+ * ({@link teamAsked}), and the label the answer is said about: a query through
+ * `getNextFixtureForTeam` (core resolves it), the saved pin through
+ * `nextFixtureForPin` (by its id, or by code for the World Cup's nations; no
+ * roster read). Live-resolved either way: the bundled knockout slots are
+ * resultless placeholders, so a static lookup goes blind once a team's group
+ * games pass; core overlays the live knockout window (off the bundled
+ * competition it reads the schedule ahead).
+ */
+async function nextAsked(ctx: Ctx, team: string | undefined, usage: string): Promise<{ code: string; next: NextFixtureResult }> {
+  const { cfg, t } = ctx;
+  const asked = teamAsked(team, cfg);
+  if (!asked) throw new InputError(usage);
+  const now = ctx.now ?? new Date();
+  if ('pin' in asked) {
+    // The World Cup's nations are named by code; a club by its name.
+    const code = bundleApplies(cfg.competition) ? asked.pin.code : asked.pin.name;
+    return { code, next: await nextFixtureForPin(adapterFor(ctx), asked.pin, now) };
+  }
+  const code = teamQuery(asked.query, usage, t, cfg.competition);
+  return { code, next: await getNextFixtureForTeam(adapterFor(ctx), code, now) };
+}
+
+/**
+ * What `next` says when it has no fixture to show (and no candidates): a
+ * verdict first; then the span a whole read searched, or "none read" for one
+ * that was not whole; then an outage (never "this team has no upcoming
+ * fixture", which reads as eliminated), else "no upcoming fixture". `follow
+ * --team` refuses a team with the same sentence.
+ */
+function nextEmptySentence(next: NextFixtureResult, code: string, label: string, cfg: CliConfig, t: Translator): string {
+  return (
+    verdictNotice(next, cfg.lang) ??
+    nextHorizonSentence(next, code, cfg.lang) ??
+    nextNoneReadSentence(next, code, cfg.lang) ??
+    (next.degraded ? t('live.degraded') : t('next.none', { team: label }))
+  );
+}
+
+/**
+ * Resolve CLAUDINHO_TEAM for the statusline, the hook and `vibe` to the CODE
+ * their one pick prefers (`pickAmbientMatch`: the picked team's match first,
+ * the others kept). Same offline lookup as the commands
+ * (`CLAUDINHO_TEAM=mexico` picks Mexico, as `MEX` does); an unknown 3-letter
+ * value still passes through uppercased (the CLAUDINHO_COMPETITION escape
+ * hatch), and anything else yields no code: no preference (see
+ * {@link ambientPick}). Pure and offline (bundled roster only), so it's safe
+ * on the no-network hot path.
  */
 function resolveEnvTeam(raw: string | undefined, competition: string): string | undefined {
   if (!raw) return undefined;
   // Off the bundle the World Cup roster is not this competition's: only a bare
-  // code is honoured (`ala` filters ALA, never New Zealand's NZL).
+  // code is honoured (`ala` picks ALA, never New Zealand's NZL).
   if (bundleApplies(competition)) {
     const { team } = lookupTeam(raw);
     if (team) return team.code;
   }
   return /^[A-Za-z]{3}$/.test(raw) ? raw.toUpperCase() : undefined;
+}
+
+/**
+ * Whose match the ambient surfaces (the statusline, the hook, `vibe`) prefer,
+ * decided at the edge, offline. Three states of `CLAUDINHO_TEAM`:
+ *   - absent (unset or empty): the saved pin (`cfg.pin`, only on the saved
+ *     competition), or no preference;
+ *   - present and readable (a code, through {@link resolveEnvTeam}): that code;
+ *   - present and unreadable here (a name off the bundle, which the hot path
+ *     cannot resolve without a roster): NO preference, never the pin. The
+ *     environment is the override; a value it states is not replaced by the
+ *     saved team because this surface cannot read it.
+ */
+function ambientPick(cfg: CliConfig): AmbientPick {
+  const raw = process.env.CLAUDINHO_TEAM;
+  if (raw) {
+    const code = resolveEnvTeam(raw, cfg.competition);
+    return code ? { code } : undefined;
+  }
+  return cfg.pin ? { team: cfg.pin } : undefined;
 }
 
 /** `claudinho today [date]` */
@@ -534,22 +691,16 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   endScoreCommand(ctx);
 }
 
-/** `claudinho next [team]` (team defaults to CLAUDINHO_TEAM) */
+/** `claudinho next [team]` (team defaults to CLAUDINHO_TEAM, then the saved pin) */
 export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void> {
-  const { cfg, t, now } = ctx;
+  const { cfg, t } = ctx;
   precheck(cfg, t);
-  const code = teamQuery(
-    team,
-    'Usage: claudinho next <team> (or set CLAUDINHO_TEAM)',
-    t,
-    cfg.competition,
-  );
   // Live-resolved: the bundled knockout slots are resultless placeholders, so a
   // static lookup goes blind once a team's group games pass — overlay the live
   // knockout window so a confirmed R32+ tie (e.g. MEX vs ECU) surfaces here too.
   // Off the bundled competition core resolves the club and reads the schedule
-  // ahead (yesterday to 14 days ahead).
-  const next = await getNextFixtureForTeam(adapterFor(ctx), code, now ?? new Date());
+  // ahead (yesterday to 14 days ahead); a saved pin is not resolved again.
+  const { code, next } = await nextAsked(ctx, team, teamUsage('next', cfg));
   const { fixture, degraded, source } = next;
   // Who the answer is about: the club resolved, else the query, else the nation's code.
   const label = next.team?.name ?? next.query ?? code;
@@ -585,27 +736,13 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
     const notice = verdictNotice(next, cfg.lang);
     if (notice === undefined && next.candidates && next.candidates.length > 0) {
       // Two or more teams match: name them, pick none.
-      out(
-        c.dim(
-          `  ${t('team.ambiguous', { query: code })} ${next.candidates
-            .map((m) => `${m.name} (${m.code})`)
-            .join(', ')}`,
-        ),
-      );
+      out(c.dim(`  ${ambiguousTeams(t, code, next.candidates)}`));
     } else {
       // Fail-closed honesty: a feed outage must read as "couldn't reach the
       // provider", never as "this team has no upcoming fixture" (= eliminated).
       // A whole read with nothing for the club says the span it searched; one
       // that was not whole says none was READ.
-      out(
-        c.dim(
-          '  ' +
-            (notice ??
-              nextHorizonSentence(next, code, cfg.lang) ??
-              nextNoneReadSentence(next, code, cfg.lang) ??
-              (degraded ? t('live.degraded') : t('next.none', { team: label }))),
-        ),
-      );
+      out(c.dim(`  ${nextEmptySentence(next, code, label, cfg, t)}`));
     }
     out();
     out(disclaimer(t, c));
@@ -652,12 +789,13 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
  * not a competition-answering command: no mode line, no `competition` key.
  * Under an EXPLICIT selection of another competition (the flag or the
  * environment) it is refused, saying where a team's name goes (`next`, `share
- * next`) and how to reach the roster (`--competition world-cup`); the default
- * and an explicit World Cup answer, the roster named.
+ * next`) and how to reach the roster (`--competition world-cup`); a saved
+ * choice, nothing chosen, and an explicit World Cup answer, the roster named.
  */
 export function cmdTeam(query: string | undefined, ctx: Ctx): void {
   const { cfg, t } = ctx;
-  precheck(cfg, t);
+  // Needs no competition chosen: it reads the World Cup's roster.
+  precheck(cfg, t, undefined, { competition: false });
   const selection = cfg.selection;
   if (
     selection.kind === 'selected' &&
@@ -902,7 +1040,7 @@ export async function cmdBracket(
  * warranted) fires a detached refresher. Synchronous, no network, never throws.
  */
 export function cmdPrompt(
-  { cfg }: Ctx,
+  { cfg, now }: Ctx,
   io: { cursor?: CursorStatusLinePayload } = {},
 ): void {
   try {
@@ -911,15 +1049,20 @@ export function cmdPrompt(
     // hang the statusline; PR #77's 62-min Windows CI hang was this). The sync
     // fallback remains for direct in-process callers (tests mock it).
     const payload = 'cursor' in io ? io.cursor : readCursorPayload();
+    // Nothing chosen (the first run): the one command that chooses, instead
+    // of a score; no cache read, no refresher, never an error.
+    if (cfg.selection.kind === 'none') {
+      out(renderPromptOutput(FIRST_RUN_LINE, payload));
+      return;
+    }
     // A selection that is no competition (an unknown CLAUDINHO_COMPETITION) is
     // contained here: the empty line, no cache read, no refresher, never an
-    // error (the statusline must always succeed).
+    // error (the statusline must always succeed). (`follow` would not help:
+    // the environment wins over a saved choice.)
     if (cfg.selection.kind !== 'selected') {
       out(renderPromptOutput('⚽ —', payload));
       return;
     }
-    // Name-or-code, like the commands (offline lookup — hot-path safe).
-    const team = resolveEnvTeam(process.env.CLAUDINHO_TEAM, cfg.competition);
     const compact = !['0', 'false', 'no'].includes(
       (process.env.CLAUDINHO_COMPACT ?? '').toLowerCase(),
     );
@@ -928,7 +1071,8 @@ export function cmdPrompt(
     // Only trust a snapshot fetched for this invocation's source + competition.
     const state = readCurrentState(cfg.source, cfg.competition);
     const scoreLine = renderPrompt(state, {
-      team,
+      // CLAUDINHO_TEAM by code (offline lookup — hot-path safe), else the saved pin.
+      pick: ambientPick(cfg),
       compact,
       max,
       flags: flagsEnabled(),
@@ -937,6 +1081,8 @@ export function cmdPrompt(
       defaultCompetition: bundleApplies(cfg.competition),
       // The competition's written kind: a nation's flag is generated, a club has none.
       teamKind: teamKind(cfg.competition),
+      // The command's clock (a test's; the system's in production).
+      now,
     });
     out(renderPromptOutput(scoreLine, payload));
     // Spawn a background refresh for live scores OR stale knockout fixtures (the
@@ -945,7 +1091,7 @@ export function cmdPrompt(
     // branch is lock-deduped like the others: N concurrent statusline ticks on a
     // fresh install must fork one refresher, not N (and the refresher always
     // writes a snapshot, so this branch fires once, never per-tick forever).
-    if (refreshWanted(Date.now(), state, cfg.competition, cfg.source)) {
+    if (refreshWanted(now?.getTime() ?? Date.now(), state, cfg.competition, cfg.source)) {
       spawnRefresh(cfg.source, cfg.competition);
     }
   } catch {
@@ -960,29 +1106,31 @@ export function cmdPrompt(
  * statusline, it reads the cache only and triggers a background refresh, and
  * MUST never fail (a non-zero exit could block the user's prompt).
  */
-export function cmdHook({ cfg }: Ctx): void {
+export function cmdHook({ cfg, now }: Ctx): void {
   try {
-    // A selection that is no competition: nothing (zero tokens), no cache
-    // read, no refresher; never an error that could block the prompt.
+    // A selection that is no competition, or nothing chosen: nothing (zero
+    // tokens), no cache read, no refresher; never an error that could block
+    // the prompt.
     if (cfg.selection.kind !== 'selected') return;
-    // Name-or-code, like the commands (offline lookup — hot-path safe).
-    const team = resolveEnvTeam(process.env.CLAUDINHO_TEAM, cfg.competition);
     // Only trust a snapshot fetched for this invocation's source + competition.
     const state = readCurrentState(cfg.source, cfg.competition);
     const ctx = renderHook(state, {
-      team,
+      // CLAUDINHO_TEAM by code (offline lookup — hot-path safe), else the saved pin.
+      pick: ambientPick(cfg),
       flags: flagsEnabled(),
       // The bundled roster names World Cup nations only; on another competition
       // a club sharing a nation's code must not be renamed to that nation.
       defaultCompetition: bundleApplies(cfg.competition),
       // The competition's written kind: a nation's flag is generated, a club has none.
       teamKind: teamKind(cfg.competition),
+      // The command's clock (a test's; the system's in production).
+      now,
     });
     if (ctx) out(ctx);
     // Warm the same cache the statusline reads, for parity (the hook itself shows
     // only live scores). Spawn for live OR stale knockout fixtures; the no-cache
     // branch is lock-deduped (see cmdPrompt).
-    if (refreshWanted(Date.now(), state, cfg.competition, cfg.source)) {
+    if (refreshWanted(now?.getTime() ?? Date.now(), state, cfg.competition, cfg.source)) {
       spawnRefresh(cfg.source, cfg.competition);
     }
   } catch {
@@ -1037,6 +1185,17 @@ export function cmdInitCursorStatusline(
 }
 
 /**
+ * After an install with NO competition chosen: one line saying the statusline
+ * reads `claudinho follow` until one is, and how to choose (the first run's
+ * one sentence, core's).
+ */
+function printInitChoose(cfg: CliConfig): void {
+  if (cfg.selection.kind !== 'none') return;
+  out('');
+  out(selectionRefusal(cfg.selection, cfg.lang) ?? '');
+}
+
+/**
  * MCP config for Cursor — a paste (Cursor has no `mcp add` CLI, unlike Claude
  * Code). Exported so a test can pin it to the same `npx -y @claudinho/mcp`
  * command as the plugin's root `mcp.json` (drift guard — see init.test.ts).
@@ -1073,6 +1232,7 @@ export function cmdInitCursor(opts: { print?: boolean }, { cfg }: Ctx): void {
   out('Tip: export CLAUDINHO_CURSOR_META=auto for a model + context line below the score.');
   out('');
   out('→ Restart your agent session to see it.');
+  printInitChoose(cfg);
   if (res.action === 'written') printInitStarCta(cfg);
 }
 
@@ -1102,6 +1262,7 @@ export function cmdInitClaude(opts: { print?: boolean }, { cfg }: Ctx): void {
   out(`  ${CLAUDE_MCP_ONELINER}`);
   out('');
   out('→ Restart Claude Code to see it.');
+  printInitChoose(cfg);
   if (statusRes.action === 'written' || hookRes.action === 'written') printInitStarCta(cfg);
 }
 
@@ -1257,12 +1418,13 @@ export async function cmdMarkets(
   // not next week's (whose thin market would gate to an empty answer).
   if (target === 'next') {
     precheck(cfg, t);
-    const code = resolveTeamArg(
-      team,
-      'Usage: claudinho markets next <team> (or set CLAUDINHO_TEAM)',
-      t,
-      cfg.competition,
-    );
+    const usage = teamUsage('markets next', cfg);
+    const asked = teamAsked(team, cfg);
+    if (!asked) throw new InputError(usage);
+    // A saved pin is a team already resolved: its code is what a market read
+    // selects by (the World Cup's nations, the sidecar's one competition);
+    // off the World Cup the sidecar answers "not available" for it, as for any.
+    const code = 'pin' in asked ? asked.pin.code : resolveTeamArg(asked.query, usage, t, cfg.competition);
     const now = ctx.now ?? new Date();
     // Live-confirmed selection: handles extra time past the static window AND
     // early FTs inside it (the static fixture's status is forever SCHEDULED).
@@ -1705,15 +1867,10 @@ export async function cmdShare(
   // share next <team>
   if (target === 'next') {
     precheck(cfg, t);
-    const code = teamQuery(
-      team,
-      'Usage: claudinho share next <team> (or set CLAUDINHO_TEAM)',
-      t,
-      cfg.competition,
-    );
     // Live-resolved (see cmdNext): overlay the knockout window so a confirmed
-    // R32+ tie pastes here too, not just group games.
-    const next = await getNextFixtureForTeam(adapterFor(ctx), code, ctx.now ?? new Date());
+    // R32+ tie pastes here too, not just group games. A saved pin is not
+    // resolved again.
+    const { code, next } = await nextAsked(ctx, team, teamUsage('share next', cfg));
     const market = await reliableShareSignals(ctx, next.fixture ? [next.fixture] : []);
     emitMatchCard(ctx, nextShareCard(next, code, market, where), baseOptions, copy);
     return;
@@ -1787,14 +1944,13 @@ const VIBES_FINAL = [
 
 /**
  * The live-score segment for a vibe line, e.g. "🇰🇷 1–1 🇨🇿 69'" (a club's sides
- * by their codes: "ARS 2–1 CHE 50'"). Prefers the
- * CLAUDINHO_TEAM match, else the first live match; undefined when nothing is
- * live. Pure — exported for tests.
+ * by their codes: "ARS 2–1 CHE 50'"). The picked team's match first (the
+ * ambient surfaces' one rule, `pickAmbientMatch`: CLAUDINHO_TEAM by code, else
+ * the saved pin), else the first live match; undefined when nothing is live.
+ * Pure — exported for tests.
  */
-export function vibeLiveSegment(live: readonly Match[], team?: string): string | undefined {
-  const code = team?.toUpperCase();
-  const pick =
-    (code && live.find((m) => m.home.code === code || m.away.code === code)) ?? live[0];
+export function vibeLiveSegment(live: readonly Match[], picked?: AmbientPick): string | undefined {
+  const pick = pickAmbientMatch(live, picked)[0];
   if (!pick) return undefined;
   const minute = pick.status === 'HT' ? 'HT' : pick.minute ? `${pick.minute}'` : 'LIVE';
   // A side's flag, or its code when it has none (a club): nothing in its place.
@@ -1814,6 +1970,463 @@ export function vibePool(todayLocal: string, fixtures: Match[] = allFixtures()):
   if (todayLocal === first) return [...VIBES, ...VIBES_OPENER];
   if (todayLocal === last) return [...VIBES, ...VIBES_FINAL];
   return VIBES;
+}
+
+/* ──────────────────────────── follow ──────────────────────────── */
+
+/** No saved choice, as the edge would read one that is not there: for resolving a value as the flag would. */
+const NO_SAVED: UserConfigRead = { kind: 'none', reason: 'absent' };
+
+/** The CLI catalog's sentence for why there is no saved choice. */
+const NO_SAVED_REASON: Readonly<Record<Extract<UserConfigRead, { kind: 'none' }>['reason'], string>> = {
+  absent: 'follow.reason.absent',
+  symlink: 'follow.reason.symlink',
+  unreadable: 'follow.reason.unreadable',
+  malformed: 'follow.reason.malformed',
+  version: 'follow.reason.version',
+  competition: 'follow.reason.competition',
+};
+
+/** A pinned team as a person reads it. */
+function pinLabel(pin: Pin): string {
+  return `${pin.name} (${pin.code})`;
+}
+
+/**
+ * The selection a saved value makes: the value resolved exactly as the flag
+ * would, described as saved. Never asked with an empty value (`follow ""` is
+ * refused before: an absent flag would let the environment decide).
+ */
+function savedSelection(value: string): CompetitionSelection {
+  const asFlag = edgeSelection({ competition: value }, NO_SAVED);
+  return asFlag.kind === 'selected' ? selectedCompetition(asFlag.slug, 'saved') : asFlag;
+}
+
+/**
+ * The team `follow <competition> --team <query>` pins, resolved EXACTLY as
+ * `next <query>` resolves it, so `follow` never pins what `next` would refuse:
+ * on the bundled competition the nations' roster, offline (`{ code, name }`:
+ * the bundle's nations carry no id; a name the roster does not resolve is
+ * refused, an unknown 3-letter code included: a pin is a team); off it
+ * `next`'s own reads (discovery, then the roster where a table is asked for,
+ * then `resolveClub` over both), and the pin is the club it resolved
+ * (`{ id, code, name }`). Ambiguous: the candidates, refused. Anything else
+ * (unknown, an unread roster, an outage, between editions): the sentence
+ * `next` would print, refused. A refusal writes nothing.
+ */
+async function pinFor(ctx: Ctx, competition: string, query: string): Promise<Pin> {
+  const { cfg, t } = ctx;
+  const label = humanLabel(query, 40);
+  if (!label) throw new InputError(t('follow.usage'));
+  if (bundleApplies(competition)) {
+    const { team, matches } = lookupTeam(query);
+    if (team) return { code: team.code, name: team.name };
+    if (matches.length > 1) throw new InputError(ambiguousTeams(t, query, matches));
+    throw new InputError(t('team.none', { query: label }));
+  }
+  if (!isKnownSource(cfg.source)) {
+    throw new InputError(t('err.source', { source: cfg.source, sources: KNOWN_SOURCES.join(', ') }));
+  }
+  const next = await getNextFixtureForTeam(adapterServing(ctx, competition), label, ctx.now ?? new Date());
+  if (next.team) {
+    const { id, code, name } = next.team;
+    return id !== undefined ? { id, code, name } : { code, name };
+  }
+  if (next.candidates && next.candidates.length > 0) throw new InputError(ambiguousTeams(t, label, next.candidates));
+  throw new InputError(nextEmptySentence(next, label, next.query ?? label, cfg, t));
+}
+
+/**
+ * `claudinho follow [competition] [--team <query>] [--list]`, `follow off` —
+ * the one writer of the user's config file (`{ version: 1, competition,
+ * team? }`), which every surface reads as the saved choice (after the flag and
+ * the environment). Needs no competition chosen, and works under any ambient
+ * value.
+ *   follow <alias|slug> [--team <q>]  resolve the competition as the flag does
+ *                                     (refused with the aliases; a raw slug saved
+ *                                     as given, said to be experimental), the
+ *                                     team as `next` does; write the file
+ *                                     atomically, 0600 enforced; print the choice
+ *                                     as the mode line shows it, and the path. A
+ *                                     competition saved without `--team` saves no
+ *                                     pin (a club's id is the same in every
+ *                                     competition: a pin never carries over).
+ *   follow --team <q>                 pin a team in the competition already saved.
+ *   follow                            the current choice and its source, or why
+ *                                     there is none; the path.
+ *   follow --list                     the supported competitions, the current one
+ *                                     marked.
+ *   follow off                        remove the file (no error when there is none).
+ * A refusal (a competition, a team) writes nothing: the previous file stays.
+ */
+export async function cmdFollow(
+  target: string | undefined,
+  opts: { team?: string; list?: boolean },
+  ctx: Ctx,
+): Promise<void> {
+  const { cfg, t } = ctx;
+  // An argument that does not belong is refused, nothing written: `--list`
+  // with anything else, `off` with a team, and an empty competition (an
+  // absent value would let the environment's competition be saved).
+  if (opts.list && (target !== undefined || opts.team !== undefined)) throw new InputError(t('follow.usage'));
+  if (target === 'off' && opts.team !== undefined) throw new InputError(t('follow.usage'));
+  if (target === '') throw new InputError(t('follow.usage'));
+  const saved = cfg.userConfig ?? readSavedChoice();
+  if (opts.list) return followList(ctx, saved.path);
+  if (target === 'off') return followOff(ctx, saved);
+  if (target === undefined && opts.team === undefined) {
+    followReport(ctx, 'show', {
+      effect: cfg.selection,
+      saved: saved.read.kind === 'read' ? saved.read.config : null,
+      ...(saved.read.kind === 'none' ? { reason: saved.read.reason } : {}),
+      path: saved.path,
+    });
+    return;
+  }
+  // With `--team` alone, the competition already saved.
+  const value = target ?? (saved.read.kind === 'read' ? saved.read.config.competition : undefined);
+  if (value === undefined) throw new InputError(t('follow.teamUsage'));
+  const choice = savedSelection(value);
+  if (choice.kind !== 'selected') throw new InputError(selectionRefusal(choice, cfg.lang) ?? t('follow.usage'));
+  const pin = opts.team !== undefined ? await pinFor(ctx, choice.slug, opts.team) : undefined;
+  const file: UserConfig = pin ? { version: 1, competition: choice.slug, team: pin } : { version: 1, competition: choice.slug };
+  // Written whole or not at all, never through a link, readable by its owner
+  // alone (0600 on every write, an existing file's wider mode not kept).
+  writeFileAtomic(saved.path, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600, enforceMode: true, followSymlinks: false });
+  // What the NEXT command follows: the environment while it is set, else the file just written.
+  followReport(ctx, 'write', { effect: nextSelection({ kind: 'read', config: file }), saved: file, path: saved.path });
+}
+
+/**
+ * What the NEXT command follows after `follow` changed the file: the
+ * environment while it is set (or its refusal), else what the file now says
+ * (`read`: the choice written, or nothing after `off`). Never this command's
+ * `--competition`: a flag decides the command it is given to, and no other.
+ * The edge's own resolution, asked with no flag.
+ */
+function nextSelection(read: UserConfigRead): CompetitionSelection {
+  return edgeSelection({}, read);
+}
+
+/** What `follow` reports, in every form (alone, after a write, after `off`). */
+interface FollowFacts {
+  /**
+   * The competition reported: `follow` alone, this command's selection (its
+   * `--competition` included: the question asked); after a write or `off`,
+   * what the NEXT command follows (`nextSelection`).
+   */
+  readonly effect: CompetitionSelection;
+  /** The file as read (after a write: as written; after `off`: none). */
+  readonly saved: UserConfig | null;
+  /** Why there is no saved choice, when there is none. */
+  readonly reason?: Extract<UserConfigRead, { kind: 'none' }>['reason'];
+  readonly path: string;
+  /** After `off`: whether there was a file to remove. */
+  readonly removed?: boolean;
+}
+
+/**
+ * The ONE list of what `follow` says, printed as lines or as `--json` keys,
+ * in the same order:
+ *   - the competition reported (`competition`, through `selectionExtras`):
+ *     `follow` alone, this command's selection; after a write or `off`, what
+ *     the NEXT command follows. Null, with `noCompetition`, when nothing is
+ *     chosen; null, with `refused`, when the value deciding it is refused;
+ *   - its source when it is not the saved choice (`override`: `flag` or
+ *     `env`, that meaning in every form: after a write under a flag alone it
+ *     is absent, since the next command follows the saved choice);
+ *   - the sources this command RAN under (`sources: { flag?, env?, team? }`:
+ *     the flag's and the environment's resolved slugs, and `CLAUDINHO_TEAM`
+ *     with a readable label, bounded as a label), whatever is reported: the
+ *     flag decides this command alone, the environment outlives it; absent
+ *     when none;
+ *   - the values refused (`refused: { flag?, env?, team? }`, which mirrors
+ *     `sources`: each the value as given, bounded as a label, under its
+ *     source's name; each of the flag, the environment and the team sits in
+ *     at most one of `sources` and `refused`). A refused competition is said
+ *     in the text by its refusal's sentence: as the headline when it decides
+ *     what is reported, else on its own line after it, the flag's before the
+ *     environment's (a refused flag on a write: the write done, the saved
+ *     choice what the next command follows unless the environment is refused
+ *     too). `CLAUDINHO_TEAM` set with nothing readable is `team: ''` (its
+ *     bounded label is empty: presence is the signal), which the
+ *     team-taking commands refuse, said by its own sentence;
+ *   - the pinned team (`saved.team`) WITH the saved choice it belongs to: right
+ *     after the competition reported when the pin is the team in effect (the
+ *     competition is the file's and no `CLAUDINHO_TEAM` overrides it), else
+ *     as the saved team (after the saved choice's line when there is one),
+ *     never as if in effect: under another competition, or under
+ *     `CLAUDINHO_TEAM`, whose sentence then says so;
+ *   - the saved choice (`saved`), its line when another competition (or a
+ *     refused value) is reported;
+ *   - the sentence TRUE of the next command (`overrideSentence`: a flag that
+ *     ran, or was refused, decides this command alone; the environment, when
+ *     set, decides the next one before the saved choice; with no believed
+ *     saved choice, none is named), then the team override's, by
+ *     `CLAUDINHO_TEAM`'s three states, in the tense the NEXT command allows
+ *     (`nextSelection`: the environment while set, else the saved choice;
+ *     never this command's flag). The team-taking commands (`next`,
+ *     `share next`, `markets next`; the others read no team) reach the team
+ *     only once the competition is selected; otherwise they stop before it
+ *     (`precheck`), and the sentence names what lifts the stop. The gate
+ *     (`teamGate`), by the next selection's kind and the file:
+ *       - `undefined` (selected): no gate, the team is reached ("while it
+ *         is");
+ *       - `'env'` (refused, a believed saved choice): the environment's
+ *         refusal is met first (a refused selection comes only from
+ *         `CLAUDINHO_COMPETITION`: the file's value is believed only when
+ *         valid), and unsetting it falls through to the saved choice; the
+ *         team is reached "once CLAUDINHO_COMPETITION names a competition or
+ *         is unset";
+ *       - `'envOrChoice'` (refused, no believed saved choice: no file, after
+ *         `off`, a read reported as none): unsetting the variable alone
+ *         leaves nothing chosen; the team is reached "once
+ *         CLAUDINHO_COMPETITION names a competition, or is unset and a
+ *         competition is chosen";
+ *       - `'choice'` (none: no environment, no believed file): the team is
+ *         reached "once a competition is chosen".
+ *     By the team's states:
+ *       - unset (or empty): nothing (the pin, if it applies, is the `Team:`
+ *         line);
+ *       - set and readable (in `sources.team`): selected, it wins over the
+ *         saved team when the pin APPLIES to the next command's competition
+ *         (core `pinUnder`; `teamEnvWins`), else the team-taking commands
+ *         take it as their team (`teamEnv`: no pin, or a pin for another
+ *         competition, which would not have applied); `'env'`,
+ *         `teamEnvAfterEnv`; `'envOrChoice'`, `teamEnvAfterEnvOrChoice`;
+ *         `'choice'`, `teamEnvLater`;
+ *       - set with nothing readable (in `refused.team`): selected, the
+ *         team-taking commands refuse it, whatever the pin
+ *         (`teamEnvRefused`); `'env'`, `teamEnvRefusedAfterEnv`;
+ *         `'envOrChoice'`, `teamEnvRefusedAfterEnvOrChoice`; `'choice'`,
+ *         `teamEnvRefusedLater`.
+ *     The JSON's `sources.team` and `refused.team` are facts about the value,
+ *     the same in every tense. Under either set state the pin is the saved
+ *     team (`Saved team:`, the file holds it), never the team in effect;
+ *   - why there is no saved choice (`reason`);
+ *   - the path, said as what was done with it (`path`, and `removed` after `off`).
+ */
+function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFacts): void {
+  const { cfg, t } = ctx;
+  const { effect, saved, reason, path } = facts;
+  // The sources this command ran under: its `--competition` (resolved or
+  // refused), and the environment, which outlives it, in one of three states:
+  // unset, set (resolved) or refused.
+  const flag = cfg.selection.kind === 'selected' && cfg.selection.chosenBy === 'flag' ? cfg.selection : undefined;
+  const flagRefused = cfg.selection.kind === 'refused' && cfg.selection.chosenBy === 'flag' ? cfg.selection : undefined;
+  const env = edgeSelection({}, NO_SAVED);
+  const envRefused = env.kind === 'refused' ? env : undefined;
+  const envState = env.kind === 'selected' ? 'set' : envRefused ? 'refused' : 'none';
+  // CLAUDINHO_TEAM in its three states (an empty one is unset): the team
+  // override, which a saved pin never replaces, readable or not.
+  const teamEnv = teamEnvOf();
+  const sources = {
+    ...(flag ? { flag: flag.slug } : {}),
+    ...(env.kind === 'selected' ? { env: env.slug } : {}),
+    ...(teamEnv.kind === 'set' ? { team: teamEnv.label } : {}),
+  };
+  // The reported competition's source, when it is not the saved choice.
+  const override = effect.kind === 'selected' && (effect.chosenBy === 'flag' || effect.chosenBy === 'env') ? effect.chosenBy : undefined;
+  // The refused values, under their sources' names (each as given, bounded).
+  const refused = {
+    ...(flagRefused ? { flag: humanLabel(flagRefused.value, 40) } : {}),
+    ...(envRefused ? { env: humanLabel(envRefused.value, 40) } : {}),
+    ...(teamEnv.kind === 'refused' ? { team: teamEnv.label } : {}),
+  };
+  if (cfg.json) {
+    emitJson({
+      competition: selectionExtras(effect).competition ?? null,
+      ...verdictExtras(selectionVerdict(effect)),
+      ...(override ? { override } : {}),
+      ...(Object.keys(sources).length > 0 ? { sources } : {}),
+      ...(Object.keys(refused).length > 0 ? { refused } : {}),
+      saved,
+      ...(reason ? { reason } : {}),
+      path,
+      ...(facts.removed !== undefined ? { removed: facts.removed } : {}),
+    });
+    return;
+  }
+  const c = painterFor(cfg);
+  // Two questions about the pin (core `pinUnder`), asked of two selections:
+  //   - the `Team:` line's: is the pin the team in effect for the competition
+  //     REPORTED (the headline's: `follow` alone, this command's, its flag
+  //     included), with no CLAUDINHO_TEAM overriding it? The line says the
+  //     pin belongs to the competition on the line above it;
+  //   - the team sentence's: does the pin apply to the NEXT command's
+  //     competition (`nextSelection`: no flag, so the environment while set,
+  //     else the file; a refused environment has no competition, so no pin)?
+  //     The sentence, like the competition sentence above it, is true of the
+  //     next command, which this command's flag does not reach.
+  // After a write and `off` the reported selection IS the next command's, and
+  // the two agree; they differ only on `follow` alone under a flag.
+  const pinned = teamEnv.kind === 'unset' && saved?.team !== undefined && pinUnder(effect.kind === 'selected' ? effect.slug : undefined, saved) !== undefined;
+  const next = nextSelection(saved ? { kind: 'read', config: saved } : NO_SAVED);
+  const pinNext = saved?.team !== undefined && pinUnder(next.kind === 'selected' ? next.slug : undefined, saved) !== undefined;
+  out();
+  if (effect.kind === 'selected') out(`  ${t('follow.following', { competition: modeLine(effect, cfg.lang) })}`);
+  else out(`  ${selectionRefusal(effect, cfg.lang)}`);
+  // Each refusal that is not the headline, on its own line: this command's
+  // flag (on a write, `off`), then the environment's (under a flag that ran,
+  // or a refused one, or a write the environment's refusal does not decide).
+  if (flagRefused && effect !== flagRefused) out(c.dim(`  ${selectionRefusal(flagRefused, cfg.lang)}`));
+  if (envRefused && !(effect.kind === 'refused' && effect.chosenBy === 'env')) out(c.dim(`  ${selectionRefusal(envRefused, cfg.lang)}`));
+  if (saved?.team && pinned) out(`  ${t('follow.team', { team: pinLabel(saved.team) })}`);
+  // The saved choice, when something else is reported (an override, or a refused value).
+  if (saved && !(effect.kind === 'selected' && effect.chosenBy === 'saved')) {
+    const kept = savedSelection(saved.competition);
+    // Its line when it is another competition than the one reported.
+    if (kept.kind === 'selected' && !(effect.kind === 'selected' && effect.slug === kept.slug)) {
+      out(c.dim(`  ${t('follow.saved', { competition: modeLine(kept, cfg.lang) })}`));
+    }
+  }
+  // The saved team, when it is not the team in effect.
+  if (saved?.team && !pinned) out(c.dim(`  ${t('follow.savedTeam', { team: pinLabel(saved.team) })}`));
+  // The sentence true of the next command, from the flag, the environment and
+  // whether the file holds a believed choice.
+  const sentence = overrideSentence(flag ? 'ran' : flagRefused ? 'refused' : undefined, envState, saved !== null);
+  if (sentence) out(c.dim(`  ${t(sentence)}`));
+  // The team override's, in its three states and the tense the next command
+  // allows: unset, nothing; set and readable, over the saved team when the
+  // pin applies to the next command's competition, else the team-taking
+  // commands' team; set with nothing readable, refused by the team-taking
+  // commands, whatever the pin. When the next selection is not selected,
+  // those commands stop before the team, and the sentence names what lifts
+  // the stop: a refused CLAUDINHO_COMPETITION (with no believed saved choice,
+  // a competition chosen too), or nothing chosen.
+  const teamGate: TeamGate =
+    next.kind === 'selected' ? undefined : next.kind === 'refused' ? (saved !== null ? 'env' : 'envOrChoice') : 'choice';
+  if (teamEnv.kind === 'refused') out(c.dim(`  ${t(TEAM_REFUSED_SENTENCE[teamGate ?? 'none'])}`));
+  else if (teamEnv.kind === 'set') {
+    out(c.dim(`  ${t(teamGate !== undefined ? TEAM_SET_SENTENCE[teamGate] : pinNext ? 'follow.teamEnvWins' : 'follow.teamEnv')}`));
+  }
+  if (reason && mode === 'show') out(c.dim(`  ${t(NO_SAVED_REASON[reason])}`));
+  if (mode === 'write') out(c.dim(`  ${t('follow.path', { path })}`));
+  else if (mode === 'off') out(`  ${t(facts.removed ? 'follow.removed' : 'follow.nothingToRemove', { path })}`);
+  else out(c.dim(`  ${t('follow.file', { path })}`));
+  out();
+}
+
+/** What lifts the next command's stop before the team (see `followReport`); `undefined`: no stop. */
+type TeamGate = 'env' | 'envOrChoice' | 'choice' | undefined;
+/** The readable team's sentence at each gate. */
+const TEAM_SET_SENTENCE = {
+  env: 'follow.teamEnvAfterEnv',
+  envOrChoice: 'follow.teamEnvAfterEnvOrChoice',
+  choice: 'follow.teamEnvLater',
+} as const;
+/** The unreadable team's sentence at each gate, and with no gate (`none`). */
+const TEAM_REFUSED_SENTENCE = {
+  env: 'follow.teamEnvRefusedAfterEnv',
+  envOrChoice: 'follow.teamEnvRefusedAfterEnvOrChoice',
+  choice: 'follow.teamEnvRefusedLater',
+  none: 'follow.teamEnvRefused',
+} as const;
+
+/**
+ * The sentence the overrides at work are said with, true of the NEXT command,
+ * one per cell of the flag (ran, refused, absent) by the environment (unset,
+ * set, refused) by the file (a believed saved choice, or none: no file, a
+ * link, an unreadable or malformed one, after `off`). With a file:
+ *   - flag ran, environment unset: `flagWins` (it decides this command; the
+ *     saved choice the next one);
+ *   - flag ran, environment set: `flagEnvWins` (without it the environment
+ *     decides, then the saved choice);
+ *   - flag ran, environment refused: `flagEnvRefused` (without it the
+ *     environment is refused, and nothing is followed while it is set);
+ *   - flag refused, environment unset: `flagRefused` (this command only;
+ *     without it the saved choice decides);
+ *   - flag refused, environment set: `flagRefusedEnv` (without it the
+ *     environment decides, then the saved choice);
+ *   - flag refused, environment refused: `flagRefusedEnvRefused` (without it
+ *     the environment is refused too);
+ *   - no flag, environment unset: none;
+ *   - no flag, environment set: `envWins` (it wins over the saved choice
+ *     while set);
+ *   - no flag, environment refused: `envRefused` (nothing is followed while
+ *     it is set; its refusal is the headline).
+ * With none, no sentence names a saved choice:
+ *   - flag ran, environment unset: `flagNone` (without it nothing is chosen);
+ *   - flag ran, environment set: `flagEnv` (without it the environment
+ *     decides);
+ *   - flag ran, environment refused: `flagEnvRefused`, as with a file;
+ *   - flag refused, environment unset: `flagRefusedNone` (without it nothing
+ *     is chosen);
+ *   - flag refused, environment set: `flagRefusedEnvOnly` (without it the
+ *     environment decides);
+ *   - flag refused, environment refused: `flagRefusedEnvRefused`, as with a
+ *     file;
+ *   - no flag, environment unset: none (the reason line says why);
+ *   - no flag, environment set: `envDecides` (the next command follows it
+ *     while it is set);
+ *   - no flag, environment refused: `envRefused`, as with a file.
+ */
+function overrideSentence(flag: 'ran' | 'refused' | undefined, env: 'none' | 'set' | 'refused', file: boolean): string | undefined {
+  if (flag === 'ran') {
+    if (env === 'refused') return 'follow.flagEnvRefused';
+    if (env === 'set') return file ? 'follow.flagEnvWins' : 'follow.flagEnv';
+    return file ? 'follow.flagWins' : 'follow.flagNone';
+  }
+  if (flag === 'refused') {
+    if (env === 'refused') return 'follow.flagRefusedEnvRefused';
+    if (env === 'set') return file ? 'follow.flagRefusedEnv' : 'follow.flagRefusedEnvOnly';
+    return file ? 'follow.flagRefused' : 'follow.flagRefusedNone';
+  }
+  if (env === 'refused') return 'follow.envRefused';
+  if (env === 'set') return file ? 'follow.envWins' : 'follow.envDecides';
+  return undefined;
+}
+
+/** `follow off`: the file removed (a link removed, never its target); nothing there is no error. */
+function followOff(ctx: Ctx, saved: { path: string; read: UserConfigRead }): void {
+  const { t } = ctx;
+  const there = !(saved.read.kind === 'none' && saved.read.reason === 'absent');
+  try {
+    rmSync(saved.path, { force: true });
+  } catch {
+    throw new InputError(t('follow.cannotRemove', { path: saved.path }));
+  }
+  // What the next command follows now: the environment, if it is set; else nothing.
+  followReport(ctx, 'off', {
+    effect: nextSelection(NO_SAVED),
+    saved: null,
+    reason: 'absent',
+    path: saved.path,
+    removed: there,
+  });
+}
+
+/**
+ * `follow --list`: the supported competitions as `list_competitions` lists
+ * them (core `listCompetitions`), one row each (alias · name · nations or
+ * clubs · what it offers), the current one marked `›`.
+ */
+function followList(ctx: Ctx, path: string): void {
+  const { cfg, t } = ctx;
+  const current = cfg.selection.kind === 'selected' ? cfg.selection.slug : undefined;
+  const listed = listCompetitions(SUPPORTED, selectionExtras(cfg.selection).competition ?? null);
+  if (cfg.json) {
+    emitJson({ ...listed, path });
+    return;
+  }
+  const c = painterFor(cfg);
+  const width = Math.max(...listed.competitions.map((e) => e.alias.length));
+  out();
+  out(c.dim(`  ${t('follow.list.title')}`));
+  for (const e of listed.competitions) {
+    const caps = capabilitiesOf(e.slug);
+    const named = (want: string) =>
+      (['scores', 'next', 'standings', 'bracket', 'markets'] as const).filter((k) => caps[k] === want);
+    const parts = [named('offered').join(', ')];
+    const notYet = named('not-offered-yet');
+    const na = named('not-applicable');
+    if (notYet.length) parts.push(t('follow.list.notYet', { list: notYet.join(', ') }));
+    if (na.length) parts.push(t('follow.list.na', { list: na.join(', ') }));
+    const mark = e.slug === current ? '›' : ' ';
+    const teams = t(e.teams === 'nation' ? 'follow.list.nations' : 'follow.list.clubs');
+    out(`  ${mark} ${e.alias.padEnd(width)} · ${e.name} · ${teams} · ${c.dim(parts.join('; '))}`);
+  }
+  out();
 }
 
 /**
@@ -1857,8 +2470,8 @@ function maybeStarNudge(ctx: Ctx): void {
  * instead — and never alongside the every-Nth nudge, so a run shows one CTA,
  * not two.
  *
- * Gated on the DEFAULT competition: the bundled schedule describes the World
- * Cup, so with `CLAUDINHO_COMPETITION` pointing elsewhere its "windows elapsed"
+ * Gated on the BUNDLED competition: the bundled schedule describes the World
+ * Cup, so with another competition selected its "windows elapsed"
  * answer says nothing about that feed, and appending a World Cup goodbye to a
  * live alternate competition would simply be wrong.
  */
@@ -1921,8 +2534,8 @@ export function cmdVibe(ctx: Ctx): void {
     liveSeg = vibeLiveSegment(
       // Sealed with the competition's written kind, like the statusline's.
       liveMatchesFromCache(state, (ctx.now ?? new Date()).getTime(), teamKind(cfg.competition)).items,
-      // Name-or-code, matching the statusline/hook (offline lookup).
-      resolveEnvTeam(process.env.CLAUDINHO_TEAM, cfg.competition),
+      // The statusline's and the hook's pick (offline).
+      ambientPick(cfg),
     );
   } catch {
     // The easter egg stays harmless: any cache problem → plain vibe.

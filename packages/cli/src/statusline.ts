@@ -19,7 +19,7 @@ import {
   LIVE_WINDOW_MS,
   mergeLive,
   isUpcoming,
-  nextFixtureForTeam,
+  isTeam,
   displayWidth,
   parseCachedMatch,
   parsedValue,
@@ -28,6 +28,7 @@ import {
   withFlag,
   scoreline,
   type Match,
+  type Pin,
   type TeamKind,
 } from '@claudinho/core';
 import { ageMs, type CacheState } from './cache';
@@ -47,6 +48,53 @@ export const DISPLAY_STALE_MS = 5 * 60_000;
  */
 export const TOURNAMENT_COMPLETE_LINE =
   '⚽ World Cup 2026 is complete · Thanks for vibing with Claudinho';
+
+/**
+ * The line with nothing chosen (no `--competition`, no `CLAUDINHO_COMPETITION`,
+ * no saved choice): the one command that chooses, instead of a score. The
+ * statusline reads no cache and starts no refresher for it.
+ */
+export const FIRST_RUN_LINE = '⚽ claudinho follow';
+
+/**
+ * Whose match an ambient surface prefers: `CLAUDINHO_TEAM`, a CODE compared as
+ * it always was (no roster read on the hot path); or the saved pin, a team
+ * (`{ id?, code, name }`): one with an id is matched by `isTeam` against the
+ * sealed records (the id decides, whatever the labels), one without (the
+ * World Cup's nations) by code.
+ */
+export type AmbientPick = { readonly code: string } | { readonly team: Pin } | undefined;
+
+/**
+ * THE preference of the ambient surfaces (the statusline's live line, its
+ * syncing matchup and its countdown; the hook's list; `vibe`'s segment): the
+ * picked team's matches FIRST, the others after them, each group in the order
+ * given. A preference, never a filter: nothing is dropped (the statusline's
+ * `+N` and the hook's list keep the others). No pick, or a pick that matches
+ * nothing: the order as given.
+ */
+export function pickAmbientMatch<M extends Match>(matches: readonly M[], pick: AmbientPick): M[] {
+  if (!pick) return [...matches];
+  const first: M[] = [];
+  const rest: M[] = [];
+  for (const m of matches) (isPicked(m, pick) ? first : rest).push(m);
+  return [...first, ...rest];
+}
+
+/** Whether the pick names a side of this match (the one rule `pickAmbientMatch` sorts by). */
+function isPicked(m: Match, pick: AmbientPick): boolean {
+  if (!pick) return false;
+  if ('code' in pick) {
+    const code = pick.code.toUpperCase();
+    return m.home?.code === code || m.away?.code === code;
+  }
+  const team = pick.team;
+  // By code only for a pin without an id, which the config reader believes on
+  // the bundled competition alone (its nations carry no id; a nation's FIFA
+  // code is unique there, and the feed's name need not equal the bundle's).
+  if (team.id === undefined) return m.home?.code === team.code || m.away?.code === team.code;
+  return isTeam(m.home, team) || isTeam(m.away, team);
+}
 
 /**
  * Terminals whose renderer doesn't compose regional-indicator pairs into flag
@@ -103,19 +151,25 @@ function isMatchShaped(m: unknown): m is Match {
 }
 
 /**
- * The soonest upcoming RESOLVED fixture. Skips unresolved knockout placeholders
- * so the no-team statusline fails closed to "⚽ —" rather than leaking
+ * The upcoming RESOLVED fixtures, soonest first. Skips unresolved knockout
+ * placeholders so the countdown fails closed to "⚽ —" rather than leaking
  * "🏳️ vs 🏳️" once the group stage ends and every static fixture is a placeholder.
  */
-function nextOverall(now: number, fixtures: Match[] = allFixtures()): Match | undefined {
+function upcomingResolved(now: number, fixtures: Match[] = allFixtures()): Match[] {
   return [...fixtures]
     .sort(byKickoff)
-    .find((m) => isUpcoming(m, new Date(now)) && isResolvedFixture(m));
+    .filter((m) => isUpcoming(m, new Date(now)) && isResolvedFixture(m));
 }
 
 export interface PromptOpts {
-  /** Preferred team code (e.g. "MEX"); when set, shows only that team's match. */
-  team?: string;
+  /**
+   * Whose match the line prefers (`pickAmbientMatch`): `CLAUDINHO_TEAM` by code,
+   * else the saved pin. With that team's match in play the line shows it and
+   * COUNTS the others (`+N`); the syncing matchup and the countdown name its
+   * fixture first. A preference, never a filter: with nothing of that team's,
+   * the line is what it is with no pick.
+   */
+  pick?: AmbientPick;
   /** Compact (flags + score only). When false, includes 3-letter codes. */
   compact?: boolean;
   /**
@@ -343,7 +397,7 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   const defaultCompetition = opts.defaultCompetition ?? true;
   const compact = opts.compact ?? true;
   const flags = opts.flags ?? true;
-  const team = opts.team?.toUpperCase();
+  const pick = opts.pick;
   const kind = opts.teamKind ?? defaultTeamKind(defaultCompetition);
 
   const liveList = liveMatchesFromCache(state, nowMs, kind);
@@ -379,19 +433,24 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
       ? undefined
       : [];
 
-  // With a team filter, show only that team's live match.
-  if (team) {
-    const mine = live.find((m) => m.home?.code === team || m.away?.code === team);
-    if (mine) return `⚽ ${matchSegment(mine, compact, flags)}`;
-  } else if (live.length > 0) {
-    // No filter → show live matches inline, separated by " · ".
+  if (live.length > 0) {
+    // The picked team's match first (a preference, never a filter). When it is
+    // in play the line shows it and COUNTS the others (`+N`): the one match the
+    // user asked about, and nothing dropped silently. Otherwise every live
+    // match inline, separated by " · ".
     // CLAUDINHO_MAX caps how many render before the rest collapse to "+N", but
     // it is opt-IN: with no filter and no env var, `max` defaulted to
     // live.length, so the count was UNBOUNDED. A poisoned cache listing 500
     // matches produced a single ~850 KB "line", and this surface's entire
     // contract is that it is one short line in the user's prompt.
-    const max = opts.max && opts.max > 0 ? Math.min(opts.max, DEFAULT_MAX_SEGMENTS) : DEFAULT_MAX_SEGMENTS;
-    const shown = live.slice(0, max);
+    const ordered = pickAmbientMatch(live, pick);
+    const picked = ordered[0] !== undefined && isPicked(ordered[0], pick);
+    const max = picked
+      ? 1
+      : opts.max && opts.max > 0
+        ? Math.min(opts.max, DEFAULT_MAX_SEGMENTS)
+        : DEFAULT_MAX_SEGMENTS;
+    const shown = ordered.slice(0, max);
     // "+N" is only used when the reader finished and therefore knows the exact
     // set. An incomplete scan gets a nonnumeric marker: unexamined records may
     // be junk or valid matches, so no exact count exists.
@@ -426,30 +485,26 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
     // asking a question, not a reason to say a match is on.
     if (scheduleGateOpen(scheduleView(state?.schedule, nowMs), nowMs, { probe: false })) {
       // The fixtures there is a full record for, inside their (flat) window
-      // (one that has none was left out above).
-      const win = cachedFixtures
-        .filter((m) => {
-          const k = Date.parse(m.kickoff);
-          return k <= nowMs && nowMs < k + LIVE_WINDOW_MS;
-        })
-        .filter((m) => !team || m.home.code === team || m.away.code === team)
-        .sort(byKickoff);
+      // (one that has none was left out above), the picked team's first.
+      const win = pickAmbientMatch(
+        cachedFixtures
+          .filter((m) => {
+            const k = Date.parse(m.kickoff);
+            return k <= nowMs && nowMs < k + LIVE_WINDOW_MS;
+          })
+          .sort(byKickoff),
+        pick,
+      );
       const first = win[0];
-      // With a team filter the line is about that team's match or it is not
-      // shown: the gate does not know whose match keeps it open.
-      if (first || !team) {
-        const matchup =
-          first && isResolvedFixture(first)
-            ? `${teamTok(first.home, flags)} vs ${teamTok(first.away, flags)} `
-            : '';
-        const more = win.length - 1;
-        return `⚽ ${matchup}live · syncing…` + (more > 0 ? ` +${more}` : '');
-      }
+      const matchup =
+        first && isResolvedFixture(first)
+          ? `${teamTok(first.home, flags)} vs ${teamTok(first.away, flags)} `
+          : '';
+      const more = win.length - 1;
+      return `⚽ ${matchup}live · syncing…` + (more > 0 ? ` +${more}` : '');
     }
   } else if (!cacheFresh || !liveList.complete) {
-    const win = fixturesInLiveWindow(nowMs, schedule).filter(
-      (m) => !team || m.home.code === team || m.away.code === team,
-    );
+    const win = pickAmbientMatch(fixturesInLiveWindow(nowMs, schedule), pick);
     const first = win[0];
     if (first) {
       const more = win.length - 1;
@@ -465,11 +520,9 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
 
   // Nothing (relevant) live → next-fixture countdown over the merged schedule
   // (resolved knockout pairings show; unresolved 🏳️ slots are skipped, so this
-  // fails closed to "⚽ —", never "🏳️ vs 🏳️").
-  const next = team
-    ? nextFixtureForTeam(team, { from: now, fixtures: schedule })
-    : nextOverall(nowMs, schedule);
-  if (next && isResolvedFixture(next)) {
+  // fails closed to "⚽ —", never "🏳️ vs 🏳️"), the picked team's next first.
+  const next = pickAmbientMatch(upcomingResolved(nowMs, schedule), pick)[0];
+  if (next) {
     return `${teamTok(next.home, flags)} vs ${teamTok(next.away, flags)} in ${countdown(next.kickoff, now)}`;
   }
 
@@ -478,9 +531,11 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // no URL: this is the hot path, which re-renders on every prompt forever, and
   // star CTAs are interactive-surface-only (see starNudge.ts / AGENTS.md). The
   // sign-off WITH the CTA lives on `today`/`live`/`next`, where a human reads it.
-  // Note this is checked AFTER the countdown, so an eliminated team mid-tournament
-  // (no next fixture, schedule not exhausted) still falls through to "⚽ —".
-  // Gated on the DEFAULT competition: the bundled schedule describes the World
+  // Note this is checked AFTER the countdown, so a schedule with an unresolved
+  // fixture still to come (a knockout slot not filled yet) falls through to
+  // "⚽ —", never to the sign-off; a picked team with no fixture left counts
+  // down to the next one of anyone's (the pick is a preference).
+  // Gated on the bundled competition: the bundled schedule describes the World
   // Cup, so with CLAUDINHO_COMPETITION pointing elsewhere its "windows elapsed"
   // answer says nothing about that feed — signing off there would be a permanent
   // wrong line on a live competition. Falls back to "⚽ —".

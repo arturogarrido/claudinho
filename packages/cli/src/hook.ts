@@ -12,7 +12,7 @@
  */
 import { lookupTeam, scoreline, withFlag, type Match, type Team, type TeamKind } from '@claudinho/core';
 import type { readState } from './cache';
-import { defaultTeamKind, liveMatchesFromCache } from './statusline';
+import { type AmbientPick, defaultTeamKind, liveMatchesFromCache, pickAmbientMatch } from './statusline';
 
 /**
  * Live matches listed in the hook's context. Well above any real simultaneity
@@ -48,8 +48,11 @@ function boundContext(text: string, marker = ''): string {
 }
 
 export interface HookOpts {
-  /** Preferred team code (e.g. "MEX") — listed first. */
-  team?: string;
+  /**
+   * Whose match is listed first (`pickAmbientMatch`, the statusline's one
+   * rule): `CLAUDINHO_TEAM` by code, else the saved pin. The others follow.
+   */
+  pick?: AmbientPick;
   /** Render emoji flags (default true); false → names only, for flagless terminals. */
   flags?: boolean;
   now?: Date;
@@ -72,7 +75,7 @@ export interface HookOpts {
 }
 
 /**
- * The team as rendered INTO CLAUDE'S CONTEXT. On the default competition a
+ * The team as rendered INTO CLAUDE'S CONTEXT. On the bundled competition a
  * code that resolves against the bundled roster (every real tournament team)
  * has its name and flag pinned to the STATIC roster — feed/cache text can then
  * never smuggle prose (e.g. "ignore previous instructions" as a "team name")
@@ -105,24 +108,16 @@ export function renderHook(
   opts: HookOpts = {},
 ): string {
   const now = opts.now ?? new Date();
-  const team = opts.team?.toUpperCase();
   const flags = opts.flags ?? true;
   const pin = opts.defaultCompetition ?? true;
   const kind = opts.teamKind ?? defaultTeamKind(opts.defaultCompetition);
 
   const liveList = liveMatchesFromCache(state, now.getTime(), kind);
-  let live: Match[] = [...liveList.items];
   // A malformed cache record does not establish that live scores are down.
   // Outside a match window the hook's contract is still zero added tokens.
-  if (live.length === 0) return '';
-  // Surface the user's team first, if any.
-  if (team) {
-    live = [...live].sort((a, b) => {
-      const aHas = a.home.code === team || a.away.code === team ? 0 : 1;
-      const bHas = b.home.code === team || b.away.code === team ? 0 : 1;
-      return aHas - bHas;
-    });
-  }
+  if (liveList.items.length === 0) return '';
+  // The user's team first, if any; the others kept (the one ambient rule).
+  const live: Match[] = pickAmbientMatch(liveList.items, opts.pick);
 
   // Bound the RECORD COUNT. This text is injected into Claude's context on
   // every prompt submit, and while each field is capped, nothing capped how

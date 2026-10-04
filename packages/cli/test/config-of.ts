@@ -10,5 +10,5 @@ import { selectedCompetition } from '@claudinho/core';
 import type { CliConfig } from '../src/config';
 
 export function described(cfg: Omit<CliConfig, 'selection'> & { selection?: CliConfig['selection'] }): CliConfig {
-  return { ...cfg, selection: cfg.selection ?? selectedCompetition(cfg.competition, 'default') };
+  return { ...cfg, selection: cfg.selection ?? selectedCompetition(cfg.competition, 'saved') };
 }

@@ -151,7 +151,7 @@ describe('CLAUDINHO_TEAM accepts a nation name on the statusline/hook (offline l
     };
   }
 
-  it('cmdPrompt filters to the resolved team (CLAUDINHO_TEAM=mexico → MEX)', () => {
+  it('cmdPrompt prefers the resolved team (CLAUDINHO_TEAM=mexico → MEX), the other counted', () => {
     writeState({
       updatedAt: new Date().toISOString(),
       live: [liveMatch(), braLive()],
@@ -197,9 +197,19 @@ describe('CLAUDINHO_TEAM accepts a nation name on the statusline/hook (offline l
   });
 
   it('an unknown 3-letter value still passes through as a code (escape hatch)', () => {
-    process.env.CLAUDINHO_TEAM = 'zzz'; // not in the roster → filter finds nothing
+    // A record coded ZZZ (a code the bundled roster does not hold) after Mexico's.
+    writeState({
+      updatedAt: new Date().toISOString(),
+      live: [liveMatch(), { ...braLive(), id: '760421', home: { code: 'ZZZ', name: 'Zed' } }],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+    });
+    process.env.CLAUDINHO_TEAM = 'zzz';
     cmdPrompt({ cfg: cfg(), t: makeT('en') });
     const o = writes.join('');
-    expect(o).not.toContain('🇲🇽'); // filtered out — the code was honored, not dropped
+    // The code was honored, not dropped: its match is the one shown, Mexico's counted (a preference, 0.11 2.5b).
+    expect(o).not.toContain('🇲🇽');
+    expect(o).toContain('+1');
   });
 });

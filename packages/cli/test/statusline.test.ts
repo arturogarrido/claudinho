@@ -50,12 +50,12 @@ describe('renderPrompt — live', () => {
     expect(renderPrompt(s, { now: NOW, compact: false })).toBe("⚽ 🇲🇽 MEX 1–0 RSA 🇿🇦 67'");
   });
 
-  it('prioritizes the configured team among several live matches', () => {
+  it('prioritizes the configured team among several live matches, and counts the others (a preference, never a filter: 0.11 2.5b)', () => {
     const s = state([
       m('1', ['MEX', '🇲🇽'], ['RSA', '🇿🇦'], { minute: 30, score: { home: 0, away: 0 } }),
       m('2', ['BRA', '🇧🇷'], ['MAR', '🇲🇦'], { minute: 70, score: { home: 2, away: 1 } }),
     ]);
-    expect(renderPrompt(s, { now: NOW, team: 'BRA' })).toBe("⚽ 🇧🇷 2–1 🇲🇦 70'");
+    expect(renderPrompt(s, { now: NOW, pick: { code: 'BRA' } })).toBe("⚽ 🇧🇷 2–1 🇲🇦 70' +1");
   });
 
   it('does not claim a team is absent when its record may sit past the scan cap', () => {
@@ -69,8 +69,12 @@ describe('renderPrompt — live', () => {
       minute: 30,
       score: { home: 0, away: 0 },
     });
-    const line = renderPrompt(state([...other, target]), { now: NOW, team: 'MEX' });
-    expect(line).toBe('⚽ 🇲🇽 vs 🇿🇦 live · syncing…');
+    // The pick is a preference (0.11 2.5b): the matches read are shown, and the
+    // marker says more may be on: never a countdown, never "absent".
+    const line = renderPrompt(state([...other, target]), { now: NOW, pick: { code: 'MEX' } });
+    expect(line.startsWith("⚽ 🇧🇷 2–1 🇲🇦 70'")).toBe(true);
+    expect(line.endsWith(' +more')).toBe(true);
+    expect(line).not.toContain(' in ');
   });
 
   it('shows ALL live matches inline (no team filter), joined by " · "', () => {
@@ -148,7 +152,7 @@ describe('renderPrompt — next fixture (static, no cache)', () => {
   });
 
   it('shows a specific team next fixture when configured', () => {
-    const line = renderPrompt(undefined, { now: PRE, team: 'BRA' });
+    const line = renderPrompt(undefined, { now: PRE, pick: { code: 'BRA' } });
     expect(line.startsWith('🇧🇷 vs 🇲🇦 in ')).toBe(true); // Brazil v Morocco
   });
 });
@@ -186,7 +190,7 @@ describe('renderPrompt — knockout next fixture from cached resolved fixtures',
   });
 
   it('team filter → that team’s resolved knockout countdown', () => {
-    const line = renderPrompt(withFixtures([MEX_ECU, GER_PAR]), { now: KO_NOW, team: 'MEX' });
+    const line = renderPrompt(withFixtures([MEX_ECU, GER_PAR]), { now: KO_NOW, pick: { code: 'MEX' } });
     expect(line.startsWith('🇲🇽 vs 🇪🇨 in ')).toBe(true);
   });
 
@@ -199,7 +203,7 @@ describe('renderPrompt — knockout next fixture from cached resolved fixtures',
       competition: 'fifa.world',
     };
     expect(renderPrompt(noFixtures, { now: KO_NOW })).toBe('⚽ —'); // no-team
-    expect(renderPrompt(noFixtures, { now: KO_NOW, team: 'MEX' })).toBe('⚽ —'); // team
+    expect(renderPrompt(noFixtures, { now: KO_NOW, pick: { code: 'MEX' } })).toBe('⚽ —'); // team
     // And with NO cache at all (undefined) — still no placeholder leak.
     expect(renderPrompt(undefined, { now: KO_NOW })).toBe('⚽ —');
   });
@@ -319,9 +323,12 @@ describe('renderPrompt — live window, cold/stale cache → "syncing"', () => {
     expect(renderPrompt(s, { now: NOW })).toContain('live · syncing');
   });
 
-  it('applies the team filter: syncing only for a team in a window', () => {
-    expect(renderPrompt(undefined, { now: NOW, team: 'MEX' })).toContain('live · syncing');
-    expect(renderPrompt(undefined, { now: NOW, team: 'BRA' })).toContain(' in ');
+  it('the pick is a preference (0.11 2.5b): a match in a window is syncing whoever is picked, the picked one named first', () => {
+    expect(renderPrompt(undefined, { now: NOW, pick: { code: 'MEX' } })).toContain('🇲🇽 vs 🇿🇦 live · syncing');
+    // Another team picked: a match is still on, so still syncing (never a countdown while one is).
+    const other = renderPrompt(undefined, { now: NOW, pick: { code: 'BRA' } });
+    expect(other).toContain('live · syncing');
+    expect(other).not.toContain(' in ');
   });
 });
 
@@ -334,7 +341,7 @@ describe('renderPrompt — post-tournament sign-off', () => {
     expect(renderPrompt(undefined, { now: AFTER })).toBe(TOURNAMENT_COMPLETE_LINE);
     expect(renderPrompt(state([]), { now: AFTER })).toBe(TOURNAMENT_COMPLETE_LINE);
     // Team filter doesn't change a global fact.
-    expect(renderPrompt(undefined, { now: AFTER, team: 'MEX' })).toBe(TOURNAMENT_COMPLETE_LINE);
+    expect(renderPrompt(undefined, { now: AFTER, pick: { code: 'MEX' } })).toBe(TOURNAMENT_COMPLETE_LINE);
   });
 
   it('still signs off after the tournament when cache junk proves nothing is live', () => {
@@ -345,7 +352,7 @@ describe('renderPrompt — post-tournament sign-off', () => {
       ] as unknown as Match[],
     };
     expect(renderPrompt(malformed, { now: AFTER })).toBe(TOURNAMENT_COMPLETE_LINE);
-    expect(renderPrompt(malformed, { now: AFTER, team: 'MEX' })).toBe(
+    expect(renderPrompt(malformed, { now: AFTER, pick: { code: 'MEX' } })).toBe(
       TOURNAMENT_COMPLETE_LINE,
     );
     expect(renderPrompt(malformed, { now: AFTER, defaultCompetition: false })).toBe(
@@ -375,11 +382,12 @@ describe('renderPrompt — post-tournament sign-off', () => {
   });
 
   it('does NOT claim "complete" mid-tournament for a team with no next fixture', () => {
-    // An unknown/eliminated team has no upcoming match either — that must fail
-    // closed to "⚽ —", never read as the tournament being over.
+    // An unknown/eliminated team has no upcoming match either — that must never
+    // read as the tournament being over. The pick is a preference (0.11 2.5b):
+    // the line says the match on, or counts down to the next fixture of anyone's.
     const MID = new Date('2026-06-20T03:00:00Z'); // group stage, nothing in a window
-    const line = renderPrompt(undefined, { now: MID, team: 'ZZZ' });
-    expect(line).toBe('⚽ —');
+    const line = renderPrompt(undefined, { now: MID, pick: { code: 'ZZZ' } });
+    expect(line).toMatch(/live · syncing| in /);
     expect(line).not.toBe(TOURNAMENT_COMPLETE_LINE);
   });
 });

@@ -47,14 +47,21 @@ The behavior differs by component:
 
 - The **CLI and statusline** keep a small **cache on your own machine** so the statusline
   renders fast (well under 150 ms, never blocking on the network). It lives in your cache
-  directory (`$XDG_CACHE_HOME/claudinho`, falling back to `~/.cache/claudinho`) and holds only
+  directory (`$XDG_CACHE_HOME/claudinho`, falling back to `%LOCALAPPDATA%\claudinho` on Windows
+  and `~/.cache/claudinho` elsewhere) and holds only
   public match data and Claudinho's own local counters — for example `state.json` (cached
   live/upcoming scores and fixtures), `backoff.json` (a single timestamp: until when the data
   provider asked not to be contacted), `market-signals.json` (cached market reads), and
   `runs.json` (a local counter for the star-reminder nudge). These files contain no personal
   data, stay on your device, are never uploaded, and you can delete them at any time.
+- Your **choice** is a small **config file on your own machine**: `config.json` in your config
+  directory (`$XDG_CONFIG_HOME/claudinho`, falling back to `%APPDATA%\claudinho` on Windows and
+  `~/.config/claudinho` elsewhere). It holds the competition you chose and, if you pinned one, a
+  team (its provider id, code and name). It is written only by `claudinho follow` (readable by
+  you alone), read locally by the CLI, the statusline, the hook and the MCP server, never sent
+  anywhere, and `claudinho follow off` deletes it.
 - The **MCP server** keeps its cache **in memory only** — a short-lived in-process cache for
-  the life of the running server — and writes **no cache files to disk**.
+  the life of the running server. It reads one file, the config file above, and writes none.
 
 (Claude Code's own settings and hook configuration live separately under `~/.claude/`; that is
 editor configuration, not a Claudinho data store — see below.)
@@ -76,8 +83,8 @@ Claudinho does not sell or share your data, and does not transmit any **user-sup
 Its only third-party disclosures are the provider request parameters and the transport
 metadata (such as IP address and HTTP headers) described above, inherent to any HTTP request.
 It retains nothing on any server (there is no server). The only data it retains is
-local and on your own device: the cache described above and, if you ran a setup command, the
-one-time settings backup — both under your control and deletable at any time.
+local and on your own device: the cache and the config file described above and, if you ran a
+setup command, the one-time settings backup — all under your control and deletable at any time.
 
 ## Children's privacy
 

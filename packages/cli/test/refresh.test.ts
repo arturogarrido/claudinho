@@ -131,7 +131,7 @@ describe('runRefresh — windowed live detection (statusline regression)', () =>
 
   it('persists the adjacent-bucket live match, not an empty list', async () => {
     await runRefresh({ now: DURING, source: 'espn' });
-    const state = readState();
+    const state = readState('espn', 'fifa.world');
     expect(state?.degraded).toBe(false);
     // Only the in-play match — the FT one in the default bucket is filtered out.
     expect((state?.live ?? []).map((m) => m.id)).toEqual(['760431']);
@@ -162,7 +162,7 @@ describe('runRefresh — windowed live detection (statusline regression)', () =>
       fixturesUpdatedAt: '2026-06-17T04:55:00Z',
     });
     await runRefresh({ now: DURING, source: 'espn' });
-    const state = readState();
+    const state = readState('espn', 'fifa.world');
     expect((state?.live ?? []).map((m) => m.id)).toEqual(['760431']); // live refreshed
     expect((state?.fixtures ?? []).map((m) => m.id)).toEqual(['760491']); // fixtures kept
   });
@@ -274,7 +274,7 @@ describe('knockout fixtures cadence (statusline countdown across the knockouts)'
     );
     try {
       await runRefresh({ now: new Date(KO_NOW), source: 'espn' });
-      const state = readState();
+      const state = readState('espn', 'fifa.world');
       expect((state?.fixtures ?? []).map((m) => m.id)).toEqual(['760491']);
       expect(state?.fixtures?.[0]?.away.code).toBe('ECU');
       expect(state?.fixturesUpdatedAt).toBeTruthy();
@@ -294,8 +294,8 @@ describe('knockout fixtures cadence (statusline countdown across the knockouts)'
       await runRefresh({ now: new Date(KO_NOW), source: 'espn' }); // attempt #1 fails
       const afterFirst = fetchSpy.mock.calls.length;
       expect(afterFirst).toBeGreaterThan(0);
-      expect(readState()?.fixturesAttemptedAt).toBeTruthy();
-      expect(readState()?.fixturesUpdatedAt).toBeUndefined(); // no success stamp
+      expect(readState('espn', 'fifa.world')?.fixturesAttemptedAt).toBeTruthy();
+      expect(readState('espn', 'fifa.world')?.fixturesUpdatedAt).toBeUndefined(); // no success stamp
 
       await runRefresh({ now: new Date(KO_NOW + 15_000), source: 'espn' }); // was: hammered here
       expect(fetchSpy.mock.calls.length).toBe(afterFirst);
@@ -315,7 +315,7 @@ describe('knockout fixtures cadence (statusline countdown across the knockouts)'
     vi.stubGlobal('fetch', fetchSpy);
     try {
       await runRefresh({ now: new Date(KO_NOW), source: 'espn' }); // ask #1 → empty
-      expect(readState()?.fixtures).toEqual([]);
+      expect(readState('espn', 'fifa.world')?.fixtures).toEqual([]);
       expect(fetchSpy).toHaveBeenCalledTimes(2);
 
       await runRefresh({ now: new Date(KO_NOW + 30_000), source: 'espn' }); // within 60s → no fetch
@@ -342,7 +342,7 @@ describe('post-tournament: the refresher goes quiet, never a spawn loop (F5 PERF
       // whenever it finds NO cache, so without this write every statusline
       // tick would fork a do-nothing child forever once the tournament ends.
       await runRefresh({ now: POST_FINAL, source: 'espn' });
-      const state = readState();
+      const state = readState('espn', 'fifa.world');
       expect(state).toBeTruthy();
       expect(state?.live).toEqual([]);
       expect(state?.degraded).toBe(false);
@@ -350,7 +350,7 @@ describe('post-tournament: the refresher goes quiet, never a spawn loop (F5 PERF
 
       // Second tick: the snapshot exists → plain return, no rewrite, no fetch.
       await runRefresh({ now: new Date(POST_FINAL.getTime() + 60_000), source: 'espn' });
-      expect(readState()?.updatedAt).toBe(state?.updatedAt);
+      expect(readState('espn', 'fifa.world')?.updatedAt).toBe(state?.updatedAt);
       expect(fetchSpy).not.toHaveBeenCalled();
 
       // And neither hot-path trigger fires → cmdPrompt spawns nothing again.
@@ -379,7 +379,7 @@ describe('unknown source on the refresher path (PR #78 review P2)', () => {
       expect(state?.degraded).toBe(true); // no live provider served this — never claim otherwise
       expect(state?.live).toEqual([]);
       // The default (espn) scope was never touched with mislabeled data.
-      expect(readState()).toBeUndefined();
+      expect(readState('espn', 'fifa.world')).toBeUndefined();
 
       // Second cycle: the snapshot exists → plain return, still no network.
       await runRefresh({ now: new Date(DURING.getTime() + 60_000), source: 'foo' });
@@ -404,7 +404,7 @@ describe('provider backoff on 429/403 (F5 PERF-2)', () => {
     vi.stubGlobal('fetch', fetchSpy);
     try {
       await runRefresh({ now: DURING, source: 'espn' });
-      const state = readState();
+      const state = readState('espn', 'fifa.world');
       expect(state?.degraded).toBe(true);
       const until = Date.parse(state?.backoffUntil ?? '');
       // 5 min + up to 1 min jitter.
@@ -421,7 +421,7 @@ describe('provider backoff on 429/403 (F5 PERF-2)', () => {
 
       // After expiry the trigger resumes (still in the live window, cache stale).
       const after = DURING.getTime() + 7 * 60_000;
-      expect(shouldRefresh(after, readState())).toBe(true);
+      expect(shouldRefresh(after, readState('espn', 'fifa.world'))).toBe(true);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -434,8 +434,8 @@ describe('provider backoff on 429/403 (F5 PERF-2)', () => {
     );
     try {
       await runRefresh({ now: DURING, source: 'espn' });
-      expect(readState()?.degraded).toBe(true);
-      expect(readState()?.backoffUntil).toBeUndefined();
+      expect(readState('espn', 'fifa.world')?.degraded).toBe(true);
+      expect(readState('espn', 'fifa.world')?.backoffUntil).toBeUndefined();
     } finally {
       vi.unstubAllGlobals();
     }
@@ -465,7 +465,7 @@ describe('runRefresh — publication is fenced by lock ownership (audit A10)', (
       }),
     );
     await runRefresh({ now: DURING, source: 'espn' });
-    expect(readState()).toEqual({ ...successor, version: CACHE_VERSION });
+    expect(readState('espn', 'fifa.world')).toEqual({ ...successor, version: CACHE_VERSION });
   });
 });
 
@@ -484,7 +484,7 @@ describe('runRefresh — the persisted backoff honours Retry-After (audit A12)',
       })),
     );
     await runRefresh({ now: DURING, source: 'espn' });
-    const until = Date.parse(readState()?.backoffUntil ?? '');
+    const until = Date.parse(readState('espn', 'fifa.world')?.backoffUntil ?? '');
     expect(until - DURING.getTime()).toBeGreaterThanOrEqual(15 * 60_000);
     expect(until - DURING.getTime()).toBeLessThanOrEqual(16 * 60_000);
   });
@@ -508,7 +508,7 @@ describe('runRefresh — the persisted backoff is the provider\'s ABSOLUTE deadl
       }),
     );
     await runRefresh({ now: DURING, source: 'espn', jitterMs: 0 });
-    const until = Date.parse(readState()?.backoffUntil ?? '');
+    const until = Date.parse(readState('espn', 'fifa.world')?.backoffUntil ?? '');
     // Lower bound only (load can only make the elapsed time longer): the deadline
     // is receipt + 900 s, and receipt was at least 1.2 s after the refresh began.
     expect(until - DURING.getTime()).toBeGreaterThanOrEqual(900_000 + 1200);

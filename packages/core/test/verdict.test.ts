@@ -595,6 +595,20 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     }
   });
 
+  it('nor `noCompetition` (0.11 2.5b): the key is declared once, in the MCP schema; the sentence and its keys nowhere at a surface', () => {
+    // A surface states it through core: `verdictExtras(selectionVerdict(selection))` for the key,
+    // `verdictNotice` (MCP) or `selectionRefusal` (CLI) for the sentence.
+    expect(codeHits('cli', /\bnoCompetition\s*:/)).toEqual([]);
+    expect(codeHits('mcp', /\bnoCompetition\s*:/)).toEqual(['mcp/src/server.ts']);
+    for (const i18nKey of ['competition.none', 'selection.none']) {
+      const written = new RegExp(`['"\`]${i18nKey.replace('.', '\\.')}['"\`]`);
+      expect(hits('cli', written), i18nKey).toEqual([]);
+      expect(hits('mcp', written), i18nKey).toEqual([]);
+    }
+    expect(codeHits('cli', /No competition chosen/)).toEqual([]);
+    expect(codeHits('mcp', /No competition chosen/)).toEqual([]);
+  });
+
   it('the market scope sentence has one copy, in the copy bank', () => {
     expect(MARKETS_SCOPE_NOTE).toBe('Market signals cover the World Cup only; none are read for this competition.');
     const written = /cover the World Cup only/;

@@ -102,7 +102,7 @@ describe('every competition-answering tool takes `competition`, says it first, a
     delete process.env.CLAUDINHO_COMPETITION;
     const def = await toolGetLive({ adapter: adapterFor('fifa.world'), now: NOW });
     expect(def.text.split('\n')[0]).toBe('World Cup');
-    expect((def.data as Rec).competition).toEqual({ slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', chosenBy: 'default' });
+    expect((def.data as Rec).competition).toEqual({ slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', chosenBy: 'saved' });
     const raw = await toolGetLive({ competition: 'fifa.friendly', adapter: adapterFor('fifa.friendly'), now: NOW });
     expect(raw.text.split('\n')[0]).toBe('fifa.friendly · from the request · experimental');
     expect((raw.data as Rec).competition).toEqual({ slug: 'fifa.friendly', name: 'fifa.friendly', chosenBy: 'flag', experimental: true });
@@ -231,7 +231,7 @@ describe('list_competitions', () => {
     expect(r.text).toContain('world-cup');
     expect(r.text).toMatch(/Premier League/);
     const def = await toolListCompetitions({});
-    expect((def.data as Rec).current).toEqual({ slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', chosenBy: 'default' });
+    expect((def.data as Rec).current).toEqual({ slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', chosenBy: 'saved' });
   });
 });
 

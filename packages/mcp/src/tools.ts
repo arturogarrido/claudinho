@@ -4,6 +4,7 @@
  * pair: `text` is the human/LLM-readable summary, `data` is the structured
  * payload embedded as JSON for agents that want to parse it.
  */
+import { homedir } from 'node:os';
 import {
   asFlavorLevel,
   fixturesByDate,
@@ -72,6 +73,14 @@ import {
   type SelectedCompetition,
   selectionExtras,
   selectionRefusal,
+  selectionVerdict,
+  configPath,
+  nextFixtureForPin,
+  type Pin,
+  pinUnder,
+  readUserConfig,
+  savedSlug,
+  competitionLabel,
   SUPPORTED,
   humanLabel,
   resolveMarketSource,
@@ -297,28 +306,74 @@ function keepAdapter(source: string, competition: string, key: string): Provider
 /** The adapter already resolved for a request, keyed by that request's args object. */
 const perRequest = new WeakMap<object, ProviderAdapter>();
 
-/** The selection already resolved for a request, keyed by that request's args object. */
-const perRequestSelection = new WeakMap<object, SelectedCompetition>();
+/** A request's choice: the competition it is for (or none chosen), and the team a team-taking tool defaults to. */
+interface RequestChoice {
+  readonly selection: SelectedCompetition | { readonly kind: 'none' };
+  /** The server's `CLAUDINHO_TEAM` (an empty one is absent): a query, before the pin. */
+  readonly envTeam?: string;
+  /** The user's saved team, only when the request is for its competition (whoever chose it). */
+  readonly pin?: Pin;
+  /** The saved team when it is ANOTHER competition's: named by the no-team error, never applied. */
+  readonly elsewhere?: { readonly competition: string; readonly team: Pin };
+}
+
+/** The choice already resolved for a request, keyed by that request's args object. */
+const perRequestChoice = new WeakMap<object, RequestChoice>();
 
 /**
  * THE SERVER'S EDGE: the competition a request is for, from its `competition`
- * argument, then the server's `CLAUDINHO_COMPETITION` (core reads no
- * environment: the edge hands it in), then the World Cup.
+ * argument, then the server's `CLAUDINHO_COMPETITION`, then the user's saved
+ * choice (the config file `claudinho follow` writes, read through core's one
+ * no-follow bounded reader; core reads no environment and no file: the edge
+ * hands them in); with none of the three, NOTHING is chosen, and the tool
+ * answers the `noCompetition` verdict ({@link said}).
  *
  * This is the one place the server decides the competition, and it decides
- * ONCE per request: the answer is remembered against the request's args, so
- * every helper a tool calls gets the same selection however many times it
- * asks. A value that is neither an alias nor a slug is a TOOL ERROR naming the
- * value and the aliases, thrown here, before any adapter is built or any
- * request made. The selection is the request's, never a shared adapter's; an
+ * ONCE per request (the file read once with it): the answer is remembered
+ * against the request's args, so every helper a tool calls gets the same
+ * selection, and the same pin, however many times it asks. A value that is
+ * neither an alias nor a slug is a TOOL ERROR naming the value and the
+ * aliases, thrown here, before any adapter is built or any request made. The
+ * selection and the pin are the request's, never a shared adapter's; an
  * adapter injected for a test must serve it (see {@link resolveAdapter}).
  */
-export function selectionOf(args: CommonOpts): SelectedCompetition {
-  const known = perRequestSelection.get(args);
+function choiceOf(args: CommonOpts): RequestChoice {
+  const known = perRequestChoice.get(args);
   if (known) return known;
-  const selection = resolveCompetition(args.competition, process.env.CLAUDINHO_COMPETITION);
-  if (selection.kind !== 'selected') throw new Error(selectionRefusal(selection, args.lang));
-  perRequestSelection.set(args, selection);
+  const saved = readUserConfig(configPath(process.env, process.platform, homedir()));
+  const config = saved.kind === 'read' ? saved.config : undefined;
+  const selection = resolveCompetition(args.competition, process.env.CLAUDINHO_COMPETITION, config?.competition);
+  if (selection.kind === 'refused') throw new Error(selectionRefusal(selection, args.lang));
+  // The pin belongs to its competition, not to the source that chose it: it
+  // applies to a request for the file's competition, however that request
+  // chose it (core `pinUnder`, the CLI's rule too).
+  const pin = pinUnder(selection.kind === 'selected' ? selection.slug : undefined, config);
+  // The server's team, read here with its competition, once.
+  const envTeam = process.env.CLAUDINHO_TEAM || undefined;
+  // A saved team that does not apply here, for the error to name truthfully.
+  const savedAt = config ? savedSlug(config.competition) : undefined;
+  const elsewhere = !pin && config?.team && savedAt !== undefined ? { competition: competitionLabel(savedAt), team: config.team } : undefined;
+  const choice: RequestChoice = {
+    selection,
+    ...(envTeam !== undefined ? { envTeam } : {}),
+    ...(pin ? { pin } : {}),
+    ...(elsewhere ? { elsewhere } : {}),
+  };
+  perRequestChoice.set(args, choice);
+  return choice;
+}
+
+/** The request's selection (see {@link choiceOf}): a competition, or none chosen. A refused value throws. */
+export function selectionOf(args: CommonOpts): SelectedCompetition | { readonly kind: 'none' } {
+  return choiceOf(args).selection;
+}
+
+/** The request's competition, for a reader that can only run with one (a tool's answer, after `said`). */
+function selectedOf(args: CommonOpts): SelectedCompetition {
+  const selection = selectionOf(args);
+  // An invariant, not an answer: `said` answers a request with none chosen
+  // (the `noCompetition` verdict) before any answer runs.
+  if (selection.kind !== 'selected') throw new Error('invariant: a competition-reading answer ran with no competition chosen');
   return selection;
 }
 
@@ -332,7 +387,7 @@ export function selectionOf(args: CommonOpts): SelectedCompetition {
  * disagree (the body would be one competition's under another's name).
  */
 export function resolveAdapter(args: CommonOpts): ProviderAdapter {
-  const { slug: competition } = selectionOf(args);
+  const { slug: competition } = selectedOf(args);
   if (args.adapter) {
     if (args.adapter.competition !== competition) {
       throw new Error(`The injected adapter serves ${args.adapter.competition}; the request selected ${competition}.`);
@@ -376,13 +431,29 @@ function competitionOf(args: CommonOpts): string {
  * a tool error with no adapter built and no request made. `line: false` for a
  * share card, which names its competition in its own title (the card is the
  * artifact, handed over verbatim).
+ *
+ * With NOTHING chosen, the answer is not computed at all: no adapter is built
+ * and nothing is read. The tool answers the `noCompetition` verdict (the first
+ * replacing one): its text the one sentence (core `verdictNotice`) and the
+ * disclaimer, its data the tool's OWN empty healthy shape (`refusal`, written
+ * beside each answer, so no shape is guessed here) plus `competition: null`
+ * and `noCompetition: true` (core `selectionExtras`, `verdictExtras`).
  */
 async function said<A extends CommonOpts>(
   args: A,
   answer: (args: A) => Promise<ToolResult>,
+  refusal: (args: A, sentence: string) => Record<string, unknown>,
   { line }: { line: boolean } = { line: true },
 ): Promise<ToolResult> {
   const selection = selectionOf(args);
+  if (selection.kind !== 'selected') {
+    const verdict = selectionVerdict(selection);
+    const sentence = verdictNotice(verdict, args.lang) ?? '';
+    return {
+      ...disclaimed(sentence, undefined, args.lang),
+      data: { ...refusal(args, sentence), ...selectionExtras(selection), ...verdictExtras(verdict) },
+    };
+  }
   const r = await answer(args);
   return {
     ...r,
@@ -616,7 +687,14 @@ function snippetFooter(snippet: string): string {
 
 /** today: fixtures for a date (default: today), with live overlay. */
 export function toolGetToday(args: { date?: string } & CommonOpts): Promise<ToolResult> {
-  return said(args, todayAnswer);
+  return said(args, todayAnswer, (a) => ({
+    date: a.date ?? localDate((a.now ?? new Date()).toISOString(), a.tz),
+    degraded: false,
+    source: null,
+    count: 0,
+    truncated: false,
+    matches: [],
+  }));
 }
 async function todayAnswer(
   args: { date?: string } & CommonOpts,
@@ -691,7 +769,7 @@ async function todayAnswer(
 
 /** live: in-progress matches right now. */
 export function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
-  return said(args, liveAnswer);
+  return said(args, liveAnswer, () => ({ degraded: false, source: null, count: 0, truncated: false, matches: [] }));
 }
 async function liveAnswer(args: CommonOpts): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
@@ -724,7 +802,7 @@ async function liveAnswer(args: CommonOpts): Promise<ToolResult> {
 
 /** match: a single fixture by id, with live overlay for that day. */
 export function toolGetMatch(args: { id: string } & CommonOpts): Promise<ToolResult> {
-  return said(args, matchAnswer);
+  return said(args, matchAnswer, () => ({ match: null, source: null }));
 }
 async function matchAnswer(
   args: { id: string } & CommonOpts,
@@ -803,7 +881,8 @@ async function matchAnswer(
 
 /** standings: one group table, or all of them. */
 export function toolGetStandings(args: { group?: string } & CommonOpts): Promise<ToolResult> {
-  return said(args, standingsAnswer);
+  // The empty healthy shape: one key's table is `null`, every table `[]`.
+  return said(args, standingsAnswer, (a) => ({ degraded: false, source: null, tables: a.group ? null : [] }));
 }
 async function standingsAnswer(
   args: { group?: string } & CommonOpts,
@@ -871,7 +950,7 @@ const BRACKET_STAGES = new Set(['R32', 'R16', 'QF', 'SF', '3P', 'F']);
 
 /** bracket: knockout tree with hybrid slot resolution. */
 export function toolGetBracket(args: { stage?: string } & CommonOpts): Promise<ToolResult> {
-  return said(args, bracketAnswer);
+  return said(args, bracketAnswer, () => ({ view: null }));
 }
 async function bracketAnswer(
   args: { stage?: string } & CommonOpts,
@@ -959,6 +1038,15 @@ export async function standingsResourceText(
   return named(disclaimed(text, source).text);
 }
 
+/**
+ * The `standings://{group}` resource with nothing chosen: the `noCompetition`
+ * verdict's sentence and the disclaimer, nothing read (English: a resource
+ * takes no language).
+ */
+export function noCompetitionText(selection: { readonly kind: 'none' }): string {
+  return disclaimed(verdictNotice(selectionVerdict(selection)) ?? '').text;
+}
+
 /** next_fixture: a team's next match, live-resolved across the knockout phase. */
 /** "Did you mean" for a name that matched more than one team, as `get_team` says it. */
 function ambiguousText(query: string, teams: readonly { name: string; code: string }[]): string {
@@ -973,12 +1061,69 @@ function nextTeamLabel(next: NextFixtureResult, fallback: string): string {
   return next.team?.name ?? next.query ?? fallback;
 }
 
-export function toolGetNextFixture(args: { team: string } & CommonOpts): Promise<ToolResult> {
-  return said(args, nextAnswer);
+/** What `get_next_fixture` with no `team` says when there is no team to default to, and none pinned anywhere. */
+const NO_TEAM =
+  'No team given and none pinned: pass `team`, or the user runs `claudinho follow <alias> --team <name>`.';
+
+/**
+ * Why `get_next_fixture` has no team, TRUE in each state: a team pinned for
+ * another competition is named as such (it is not "none pinned"); otherwise
+ * none is pinned at all.
+ */
+function noTeamError(choice: RequestChoice): Error {
+  if (choice.elsewhere) {
+    const { competition, team } = choice.elsewhere;
+    return new Error(
+      `No team given, and the pinned team is ${competition}'s (${team.name}), not this competition's: pass \`team\`, or the user runs \`claudinho follow <alias> --team <name>\`.`,
+    );
+  }
+  return new Error(NO_TEAM);
+}
+
+/** The server's CLAUDINHO_TEAM, set with nothing readable in it: named as such. */
+const ENV_TEAM_UNREADABLE =
+  "The server's CLAUDINHO_TEAM names no team: pass `team`, or set CLAUDINHO_TEAM to a team's name or code.";
+
+/**
+ * The team `get_next_fixture` is about, by the CLI's precedence: the argument,
+ * then the server's `CLAUDINHO_TEAM` (both a query, resolved alike), then the
+ * user's saved pin (a team already resolved). None of the three: undefined.
+ */
+function nextAsked(
+  args: { team?: string } & CommonOpts,
+): { query: string; from: 'argument' | 'env' } | { pin: Pin } | undefined {
+  if (args.team !== undefined) return { query: args.team, from: 'argument' };
+  const choice = choiceOf(args);
+  if (choice.envTeam !== undefined) return { query: choice.envTeam, from: 'env' };
+  return choice.pin ? { pin: choice.pin } : undefined;
+}
+
+export function toolGetNextFixture(args: { team?: string } & CommonOpts): Promise<ToolResult> {
+  return said(args, nextAnswer, (a) => {
+    // The team as asked, bounded: the argument, the server's, or the pin's label.
+    const asked = nextAsked(a);
+    return {
+      team: asked === undefined ? '' : 'query' in asked ? humanLabel(asked.query, 40) : asked.pin.name,
+      fixture: null,
+      degraded: false,
+      source: null,
+    };
+  });
 }
 async function nextAnswer(
-  args: { team: string } & CommonOpts,
+  args: { team?: string } & CommonOpts,
 ): Promise<ToolResult> {
+  // The argument, then the server's CLAUDINHO_TEAM (a query, as an argument
+  // is), then the user's saved pin: a team already resolved when it was saved
+  // (by its id; by code for the World Cup's nations), never resolved again;
+  // only for a request for its competition, however that was chosen (another
+  // competition does not apply it). None: a tool error.
+  const teamAsked = nextAsked(args);
+  if (teamAsked === undefined) throw noTeamError(choiceOf(args));
+  // The server's CLAUDINHO_TEAM with nothing readable in it names no team (it
+  // is not schema-checked, unlike the argument): said so, before any read.
+  if ('from' in teamAsked && teamAsked.from === 'env' && !humanLabel(teamAsked.query, 40)) throw new Error(ENV_TEAM_UNREADABLE);
+  const pin = 'pin' in teamAsked ? teamAsked.pin : undefined;
   const adapter = resolveAdapter(args);
   // The World Cup: a nation's code, or a name resolved against the bundled
   // roster (`nationArg`); a name that is no single nation is answered without
@@ -987,15 +1132,30 @@ async function nextAnswer(
   // competition's roster and the schedule ahead. Never the RAW argument: a
   // direct call bypasses the input schema, and what is carried into the text,
   // a card or a run cue is the bounded label.
-  const query = humanLabel(args.team, 40);
-  const asked = bundleApplies(adapter.competition) ? nationArg(query) : { code: query };
+  const query = pin
+    ? bundleApplies(adapter.competition)
+      ? pin.code
+      : pin.name
+    : humanLabel('query' in teamAsked ? teamAsked.query : '', 40);
+  // An argument with nothing readable in it (a direct call, past the schema) names no team.
+  if (!query) throw new Error(NO_TEAM);
+  const asked = pin
+    ? { code: query }
+    : bundleApplies(adapter.competition)
+      ? nationArg(query)
+      : { code: query };
   const code = 'code' in asked ? asked.code : query;
   // Overlay the live knockout window so a confirmed R32+ tie resolves: the
   // bundled knockout slots are placeholders, so a static lookup goes blind once
   // a team's group games pass (it would answer "no upcoming fixture" even after
   // ESPN confirmed the tie). Fails closed to the static result on a feed outage.
   // The caller's clock is still threaded for deterministic tests.
-  const next = 'code' in asked ? await getNextFixtureForTeam(adapter, code, args.now ?? new Date()) : asked.answer;
+  const now = args.now ?? new Date();
+  const next = pin
+    ? await nextFixtureForPin(adapter, pin, now)
+    : 'code' in asked
+      ? await getNextFixtureForTeam(adapter, code, now)
+      : asked.answer;
   const { fixture, degraded, source } = next;
   const label = nextTeamLabel(next, code);
   // The answer's own fields beside the verdicts: who it is about, the
@@ -1057,7 +1217,8 @@ export function toolGetTeam(args: { query: string }): ToolResult {
 /**
  * list_competitions: the supported table, offline. Every row with its alias,
  * name, teams, kind and capabilities, and the request's selection as
- * `current` (null when there is none). No edition state: whether an edition is
+ * `current` (null when nothing is chosen: no argument, no server environment,
+ * no saved choice). No edition state: whether an edition is
  * in season is a fact of a read (`betweenEditions`), not of the table.
  */
 export function toolListCompetitions(args: { competition?: string; lang?: string } = {}): ToolResult {
@@ -1071,7 +1232,8 @@ export function toolListCompetitions(args: { competition?: string; lang?: string
     'Competitions (alias · name · teams · scores/next/standings/bracket/markets):',
     ...rows,
     '',
-    `Current: ${modeLine(selection, args.lang, 'request')}`,
+    // With none chosen, the verdict's sentence says how to choose.
+    `Current: ${selection.kind === 'selected' ? modeLine(selection, args.lang, 'request') : (verdictNotice(selectionVerdict(selection), args.lang) ?? '')}`,
   ].join('\n');
   return { ...disclaimed(text), data };
 }
@@ -1084,7 +1246,7 @@ export function toolListCompetitions(args: { competition?: string; lang?: string
 export function toolGetMarketSignal(
   args: { matchId?: string; team?: string; date?: string } & CommonOpts,
 ): Promise<ToolResult> {
-  return said(args, marketAnswer);
+  return said(args, marketAnswer, () => ({ informationalOnly: true, signal: null }));
 }
 async function marketAnswer(
   args: { matchId?: string; team?: string; date?: string } & CommonOpts,
@@ -1355,7 +1517,18 @@ function shareResult(
  */
 export function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> {
   // The card names its competition in its title: no mode line before it.
-  return said(args, shareAnswer, { line: false });
+  // With nothing chosen, the kind asked (the routing precedence below) and the sentence as its snippet.
+  return said(args, shareAnswer, (a, sentence) => ({ kind: shareKindAsked(a), snippet: sentence }), { line: false });
+}
+
+/** The card a request asks for, by `shareAnswer`'s routing precedence: live > group > bracket > matchId > team > date. */
+function shareKindAsked(args: ShareArgs): string {
+  if (args.live) return 'live';
+  if (args.group) return 'table';
+  if (args.bracket) return 'bracket';
+  if (args.matchId) return 'match';
+  if (args.team) return 'next';
+  return 'today';
 }
 async function shareAnswer(args: ShareArgs): Promise<ToolResult> {
   const options = shareOptions(args);
@@ -1370,7 +1543,7 @@ async function shareAnswer(args: ShareArgs): Promise<ToolResult> {
   // The competition goes on the card: its title names it and its run cue
   // selects it. The SELECTION's (what the answer is said to be for), like the
   // mode line and the `competition` key.
-  const competition = selectionOf(args).slug;
+  const competition = selectedOf(args).slug;
   const where = { tz: args.tz, locale: args.lang, competition };
 
   // live: matches in play right now (no market enrichment, matching the CLI).

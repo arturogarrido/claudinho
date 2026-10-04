@@ -3,6 +3,15 @@
  * Cross-platform statusline smoke: seed a fresh micro-cache, run the built
  * `claudinho prompt`, and assert it renders the seeded live match. Plain node
  * (no shell quoting) so the same command works on the Windows/macOS CI legs.
+ *
+ * Since 0.11 nothing is followed until the user chooses, so the run FOLLOWS the
+ * World Cup the way a user does: a config file (`{ version: 1, competition:
+ * "world-cup" }`) in a config directory of its own (XDG_CONFIG_HOME), not
+ * CLAUDINHO_COMPETITION. That way the smoke goes through the hot path's one
+ * config read, which is what every installed statusline does on every tick,
+ * and the cache it reads is the one keyed by the saved choice. It also checks
+ * the first run: with no choice the binary prints `⚽ claudinho follow` and
+ * exits 0, reading no cache.
  * Timing is printed for visibility but not asserted here — the hard bound lives
  * in packages/cli/test/hotpath-latency.test.ts.
  *
@@ -61,7 +70,12 @@ try {
     }),
   );
 
-  const env = { ...process.env, XDG_CACHE_HOME: dir, CLAUDINHO_FLAGS: 'on' };
+  // The World Cup followed, as a user would (`claudinho follow world-cup`).
+  const configDir = join(dir, 'config');
+  mkdirSync(join(configDir, 'claudinho'), { recursive: true });
+  writeFileSync(join(configDir, 'claudinho', 'config.json'), JSON.stringify({ version: 1, competition: 'world-cup' }));
+
+  const env = { ...process.env, XDG_CACHE_HOME: dir, XDG_CONFIG_HOME: configDir, CLAUDINHO_FLAGS: 'on' };
   delete env.CLAUDINHO_TEAM;
   delete env.CLAUDINHO_COMPETITION;
 
@@ -79,6 +93,19 @@ try {
     process.exit(1);
   }
   console.log(`✓ statusline smoke (${ms.toFixed(0)}ms): ${out.trim()}`);
+
+  // The first run: nothing chosen (an empty config directory, no environment).
+  const firstRun = execFileSync(process.execPath, [dist, 'prompt'], {
+    env: { ...env, XDG_CONFIG_HOME: join(dir, 'empty-config') },
+    encoding: 'utf8',
+    input: '',
+    timeout: 15_000,
+  });
+  if (firstRun.trim() !== '⚽ claudinho follow') {
+    console.error(`✗ with nothing chosen the statusline should read "⚽ claudinho follow". Output: ${JSON.stringify(firstRun)}`);
+    process.exit(1);
+  }
+  console.log(`✓ statusline first run: ${firstRun.trim()}`);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

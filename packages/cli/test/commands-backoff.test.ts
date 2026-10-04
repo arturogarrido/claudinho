@@ -73,7 +73,7 @@ describe('interactive commands and the persisted provider backoff', () => {
     const adapter = new EspnAdapter({ fetchImpl: throttled as unknown as FetchImpl, now: () => nowMs });
     await cmdToday('2026-06-11', { cfg: cfg(), t: makeT('en'), adapter, now: NOW });
     expect(json().degraded).toBe(true);
-    const until = Date.parse(readState()?.backoffUntil ?? '');
+    const until = Date.parse(readState('espn', 'fifa.world')?.backoffUntil ?? '');
     expect(until - nowMs).toBeGreaterThanOrEqual(600_000);
     expect(until - nowMs).toBeLessThanOrEqual(601_000);
   });
@@ -101,7 +101,7 @@ const resp = (status: number, retryAfter?: string) => ({
   json: async () => ({ events: [] }),
 });
 const tick = () => new Promise((r) => setTimeout(r, 0));
-const persistedDelay = () => Date.parse(readState()?.backoffUntil ?? '') - nowMs;
+const persistedDelay = () => Date.parse(readState('espn', 'fifa.world')?.backoffUntil ?? '') - nowMs;
 
 describe('persistence follows the retained cooldown, not lastError (review P2 on #128)', () => {
   it('standings 429 then scoreboard 500: the ten-minute cooldown is persisted although lastError is the 500', async () => {
@@ -131,7 +131,7 @@ describe('persistence follows the retained cooldown, not lastError (review P2 on
     const run = cmdToday('2026-06-11', { cfg: cfg(), t: makeT('en'), adapter, now: NOW });
     scoreboard.resolve(resp(500));
     await run; // the command is done; the enrichment request is still in flight
-    expect(readState()?.backoffUntil).toBeUndefined();
+    expect(readState('espn', 'fifa.world')?.backoffUntil).toBeUndefined();
     standings.resolve(resp(429, '600'));
     await tick();
     await tick();

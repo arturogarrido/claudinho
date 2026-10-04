@@ -28,6 +28,7 @@ import {
 } from '@claudinho/core';
 import { DISCLAIMER, matchList } from './format';
 import {
+  noCompetitionText,
   resolveAdapter,
   selectionOf,
   standingsResourceText,
@@ -55,8 +56,8 @@ const VOICE =
     ? ''
     : `\nVoice: when relaying scores, narrate with lively, regionally-appropriate football-commentary energy in the user's language. Each match line may end with a short exclamation ("— ¡GOOOOL!") — use it as a tone cue. Keep every fact exact; never invent details and never impersonate or name a real commentator.`;
 
-export const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and standings for one football competition per request: the 2026 men's World Cup by default, the one the server is configured for (CLAUDINHO_COMPETITION), or the one a tool call names in its competition argument (an alias such as premier-league, or an ESPN slug such as eng.1). list_competitions lists the supported competitions, their aliases and what each offers, offline. Every tool's text but get_team's, get_share_snippet's and list_competitions' starts with the competition it is for, and its structured data carries it as competition (get_share_snippet's card names it in its title; list_competitions says it last, as Current, and in data.current; get_team is the World Cup's roster). An unknown competition is a tool error that lists the aliases.
-get_next_fixture and get_share_snippet take a team as a name or a code: a club's ("Arsenal", "ARS") in a club competition, a nation's ("Mexico", "MEX") in the World Cup. Several teams matching one name come back as candidates; ask which one, never pick. get_market_signal takes a nation's 3-letter code (market signals are read for the World Cup alone). get_team resolves a nation's name to its code in the World Cup roster, offline; it knows no clubs.
+export const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and standings for one football competition per request, chosen by the tool call's competition argument (an alias such as premier-league, or an ESPN slug such as eng.1), else the server's CLAUDINHO_COMPETITION, else the user's saved choice (set with claudinho follow <alias>). With none of the three, every competition-answering tool answers noCompetition with a sentence saying what to do: pass competition, or ask the user to run claudinho follow <alias>. list_competitions lists the supported competitions, their aliases and what each offers, offline. Every tool's text but get_team's, get_share_snippet's and list_competitions' starts with the competition it is for, and its structured data carries it as competition (get_share_snippet's card names it in its title; list_competitions says it last, as Current, and in data.current; get_team is the World Cup's roster). An unknown competition is a tool error that lists the aliases.
+get_next_fixture and get_share_snippet take a team as a name or a code: a club's ("Arsenal", "ARS") in a club competition, a nation's ("Mexico", "MEX") in the World Cup. get_next_fixture with no team answers for the server's CLAUDINHO_TEAM, else for the team the user pinned (claudinho follow <alias> --team <name>) when the request is for that team's competition. Several teams matching one name come back as candidates; ask which one, never pick. get_market_signal takes a nation's 3-letter code (market signals are read for the World Cup alone). get_team resolves a nation's name to its code in the World Cup roster, offline; it knows no clubs.
 Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team, get_standings for standings tables, and get_bracket for the knockout tree (a league season with no knockout tie answers inapplicable).
 Off the World Cup, get_next_fixture and get_match search from yesterday to 14 days ahead: an empty answer carrying horizon or window is about that span, not about the team or the match. betweenEditions means the competition's edition has ended and the next has not started.
 get_standings with no group returns every table. One table is selected by its key, which every table's title shows in parentheses unless it is a plain group letter: A to L for lettered groups, A1 for a numbered group, A-B for group B of league A, LEAGUE for a league's single table.
@@ -114,7 +115,7 @@ export const tzArg = z
 const competitionArg = z
   .string()
   .describe(
-    "The competition: an alias such as premier-league, or an ESPN slug such as eng.1 (list_competitions lists the aliases). Default: the server's CLAUDINHO_COMPETITION, else the 2026 World Cup",
+    "The competition: an alias such as premier-league, or an ESPN slug such as eng.1 (list_competitions lists the aliases). Without it: the server's CLAUDINHO_COMPETITION, else the user's saved choice (claudinho follow); with none, the answer is noCompetition",
   );
 
 /** The reader's language, optional: every competition-answering tool and `list_competitions` take it. */
@@ -174,7 +175,7 @@ const competitionKeyOut = z.object({
   slug: z.string(),
   alias: z.string().optional(),
   name: z.string(),
-  chosenBy: z.enum(['flag', 'env', 'saved', 'default']),
+  chosenBy: z.enum(['flag', 'env', 'saved']),
   experimental: z.literal(true).optional(),
 });
 /**
@@ -184,9 +185,10 @@ const competitionKeyOut = z.object({
 const selectionOut = {
   competition: competitionKeyOut
     .passthrough()
+    .nullable()
     .optional()
     .describe(
-      'The competition this answer is for: its ESPN slug, its alias, its name, where the choice came from (flag: the competition argument; env: the server\'s CLAUDINHO_COMPETITION; default: the World Cup), and experimental for a slug the supported table does not hold',
+      'The competition this answer is for: its ESPN slug, its alias, its name, where the choice came from (flag: the competition argument; env: the server\'s CLAUDINHO_COMPETITION; saved: the user\'s saved choice, claudinho follow), and experimental for a slug the supported table does not hold; null with noCompetition when nothing is chosen',
     ),
 };
 const src = z.string().nullable();
@@ -194,6 +196,20 @@ const responseMeta = {
   responseTruncated: z.boolean().optional(),
   responseTruncation: z.string().optional(),
 };
+/**
+ * The first replacing verdict (core `selectionVerdict`): nothing is chosen, so
+ * nothing was read. Declared on EVERY competition-answering tool (the
+ * standings tool too, which declares no other replacing verdict).
+ */
+const noCompetitionOut = {
+  noCompetition: z
+    .literal(true)
+    .optional()
+    .describe(
+      'Present (true) when no competition is chosen (no competition argument, no server CLAUDINHO_COMPETITION, no saved choice): nothing was read, competition is null, and the text says what to do (pass competition, or the user runs claudinho follow <alias>)',
+    ),
+};
+
 /**
  * The verdicts a result may state about itself (core `verdictExtras`), declared
  * on every tool that can state one. Present only when stated: `unsupported:
@@ -203,6 +219,7 @@ const responseMeta = {
  * verdict lived.
  */
 const verdictOut = {
+  ...noCompetitionOut,
   unsupported: z
     .literal(true)
     .optional()
@@ -334,6 +351,7 @@ const standingsOut = {
   degraded: z.boolean(),
   source: src,
   tables: z.union([anyObj, z.array(anyObj), z.null()]),
+  ...noCompetitionOut,
   ...incompleteOut,
   ...selectionOut,
   ...responseMeta,
@@ -460,7 +478,7 @@ const listCompetitionsOut = {
   current: competitionKeyOut
     .strict()
     .nullable()
-    .describe('The competition this request is for (its competition argument, else the server\'s), as every other tool\'s data carries it'),
+    .describe('The competition this request is for (its competition argument, else the server\'s, else the user\'s saved choice), as every other tool\'s data carries it; null when nothing is chosen'),
   ...responseMeta,
 };
 
@@ -845,7 +863,7 @@ export function buildServer(): McpServer {
     {
       title: 'Standings',
       description:
-        'Live cumulative standings — omit group for every table, or pass one table\'s key: a group letter (A–L in the World Cup), A1 for a numbered group, A-B for group B of league A, LEAGUE for a league\'s single table. Each table that is not a lettered group carries a label (the provider\'s name) and its title shows the key in parentheses. Returns ranked rows (team, played, W/D/L, goal difference, points). incomplete:true means a table could not be read and the tables returned are not the whole competition; a table with partial is missing rows. Use get_today for fixtures/scores and get_next_fixture for one team. If unavailable, the default World Cup scope returns a roster at zero; competitions without a compatible bundled roster return no tables. Both are flagged degraded.',
+        'Live cumulative standings — omit group for every table, or pass one table\'s key: a group letter (A–L in the World Cup), A1 for a numbered group, A-B for group B of league A, LEAGUE for a league\'s single table. Each table that is not a lettered group carries a label (the provider\'s name) and its title shows the key in parentheses. Returns ranked rows (team, played, W/D/L, goal difference, points). incomplete:true means a table could not be read and the tables returned are not the whole competition; a table with partial is missing rows. Use get_today for fixtures/scores and get_next_fixture for one team. If unavailable, the World Cup returns its roster at zero; competitions without a compatible bundled roster return no tables. Both are flagged degraded.',
       inputSchema: {
         group: groupArg.optional().describe('Table key: a group letter (A), or A1, A-B, LEAGUE (omit for all)'),
         ...commonArgs,
@@ -880,8 +898,13 @@ export function buildServer(): McpServer {
     {
       title: 'Next fixture for a team',
       description:
-        "A team's next match. World Cup: a nation's code or name (MEX, Mexico); a confirmed knockout tie is read from the live overlay, group fixtures from the bundled schedule. A club competition: a club's name or code (Arsenal, ARS), resolved against the competition's roster; its earliest match not yet finished in the 14 days ahead (in play included), with team (the club resolved), candidates when several teams match (no fixture is picked), horizon when none falls in that span, unknownTeam when neither the competition's table (read whole) nor its fixtures over those 14 days hold such a team, rosterIncomplete when the roster could not be read whole and the name (a code or a partial name) could not be resolved without it: ask again with the club's full name. partial means the provider sent records that could not be used: the answer is what was read, and no fixture then does not mean the team is out.",
-      inputSchema: { team: clubArg.describe('A team name or code: a club (Arsenal, ARS) or a nation (Mexico, MEX)'), ...commonArgs },
+        "A team's next match. World Cup: a nation's code or name (MEX, Mexico); a confirmed knockout tie is read from the live overlay, group fixtures from the bundled schedule. A club competition: a club's name or code (Arsenal, ARS), resolved against the competition's roster; its earliest match not yet finished in the 14 days ahead (in play included), with team (the club resolved), candidates when several teams match (no fixture is picked), horizon when none falls in that span, unknownTeam when neither the competition's table (read whole) nor its fixtures over those 14 days hold such a team, rosterIncomplete when the roster could not be read whole and the name (a code or a partial name) could not be resolved without it: ask again with the club's full name. partial means the provider sent records that could not be used: the answer is what was read, and no fixture then does not mean the team is out. With no team: the server's CLAUDINHO_TEAM, else the team the user pinned (claudinho follow <alias> --team <name>) when the request is for that team's competition; a tool error when there is neither.",
+      inputSchema: {
+        team: clubArg
+          .optional()
+          .describe("A team name or code: a club (Arsenal, ARS) or a nation (Mexico, MEX). Omit for the server's CLAUDINHO_TEAM, else the team the user pinned"),
+        ...commonArgs,
+      },
       // Read-only; overlays live provider data for knockout pairings, so open-world.
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: nextOut,
@@ -1004,7 +1027,11 @@ export function buildServer(): McpServer {
       // for this read: the adapter is the one resolved for the same request.
       const request = {};
       const selection = selectionOf(request);
-      const text = await standingsResourceText(group, resolveAdapter(request), selection);
+      // Nothing chosen: the verdict's sentence, and nothing read.
+      const text =
+        selection.kind === 'selected'
+          ? await standingsResourceText(group, resolveAdapter(request), selection)
+          : noCompetitionText(selection);
       return { contents: [{ uri: uri.href, mimeType: 'text/plain', text }] };
     },
   );

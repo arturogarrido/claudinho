@@ -11,7 +11,10 @@
  * silently drop it. Nested domain objects (match/view/tables/signals) stay
  * passthrough on purpose, so this doesn't have to mirror every core field.
  */
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod/v3';
 import {
   allFixtures,
@@ -348,8 +351,76 @@ describe('MCP tool output schemas', () => {
   });
 
   describe('list_competitions', () => {
-    it('the default selection', () => expectValid('list_competitions', toolListCompetitions({}).data));
+    it('the saved selection (the World Cup this suite follows)', () => expectValid('list_competitions', toolListCompetitions({}).data));
     it('an alias', () => expectValid('list_competitions', toolListCompetitions({ competition: 'premier-league' }).data));
     it('a raw slug (experimental)', () => expectValid('list_competitions', toolListCompetitions({ competition: 'fifa.friendly' }).data));
+  });
+
+  // 0.11 · 2.5b: with nothing chosen every competition-answering tool answers
+  // its own empty healthy shape plus `competition: null` and `noCompetition:
+  // true`, before any adapter is built. Each branch a tool can be asked in.
+  describe('nothing chosen (noCompetition)', () => {
+    let restore: string | undefined;
+    let empty: string;
+    beforeEach(() => {
+      restore = process.env.XDG_CONFIG_HOME;
+      empty = mkdtempSync(join(tmpdir(), 'claudinho-schema-none-'));
+      process.env.XDG_CONFIG_HOME = empty;
+      delete process.env.CLAUDINHO_COMPETITION;
+    });
+    afterEach(() => {
+      if (restore === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = restore;
+      rmSync(empty, { recursive: true, force: true });
+    });
+    const none = { noCompetition: true, competition: null };
+
+    it('every tool, every way it can be asked', async () => {
+      const cases: Array<[keyof typeof OUTPUT_SCHEMAS, () => Promise<{ data: unknown }> | { data: unknown }]> = [
+        ['get_today', () => toolGetToday({ date: '2026-10-10' })],
+        ['get_today', () => toolGetToday({ now: TEST_NOW })],
+        ['get_live', () => toolGetLive({})],
+        ['get_match', () => toolGetMatch({ id: '760415' })],
+        ['get_standings', () => toolGetStandings({})],
+        ['get_standings', () => toolGetStandings({ group: 'A' })],
+        ['get_bracket', () => toolGetBracket({})],
+        ['get_bracket', () => toolGetBracket({ stage: 'R16' })],
+        ['get_next_fixture', () => toolGetNextFixture({ team: 'Arsenal' })],
+        ['get_next_fixture', () => toolGetNextFixture({})],
+        ['get_market_signal', () => toolGetMarketSignal({})],
+        ['get_market_signal', () => toolGetMarketSignal({ matchId: '760415' })],
+        ['get_market_signal', () => toolGetMarketSignal({ team: 'MEX' })],
+        ['get_share_snippet', () => toolGetShareSnippet({ live: true })],
+        ['get_share_snippet', () => toolGetShareSnippet({ group: 'A' })],
+        ['get_share_snippet', () => toolGetShareSnippet({ bracket: true })],
+        ['get_share_snippet', () => toolGetShareSnippet({ matchId: '760415' })],
+        ['get_share_snippet', () => toolGetShareSnippet({ team: 'MEX' })],
+        ['get_share_snippet', () => toolGetShareSnippet({})],
+        ['list_competitions', () => toolListCompetitions({})],
+      ];
+      for (const [tool, call] of cases) {
+        const { data } = await call();
+        expectValid(tool, data);
+        if (tool === 'list_competitions') expect((data as { current: unknown }).current, tool).toBeNull();
+        else expect(data, tool).toMatchObject(none);
+      }
+      // The kind a share card asks for, by the routing precedence.
+      const kinds = await Promise.all(
+        [{ live: true }, { group: 'A' }, { bracket: true }, { matchId: '1' }, { team: 'MEX' }, {}].map(
+          async (a) => ((await toolGetShareSnippet(a)).data as { kind: string }).kind,
+        ),
+      );
+      expect(kinds).toEqual(['live', 'table', 'bracket', 'match', 'next', 'today']);
+      // Asked for two at once, the kind the card would be (live > group > bracket > matchId > team > date).
+      const both = await Promise.all(
+        [{ live: true, group: 'A' }, { group: 'A', bracket: true }, { bracket: true, matchId: '1' }, { matchId: '1', team: 'MEX' }, { team: 'MEX', date: '2026-10-10' }].map(
+          async (a) => ((await toolGetShareSnippet(a)).data as { kind: string }).kind,
+        ),
+      );
+      expect(both).toEqual(['live', 'table', 'bracket', 'match', 'next']);
+      // A keyed standings read's empty shape is `null`, every table's `[]`.
+      expect(((await toolGetStandings({ group: 'A' })).data as { tables: unknown }).tables).toBeNull();
+      expect(((await toolGetStandings({})).data as { tables: unknown }).tables).toEqual([]);
+    });
   });
 });
