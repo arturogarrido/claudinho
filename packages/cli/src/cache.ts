@@ -473,13 +473,19 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
 //
 // It is read ONLY when no snapshot could be read (the hot path's no-snapshot
 // branch, a refresher cycle whose base read is undefined): a readable snapshot
-// pays nothing, an old record on disk or not. Such a cycle ADMITS first, under
-// the lock, before any publish or request: `{ at: now, count: previous + 1 }`,
-// read back through the bounded reader, and admitted only when what is read is
-// what was written (as `writeBackoffNote` tells written from visible). When the
-// cycle's snapshot then reads back usable, the record is settled to `count: 0`.
-// `count` is "admissions since the last persisted reset": a conservative
-// pacing state, not a history.
+// pays nothing, an old record on disk or not. Such a cycle records its attempt
+// first, under the lock, before any publish or request: `{ at: now, count:
+// previous + 1 }`, read back through the bounded reader (as `writeBackoffNote`
+// tells written from visible). The gate FAILS CLOSED ONLY WHERE A PUBLISH
+// COULD NOT HEAL: with the snapshot FILE present and unusable (mode 000, whose
+// mode a publish keeps; a rejected file, or another format's), the attempt is
+// admitted only when what is read back is what was written, else nothing is
+// done; with the snapshot file ABSENT, a publish starts a fresh file with no
+// mode to inherit and heals in one cycle, so the cycle goes on whether or not
+// its attempt could be recorded. A believed record that is not due stops the
+// cycle in both. When the cycle's snapshot then reads back usable, the record
+// is settled to `count: 0`. `count` is "admissions since the last persisted
+// reset": a conservative pacing state, not a history.
 //
 // BELIEVED when the file parses to an object whose `at` is a stamp this product
 // writes (`validStamp`) at most `FUTURE_SKEW_MS` ahead (the snapshot's rule);
@@ -492,10 +498,12 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
 // The pace: one minute, doubling per admission, at most thirty
 // (`attemptDelayMs`). The throttle is independent of it and settled as before.
 //
-// STATED LIMIT: a record nobody can read (its own mode 000, a directory at its
-// path) admits nothing. The provider is then not asked and nothing is
-// published, but the hot path, which cannot read it either, still starts a
-// refresher on every tick.
+// STATED LIMIT: with the snapshot file present and unreadable, a record nobody
+// can read (its own mode 000, a directory at its path) admits nothing. The
+// provider is then not asked and nothing is published, but the hot path, which
+// cannot read the record either, still starts a refresher on every tick. With
+// the snapshot file absent, the cycle proceeds as it did before this record
+// existed, and its publish ends the loop.
 
 /** A record is `{"at":"<ISO>","count":n}`: far below this (the note's bound). */
 const MAX_ATTEMPT_BYTES = MAX_NOTE_BYTES;
@@ -570,10 +578,11 @@ function writeAttemptRecord(source: string, competition: string, now: number, co
  * ADMIT an attempt at `now`, under the refresh lock, before anything is
  * published or asked: write `{ at: now, count: believed count + 1 }` and read
  * it back. Returns the count when the record read back is the one written,
- * else undefined (the write failed, or what was written cannot be read: the
- * attempt is not admitted, and the caller does nothing). The carried count is
- * clamped so the sum stays a safe integer (any count from 6 on waits the
- * ceiling; above that it is only a count). Never throws.
+ * else undefined (the write failed, or what was written cannot be read). What
+ * the caller then does depends on the snapshot file (the refresher's
+ * `admitNoBaseCycle`): present, nothing; absent, the cycle goes on. The
+ * carried count is clamped so the sum stays a safe integer (any count from 6
+ * on waits the ceiling; above that it is only a count). Never throws.
  */
 export function admitAttempt(source: string, competition: string, now: number): number | undefined {
   try {
@@ -593,6 +602,18 @@ export function admitAttempt(source: string, competition: string, now: number): 
  */
 export function settleAttempt(source: string, competition: string, now: number): boolean {
   return writeAttemptRecord(source, competition, now, 0);
+}
+
+/**
+ * Whether the scope's snapshot FILE has an entry at all: one look through the
+ * bounded reader with a bound of 0, so none of its content is read. `false`
+ * only when there is no entry; a file this reader cannot use (mode 000, a
+ * directory, a link to nothing, a rejected or another format's file) is
+ * present. Asked by the refresher on a cycle whose base read is undefined, to
+ * know whether a publish can heal what it found. Never throws.
+ */
+export function snapshotPresent(source: string, competition: string): boolean {
+  return lookAtSmallFile(cachePath(source, competition), 0).kind !== 'absent';
 }
 
 /** Age of the latest fixtures ATTEMPT in ms (Infinity if never attempted). */

@@ -53,8 +53,11 @@ The behavior differs by component:
   live/upcoming scores and fixtures), `backoff.json` (a single timestamp: until when the data
   provider asked not to be contacted), `attempt.json` (a timestamp and a count that pace the
   background refresher while no readable cache exists), `market-signals.json` (cached market
-  reads), and `runs.json` (a local counter for the star-reminder nudge). These files contain no
-  personal data, stay on your device, are never uploaded, and you can delete them at any time.
+  reads), and `runs.json` (a local counter for the star-reminder nudge). The first three are kept
+  per competition: named bare for the World Cup, as here, and with the source and competition for
+  another (`state.espn.eng.1.json`, `backoff.espn.eng.1.json`, `attempt.espn.eng.1.json`). These
+  files contain no personal data, stay on your device, are never uploaded, and you can delete them
+  at any time.
 - Your **choice** is a small **config file on your own machine**: `config.json` in your config
   directory (`$XDG_CONFIG_HOME/claudinho`, falling back to `%APPDATA%\claudinho` on Windows and
   `~/.config/claudinho` elsewhere). It holds the competition you chose and, if you pinned one, a
