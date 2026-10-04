@@ -7,7 +7,9 @@ import { humanLabel, parseCachedMatch, parsedValue, sealMarketSignal } from '../
 // CACHE path. That file is gone — its rules moved into the constructors BOTH
 // paths end at — so the same assertions now run against the boundary that owns
 // them. See trust-parity.test.ts for the property that made the merge safe.
-const sanitizeMatchStrings = (m: unknown): Match | undefined => parsedValue(parseCachedMatch(m));
+// The fixtures here are World Cup nations: the cache is read with the kind
+// its competition states (a club's has no flag; see team-kind.test.ts).
+const sanitizeMatchStrings = (m: unknown): Match | undefined => parsedValue(parseCachedMatch(m, { teamKind: 'nation' }));
 const trySanitizeMarketSignal = (s: unknown, o: { now?: Date } = {}): MarketSignal | undefined =>
   parsedValue(sealMarketSignal(s, o));
 /** An unexpected refusal should fail loudly, not skip the assertion. */

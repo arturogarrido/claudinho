@@ -47,9 +47,15 @@ export function byKickoff(a: Match, b: Match): number {
   return a.kickoff.localeCompare(b.kickoff);
 }
 
-/** Human-readable stage for display (group letter when applicable). */
-export function stageLabel(m: Pick<Match, 'stage' | 'group'>): string {
-  if (m.group) return `Group ${m.group}`;
+/**
+ * Human-readable stage for display, in English (the group letter under the
+ * group stage). An `OTHER` stage prints the provider's own words it carries,
+ * untranslated, or NOTHING when it carries none: a caller that joins a stage
+ * into a line drops an empty one with its separator.
+ */
+export function stageLabel(m: Pick<Match, 'stage' | 'group' | 'stageLabel'>): string {
+  // A group letter belongs to the group stage (the seal drops one elsewhere).
+  if (m.group && m.stage === 'GROUP') return `Group ${m.group}`;
   switch (m.stage) {
     case 'GROUP':
       return 'Group stage';
@@ -67,7 +73,25 @@ export function stageLabel(m: Pick<Match, 'stage' | 'group'>): string {
       return 'Final';
     case 'FRIENDLY':
       return 'Friendly';
+    case 'REGULAR':
+      return 'League';
+    case 'LEAGUE':
+      return 'League phase';
+    case 'PO':
+      return 'Play-offs';
+    case 'OTHER':
+      return m.stageLabel ?? '';
     default:
       return '';
   }
+}
+
+/**
+ * The segments of a line that are joined with ` · ` (a stage, a location, a
+ * time), with the EMPTY ones dropped: an OTHER stage with no words, or a
+ * record with no venue, prints no segment and no separator, never a dangling
+ * ` ·` or a `· ·`.
+ */
+export function joinSegments(segments: readonly (string | undefined)[]): string {
+  return segments.filter((s): s is string => typeof s === 'string' && s !== '').join(' · ');
 }

@@ -257,9 +257,13 @@ export function mapEspnEvent(ev: unknown, ctx: MapContext = {}): Match | undefin
   return parsedValue(parseEspnEvent(ev, ctx));
 }
 
-/** Project an ESPN standings payload onto group tables. Exported for tests. */
-export function parseStandings(data: unknown): GroupStandings[] {
-  return [...parseEspnStandings(data).items];
+/**
+ * Project an ESPN standings payload onto group tables. Exported for tests.
+ * `competition` states whose rows these are (its written kind decides whether
+ * a row's team is flagged); absent, the teams are clubs.
+ */
+export function parseStandings(data: unknown, competition?: string): GroupStandings[] {
+  return [...parseEspnStandings(data, 'groups', undefined, competition).items];
 }
 
 /**
@@ -643,7 +647,9 @@ export class EspnAdapter implements ProviderAdapter {
       return this.standingsShared.promise;
     }
     const promise = this.get(this.standingsUrl()).then((d) => {
-      const parsed = parseEspnStandings(d, this.standingsShape, this.expectedStandingsGroups);
+      // The adapter states its own competition: its written kind decides
+      // whether a row's team is a nation (flagged) or a club (no flag).
+      const parsed = parseEspnStandings(d, this.standingsShape, this.expectedStandingsGroups, this.competition);
       // The parser's own account rides on the result, as for a scoreboard: a
       // refused row marks its table partial, but a refused TABLE (a key two
       // children claim, a name that is no group) leaves no trace on the
@@ -779,6 +785,8 @@ export class EspnAdapter implements ProviderAdapter {
     // decides any of that — which is the point, since every duplicated rule was
     // a place for the two copies to drift.
     const parsed = parseEspnEvents(data, {
+      // The adapter's own competition: its written kinds decide the flag and the stage grammar.
+      competition: this.competition,
       groupByTeam: groups.value,
       // An EMPTY id map means the standings carried no ids, not that no team is
       // in a group: pass none, so codes are consulted.

@@ -22,6 +22,7 @@
  * trust-parity.test.ts asserts the two agree, and idempotence — sealing an
  * already-sealed Match returns it unchanged — is what makes the round trip safe.
  */
+import type { TeamKind } from '../kinds';
 import type { Match, MatchEvent, Stage, Status, Team } from '../types';
 import { type BoundedList, takeBounded } from './bounded';
 import { type ParseResult, definitiveNone, malformed, valid } from './result';
@@ -44,7 +45,25 @@ export const MAX_MATCH_EVENTS = 128;
 /** A team's 3-letter code; the cap is display columns, not bytes. */
 export const TEAM_CODE_COLUMNS = 8;
 
-const STAGES = new Set<string>(['GROUP', 'R32', 'R16', 'QF', 'SF', '3P', 'F', 'FRIENDLY']);
+const STAGES = new Set<string>([
+  'GROUP',
+  'R32',
+  'R16',
+  'QF',
+  'SF',
+  '3P',
+  'F',
+  'FRIENDLY',
+  'REGULAR',
+  'LEAGUE',
+  'PO',
+  'OTHER',
+]);
+/**
+ * Display columns of an `OTHER` stage's carried words (`Match.stageLabel`):
+ * the same bound on the feed and the cache path, so the two agree.
+ */
+export const STAGE_LABEL_COLUMNS = 40;
 const STATUSES = new Set<string>(['SCHEDULED', 'LIVE', 'HT', 'FT', 'POSTPONED', 'CANCELLED']);
 const EVENT_TYPES = new Set(['GOAL', 'OWN_GOAL', 'PEN', 'YELLOW', 'RED', 'SUB']);
 
@@ -52,6 +71,7 @@ const EVENT_TYPES = new Set(['GOAL', 'OWN_GOAL', 'PEN', 'YELLOW', 'RED', 'SUB'])
 export interface MatchParts {
   id?: unknown;
   stage?: unknown;
+  stageLabel?: unknown;
   group?: unknown;
   kickoff?: unknown;
   venue?: unknown;
@@ -105,15 +125,26 @@ export function teamCode(raw: unknown, fallbackName: string): string {
  * path alike — the team is still a team, it just carries no identity we can
  * compare by. `code` stays a display label: bounded, never matched against a
  * shape (a real club abbreviates to `O&M`), never an identity.
+ *
+ * `kind` is the competition's written fact (`TEAM_KIND`), stated by the caller,
+ * never inferred: a `nation` gets its flag GENERATED from its name (the neutral
+ * 🏳️ when the name is no nation: a bundle placeholder); a `club` gets NO flag
+ * key at all (not `''`, not 🏳️), so nothing is printed in its place, and a club
+ * named like a region (`Monaco`) is not flagged by its name. A flag in the raw
+ * value is never read, whatever the kind.
  */
-export function sealTeam(raw: unknown): Team | undefined {
+export function sealTeam(raw: unknown, kind: TeamKind): Team | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const t = raw as Record<string, unknown>;
   const name = humanLabel(t.name);
   if (!name) return undefined;
   const code = teamCode(t.code, name);
   const id = opaqueId(t.id, TEAM_ID);
-  return id ? { code, name, flag: productFlag(name), id } : { code, name, flag: productFlag(name) };
+  // Assigned in the order `Team` declares its fields (it is serialized as is).
+  const out: Team = { code, name };
+  if (kind === 'nation') out.flag = productFlag(name);
+  if (id) out.id = id;
+  return out;
 }
 
 /**
@@ -197,6 +228,14 @@ export interface SealOptions {
    * needs ZERO. Cheapest work is work not done.
    */
   readonly events?: boolean;
+  /**
+   * The teams' kind, a written fact of the competition the record belongs to
+   * (`teamKind(competition)`): a `nation` side's flag is generated from its
+   * name, a `club` side has none. Default `club`: a kind nobody stated vouches
+   * for nothing, so no flag is generated from a name that merely looks like a
+   * region. Every reader of a cached match states its competition's kind.
+   */
+  readonly teamKind?: TeamKind;
 }
 
 export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResult<Match> {
@@ -211,8 +250,9 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   const status = member<Status>(parts.status, STATUSES);
   if (!status) return malformed('match status is not a known status');
 
-  const home = sealTeam(parts.home);
-  const away = sealTeam(parts.away);
+  const kind = opts.teamKind ?? 'club';
+  const home = sealTeam(parts.home, kind);
+  const away = sealTeam(parts.away, kind);
   if (!home || !away) return malformed('match does not name both teams');
   // A team cannot play itself. This lives HERE rather than in the ESPN parser
   // where I first wrote it, because the cache path reached no such rule and
@@ -224,7 +264,15 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
     return definitiveNone('both competitors are the same team');
   }
 
-  const group = humanLabel(parts.group) || undefined;
+  // A group letter belongs to the group stage: the feed attaches one only
+  // under GROUP, and a record that claims one on any other stage (a cache
+  // file) has it dropped, so no surface prints "Group A" for a league match.
+  const group = stage === 'GROUP' ? humanLabel(parts.group) || undefined : undefined;
+  // The provider's own words belong to a phase the grammar does not know:
+  // kept only on OTHER, as a human label of the one bound both paths share;
+  // an unreadable or empty one is dropped (the stage stays OTHER, unlabelled).
+  const stageLabel =
+    stage === 'OTHER' ? humanLabel(parts.stageLabel, STAGE_LABEL_COLUMNS) || undefined : undefined;
   const city = humanLabel(parts.city) || undefined;
   const country = humanLabel(parts.country) || undefined;
 
@@ -248,12 +296,13 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   // Where penalties can settle a tie. Only a WORLD CUP GROUP fixture is excluded:
   // a draw is its legitimate final result.
   //
-  // This deliberately does NOT exclude `FRIENDLY`, which is the catch-all stage
-  // for anything outside the bundled schedule — i.e. every competition reachable
-  // through `CLAUDINHO_COMPETITION`, the seam this project keeps on purpose.
-  // Excluding it silently dropped real shootouts: two J-League cup ties in an
-  // ESPN corpus lost `shootout: 5-3` and their `winnerCode`, which the parity
-  // diff against main caught and no test did.
+  // This deliberately excludes NOTHING else. `FRIENDLY` was once the catch-all
+  // stage for every competition outside the bundle, and excluding it silently
+  // dropped real shootouts: two J-League cup ties in an ESPN corpus lost
+  // `shootout: 5-3` and their `winnerCode`, which the parity diff against main
+  // caught and no test did. The same holds for `OTHER`, which is now where a
+  // phase nobody stated lands (a cup final served without a slug keeps its
+  // shootout), and for every stage the grammar added: only GROUP is excluded.
   const canGoToPenalties = stage !== 'GROUP';
   const shootoutPresent = parts.shootout !== undefined && parts.shootout !== null;
   const parsedShootout = shootoutPresent ? sealScorePair(parts.shootout) : undefined;
@@ -339,6 +388,7 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
   // literal-plus-`delete` because deleting a key deoptimizes the object, and
   // this runs per fixture on a 150ms-budget path.
   const out = { id, stage } as Match;
+  if (stageLabel) out.stageLabel = stageLabel;
   if (group) out.group = group;
   out.kickoff = kickoff;
   out.venue = humanLabel(parts.venue);

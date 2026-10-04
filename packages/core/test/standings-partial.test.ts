@@ -75,6 +75,9 @@ const TOPOLOGY: BracketTopology = {
 async function domainTables(payload: unknown) {
   const adapter = new EspnAdapter({
     baseUrl: competitionBase('synthetic'),
+    // A nations competition off the bundle: its rows' teams are flagged (a
+    // club competition's are not; 0.11 · 2.2).
+    competition: 'uefa.euro',
     expectedStandingsGroups: ['A'],
     fetchImpl: (async () => new Response(JSON.stringify(payload))) as typeof fetch,
   });

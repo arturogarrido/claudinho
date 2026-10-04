@@ -1,7 +1,7 @@
 import { t, stageLabelI18n } from '../i18n';
 import { isFinished, outcomeFromScore } from '../normalize';
 import type { GroupStandings } from '../standings';
-import type { Match, Team } from '../types';
+import type { Match, Stage, Team } from '../types';
 import { matchKey } from './build';
 import type {
   BracketMatchNode,
@@ -13,8 +13,9 @@ import type {
   SlotRef,
   SlotStatus,
 } from './types';
-import { fixturesByGroup } from '../schedule';
+import { fixturesByGroup, isKnockoutStage } from '../schedule';
 import { teamFromMatch } from './types';
+import { isPlaceholderSide } from './placeholders';
 
 interface ResolveContext {
   nodesByKey: Map<string, BracketMatchNode>;
@@ -89,12 +90,12 @@ function resolveWinner(match: Match): Team | undefined {
   if (!isFinished(match.status)) return undefined;
   if (match.winnerCode) {
     const w = teamFromMatch(match, match.winnerCode);
-    if (w && w.flag !== '🏳️') return w;
+    if (w && !isPlaceholderSide(w)) return w;
   }
   if (!match.score) return undefined;
   const outcome = outcomeFromScore(match.score.home, match.score.away);
-  if (outcome === 'H') return match.home.flag !== '🏳️' ? match.home : undefined;
-  if (outcome === 'A') return match.away.flag !== '🏳️' ? match.away : undefined;
+  if (outcome === 'H') return !isPlaceholderSide(match.home) ? match.home : undefined;
+  if (outcome === 'A') return !isPlaceholderSide(match.away) ? match.away : undefined;
   return undefined;
 }
 
@@ -103,21 +104,26 @@ function resolveLoser(match: Match): Team | undefined {
   if (match.winnerCode) {
     const winner = teamFromMatch(match, match.winnerCode);
     if (winner?.code === match.home.code) {
-      return match.away.flag !== '🏳️' ? match.away : undefined;
+      return !isPlaceholderSide(match.away) ? match.away : undefined;
     }
     if (winner?.code === match.away.code) {
-      return match.home.flag !== '🏳️' ? match.home : undefined;
+      return !isPlaceholderSide(match.home) ? match.home : undefined;
     }
   }
   if (!match.score) return undefined;
   const outcome = outcomeFromScore(match.score.home, match.score.away);
-  if (outcome === 'H') return match.away.flag !== '🏳️' ? match.away : undefined;
-  if (outcome === 'A') return match.home.flag !== '🏳️' ? match.home : undefined;
+  if (outcome === 'H') return !isPlaceholderSide(match.away) ? match.away : undefined;
+  if (outcome === 'A') return !isPlaceholderSide(match.home) ? match.home : undefined;
   return undefined;
 }
 
 function participant(team: Team, status: SlotStatus): ResolvedParticipant {
-  return { label: team.name, flag: team.flag, code: team.code, status };
+  // The bracket is the bundle's (nations): every team here carries a flag. A
+  // side with none is printed by its code (`formatParticipant`), never with an
+  // empty flag.
+  return team.flag
+    ? { label: team.name, flag: team.flag, code: team.code, status }
+    : { label: team.name, code: team.code, status };
 }
 
 function tbd(label: string): ResolvedParticipant {
@@ -125,13 +131,13 @@ function tbd(label: string): ResolvedParticipant {
 }
 
 function confirmedLiveParticipant(team: Team | undefined): ResolvedParticipant | undefined {
-  if (!team || team.flag === '🏳️') return undefined;
+  if (!team || isPlaceholderSide(team)) return undefined;
   return participant(team, 'confirmed');
 }
 
-function winnerLabel(ctx: ResolveContext, stage: string, index: number): string {
+function winnerLabel(ctx: ResolveContext, stage: Stage, index: number): string {
   return t(ctx.lang, 'bracket.slot.winner', {
-    stage: stageLabelI18n(ctx.lang, stage),
+    stage: stageLabelI18n(ctx.lang, { stage }),
     n: String(index),
   });
 }
@@ -205,7 +211,7 @@ function resolveSlot(
       }
       return tbd(
         t(ctx.lang, 'bracket.slot.loser', {
-          stage: stageLabelI18n(ctx.lang, ref.stage),
+          stage: stageLabelI18n(ctx.lang, { stage: ref.stage }),
           n: String(ref.index),
         }),
       );
@@ -229,7 +235,7 @@ export function buildBracketView(
   filterStage?: string,
   lang?: string,
 ): BracketView {
-  const knockout = matches.filter((m) => m.stage !== 'GROUP' && m.stage !== 'FRIENDLY');
+  const knockout = matches.filter((m) => isKnockoutStage(m.stage));
   const matchesById = new Map(knockout.map((m) => [m.id, m]));
   const nodesByKey = new Map(topology.matches.map((n) => [matchKey(n.stage, n.index), n]));
   const ctx: ResolveContext = { nodesByKey, matchesById, tables, standingsDegraded, lang };
@@ -270,7 +276,7 @@ export function buildBracketView(
     });
     stages.push({
       stage,
-      label: stageLabelI18n(lang, stage),
+      label: stageLabelI18n(lang, { stage }),
       matches: matchViews,
     });
   }

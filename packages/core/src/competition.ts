@@ -1,6 +1,22 @@
 import { DEFAULT_COMPETITION } from './adapters/espn';
 
 export { STANDINGS_SHAPE } from './adapters/espn';
+// The written kinds of a competition (its teams: nations or clubs; itself: a
+// league, a cup or the friendly one) and a league's season name. Facts of the
+// competition like the ones below, kept in a leaf module the trust layer can
+// import without a cycle (see `kinds.ts`).
+export {
+  COMPETITION_KIND,
+  type CompetitionKind,
+  competitionKind,
+  isMexicoNationalTeam,
+  MEXICO_TEAM_ID,
+  SEASON_SLUG,
+  seasonSlugOf,
+  TEAM_KIND,
+  type TeamKind,
+  teamKind,
+} from './kinds';
 import { allFixtures } from './schedule';
 import type { SeasonInfo } from './types';
 

@@ -16,7 +16,7 @@ describe('bracket i18n', () => {
     const topology = loadBracketTopology();
     const baseKo = allFixtures().filter((m) => m.stage !== 'GROUP');
     const view = buildBracketView(topology, baseKo, [], true, true, undefined, 'es');
-    expect(view.stages[0]?.label).toBe(stageLabelI18n('es', view.stages[0]!.stage));
+    expect(view.stages[0]?.label).toBe(stageLabelI18n('es', { stage: view.stages[0]!.stage }));
     const r32 = view.stages.find((s) => s.stage === 'R32');
     const groupSlot = r32?.matches
       .flatMap((m) => [m.home, m.away])

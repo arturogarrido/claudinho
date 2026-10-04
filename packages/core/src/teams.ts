@@ -13,6 +13,7 @@
  * provider's id, never the code.
  */
 import { STANDINGS_SHAPE } from './adapters/espn';
+import { isPlaceholderSide } from './bracket/placeholders';
 import type { ProviderAdapter } from './adapters/types';
 import { getStandings, type NextFixtureResult } from './live';
 import { humanLabel } from './trust/roles';
@@ -42,7 +43,7 @@ export function allTeams(fixtures: Match[] = allFixtures()): TeamInfo[] {
   for (const m of fixtures) {
     if (m.stage !== 'GROUP') continue;
     for (const t of [m.home, m.away]) {
-      if (!/^[A-Z]{3}$/.test(t.code) || t.flag === '🏳️') continue;
+      if (!/^[A-Z]{3}$/.test(t.code) || isPlaceholderSide(t)) continue;
       if (!seen.has(t.code)) seen.set(t.code, { ...t, group: m.group ?? undefined });
     }
   }

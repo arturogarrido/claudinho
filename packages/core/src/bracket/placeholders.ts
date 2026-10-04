@@ -61,7 +61,14 @@ export function slotRefToTeam(ref: SlotRef): Team {
   }
 }
 
-/** True when a team carries a real nation flag (not a bracket placeholder). */
-export function isResolvedNation(team: Team): boolean {
-  return team.flag !== PLACEHOLDER_FLAG;
+/**
+ * True exactly when a side is a placeholder: the neutral 🏳️ a nation
+ * competition's side carries when its name is no nation (the bundle's
+ * unresolved knockout slots, "Round of 32 1 Winner"). A side with NO flag is a
+ * club (a club has none, by the competition's written kind) and is RESOLVED: it
+ * is a real team, drawn by its name or code. "Not a placeholder" is not "has a
+ * nation's flag".
+ */
+export function isPlaceholderSide(team: Pick<Team, 'flag'>): boolean {
+  return team.flag === PLACEHOLDER_FLAG;
 }

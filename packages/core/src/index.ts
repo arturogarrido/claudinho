@@ -7,7 +7,7 @@ export type { Lang } from './i18n';
 export { resolveTz, formatKickoff, formatDate, formatTime, countdown, localDate } from './time';
 export type { FormatOpts } from './time';
 export { isValidTimeZone, isValidDate } from './validate';
-export { displayWidth, padVisible, truncateVisible } from './text';
+export { displayWidth, padVisible, truncateVisible, withFlag } from './text';
 export {
   outcomeFromScore,
   isLive,
@@ -15,6 +15,7 @@ export {
   scoreline,
   matchLocation,
   byKickoff,
+  joinSegments,
   stageLabel,
 } from './normalize';
 export {
@@ -39,6 +40,7 @@ export {
   LIVE_WINDOW_MS,
   KNOCKOUT_EXTRA_TIME_MS,
   liveWindowMsFor,
+  isKnockoutStage,
   groups,
   sanitizeBundledFixture,
 } from './schedule';
@@ -210,7 +212,7 @@ export type { BetweenEditions, VerdictExtras, VerdictSource } from './verdict';
 export { buildBracketTopology, matchKey } from './bracket/build';
 export { parseTeamSlot } from './bracket/parse';
 export { buildBracketView } from './bracket/resolve';
-export { isResolvedNation } from './bracket/placeholders';
+export { isPlaceholderSide } from './bracket/placeholders';
 export { loadBracketTopology } from './bracket/topology';
 export {
   formatBracketList,
@@ -271,7 +273,14 @@ export {
   bracketCapability,
   bundleApplies,
   bundleSeasonYear,
+  COMPETITION_KIND,
+  competitionKind,
+  isMexicoNationalTeam,
   NO_BRACKET,
   resolveCompetition,
+  SEASON_SLUG,
+  TEAM_KIND,
+  teamKind,
 } from './competition';
+export type { CompetitionKind, TeamKind } from './competition';
 export { attachFetchMeta, fetchMeta, type FetchMeta } from './adapters/meta';
