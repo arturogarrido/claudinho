@@ -5,6 +5,12 @@ import type { Match, ProviderAdapter } from '@claudinho/core';
 import { EspnAdapter, FakeMarketProvider } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type CacheState, writeState } from '../src/cache';
+
+// `prompt` and `hook` fire a detached refresher when the cache says one is
+// due; in a test worker that would start a real process (a vitest fork
+// entry with `_refresh` as its argument), which the CI runner on Windows
+// waited on until its limit. The spawn is someone else's test.
+vi.mock('node:child_process', () => ({ spawn: vi.fn(() => ({ unref: vi.fn() })) }));
 import { cmdBracket, cmdHook, cmdLive, cmdMarkets, cmdMatch, cmdNext, cmdPrompt, cmdShare, cmdTable, cmdToday, cmdVibe } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';

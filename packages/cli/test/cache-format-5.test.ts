@@ -78,8 +78,10 @@ describe('a throttle survives the version bump', () => {
     expect(backoffInEffect(readCurrentState(SOURCE, PL), SOURCE, PL, NOW)).toBe(Date.parse(until));
   });
 
-  it('a deadline nobody believes is not: past, too far ahead, malformed, or another scope\'s', () => {
-    for (const bad of [new Date(NOW - MIN).toISOString(), new Date(NOW + 45 * MIN).toISOString(), 'soon', 7]) {
+  it('a deadline nobody believes is not: past, too far ahead, malformed, not in the product\'s stamp grammar, or another scope\'s', () => {
+    // `Date.parse` accepts more than the stamp grammar this product writes; a
+    // deadline read from a file of another format is held to the grammar too.
+    for (const bad of [new Date(NOW - MIN).toISOString(), new Date(NOW + 45 * MIN).toISOString(), 'soon', 7, '2026-10-04T12:08:00+00:00', 'Sun, 04 Oct 2026 12:08:00 GMT', '2026-10-04 12:08:00Z']) {
       writeRaw(older({ backoffUntil: bad as never }));
       expect(backoffInEffect(readCurrentState(SOURCE, PL), SOURCE, PL, NOW), String(bad)).toBeUndefined();
     }

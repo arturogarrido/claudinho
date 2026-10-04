@@ -14,7 +14,7 @@
 import type { Match, ProviderAdapter } from '@claudinho/core';
 import { displayWidth, FakeMarketProvider } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cmdToday } from '../src/commands';
+import { cmdLive, cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { matchLine, painterFor } from '../src/format';
 import { makeT } from '../src/i18n';
@@ -98,6 +98,47 @@ describe('the home column is measured on the list', () => {
     const [wide, other] = lines.map(vsColumn) as [number, number];
     expect(other).toBe(2 + 32 + 2);
     expect(wide).toBeGreaterThan(other);
+  });
+
+  it('`live` measures its own list the same way', async () => {
+    const inPlay = (m: Match): Match => ({ ...m, status: 'LIVE', minute: 30, score: { home: 0, away: 0 } });
+    const fixtures = [
+      inPlay(club('1', ['IRI', 'Independiente Rivadavia'], ['BOC', 'Boca Juniors'])),
+      inPlay(club('2', ['RIV', 'River Plate'], ['FLA', 'Flamengo'])),
+    ];
+    const adapter: ProviderAdapter = { ...adapterOf(fixtures), async fetchLive() { return fixtures; } };
+    await cmdLive(ctxFor(adapter));
+    const lines = writes.join('').split('\n').filter((l) => /0–0/.test(l));
+    expect(lines).toHaveLength(2);
+    // "  " + the cell + " " + the score (a score has no leading pad; `vs` does).
+    const columns = new Set(lines.map((l) => displayWidth(l.slice(0, l.indexOf('0–0')))));
+    expect([...columns]).toEqual([2 + displayWidth('Independiente Rivadavia') + 1]);
+  });
+
+  it('a bundled knockout day the feed does not serve: the placeholder homes widen the list, and every row keeps one column', async () => {
+    // The corpus serves every pairing, so the recorded World Cup days are
+    // byte-identical; a DEGRADED knockout day still has its 🏳️ placeholders at
+    // home ("Round of 32 1 Winner" is 23 columns with its flag), and the rule
+    // widens that list to them. Stated in the description; pinned here.
+    const failing: ProviderAdapter = {
+      name: 'espn',
+      competition: 'fifa.world',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate() { throw new Error('down'); },
+      async fetchLive() { throw new Error('down'); },
+      async fetchWindow() { throw new Error('down'); },
+    };
+    process.env.CLAUDINHO_FLAGS = 'on';
+    try {
+      await cmdToday('2026-07-06', ctxFor(failing, { tz: 'UTC' }));
+    } finally {
+      delete process.env.CLAUDINHO_FLAGS;
+    }
+    const lines = rows();
+    expect(lines.length).toBeGreaterThan(1);
+    const columns = new Set(lines.map(vsColumn));
+    expect(columns.size).toBe(1);
+    expect([...columns][0]).toBeGreaterThan(26);
   });
 
   it('a nations list with flags measures the cell with its flag', async () => {

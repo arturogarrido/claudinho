@@ -11,6 +11,9 @@ import type { Match } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeState } from '../src/cache';
 import { cmdHook } from '../src/commands';
+
+// The hook fires a detached refresher when one is due; never from a test worker.
+vi.mock('node:child_process', () => ({ spawn: vi.fn(() => ({ unref: vi.fn() })) }));
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 

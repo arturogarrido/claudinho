@@ -24,11 +24,13 @@ const CLUB_CUPS = ['uefa.champions', 'conmebol.libertadores', 'concacaf.champion
 const SUPPORTED = [...NATIONS, ...LEAGUES, ...CLUB_CUPS];
 
 describe('TEAM_KIND: which competitions field nations', () => {
-  it('lists every supported competition, and no other', () => {
-    expect(Object.keys(TEAM_KIND).sort()).toEqual([...SUPPORTED].sort());
+  it('lists every supported competition and the friendly competition, and no other', () => {
+    expect(Object.keys(TEAM_KIND).sort()).toEqual([...SUPPORTED, 'fifa.friendly'].sort());
   });
 
-  it.each(NATIONS)('%s fields nations', (c) => {
+  it.each([...NATIONS, 'fifa.friendly'])('%s fields nations', (c) => {
+    // International friendlies are nations' matches: the seam's documented
+    // example competition keeps its flags and Mexico's rally cry.
     expect(teamKind(c)).toBe('nation');
   });
 
@@ -39,7 +41,7 @@ describe('TEAM_KIND: which competitions field nations', () => {
   it('an unlisted competition fields clubs: no flag is generated from a name nobody vouched for', () => {
     expect(teamKind('fra.1')).toBe('club');
     expect(teamKind('usa.1')).toBe('club');
-    expect(teamKind('fifa.friendly')).toBe('club');
+    expect(teamKind('fifa.wwc')).toBe('club');
     expect(teamKind('')).toBe('club');
   });
 });

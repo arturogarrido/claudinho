@@ -168,8 +168,11 @@ describe('"¿Y si sí?" is Mexico\'s national team\'s, by identity', () => {
     expect(isMexicoNationalTeam({ code: 'MEX', name: 'México', flag: '🇲🇽', id: 'espn:203' }, 'nation')).toBe(true);
   });
 
-  it('the bundle\'s Mexico, which carries no id', () => {
+  it('the bundle\'s Mexico, which carries no id: by its code AND its name', () => {
     expect(isMexicoNationalTeam({ code: 'MEX', name: 'Mexico', flag: '🇲🇽' }, 'nation')).toBe(true);
+    expect(isMexicoNationalTeam({ code: 'MEX', name: 'Club Mexico' }, 'nation')).toBe(false);
+    expect(isMexicoNationalTeam({ code: 'MEX', name: 'Melilla' }, 'nation')).toBe(false);
+    expect(isMexicoNationalTeam({ code: 'MXC', name: 'Mexico' }, 'nation')).toBe(false);
   });
 
   it('never a club coded MEX, never another nation, never off a nation competition', () => {
