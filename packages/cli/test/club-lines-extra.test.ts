@@ -12,7 +12,7 @@ import type { Match, ProviderAdapter } from '@claudinho/core';
 import { EspnAdapter, FakeMarketProvider } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CacheState } from '../src/cache';
-import { cmdMatch } from '../src/commands';
+import { cmdMatch, cmdNext } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { renderHook } from '../src/hook';
 import { makeT } from '../src/i18n';
@@ -23,20 +23,27 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200
 const eastern = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
 const easternDay = (iso: string) => eastern.format(new Date(iso)).replace(/-/g, '');
 
-/** The real adapter over a fake cup feed: one Saturday fixture with NO venue, under `slug`. */
-function feed(slug: string | null) {
-  const date = '2026-10-10T11:30Z';
+/**
+ * The real adapter over a fake cup feed: one fixture with NO venue, under
+ * `slug`: on Saturday, or (`live`) in play now, 2–1 at 50'.
+ */
+function feed(slug: string | null, live = false) {
+  const date = live ? '2026-10-04T14:00Z' : '2026-10-10T11:30Z';
+  const side = (homeAway: string, id: string, abbreviation: string, displayName: string, score: string) => ({
+    homeAway,
+    ...(live ? { score } : {}),
+    team: { id, abbreviation, displayName },
+  });
   const event = {
     id: '800000030',
     date,
     season: { slug },
-    status: { type: { name: 'STATUS_SCHEDULED', state: 'pre' } },
+    status: live
+      ? { type: { name: 'STATUS_IN_PROGRESS', state: 'in' }, displayClock: "50'", period: 2 }
+      : { type: { name: 'STATUS_SCHEDULED', state: 'pre' } },
     competitions: [
       {
-        competitors: [
-          { homeAway: 'home', team: { id: '359', abbreviation: 'ARS', displayName: 'Arsenal' } },
-          { homeAway: 'away', team: { id: '363', abbreviation: 'CHE', displayName: 'Chelsea' } },
-        ],
+        competitors: [side('home', '359', 'ARS', 'Arsenal', '2'), side('away', '363', 'CHE', 'Chelsea', '1')],
       },
     ],
   };
@@ -93,6 +100,27 @@ describe('`match`: the stage and the location, joined with the empty ones droppe
     expect(all[header + 1]).toMatch(/^ {2}Sat 11:30/);
     expect(all.some((l) => /^\s+$/.test(l))).toBe(false);
     expect(writes.join('')).not.toContain('·');
+  });
+});
+
+describe('`next`: a stage with no words is no segment, in either branch', () => {
+  it('a fixture still to come: the time and the countdown, no leading separator', async () => {
+    await cmdNext('Arsenal', ctx(feed(null)));
+    const row = lines().find((l) => l.includes('Sat 11:30') && l.includes('in '));
+    expect(row).toMatch(/^ {2}Sat 11:30 · in \S/);
+  });
+
+  it('a match in play: the time alone', async () => {
+    await cmdNext('Arsenal', ctx(feed(null, true)));
+    const all = lines();
+    const at = all.findIndex((l) => /2–1/.test(l));
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(all[at + 1]).toBe('  Sun 14:00');
+  });
+
+  it('with words, they lead the line', async () => {
+    await cmdNext('Arsenal', ctx(feed('qualifying-final', true)));
+    expect(lines()).toContain('  Qualifying final · Sun 14:00');
   });
 });
 
