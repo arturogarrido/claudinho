@@ -89,7 +89,8 @@ const ctxOf = () => {
 describe('the ambient pick', () => {
   it('CLAUDINHO_TEAM wins over the saved pin', () => {
     follow({ version: 1, competition: 'eng.1', team: { id: 'espn:359', code: 'ARS', name: 'Arsenal' } });
-    writeState({ updatedAt: NOW.toISOString(), live: [mine(), other()], degraded: false, source: 'espn', competition: 'eng.1' }, NOW.getTime());
+    // Cached with the pinned match SECOND, so no preference and the pin read differently.
+    writeState({ updatedAt: NOW.toISOString(), live: [other(), mine()], degraded: false, source: 'espn', competition: 'eng.1' }, NOW.getTime());
     process.env.CLAUDINHO_TEAM = 'BRE';
     cmdPrompt(ctxOf(), { cursor: undefined });
     expect(text()).toMatch(/^⚽ BRE 1–0 LIV 50'/);
