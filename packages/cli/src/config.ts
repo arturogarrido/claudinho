@@ -103,4 +103,3 @@ export function resolveConfig(opts: RawGlobalOpts): CliConfig {
     langRequestedUnsupported,
   };
 }
-
