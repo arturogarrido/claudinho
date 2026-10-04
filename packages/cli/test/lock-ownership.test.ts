@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  acquireLock,
   type CacheState,
   claimLock,
   holdsLock,
@@ -73,10 +72,27 @@ describe('lock ownership', () => {
     releaseLock(b);
   });
 
-  it('the no-argument API still serves a single owner', () => {
-    expect(acquireLock(T)).toBe(true);
-    expect(holdsLock()).toBe(true);
-    releaseLock();
+  it('the API has one form: the token is required by `holdsLock`, `releaseLock` and `publishState` (D3)', () => {
+    const a = claimLock(T);
+    expect(holdsLock(a)).toBe(true);
+    // A release with another's token is a no-op; with the owner's it frees the lock.
+    releaseLock('1 2 deadbeef');
+    expect(isLockFresh(T)).toBe(true);
+    releaseLock(a);
     expect(isLockFresh(T)).toBe(false);
+    // The token parameter is required (no module-level "this process's lock" any more).
+    type Required1 = Parameters<typeof holdsLock>;
+    type Required2 = Parameters<typeof releaseLock>;
+    type Required3 = Parameters<typeof publishState>;
+    const one: Required1 = ['t'];
+    const two: Required2 = ['t'];
+    const three: Required3 = [snapshot('2026-09-15T12:00:00.000Z'), 't'];
+    // @ts-expect-error the token is required
+    const none1: Required1 = [];
+    // @ts-expect-error the token is required
+    const none2: Required2 = [];
+    // @ts-expect-error the token is required
+    const none3: Required3 = [snapshot('2026-09-15T12:00:00.000Z')];
+    expect([one, two, three, none1, none2, none3]).toHaveLength(6);
   });
 });
