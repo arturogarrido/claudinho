@@ -412,7 +412,7 @@ describe('reading the choice back', () => {
     const j = JSON.parse(text());
     expect(j.competition).toBeNull();
     expect(j.saved).toEqual({ version: 1, competition: 'eng.1' });
-    expect(j.refused).toEqual({ value: 'foo', source: 'env' });
+    expect(j.refused).toEqual({ env: 'foo' });
     expect(j.noCompetition).toBeUndefined();
     writes = [];
     await cmdFollow(undefined, {}, ctxOf());
