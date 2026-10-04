@@ -105,6 +105,22 @@ describe('lookAtEntry: what a rename onto the path would do', () => {
     }
   });
 
+  // Review round 5 (the fourth reader's survivor): a link is replaced whatever ITS OWN bits say (the rename keeps
+  // nothing of it), so the link question is asked before the bits. macOS clears a link's own bits with `chmod -h`.
+  it.skipIf(process.platform !== 'darwin' || !unprivileged)('a symbolic link whose own mode bits are cleared: replaceable (the link is replaced; its bits are not kept)', () => {
+    const target = join(tmp, 'bare-target.json');
+    writeFileSync(target, '{}');
+    const link = join(tmp, 'link-000.json');
+    symlinkSync(target, link);
+    try {
+      execFileSync('chmod', ['-h', '000', link]);
+    } catch {
+      return; // no way to clear a link's own bits here: nothing to test
+    }
+    if ((lstatSync(link).mode & 0o777) !== 0) return; // the bits did not clear: nothing to test
+    expect(lookAtEntry(link)).toBe('replaceable');
+  });
+
   it.skipIf(!POSIX)('a pipe with no writer: replaceable, and the look does not wait', () => {
     const fifo = join(tmp, 'pipe.json');
     execFileSync('mkfifo', [fifo]);
