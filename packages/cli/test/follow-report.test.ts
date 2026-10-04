@@ -53,7 +53,10 @@ describe('after a write under a flag', () => {
     const j = JSON.parse(text());
     expect(j.saved).toEqual({ version: 1, competition: 'fifa.world' });
     expect(j.competition).toMatchObject({ slug: 'fifa.world', chosenBy: 'saved' });
-    expect(j.override).toBe('flag');
+    // `override` is the reported competition's source (rule 39): the saved choice here, so none; the
+    // flag that ran this command is named in `sources`.
+    expect(j.override).toBeUndefined();
+    expect(j.sources).toEqual({ flag: 'esp.1' });
     writes = [];
     await cmdFollow('world-cup', {}, ctxOf({ competition: 'laliga' }));
     expect(text()).toMatch(/Following: World Cup/);
@@ -108,7 +111,9 @@ describe('one list of facts in every form: what the edge saw', () => {
     expect(j.saved).toEqual({ version: 1, competition: 'fifa.world' });
     expect(j.refused.source).toBe('flag');
     expect(j.refused.value.length).toBeLessThanOrEqual(40);
-    expect(j.competition).toBeNull();
+    // The write is done and the environment is not set: the next command follows the saved choice
+    // (rule 39: `competition` is null only when the environment is refused too).
+    expect(j.competition).toMatchObject({ slug: 'fifa.world', chosenBy: 'saved' });
     writes = [];
     await cmdFollow('world-cup', {}, ctxOf({ competition: 'foo' }));
     expect(text()).toMatch(/foo/);

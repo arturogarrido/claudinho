@@ -75,7 +75,11 @@ team while its competition has fixtures ahead: between editions `next` answers
 the verdict before it resolves a club, so there is nothing to pin (a `follow
 <alias>` without `--team` still works there). A pin is scoped to its
 competition, whatever chose it (`--competition`, `CLAUDINHO_COMPETITION`, or the
-saved choice), and never applies to another.
+saved choice), and never applies to another. `follow --json` says the same facts as
+its text: `competition` (`follow` alone: this command's; after a write or `off`: what
+the next command follows), `override` (its source when it is not the saved choice),
+`sources` (the flag, the environment and `CLAUDINHO_TEAM` this command ran under),
+`refused` (a refused value and its source), `saved` (the file as read) and `path`.
 
 ### Examples
 

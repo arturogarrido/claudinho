@@ -142,14 +142,16 @@ describe('the pin and the override, beside the main suites', () => {
     expect(resolveConfig({}).pin).toEqual({ id: 'espn:359', code: 'ARS', name: 'Arsenal' });
   });
 
-  it('`follow off --json` under the environment: the environment is in effect, nothing is saved, nothing is overridden', async () => {
+  it('`follow off --json` under the environment: the environment is what the next command follows (its source the override), nothing is saved', async () => {
     follow({ version: 1, competition: 'eng.1' });
     process.env.CLAUDINHO_COMPETITION = 'laliga';
     await cmdFollow('off', {}, { ...ctxOf(), cfg: { ...ctxOf().cfg, json: true } });
     const j = JSON.parse(text());
     expect(j.competition).toMatchObject({ slug: 'esp.1', chosenBy: 'env' });
     expect(j.saved).toBeNull();
-    expect(j.override).toBeUndefined();
+    // `override` is the reported competition's source when it is not the saved choice, in every form.
+    expect(j.override).toBe('env');
+    expect(j.sources).toEqual({ env: 'esp.1' });
     expect(j.removed).toBe(true);
     expect(existsSync(configFile())).toBe(false);
   });

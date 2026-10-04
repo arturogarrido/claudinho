@@ -2112,50 +2112,64 @@ interface FollowFacts {
 /**
  * The ONE list of what `follow` says, printed as lines or as `--json` keys,
  * in the same order:
- *   - the competition in effect (`competition`, through `selectionExtras`;
- *     null, with `noCompetition`, when none; null, with `refused: { value,
- *     source }`, when a flag or the environment gave a value that is refused:
- *     the text prints the refusal's sentence);
+ *   - the competition reported (`competition`, through `selectionExtras`):
+ *     `follow` alone, this command's selection; after a write or `off`, what
+ *     the NEXT command follows. Null, with `noCompetition`, when nothing is
+ *     chosen; null, with `refused`, when the value deciding it is refused;
+ *   - its source when it is not the saved choice (`override`: `flag` or
+ *     `env`, that meaning in every form: after a write under a flag alone it
+ *     is absent, since the next command follows the saved choice);
+ *   - the sources this command RAN under (`sources: { flag?, env?, team? }`:
+ *     the flag's and the environment's resolved slugs, and `CLAUDINHO_TEAM`
+ *     as set, bounded as a label), whatever is reported: the flag decides
+ *     this command alone, the environment outlives it; absent when none;
+ *   - a value refused for this command (`refused: { value, source }`: the
+ *     value bounded as a label, `flag` or `env`), said in the text by the
+ *     refusal's sentence, beside the competition reported (a refused flag on
+ *     a write: the write done, the saved choice what the next command follows);
  *   - the pinned team (`saved.team`) WITH the saved choice it belongs to: right
- *     after the competition in effect when that IS the file's competition
- *     (the pin applies), else after the saved choice's line, never as if in
- *     effect under another competition;
- *   - the saved choice, when another competition (or a refused value) is in
- *     effect;
- *   - the source that decides instead of the file while the file holds a
- *     choice (`override`: `env` or `flag`), with the sentence that is TRUE of
- *     the next command: under a flag with the environment also set, the
- *     environment decides next, not the saved choice;
+ *     after the competition reported when the pin is the team in effect (the
+ *     competition is the file's and no `CLAUDINHO_TEAM` overrides it), else
+ *     as the saved team (after the saved choice's line when there is one),
+ *     never as if in effect: under another competition, or under
+ *     `CLAUDINHO_TEAM`, whose sentence then says so;
+ *   - the saved choice (`saved`), its line when another competition (or a
+ *     refused value) is reported;
+ *   - the sentence TRUE of the next command while the file holds a choice
+ *     (a flag that ran, or was refused, decides this command alone; the
+ *     environment, when set, decides the next one before the saved choice);
  *   - why there is no saved choice (`reason`);
  *   - the path, said as what was done with it (`path`, and `removed` after `off`).
  */
 function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFacts): void {
   const { cfg, t } = ctx;
   const { effect, saved, reason, path } = facts;
-  // Which overrides are at work, while the file holds a choice to override:
-  // this command's `--competition`, and the environment (set, valid or not),
-  // which outlives the command.
-  const flagRan = cfg.selection.kind === 'selected' && cfg.selection.chosenBy === 'flag';
-  const envSet = edgeSelection({}, NO_SAVED).kind !== 'none';
-  const reported = effect.kind === 'selected' ? effect.chosenBy : undefined;
-  // The override the JSON names: the source of the competition reported when
-  // it is not the file; after a write, a flag that ran this command when the
-  // environment does not decide the next one.
-  const override =
-    saved === null
-      ? undefined
-      : reported === 'env' || reported === 'flag'
-        ? reported
-        : flagRan && !envSet
-          ? ('flag' as const)
-          : undefined;
-  const refused = effect.kind === 'refused' ? { value: humanLabel(effect.value, 40), source: effect.chosenBy } : undefined;
+  // The sources this command ran under: its `--competition` (resolved or
+  // refused), and the environment (set, valid or not), which outlives it.
+  const flag = cfg.selection.kind === 'selected' && cfg.selection.chosenBy === 'flag' ? cfg.selection : undefined;
+  const flagRefused = cfg.selection.kind === 'refused' && cfg.selection.chosenBy === 'flag' ? cfg.selection : undefined;
+  const env = edgeSelection({}, NO_SAVED);
+  // CLAUDINHO_TEAM, when set (an empty one is absent): the team override, which
+  // a saved pin never replaces, readable or not.
+  const teamEnv = process.env.CLAUDINHO_TEAM || undefined;
+  const teamLabel = teamEnv !== undefined ? humanLabel(teamEnv, 40) : '';
+  const sources = {
+    ...(flag ? { flag: flag.slug } : {}),
+    ...(env.kind === 'selected' ? { env: env.slug } : {}),
+    ...(teamLabel ? { team: teamLabel } : {}),
+  };
+  // The reported competition's source, when it is not the saved choice.
+  const override = effect.kind === 'selected' && (effect.chosenBy === 'flag' || effect.chosenBy === 'env') ? effect.chosenBy : undefined;
+  // A refused value: the one deciding what is reported, else this command's flag.
+  const refusedSel = effect.kind === 'refused' ? effect : flagRefused;
+  const refused = refusedSel ? { value: humanLabel(refusedSel.value, 40), source: refusedSel.chosenBy } : undefined;
   if (cfg.json) {
     emitJson({
       competition: selectionExtras(effect).competition ?? null,
       ...verdictExtras(selectionVerdict(effect)),
-      ...(refused ? { refused } : {}),
       ...(override ? { override } : {}),
+      ...(Object.keys(sources).length > 0 ? { sources } : {}),
+      ...(refused ? { refused } : {}),
       saved,
       ...(reason ? { reason } : {}),
       path,
@@ -2164,24 +2178,30 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
     return;
   }
   const c = painterFor(cfg);
-  // Whether the pin applies: the competition in effect is the file's.
-  const pinned = saved?.team !== undefined && pinUnder(effect.kind === 'selected' ? effect.slug : undefined, saved) !== undefined;
+  // Whether the pin is the team in effect: the competition reported is the
+  // file's, and no CLAUDINHO_TEAM overrides it.
+  const pinned =
+    teamEnv === undefined && saved?.team !== undefined && pinUnder(effect.kind === 'selected' ? effect.slug : undefined, saved) !== undefined;
   out();
   if (effect.kind === 'selected') out(`  ${t('follow.following', { competition: modeLine(effect, cfg.lang) })}`);
   else out(`  ${selectionRefusal(effect, cfg.lang)}`);
+  // This command's refused flag, when it is not what is reported (a write, `off`).
+  if (flagRefused && effect !== flagRefused) out(c.dim(`  ${selectionRefusal(flagRefused, cfg.lang)}`));
   if (saved?.team && pinned) out(`  ${t('follow.team', { team: pinLabel(saved.team) })}`);
-  // The saved choice, when something else is in effect (an override, or a refused value).
+  // The saved choice, when something else is reported (an override, or a refused value).
   if (saved && !(effect.kind === 'selected' && effect.chosenBy === 'saved')) {
     const kept = savedSelection(saved.competition);
-    // Its line when it is another competition than the one in effect.
-    if (kept.kind === 'selected' && !pinned && !(effect.kind === 'selected' && effect.slug === kept.slug)) {
+    // Its line when it is another competition than the one reported.
+    if (kept.kind === 'selected' && !(effect.kind === 'selected' && effect.slug === kept.slug)) {
       out(c.dim(`  ${t('follow.saved', { competition: modeLine(kept, cfg.lang) })}`));
     }
-    if (saved.team && !pinned) out(c.dim(`  ${t('follow.savedTeam', { team: pinLabel(saved.team) })}`));
   }
-  // The sentence true of the next command, while the file holds a choice.
-  const sentence = saved === null ? undefined : overrideSentence(flagRan, envSet);
+  // The saved team, when it is not the team in effect.
+  if (saved?.team && !pinned) out(c.dim(`  ${t('follow.savedTeam', { team: pinLabel(saved.team) })}`));
+  // The sentences true of the next command, while the file holds a choice.
+  const sentence = saved === null ? undefined : overrideSentence(flag ? 'ran' : flagRefused ? 'refused' : undefined, env.kind !== 'none');
   if (sentence) out(c.dim(`  ${t(sentence)}`));
+  if (saved?.team && teamEnv !== undefined) out(c.dim(`  ${t('follow.teamEnvWins')}`));
   if (reason && mode === 'show') out(c.dim(`  ${t(NO_SAVED_REASON[reason])}`));
   if (mode === 'write') out(c.dim(`  ${t('follow.path', { path })}`));
   else if (mode === 'off') out(`  ${t(facts.removed ? 'follow.removed' : 'follow.nothingToRemove', { path })}`);
@@ -2192,12 +2212,14 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
 /**
  * The sentence the overrides at work are said with, true of the NEXT command:
  * a flag alone (it decides this command; without it the saved choice
- * decides); the environment alone (it decides while set); both (the flag
- * decides this command; without it the environment decides, then the saved
+ * decides), or refused (this command only; without it the saved choice
+ * decides); the environment alone (it decides while set); a flag and the
+ * environment (without the flag the environment decides, then the saved
  * choice); neither: none.
  */
-function overrideSentence(flagRan: boolean, envSet: boolean): string | undefined {
-  if (flagRan) return envSet ? 'follow.flagEnvWins' : 'follow.flagWins';
+function overrideSentence(flag: 'ran' | 'refused' | undefined, envSet: boolean): string | undefined {
+  if (flag === 'ran') return envSet ? 'follow.flagEnvWins' : 'follow.flagWins';
+  if (flag === 'refused') return envSet ? 'follow.flagRefusedEnv' : 'follow.flagRefused';
   return envSet ? 'follow.envWins' : undefined;
 }
 
