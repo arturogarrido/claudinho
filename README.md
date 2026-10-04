@@ -175,7 +175,7 @@ _Planned (not shipped yet):_ a desktop notifier and an AI pundit with a public a
 The 2026 World Cup is the default. Pick another competition by its alias, for one command
 (`npx @claudinho/cli --competition premier-league today`) or for every surface, the statusline
 and the hook included (`export CLAUDINHO_COMPETITION=premier-league`; an ESPN slug such as `eng.1`
-works too, and so does any other ESPN slug, labelled experimental). Every answer says which
+works too, and so does any other lower-case dotted ESPN slug, labelled experimental). Every answer says which
 competition it is for; an unknown value is refused with the list. MCP tools take the same value
 as their `competition` argument, and `list_competitions` lists the table below.
 

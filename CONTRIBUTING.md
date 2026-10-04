@@ -58,7 +58,9 @@ The supported competitions are ONE table, `SUPPORTED` in
    name, the teams it fields (`nation` or `club`), its kind (`league` or `cup`), a
    league's season name where it has one, its standings shape (`league`, `groups` or
    `none`), what `bracket` and `markets` are for it (`offered`, `not-offered-yet`,
-   `not-applicable`), and how often it has an edition. Every other written fact
+   `not-applicable`; a row may offer a bracket only for the bundled competition,
+   whose knockout topology ships with the clients: the derivation refuses any
+   other), and how often it has an edition. Every other written fact
    (the teams' and competitions' kinds, the season names, the standings shapes, the
    competitions with no bracket, the market sidecar's scope, the canary's list and
    cadences) derives from the table; nothing else in the source changes.
