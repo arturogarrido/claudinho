@@ -34,6 +34,15 @@ describe('the resolver', () => {
     expect(resolveCompetition(at65).kind).toBe('refused');
   });
 
+  it('underscores widen a segment, and nothing else widens', () => {
+    for (const ok of ['ita.coppa_italia', 'ger.dfb_pokal', 'usa.ncaa_m.1']) {
+      expect(resolveCompetition(ok), ok).toMatchObject({ kind: 'selected', slug: ok, experimental: true });
+    }
+    for (const bad of ['copa_del_rey', 'esp.Copa_del_rey', 'esp.copa-del-rey', 'esp.copa del rey', 'esp._.', '_.esp..x']) {
+      expect(resolveCompetition(bad).kind, bad).toBe('refused');
+    }
+  });
+
   it('reads no environment: only what its edge hands in', () => {
     process.env.CLAUDINHO_COMPETITION = 'eng.1';
     expect(resolveCompetition()).toMatchObject({ slug: 'fifa.world', chosenBy: 'default' });

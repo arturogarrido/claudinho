@@ -56,8 +56,13 @@ export type CompetitionSelection =
   | { readonly kind: 'refused'; readonly value: string; readonly aliases: string[] }
   | { readonly kind: 'none' };
 
-/** A raw ESPN slug: lower-case segments of letters and digits, joined by dots. */
-const RAW_SLUG = /^[a-z0-9]+(\.[a-z0-9]+)+$/;
+/**
+ * A raw ESPN slug: two or more lower-case segments of letters, digits and
+ * underscores, joined by single dots (`fifa.friendly`, `esp.copa_del_rey`:
+ * real slugs carry underscores, measured on the feed). Nothing else: no upper
+ * case, no space, no leading, trailing or double dot.
+ */
+const RAW_SLUG = /^[a-z0-9_]+(\.[a-z0-9_]+)+$/;
 /** The longest raw slug believed, in UTF-16 units. */
 const MAX_SLUG_UNITS = 64;
 
@@ -93,7 +98,9 @@ function selectionFor(value: string, chosenBy: ChosenBy): CompetitionSelection {
  * (what was asked for is not answered with something else).
  *
  * Each value is an alias (`premier-league`), a slug in the table (`eng.1`), or
- * a raw ESPN slug the table does not hold (`fifa.friendly`, experimental);
+ * a raw ESPN slug the table does not hold (`fifa.friendly`, `esp.copa_del_rey`:
+ * lower-case segments of letters, digits and underscores joined by dots, 64
+ * units at most; experimental);
  * anything else (`foo`, `ENG.1`, a space) is refused with the aliases.
  *
  * Core reads NO environment: the edges pass it. It is called where a request
