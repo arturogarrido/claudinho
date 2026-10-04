@@ -375,6 +375,40 @@ describe('admission that cannot be made visible: the gate fails closed only wher
     expect(readCurrentState(SOURCE, WC)).toBeDefined();
   });
 
+  // A regular file this user cannot open is unhealable only when its OWNER-READ bit is clear: the replacement is
+  // ours and keeps the mode, so a clear bit stays unreadable, while a file refused by an ACL or another owner's
+  // 0600 comes back as ours, readable.
+  it.skipIf(process.platform !== 'darwin' || !unprivileged)('a regular file refused by a deny-read ACL (owner-read bit set) under a broken record: the cycle proceeds and heals', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const { statSync, userInfo } = { ...(await import('node:fs')), ...(await import('node:os')) };
+    mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
+    mkdirSync(join(dir, 'claudinho'), { recursive: true });
+    writeFileSync(cachePath(SOURCE, WC), '{}');
+    try {
+      execFileSync('chmod', ['+a', `${userInfo().username} deny read`, cachePath(SOURCE, WC)]);
+    } catch {
+      return; // no ACL support here: nothing to test
+    }
+    expect(statSync(cachePath(SOURCE, WC)).mode & 0o400).toBe(0o400);
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined(); // the ACL refuses the read
+    await refresh(LIVE);
+    expect(asked).toHaveLength(3);
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
+  });
+
+  it.skipIf(!unprivileged)('a regular file whose owner-read bit is clear (mode 000 or 200) under a broken record: nothing', async () => {
+    mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
+    mkdirSync(join(dir, 'claudinho'), { recursive: true });
+    for (const mode of [0o000, 0o200]) {
+      writeFileSync(cachePath(SOURCE, WC), '{}');
+      chmodSync(cachePath(SOURCE, WC), mode);
+      await refresh(LIVE);
+      expect(asked, String(mode)).toHaveLength(0);
+      chmodSync(cachePath(SOURCE, WC), 0o644);
+      rmSync(cachePath(SOURCE, WC), { force: true });
+    }
+  });
+
   it('a directory at the snapshot path under a broken record: nothing (the rename could not replace it)', async () => {
     mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
     mkdirSync(cachePath(SOURCE, WC), { recursive: true });
@@ -388,9 +422,8 @@ describe('admission that cannot be made visible: the gate fails closed only wher
     await refresh(LIVE);
     expect(asked).toHaveLength(3);
     expect(record()).toEqual({ at: LIVE, count: 0 });
-    // The snapshot deleted each tick by something else: every cycle finds it absent, admits, and the
-    // record paces the hot path between cycles (a settled count of 0 is due at once, so the first
-    // re-attempt is immediate; its own admission raises the count only until it settles again).
+    // The snapshot gone again: a settled count of 0 is due at once, so the hot path wants a refresh
+    // (the record paces only after an admission that did not settle).
     rmSync(cachePath(SOURCE, WC), { force: true });
     expect(refreshWanted(LIVE + 5000, undefined, WC, SOURCE)).toBe(true);
   });
