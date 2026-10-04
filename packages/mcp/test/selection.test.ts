@@ -8,11 +8,12 @@
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { readFileSync } from 'node:fs';
 import type { Match, ProviderAdapter } from '@claudinho/core';
-import { FakeMarketProvider } from '@claudinho/core';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { FakeMarketProvider, t as coreT } from '@claudinho/core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v3';
-import { buildServer, OUTPUT_SCHEMAS } from '../src/server';
+import { buildServer, INSTRUCTIONS, OUTPUT_SCHEMAS } from '../src/server';
 import {
   toolGetBracket,
   toolGetLive,
@@ -121,6 +122,97 @@ describe('every competition-answering tool takes `competition`, says it first, a
     expect(r.text).toMatch(/World Cup/);
     expect((r.data as Rec).competition).toBeUndefined();
     strict('get_team', r.data);
+    // ONE roster sentence, core's, the same the CLI prints (English here: the tool takes no language).
+    expect(r.text.split('\n')[0]).toBe(coreT('en', 'team.roster'));
+    expect(coreT('en', 'team.roster')).toBe('World Cup roster');
+  });
+
+  it('an injected adapter for another competition is refused before any read: the body and the label never disagree', async () => {
+    let reads = 0;
+    const counting: ProviderAdapter = { ...adapterFor('eng.1'), async fetchByDate() { reads++; return [fixture]; }, async fetchLive() { reads++; return [fixture]; }, async fetchWindow() { reads++; return [fixture]; } };
+    await expect(toolGetLive({ competition: 'serie-a', adapter: counting, now: NOW })).rejects.toThrow(/ita\.1|serie-a/);
+    await expect(toolGetShareSnippet({ live: true, competition: 'serie-a', adapter: counting, marketProvider: new FakeMarketProvider(), now: NOW })).rejects.toThrow(/eng\.1/);
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    await expect(toolGetToday({ date: '2026-10-04', adapter: counting, now: NOW })).rejects.toThrow(/esp\.1|laliga/);
+    delete process.env.CLAUDINHO_COMPETITION;
+    // The default selection is the World Cup: an eng.1 adapter under it is a mismatch too.
+    await expect(toolGetLive({ adapter: counting, now: NOW })).rejects.toThrow(/fifa\.world|world-cup/);
+    expect(reads).toBe(0);
+    // The same adapter under its own competition answers.
+    const ok = await toolGetLive({ competition: 'premier-league', adapter: counting, now: NOW });
+    expect((ok.data as Rec).competition).toEqual(PL);
+  });
+});
+
+describe('the server instructions say which answers name the competition first', () => {
+  it('the sentence names its exceptions: get_team, get_share_snippet and list_competitions', () => {
+    // One sentence: the claim and its three exceptions, so a reader of the instructions is not told that
+    // get_team's roster line, a card's title or the listing's `Current:` are mode lines.
+    const sentence = INSTRUCTIONS.split(/(?<=\.)\s/).find((x) => /starts with the competition/.test(x)) ?? '';
+    expect(sentence).toMatch(/get_team/);
+    expect(sentence).toMatch(/get_share_snippet/);
+    expect(sentence).toMatch(/list_competitions/);
+    expect(sentence).not.toMatch(/^Every answer's text starts/);
+  });
+});
+
+describe('the resources name their competition', () => {
+  const recorded = (slug: string) => readFileSync(new URL(`../../core/test/fixtures/standings/${slug}.json`, import.meta.url), 'utf8');
+  const withClient = async <T,>(fn: (client: Client) => Promise<T>): Promise<T> => {
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+    const server = buildServer();
+    await server.connect(serverT);
+    const client = new Client({ name: 'selection-resources', version: '0.0.0' });
+    await client.connect(clientT);
+    try {
+      return await fn(client);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  };
+  const textOf = (res: { contents: Array<{ text?: string }> }) => res.contents.map((c) => c.text ?? '').join('\n');
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('standings://{key} begins with the mode line, like a tool\'s text: populated, empty and degraded', async () => {
+    vi.stubGlobal('fetch', async () => new Response(recorded('uefa.euro'), { status: 200 }));
+    process.env.CLAUDINHO_COMPETITION = 'euro';
+    await withClient(async (client) => {
+      const populated = textOf(await client.readResource({ uri: 'standings://A' }));
+      expect(populated.split('\n')[0]).toBe('EURO · from the environment');
+      expect(populated).toContain('Group A');
+      const empty = textOf(await client.readResource({ uri: 'standings://Z' }));
+      expect(empty.split('\n')[0]).toBe('EURO · from the environment');
+    });
+    vi.stubGlobal('fetch', async () => new Response('{}', { status: 500 }));
+    process.env.CLAUDINHO_COMPETITION = 'premier-league';
+    await withClient(async (client) => {
+      const degraded = textOf(await client.readResource({ uri: 'standings://LEAGUE' }));
+      expect(degraded.split('\n')[0]).toBe('Premier League · from the environment');
+      expect(degraded).toContain('Live standings unavailable');
+    });
+  });
+
+  it('fixtures://{date} names the bundled World Cup schedule first, whatever the server\'s selection', async () => {
+    process.env.CLAUDINHO_COMPETITION = 'euro';
+    await withClient(async (client) => {
+      const text = textOf(await client.readResource({ uri: 'fixtures://2026-06-11' }));
+      expect(text.split('\n')[0]).toBe('World Cup');
+      expect(text).toMatch(/MEX|Mexico/);
+      const none = textOf(await client.readResource({ uri: 'fixtures://2026-01-01' }));
+      expect(none.split('\n')[0]).toBe('World Cup');
+      expect(none).toContain('No matches on 2026-01-01.');
+    });
+  });
+
+  it('the tournament_today prompt sends the model to the selected competition, not to "the 2026 tournament"', async () => {
+    await withClient(async (client) => {
+      const res = await client.getPrompt({ name: 'tournament_today' });
+      const text = res.messages.map((m) => (m.content.type === 'text' ? (m.content.text as string) : '')).join('\n');
+      expect(text).not.toMatch(/2026 tournament/);
+      expect(text).toMatch(/competition/);
+      expect(text).toContain('get_today');
+    });
   });
 });
 

@@ -82,7 +82,11 @@ describe('the World Cup\'s cards: named and selected too (its default is what 2.
   it('a date card', () => {
     const card = dateShareCard({ date: '2026-06-11', explicit: true, matches: [wc()], degraded: false, source: 'espn' }, noMarket, ctx);
     expect(card.input.title).toMatch(/^Matches · .* · World Cup$/);
-    expect(card.input.installLine).toBe('npx @claudinho/cli --competition world-cup today');
+    // An explicit date's cue reproduces THAT day: the recipient's today is another day.
+    expect(card.input.installLine).toBe('npx @claudinho/cli --competition world-cup today 2026-06-11');
+    const today = dateShareCard({ date: '2026-06-11', explicit: false, matches: [wc()], degraded: false, source: 'espn' }, noMarket, ctx);
+    expect(today.input.title).toMatch(/^Today's matches · .* · World Cup$/);
+    expect(today.input.installLine).toBe('npx @claudinho/cli --competition world-cup today');
   });
 
   it('a table card and a bracket card', () => {
@@ -93,7 +97,19 @@ describe('the World Cup\'s cards: named and selected too (its default is what 2.
     const bracket: BracketResult = { view: { stages: [] }, degraded: false, source: 'espn', standingsDegraded: false } as unknown as BracketResult;
     const bcard = bracketShareCard(bracket, undefined, 'en', 'fifa.world');
     expect(bcard.input.installLine).toBe('npx @claudinho/cli --competition world-cup bracket');
-    expect(firstLine(formatShareBracket(bcard.input))).toContain('World Cup');
+    // The whole first line: the title names the competition and carries no year (the ties carry their dates).
+    expect(firstLine(formatShareBracket(bcard.input))).toBe('Knockout bracket · World Cup');
+    expect(firstLine(formatShareBracket(bracketShareCard(bracket, undefined, 'es', 'fifa.world').input))).toBe('Cuadro de eliminatorias · World Cup');
+    expect(firstLine(formatShareBracket(bracketShareCard(bracket, undefined, 'pt', 'fifa.world').input))).toBe('Chave do mata-mata · World Cup');
+    expect(firstLine(formatShareBracket(bracketShareCard(bracket, undefined, 'fr', 'fifa.world').input))).toBe('Tableau à élimination directe · World Cup');
+  });
+
+  it('a club competition\'s bracket card: the first line names the competition, no year', () => {
+    const bracket: BracketResult = { view: { stages: [] }, degraded: false, source: 'espn', standingsDegraded: false, inapplicable: true } as unknown as BracketResult;
+    const bcard = bracketShareCard(bracket, undefined, 'en', 'eng.1');
+    expect(firstLine(formatShareBracket(bcard.input))).toBe('Knockout bracket · Premier League');
+    expect(formatShareBracket(bcard.input)).not.toContain('2026 ·');
+    expect(bcard.input.installLine).toBe('npx @claudinho/cli --competition premier-league bracket');
   });
 });
 

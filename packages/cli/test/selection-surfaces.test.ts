@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Match, ProviderAdapter } from '@claudinho/core';
-import { FakeMarketProvider } from '@claudinho/core';
+import { FakeMarketProvider, t as coreT } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeState } from '../src/cache';
 import { cmdBracket, cmdHook, cmdLive, cmdMatch, cmdNext, cmdPrompt, cmdShare, cmdTable, cmdTeam, cmdToday, cmdVibe, InputError } from '../src/commands';
@@ -216,20 +216,39 @@ describe('the mode line', () => {
 });
 
 describe('team: the World Cup\'s roster, whatever the selection', () => {
-  it('under an explicit selection that is not the World Cup it is refused, naming where a club goes', () => {
+  it('under an explicit selection that is not the World Cup it is refused, naming where a team goes', () => {
     expect(() => cmdTeam('Mexico', ctxOf(cfgOf({ competition: 'premier-league' })))).toThrow(InputError);
     expect(() => cmdTeam('Mexico', ctxOf(cfgOf({ competition: 'premier-league' })))).toThrow(/next/);
     process.env.CLAUDINHO_COMPETITION = 'eng.1';
     expect(() => cmdTeam('Mexico', ctxOf(cfgOf()))).toThrow(InputError);
   });
 
-  it('under the default, and under an explicit World Cup, it answers and names its roster', () => {
+  it('a nations competition named explicitly is refused too (the roster is one edition\'s nations), and the message assumes no club', () => {
+    // The flag, then the environment; the message says where a TEAM's name goes, which under EURO is a nation's.
+    expect(() => cmdTeam('France', ctxOf(cfgOf({ competition: 'euro' })))).toThrow(InputError);
+    expect(() => cmdTeam('France', ctxOf(cfgOf({ competition: 'euro' })))).toThrow(/team's name goes straight to `next`/);
+    expect(() => cmdTeam('France', ctxOf(cfgOf({ competition: 'euro' })))).not.toThrow(/club's name/);
+    process.env.CLAUDINHO_COMPETITION = 'uefa.nations';
+    expect(() => cmdTeam('France', ctxOf(cfgOf()))).toThrow(InputError);
+    delete process.env.CLAUDINHO_COMPETITION;
+    for (const lang of ['es', 'pt', 'fr']) {
+      expect(() => cmdTeam('France', { cfg: cfgOf({ competition: 'euro', lang }), t: makeT(lang) }), lang).toThrow(/next/);
+    }
+  });
+
+  it('under the default, and under an explicit World Cup, it answers and names its roster with core\'s sentence', () => {
     cmdTeam('Mexico', ctxOf(cfgOf()));
     expect(text()).toContain('MEX');
-    expect(text()).toMatch(/World Cup/);
+    // ONE roster sentence for the CLI and MCP: core's `team.roster`, localized; printed before the answer.
+    expect(text().split('\n').map((l) => l.trim()).filter(Boolean)[0]).toBe(coreT('en', 'team.roster'));
+    expect(coreT('en', 'team.roster')).toBe('World Cup roster');
     writes = [];
     cmdTeam('Mexico', ctxOf(cfgOf({ competition: 'world-cup' })));
     expect(text()).toContain('MEX');
+    writes = [];
+    cmdTeam('Mexico', { cfg: cfgOf({ lang: 'fr' }), t: makeT('fr') });
+    expect(text().split('\n').map((l) => l.trim()).filter(Boolean)[0]).toBe(coreT('fr', 'team.roster'));
+    expect(coreT('fr', 'team.roster')).toMatch(/Coupe du monde/);
   });
 });
 

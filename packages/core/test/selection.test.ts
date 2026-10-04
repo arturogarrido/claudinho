@@ -75,6 +75,15 @@ describe('what a surface says about the selection', () => {
     expect(modeLine(sel({ chosenBy: 'env' }), 'xx')).toBe('Premier League · from the environment');
   });
 
+  it('the experimental suffix in each of the four locales (French takes the accent)', () => {
+    const raw = { slug: 'fifa.friendly', alias: undefined, name: 'fifa.friendly', experimental: true };
+    expect(modeLine(sel({ ...raw }), 'en')).toBe('fifa.friendly · from the command line · experimental');
+    expect(modeLine(sel({ ...raw }), 'es')).toBe('fifa.friendly · desde la línea de comandos · experimental');
+    expect(modeLine(sel({ ...raw }), 'pt')).toBe('fifa.friendly · da linha de comando · experimental');
+    expect(modeLine(sel({ ...raw }), 'fr')).toBe('fifa.friendly · depuis la ligne de commande · expérimental');
+    expect(modeLine(sel({ ...raw, chosenBy: 'saved' }), 'fr')).toBe('fifa.friendly · expérimental');
+  });
+
   it('the structured key: one object, the alias and the experimental mark only when they apply', () => {
     expect(selectionExtras(sel({}))).toEqual({ competition: { slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'flag' } });
     expect(selectionExtras(sel({ slug: 'fifa.friendly', alias: undefined, name: 'fifa.friendly', experimental: true, chosenBy: 'env' }))).toEqual({ competition: { slug: 'fifa.friendly', name: 'fifa.friendly', chosenBy: 'env', experimental: true } });
