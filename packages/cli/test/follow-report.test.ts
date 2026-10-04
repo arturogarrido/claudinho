@@ -292,7 +292,7 @@ describe('CLAUDINHO_TEAM has three states: unset, set and readable, set with not
       await cmdFollow(undefined, {}, ctxOf());
       expect(text()).toMatch(/Saved team: Spain/);
       expect(text()).not.toMatch(/^\s*Team: Spain/m);
-      expect(text()).toMatch(/CLAUDINHO_TEAM is set but names no team/);
+      expect(text()).toMatch(/CLAUDINHO_TEAM is set but names no team; the team-taking commands refuse it while it is set\./);
       expect(text()).not.toMatch(/it wins over the saved team/);
     }
     // Without a pin the next command refuses it all the same: said, and carried.
@@ -304,7 +304,7 @@ describe('CLAUDINHO_TEAM has three states: unset, set and readable, set with not
     expect(JSON.parse(text()).refused).toEqual({ team: '' });
     writes = [];
     await cmdFollow(undefined, {}, ctxOf());
-    expect(text()).toMatch(/CLAUDINHO_TEAM is set but names no team/);
+    expect(text()).toMatch(/CLAUDINHO_TEAM is set but names no team; the team-taking commands refuse it while it is set\./);
     // A readable value stays in `sources`, with the set sentence.
     process.env.CLAUDINHO_TEAM = 'Mexico';
     writes = [];
@@ -407,7 +407,7 @@ describe('the text says every source the JSON names (the fourth reader\'s round-
     process.env.CLAUDINHO_TEAM = 'Mexico';
     writes = [];
     await cmdFollow(undefined, {}, ctxOf());
-    expect(text()).toMatch(/CLAUDINHO_TEAM is set, and the next command takes it as its team while it is\./);
+    expect(text()).toMatch(/CLAUDINHO_TEAM is set, and the team-taking commands take it as their team while it is\./);
     expect(text()).not.toMatch(/wins over the saved team/);
     writes = [];
     await cmdFollow(undefined, {}, ctxOf({ json: true }));
@@ -417,7 +417,7 @@ describe('the text says every source the JSON names (the fourth reader\'s round-
     writes = [];
     await cmdFollow(undefined, {}, ctxOf());
     expect(text()).toMatch(/wins over the saved team/);
-    expect(text()).not.toMatch(/takes it as its team/);
+    expect(text()).not.toMatch(/take it as their team/);
     delete process.env.CLAUDINHO_TEAM;
   });
 
