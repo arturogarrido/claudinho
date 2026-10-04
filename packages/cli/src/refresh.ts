@@ -501,16 +501,20 @@ function backoffToPublish(
 
 /**
  * After a cycle's final publish, refused, failed or done. A deadline the cycle
- * holds counts only once a reader will find it. A refused publish (the lease
- * was lost: the snapshot is the successor's, and the successor may not have
- * met this throttle), a failed one (the write THREW: the caller passes it as
- * not published), and a publish into a snapshot nobody can read all leave it
- * invisible: it goes to the note, which needs no lock, as a command's does.
+ * holds counts only once a reader will find it, so it goes to the note, which
+ * needs no lock, as a command's does (`ensureBackoffVisible`; a deadline the
+ * note already holds is only read): a refused publish (the lease was lost: the
+ * snapshot is the successor's, and the successor may not have met this
+ * throttle), a failed one (the write THREW: the caller passes it as not
+ * published), a publish into a snapshot nobody can read, and a reader of
+ * another format (which rejects this snapshot whole) would all miss it there.
  * One place, for the bundled cycle and the one off the bundle.
  *
  * The two idle-snapshot writers (`runRefresh`'s, for an unknown source and for
  * a cycle with nothing to ask) settle nothing: no request was made, so the
- * only deadline they write is one already in effect, the note's.
+ * only deadline they write is one already in effect: the note's, or one a
+ * snapshot of another format carried, which `writeState` notes before
+ * replacing it.
  */
 function settleBackoff(
   published: boolean,

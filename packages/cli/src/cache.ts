@@ -320,12 +320,12 @@ export function believedDeadline(untilMs: number | undefined, now: number): numb
 // A throttle is written into the snapshot under the refresh lock. A command
 // that meets one while a refresher holds that lock (for as long as a request
 // can take) could not write it, exited, and the throttle was lost: the next
-// refresh asked the provider that had just said stop. The note is where a
-// throttle goes whenever a reader would not find it in the snapshot (the lock
-// was taken, the publish was refused or its write failed, the snapshot cannot
-// be read): a tiny file beside the snapshot, written atomically and WITHOUT
-// the lock, read by everything that reads a backoff (`ensureBackoffVisible`
-// decides).
+// refresh asked the provider that had just said stop. The note is where every
+// throttle a writer settles goes (`ensureBackoffVisible`): a tiny file beside
+// the snapshot, written atomically and WITHOUT the lock, read by everything
+// that reads a backoff, and in the same form by every format of the snapshot
+// (a reader of another format rejects the snapshot whole, deadline included,
+// so the snapshot's own copy is never the only one).
 // It is never deleted (an expired one is simply not believed, and the next
 // writer writes over it), so no cleanup can remove a deadline it did not read.
 
@@ -418,24 +418,25 @@ export function backoffInEffect(
 /**
  * Make a throttle visible: called by every writer of a deadline AFTER its
  * attempt to publish one, whether the publish happened, was refused, failed
- * (it threw), or was never tried (the lock was someone else's). If the backoff
- * a reader would find (`backoffInEffect` of the snapshot as it is now, and the
- * note) is not at least as late as `untilMs`, the deadline goes to the note.
- * Returns whether it is now visible: false when `untilMs` itself is not
- * believed, or when the note could not be written or read back (never throws).
- * In whole milliseconds, as a stamp stores it and as `writeBackoffNote`
- * compares.
+ * (it threw), or was never tried (the lock was someone else's). The deadline
+ * goes to the NOTE unless the note already holds one at least as late
+ * (`writeBackoffNote` keeps the later). The snapshot's own copy does not count
+ * as visible: a reader of another format rejects this snapshot whole, and
+ * finds the deadline only in the note, whose form every format shares (the
+ * same reason `writeState` notes the deadline of a snapshot of another format
+ * before replacing it). Returns whether the note now holds it: false when
+ * `untilMs` itself is not believed, or when the note could not be written or
+ * read back (never throws). In whole milliseconds, as a stamp stores it.
  *
- * A write that HAPPENED is not one a reader will find: an atomic replacement
+ * The cost: one small atomic write per throttle a writer settles (a
+ * refresher's cycle that met one, a command that met one), never per cycle: a
+ * deadline the note already holds is only read. A write that HAPPENED to the
+ * snapshot is not one every reader will find either: an atomic replacement
  * keeps the mode of the file it replaces, so a snapshot nobody can read stays
  * one, and the deadline published into it is on disk and invisible.
  */
 export function ensureBackoffVisible(source: string, competition: string, untilMs: number, now = Date.now()): boolean {
-  const own = believedDeadline(Math.floor(untilMs), now);
-  if (own === undefined) return false;
-  const found = backoffInEffect(readCurrentState(source, competition), source, competition, now);
-  if (found !== undefined && found >= own) return true;
-  return writeBackoffNote(source, competition, own, now);
+  return writeBackoffNote(source, competition, untilMs, now);
 }
 
 /** Age of the latest fixtures ATTEMPT in ms (Infinity if never attempted). */

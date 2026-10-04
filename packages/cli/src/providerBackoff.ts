@@ -9,13 +9,13 @@
  * it meets itself, so the next process, and the refresher, honour it too.
  *
  * A throttle always has somewhere to be written (0.11, 2.6a). Under the
- * refresh lock it goes into the snapshot; whenever a reader would not find it
- * there (a refresher holds the lock for as long as a request can take, the
- * publish was refused or its write failed, the snapshot cannot be read) it
- * goes to the scope's note, which needs no lock. It used to be dropped, and the
- * next refresh asked the provider that had just said stop. Every writer keeps
- * the later of the deadlines it believes: the backoff in effect, the note
- * included.
+ * refresh lock it goes into the snapshot, and it always goes to the scope's
+ * note, which needs no lock: a refresher can hold the lock for as long as a
+ * request can take, the publish can be refused or its write fail, the snapshot
+ * can be unreadable, and a reader of another format rejects the snapshot whole.
+ * It used to be dropped, and the next refresh asked the provider that had just
+ * said stop. Every writer keeps the later of the deadlines it believes: the
+ * backoff in effect, the note included.
  */
 import type { ProviderAdapter } from '@claudinho/core';
 import {
@@ -30,11 +30,11 @@ import {
 
 /**
  * Persist an absolute cooldown deadline: as the snapshot's `backoffUntil`
- * under the lock, then, if a reader would not find it there, in the scope's
- * note. Returns whether a reader will find it: a write that failed, was
- * refused, or cannot be read back must NOT be remembered as persisted (review
- * round 2 on #128; round 2 on 2.6a for the refused and the unreadable
- * snapshot).
+ * under the lock, then in the scope's note (unless the note already holds one
+ * at least as late). Returns whether the note holds it, where every reader of
+ * every format finds it: a write that failed, was refused, or cannot be read
+ * back must NOT be remembered as persisted (review round 2 on #128; round 2 on
+ * 2.6a for the refused and the unreadable snapshot).
  */
 function persistBackoff(source: string, competition: string, until: number, nowMs: number): boolean {
   // Never wait, never clobber an unowned snapshot. A refresher may hold the
