@@ -111,6 +111,54 @@ describe('lookAtEntry: what a rename onto the path would do', () => {
     expect(lookAtEntry(fifo)).toBe('replaceable');
   });
 
+  // Review round 4. The atomic writer copies the mode bits of EVERY entry it replaces but a link (`writeFileAtomic`
+  // preserves `lstat`'s mode), so the owner-read bit decides for every entry that is neither a link nor a
+  // directory, BEFORE any open: a pipe or a socket at mode 000 comes back as a regular file at 000, and a regular
+  // file that OPENS although its owner-read bit is clear (an allow-read access-control entry on mode 000; another
+  // owner's 0044 read through its other bits) comes back as ours, with those bits and no entry: unreadable.
+  it.skipIf(!unprivileged)('a regular file with its owner-read bit clear but another read bit set (mode 044): unhealable (the owner-read bit, not any read bit)', () => {
+    const p = join(tmp, 'locked-044.json');
+    writeFileSync(p, '{}');
+    chmodSync(p, 0o044);
+    try {
+      expect(lookAtEntry(p)).toBe('unhealable');
+    } finally {
+      chmodSync(p, 0o644);
+    }
+  });
+
+  it.skipIf(!unprivileged)('a pipe whose owner-read bit is clear (mode 000, mode 200): unhealable (the replacement keeps the bits); one with the bit set stays replaceable', () => {
+    for (const mode of [0o000, 0o200]) {
+      const fifo = join(tmp, `pipe-${mode.toString(8)}.json`);
+      execFileSync('mkfifo', [fifo]);
+      chmodSync(fifo, mode);
+      try {
+        expect(lookAtEntry(fifo), mode.toString(8)).toBe('unhealable');
+      } finally {
+        chmodSync(fifo, 0o644);
+      }
+      expect(lookAtEntry(fifo), `${mode.toString(8)} restored`).toBe('replaceable');
+    }
+  });
+
+  it.skipIf(process.platform !== 'darwin' || !unprivileged)('a regular file that opens although its owner-read bit is clear (an allow-read access-control entry on mode 000): unhealable (the replacement is ours, with the bits and no entry)', () => {
+    const p = join(tmp, 'acl-allowed-000.json');
+    writeFileSync(p, '{}');
+    chmodSync(p, 0o000);
+    try {
+      execFileSync('chmod', ['+a', `${userInfo().username} allow read`, p]);
+    } catch {
+      chmodSync(p, 0o644);
+      return; // no access-control lists here: nothing to test
+    }
+    try {
+      if (lookAtSmallFile(p, 1024).kind !== 'read') return; // the entry did not take: nothing to test
+      expect(lookAtEntry(p)).toBe('unhealable');
+    } finally {
+      chmodSync(p, 0o644);
+    }
+  });
+
   it.skipIf(!unprivileged)('an entry nobody can look at (the directory above cannot be searched): unhealable', () => {
     const d = join(tmp, 'unsearchable');
     mkdirSync(d);

@@ -436,16 +436,36 @@ describe('admission that cannot be made visible: the gate fails closed only wher
     expect(readCurrentState(SOURCE, WC)).toBeUndefined();
   });
 
-  it.skipIf(!unprivileged)('a regular file whose owner-read bit is clear (mode 000 or 200) under a broken record: nothing', async () => {
+  it.skipIf(!unprivileged)('a regular file whose owner-read bit is clear (mode 000, 200 or 044) under a broken record: nothing', async () => {
     mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
     mkdirSync(join(dir, 'claudinho'), { recursive: true });
-    for (const mode of [0o000, 0o200]) {
+    // 044: the other read bits set, the owner's clear. The owner-read bit decides, not any read bit (a replacement
+    // is ours and keeps the bits, so 044 would come back unreadable too). Review round 4.
+    for (const mode of [0o000, 0o200, 0o044]) {
       writeFileSync(cachePath(SOURCE, WC), '{}');
       chmodSync(cachePath(SOURCE, WC), mode);
       await refresh(LIVE);
       expect(asked, String(mode)).toHaveLength(0);
       chmodSync(cachePath(SOURCE, WC), 0o644);
       rmSync(cachePath(SOURCE, WC), { force: true });
+    }
+  });
+
+  // Review round 4. The atomic writer keeps the mode bits of every entry it replaces but a link, so a pipe at mode
+  // 000 would come back as a regular file at 000: unhealable, like the file, before any cycle.
+  it.skipIf(!unprivileged)('a pipe whose owner-read bit is clear at the snapshot path under a broken record: nothing (the replacement would keep the bits)', async () => {
+    const { execFileSync } = await import('node:child_process');
+    mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
+    mkdirSync(join(dir, 'claudinho'), { recursive: true });
+    execFileSync('mkfifo', [cachePath(SOURCE, WC)]);
+    chmodSync(cachePath(SOURCE, WC), 0o000);
+    try {
+      await refresh(LIVE);
+      expect(asked).toHaveLength(0);
+      expect(publishes).toBe(0);
+      expect(statSync(cachePath(SOURCE, WC)).isFIFO()).toBe(true);
+    } finally {
+      chmodSync(cachePath(SOURCE, WC), 0o644);
     }
   });
 
