@@ -83,7 +83,7 @@ describe('the no-team sentence is true in each state', () => {
 
   it('an unreadable server CLAUDINHO_TEAM is named as such', async () => {
     follow('premier-league', { id: 'espn:359', code: 'ARS', name: 'Arsenal' });
-    process.env.CLAUDINHO_TEAM = '​';
+    process.env.CLAUDINHO_TEAM = '\u200B';
     const err = await toolGetNextFixture({ adapter: adapterFor('eng.1'), now: NOW }).catch((e: Error) => e.message);
     expect(err).toMatch(/CLAUDINHO_TEAM/);
     expect(err).not.toMatch(/none pinned/);
