@@ -9,7 +9,7 @@ import type { Match } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import type { CacheState, ScheduleSlice } from '../src/cache';
 import { renderHook } from '../src/hook';
-import { renderPrompt } from '../src/statusline';
+import { type AmbientPick, renderPrompt } from '../src/statusline';
 
 const NOW = Date.parse('2026-10-10T15:00:00.000Z');
 const MIN = 60_000;
@@ -41,7 +41,7 @@ const snapshot = (schedule: ScheduleSlice | undefined, over: Partial<CacheState>
 });
 // The snapshot is a nations competition's (`uefa.nations`), so the kind the
 // caller resolves is `nation` unless a case says its rows are clubs.
-const line = (state: CacheState | undefined, opts: { team?: string; teamKind?: 'nation' | 'club' } = {}) =>
+const line = (state: CacheState | undefined, opts: { pick?: AmbientPick; teamKind?: 'nation' | 'club' } = {}) =>
   renderPrompt(state, { defaultCompetition: false, teamKind: 'nation', now: new Date(NOW), ...opts });
 const sched = (fixtures: Match[], over: Partial<ScheduleSlice> = {}): ScheduleSlice => ({
   index: fixtures.map((m) => entry(m.id, Date.parse(m.kickoff), m.status === 'SCHEDULED' || m.status === 'LIVE' || m.status === 'HT')),
@@ -88,10 +88,10 @@ describe('a fixture days or minutes away', () => {
     expect(line(state)).toBe('⚽ —');
   });
 
-  it('with a team filter, that team’s next fixture', () => {
+  it('with a pick, that team’s next fixture first; a pick with none counts down to anyone’s (a preference, 0.11 2.5b)', () => {
     const state = snapshot(sched([nations('1', NOW + 3 * HOUR), fixture('2', NOW + 5 * HOUR, ['GER', 'Germany'], ['ITA', 'Italy'])]));
-    expect(line(state, { team: 'ITA' })).toBe('🇩🇪 vs 🇮🇹 in 5h0m');
-    expect(line(state, { team: 'POR' })).toBe('⚽ —');
+    expect(line(state, { pick: { code: 'ITA' } })).toBe('🇩🇪 vs 🇮🇹 in 5h0m');
+    expect(line(state, { pick: { code: 'POR' } })).toBe('🇪🇸 vs 🇫🇷 in 3h0m');
   });
 });
 
@@ -137,9 +137,11 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
     expect(line(snapshot(sched([over, nations('2', NOW + 26 * HOUR)])))).toBe('🇪🇸 vs 🇫🇷 in 1d2h');
   });
 
-  it('with a team filter: only when a fixture in its window is that team’s', () => {
-    expect(line(snapshot(inWindow), { team: 'FRA' })).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
-    expect(line(snapshot(inWindow), { team: 'ITA' })).toBe('⚽ —');
+  it('with a pick: syncing names the picked team’s fixture first, and a match on is syncing whoever is picked (a preference, 0.11 2.5b)', () => {
+    expect(line(snapshot(inWindow), { pick: { code: 'FRA' } })).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
+    expect(line(snapshot(inWindow), { pick: { code: 'ITA' } })).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
+    const two = sched([nations('1', NOW - 30 * MIN), fixture('2', NOW - 10 * MIN, ['GER', 'Germany'], ['ITA', 'Italy'])]);
+    expect(line(snapshot(two), { pick: { code: 'ITA' } })).toBe('⚽ 🇩🇪 vs 🇮🇹 live · syncing… +1');
   });
 
   it('NOT outside the gate', () => {

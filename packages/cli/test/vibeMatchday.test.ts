@@ -32,7 +32,7 @@ describe('vibeLiveSegment', () => {
   });
 
   it('prefers the CLAUDINHO_TEAM match (case-insensitive)', () => {
-    expect(vibeLiveSegment(live, 'bra')).toBe("🇧🇷 2–1 🇲🇦 70'");
+    expect(vibeLiveSegment(live, { code: 'bra' })).toBe("🇧🇷 2–1 🇲🇦 70'");
   });
 
   it('marks halftime as HT', () => {

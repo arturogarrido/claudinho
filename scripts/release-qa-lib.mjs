@@ -5,7 +5,10 @@
  *
  *   - The competition the run is FOR is the one the built CLI resolved, never
  *     the raw `CLAUDINHO_COMPETITION`: an alias (`world-cup`) is the World Cup
- *     too, and with nothing set the CLI's default is. The script asks the CLI
+ *     too, and with nothing set the run FOLLOWS the World Cup in a config
+ *     directory of its own (the CLI has no default since 0.11: nothing chosen is
+ *     no competition), which the caller's environment still overrides, as it
+ *     does for a user. The script asks the CLI
  *     itself (`--json` on a competition-answering command carries
  *     `competition.slug`) and hands the answer to {@link resolvedSlug}.
  *   - The bundle-to-live drift tripwire runs only for the bundled competition
@@ -23,9 +26,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-/** The header's competition: what the caller set, or the CLI's default. */
+/** The header's competition: what the caller set, or the World Cup the run follows (a saved choice). */
 export function competitionLabel(env) {
-  return typeof env === 'string' && env !== '' ? env : 'default (World Cup)';
+  return typeof env === 'string' && env !== '' ? env : 'saved (World Cup)';
 }
 
 /**

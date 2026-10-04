@@ -20,8 +20,11 @@
  * says which, because a surface that treated every sentence the same either
  * hid a readable answer or lost the sentence beside a populated one:
  *   - it REPLACES the body ({@link verdictNotice}). The one sentence stands
- *     instead of the answer, which does not exist. Five of them, and when a
+ *     instead of the answer, which does not exist. Six of them, and when a
  *     result states more than one, the first in this order is said:
+ *       `noCompetition`    nothing is chosen (no flag, no environment, no
+ *                          saved choice): no answer is made for any
+ *                          competition, and the sentence says how to choose;
  *       `unsupported`      the feature is not offered for this competition yet;
  *       `inapplicable`     the competition has no such thing (no bracket);
  *       `unknownTeam`      the roster the competition has holds no team by
@@ -67,6 +70,12 @@ export interface BetweenEditions {
 
 /** Any result that may state a verdict. Results state more than this; these are the verdicts. */
 export interface VerdictSource {
+  /**
+   * No competition is chosen (no flag, no environment, no saved choice), so
+   * nothing was asked of any provider. Stated by a selection, never by a read
+   * (core `selectionVerdict`).
+   */
+  readonly noCompetition?: boolean;
   /** The feature does not exist for this competition yet (off the bundled schedule). */
   readonly unsupported?: boolean;
   /**
@@ -127,6 +136,7 @@ export interface VerdictSource {
 
 /** The structured keys of the verdicts a result states. Empty when it states none. */
 export interface VerdictExtras {
+  noCompetition?: true;
   unsupported?: true;
   inapplicable?: true;
   unknownTeam?: true;
@@ -193,6 +203,7 @@ export function partialOfRead(
  */
 export function verdictExtras(result: VerdictSource): VerdictExtras {
   const out: VerdictExtras = {};
+  if (result.noCompetition === true) out.noCompetition = true;
   if (result.unsupported === true) out.unsupported = true;
   if (result.inapplicable === true) out.inapplicable = true;
   if (result.unknownTeam === true) {
@@ -241,6 +252,7 @@ export function servedExtras(
  * {@link verdictQualifiers}.
  */
 export function verdictNotice(result: VerdictSource, lang?: string): string | undefined {
+  if (result.noCompetition === true) return t(lang, 'competition.none');
   if (result.unsupported === true) return t(lang, 'competition.unsupported');
   if (result.inapplicable === true) return t(lang, 'competition.noBracket');
   if (result.unknownTeam === true) {

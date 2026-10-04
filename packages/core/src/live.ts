@@ -29,6 +29,7 @@ import { resolveClub, rosterFor } from './teams';
 import { agreedSeason } from './trust/season';
 import { isTeam } from './trust/match';
 import { humanLabel } from './trust/roles';
+import type { Pin } from './userConfig';
 import { SCHEDULE_AHEAD_DAYS, SCHEDULE_LOOKBACK_DAYS } from './span';
 import { type BetweenEditions, partialOfRead } from './verdict';
 
@@ -820,19 +821,64 @@ async function nextOffBundle(adapter: ProviderAdapter, asked: string, now: Date)
     return { degraded: true, ...named, ...season };
   }
   const team = resolution.outcome === 'resolved' ? resolution.team : undefined;
+  return teamAhead(adapter, discovery, team, { ...named, ...season });
+}
+
+/**
+ * Steps 4 to 6 of `next` off the bundle, for a team already resolved (or none):
+ * its earliest fixture still to complete in discovery's span, selected by
+ * `isTeam` (equal ids decide when both carry one); `partial` on a read that
+ * was not whole (with the fixture if it was read, none READ otherwise);
+ * `horizon` on a whole read with none. The one tail of `nextOffBundle` and
+ * {@link nextFixtureForPin}.
+ */
+function teamAhead(
+  adapter: ProviderAdapter,
+  discovery: ScheduleAheadResult,
+  team: Team | undefined,
+  said: Pick<NextFixtureResult, 'query' | 'season'>,
+): NextFixtureResult {
   const fixture = team
     ? discovery.fixtures.find((m) => stillToComplete(m) && (isTeam(m.home, team) || isTeam(m.away, team)))
     : undefined;
   const whole = discovery.complete === true;
   return {
     degraded: false,
-    ...named,
+    ...(said.query !== undefined ? { query: said.query } : {}),
     ...(team ? { team } : {}),
-    ...season,
+    ...(said.season !== undefined ? { season: said.season } : {}),
     ...(fixture ? { fixture, source: adapter.name } : {}),
     ...(whole ? {} : partialOfRead({ complete: false, omitted: discovery.omitted })),
     ...(whole && !fixture ? { horizon: { days: SCHEDULE_AHEAD_DAYS } } : {}),
   };
+}
+
+/**
+ * The next fixture of a SAVED team (`claudinho follow <alias> --team <name>`):
+ * a team already resolved when it was saved, so it is never resolved again.
+ *
+ * Off the bundle: discovery's span as `next <club>` reads it (the same month
+ * requests, the same between-editions question first), and the fixture
+ * selected by `isTeam` with the pin (an id on both decides: a side carrying
+ * another club's id is never the pin's, whatever its labels). No roster is
+ * read: the pin is the identity. `team` is the pin, on every answer; the
+ * verdicts are `next`'s (`partial`, `betweenEditions`; never `unknownTeam` or
+ * `rosterIncomplete`, which are about resolving a name). On the bundle the
+ * nations carry no id: by code, exactly as `next <code>` answers.
+ */
+export async function nextFixtureForPin(
+  adapter: ProviderAdapter,
+  pin: Pin,
+  now: Date = new Date(),
+): Promise<NextFixtureResult> {
+  if (bundleApplies(adapter.competition)) return getNextFixtureForTeam(adapter, pin.code, now);
+  const team: Team = pin.id !== undefined ? { code: pin.code, name: pin.name, id: pin.id } : { code: pin.code, name: pin.name };
+  const discovery = await getScheduleAhead(adapter, now);
+  if (discovery.degraded) return { degraded: true, team };
+  const season = discovery.season ? { season: discovery.season } : {};
+  const between = betweenEditionsOf(adapter, discovery, discovery.fixtures, providerDayOf(adapter, now));
+  if (between) return { degraded: false, team, ...season, betweenEditions: between };
+  return teamAhead(adapter, discovery, team, season);
 }
 
 export interface KnockoutFixturesResult {

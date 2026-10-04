@@ -39,23 +39,23 @@ const sample: CacheState = {
 
 describe('cache state', () => {
   it('returns undefined when no cache exists', () => {
-    expect(readState()).toBeUndefined();
+    expect(readState('espn', 'fifa.world')).toBeUndefined();
   });
 
   it('round-trips an atomic write/read (version-stamped)', () => {
     writeState(sample);
-    expect(cachePath().startsWith(dir)).toBe(true);
-    expect(readState()).toEqual({ ...sample, version: CACHE_VERSION });
+    expect(cachePath('espn', 'fifa.world').startsWith(dir)).toBe(true);
+    expect(readState('espn', 'fifa.world')).toEqual({ ...sample, version: CACHE_VERSION });
   });
 
   it('treats a version-mismatched (old-binary) snapshot as absent', () => {
     writeState(sample);
     const fs = require('node:fs') as typeof import('node:fs');
     // Simulate a pre-versioning (v1) file and a future-version file.
-    fs.writeFileSync(cachePath(), JSON.stringify(sample));
-    expect(readState()).toBeUndefined();
-    fs.writeFileSync(cachePath(), JSON.stringify({ ...sample, version: CACHE_VERSION + 1 }));
-    expect(readState()).toBeUndefined();
+    fs.writeFileSync(cachePath('espn', 'fifa.world'), JSON.stringify(sample));
+    expect(readState('espn', 'fifa.world')).toBeUndefined();
+    fs.writeFileSync(cachePath('espn', 'fifa.world'), JSON.stringify({ ...sample, version: CACHE_VERSION + 1 }));
+    expect(readState('espn', 'fifa.world')).toBeUndefined();
   });
 
   it('keeps a separate cache file per non-default competition (no thrash)', () => {
@@ -68,11 +68,11 @@ describe('cache state', () => {
       ...friendly,
       version: CACHE_VERSION,
     });
-    expect(cachePath('espn', 'fifa.friendly')).not.toBe(cachePath());
+    expect(cachePath('espn', 'fifa.friendly')).not.toBe(cachePath('espn', 'fifa.world'));
     // The env-sourced competition can only shape a FLAT filename inside the
     // cache dir — path separators are stripped, so no traversal is possible.
     const evil = cachePath('espn', '../../evil');
-    expect(join(evil, '..')).toBe(join(cachePath(), '..')); // same parent dir
+    expect(join(evil, '..')).toBe(join(cachePath('espn', 'fifa.world'), '..')); // same parent dir
   });
 
   it('readCurrentState only returns a snapshot for the matching source + competition', () => {
@@ -91,8 +91,8 @@ describe('cache state', () => {
     writeState(sample);
     // Corrupt the file.
     const fs = require('node:fs') as typeof import('node:fs');
-    fs.writeFileSync(cachePath(), '{not json');
-    expect(readState()).toBeUndefined();
+    fs.writeFileSync(cachePath('espn', 'fifa.world'), '{not json');
+    expect(readState('espn', 'fifa.world')).toBeUndefined();
   });
 
   it('rejects a malformed envelope before any renderer sees nested records', () => {
@@ -110,22 +110,22 @@ describe('cache state', () => {
       { ...valid, schedule: [] },
       { ...valid, schedule: null },
     ]) {
-      fs.writeFileSync(cachePath(), JSON.stringify(malformed));
-      expect(readState(), JSON.stringify(malformed)).toBeUndefined();
+      fs.writeFileSync(cachePath('espn', 'fifa.world'), JSON.stringify(malformed));
+      expect(readState('espn', 'fifa.world'), JSON.stringify(malformed)).toBeUndefined();
     }
   });
 
   it('rejects oversized files and record floods', () => {
     const fs = require('node:fs') as typeof import('node:fs');
     writeState(sample);
-    fs.writeFileSync(cachePath(), JSON.stringify({ padding: 'x'.repeat(MAX_STATE_BYTES) }));
-    expect(readState()).toBeUndefined();
+    fs.writeFileSync(cachePath('espn', 'fifa.world'), JSON.stringify({ padding: 'x'.repeat(MAX_STATE_BYTES) }));
+    expect(readState('espn', 'fifa.world')).toBeUndefined();
 
     fs.writeFileSync(
-      cachePath(),
+      cachePath('espn', 'fifa.world'),
       JSON.stringify({ ...sample, version: CACHE_VERSION, live: Array(1_025).fill(null) }),
     );
-    expect(readState()).toBeUndefined();
+    expect(readState('espn', 'fifa.world')).toBeUndefined();
   });
 
   it('computes age in ms and Infinity when absent', () => {

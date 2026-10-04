@@ -188,7 +188,7 @@ describe('the saved choice and the pin', () => {
     await withClient(async (client) => {
       const { tools } = await client.listTools();
       const next = tools.find((t) => t.name === 'get_next_fixture');
-      const required = ((next?.inputSchema as { required?: string[] }).required ?? []) as string[];
+      const required = ((next?.inputSchema as { required?: string[] } | undefined)?.required ?? []) as string[];
       expect(required).not.toContain('team');
       for (const t of tools) {
         if (t.name === 'get_team' || t.name === 'list_competitions') continue;

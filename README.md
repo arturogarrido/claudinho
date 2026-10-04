@@ -21,6 +21,7 @@
      South Korea's 81st-minute winner (1–1 → 2–1) while pytest runs. -->
 
 ```bash
+npx @claudinho/cli follow world-cup   # choose a competition once (follow --list shows them all)
 npx @claudinho/cli today      # try it in 10 seconds — no install, no key
 npx @claudinho/cli live       # what's on right now (during match windows)
 ```
@@ -67,6 +68,7 @@ Try it: npx @claudinho/cli --competition world-cup table A
 
 ```bash
 npm i -g @claudinho/cli
+claudinho follow world-cup     # choose once: every command, the statusline and the hook follow it
 claudinho today
 claudinho next MEX --tz America/Mexico_City --lang es
 ```
@@ -108,7 +110,7 @@ emits the snippets, or copy them straight from here:
 **Optional env** — a model + context line below the score, or scope to your team:
 ```bash
 export CLAUDINHO_CURSOR_META=auto   # model + context % line under the score (recommended)
-export CLAUDINHO_TEAM=MEX           # show only your team's match
+export CLAUDINHO_TEAM=MEX           # your team's match first (the others counted); or pin one: claudinho follow <alias> --team <name>
 export CLAUDINHO_FLAGS=off          # 3-letter codes instead of flag emoji (already automatic in Warp)
 export CLAUDINHO_DEBUG=1            # print data-provider failure diagnostics to stderr
 export CLAUDINHO_NO_STAR=1          # suppress the occasional "star the repo" nudge
@@ -172,12 +174,21 @@ _Planned (not shipped yet):_ a desktop notifier and an AI pundit with a public a
 
 ## Competitions
 
-The 2026 World Cup is the default. Pick another competition by its alias, for one command
-(`npx @claudinho/cli --competition premier-league today`) or for every surface, the statusline
-and the hook included (`export CLAUDINHO_COMPETITION=premier-league`; an ESPN slug such as `eng.1`
-works too, and so does any other lower-case dotted ESPN slug, labelled experimental). Every answer says which
-competition it is for; an unknown value is refused with the list. MCP tools take the same value
-as their `competition` argument, and `list_competitions` lists the table below.
+Nothing is followed until you choose. Choose once with `claudinho follow premier-league`
+(`claudinho follow --list` lists the table below, `claudinho follow` shows your choice and where it
+came from, `claudinho follow off` forgets it), and pin your team with `--team`
+(`claudinho follow premier-league --team Arsenal`): it becomes the team `next`, `share next` and
+`markets next` answer for, and its match comes first on the statusline and in the hook. The choice
+is saved in `config.json` in your config directory (`~/.config/claudinho/`, or
+`$XDG_CONFIG_HOME/claudinho/`; `%APPDATA%\claudinho\` on Windows) and every surface reads it, the
+statusline, the hook and the MCP server included. For one command `--competition` wins over it
+(`npx @claudinho/cli --competition laliga today`), and `CLAUDINHO_COMPETITION` wins over it while it
+is set (an alias, or an ESPN slug such as `eng.1`; any other lower-case dotted ESPN slug works too,
+labelled experimental): the flag, then the environment, then the saved choice. With none of the
+three, a command says so and names `claudinho follow`, the statusline reads `⚽ claudinho follow`,
+and the hook stays silent. Every answer says which competition it is for; an unknown value is
+refused with the list. MCP tools take the same value as their `competition` argument (with none
+chosen they answer `noCompetition`), and `list_competitions` lists the table below.
 
 <!-- competitions:start -->
 | Alias | Competition | Teams | Scores | Next | Standings | Bracket | Markets |

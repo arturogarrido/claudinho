@@ -67,9 +67,9 @@ describe('lock ownership', () => {
     const a = claimLock(T);
     const b = claimLock(T + 60_001);
     expect(publishState(snapshot('2026-09-15T12:00:00.000Z'), a)).toBe(false);
-    expect(readState()).toBeUndefined();
+    expect(readState('espn', 'fifa.world')).toBeUndefined();
     expect(publishState(snapshot('2026-09-15T12:01:01.000Z'), b)).toBe(true);
-    expect(readState()?.updatedAt).toBe('2026-09-15T12:01:01.000Z');
+    expect(readState('espn', 'fifa.world')?.updatedAt).toBe('2026-09-15T12:01:01.000Z');
     releaseLock(b);
   });
 

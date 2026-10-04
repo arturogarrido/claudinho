@@ -184,7 +184,7 @@ describe('one pick function for the ambient surfaces', () => {
 
   it('the hook lists the pinned match first and keeps the other', () => {
     const state: CacheState = { updatedAt: NOW.toISOString(), live: [other(), mine()], degraded: false, source: 'espn', competition: 'eng.1' };
-    const ctx = renderHook(state, { defaultCompetition: false, teamKind: 'club', pick: { team: ARSENAL } }) ?? '';
+    const ctx = renderHook(state, { defaultCompetition: false, teamKind: 'club', now: NOW, pick: { team: ARSENAL } }) ?? '';
     expect(ctx.indexOf('Arsenal FC')).toBeGreaterThan(-1);
     expect(ctx.indexOf('Arsenal FC')).toBeLessThan(ctx.indexOf('Brentford'));
   });

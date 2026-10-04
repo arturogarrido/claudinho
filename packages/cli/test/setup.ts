@@ -10,13 +10,28 @@ process.env.CLAUDINHO_MARKETS_SOURCE = 'none';
 // `~/.cache/claudinho`, and a command test there would read a real snapshot
 // and, since the throttle note, a real `backoff.json`. A file that sets
 // `XDG_CACHE_HOME` itself overrides this and restores it afterwards.
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll } from 'vitest';
 
 const testCache = mkdtempSync(join(tmpdir(), 'claudinho-test-cache-'));
 process.env.XDG_CACHE_HOME = testCache;
+
+// Nor the developer's real config file (a `claudinho follow` they ran would
+// change every answer). Each file's tests start where a user who FOLLOWS THE
+// WORLD CUP is: a saved choice (the mode line names no source), what the
+// suites written before 0.11 2.5b assumed of a default that no longer exists.
+// A test of the first run, or of another saved choice, sets XDG_CONFIG_HOME
+// itself and restores it afterwards.
+const testConfig = mkdtempSync(join(tmpdir(), 'claudinho-test-config-'));
+mkdirSync(join(testConfig, 'claudinho'), { recursive: true });
+writeFileSync(join(testConfig, 'claudinho', 'config.json'), JSON.stringify({ version: 1, competition: 'world-cup' }));
+process.env.XDG_CONFIG_HOME = testConfig;
+
 // Removed when the file's tests are done. (A `process.on('exit')` handler does
 // not run in a test worker: it left one empty directory per test file, per run.)
-afterAll(() => rmSync(testCache, { recursive: true, force: true }));
+afterAll(() => {
+  rmSync(testCache, { recursive: true, force: true });
+  rmSync(testConfig, { recursive: true, force: true });
+});

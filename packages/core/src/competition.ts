@@ -1,7 +1,8 @@
 import { DEFAULT_COMPETITION } from './adapters/espn';
 import { t } from './i18n';
-import { type CompetitionEntry, SUPPORTED, SUPPORTED_TABLES, entryOf } from './supported';
+import { type CompetitionEntry, SUPPORTED, SUPPORTED_TABLES, competitionValue, entryOf } from './supported';
 import { humanLabel } from './trust/roles';
+import type { VerdictSource } from './verdict';
 
 // The written kinds of a competition (its teams: nations or clubs; itself: a
 // league, a cup or the friendly one) and a league's season name. Facts of the
@@ -26,10 +27,12 @@ import type { SeasonInfo } from './types';
 
 /**
  * Where a selection came from: the command line's `--competition` or a tool's
- * `competition` argument (`flag`), `CLAUDINHO_COMPETITION` (`env`), the saved
- * choice (`saved`, 2.5b), or nothing at all (`default`: the bundled World Cup).
+ * `competition` argument (`flag`), `CLAUDINHO_COMPETITION` (`env`), or the
+ * user's saved choice (`saved`: the config file `claudinho follow` writes).
+ * Nothing else chooses: with none of the three there is no competition
+ * (`{ kind: 'none' }`), never a default.
  */
-export type ChosenBy = 'flag' | 'env' | 'saved' | 'default';
+export type ChosenBy = 'flag' | 'env' | 'saved';
 
 /** A competition a request is for, and where that choice came from. */
 export interface SelectedCompetition {
@@ -48,23 +51,13 @@ export interface SelectedCompetition {
 /**
  * What the edge resolved: a competition; a value that is neither an alias nor
  * a slug, REFUSED with the aliases (an unknown value is never a request); or
- * `none`, reserved for "nothing chosen" (never produced while the bundled
- * World Cup is the default).
+ * `none`: nothing was chosen (no flag, no environment, no saved choice). The
+ * finished World Cup is not a default anyone falls into without choosing.
  */
 export type CompetitionSelection =
   | SelectedCompetition
   | { readonly kind: 'refused'; readonly value: string; readonly aliases: string[] }
   | { readonly kind: 'none' };
-
-/**
- * A raw ESPN slug: two or more lower-case segments of letters, digits and
- * underscores, joined by single dots (`fifa.friendly`, `esp.copa_del_rey`:
- * real slugs carry underscores, measured on the feed). Nothing else: no upper
- * case, no space, no leading, trailing or double dot.
- */
-const RAW_SLUG = /^[a-z0-9_]+(\.[a-z0-9_]+)+$/;
-/** The longest raw slug believed, in UTF-16 units. */
-const MAX_SLUG_UNITS = 64;
 
 /**
  * The ONE constructor of a selected competition: a slug and where it was
@@ -82,20 +75,21 @@ export function selectedCompetition(slug: string, chosenBy: ChosenBy): SelectedC
 
 /** One value, from one source: an alias, a slug in the table, a raw slug, or refused. */
 function selectionFor(value: string, chosenBy: ChosenBy): CompetitionSelection {
-  const row = SUPPORTED.find((e) => e.alias === value) ?? entryOf(value);
-  if (row) return selectedCompetition(row.slug, chosenBy);
-  if (value.length <= MAX_SLUG_UNITS && RAW_SLUG.test(value)) return selectedCompetition(value, chosenBy);
-  return { kind: 'refused', value, aliases: SUPPORTED.map((e) => e.alias) };
+  const named = competitionValue(value);
+  if (named === undefined) return { kind: 'refused', value, aliases: SUPPORTED.map((e) => e.alias) };
+  return selectedCompetition('row' in named ? named.row.slug : named.raw, chosenBy);
 }
 
 /**
  * THE EDGE. The one function that decides which competition a request is for,
  * from the values its edge hands in: the flag (`--competition`, a tool's
  * `competition` argument), then the environment (`CLAUDINHO_COMPETITION`), then
- * the saved choice (2.5b), then the bundled World Cup (`chosenBy: 'default'`).
- * The FIRST present source decides (an empty string is absent): a present
- * value that is refused is refused, even when a lower source holds a valid one
- * (what was asked for is not answered with something else).
+ * the saved choice (the config file's `competition`, read at the edge through
+ * core's one reader: `readUserConfig`). The FIRST present source decides (an
+ * empty string is absent): a present value that is refused is refused, even
+ * when a lower source holds a valid one (what was asked for is not answered
+ * with something else). With no source present, `none`: nothing is chosen,
+ * and every competition-answering surface says so instead of answering.
  *
  * Each value is an alias (`premier-league`), a slug in the table (`eng.1`), or
  * a raw ESPN slug the table does not hold (`fifa.friendly`, `esp.copa_del_rey`:
@@ -103,12 +97,12 @@ function selectionFor(value: string, chosenBy: ChosenBy): CompetitionSelection {
  * units at most; experimental);
  * anything else (`foo`, `ENG.1`, a space) is refused with the aliases.
  *
- * Core reads NO environment: the edges pass it. It is called where a request
- * ENTERS (the CLI's option resolution, the MCP server's request) and nowhere
- * else. From there the competition travels as a value (on the config, on the
- * adapter), so nothing further down can answer for a different competition
- * halfway through. `core/test/selection-identity.test.ts` fails if a call
- * appears anywhere else.
+ * Core reads NO environment and no file: the edges pass them. It is called
+ * where a request ENTERS (the CLI's option resolution, the MCP server's
+ * request) and nowhere else. From there the competition travels as a value
+ * (on the config, on the adapter), so nothing further down can answer for a
+ * different competition halfway through. `core/test/selection-identity.test.ts`
+ * fails if a call appears anywhere else.
  */
 export function resolveCompetition(explicit?: string, env?: string, saved?: string): CompetitionSelection {
   const sources: ReadonlyArray<readonly [ChosenBy, string | undefined]> = [
@@ -119,7 +113,7 @@ export function resolveCompetition(explicit?: string, env?: string, saved?: stri
   for (const [chosenBy, value] of sources) {
     if (typeof value === 'string' && value !== '') return selectionFor(value, chosenBy);
   }
-  return selectionFor(DEFAULT_COMPETITION, 'default');
+  return { kind: 'none' };
 }
 
 /**
@@ -127,8 +121,8 @@ export function resolveCompetition(explicit?: string, env?: string, saved?: stri
  * the competition's name, then where the choice came from when it was the
  * flag or the environment (`from the command line`; on MCP, `from the
  * request`; `from the environment`), then `experimental` for a raw slug. A
- * saved choice and the default print the name alone. The name is not
- * localized; the rest is. Empty for a selection that is not a competition.
+ * saved choice prints the name alone. The name is not localized; the rest is.
+ * Empty for a selection that is not a competition.
  */
 export function modeLine(
   selection: CompetitionSelection,
@@ -156,11 +150,13 @@ export interface CompetitionKey {
 /**
  * The selection as ONE structured key, `competition`, for every
  * competition-answering structured answer (CLI `--json`, MCP `data`): the
- * alias only when there is one, `experimental` only when true. Nothing for a
- * selection that is not a competition. Every emit site spreads this; none
- * builds the key by hand.
+ * alias only when there is one, `experimental` only when true; `null` when
+ * nothing is chosen (beside the `noCompetition` verdict: see
+ * {@link selectionVerdict}). Nothing for a refused value (it is an error, never
+ * an answer). Every emit site spreads this; none builds the key by hand.
  */
-export function selectionExtras(selection: CompetitionSelection): { competition?: CompetitionKey } {
+export function selectionExtras(selection: CompetitionSelection): { competition?: CompetitionKey | null } {
+  if (selection.kind === 'none') return { competition: null };
   if (selection.kind !== 'selected') return {};
   return {
     competition: {
@@ -174,17 +170,39 @@ export function selectionExtras(selection: CompetitionSelection): { competition?
 }
 
 /**
- * Why a selection is not a competition, in the reader's language, naming the
- * value (bounded) and the aliases; undefined for a competition. The CLI
- * raises it as an input error, MCP as a tool error, before any request.
+ * The verdict a selection states about every answer made under it: with
+ * nothing chosen, `noCompetition` (the first replacing verdict: its sentence
+ * stands instead of any answer, and its key goes beside `competition: null`);
+ * nothing otherwise. A surface hands THIS to `verdictNotice`/`verdictExtras`,
+ * never an object it builds itself.
  */
-export function selectionRefusal(selection: CompetitionSelection, lang?: string): string | undefined {
+export function selectionVerdict(selection: CompetitionSelection): VerdictSource {
+  return selection.kind === 'none' ? NO_COMPETITION : NOTHING;
+}
+const NO_COMPETITION: VerdictSource = Object.freeze({ noCompetition: true as const });
+const NOTHING: VerdictSource = Object.freeze({});
+
+/**
+ * Why a selection is not a competition, in the reader's language; undefined
+ * for a competition. A refused value names the value (bounded) and the
+ * aliases; nothing chosen says how to choose: on the command line
+ * (`command`) the CLI's sentence (`claudinho follow <alias>`, `follow --list`),
+ * on a tool request (`request`) the `noCompetition` verdict's sentence (the
+ * `competition` argument, `list_competitions`, `claudinho follow`). The CLI
+ * raises it as an input error, MCP a refused value as a tool error, before
+ * any request.
+ */
+export function selectionRefusal(
+  selection: CompetitionSelection,
+  lang?: string,
+  flag: 'command' | 'request' = 'command',
+): string | undefined {
   if (selection.kind === 'selected') return undefined;
-  const aliases = SUPPORTED.map((e) => e.alias).join(', ');
   if (selection.kind === 'refused') {
+    const aliases = SUPPORTED.map((e) => e.alias).join(', ');
     return t(lang, 'selection.refused', { value: humanLabel(selection.value, 40), aliases });
   }
-  return t(lang, 'selection.none', { aliases });
+  return flag === 'request' ? t(lang, 'competition.none') : t(lang, 'selection.none', { n: String(SUPPORTED.length) });
 }
 
 /** The competition whose schedule ships bundled in the clients: the World Cup. */

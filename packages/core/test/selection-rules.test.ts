@@ -45,7 +45,7 @@ describe('the resolver', () => {
 
   it('reads no environment: only what its edge hands in', () => {
     process.env.CLAUDINHO_COMPETITION = 'eng.1';
-    expect(resolveCompetition()).toMatchObject({ slug: 'fifa.world', chosenBy: 'default' });
+    expect(resolveCompetition()).toEqual({ kind: 'none' });
     expect(resolveCompetition(undefined, process.env.CLAUDINHO_COMPETITION)).toMatchObject({ slug: 'eng.1', chosenBy: 'env' });
   });
 
@@ -111,9 +111,9 @@ describe('the mode line on a request (MCP): the flag is the request\'s argument'
     expect(modeLine(sel, 'fr', 'request')).toBe('Premier League · depuis la requête');
   });
 
-  it('the environment and the default read the same on both surfaces', () => {
+  it('the environment and the saved choice read the same on both surfaces', () => {
     expect(modeLine(selectedCompetition('eng.1', 'env'), 'en', 'request')).toBe('Premier League · from the environment');
-    expect(modeLine(selectedCompetition('fifa.world', 'default'), 'en', 'request')).toBe('World Cup');
+    expect(modeLine(selectedCompetition('fifa.world', 'saved'), 'en', 'request')).toBe('World Cup');
   });
 
   it('a refused selection has no line', () => {

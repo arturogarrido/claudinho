@@ -7,7 +7,8 @@
  * When the snapshot and the note had it and the lock, the market cache and the
  * run counter did not, the same hazard had been fixed in two files and left
  * in three: so the rule is pinned by vocabulary. A module that reads a file
- * by path is named here, with its reason.
+ * by path is named here, with its reason. (The reader moved into core in
+ * 0.11 2.5b, so the MCP server reads the user's config file through it too.)
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -40,8 +41,16 @@ describe('the files the CLI keeps are read by one reader', () => {
   });
 
   it('the reader itself opens once and never by name again', () => {
+    // The reader lives in core since 0.11 2.5b (the MCP server reads the
+    // config file through it too); the CLI's kept files reach it through
+    // `paths.ts`, which re-exports it and holds no reader of its own.
+    const reader = code(join(SRC, '..', '..', 'core', 'src', 'files.ts'));
+    expect(reader).toMatch(/export function readSmallFile\(/);
     const paths = code(join(SRC, 'paths.ts'));
-    expect(paths).toMatch(/export function readSmallFile\(/);
+    expect(paths).toMatch(/export \{ lookAtSmallFile, readSmallFile, type SmallFile \} from '@claudinho\/core';/);
+    expect(paths).not.toMatch(/\b(openSync|readSync)\s*\(\s*[^,)]*,\s*['"]?r/);
+    // The config file goes through core's no-follow form of it, read at the edge.
+    expect(code(join(SRC, 'config.ts'))).toMatch(/\breadUserConfig\(/);
     // The cache, the market cache and the run counter go through it.
     for (const file of ['cache.ts', 'marketCache.ts', 'starNudge.ts']) {
       expect(code(join(SRC, file)), file).toMatch(/\breadSmallFile\(/);

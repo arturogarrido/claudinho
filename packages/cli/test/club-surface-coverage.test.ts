@@ -189,7 +189,7 @@ describe('statusline off the bundle', () => {
     };
     const line = renderPrompt(cache, { defaultCompetition: false, now: new Date('2026-06-10T12:00:00Z') });
     expect(line).toBe('⚽ —');
-    expect(renderPrompt(cache, { defaultCompetition: false, team: 'MEX', now: new Date('2026-06-10T12:00:00Z') })).toBe('⚽ —');
+    expect(renderPrompt(cache, { defaultCompetition: false, pick: { code: 'MEX' }, now: new Date('2026-06-10T12:00:00Z') })).toBe('⚽ —');
   });
 
   it('never merges the bundle back in when the refresher cached fixtures', () => {
@@ -211,7 +211,7 @@ describe('statusline off the bundle', () => {
       fixturesUpdatedAt: now.toISOString(),
     };
     for (const team of [undefined, 'MEX']) {
-      const line = renderPrompt(cache, { defaultCompetition: false, team, now });
+      const line = renderPrompt(cache, { defaultCompetition: false, pick: team ? { code: team } : undefined, now });
       expect(line).toBe('⚽ —');
       expect(line).not.toMatch(WC);
     }
@@ -549,7 +549,7 @@ describe('club rendering — the cache-only surfaces (statusline, hook, vibe)', 
     expect(renderPrompt(s, opts)).toBe("⚽ ARS 2–1 CHE 50'");
     expect(renderPrompt(s, { ...opts, compact: false })).toBe("⚽ ARS 2–1 CHE 50'");
     expect(renderPrompt(s, { ...opts, flags: false })).toBe("⚽ ARS 2–1 CHE 50'");
-    expect(renderPrompt(s, { ...opts, team: 'CHE' })).toBe("⚽ ARS 2–1 CHE 50'");
+    expect(renderPrompt(s, { ...opts, pick: { code: 'CHE' } })).toBe("⚽ ARS 2–1 CHE 50'");
   });
 
   it('with no kind stated, off the bundle a side is a club (nothing is vouched for); on the bundle, a nation', () => {

@@ -104,7 +104,7 @@ describe('the commands that answer for a competition', () => {
     ['next', (c) => cmdNext('MEX', c)],
     ['match', (c) => cmdMatch('760415', c)],
     ['table', (c) => cmdTable(undefined, c)],
-    ['bracket', (c) => cmdBracket(undefined, c)],
+    ['bracket', (c) => cmdBracket(undefined, {}, c)],
     ['markets', (c) => cmdMarkets(undefined, undefined, c)],
     ['share', (c) => cmdShare('live', undefined, {}, c)],
   ];

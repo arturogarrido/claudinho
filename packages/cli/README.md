@@ -8,6 +8,7 @@
 
 ```bash
 npm i -g @claudinho/cli      # installs the `claudinho` binary
+claudinho follow world-cup   # choose a competition once (claudinho follow --list shows them all)
 # or run without installing:
 npx @claudinho/cli today
 ```
@@ -35,9 +36,10 @@ All 104 fixtures ship bundled, so the schedule works offline; only live scores h
 ## Commands
 
 ```bash
+claudinho follow [ALIAS]    # choose the competition every surface follows (saved); --team <name> pins your team; --list; off
 claudinho today [date]      # a day's fixtures in your timezone (default: today), live scores inline
 claudinho live              # matches in play right now
-claudinho next [TEAM]       # a team's next fixture + countdown — TEAM is a name OR code (Mexico | MEX | "DR Congo", or a club: Arsenal | ARS); default $CLAUDINHO_TEAM
+claudinho next [TEAM]       # a team's next fixture + countdown — TEAM is a name OR code (Mexico | MEX | "DR Congo", or a club: Arsenal | ARS); default $CLAUDINHO_TEAM, else your pinned team
 claudinho table [KEY]       # live cumulative standings (default: every table); KEY is a group letter, or A1, A-B, LEAGUE
 claudinho bracket [STAGE]   # knockout bracket (R32, R16, QF, SF, 3P, F); --tree for ASCII tree
 claudinho match <id>        # a single match's detail
@@ -77,7 +79,8 @@ claudinho bracket R32 --tree
 claudinho live --json | jq '.matches[].status'
 claudinho today --flavor off               # just the facts, no commentary
 claudinho share next MEX --copy            # a shareable card, copied to your clipboard
-claudinho --competition premier-league next Arsenal   # another competition, by its alias
+claudinho follow premier-league --team Arsenal       # follow a competition, pin a team: `claudinho next` answers for it
+claudinho --competition laliga today                  # another competition for one command, by its alias
 CLAUDINHO_COMPETITION=laliga claudinho table          # the environment works too (the statusline and hook follow it)
 ```
 
@@ -89,7 +92,7 @@ CLAUDINHO_COMPETITION=laliga claudinho table          # the environment works to
 | `--tz <zone>` | IANA timezone, e.g. `America/Mexico_City` (also `CLAUDINHO_TZ`; default: system). Kickoff times **and** which day a fixture falls on are computed in this zone — a late-night-UTC match shows on the day you actually watch it. |
 | `--json` | machine-readable output for scripting |
 | `--no-color` | disable ANSI color (also honors `NO_COLOR`; auto-off when piped) |
-| `-c, --competition <alias\|slug>` | the competition: an alias such as `premier-league` (the fifteen are listed in the [root README](https://github.com/arturogarrido/claudinho#competitions)), or an ESPN slug such as `eng.1` (any other lower-case dotted ESPN slug works too, labelled experimental). Also `CLAUDINHO_COMPETITION` (an alias or a slug), which the statusline and the hook follow; default: the 2026 World Cup. Every answer names its competition on a line after its header (`Premier League · from the command line`; first where an answer has none; `table` once, before its tables) and in `--json` as `competition`; `share` prints no such line: its card's title names the competition and its run cue selects it; `team` names the World Cup roster it reads. An unknown value is refused with the list. |
+| `-c, --competition <alias\|slug>` | the competition: an alias such as `premier-league` (the fifteen are listed in the [root README](https://github.com/arturogarrido/claudinho#competitions)), or an ESPN slug such as `eng.1` (any other lower-case dotted ESPN slug works too, labelled experimental). Also `CLAUDINHO_COMPETITION` (an alias or a slug), which the statusline and the hook follow, and the choice `claudinho follow <alias>` saves: the flag, then the environment, then the saved choice; with none, a command says so (exit 1; `--json` prints `{ "competition": null, "noCompetition": true }`), the statusline reads `⚽ claudinho follow`, and the hook stays silent. Every answer names its competition on a line after its header (`Premier League · from the command line`; first where an answer has none; `table` once, before its tables) and in `--json` as `competition`; `share` prints no such line: its card's title names the competition and its run cue selects it; `team` names the World Cup roster it reads. An unknown value is refused with the list. |
 | `--source <name>` | live data provider (advanced; sensible default) |
 | `--flavor <level>` | commentary flair: `off`, `subtle`, `full` (default: `full`; also `CLAUDINHO_FLAVOR`) |
 | `--no-markets` | hide prediction-market signals in `today`/`match` (also `CLAUDINHO_MARKETS=off`) |
@@ -217,7 +220,7 @@ The statusline reads from a local micro-cache and **never blocks on the
 network** (<150ms). When several matches are live it shows them all inline:
 `⚽ 🇳🇴 1–1 🇫🇷 87' · 🇸🇳 1–2 🇮🇶 86'`. Customize via env:
 
-- `CLAUDINHO_TEAM=MEX` — show only your team's match (a nation name works too, e.g. `CLAUDINHO_TEAM=mexico`); also the default team for `next`, `markets next`, and `share next` when the argument is omitted
+- `CLAUDINHO_TEAM=MEX` — your team's match first, the others counted (`+N`) (a nation name works too, e.g. `CLAUDINHO_TEAM=mexico`); also the default team for `next`, `markets next`, and `share next` when the argument is omitted. A team pinned with `claudinho follow <alias> --team <name>` does the same when this is not set, under the competition you follow (not under an override): a preference, never a filter
 - `CLAUDINHO_MAX=2` — cap how many live matches show inline (rest collapse to exact `+N`
   after a complete cache scan, or `+more` when the bounded scan cannot know the count; default: 8,
   and values above 8 are capped at 8)

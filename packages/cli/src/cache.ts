@@ -6,7 +6,7 @@
  */
 import { closeSync, mkdirSync, openSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
-import { DEFAULT_COMPETITION, type Match, type ScheduleEntry, type SeasonInfo } from '@claudinho/core';
+import { BUNDLE_COMPETITION, type Match, type ScheduleEntry, type SeasonInfo } from '@claudinho/core';
 import { randomBytes } from 'node:crypto';
 import { cacheDir, lookAtSmallFile, readSmallFile, writeFileAtomic } from './paths';
 
@@ -132,26 +132,28 @@ export interface ScheduleSlice {
 const LOCK_STALE_MS = 60_000;
 
 /**
- * Per-scope cache file. The default scope (espn + the bundled World Cup) keeps
- * the legacy `state.json` name — no migration for the installed base — while
+ * Per-scope cache file. The bundled World Cup's scope (espn + `fifa.world`)
+ * keeps the legacy `state.json` name — no migration for the installed base —
+ * decided by the competition PASSED, never by an absent argument (every caller
+ * states its scope: there is no default competition), while
  * any other source/competition gets its own slot, so two sessions with
  * different `CLAUDINHO_COMPETITION` values stop thrashing a single file
  * (previously: ping-ponged full refetches plus a refresher spawn per statusline
  * tick on both sides). The slug is sanitized: the competition comes from an env
  * var and must never influence the path beyond a flat filename.
  */
-export function cachePath(source = 'espn', competition = DEFAULT_COMPETITION): string {
+export function cachePath(source: string, competition: string): string {
   return join(cacheDir(), `state${scopeSuffix(source, competition)}.json`);
 }
 
 /**
- * What a scope adds to a cache file's name: nothing for the default scope,
+ * What a scope adds to a cache file's name: nothing for the bundled World Cup's scope,
  * `.<source>.<competition>` (sanitized to a flat name) for any other. ONE rule
  * for every per-scope file, so a scope's snapshot and its throttle note cannot
  * be named apart.
  */
 function scopeSuffix(source: string, competition: string): string {
-  if (source === 'espn' && competition === DEFAULT_COMPETITION) return '';
+  if (source === 'espn' && competition === BUNDLE_COMPETITION) return '';
   return `.${`${source}.${competition}`.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 }
 
@@ -213,10 +215,7 @@ function isCacheState(value: unknown): value is CacheState {
  * Read the cached state for a scope, or undefined if missing/corrupt/
  * version-mismatched (never throws).
  */
-export function readState(
-  source = 'espn',
-  competition = DEFAULT_COMPETITION,
-): CacheState | undefined {
+export function readState(source: string, competition: string): CacheState | undefined {
   try {
     // One descriptor, a bounded read: the statusline reads this on every prompt.
     const bytes = readSmallFile(cachePath(source, competition), MAX_STATE_BYTES);
@@ -352,7 +351,7 @@ export function believedDeadline(untilMs: number | undefined, now: number): numb
 const MAX_NOTE_BYTES = 256;
 
 /** The throttle note of a cache scope: named like its snapshot, by the same rule. */
-export function backoffNotePath(source = 'espn', competition = DEFAULT_COMPETITION): string {
+export function backoffNotePath(source: string, competition: string): string {
   return join(cacheDir(), `backoff${scopeSuffix(source, competition)}.json`);
 }
 

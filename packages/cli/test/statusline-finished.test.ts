@@ -7,7 +7,7 @@
 import type { Match } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import type { CacheState, ScheduleSlice } from '../src/cache';
-import { renderPrompt } from '../src/statusline';
+import { type AmbientPick, renderPrompt } from '../src/statusline';
 
 const NOW = Date.parse('2026-10-10T15:00:00.000Z');
 const MIN = 60_000;
@@ -40,7 +40,7 @@ const snapshot = (fixtures: Match[]): CacheState => ({
 });
 // The snapshot is a nations competition's (`uefa.nations`): the caller states
 // that kind, as `cmdPrompt` does from the competition (0.11 · 2.2).
-const line = (state: CacheState, opts: { team?: string } = {}) =>
+const line = (state: CacheState, opts: { pick?: AmbientPick } = {}) =>
   renderPrompt(state, { defaultCompetition: false, teamKind: 'nation', now: new Date(NOW), ...opts });
 
 describe('a finished record is not counted down to', () => {
@@ -56,7 +56,8 @@ describe('a finished record is not counted down to', () => {
     expect(line(snapshot([finishedAhead, next]))).toBe('\u{1F1E9}\u{1F1EA} vs \u{1F1EE}\u{1F1F9} in 3h0m');
   });
 
-  it('with a team filter: not that team’s next match either', () => {
-    expect(line(snapshot([finishedAhead, next]), { team: 'ESP' })).toBe('⚽ —');
+  it('with a pick: never that team’s finished record; the next fixture of anyone’s (a preference, 0.11 2.5b)', () => {
+    expect(line(snapshot([finishedAhead, next]), { pick: { code: 'ESP' } })).toBe('\u{1F1E9}\u{1F1EA} vs \u{1F1EE}\u{1F1F9} in 3h0m');
+    expect(line(snapshot([finishedAhead]), { pick: { code: 'ESP' } })).toBe('⚽ —');
   });
 });

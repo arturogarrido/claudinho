@@ -172,7 +172,7 @@ describe('tables are missing: text and data both say so', () => {
 
 describe('standings://{key}', () => {
   it('a league by its key, a numbered group, a group under a league', async () => {
-    const sel = (slug: string) => selectedCompetition(slug, 'default');
+    const sel = (slug: string) => selectedCompetition(slug, 'saved');
     expect(await standingsResourceText('league', serving('eng.1'), sel('eng.1'))).toContain('2026-27 English Premier League (LEAGUE)');
     expect(await standingsResourceText('A1', serving('uefa.nations'), sel('uefa.nations'))).toContain('Group A1 (A1)');
     expect(await standingsResourceText('a-b', serving('concacaf.nations.league'), sel('concacaf.nations.league'))).toContain('League A, Group B (A-B)');
@@ -185,7 +185,7 @@ describe('standings://{key}', () => {
   it('a string that is not a key is refused before a request, and says what a key is', async () => {
     requests = 0;
     for (const junk of ['A B', 'Group A', '..%2FA', 'A/B', 'ABCDEFGHIJKLM', '']) {
-      const text = await standingsResourceText(junk, serving('uefa.euro'), selectedCompetition('uefa.euro', 'default'));
+      const text = await standingsResourceText(junk, serving('uefa.euro'), selectedCompetition('uefa.euro', 'saved'));
       expect(text, JSON.stringify(junk)).toContain('Not a table.');
       // The refusal names its competition first too, like every branch (0.11 · 2.5a).
       expect(text.split('\n')[0], JSON.stringify(junk)).toBe('EURO');

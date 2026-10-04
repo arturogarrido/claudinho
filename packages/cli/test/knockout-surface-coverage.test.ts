@@ -157,14 +157,14 @@ describe('statusline hot-path contract — live-resolve from cache, else fail cl
 
   it('shows the resolved tie (real flags) when the refresher cached it', () => {
     const cache = baseCache({ fixtures: [r32MexEcu()], fixturesUpdatedAt: KNOCKOUT_NOW.toISOString() });
-    const line = renderPrompt(cache, { team: 'MEX', now: KNOCKOUT_NOW });
+    const line = renderPrompt(cache, { pick: { code: 'MEX' }, now: KNOCKOUT_NOW });
     expect(line).toContain('🇲🇽'); // resolved home
     expect(line).toContain('🇪🇨'); // resolved away
     expect(line).not.toContain(PLACEHOLDER_FLAG);
   });
 
   it('fails closed to "⚽ —" (no 🏳️ leak) when the cache lacks the fixture', () => {
-    const line = renderPrompt(baseCache(), { team: 'MEX', now: KNOCKOUT_NOW });
+    const line = renderPrompt(baseCache(), { pick: { code: 'MEX' }, now: KNOCKOUT_NOW });
     expect(line).toBe('⚽ —');
     expect(renderPrompt(baseCache(), { now: KNOCKOUT_NOW })).toBe('⚽ —'); // no-team too
   });

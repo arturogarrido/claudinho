@@ -33,17 +33,17 @@ const cache = (fixture: Match): CacheState => ({
 
 describe('statusline countdown — cancelled next fixture (A07)', () => {
   it('control: a scheduled cached tie drives the countdown', () => {
-    const line = renderPrompt(cache(tie('SCHEDULED')), { team: 'MEX', now: NOW });
+    const line = renderPrompt(cache(tie('SCHEDULED')), { pick: { code: 'MEX' }, now: NOW });
     expect(line).toContain('🇲🇽');
     expect(line).toContain(' in ');
   });
 
   it('a cancelled tie never counts down, with a team or without', () => {
-    expect(renderPrompt(cache(tie('CANCELLED')), { team: 'MEX', now: NOW })).toBe('⚽ —');
+    expect(renderPrompt(cache(tie('CANCELLED')), { pick: { code: 'MEX' }, now: NOW })).toBe('⚽ —');
     expect(renderPrompt(cache(tie('CANCELLED')), { now: NOW })).toBe('⚽ —');
   });
 
   it('a postponed tie never counts down either', () => {
-    expect(renderPrompt(cache(tie('POSTPONED')), { team: 'MEX', now: NOW })).toBe('⚽ —');
+    expect(renderPrompt(cache(tie('POSTPONED')), { pick: { code: 'MEX' }, now: NOW })).toBe('⚽ —');
   });
 });

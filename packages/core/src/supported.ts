@@ -200,6 +200,36 @@ export function entryOf(
   return slug === undefined ? undefined : table.find((e) => e.slug === slug);
 }
 
+/**
+ * A raw ESPN slug: two or more lower-case segments of letters, digits and
+ * underscores, joined by single dots (`fifa.friendly`, `esp.copa_del_rey`:
+ * real slugs carry underscores, measured on the feed). Nothing else: no upper
+ * case, no space, no leading, trailing or double dot.
+ */
+const RAW_SLUG = /^[a-z0-9_]+(\.[a-z0-9_]+)+$/;
+/** The longest raw slug believed, in UTF-16 units. */
+const MAX_SLUG_UNITS = 64;
+
+/**
+ * What ONE value names, by the grammar every source of a selection shares
+ * (a flag, the environment, the saved choice): the row whose alias or slug it
+ * is; `raw` for a well-formed slug the table does not hold (experimental);
+ * undefined for anything else (`foo`, `ENG.1`, a space, an empty string). The
+ * resolver (`competition.ts`) and the config file's reader (`userConfig.ts`)
+ * ask this one question, so the file can never hold a value the resolver
+ * would refuse.
+ */
+export function competitionValue(
+  value: unknown,
+  table: readonly CompetitionEntry[] = SUPPORTED,
+): { row: CompetitionEntry } | { raw: string } | undefined {
+  if (typeof value !== 'string' || value === '') return undefined;
+  const row = table.find((e) => e.alias === value) ?? entryOf(value, table);
+  if (row) return { row };
+  if (value.length <= MAX_SLUG_UNITS && RAW_SLUG.test(value)) return { raw: value };
+  return undefined;
+}
+
 /** What each surface is for a competition. */
 export interface Capabilities {
   readonly scores: Capability;

@@ -90,6 +90,7 @@ export {
   getStandings,
   getBracket,
   getNextFixtureForTeam,
+  nextFixtureForPin,
   getKnockoutFixtures,
   marketFixtureForTeam,
   liveSourceLabel,
@@ -245,6 +246,7 @@ export {
   definitiveNone,
   emptyBatch,
   isCacheable,
+  isTeam,
   humanLabel,
   isHumanLabel,
   malformed,
@@ -282,6 +284,7 @@ export {
   selectedCompetition,
   selectionExtras,
   selectionRefusal,
+  selectionVerdict,
   STANDINGS_SHAPE,
   standingsShapeOf,
   TEAM_KIND,
@@ -299,6 +302,7 @@ export type {
 export {
   capabilitiesOf,
   competitionLabel,
+  competitionValue,
   deriveTables,
   entryOf,
   listCompetitions,
@@ -312,3 +316,17 @@ export type {
   ListedCompetition,
 } from './supported';
 export { attachFetchMeta, fetchMeta, type FetchMeta } from './adapters/meta';
+// The user's config file (the saved choice and the pinned team) and the one
+// bounded reader every file kept on disk goes through: read the same way by the
+// CLI and the MCP server.
+export { lookAtOwnFile, lookAtSmallFile, readSmallFile, type OwnFile, type SmallFile } from './files';
+export {
+  cacheDirFor,
+  configPath,
+  MAX_CONFIG_BYTES,
+  readUserConfig,
+  type NoConfigReason,
+  type Pin,
+  type UserConfig,
+  type UserConfigRead,
+} from './userConfig';

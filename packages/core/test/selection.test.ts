@@ -3,9 +3,8 @@
  * slug (0.11 · 2.5a, D2). Core reads no environment: the edge hands the three
  * values in. An alias resolves to its row's slug; a slug in the table to
  * itself; a raw slug written nowhere is experimental; anything else is
- * refused with the alias list, never a request. In 2.5a, with nothing chosen,
- * the bundle is the default (`chosenBy: 'default'`, a value that exists only
- * until 2.5b); `none` is reserved for the absent slug.
+ * refused with the alias list, never a request. With nothing chosen there is
+ * no competition (`none`, 2.5b): no default anyone falls into without choosing.
  */
 import { describe, expect, it } from 'vitest';
 import { modeLine, resolveCompetition, selectionExtras } from '../src';
@@ -17,12 +16,12 @@ describe('resolveCompetition(explicit, env, saved)', () => {
     expect(resolveCompetition('world-cup')).toMatchObject({ slug: 'fifa.world', name: 'World Cup', chosenBy: 'flag' });
   });
 
-  it('the precedence: the flag, then the environment, then the saved choice, then the default', () => {
+  it('the precedence: the flag, then the environment, then the saved choice, then none', () => {
     expect(resolveCompetition('premier-league', 'esp.1', 'ita.1')).toMatchObject({ slug: 'eng.1', chosenBy: 'flag' });
     expect(resolveCompetition(undefined, 'esp.1', 'ita.1')).toMatchObject({ slug: 'esp.1', chosenBy: 'env' });
     expect(resolveCompetition(undefined, undefined, 'serie-a')).toMatchObject({ slug: 'ita.1', chosenBy: 'saved' });
-    expect(resolveCompetition()).toMatchObject({ kind: 'selected', slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', chosenBy: 'default', experimental: false });
-    expect(resolveCompetition('', '', '')).toMatchObject({ slug: 'fifa.world', chosenBy: 'default' });
+    expect(resolveCompetition()).toEqual({ kind: 'none' });
+    expect(resolveCompetition('', '', '')).toEqual({ kind: 'none' });
   });
 
   it('a raw slug written nowhere is experimental, with the slug as its name and no alias', () => {
@@ -63,7 +62,7 @@ describe('what a surface says about the selection', () => {
     expect(modeLine(sel({}), 'en')).toBe('Premier League · from the command line');
     expect(modeLine(sel({ chosenBy: 'env' }), 'en')).toBe('Premier League · from the environment');
     expect(modeLine(sel({ chosenBy: 'saved' }), 'en')).toBe('Premier League');
-    expect(modeLine(sel({ chosenBy: 'default', slug: 'fifa.world', alias: 'world-cup', name: 'World Cup' }), 'en')).toBe('World Cup');
+    expect(modeLine(sel({ chosenBy: 'saved', slug: 'fifa.world', alias: 'world-cup', name: 'World Cup' }), 'en')).toBe('World Cup');
     expect(modeLine(sel({ slug: 'fifa.friendly', alias: undefined, name: 'fifa.friendly', experimental: true }), 'en')).toBe('fifa.friendly · from the command line · experimental');
     expect(modeLine(sel({ slug: 'fifa.friendly', alias: undefined, name: 'fifa.friendly', experimental: true, chosenBy: 'saved' }), 'en')).toBe('fifa.friendly · experimental');
   });
