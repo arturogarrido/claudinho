@@ -396,6 +396,46 @@ describe('admission that cannot be made visible: the gate fails closed only wher
     expect(readCurrentState(SOURCE, WC)).toBeDefined();
   });
 
+  // Review round 4. An inherited deny-read ACL on the cache DIRECTORY (`file_inherit,only_inherit`): the
+  // directory stays writable and searchable, and every file created in it (a snapshot, a record, the lock)
+  // cannot be read by its creator, at mode 644. A publish could never land (the lock cannot be read back, so
+  // ownership cannot be shown), so a claim there is no claim and nothing is asked: with no snapshot, and with
+  // a readable one written before the ACL (whose stamps could never advance). The spawn per tick stays (the hot
+  // path reads the lock as unreadable, so stale): the stated limit.
+  it.skipIf(process.platform !== 'darwin' || !unprivileged)('an inherited deny-read ACL on the cache directory: no cycle asks the provider or publishes, with a readable snapshot and without one', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const { userInfo } = await import('node:os');
+    const cacheDirPath = join(dir, 'claudinho');
+    mkdirSync(cacheDirPath, { recursive: true });
+    // Written BEFORE the ACL: readable, with its live read due inside the opener's window.
+    writeState(snapshot(LIVE - HOUR, WC));
+    try {
+      execFileSync('chmod', ['+a', `${userInfo().username} deny read,file_inherit,only_inherit`, cacheDirPath]);
+    } catch {
+      return; // no ACL support here: nothing to test
+    }
+    // The probe: a file created now cannot be read by its creator; else the ACL did not take and there is nothing to test.
+    writeFileSync(join(cacheDirPath, 'probe.json'), '{}');
+    let probeReadable = true;
+    try {
+      readFileSync(join(cacheDirPath, 'probe.json'));
+    } catch {
+      probeReadable = false;
+    }
+    if (probeReadable) return;
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
+    await refresh(LIVE);
+    expect(asked).toHaveLength(0);
+    expect(publishes).toBe(0);
+    // Without a snapshot: the same, on this tick and the next (the lock left behind is unreadable, so stale, taken over, and refused again).
+    rmSync(cachePath(SOURCE, WC), { force: true });
+    await refresh(LIVE + 5 * MIN);
+    await refresh(LIVE + 5 * MIN + 1000);
+    expect(asked).toHaveLength(0);
+    expect(publishes).toBe(0);
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined();
+  });
+
   it.skipIf(!unprivileged)('a regular file whose owner-read bit is clear (mode 000 or 200) under a broken record: nothing', async () => {
     mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
     mkdirSync(join(dir, 'claudinho'), { recursive: true });

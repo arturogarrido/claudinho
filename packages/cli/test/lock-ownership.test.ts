@@ -1,7 +1,30 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+/**
+ * A path whose READS are refused (EACCES) while its exclusive create and write
+ * go through: what a cache directory with an inherited deny-read ACL does to
+ * every file created in it (the lock included), modeled on any platform. Only
+ * the read opens are refused (`'wx'` is the lock's create).
+ */
+let denyReadsOf: string | undefined;
+vi.mock('node:fs', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...fs,
+    openSync: ((...args: Parameters<typeof fs.openSync>) => {
+      if (denyReadsOf !== undefined && String(args[0]) === denyReadsOf && args[1] !== 'wx') {
+        const err = new Error('EACCES: permission denied') as NodeJS.ErrnoException;
+        err.code = 'EACCES';
+        throw err;
+      }
+      return fs.openSync(...args);
+    }) as typeof fs.openSync,
+  };
+});
+
 import {
   type CacheState,
   claimLock,
@@ -11,6 +34,7 @@ import {
   readState,
   releaseLock,
 } from '../src/cache';
+import { cacheDir } from '../src/paths';
 
 /**
  * Audit A10 (P2): after the 60-second lease was reclaimed, an older paused
@@ -40,8 +64,10 @@ const ORIG = process.env.XDG_CACHE_HOME;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'claudinho-lock-own-'));
   process.env.XDG_CACHE_HOME = dir;
+  denyReadsOf = undefined;
 });
 afterEach(() => {
+  denyReadsOf = undefined;
   if (ORIG === undefined) delete process.env.XDG_CACHE_HOME;
   else process.env.XDG_CACHE_HOME = ORIG;
   rmSync(dir, { recursive: true, force: true });
@@ -94,5 +120,47 @@ describe('lock ownership', () => {
     // @ts-expect-error the token is required
     const none3: Required3 = [snapshot('2026-09-15T12:00:00.000Z')];
     expect([one, two, three, none1, none2, none3]).toHaveLength(6);
+  });
+});
+
+// Review round 4 of the cleanup PR. Every use of a token requires `holdsLock`
+// (a publish, a release, the record's settlement), so a token that fails it at
+// the instant of its claim serves nothing: a cycle holding one asked the
+// provider for an answer it could never publish, on every tick, in a cache
+// directory whose new files nobody can read (an inherited deny-read ACL: the
+// lock is created and written, and cannot be read back by its creator).
+describe('a claim the claimer cannot read back is no claim', () => {
+  const lockPath = () => join(cacheDir(), 'refresh.lock');
+
+  it('claimLock returns undefined when the token it wrote cannot be read back; the entry is left (nothing is removed without ownership proven)', () => {
+    denyReadsOf = lockPath();
+    expect(claimLock(T)).toBeUndefined();
+    // Created, then refused as a claim; left where it is: a removal here would
+    // be the unguarded unlink audit A10 closed (the read-back is the ownership
+    // check, and it failed).
+    expect(existsSync(lockPath())).toBe(true);
+    // The next claimer: the lock it finds cannot be read, so it is stale and
+    // taken over, and the new one cannot be read back either. Still no claim.
+    expect(claimLock(T + 1000)).toBeUndefined();
+    expect(existsSync(lockPath())).toBe(true);
+    // Once reads work again the leftover lock is an ordinary one, stamped by its
+    // last claimer: fresh for the lease, stale after it, like a refresher that
+    // died holding it.
+    denyReadsOf = undefined;
+    expect(isLockFresh(T + 2000)).toBe(true);
+    expect(claimLock(T + 2000)).toBeUndefined();
+    const later = claimLock(T + 1000 + 60_001);
+    expect(later).toBeDefined();
+    expect(holdsLock(later)).toBe(true);
+    releaseLock(later);
+  });
+
+  it('a claim that reads back is unchanged: the token is held, publishes, releases', () => {
+    const a = claimLock(T);
+    expect(a).toBeDefined();
+    expect(holdsLock(a)).toBe(true);
+    expect(publishState(snapshot('2026-09-15T12:00:00.000Z'), a)).toBe(true);
+    releaseLock(a);
+    expect(existsSync(lockPath())).toBe(false);
   });
 });
