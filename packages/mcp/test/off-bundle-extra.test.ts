@@ -166,14 +166,16 @@ describe('review round 1 (coder): get_next_fixture on the World Cup resolves a n
 });
 
 describe('review round 2 (coder): every card’s run cue names the competition off the bundle', () => {
+  // 0.11 · 2.5a: the competition is the call's argument, and the cue selects it by alias.
   it('the table, bracket, match and date cards too', async () => {
-    const table = await toolGetShareSnippet({ group: 'LEAGUE', now: NOW, adapter: feed('eng.1').adapter });
-    expect(table.text).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli table LEAGUE/);
-    const bracket = await toolGetShareSnippet({ bracket: true, now: NOW, adapter: feed('eng.1').adapter });
-    expect(bracket.text).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli bracket/);
-    const match = await toolGetShareSnippet({ matchId: '41', now: NOW, adapter: feed('eng.1').adapter });
-    expect(match.text).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli match 41/);
-    const day = await toolGetShareSnippet({ date: '2026-10-11', now: NOW, adapter: feed('eng.1').adapter });
-    expect(day.text).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli today/);
+    const table = await toolGetShareSnippet({ group: 'LEAGUE', competition: 'eng.1', now: NOW, adapter: feed('eng.1').adapter });
+    expect(table.text).toContain('npx @claudinho/cli --competition premier-league table LEAGUE');
+    const bracket = await toolGetShareSnippet({ bracket: true, competition: 'eng.1', now: NOW, adapter: feed('eng.1').adapter });
+    expect(bracket.text).toContain('npx @claudinho/cli --competition premier-league bracket');
+    const match = await toolGetShareSnippet({ matchId: '41', competition: 'eng.1', now: NOW, adapter: feed('eng.1').adapter });
+    expect(match.text).toContain('npx @claudinho/cli --competition premier-league match 41');
+    const day = await toolGetShareSnippet({ date: '2026-10-11', competition: 'eng.1', now: NOW, adapter: feed('eng.1').adapter });
+    expect(day.text).toContain('npx @claudinho/cli --competition premier-league today');
+    for (const r of [table, bracket, match, day]) expect(r.text).not.toContain('CLAUDINHO_COMPETITION');
   });
 });

@@ -37,6 +37,7 @@ import {
   toolGetStandings,
   toolGetTeam,
   toolGetToday,
+  toolListCompetitions,
   type ToolResult,
 } from './tools';
 
@@ -51,7 +52,7 @@ const VOICE =
     ? ''
     : `\nVoice: when relaying scores, narrate with lively, regionally-appropriate football-commentary energy in the user's language. Each match line may end with a short exclamation ("— ¡GOOOOL!") — use it as a tone cue. Keep every fact exact; never invent details and never impersonate or name a real commentator.`;
 
-export const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and standings for one football competition per server: the 2026 men's World Cup by default, or the club competition it is configured for.
+export const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and standings for one football competition per request: the 2026 men's World Cup by default, the one the server is configured for (CLAUDINHO_COMPETITION), or the one a tool call names in its competition argument (an alias such as premier-league, or an ESPN slug such as eng.1). list_competitions lists the supported competitions, their aliases and what each offers, offline. Every answer's text starts with the competition it is for, and its structured data carries it as competition; an unknown competition is a tool error that lists the aliases.
 get_next_fixture and get_share_snippet take a team as a name or a code: a club's ("Arsenal", "ARS") in a club competition, a nation's ("Mexico", "MEX") in the World Cup. Several teams matching one name come back as candidates; ask which one, never pick. get_market_signal takes a nation's 3-letter code (market signals are read for the World Cup alone). get_team resolves a nation's name to its code in the World Cup roster, offline; it knows no clubs.
 Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team, get_standings for standings tables, and get_bracket for the knockout tree (a league season with no knockout tie answers inapplicable).
 Off the World Cup, get_next_fixture and get_match search from yesterday to 14 days ahead: an empty answer carrying horizon or window is about that span, not about the team or the match. betweenEditions means the competition's edition has ended and the next has not started.
@@ -101,8 +102,21 @@ export const tzArg = z
   .string()
   .refine((v) => isValidTimeZone(v), 'an IANA time zone, e.g. America/Mexico_City');
 
-// Shared optional args every tool accepts.
+/**
+ * The competition a call is for: an alias or a slug, resolved by the server's
+ * edge (`selectionOf`), which refuses anything else with the aliases. A plain
+ * string here, so the refusal is the edge's (it names the aliases), not a
+ * schema message.
+ */
+const competitionArg = z
+  .string()
+  .describe(
+    "The competition: an alias such as premier-league, or an ESPN slug such as eng.1 (list_competitions lists the aliases). Default: the server's CLAUDINHO_COMPETITION, else the 2026 World Cup",
+  );
+
+// Shared optional args every competition-answering tool accepts (all but get_team).
 const commonArgs = {
+  competition: competitionArg.optional(),
   tz: tzArg.optional().describe('IANA timezone for kickoff times, e.g. America/Mexico_City'),
   lang: z
     .string()
@@ -147,6 +161,28 @@ const matchOut = z
   })
   .passthrough();
 const anyObj = z.object({}).passthrough();
+/** What a capability is for a competition (core `Capability`). */
+const capabilityOut = z.enum(['offered', 'not-offered-yet', 'not-applicable']);
+/** The selection as one structured key (core `selectionExtras`). */
+const competitionKeyOut = z.object({
+  slug: z.string(),
+  alias: z.string().optional(),
+  name: z.string(),
+  chosenBy: z.enum(['flag', 'env', 'saved', 'default']),
+  experimental: z.literal(true).optional(),
+});
+/**
+ * The competition an answer is for, on every competition-answering tool's
+ * data (core `selectionExtras`); the text says it in its first line.
+ */
+const selectionOut = {
+  competition: competitionKeyOut
+    .passthrough()
+    .optional()
+    .describe(
+      'The competition this answer is for: its ESPN slug, its alias, its name, where the choice came from (flag: the competition argument; env: the server\'s CLAUDINHO_COMPETITION; default: the World Cup), and experimental for a slug the supported table does not hold',
+    ),
+};
 const src = z.string().nullable();
 const responseMeta = {
   responseTruncated: z.boolean().optional(),
@@ -251,6 +287,7 @@ const todayOut = {
     .describe('False when optional market enrichment did not check every relevant fixture'),
   ...verdictOut,
   ...partialOut,
+  ...selectionOut,
   ...responseMeta,
 };
 const liveOut = {
@@ -261,6 +298,7 @@ const liveOut = {
   matches: z.array(matchOut),
   ...verdictOut,
   ...partialOut,
+  ...selectionOut,
   ...responseMeta,
 };
 /** The span a whole read searched, in the provider's calendar days (plain fields, not verdicts). */
@@ -283,6 +321,7 @@ const matchDetailOut = {
   window: windowOut.optional(),
   ...verdictOut,
   ...partialOut,
+  ...selectionOut,
   ...responseMeta,
 };
 const standingsOut = {
@@ -290,6 +329,7 @@ const standingsOut = {
   source: src,
   tables: z.union([anyObj, z.array(anyObj), z.null()]),
   ...incompleteOut,
+  ...selectionOut,
   ...responseMeta,
 };
 const bracketOut = {
@@ -299,6 +339,7 @@ const bracketOut = {
   source: src.optional(),
   ...verdictOut,
   ...partialOut,
+  ...selectionOut,
   ...responseMeta,
 };
 const nextOut = {
@@ -317,6 +358,7 @@ const nextOut = {
   season: anyObj.optional(),
   ...verdictOut,
   ...partialOut,
+  ...selectionOut,
   ...responseMeta,
 };
 const marketOut = {
@@ -338,6 +380,7 @@ const marketOut = {
     .describe('False when the market provider did not complete every relevant read'),
   ...verdictOut,
   ...partialOut,
+  ...selectionOut,
   ...responseMeta,
 };
 const shareOut = {
@@ -372,6 +415,7 @@ const shareOut = {
   window: windowOut.optional(),
   ...verdictOut,
   ...partialOut,
+  ...selectionOut,
   ...responseMeta,
 };
 const teamInfo = z
@@ -383,6 +427,34 @@ const teamOut = {
   team: teamInfo.nullable(),
   matches: z.array(teamInfo),
   count: z.number(),
+  ...responseMeta,
+};
+/** The supported table (core `listCompetitions`): ours, whole, so strict. */
+const listCompetitionsOut = {
+  competitions: z.array(
+    z
+      .object({
+        slug: z.string(),
+        alias: z.string(),
+        name: z.string(),
+        teams: z.enum(['nation', 'club']),
+        kind: z.enum(['league', 'cup']),
+        capabilities: z
+          .object({
+            scores: capabilityOut,
+            next: capabilityOut,
+            standings: capabilityOut,
+            bracket: capabilityOut,
+            markets: capabilityOut,
+          })
+          .strict(),
+      })
+      .strict(),
+  ),
+  current: competitionKeyOut
+    .strict()
+    .nullable()
+    .describe('The competition this request is for (its competition argument, else the server\'s), as every other tool\'s data carries it'),
   ...responseMeta,
 };
 
@@ -401,6 +473,7 @@ export const OUTPUT_SCHEMAS = {
   get_market_signal: marketOut,
   get_share_snippet: shareOut,
   get_team: teamOut,
+  list_competitions: listCompetitionsOut,
 } as const;
 
 /**
@@ -887,6 +960,20 @@ export function buildServer(): McpServer {
       outputSchema: teamOut,
     },
     async (args) => toContent(toolGetTeam(args)),
+  );
+
+  server.registerTool(
+    'list_competitions',
+    {
+      title: 'Supported competitions',
+      description:
+        "The competitions Claudinho answers for, one per row: the alias every other tool's competition argument takes, the name, the teams (nation or club), the kind (league or cup), and what each surface is (scores, next, standings, bracket, markets: offered, not-offered-yet, or not-applicable), plus current: the competition this request is for. Offline: reads the supported table, never the network. Whether an edition is in season is not listed here; the reads say so (betweenEditions).",
+      inputSchema: { competition: competitionArg.optional() },
+      // Read-only AND offline — the supported table ships with the server.
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      outputSchema: listCompetitionsOut,
+    },
+    async (args) => toContent(toolListCompetitions(args)),
   );
 
   // ---- Resources ----

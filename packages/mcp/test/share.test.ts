@@ -135,7 +135,8 @@ describe('toolGetShareSnippet', () => {
     expect(r.text).toContain(`Next up for`);
     expect(r.text).toContain(HASHTAG);
     expect(r.text).toContain(DISCLAIMER);
-    expect(r.text).toContain(`Try it: npx @claudinho/cli next ${team}`);
+    // Every card's cue selects its competition, the World Cup's too (0.11 · 2.5a).
+    expect(r.text).toContain(`Try it: npx @claudinho/cli --competition world-cup next ${team}`);
   });
 
   it("resolves a team's confirmed knockout tie from the live overlay", async () => {
@@ -303,7 +304,7 @@ describe('toolGetShareSnippet — group standings table', () => {
     expect(r.text).toContain('Group A · standings');
     expect(r.text).toContain('1. 🇲🇽 MEX');
     expect(r.text).toContain(DISCLAIMER);
-    expect(r.text).toContain('Try it: npx @claudinho/cli table A');
+    expect(r.text).toContain('Try it: npx @claudinho/cli --competition world-cup table A');
     // Standings are facts only — never a market line.
     expect(r.text).not.toContain('informational only');
     expect(r.text).not.toMatch(BANNED);

@@ -32,7 +32,8 @@
     { "name": "get_next_fixture", "description": "A team's next match, by name or code (a nation: Mexico, MEX; in a club competition, a club: Arsenal, ARS)." },
     { "name": "get_market_signal", "description": "Read-only prediction-market signals for a match, a team's next fixture, or a date. Reports completeness; informational only; no links." },
     { "name": "get_share_snippet", "description": "A copy-pasteable snippet for a match, a team's next fixture, one standings table (group: a table key such as A, A1, A-B or LEAGUE), the knockout bracket, a date, or live. Reports marketComplete and partial (an empty live card, or an empty date card with no bundled schedule merged, is then none read); plain text; carries the disclaimer." },
-    { "name": "get_team", "description": "The World Cup roster: resolve a nation name or code to its FIFA 3-letter code, flag, and group (fuzzy: 'Mexico', 'mex', 'DR Congo', 'Türkiye'). Offline; knows no clubs." }
+    { "name": "get_team", "description": "The World Cup roster: resolve a nation name or code to its FIFA 3-letter code, flag, and group (fuzzy: 'Mexico', 'mex', 'DR Congo', 'Türkiye'). Offline; knows no clubs." },
+    { "name": "list_competitions", "description": "The supported competitions: each one's alias (what every other tool's competition argument takes), name, teams, kind, and capabilities (scores, next, standings, bracket, markets), plus the current selection. Offline." }
   ],
   "compatibility": {
     "runtimes": { "node": ">=20" }

@@ -48,6 +48,7 @@ import {
   getNextFixtureForTeam,
   getStandings,
   isReliableMarketSignal,
+  listCompetitions,
   isFinished,
   liveSourceLabel,
   localDate,
@@ -62,11 +63,16 @@ import {
   MARKETS_SCOPE_NOTE,
   bundleApplies,
   marketSignalRendersFor,
+  modeLine,
   type Match,
   type MarketProvider,
   type MarketSignal,
   type ProviderAdapter,
   resolveCompetition,
+  type SelectedCompetition,
+  selectionExtras,
+  selectionRefusal,
+  SUPPORTED,
   humanLabel,
   resolveMarketSource,
   resolveTz,
@@ -128,9 +134,8 @@ export interface CommonOpts {
   lang?: string;
   source?: string;
   /**
-   * An explicit competition for this request (wins over `CLAUDINHO_COMPETITION`).
-   * Not yet a tool argument — no schema exposes it — but it is how a caller
-   * that already knows the competition hands it in.
+   * The tool call's `competition` argument: an alias (`premier-league`) or an
+   * ESPN slug (`eng.1`); wins over the server's `CLAUDINHO_COMPETITION`.
    */
   competition?: string;
   /** Commentary flair level: 'off' | 'subtle' | 'full' (default: full). */
@@ -155,22 +160,43 @@ const adapters = new Map<string, ProviderAdapter>();
 /** The adapter already resolved for a request, keyed by that request's args object. */
 const perRequest = new WeakMap<object, ProviderAdapter>();
 
+/** The selection already resolved for a request, keyed by that request's args object. */
+const perRequestSelection = new WeakMap<object, SelectedCompetition>();
+
 /**
- * THE SERVER'S EDGE: the adapter for a request, and with it the competition
- * the whole request is for.
+ * THE SERVER'S EDGE: the competition a request is for, from its `competition`
+ * argument, then the server's `CLAUDINHO_COMPETITION` (core reads no
+ * environment: the edge hands it in), then the World Cup.
  *
- * This is the one place the server lets the environment decide the
- * competition, and it decides ONCE per request: the answer is remembered
- * against the request's args, so every helper a tool calls gets the same
- * adapter — and `competitionOf` the same competition — however many times it
- * asks. Nothing else in the server resolves a competition.
+ * This is the one place the server decides the competition, and it decides
+ * ONCE per request: the answer is remembered against the request's args, so
+ * every helper a tool calls gets the same selection however many times it
+ * asks. A value that is neither an alias nor a slug is a TOOL ERROR naming the
+ * value and the aliases, thrown here, before any adapter is built or any
+ * request made. The selection is the request's, never a shared adapter's: an
+ * adapter injected for a test serves the reads, and the argument is still
+ * what the text and the data say the answer is for.
+ */
+export function selectionOf(args: CommonOpts): SelectedCompetition {
+  const known = perRequestSelection.get(args);
+  if (known) return known;
+  const selection = resolveCompetition(args.competition, process.env.CLAUDINHO_COMPETITION);
+  if (selection.kind !== 'selected') throw new Error(selectionRefusal(selection, args.lang));
+  perRequestSelection.set(args, selection);
+  return selection;
+}
+
+/**
+ * The adapter for a request: the injected one (tests), else the
+ * server-lifetime adapter for its source and its selection's competition.
+ * The selection is resolved first, so a refused value never builds one.
  */
 export function resolveAdapter(args: CommonOpts): ProviderAdapter {
+  const { slug: competition } = selectionOf(args);
   if (args.adapter) return args.adapter;
   const resolved = perRequest.get(args);
   if (resolved) return resolved;
   const source = args.source ?? 'espn';
-  const competition = resolveCompetition(args.competition);
   // Keyed by source AND competition: an adapter serves exactly one
   // competition, so a cache keyed by source alone would pin the first
   // competition seen for the whole session.
@@ -184,9 +210,32 @@ export function resolveAdapter(args: CommonOpts): ProviderAdapter {
   return adapter;
 }
 
-/** The competition a request is for: its adapter's. */
+/** The competition a request READS: its adapter's (the selection's, unless a test injected one). */
 function competitionOf(args: CommonOpts): string {
   return resolveAdapter(args).competition;
+}
+
+/**
+ * A competition-answering tool's result, said for its selection: the mode line
+ * FIRST in its text (core `modeLine`; a tool's argument reads "from the
+ * request") and the `competition` key in its data (core `selectionExtras`).
+ * The selection is resolved BEFORE the answer is computed: a refused value is
+ * a tool error with no adapter built and no request made. `line: false` for a
+ * share card, which names its competition in its own title (the card is the
+ * artifact, handed over verbatim).
+ */
+async function said<A extends CommonOpts>(
+  args: A,
+  answer: (args: A) => Promise<ToolResult>,
+  { line }: { line: boolean } = { line: true },
+): Promise<ToolResult> {
+  const selection = selectionOf(args);
+  const r = await answer(args);
+  return {
+    ...r,
+    text: line ? `${modeLine(selection, args.lang, 'request')}\n${r.text}` : r.text,
+    data: { ...(r.data as Record<string, unknown>), ...selectionExtras(selection) },
+  };
 }
 
 function resolveMarketProvider(args: CommonOpts): MarketProvider {
@@ -413,7 +462,10 @@ function snippetFooter(snippet: string): string {
 }
 
 /** today: fixtures for a date (default: today), with live overlay. */
-export async function toolGetToday(
+export function toolGetToday(args: { date?: string } & CommonOpts): Promise<ToolResult> {
+  return said(args, todayAnswer);
+}
+async function todayAnswer(
   args: { date?: string } & CommonOpts,
 ): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
@@ -485,7 +537,10 @@ export async function toolGetToday(
 }
 
 /** live: in-progress matches right now. */
-export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
+export function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
+  return said(args, liveAnswer);
+}
+async function liveAnswer(args: CommonOpts): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
   const live = await getLiveMatches(adapter, args.now ?? new Date());
   const { matches, degraded, source } = live;
@@ -515,7 +570,10 @@ export async function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
 }
 
 /** match: a single fixture by id, with live overlay for that day. */
-export async function toolGetMatch(
+export function toolGetMatch(args: { id: string } & CommonOpts): Promise<ToolResult> {
+  return said(args, matchAnswer);
+}
+async function matchAnswer(
   args: { id: string } & CommonOpts,
 ): Promise<ToolResult> {
   // ±1-day window fetch: the provider buckets scoreboard days in its own zone
@@ -591,7 +649,10 @@ export async function toolGetMatch(
 }
 
 /** standings: one group table, or all of them. */
-export async function toolGetStandings(
+export function toolGetStandings(args: { group?: string } & CommonOpts): Promise<ToolResult> {
+  return said(args, standingsAnswer);
+}
+async function standingsAnswer(
   args: { group?: string } & CommonOpts,
 ): Promise<ToolResult> {
   // Authoritative cumulative standings from the provider. A degraded bundled
@@ -656,7 +717,10 @@ export async function toolGetStandings(
 const BRACKET_STAGES = new Set(['R32', 'R16', 'QF', 'SF', '3P', 'F']);
 
 /** bracket: knockout tree with hybrid slot resolution. */
-export async function toolGetBracket(
+export function toolGetBracket(args: { stage?: string } & CommonOpts): Promise<ToolResult> {
+  return said(args, bracketAnswer);
+}
+async function bracketAnswer(
   args: { stage?: string } & CommonOpts,
 ): Promise<ToolResult> {
   const filter = args.stage?.toUpperCase();
@@ -747,7 +811,10 @@ function nextTeamLabel(next: NextFixtureResult, fallback: string): string {
   return next.team?.name ?? next.query ?? fallback;
 }
 
-export async function toolGetNextFixture(
+export function toolGetNextFixture(args: { team: string } & CommonOpts): Promise<ToolResult> {
+  return said(args, nextAnswer);
+}
+async function nextAnswer(
   args: { team: string } & CommonOpts,
 ): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
@@ -819,6 +886,30 @@ export function toolGetTeam(args: { query: string }): ToolResult {
   } else {
     text = `No team found for "${args.query}". Use a nation name or 3-letter code (e.g. Mexico, MEX).`;
   }
+  // Which roster answered: the World Cup's, whatever competition is selected
+  // (get_team takes no competition and its data carries none).
+  return { ...disclaimed(`World Cup roster:\n${text}`), data };
+}
+
+/**
+ * list_competitions: the supported table, offline. Every row with its alias,
+ * name, teams, kind and capabilities, and the request's selection as
+ * `current` (null when there is none). No edition state: whether an edition is
+ * in season is a fact of a read (`betweenEditions`), not of the table.
+ */
+export function toolListCompetitions(args: { competition?: string; lang?: string } = {}): ToolResult {
+  const selection = selectionOf(args);
+  const data = listCompetitions(SUPPORTED, selectionExtras(selection).competition ?? null);
+  const rows = data.competitions.map((c) => {
+    const caps = [c.capabilities.scores, c.capabilities.next, c.capabilities.standings, c.capabilities.bracket, c.capabilities.markets];
+    return `${c.alias} · ${c.name} · ${c.teams} · ${caps.join('/')}`;
+  });
+  const text = [
+    'Competitions (alias · name · teams · scores/next/standings/bracket/markets):',
+    ...rows,
+    '',
+    `Current: ${modeLine(selection, args.lang, 'request')}`,
+  ].join('\n');
   return { ...disclaimed(text), data };
 }
 
@@ -827,7 +918,12 @@ export function toolGetTeam(args: { query: string }): ToolResult {
  * team's next fixture, or all of a date's matches (default: today). Returns
  * market-implied percentages with attribution; never links, never advice.
  */
-export async function toolGetMarketSignal(
+export function toolGetMarketSignal(
+  args: { matchId?: string; team?: string; date?: string } & CommonOpts,
+): Promise<ToolResult> {
+  return said(args, marketAnswer);
+}
+async function marketAnswer(
   args: { matchId?: string; team?: string; date?: string } & CommonOpts,
 ): Promise<ToolResult> {
   const provider = resolveMarketProvider(args);
@@ -1094,7 +1190,11 @@ function shareResult(
  * disclaimer and any market caveat are baked into the snippet, so the model can
  * hand `text` to the user verbatim.
  */
-export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> {
+export function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> {
+  // The card names its competition in its title: no mode line before it.
+  return said(args, shareAnswer, { line: false });
+}
+async function shareAnswer(args: ShareArgs): Promise<ToolResult> {
   const options = shareOptions(args);
   // Per-call opt-out: `includeMarkets: false` skips the provider ENTIRELY (no
   // fetch) and yields no market data — not merely suppressed rendering. The env
@@ -1104,8 +1204,11 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
       ? Promise.resolve({ signals: new Map(), complete: true })
       : reliableSignalMap(args, ms);
 
-  // The competition goes on the card: off the bundle its run cue names it.
-  const where = { tz: args.tz, locale: args.lang, competition: competitionOf(args) };
+  // The competition goes on the card: its title names it and its run cue
+  // selects it. The SELECTION's (what the answer is said to be for), like the
+  // mode line and the `competition` key.
+  const competition = selectionOf(args).slug;
+  const where = { tz: args.tz, locale: args.lang, competition };
 
   // live: matches in play right now (no market enrichment, matching the CLI).
   if (args.live) {
@@ -1131,7 +1234,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
     // Capped like the structured payload beside it. Bounding `data.tables`
     // while the rendered SNIPPET came from the full list meant the surface a
     // reader actually sees was the unbounded one.
-    const card = tableShareCard(standings, group, boundedRecords(standings.tables).items, args.lang, competitionOf(args));
+    const card = tableShareCard(standings, group, boundedRecords(standings.tables).items, args.lang, competition);
     const snippet = formatShareTable(card.input, options);
     return {
       text: snippet,
@@ -1171,7 +1274,7 @@ export async function toolGetShareSnippet(args: ShareArgs): Promise<ToolResult> 
         ? { stage: stageFilter as Stage, lang: args.lang }
         : { lang: args.lang },
     );
-    const card = bracketShareCard(bracket, stageFilter, args.lang, competitionOf(args));
+    const card = bracketShareCard(bracket, stageFilter, args.lang, competition);
     const snippet = formatShareBracket(card.input, { ...options, locale: args.lang, tz: args.tz });
     return {
       text: snippet,

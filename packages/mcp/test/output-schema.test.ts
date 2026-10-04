@@ -30,6 +30,7 @@ import {
   toolGetStandings,
   toolGetTeam,
   toolGetToday,
+  toolListCompetitions,
 } from '../src/tools';
 import { OUTPUT_SCHEMAS } from '../src/server';
 
@@ -118,7 +119,7 @@ function expectValid(tool: keyof typeof OUTPUT_SCHEMAS, data: unknown) {
 }
 
 describe('MCP tool output schemas', () => {
-  it('OUTPUT_SCHEMAS covers exactly the nine tools', () => {
+  it('OUTPUT_SCHEMAS covers exactly the ten tools', () => {
     expect(Object.keys(OUTPUT_SCHEMAS).sort()).toEqual(
       [
         'get_bracket',
@@ -130,6 +131,8 @@ describe('MCP tool output schemas', () => {
         'get_standings',
         'get_team',
         'get_today',
+        // 0.11 · 2.5a: the supported table, offline.
+        'list_competitions',
       ].sort(),
     );
   });
@@ -342,5 +345,11 @@ describe('MCP tool output schemas', () => {
     it('ambiguous (multiple candidates, team null)', () =>
       expectValid('get_team', toolGetTeam({ query: 'south' }).data));
     it('no match (empty)', () => expectValid('get_team', toolGetTeam({ query: 'zzz' }).data));
+  });
+
+  describe('list_competitions', () => {
+    it('the default selection', () => expectValid('list_competitions', toolListCompetitions({}).data));
+    it('an alias', () => expectValid('list_competitions', toolListCompetitions({ competition: 'premier-league' }).data));
+    it('a raw slug (experimental)', () => expectValid('list_competitions', toolListCompetitions({ competition: 'fifa.friendly' }).data));
   });
 });

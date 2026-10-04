@@ -230,14 +230,15 @@ describe('get_match off the bundle (0.11 2.1c)', () => {
   });
 
   it('the share cards’ run cue carries the competition off the bundle (review round 2)', async () => {
-    const r = await toolGetShareSnippet({ team: 'Arsenal', now: NOW, adapter: feed('eng.1', { events: upcoming }).adapter });
-    expect(r.text).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli next/);
+    // 0.11 · 2.5a: the competition is the call's argument, and the cue selects it by alias.
+    const r = await toolGetShareSnippet({ team: 'Arsenal', competition: 'eng.1', now: NOW, adapter: feed('eng.1', { events: upcoming }).adapter });
+    expect(r.text).toContain('npx @claudinho/cli --competition premier-league next');
   });
 
   it('the handlers never carry a raw argument into a card or a prompt: the run cue holds the bounded label (review round 3)', async () => {
     // Below the schema (a direct call), a query with a trailing newline reaches the handler; the cue must not split.
-    const r = await toolGetShareSnippet({ team: 'Ars\n\n', now: NOW, adapter: feed('eng.1', { events: upcoming }).adapter });
-    const cue = r.text.split('\n').find((line) => line.includes('@claudinho/cli next')) ?? '';
+    const r = await toolGetShareSnippet({ team: 'Ars\n\n', competition: 'eng.1', now: NOW, adapter: feed('eng.1', { events: upcoming }).adapter });
+    const cue = r.text.split('\n').find((line) => line.includes('@claudinho/cli --competition premier-league next')) ?? '';
     expect(cue).toMatch(/next "?Ars"?$/);
     expect(r.text).not.toContain('Ars\n\n');
     expect(r.footer.trim().length).toBeGreaterThan(20);

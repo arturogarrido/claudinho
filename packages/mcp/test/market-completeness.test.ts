@@ -160,7 +160,8 @@ describe('cachedMarketSignals completeness through the production memory cache',
     const oldSource = process.env.CLAUDINHO_MARKETS_SOURCE;
     const oldCompetition = process.env.CLAUDINHO_COMPETITION;
     process.env.CLAUDINHO_MARKETS_SOURCE = 'polymarket';
-    process.env.CLAUDINHO_COMPETITION = `mixed-cache-${Date.now()}`;
+    // A competition of its own (a raw slug: 0.11 · 2.5a refuses a value that is no slug), so the memory cache is fresh.
+    process.env.CLAUDINHO_COMPETITION = `mixed.cache${Date.now()}`;
 
     try {
       const complete: MarketProvider = {

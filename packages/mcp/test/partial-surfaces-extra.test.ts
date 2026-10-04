@@ -129,7 +129,8 @@ describe('get_market_signal (0.11 2.1d)', () => {
       { id: '760414', date: '2026-06-12T02:00Z', home: KOR, away: CZE, raw: REFUSED },
     ]);
     const r = await toolGetMarketSignal({ team: 'MEX', adapter, marketProvider: new FakeMarketProvider({ synthesize: true, now: at }), now: at } as never);
-    expect(r.text.indexOf(SENTENCE)).toBe(0);
+    // First after the mode line (0.11 · 2.5a), which names the competition.
+    expect(r.text.indexOf(SENTENCE)).toBe(r.text.indexOf('\n') + 1);
     expect(r.text).toContain('Mexico');
   });
 
