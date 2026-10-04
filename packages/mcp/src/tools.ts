@@ -220,6 +220,41 @@ function aliveAdapters(source: string): Throttleable[] {
   return alive;
 }
 
+/** The sources whose throttle is being broadcast right now (see {@link broadcast}). */
+const broadcasting = new Set<string>();
+
+/**
+ * Arm every adapter of `source` still alive, but the one that met the
+ * throttle, with the source's deadline: ONE walk per throttle. Arming an
+ * adapter fires its own listener synchronously, which would walk the set again,
+ * one level deeper per adapter it arms first: with thousands of adapters held
+ * by requests in flight (the set is bounded by liveness, not by the map) that
+ * recursion exhausted the stack after the deadline was remembered and left the
+ * adapters past it unarmed, and it was quadratic. So the walk is NON-REENTRANT
+ * per source: a listener fired from inside it has already recorded the deadline
+ * (latest wins) and returns here without walking. An adapter whose arming
+ * throws is passed over and the walk goes on to the next: the window is the
+ * provider's, and one adapter's failure must not leave the rest asking inside
+ * it. The guard is cleared in a `finally`: a guard left set would silence every
+ * later throttle of the source.
+ */
+function broadcast(source: string, met: Throttleable, deadline: number): void {
+  if (broadcasting.has(source)) return;
+  broadcasting.add(source);
+  try {
+    for (const other of aliveAdapters(source)) {
+      if (other === met) continue;
+      try {
+        other.armCooldown(deadline);
+      } catch {
+        // Passed over: the rest of the source's adapters are still armed.
+      }
+    }
+  } finally {
+    broadcasting.delete(source);
+  }
+}
+
 /**
  * Build and keep the adapter for a source and competition, joined to its
  * source's ONE throttle window: built inside a remembered window it is armed
@@ -239,8 +274,9 @@ function keepAdapter(source: string, competition: string, key: string): Provider
     const nowMs = typeof adapter.now === 'function' ? adapter.now() : Date.now();
     if (until !== undefined && until > nowMs) adapter.armCooldown(until);
     adapter.onCooldown((untilMs) => {
-      sourceWindows.set(source, Math.max(sourceWindows.get(source) ?? untilMs, untilMs));
-      for (const other of aliveAdapters(source)) if (other !== adapter) other.armCooldown(untilMs);
+      const deadline = Math.max(sourceWindows.get(source) ?? untilMs, untilMs);
+      sourceWindows.set(source, deadline);
+      broadcast(source, adapter, deadline);
     });
     // Drop the refs whose adapters were collected, then add this one.
     aliveAdapters(source);
