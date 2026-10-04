@@ -12,6 +12,7 @@ import { FakeMarketProvider } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdBracket, cmdMarkets, cmdMatch, cmdNext, cmdShare } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 const NOW = new Date('2026-09-15T00:00:00Z');
@@ -38,7 +39,7 @@ function adapter(competition: string): ProviderAdapter {
 }
 function ctx(competition: string, over: Partial<CliConfig> = {}) {
   const lang = over.lang ?? 'en';
-  const cfg: CliConfig = {
+  const cfg: CliConfig = described({
     lang,
     tz: 'UTC',
     json: false,
@@ -48,7 +49,7 @@ function ctx(competition: string, over: Partial<CliConfig> = {}) {
     flavor: 'off',
     markets: false,
     ...over,
-  };
+  });
   return { cfg, t: makeT(lang), adapter: adapter(competition), now: NOW, marketProvider: new FakeMarketProvider() };
 }
 type Ctx = ReturnType<typeof ctx>;

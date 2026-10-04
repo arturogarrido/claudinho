@@ -85,17 +85,18 @@ describe('selection — the server resolves the competition once per request', (
     expect(resolveAdapter({}).competition).toBe('ita.1');
   });
 
-  it('a tool acts on its adapter’s competition, not the environment', async () => {
+  it('a tool acts on its request’s competition, not the environment', async () => {
     // Environment says World Cup; the request is for a league → no World Cup
     // lookup happens: the query goes to the league's own reader (since 0.11
     // 2.1c), which this adapter cannot serve a schedule ahead to.
-    const league = await toolGetNextFixture({ team: 'ALA', adapter: fakeAdapter('eng.1') });
+    const league = await toolGetNextFixture({ team: 'ALA', competition: 'eng.1', adapter: fakeAdapter('eng.1') });
     expect(league.data).toMatchObject({ team: 'ALA', fixture: null, degraded: true });
     expect(league.text).not.toMatch(/New Zealand|NZL/);
 
-    // Environment says a league; the request is for the World Cup → the bundle applies.
+    // Environment says a league; the request is for the World Cup (its argument
+    // beats the environment, and its adapter serves it) → the bundle applies.
     process.env.CLAUDINHO_COMPETITION = 'eng.1';
-    const worldCup = await toolGetToday({ date: '2026-06-11', adapter: fakeAdapter('fifa.world') });
+    const worldCup = await toolGetToday({ date: '2026-06-11', competition: 'world-cup', adapter: fakeAdapter('fifa.world') });
     expect((worldCup.data as { matches: unknown[] }).matches.length).toBeGreaterThan(0);
   });
 });
@@ -105,7 +106,7 @@ describe('identity — a team’s provider id is a declared part of the output',
     const { data } = await toolGetToday({
       date: '2026-10-10',
       tz: 'UTC',
-      adapter: fakeAdapter('eng.1', [ARSENAL_CHELSEA]),
+      competition: 'eng.1', adapter: fakeAdapter('eng.1', [ARSENAL_CHELSEA]),
     });
     const [match] = (data as { matches: Match[] }).matches;
     expect(match?.home.id).toBe('espn:359');

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   groups,
   matchFlavor,
+  selectedCompetition,
   type GroupStandings,
   type Match,
   type ProviderAdapter,
@@ -405,9 +406,12 @@ describe('toolGetBracket', () => {
 
 describe('standingsResourceText (standings:// resource)', () => {
   const DISCLAIMER = 'not affiliated'; // matches the get_standings tool path
+  // The selection the server resolved for the read (0.11 · 2.5a): the text names it first.
+  const WC = selectedCompetition('fifa.world', 'default');
 
   it('attributes the live provider on an authoritative table', async () => {
-    const text = await standingsResourceText('a', fakeAdapter({ standings: [A_TABLE] }));
+    const text = await standingsResourceText('a', fakeAdapter({ standings: [A_TABLE] }), WC);
+    expect(text.split('\n')[0]).toBe('World Cup');
     expect(text).toContain('Group A');
     expect(text).toContain('Mexico');
     // The provider-attribution constraint: live data MUST say where it came from.
@@ -423,6 +427,7 @@ describe('standingsResourceText (standings:// resource)', () => {
         expectedStandingsGroups: groups(),
         standingsFallbackGroups: groups(),
       }),
+      WC,
     );
     expect(text).not.toContain('Live data:'); // no live provider served it
     expect(text).toContain('Live standings unavailable');
@@ -430,7 +435,7 @@ describe('standingsResourceText (standings:// resource)', () => {
   });
 
   it('does not describe an open-scope outage as a missing World Cup group', async () => {
-    const text = await standingsResourceText('A', fakeAdapter({}));
+    const text = await standingsResourceText('A', fakeAdapter({}), WC);
     expect(text).toContain('Live standings unavailable.');
     expect(text).not.toContain('No group A.');
     expect(text).not.toContain('Mexico');
@@ -438,7 +443,7 @@ describe('standingsResourceText (standings:// resource)', () => {
   });
 
   it('renders a clean message for an unknown group', async () => {
-    const text = await standingsResourceText('Z', fakeAdapter({ standings: [A_TABLE] }));
+    const text = await standingsResourceText('Z', fakeAdapter({ standings: [A_TABLE] }), WC);
     expect(text).toContain('No group Z.');
     expect(text).toContain(DISCLAIMER);
   });

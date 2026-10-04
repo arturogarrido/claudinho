@@ -122,6 +122,13 @@ export function formatBracketTree(
 }
 
 export interface ShareBracketInput {
+  /**
+   * The card's first line, as its builder states it in the reader's language
+   * (`Knockout bracket · World Cup`: the title, then the competition's name;
+   * no year, the ties carry their dates). Absent on an input built by hand,
+   * whose first line is the title in the options' locale.
+   */
+  title?: string;
   view: BracketView;
   source?: string;
   installLine?: string;
@@ -152,7 +159,9 @@ export function formatShareBracket(
   const includeHashtag = options.includeHashtag !== false;
   const includeInstall = options.includeInstallLine !== false;
   const locale = options.locale;
-  const blocks: string[] = [t(locale, 'bracket.shareTitle'), ''];
+  // The first line: the card's own (its builder names the competition, in the
+  // reader's language), else the title in the options' locale.
+  const blocks: string[] = [input.title ?? t(locale, 'bracket.shareTitle'), ''];
   // Before the body: what qualifies the card is read before what it qualifies,
   // and a card pasted into a tool's text is cut from the end, so nothing but
   // the footer follows the tree. The verdict's note first, then the card's own

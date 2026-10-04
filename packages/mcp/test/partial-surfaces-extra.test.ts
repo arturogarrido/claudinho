@@ -61,13 +61,13 @@ const SENTENCE = 'Fixture data may be incomplete (1 provider record omitted).';
 
 describe('an empty day whose read was not whole and merged no bundled schedule (0.11 2.1d)', () => {
   it('get_today and the date card: none was READ for that date, beside the sentence', async () => {
-    const today = await toolGetToday({ date: '2026-10-17', tz: 'UTC', adapter: league() });
+    const today = await toolGetToday({ date: '2026-10-17', tz: 'UTC', competition: 'eng.1', adapter: league() });
     expect(today.text).toContain(SENTENCE);
     expect(today.text).toContain('No fixture was read for 2026-10-17.');
     expect(today.text).not.toContain('No matches scheduled');
     expect(today.data).toMatchObject({ degraded: false, partial: { omitted: 1 }, source: 'espn', count: 0 });
     strict('get_today', today.data);
-    const card = await toolGetShareSnippet({ date: '2026-10-17', tz: 'UTC', adapter: league() });
+    const card = await toolGetShareSnippet({ date: '2026-10-17', tz: 'UTC', competition: 'eng.1', adapter: league() });
     expect(card.text).toContain(SENTENCE);
     // The card names the date as its title does (its label); the tool prints the ISO date of its header.
     expect(card.text).toContain('No fixture was read for Oct 17.');
@@ -98,7 +98,7 @@ describe('what a day or a live answer on a read that was not whole says, at the 
   });
 
   it('an empty day names the provider still: nothing shown is attributed to it', async () => {
-    const r = await toolGetToday({ date: '2026-10-17', tz: 'UTC', adapter: league() });
+    const r = await toolGetToday({ date: '2026-10-17', tz: 'UTC', competition: 'eng.1', adapter: league() });
     expect(r.footer).toContain('Live data');
   });
 
@@ -129,7 +129,8 @@ describe('get_market_signal (0.11 2.1d)', () => {
       { id: '760414', date: '2026-06-12T02:00Z', home: KOR, away: CZE, raw: REFUSED },
     ]);
     const r = await toolGetMarketSignal({ team: 'MEX', adapter, marketProvider: new FakeMarketProvider({ synthesize: true, now: at }), now: at } as never);
-    expect(r.text.indexOf(SENTENCE)).toBe(0);
+    // First after the mode line (0.11 · 2.5a), which names the competition.
+    expect(r.text.indexOf(SENTENCE)).toBe(r.text.indexOf('\n') + 1);
     expect(r.text).toContain('Mexico');
   });
 
@@ -138,7 +139,7 @@ describe('get_market_signal (0.11 2.1d)', () => {
     const r = await toolGetMarketSignal({
       date: '2026-10-17',
       tz: 'UTC',
-      adapter: league(),
+      competition: 'eng.1', adapter: league(),
       marketProvider: new FakeMarketProvider({ synthesize: true, now }),
       now,
     } as never);

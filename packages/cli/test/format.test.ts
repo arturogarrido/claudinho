@@ -3,9 +3,10 @@ import { displayWidth, matchFlavor, type Match } from '@claudinho/core';
 import { dataSource, matchLine, painterFor } from '../src/format';
 import { makeT } from '../src/i18n';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'full', ...over };
+  return described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'full', ...over });
 }
 function liveMatch(over: Partial<Match> = {}): Match {
   return {

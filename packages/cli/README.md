@@ -16,9 +16,11 @@ npx @claudinho/cli today
 
 <!-- DEMO: verbatim `claudinho today <date>` from a knockout matchday. Shootouts render
      as 1(3)–1(4). REGENERATE per matchday (capture after the day's games finish, so the
-     scores are live and current). Never hand-edit. -->
+     scores are live and current). Never hand-edit. (0.11: the mode line under the
+     header, `World Cup`, added for the new format; the rows are the capture's.) -->
 ```text
 Matches · 2026-06-29
+  World Cup
 
   🇧🇷 Brazil            2–1  Japan 🇯🇵   FT   into the history books!
   🇩🇪 Germany           1(3)–1(4)  Paraguay 🇵🇾   FT   it's all over!
@@ -39,7 +41,7 @@ claudinho next [TEAM]       # a team's next fixture + countdown — TEAM is a na
 claudinho table [KEY]       # live cumulative standings (default: every table); KEY is a group letter, or A1, A-B, LEAGUE
 claudinho bracket [STAGE]   # knockout bracket (R32, R16, QF, SF, 3P, F); --tree for ASCII tree
 claudinho match <id>        # a single match's detail
-claudinho team <query>      # resolve a name/code to its FIFA code, flag, and group (e.g. team "DR Congo")
+claudinho team <query>      # resolve a World Cup nation's name/code to its FIFA code, flag, and group (e.g. team "DR Congo")
 claudinho markets [target]  # prediction-market signals: today | <date> | <id> | next <TEAM>
                             #   (next prefers the team's IN-PLAY match while one is live)
 claudinho share [target]    # copy-pasteable snippet: today | live | <date> | <id> | next <TEAM> | table <KEY> | bracket [STAGE]
@@ -75,6 +77,8 @@ claudinho bracket R32 --tree
 claudinho live --json | jq '.matches[].status'
 claudinho today --flavor off               # just the facts, no commentary
 claudinho share next MEX --copy            # a shareable card, copied to your clipboard
+claudinho --competition premier-league next Arsenal   # another competition, by its alias
+CLAUDINHO_COMPETITION=laliga claudinho table          # the environment works too (the statusline and hook follow it)
 ```
 
 ## Global options
@@ -85,6 +89,7 @@ claudinho share next MEX --copy            # a shareable card, copied to your cl
 | `--tz <zone>` | IANA timezone, e.g. `America/Mexico_City` (also `CLAUDINHO_TZ`; default: system). Kickoff times **and** which day a fixture falls on are computed in this zone — a late-night-UTC match shows on the day you actually watch it. |
 | `--json` | machine-readable output for scripting |
 | `--no-color` | disable ANSI color (also honors `NO_COLOR`; auto-off when piped) |
+| `-c, --competition <alias\|slug>` | the competition: an alias such as `premier-league` (the fifteen are listed in the [root README](https://github.com/arturogarrido/claudinho#competitions)), or an ESPN slug such as `eng.1` (any other lower-case dotted ESPN slug works too, labelled experimental). Also `CLAUDINHO_COMPETITION` (an alias or a slug), which the statusline and the hook follow; default: the 2026 World Cup. Every answer names its competition on a line after its header (`Premier League · from the command line`; first where an answer has none; `table` once, before its tables) and in `--json` as `competition`; `share` prints no such line: its card's title names the competition and its run cue selects it; `team` names the World Cup roster it reads. An unknown value is refused with the list. |
 | `--source <name>` | live data provider (advanced; sensible default) |
 | `--flavor <level>` | commentary flair: `off`, `subtle`, `full` (default: `full`; also `CLAUDINHO_FLAVOR`) |
 | `--no-markets` | hide prediction-market signals in `today`/`match` (also `CLAUDINHO_MARKETS=off`) |

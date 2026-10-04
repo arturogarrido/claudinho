@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdVibe } from '../src/commands';
 import { makeT } from '../src/i18n';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: undefined, json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'full', ...over };
+  return described({ lang: 'en', tz: undefined, json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'full', ...over });
 }
 const ctx = (over: Partial<CliConfig> = {}) => ({ cfg: cfg(over), t: makeT('en') });
 

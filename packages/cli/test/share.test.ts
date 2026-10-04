@@ -11,6 +11,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdShare, InputError } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 /** Offline match adapter → commands fall back to the bundled static schedule. */
@@ -103,7 +104,7 @@ const incompleteProvider: MarketProvider = {
 };
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over };
+  return described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over });
 }
 type Over = Partial<CliConfig>;
 const ctx = (over: Over = {}, marketProvider: MarketProvider = provider(), copy?: (t: string) => boolean) => ({
@@ -170,7 +171,8 @@ describe('cmdShare — routing & JSON', () => {
     const o = text();
     expect(o).toContain(HASHTAG);
     expect(o).toContain(DISCLAIMER);
-    expect(o).toContain(`Try it: npx @claudinho/cli next ${code}`);
+    // Every card's cue selects its competition, the World Cup's too (0.11 · 2.5a).
+    expect(o).toContain(`Try it: npx @claudinho/cli --competition world-cup next ${code}`);
     expect(o).not.toMatch(BANNED);
   });
 
@@ -319,12 +321,14 @@ describe('cmdShare table — standings card', () => {
   it('renders a standings card with disclaimer + install line, no market lines', async () => {
     await cmdShare('table', 'A', {}, tableCtx(standingsAdapter));
     const o = text();
+    // The card's first line names the competition; the table keeps its title (0.11 · 2.5a).
+    expect(o.split('\n').find((l) => l.trim() !== '')).toBe('World Cup · standings');
     expect(o).toContain('Group A · standings');
     expect(o).toContain('1. 🇲🇽 MEX  3 pts · 1-0-0 · +2');
     expect(o).toContain('Live data: ESPN');
     expect(o).toContain(HASHTAG);
     expect(o).toContain(DISCLAIMER);
-    expect(o).toContain('Try it: npx @claudinho/cli table A');
+    expect(o).toContain('Try it: npx @claudinho/cli --competition world-cup table A');
     expect(o).not.toContain('informational only');
   });
 

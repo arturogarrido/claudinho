@@ -45,8 +45,10 @@ flag-emoji fallback), and the home directory via `os.homedir()` (`HOME` / `USERP
 | `gamma-api.polymarket.com` | read-only prediction-market signals | opt-out via `CLAUDINHO_MARKETS=off`; host allow-listed in code |
 
 Requests are anonymous GETs — no account and no credentials. They do carry the parameters a
-lookup needs: the requested date, and the competition slug (`CLAUDINHO_COMPETITION`, which
-selects the ESPN competition path). They use `redirect: 'error'` (no redirect following), an
+lookup needs: the requested date, and the competition slug (from `--competition`,
+`CLAUDINHO_COMPETITION` or an MCP tool's `competition` argument, which selects the ESPN
+competition path; an alias resolves to its slug offline, and a value that is neither an alias
+nor a lower-case dotted slug (letters, digits and underscores) is refused before any request). They use `redirect: 'error'` (no redirect following), an
 abort-signal timeout, and a declared-content-length cap before parsing. As with any HTTP
 request the provider also receives normal transport metadata such as your IP address and
 headers — see [PRIVACY.md](PRIVACY.md).

@@ -19,7 +19,8 @@
     "release:qa": "bash scripts/release-qa.sh",
     "check:pack": "node scripts/check-pack.mjs",
     "smoke:statusline": "node scripts/smoke-statusline.mjs",
-    "canary": "node scripts/espn-canary.mjs"
+    "canary": "node scripts/espn-canary.mjs",
+    "gen:readme-matrix": "node scripts/gen-readme-matrix.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14"

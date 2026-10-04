@@ -16,11 +16,12 @@ import { displayWidth, FakeMarketProvider } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdLive, cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { matchLine, painterFor } from '../src/format';
 import { makeT } from '../src/i18n';
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'full', markets: false, ...over };
+  return described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'full', markets: false, ...over });
 }
 const NOW = new Date('2026-10-04T12:00:00Z');
 const club = (id: string, home: [string, string], away: [string, string]): Match => ({

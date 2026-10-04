@@ -267,6 +267,12 @@ function tableRow(r: StandingRow, rank: number): string {
 }
 
 export interface ShareTableInput {
+  /**
+   * The card's first line, naming the competition (`Premier League ·
+   * standings`), before the tables (each keeps its own title); absent on a
+   * card built with no competition.
+   */
+  heading?: string;
   /** Group tables to render (1..n); each in standings order. */
   tables: readonly {
     group: string;
@@ -307,7 +313,8 @@ export function formatShareTable(input: ShareTableInput, options: ShareSnippetOp
   const includeHashtag = options.includeHashtag !== false;
   const includeInstall = options.includeInstallLine !== false;
 
-  const blocks: string[] = [];
+  // The competition first: a pasted card says what it is about before anything else.
+  const blocks: string[] = input.heading ? [input.heading] : [];
   if (input.tables.length === 0) {
     blocks.push(
       input.emptyNote ??

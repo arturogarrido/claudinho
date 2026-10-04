@@ -52,10 +52,17 @@ Then just ask your agent naturally — it picks the right tool and answers with 
 | `get_market_signal` | read-only prediction-market signal for a match, a team's current-or-next fixture (in-play preferred while live), or a date — informational only |
 | `get_share_snippet` | a copy-pasteable plain-text card — for a match, a team's next fixture, a group's standings table (`group`), the knockout bracket (`bracket: true`, optional `knockoutStage`), a date, or live — hand the returned snippet to the user as-is |
 | `get_team` | the World Cup roster: resolve a nation name or code to its FIFA 3-letter code, flag, and group — fuzzy (`Mexico`, `mex`, `DR Congo`, `Türkiye`); handy for the code `get_market_signal` needs. It knows no clubs. Offline (no network) |
+| `list_competitions` | the supported competitions: each one's alias (what `competition` takes), name, teams (nations or clubs), kind, and what it offers (scores, next, standings, bracket, markets: `offered`, `not-offered-yet`, `not-applicable`), plus `current`, the competition the request is for. Offline (no network) |
 
 Most tools are **read-only** (`readOnlyHint`) and accept optional `tz`, `lang`
-(`en`/`es`/`pt`/`fr`), and `flavor` (`off`/`subtle`/`full`); `get_team` is read-only
-**and** offline. Every response carries
+(`en`/`es`/`pt`/`fr`), `flavor` (`off`/`subtle`/`full`), and `competition`: an alias
+such as `premier-league` (from `list_competitions`) or an ESPN slug such as `eng.1`
+(default: the server's `CLAUDINHO_COMPETITION`, else the 2026 World Cup; an unknown
+value is a tool error listing the aliases). Every competition-answering tool's text
+starts with the competition it is for (`Premier League · from the request`; a share
+card says it in its title instead) and its structured content carries it as
+`competition`. `get_team` (the World Cup's roster, whatever the competition) and
+`list_competitions` are read-only **and** offline. Every response carries
 human-readable text **and** structured content, validated against each tool's
 declared `outputSchema`. When the provider's knockout answer was not whole,
 `get_next_fixture`, `get_bracket` and the next/bracket share cards say so before
@@ -71,7 +78,7 @@ edition has ended (and the next has not started), `get_today`, `get_live`,
 match's `stage` is the written one (`REGULAR` for a league's season, `LEAGUE` for a cup's
 league phase, `PO` for play-offs), or `OTHER` with the provider's own words in `stageLabel`.
 
-Resources: `standings://{group}`, `fixtures://{date}`. Prompts: `tournament_today`,
+Resources: `standings://{group}` (its text starts with the competition it is for, like a tool's), `fixtures://{date}` (the bundled World Cup schedule, named first, whatever the competition). Prompts: `tournament_today`,
 and `my_team` (give it a 3-letter team code; combines next fixture, standings, and
 the prediction-market read).
 

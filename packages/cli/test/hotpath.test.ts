@@ -7,10 +7,11 @@ import * as cursorPayload from '../src/cursorPayload';
 import { writeState } from '../src/cache';
 import { cmdHook, cmdPrompt, cmdVibe } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return {
+  return described({
     lang: 'en',
     tz: undefined,
     json: false,
@@ -20,7 +21,7 @@ function cfg(over: Partial<CliConfig> = {}): CliConfig {
     flavor: 'off',
     markets: true,
     ...over,
-  };
+  });
 }
 
 /** A market provider whose every method is a spy that must never run here. */

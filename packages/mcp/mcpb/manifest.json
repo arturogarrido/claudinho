@@ -3,8 +3,8 @@
   "name": "claudinho",
   "display_name": "Claudinho ⚽",
   "version": "0.10.1",
-  "description": "Live scores, fixtures, and group standings for the 2026 men's football tournament. Not affiliated with FIFA or Anthropic.",
-  "long_description": "Ask Claude about the 2026 men's football tournament — live scores, today's fixtures, a team's next match, group standings, and read-only prediction-market signals (informational only, not betting advice). Facts and emoji flags only; no logos, crests, or footage. An independent, open-source fan project. Not affiliated with or endorsed by FIFA or Anthropic.",
+  "description": "Live scores, fixtures and standings for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and eleven more. Not affiliated with FIFA or Anthropic.",
+  "long_description": "Ask Claude about live football in the competition you follow — the World Cup, the Premier League, LALIGA, the Champions League and eleven more (list_competitions names them): live scores, today's fixtures, a team's next match, standings, the knockout bracket, and read-only prediction-market signals for the World Cup (informational only, not betting advice). Facts and emoji flags only; no logos, crests, or footage. An independent, open-source fan project. Not affiliated with or endorsed by FIFA or Anthropic.",
   "author": {
     "name": "Arturo Garrido",
     "url": "https://github.com/arturogarrido/claudinho"
@@ -32,7 +32,8 @@
     { "name": "get_next_fixture", "description": "A team's next match, by name or code (a nation: Mexico, MEX; in a club competition, a club: Arsenal, ARS)." },
     { "name": "get_market_signal", "description": "Read-only prediction-market signals for a match, a team's next fixture, or a date. Reports completeness; informational only; no links." },
     { "name": "get_share_snippet", "description": "A copy-pasteable snippet for a match, a team's next fixture, one standings table (group: a table key such as A, A1, A-B or LEAGUE), the knockout bracket, a date, or live. Reports marketComplete and partial (an empty live card, or an empty date card with no bundled schedule merged, is then none read); plain text; carries the disclaimer." },
-    { "name": "get_team", "description": "The World Cup roster: resolve a nation name or code to its FIFA 3-letter code, flag, and group (fuzzy: 'Mexico', 'mex', 'DR Congo', 'Türkiye'). Offline; knows no clubs." }
+    { "name": "get_team", "description": "The World Cup roster: resolve a nation name or code to its FIFA 3-letter code, flag, and group (fuzzy: 'Mexico', 'mex', 'DR Congo', 'Türkiye'). Offline; knows no clubs." },
+    { "name": "list_competitions", "description": "The supported competitions: each one's alias (what every other tool's competition argument takes), name, teams, kind, and capabilities (scores, next, standings, bracket, markets), plus the current selection. Offline." }
   ],
   "compatibility": {
     "runtimes": { "node": ">=20" }

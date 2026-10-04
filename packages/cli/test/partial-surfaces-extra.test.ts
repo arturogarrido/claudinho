@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EspnAdapter, FakeMarketProvider, type ProviderAdapter } from '@claudinho/core';
 import { cmdMarkets, cmdShare, cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 const WC_SEASON = { year: 2026, startDate: '2026-06-11T04:00Z', endDate: '2026-12-31T04:59Z', displayName: '2026 FIFA World Cup' };
@@ -53,7 +54,7 @@ const league = () =>
   ]);
 const LEAGUE_NOW = new Date('2026-10-17T12:00:00Z');
 function ctx(adapter: ProviderAdapter, over: Partial<CliConfig> = {}, now = LEAGUE_NOW) {
-  const cfg: CliConfig = { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: adapter.competition, flavor: 'off', markets: true, ...over };
+  const cfg: CliConfig = described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: adapter.competition, flavor: 'off', markets: true, ...over });
   return { cfg, t: makeT(over.lang ?? 'en'), adapter, now, marketProvider: new FakeMarketProvider({ synthesize: true, now }) };
 }
 const SENTENCE = 'Fixture data may be incomplete (1 provider record omitted).';

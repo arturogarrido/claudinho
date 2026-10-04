@@ -2,6 +2,7 @@ import { FakeMarketProvider, type GroupStandings, type Match, type ProviderAdapt
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdShare, cmdTable } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 /**
@@ -45,7 +46,7 @@ const adapterServing = (tables: GroupStandings[]): ProviderAdapter => ({
   },
 });
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over };
+  return described({ lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over });
 }
 const ctx = (adapter: ProviderAdapter, over: Partial<CliConfig> = {}) => ({
   cfg: cfg(over),

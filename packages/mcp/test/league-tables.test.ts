@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { EspnAdapter, FakeMarketProvider } from '@claudinho/core';
+import { EspnAdapter, FakeMarketProvider, selectedCompetition } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v3';
 import { DISCLAIMER } from '../src/format';
@@ -26,7 +26,9 @@ const serving = (competition: string, payload: unknown = recorded(competition)) 
       return new Response(JSON.stringify(payload));
     }) as unknown as typeof fetch,
   });
+// The competition is the request's argument (0.11 · 2.5a): the selection the answer names.
 const common = (competition: string, payload?: unknown) => ({
+  competition,
   adapter: serving(competition, payload),
   marketProvider: new FakeMarketProvider(),
   now: new Date('2026-10-02T12:00:00Z'),
@@ -73,7 +75,12 @@ describe('get_standings shows the table the competition has', () => {
     expect((a1.data as { tables: Table }).tables).toMatchObject({ group: 'A1', label: 'Group A1' });
     const a = await toolGetStandings({ group: 'A', ...common('uefa.nations') });
     expect(a.text).toContain('No group "A".');
-    expect(a.data).toEqual({ degraded: false, source: 'espn', tables: null });
+    expect(a.data).toEqual({
+      degraded: false,
+      source: 'espn',
+      tables: null,
+      competition: { slug: 'uefa.nations', alias: 'nations-league', name: 'UEFA Nations League', chosenBy: 'flag' },
+    });
   });
 
   it('groups under a league: nine tables; A-B is League A, Group B', async () => {
@@ -86,14 +93,21 @@ describe('get_standings shows the table the competition has', () => {
 
   it('a lettered group is what it was: "Group A", and no label in data', async () => {
     const r = await toolGetStandings({ group: 'A', ...common('uefa.euro') });
-    expect(r.text.split('\n')[0]).toBe('Group A');
+    // The mode line first (0.11 · 2.5a), then the table's title.
+    expect(r.text.split('\n')[0]).toBe('EURO · from the request');
+    expect(r.text.split('\n')[1]).toBe('Group A');
     expect(Object.keys((r.data as { tables: Table }).tables)).toEqual(['group', 'standings']);
   });
 
   it('a competition with no table by design: "No standings available", attributed, not an outage', async () => {
     const r = await toolGetStandings(common('concacaf.champions'));
     expect(r.text).toContain('No standings available.');
-    expect(r.data).toEqual({ degraded: false, source: 'espn', tables: [] });
+    expect(r.data).toEqual({
+      degraded: false,
+      source: 'espn',
+      tables: [],
+      competition: { slug: 'concacaf.champions', alias: 'concacaf-champions-cup', name: 'Concacaf Champions Cup', chosenBy: 'flag' },
+    });
   });
 
   it('the two sentences for "nothing to show" follow the reader’s language, like "unavailable" does', async () => {
@@ -147,23 +161,34 @@ describe('tables are missing: text and data both say so', () => {
   it('a key that was not read: unavailable, not "no group"', async () => {
     const r = await toolGetStandings({ group: 'C', ...common('uefa.euro', shortOf('uefa.euro')) });
     expect(r.text).toContain('Live standings unavailable.');
-    expect(r.data).toEqual({ degraded: true, source: null, tables: null });
+    expect(r.data).toEqual({
+      degraded: true,
+      source: null,
+      tables: null,
+      competition: { slug: 'uefa.euro', alias: 'euro', name: 'EURO', chosenBy: 'flag' },
+    });
   });
 });
 
 describe('standings://{key}', () => {
   it('a league by its key, a numbered group, a group under a league', async () => {
-    expect(await standingsResourceText('league', serving('eng.1'))).toContain('2026-27 English Premier League (LEAGUE)');
-    expect(await standingsResourceText('A1', serving('uefa.nations'))).toContain('Group A1 (A1)');
-    expect(await standingsResourceText('a-b', serving('concacaf.nations.league'))).toContain('League A, Group B (A-B)');
-    expect((await standingsResourceText('A', serving('uefa.euro'))).split('\n')[0]).toBe('Group A');
+    const sel = (slug: string) => selectedCompetition(slug, 'default');
+    expect(await standingsResourceText('league', serving('eng.1'), sel('eng.1'))).toContain('2026-27 English Premier League (LEAGUE)');
+    expect(await standingsResourceText('A1', serving('uefa.nations'), sel('uefa.nations'))).toContain('Group A1 (A1)');
+    expect(await standingsResourceText('a-b', serving('concacaf.nations.league'), sel('concacaf.nations.league'))).toContain('League A, Group B (A-B)');
+    // The mode line first (0.11 · 2.5a), then the table's title.
+    const euro = (await standingsResourceText('A', serving('uefa.euro'), sel('uefa.euro'))).split('\n');
+    expect(euro[0]).toBe('EURO');
+    expect(euro[1]).toBe('Group A');
   });
 
   it('a string that is not a key is refused before a request, and says what a key is', async () => {
     requests = 0;
     for (const junk of ['A B', 'Group A', '..%2FA', 'A/B', 'ABCDEFGHIJKLM', '']) {
-      const text = await standingsResourceText(junk, serving('uefa.euro'));
+      const text = await standingsResourceText(junk, serving('uefa.euro'), selectedCompetition('uefa.euro', 'default'));
       expect(text, JSON.stringify(junk)).toContain('Not a table.');
+      // The refusal names its competition first too, like every branch (0.11 · 2.5a).
+      expect(text.split('\n')[0], JSON.stringify(junk)).toBe('EURO');
       expect(text).toContain('standings://LEAGUE');
       expect(text).toContain('not affiliated with or endorsed by FIFA or Anthropic');
     }

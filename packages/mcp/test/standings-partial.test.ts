@@ -1,4 +1,4 @@
-import { FakeMarketProvider, type GroupStandings, type Match, type ProviderAdapter } from '@claudinho/core';
+import { FakeMarketProvider, type GroupStandings, type Match, type ProviderAdapter, selectedCompetition } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v3';
 import { OUTPUT_SCHEMAS } from '../src/server';
@@ -65,7 +65,10 @@ describe('get_standings — partial standings (A01)', () => {
   });
 
   it('the standings:// resource says the table is partial', async () => {
-    const text = await standingsResourceText('A', adapter);
+    const text = await standingsResourceText('A', adapter, selectedCompetition('fifa.world', 'default'));
+    // The mode line first, then the partial note before the table (0.11 · 2.5a).
+    expect(text.split('\n')[0]).toBe('World Cup');
+    expect(text.split('\n')[1]).toBe('(Partial table — 2 rows could not be read.)');
     expect(text).toContain('Partial table — 2 rows could not be read.');
     expect(text).toContain('Mexico');
   });

@@ -16,6 +16,13 @@
 #   CLI="claudinho" ./scripts/release-qa.sh         # test the global install instead
 #   CLAUDINHO_COMPETITION=fifa.friendly ./scripts/release-qa.sh   # another competition
 #
+# The competition is the CLI's own: the caller's CLAUDINHO_COMPETITION when set
+# (an alias or a slug), else nothing is set and the CLI's default (the World Cup)
+# answers, its mode line naming no source. The script exports nothing, and what
+# it decides about the competition (the drift tripwire's gate) is decided on the
+# selection the built CLI RESOLVED, through scripts/release-qa-lib.mjs, whose
+# rules a test runs offline.
+#
 # Exit code: non-zero if a tripwire FAILS (real regression). A degraded/unreachable
 # feed downgrades tripwires to SKIP (exit 0) — a network blip must not block a release.
 
@@ -24,13 +31,14 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST="$ROOT/packages/cli/dist/index.js"
 CORE_DIST="$ROOT/packages/core/dist/index.js"
-export CLAUDINHO_COMPETITION="${CLAUDINHO_COMPETITION:-fifa.world}"
 LANGS=(en es pt fr)
 TEAM="${TEAM:-MEX}"
 GROUP="${GROUP:-A}"
 
 # Default to the built dist (tests exactly what ships); CLI=claudinho overrides.
 cli() { if [ -n "${CLI:-}" ]; then $CLI "$@"; else node "$DIST" "$@"; fi; }
+# The competition decisions, offline-testable (see the header).
+qa() { node "$ROOT/scripts/release-qa-lib.mjs" "$@"; }
 
 # A scheduled tie close to a date boundary keeps the date/tz tripwires useful
 # after the live bracket is entirely FT (finished lines intentionally omit the
@@ -59,7 +67,7 @@ if [ -z "${CLI:-}" ] && [ ! -f "$DIST" ]; then
   echo "✗ build first:  pnpm -r build   (or run with CLI=claudinho)"; exit 1
 fi
 
-bold "release-qa · competition=$CLAUDINHO_COMPETITION · $(cli --version 2>/dev/null)"
+bold "release-qa · competition=$(qa label) · $(cli --version 2>/dev/null)"
 echo "Read every section below. Then run the release. Tripwires summarized at the end."
 
 # ── 1. The knockout bracket (the surface that sprawled) ──────────────────────
@@ -257,20 +265,30 @@ fi
 # overlay is id-keyed, so an ESPN renumber/reschedule silently divorces static
 # from live (missed overlays, stale kickoff/venue) with no crash — regenerate the
 # schedule if this trips. SKIPs when the feed is unreachable/empty (a network
-# blip must never block a release) or under a non-default competition (the
-# bundle is fifa.world only).
+# blip must never block a release) or when the competition the CLI RESOLVED is
+# not the bundled one (the bundle is the World Cup's; an alias such as
+# `world-cup`, or nothing set, is the World Cup). A competition the script could
+# not resolve, and a verdict it cannot read, FAIL: a broken check never reports
+# itself as a quiet day.
 if [ -n "${CLI:-}" ]; then
   printf '  \033[33m⚠ SKIP\033[0m  bundle↔live drift check (CLI override tests a global install; tripwire imports the local core)\n'
   SKIP=$((SKIP+1))
-elif [ "$CLAUDINHO_COMPETITION" != "fifa.world" ]; then
-  printf '  \033[33m⚠ SKIP\033[0m  bundle↔live drift check (non-default competition — the bundled schedule is fifa.world)\n'
+elif [ ! -f "$CORE_DIST" ]; then
+  printf '  \033[33m⚠ SKIP\033[0m  bundle↔live drift check (core dist not built — run pnpm -r build)\n'
   SKIP=$((SKIP+1))
-elif [ -f "$CORE_DIST" ]; then
-  DRIFT="$(node --input-type=module -e "
+else
+  # The selection the built CLI resolved: `table Z --json` carries
+  # `competition.slug` on every competition (on the World Cup it answers with no
+  # request: there is no group Z), and a refused value prints nothing.
+  RESOLVED="$(cli table Z --json 2>/dev/null | qa slug)"
+  GATE="$(qa gate "$RESOLVED")"
+  case "$GATE" in
+    run)
+      DRIFT="$(node --input-type=module -e "
 import { allFixtures, makeAdapter } from 'file://$CORE_DIST';
 const bundled = new Map(allFixtures().map((f) => [f.id, f]));
-// The competition is this branch's by construction: it runs only for fifa.world.
-const adapter = makeAdapter('espn', { competition: 'fifa.world' });
+// The competition the CLI resolved, which the gate found to be the bundled one.
+const adapter = makeAdapter('espn', { competition: process.argv[1] });
 const day = (d) => d.toISOString().slice(0, 10);
 const now = Date.now();
 try {
@@ -288,25 +306,31 @@ try {
     ? 'DRIFT-FAIL ' + [...missing, ...shifted].join(',')
     : 'DRIFT-OK ' + served.length);
 } catch { process.stdout.write('DRIFT-SKIP'); }
-" 2>/dev/null)"
-  case "$DRIFT" in
-    DRIFT-OK*)
-      check ok "bundle↔live: every live-served fixture id is in the bundle, kickoff within 12h (${DRIFT#DRIFT-OK } fixtures)" ;;
-    DRIFT-FAIL*)
-      check no "bundle↔live drift: ${DRIFT#DRIFT-FAIL } — regenerate the schedule (pnpm -F @claudinho/core gen:schedule)" ;;
-    DRIFT-SKIP)
-      printf '  \033[33m⚠ SKIP\033[0m  bundle↔live drift check (feed unreachable/empty)\n'
+" "$RESOLVED" 2>/dev/null)"
+      VERDICT="$(printf '%s' "$DRIFT" | qa verdict)"
+      case "$VERDICT" in
+        ok:*)
+          check ok "bundle↔live: every live-served fixture id is in the bundle, kickoff within 12h (${VERDICT#ok:} fixtures)" ;;
+        fail:*)
+          check no "bundle↔live drift: ${VERDICT#fail:} — regenerate the schedule (pnpm -F @claudinho/core gen:schedule)" ;;
+        skip:*)
+          printf '  \033[33m⚠ SKIP\033[0m  bundle↔live drift check (%s)\n' "${VERDICT#skip:}"
+          SKIP=$((SKIP+1)) ;;
+        *)
+          # No verdict at all: the check itself did not run (an import or call
+          # that threw before the fetch). That is a broken tripwire, not a quiet
+          # feed — it used to fall through to SKIP, which is how a stale call in
+          # this very script went unnoticed.
+          check no "bundle↔live drift check did not run (script error; run its node block by hand to see it)" ;;
+      esac ;;
+    skip:*)
+      printf '  \033[33m⚠ SKIP\033[0m  bundle↔live drift check (%s)\n' "${GATE#skip:}"
       SKIP=$((SKIP+1)) ;;
+    fail:*)
+      check no "bundle↔live drift check: ${GATE#fail:}" ;;
     *)
-      # No verdict at all: the check itself did not run (an import or call that
-      # threw before the fetch). That is a broken tripwire, not a quiet feed —
-      # it used to fall through to SKIP, which is how a stale call in this very
-      # script went unnoticed.
-      check no "bundle↔live drift check did not run (script error; run its node block by hand to see it)" ;;
+      check no "bundle↔live drift check: the competition gate gave no answer" ;;
   esac
-else
-  printf '  \033[33m⚠ SKIP\033[0m  bundle↔live drift check (core dist not built — run pnpm -r build)\n'
-  SKIP=$((SKIP+1))
 fi
 
 echo

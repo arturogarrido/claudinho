@@ -26,7 +26,7 @@ const club = (over: Partial<Match> = {}): Match => ({
 const input = (matches: Match[]) => ({
   title: 'Live now',
   matches,
-  installLine: 'CLAUDINHO_COMPETITION=eng.1 npx @claudinho/cli live',
+  installLine: 'npx @claudinho/cli --competition premier-league live',
   tz: 'UTC',
   locale: 'en',
 });
@@ -102,7 +102,7 @@ describe('a club table card', () => {
     const out = formatShareTable({
       tables: [{ group: 'LEAGUE', label: 'Premier League', rows: [row('ARS', 'Arsenal', 3), row('CHE', 'Chelsea', 0)] }],
       source: 'espn',
-      installLine: 'CLAUDINHO_COMPETITION=eng.1 npx @claudinho/cli table',
+      installLine: 'npx @claudinho/cli --competition premier-league table',
     });
     expect(out).toContain('1. ARS  3 pts');
     expect(out).toContain('2. CHE  0 pts');

@@ -38,8 +38,12 @@ And `claudinho share` prints a card made for the group chat:
 <!-- DEMO CARD: verbatim output of `claudinho share table A`. Chosen over a single
      match card because it has no fixed date to go stale (a played-and-passed fixture
      reads as abandoned). Standings still drift across matchdays — REGENERATE
-     periodically, especially before any conversion-sensitive moment. Never hand-edit. -->
+     periodically, especially before any conversion-sensitive moment. Never hand-edit.
+     (0.11: the same rows re-rendered offline through the card builder for the new
+     format, the competition's title line and the `--competition` run cue.) -->
 ```text
+World Cup · standings
+
 Group A · standings
 
 1. 🇲🇽 MEX  9 pts · 3-0-0 · +6
@@ -49,7 +53,7 @@ Group A · standings
 
 Live data: ESPN
 #VibingLaVidaLoca · Independent fan project · not affiliated with FIFA or Anthropic.
-Try it: npx @claudinho/cli table A
+Try it: npx @claudinho/cli --competition world-cup table A
 ```
 
 > ⚠️ **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.**
@@ -155,16 +159,47 @@ Then just ask, mid-task — the agent calls the MCP server and answers with the 
 
 ## Surfaces
 
-- **CLI** — `today`, `live`, `next MEX`, `table`, `match <id>`, `bracket`, `markets`, `share`, `team` (name → code, e.g. `team "DR Congo"`) (plus `vibe` 😎 and `star` ⭐). `--json` on everything; TZ-aware via `--tz`. In a club competition `next` takes a club's name or code (`next Arsenal`) and searches the next 14 days, `match <id>` the same span, `bracket` says when a league has none, and an ended edition reads "between editions". A club shows by its name (or code), with nothing where a nation's flag would be, and `next` and `match` say the stage a match is in: "League" for a league's season, a cup's own round ("League phase", "Play-offs"), or the provider's words for a phase it does not know. When the provider sends a record Claudinho cannot read, every interactive command (and its `--json`) says its data may be incomplete instead of showing less as if it were all.
+- **CLI** — `today`, `live`, `next MEX`, `table`, `match <id>`, `bracket`, `markets`, `share`, `team` (name → code, e.g. `team "DR Congo"`) (plus `vibe` 😎 and `star` ⭐). `--json` on everything; TZ-aware via `--tz`; another competition with `--competition premier-league` (see [Competitions](#competitions)), named on a line after each answer's header (first where an answer has none; `table` once, before its tables) and as `competition` in `--json`; `share` prints no such line, its card's title names the competition and its cue selects it; `team` names the World Cup roster it reads. In a club competition `next` takes a club's name or code (`next Arsenal`) and searches the next 14 days, `match <id>` the same span, `bracket` says when a league has none, and an ended edition reads "between editions". A club shows by its name (or code), with nothing where a nation's flag would be, and `next` and `match` say the stage a match is in: "League" for a league's season, a cup's own round ("League phase", "Play-offs"), or the provider's words for a phase it does not know. When the provider sends a record Claudinho cannot read, every interactive command (and its `--json`) says its data may be incomplete instead of showing less as if it were all.
 - **Live statusline — Claude Code & Cursor CLI** — every live score inline; reads a local micro-cache, never blocks on the network. One command per agent: `claudinho init claude` / `claudinho init cursor` (also tmux & Starship via `claudinho prompt`).
 - **Score-aware hook (Claude Code)** — a `UserPromptSubmit` hook that drops the live score into the model's context during matches; zero tokens off-match. (Cursor parity pending — its hook can't reliably inject context yet.)
-- **MCP server** — 9 read-only tools (`get_today`, `get_live`, `get_match`, `get_next_fixture`, `get_standings`, `get_bracket`, `get_market_signal`, `get_share_snippet`, `get_team`) plus `my_team` / `tournament_today` prompts.
+- **MCP server** — 10 read-only tools (`get_today`, `get_live`, `get_match`, `get_next_fixture`, `get_standings`, `get_bracket`, `get_market_signal`, `get_share_snippet`, `get_team`, `list_competitions`) plus `my_team` / `tournament_today` prompts; every tool but `get_team` takes an optional `competition` (an alias such as `premier-league`).
 - **Prediction-market signals** — a read-only "who's favored" line (market-implied percentages, Source: Polymarket), shown only when a reliable market exists. **Informational only — not betting advice.** Opt out: `--no-markets` / `CLAUDINHO_MARKETS=off`.
 - **Shareable cards** — `claudinho share next MEX --copy` puts a plain-text match card on your clipboard; `claudinho share table A` does the same for a group's live standings; `claudinho share bracket` for the knockout tree.
 
 Speaks `en` / `es` / `pt` / `fr`, with optional localized commentary flair (`¡GOOOOL!`) — dial it down with `--flavor subtle|off`.
 
 _Planned (not shipped yet):_ a desktop notifier and an AI pundit with a public accuracy scorecard.
+
+## Competitions
+
+The 2026 World Cup is the default. Pick another competition by its alias, for one command
+(`npx @claudinho/cli --competition premier-league today`) or for every surface, the statusline
+and the hook included (`export CLAUDINHO_COMPETITION=premier-league`; an ESPN slug such as `eng.1`
+works too, and so does any other lower-case dotted ESPN slug, labelled experimental). Every answer says which
+competition it is for; an unknown value is refused with the list. MCP tools take the same value
+as their `competition` argument, and `list_competitions` lists the table below.
+
+<!-- competitions:start -->
+| Alias | Competition | Teams | Scores | Next | Standings | Bracket | Markets |
+|---|---|---|---|---|---|---|---|
+| `world-cup` | World Cup | nations | yes | yes | yes | yes | yes |
+| `euro` | EURO | nations | yes | yes | yes | not yet | not yet |
+| `copa-america` | Copa América | nations | yes | yes | yes | not yet | not yet |
+| `nations-league` | UEFA Nations League | nations | yes | yes | yes | not yet | not yet |
+| `concacaf-nations-league` | Concacaf Nations League | nations | yes | yes | yes | not yet | not yet |
+| `gold-cup` | Gold Cup | nations | yes | yes | yes | not yet | not yet |
+| `premier-league` | Premier League | clubs | yes | yes | yes | n/a | not yet |
+| `laliga` | LALIGA | clubs | yes | yes | yes | n/a | not yet |
+| `serie-a` | Serie A | clubs | yes | yes | yes | not yet | not yet |
+| `bundesliga` | Bundesliga | clubs | yes | yes | yes | not yet | not yet |
+| `liga-mx` | Liga MX | clubs | yes | yes | yes | not yet | not yet |
+| `champions-league` | Champions League | clubs | yes | yes | yes | not yet | not yet |
+| `libertadores` | Libertadores | clubs | yes | yes | yes | not yet | not yet |
+| `concacaf-champions-cup` | Concacaf Champions Cup | clubs | yes | yes | n/a | not yet | not yet |
+| `club-world-cup` | Club World Cup | clubs | yes | yes | yes | not yet | not yet |
+
+`yes` offered · `not yet` not offered yet · `n/a` the competition has no such thing (a league season with no knockout tie has no bracket; a knockout-only cup has no table).
+<!-- competitions:end -->
 
 ## Around the web
 

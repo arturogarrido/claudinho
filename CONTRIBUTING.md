@@ -49,6 +49,28 @@ node packages/cli/dist/index.js today --tz America/Mexico_City --lang es
   `pnpm release:qa` and an output review. Prose-only changes use diff, link, contract,
   and private-document-boundary checks.
 
+## Adding a competition
+
+The supported competitions are ONE table, `SUPPORTED` in
+[`packages/core/src/supported.ts`](packages/core/src/supported.ts). Adding one is:
+
+1. **One row**: its ESPN slug, an alias (lower case, digits and hyphens, no dot), its
+   name, the teams it fields (`nation` or `club`), its kind (`league` or `cup`), a
+   league's season name where it has one, its standings shape (`league`, `groups` or
+   `none`), what `bracket` and `markets` are for it (`offered`, `not-offered-yet`,
+   `not-applicable`; a row may offer a bracket only for the bundled competition,
+   whose knockout topology ships with the clients: the derivation refuses any
+   other), and how often it has an edition. Every other written fact
+   (the teams' and competitions' kinds, the season names, the standings shapes, the
+   competitions with no bracket, the market sidecar's scope, the canary's list and
+   cadences) derives from the table; nothing else in the source changes.
+2. **Its fixtures**: test fixtures measured on the real feed for its scoreboard and
+   standings (the parsers' tests, and the canary's), so its shape is checked, not
+   assumed.
+3. **The README matrix**: `pnpm -r build && pnpm gen:readme-matrix` rewrites the
+   capability table in the root README from the table; a test fails when the
+   committed block differs.
+
 ## Comparing MCP tool contracts
 
 For MCP contract or schema-dependency changes, compare the actual `tools/list` output from the PR

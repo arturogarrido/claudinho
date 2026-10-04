@@ -1,5 +1,5 @@
 import type { Match, ProviderAdapter } from '@claudinho/core';
-import { EspnAdapter, FakeMarketProvider } from '@claudinho/core';
+import { EspnAdapter, FakeMarketProvider, selectedCompetition } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod/v3';
 import { OUTPUT_SCHEMAS } from '../src/server';
@@ -246,7 +246,9 @@ describe('club rendering (MCP) — the live state', () => {
     const card = await toolGetShareSnippet({ group: 'LEAGUE', adapter: LIVE_FEED(), marketProvider: new FakeMarketProvider(), now: CLUB_NOW });
     expect(card.text).toContain('1. ARS');
     noLeak(card.text, 'share group');
-    const resource = await standingsResourceText('LEAGUE', LIVE_FEED());
+    const resource = await standingsResourceText('LEAGUE', LIVE_FEED(), selectedCompetition('eng.1', 'default'));
+    // The resource names its competition first (0.11 · 2.5a), like a tool's text.
+    expect(resource.split('\n')[0]).toBe('Premier League');
     expect(resource).toContain('Arsenal');
     noLeak(resource, 'standings://LEAGUE');
   });
@@ -272,34 +274,34 @@ describe('club rendering (MCP) — the stage grammar reaches the tools', () => {
   const NO_SLUG = () => feed('uefa.champions', [{ id: '800000022', date: SAT, home: ARS, away: CHE }], null, table([ARS, CHE]));
 
   it('a play-off round: "Play-offs" and `PO`', async () => {
-    const r = await toolGetToday({ date: '2026-10-10', adapter: PO(), now: CLUB_NOW });
+    const r = await toolGetToday({ date: '2026-10-10', competition: 'uefa.champions', adapter: PO(), now: CLUB_NOW });
     expect(r.text).toContain('Play-offs');
     expect(((r.data as Rec).matches as Rec[])[0]?.stage).toBe('PO');
     noLeak(r.text, 'po');
   });
 
   it('an unknown round: the provider\'s words in text, `stage: "OTHER"` and `stageLabel` in data, on today, match, next and the cards', async () => {
-    const today = await toolGetToday({ date: '2026-10-10', adapter: OTHER(), now: CLUB_NOW });
+    const today = await toolGetToday({ date: '2026-10-10', competition: 'uefa.champions', adapter: OTHER(), now: CLUB_NOW });
     expect(today.text).toContain('Qualifying final');
     const tm = ((today.data as Rec).matches as Rec[])[0];
     expect(tm?.stage).toBe('OTHER');
     expect(tm?.stageLabel).toBe('Qualifying final');
     strict('get_today', today.data);
-    const match = await toolGetMatch({ id: '800000021', adapter: OTHER(), now: CLUB_NOW });
+    const match = await toolGetMatch({ id: '800000021', competition: 'uefa.champions', adapter: OTHER(), now: CLUB_NOW });
     expect(match.text).toContain('Qualifying final · Emirates Stadium, London');
     expect(((match.data as Rec).match as Rec).stageLabel).toBe('Qualifying final');
     strict('get_match', match.data);
-    const next = await toolGetNextFixture({ team: 'Arsenal', adapter: OTHER(), now: CLUB_NOW });
+    const next = await toolGetNextFixture({ team: 'Arsenal', competition: 'uefa.champions', adapter: OTHER(), now: CLUB_NOW });
     expect(next.text).toContain('Qualifying final');
     expect(((next.data as Rec).fixture as Rec).stageLabel).toBe('Qualifying final');
     strict('get_next_fixture', next.data);
-    const card = await toolGetShareSnippet({ matchId: '800000021', adapter: OTHER(), marketProvider: new FakeMarketProvider(), now: CLUB_NOW });
+    const card = await toolGetShareSnippet({ matchId: '800000021', competition: 'uefa.champions', adapter: OTHER(), marketProvider: new FakeMarketProvider(), now: CLUB_NOW });
     expect(card.text).toContain('Qualifying final');
     strict('get_share_snippet', card.data);
   });
 
   it('a record with no phase stated: no stage segment, no dangling separator, no "Group stage"; `stage: "OTHER"` without a label', async () => {
-    const match = await toolGetMatch({ id: '800000022', adapter: NO_SLUG(), now: CLUB_NOW });
+    const match = await toolGetMatch({ id: '800000022', competition: 'uefa.champions', adapter: NO_SLUG(), now: CLUB_NOW });
     expect(match.text).toContain('Emirates Stadium, London');
     expect(match.text).not.toMatch(/Group/);
     expect(match.text).not.toMatch(/OTHER/);
@@ -307,10 +309,10 @@ describe('club rendering (MCP) — the stage grammar reaches the tools', () => {
     const m = (match.data as Rec).match as Rec;
     expect(m.stage).toBe('OTHER');
     expect(m).not.toHaveProperty('stageLabel');
-    const today = await toolGetToday({ date: '2026-10-10', adapter: NO_SLUG(), now: CLUB_NOW });
+    const today = await toolGetToday({ date: '2026-10-10', competition: 'uefa.champions', adapter: NO_SLUG(), now: CLUB_NOW });
     expect(today.text).not.toMatch(/Group/);
     expect(today.text).not.toMatch(/·\s*·|·\s*(\n|$)/);
-    const card = await toolGetShareSnippet({ matchId: '800000022', adapter: NO_SLUG(), marketProvider: new FakeMarketProvider(), now: CLUB_NOW });
+    const card = await toolGetShareSnippet({ matchId: '800000022', competition: 'uefa.champions', adapter: NO_SLUG(), marketProvider: new FakeMarketProvider(), now: CLUB_NOW });
     expect(card.text).not.toMatch(/Group/);
     expect(card.text).not.toMatch(/·\s*(\n|$)|(^|\n)\s*·/);
   });

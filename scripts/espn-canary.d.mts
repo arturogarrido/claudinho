@@ -13,7 +13,6 @@ export interface CanaryResult {
   rows: CanaryRow[];
   red: boolean;
 }
-export const CANARY_COMPETITIONS: readonly string[];
 export const STANDING_STATS: readonly string[];
 export const CANARY_QUESTIONS: readonly {
   request: CanaryRow['request'];

@@ -41,7 +41,7 @@ import { marketsNoneReadNote } from '../markets/format';
 import type { MarketSignal } from '../markets/types';
 import { type GroupStandings, type TableData, tableData } from '../standings';
 import { formatDate } from '../time';
-import { bundleApplies } from '../competition';
+import { competitionLabel, entryOf } from '../supported';
 import { isTeam } from '../trust/match';
 import type { Match, Team } from '../types';
 import {
@@ -266,22 +266,31 @@ export interface ShareCardContext {
   tz?: string;
   locale?: string;
   /**
-   * The competition the card is about. Off the bundled competition the run cue
-   * names it (`CLAUDINHO_COMPETITION=eng.1 npx @claudinho/cli next Arsenal`):
-   * a recipient without that setting would otherwise be sent to the World Cup.
+   * The competition the card is about (its slug). Its title names it and its
+   * run cue selects it (`npx @claudinho/cli --competition premier-league next
+   * Arsenal`), the World Cup's too: a pasted card must answer the same thing
+   * whatever the recipient follows. A card built with none (a test) keeps the
+   * bare title and cue.
    */
   competition?: string;
 }
 
 /**
- * A card's run cue: `npx @claudinho/cli <args>`, prefixed off the bundled
- * competition with the setting that selects it, so the cue a card pastes
- * asks what the card answered. On the bundle (or when no competition is
- * given) it is what it always was.
+ * A card's run cue: `npx @claudinho/cli --competition <selector> <args>`,
+ * where the selector is the competition's alias, or a raw slug as typed, so
+ * the cue a card pastes asks what the card answered, whatever the recipient
+ * follows (an environment or, later, a saved choice). With no competition it
+ * is the bare `npx @claudinho/cli <args>`.
  */
 function runCue(competition: string | undefined, args: string): string {
-  const prefix = competition && !bundleApplies(competition) ? `CLAUDINHO_COMPETITION=${cueArg(competition)} ` : '';
-  return `${prefix}npx @claudinho/cli ${args}`;
+  if (!competition) return `npx @claudinho/cli ${args}`;
+  const selector = entryOf(competition)?.alias ?? competition;
+  return `npx @claudinho/cli --competition ${cueArg(selector)} ${args}`;
+}
+
+/** A card's title, naming the competition it is about: `Live match pulse · Premier League`. */
+function titled(title: string, competition: string | undefined): string {
+  return competition ? `${title} · ${competitionLabel(competition)}` : title;
 }
 
 /** Display-ready market signals for a card, and whether every fixture was checked. */
@@ -352,7 +361,7 @@ export function liveShareCard(
     kind: 'live',
     target: 'live',
     input: {
-      title: 'Live match pulse',
+      title: titled('Live match pulse', ctx.competition),
       matches: view.matches ?? result.matches,
       source: result.source,
       degraded: result.degraded,
@@ -402,7 +411,7 @@ export function nextShareCard(
     team: team ?? code,
     ...(result.candidates && result.candidates.length > 0 ? { candidates: result.candidates } : {}),
     input: {
-      title: `Next up for ${teamName}`,
+      title: titled(`Next up for ${teamName}`, ctx.competition),
       matches: fixture ? [fixture] : [],
       marketSignals: market.signals,
       marketComplete: market.complete,
@@ -448,7 +457,7 @@ export function matchShareCard(
     kind: 'match',
     target: id,
     input: {
-      title: 'Match pulse',
+      title: titled('Match pulse', ctx.competition),
       matches: result.match ? [result.match] : [],
       marketSignals: market.signals,
       marketComplete: market.complete,
@@ -527,7 +536,7 @@ export function dateShareCard(
     kind: 'today',
     target: day.date,
     input: {
-      title: day.explicit ? `Matches · ${human}` : `Today's matches · ${human}`,
+      title: titled(day.explicit ? `Matches · ${human}` : `Today's matches · ${human}`, ctx.competition),
       matches: day.matches,
       marketSignals: market.signals,
       marketComplete: market.complete,
@@ -550,7 +559,8 @@ export function dateShareCard(
       // The read was not whole (and which shown rows it did not serve): said
       // beside the fixtures, or beside "none read"; then the list's cap.
       ...noteWith(read, ctx.locale, attribution.unserved, day.cap),
-      installLine: runCue(ctx.competition, 'today'),
+      // An explicit date's cue reproduces THAT day (the recipient's today is another day).
+      installLine: runCue(ctx.competition, day.explicit ? `today ${cueArg(day.date)}` : 'today'),
       tz: ctx.tz,
       locale: ctx.locale,
     },
@@ -580,7 +590,7 @@ export function tableShareCard(
   tables: readonly GroupStandings[] = result.tables,
   /** The reader's language, for the one localized sentence a card prints: a verdict's. */
   lang?: string,
-  /** The competition the card is about: off the bundle the run cue names it (see `ShareCardContext`). */
+  /** The competition the card is about: its first line names it, its run cue selects it (see `ShareCardContext`). */
   competition?: string,
 ): TableShareCard {
   // Degraded ⇒ no live provider: no attribution. An open-scope outage has no
@@ -597,6 +607,8 @@ export function tableShareCard(
     tables: tables.map(tableData),
     verdict: verdictExtras(result),
     input: {
+      // The card's first line names the competition; each table keeps its own title.
+      ...(competition ? { heading: `${competitionLabel(competition)} · standings` } : {}),
       tables,
       source,
       installLine: runCue(competition, group ? `table ${group}` : 'table'),
@@ -624,7 +636,7 @@ export function bracketShareCard(
   result: BracketResult,
   stage: string | undefined,
   lang: string | undefined,
-  /** The competition the card is about: off the bundle the run cue names it (see `ShareCardContext`). */
+  /** The competition the card is about: its first line names it, its run cue selects it (see `ShareCardContext`). */
   competition?: string,
 ): BracketShareCard {
   const source = result.degraded ? undefined : result.source;
@@ -633,6 +645,9 @@ export function bracketShareCard(
     source,
     degraded: result.degraded,
     input: {
+      // The card's first line, in the reader's language: the title, then the
+      // competition's name (not localized); the bare title with none.
+      title: competition ? `${t(lang, 'bracket.shareTitle')} · ${competitionLabel(competition)}` : t(lang, 'bracket.shareTitle'),
       view: result.view,
       source,
       installLine: runCue(competition, stage ? `bracket ${stage}` : 'bracket'),

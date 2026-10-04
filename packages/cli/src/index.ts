@@ -74,6 +74,10 @@ program
   .option('--tz <zone>', 'IANA timezone, e.g. America/Mexico_City')
   .option('--json', 'output JSON (for scripting)')
   .option('--no-color', 'disable ANSI colors')
+  .option(
+    '-c, --competition <alias|slug>',
+    'the competition: an alias such as premier-league, or an ESPN slug such as eng.1 (default: $CLAUDINHO_COMPETITION, else the World Cup)',
+  )
   .option('--source <name>', 'live data provider (advanced)')
   .option('--flavor <level>', 'commentary flair: off, subtle, full (default: full)')
   .option('--no-markets', 'hide prediction-market signals (informational only)');
@@ -117,7 +121,7 @@ program
 
 program
   .command('team')
-  .description('resolve a nation name or code to its FIFA code, flag, and group')
+  .description('resolve a World Cup nation name or code to its FIFA code, flag, and group (the World Cup roster)')
   .argument('<query>', 'team name or 3-letter code, e.g. Mexico, MEX, "DR Congo"')
   .action((query, _opts, cmd) => {
     try {

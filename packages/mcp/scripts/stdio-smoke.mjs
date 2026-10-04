@@ -91,7 +91,7 @@ if (init.serverInfo?.version !== pkg.version)
   );
 
 const tools = byId[2]?.result?.tools ?? [];
-if (tools.length < 9) fail(`expected >= 9 tools over stdio, got ${tools.length}`);
+if (tools.length < 10) fail(`expected >= 10 tools over stdio, got ${tools.length}`);
 const missingSchema = tools.filter((t) => !t.outputSchema).map((t) => t.name);
 if (missingSchema.length) fail(`tools missing outputSchema: ${missingSchema.join(', ')}`);
 

@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CACHE_VERSION, cachePath, readState, writeState } from '../src/cache';
 import { cmdHook, cmdNext, cmdPrompt, cmdRefresh, cmdToday, InputError } from '../src/commands';
 import { type CliConfig, resolveConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 import { withPersistedBackoff } from '../src/providerBackoff';
 import { refreshWanted, runRefresh, shouldRefresh, shouldRefreshFixtures } from '../src/refresh';
@@ -26,7 +27,7 @@ vi.mock('node:child_process', () => ({
 }));
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return {
+  return described({
     lang: 'en',
     tz: 'UTC',
     json: false,
@@ -36,7 +37,7 @@ function cfg(over: Partial<CliConfig> = {}): CliConfig {
     markets: false,
     competition: 'fifa.world',
     ...over,
-  };
+  });
 }
 const t = makeT('en');
 
@@ -138,7 +139,7 @@ describe('the CLI resolves the competition once, in option resolution', () => {
     expect(resolveConfig({ competition: 'eng.1' }).competition).toBe('eng.1');
   });
 
-  it('a command fetches and warns for its config’s competition, whatever the environment says', async () => {
+  it('a command fetches for, and names, its config’s competition, whatever the environment says', async () => {
     process.env.CLAUDINHO_COMPETITION = 'esp.1';
     const urls: string[] = [];
     vi.stubGlobal('fetch', async (url: unknown) => {
@@ -149,8 +150,10 @@ describe('the CLI resolves the competition once, in option resolution', () => {
 
     expect(urls.length).toBeGreaterThan(0);
     for (const u of urls) expect(u).toContain('/soccer/eng.1/');
-    expect(stderr.join('')).toContain('eng.1');
-    expect(stderr.join('')).not.toContain('esp.1');
+    // The answer names its competition in `--json`'s `competition` key; the
+    // stderr drift warning is gone (0.11 · 2.5a: the mode line replaced it).
+    expect(json().competition).toMatchObject({ slug: 'eng.1' });
+    expect(stderr.join('')).toBe('');
   });
 
   it('the statusline and the hook read the cache of their config’s competition', () => {

@@ -24,6 +24,11 @@
  * not give (which statistic a row lost, which team has no id); the verdict on
  * whether the tables were read is the parser's, for every competition.
  *
+ * Which competitions: the supported table, core's (`core.SUPPORTED`, the one
+ * table every written fact of a competition derives from), every row in its
+ * order, and each row's cadence where a season turn is judged. The canary
+ * keeps no list of its own: a competition added to the table is asked.
+ *
  * What it asks, per competition: every question the adapter answers, with the
  * spans the product uses today. A window is composed of several requests (the
  * provider refuses date ranges), and every one of them is judged.
@@ -65,11 +70,11 @@
  * A neutral row is a row the canary could not see: the run stays green and
  * says so in a warning.
  *
- * Work, worst case: 120 requests (15 × 6 + 14 × 2 + 2: the 15 competitions
- * at 6 each, 1 + 1 + 3 + 1 for live, day, window and standings; the 14 off the
- * bundle at up to 2 more each, discovery's two months; and 2 more for the
- * bundled one's knockout span), each bounded by the adapter's timeout and byte
- * limit. Questions are asked one at a time with a pause between them; the
+ * Work, worst case: the table's rows × 6 requests (1 + 1 + 3 + 1 for live,
+ * day, window and standings), plus up to 2 more for each row off the bundle
+ * (discovery's two months), plus 2 for the bundled one's knockout span; each
+ * bounded by the adapter's timeout and byte limit, and growing by 8 with each
+ * row added to the table. Questions are asked one at a time with a pause between them; the
  * requests of one question go together, so a throttle inside a window is seen
  * after up to three requests, and ends the run.
  *
@@ -81,38 +86,6 @@
 import { appendFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-
-/**
- * The fifteen competitions 0.11 SUPPORTS, the ones the canary asks. Core's
- * written tables (`TEAM_KIND`, `COMPETITION_KIND` in
- * `packages/core/src/kinds.ts`) hold these fifteen and one more, the friendly
- * competition (`fifa.friendly`): its teams' kind and its stage grammar are
- * written there because the `CLAUDINHO_COMPETITION` seam reaches it, but it is
- * not in the supported set and the canary does not ask it. The canary keeps
- * its own list of the fifteen on purpose: it reaches core only through the
- * BUILT package, loaded at run time and handed to `runCanary({ core })`, while
- * this list is read before that (by the run's own defaults and by the tests
- * that name what it asks), so it cannot be derived from core in one line
- * without loading core at import. A competition added to the supported set is
- * added here too; no test compares the two lists yet.
- */
-export const CANARY_COMPETITIONS = Object.freeze([
-  'fifa.world',
-  'eng.1',
-  'esp.1',
-  'ita.1',
-  'ger.1',
-  'mex.1',
-  'uefa.champions',
-  'concacaf.champions',
-  'fifa.cwc',
-  'conmebol.libertadores',
-  'conmebol.america',
-  'concacaf.gold',
-  'uefa.euro',
-  'uefa.nations',
-  'concacaf.nations.league',
-]);
 
 /**
  * What a competition's tables are is written down in core (`STANDINGS_SHAPE`:
@@ -148,26 +121,14 @@ export const STANDING_STATS = Object.freeze([
 /** A provider team id, as the adapter accepts it. */
 const RAW_TEAM_ID = /^[0-9]{1,20}$/;
 /**
- * How often each supported competition has an edition, in years; a season turn
- * steps up by at most that (at most, not exactly: the Copa America went 2021,
- * 2024, 2028). The World Cup, the Euro, the Copa America and the Club World
- * Cup are four-yearly; both Nations Leagues and the Gold Cup two-yearly (the
- * Concacaf Nations League's next editions are 2026/27 and 2028/29, by
- * Concacaf's published 2026 to 2030 calendar); every other competition in
- * `CANARY_COMPETITIONS` yearly. A yearly league stating a season two years on
- * has skipped an edition: a changed feed, not a turn.
+ * How often a competition has an edition, in years: its row's `cadenceYears`
+ * in the table the canary is handed (`core.SUPPORTED`), read inside the call;
+ * 1 for a competition the table does not hold. A season turn steps up by at
+ * most that (at most, not exactly: the Copa America went 2021, 2024, 2028). A
+ * yearly league stating a season two years on has skipped an edition: a
+ * changed feed, not a turn.
  */
-const CADENCE_YEARS = Object.freeze({
-  'fifa.world': 4,
-  'uefa.euro': 4,
-  'conmebol.america': 4,
-  'fifa.cwc': 4,
-  'uefa.nations': 2,
-  'concacaf.nations.league': 2,
-  'concacaf.gold': 2,
-});
-// By own property, like every written table: a name like a prototype key is not one.
-const cadenceOf = (competition) => (Object.hasOwn(CADENCE_YEARS, competition) ? CADENCE_YEARS[competition] : 1);
+const cadenceOf = (core, competition) => core.entryOf(competition, core.SUPPORTED)?.cadenceYears ?? 1;
 /**
  * Whether the seasons a competition's responses stated, in the order of the
  * dates asked, are NOT a turn: a turn is ONE step up, of at most the
@@ -175,9 +136,9 @@ const cadenceOf = (competition) => (Object.hasOwn(CADENCE_YEARS, competition) ? 
  * jump past the cadence is a feed the dated reads refuse. Asked of a window's
  * days and of discovery's months alike, where they state more than one season.
  */
-function notATurn(competition, years) {
+function notATurn(core, competition, years) {
   const steps = years.slice(1).map((year, i) => year - years[i]).filter((step) => step !== 0);
-  return steps.length !== 1 || steps[0] < 1 || steps[0] > cadenceOf(competition);
+  return steps.length !== 1 || steps[0] < 1 || steps[0] > cadenceOf(core, competition);
 }
 /** An error body is read for its message only. */
 const ERROR_BODY_BYTES = 64 * 1024;
@@ -315,7 +276,7 @@ function checkScoreboard(core, adapter, parts, matches) {
   // stated two, and names both: a normal answer on the days a competition
   // turns. No season stated at all is still a changed feed, and so are two
   // seasons that are not a turn. A turn is ONE step up, on a later day, of at
-  // most this competition's cadence (`CADENCE_YEARS`: a yearly league turns by
+  // most this competition's cadence (its row's `cadenceYears`: a yearly league turns by
   // one, the Nations League by two). The adapter lists DISTINCT seasons, which
   // cannot show a day stating the earlier season again after the later one,
   // so the steps are read from each part's own envelope in the order of the
@@ -330,7 +291,7 @@ function checkScoreboard(core, adapter, parts, matches) {
       .sort((a, b) => datesOf(a.url).localeCompare(datesOf(b.url)))
       .map((part) => part.json?.leagues?.[0]?.season?.year)
       .filter((year) => Number.isInteger(year));
-    if (notATurn(adapter.competition, stated)) {
+    if (notATurn(core, adapter.competition, stated)) {
       return { verdict: 'changed', detail: `the parts state seasons that are not a turn (${stated.join(', ')})` };
     }
   }
@@ -490,7 +451,7 @@ async function judgeDiscovery(core, competition, parts, result, which, span) {
     .map((m) => m.year)
     .filter((y) => Number.isInteger(y));
   const years = [...new Set(stated)];
-  if (years.length > 1 && notATurn(competition, stated)) {
+  if (years.length > 1 && notATurn(core, competition, stated)) {
     return { verdict: 'changed', detail: `the months state seasons that are not a turn (${stated.join(', ')})` };
   }
   const fixtures = Array.isArray(result.fixtures) ? result.fixtures.length : 0;
@@ -669,10 +630,13 @@ function checkStandings(core, body, adapter, result, competition) {
 /**
  * Run the canary. `core` is the @claudinho/core module (its built `dist` when
  * run from the command line, its source under test); `fetchImpl` is the network.
+ * The competitions asked default to every row of the supported table core
+ * hands in (`core.SUPPORTED`), in its order, read at invocation: the table is
+ * core's, and a competition added to it is asked with no change here.
  */
 export async function runCanary({
   core,
-  competitions = CANARY_COMPETITIONS,
+  competitions = core.SUPPORTED.map((entry) => entry.slug),
   fetchImpl = fetch,
   now = new Date(),
   pauseMs = 250,

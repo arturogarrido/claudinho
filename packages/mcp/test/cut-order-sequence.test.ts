@@ -77,7 +77,9 @@ describe('get_today: the verdict, the unserved count, the truncation, the market
 
   it('a whole, healthy day is what it always was: the header, the rows, the footer', async () => {
     const r = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: feed({ events: [OPENER] }) });
-    const [head, line, ...rest] = r.text.split('\n');
+    // The mode line first (0.11 · 2.5a: every answer names its competition), then what it always was.
+    const [mode, head, line, ...rest] = r.text.split('\n');
+    expect(mode).toBe('World Cup');
     expect(head).toBe('Matches on 2026-06-11:');
     expect(line?.startsWith('• 🇲🇽 Mexico')).toBe(true);
     expect(`\n${rest.join('\n')}`).toBe(r.footer);
@@ -110,7 +112,7 @@ describe('get_standings: the verdict, then the list’s truncation, before the t
   };
 
   it('the order, and what a cut keeps', async () => {
-    const r = await toolGetStandings({ adapter } as never);
+    const r = await toolGetStandings({ competition: 'uefa.nations', adapter } as never);
     inOrder(r.text, ['(Some tables could not be read', '(showing 40 of 41 — list truncated)', 'League 1 (A1)']);
     // The truncation note is its own line, not the tail of the last table.
     expect(r.text).not.toMatch(/Team number 39-20[^\n]*\n\(showing/);

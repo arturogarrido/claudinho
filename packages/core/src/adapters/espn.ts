@@ -29,10 +29,11 @@ export type { MapContext };
 import { isLive } from '../normalize';
 import { parsedValue } from '../trust/result';
 import { standingsShapeOf } from '../kinds';
+import { BUNDLED_SLUG } from '../supported';
 
 const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
-/** Default competition slug (the 2026 World Cup). */
-export const DEFAULT_COMPETITION = 'fifa.world';
+/** Default competition slug (the 2026 World Cup): the bundled one, written once in the supported table's module. */
+export const DEFAULT_COMPETITION = BUNDLED_SLUG;
 
 // Versioned so upstream can distinguish releases (and a block aimed at one bad
 // version need not be a block on all of them). Inlined at build time via the

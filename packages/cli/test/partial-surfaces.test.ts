@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EspnAdapter, FakeMarketProvider, type ProviderAdapter } from '@claudinho/core';
 import { cmdLive, cmdMarkets, cmdMatch, cmdShare, cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 const WC_SEASON = { year: 2026, startDate: '2026-06-11T04:00Z', endDate: '2026-12-31T04:59Z', displayName: '2026 FIFA World Cup' };
@@ -50,7 +51,7 @@ const OPENER_DAY = new Date('2026-06-11T20:00:00Z');
 const PL = { year: 2026, displayName: '2026-27 English Premier League', startDate: '2026-08-01T04:00Z', endDate: '2027-06-01T03:59Z' };
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', markets: false, ...over };
+  return described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', markets: false, ...over });
 }
 const ctxFor = (adapter: ProviderAdapter, over: Partial<CliConfig> = {}, now = OPENER_DAY) => ({
   cfg: cfg({ competition: adapter.competition, ...over }),

@@ -91,7 +91,7 @@ describe('get_live and get_today (0.11 2.1d)', () => {
   it('today off the bundle, and on the bundle’s slug for another year: the empty partial body says no fixture was read for the date', async () => {
     // A readable record on the adjacent day keeps each three-day window a PARTIAL read (a window whose only
     // record is refused is a failed read); it is outside the displayed UTC date, so the day's body is empty.
-    const off = await toolGetToday({ date: '2026-10-17', tz: 'UTC', adapter: feed('eng.1', { season: PL, events: [{ id: '41', date: '2026-10-17T14:00Z', home: ARS, away: CHE, raw: REFUSED }, { id: '42', date: '2026-10-18T14:00Z', home: CHE, away: ARS }] }) });
+    const off = await toolGetToday({ date: '2026-10-17', tz: 'UTC', competition: 'eng.1', adapter: feed('eng.1', { season: PL, events: [{ id: '41', date: '2026-10-17T14:00Z', home: ARS, away: CHE, raw: REFUSED }, { id: '42', date: '2026-10-18T14:00Z', home: CHE, away: ARS }] }) });
     expect(off.text).toContain(SENTENCE);
     expect(off.text).not.toContain('No matches scheduled');
     expect(off.text).not.toContain('Chelsea');
@@ -105,14 +105,14 @@ describe('get_live and get_today (0.11 2.1d)', () => {
   });
 
   it('a FAILED read off the bundle: the text says the provider could not be reached, never "No matches scheduled" nor "showing the bundled schedule"; on the bundle unchanged', async () => {
-    const off = await toolGetToday({ date: '2026-10-17', tz: 'UTC', adapter: feed('eng.1', { season: PL, fail: true }) });
+    const off = await toolGetToday({ date: '2026-10-17', tz: 'UTC', competition: 'eng.1', adapter: feed('eng.1', { season: PL, fail: true }) });
     expect(off.text).toMatch(/no fixtures confirmed/);
     expect(off.text).not.toContain('No matches scheduled');
     expect(off.text).not.toContain('bundled schedule');
     expect(off.data).toMatchObject({ degraded: true, source: null });
     expect(off.data).not.toHaveProperty('partial');
     strict('get_today', off.data);
-    const es = await toolGetToday({ date: '2026-10-17', tz: 'UTC', lang: 'es', adapter: feed('eng.1', { season: PL, fail: true }) } as never);
+    const es = await toolGetToday({ date: '2026-10-17', tz: 'UTC', lang: 'es', competition: 'eng.1', adapter: feed('eng.1', { season: PL, fail: true }) } as never);
     expect(es.text).not.toMatch(/no fixtures confirmed/);
     expect(es.text).not.toContain('No matches scheduled');
     const on = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: feed('fifa.world', { fail: true }) });

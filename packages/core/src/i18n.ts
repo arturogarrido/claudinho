@@ -6,7 +6,7 @@ export type Lang = 'en' | 'es' | 'pt' | 'fr';
 const EN = {
   'bracket.title': 'Knockout bracket',
   'bracket.stageTitle': 'Knockout · {stage}',
-  'bracket.shareTitle': 'Knockout bracket · 2026',
+  'bracket.shareTitle': 'Knockout bracket',
   'bracket.degraded':
     'Live scores unavailable — bracket structure only, no confirmed advancement.',
   'bracket.standingsDegraded':
@@ -30,6 +30,13 @@ const EN = {
   'standings.empty': 'No standings available.',
   'competition.unsupported': 'Not available for this competition yet.',
   'competition.noBracket': 'This competition has no bracket.',
+  'selection.flag': 'from the command line',
+  'selection.request': 'from the request',
+  'selection.env': 'from the environment',
+  'selection.experimental': 'experimental',
+  'selection.refused': 'Unknown competition "{value}". Use an alias ({aliases}) or an ESPN slug such as eng.1.',
+  'selection.none': 'No competition selected. Use an alias ({aliases}) or an ESPN slug such as eng.1.',
+  'team.roster': 'World Cup roster',
   'team.unknown': "No team called {team} in the competition's table or in its fixtures over the next {days} days.",
   'team.unknownNation': "No team called {team} among the World Cup's nations.",
   'roster.incomplete': "The competition's roster could not be read whole, so {team} could not be resolved; try the club's full name.",
@@ -71,7 +78,7 @@ type Dict = Record<keyof typeof EN, string>;
 const ES: Dict = {
   'bracket.title': 'Cuadro de eliminatorias',
   'bracket.stageTitle': 'Eliminatorias · {stage}',
-  'bracket.shareTitle': 'Cuadro de eliminatorias · 2026',
+  'bracket.shareTitle': 'Cuadro de eliminatorias',
   'bracket.degraded':
     'Marcadores en vivo no disponibles — solo estructura del cuadro, sin avances confirmados.',
   'bracket.standingsDegraded':
@@ -95,6 +102,13 @@ const ES: Dict = {
   'standings.empty': 'No hay clasificación disponible.',
   'competition.unsupported': 'Aún no disponible para esta competición.',
   'competition.noBracket': 'Esta competición no tiene cuadro de eliminatorias.',
+  'selection.flag': 'desde la línea de comandos',
+  'selection.request': 'desde la solicitud',
+  'selection.env': 'desde el entorno',
+  'selection.experimental': 'experimental',
+  'selection.refused': 'Competición desconocida "{value}". Usa un alias ({aliases}) o un slug de ESPN como eng.1.',
+  'selection.none': 'Ninguna competición seleccionada. Usa un alias ({aliases}) o un slug de ESPN como eng.1.',
+  'team.roster': 'Selecciones del Mundial',
   'team.unknown': 'Ningún equipo se llama {team} en la tabla de la competición ni en sus partidos de los próximos {days} días.',
   'team.unknownNation': 'Ninguna selección se llama {team} entre las del Mundial.',
   'roster.incomplete': 'No se pudo leer completa la lista de equipos de la competición, así que no se pudo identificar a {team}; prueba con el nombre completo del club.',
@@ -129,7 +143,7 @@ const ES: Dict = {
 const PT: Dict = {
   'bracket.title': 'Chave do mata-mata',
   'bracket.stageTitle': 'Mata-mata · {stage}',
-  'bracket.shareTitle': 'Chave do mata-mata · 2026',
+  'bracket.shareTitle': 'Chave do mata-mata',
   'bracket.degraded':
     'Placar ao vivo indisponível — apenas a estrutura da chave, sem avanços confirmados.',
   'bracket.standingsDegraded':
@@ -153,6 +167,13 @@ const PT: Dict = {
   'standings.empty': 'Não há classificação disponível.',
   'competition.unsupported': 'Ainda não disponível para esta competição.',
   'competition.noBracket': 'Esta competição não tem chave de mata-mata.',
+  'selection.flag': 'da linha de comando',
+  'selection.request': 'da solicitação',
+  'selection.env': 'do ambiente',
+  'selection.experimental': 'experimental',
+  'selection.refused': 'Competição desconhecida "{value}". Use um alias ({aliases}) ou um slug da ESPN como eng.1.',
+  'selection.none': 'Nenhuma competição selecionada. Use um alias ({aliases}) ou um slug da ESPN como eng.1.',
+  'team.roster': 'Seleções da Copa do Mundo',
   'team.unknown': 'Nenhum time chamado {team} na tabela da competição nem nos seus jogos dos próximos {days} dias.',
   'team.unknownNation': 'Nenhuma seleção chamada {team} entre as da Copa do Mundo.',
   'roster.incomplete': 'Não foi possível ler por completo a lista de times da competição, então {team} não pôde ser identificado; tente o nome completo do clube.',
@@ -187,7 +208,7 @@ const PT: Dict = {
 const FR: Dict = {
   'bracket.title': 'Tableau à élimination directe',
   'bracket.stageTitle': 'Éliminatoires · {stage}',
-  'bracket.shareTitle': 'Tableau à élimination directe · 2026',
+  'bracket.shareTitle': 'Tableau à élimination directe',
   'bracket.degraded':
     'Scores en direct indisponibles — structure du tableau seulement, aucune qualification confirmée.',
   'bracket.standingsDegraded':
@@ -211,6 +232,13 @@ const FR: Dict = {
   'standings.empty': 'Aucun classement disponible.',
   'competition.unsupported': 'Pas encore disponible pour cette compétition.',
   'competition.noBracket': 'Cette compétition n’a pas de tableau à élimination directe.',
+  'selection.flag': 'depuis la ligne de commande',
+  'selection.request': 'depuis la requête',
+  'selection.env': "depuis l'environnement",
+  'selection.experimental': 'expérimental',
+  'selection.refused': 'Compétition inconnue « {value} ». Utilisez un alias ({aliases}) ou un slug ESPN comme eng.1.',
+  'selection.none': 'Aucune compétition sélectionnée. Utilisez un alias ({aliases}) ou un slug ESPN comme eng.1.',
+  'team.roster': 'Sélections de la Coupe du monde',
   'team.unknown': 'Aucune équipe nommée {team} dans le classement de la compétition ni dans ses matchs des {days} prochains jours.',
   'team.unknownNation': 'Aucune nation nommée {team} parmi celles de la Coupe du monde.',
   'roster.incomplete': 'La liste des équipes de la compétition n’a pas pu être lue en entier : {team} n’a pas pu être identifié ; essayez le nom complet du club.',

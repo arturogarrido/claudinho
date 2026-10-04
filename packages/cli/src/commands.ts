@@ -52,6 +52,9 @@ import {
   marketLine,
   marketsCoverCompetition,
   marketScopeVerdict,
+  modeLine,
+  selectionExtras,
+  selectionRefusal,
   MARKETS_SCOPE_NOTE,
   marketSignalRendersFor,
   marketRelevant,
@@ -121,8 +124,11 @@ import { withPersistedBackoff } from './providerBackoff';
 
 /**
  * Command context. `adapter` is an optional injection seam: production leaves
- * it unset (commands build one from `cfg.source`), tests pass a fake so they
- * never touch the network.
+ * it unset (commands build one from `cfg.source` and `cfg.competition`), tests
+ * pass a fake so they never touch the network. An injected adapter must serve
+ * the config's competition: the selection says what the answer is for and the
+ * adapter reads it, so when the two disagree the command refuses before any
+ * read (`adapterFor`), and the body and its label can never disagree.
  */
 type Ctx = {
   cfg: CliConfig;
@@ -141,6 +147,13 @@ type Ctx = {
  * throttle it meets (audit A12; see providerBackoff.ts).
  */
 function adapterFor({ cfg, adapter, now }: Ctx): ProviderAdapter {
+  // An injected adapter for another competition would answer one competition
+  // under another's name: refused before it is wrapped or read.
+  if (adapter && adapter.competition !== cfg.competition) {
+    throw new InputError(
+      `The injected adapter serves ${adapter.competition}; the command selected ${cfg.competition}.`,
+    );
+  }
   return withPersistedBackoff(
     adapter ?? makeAdapter(cfg.source, { competition: cfg.competition }),
     cfg.source,
@@ -265,6 +278,23 @@ function emitJson(data: unknown): void {
   out(JSON.stringify(data, null, 2));
 }
 
+/**
+ * The mode line: which competition the answer is for, and where that choice
+ * came from when it was the flag or the environment (core `modeLine`). ONE
+ * dimmed line on every competition-answering TEXT answer, right after its
+ * header (first, where the answer has none). Never on `--json`, which carries
+ * the `competition` key instead ({@link competitionKey}); never on `share`,
+ * whose card names its competition in its title.
+ */
+function modeOut(cfg: CliConfig, c: Painter): void {
+  out(c.dim(`  ${modeLine(cfg.selection, cfg.lang)}`));
+}
+
+/** The structured twin of the mode line: `--json`'s `competition` key (core `selectionExtras`). */
+function competitionKey(cfg: CliConfig): ReturnType<typeof selectionExtras> {
+  return selectionExtras(cfg.selection);
+}
+
 /** A command refused input; the caller should stop and exit non-zero. */
 export class InputError extends Error {}
 
@@ -272,6 +302,8 @@ export class InputError extends Error {}
  * Validate shared inputs before a command runs:
  *  - an explicit `--tz` that's invalid → warn to stderr (non-fatal; core falls
  *    back to the system zone anyway).
+ *  - a refused competition (`--competition foo`) → throw InputError naming it
+ *    and the aliases, before any request.
  *  - an explicit date that isn't strict YYYY-MM-DD → throw InputError.
  */
 function precheck(cfg: CliConfig, t: Translator, date?: string): void {
@@ -281,23 +313,18 @@ function precheck(cfg: CliConfig, t: Translator, date?: string): void {
   if (cfg.tz && !isValidTimeZone(cfg.tz)) {
     process.stderr.write(t('warn.tz', { tz: cfg.tz }) + '\n');
   }
+  // A value that is neither an alias nor a slug (from `--competition` or
+  // CLAUDINHO_COMPETITION) is refused with the aliases, before any request:
+  // an unknown value is never a request. (What a valid one selects is said on
+  // stdout, by the mode line; nothing is warned on stderr.)
+  const refusal = selectionRefusal(cfg.selection, cfg.lang);
+  if (refusal !== undefined) throw new InputError(refusal);
   // An unknown --source/CLAUDINHO_SOURCE used to silently run ESPN — the flag
   // lied. Fail loud with the valid list (core makeAdapter also throws, as
   // defense in depth; this gives the localized, prefix-free message).
   if (!isKnownSource(cfg.source)) {
     throw new InputError(
       t('err.source', { source: cfg.source, sources: KNOWN_SOURCES.join(', ') }),
-    );
-  }
-  // Config-drift guard: a leftover CLAUDINHO_COMPETITION (e.g. from
-  // pre-tournament testing) silently points the live fetch at a different
-  // competition than the bundled schedule — fixtures render, scores never
-  // arrive. Warn loudly on user-facing commands; never on the statusline/hook
-  // hot path (those must stay single-line and silent).
-  const competition = cfg.competition;
-  if (!bundleApplies(competition)) {
-    process.stderr.write(
-      `claudinho: CLAUDINHO_COMPETITION=${competition} — live data follows a different competition than the bundled 2026 schedule.\n`,
     );
   }
   if (date !== undefined && !isValidDate(date)) {
@@ -411,6 +438,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
       marketComplete: market.complete,
       marketSignals: Object.fromEntries(market.signals),
       ...verdictExtras(day),
+      ...competitionKey(cfg),
     });
     return;
   }
@@ -421,6 +449,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   const title = date === undefined ? t('today.title') : t('today.on');
   out();
   out(header(`${title} · ${targetDate}`, c));
+  modeOut(cfg, c);
   out();
   if (todays.length === 0) {
     // A verdict (between editions) stands instead of the empty note. Where no
@@ -472,7 +501,7 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   const { matches, degraded, source } = live;
 
   if (cfg.json) {
-    emitJson({ degraded, source: source ?? null, matches, ...verdictExtras(live) });
+    emitJson({ degraded, source: source ?? null, matches, ...verdictExtras(live), ...competitionKey(cfg) });
     return;
   }
 
@@ -480,6 +509,7 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   const flags = flagsEnabled();
   out();
   out(header(t('live.title'), c));
+  modeOut(cfg, c);
   out();
   // Degraded ⇒ the live feed failed, NOT "nothing is on". Say so, so the empty
   // state can't be mistaken for "no matches in play right now".
@@ -536,6 +566,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
       ...(next.horizon ? { horizon: next.horizon } : {}),
       ...(next.season ? { season: next.season } : {}),
       ...verdictExtras(next),
+      ...competitionKey(cfg),
     });
     return;
   }
@@ -548,6 +579,8 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   const qualifiers = verdictQualifiers(next, cfg.lang);
   out();
   if (!fixture) {
+    // No header on an empty answer: the mode line comes first.
+    modeOut(cfg, c);
     for (const q of qualifiers) out(c.dim('  ' + q));
     const notice = verdictNotice(next, cfg.lang);
     if (notice === undefined && next.candidates && next.candidates.length > 0) {
@@ -583,6 +616,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
     return;
   }
   out(header(t('next.label', { team: label }), c));
+  modeOut(cfg, c);
   out();
   for (const q of qualifiers) out(c.dim('  ' + q));
   // One row: its home column is measured on it, like a list's.
@@ -612,10 +646,26 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   endScoreCommand(ctx);
 }
 
-/** `claudinho team <name|code>` — resolve a nation name/code to its FIFA code (offline). */
+/**
+ * `claudinho team <name|code>` — resolve a nation name/code to its FIFA code
+ * (offline). It reads the World Cup's roster whatever the selection, so it is
+ * not a competition-answering command: no mode line, no `competition` key.
+ * Under an EXPLICIT selection of another competition (the flag or the
+ * environment) it is refused, saying where a team's name goes (`next`, `share
+ * next`) and how to reach the roster (`--competition world-cup`); the default
+ * and an explicit World Cup answer, the roster named.
+ */
 export function cmdTeam(query: string | undefined, ctx: Ctx): void {
   const { cfg, t } = ctx;
   precheck(cfg, t);
+  const selection = cfg.selection;
+  if (
+    selection.kind === 'selected' &&
+    (selection.chosenBy === 'flag' || selection.chosenBy === 'env') &&
+    !bundleApplies(selection.slug)
+  ) {
+    throw new InputError(t('team.worldCupOnly'));
+  }
   const q = (query ?? '').trim();
   const { team, matches } = lookupTeam(q);
 
@@ -633,6 +683,9 @@ export function cmdTeam(query: string | undefined, ctx: Ctx): void {
     return `  ${flag}${c.bold(tm.name)}  ${c.dim(tm.code + grp)}`;
   };
   out();
+  // Which roster answered: the World Cup's, whatever competition is selected
+  // (core's sentence, the one MCP `get_team` prints too).
+  out(c.dim(`  ${i18n(cfg.lang, 'team.roster')}`));
   if (!q) {
     out('  ' + c.dim(t('team.usage')));
   } else if (team) {
@@ -669,6 +722,7 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
       source: source ?? null,
       tables: key ? (json[0] ?? null) : json,
       ...verdictExtras(result),
+      ...competitionKey(cfg),
     });
     return;
   }
@@ -677,6 +731,7 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
   const flags = flagsEnabled();
   if (tables.length === 0) {
     out();
+    modeOut(cfg, c);
     // A degraded empty result means the provider was unavailable and no bundled
     // fallback belongs to this competition. Do not turn that into "no group".
     out(
@@ -695,6 +750,9 @@ export async function cmdTable(group: string | undefined, ctx: Ctx): Promise<voi
     out(disclaimer(t, c));
     return;
   }
+  // One line for the answer, before the tables (each has its own title).
+  out();
+  modeOut(cfg, c);
   for (const { group: g, label, rows, partial } of tables) {
     out();
     // A lettered group keeps its localized title; any other table is the
@@ -777,11 +835,12 @@ export async function cmdBracket(
   if (notice !== undefined) {
     // No World Cup topology off the bundle: the notice, nothing else (A03).
     if (cfg.json) {
-      emitJson({ degraded, standingsDegraded, source: null, view, ...verdictExtras(bracket) });
+      emitJson({ degraded, standingsDegraded, source: null, view, ...verdictExtras(bracket), ...competitionKey(cfg) });
       return;
     }
     const c = painterFor(cfg);
     out();
+    modeOut(cfg, c);
     out(c.dim(`  ${notice}`));
     out();
     out(disclaimer(t, c));
@@ -795,6 +854,7 @@ export async function cmdBracket(
       source: source ?? null,
       view,
       ...verdictExtras(bracket),
+      ...competitionKey(cfg),
     });
     return;
   }
@@ -824,6 +884,7 @@ export async function cmdBracket(
       : i18n(cfg.lang, 'bracket.title'),
     c,
   ));
+  modeOut(cfg, c);
   // The window was not whole: said before the tree it qualifies, which is kept.
   for (const q of verdictQualifiers(bracket, cfg.lang)) out(c.dim(`  ${q}`));
   out(body);
@@ -850,6 +911,13 @@ export function cmdPrompt(
     // hang the statusline; PR #77's 62-min Windows CI hang was this). The sync
     // fallback remains for direct in-process callers (tests mock it).
     const payload = 'cursor' in io ? io.cursor : readCursorPayload();
+    // A selection that is no competition (an unknown CLAUDINHO_COMPETITION) is
+    // contained here: the empty line, no cache read, no refresher, never an
+    // error (the statusline must always succeed).
+    if (cfg.selection.kind !== 'selected') {
+      out(renderPromptOutput('⚽ —', payload));
+      return;
+    }
     // Name-or-code, like the commands (offline lookup — hot-path safe).
     const team = resolveEnvTeam(process.env.CLAUDINHO_TEAM, cfg.competition);
     const compact = !['0', 'false', 'no'].includes(
@@ -894,6 +962,9 @@ export function cmdPrompt(
  */
 export function cmdHook({ cfg }: Ctx): void {
   try {
+    // A selection that is no competition: nothing (zero tokens), no cache
+    // read, no refresher; never an error that could block the prompt.
+    if (cfg.selection.kind !== 'selected') return;
     // Name-or-code, like the commands (offline lookup — hot-path safe).
     const team = resolveEnvTeam(process.env.CLAUDINHO_TEAM, cfg.competition);
     // Only trust a snapshot fetched for this invocation's source + competition.
@@ -921,6 +992,9 @@ export function cmdHook({ cfg }: Ctx): void {
 
 /** `claudinho _refresh` — internal cold-path cache refresher. */
 export async function cmdRefresh({ cfg }: Ctx): Promise<void> {
+  // Spawned with the slug its parent resolved; a selection that is no
+  // competition refreshes nothing.
+  if (cfg.selection.kind !== 'selected') return;
   await runRefresh({ source: cfg.source, competition: cfg.competition });
 }
 
@@ -1057,6 +1131,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
       // The span a whole read searched for an id it did not hold (a plain field).
       ...(found.window ? { window: found.window } : {}),
       ...verdictExtras(found),
+      ...competitionKey(cfg),
     });
     return;
   }
@@ -1066,6 +1141,8 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   const qualifiers = verdictQualifiers(found, cfg.lang);
   out();
   if (!match) {
+    // No header on an empty answer: the mode line comes first.
+    modeOut(cfg, c);
     for (const q of qualifiers) out(c.dim('  ' + q));
     // An outage is never "no such match"; a verdict, then the span a whole
     // read searched (or "none read" for one that was not whole), then "no match found".
@@ -1090,6 +1167,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   const attribution = dayAttribution(found, [match], cfg.lang);
   if (attribution.unserved) out(c.dim('  ' + attribution.unserved));
   out(header(`${match.home.name} ${scoreline(match)} ${match.away.name}`, c));
+  modeOut(cfg, c);
   // The stage and the location, joined with the empty ones dropped: an OTHER
   // with no words, or a record with no venue, leaves no dangling separator.
   const where = joinSegments([stageLabelI18n(cfg.lang, match), matchLocation(match)]);
@@ -1208,11 +1286,14 @@ export async function cmdMarkets(
         // Review P2 on #129: a JSON consumer must tell "not available for this
         // competition" from a successful empty result; the text branch already did.
         ...verdictExtras(picked),
+        ...competitionKey(cfg),
       });
       return;
     }
     const c = painterFor(cfg);
     out();
+    // No header before the answer's own: the mode line comes first.
+    if (!fixture) modeOut(cfg, c);
     // The fixture read was not whole (either of the two reads the pick was
     // made from): said before the answer, apart from the market's own
     // completeness, which is about the market requests.
@@ -1228,6 +1309,7 @@ export async function cmdMarkets(
       );
     } else {
       out(header(marketHeaderLine(fixture, cfg), c));
+      modeOut(cfg, c);
       out();
       if (shown) printMarketBlock(fixture, shown, c);
       else if (!market.complete) {
@@ -1256,11 +1338,13 @@ export async function cmdMarkets(
           complete: true,
           signal: null,
           ...verdictExtras(scope),
+          ...competitionKey(cfg),
         });
         return;
       }
       const c = painterFor(cfg);
       out();
+      modeOut(cfg, c);
       out(c.dim('  ' + outOfScope));
       out();
       out(disclaimer(t, c));
@@ -1283,11 +1367,14 @@ export async function cmdMarkets(
         complete: market.complete,
         signal: shown ?? null,
         ...verdictExtras(found),
+        ...competitionKey(cfg),
       });
       return;
     }
     const c = painterFor(cfg);
     out();
+    // No header before the answer's own: the mode line comes first.
+    if (!match) modeOut(cfg, c);
     // The fixture read was not whole: said before the answer (as `match` says
     // it), apart from the market's own completeness.
     for (const q of verdictQualifiers(found, cfg.lang)) out(c.dim('  ' + q));
@@ -1295,6 +1382,7 @@ export async function cmdMarkets(
       out(c.dim('  ' + (verdictNotice(found, cfg.lang) ?? t('match.none', { id: target }))));
     } else {
       out(header(marketHeaderLine(match, cfg), c));
+      modeOut(cfg, c);
       out();
       if (shown) printMarketBlock(match, shown, c);
       else if (!market.complete) {
@@ -1341,6 +1429,7 @@ export async function cmdMarkets(
       // Off the markets' scope, "none" means "not read for this competition".
       ...verdictExtras(marketScopeVerdict(cfg.competition, rows.length)),
       ...verdictExtras(fixtureRead),
+      ...competitionKey(cfg),
     });
     return;
   }
@@ -1348,6 +1437,7 @@ export async function cmdMarkets(
   const c = painterFor(cfg);
   out();
   out(header(`Market signals · ${date}`, c));
+  modeOut(cfg, c);
   out();
   // The fixture read was not whole: said before the answer, apart from the
   // market's own completeness.
@@ -1469,6 +1559,7 @@ function emitMatchCard(
       ...card.span,
       // The structured card keeps the verdict the snippet's note carries.
       ...card.verdict,
+      ...competitionKey(ctx.cfg),
     },
     copy,
   );
@@ -1496,6 +1587,7 @@ function emitTableCard(
       // The structured card keeps the verdict the snippet warns about (A01).
       tables: card.tables,
       ...card.verdict,
+      ...competitionKey(ctx.cfg),
     },
     copy,
   );
@@ -1523,6 +1615,7 @@ function emitBracketCard(
       view: card.input.view,
       // Top-level, like `bracket --json`.
       ...card.verdict,
+      ...competitionKey(ctx.cfg),
     },
     copy,
   );
@@ -1555,7 +1648,9 @@ export async function cmdShare(
   };
   const copy = opts.copy === true;
 
-  // The competition goes on the card: off the bundle its run cue names it.
+  // The competition goes on the card: its title names it and its run cue
+  // selects it (`--competition <alias>`), whatever the recipient follows. No
+  // mode line: the card is the artifact, printed and copied as it is.
   const where = { tz: cfg.tz, locale: cfg.lang, competition: cfg.competition };
 
   // share live — lean: no market enrichment (and no extra fetch).
@@ -1820,6 +1915,8 @@ export function cmdVibe(ctx: Ctx): void {
   const line = pool[Math.floor(Math.random() * pool.length)];
   let liveSeg: string | undefined;
   try {
+    // A selection that is no competition: the line with no live segment, no cache read.
+    if (cfg.selection.kind !== 'selected') throw new Error('no competition');
     const state = readCurrentState(cfg.source, cfg.competition);
     liveSeg = vibeLiveSegment(
       // Sealed with the competition's written kind, like the statusline's.

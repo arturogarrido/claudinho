@@ -15,9 +15,10 @@ import { cmdHook } from '../src/commands';
 // The hook fires a detached refresher when one is due; never from a test worker.
 vi.mock('node:child_process', () => ({ spawn: vi.fn(() => ({ unref: vi.fn() })) }));
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
-const cfg: CliConfig = { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off' };
+const cfg: CliConfig = described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off' });
 
 /** A LaLiga match in play: ESPN's Espanyol is `ESP`, which is also Spain's code. */
 function espanyolLive(now: Date): Match {
@@ -72,7 +73,7 @@ describe('cmdHook — the roster is pinned only for the competition it describes
       source: 'espn',
       competition: 'esp.1',
     });
-    cmdHook({ cfg: { ...cfg, competition: 'esp.1' }, t: makeT('en') });
+    cmdHook({ cfg: described({ ...cfg, competition: 'esp.1', selection: undefined }), t: makeT('en') });
     const out = writes.join('');
     expect(out).toContain('Espanyol 1–0 Girona');
     expect(out).not.toContain('Spain');

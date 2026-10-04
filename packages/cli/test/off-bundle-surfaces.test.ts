@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EspnAdapter, type ProviderAdapter } from '@claudinho/core';
 import { cmdBracket, cmdLive, cmdMarkets, cmdMatch, cmdNext, cmdShare, cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 const STATS = ['gamesPlayed', 'wins', 'ties', 'losses', 'pointsFor', 'pointsAgainst', 'pointDifferential', 'points', 'rank'];
@@ -60,7 +61,7 @@ function feed(competition: string, opts: FeedOpts = {}) {
 }
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'eng.1', flavor: 'off', markets: false, ...over };
+  return described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'eng.1', flavor: 'off', markets: false, ...over });
 }
 const ctxFor = (adapter: ProviderAdapter, over: Partial<CliConfig> = {}) => ({
   cfg: cfg({ competition: adapter.competition, ...over }),
@@ -149,14 +150,15 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
   });
 
   it('the share cards’ run cue carries the competition off the bundle (review round 2)', async () => {
+    // 0.11 · 2.5a: the cue selects the competition by alias (`--competition premier-league`).
     await cmdShare('next', 'Arsenal', {}, ctxFor(feed('eng.1', { events: upcoming }).adapter));
-    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli next/);
+    expect(text()).toContain('npx @claudinho/cli --competition premier-league next');
     writes = [];
     await cmdShare('41', undefined, {}, ctxFor(feed('eng.1', { events: [{ id: '41', date: '2026-10-17T14:00Z', home: LIV, away: ARS }] }).adapter));
-    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli match 41/);
+    expect(text()).toContain('npx @claudinho/cli --competition premier-league match 41');
     writes = [];
     await cmdShare('live', undefined, {}, ctxFor(feed('eng.1', { events: upcoming }).adapter));
-    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli live/);
+    expect(text()).toContain('npx @claudinho/cli --competition premier-league live');
   });
 
   it('a roster that could not be read whole is its own sentence, not an outage; a code hit then needs the full name (review round 2)', async () => {
