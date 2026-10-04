@@ -575,11 +575,13 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
  * JSON, another format version, over the reader's bound, another scope's);
  * and an entry whose bit is clear where a file made with those bits reads
  * back (an inherited allow-read entry on the directory). The look cannot see
- * a flag the system keeps beside the mode (an immutable or append-only flag
- * on a file that opens), so that entry is not gated although the rename over
- * it is refused: its publish is one that did not happen, and the record left
- * as its admission paces the next cycle where the record works; where it does
- * not, each cycle runs as before this record existed. Gating the states a
+ * a flag the system keeps beside the mode (an immutable or append-only flag),
+ * so an entry under one is answered as it would be without it: where the look
+ * finds it healable it is not gated although the rename over it is refused:
+ * its publish is one that did not happen, and the record left as its
+ * admission paces the next cycle where the record works; where it does not,
+ * each cycle runs as before this record existed; where the look finds it
+ * unhealable it is gated like the unflagged entry. Gating the states a
  * publish heals left a scope whose record could not be written or read with
  * no usable snapshot ever (the statusline
  * rendering with no snapshot: on the World Cup the bundled schedule's

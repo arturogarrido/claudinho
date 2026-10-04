@@ -502,10 +502,12 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
 // another format version, larger than the reader's bound, another scope's);
 // and an entry whose bit is clear where a file made with those bits reads
 // back. The look cannot see a flag the system keeps beside the mode (an
-// immutable or append-only flag, on a file that opens and this reader
-// rejected: the rename is refused), so that entry is not gated: its cycle goes on, its publish is one that did
-// not happen (the write throws), and the record left as its admission paces it
-// (see the stated limit). A believed record that is not due stops the cycle in
+// immutable or append-only flag: the rename is refused), so an entry under
+// one is answered as it would be without it: where the look finds it healable
+// (one of the states just listed) it is not gated: its cycle goes on, its
+// publish is one that did not happen (the write throws), and the record left
+// as its admission paces it (see the stated limit); where it does not, it is
+// gated like the unflagged entry. A believed record that is not due stops the cycle in
 // every case.
 // When the cycle's snapshot then reads back usable, the record is settled to
 // `count: 0`. `count` is "admissions since the last persisted reset": a
@@ -537,11 +539,13 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
 // `claimLock` claims nothing). In every other state the cycle proceeds as it
 // did before this record existed, and its publish ends the loop where the
 // rename lands. Where the system refuses the rename for a reason the look
-// cannot see (an immutable or append-only flag on a file that opens), the
-// publish never lands. A file under such a flag that this reader REJECTED is
-// a cycle with no readable snapshot: with a working record its cycles are
-// paced; with a record nobody can read, each tick's cycle runs as before this
-// record existed (asking the provider whenever its lane has a read due). One
+// cannot see (an immutable or append-only flag), the publish never lands, and
+// the entry is answered as it would be without the flag. One under such a
+// flag that the look finds healable and this reader REJECTED is a cycle with
+// no readable snapshot: with a working record its cycles are paced; with a
+// record nobody can read, each tick's cycle runs as before this record
+// existed (asking the provider whenever its lane has a read due); one the
+// look finds unhealable is gated like the unflagged entry. One
 // that READS is outside the record entirely (the record is read only when no
 // snapshot could be read): the provider is asked whenever a read is due and
 // the snapshot is never replaced, as before this record existed.
@@ -651,8 +655,10 @@ export function settleAttempt(source: string, competition: string, now: number):
  * far as the look can SEE: it answers from the entry's kind, its own mode
  * bits, and a probe of what a new file there reads back as, and cannot see a
  * flag the system keeps beside the mode (an immutable or append-only flag:
- * Node's `lstat` reports none), so a file that opens under such a flag is
- * `false` here although the rename over it is refused. A
+ * Node's `lstat` reports none), so an entry under such a flag is answered
+ * exactly as it would be without it: `false` where the look finds it healable
+ * (its owner-read bit set, or a file made there with its bits reads back),
+ * although the rename over it is refused, and `true` where it does not. A
  * publish (an atomic write, its temporary file made in the cache directory)
  * heals what its rename replaces with a file this process can read: the
  * replacement is ours, keeps the mode bits of whatever it replaces but a link
