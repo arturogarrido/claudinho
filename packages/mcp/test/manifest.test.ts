@@ -42,6 +42,13 @@ describe('mcpb manifest', () => {
     expect(blurb).toMatch(/list_competitions|Premier League|premier-league/);
   });
 
+  it('its one-line description names the competition followed, not only the 2026 tournament, and keeps the disclaimer (0.11 2.5a)', () => {
+    const line = (manifest as unknown as { description?: string }).description ?? '';
+    expect(line).not.toMatch(/2026 men's football tournament/);
+    expect(line).toMatch(/competition/);
+    expect(line).toMatch(/Not affiliated with FIFA or Anthropic/);
+  });
+
   it('its blurbs do not contradict the tools: an empty live list may be a read that was not whole (0.11 2.1d)', () => {
     // Found in review: the manifest is a second copy of the descriptions, and `get_live`'s said "empty when none
     // are live" after the tool learned to answer an empty list with `partial` ("no match in play was read").
