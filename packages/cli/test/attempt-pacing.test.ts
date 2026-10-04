@@ -398,10 +398,13 @@ describe('the settlement', () => {
     expect(asked.length).toBeGreaterThan(0);
     expect(readBackoffNote(SOURCE, WC, LIVE)).toBeDefined();
     expect(readBackoffNote(SOURCE, WC, LIVE)).toBeGreaterThan(LIVE);
-    // A failed admission (the directory still there, the snapshot unreadable again, no backoff) makes no request at all.
+    // A failed admission (the directory still there, a snapshot that cannot be OPENED, no backoff) makes no
+    // request at all. (A snapshot that opens and is rejected, bad JSON, is healable and proceeds: round 2,
+    // rule 12. A directory at the snapshot's path cannot be opened on any platform.)
     asked = [];
     rmSync(backoffNotePath(SOURCE, WC), { force: true });
-    writeFileSync(cachePath(SOURCE, WC), '{ not json');
+    rmSync(cachePath(SOURCE, WC), { force: true });
+    mkdirSync(cachePath(SOURCE, WC));
     await refresh(LIVE + 10 * MIN);
     expect(asked).toHaveLength(0);
   });
