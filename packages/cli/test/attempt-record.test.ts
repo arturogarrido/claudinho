@@ -319,6 +319,49 @@ describe('the look is asked lazily: no probe before the not-due return, none on 
   });
 });
 
+// The coder's addition (round 6): the same two cells on the three other call sites of the gate (the cases above
+// drive the bundle lane in a live window): the idle writer, the unknown-source idle publish, the off-bundle lane.
+describe('the look is asked lazily on every lane: the idle writer, the unknown source, off the bundle', () => {
+  const LANES = [
+    { lane: 'the idle writer (a quiet morning)', source: SOURCE, competition: WC, at: Date.parse('2026-06-12T09:00:00Z') },
+    { lane: 'the unknown-source idle publish', source: 'nope', competition: WC, at: NOW },
+    { lane: 'off the bundle (discovery due)', source: SOURCE, competition: 'mex.1', at: Date.parse('2026-10-10T15:00:00Z') },
+  ];
+  const probeOpens = () => opens.filter((p) => p.endsWith('.probe')).length;
+  const setUp = (source: string, competition: string, record: unknown) => {
+    vi.stubGlobal('fetch', async () =>
+      new Response(JSON.stringify({ leagues: [{ season: { year: 2026, displayName: 'Season' } }], events: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    writeState({ ...snapshot(), source, competition });
+    chmodSync(cachePath(source, competition), 0o000);
+    expect(readCurrentState(source, competition)).toBeUndefined();
+    writeFileSync(attemptRecordPath(source, competition), JSON.stringify(record));
+  };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  for (const { lane, source, competition, at } of LANES) {
+    it.skipIf(!unprivileged)(`${lane}: a record not due makes no probe and is left as it was; an admitted cycle makes no probe`, async () => {
+      setUp(source, competition, { at: iso(at - 10_000), count: 1 }); // due at +1 min
+      const before = readFileSync(attemptRecordPath(source, competition), 'utf8');
+      opens.length = 0;
+      await runRefresh({ source, competition, now: new Date(at), jitterMs: 0 });
+      expect(probeOpens()).toBe(0);
+      expect(readFileSync(attemptRecordPath(source, competition), 'utf8')).toBe(before);
+      // Due now: admitted (count + 1), with no look.
+      writeFileSync(attemptRecordPath(source, competition), JSON.stringify({ at: iso(at - 2 * 60 * MIN), count: 6 }));
+      opens.length = 0;
+      await runRefresh({ source, competition, now: new Date(at), jitterMs: 0 });
+      expect(probeOpens()).toBe(0);
+      expect(readAttemptRecord(source, competition, at)).toEqual({ at, count: 7 });
+    });
+  }
+});
+
 describe('a cycle with a readable snapshot opens the record zero times (acceptance 5, the cycle side)', () => {
   it('a stale readable snapshot in a live window: the lane fetches, and the record on disk is never opened', async () => {
     vi.stubGlobal('fetch', async () =>
