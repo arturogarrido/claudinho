@@ -114,10 +114,15 @@ const OWNER_READ = 0o400;
  * the bits. True exactly when the read open succeeded; false on any failure (a
  * create that fails: the directory refuses a new file, so a publish's rename
  * would fail too; a read open that fails: the replacement would not read
- * back). The probe is removed whatever happened once this call created it (a
- * create that failed made nothing; a name that existed is not this call's).
- * Its name ends in `.probe`, like no file anyone keeps. Never throws, never
- * waits (a regular file of this process's own, opened non-blocking).
+ * back). Once this call created the probe it removes it, whatever the answer,
+ * where the directory lets it be removed (a create that failed made nothing; a
+ * name that existed is not this call's). A crash between its create and its
+ * removal, or an entry that denies its deletion (an inherited deny-delete
+ * entry: the removal fails, and is ignored), leaves it behind, at most one
+ * file per look, as the atomic writer's temporary file can be left; nothing
+ * reads or removes it (every file kept beside it is read by its exact name,
+ * and its name ends in `.probe`, like no file anyone keeps). Never throws,
+ * never waits (a regular file of this process's own, opened non-blocking).
  */
 function replacementReadsBack(path: string, mode: number): boolean {
   const probe = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.probe`;
@@ -162,7 +167,8 @@ function replacementReadsBack(path: string, mode: number): boolean {
  * bit decides nothing on its own where it is clear: there the look MEASURES
  * whether a file made beside the path with those bits reads back, before any
  * open of the entry (a probe, made with those bits, opened, and removed:
- * nothing is left behind). Where it is set the replacement is taken to read
+ * nothing is left behind but where a crash interrupts it or the directory
+ * denies its deletion, at most one file per look). Where it is set the replacement is taken to read
  * back (steps 5 and 6; a directory whose inherited entries deny a new file a
  * read is not measured there). In this order:
  * 1. the `lstat` fails: no entry → `absent` (a rename creates a fresh file);

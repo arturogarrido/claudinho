@@ -173,10 +173,13 @@ export interface RefreshOpts {
  * reads, the off-bundle discovery and live reads, both idle writers, and the
  * unknown-source idle publish. Under the lock, in this order
  * (`admitNoBaseCycle`, then `settleNoBaseCycle`):
- *   1. the record believed and not due → return: nothing written, nothing asked;
+ *   1. the record believed and not due → return: nothing written, nothing
+ *      looked at, nothing asked;
  *   2. RECORD the attempt (`admitAttempt`: `{ at, count + 1 }` written and read
- *      back). The gate fails closed only where the look sees that a publish
- *      could not heal (`snapshotUnhealable`): with a directory, or an entry that is not a
+ *      back); recorded, the cycle goes on with no look. Only an attempt that
+ *      could not be recorded asks the look, last: the gate fails closed only
+ *      where the look sees that a publish could not heal
+ *      (`snapshotUnhealable`): with a directory, or an entry that is not a
  *      link whose own mode denies its owner a read (a regular file, a pipe, a
  *      socket: the replacement keeps the bits) where a file made there with
  *      those bits does not read back (measured: the directory's inherited
@@ -229,7 +232,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
           // otherwise it goes on whether or not the attempt was recorded. A publish that did not happen (refused: an older snapshot's throttle could not be noted)
           // leaves that snapshot, whose deadline every trigger still reads;
           // nothing was asked, so there is no throttle to settle.
-          if (!readCurrentState(source, competition) && admitNoBaseCycle(source, competition, nowMs, snapshotUnhealable(source, competition))) {
+          if (!readCurrentState(source, competition) && admitNoBaseCycle(source, competition, nowMs, () => snapshotUnhealable(source, competition))) {
             admitted = true;
             publishState(
               {
@@ -286,7 +289,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     let admitted = false;
     try {
       if (readBase()) return;
-      if (!admitNoBaseCycle(source, competition, nowMs, snapshotUnhealable(source, competition))) return;
+      if (!admitNoBaseCycle(source, competition, nowMs, () => snapshotUnhealable(source, competition))) return;
       admitted = true;
       // A publish that did not happen (refused: an older snapshot's throttle
       // could not be noted, so that snapshot stays and still carries it) needs
@@ -368,7 +371,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     // recorded: nothing is done where a publish could not heal what is at the
     // snapshot's path (`snapshotUnhealable`); otherwise the cycle goes on.
     if (base === undefined) {
-      if (!admitNoBaseCycle(source, competition, nowMs, snapshotUnhealable(source, competition))) return;
+      if (!admitNoBaseCycle(source, competition, nowMs, () => snapshotUnhealable(source, competition))) return;
       admitted = true;
     }
     const { needLive, needFixtures } = plan(base);
@@ -541,14 +544,18 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
 /**
  * The gate of a cycle whose base read is undefined (0.11, ledger row D8),
  * under the lock and before anything else the cycle does. One rule for every
- * lane; `unhealable` is whether the look SEES that a publish could not heal
+ * lane; `unhealable` asks whether the look SEES that a publish could not heal
  * what is at the snapshot's path (`snapshotUnhealable`: a directory, or an
  * entry that is not a link whose own mode denies its owner a read where a
- * file made there with those bits does not read back). False (the caller then
- * publishes nothing, asks nothing, and releases the lock):
+ * file made there with those bits does not read back). It is a function,
+ * asked LAST and only there: once the record was found due and the attempt
+ * could not be recorded, the one case its answer changes. A record that is
+ * not due returns with nothing written and nothing looked at, and an admitted
+ * cycle makes no look (no probe). False (the caller then publishes nothing,
+ * asks nothing, and releases the lock):
  * - when the scope's attempt record is believed and not due (nothing is
- *   written), in every case: a snapshot that is absent or rejected, with a
- *   working record, stays paced;
+ *   written, nothing looked at), in every case: a snapshot that is absent or
+ *   rejected, with a working record, stays paced;
  * - when the state is unhealable and the attempt cannot be made visible
  *   (`admitAttempt`: the record written is not the one read back). A publish
  *   cannot repair either state (an atomic write's rename cannot replace a
@@ -579,10 +586,11 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
  * countdown, `live · syncing…` or its sign-off; off it `⚽ —`; until the
  * record was removed too), where the base healed in a cycle.
  */
-function admitNoBaseCycle(source: string, competition: string, nowMs: number, unhealable: boolean): boolean {
+function admitNoBaseCycle(source: string, competition: string, nowMs: number, unhealable: () => boolean): boolean {
   if (!attemptDue(readAttemptRecord(source, competition, nowMs), nowMs)) return false;
-  const recorded = admitAttempt(source, competition, nowMs) !== undefined;
-  return recorded || !unhealable;
+  if (admitAttempt(source, competition, nowMs) !== undefined) return true;
+  // The look last, and only here: its answer changes the gate only for an attempt that could not be recorded.
+  return !unhealable();
 }
 
 /**
@@ -736,7 +744,7 @@ async function refreshOffBundle(c: {
     // stops the cycle only where a publish could not heal what is at the
     // snapshot's path (`snapshotUnhealable`).
     if (base === undefined) {
-      if (!admitNoBaseCycle(source, competition, nowMs, snapshotUnhealable(source, competition))) return;
+      if (!admitNoBaseCycle(source, competition, nowMs, () => snapshotUnhealable(source, competition))) return;
       admitted = true;
     }
     const { view, needDiscovery, needLive } = plan(base);
