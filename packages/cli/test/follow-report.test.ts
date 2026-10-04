@@ -502,3 +502,50 @@ describe('with-file sentences keep the saved choice (the fourth reader\'s round-
     delete process.env.CLAUDINHO_COMPETITION;
   });
 });
+
+describe('the team sentence promises nothing the next command cannot reach', () => {
+  it('when the next command stops on the competition (refused environment, nothing chosen), the team sentences say "once a competition is chosen", never "while it is"', async () => {
+    await cmdFollow('world-cup', { team: 'Spain' }, ctxOf());
+    process.env.CLAUDINHO_TEAM = 'Mexico';
+    // A refused environment: the next command refuses before reaching the team.
+    process.env.CLAUDINHO_COMPETITION = 'foo';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION is refused/);
+    expect(text()).toMatch(/CLAUDINHO_TEAM is set, and the team-taking commands take it as their team once a competition is chosen\./);
+    expect(text()).not.toMatch(/while it is\.$/m);
+    expect(text()).not.toMatch(/wins over the saved team/);
+    // The JSON still names the source as it is.
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup', json: true }));
+    expect(JSON.parse(text()).sources).toEqual({ flag: 'fifa.world', team: 'Mexico' });
+    delete process.env.CLAUDINHO_COMPETITION;
+    // Nothing chosen (no file): under a flag, and alone.
+    await cmdFollow('off', {}, ctxOf());
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));
+    expect(text()).toMatch(/without it nothing is chosen\./);
+    expect(text()).toMatch(/take it as their team once a competition is chosen\./);
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/take it as their team once a competition is chosen\./);
+    expect(text()).not.toMatch(/while it is/);
+    // An unreadable value, the same: refused once a competition is chosen.
+    process.env.CLAUDINHO_TEAM = '   ';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/CLAUDINHO_TEAM is set but names no team; the team-taking commands refuse it once a competition is chosen\./);
+    expect(text()).not.toMatch(/refuse it while it is set/);
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ json: true }));
+    expect(JSON.parse(text()).refused).toEqual({ team: '' });
+    // When the next command reaches the team, the "while it is" sentences stand.
+    process.env.CLAUDINHO_TEAM = 'Mexico';
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/take it as their team while it is\./);
+    delete process.env.CLAUDINHO_COMPETITION;
+    delete process.env.CLAUDINHO_TEAM;
+  });
+});
