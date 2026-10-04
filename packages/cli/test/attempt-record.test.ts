@@ -11,7 +11,7 @@
  * admission's visibility, and the hot path's order (the lock, then the record,
  * then the note). The refresher's cycles are in `attempt-pacing.test.ts`.
  */
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -307,15 +307,23 @@ describe('the look is asked lazily: no probe before the not-due return, none on 
     expect(readAttemptRecord(SOURCE, WC, NOW)).toEqual({ at: NOW, count: 7 }); // admitted, not settled
   });
 
-  it.skipIf(!unprivileged)('a record that cannot be made visible: the look runs, probes once, and gates (nothing published, nothing asked)', async () => {
-    fetchNothing();
+  it.skipIf(!unprivileged)('a record that cannot be made visible: the look runs, probes exactly once, and gates (nothing published, nothing asked)', async () => {
+    const asked = vi.fn(async () =>
+      new Response(JSON.stringify({ leagues: [{ season: { year: 2026, displayName: '2026 World Cup' } }], events: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', asked);
     unreadableSnapshot();
+    const inode = statSync(cachePath(SOURCE, WC)).ino;
     mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
     opens.length = 0;
     await runRefresh({ source: SOURCE, competition: WC, now: new Date(NOW), jitterMs: 0 });
-    expect(probeOpens()).toBeGreaterThan(0);
+    expect(probeOpens()).toBe(2); // one probe: its create and its read open
+    expect(asked).not.toHaveBeenCalled();
+    expect(statSync(cachePath(SOURCE, WC)).ino).toBe(inode); // not replaced
     expect(readdirSync(join(dir, 'claudinho')).filter((n) => n.endsWith('.probe'))).toHaveLength(0);
-    expect(readCurrentState(SOURCE, WC)).toBeUndefined();
   });
 });
 
