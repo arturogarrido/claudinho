@@ -33,6 +33,8 @@ function cfg(over: Partial<CliConfig> = {}): CliConfig {
 /** Offline adapter: no fixtures, no live — post-tournament reality, zero network. */
 const adapter = {
   name: 'espn',
+  // It serves the World Cup, the config's competition (0.11 · 2.5a: an adapter for another is refused).
+  competition: 'fifa.world',
   fetchWindow: async () => [],
   fetchLive: async () => [],
   fetchGroupMap: async () => ({}),

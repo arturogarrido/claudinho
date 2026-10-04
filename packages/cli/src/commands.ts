@@ -124,8 +124,11 @@ import { withPersistedBackoff } from './providerBackoff';
 
 /**
  * Command context. `adapter` is an optional injection seam: production leaves
- * it unset (commands build one from `cfg.source`), tests pass a fake so they
- * never touch the network.
+ * it unset (commands build one from `cfg.source` and `cfg.competition`), tests
+ * pass a fake so they never touch the network. An injected adapter must serve
+ * the config's competition: the selection says what the answer is for and the
+ * adapter reads it, so when the two disagree the command refuses before any
+ * read (`adapterFor`), and the body and its label can never disagree.
  */
 type Ctx = {
   cfg: CliConfig;
@@ -144,6 +147,13 @@ type Ctx = {
  * throttle it meets (audit A12; see providerBackoff.ts).
  */
 function adapterFor({ cfg, adapter, now }: Ctx): ProviderAdapter {
+  // An injected adapter for another competition would answer one competition
+  // under another's name: refused before it is wrapped or read.
+  if (adapter && adapter.competition !== cfg.competition) {
+    throw new InputError(
+      `The injected adapter serves ${adapter.competition}; the command selected ${cfg.competition}.`,
+    );
+  }
   return withPersistedBackoff(
     adapter ?? makeAdapter(cfg.source, { competition: cfg.competition }),
     cfg.source,
@@ -672,8 +682,9 @@ export function cmdTeam(query: string | undefined, ctx: Ctx): void {
     return `  ${flag}${c.bold(tm.name)}  ${c.dim(tm.code + grp)}`;
   };
   out();
-  // Which roster answered: the World Cup's, whatever competition is selected.
-  out(c.dim(`  ${t('team.roster')}`));
+  // Which roster answered: the World Cup's, whatever competition is selected
+  // (core's sentence, the one MCP `get_team` prints too).
+  out(c.dim(`  ${i18n(cfg.lang, 'team.roster')}`));
   if (!q) {
     out('  ' + c.dim(t('team.usage')));
   } else if (team) {
