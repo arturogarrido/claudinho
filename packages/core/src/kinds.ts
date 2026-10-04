@@ -22,9 +22,12 @@ export type TeamKind = 'nation' | 'club';
 export type CompetitionKind = 'league' | 'cup' | 'friendly';
 
 /**
- * The supported fifteen, by the teams they field. `nation`: the World Cup,
- * the Euro, the Copa América, the UEFA Nations League, the Concacaf Nations
- * League, the Gold Cup. `club`: the five leagues and the four club cups.
+ * The supported fifteen and the friendly competition, by the teams they
+ * field. `nation`: the World Cup, the Euro, the Copa América, the UEFA Nations
+ * League, the Concacaf Nations League, the Gold Cup, and international
+ * friendlies (`fifa.friendly`). `club`: the five leagues and the four club
+ * cups. An unlisted competition fields clubs: a nations competition the set
+ * does not list renders its teams by name until it is written down.
  */
 export const TEAM_KIND: Readonly<Record<string, TeamKind>> = Object.freeze({
   'fifa.world': 'nation',
@@ -33,6 +36,9 @@ export const TEAM_KIND: Readonly<Record<string, TeamKind>> = Object.freeze({
   'uefa.nations': 'nation',
   'concacaf.nations.league': 'nation',
   'concacaf.gold': 'nation',
+  // International friendlies are nations' matches: the friendly competition,
+  // reachable through `CLAUDINHO_COMPETITION`, fields nations.
+  'fifa.friendly': 'nation',
   'eng.1': 'club',
   'esp.1': 'club',
   'ita.1': 'club',
