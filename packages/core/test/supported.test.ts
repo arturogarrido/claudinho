@@ -127,14 +127,8 @@ describe('every other written fact derives from the table', () => {
     expect(marketsCoverCompetition('eng.1')).toBe(false);
   });
 
-  it('the canary\'s list and cadences', () => {
-    expect(derived.slugs).toEqual(SLUGS);
-    expect(derived.cadenceYears).toEqual({
-      'fifa.world': 4, 'uefa.euro': 4, 'conmebol.america': 4, 'fifa.cwc': 4,
-      'uefa.nations': 2, 'concacaf.nations.league': 2, 'concacaf.gold': 2,
-      'eng.1': 1, 'esp.1': 1, 'ita.1': 1, 'ger.1': 1, 'mex.1': 1, 'uefa.champions': 1, 'conmebol.libertadores': 1, 'concacaf.champions': 1,
-    });
-  });
+  // The canary's list and cadences are read from the rows (`core.SUPPORTED`, `entryOf(…)?.cadenceYears`), not from a
+  // derived view: `espn-canary.test.ts` pins those reads (0.11 · 2.5a, the dead views deleted).
 });
 
 describe('a sixteenth row is one row: every consumer takes the table as its input', () => {
@@ -148,8 +142,6 @@ describe('a sixteenth row is one row: every consumer takes the table as its inpu
     expect(derived.standingsShape['fra.1']).toBe('league');
     expect(derived.noBracket.has('fra.1')).toBe(false);
     expect(derived.marketCompetitions.has('fra.1')).toBe(false);
-    expect(derived.slugs).toEqual([...SLUGS, 'fra.1']);
-    expect(derived.cadenceYears['fra.1']).toBe(1);
   });
 
   it('the list and the lookups take a table', () => {
@@ -169,7 +161,7 @@ describe('a sixteenth row is one row: every consumer takes the table as its inpu
     expect(Object.hasOwn(d.teamKind, 'constructor')).toBe(true);
     expect(entryOf('toString', poisoned)).toBeUndefined();
     const plain = deriveTables(SUPPORTED);
-    for (const view of [plain.teamKind, plain.competitionKind, plain.seasonSlug, plain.standingsShape, plain.cadenceYears] as Array<Record<string, unknown>>) {
+    for (const view of [plain.teamKind, plain.competitionKind, plain.seasonSlug, plain.standingsShape] as Array<Record<string, unknown>>) {
       expect(Object.getPrototypeOf(view)).toBeNull();
       expect(view.constructor).toBeUndefined();
       expect(view.toString).toBeUndefined();

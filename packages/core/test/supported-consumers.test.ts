@@ -3,14 +3,15 @@
  * (0.11 · 2.5a). The derived views equal the old literal tables, so a test of
  * their VALUES cannot tell a view derived from the table from a copy written
  * beside it, which would not take a sixteenth row. This guard asks the source
- * instead: no code outside the table spells a supported slug, except the
- * bundled schedule's own slug (`DEFAULT_COMPETITION`, the adapter's default).
+ * instead: no code outside the table's module spells a supported slug (the
+ * bundled competition's slug is written there too, once: `BUNDLED_SLUG`, which
+ * the adapter's `DEFAULT_COMPETITION` is).
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { SUPPORTED } from '../src';
+import { BUNDLE_COMPETITION, DEFAULT_COMPETITION, SUPPORTED } from '../src';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -26,14 +27,14 @@ function sources(dir: string): string[] {
 const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
 
 describe('no written fact of a supported competition outside the table', () => {
-  it('no source or table consumer spells a supported slug, but the table and the bundle\'s default', () => {
+  it('no source or table consumer spells a supported slug, but the table\'s module', () => {
     // The scripts that consume the table (a smoke seeding a cache file is a fixture, not a fact).
     const files = [
       ...['core', 'cli', 'mcp'].flatMap((p) => sources(join(REPO, 'packages', p, 'src'))),
       join(REPO, 'scripts', 'espn-canary.mjs'),
       join(REPO, 'scripts', 'gen-readme-matrix.mjs'),
     ];
-    const allowed = new Set(['packages/core/src/supported.ts', 'packages/core/src/adapters/espn.ts']);
+    const allowed = new Set(['packages/core/src/supported.ts']);
     const found: string[] = [];
     for (const file of files) {
       const rel = relative(REPO, file).split(sep).join('/');
@@ -60,9 +61,8 @@ describe('no written fact of a supported competition outside the table', () => {
     }
   });
 
-  it('the adapter\'s default is the bundled competition, a row of the table', () => {
-    const espn = code(readFileSync(join(REPO, 'packages', 'core', 'src', 'adapters', 'espn.ts'), 'utf8'));
-    const spelled = SUPPORTED.filter(({ slug }) => espn.includes(`'${slug}'`)).map((e) => e.slug);
-    expect(spelled).toEqual(['fifa.world']);
+  it('the adapter\'s default is the bundled competition: the one row that offers a bracket', () => {
+    expect(DEFAULT_COMPETITION).toBe(BUNDLE_COMPETITION);
+    expect(SUPPORTED.filter((e) => e.bracket === 'offered').map((e) => e.slug)).toEqual([BUNDLE_COMPETITION]);
   });
 });

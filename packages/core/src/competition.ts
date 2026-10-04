@@ -1,6 +1,6 @@
 import { DEFAULT_COMPETITION } from './adapters/espn';
 import { t } from './i18n';
-import { SUPPORTED, SUPPORTED_TABLES, entryOf } from './supported';
+import { type CompetitionEntry, SUPPORTED, SUPPORTED_TABLES, entryOf } from './supported';
 import { humanLabel } from './trust/roles';
 
 // The written kinds of a competition (its teams: nations or clubs; itself: a
@@ -236,17 +236,26 @@ export function bundleApplies(competition: string, season?: SeasonInfo): boolean
  * Deliberately NOT here: `ita.1` (championship and relegation play-offs since
  * the FIGC's May 2026 decision), `ger.1` (the relegation play-off), `mex.1`
  * (the Liguilla), `uefa.champions` (a knockout after the league phase). A
- * competition joins by a written fact.
+ * competition joins by a written fact. A derived view, kept for its readers (it
+ * is exported); {@link bracketCapability} reads the row itself.
  */
 export const NO_BRACKET: ReadonlySet<string> = SUPPORTED_TABLES.noBracket;
 
 /**
- * What `bracket` is for a competition, one of three values:
- *   - `offered`: the bundled competition, whose topology ships in the clients;
- *   - `inapplicable`: the competition has no bracket ({@link NO_BRACKET});
- *   - `unsupported`: it may have one, and it is not offered yet.
+ * What `bracket` is for a competition, one of three values, read from its ROW
+ * (one row, one fact: a listing, the README matrix and the command cannot
+ * disagree):
+ *   - `offered`: the row offers it (only the bundled competition can:
+ *     `deriveTables` refuses any other row that does);
+ *   - `inapplicable`: the row says the competition has none (`not-applicable`);
+ *   - `unsupported`: it may have one, and it is not offered yet; also a slug
+ *     the table does not hold.
  */
-export function bracketCapability(competition: string): 'offered' | 'inapplicable' | 'unsupported' {
-  if (bundleApplies(competition)) return 'offered';
-  return NO_BRACKET.has(competition) ? 'inapplicable' : 'unsupported';
+export function bracketCapability(
+  competition: string,
+  table: readonly CompetitionEntry[] = SUPPORTED,
+): 'offered' | 'inapplicable' | 'unsupported' {
+  const row = entryOf(competition, table);
+  if (!row) return 'unsupported';
+  return row.bracket === 'offered' ? 'offered' : row.bracket === 'not-applicable' ? 'inapplicable' : 'unsupported';
 }

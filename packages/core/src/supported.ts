@@ -6,9 +6,10 @@
  * often it has an edition). Every other table derives from this one
  * ({@link deriveTables}): `TEAM_KIND`, `COMPETITION_KIND`, `SEASON_SLUG`,
  * `STANDINGS_SHAPE` (`kinds.ts`), `NO_BRACKET` (`competition.ts`),
- * `MARKET_COMPETITIONS` (`markets/provider.ts`), the canary's competitions and
- * cadences, the README matrix. Adding a competition is one row here plus its
- * fixtures; nothing else in the source changes.
+ * `MARKET_COMPETITIONS` (`markets/provider.ts`); `bracketCapability`, the
+ * canary's competitions and cadences and the README matrix read the rows.
+ * Adding a competition is one row here plus its fixtures; nothing else in the
+ * source changes.
  *
  * A LEAF module: it imports nothing. The trust layer reads the derived kinds
  * at parse time (through `kinds.ts`), and `competition.ts` imports the adapter,
@@ -68,6 +69,14 @@ export interface CompetitionEntry {
 }
 
 /**
+ * The competition whose schedule and knockout topology ship bundled in the
+ * clients: the World Cup. Written once, here (the adapter's
+ * `DEFAULT_COMPETITION` and `BUNDLE_COMPETITION` are this value): it is the
+ * only competition a row may offer a bracket for.
+ */
+export const BUNDLED_SLUG = 'fifa.world';
+
+/**
  * The fifteen, in the order they are listed.
  *   - Nations: the World Cup, the Euro, the Copa America (four-yearly), the
  *     UEFA Nations League, the Concacaf Nations League (its next editions are
@@ -117,6 +126,22 @@ function record<V>(pairs: Iterable<readonly [string, V]>): Readonly<Record<strin
   return Object.freeze(out);
 }
 
+/**
+ * A set no caller can change: frozen, and its mutators refuse (`Object.freeze`
+ * alone leaves a Set's `add` working).
+ */
+function frozenSet(values: Iterable<string>): ReadonlySet<string> {
+  const set = new Set(values);
+  for (const method of ['add', 'delete', 'clear']) {
+    Object.defineProperty(set, method, {
+      value: () => {
+        throw new TypeError('a derived view is read-only');
+      },
+    });
+  }
+  return Object.freeze(set);
+}
+
 /** Every written fact a consumer reads, as derived from one table. */
 export interface DerivedTables {
   /** The teams each competition fields. */
@@ -131,18 +156,25 @@ export interface DerivedTables {
   readonly noBracket: ReadonlySet<string>;
   /** The competitions the market sidecar reads (`offered`). */
   readonly marketCompetitions: ReadonlySet<string>;
-  /** The slugs, in the table's order (the competitions the canary asks). */
-  readonly slugs: readonly string[];
-  /** How often each has an edition, in years. */
-  readonly cadenceYears: Readonly<Record<string, 1 | 2 | 4>>;
 }
 
 /**
  * The views every consumer reads, derived from a table. A function of the
  * table, so a test can run it on one with a sixteenth row and see every view
- * carry it.
+ * carry it. Every view is frozen.
+ *
+ * A row that offers a bracket for any competition but the bundled one is
+ * REFUSED here, at load, naming it: an offered bracket needs a knockout
+ * topology the clients ship, and only the bundled competition has one (the
+ * same question as `bundleApplies(slug)` with no season, asked of the leaf's
+ * own constant), so a wrong row never reaches a user.
  */
 export function deriveTables(entries: readonly CompetitionEntry[]): DerivedTables {
+  for (const e of entries) {
+    if (e.bracket === 'offered' && e.slug !== BUNDLED_SLUG) {
+      throw new Error(`${e.slug} offers a bracket the bundle does not describe: only the bundled competition ships a topology`);
+    }
+  }
   return Object.freeze({
     teamKind: record(entries.map((e) => [e.slug, e.teams] as const)),
     competitionKind: record(entries.map((e) => [e.slug, e.kind] as const)),
@@ -152,10 +184,8 @@ export function deriveTables(entries: readonly CompetitionEntry[]): DerivedTable
     standingsShape: record(
       entries.flatMap((e) => (e.standings === 'groups' ? [] : [[e.slug, e.standings] as const])),
     ),
-    noBracket: new Set(entries.filter((e) => e.bracket === 'not-applicable').map((e) => e.slug)),
-    marketCompetitions: new Set(entries.filter((e) => e.markets === 'offered').map((e) => e.slug)),
-    slugs: Object.freeze(entries.map((e) => e.slug)),
-    cadenceYears: record(entries.map((e) => [e.slug, e.cadenceYears] as const)),
+    noBracket: frozenSet(entries.filter((e) => e.bracket === 'not-applicable').map((e) => e.slug)),
+    marketCompetitions: frozenSet(entries.filter((e) => e.markets === 'offered').map((e) => e.slug)),
   });
 }
 

@@ -59,10 +59,11 @@ describe('the resolver', () => {
 
 describe('the derived views have no prototype', () => {
   it('a row named like the prototype key is an own key of every view', () => {
-    const proto = { ...SUPPORTED[0], slug: '__proto__', alias: 'proto' } as CompetitionEntry;
+    // A league row (it offers no bracket: only the bundled competition may).
+    const proto = { ...(SUPPORTED.find((e) => e.slug === 'eng.1') as CompetitionEntry), slug: '__proto__', alias: 'proto' };
     const views = deriveTables([...SUPPORTED, proto]);
     expect(Object.hasOwn(views.teamKind, '__proto__')).toBe(true);
-    expect(Object.hasOwn(views.cadenceYears, '__proto__')).toBe(true);
+    expect(Object.hasOwn(views.standingsShape, '__proto__')).toBe(true);
   });
 });
 
@@ -136,9 +137,9 @@ describe('the README matrix states core\'s capability rule, cell by cell', () =>
   };
 
   it('every row of the table, a sixteenth included, renders capabilitiesOf', async () => {
-    const { renderMatrix } = (await import(SCRIPT)) as { renderMatrix: (table: readonly unknown[]) => string };
+    const { renderMatrix } = (await import(SCRIPT)) as { renderMatrix: (table: readonly CompetitionEntry[], caps: typeof capabilitiesOf) => string };
     const table = [...SUPPORTED, fake];
-    const rows = renderMatrix(table)
+    const rows = renderMatrix(table, capabilitiesOf)
       .split('\n')
       .filter((l) => l.startsWith('| `'));
     expect(rows).toHaveLength(table.length);
