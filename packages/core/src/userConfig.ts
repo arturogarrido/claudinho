@@ -128,7 +128,7 @@ export function readUserConfig(path: string): UserConfigRead {
   let parsed: unknown;
   try {
     // A byte-order mark a Windows editor may have written is not the file.
-    parsed = JSON.parse(file.bytes.toString('utf8').replace(/^﻿/, ''));
+    parsed = JSON.parse(file.bytes.toString('utf8').replace(/^\uFEFF/, ''));
   } catch {
     return NONE('malformed');
   }
