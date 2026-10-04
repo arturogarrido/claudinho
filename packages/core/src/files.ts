@@ -104,11 +104,21 @@ export function readSmallFile(path: string, maxBytes: number): Buffer | undefine
  *   size or content (a replacement keeps its mode, so stays readable);
  * - `replaceable`: an entry a rename replaces with a fresh file: a symbolic
  *   link to anything (the link itself is replaced, its target never followed;
- *   a link to nothing included), a pipe, a socket, a device;
+ *   a link to nothing included), a pipe, a socket, a device; and a regular
+ *   file this process cannot open whose OWN mode grants its owner a read (the
+ *   open was refused by an access-control list, another owner, or a lock: the
+ *   replacement is this process's, carries the mode bits and none of that, so
+ *   it reads back);
  * - `unhealable`: a directory (a rename cannot replace it), a regular file
- *   this process cannot open (a replacement keeps its mode, so stays
- *   unreadable), or an entry nobody can look at (the `lstat` failed other than
- *   for no entry: the directory above it cannot be searched).
+ *   this process cannot open whose own mode denies its owner a read (the
+ *   owner-read bit clear: mode 000, 200; the replacement keeps the bits, so
+ *   stays unreadable), or an entry nobody can look at (the `lstat` failed
+ *   other than for no entry: the directory above it cannot be searched).
+ *
+ * On Windows every mode reports the owner-read bit, so a file that cannot be
+ * opened there is `replaceable`; if the rename itself then fails, the atomic
+ * write throws, and the publish that called it is one that did not happen, as
+ * before.
  *
  * The bounded reader cannot answer this: `lookAtSmallFile` says `unreadable`
  * for a file it cannot open, for a regular file larger than its bound, and for
@@ -135,7 +145,9 @@ export function lookAtEntry(path: string): FileEntry {
     fd = openSync(path, READ_FLAGS);
     return 'file';
   } catch {
-    return 'unhealable';
+    // Refused. The replacement keeps the mode BITS and is this process's own,
+    // so only a clear owner-read bit makes it unreadable too.
+    return (entry.mode & 0o400) === 0 ? 'unhealable' : 'replaceable';
   } finally {
     if (fd !== undefined) {
       try {

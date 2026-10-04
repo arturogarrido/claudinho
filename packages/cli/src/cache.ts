@@ -479,18 +479,21 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
 // tells written from visible). The gate FAILS CLOSED ONLY WHERE A PUBLISH
 // COULD NOT HEAL. A publish is an atomic write, a temporary file renamed over
 // the snapshot's path, and only two states survive it (`snapshotUnhealable`):
-// a directory (the rename cannot replace it) and a cache file this user cannot
-// open (mode 000: the replacement keeps its mode). There the attempt is
-// admitted only when what is read back is what was written, else nothing is
-// done. Everywhere else a publish heals in one cycle, so the cycle goes on
-// whether or not its attempt could be recorded: no entry, a symbolic link to
-// anything or a pipe (the rename replaces the entry with a fresh file), and a
-// cache file this reader opened and rejected (bad JSON, another format
-// version, larger than the reader's bound, another scope's: the replacement
-// keeps its readable mode). A believed record that is not due stops the cycle
-// in every case. When the cycle's snapshot then reads
-// back usable, the record is settled to `count: 0`. `count` is "admissions
-// since the last persisted reset": a conservative pacing state, not a history.
+// a directory (the rename cannot replace it) and a cache file whose own mode
+// denies its owner a read (the owner-read bit clear, mode 000 or 200: the
+// replacement is ours and keeps the bits). There the attempt is admitted only
+// when what is read back is what was written, else nothing is done.
+// Everywhere else a publish heals in one cycle, so the cycle goes on whether
+// or not its attempt could be recorded: no entry, a symbolic link to anything
+// or a pipe (the rename replaces the entry with a fresh file), a cache file
+// refused with its owner-read bit set (an access-control list, another
+// owner's 0600: the replacement is ours, readable), and a cache file this
+// reader opened and rejected (bad JSON, another format version, larger than
+// the reader's bound, another scope's: the replacement keeps its readable
+// mode). A believed record that is not due stops the cycle in every case.
+// When the cycle's snapshot then reads back usable, the record is settled to
+// `count: 0`. `count` is "admissions since the last persisted reset": a
+// conservative pacing state, not a history.
 //
 // BELIEVED when the file parses to an object whose `at` is a stamp this product
 // writes (`validStamp`) at most `FUTURE_SKEW_MS` ahead (the snapshot's rule);
@@ -503,8 +506,8 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
 // The pace: one minute, doubling per admission, at most thirty
 // (`attemptDelayMs`). The throttle is independent of it and settled as before.
 //
-// STATED LIMIT: with a directory, or a cache file this user cannot open, at
-// the snapshot's path, a record nobody can read (its own mode 000, a directory
+// STATED LIMIT: with a directory, or a cache file whose own mode denies its
+// owner a read, at the snapshot's path, a record nobody can read (its own mode 000, a directory
 // at its path) admits nothing. The provider is then not asked and nothing is
 // published, but the hot path, which cannot read the record either, still
 // starts a refresher on every tick. In every other state the cycle proceeds as
@@ -585,8 +588,8 @@ function writeAttemptRecord(source: string, competition: string, now: number, co
  * it back. Returns the count when the record read back is the one written,
  * else undefined (the write failed, or what was written cannot be read). What
  * the caller then does depends on the snapshot file (the refresher's
- * `admitNoBaseCycle`): a directory, or a cache file this user cannot open,
- * nothing; otherwise the cycle goes on. The carried count is clamped so the
+ * `admitNoBaseCycle`): a directory, or a cache file whose own mode denies its
+ * owner a read, nothing; otherwise the cycle goes on. The carried count is clamped so the
  * sum stays a safe integer (any count from 6 on waits the ceiling; above that
  * it is only a count). Never throws.
  */
@@ -613,14 +616,17 @@ export function settleAttempt(source: string, competition: string, now: number):
 /**
  * Whether a publish could NOT heal what is at the scope's snapshot path: a
  * directory (an atomic write's rename cannot replace it), or a cache file
- * this user cannot open (mode 000: the replacement keeps its mode, so stays
- * unreadable); also an entry nobody can look at (the directory above it
+ * whose own mode denies its owner a read (this user cannot open it and its
+ * owner-read bit is clear: the replacement is ours and keeps the bits, so
+ * stays unreadable); also an entry nobody can look at (the directory above it
  * cannot be searched). One look at the entry through core's `lookAtEntry`
  * (`lstat`, never following a link, and an open only for a regular file;
  * nothing read). False for everything a publish heals: no entry, a symbolic
- * link to anything or a pipe (the rename replaces the entry itself), and a
- * cache file that opens, whatever this reader made of its content (bad JSON,
- * another format version, larger than `MAX_STATE_BYTES`, another scope's).
+ * link to anything or a pipe (the rename replaces the entry itself), a cache
+ * file refused with its owner-read bit set (an access-control list, another
+ * owner's 0600), and a cache file that opens, whatever this reader made of its
+ * content (bad JSON, another format version, larger than `MAX_STATE_BYTES`,
+ * another scope's).
  * Asked by the refresher on a cycle whose base read is undefined: it is where
  * the gate fails closed (`admitNoBaseCycle`). (The bounded reader's own kinds
  * cannot ask it: `lookAtSmallFile` answers `unreadable` alike for a file it
