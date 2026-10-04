@@ -11,6 +11,8 @@
  *     headline when it decides what is reported, else its own line after
  *     the headline), its sentence is said with no file too (after `off`),
  *     and `refused.env` is bounded as a label;
+ *   - the `Team:` line asks whether the pin applies to the headline's
+ *     competition (a flag included), not the next command's;
  *   - the sentence table's empty cell (no flag, no environment) says no
  *     sentence, with a believed saved choice or without one;
  *   - with nothing chosen `_refresh` asks nobody and writes nothing, and
@@ -224,6 +226,30 @@ describe('a refused environment, beside the main report suite', () => {
     expect(j.refused.env.length).toBeGreaterThan(0);
     expect(j.refused.env.length).toBeLessThanOrEqual(40);
     expect(j.sources).toBeUndefined();
+  });
+});
+
+describe('two questions about the pin: the Team: line asks the headline\'s competition, the team sentence the next command\'s', () => {
+  const ctxWith = (opts: { competition?: string }) => {
+    const cfg = resolveConfig({ tz: 'UTC', color: false, source: 'espn', flavor: 'off', markets: false, ...opts });
+    return { cfg, t: makeT('en'), now: NOW };
+  };
+
+  it('under a flag naming another competition the pin is the saved team, though the next command (the saved choice) applies it', async () => {
+    follow({ version: 1, competition: 'fifa.world', team: { code: 'ESP', name: 'Spain' } });
+    await cmdFollow(undefined, {}, ctxWith({ competition: 'premier-league' }));
+    expect(text()).toMatch(/Following: Premier League/);
+    expect(text()).not.toMatch(/^\s*Team: Spain/m);
+    expect(text()).toMatch(/Saved team: Spain/);
+  });
+
+  it('under a flag naming the pin\'s competition the pin is the team in effect, though the next command (the environment) does not apply it', async () => {
+    follow({ version: 1, competition: 'fifa.world', team: { code: 'ESP', name: 'Spain' } });
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    await cmdFollow(undefined, {}, ctxWith({ competition: 'world-cup' }));
+    expect(text()).toMatch(/Following: World Cup/);
+    expect(text()).toMatch(/^\s*Team: Spain/m);
+    expect(text()).not.toMatch(/Saved team/);
   });
 });
 

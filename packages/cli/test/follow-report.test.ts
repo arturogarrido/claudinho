@@ -434,7 +434,7 @@ describe('the text says every source the JSON names (the fourth reader\'s round-
 });
 
 describe('the team sentence asks whether the pin APPLIES, not whether the file holds one', () => {
-  it('a readable CLAUDINHO_TEAM with a pin for ANOTHER competition than the one reported: the plain sentence (the team-taking commands take it), never "wins over the saved team"', async () => {
+  it('a readable CLAUDINHO_TEAM with a pin for ANOTHER competition than the next command\'s: the plain sentence (the team-taking commands take it), never "wins over the saved team"', async () => {
     await cmdFollow('world-cup', { team: 'Spain' }, ctxOf());
     process.env.CLAUDINHO_TEAM = 'Mexico';
     process.env.CLAUDINHO_COMPETITION = 'laliga';
@@ -444,12 +444,14 @@ describe('the team sentence asks whether the pin APPLIES, not whether the file h
     expect(text()).toMatch(/Saved team: Spain/);
     expect(text()).toMatch(/the team-taking commands take it as their team while it is\./);
     expect(text()).not.toMatch(/wins over the saved team/);
-    // The same under a flag naming another competition.
+    // Under a flag naming another competition, with no environment: the
+    // sentence is about the NEXT command, which has no flag and follows the
+    // saved World Cup, where the pin applies (rule 49): the wins sentence.
     delete process.env.CLAUDINHO_COMPETITION;
     writes = [];
     await cmdFollow(undefined, {}, ctxOf({ competition: 'premier-league' }));
-    expect(text()).not.toMatch(/wins over the saved team/);
-    expect(text()).toMatch(/take it as their team/);
+    expect(text()).toMatch(/wins over the saved team/);
+    expect(text()).not.toMatch(/take it as their team/);
     // Under the pin's own competition (by flag or saved), the pin applies: the wins sentence.
     writes = [];
     await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));

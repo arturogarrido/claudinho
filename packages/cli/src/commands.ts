@@ -2165,9 +2165,9 @@ interface FollowFacts {
  *     saved choice, none is named), then the team override's, by
  *     `CLAUDINHO_TEAM`'s three states: unset (or empty), nothing (the pin, if
  *     it applies, is the `Team:` line); set and readable (in `sources.team`),
- *     it wins over the saved team when the pin APPLIES to the competition
- *     reported (core `pinUnder`: the pin's own competition, reported as the
- *     saved choice or named by the flag or the environment; `teamEnvWins`),
+ *     it wins over the saved team when the pin APPLIES to the NEXT command's
+ *     competition (core `pinUnder` of `nextSelection`: the environment while
+ *     set, else the saved choice; never this command's flag; `teamEnvWins`),
  *     else the team-taking commands take it as their team (`teamEnv`: no
  *     pin, or a pin for another competition, which would not have applied);
  *     set with nothing readable (in `refused.team`), the team-taking
@@ -2220,11 +2220,21 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
     return;
   }
   const c = painterFor(cfg);
-  // Whether the pin applies to the competition reported (it is the file's,
-  // core `pinUnder`), and whether it is the team in effect: it applies and no
-  // CLAUDINHO_TEAM overrides it.
-  const pinApplies = saved?.team !== undefined && pinUnder(effect.kind === 'selected' ? effect.slug : undefined, saved) !== undefined;
-  const pinned = teamEnv.kind === 'unset' && pinApplies;
+  // Two questions about the pin (core `pinUnder`), asked of two selections:
+  //   - the `Team:` line's: is the pin the team in effect for the competition
+  //     REPORTED (the headline's: `follow` alone, this command's, its flag
+  //     included), with no CLAUDINHO_TEAM overriding it? The line says the
+  //     pin belongs to the competition on the line above it;
+  //   - the team sentence's: does the pin apply to the NEXT command's
+  //     competition (`nextSelection`: no flag, so the environment while set,
+  //     else the file; a refused environment has no competition, so no pin)?
+  //     The sentence, like the competition sentence above it, is true of the
+  //     next command, which this command's flag does not reach.
+  // After a write and `off` the reported selection IS the next command's, and
+  // the two agree; they differ only on `follow` alone under a flag.
+  const pinned = teamEnv.kind === 'unset' && saved?.team !== undefined && pinUnder(effect.kind === 'selected' ? effect.slug : undefined, saved) !== undefined;
+  const next = nextSelection(saved ? { kind: 'read', config: saved } : NO_SAVED);
+  const pinNext = saved?.team !== undefined && pinUnder(next.kind === 'selected' ? next.slug : undefined, saved) !== undefined;
   out();
   if (effect.kind === 'selected') out(`  ${t('follow.following', { competition: modeLine(effect, cfg.lang) })}`);
   else out(`  ${selectionRefusal(effect, cfg.lang)}`);
@@ -2249,11 +2259,11 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
   const sentence = overrideSentence(flag ? 'ran' : flagRefused ? 'refused' : undefined, envState, saved !== null);
   if (sentence) out(c.dim(`  ${t(sentence)}`));
   // The team override's, in its three states: unset, nothing; set and
-  // readable, over the saved team when the pin applies to the competition
-  // reported, else the team-taking commands' team; set with nothing
+  // readable, over the saved team when the pin applies to the next command's
+  // competition, else the team-taking commands' team; set with nothing
   // readable, refused by the team-taking commands, whatever the pin.
   if (teamEnv.kind === 'refused') out(c.dim(`  ${t('follow.teamEnvRefused')}`));
-  else if (teamEnv.kind === 'set') out(c.dim(`  ${t(pinApplies ? 'follow.teamEnvWins' : 'follow.teamEnv')}`));
+  else if (teamEnv.kind === 'set') out(c.dim(`  ${t(pinNext ? 'follow.teamEnvWins' : 'follow.teamEnv')}`));
   if (reason && mode === 'show') out(c.dim(`  ${t(NO_SAVED_REASON[reason])}`));
   if (mode === 'write') out(c.dim(`  ${t('follow.path', { path })}`));
   else if (mode === 'off') out(`  ${t(facts.removed ? 'follow.removed' : 'follow.nothingToRemove', { path })}`);
