@@ -96,6 +96,48 @@ export function readSmallFile(path: string, maxBytes: number): Buffer | undefine
 }
 
 /**
+ * What one look at an ENTRY found, reading none of it. Three answers:
+ * - `absent`: no directory entry at the path (a link to nothing is not this:
+ *   told apart the way `lookAtSmallFile` tells it);
+ * - `file`: a regular file this process can OPEN for reading, whatever its
+ *   size or content;
+ * - `unopenable`: something is there that cannot be opened as one (no
+ *   permission, a directory, a pipe, a device, a link to nothing).
+ *
+ * `lookAtSmallFile` cannot answer this: it says `unreadable` both for a file
+ * that cannot be opened and for a regular file larger than its bound (a bound
+ * of 0 makes every non-empty file `unreadable`). The open is the same one
+ * (read-only, non-blocking where the platform has it), through one descriptor,
+ * closed before returning; nothing is read. For the CLI's refresher, which
+ * asks whether a publish can heal a snapshot it could not use. Never throws,
+ * never waits.
+ */
+export type FileEntry = 'absent' | 'file' | 'unopenable';
+
+export function lookAtEntry(path: string): FileEntry {
+  let fd: number | undefined;
+  try {
+    try {
+      fd = openSync(path, READ_FLAGS);
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException | undefined)?.code;
+      return code === 'ENOENT' && !isSymbolicLink(path) ? 'absent' : 'unopenable';
+    }
+    return fstatSync(fd).isFile() ? 'file' : 'unopenable';
+  } catch {
+    return 'unopenable';
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* nothing more to do with it */
+      }
+    }
+  }
+}
+
+/**
  * {@link lookAtSmallFile} for a file that must be the user's OWN regular file
  * (the config file): a symbolic link at the path is `symlink`, never followed.
  * Where the platform has `O_NOFOLLOW` (POSIX) the open itself refuses a link

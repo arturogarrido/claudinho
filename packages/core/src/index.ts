@@ -319,7 +319,15 @@ export { attachFetchMeta, fetchMeta, type FetchMeta } from './adapters/meta';
 // The user's config file (the saved choice and the pinned team) and the one
 // bounded reader every file kept on disk goes through: read the same way by the
 // CLI and the MCP server.
-export { lookAtOwnFile, lookAtSmallFile, readSmallFile, type OwnFile, type SmallFile } from './files';
+export {
+  type FileEntry,
+  lookAtEntry,
+  lookAtOwnFile,
+  lookAtSmallFile,
+  readSmallFile,
+  type OwnFile,
+  type SmallFile,
+} from './files';
 export {
   cacheDirFor,
   configPath,

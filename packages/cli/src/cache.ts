@@ -6,7 +6,7 @@
  */
 import { closeSync, mkdirSync, openSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
-import { BUNDLE_COMPETITION, type Match, type ScheduleEntry, type SeasonInfo } from '@claudinho/core';
+import { BUNDLE_COMPETITION, lookAtEntry, type Match, type ScheduleEntry, type SeasonInfo } from '@claudinho/core';
 import { randomBytes } from 'node:crypto';
 import { cacheDir, lookAtSmallFile, readSmallFile, writeFileAtomic } from './paths';
 
@@ -477,15 +477,18 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
 // first, under the lock, before any publish or request: `{ at: now, count:
 // previous + 1 }`, read back through the bounded reader (as `writeBackoffNote`
 // tells written from visible). The gate FAILS CLOSED ONLY WHERE A PUBLISH
-// COULD NOT HEAL: with the snapshot FILE present and unusable (mode 000, whose
-// mode a publish keeps; a rejected file, or another format's), the attempt is
-// admitted only when what is read back is what was written, else nothing is
-// done; with the snapshot file ABSENT, a publish starts a fresh file with no
-// mode to inherit and heals in one cycle, so the cycle goes on whether or not
-// its attempt could be recorded. A believed record that is not due stops the
-// cycle in both. When the cycle's snapshot then reads back usable, the record
-// is settled to `count: 0`. `count` is "admissions since the last persisted
-// reset": a conservative pacing state, not a history.
+// COULD NOT HEAL, which is a snapshot file that cannot be OPENED
+// (`snapshotUnopenable`: mode 000, whose mode an atomic replacement keeps; a
+// directory, which a rename cannot replace): there the attempt is admitted
+// only when what is read back is what was written, else nothing is done.
+// Everywhere else a publish heals in one cycle, so the cycle goes on whether
+// or not its attempt could be recorded: no file (a publish starts a fresh one
+// with no mode to inherit), and a file this reader opened and rejected (bad
+// JSON, another format version, larger than the reader's bound, another
+// scope's: the replacement keeps its readable mode). A believed record that is
+// not due stops the cycle in every case. When the cycle's snapshot then reads
+// back usable, the record is settled to `count: 0`. `count` is "admissions
+// since the last persisted reset": a conservative pacing state, not a history.
 //
 // BELIEVED when the file parses to an object whose `at` is a stamp this product
 // writes (`validStamp`) at most `FUTURE_SKEW_MS` ahead (the snapshot's rule);
@@ -498,12 +501,15 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
 // The pace: one minute, doubling per admission, at most thirty
 // (`attemptDelayMs`). The throttle is independent of it and settled as before.
 //
-// STATED LIMIT: with the snapshot file present and unreadable, a record nobody
+// STATED LIMITS: with a snapshot file that cannot be opened, a record nobody
 // can read (its own mode 000, a directory at its path) admits nothing. The
 // provider is then not asked and nothing is published, but the hot path, which
 // cannot read the record either, still starts a refresher on every tick. With
-// the snapshot file absent, the cycle proceeds as it did before this record
-// existed, and its publish ends the loop.
+// no snapshot file, or one that opens and is rejected, the cycle proceeds as
+// it did before this record existed, and its publish ends the loop. One case a
+// rename could heal is still gated: a symbolic link at the snapshot's path
+// whose target cannot be opened (a link to nothing included), since the
+// replacement would replace the link itself.
 
 /** A record is `{"at":"<ISO>","count":n}`: far below this (the note's bound). */
 const MAX_ATTEMPT_BYTES = MAX_NOTE_BYTES;
@@ -580,7 +586,8 @@ function writeAttemptRecord(source: string, competition: string, now: number, co
  * it back. Returns the count when the record read back is the one written,
  * else undefined (the write failed, or what was written cannot be read). What
  * the caller then does depends on the snapshot file (the refresher's
- * `admitNoBaseCycle`): present, nothing; absent, the cycle goes on. The
+ * `admitNoBaseCycle`): one that cannot be opened, nothing; otherwise the cycle
+ * goes on. The
  * carried count is clamped so the sum stays a safe integer (any count from 6
  * on waits the ceiling; above that it is only a count). Never throws.
  */
@@ -605,15 +612,21 @@ export function settleAttempt(source: string, competition: string, now: number):
 }
 
 /**
- * Whether the scope's snapshot FILE has an entry at all: one look through the
- * bounded reader with a bound of 0, so none of its content is read. `false`
- * only when there is no entry; a file this reader cannot use (mode 000, a
- * directory, a link to nothing, a rejected or another format's file) is
- * present. Asked by the refresher on a cycle whose base read is undefined, to
- * know whether a publish can heal what it found. Never throws.
+ * Whether the scope's snapshot path holds something that cannot be OPENED as a
+ * regular file for reading: a file with no read permission (mode 000), a
+ * directory, a pipe or a device, a symbolic link whose target cannot be opened
+ * (a link to nothing included). One look at the entry through core's
+ * `lookAtEntry` (the bounded reader's open, nothing read). False for no entry,
+ * and for a regular file that opens, whatever this reader made of its content
+ * (bad JSON, another format version, larger than `MAX_STATE_BYTES`, another
+ * scope's): a publish heals those. Asked by the refresher on a cycle whose
+ * base read is undefined: it is where the gate fails closed (`admitNoBaseCycle`).
+ * (The bounded reader's own kinds cannot ask it: `lookAtSmallFile` answers
+ * `unreadable` both for a file it cannot open and for one over its bound.)
+ * Never throws.
  */
-export function snapshotPresent(source: string, competition: string): boolean {
-  return lookAtSmallFile(cachePath(source, competition), 0).kind !== 'absent';
+export function snapshotUnopenable(source: string, competition: string): boolean {
+  return lookAtEntry(cachePath(source, competition)) === 'unopenable';
 }
 
 /** Age of the latest fixtures ATTEMPT in ms (Infinity if never attempted). */
