@@ -11,7 +11,7 @@
  * admission's visibility, and the hot path's order (the lock, then the record,
  * then the note). The refresher's cycles are in `attempt-pacing.test.ts`.
  */
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,6 +37,7 @@ import {
   backoffNotePath,
   type CacheState,
   claimLock,
+  cachePath,
   readAttemptRecord,
   readCurrentState,
   releaseLock,
@@ -253,6 +254,68 @@ describe('the hot path asks the record only without a snapshot, after the lock a
     expect(refreshWanted(NOW, undefined, WC, 'nope')).toBe(false);
     rmSync(attemptRecordPath('nope', WC), { force: true });
     expect(refreshWanted(NOW, undefined, WC, 'nope')).toBe(true);
+  });
+});
+
+// Review round 6 (the fourth reader): the look's probe (a file created beside the snapshot where the owner-read
+// bit is clear) is asked only where its answer can change the gate: after the record was found due and the
+// attempt could NOT be recorded. A believed record that is not due returns with nothing written, and an admitted
+// cycle needs no look. The probe's opens are counted by name (`<path>.<pid>.<hex>.probe`).
+describe('the look is asked lazily: no probe before the not-due return, none on an admitted cycle', () => {
+  const probeOpens = () => opens.filter((p) => p.endsWith('.probe')).length;
+  const fetchNothing = () =>
+    vi.stubGlobal('fetch', async () =>
+      new Response(JSON.stringify({ leagues: [{ season: { year: 2026, displayName: '2026 World Cup' } }], events: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+  const unreadableSnapshot = () => {
+    writeState(snapshot());
+    chmodSync(cachePath(SOURCE, WC), 0o000);
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined();
+  };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    try {
+      chmodSync(cachePath(SOURCE, WC), 0o644);
+    } catch {
+      /* absent */
+    }
+  });
+
+  it.skipIf(!unprivileged)('a believed record that is not due: no probe is made, nothing is written, nothing asked', async () => {
+    fetchNothing();
+    unreadableSnapshot();
+    writeRecord({ at: iso(NOW - 10_000), count: 1 }); // due at +1 min
+    const before = readFileSync(attemptRecordPath(SOURCE, WC), 'utf8');
+    opens.length = 0;
+    await runRefresh({ source: SOURCE, competition: WC, now: new Date(NOW), jitterMs: 0 });
+    expect(probeOpens()).toBe(0);
+    expect(readFileSync(attemptRecordPath(SOURCE, WC), 'utf8')).toBe(before);
+    expect(readdirSync(join(dir, 'claudinho')).filter((n) => n.endsWith('.probe'))).toHaveLength(0);
+  });
+
+  it.skipIf(!unprivileged)('a working record: the cycle is admitted without a look (no probe) and proceeds', async () => {
+    fetchNothing();
+    unreadableSnapshot();
+    writeRecord({ at: iso(NOW - 2 * 60 * MIN), count: 6 }); // due
+    opens.length = 0;
+    await runRefresh({ source: SOURCE, competition: WC, now: new Date(NOW), jitterMs: 0 });
+    expect(probeOpens()).toBe(0);
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined(); // mode 000 is kept by the rewrite: the snapshot stays unreadable
+    expect(readAttemptRecord(SOURCE, WC, NOW)).toEqual({ at: NOW, count: 7 }); // admitted, not settled
+  });
+
+  it.skipIf(!unprivileged)('a record that cannot be made visible: the look runs, probes once, and gates (nothing published, nothing asked)', async () => {
+    fetchNothing();
+    unreadableSnapshot();
+    mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
+    opens.length = 0;
+    await runRefresh({ source: SOURCE, competition: WC, now: new Date(NOW), jitterMs: 0 });
+    expect(probeOpens()).toBeGreaterThan(0);
+    expect(readdirSync(join(dir, 'claudinho')).filter((n) => n.endsWith('.probe'))).toHaveLength(0);
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined();
   });
 });
 

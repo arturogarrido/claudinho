@@ -199,6 +199,17 @@ describe('lookAtEntry: what a rename onto the path would do', () => {
     chmodSync(fifo, 0o000);
     expect(lookAtEntry(fifo)).toBe('replaceable');
     expect(readdirSync(d).sort()).toEqual(['pipe.json', 'state.json']);
+    // Round 6 (the fourth reader): a directory is unhealable before its bits are asked: a mode-000 directory here
+    // would otherwise probe, read back, and be called replaceable, which a rename still cannot do.
+    const sub = join(d, 'dir.json');
+    mkdirSync(sub);
+    chmodSync(sub, 0o000);
+    try {
+      expect(lookAtEntry(sub)).toBe('unhealable');
+    } finally {
+      chmodSync(sub, 0o755);
+    }
+    expect(readdirSync(d).sort()).toEqual(['dir.json', 'pipe.json', 'state.json']);
   });
 
   it.skipIf(!unprivileged)('where the bits say unreadable and nothing lets a replacement read back, the look still leaves nothing behind', () => {
