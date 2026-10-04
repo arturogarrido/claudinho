@@ -85,7 +85,7 @@ const lines = () => writes.join('').split('\n');
 describe('`match`: the stage and the location, joined with the empty ones dropped', () => {
   it('a venue-less record with words: the stage alone, no dangling separator', async () => {
     await cmdMatch('800000030', ctx(feed('qualifying-final')));
-    const header = lines().findIndex((l) => l === 'Arsenal vs Chelsea');
+    const header = lines().indexOf('Arsenal vs Chelsea');
     expect(header).toBeGreaterThanOrEqual(0);
     expect(lines()[header + 1]).toBe('  Qualifying final');
     expect(writes.join('')).not.toMatch(/·\s*(\n|$)|(^|\n)\s*·/);
@@ -94,7 +94,7 @@ describe('`match`: the stage and the location, joined with the empty ones droppe
   it('a venue-less record with no phase stated: no line for them at all', async () => {
     await cmdMatch('800000030', ctx(feed(null)));
     const all = lines();
-    const header = all.findIndex((l) => l === 'Arsenal vs Chelsea');
+    const header = all.indexOf('Arsenal vs Chelsea');
     expect(header).toBeGreaterThanOrEqual(0);
     // Straight to the kickoff line: no empty indented line, no separator.
     expect(all[header + 1]).toMatch(/^ {2}Sat 11:30/);
