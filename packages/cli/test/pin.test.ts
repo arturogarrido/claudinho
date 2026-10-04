@@ -204,6 +204,19 @@ describe('one pick function for the ambient surfaces', () => {
     expect(text()).toMatch(/AFC 2–1 CHE/);
   });
 
+  it('a present CLAUDINHO_TEAM the hot path cannot interpret (a name, off the bundle) is still the override: no preference, never the pin', () => {
+    follow('eng.1', ARSENAL);
+    writeState({ updatedAt: NOW.toISOString(), live: [other(), mine()], degraded: false, source: 'espn', competition: 'eng.1' }, NOW.getTime());
+    process.env.CLAUDINHO_TEAM = 'Chelsea';
+    const ctx = ctxOf();
+    cmdPrompt(ctx, { cursor: undefined });
+    // The order as cached: Brentford's match first, the pinned one counted.
+    expect(text()).toMatch(/^⚽ BRE 1–0 LIV 50'/);
+    writes = [];
+    cmdHook(ctx);
+    expect(text().indexOf('Brentford')).toBeLessThan(text().indexOf('Arsenal FC'));
+  });
+
   it('the countdown and the syncing matchup prefer the pinned fixture', () => {
     const later = m({ id: '800000005', kickoff: '2026-10-10T16:00:00.000Z', home: { code: 'BRE', name: 'Brentford', id: 'espn:337' }, away: { code: 'LIV', name: 'Liverpool', id: 'espn:364' } });
     const pinned = m({ id: '800000006', kickoff: '2026-10-10T18:00:00.000Z' });
@@ -220,5 +233,15 @@ describe('one pick function for the ambient surfaces', () => {
     // Without a pick the earliest counts down; with the pin, the pinned fixture.
     expect(renderPrompt(state, { defaultCompetition: false, teamKind: 'club', now: NOW })).toMatch(/BRE vs LIV in/);
     expect(renderPrompt(state, { defaultCompetition: false, teamKind: 'club', now: NOW, pick: { team: ARSENAL } })).toMatch(/AFC vs CHE in/);
+    // Syncing: two fixtures in their live window, the live slice stale; the pinned matchup names the line, the other counted.
+    const inWindow = (id: string, home: Match['home'], away: Match['away']): Match => m({ id, kickoff: iso(NOW.getTime() - 20 * 60_000), home, away });
+    // Ids are the provider's grammar (digits): a record with another id is not a cached match.
+    const win = [inWindow('800000007', later.home, later.away), inWindow('800000008', pinned.home, pinned.away)];
+    const syncing: ScheduleSlice = { ...schedule, index: win.map((x) => ({ id: x.id, kickoff: x.kickoff, on: true })), fixtures: win };
+    const stale: CacheState = { ...state, schedule: syncing };
+    const line = renderPrompt(stale, { defaultCompetition: false, teamKind: 'club', now: NOW, pick: { team: ARSENAL } });
+    expect(line).toMatch(/^⚽ AFC vs CHE live · syncing…/);
+    expect(line).toContain('+1');
+    expect(renderPrompt(stale, { defaultCompetition: false, teamKind: 'club', now: NOW })).toMatch(/^⚽ BRE vs LIV live · syncing…/);
   });
 });

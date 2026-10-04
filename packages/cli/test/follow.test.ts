@@ -186,6 +186,15 @@ describe('the pin', () => {
     expect(read()).toEqual({ version: 1, competition: 'eng.1' });
   });
 
+  it('a resolved club whose name is longer than 40 columns is pinned and read back whole (the writer and the reader share a team\'s bound)', async () => {
+    const LONG: Side = { id: '9001', abbr: 'UNI', name: 'Club Deportivo Social y Cultural de la Universidad Nacional' };
+    const { adapter } = feed('eng.1', { events: [{ id: '71', date: '2026-10-13T14:00:00Z', home: LONG, away: CHE }], standings: table('2026-27 English Premier League', [LONG, CHE, LIV]) });
+    await cmdFollow('premier-league', { team: 'UNI' }, ctxOf(adapter));
+    expect(read().team).toEqual({ id: 'espn:9001', code: 'UNI', name: LONG.name });
+    // The next invocation reads the pin whole: the edge sees it.
+    expect(resolveConfig({})).toMatchObject({ pin: { id: 'espn:9001', name: LONG.name } });
+  });
+
   it('`follow world-cup --team Mexico` stores { code, name } with no id, offline', async () => {
     let fetched = 0;
     const adapter: ProviderAdapter = {
@@ -241,6 +250,13 @@ describe('reading the choice back', () => {
       expect(resolveConfig({}).selection.kind, body).toBe('none');
     }
     rmSync(configFile);
+    // Unreadable: a directory at the path.
+    mkdirSync(configFile);
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/not a regular file|unreadable|could not be read/i);
+    expect(resolveConfig({}).selection.kind).toBe('none');
+    rmSync(configFile, { recursive: true, force: true });
     const target = join(tmp, 'target.json');
     writeFileSync(target, JSON.stringify({ version: 1, competition: 'eng.1' }));
     symlinkSync(target, configFile);

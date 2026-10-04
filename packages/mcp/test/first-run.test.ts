@@ -184,6 +184,25 @@ describe('the saved choice and the pin', () => {
     await expect(toolGetNextFixture({ competition: 'laliga', adapter: { ...adapter, competition: 'esp.1' }, now: NOW })).rejects.toThrow(/team|pin/i);
   });
 
+  it('the precedence is the CLI\'s: the argument, then the server\'s CLAUDINHO_TEAM, then the pin', async () => {
+    follow('premier-league', { id: 'espn:359', code: 'ARS', name: 'Arsenal' });
+    const chelsea: Match = { ...fixture, id: '800000002', home: { code: 'CHE', name: 'Chelsea', id: 'espn:363' }, away: { code: 'LIV', name: 'Liverpool', id: 'espn:364' } };
+    const both: ProviderAdapter = { ...adapter, async fetchWindow() { return whole([fixture, chelsea]); }, async fetchByDate() { return whole([fixture, chelsea]); } };
+    // The environment names a query, resolved as an argument would be; it wins over the pin.
+    process.env.CLAUDINHO_TEAM = 'CHE';
+    const env = await toolGetNextFixture({ adapter: both, now: NOW });
+    expect((env.data as Rec).fixture).toMatchObject({ id: '800000002' });
+    // The argument wins over both.
+    const arg = await toolGetNextFixture({ team: 'Liverpool', adapter: both, now: NOW });
+    expect((arg.data as Rec).fixture).toMatchObject({ id: '800000002' });
+    expect((arg.data as Rec).team).toMatchObject({ id: 'espn:364' });
+    // With no pin and the environment set: an answer, not an error.
+    follow('premier-league');
+    const noPin = await toolGetNextFixture({ adapter: both, now: NOW });
+    expect((noPin.data as Rec).fixture).toMatchObject({ id: '800000002' });
+    delete process.env.CLAUDINHO_TEAM;
+  });
+
   it('the contract: `team` is optional on get_next_fixture; `noCompetition` declared on every competition-answering output schema', async () => {
     await withClient(async (client) => {
       const { tools } = await client.listTools();

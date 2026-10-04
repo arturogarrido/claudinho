@@ -51,13 +51,33 @@ describe('the read', () => {
     expect(r).toEqual({ kind: 'read', config: valid });
   });
 
+  it('a pin\'s labels are bounded as a TEAM\'s labels are (the writer copies a resolved team): a 60-column name survives the round trip, a 101-column one does not', () => {
+    const name60 = 'Club Deportivo Social y Cultural de la Universidad Nacional'; // 59 characters
+    expect(name60.length).toBeGreaterThan(40);
+    const r = readUserConfig(write('longname.json', JSON.stringify({ version: 1, competition: 'eng.1', team: { id: 'espn:359', code: 'ARS', name: name60 } })));
+    expect(r).toEqual({ kind: 'read', config: { version: 1, competition: 'eng.1', team: { id: 'espn:359', code: 'ARS', name: name60 } } });
+    const over = readUserConfig(write('overname.json', JSON.stringify({ version: 1, competition: 'eng.1', team: { id: 'espn:359', code: 'ARS', name: 'x'.repeat(101) } })));
+    expect(over).toEqual({ kind: 'read', config: { version: 1, competition: 'eng.1' } });
+  });
+
   it('a pin is believed only as { id?, code, name } with the identifier grammar and human labels; else dropped, the competition kept', () => {
     const noId = readUserConfig(write('noid.json', JSON.stringify({ version: 1, competition: 'fifa.world', team: { code: 'MEX', name: 'Mexico' } })));
     expect(noId).toEqual({ kind: 'read', config: { version: 1, competition: 'fifa.world', team: { code: 'MEX', name: 'Mexico' } } });
-    for (const team of [{ id: 'not an id', code: 'ARS', name: 'Arsenal' }, { code: 'ARS' }, { code: 'A\u0000RS', name: 'Arsenal' }, 'Arsenal', 7, { id: 'espn:359', code: 'x'.repeat(50), name: 'Arsenal' }]) {
+    for (const team of [{ id: 'not an id', code: 'ARS', name: 'Arsenal' }, { code: 'ARS' }, { code: 'A\u0000RS', name: 'Arsenal' }, 'Arsenal', 7, { id: 'espn:359', code: 'x'.repeat(9), name: 'Arsenal' }]) {
       const r = readUserConfig(write('badpin.json', JSON.stringify({ version: 1, competition: 'eng.1', team })));
       expect(r, JSON.stringify(team)).toEqual({ kind: 'read', config: { version: 1, competition: 'eng.1' } });
     }
+  });
+
+  it('an id-less pin is believed for the bundled competition alone (its nations carry no id); off it a pin needs the id, else it is dropped', () => {
+    const wc = readUserConfig(write('wc-noid.json', JSON.stringify({ version: 1, competition: 'world-cup', team: { code: 'MEX', name: 'Mexico' } })));
+    expect(wc).toEqual({ kind: 'read', config: { version: 1, competition: 'world-cup', team: { code: 'MEX', name: 'Mexico' } } });
+    const lib = readUserConfig(write('lib-noid.json', JSON.stringify({ version: 1, competition: 'conmebol.libertadores', team: { code: 'CAR', name: 'Carabobo' } })));
+    expect(lib).toEqual({ kind: 'read', config: { version: 1, competition: 'conmebol.libertadores' } });
+    const alias = readUserConfig(write('pl-noid.json', JSON.stringify({ version: 1, competition: 'premier-league', team: { code: 'ARS', name: 'Arsenal' } })));
+    expect(alias).toEqual({ kind: 'read', config: { version: 1, competition: 'premier-league' } });
+    const withId = readUserConfig(write('lib-id.json', JSON.stringify({ version: 1, competition: 'libertadores', team: { id: 'espn:7001', code: 'CAR', name: 'Carabobo' } })));
+    expect(withId).toEqual({ kind: 'read', config: { version: 1, competition: 'libertadores', team: { id: 'espn:7001', code: 'CAR', name: 'Carabobo' } } });
   });
 
   it('absent → none (absent); malformed, a non-object root, a version that is not 1, a bad competition → none with the reason', () => {

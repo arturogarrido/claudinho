@@ -42,12 +42,27 @@ describe('the verdict', () => {
 });
 
 describe('the guides and the cache paths', () => {
-  it('no public README says the World Cup is the default; each names `claudinho follow`', () => {
+  it('no public README says the World Cup is the default; each names `claudinho follow`; core\'s says the resolver answers none', () => {
     for (const rel of ['../../../README.md', '../../cli/README.md', '../../mcp/README.md']) {
       const text = at(rel);
       expect(text, rel).not.toMatch(/World Cup is the default|else the 2026 World Cup|default: the 2026 World Cup/);
       expect(text, rel).toMatch(/claudinho follow/);
     }
+    const core = at('../README.md');
+    expect(core).not.toMatch(/then the World Cup|falls? (back )?to the World Cup/);
+    expect(core).toMatch(/none|nothing chosen/i);
+    // The CLI README's "run without installing" example runs on a first run: it chooses.
+    const cli = at('../../cli/README.md');
+    const npx = cli.split('\n').find((l) => /^npx @claudinho\/cli /.test(l)) ?? '';
+    expect(npx).toMatch(/--competition \S+|follow/);
+  });
+
+  it('SECURITY.md names the config file as an input: its variables, the saved choice as a competition source, the one file `follow` writes', () => {
+    const text = at('../../../SECURITY.md');
+    expect(text).toMatch(/XDG_CONFIG_HOME/);
+    expect(text).toMatch(/APPDATA/);
+    expect(text).toMatch(/config\.json/);
+    expect(text).toMatch(/claudinho follow|`follow`/);
   });
 
   it('the privacy note names the config file, written only by `follow`, read locally; the MCP server reads it and writes none', () => {
