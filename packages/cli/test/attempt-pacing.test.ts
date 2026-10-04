@@ -22,10 +22,18 @@ vi.mock('node:child_process', () => ({ spawn: vi.fn(() => ({ unref: vi.fn() })) 
 
 let publishes = 0;
 let throwPublishAt = 0;
+/** Runs once, just before the next `claimLock` (another refresher publishing between the first look and the lock). */
+let onClaim: (() => void) | undefined;
 vi.mock('../src/cache', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../src/cache')>();
   return {
     ...mod,
+    claimLock: (...args: Parameters<typeof mod.claimLock>) => {
+      const hook = onClaim;
+      onClaim = undefined;
+      hook?.();
+      return mod.claimLock(...args);
+    },
     publishState: (...args: Parameters<typeof mod.publishState>) => {
       publishes++;
       if (throwPublishAt > 0 && publishes === throwPublishAt) throw new Error('the write failed');
@@ -76,6 +84,7 @@ beforeEach(() => {
   asked = [];
   publishes = 0;
   throwPublishAt = 0;
+  onClaim = undefined;
   vi.mocked(spawn).mockClear();
   vi.stubGlobal('fetch', async (input: unknown) => {
     const dates = new URL(String(input)).searchParams.get('dates') ?? '';
@@ -253,22 +262,62 @@ describe('off the bundle, discovery', () => {
   });
 });
 
-describe('admission that cannot be made visible', () => {
-  it('the record path is a directory: nothing is published, nothing asked, the lock released', async () => {
+describe('admission that cannot be made visible: the gate fails closed only where a publish could not heal', () => {
+  // The snapshot file is PRESENT and unreadable: the atomic replacement keeps its mode, so a publish
+  // cannot heal it, and a cycle whose attempt cannot be recorded does nothing.
+  it.skipIf(!unprivileged)('an unreadable snapshot and a record path that is a directory: nothing is published, nothing asked, the lock released', async () => {
+    unreadableSnapshot(LIVE);
     mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
     await refresh(LIVE);
     expect(asked).toHaveLength(0);
-    expect(existsSync(cachePath(SOURCE, WC))).toBe(false);
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined();
     expect(existsSync(join(dir, 'claudinho', 'refresh.lock'))).toBe(false);
   });
 
-  it.skipIf(!unprivileged)('the record itself is mode 000: the attempt is not admitted and the provider is not asked', async () => {
-    mkdirSync(join(dir, 'claudinho'), { recursive: true });
+  it.skipIf(!unprivileged)('an unreadable snapshot and a record of mode 000: the attempt is not admitted and the provider is not asked', async () => {
+    unreadableSnapshot(LIVE);
     writeFileSync(attemptRecordPath(SOURCE, WC), JSON.stringify({ at: iso(LIVE - HOUR), count: 1 }));
     chmodSync(attemptRecordPath(SOURCE, WC), 0o000);
     await refresh(LIVE);
     expect(asked).toHaveLength(0);
-    expect(existsSync(cachePath(SOURCE, WC))).toBe(false);
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined();
+  });
+
+  // The snapshot file is ABSENT: a publish starts a fresh file with no mode to inherit, so one cycle
+  // heals (as on `main`); the attempt is recorded when it can be, and the cycle proceeds either way.
+  it('an ABSENT snapshot and a record path that is a directory: the cycle proceeds, publishes a readable snapshot, and the loop ends', async () => {
+    mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
+    await refresh(LIVE);
+    expect(asked).toHaveLength(3);
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
+    expect(existsSync(join(dir, 'claudinho', 'refresh.lock'))).toBe(false);
+    // The next tick has a snapshot: the cadences, and no spawn before the live slice is stale.
+    expect(refreshWanted(LIVE + 5000, readCurrentState(SOURCE, WC), WC, SOURCE)).toBe(false);
+  });
+
+  it.skipIf(!unprivileged)('an ABSENT snapshot and a record of mode 000: the same, outside a window too (the idle writer publishes)', async () => {
+    mkdirSync(join(dir, 'claudinho'), { recursive: true });
+    writeFileSync(attemptRecordPath(SOURCE, WC), JSON.stringify({ at: iso(QUIET - HOUR), count: 1 }));
+    chmodSync(attemptRecordPath(SOURCE, WC), 0o000);
+    await refresh(QUIET);
+    expect(asked).toHaveLength(0);
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
+    // And for an unknown source.
+    rmSync(cachePath(SOURCE, WC), { force: true });
+    await refresh(QUIET, WC, 'nope');
+    expect(readCurrentState('nope', WC)).toBeDefined();
+  });
+
+  it('an ABSENT snapshot with a working record is still paced by it: two cycles, one set of requests, then the count settles when the snapshot reads back', async () => {
+    // The first cycle admits (count 1), publishes a readable snapshot, settles to 0.
+    await refresh(LIVE);
+    expect(asked).toHaveLength(3);
+    expect(record()).toEqual({ at: LIVE, count: 0 });
+    // The snapshot deleted each tick by something else: every cycle finds it absent, admits, and the
+    // record paces the hot path between cycles (a settled count of 0 is due at once, so the first
+    // re-attempt is immediate; its own admission raises the count only until it settles again).
+    rmSync(cachePath(SOURCE, WC), { force: true });
+    expect(refreshWanted(LIVE + 5000, undefined, WC, SOURCE)).toBe(true);
   });
 });
 
@@ -330,5 +379,40 @@ describe('the settlement', () => {
     writeFileSync(cachePath(SOURCE, WC), '{ not json');
     await refresh(LIVE + 10 * MIN);
     expect(asked).toHaveLength(0);
+  });
+});
+
+describe('the rules the fourth reader found unpinned', () => {
+  it('off the bundle, a first run settles the record to 0 (the settlement is every lane\'s)', async () => {
+    const at = Date.parse('2026-10-10T15:00:00Z');
+    answer = () => json({ leagues: [{ season: { year: 2026, displayName: '2026-27 Liga MX' } }], events: [] });
+    await refresh(at, MEX);
+    expect(asked).toEqual(['202610']);
+    expect(readCurrentState(SOURCE, MEX)).toBeDefined();
+    expect(readAttemptRecord(SOURCE, MEX, at)).toEqual({ at, count: 0 });
+  });
+
+  it('off the bundle, a cycle with a readable snapshot neither reads nor writes the record (no settlement either)', async () => {
+    const at = Date.parse('2026-10-10T15:00:00Z');
+    answer = () => json({ leagues: [{ season: { year: 2026, displayName: '2026-27 Liga MX' } }], events: [] });
+    mkdirSync(join(dir, 'claudinho'), { recursive: true });
+    writeFileSync(attemptRecordPath(SOURCE, MEX), JSON.stringify({ at: iso(at - 2 * HOUR), count: 6 }));
+    // A readable snapshot whose discovery is due (an old slice): the lane asks, the record is untouched.
+    writeState({
+      ...snapshot(at, MEX, { updatedAt: iso(at - HOUR) }),
+      schedule: { index: [], updatedAt: iso(at - 2 * HOUR), attemptedAt: iso(at - 2 * HOUR), failures: 0, complete: true, season: { year: 2026, label: '2026-27 Liga MX' } },
+    } as CacheState);
+    const before = readFileSync(attemptRecordPath(SOURCE, MEX), 'utf8');
+    await refresh(at, MEX);
+    expect(asked).toEqual(['202610']);
+    expect(readFileSync(attemptRecordPath(SOURCE, MEX), 'utf8')).toBe(before);
+  });
+
+  it('the idle writer reads the snapshot before admitting: a snapshot published between the first look and the lock leaves the record untouched', async () => {
+    onClaim = () => writeState(snapshot(QUIET));
+    await refresh(QUIET);
+    expect(asked).toHaveLength(0);
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
+    expect(existsSync(attemptRecordPath(SOURCE, WC))).toBe(false);
   });
 });
