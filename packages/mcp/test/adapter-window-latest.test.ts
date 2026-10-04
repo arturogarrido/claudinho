@@ -2,9 +2,10 @@
  * A state of the source's throttle window that the shared-window test does not
  * reach (0.11 · 2.5a): the LATEST deadline is the one remembered, whichever
  * adapter reports last. An adapter evicted from the kept set can still have a
- * request in flight; it is no longer armed by a later throttle, so when its
- * own, shorter, throttle arrives after a longer one it reports an EARLIER
- * deadline. The source's window must not move back.
+ * request in flight, sent before the window opened; its own, shorter, throttle
+ * arrives after a longer one. The source's window must not move back. (The
+ * evicted adapter is armed by the longer throttle like every adapter of the
+ * source still alive, so its shorter one changes nothing.)
  *
  * Own file: the module-level adapter map and the remembered window outlive a test.
  */

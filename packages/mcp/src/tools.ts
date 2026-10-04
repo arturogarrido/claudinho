@@ -192,14 +192,45 @@ function throttleable(adapter: ProviderAdapter): adapter is ProviderAdapter & Th
 }
 
 /**
+ * Every adapter built for a source that may still be alive, kept or not, held
+ * WEAKLY: the map above forgets an adapter for the NEXT request, but a tool
+ * call that resolved it before the eviction still holds it and may still ask
+ * the provider (an off-bundle match refreshing its day after its discovery).
+ * A throttle arms every adapter this set still reaches; a ref whose adapter
+ * was collected arms nothing and is dropped when the set is walked. The set
+ * holds no adapter alive: the map stays the one bound on what is kept.
+ */
+const builtAdapters = new Map<string, Set<WeakRef<Throttleable>>>();
+
+/** How many refs a source's set holds now (a dropped one is gone). A test seam: nothing in the server reads it. */
+export function builtAdapterRefs(source = 'espn'): number {
+  return builtAdapters.get(source)?.size ?? 0;
+}
+
+/** The adapters of a source still alive; a ref whose adapter was collected is dropped here. */
+function aliveAdapters(source: string): Throttleable[] {
+  const refs = builtAdapters.get(source);
+  if (!refs) return [];
+  const alive: Throttleable[] = [];
+  for (const ref of refs) {
+    const adapter = ref.deref();
+    if (adapter === undefined) refs.delete(ref);
+    else alive.push(adapter);
+  }
+  return alive;
+}
+
+/**
  * Build and keep the adapter for a source and competition, joined to its
  * source's ONE throttle window: built inside a remembered window it is armed
  * at construction (the remembered deadline is compared with the adapter's
- * clock: a past one arms nothing), and a throttle it meets is remembered for
- * the source and arms every other kept adapter of the source (`armCooldown`
+ * clock: a past one arms nothing; the deadline is remembered per source
+ * because every adapter that met it may since have been collected), and a
+ * throttle it meets is remembered for the source and arms every other adapter
+ * of the source still alive, kept or evicted (`builtAdapters`; `armCooldown`
  * keeps the latest deadline and is silent on an earlier or equal one, so the
  * arming never loops). An adapter with neither method (a fake) is kept as it
- * is: feature-detected, never an error.
+ * is: feature-detected, never an error, and never in the set.
  */
 function keepAdapter(source: string, competition: string, key: string): ProviderAdapter {
   const adapter = makeAdapter(source, { competition });
@@ -209,10 +240,13 @@ function keepAdapter(source: string, competition: string, key: string): Provider
     if (until !== undefined && until > nowMs) adapter.armCooldown(until);
     adapter.onCooldown((untilMs) => {
       sourceWindows.set(source, Math.max(sourceWindows.get(source) ?? untilMs, untilMs));
-      for (const [k, other] of adapters) {
-        if (other !== adapter && k.startsWith(`${source}::`) && throttleable(other)) other.armCooldown(untilMs);
-      }
+      for (const other of aliveAdapters(source)) if (other !== adapter) other.armCooldown(untilMs);
     });
+    // Drop the refs whose adapters were collected, then add this one.
+    aliveAdapters(source);
+    let refs = builtAdapters.get(source);
+    if (!refs) builtAdapters.set(source, (refs = new Set()));
+    refs.add(new WeakRef(adapter));
   }
   adapters.set(key, adapter);
   while (adapters.size > KEPT_ADAPTERS_MAX) {
@@ -274,9 +308,11 @@ export function resolveAdapter(args: CommonOpts): ProviderAdapter {
   // Keyed by source AND competition: an adapter serves exactly one
   // competition, so a cache keyed by source alone would pin the first
   // competition seen for the whole session. The throttle window is the
-  // SOURCE's, shared by every kept adapter of it (`keepAdapter`): the CLI keeps
-  // a per-scope note on disk instead, a different design for one process per
-  // command.
+  // SOURCE's, shared by every adapter of it still alive (`keepAdapter`): an
+  // evicted adapter a running tool call still holds is armed too, since
+  // eviction forgets an adapter for the next request, not for the one in
+  // flight. The CLI keeps a per-scope note on disk instead, a different design
+  // for one process per command.
   const key = `${source}::${competition}`;
   let adapter = adapters.get(key);
   if (adapter) {
