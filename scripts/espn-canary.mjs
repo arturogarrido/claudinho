@@ -83,15 +83,18 @@ import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /**
- * The competitions 0.11 supports: the fifteen core writes down in its
- * supported-set tables (`TEAM_KIND`, `COMPETITION_KIND` in
- * `packages/core/src/kinds.ts`). The canary keeps its own list of them on
- * purpose: it reaches core only through the BUILT package, loaded at run time
- * and handed to `runCanary({ core })`, while this list is read before that (by
- * the run's own defaults and by the tests that name what it asks), so it cannot
- * be derived from core in one line without loading core at import. A
- * competition added to the product is added here too; no test compares the two
- * lists yet.
+ * The fifteen competitions 0.11 SUPPORTS, the ones the canary asks. Core's
+ * written tables (`TEAM_KIND`, `COMPETITION_KIND` in
+ * `packages/core/src/kinds.ts`) hold these fifteen and one more, the friendly
+ * competition (`fifa.friendly`): its teams' kind and its stage grammar are
+ * written there because the `CLAUDINHO_COMPETITION` seam reaches it, but it is
+ * not in the supported set and the canary does not ask it. The canary keeps
+ * its own list of the fifteen on purpose: it reaches core only through the
+ * BUILT package, loaded at run time and handed to `runCanary({ core })`, while
+ * this list is read before that (by the run's own defaults and by the tests
+ * that name what it asks), so it cannot be derived from core in one line
+ * without loading core at import. A competition added to the supported set is
+ * added here too; no test compares the two lists yet.
  */
 export const CANARY_COMPETITIONS = Object.freeze([
   'fifa.world',
