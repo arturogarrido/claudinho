@@ -390,14 +390,30 @@ function precheck(
 type TeamAsked = { readonly query: string; readonly from: 'argument' | 'env' } | { readonly pin: Pin };
 function teamAsked(team: string | undefined, cfg: CliConfig): TeamAsked | undefined {
   if (team !== undefined) return { query: team, from: 'argument' };
-  const env = process.env.CLAUDINHO_TEAM;
-  if (env) {
-    // Set with nothing readable in it: it names no team, and says so (it is
-    // still the override: never the pin).
-    if (!humanLabel(env, 40)) throw new InputError(ENV_TEAM_UNREADABLE);
-    return { query: env, from: 'env' };
-  }
+  const env = teamEnvOf();
+  // Set with nothing readable in it: it names no team, and says so (it is
+  // still the override: never the pin).
+  if (env.kind === 'refused') throw new InputError(ENV_TEAM_UNREADABLE);
+  if (env.kind === 'set') return { query: env.query, from: 'env' };
   return cfg.pin ? { pin: cfg.pin } : undefined;
+}
+
+/**
+ * `CLAUDINHO_TEAM` in one of three states, the ONE reading the team-taking
+ * commands and `follow`'s report share: unset (or empty); set with a readable
+ * label (bounded as a label, 40 columns); set with nothing readable (the
+ * bounded label is empty: blanks, a tab, an invisible character, an emoji),
+ * which the team-taking commands refuse.
+ */
+type TeamEnv =
+  | { readonly kind: 'unset' }
+  | { readonly kind: 'set'; readonly query: string; readonly label: string }
+  | { readonly kind: 'refused'; readonly label: string };
+function teamEnvOf(): TeamEnv {
+  const raw = process.env.CLAUDINHO_TEAM;
+  if (!raw) return { kind: 'unset' };
+  const label = humanLabel(raw, 40);
+  return label ? { kind: 'set', query: raw, label } : { kind: 'refused', label };
 }
 
 /** CLAUDINHO_TEAM set with nothing readable in it (English, like the usage sentences). */
@@ -2121,16 +2137,20 @@ interface FollowFacts {
  *     is absent, since the next command follows the saved choice);
  *   - the sources this command RAN under (`sources: { flag?, env?, team? }`:
  *     the flag's and the environment's resolved slugs, and `CLAUDINHO_TEAM`
- *     as set, bounded as a label), whatever is reported: the flag decides
- *     this command alone, the environment outlives it; absent when none;
- *   - the values refused for this command (`refused: { flag?, env? }`, which
- *     mirrors `sources`: each the value as given, bounded as a label, under
- *     its source's name; the flag and the environment each sit in exactly one
- *     of `sources` and `refused`), each said in the text by its refusal's
- *     sentence: as the headline when it decides what is reported, else on its
- *     own line after it, the flag's before the environment's (a refused flag
- *     on a write: the write done, the saved choice what the next command
- *     follows unless the environment is refused too);
+ *     with a readable label, bounded as a label), whatever is reported: the
+ *     flag decides this command alone, the environment outlives it; absent
+ *     when none;
+ *   - the values refused (`refused: { flag?, env?, team? }`, which mirrors
+ *     `sources`: each the value as given, bounded as a label, under its
+ *     source's name; each of the flag, the environment and the team sits in
+ *     at most one of `sources` and `refused`). A refused competition is said
+ *     in the text by its refusal's sentence: as the headline when it decides
+ *     what is reported, else on its own line after it, the flag's before the
+ *     environment's (a refused flag on a write: the write done, the saved
+ *     choice what the next command follows unless the environment is refused
+ *     too). `CLAUDINHO_TEAM` set with nothing readable is `team: ''` (its
+ *     bounded label is empty: presence is the signal), which the next
+ *     team-taking command refuses, said by its own sentence;
  *   - the pinned team (`saved.team`) WITH the saved choice it belongs to: right
  *     after the competition reported when the pin is the team in effect (the
  *     competition is the file's and no `CLAUDINHO_TEAM` overrides it), else
@@ -2139,9 +2159,17 @@ interface FollowFacts {
  *     `CLAUDINHO_TEAM`, whose sentence then says so;
  *   - the saved choice (`saved`), its line when another competition (or a
  *     refused value) is reported;
- *   - the sentence TRUE of the next command while the file holds a choice
- *     (a flag that ran, or was refused, decides this command alone; the
- *     environment, when set, decides the next one before the saved choice);
+ *   - the sentence TRUE of the next command (`overrideSentence`: a flag that
+ *     ran, or was refused, decides this command alone; the environment, when
+ *     set, decides the next one before the saved choice; with no believed
+ *     saved choice, none is named), then the team override's, by
+ *     `CLAUDINHO_TEAM`'s three states: unset (or empty), nothing (the pin, if
+ *     it applies, is the `Team:` line); set and readable (in `sources.team`),
+ *     the next command takes it as its team (`teamEnv`), or, when the file
+ *     holds a pin, it wins over the saved team (`teamEnvWins`, never without
+ *     a pin); set with nothing readable (in `refused.team`), the next command
+ *     refuses it, a pin or not (`teamEnvRefused`). Under either set state the
+ *     pin is the saved team, never the team in effect;
  *   - why there is no saved choice (`reason`);
  *   - the path, said as what was done with it (`path`, and `removed` after `off`).
  */
@@ -2156,14 +2184,13 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
   const env = edgeSelection({}, NO_SAVED);
   const envRefused = env.kind === 'refused' ? env : undefined;
   const envState = env.kind === 'selected' ? 'set' : envRefused ? 'refused' : 'none';
-  // CLAUDINHO_TEAM, when set (an empty one is absent): the team override, which
-  // a saved pin never replaces, readable or not.
-  const teamEnv = process.env.CLAUDINHO_TEAM || undefined;
-  const teamLabel = teamEnv !== undefined ? humanLabel(teamEnv, 40) : '';
+  // CLAUDINHO_TEAM in its three states (an empty one is unset): the team
+  // override, which a saved pin never replaces, readable or not.
+  const teamEnv = teamEnvOf();
   const sources = {
     ...(flag ? { flag: flag.slug } : {}),
     ...(env.kind === 'selected' ? { env: env.slug } : {}),
-    ...(teamLabel ? { team: teamLabel } : {}),
+    ...(teamEnv.kind === 'set' ? { team: teamEnv.label } : {}),
   };
   // The reported competition's source, when it is not the saved choice.
   const override = effect.kind === 'selected' && (effect.chosenBy === 'flag' || effect.chosenBy === 'env') ? effect.chosenBy : undefined;
@@ -2171,6 +2198,7 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
   const refused = {
     ...(flagRefused ? { flag: humanLabel(flagRefused.value, 40) } : {}),
     ...(envRefused ? { env: humanLabel(envRefused.value, 40) } : {}),
+    ...(teamEnv.kind === 'refused' ? { team: teamEnv.label } : {}),
   };
   if (cfg.json) {
     emitJson({
@@ -2190,7 +2218,7 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
   // Whether the pin is the team in effect: the competition reported is the
   // file's, and no CLAUDINHO_TEAM overrides it.
   const pinned =
-    teamEnv === undefined && saved?.team !== undefined && pinUnder(effect.kind === 'selected' ? effect.slug : undefined, saved) !== undefined;
+    teamEnv.kind === 'unset' && saved?.team !== undefined && pinUnder(effect.kind === 'selected' ? effect.slug : undefined, saved) !== undefined;
   out();
   if (effect.kind === 'selected') out(`  ${t('follow.following', { competition: modeLine(effect, cfg.lang) })}`);
   else out(`  ${selectionRefusal(effect, cfg.lang)}`);
@@ -2210,12 +2238,16 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
   }
   // The saved team, when it is not the team in effect.
   if (saved?.team && !pinned) out(c.dim(`  ${t('follow.savedTeam', { team: pinLabel(saved.team) })}`));
-  // The sentence true of the next command: one that names the saved choice
-  // while the file holds one; under a refused environment, whatever the file
-  // holds (the next command meets the refusal, file or not).
-  const sentence = saved === null && envState !== 'refused' ? undefined : overrideSentence(flag ? 'ran' : flagRefused ? 'refused' : undefined, envState);
+  // The sentence true of the next command, from the flag, the environment and
+  // whether the file holds a believed choice.
+  const sentence = overrideSentence(flag ? 'ran' : flagRefused ? 'refused' : undefined, envState, saved !== null);
   if (sentence) out(c.dim(`  ${t(sentence)}`));
-  if (saved?.team && teamEnv !== undefined) out(c.dim(`  ${t('follow.teamEnvWins')}`));
+  // The team override's, in its three states: unset, nothing; set and
+  // readable, the next command's team (over the saved team when the file
+  // holds a pin); set with nothing readable, refused by the next command, a
+  // pin or not.
+  if (teamEnv.kind === 'refused') out(c.dim(`  ${t('follow.teamEnvRefused')}`));
+  else if (teamEnv.kind === 'set') out(c.dim(`  ${t(saved?.team ? 'follow.teamEnvWins' : 'follow.teamEnv')}`));
   if (reason && mode === 'show') out(c.dim(`  ${t(NO_SAVED_REASON[reason])}`));
   if (mode === 'write') out(c.dim(`  ${t('follow.path', { path })}`));
   else if (mode === 'off') out(`  ${t(facts.removed ? 'follow.removed' : 'follow.nothingToRemove', { path })}`);
@@ -2226,7 +2258,8 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
 /**
  * The sentence the overrides at work are said with, true of the NEXT command,
  * one per cell of the flag (ran, refused, absent) by the environment (unset,
- * set, refused):
+ * set, refused) by the file (a believed saved choice, or none: no file, a
+ * link, an unreadable or malformed one, after `off`). With a file:
  *   - flag ran, environment unset: `flagWins` (it decides this command; the
  *     saved choice the next one);
  *   - flag ran, environment set: `flagEnvWins` (without it the environment
@@ -2244,11 +2277,36 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
  *     while set);
  *   - no flag, environment refused: `envRefused` (nothing is followed while
  *     it is set; its refusal is the headline).
+ * With none, no sentence names a saved choice:
+ *   - flag ran, environment unset: `flagNone` (without it nothing is chosen);
+ *   - flag ran, environment set: `flagEnv` (without it the environment
+ *     decides);
+ *   - flag ran, environment refused: `flagEnvRefused`, as with a file;
+ *   - flag refused, environment unset: `flagRefusedNone` (without it nothing
+ *     is chosen);
+ *   - flag refused, environment set: `flagRefusedEnvOnly` (without it the
+ *     environment decides);
+ *   - flag refused, environment refused: `flagRefusedEnvRefused`, as with a
+ *     file;
+ *   - no flag, environment unset: none (the reason line says why);
+ *   - no flag, environment set: `envDecides` (the next command follows it
+ *     while it is set);
+ *   - no flag, environment refused: `envRefused`, as with a file.
  */
-function overrideSentence(flag: 'ran' | 'refused' | undefined, env: 'none' | 'set' | 'refused'): string | undefined {
-  if (flag === 'ran') return env === 'set' ? 'follow.flagEnvWins' : env === 'refused' ? 'follow.flagEnvRefused' : 'follow.flagWins';
-  if (flag === 'refused') return env === 'set' ? 'follow.flagRefusedEnv' : env === 'refused' ? 'follow.flagRefusedEnvRefused' : 'follow.flagRefused';
-  return env === 'set' ? 'follow.envWins' : env === 'refused' ? 'follow.envRefused' : undefined;
+function overrideSentence(flag: 'ran' | 'refused' | undefined, env: 'none' | 'set' | 'refused', file: boolean): string | undefined {
+  if (flag === 'ran') {
+    if (env === 'refused') return 'follow.flagEnvRefused';
+    if (env === 'set') return file ? 'follow.flagEnvWins' : 'follow.flagEnv';
+    return file ? 'follow.flagWins' : 'follow.flagNone';
+  }
+  if (flag === 'refused') {
+    if (env === 'refused') return 'follow.flagRefusedEnvRefused';
+    if (env === 'set') return file ? 'follow.flagRefusedEnv' : 'follow.flagRefusedEnvOnly';
+    return file ? 'follow.flagRefused' : 'follow.flagRefusedNone';
+  }
+  if (env === 'refused') return 'follow.envRefused';
+  if (env === 'set') return file ? 'follow.envWins' : 'follow.envDecides';
+  return undefined;
 }
 
 /** `follow off`: the file removed (a link removed, never its target); nothing there is no error. */

@@ -11,6 +11,8 @@
  *     headline when it decides what is reported, else its own line after
  *     the headline), its sentence is said with no file too (after `off`),
  *     and `refused.env` is bounded as a label;
+ *   - the sentence table's empty cell (no flag, no environment) says no
+ *     sentence, with a believed saved choice or without one;
  *   - with nothing chosen `_refresh` asks nobody and writes nothing, and
  *     `vibe` reads no cache;
  *   - the cache directory takes the Windows leg (`%LOCALAPPDATA%`) through
@@ -222,6 +224,37 @@ describe('a refused environment, beside the main report suite', () => {
     expect(j.refused.env.length).toBeGreaterThan(0);
     expect(j.refused.env.length).toBeLessThanOrEqual(40);
     expect(j.sources).toBeUndefined();
+  });
+});
+
+describe("the sentence table's empty cell: no flag, no environment", () => {
+  // Every sentence of `follow`'s table, in English: none is said in this cell.
+  const SENTENCES = [
+    'follow.flagWins', 'follow.flagEnvWins', 'follow.flagEnvRefused', 'follow.flagRefused', 'follow.flagRefusedEnv',
+    'follow.flagRefusedEnvRefused', 'follow.envWins', 'follow.envRefused', 'follow.flagNone', 'follow.flagEnv',
+    'follow.flagRefusedNone', 'follow.flagRefusedEnvOnly', 'follow.envDecides',
+  ] as const;
+  const en = makeT('en');
+  const saysNone = () => {
+    for (const key of SENTENCES) expect(text()).not.toContain(en(key));
+  };
+
+  it('says no sentence, with a believed saved choice or without one (the reason line says why there is none)', async () => {
+    // No file.
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/No saved choice/);
+    saysNone();
+    // A file: the saved choice is followed, and nothing overrides it.
+    follow({ version: 1, competition: 'eng.1' });
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/Following: Premier League/);
+    saysNone();
+    // After `off`: no file again.
+    writes = [];
+    await cmdFollow('off', {}, ctxOf());
+    expect(text()).toMatch(/Saved choice removed/);
+    saysNone();
   });
 });
 
