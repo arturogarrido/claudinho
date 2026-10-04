@@ -651,7 +651,8 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
  * (offline). It reads the World Cup's roster whatever the selection, so it is
  * not a competition-answering command: no mode line, no `competition` key.
  * Under an EXPLICIT selection of another competition (the flag or the
- * environment) it is refused, saying where a club's name goes; the default
+ * environment) it is refused, saying where a team's name goes (`next`, `share
+ * next`) and how to reach the roster (`--competition world-cup`); the default
  * and an explicit World Cup answer, the roster named.
  */
 export function cmdTeam(query: string | undefined, ctx: Ctx): void {
