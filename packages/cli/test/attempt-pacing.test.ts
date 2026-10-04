@@ -13,7 +13,7 @@
  * Mode-000 fixtures skip on Windows (the mode does not refuse a read) and as
  * root (nothing refuses root).
  */
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -306,7 +306,14 @@ describe('the settlement', () => {
       // Idempotent across the three day requests: the first call swaps the file for a directory, the next
       // two find it there (an `rmSync` of a directory without `recursive` throws, which would turn them
       // into errors rather than throttles).
-      if (!existsSync(join(attemptRecordPath(SOURCE, WC), '.'))) {
+      const isDir = (() => {
+        try {
+          return statSync(attemptRecordPath(SOURCE, WC)).isDirectory();
+        } catch {
+          return false;
+        }
+      })();
+      if (!isDir) {
         rmSync(attemptRecordPath(SOURCE, WC), { force: true });
         mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
       }
