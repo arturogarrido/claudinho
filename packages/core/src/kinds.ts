@@ -1,54 +1,59 @@
 /**
  * What a competition IS, written down: which teams it fields (nations or
- * clubs), and what kind of competition it is (a league, a cup, the friendly
- * one). Facts of the competition, one entry each, never inferred from a name,
- * a slug or a payload. Re-exported by `competition.ts`, where the other written
- * facts live; kept in this leaf module because the trust layer reads them at
- * parse time, and `competition.ts` imports the adapter, which imports the trust
- * layer (an import cycle would leave these tables uninitialized on one path).
+ * clubs), what kind of competition it is (a league, a cup, the friendly one),
+ * a league's season name, its standings shape. Facts of the competition, one
+ * entry each, never inferred from a name, a slug or a payload.
+ *
+ * The supported fifteen are ONE table (`supported.ts`); every view below is
+ * derived from it. Beside it, the EXPERIMENTAL extras: competitions the product
+ * does not support but whose kinds are written down because the raw-slug
+ * escape hatch reaches them. They OVERRIDE the table for their slug.
+ *
+ * Re-exported by `competition.ts`, where the other written facts live; kept in
+ * this leaf module because the trust layer reads them at parse time, and
+ * `competition.ts` imports the adapter, which imports the trust layer (an
+ * import cycle would leave these tables uninitialized on one path).
  *
  * An unlisted competition asserts nothing: its teams are clubs (no flag is
  * ever generated from a name that merely looks like a region) and it is a cup
  * (no league season, no friendly). Every lookup is an OWN-property one: the
- * competition comes from an environment variable, and `constructor` is not one.
+ * competition comes from a flag, an environment variable or a tool argument,
+ * and `constructor` is not one.
  */
 import type { StandingsShape } from './trust/espn';
+import { SUPPORTED_TABLES, type TeamKind } from './supported';
 import type { Team } from './types';
 
-/** Whether a competition fields nations (a flag is generated from the name) or clubs (no flag). */
-export type TeamKind = 'nation' | 'club';
+export type { TeamKind } from './supported';
 
 /** A league (its season is the regular stage), a cup (rounds and phases), or the friendly competition. */
 export type CompetitionKind = 'league' | 'cup' | 'friendly';
 
 /**
- * The supported fifteen and the friendly competition, by the teams they
- * field. `nation`: the World Cup, the Euro, the Copa América, the UEFA Nations
- * League, the Concacaf Nations League, the Gold Cup, and international
- * friendlies (`fifa.friendly`). `club`: the five leagues and the four club
- * cups. An unlisted competition fields clubs: a nations competition the set
- * does not list renders its teams by name until it is written down.
+ * The experimental extras: written down beside the table, never supported.
+ * International friendlies (`fifa.friendly`, reachable as a raw slug) are
+ * nations' matches, and the one competition whose `friendly` slug is the
+ * `FRIENDLY` stage.
  */
-export const TEAM_KIND: Readonly<Record<string, TeamKind>> = Object.freeze({
-  'fifa.world': 'nation',
-  'uefa.euro': 'nation',
-  'conmebol.america': 'nation',
-  'uefa.nations': 'nation',
-  'concacaf.nations.league': 'nation',
-  'concacaf.gold': 'nation',
-  // International friendlies are nations' matches: the friendly competition,
-  // reachable through `CLAUDINHO_COMPETITION`, fields nations.
-  'fifa.friendly': 'nation',
-  'eng.1': 'club',
-  'esp.1': 'club',
-  'ita.1': 'club',
-  'ger.1': 'club',
-  'mex.1': 'club',
-  'uefa.champions': 'club',
-  'conmebol.libertadores': 'club',
-  'concacaf.champions': 'club',
-  'fifa.cwc': 'club',
-});
+const EXPERIMENTAL: Readonly<Record<string, { readonly teams: TeamKind; readonly kind: CompetitionKind }>> =
+  Object.freeze({ 'fifa.friendly': Object.freeze({ teams: 'nation', kind: 'friendly' }) });
+
+/** The table's view, then the extras over it: no prototype, frozen. */
+function withExtras<V>(base: Readonly<Record<string, V>>, extra: (e: { teams: TeamKind; kind: CompetitionKind }) => V) {
+  const out: Record<string, V> = Object.assign(Object.create(null), base);
+  for (const slug of Object.keys(EXPERIMENTAL)) out[slug] = extra(EXPERIMENTAL[slug] as { teams: TeamKind; kind: CompetitionKind });
+  return Object.freeze(out) as Readonly<Record<string, V>>;
+}
+
+/**
+ * The teams each competition fields: the supported table's (`nation` for the
+ * World Cup, the Euro, the Copa America, both Nations Leagues and the Gold
+ * Cup; `club` for the five leagues and the four club cups), and the friendly
+ * competition's (`nation`). An unlisted competition fields clubs: a nations
+ * competition the set does not list renders its teams by name until it is
+ * written down.
+ */
+export const TEAM_KIND: Readonly<Record<string, TeamKind>> = withExtras(SUPPORTED_TABLES.teamKind, (e) => e.teams);
 
 /** The teams a competition fields; an unlisted (or absent) competition fields clubs. */
 export function teamKind(competition: string | undefined): TeamKind {
@@ -58,30 +63,15 @@ export function teamKind(competition: string | undefined): TeamKind {
 }
 
 /**
- * The supported fifteen and the friendly competition, by kind. `league`: the
- * five leagues, whose regular season the stage grammar reads as `REGULAR`;
- * `friendly`: `fifa.friendly` (reachable through `CLAUDINHO_COMPETITION`), the
- * one competition whose `friendly` slug is the `FRIENDLY` stage; `cup`: the
- * other ten.
+ * Each competition's kind: the supported table's (`league`: the five leagues,
+ * whose regular season the stage grammar reads as `REGULAR`; `cup`: the other
+ * ten), and `friendly` for `fifa.friendly`, the one competition whose
+ * `friendly` slug is the `FRIENDLY` stage.
  */
-export const COMPETITION_KIND: Readonly<Record<string, CompetitionKind>> = Object.freeze({
-  'eng.1': 'league',
-  'esp.1': 'league',
-  'ita.1': 'league',
-  'ger.1': 'league',
-  'mex.1': 'league',
-  'fifa.friendly': 'friendly',
-  'fifa.world': 'cup',
-  'uefa.euro': 'cup',
-  'conmebol.america': 'cup',
-  'uefa.nations': 'cup',
-  'concacaf.nations.league': 'cup',
-  'concacaf.gold': 'cup',
-  'uefa.champions': 'cup',
-  'conmebol.libertadores': 'cup',
-  'concacaf.champions': 'cup',
-  'fifa.cwc': 'cup',
-});
+export const COMPETITION_KIND: Readonly<Record<string, CompetitionKind>> = withExtras<CompetitionKind>(
+  SUPPORTED_TABLES.competitionKind,
+  (e) => e.kind,
+);
 
 /** A competition's kind; an unlisted (or absent) competition is a cup, the kind that asserts nothing. */
 export function competitionKind(competition: string | undefined): CompetitionKind {
@@ -91,19 +81,12 @@ export function competitionKind(competition: string | undefined): CompetitionKin
 }
 
 /**
- * The season NAME a league's regular season is filed under, as measured on
- * the real feed (Oct 3, 2026): `2026-27-english-premier-league`,
- * `2026-27-laliga`, `2026-27-italian-serie-a`, `2026-27-german-bundesliga`.
- * The year in front varies; the name is this one, matched whole. `mex.1` has
- * none: its slugs are `torneo-apertura`, `torneo-clausura` and its play-off
- * rounds.
+ * The season NAME a league's regular season is filed under (the table's
+ * `seasonSlug`): `2026-27-english-premier-league`, `2026-27-laliga`,
+ * `2026-27-italian-serie-a`, `2026-27-german-bundesliga` on the real feed. The
+ * year in front varies; the name is this one, matched whole. `mex.1` has none.
  */
-export const SEASON_SLUG: Readonly<Record<string, string>> = Object.freeze({
-  'eng.1': 'english-premier-league',
-  'esp.1': 'laliga',
-  'ita.1': 'italian-serie-a',
-  'ger.1': 'german-bundesliga',
-});
+export const SEASON_SLUG: Readonly<Record<string, string>> = SUPPORTED_TABLES.seasonSlug;
 
 /** A league's written season name, or undefined (no such name, or not a league). */
 export function seasonSlugOf(competition: string | undefined): string | undefined {
@@ -114,28 +97,20 @@ export function seasonSlugOf(competition: string | undefined): string | undefine
 
 /**
  * What a competition's standings are, where it is not lettered or numbered
- * GROUPS (the default, also for a competition that is not listed):
+ * GROUPS (the default, also for a competition that is not listed): the
+ * table's `standings`.
  *   - `league`: the competition is authorised to serve exactly ONE table (a
  *     season, a league phase). That is a fact about the competition, written
- *     down here; it is never inferred from a payload having one child, because
- *     a grouped competition whose payload shrinks to one group is not a league.
+ *     down; it is never inferred from a payload having one child, because a
+ *     grouped competition whose payload shrinks to one group is not a league.
  *   - `none`: the competition has no table (knockout from the first round).
  *     The provider then answers with no table list at all, and for such a
  *     competition, and only for one, that is an empty answer rather than an
  *     unreadable one. The canary checks the feed against it: the day it serves
  *     a table, that is a changed shape.
- * Adding a league to the product is one line here. Read through
- * {@link standingsShapeOf}, never by a bare index.
+ * Read through {@link standingsShapeOf}, never by a bare index.
  */
-export const STANDINGS_SHAPE: Readonly<Record<string, 'league' | 'none'>> = Object.freeze({
-  'eng.1': 'league',
-  'esp.1': 'league',
-  'ita.1': 'league',
-  'ger.1': 'league',
-  'mex.1': 'league',
-  'uefa.champions': 'league',
-  'concacaf.champions': 'none',
-});
+export const STANDINGS_SHAPE: Readonly<Record<string, 'league' | 'none'>> = SUPPORTED_TABLES.standingsShape;
 
 /**
  * How a competition's standings payload is read: its written shape, or

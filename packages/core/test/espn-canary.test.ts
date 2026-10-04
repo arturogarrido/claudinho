@@ -20,7 +20,6 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   adapterTablesProblem,
-  CANARY_COMPETITIONS,
   CANARY_QUESTIONS,
 
   canaryWarnings,
@@ -29,6 +28,9 @@ import {
   STANDING_STATS,
 } from '../../../scripts/espn-canary.mjs';
 import * as core from '../src';
+
+/** The competitions the canary asks by default: the supported table's rows (0.11 · 2.5a: the list is core's). */
+const CANARY_COMPETITIONS = core.SUPPORTED.map((e) => e.slug);
 
 const NOW = new Date('2026-10-10T12:00:00Z');
 
@@ -1234,7 +1236,7 @@ describe('found in review: the canary reads no more than the adapter would', () 
 });
 
 describe('what it watches and how it reports', () => {
-  it('watches the 0.11 competitions', () => {
+  it('watches the 0.11 competitions: the supported table\'s rows, read from core', () => {
     expect([...CANARY_COMPETITIONS].sort()).toEqual(
       [
         'eng.1',

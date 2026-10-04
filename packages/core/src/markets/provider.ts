@@ -4,7 +4,7 @@ import { emptyBatch } from '../trust/batch';
  * getMatchesForDate contract: a market signal is optional enrichment, so any
  * provider/network/parse error degrades to "no signal" and never throws.
  */
-import { DEFAULT_COMPETITION } from '../adapters/espn';
+import { SUPPORTED_TABLES } from '../supported';
 import type { Match } from '../types';
 import { FakeMarketProvider } from './fake';
 import { PolymarketProvider } from './polymarket';
@@ -25,8 +25,10 @@ import type {
  * slug that cannot exist, so the sidecar is switched off by construction
  * instead of issuing doomed requests. Supporting a league is slug-derivation,
  * mapping and validation work per competition — not widening this set.
+ * Derived from the supported table (`markets: 'offered'`), like every written
+ * fact of a competition.
  */
-export const MARKET_COMPETITIONS: ReadonlySet<string> = new Set([DEFAULT_COMPETITION]);
+export const MARKET_COMPETITIONS: ReadonlySet<string> = SUPPORTED_TABLES.marketCompetitions;
 
 /** Whether the market sidecar can say anything about a competition. */
 export function marketsCoverCompetition(competition: string): boolean {

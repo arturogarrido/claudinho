@@ -284,4 +284,20 @@ export {
   teamKind,
 } from './competition';
 export type { CompetitionKind, TeamKind } from './competition';
+// The supported set: ONE table, and every written fact derived from it.
+export {
+  capabilitiesOf,
+  competitionLabel,
+  deriveTables,
+  entryOf,
+  listCompetitions,
+  SUPPORTED,
+} from './supported';
+export type {
+  Capabilities,
+  Capability,
+  CompetitionEntry,
+  DerivedTables,
+  ListedCompetition,
+} from './supported';
 export { attachFetchMeta, fetchMeta, type FetchMeta } from './adapters/meta';

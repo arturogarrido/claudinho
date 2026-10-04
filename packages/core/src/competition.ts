@@ -1,4 +1,5 @@
 import { DEFAULT_COMPETITION } from './adapters/espn';
+import { SUPPORTED_TABLES } from './supported';
 
 // The written kinds of a competition (its teams: nations or clubs; itself: a
 // league, a cup or the friendly one) and a league's season name. Facts of the
@@ -81,8 +82,9 @@ export function bundleApplies(competition: string, season?: SeasonInfo): boolean
 
 /**
  * The competitions that HAVE NO BRACKET: league seasons with no knockout tie of
- * their own, where "no bracket" is the answer, not a gap. Written down, one
- * fact each, never inferred from the standings shape (`STANDINGS_SHAPE` says
+ * their own, where "no bracket" is the answer, not a gap. Written down in the
+ * supported table (`bracket: 'not-applicable'`), one fact each, never inferred
+ * from the standings shape (`STANDINGS_SHAPE` says
  * how a table is read, not whether a knockout follows it: `uefa.champions` and
  * `mex.1` read as one league table and both have one).
  *   - `eng.1`: the Premier League; a 38-round league, no play-off.
@@ -92,7 +94,7 @@ export function bundleApplies(competition: string, season?: SeasonInfo): boolean
  * (the Liguilla), `uefa.champions` (a knockout after the league phase). A
  * competition joins by a written fact.
  */
-export const NO_BRACKET: ReadonlySet<string> = new Set(['eng.1', 'esp.1']);
+export const NO_BRACKET: ReadonlySet<string> = SUPPORTED_TABLES.noBracket;
 
 /**
  * What `bracket` is for a competition, one of three values:

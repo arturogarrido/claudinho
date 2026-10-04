@@ -166,6 +166,37 @@ Speaks `en` / `es` / `pt` / `fr`, with optional localized commentary flair (`¡G
 
 _Planned (not shipped yet):_ a desktop notifier and an AI pundit with a public accuracy scorecard.
 
+## Competitions
+
+The 2026 World Cup is the default. Pick another competition by its alias, for one command
+(`npx @claudinho/cli --competition premier-league today`) or for every surface, the statusline
+and the hook included (`export CLAUDINHO_COMPETITION=premier-league`; an ESPN slug such as `eng.1`
+works too, and so does any other ESPN slug, labelled experimental). Every answer says which
+competition it is for; an unknown value is refused with the list. MCP tools take the same value
+as their `competition` argument, and `list_competitions` lists the table below.
+
+<!-- competitions:start -->
+| Alias | Competition | Teams | Scores | Next | Standings | Bracket | Markets |
+|---|---|---|---|---|---|---|---|
+| `world-cup` | World Cup | nations | yes | yes | yes | yes | yes |
+| `euro` | EURO | nations | yes | yes | yes | not yet | not yet |
+| `copa-america` | Copa América | nations | yes | yes | yes | not yet | not yet |
+| `nations-league` | UEFA Nations League | nations | yes | yes | yes | not yet | not yet |
+| `concacaf-nations-league` | Concacaf Nations League | nations | yes | yes | yes | not yet | not yet |
+| `gold-cup` | Gold Cup | nations | yes | yes | yes | not yet | not yet |
+| `premier-league` | Premier League | clubs | yes | yes | yes | n/a | not yet |
+| `laliga` | LALIGA | clubs | yes | yes | yes | n/a | not yet |
+| `serie-a` | Serie A | clubs | yes | yes | yes | not yet | not yet |
+| `bundesliga` | Bundesliga | clubs | yes | yes | yes | not yet | not yet |
+| `liga-mx` | Liga MX | clubs | yes | yes | yes | not yet | not yet |
+| `champions-league` | Champions League | clubs | yes | yes | yes | not yet | not yet |
+| `libertadores` | Libertadores | clubs | yes | yes | yes | not yet | not yet |
+| `concacaf-champions-cup` | Concacaf Champions Cup | clubs | yes | yes | n/a | not yet | not yet |
+| `club-world-cup` | Club World Cup | clubs | yes | yes | yes | not yet | not yet |
+
+`yes` offered · `not yet` not offered yet · `n/a` the competition has no such thing (a league season with no knockout tie has no bracket; a knockout-only cup has no table).
+<!-- competitions:end -->
+
 ## Around the web
 
 Independent coverage and organic attribution include
