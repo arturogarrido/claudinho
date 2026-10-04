@@ -10,6 +10,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   capabilitiesOf,
   type CompetitionEntry,
+  deriveTables,
+  listCompetitions,
   modeLine,
   resolveCompetition,
   selectedCompetition,
@@ -43,6 +45,23 @@ describe('the resolver', () => {
     expect(selectedCompetition('usa.1', 'flag')).toEqual({ kind: 'selected', slug: 'usa.1', name: 'usa.1', chosenBy: 'flag', experimental: true });
     // The resolver's answer for an alias is exactly the constructor's.
     expect(resolveCompetition('laliga')).toEqual(selectedCompetition('esp.1', 'flag'));
+  });
+});
+
+describe('the derived views have no prototype', () => {
+  it('a row named like the prototype key is an own key of every view', () => {
+    const proto = { ...SUPPORTED[0], slug: '__proto__', alias: 'proto' } as CompetitionEntry;
+    const views = deriveTables([...SUPPORTED, proto]);
+    expect(Object.hasOwn(views.teamKind, '__proto__')).toBe(true);
+    expect(Object.hasOwn(views.cadenceYears, '__proto__')).toBe(true);
+  });
+});
+
+describe('a listing states each row\'s own capabilities, from the table it is given', () => {
+  it('a sixteenth row unlike a raw slug: no table, no bracket, markets offered', () => {
+    const odd: CompetitionEntry = { ...SUPPORTED[0], slug: 'xyz.1', alias: 'xyz', name: 'XYZ', standings: 'none', bracket: 'not-applicable', markets: 'offered' } as CompetitionEntry;
+    const listed = listCompetitions([...SUPPORTED, odd], null).competitions.find((c) => c.slug === 'xyz.1');
+    expect(listed?.capabilities).toEqual({ scores: 'offered', next: 'offered', standings: 'not-applicable', bracket: 'not-applicable', markets: 'offered' });
   });
 });
 

@@ -14,7 +14,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { Match, ProviderAdapter } from '@claudinho/core';
 import { FakeMarketProvider } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildServer } from '../src/server';
+import { buildServer, INSTRUCTIONS } from '../src/server';
 import {
   resolveAdapter,
   toolGetBracket,
@@ -101,6 +101,14 @@ describe('through the server', () => {
       await client.close();
       await server.close();
     }
+  });
+});
+
+describe('the server instructions', () => {
+  it('name list_competitions and the competition argument', () => {
+    expect(INSTRUCTIONS).toContain('list_competitions');
+    expect(INSTRUCTIONS).toMatch(/competition argument/);
+    expect(INSTRUCTIONS).toMatch(/premier-league/);
   });
 });
 
