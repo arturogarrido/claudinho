@@ -204,6 +204,21 @@ describe('selection — decided once, at the edge', () => {
       expect(sites.map((s) => s.replace(/:\d+$/, ''))).toEqual(['mcp/src/tools.ts']);
     });
 
+    it('each edge hands the resolver its flag and the environment; core reads no environment (0.11 · 2.5a)', () => {
+      // The signature: (explicit, env, saved). Each edge passes the value its
+      // caller typed and CLAUDINHO_COMPETITION, read AT the edge; core's
+      // resolver never reads the environment itself.
+      const cli = readFileSync(join(PACKAGES, 'cli', 'src', 'config.ts'), 'utf8');
+      expect(cli).toMatch(/\bresolveCompetition\(opts\.competition, process\.env\.CLAUDINHO_COMPETITION\)/);
+      const mcp = readFileSync(join(PACKAGES, 'mcp', 'src', 'tools.ts'), 'utf8');
+      expect(mcp).toMatch(/\bresolveCompetition\(args\.competition, process\.env\.CLAUDINHO_COMPETITION\)/);
+      const core = readFileSync(join(PACKAGES, 'core', 'src', 'competition.ts'), 'utf8')
+        .split('\n')
+        .filter((line) => !/^\s*(\*|\/\*|\/\/)/.test(line))
+        .join('\n');
+      expect(core).not.toMatch(/process\.env/);
+    });
+
     it('scripts that call core do so with the current signatures', () => {
       // Found in review: `scripts/release-qa.sh` still called
       // `makeAdapter('espn')`. The script is not type-checked; the call threw
