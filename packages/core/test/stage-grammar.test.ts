@@ -114,10 +114,14 @@ describe('a slug the grammar does not know is OTHER, with the provider\'s own wo
     expect(m.stageLabel).toBe('2026 27 laliga');
   });
 
-  it('the year varies, the name does not', () => {
+  it('the year varies, the name does not; and the name alone, or behind anything but a year, is not the season', () => {
     expect(parsed('2027-28-english-premier-league', 'eng.1').stage).toBe('REGULAR');
     expect(parsed('2027-english-premier-league', 'eng.1').stage).toBe('REGULAR');
     expect(parsed('2027-28-premier-league', 'eng.1').stage).toBe('OTHER');
+    expect(parsed('english-premier-league', 'eng.1').stage).toBe('OTHER');
+    expect(parsed('cup-english-premier-league', 'eng.1').stage).toBe('OTHER');
+    expect(parsed('20267-english-premier-league', 'eng.1').stage).toBe('OTHER');
+    expect(parsed('2027-28-29-english-premier-league', 'eng.1').stage).toBe('OTHER');
   });
 
   it('a year-prefixed slug under a cup is OTHER (a cup has no season name)', () => {

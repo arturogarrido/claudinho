@@ -545,6 +545,14 @@ describe('club rendering — the cache-only surfaces (statusline, hook, vibe)', 
     expect(renderPrompt(s, { ...opts, team: 'CHE' })).toBe("⚽ ARS 2–1 CHE 50'");
   });
 
+  it('with no kind stated, off the bundle a side is a club (nothing is vouched for); on the bundle, a nation', () => {
+    const s = snapshot('eng.1', [live()]);
+    expect(renderPrompt(s, { defaultCompetition: false, now: CLUB_NOW })).toBe("⚽ ARS 2–1 CHE 50'");
+    const mex = live({ home: { code: 'MEX', name: 'Mexico', id: 'espn:203' }, away: { code: 'RSA', name: 'South Africa', id: 'espn:467' }, stage: 'GROUP' });
+    expect(renderPrompt(snapshot('fifa.world', [mex]), { defaultCompetition: true, now: CLUB_NOW })).toBe("⚽ 🇲🇽 2–1 🇿🇦 50'");
+    expect(renderPrompt(snapshot('uefa.nations', [mex]), { defaultCompetition: false, now: CLUB_NOW })).toBe("⚽ MEX 2–1 RSA 50'");
+  });
+
   it('a nation off the bundle keeps its flags on the statusline (the kind, not the bundle, decides)', () => {
     const opts = { defaultCompetition: false, teamKind: 'nation' as const, now: CLUB_NOW };
     const s = snapshot('uefa.nations', [albania()]);
