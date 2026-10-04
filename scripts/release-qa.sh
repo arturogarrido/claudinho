@@ -76,7 +76,8 @@ QA_CONFIG="$(mktemp -d "${TMPDIR:-/tmp}/claudinho-release-qa.XXXXXX")"
 trap 'rm -rf "$QA_CONFIG"' EXIT
 export XDG_CONFIG_HOME="$QA_CONFIG"
 if ! cli follow world-cup >/dev/null 2>&1; then
-  echo "✗ could not follow the World Cup in $QA_CONFIG (does this CLI have \`follow\`?)"; exit 1
+  # A CLI from before 0.11 has no `follow` (and answers its own default).
+  printf '\033[33m⚠\033[0m could not follow the World Cup in %s (a CLI without `follow`?)\n' "$QA_CONFIG"
 fi
 
 bold "release-qa · competition=$(qa label) · $(cli --version 2>/dev/null)"
