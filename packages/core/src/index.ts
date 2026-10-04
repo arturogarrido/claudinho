@@ -275,15 +275,26 @@ export {
   COMPETITION_KIND,
   competitionKind,
   isMexicoNationalTeam,
+  modeLine,
   NO_BRACKET,
   resolveCompetition,
   SEASON_SLUG,
+  selectedCompetition,
+  selectionExtras,
+  selectionRefusal,
   STANDINGS_SHAPE,
   standingsShapeOf,
   TEAM_KIND,
   teamKind,
 } from './competition';
-export type { CompetitionKind, TeamKind } from './competition';
+export type {
+  ChosenBy,
+  CompetitionKey,
+  CompetitionKind,
+  CompetitionSelection,
+  SelectedCompetition,
+  TeamKind,
+} from './competition';
 // The supported set: ONE table, and every written fact derived from it.
 export {
   capabilitiesOf,

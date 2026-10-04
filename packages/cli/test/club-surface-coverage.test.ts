@@ -13,6 +13,7 @@ import { type CacheState, writeState } from '../src/cache';
 vi.mock('node:child_process', () => ({ spawn: vi.fn(() => ({ unref: vi.fn() })) }));
 import { cmdBracket, cmdHook, cmdLive, cmdMarkets, cmdMatch, cmdNext, cmdPrompt, cmdShare, cmdTable, cmdToday, cmdVibe } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 import { renderPrompt } from '../src/statusline';
 
@@ -55,7 +56,7 @@ const adapter: ProviderAdapter = {
   },
 };
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'eng.1', flavor: 'off', markets: false, ...over };
+  return described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'eng.1', flavor: 'off', markets: false, ...over });
 }
 const ctx = (over: Partial<CliConfig> = {}) => ({
   cfg: cfg(over),

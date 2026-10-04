@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeState } from '../src/cache';
 import { cmdHook, cmdPrompt } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import * as cursorPayload from '../src/cursorPayload';
 import { makeT } from '../src/i18n';
 
@@ -33,7 +34,7 @@ vi.mock('node:child_process', async (importOriginal) => {
 const DIST = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'dist', 'index.js');
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return {
+  return described({
     lang: 'en',
     tz: undefined,
     json: false,
@@ -43,7 +44,7 @@ function cfg(over: Partial<CliConfig> = {}): CliConfig {
     flavor: 'off',
     markets: true,
     ...over,
-  };
+  });
 }
 
 function liveMex(now: Date): Match {

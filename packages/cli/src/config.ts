@@ -1,4 +1,4 @@
-import { asFlavorLevel, type FlavorLevel, resolveCompetition } from '@claudinho/core';
+import { asFlavorLevel, type CompetitionSelection, type FlavorLevel, resolveCompetition } from '@claudinho/core';
 
 /** Resolved global options, derived from flags + env + system defaults. */
 export interface CliConfig {
@@ -9,11 +9,20 @@ export interface CliConfig {
   source: string;
   /**
    * The competition this invocation is for (a provider slug, e.g. `fifa.world`,
-   * `eng.1`). Resolved HERE, once — this is the CLI's edge — and read from the
-   * config by every command, the statusline, the hook and the refresher.
-   * Nothing below asks the environment again.
+   * `eng.1`), or `''` when the selection was refused (a refused value is never
+   * a competition: every command stops before it is read). Resolved HERE,
+   * once — this is the CLI's edge — and read from the config by every
+   * command, the statusline, the hook and the refresher. Nothing below asks
+   * the environment again.
    */
   competition: string;
+  /**
+   * What the edge resolved, and from where (`--competition`, the environment,
+   * the default), or the value it REFUSED: what the mode line says, what
+   * `--json`'s `competition` key carries, and what every interactive command
+   * refuses before a request (an ambient one contains it).
+   */
+  selection: CompetitionSelection;
   /** Commentary flair intensity (default: full). */
   flavor: FlavorLevel;
   /**
@@ -32,7 +41,7 @@ export interface RawGlobalOpts {
   json?: boolean;
   color?: boolean;
   source?: string;
-  /** An explicit competition (wins over `CLAUDINHO_COMPETITION`). No flag sets it yet. */
+  /** `--competition <alias|slug>`: an explicit competition (wins over `CLAUDINHO_COMPETITION`). */
   competition?: string;
   flavor?: string;
   /** false when --no-markets is passed (commander negatable option). */
@@ -78,16 +87,20 @@ export function resolveConfig(opts: RawGlobalOpts): CliConfig {
   // Flag an explicit --lang we can't honor, so the command can warn (mirrors tz).
   const langRequestedUnsupported =
     opts.lang && !isSupportedLang(opts.lang) ? opts.lang : undefined;
+  // The ONE place the CLI decides the competition: the flag, then the
+  // environment (core reads none; the edge hands it in), then the default.
+  const selection = resolveCompetition(opts.competition, process.env.CLAUDINHO_COMPETITION);
   return {
     lang: pickLang(opts.lang),
     tz: opts.tz ?? process.env.CLAUDINHO_TZ ?? undefined,
     json: opts.json ?? false,
     color: pickColor(opts.color),
     source: opts.source ?? process.env.CLAUDINHO_SOURCE ?? 'espn',
-    // The ONE place the CLI lets the environment decide the competition.
-    competition: resolveCompetition(opts.competition),
+    competition: selection.kind === 'selected' ? selection.slug : '',
+    selection,
     flavor: asFlavorLevel(opts.flavor ?? process.env.CLAUDINHO_FLAVOR),
     markets: pickMarkets(opts.markets),
     langRequestedUnsupported,
   };
 }
+

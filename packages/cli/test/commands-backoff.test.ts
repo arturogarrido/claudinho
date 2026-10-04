@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { claimLock, readBackoffNote, readState, releaseLock, writeState } from '../src/cache';
 import { cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 /**
@@ -27,7 +28,7 @@ const throttled = vi.fn(async () => ({
 }));
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', markets: false, ...over };
+  return described({ lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', markets: false, ...over });
 }
 let dir: string;
 const ORIG = process.env.XDG_CACHE_HOME;

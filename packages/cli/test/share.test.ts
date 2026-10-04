@@ -11,6 +11,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdShare, InputError } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 /** Offline match adapter → commands fall back to the bundled static schedule. */
@@ -103,7 +104,7 @@ const incompleteProvider: MarketProvider = {
 };
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over };
+  return described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over });
 }
 type Over = Partial<CliConfig>;
 const ctx = (over: Over = {}, marketProvider: MarketProvider = provider(), copy?: (t: string) => boolean) => ({

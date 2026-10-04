@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Match, ProviderAdapter } from '@claudinho/core';
 import { cmdMatch, cmdNext, cmdShare } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 /** A confirmed R32 tie ESPN has filed over the bundled placeholder slot. */
@@ -39,7 +40,7 @@ function windowAdapter(window: Match[], opts: { throws?: boolean } = {}): Provid
 }
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return {
+  return described({
     lang: 'en',
     tz: 'UTC',
     json: true,
@@ -49,7 +50,7 @@ function cfg(over: Partial<CliConfig> = {}): CliConfig {
     flavor: 'off',
     markets: false,
     ...over,
-  };
+  });
 }
 
 // Group stage is done on the knockout days, so a static lookup is blind.

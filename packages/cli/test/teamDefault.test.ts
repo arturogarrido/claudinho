@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { allFixtures, type Match, type ProviderAdapter } from '@claudinho/core';
 import { cmdNext, cmdShare, InputError } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 const fakeAdapter: ProviderAdapter = {
@@ -17,7 +18,7 @@ const fakeAdapter: ProviderAdapter = {
 };
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', markets: false, ...over };
+  return described({ lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', markets: false, ...over });
 }
 const ctx = () => ({ cfg: cfg(), t: makeT('en'), adapter: fakeAdapter });
 

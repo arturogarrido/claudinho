@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CacheState } from '../src/cache';
 import { cmdMatch, cmdNext } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { renderHook } from '../src/hook';
 import { makeT } from '../src/i18n';
 import { renderPrompt } from '../src/statusline';
@@ -57,7 +58,7 @@ function feed(slug: string | null, live = false) {
   }) as unknown as typeof fetch;
   return new EspnAdapter({ competition: 'uefa.champions', fetchImpl, now: () => NOW.getTime() }) as ProviderAdapter;
 }
-const cfg = (over: Partial<CliConfig> = {}): CliConfig => ({
+const cfg = (over: Partial<CliConfig> = {}): CliConfig => described({
   lang: 'en',
   tz: 'UTC',
   json: false,
@@ -87,7 +88,9 @@ describe('`match`: the stage and the location, joined with the empty ones droppe
     await cmdMatch('800000030', ctx(feed('qualifying-final')));
     const header = lines().indexOf('Arsenal vs Chelsea');
     expect(header).toBeGreaterThanOrEqual(0);
-    expect(lines()[header + 1]).toBe('  Qualifying final');
+    // The mode line right after the header (0.11 · 2.5a), then the stage.
+    expect(lines()[header + 1]).toBe('  Champions League');
+    expect(lines()[header + 2]).toBe('  Qualifying final');
     expect(writes.join('')).not.toMatch(/·\s*(\n|$)|(^|\n)\s*·/);
   });
 
@@ -96,8 +99,10 @@ describe('`match`: the stage and the location, joined with the empty ones droppe
     const all = lines();
     const header = all.indexOf('Arsenal vs Chelsea');
     expect(header).toBeGreaterThanOrEqual(0);
-    // Straight to the kickoff line: no empty indented line, no separator.
-    expect(all[header + 1]).toMatch(/^ {2}Sat 11:30/);
+    // The mode line (0.11 · 2.5a), then straight to the kickoff line: no
+    // empty indented line, no separator.
+    expect(all[header + 1]).toBe('  Champions League');
+    expect(all[header + 2]).toMatch(/^ {2}Sat 11:30/);
     expect(all.some((l) => /^\s+$/.test(l))).toBe(false);
     expect(writes.join('')).not.toContain('·');
   });

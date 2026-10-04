@@ -2,6 +2,7 @@ import type { ProviderAdapter } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdBracket } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 const downAdapter: ProviderAdapter = {
@@ -23,7 +24,7 @@ const downAdapter: ProviderAdapter = {
 };
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', markets: false, ...over };
+  return described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', markets: false, ...over });
 }
 
 const ctx = (adapter: ProviderAdapter) => ({ cfg: cfg(), t: makeT('en'), adapter });

@@ -2,6 +2,7 @@ import type { GroupStandings, Match, ProviderAdapter } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdTable } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 const row = (code: string, name: string, flag: string, w: number, d: number, l: number, gd: number) => ({
@@ -67,7 +68,7 @@ const openScopeAdapter: ProviderAdapter = {
 };
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over };
+  return described({ lang: 'en', tz: 'UTC', json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over });
 }
 const ctx = (adapter: ProviderAdapter, over: Partial<CliConfig> = {}) => ({
   cfg: cfg(over),

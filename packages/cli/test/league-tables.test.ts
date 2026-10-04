@@ -9,6 +9,7 @@ import { EspnAdapter, FakeMarketProvider } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InputError, cmdShare, cmdTable } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 const recorded = (slug: string): { children: Array<Record<string, unknown>> } =>
@@ -17,7 +18,7 @@ const recorded = (slug: string): { children: Array<Record<string, unknown>> } =>
 let requests = 0;
 function ctx(competition: string, over: Partial<CliConfig> = {}, payload: unknown = recorded(competition)) {
   const lang = over.lang ?? 'en';
-  const cfg: CliConfig = { lang, tz: 'UTC', json: false, color: false, source: 'espn', competition, flavor: 'off', markets: false, ...over };
+  const cfg: CliConfig = described({ lang, tz: 'UTC', json: false, color: false, source: 'espn', competition, flavor: 'off', markets: false, ...over });
   const adapter = new EspnAdapter({
     competition,
     fetchImpl: (async () => {
@@ -141,7 +142,12 @@ describe('`table` shows the table the competition has', () => {
     expect(text()).not.toContain('indisponível');
     writes = [];
     await cmdTable(undefined, ctx('concacaf.champions', { json: true }));
-    expect(json()).toEqual({ degraded: false, source: 'espn', tables: [] });
+    expect(json()).toEqual({
+      degraded: false,
+      source: 'espn',
+      tables: [],
+      competition: { slug: 'concacaf.champions', alias: 'concacaf-champions-cup', name: 'Concacaf Champions Cup', chosenBy: 'default' },
+    });
   });
 });
 
@@ -178,7 +184,12 @@ describe('tables are missing: the read says so, in text and in `--json`', () => 
     expect(text()).not.toContain('No group found');
     writes = [];
     await cmdTable('C', ctx('uefa.euro', { json: true }, shortOf('uefa.euro')));
-    expect(json()).toEqual({ degraded: true, source: null, tables: null });
+    expect(json()).toEqual({
+      degraded: true,
+      source: null,
+      tables: null,
+      competition: { slug: 'uefa.euro', alias: 'euro', name: 'EURO', chosenBy: 'default' },
+    });
   });
 });
 

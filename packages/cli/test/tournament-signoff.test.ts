@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdLive, cmdNext, cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 import { REPO_URL } from '../src/starNudge';
 import type { ProviderAdapter } from '@claudinho/core';
@@ -17,7 +18,7 @@ const AFTER = new Date('2026-08-01T12:00:00Z');
 const DURING = new Date('2026-06-20T03:00:00Z');
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return {
+  return described({
     lang: 'en',
     tz: 'UTC',
     json: false,
@@ -26,7 +27,7 @@ function cfg(over: Partial<CliConfig> = {}): CliConfig {
     competition: 'fifa.world',
     flavor: 'off',
     ...over,
-  };
+  });
 }
 
 /** Offline adapter: no fixtures, no live — post-tournament reality, zero network. */

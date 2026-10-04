@@ -2,6 +2,7 @@ import type { Match, ProviderAdapter } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdNext, cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 const RALLY = '¿Y si sí?';
@@ -44,7 +45,7 @@ function adapter(window: Match[]): ProviderAdapter {
 }
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'full', ...over };
+  return described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'fifa.world', flavor: 'full', ...over });
 }
 const ctx = (window: Match[], over: Partial<CliConfig> = {}) => ({
   cfg: cfg(over),

@@ -2,6 +2,7 @@ import type { Match, MarketProvider, ProviderAdapter } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
+import { described } from './config-of';
 import { makeT } from '../src/i18n';
 
 /** A fake adapter so the test runs offline against the bundled schedule. */
@@ -25,7 +26,7 @@ const marketProvider = (complete: boolean): MarketProvider => ({
 });
 
 function cfg(over: Partial<CliConfig> = {}): CliConfig {
-  return { lang: 'en', tz: undefined, json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over };
+  return described({ lang: 'en', tz: undefined, json: true, color: false, source: 'espn', competition: 'fifa.world', flavor: 'off', ...over });
 }
 const ctx = (over: Partial<CliConfig> = {}, provider?: MarketProvider) => ({
   cfg: cfg(over),
