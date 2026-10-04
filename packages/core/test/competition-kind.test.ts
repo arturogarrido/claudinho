@@ -10,7 +10,9 @@ import { describe, expect, it } from 'vitest';
 import {
   COMPETITION_KIND,
   competitionKind,
+  EspnAdapter,
   SEASON_SLUG,
+  standingsShapeOf,
   TEAM_KIND,
   teamKind,
 } from '../src';
@@ -74,5 +76,20 @@ describe('SEASON_SLUG: the measured season name a league files its regular seaso
 
   it('every competition with a season name is a league', () => {
     for (const c of Object.keys(SEASON_SLUG)) expect(competitionKind(c)).toBe('league');
+  });
+});
+
+describe('STANDINGS_SHAPE is read like the other written tables: by own property', () => {
+  it('a competition named like a prototype key has the default shape, not Object', () => {
+    expect(standingsShapeOf('eng.1')).toBe('league');
+    expect(standingsShapeOf('fifa.world')).toBe('groups');
+    expect(standingsShapeOf('constructor')).toBe('groups');
+    expect(standingsShapeOf('__proto__')).toBe('groups');
+    expect(standingsShapeOf('toString')).toBe('groups');
+  });
+
+  it('the adapter reads the shape the same way', () => {
+    const a = new EspnAdapter({ competition: 'constructor', fetchImpl: (async () => new Response('{}', { status: 500 })) as unknown as typeof fetch });
+    expect((a as unknown as { standingsShape: unknown }).standingsShape).toBe('groups');
   });
 });

@@ -21,6 +21,7 @@ import {
   backoffInEffect,
   CACHE_VERSION,
   cachePath,
+  ensureBackoffVisible,
   readBackoffNote,
   readCurrentState,
   writeState,
@@ -118,11 +119,20 @@ describe('a throttle survives the version bump', () => {
     expect(readBackoffNote(SOURCE, PL, NOW)).toBeUndefined();
   });
 
-  it('a snapshot of this version is not re-noted by its own writer (the note is for the other format\'s reader)', () => {
+  it('a throttle a writer of THIS format makes visible lands in the note too: a reader of the other format, which rejects this snapshot, finds it there', () => {
+    // `ensureBackoffVisible` is what every writer calls after its publish
+    // attempt; a deadline that sits only in the snapshot is invisible to a
+    // reader of another format, so the snapshot's own copy no longer counts.
     const until = NOW + 8 * MIN;
     writeState({ updatedAt: new Date(NOW).toISOString(), live: [], degraded: false, source: SOURCE, competition: PL, backoffUntil: new Date(until).toISOString() });
-    writeState({ updatedAt: new Date(NOW + MIN).toISOString(), live: [], degraded: false, source: SOURCE, competition: PL, backoffUntil: new Date(until).toISOString() });
     expect(readBackoffNote(SOURCE, PL, NOW)).toBeUndefined();
+    expect(ensureBackoffVisible(SOURCE, PL, until, NOW)).toBe(true);
+    expect(readBackoffNote(SOURCE, PL, NOW)).toBe(until);
     expect(backoffInEffect(readCurrentState(SOURCE, PL), SOURCE, PL, NOW)).toBe(until);
+    // A note already at least as late is left alone; a later deadline replaces it.
+    expect(ensureBackoffVisible(SOURCE, PL, until - MIN, NOW)).toBe(true);
+    expect(readBackoffNote(SOURCE, PL, NOW)).toBe(until);
+    expect(ensureBackoffVisible(SOURCE, PL, until + MIN, NOW)).toBe(true);
+    expect(readBackoffNote(SOURCE, PL, NOW)).toBe(until + MIN);
   });
 });
