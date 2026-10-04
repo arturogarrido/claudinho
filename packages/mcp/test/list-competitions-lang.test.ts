@@ -65,7 +65,7 @@ describe('list_competitions', () => {
     await withClient(async (client) => {
       const { tools } = await client.listTools();
       const tool = tools.find((t) => t.name === 'list_competitions');
-      const props = Object.keys((tool?.inputSchema as { properties?: Record<string, unknown> }).properties ?? {});
+      const props = Object.keys((tool?.inputSchema as { properties?: Record<string, unknown> } | undefined)?.properties ?? {});
       expect(props).toContain('lang');
       expect(props).toContain('competition');
       const res = (await client.callTool({ name: 'list_competitions', arguments: { competition: 'laliga', lang: 'pt' } })) as { content: Array<{ type: string; text?: string }> };

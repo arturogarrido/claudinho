@@ -117,16 +117,19 @@ const competitionArg = z
     "The competition: an alias such as premier-league, or an ESPN slug such as eng.1 (list_competitions lists the aliases). Default: the server's CLAUDINHO_COMPETITION, else the 2026 World Cup",
   );
 
+/** The reader's language, optional: every competition-answering tool and `list_competitions` take it. */
+const langArg = z
+  .string()
+  .optional()
+  .describe(
+    'Locale for dates, provider attribution, and commentary: en, es, pt, fr (the summary scaffold stays English; other locales fall back to en)',
+  );
+
 // Shared optional args every competition-answering tool accepts (all but get_team).
 const commonArgs = {
   competition: competitionArg.optional(),
   tz: tzArg.optional().describe('IANA timezone for kickoff times, e.g. America/Mexico_City'),
-  lang: z
-    .string()
-    .optional()
-    .describe(
-      'Locale for dates, provider attribution, and commentary: en, es, pt, fr (the summary scaffold stays English; other locales fall back to en)',
-    ),
+  lang: langArg,
   flavor: flavorArg.optional().describe('Commentary flair: off, subtle, full (default: full)'),
 };
 
@@ -971,7 +974,8 @@ export function buildServer(): McpServer {
       title: 'Supported competitions',
       description:
         "The competitions Claudinho answers for, one per row: the alias every other tool's competition argument takes, the name, the teams (nation or club), the kind (league or cup), and what each surface is (scores, next, standings, bracket, markets: offered, not-offered-yet, or not-applicable), plus current: the competition this request is for. Offline: reads the supported table, never the network. Whether an edition is in season is not listed here; the reads say so (betweenEditions).",
-      inputSchema: { competition: competitionArg.optional() },
+      // `lang` localizes the Current line (the names are not localized) and a refusal.
+      inputSchema: { competition: competitionArg.optional(), lang: langArg },
       // Read-only AND offline — the supported table ships with the server.
       annotations: { readOnlyHint: true, openWorldHint: false },
       outputSchema: listCompetitionsOut,
