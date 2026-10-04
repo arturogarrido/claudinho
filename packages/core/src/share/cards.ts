@@ -559,7 +559,8 @@ export function dateShareCard(
       // The read was not whole (and which shown rows it did not serve): said
       // beside the fixtures, or beside "none read"; then the list's cap.
       ...noteWith(read, ctx.locale, attribution.unserved, day.cap),
-      installLine: runCue(ctx.competition, 'today'),
+      // An explicit date's cue reproduces THAT day (the recipient's today is another day).
+      installLine: runCue(ctx.competition, day.explicit ? `today ${cueArg(day.date)}` : 'today'),
       tz: ctx.tz,
       locale: ctx.locale,
     },
@@ -644,8 +645,9 @@ export function bracketShareCard(
     source,
     degraded: result.degraded,
     input: {
-      // The card's first line names the competition.
-      ...(competition ? { competitionName: competitionLabel(competition) } : {}),
+      // The card's first line, in the reader's language: the title, then the
+      // competition's name (not localized); the bare title with none.
+      title: competition ? `${t(lang, 'bracket.shareTitle')} · ${competitionLabel(competition)}` : t(lang, 'bracket.shareTitle'),
       view: result.view,
       source,
       installLine: runCue(competition, stage ? `bracket ${stage}` : 'bracket'),

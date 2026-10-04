@@ -29,7 +29,9 @@ describe('bracket i18n', () => {
     const baseKo = allFixtures().filter((m) => m.stage !== 'GROUP');
     const view = buildBracketView(topology, baseKo, [], true, true, undefined, 'pt');
     const card = formatShareBracket({ view }, { locale: 'pt' });
-    expect(card).toContain('Chave do mata-mata · 2026');
+    // The title names the competition when the card has one, and no year (0.11 · 2.5a): the ties carry their dates.
+    expect(card.split('\n')[0]).toBe('Chave do mata-mata');
+    expect(card).not.toContain('· 2026');
     expect(card).toContain('Placar ao vivo indisponível');
   });
 
