@@ -18,7 +18,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('node:child_process', () => ({ spawn: vi.fn(() => ({ unref: vi.fn() })) }));
+// A partial mock: the spawn is a stub, the rest is the real module (the FIFO case runs `mkfifo` through it).
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
+  spawn: vi.fn(() => ({ unref: vi.fn() })),
+}));
 
 let publishes = 0;
 let throwPublishAt = 0;
