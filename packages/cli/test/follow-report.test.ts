@@ -233,6 +233,30 @@ describe('the environment has three states: unset, set, refused', () => {
     delete process.env.CLAUDINHO_COMPETITION;
   });
 
+  it('a REFUSED environment with no flag: the refusal is the headline and the sentence says it is refused, never that it is set and wins', async () => {
+    await cmdFollow('premier-league', {}, ctxOf());
+    process.env.CLAUDINHO_COMPETITION = 'bar';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    const lines = text().split('\n').map((l) => l.trim()).filter(Boolean);
+    expect(lines[0]).toMatch(/"bar"/);
+    expect(text()).not.toMatch(/is set, and it wins|CLAUDINHO_COMPETITION decides/);
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION is refused/);
+    // The refusal is printed once: as the headline.
+    expect(text().split('"bar"').length - 1).toBe(1);
+    // The same after a write and after `off` under it.
+    writes = [];
+    await cmdFollow('serie-a', {}, ctxOf());
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION is refused/);
+    expect(text()).not.toMatch(/is set, and it wins/);
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ json: true }));
+    const j = JSON.parse(text());
+    expect(j.competition).toBeNull();
+    expect(j.refused).toEqual({ env: 'bar' });
+    delete process.env.CLAUDINHO_COMPETITION;
+  });
+
   it('a flag that ran with the environment SET: the JSON names both, so it is not the flag-alone JSON', async () => {
     await cmdFollow('premier-league', {}, ctxOf());
     process.env.CLAUDINHO_COMPETITION = 'laliga';
