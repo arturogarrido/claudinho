@@ -6,7 +6,7 @@
  * core so both packages read the same file the same way; the CLI re-exports it
  * from `paths.ts` for its own callers.
  */
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, type Stats } from 'node:fs';
 
 /**
  * Open flags for a bounded read: read-only, and NON-BLOCKING where the platform
@@ -101,10 +101,12 @@ export function readSmallFile(path: string, maxBytes: number): Buffer | undefine
  * Where the platform has `O_NOFOLLOW` (POSIX) the open itself refuses a link
  * (`ELOOP`, or `EMLINK` on some BSDs), and one look at the entry tells a link
  * from a path that loops elsewhere. Windows has no such flag: there the entry
- * is looked at (`lstat`) BEFORE the open, and the open's `fstat` must be a
- * regular file. That is two looks, and a link swapped in between them is
- * followed: the race is stated, not closed (a user who can replace their own
- * config file between two system calls can write it too).
+ * is looked at (`lstat`: a link is `symlink`) BEFORE the open, and the file
+ * the open gave must be THAT entry: the same device and inode by `fstat` as by
+ * the `lstat`. A link (or any other file) put in place between the two looks
+ * is then not what was inspected, and is answered `symlink`, its descriptor
+ * closed and nothing read; so is a file found at the open where the look found
+ * no entry. The two looks are kept apart by the check, not closed into one.
  */
 export function lookAtOwnFile(path: string, maxBytes: number): OwnFile {
   return look(path, maxBytes, true);
@@ -113,7 +115,17 @@ export function lookAtOwnFile(path: string, maxBytes: number): OwnFile {
 function look(path: string, maxBytes: number, noFollow: boolean): OwnFile {
   let fd: number | undefined;
   try {
-    if (noFollow && NO_FOLLOW === undefined && isSymbolicLink(path)) return SYMLINK;
+    // Without O_NOFOLLOW: the entry as looked at, for the opened file to be
+    // compared with (`null`: the look found no entry).
+    let looked: Stats | null | undefined;
+    if (noFollow && NO_FOLLOW === undefined) {
+      try {
+        looked = lstatSync(path);
+      } catch {
+        looked = null;
+      }
+      if (looked?.isSymbolicLink()) return SYMLINK;
+    }
     try {
       fd = openSync(path, READ_FLAGS | (noFollow ? (NO_FOLLOW ?? 0) : 0));
     } catch (e) {
@@ -124,6 +136,8 @@ function look(path: string, maxBytes: number, noFollow: boolean): OwnFile {
       return noFollow ? SYMLINK : UNREADABLE;
     }
     const info = fstatSync(fd);
+    // The file opened is not the entry looked at: the entry changed between.
+    if (looked !== undefined && (looked === null || looked.dev !== info.dev || looked.ino !== info.ino)) return SYMLINK;
     if (!info.isFile() || info.size > maxBytes) return UNREADABLE;
     const buf = Buffer.alloc(info.size + 1);
     let total = 0;

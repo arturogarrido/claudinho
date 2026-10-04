@@ -89,6 +89,9 @@ function isPicked(m: Match, pick: AmbientPick): boolean {
     return m.home?.code === code || m.away?.code === code;
   }
   const team = pick.team;
+  // By code only for a pin without an id, which the config reader believes on
+  // the bundled competition alone (its nations carry no id; a nation's FIFA
+  // code is unique there, and the feed's name need not equal the bundle's).
   if (team.id === undefined) return m.home?.code === team.code || m.away?.code === team.code;
   return isTeam(m.home, team) || isTeam(m.away, team);
 }

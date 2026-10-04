@@ -189,13 +189,16 @@ describe('the saved choice and the pin', () => {
     const chelsea: Match = { ...fixture, id: '800000002', home: { code: 'CHE', name: 'Chelsea', id: 'espn:363' }, away: { code: 'LIV', name: 'Liverpool', id: 'espn:364' } };
     const both: ProviderAdapter = { ...adapter, async fetchWindow() { return whole([fixture, chelsea]); }, async fetchByDate() { return whole([fixture, chelsea]); } };
     // The environment names a query, resolved as an argument would be; it wins over the pin.
-    process.env.CLAUDINHO_TEAM = 'CHE';
+    // (An exact name: this adapter serves no table, so a bare code would be rosterIncomplete
+    // as an argument too; and Liverpool plays only in the second fixture.)
+    process.env.CLAUDINHO_TEAM = 'Liverpool';
     const env = await toolGetNextFixture({ adapter: both, now: NOW });
     expect((env.data as Rec).fixture).toMatchObject({ id: '800000002' });
+    expect((env.data as Rec).team).toMatchObject({ id: 'espn:364' });
     // The argument wins over both.
-    const arg = await toolGetNextFixture({ team: 'Liverpool', adapter: both, now: NOW });
-    expect((arg.data as Rec).fixture).toMatchObject({ id: '800000002' });
-    expect((arg.data as Rec).team).toMatchObject({ id: 'espn:364' });
+    const arg = await toolGetNextFixture({ team: 'Arsenal FC', adapter: both, now: NOW });
+    expect((arg.data as Rec).fixture).toMatchObject({ id: '800000001' });
+    expect((arg.data as Rec).team).toMatchObject({ id: 'espn:359' });
     // With no pin and the environment set: an answer, not an error.
     follow('premier-league');
     const noPin = await toolGetNextFixture({ adapter: both, now: NOW });

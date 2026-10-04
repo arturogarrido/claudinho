@@ -15,13 +15,15 @@
  */
 import { join } from 'node:path';
 import { lookAtOwnFile } from './files';
-import { competitionValue } from './supported';
-import { isHumanLabel, humanLabel, opaqueId, TEAM_ID } from './trust/roles';
+import { BUNDLED_SLUG, competitionValue } from './supported';
+import { TEAM_CODE_COLUMNS } from './trust/match';
+import { isHumanLabel, humanLabel, MAX_LABEL_COLUMNS, opaqueId, TEAM_ID } from './trust/roles';
 
 /**
  * A pinned team, as `follow --team` resolved it: the provider's id (every
- * club; absent for the World Cup's nations, which the bundle names by code),
- * and its code and name as labels.
+ * club, and required for one: a pin is believed without an id on the bundled
+ * competition alone, whose nations the bundle names by code), and its code and
+ * name as labels.
  */
 export interface Pin {
   readonly id?: string;
@@ -45,10 +47,6 @@ export type UserConfigRead = { kind: 'read'; config: UserConfig } | { kind: 'non
 
 /** The bound on the config file, in bytes: a real one is under 200. */
 export const MAX_CONFIG_BYTES = 4096;
-/** Display columns a pinned team's code may occupy (a real club abbreviates to at most 8). */
-const PIN_CODE_COLUMNS = 8;
-/** Display columns a pinned team's name may occupy (the name `next` prints). */
-const PIN_NAME_COLUMNS = 40;
 
 /** The environment a path rule reads: only the variables named below. */
 type PathEnv = Readonly<Record<string, string | undefined>>;
@@ -94,17 +92,24 @@ const NONE = (reason: NoConfigReason): UserConfigRead => ({ kind: 'none', reason
  * A pinned team, believed only as `{ id?, code, name }`: `id`, when the key is
  * there, matching the team-id grammar exactly (`espn:359`, as `sealTeam` keeps
  * one); `code` and `name` human labels as typed (refused, never repaired: a
- * control or invisible character, an emoji, a tail past the bound), `code` at
- * most 8 columns and `name` at most 40. Anything else is no pin.
+ * control or invisible character, an emoji, a tail past the bound). The bounds
+ * are a TEAM's, the same two constants `sealTeam` applies (`code` at most
+ * `TEAM_CODE_COLUMNS`, `name` at most `MAX_LABEL_COLUMNS`), because the writer
+ * (`follow --team`) copies a resolved team's labels as they are: any tighter,
+ * and a club `next` resolves would be written and then read back as no pin.
+ * An id-less pin is the bundled competition's alone (`bundled`): its nations
+ * carry no id, while every club a feed resolves has one, so off it a pin
+ * without an id is not a team `follow` wrote. Anything else is no pin.
  */
-function believedPin(raw: unknown): Pin | undefined {
+function believedPin(raw: unknown, bundled: boolean): Pin | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
   const t = raw as Record<string, unknown>;
-  if (!isHumanLabel(t.code, PIN_CODE_COLUMNS) || !isHumanLabel(t.name, PIN_NAME_COLUMNS)) return undefined;
+  if (!isHumanLabel(t.code, TEAM_CODE_COLUMNS) || !isHumanLabel(t.name, MAX_LABEL_COLUMNS)) return undefined;
   const id = Object.hasOwn(t, 'id') ? opaqueId(t.id, TEAM_ID) : undefined;
   if (Object.hasOwn(t, 'id') && id === undefined) return undefined;
-  const code = humanLabel(t.code, PIN_CODE_COLUMNS);
-  const name = humanLabel(t.name, PIN_NAME_COLUMNS);
+  if (id === undefined && !bundled) return undefined;
+  const code = humanLabel(t.code, TEAM_CODE_COLUMNS);
+  const name = humanLabel(t.name, MAX_LABEL_COLUMNS);
   return id !== undefined ? { id, code, name } : { code, name };
 }
 
@@ -117,8 +122,9 @@ function believedPin(raw: unknown): Pin | undefined {
  * object, are `malformed`; a `version` that is not 1 (or none) is `version`; a
  * `competition` that is no alias, no slug in the table and no well-formed raw
  * slug (the resolver's grammar) is `competition`. The `team` is believed only
- * as a team (see {@link believedPin}); otherwise it is dropped and the
- * competition kept. Never throws.
+ * as a team (see {@link believedPin}: without an id only when the competition
+ * resolves to the bundled one, an alias through the table); otherwise it is
+ * dropped and the competition kept. Never throws.
  */
 export function readUserConfig(path: string): UserConfigRead {
   const file = lookAtOwnFile(path, MAX_CONFIG_BYTES);
@@ -137,8 +143,10 @@ export function readUserConfig(path: string): UserConfigRead {
   if (root.version !== 1) return NONE('version');
   const competition = root.competition;
   // The resolver's grammar, asked of the value as written (an alias stays an alias).
-  if (typeof competition !== 'string' || competitionValue(competition) === undefined) return NONE('competition');
-  const team = Object.hasOwn(root, 'team') ? believedPin(root.team) : undefined;
+  const named = typeof competition === 'string' ? competitionValue(competition) : undefined;
+  if (typeof competition !== 'string' || named === undefined) return NONE('competition');
+  const slug = 'row' in named ? named.row.slug : named.raw;
+  const team = Object.hasOwn(root, 'team') ? believedPin(root.team, slug === BUNDLED_SLUG) : undefined;
   const config: UserConfig = team ? { version: 1, competition, team } : { version: 1, competition };
   return { kind: 'read', config };
 }

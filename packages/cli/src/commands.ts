@@ -485,17 +485,19 @@ function nextEmptySentence(next: NextFixtureResult, code: string, label: string,
 }
 
 /**
- * Resolve CLAUDINHO_TEAM for the statusline/hook. Same offline lookup as the
- * commands (`CLAUDINHO_TEAM=mexico` filters, not just `MEX`); an unknown
- * 3-letter value still passes through uppercased (the CLAUDINHO_COMPETITION
- * escape hatch), and anything unresolvable yields no filter — showing all
- * matches beats a dead filter that blanks the statusline. Pure and offline
- * (bundled roster only), so it's safe on the no-network hot path.
+ * Resolve CLAUDINHO_TEAM for the statusline, the hook and `vibe` to the CODE
+ * their one pick prefers (`pickAmbientMatch`: the picked team's match first,
+ * the others kept). Same offline lookup as the commands
+ * (`CLAUDINHO_TEAM=mexico` picks Mexico, as `MEX` does); an unknown 3-letter
+ * value still passes through uppercased (the CLAUDINHO_COMPETITION escape
+ * hatch), and anything else yields no code: no preference (see
+ * {@link ambientPick}). Pure and offline (bundled roster only), so it's safe
+ * on the no-network hot path.
  */
 function resolveEnvTeam(raw: string | undefined, competition: string): string | undefined {
   if (!raw) return undefined;
   // Off the bundle the World Cup roster is not this competition's: only a bare
-  // code is honoured (`ala` filters ALA, never New Zealand's NZL).
+  // code is honoured (`ala` picks ALA, never New Zealand's NZL).
   if (bundleApplies(competition)) {
     const { team } = lookupTeam(raw);
     if (team) return team.code;
@@ -505,12 +507,21 @@ function resolveEnvTeam(raw: string | undefined, competition: string): string | 
 
 /**
  * Whose match the ambient surfaces (the statusline, the hook, `vibe`) prefer,
- * decided at the edge: `CLAUDINHO_TEAM` (a code, through {@link resolveEnvTeam}),
- * else the saved pin (`cfg.pin`, only on the saved competition). Offline.
+ * decided at the edge, offline. Three states of `CLAUDINHO_TEAM`:
+ *   - absent (unset or empty): the saved pin (`cfg.pin`, only on the saved
+ *     competition), or no preference;
+ *   - present and readable (a code, through {@link resolveEnvTeam}): that code;
+ *   - present and unreadable here (a name off the bundle, which the hot path
+ *     cannot resolve without a roster): NO preference, never the pin. The
+ *     environment is the override; a value it states is not replaced by the
+ *     saved team because this surface cannot read it.
  */
 function ambientPick(cfg: CliConfig): AmbientPick {
-  const code = resolveEnvTeam(process.env.CLAUDINHO_TEAM, cfg.competition);
-  if (code) return { code };
+  const raw = process.env.CLAUDINHO_TEAM;
+  if (raw) {
+    const code = resolveEnvTeam(raw, cfg.competition);
+    return code ? { code } : undefined;
+  }
   return cfg.pin ? { team: cfg.pin } : undefined;
 }
 

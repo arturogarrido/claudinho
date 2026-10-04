@@ -34,8 +34,13 @@ on nothing.
 
 **No credentials.** Claudinho requires no API key, token, or account, and handles none at
 runtime. Beyond its own `CLAUDINHO_*` options it reads only environment used for display and
-paths: `LANG`, `NO_COLOR`, `XDG_CACHE_HOME`, `TERM_PROGRAM` (terminal detection, for the
-flag-emoji fallback), and the home directory via `os.homedir()` (`HOME` / `USERPROFILE`).
+paths: `LANG`, `NO_COLOR`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `APPDATA` and `LOCALAPPDATA`
+(the config and cache directories on Windows), `TERM_PROGRAM` (terminal detection, for the
+flag-emoji fallback), and the home directory via `os.homedir()` (`HOME` / `USERPROFILE`). It
+reads one file of its own as input: the config file, `config.json` in the config directory,
+which holds the competition and team chosen with `claudinho follow`; it is read through the
+same bounded, non-blocking reader as the cache, never through a symbolic link, and believed
+only field by field (a value that fails its grammar is no saved choice, never a guess).
 
 **Two outbound hosts, both public and read-only.**
 
@@ -46,8 +51,8 @@ flag-emoji fallback), and the home directory via `os.homedir()` (`HOME` / `USERP
 
 Requests are anonymous GETs — no account and no credentials. They do carry the parameters a
 lookup needs: the requested date, and the competition slug (from `--competition`,
-`CLAUDINHO_COMPETITION` or an MCP tool's `competition` argument, which selects the ESPN
-competition path; an alias resolves to its slug offline, and a value that is neither an alias
+`CLAUDINHO_COMPETITION`, an MCP tool's `competition` argument, or the saved choice in
+`config.json`, which selects the ESPN competition path; an alias resolves to its slug offline, and a value that is neither an alias
 nor a lower-case dotted slug (letters, digits and underscores) is refused before any request). They use `redirect: 'error'` (no redirect following), an
 abort-signal timeout, and a declared-content-length cap before parsing. As with any HTTP
 request the provider also receives normal transport metadata such as your IP address and
@@ -58,8 +63,12 @@ commands try the provider first and degrade to the bundle on any network or prov
 That includes `next`, which live-resolves knockout ties before falling back. `team` is the
 genuinely offline lookup (it only consults the bundled roster).
 
-**Local writes only.** A cache in `$XDG_CACHE_HOME/claudinho` (default `~/.cache/claudinho`),
-written atomically via tmp+rename. The optional `init` commands modify your editor's own config
+**Local writes only.** A cache in `$XDG_CACHE_HOME/claudinho` (default `~/.cache/claudinho`;
+`%LOCALAPPDATA%\claudinho` on Windows), written atomically via tmp+rename. The config file
+`config.json` in `$XDG_CONFIG_HOME/claudinho` (default `~/.config/claudinho`; `%APPDATA%\claudinho`
+on Windows), written only by `claudinho follow`: atomically, with mode 0600 set on every write,
+replacing (never writing through) a symbolic link at its path; the MCP server reads it and writes
+nothing. The optional `init` commands modify your editor's own config
 (`~/.claude/settings.json` or `~/.cursor/cli-config.json`) after saving a one-time `.claudinho.bak`
 backup. Nothing is uploaded. See [PRIVACY.md](PRIVACY.md) for the full data-handling picture.
 

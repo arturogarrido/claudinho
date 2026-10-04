@@ -80,7 +80,9 @@ if ! cli follow world-cup >/dev/null 2>&1; then
   printf '\033[33m⚠\033[0m could not follow the World Cup in %s (a CLI without `follow`?)\n' "$QA_CONFIG"
 fi
 
-bold "release-qa · competition=$(qa label) · $(cli --version 2>/dev/null)"
+# The competition as the built CLI resolved it (read back, never assumed: a
+# failed follow must not print "saved (World Cup)").
+bold "release-qa · competition=$(cli table Z --json 2>/dev/null | qa label) · $(cli --version 2>/dev/null)"
 echo "Read every section below. Then run the release. Tripwires summarized at the end."
 
 # ── 1. The knockout bracket (the surface that sprawled) ──────────────────────

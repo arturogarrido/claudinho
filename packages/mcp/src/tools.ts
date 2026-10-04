@@ -303,9 +303,11 @@ function keepAdapter(source: string, competition: string, key: string): Provider
 /** The adapter already resolved for a request, keyed by that request's args object. */
 const perRequest = new WeakMap<object, ProviderAdapter>();
 
-/** A request's choice: the competition it is for (or none chosen) and the saved pin that applies to it. */
+/** A request's choice: the competition it is for (or none chosen), and the team a team-taking tool defaults to. */
 interface RequestChoice {
   readonly selection: SelectedCompetition | { readonly kind: 'none' };
+  /** The server's `CLAUDINHO_TEAM` (an empty one is absent): a query, before the pin. */
+  readonly envTeam?: string;
   /** The user's saved team, only when the saved choice selected the competition. */
   readonly pin?: Pin;
 }
@@ -340,7 +342,9 @@ function choiceOf(args: CommonOpts): RequestChoice {
   // The pin is the saved choice's: under a request's own competition or the
   // server's environment it is another competition's, and does not apply.
   const pin = selection.kind === 'selected' && selection.chosenBy === 'saved' ? config?.team : undefined;
-  const choice: RequestChoice = pin ? { selection, pin } : { selection };
+  // The server's team, read here with its competition, once.
+  const envTeam = process.env.CLAUDINHO_TEAM || undefined;
+  const choice: RequestChoice = { selection, ...(envTeam !== undefined ? { envTeam } : {}), ...(pin ? { pin } : {}) };
   perRequestChoice.set(args, choice);
   return choice;
 }
@@ -1042,28 +1046,45 @@ function nextTeamLabel(next: NextFixtureResult, fallback: string): string {
   return next.team?.name ?? next.query ?? fallback;
 }
 
-/** What `get_next_fixture` with no `team` says when the user pinned none. */
+/** What `get_next_fixture` with no `team` says when there is no team to default to. */
 const NO_TEAM =
   'No team given and none pinned: pass `team`, or the user runs `claudinho follow <alias> --team <name>`.';
 
+/**
+ * The team `get_next_fixture` is about, by the CLI's precedence: the argument,
+ * then the server's `CLAUDINHO_TEAM` (both a query, resolved alike), then the
+ * user's saved pin (a team already resolved). None of the three: undefined.
+ */
+function nextAsked(args: { team?: string } & CommonOpts): { query: string } | { pin: Pin } | undefined {
+  if (args.team !== undefined) return { query: args.team };
+  const choice = choiceOf(args);
+  if (choice.envTeam !== undefined) return { query: choice.envTeam };
+  return choice.pin ? { pin: choice.pin } : undefined;
+}
+
 export function toolGetNextFixture(args: { team?: string } & CommonOpts): Promise<ToolResult> {
-  return said(args, nextAnswer, (a) => ({
-    // The argument as typed, bounded; the pin's label when it was omitted.
-    team: a.team !== undefined ? humanLabel(a.team, 40) : (choiceOf(a).pin?.name ?? ''),
-    fixture: null,
-    degraded: false,
-    source: null,
-  }));
+  return said(args, nextAnswer, (a) => {
+    // The team as asked, bounded: the argument, the server's, or the pin's label.
+    const asked = nextAsked(a);
+    return {
+      team: asked === undefined ? '' : 'query' in asked ? humanLabel(asked.query, 40) : asked.pin.name,
+      fixture: null,
+      degraded: false,
+      source: null,
+    };
+  });
 }
 async function nextAnswer(
   args: { team?: string } & CommonOpts,
 ): Promise<ToolResult> {
-  // No `team`: the user's saved pin, a team already resolved when it was
-  // saved (by its id; by code for the World Cup's nations), never resolved
-  // again; only under the saved choice (a request's own competition, or the
+  // The argument, then the server's CLAUDINHO_TEAM (a query, as an argument
+  // is), then the user's saved pin: a team already resolved when it was saved
+  // (by its id; by code for the World Cup's nations), never resolved again;
+  // only under the saved choice (a request's own competition, or the
   // server's environment, is another competition). None: a tool error.
-  const pin = args.team === undefined ? choiceOf(args).pin : undefined;
-  if (args.team === undefined && !pin) throw new Error(NO_TEAM);
+  const teamAsked = nextAsked(args);
+  if (teamAsked === undefined) throw new Error(NO_TEAM);
+  const pin = 'pin' in teamAsked ? teamAsked.pin : undefined;
   const adapter = resolveAdapter(args);
   // The World Cup: a nation's code, or a name resolved against the bundled
   // roster (`nationArg`); a name that is no single nation is answered without
@@ -1072,7 +1093,14 @@ async function nextAnswer(
   // competition's roster and the schedule ahead. Never the RAW argument: a
   // direct call bypasses the input schema, and what is carried into the text,
   // a card or a run cue is the bounded label.
-  const query = pin ? (bundleApplies(adapter.competition) ? pin.code : pin.name) : humanLabel(args.team, 40);
+  const query = pin
+    ? bundleApplies(adapter.competition)
+      ? pin.code
+      : pin.name
+    : humanLabel('query' in teamAsked ? teamAsked.query : '', 40);
+  // A query with nothing readable in it (the server's CLAUDINHO_TEAM is not
+  // schema-checked) names no team.
+  if (!query) throw new Error(NO_TEAM);
   const asked = pin
     ? { code: query }
     : bundleApplies(adapter.competition)

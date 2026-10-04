@@ -9,8 +9,8 @@
 ```bash
 npm i -g @claudinho/cli      # installs the `claudinho` binary
 claudinho follow world-cup   # choose a competition once (claudinho follow --list shows them all)
-# or run without installing:
-npx @claudinho/cli today
+# or run without installing, choosing per command (or once: npx @claudinho/cli follow world-cup):
+npx @claudinho/cli --competition world-cup today
 ```
 
 `claudinho today` on a knockout night — penalty shootouts and all:

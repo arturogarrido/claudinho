@@ -4,9 +4,10 @@
  * `scripts/release-qa-lib.mjs` (0.11 · 2.5a), and is run here offline:
  *   - the default mode FOLLOWS the World Cup in a config directory the script
  *     creates for the run (2.5b: nothing chosen is no competition), so the
- *     mode line reads `World Cup` with no source, as a user's would, and the
- *     header says `saved (World Cup)`; the caller's CLAUDINHO_COMPETITION
- *     still wins over it, as it does for a user;
+ *     mode line reads `World Cup` with no source, as a user's would; the
+ *     caller's CLAUDINHO_COMPETITION still wins over it, as it does for a
+ *     user; the header names what the built CLI RESOLVED, read back from its
+ *     JSON (`saved (World Cup)`, or `none chosen` when the follow failed);
  *   - the drift tripwire is gated on the competition the built CLI RESOLVED
  *     (an alias is its slug), never on the raw environment value;
  *   - a competition the script cannot resolve, and a drift verdict it cannot
@@ -27,11 +28,15 @@ const SCRIPT = path('../../../scripts/release-qa.sh');
 const CLI_DIST = path('../../cli/dist/index.js');
 
 describe('the decisions, offline', () => {
-  it('the header names the caller\'s competition, or the World Cup the run follows', () => {
-    expect(competitionLabel(undefined)).toBe('saved (World Cup)');
-    expect(competitionLabel('')).toBe('saved (World Cup)');
-    expect(competitionLabel('world-cup')).toBe('world-cup');
-    expect(competitionLabel('fifa.friendly')).toBe('fifa.friendly');
+  it('the header names the competition the CLI resolved, read back from its JSON, never assumed', () => {
+    const answer = (chosenBy: string, name: string) => JSON.stringify({ tables: null, competition: { slug: 'x', name, chosenBy } });
+    expect(competitionLabel(answer('saved', 'World Cup'))).toBe('saved (World Cup)');
+    expect(competitionLabel(answer('env', 'Premier League'))).toBe('env (Premier League)');
+    expect(competitionLabel(answer('env', 'fifa.friendly'))).toBe('env (fifa.friendly)');
+    // A failed follow and nothing else chosen: never "saved (World Cup)".
+    expect(competitionLabel(JSON.stringify({ competition: null, noCompetition: true }))).toBe('none chosen');
+    expect(competitionLabel('')).toBe('unresolved');
+    expect(competitionLabel('not json')).toBe('unresolved');
   });
 
   it('the resolved slug is read from the CLI\'s --json, and nothing else', () => {
@@ -82,7 +87,7 @@ describe('the script asks those decisions, and sets no competition of its own', 
   });
 
   it('the header, the gate and the verdict go through the helper; the fallbacks FAIL', () => {
-    expect(code).toContain('competition=$(qa label)');
+    expect(code).toContain('competition=$(cli table Z --json 2>/dev/null | qa label)');
     expect(code).toMatch(/RESOLVED="\$\(cli table Z --json 2>\/dev\/null \| qa slug\)"/);
     expect(code).toContain('GATE="$(qa gate "$RESOLVED")"');
     expect(code).toContain('VERDICT="$(printf \'%s\' "$DRIFT" | qa verdict)"');
@@ -145,5 +150,11 @@ describe('the command-line form the script calls (not only the functions)', () =
     expect(run(['slug'], JSON.stringify({ tables: null, competition: { slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'env' } }))).toBe('eng.1');
     expect(run(['slug'], '')).toBe('');
     expect(run(['slug'], 'not json')).toBe('');
+  });
+
+  it('`label` names what the CLI resolved, read from its JSON on standard input', () => {
+    expect(run(['label'], JSON.stringify({ tables: null, competition: { slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', chosenBy: 'saved' } }))).toBe('saved (World Cup)');
+    expect(run(['label'], JSON.stringify({ competition: null, noCompetition: true }))).toBe('none chosen');
+    expect(run(['label'], '')).toBe('unresolved');
   });
 });
