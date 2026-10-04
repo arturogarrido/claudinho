@@ -7,6 +7,9 @@
  *     what is ANSWERED, never what is saved);
  *   - `follow` never writes THROUGH a link at the config path: the link is
  *     replaced by the user's own file, and what it pointed at is untouched;
+ *   - a refused environment's refusal is said once in `follow`'s report (the
+ *     headline when it decides what is reported, else its own line after
+ *     the headline), and `refused.env` is bounded as a label;
  *   - with nothing chosen `_refresh` asks nobody and writes nothing, and
  *     `vibe` reads no cache;
  *   - the cache directory takes the Windows leg (`%LOCALAPPDATA%`) through
@@ -154,6 +157,48 @@ describe('the pin and the override, beside the main suites', () => {
     expect(j.sources).toEqual({ env: 'esp.1' });
     expect(j.removed).toBe(true);
     expect(existsSync(configFile())).toBe(false);
+  });
+});
+
+describe('a refused environment, beside the main report suite', () => {
+  const ctxWith = (opts: { competition?: string; json?: boolean }) => {
+    const cfg = resolveConfig({ tz: 'UTC', color: false, source: 'espn', flavor: 'off', markets: false, ...opts });
+    return { cfg, t: makeT('en'), now: NOW };
+  };
+  const count = (needle: string) => text().split(needle).length - 1;
+
+  it('its refusal is printed once: as the headline when it decides what is reported, else on its own line after it', async () => {
+    follow({ version: 1, competition: 'eng.1' });
+    process.env.CLAUDINHO_COMPETITION = 'foo';
+    // `follow` alone and a write: the environment's refusal is the headline, said once.
+    await cmdFollow(undefined, {}, ctxWith({}));
+    expect(count('"foo"')).toBe(1);
+    writes = [];
+    await cmdFollow('serie-a', {}, ctxWith({}));
+    expect(count('"foo"')).toBe(1);
+    // Under a refused flag: the flag's refusal is the headline, the environment's after it, each once.
+    writes = [];
+    await cmdFollow(undefined, {}, ctxWith({ competition: 'bar' }));
+    expect(count('"bar"')).toBe(1);
+    expect(count('"foo"')).toBe(1);
+    expect(text().indexOf('"bar"')).toBeLessThan(text().indexOf('"foo"'));
+    // A write under both: the environment's refusal decides the next command (the headline), then the flag's.
+    writes = [];
+    await cmdFollow('laliga', {}, ctxWith({ competition: 'bar' }));
+    expect(count('"bar"')).toBe(1);
+    expect(count('"foo"')).toBe(1);
+    expect(text().indexOf('"foo"')).toBeLessThan(text().indexOf('"bar"'));
+  });
+
+  it('`refused.env` is the value as given, bounded as a label', async () => {
+    follow({ version: 1, competition: 'eng.1' });
+    process.env.CLAUDINHO_COMPETITION = `${'x'.repeat(300)}!`;
+    await cmdFollow(undefined, {}, ctxWith({ json: true }));
+    const j = JSON.parse(text());
+    expect(Object.keys(j.refused)).toEqual(['env']);
+    expect(j.refused.env.length).toBeGreaterThan(0);
+    expect(j.refused.env.length).toBeLessThanOrEqual(40);
+    expect(j.sources).toBeUndefined();
   });
 });
 

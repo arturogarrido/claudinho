@@ -79,7 +79,7 @@ saved choice), and never applies to another. `follow --json` says the same facts
 its text: `competition` (`follow` alone: this command's; after a write or `off`: what
 the next command follows), `override` (its source when it is not the saved choice),
 `sources` (the flag, the environment and `CLAUDINHO_TEAM` this command ran under),
-`refused` (a refused value and its source), `saved` (the file as read) and `path`.
+`refused` (each refused value under its source's name), `saved` (the file as read) and `path`.
 
 ### Examples
 
