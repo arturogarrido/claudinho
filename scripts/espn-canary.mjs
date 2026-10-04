@@ -83,8 +83,15 @@ import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /**
- * The competitions 0.11 supports. A plain list until the supported-set table
- * exists in core; the canary then reads that table instead.
+ * The competitions 0.11 supports: the fifteen core writes down in its
+ * supported-set tables (`TEAM_KIND`, `COMPETITION_KIND` in
+ * `packages/core/src/kinds.ts`). The canary keeps its own list of them on
+ * purpose: it reaches core only through the BUILT package, loaded at run time
+ * and handed to `runCanary({ core })`, while this list is read before that (by
+ * the run's own defaults and by the tests that name what it asks), so it cannot
+ * be derived from core in one line without loading core at import. A
+ * competition added to the product is added here too; no test compares the two
+ * lists yet.
  */
 export const CANARY_COMPETITIONS = Object.freeze([
   'fifa.world',
