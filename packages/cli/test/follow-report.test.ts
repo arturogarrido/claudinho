@@ -141,3 +141,32 @@ describe('one list of facts in every form: what the edge saw', () => {
     delete process.env.CLAUDINHO_COMPETITION;
   });
 });
+
+describe('the team override', () => {
+  it('with CLAUDINHO_TEAM set, the saved pin is reported as saved, not as the team in effect, and the override is named in the text and the JSON', async () => {
+    await cmdFollow('world-cup', { team: 'Spain' }, ctxOf());
+    process.env.CLAUDINHO_TEAM = 'Mexico';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    const lines = text().split('\n').map((l) => l.trim()).filter(Boolean);
+    const following = lines.findIndex((l) => /^Following: World Cup/.test(l));
+    expect(lines[following + 1]).not.toMatch(/^Team: Spain/);
+    expect(text()).toMatch(/Saved team: Spain/);
+    expect(text()).toMatch(/CLAUDINHO_TEAM/);
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ json: true }));
+    const j = JSON.parse(text());
+    expect(j.saved.team).toEqual({ code: 'ESP', name: 'Spain' });
+    expect(j.sources).toMatchObject({ team: 'Mexico' });
+    // The same right after saving Spain while the override is set.
+    writes = [];
+    await cmdFollow('world-cup', { team: 'Spain' }, ctxOf());
+    expect(text()).toMatch(/Saved team: Spain/);
+    expect(text()).toMatch(/CLAUDINHO_TEAM/);
+    delete process.env.CLAUDINHO_TEAM;
+    // Without it, the pin is the team in effect.
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/Team: Spain/);
+  });
+});
