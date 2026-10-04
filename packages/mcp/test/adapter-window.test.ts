@@ -42,7 +42,8 @@ describe('one window per source', () => {
     expect(requests).toBe(armed);
     // The window is readable on every adapter of the source, the latest deadline on each.
     const deadline = until('world-cup');
-    expect(deadline).toBeGreaterThan(NOW.getTime());
+    // The adapters the server builds count by the process clock (Retry-After from now), not by the tools' `now`.
+    expect(deadline).toBeGreaterThan(Date.now());
     for (const c of ['premier-league', 'laliga', 'serie-a', 'fifa.friendly']) expect(until(c), c).toBe(deadline);
   });
 });
@@ -56,6 +57,6 @@ describe('the kept adapters are bounded', () => {
     // an eviction is a fresh instance, armed from the source's window like any other.
     expect(resolveAdapter({ competition: `probe.x${KEPT_ADAPTERS_MAX + 7}` })).toBe(resolveAdapter({ competition: `probe.x${KEPT_ADAPTERS_MAX + 7}` }));
     expect(until('probe.x0')).toBe(until('world-cup'));
-    expect(until('probe.x0')).toBeGreaterThan(NOW.getTime());
+    expect(until('probe.x0')).toBeGreaterThan(Date.now());
   });
 });

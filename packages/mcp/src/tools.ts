@@ -149,13 +149,79 @@ export interface CommonOpts {
 }
 
 /**
- * Server-lifetime adapters, keyed by source. A stdio MCP session serves many
- * tool calls, and constructing a fresh adapter per call re-fetched the group
- * map (a standings request) every time. Freshness is bounded inside the
- * adapter itself: the standings fetch is shared for ~30s, then re-fetched, so
- * a long-lived session never serves stale tables.
+ * Server-lifetime adapters, keyed by source and competition (`source::slug`).
+ * A stdio MCP session serves many tool calls, and constructing a fresh adapter
+ * per call re-fetched the group map (a standings request) every time.
+ * Freshness is bounded inside the adapter itself: the standings fetch is
+ * shared for ~30s, then re-fetched, so a long-lived session never serves stale
+ * tables. A `Map` keeps insertion order, which is the recency order here: a
+ * hit is moved to the end, and past {@link KEPT_ADAPTERS_MAX} the first key is
+ * evicted.
  */
 const adapters = new Map<string, ProviderAdapter>();
+
+/**
+ * How many adapters the server keeps, at most. Fifteen supported competitions
+ * and room for as many raw slugs again, so a client walking
+ * `list_competitions` never evicts a supported one, while a client asking
+ * distinct raw slugs cannot grow the server without limit. An evicted adapter
+ * loses no throttle window: the window is remembered per source.
+ */
+export const KEPT_ADAPTERS_MAX = 32;
+
+/** How many adapters the server keeps now. A test seam: nothing in the server reads it. */
+export function keptAdapterCount(): number {
+  return adapters.size;
+}
+
+/**
+ * The provider's throttle window, per SOURCE: the latest deadline (epoch ms)
+ * any adapter of that source met. The window is the provider's answer to this
+ * server, not to one competition, so every adapter of the source honours it.
+ */
+const sourceWindows = new Map<string, number>();
+
+/** The cooldown seam an adapter may expose (the real one does; `ProviderAdapter` has neither method). */
+type Throttleable = {
+  onCooldown(listener: (untilMs: number) => void): () => void;
+  armCooldown(untilMs: number): void;
+};
+function throttleable(adapter: ProviderAdapter): adapter is ProviderAdapter & Throttleable {
+  const t = adapter as Partial<Throttleable>;
+  return typeof t.onCooldown === 'function' && typeof t.armCooldown === 'function';
+}
+
+/**
+ * Build and keep the adapter for a source and competition, joined to its
+ * source's ONE throttle window: built inside a remembered window it is armed
+ * at construction (the remembered deadline is compared with the adapter's
+ * clock: a past one arms nothing), and a throttle it meets is remembered for
+ * the source and arms every other kept adapter of the source (`armCooldown`
+ * keeps the latest deadline and is silent on an earlier or equal one, so the
+ * arming never loops). An adapter with neither method (a fake) is kept as it
+ * is: feature-detected, never an error.
+ */
+function keepAdapter(source: string, competition: string, key: string): ProviderAdapter {
+  const adapter = makeAdapter(source, { competition });
+  if (throttleable(adapter)) {
+    const until = sourceWindows.get(source);
+    const nowMs = typeof adapter.now === 'function' ? adapter.now() : Date.now();
+    if (until !== undefined && until > nowMs) adapter.armCooldown(until);
+    adapter.onCooldown((untilMs) => {
+      sourceWindows.set(source, Math.max(sourceWindows.get(source) ?? untilMs, untilMs));
+      for (const [k, other] of adapters) {
+        if (other !== adapter && k.startsWith(`${source}::`) && throttleable(other)) other.armCooldown(untilMs);
+      }
+    });
+  }
+  adapters.set(key, adapter);
+  while (adapters.size > KEPT_ADAPTERS_MAX) {
+    const oldest = adapters.keys().next().value;
+    if (oldest === undefined) break;
+    adapters.delete(oldest);
+  }
+  return adapter;
+}
 
 /** The adapter already resolved for a request, keyed by that request's args object. */
 const perRequest = new WeakMap<object, ProviderAdapter>();
@@ -207,12 +273,18 @@ export function resolveAdapter(args: CommonOpts): ProviderAdapter {
   const source = args.source ?? 'espn';
   // Keyed by source AND competition: an adapter serves exactly one
   // competition, so a cache keyed by source alone would pin the first
-  // competition seen for the whole session.
+  // competition seen for the whole session. The throttle window is the
+  // SOURCE's, shared by every kept adapter of it (`keepAdapter`): the CLI keeps
+  // a per-scope note on disk instead, a different design for one process per
+  // command.
   const key = `${source}::${competition}`;
   let adapter = adapters.get(key);
-  if (!adapter) {
-    adapter = makeAdapter(source, { competition });
+  if (adapter) {
+    // Most recently used: moved to the end of the eviction order.
+    adapters.delete(key);
     adapters.set(key, adapter);
+  } else {
+    adapter = keepAdapter(source, competition, key);
   }
   perRequest.set(args, adapter);
   return adapter;
