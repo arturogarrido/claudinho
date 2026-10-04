@@ -590,8 +590,8 @@ describe('the rules the fourth reader found unpinned', () => {
 
 describe('the gate and the healable path, on every lane (the fourth reader\'s lane survivors)', () => {
   const brokenRecord = (source = SOURCE, competition = WC) => mkdirSync(attemptRecordPath(source, competition), { recursive: true });
-  const unopenableSnapshot = (source: string, competition: string) => {
-    mkdirSync(cachePath(source, competition), { recursive: true }); // a directory at the path: cannot be opened as a file
+  const unhealableSnapshot = (source: string, competition: string) => {
+    mkdirSync(cachePath(source, competition), { recursive: true }); // a directory at the path: a rename cannot replace it
     expect(readCurrentState(source, competition)).toBeUndefined();
   };
   const rejectedSnapshot = (source: string, competition: string) => {
@@ -600,9 +600,9 @@ describe('the gate and the healable path, on every lane (the fourth reader\'s la
     expect(readCurrentState(source, competition)).toBeUndefined();
   };
 
-  it('the idle writer: an unopenable snapshot with a broken record does nothing; a rejected one heals', async () => {
+  it('the idle writer: a directory at the snapshot path with a broken record does nothing; a rejected snapshot heals', async () => {
     brokenRecord();
-    unopenableSnapshot(SOURCE, WC);
+    unhealableSnapshot(SOURCE, WC);
     await refresh(QUIET);
     expect(readCurrentState(SOURCE, WC)).toBeUndefined();
     expect(asked).toHaveLength(0);
@@ -615,7 +615,7 @@ describe('the gate and the healable path, on every lane (the fourth reader\'s la
 
   it('the unknown-source lane: the same two cells, with that source\'s own record', async () => {
     brokenRecord('nope', WC);
-    unopenableSnapshot('nope', WC);
+    unhealableSnapshot('nope', WC);
     await refresh(QUIET, WC, 'nope');
     expect(readCurrentState('nope', WC)).toBeUndefined();
     rmSync(cachePath('nope', WC), { recursive: true, force: true });
@@ -629,7 +629,7 @@ describe('the gate and the healable path, on every lane (the fourth reader\'s la
     const at = Date.parse('2026-10-10T15:00:00Z');
     answer = () => json({ leagues: [{ season: { year: 2026, displayName: '2026-27 Liga MX' } }], events: [] });
     brokenRecord(SOURCE, MEX);
-    unopenableSnapshot(SOURCE, MEX);
+    unhealableSnapshot(SOURCE, MEX);
     publishes = 0;
     await refresh(at, MEX);
     // Discovery publishes BEFORE its request, so the gate shows in the publish count: none attempted.
@@ -645,7 +645,7 @@ describe('the gate and the healable path, on every lane (the fourth reader\'s la
 
   it('the bundle lane in a live window: the same two cells', async () => {
     brokenRecord();
-    unopenableSnapshot(SOURCE, WC);
+    unhealableSnapshot(SOURCE, WC);
     await refresh(LIVE);
     expect(asked).toHaveLength(0);
     rmSync(cachePath(SOURCE, WC), { recursive: true, force: true });

@@ -95,25 +95,40 @@ export function readSmallFile(path: string, maxBytes: number): Buffer | undefine
   return file.kind === 'read' ? file.bytes : undefined;
 }
 
+/** What a rename onto a path would do (see {@link lookAtEntry}). */
+export type FileEntry = 'absent' | 'file' | 'replaceable' | 'unhealable';
+
+/** The owner-read bit of a mode (`S_IRUSR`): the one read bit a replacement that is this process's own answers to. */
+const OWNER_READ = 0o400;
+
 /**
  * What a RENAME onto `path` would do, from one look at the entry (`lstat`,
  * never following a link) and, for a regular file only, one open; nothing is
- * read. Four answers:
- * - `absent`: no entry (a rename creates a fresh file);
- * - `file`: a regular file this process can OPEN for reading, whatever its
- *   size or content (a replacement keeps its mode, so stays readable);
- * - `replaceable`: an entry a rename replaces with a fresh file: a symbolic
- *   link to anything (the link itself is replaced, its target never followed;
- *   a link to nothing included), a pipe, a socket, a device; and a regular
- *   file this process cannot open whose OWN mode grants its owner a read (the
- *   open was refused by an access-control list, another owner, or a lock: the
- *   replacement is this process's, carries the mode bits and none of that, so
- *   it reads back);
- * - `unhealable`: a directory (a rename cannot replace it), a regular file
- *   this process cannot open whose own mode denies its owner a read (the
- *   owner-read bit clear: mode 000, 200; the replacement keeps the bits, so
- *   stays unreadable), or an entry nobody can look at (the `lstat` failed
- *   other than for no entry: the directory above it cannot be searched).
+ * read. The replacement (an atomic write: a temporary file renamed over the
+ * path) is this process's own file and keeps the mode bits of whatever it
+ * replaces but a link, and nothing else of it (no access-control entry, no
+ * other owner): so for every entry that is neither a link nor a directory, the
+ * OWNER-READ BIT decides whether the replacement reads back, and it is asked
+ * before any open. In this order:
+ * 1. the `lstat` fails: no entry → `absent` (a rename creates a fresh file);
+ *    anything else → `unhealable` (nobody can look at it: the directory above
+ *    cannot be searched);
+ * 2. a symbolic link to anything → `replaceable` (the rename replaces the link
+ *    itself and keeps nothing of it; its target is never followed, a link to
+ *    nothing included);
+ * 3. a directory → `unhealable` (a rename cannot replace it);
+ * 4. the owner-read bit clear (mode 000, 200, 044) → `unhealable`, whatever the
+ *    kind: a regular file refused, or one that opens through its other bits or
+ *    an access-control entry; a pipe, a socket, a device. The replacement keeps
+ *    the bits and none of what let this process read, so it stays unreadable;
+ * 5. a regular file → opened (read-only, non-blocking where the platform has
+ *    it, on one descriptor, closed before returning, nothing read): it opens →
+ *    `file`, whatever its size or content; refused → `replaceable` (an
+ *    access-control list, another owner's 0600, a lock: the replacement is
+ *    ours with the owner-read bit set, so it reads back);
+ * 6. anything else with the bit set (a pipe, a socket, a device) →
+ *    `replaceable` (the rename replaces the entry with a regular file of ours
+ *    with those bits, which reads back).
  *
  * On Windows every mode reports the owner-read bit, so a file that cannot be
  * opened there is `replaceable`; if the rename itself then fails, the atomic
@@ -122,14 +137,9 @@ export function readSmallFile(path: string, maxBytes: number): Buffer | undefine
  *
  * The bounded reader cannot answer this: `lookAtSmallFile` says `unreadable`
  * for a file it cannot open, for a regular file larger than its bound, and for
- * a link to nothing alike. The open is the bounded reader's (read-only,
- * non-blocking where the platform has it), on one descriptor, closed before
- * returning. For the CLI's refresher, which asks whether a publish (an atomic
- * write: a temporary file renamed over the path) can heal a snapshot it could
- * not use. Never throws, never waits.
+ * a link to nothing alike. For the CLI's refresher, which asks whether a
+ * publish can heal a snapshot it could not use. Never throws, never waits.
  */
-export type FileEntry = 'absent' | 'file' | 'replaceable' | 'unhealable';
-
 export function lookAtEntry(path: string): FileEntry {
   let entry: Stats;
   try {
@@ -139,15 +149,17 @@ export function lookAtEntry(path: string): FileEntry {
   }
   if (entry.isSymbolicLink()) return 'replaceable';
   if (entry.isDirectory()) return 'unhealable';
+  // Before any open: the replacement keeps these bits, whatever let this process read the entry.
+  if ((entry.mode & OWNER_READ) === 0) return 'unhealable';
   if (!entry.isFile()) return 'replaceable';
   let fd: number | undefined;
   try {
     fd = openSync(path, READ_FLAGS);
     return 'file';
   } catch {
-    // Refused. The replacement keeps the mode BITS and is this process's own,
-    // so only a clear owner-read bit makes it unreadable too.
-    return (entry.mode & 0o400) === 0 ? 'unhealable' : 'replaceable';
+    // Refused, with the owner-read bit set: the replacement is this process's
+    // own and keeps that bit, so it reads back.
+    return 'replaceable';
   } finally {
     if (fd !== undefined) {
       try {
