@@ -49,6 +49,7 @@ import { cmdHook, cmdPrompt } from '../src/commands';
 import { resolveConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 import { refreshWanted, runRefresh } from '../src/refresh';
+import { inLiveWindow } from '../src/statusline';
 
 const SOURCE = 'espn';
 const WC = 'fifa.world';
@@ -160,9 +161,13 @@ describe('inside a live window on the bundle, a snapshot of mode 000', () => {
       expect(record(WC, at)).toEqual({ at, count: i + 1 });
     }
     // Past the cap the count keeps rising and the delay stays 30 minutes: the cap plus one ms.
+    // The opener's window ended at 21:20Z, so this cycle is the idle lane's: admitted in the
+    // same ramp (the count carried, not reset), with no request.
     const late = LIVE + 91 * MIN + 30 * MIN + 1;
+    expect(inLiveWindow(LIVE + 91 * MIN)).toBe(true);
+    expect(inLiveWindow(late)).toBe(false);
     await refresh(late);
-    expect(asked.length).toBe(requests + 3);
+    expect(asked.length).toBe(requests);
     expect(record(WC, late)).toEqual({ at: late, count: 9 });
     expect(refreshWanted(late + 30 * MIN - 1, undefined, WC, SOURCE)).toBe(false);
     expect(refreshWanted(late + 30 * MIN, undefined, WC, SOURCE)).toBe(true);
@@ -276,7 +281,8 @@ describe('the settlement', () => {
     expect(record()).toEqual({ at: LIVE, count: 0 });
     // The admission was written before the request: a cycle that dies after it leaves count 1.
     writeFileSync(cachePath(SOURCE, WC), '{ not json');
-    throwPublishAt = 1;
+    // The first cycle published once: the next publish is the one that throws.
+    throwPublishAt = publishes + 1;
     await refresh(LIVE + 2 * MIN);
     expect(record(WC, LIVE + 2 * MIN)).toEqual({ at: LIVE + 2 * MIN, count: 1 });
   });
