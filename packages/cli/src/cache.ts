@@ -502,8 +502,8 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
 // another format version, larger than the reader's bound, another scope's);
 // and an entry whose bit is clear where a file made with those bits reads
 // back. The look cannot see a flag the system keeps beside the mode (an
-// immutable or append-only flag, on a file that opens: the rename is refused),
-// so that entry is not gated: its cycle goes on, its publish is one that did
+// immutable or append-only flag, on a file that opens and this reader
+// rejected: the rename is refused), so that entry is not gated: its cycle goes on, its publish is one that did
 // not happen (the write throws), and the record left as its admission paces it
 // (see the stated limit). A believed record that is not due stops the cycle in
 // every case.
@@ -538,9 +538,13 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
 // did before this record existed, and its publish ends the loop where the
 // rename lands. Where the system refuses the rename for a reason the look
 // cannot see (an immutable or append-only flag on a file that opens), the
-// publish never lands: with a working record the cycles are paced; with a
-// record nobody can read, each tick's cycle runs as before this record
-// existed (asking the provider whenever its lane has a read due).
+// publish never lands. A file under such a flag that this reader REJECTED is
+// a cycle with no readable snapshot: with a working record its cycles are
+// paced; with a record nobody can read, each tick's cycle runs as before this
+// record existed (asking the provider whenever its lane has a read due). One
+// that READS is outside the record entirely (the record is read only when no
+// snapshot could be read): the provider is asked whenever a read is due and
+// the snapshot is never replaced, as before this record existed.
 
 /** A record is `{"at":"<ISO>","count":n}`: far below this (the note's bound). */
 const MAX_ATTEMPT_BYTES = MAX_NOTE_BYTES;
