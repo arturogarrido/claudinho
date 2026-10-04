@@ -27,9 +27,10 @@ vi.mock('node:fs', () => {
       return stat(fstatIno);
     }),
     readSync: vi.fn((_fd: number, buf: Buffer) => {
-      if (buf.length < 2) return 0;
+      if (buf.length < 2 || calls.includes('read')) return 0;
       buf.write('{}', 0);
-      return calls.includes('read') ? 0 : (calls.push('read'), 2);
+      calls.push('read');
+      return 2;
     }),
     closeSync: vi.fn(() => {
       calls.push('close');
