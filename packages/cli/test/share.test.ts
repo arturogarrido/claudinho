@@ -171,7 +171,8 @@ describe('cmdShare — routing & JSON', () => {
     const o = text();
     expect(o).toContain(HASHTAG);
     expect(o).toContain(DISCLAIMER);
-    expect(o).toContain(`Try it: npx @claudinho/cli next ${code}`);
+    // Every card's cue selects its competition, the World Cup's too (0.11 · 2.5a).
+    expect(o).toContain(`Try it: npx @claudinho/cli --competition world-cup next ${code}`);
     expect(o).not.toMatch(BANNED);
   });
 
@@ -320,12 +321,14 @@ describe('cmdShare table — standings card', () => {
   it('renders a standings card with disclaimer + install line, no market lines', async () => {
     await cmdShare('table', 'A', {}, tableCtx(standingsAdapter));
     const o = text();
+    // The card's first line names the competition; the table keeps its title (0.11 · 2.5a).
+    expect(o.split('\n').find((l) => l.trim() !== '')).toBe('World Cup · standings');
     expect(o).toContain('Group A · standings');
     expect(o).toContain('1. 🇲🇽 MEX  3 pts · 1-0-0 · +2');
     expect(o).toContain('Live data: ESPN');
     expect(o).toContain(HASHTAG);
     expect(o).toContain(DISCLAIMER);
-    expect(o).toContain('Try it: npx @claudinho/cli table A');
+    expect(o).toContain('Try it: npx @claudinho/cli --competition world-cup table A');
     expect(o).not.toContain('informational only');
   });
 

@@ -103,8 +103,8 @@ describe('the next card titles the resolved club by identity, home or away', () 
     const events: Ev[] = [{ id: '21', date: '2026-10-15T22:00Z', home: ALWAYS_READY, away: CARABOBO }];
     await cmdShare('next', 'Always Ready', {}, ctxFor(feed('conmebol.libertadores', { events, standings: LIB, season: libSeason }).adapter));
     expect(text()).toContain('Next up for Always Ready');
-    // A club's name is quoted in the run cue (it has a space).
-    expect(text()).toContain('npx @claudinho/cli next "Always Ready"');
+    // A club's name is quoted in the run cue (it has a space); the cue selects the competition (0.11 · 2.5a).
+    expect(text()).toContain('npx @claudinho/cli --competition libertadores next "Always Ready"');
   });
 });
 
@@ -153,14 +153,16 @@ describe('review round 1 (coder): a refresh that does not hold the id shows the 
 });
 
 describe('review round 2 (coder): every card’s run cue names the competition off the bundle', () => {
+  // 0.11 · 2.5a: the cue selects it by alias (`--competition premier-league`), the prefix is gone.
   it('the table, bracket and date cards too', async () => {
     await cmdShare('table', undefined, {}, ctxFor(feed('eng.1').adapter));
-    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli table/);
+    expect(text()).toContain('npx @claudinho/cli --competition premier-league table');
     writes = [];
     await cmdShare('bracket', undefined, {}, ctxFor(feed('eng.1').adapter));
-    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli bracket/);
+    expect(text()).toContain('npx @claudinho/cli --competition premier-league bracket');
     writes = [];
     await cmdShare('2026-10-11', undefined, {}, ctxFor(feed('eng.1').adapter));
-    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli today/);
+    expect(text()).toContain('npx @claudinho/cli --competition premier-league today');
+    expect(text()).not.toContain('CLAUDINHO_COMPETITION');
   });
 });

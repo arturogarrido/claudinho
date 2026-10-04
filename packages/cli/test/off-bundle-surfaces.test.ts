@@ -150,14 +150,15 @@ describe('next <club> off the bundle (0.11 2.1c)', () => {
   });
 
   it('the share cards’ run cue carries the competition off the bundle (review round 2)', async () => {
+    // 0.11 · 2.5a: the cue selects the competition by alias (`--competition premier-league`).
     await cmdShare('next', 'Arsenal', {}, ctxFor(feed('eng.1', { events: upcoming }).adapter));
-    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli next/);
+    expect(text()).toContain('npx @claudinho/cli --competition premier-league next');
     writes = [];
     await cmdShare('41', undefined, {}, ctxFor(feed('eng.1', { events: [{ id: '41', date: '2026-10-17T14:00Z', home: LIV, away: ARS }] }).adapter));
-    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli match 41/);
+    expect(text()).toContain('npx @claudinho/cli --competition premier-league match 41');
     writes = [];
     await cmdShare('live', undefined, {}, ctxFor(feed('eng.1', { events: upcoming }).adapter));
-    expect(text()).toMatch(/CLAUDINHO_COMPETITION=eng\.1 npx @claudinho\/cli live/);
+    expect(text()).toContain('npx @claudinho/cli --competition premier-league live');
   });
 
   it('a roster that could not be read whole is its own sentence, not an outage; a code hit then needs the full name (review round 2)', async () => {

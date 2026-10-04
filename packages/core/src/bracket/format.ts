@@ -122,6 +122,8 @@ export function formatBracketTree(
 }
 
 export interface ShareBracketInput {
+  /** The competition's name, after the card's title on its first line; absent on a card built with none. */
+  competitionName?: string;
   view: BracketView;
   source?: string;
   installLine?: string;
@@ -152,7 +154,9 @@ export function formatShareBracket(
   const includeHashtag = options.includeHashtag !== false;
   const includeInstall = options.includeInstallLine !== false;
   const locale = options.locale;
-  const blocks: string[] = [t(locale, 'bracket.shareTitle'), ''];
+  // The first line names the competition (the title is localized; the name is not).
+  const title = t(locale, 'bracket.shareTitle');
+  const blocks: string[] = [input.competitionName ? `${title} · ${input.competitionName}` : title, ''];
   // Before the body: what qualifies the card is read before what it qualifies,
   // and a card pasted into a tool's text is cut from the end, so nothing but
   // the footer follows the tree. The verdict's note first, then the card's own
