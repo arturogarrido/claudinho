@@ -252,6 +252,24 @@ describe('team: the World Cup\'s roster, whatever the selection', () => {
   });
 });
 
+describe('an injected adapter for another competition is refused before any read (the CLI\'s seam, the MCP seam\'s sibling)', () => {
+  it('live, today and share: the body and the label never disagree', async () => {
+    let reads = 0;
+    const counting: ProviderAdapter = { ...adapterFor('eng.1'), async fetchByDate() { reads++; return []; }, async fetchLive() { reads++; return []; }, async fetchWindow() { reads++; return []; } };
+    const cfg = cfgOf({ competition: 'serie-a' });
+    const ctx = { cfg, t: makeT('en'), adapter: counting, now: NOW, marketProvider: new FakeMarketProvider() };
+    await expect(cmdLive(ctx)).rejects.toThrow(/eng\.1/);
+    await expect(cmdToday('2026-10-04', ctx)).rejects.toThrow(/ita\.1|serie-a/);
+    await expect(cmdShare('live', undefined, {}, ctx)).rejects.toThrow(/eng\.1/);
+    expect(reads).toBe(0);
+    expect(text()).toBe('');
+    // Under its own competition the same adapter answers.
+    const own = { ...ctx, cfg: cfgOf({ competition: 'premier-league' }), t: makeT('en') };
+    await cmdLive(own);
+    expect(reads).toBeGreaterThan(0);
+  });
+});
+
 describe('the ambient commands contain a bad selection', () => {
   it('prompt prints the empty line, hook prints nothing, vibe prints its line; none throws', () => {
     process.env.CLAUDINHO_COMPETITION = 'foo';
