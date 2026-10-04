@@ -72,3 +72,72 @@ describe('after a write under a flag', () => {
     expect(resolveConfig({})).toMatchObject({ competition: 'eng.1', selection: { chosenBy: 'env' } });
   });
 });
+
+describe('one list of facts in every form: what the edge saw', () => {
+  it('the JSON says which sources this command ran under (`sources`), in every form, beside what the next command follows', async () => {
+    await cmdFollow('world-cup', {}, ctxOf());
+    // Alone, under a flag AND the environment: both named; the flag is this command's selection.
+    process.env.CLAUDINHO_COMPETITION = 'premier-league';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'laliga', json: true }));
+    let j = JSON.parse(text());
+    expect(j.sources).toEqual({ flag: 'esp.1', env: 'eng.1' });
+    expect(j.competition).toMatchObject({ slug: 'esp.1', chosenBy: 'flag' });
+    expect(j.override).toBe('flag');
+    // A write under both: the next command follows the environment; the flag that ran this command is still named.
+    writes = [];
+    await cmdFollow('serie-a', {}, ctxOf({ competition: 'laliga', json: true }));
+    j = JSON.parse(text());
+    expect(j.sources).toEqual({ flag: 'esp.1', env: 'eng.1' });
+    expect(j.competition).toMatchObject({ slug: 'eng.1', chosenBy: 'env' });
+    expect(j.override).toBe('env');
+    expect(j.saved).toEqual({ version: 1, competition: 'ita.1' });
+    delete process.env.CLAUDINHO_COMPETITION;
+    // The saved choice alone: no sources, no override.
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ json: true }));
+    j = JSON.parse(text());
+    expect(j.sources).toBeUndefined();
+    expect(j.override).toBeUndefined();
+  });
+
+  it('a REFUSED flag on a write is reported, in the text and the JSON, with its source; the refused value is bounded', async () => {
+    const junk = `${'x'.repeat(300)}!`;
+    await cmdFollow('world-cup', {}, ctxOf({ competition: junk, json: true }));
+    let j = JSON.parse(text());
+    expect(j.saved).toEqual({ version: 1, competition: 'fifa.world' });
+    expect(j.refused.source).toBe('flag');
+    expect(j.refused.value.length).toBeLessThanOrEqual(40);
+    expect(j.competition).toBeNull();
+    writes = [];
+    await cmdFollow('world-cup', {}, ctxOf({ competition: 'foo' }));
+    expect(text()).toMatch(/foo/);
+    expect(text()).toMatch(/--competition/);
+    // A refused environment: its own sentence says the environment is set.
+    process.env.CLAUDINHO_COMPETITION = 'bar';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION/);
+    expect(text()).toMatch(/bar/);
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ json: true }));
+    j = JSON.parse(text());
+    expect(j.refused).toEqual({ value: 'bar', source: 'env' });
+    delete process.env.CLAUDINHO_COMPETITION;
+  });
+
+  it('no redundant `Saved choice:` line when the competition in effect is the saved one', async () => {
+    await cmdFollow('premier-league', {}, ctxOf());
+    for (const over of [{}, { competition: 'premier-league' }] as Array<{ competition?: string }>) {
+      writes = [];
+      await cmdFollow(undefined, {}, ctxOf(over));
+      expect(text()).toMatch(/Following: Premier League/);
+      expect(text()).not.toMatch(/Saved choice:/);
+    }
+    process.env.CLAUDINHO_COMPETITION = 'eng.1';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).not.toMatch(/Saved choice:/);
+    delete process.env.CLAUDINHO_COMPETITION;
+  });
+});
