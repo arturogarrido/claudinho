@@ -30,6 +30,10 @@ describe('resolveCompetition(explicit, env, saved)', () => {
     expect(r).toEqual({ kind: 'selected', slug: 'fifa.friendly', name: 'fifa.friendly', chosenBy: 'flag', experimental: true });
     expect(resolveCompetition(undefined, 'usa.1')).toMatchObject({ slug: 'usa.1', chosenBy: 'env', experimental: true });
     expect(resolveCompetition('a1.b2.c3')).toMatchObject({ experimental: true });
+    // Real slugs carry underscores (measured Oct 4: `esp.copa_del_rey`, `eng.league_cup`, `ger.dfb_pokal` answer 200).
+    expect(resolveCompetition('esp.copa_del_rey')).toMatchObject({ kind: 'selected', slug: 'esp.copa_del_rey', experimental: true });
+    expect(resolveCompetition(undefined, 'eng.league_cup')).toMatchObject({ kind: 'selected', experimental: true });
+    expect(resolveCompetition('esp._').kind).toBe('selected');
   });
 
   it('anything else is refused with the aliases, never a request', () => {
