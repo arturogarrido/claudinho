@@ -244,8 +244,8 @@ function keepAdapter(source: string, competition: string, key: string): Provider
     });
     // Drop the refs whose adapters were collected, then add this one.
     aliveAdapters(source);
-    let refs = builtAdapters.get(source);
-    if (!refs) builtAdapters.set(source, (refs = new Set()));
+    const refs = builtAdapters.get(source) ?? new Set<WeakRef<Throttleable>>();
+    builtAdapters.set(source, refs);
     refs.add(new WeakRef(adapter));
   }
   adapters.set(key, adapter);
