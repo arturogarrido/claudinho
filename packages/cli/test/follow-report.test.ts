@@ -272,3 +272,46 @@ describe('the environment has three states: unset, set, refused', () => {
     expect(both).not.toEqual(alone);
   });
 });
+
+describe('CLAUDINHO_TEAM has three states: unset, set and readable, set with nothing readable', () => {
+  it('a present CLAUDINHO_TEAM with no readable team is in `refused.team` (never in `sources`), the sentence says the next command refuses it, and the JSON is not the unset one', async () => {
+    await cmdFollow('world-cup', { team: 'Spain' }, ctxOf());
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ json: true }));
+    const unset = JSON.parse(text());
+    for (const value of ['   ', '\t', '\u200B', '\u{1F600}']) {
+      process.env.CLAUDINHO_TEAM = value;
+      writes = [];
+      await cmdFollow(undefined, {}, ctxOf({ json: true }));
+      const j = JSON.parse(text());
+      expect(j).not.toEqual(unset);
+      expect(j.sources).toBeUndefined();
+      expect(j.refused).toEqual({ team: '' });
+      expect(j.saved.team).toEqual({ code: 'ESP', name: 'Spain' });
+      writes = [];
+      await cmdFollow(undefined, {}, ctxOf());
+      expect(text()).toMatch(/Saved team: Spain/);
+      expect(text()).not.toMatch(/^\s*Team: Spain/m);
+      expect(text()).toMatch(/CLAUDINHO_TEAM is set but names no team/);
+      expect(text()).not.toMatch(/it wins over the saved team/);
+    }
+    // Without a pin the next command refuses it all the same: said, and carried.
+    delete process.env.CLAUDINHO_TEAM;
+    await cmdFollow('world-cup', {}, ctxOf());
+    process.env.CLAUDINHO_TEAM = ' ';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ json: true }));
+    expect(JSON.parse(text()).refused).toEqual({ team: '' });
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/CLAUDINHO_TEAM is set but names no team/);
+    // A readable value stays in `sources`, with the set sentence.
+    process.env.CLAUDINHO_TEAM = 'Mexico';
+    writes = [];
+    await cmdFollow('world-cup', { team: 'Spain' }, ctxOf({ json: true }));
+    const j2 = JSON.parse(text());
+    expect(j2.sources).toEqual({ team: 'Mexico' });
+    expect(j2.refused).toBeUndefined();
+    delete process.env.CLAUDINHO_TEAM;
+  });
+});
