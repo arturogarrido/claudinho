@@ -20,7 +20,7 @@ import { attachFetchMeta, type Match, type ProviderAdapter } from '@claudinho/co
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v3';
 import { buildServer, INSTRUCTIONS, OUTPUT_SCHEMAS } from '../src/server';
-import { keptAdapterCount, toolGetNextFixture, toolGetToday } from '../src/tools';
+import { keptAdapterCount, toolGetNextFixture, toolGetToday, toolListCompetitions } from '../src/tools';
 
 let tmp: string;
 const ENV = ['XDG_CONFIG_HOME', 'CLAUDINHO_COMPETITION', 'CLAUDINHO_TEAM'] as const;
@@ -118,6 +118,15 @@ describe('a tool with nothing chosen', () => {
     expect(fetched).toBe(0);
   });
 
+  it('`list_competitions` with nothing chosen says so on its Current line, in the request\'s language', async () => {
+    const r = await toolListCompetitions({});
+    const current = r.text.split('\n').find((l) => l.startsWith('Current:')) ?? '';
+    expect(current).toMatch(/No competition chosen/);
+    expect((r.data as Rec).current).toBeNull();
+    const es = await toolListCompetitions({ lang: 'es' });
+    expect(es.text.split('\n').find((l) => l.startsWith('Current:')) ?? '').toMatch(/Ninguna competición/);
+  });
+
   it('in the request\'s language, through the handler', async () => {
     const es = await toolGetToday({ date: '2026-10-10', lang: 'es' });
     expect(es.text.split('\n')[0]).toMatch(/Ninguna competición/);
@@ -179,9 +188,28 @@ describe('the saved choice and the pin', () => {
     follow('premier-league');
     await expect(toolGetNextFixture({ adapter, now: NOW })).rejects.toThrow(/team|pin/i);
     await expect(toolGetNextFixture({ adapter, now: NOW })).rejects.toThrow(/claudinho follow/);
-    // Under a request's own competition the pin does not apply: the argument is required.
+    // Under ANOTHER competition the pin does not apply: the argument is required.
     follow('premier-league', { id: 'espn:359', code: 'ARS', name: 'Arsenal' });
     await expect(toolGetNextFixture({ competition: 'laliga', adapter: { ...adapter, competition: 'esp.1' }, now: NOW })).rejects.toThrow(/team|pin/i);
+    // The pin belongs to its competition: a request naming the saved competition keeps it, by alias or slug, and so does the server's environment.
+    const byArg = await toolGetNextFixture({ competition: 'premier-league', adapter, now: NOW });
+    expect((byArg.data as Rec).team).toMatchObject({ id: 'espn:359' });
+    const bySlug = await toolGetNextFixture({ competition: 'eng.1', adapter, now: NOW });
+    expect((bySlug.data as Rec).fixture).toMatchObject({ id: '800000001' });
+    process.env.CLAUDINHO_COMPETITION = 'premier-league';
+    const byEnv = await toolGetNextFixture({ adapter, now: NOW });
+    expect((byEnv.data as Rec).team).toMatchObject({ id: 'espn:359' });
+    delete process.env.CLAUDINHO_COMPETITION;
+  });
+
+  it('a World Cup pin (no id) answers by code on MCP too, labelled by the pin', async () => {
+    follow('world-cup', { code: 'MEX', name: 'Mexico' });
+    const wc: ProviderAdapter = { ...adapter, competition: 'fifa.world', async fetchWindow() { return []; } };
+    const r = await toolGetNextFixture({ adapter: wc, now: new Date('2026-06-01T00:00:00Z') });
+    const d = r.data as Rec & { fixture?: { home?: { code?: string }; away?: { code?: string } } };
+    expect(d.fixture?.home?.code === 'MEX' || d.fixture?.away?.code === 'MEX').toBe(true);
+    expect(JSON.stringify(d.team)).toMatch(/MEX/);
+    expect(r.text).toMatch(/Mexico|MEX/);
   });
 
   it('the precedence is the CLI\'s: the argument, then the server\'s CLAUDINHO_TEAM, then the pin', async () => {

@@ -134,6 +134,11 @@ describe('the commands', () => {
     writes = [];
     await cmdNext('Chelsea', ctxOf({ json: true }));
     expect(JSON.parse(text()).team).not.toMatchObject({ id: 'espn:359' });
+    // The argument over both: the environment set AND the pin, the argument's team answers.
+    writes = [];
+    const both: ProviderAdapter = { ...adapter, async fetchWindow() { return whole([m(), other()]); } };
+    await cmdNext('Liverpool', ctxOf({ json: true }, both));
+    expect(JSON.parse(text()).team).toMatchObject({ id: 'espn:364' });
   });
 
   it('a pin under a flag or an environment override does not apply', async () => {
@@ -146,16 +151,42 @@ describe('the commands', () => {
     await expect(cmdNext(undefined, envCtx)).rejects.toThrow(/Usage/);
     delete process.env.CLAUDINHO_COMPETITION;
     await expect(cmdNext(undefined, ctxOf({ competition: 'laliga' }, laliga))).rejects.toThrow(/Usage/);
-    // Under its own competition, chosen explicitly, the pin applies neither: the file decides only when the file chose.
-    await expect(cmdNext(undefined, ctxOf({ competition: 'premier-league' }))).rejects.toThrow(/Usage/);
   });
 
-  it('an id-less pin (the bundle\'s Mexico) answers by code', async () => {
+  it('the pin belongs to its competition, not to the source that chose it: a flag or an environment naming the saved competition keeps the pin', async () => {
+    follow('eng.1', ARSENAL);
+    await cmdNext(undefined, ctxOf({ competition: 'premier-league', json: true }));
+    expect(JSON.parse(text()).team).toMatchObject({ id: 'espn:359' });
+    writes = [];
+    process.env.CLAUDINHO_COMPETITION = 'eng.1';
+    const envCtx = ctxOf({ json: true });
+    expect(envCtx.cfg.selection).toMatchObject({ chosenBy: 'env', slug: 'eng.1' });
+    expect(envCtx.cfg.pin).toEqual(ARSENAL);
+    await cmdNext(undefined, envCtx);
+    expect(JSON.parse(text()).team).toMatchObject({ id: 'espn:359' });
+    delete process.env.CLAUDINHO_COMPETITION;
+    // The bundle too: a pinned Mexico under CLAUDINHO_COMPETITION=world-cup.
+    follow('fifa.world', { code: 'MEX', name: 'Mexico' });
+    process.env.CLAUDINHO_COMPETITION = 'world-cup';
+    const wc: ProviderAdapter = { ...adapter, competition: 'fifa.world', async fetchWindow() { return []; } };
+    writes = [];
+    await cmdNext(undefined, { ...ctxOf({ json: true }, wc), now: new Date('2026-06-01T00:00:00Z') });
+    const j = JSON.parse(text());
+    expect(j.fixture?.home?.code === 'MEX' || j.fixture?.away?.code === 'MEX').toBe(true);
+  });
+
+  it('an id-less pin (the bundle\'s Mexico) answers by code, and the answer is labelled by the pin\'s code', async () => {
     follow('fifa.world', { code: 'MEX', name: 'Mexico' });
     const wc: ProviderAdapter = { ...adapter, competition: 'fifa.world', async fetchWindow() { return []; } };
     await cmdNext(undefined, { ...ctxOf({ json: true }, wc), now: new Date('2026-06-01T00:00:00Z') });
     const j = JSON.parse(text());
     expect(j.fixture?.home?.code === 'MEX' || j.fixture?.away?.code === 'MEX').toBe(true);
+    // On the bundle `next --json`'s `team` is the nation's code (the bundle's convention); the pin's code labels it.
+    expect(j.team === 'MEX' || j.team?.code === 'MEX').toBe(true);
+    writes = [];
+    await cmdNext(undefined, { ...ctxOf({}, wc), now: new Date('2026-06-01T00:00:00Z') });
+    expect(text()).toMatch(/Mexico|MEX/);
+    expect(text()).not.toMatch(/Usage/);
   });
 });
 

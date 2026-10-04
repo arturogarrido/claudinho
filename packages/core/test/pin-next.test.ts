@@ -91,6 +91,54 @@ describe('off the bundle', () => {
   });
 });
 
+describe('the pinned team is built by the one constructor', () => {
+  it('a pinned nation off the bundle carries its generated flag, as the same team asked by name does', async () => {
+    const spainVsFrance = fixture({ home: { code: 'ESP', name: 'Spain', id: 'espn:164' }, away: { code: 'FRA', name: 'France', id: 'espn:478' } });
+    const adapter: ProviderAdapter = {
+      name: 'espn',
+      competition: 'uefa.nations',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate() {
+        return whole([spainVsFrance]);
+      },
+      async fetchLive() {
+        return [];
+      },
+      async fetchWindow() {
+        return whole([spainVsFrance]);
+      },
+    };
+    const r = await nextFixtureForPin(adapter, { id: 'espn:164', code: 'ESP', name: 'Spain' }, NOW);
+    expect(r.team).toEqual({ code: 'ESP', name: 'Spain', id: 'espn:164', flag: '\u{1F1EA}\u{1F1F8}' });
+    // A club's team has no flag key at all.
+    const club: ProviderAdapter = { ...adapter, competition: 'eng.1' };
+    const c = await nextFixtureForPin(club, { id: 'espn:359', code: 'ARS', name: 'Arsenal' }, NOW);
+    expect(c.team).toEqual({ code: 'ARS', name: 'Arsenal', id: 'espn:359' });
+    expect(c.team && 'flag' in c.team).toBe(false);
+  });
+
+  it('a pinned team on a read that answers between editions: the verdict, the team kept', async () => {
+    const ended: ProviderAdapter = {
+      name: 'espn',
+      competition: 'fifa.cwc',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate() {
+        return attachFetchMeta([], { complete: true, omitted: 0, seasons: [{ year: 2025, label: '2025 Club World Cup', startDate: '2025-06-14', endDate: '2025-07-13' }], season: { year: 2025, label: '2025 Club World Cup', startDate: '2025-06-14', endDate: '2025-07-13' } });
+      },
+      async fetchLive() {
+        return [];
+      },
+      async fetchWindow() {
+        return attachFetchMeta([], { complete: true, omitted: 0, seasons: [{ year: 2025, label: '2025 Club World Cup', startDate: '2025-06-14', endDate: '2025-07-13' }], season: { year: 2025, label: '2025 Club World Cup', startDate: '2025-06-14', endDate: '2025-07-13' } });
+      },
+    };
+    const r = await nextFixtureForPin(ended, { id: 'espn:363', code: 'CHE', name: 'Chelsea' }, NOW);
+    expect(r.betweenEditions).toMatchObject({ ended: '2025-07-13' });
+    expect(r.fixture).toBeUndefined();
+    expect(r.team).toMatchObject({ id: 'espn:363' });
+  });
+});
+
 describe('on the bundle', () => {
   it('an id-less pin (a nation) selects by code, as `next MEX` does', async () => {
     const adapter: ProviderAdapter = {

@@ -122,6 +122,38 @@ describe('the commands that answer for a competition', () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
+  it('every branch of `markets` and `share`: the sentence, no request, no cache read, no output on --json but the object', async () => {
+    const branches: Array<[string, (ctx: ReturnType<typeof ctxOf>) => Promise<void>]> = [
+      ['markets next', (c) => cmdMarkets('next', 'MEX', c)],
+      ['markets <id>', (c) => cmdMarkets('760415', undefined, c)],
+      ['markets <date>', (c) => cmdMarkets('2026-10-10', undefined, c)],
+      ['share live', (c) => cmdShare('live', undefined, {}, c)],
+      ['share table', (c) => cmdShare('table', 'A', {}, c)],
+      ['share bracket', (c) => cmdShare('bracket', undefined, {}, c)],
+      ['share next', (c) => cmdShare('next', 'MEX', {}, c)],
+      ['share <id>', (c) => cmdShare('760415', undefined, {}, c)],
+      ['share <date>', (c) => cmdShare('2026-10-10', undefined, {}, c)],
+      ['share (today)', (c) => cmdShare(undefined, undefined, {}, c)],
+    ];
+    for (const [name, run] of branches) {
+      writes = [];
+      await expect(run(ctxOf()), name).rejects.toThrow(/claudinho follow/);
+      expect(text(), name).toBe('');
+      writes = [];
+      await expect(run(ctxOf({ json: true })), name).rejects.toThrow(InputError);
+      expect(JSON.parse(text()), name).toEqual({ competition: null, noCompetition: true });
+    }
+    expect(fetched).toBe(0);
+    expect(readCurrentState).not.toHaveBeenCalled();
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('a REFUSED selection under --json writes nothing to stdout (the object is the first run\'s alone)', async () => {
+    process.env.CLAUDINHO_COMPETITION = 'foo';
+    await expect(cmdToday(undefined, ctxOf({ json: true }))).rejects.toThrow(InputError);
+    expect(text()).toBe('');
+  });
+
   it('the sentence in four locales', async () => {
     for (const lang of ['en', 'es', 'pt', 'fr']) {
       await expect(cmdToday(undefined, ctxOf({ lang })), lang).rejects.toThrow(/claudinho follow/);

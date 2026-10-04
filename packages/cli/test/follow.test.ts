@@ -283,6 +283,82 @@ describe('reading the choice back', () => {
     await cmdFollow('off', {}, ctxOf());
   });
 
+  it('`follow --json` carries what the text prints: the saved file and the override in effect; after a write under the environment, the override too', async () => {
+    await cmdFollow('premier-league', { team: undefined }, ctxOf());
+    process.env.CLAUDINHO_COMPETITION = 'world-cup';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf(undefined, { json: true }));
+    const j = JSON.parse(text());
+    expect(j.competition).toMatchObject({ slug: 'fifa.world', chosenBy: 'env' });
+    expect(j.saved).toEqual({ version: 1, competition: 'eng.1' });
+    expect(j.override).toBe('env');
+    expect(j.path).toBe(configFile);
+    // The text's twin, the same facts.
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toContain('Premier League');
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION/);
+    // A write under the environment: the JSON says the environment still wins.
+    writes = [];
+    await cmdFollow('serie-a', {}, ctxOf(undefined, { json: true }));
+    const w = JSON.parse(text());
+    expect(w.saved).toEqual({ version: 1, competition: 'ita.1' });
+    expect(w.override).toBe('env');
+    expect(w.competition).toMatchObject({ slug: 'fifa.world', chosenBy: 'env' });
+    delete process.env.CLAUDINHO_COMPETITION;
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf(undefined, { json: true }));
+    const n = JSON.parse(text());
+    expect(n.override).toBeUndefined();
+    expect(n.competition).toMatchObject({ slug: 'ita.1', chosenBy: 'saved' });
+    expect(n.saved).toEqual({ version: 1, competition: 'ita.1' });
+  });
+
+  it('an argument that does not belong is refused: `follow off --team X`, `follow premier-league --list`, `follow ""`', async () => {
+    await cmdFollow('premier-league', {}, ctxOf());
+    await expect(cmdFollow('off', { team: 'Arsenal' }, ctxOf())).rejects.toThrow(InputError);
+    expect(existsSync(configFile)).toBe(true);
+    await expect(cmdFollow('premier-league', { list: true }, ctxOf())).rejects.toThrow(InputError);
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    await expect(cmdFollow('', {}, ctxOf())).rejects.toThrow(InputError);
+    delete process.env.CLAUDINHO_COMPETITION;
+    expect(read()).toEqual({ version: 1, competition: 'eng.1' });
+  });
+
+  it('on the World Cup `follow --team` refuses an unknown 3-letter code (a pin is a resolved team), and `--team` alone pins in the saved competition', async () => {
+    const wc: ProviderAdapter = { name: 'espn', competition: 'fifa.world', capabilities: { push: false, latencyHintSec: 0 }, async fetchByDate() { return []; }, async fetchLive() { return []; } };
+    await cmdFollow('world-cup', {}, ctxOf(wc));
+    await expect(cmdFollow('world-cup', { team: 'ZZZ' }, ctxOf(wc))).rejects.toThrow(InputError);
+    expect(read()).toEqual({ version: 1, competition: 'fifa.world' });
+    // `--team` alone: the saved competition.
+    await cmdFollow(undefined, { team: 'Mexico' }, ctxOf(wc));
+    expect(read()).toEqual({ version: 1, competition: 'fifa.world', team: { code: 'MEX', name: 'Mexico' } });
+    // With nothing saved, `--team` alone is a usage error, nothing written.
+    rmSync(configFile);
+    await expect(cmdFollow(undefined, { team: 'Mexico' }, ctxOf(wc))).rejects.toThrow(InputError);
+    expect(existsSync(configFile)).toBe(false);
+  });
+
+  it('the text lines: the pinned team on `follow` alone; the saved choice under an override; nothing to remove', async () => {
+    const { adapter } = feed('eng.1', { events: UPCOMING });
+    await cmdFollow('premier-league', { team: 'arsenal' }, ctxOf(adapter));
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/Arsenal/);
+    expect(text()).toMatch(/ARS/);
+    process.env.CLAUDINHO_COMPETITION = 'world-cup';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/Saved choice|saved/i);
+    expect(text()).toMatch(/Premier League/);
+    expect(text()).toMatch(/Arsenal/);
+    delete process.env.CLAUDINHO_COMPETITION;
+    await cmdFollow('off', {}, ctxOf());
+    writes = [];
+    await cmdFollow('off', {}, ctxOf());
+    expect(text()).toMatch(/nothing to remove|No saved choice to remove/i);
+  });
+
   it('`--json`: `follow premier-league --json` emits the choice; `follow --json` emits it or null', async () => {
     await cmdFollow('premier-league', {}, ctxOf(undefined, { json: true }));
     expect(JSON.parse(text())).toMatchObject({ competition: { slug: 'eng.1', alias: 'premier-league', chosenBy: 'saved' }, path: configFile });

@@ -31,6 +31,11 @@ describe('the path', () => {
     expect(configPath({}, 'linux', '/home/a')).toBe(join('/home/a', '.config', 'claudinho', 'config.json'));
     // An empty variable is absent.
     expect(configPath({ XDG_CONFIG_HOME: '' }, 'linux', '/home/a')).toBe(join('/home/a', '.config', 'claudinho', 'config.json'));
+    // A relative XDG value is invalid (the base-directory spec) and ignored, on both rules: the hot path must not
+    // resolve a config against the editor's working directory.
+    expect(configPath({ XDG_CONFIG_HOME: 'cfg' }, 'linux', '/home/a')).toBe(join('/home/a', '.config', 'claudinho', 'config.json'));
+    expect(configPath({ XDG_CONFIG_HOME: './cfg' }, 'darwin', '/Users/a')).toBe(join('/Users/a', '.config', 'claudinho', 'config.json'));
+    expect(cacheDirFor({ XDG_CACHE_HOME: 'cache' }, 'linux', '/home/a')).toBe(join('/home/a', '.cache', 'claudinho'));
     // APPDATA is Windows' alone: set on another platform it is not read.
     expect(configPath({ APPDATA: 'C:\\x' }, 'darwin', '/Users/a')).toBe(join('/Users/a', '.config', 'claudinho', 'config.json'));
     expect(configPath({ APPDATA: 'C:\\x' }, 'linux', '/home/a')).toBe(join('/home/a', '.config', 'claudinho', 'config.json'));
@@ -58,6 +63,21 @@ describe('the read', () => {
     expect(r).toEqual({ kind: 'read', config: { version: 1, competition: 'eng.1', team: { id: 'espn:359', code: 'ARS', name: name60 } } });
     const over = readUserConfig(write('overname.json', JSON.stringify({ version: 1, competition: 'eng.1', team: { id: 'espn:359', code: 'ARS', name: 'x'.repeat(101) } })));
     expect(over).toEqual({ kind: 'read', config: { version: 1, competition: 'eng.1' } });
+  });
+
+  it('a pin\'s code is a team code: upper-cased as the feed\'s are (a hand-written lower-case code would match the commands and never the hot path)', () => {
+    const r = readUserConfig(write('lower.json', JSON.stringify({ version: 1, competition: 'fifa.world', team: { code: 'mex', name: 'Mexico' } })));
+    expect(r).toEqual({ kind: 'read', config: { version: 1, competition: 'fifa.world', team: { code: 'MEX', name: 'Mexico' } } });
+  });
+
+  it('a byte-order mark is not the file; a version written as a string is not 1; a file of exactly the bound reads, one byte more does not', () => {
+    const bom = readUserConfig(write('bom.json', `\uFEFF${JSON.stringify({ version: 1, competition: 'eng.1' })}`));
+    expect(bom).toEqual({ kind: 'read', config: { version: 1, competition: 'eng.1' } });
+    expect(readUserConfig(write('strv.json', JSON.stringify({ version: '1', competition: 'eng.1' })))).toEqual({ kind: 'none', reason: 'version' });
+    const exact = JSON.stringify({ version: 1, competition: 'eng.1', pad: 'x'.repeat(4096 - 60) }).padEnd(4096, ' ');
+    expect(exact.length).toBe(4096);
+    expect(readUserConfig(write('exact.json', exact))).toEqual({ kind: 'read', config: { version: 1, competition: 'eng.1' } });
+    expect(readUserConfig(write('over.json', `${exact} `))).toEqual({ kind: 'none', reason: 'unreadable' });
   });
 
   it('a pin is believed only as { id?, code, name } with the identifier grammar and human labels; else dropped, the competition kept', () => {
