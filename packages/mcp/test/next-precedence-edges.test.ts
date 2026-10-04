@@ -71,7 +71,7 @@ describe('the server CLAUDINHO_TEAM', () => {
   });
 
   it('with nothing readable in it, it names no team: the tool error, never the pin', async () => {
-    process.env.CLAUDINHO_TEAM = '​';
+    process.env.CLAUDINHO_TEAM = '\u200B';
     // Named as such (0.11 2.5b round 2): the server's value names no team; never "none pinned", never the pin.
     await expect(toolGetNextFixture({ adapter, now: NOW })).rejects.toThrow(/CLAUDINHO_TEAM names no team/);
   });

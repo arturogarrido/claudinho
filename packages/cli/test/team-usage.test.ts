@@ -83,7 +83,7 @@ describe('the usage sentence', () => {
 
   it('a CLAUDINHO_TEAM with nothing readable in it is named as such, and is still the override: never the pin', async () => {
     follow({ version: 1, competition: 'laliga', team: { id: 'espn:83', code: 'BAR', name: 'Barcelona' } });
-    process.env.CLAUDINHO_TEAM = '​';
+    process.env.CLAUDINHO_TEAM = '\u200B';
     for (const [name, run] of commands) {
       const err = await run(ctxOf()).catch((e: Error) => e.message);
       expect(err, name).toMatch(/CLAUDINHO_TEAM names no team/);
