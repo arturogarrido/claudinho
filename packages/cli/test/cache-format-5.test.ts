@@ -19,6 +19,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   backoffInEffect,
+  backoffNotePath,
   CACHE_VERSION,
   cachePath,
   ensureBackoffVisible,
@@ -108,6 +109,26 @@ describe('a throttle survives the version bump', () => {
     // A reader of the old format, which rejects the new snapshot, finds the throttle in the note.
     expect(readBackoffNote(SOURCE, PL, NOW)).toBe(until);
     expect(backoffInEffect(readCurrentState(SOURCE, PL), SOURCE, PL, NOW)).toBe(until);
+  });
+
+  it('when the note cannot be written, an older snapshot with a believed deadline is NOT replaced: the write reports false and the old file stays', () => {
+    // The note is the only place a reader of the other format finds the
+    // deadline; a replacement that went ahead without it would let that
+    // reader ask the provider that said stop.
+    const until = NOW + 8 * MIN;
+    writeRaw(older({ backoffUntil: new Date(until).toISOString() }));
+    mkdirSync(backoffNotePath(SOURCE, PL), { recursive: true }); // a directory where the note would go
+    const written = writeState({ updatedAt: new Date(NOW).toISOString(), live: [], degraded: false, source: SOURCE, competition: PL });
+    expect(written).toBe(false);
+    expect(JSON.parse(readFileSync(cachePath(SOURCE, PL), 'utf8')).version).toBe(CACHE_VERSION - 1);
+    expect(backoffInEffect(readCurrentState(SOURCE, PL), SOURCE, PL, NOW)).toBe(until);
+    // Once the deadline has passed there is nothing to protect: the replacement goes ahead.
+    expect(writeState({ updatedAt: new Date(until + MIN).toISOString(), live: [], degraded: false, source: SOURCE, competition: PL })).toBe(true);
+    expect(JSON.parse(readFileSync(cachePath(SOURCE, PL), 'utf8')).version).toBe(CACHE_VERSION);
+  });
+
+  it('a successful write reports true', () => {
+    expect(writeState({ updatedAt: new Date(NOW).toISOString(), live: [], degraded: false, source: SOURCE, competition: PL })).toBe(true);
   });
 
   it('a replaced snapshot with no believed deadline leaves no note', () => {

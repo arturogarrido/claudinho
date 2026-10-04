@@ -170,7 +170,7 @@ describe('an absent, malformed or oversized slug asserts nothing: OTHER with no 
     ['an object', { slug: 'final' }],
     ['upper case', 'FINAL'],
     ['a space', 'round of 16'],
-    ['65 characters', `${'a'.repeat(60)}-final`],
+    ['66 characters', `${'a'.repeat(60)}-final`],
     ['a prototype name', 'constructor'],
   ])('%s', (_label, slug) => {
     const m = parsed(slug, 'uefa.champions');
@@ -184,8 +184,11 @@ describe('an absent, malformed or oversized slug asserts nothing: OTHER with no 
     const m = parsed(slug, 'uefa.champions');
     expect(m.stage).toBe('OTHER');
     expect(m.stageLabel).toBe(`A${'a'.repeat(39)}`);
+    const over = `${'a'.repeat(59)}-final`;
+    expect(over.length).toBe(65);
+    expect(parsed(over, 'uefa.champions')).toMatchObject({ stage: 'OTHER' });
+    expect(parsed(over, 'uefa.champions').stageLabel).toBeUndefined();
     const upper = `${'A'.repeat(59)}-final`;
-    expect(upper.length).toBe(65);
     expect(parsed(upper, 'uefa.champions').stageLabel).toBeUndefined();
   });
 
@@ -232,7 +235,7 @@ describe('the label travels through the cache as a human label', () => {
     const long = parseCachedMatch({ ...roundTrip(live), stageLabel: 'x'.repeat(80) }, { teamKind: 'club' });
     expect(long.kind === 'valid' && long.value.stageLabel?.length).toBeLessThanOrEqual(40);
 
-    const poisoned = parseCachedMatch({ ...roundTrip(live), stageLabel: '​​' }, { teamKind: 'club' });
+    const poisoned = parseCachedMatch({ ...roundTrip(live), stageLabel: '\u200B\u200B' }, { teamKind: 'club' });
     expect(poisoned.kind).toBe('valid');
     expect(poisoned.kind === 'valid' && poisoned.value.stage).toBe('OTHER');
     expect(poisoned.kind === 'valid' && poisoned.value.stageLabel).toBeUndefined();
