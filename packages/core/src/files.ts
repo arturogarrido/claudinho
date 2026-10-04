@@ -96,36 +96,46 @@ export function readSmallFile(path: string, maxBytes: number): Buffer | undefine
 }
 
 /**
- * What one look at an ENTRY found, reading none of it. Three answers:
- * - `absent`: no directory entry at the path (a link to nothing is not this:
- *   told apart the way `lookAtSmallFile` tells it);
+ * What a RENAME onto `path` would do, from one look at the entry (`lstat`,
+ * never following a link) and, for a regular file only, one open; nothing is
+ * read. Four answers:
+ * - `absent`: no entry (a rename creates a fresh file);
  * - `file`: a regular file this process can OPEN for reading, whatever its
- *   size or content;
- * - `unopenable`: something is there that cannot be opened as one (no
- *   permission, a directory, a pipe, a device, a link to nothing).
+ *   size or content (a replacement keeps its mode, so stays readable);
+ * - `replaceable`: an entry a rename replaces with a fresh file: a symbolic
+ *   link to anything (the link itself is replaced, its target never followed;
+ *   a link to nothing included), a pipe, a socket, a device;
+ * - `unhealable`: a directory (a rename cannot replace it), a regular file
+ *   this process cannot open (a replacement keeps its mode, so stays
+ *   unreadable), or an entry nobody can look at (the `lstat` failed other than
+ *   for no entry: the directory above it cannot be searched).
  *
- * `lookAtSmallFile` cannot answer this: it says `unreadable` both for a file
- * that cannot be opened and for a regular file larger than its bound (a bound
- * of 0 makes every non-empty file `unreadable`). The open is the same one
- * (read-only, non-blocking where the platform has it), through one descriptor,
- * closed before returning; nothing is read. For the CLI's refresher, which
- * asks whether a publish can heal a snapshot it could not use. Never throws,
- * never waits.
+ * The bounded reader cannot answer this: `lookAtSmallFile` says `unreadable`
+ * for a file it cannot open, for a regular file larger than its bound, and for
+ * a link to nothing alike. The open is the bounded reader's (read-only,
+ * non-blocking where the platform has it), on one descriptor, closed before
+ * returning. For the CLI's refresher, which asks whether a publish (an atomic
+ * write: a temporary file renamed over the path) can heal a snapshot it could
+ * not use. Never throws, never waits.
  */
-export type FileEntry = 'absent' | 'file' | 'unopenable';
+export type FileEntry = 'absent' | 'file' | 'replaceable' | 'unhealable';
 
 export function lookAtEntry(path: string): FileEntry {
+  let entry: Stats;
+  try {
+    entry = lstatSync(path);
+  } catch (e) {
+    return (e as NodeJS.ErrnoException | undefined)?.code === 'ENOENT' ? 'absent' : 'unhealable';
+  }
+  if (entry.isSymbolicLink()) return 'replaceable';
+  if (entry.isDirectory()) return 'unhealable';
+  if (!entry.isFile()) return 'replaceable';
   let fd: number | undefined;
   try {
-    try {
-      fd = openSync(path, READ_FLAGS);
-    } catch (e) {
-      const code = (e as NodeJS.ErrnoException | undefined)?.code;
-      return code === 'ENOENT' && !isSymbolicLink(path) ? 'absent' : 'unopenable';
-    }
-    return fstatSync(fd).isFile() ? 'file' : 'unopenable';
+    fd = openSync(path, READ_FLAGS);
+    return 'file';
   } catch {
-    return 'unopenable';
+    return 'unhealable';
   } finally {
     if (fd !== undefined) {
       try {
