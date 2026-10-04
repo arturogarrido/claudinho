@@ -51,9 +51,10 @@ The behavior differs by component:
   and `~/.cache/claudinho` elsewhere) and holds only
   public match data and Claudinho's own local counters — for example `state.json` (cached
   live/upcoming scores and fixtures), `backoff.json` (a single timestamp: until when the data
-  provider asked not to be contacted), `market-signals.json` (cached market reads), and
-  `runs.json` (a local counter for the star-reminder nudge). These files contain no personal
-  data, stay on your device, are never uploaded, and you can delete them at any time.
+  provider asked not to be contacted), `attempt.json` (a timestamp and a count that pace the
+  background refresher while no readable cache exists), `market-signals.json` (cached market
+  reads), and `runs.json` (a local counter for the star-reminder nudge). These files contain no
+  personal data, stay on your device, are never uploaded, and you can delete them at any time.
 - Your **choice** is a small **config file on your own machine**: `config.json` in your config
   directory (`$XDG_CONFIG_HOME/claudinho`, falling back to `%APPDATA%\claudinho` on Windows and
   `~/.config/claudinho` elsewhere). It holds the competition you chose and, if you pinned one, a

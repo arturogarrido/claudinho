@@ -5,9 +5,10 @@
  * snapshots, ~/.claude settings, the user's config file) — tmp + rename on the
  * same filesystem, so a crash can abandon a .tmp but never leave a truncated
  * target. The one bounded, non-blocking read for every file the CLI keeps (the
- * snapshot, the throttle note, the refresh lock, the market cache, the run
- * counter, the config file) is core's (`files.ts`), re-exported here for the
- * CLI's own callers: the MCP server reads the config file through it too.
+ * snapshot, the throttle note, the attempt record, the refresh lock, the market
+ * cache, the run counter, the config file) is core's (`files.ts`), re-exported
+ * here for the CLI's own callers: the MCP server reads the config file through
+ * it too.
  */
 import { randomBytes } from 'node:crypto';
 import {

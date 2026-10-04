@@ -1,10 +1,10 @@
 /**
  * The one bounded, non-blocking read for every small file Claudinho keeps on
  * the user's disk: the CLI's cache files (the snapshot, the throttle note, the
- * refresh lock, the market cache, the run counter) and the user's config file,
- * which the CLI and the MCP server both read (`userConfig.ts`). It lives in
- * core so both packages read the same file the same way; the CLI re-exports it
- * from `paths.ts` for its own callers.
+ * attempt record, the refresh lock, the market cache, the run counter) and the
+ * user's config file, which the CLI and the MCP server both read
+ * (`userConfig.ts`). It lives in core so both packages read the same file the
+ * same way; the CLI re-exports it from `paths.ts` for its own callers.
  */
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, type Stats } from 'node:fs';
 

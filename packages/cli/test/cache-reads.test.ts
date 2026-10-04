@@ -56,4 +56,13 @@ describe('the files the CLI keeps are read by one reader', () => {
       expect(code(join(SRC, file)), file).toMatch(/\breadSmallFile\(/);
     }
   });
+
+  it('the attempt record is read through it, bounded like the note (0.11, ledger row D8)', () => {
+    const cache = code(join(SRC, 'cache.ts'));
+    const start = cache.indexOf('export function readAttemptRecord(');
+    expect(start).toBeGreaterThan(-1);
+    const reader = cache.slice(start, cache.indexOf('\n}\n', start));
+    expect(reader).toMatch(/\breadSmallFile\(attemptRecordPath\(source, competition\), MAX_ATTEMPT_BYTES\)/);
+    expect(cache).toMatch(/const MAX_ATTEMPT_BYTES = MAX_NOTE_BYTES;/);
+  });
 });

@@ -241,6 +241,8 @@ network** (<150ms). When several matches are live it shows them all inline:
 - `CLAUDINHO_COMPACT=0` — show 3-letter codes alongside flags
 - `CLAUDINHO_FLAGS=off` — drop emoji flags for 3-letter codes (statusline) / plain names (`today`, `live`, `table`, `next`, hook); already automatic on terminals that can't render flag emoji, e.g. Warp
 
+A background refresher writes that cache; when the cache file exists but cannot be read (its permissions refuse it, say), the refresher is paced by a small `attempt.json` beside the throttle note `backoff.json` in the same directory (one of each per competition): after each attempt the next waits one minute, the wait doubling to at most thirty, until a cache that reads back resets it.
+
 Use the same `claudinho prompt` in **tmux** (`set -g status-right '#(claudinho prompt)'`)
 or a **Starship** custom command — it works in any shell.
 
