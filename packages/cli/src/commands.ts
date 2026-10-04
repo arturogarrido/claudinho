@@ -2210,8 +2210,10 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
   }
   // The saved team, when it is not the team in effect.
   if (saved?.team && !pinned) out(c.dim(`  ${t('follow.savedTeam', { team: pinLabel(saved.team) })}`));
-  // The sentences true of the next command, while the file holds a choice.
-  const sentence = saved === null ? undefined : overrideSentence(flag ? 'ran' : flagRefused ? 'refused' : undefined, envState);
+  // The sentence true of the next command: one that names the saved choice
+  // while the file holds one; under a refused environment, whatever the file
+  // holds (the next command meets the refusal, file or not).
+  const sentence = saved === null && envState !== 'refused' ? undefined : overrideSentence(flag ? 'ran' : flagRefused ? 'refused' : undefined, envState);
   if (sentence) out(c.dim(`  ${t(sentence)}`));
   if (saved?.team && teamEnv !== undefined) out(c.dim(`  ${t('follow.teamEnvWins')}`));
   if (reason && mode === 'show') out(c.dim(`  ${t(NO_SAVED_REASON[reason])}`));
@@ -2223,19 +2225,30 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
 
 /**
  * The sentence the overrides at work are said with, true of the NEXT command,
- * from the flag (ran, refused, absent) and the environment's three states:
- * a flag alone (it decides this command; without it the saved choice
- * decides), or refused (this command only; without it the saved choice
- * decides); with the environment set (without the flag the environment
- * decides, then the saved choice); with the environment refused (without the
- * flag the environment is refused, and nothing is followed while it is set);
- * the environment alone, set or refused (it wins over the saved choice while
- * set; a refusal is the headline then); neither: none.
+ * one per cell of the flag (ran, refused, absent) by the environment (unset,
+ * set, refused):
+ *   - flag ran, environment unset: `flagWins` (it decides this command; the
+ *     saved choice the next one);
+ *   - flag ran, environment set: `flagEnvWins` (without it the environment
+ *     decides, then the saved choice);
+ *   - flag ran, environment refused: `flagEnvRefused` (without it the
+ *     environment is refused, and nothing is followed while it is set);
+ *   - flag refused, environment unset: `flagRefused` (this command only;
+ *     without it the saved choice decides);
+ *   - flag refused, environment set: `flagRefusedEnv` (without it the
+ *     environment decides, then the saved choice);
+ *   - flag refused, environment refused: `flagRefusedEnvRefused` (without it
+ *     the environment is refused too);
+ *   - no flag, environment unset: none;
+ *   - no flag, environment set: `envWins` (it wins over the saved choice
+ *     while set);
+ *   - no flag, environment refused: `envRefused` (nothing is followed while
+ *     it is set; its refusal is the headline).
  */
 function overrideSentence(flag: 'ran' | 'refused' | undefined, env: 'none' | 'set' | 'refused'): string | undefined {
   if (flag === 'ran') return env === 'set' ? 'follow.flagEnvWins' : env === 'refused' ? 'follow.flagEnvRefused' : 'follow.flagWins';
   if (flag === 'refused') return env === 'set' ? 'follow.flagRefusedEnv' : env === 'refused' ? 'follow.flagRefusedEnvRefused' : 'follow.flagRefused';
-  return env === 'none' ? undefined : 'follow.envWins';
+  return env === 'set' ? 'follow.envWins' : env === 'refused' ? 'follow.envRefused' : undefined;
 }
 
 /** `follow off`: the file removed (a link removed, never its target); nothing there is no error. */

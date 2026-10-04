@@ -9,7 +9,8 @@
  *     replaced by the user's own file, and what it pointed at is untouched;
  *   - a refused environment's refusal is said once in `follow`'s report (the
  *     headline when it decides what is reported, else its own line after
- *     the headline), and `refused.env` is bounded as a label;
+ *     the headline), its sentence is said with no file too (after `off`),
+ *     and `refused.env` is bounded as a label;
  *   - with nothing chosen `_refresh` asks nobody and writes nothing, and
  *     `vibe` reads no cache;
  *   - the cache directory takes the Windows leg (`%LOCALAPPDATA%`) through
@@ -188,6 +189,28 @@ describe('a refused environment, beside the main report suite', () => {
     expect(count('"bar"')).toBe(1);
     expect(count('"foo"')).toBe(1);
     expect(text().indexOf('"foo"')).toBeLessThan(text().indexOf('"bar"'));
+  });
+
+  it('its sentence is said with no file too (after `off`, or none saved): the next command meets the refusal, file or not', async () => {
+    follow({ version: 1, competition: 'eng.1' });
+    process.env.CLAUDINHO_COMPETITION = 'foo';
+    await cmdFollow('off', {}, ctxWith({}));
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION is refused, and nothing is followed/);
+    expect(text()).not.toMatch(/is set, and it wins/);
+    expect(count('"foo"')).toBe(1);
+    // No file, `follow` alone: the same sentence.
+    writes = [];
+    await cmdFollow(undefined, {}, ctxWith({}));
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION is refused, and nothing is followed/);
+    // No file, a flag that ran: its own refused cell.
+    writes = [];
+    await cmdFollow(undefined, {}, ctxWith({ competition: 'world-cup' }));
+    expect(text()).toMatch(/--competition decides this command; without it CLAUDINHO_COMPETITION is refused/);
+    // No file and the environment SET: no sentence naming a saved choice there is not.
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxWith({}));
+    expect(text()).not.toMatch(/saved choice while it is|then the saved choice/);
   });
 
   it('`refused.env` is the value as given, bounded as a label', async () => {
