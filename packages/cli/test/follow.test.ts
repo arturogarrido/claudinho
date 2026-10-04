@@ -359,6 +359,67 @@ describe('reading the choice back', () => {
     expect(text()).toMatch(/nothing to remove|No saved choice to remove/i);
   });
 
+  it('under an override naming ANOTHER competition the pinned team is printed with the saved choice it belongs to, never as if in effect', async () => {
+    const { adapter } = feed('eng.1', { events: UPCOMING });
+    await cmdFollow('premier-league', { team: 'arsenal' }, ctxOf(adapter));
+    process.env.CLAUDINHO_COMPETITION = 'world-cup';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    const lines = text().split('\n').map((l) => l.trim()).filter(Boolean);
+    const following = lines.findIndex((l) => /^Following: World Cup/.test(l));
+    const savedLine = lines.findIndex((l) => /^Saved choice: Premier League/.test(l));
+    const teamLine = lines.findIndex((l) => /Arsenal/.test(l));
+    expect(following).toBeGreaterThan(-1);
+    expect(savedLine).toBeGreaterThan(-1);
+    expect(teamLine).toBeGreaterThan(-1);
+    // The team is the saved choice's: on or after its line, never between "Following" and it.
+    expect(teamLine).toBeGreaterThanOrEqual(savedLine);
+    expect(lines[following + 1]).not.toMatch(/Arsenal/);
+    // Under the environment naming the SAME competition the team is in effect and printed with "Following".
+    process.env.CLAUDINHO_COMPETITION = 'premier-league';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    const inEffect = text().split('\n').map((l) => l.trim()).filter(Boolean);
+    const f2 = inEffect.findIndex((l) => /^Following: Premier League/.test(l));
+    expect(inEffect[f2 + 1]).toMatch(/Arsenal/);
+    delete process.env.CLAUDINHO_COMPETITION;
+  });
+
+  it('under a flag override with the environment ALSO set, `follow` does not promise the saved choice decides next: the environment does', async () => {
+    await cmdFollow('premier-league', {}, ctxOf());
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf(undefined, { competition: 'world-cup' }));
+    expect(text()).toMatch(/Following: World Cup/);
+    expect(text()).not.toMatch(/saved choice decides the next one/);
+    expect(text()).toMatch(/CLAUDINHO_COMPETITION/);
+    // The JSON says which override is in effect, and that the environment is set too.
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf(undefined, { competition: 'world-cup', json: true }));
+    const j = JSON.parse(text());
+    expect(j.override).toBe('flag');
+    expect(j.competition).toMatchObject({ slug: 'fifa.world', chosenBy: 'flag' });
+    delete process.env.CLAUDINHO_COMPETITION;
+    // With the flag alone, the sentence holds: the next command without it is the saved choice's.
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf(undefined, { competition: 'world-cup' }));
+    expect(text()).toMatch(/saved choice decides the next one|next one without it/);
+  });
+
+  it('under a REFUSED environment `follow --json` carries the refusal the text explains, beside `competition: null`', async () => {
+    process.env.CLAUDINHO_COMPETITION = 'foo';
+    await cmdFollow('premier-league', {}, ctxOf(undefined, { json: true }));
+    const j = JSON.parse(text());
+    expect(j.competition).toBeNull();
+    expect(j.saved).toEqual({ version: 1, competition: 'eng.1' });
+    expect(j.refused).toEqual({ value: 'foo', source: 'env' });
+    expect(j.noCompetition).toBeUndefined();
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/foo/);
+    delete process.env.CLAUDINHO_COMPETITION;
+  });
+
   it('`--json`: `follow premier-league --json` emits the choice; `follow --json` emits it or null', async () => {
     await cmdFollow('premier-league', {}, ctxOf(undefined, { json: true }));
     expect(JSON.parse(text())).toMatchObject({ competition: { slug: 'eng.1', alias: 'premier-league', chosenBy: 'saved' }, path: configFile });

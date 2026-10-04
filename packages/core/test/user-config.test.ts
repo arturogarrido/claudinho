@@ -36,6 +36,9 @@ describe('the path', () => {
     expect(configPath({ XDG_CONFIG_HOME: 'cfg' }, 'linux', '/home/a')).toBe(join('/home/a', '.config', 'claudinho', 'config.json'));
     expect(configPath({ XDG_CONFIG_HOME: './cfg' }, 'darwin', '/Users/a')).toBe(join('/Users/a', '.config', 'claudinho', 'config.json'));
     expect(cacheDirFor({ XDG_CACHE_HOME: 'cache' }, 'linux', '/home/a')).toBe(join('/home/a', '.cache', 'claudinho'));
+    // A relative APPDATA or LOCALAPPDATA is ignored the same way.
+    expect(configPath({ APPDATA: 'Roaming' }, 'win32', 'C:\\Users\\a')).toBe(join('C:\\Users\\a', '.config', 'claudinho', 'config.json'));
+    expect(cacheDirFor({ LOCALAPPDATA: 'Local' }, 'win32', 'C:\\Users\\a')).toBe(join('C:\\Users\\a', '.cache', 'claudinho'));
     // APPDATA is Windows' alone: set on another platform it is not read.
     expect(configPath({ APPDATA: 'C:\\x' }, 'darwin', '/Users/a')).toBe(join('/Users/a', '.config', 'claudinho', 'config.json'));
     expect(configPath({ APPDATA: 'C:\\x' }, 'linux', '/home/a')).toBe(join('/home/a', '.config', 'claudinho', 'config.json'));
