@@ -75,6 +75,7 @@ import {
   type Stage,
   statesPartial,
   type VerdictSource,
+  withFlag,
 } from '@claudinho/core';
 import {
   boundedRecords,
@@ -199,7 +200,7 @@ function resolveMarketProvider(args: CommonOpts): MarketProvider {
  */
 function marketHeader(m: Match, args: CommonOpts): string {
   const when = formatDate(m.kickoff, { tz: args.tz, locale: args.lang });
-  return `${m.home.flag} ${m.home.name} vs ${m.away.name} ${m.away.flag} (${when})`;
+  return `${withFlag(m.home.name, m.home.flag, 'home')} vs ${withFlag(m.away.name, m.away.flag, 'away')} (${when})`;
 }
 
 function marketText(m: Match, sig: MarketSignal, args: CommonOpts): string {
@@ -810,7 +811,7 @@ export function toolGetTeam(args: { query: string }): ToolResult {
   const data = { query: args.query ?? '', team: team ?? null, matches, count: matches.length };
   let text: string;
   if (team) {
-    text = `${team.code} — ${team.flag} ${team.name}${team.group ? ` · Group ${team.group}` : ''}`;
+    text = `${team.code} — ${withFlag(team.name, team.flag, 'home')}${team.group ? ` · Group ${team.group}` : ''}`;
   } else if (matches.length > 0) {
     text = `"${args.query}" is ambiguous. Did you mean: ${matches
       .map((t) => `${t.name} (${t.code})`)

@@ -131,6 +131,9 @@ const matchOut = z
   .object({
     id: z.string(),
     stage: z.string().optional(),
+    // The provider's own words for a phase the stage grammar does not know
+    // (`stage: "OTHER"`), present only then. Declared: an agent is told the key exists.
+    stageLabel: z.string().optional(),
     group: z.string().nullable().optional(),
     kickoff: z.string().optional(),
     venue: z.string().optional(),

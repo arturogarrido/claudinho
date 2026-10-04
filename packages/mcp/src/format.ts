@@ -6,12 +6,14 @@
 import {
   countdown,
   formatKickoff,
+  joinSegments,
   matchFlavor,
   matchLocation,
   padVisible,
   scoreline,
   stageLabel,
   tableTitle,
+  withFlag,
   type FlavorLevel,
   type Match,
   type StandingRow,
@@ -34,7 +36,8 @@ export interface FmtOpts {
 }
 
 export function matchLine(m: Match, opts: FmtOpts = {}): string {
-  const head = `${m.home.flag} ${m.home.name} ${scoreline(m)} ${m.away.name} ${m.away.flag}`;
+  // A flag beside a nation's name; a club's name alone (nothing in its place).
+  const head = `${withFlag(m.home.name, m.home.flag, 'home')} ${scoreline(m)} ${withFlag(m.away.name, m.away.flag, 'away')}`;
   const stage = stageLabel(m);
   let tail: string;
   if (m.status === 'SCHEDULED') {
@@ -45,7 +48,10 @@ export function matchLine(m: Match, opts: FmtOpts = {}): string {
     tail = STATUS_LABEL[m.status];
   }
   const flair = matchFlavor(m, { level: opts.flavor, locale: opts.locale });
-  const base = `${head} — ${tail} · ${stage} · ${matchLocation(m)}`;
+  // The status, the stage and the location, joined with the empty ones
+  // dropped: an OTHER with no words, or a record with no venue, leaves no
+  // dangling separator.
+  const base = `${head} — ${joinSegments([tail, stage, matchLocation(m)])}`;
   return (flair ? `${base} — ${flair}` : base).trimEnd();
 }
 
@@ -147,7 +153,7 @@ export function standingsTable(table: { group: string; label?: string }, rows: S
   const cols = line('Team', 'P', 'W', 'D', 'L', 'GD', 'Pts');
   const lines = rows.map((r) =>
     line(
-      `${r.team.flag} ${r.team.name}`,
+      withFlag(r.team.name, r.team.flag, 'home'),
       String(r.played),
       String(r.won),
       String(r.drawn),

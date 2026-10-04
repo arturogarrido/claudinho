@@ -232,8 +232,10 @@ describe('a long answer is cut at a length: what qualifies it, and its footer, a
   // 99 of them and the first letter: 100 columns, 397 code points, the longest a label may be
   // (one more and the sanitizer cuts the name, and no row holds `longName` whole).
   const NAME = ('\u{1D400}' + '\u{1D185}'.repeat(3)).repeat(99);
+  // Three-digit stats widen every row by three columns: a club's row has no
+  // flag (0.11 · 2.2), and the table must still be longer than the cap.
   const stats = (rank: number) =>
-    Object.entries({ gamesPlayed: 1, wins: 1, ties: 0, losses: 0, pointsFor: 2, pointsAgainst: 0, pointDifferential: 2, points: 3, rank }).map(
+    Object.entries({ gamesPlayed: 100, wins: 100, ties: 0, losses: 0, pointsFor: 200, pointsAgainst: 0, pointDifferential: 200, points: 300, rank }).map(
       ([name, value]) => ({ name, value }),
     );
   const league = {
