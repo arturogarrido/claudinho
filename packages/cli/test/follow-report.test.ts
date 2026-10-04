@@ -504,7 +504,7 @@ describe('with-file sentences keep the saved choice (the fourth reader\'s round-
 });
 
 describe('the team sentence promises nothing the next command cannot reach', () => {
-  it('when the next command stops on the competition (refused environment, nothing chosen), the team sentences say "once a competition is chosen", never "while it is"', async () => {
+  it('when the next command stops on the competition (a refused environment, nothing chosen), the team sentences name what lifts the stop, never "while it is"', async () => {
     await cmdFollow('world-cup', { team: 'Spain' }, ctxOf());
     process.env.CLAUDINHO_TEAM = 'Mexico';
     // A refused environment: the next command refuses before reaching the team.
