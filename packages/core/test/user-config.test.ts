@@ -36,6 +36,9 @@ describe('the path', () => {
     expect(configPath({ XDG_CONFIG_HOME: 'cfg' }, 'linux', '/home/a')).toBe(join('/home/a', '.config', 'claudinho', 'config.json'));
     expect(configPath({ XDG_CONFIG_HOME: './cfg' }, 'darwin', '/Users/a')).toBe(join('/Users/a', '.config', 'claudinho', 'config.json'));
     expect(cacheDirFor({ XDG_CACHE_HOME: 'cache' }, 'linux', '/home/a')).toBe(join('/home/a', '.cache', 'claudinho'));
+    // Absoluteness is the platform's: a Windows drive path is absolute there.
+    expect(configPath({ XDG_CONFIG_HOME: 'C:\\x' }, 'win32', 'C:\\Users\\a')).toBe(join('C:\\x', 'claudinho', 'config.json'));
+    expect(configPath({ XDG_CONFIG_HOME: 'C:\\x' }, 'linux', '/home/a')).toBe(join('/home/a', '.config', 'claudinho', 'config.json'));
     // A relative APPDATA or LOCALAPPDATA is ignored the same way.
     expect(configPath({ APPDATA: 'Roaming' }, 'win32', 'C:\\Users\\a')).toBe(join('C:\\Users\\a', '.config', 'claudinho', 'config.json'));
     expect(cacheDirFor({ LOCALAPPDATA: 'Local' }, 'win32', 'C:\\Users\\a')).toBe(join('C:\\Users\\a', '.cache', 'claudinho'));
@@ -71,6 +74,9 @@ describe('the read', () => {
   it('a pin\'s code is a team code: upper-cased as the feed\'s are (a hand-written lower-case code would match the commands and never the hot path)', () => {
     const r = readUserConfig(write('lower.json', JSON.stringify({ version: 1, competition: 'fifa.world', team: { code: 'mex', name: 'Mexico' } })));
     expect(r).toEqual({ kind: 'read', config: { version: 1, competition: 'fifa.world', team: { code: 'MEX', name: 'Mexico' } } });
+    // Bounded AFTER the casing: a code that widens when upper-cased (ß → SS) past 8 columns is no pin, never repaired.
+    const widened = readUserConfig(write('widen.json', JSON.stringify({ version: 1, competition: 'fifa.world', team: { code: 'ßßßßß', name: 'Mexico' } })));
+    expect(widened).toEqual({ kind: 'read', config: { version: 1, competition: 'fifa.world' } });
   });
 
   it('a byte-order mark is not the file; a version written as a string is not 1; a file of exactly the bound reads, one byte more does not', () => {

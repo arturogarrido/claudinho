@@ -235,6 +235,17 @@ describe('one pick function for the ambient surfaces', () => {
     expect(text()).toMatch(/AFC 2–1 CHE/);
   });
 
+  it('the bundle\'s syncing branch names the picked fixture first: two bundled fixtures in their window, a stale cache, a Canada pin', () => {
+    // 2026-06-24 19:00Z: BIH vs QAT (760462) and SUI vs CAN (760463) kick off together.
+    const at = new Date('2026-06-24T19:30:00.000Z');
+    const state: CacheState = { updatedAt: new Date(at.getTime() - 3_600_000).toISOString(), live: [], degraded: false, source: 'espn', competition: 'fifa.world' };
+    const plain = renderPrompt(state, { defaultCompetition: true, teamKind: 'nation', now: at, flags: false });
+    expect(plain).toMatch(/^⚽ BIH vs QAT live · syncing…/);
+    const picked = renderPrompt(state, { defaultCompetition: true, teamKind: 'nation', now: at, flags: false, pick: { team: { code: 'CAN', name: 'Canada' } } });
+    expect(picked).toMatch(/^⚽ SUI vs CAN live · syncing…/);
+    expect(picked).toContain('+1');
+  });
+
   it('a present CLAUDINHO_TEAM the hot path cannot interpret (a name, off the bundle) is still the override: no preference, never the pin', () => {
     follow('eng.1', ARSENAL);
     writeState({ updatedAt: NOW.toISOString(), live: [other(), mine()], degraded: false, source: 'espn', competition: 'eng.1' }, NOW.getTime());
