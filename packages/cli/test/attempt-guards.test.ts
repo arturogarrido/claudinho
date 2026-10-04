@@ -12,8 +12,11 @@
  * - The settlement writes nothing once ownership is lost: a successor that
  *   took the lock and published a readable snapshot during the cycle does not
  *   get this cycle's reset written over the record.
+ * - With the snapshot file ABSENT the gate does not fail closed (a publish
+ *   heals it), but a believed record that is not due still stops the cycle:
+ *   an absent snapshot with a working record stays paced (round 1, rule 8).
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -121,5 +124,33 @@ describe('the settlement writes nothing once ownership is lost', () => {
     // And the successor's lock was not released by the cycle that lost it.
     expect(readFileSync(join(dir, 'claudinho', 'refresh.lock'), 'utf8')).toContain('deadbeefcafe');
     expect(readAttemptRecord(SOURCE, WC, LIVE + MIN)).toEqual({ at: LIVE, count: 1 });
+  });
+});
+
+describe('an absent snapshot with a believed record that is not due stays paced (the refresher side)', () => {
+  const notDue = (at: number) => {
+    mkdirSync(join(dir, 'claudinho'), { recursive: true });
+    writeFileSync(attemptRecordPath(SOURCE, WC), JSON.stringify({ at: iso(at - 10_000), count: 1 }));
+    return readFileSync(attemptRecordPath(SOURCE, WC), 'utf8');
+  };
+
+  it('inside a live window: nothing asked, nothing published, the record untouched', async () => {
+    const before = notDue(LIVE);
+    await runRefresh({ source: SOURCE, competition: WC, now: new Date(LIVE), jitterMs: 0 });
+    expect(asked).toHaveLength(0);
+    expect(existsSync(cachePath(SOURCE, WC))).toBe(false);
+    expect(readFileSync(attemptRecordPath(SOURCE, WC), 'utf8')).toBe(before);
+    // Once due, the cycle proceeds and its publish heals the scope.
+    await runRefresh({ source: SOURCE, competition: WC, now: new Date(LIVE + MIN), jitterMs: 0 });
+    expect(asked).toHaveLength(3);
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
+  });
+
+  it('outside every window (the idle writer): nothing published, the record untouched', async () => {
+    const before = notDue(QUIET);
+    await runRefresh({ source: SOURCE, competition: WC, now: new Date(QUIET), jitterMs: 0 });
+    expect(asked).toHaveLength(0);
+    expect(existsSync(cachePath(SOURCE, WC))).toBe(false);
+    expect(readFileSync(attemptRecordPath(SOURCE, WC), 'utf8')).toBe(before);
   });
 });
