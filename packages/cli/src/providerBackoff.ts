@@ -58,7 +58,7 @@ function persistBackoff(source: string, competition: string, until: number, nowM
       const inEffect = backoffInEffect(base, source, competition, nowMs);
       const later = inEffect !== undefined && inEffect > until ? inEffect : until;
       try {
-        publishState({ ...base, backoffUntil: new Date(later).toISOString() }, token);
+        publishState({ ...base, backoffUntil: new Date(later).toISOString() }, token, nowMs);
       } catch {
         // A publish that THROWS (a failed atomic write) published nothing:
         // the note below is where the deadline goes, as for a refused one.

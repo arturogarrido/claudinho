@@ -14,9 +14,11 @@ import {
   getLiveMatches,
   getLiveRead,
   getScheduleAhead,
+  isKnockoutStage,
   isKnownSource,
   makeAdapter,
   sealSeason,
+  teamKind,
   type Match,
   type ProviderAdapter,
   type SeasonInfo,
@@ -115,7 +117,7 @@ function nextStaticUpcoming(nowMs: number): Match | undefined {
 export function inKnockoutPhase(nowMs: number, competition: string): boolean {
   if (!bundleApplies(competition)) return false;
   const next = nextStaticUpcoming(nowMs);
-  return !!next && next.stage !== 'GROUP' && next.stage !== 'FRIENDLY';
+  return !!next && isKnockoutStage(next.stage);
 }
 
 /**
@@ -235,6 +237,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
           ...(until !== undefined ? { backoffUntil: new Date(until).toISOString() } : {}),
         },
         idle,
+        nowMs,
       );
     } finally {
       releaseLock(idle);
@@ -446,6 +449,9 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
           ...(fixtures && fixturesSeason ? { fixturesSeason } : {}),
         },
         token,
+        // The cycle's clock, not the carried live stamp: the throttle a
+        // snapshot of another format carried is judged at the time it is now.
+        clock(),
       );
     } catch {
       published = false;
@@ -589,7 +595,8 @@ async function refreshOffBundle(c: {
     // The schedule slice AS IT IS BELIEVED (`scheduleView`): what is carried
     // and written back is what was read through the rules, never the raw file.
     let index = view.index;
-    let display: Match[] = [...sealFixtures(base?.schedule?.fixtures).items];
+    // Sealed with the competition's written team kind, like every cached match.
+    let display: Match[] = [...sealFixtures(base?.schedule?.fixtures, teamKind(competition)).items];
     let scheduleSeason = view.season;
     let complete = view.complete;
     let scheduleUpdatedAt = view.updatedAt;
@@ -629,7 +636,7 @@ async function refreshOffBundle(c: {
       failures = before.failures + 1;
       let written = false;
       try {
-        written = publishState(snapshot(undefined), token);
+        written = publishState(snapshot(undefined), token, clock());
       } catch {
         written = false;
       }
@@ -697,7 +704,7 @@ async function refreshOffBundle(c: {
     // happen: the throttle this cycle met is still settled.
     let published = false;
     try {
-      published = publishState(snapshot(backoffUntil), token);
+      published = publishState(snapshot(backoffUntil), token, clock());
     } catch {
       published = false;
     }

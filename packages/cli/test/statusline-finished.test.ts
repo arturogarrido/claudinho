@@ -38,8 +38,10 @@ const snapshot = (fixtures: Match[]): CacheState => ({
     failures: 0,
   } as ScheduleSlice,
 });
+// The snapshot is a nations competition's (`uefa.nations`): the caller states
+// that kind, as `cmdPrompt` does from the competition (0.11 · 2.2).
 const line = (state: CacheState, opts: { team?: string } = {}) =>
-  renderPrompt(state, { defaultCompetition: false, now: new Date(NOW), ...opts });
+  renderPrompt(state, { defaultCompetition: false, teamKind: 'nation', now: new Date(NOW), ...opts });
 
 describe('a finished record is not counted down to', () => {
   const finishedAhead = fixture('1', NOW + HOUR, ['ESP', 'Spain'], ['FRA', 'France'], 'FT');

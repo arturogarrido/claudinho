@@ -62,7 +62,10 @@ import {
   resolveTz,
   scoreline,
   t as i18n,
+  joinSegments,
   stageLabelI18n,
+  teamKind,
+  withFlag,
   type Stage,
 } from '@claudinho/core';
 import Table from 'cli-table3';
@@ -72,6 +75,7 @@ import {
   dataSource,
   disclaimer,
   header,
+  homeColumn,
   matchLine,
   type Painter,
   painterFor,
@@ -432,8 +436,10 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
       ),
     );
   } else {
+    // The home column, measured once over the rows shown.
+    const homeWidth = homeColumn(todays, flags);
     for (const m of todays) {
-      out(matchLine(m, cfg, t, c, flags));
+      out(matchLine(m, cfg, t, c, flags, homeWidth));
       const s = market.signals.get(m.id);
       if (s) out('    ' + c.dim(marketLine(s, m)));
     }
@@ -484,7 +490,9 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
     // that was not whole says none in play was READ, not that none is.
     out(c.dim('  ' + (verdictNotice(live, cfg.lang) ?? liveNoneRead(live, cfg.lang) ?? t('live.none'))));
   } else {
-    for (const m of matches) out(matchLine(m, cfg, t, c, flags));
+    // The home column, measured once over the rows shown.
+    const homeWidth = homeColumn(matches, flags);
+    for (const m of matches) out(matchLine(m, cfg, t, c, flags, homeWidth));
   }
   out();
   // The read was not whole: said after the list and before the attribution,
@@ -577,19 +585,22 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   out(header(t('next.label', { team: label }), c));
   out();
   for (const q of qualifiers) out(c.dim('  ' + q));
-  out(matchLine(fixture, cfg, t, c, flags));
+  // One row: its home column is measured on it, like a list's.
+  out(matchLine(fixture, cfg, t, c, flags, homeColumn([fixture], flags)));
   // Localized (stageLabelI18n, like cmdBracket) — EN-only stageLabel here made
   // `next MEX --lang es` render "Round of 32" beside otherwise-Spanish copy.
-  const stage =
-    fixture.stage !== 'GROUP' ? `${stageLabelI18n(cfg.lang, fixture.stage)} · ` : '';
+  // A stage with nothing to say (an OTHER with no words) is no segment at all.
+  const stage = fixture.stage !== 'GROUP' ? stageLabelI18n(cfg.lang, fixture) : '';
   // A match in play (off the bundle, `next` answers with it) has no countdown.
   const when = formatKickoff(fixture.kickoff, { tz: cfg.tz, locale: cfg.lang });
   out(
     '  ' +
       c.dim(
-        isLive(fixture.status)
-          ? `${stage}${when}`
-          : `${stage}${when} · ` + t('next.in', { countdown: countdown(fixture.kickoff) }),
+        joinSegments(
+          isLive(fixture.status)
+            ? [stage, when]
+            : [stage, when, t('next.in', { countdown: countdown(fixture.kickoff) })],
+        ),
       ),
   );
   out();
@@ -615,8 +626,9 @@ export function cmdTeam(query: string | undefined, ctx: Ctx): void {
 
   const c = painterFor(cfg);
   const flags = flagsEnabled();
-  const label = (tm: { code: string; name: string; flag: string; group?: string }) => {
-    const flag = flags ? `${tm.flag} ` : '';
+  const label = (tm: { code: string; name: string; flag?: string; group?: string }) => {
+    // The flag and its space only when there is one: nothing in its place.
+    const flag = flags && tm.flag ? `${tm.flag} ` : '';
     const grp = tm.group ? ` · ${t('team.group', { group: tm.group })}` : '';
     return `  ${flag}${c.bold(tm.name)}  ${c.dim(tm.code + grp)}`;
   };
@@ -808,7 +820,7 @@ export async function cmdBracket(
   out();
   out(header(
     filter
-      ? i18n(cfg.lang, 'bracket.stageTitle', { stage: stageLabelI18n(cfg.lang, filter) })
+      ? i18n(cfg.lang, 'bracket.stageTitle', { stage: stageLabelI18n(cfg.lang, { stage: filter as Stage }) })
       : i18n(cfg.lang, 'bracket.title'),
     c,
   ));
@@ -855,6 +867,8 @@ export function cmdPrompt(
       // The bundled schedule describes the bundled competition only — see the
       // sign-off gate in renderPrompt.
       defaultCompetition: bundleApplies(cfg.competition),
+      // The competition's written kind: a nation's flag is generated, a club has none.
+      teamKind: teamKind(cfg.competition),
     });
     out(renderPromptOutput(scoreLine, payload));
     // Spawn a background refresh for live scores OR stale knockout fixtures (the
@@ -890,6 +904,8 @@ export function cmdHook({ cfg }: Ctx): void {
       // The bundled roster names World Cup nations only; on another competition
       // a club sharing a nation's code must not be renamed to that nation.
       defaultCompetition: bundleApplies(cfg.competition),
+      // The competition's written kind: a nation's flag is generated, a club has none.
+      teamKind: teamKind(cfg.competition),
     });
     if (ctx) out(ctx);
     // Warm the same cache the statusline reads, for parity (the hook itself shows
@@ -1073,9 +1089,11 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   // record the window did not hold is the bundle's row, its live state unconfirmed.
   const attribution = dayAttribution(found, [match], cfg.lang);
   if (attribution.unserved) out(c.dim('  ' + attribution.unserved));
-  const stageLabelText = stageLabelI18n(cfg.lang, match.stage, match.group ?? undefined);
   out(header(`${match.home.name} ${scoreline(match)} ${match.away.name}`, c));
-  out('  ' + c.dim(`${stageLabelText} · ${matchLocation(match)}`));
+  // The stage and the location, joined with the empty ones dropped: an OTHER
+  // with no words, or a record with no venue, leaves no dangling separator.
+  const where = joinSegments([stageLabelI18n(cfg.lang, match), matchLocation(match)]);
+  if (where) out('  ' + c.dim(where));
   out(
     '  ' +
       c.dim(
@@ -1121,7 +1139,7 @@ const MARKET_INFO = 'Prediction-market data is informational only.';
  */
 function marketHeaderLine(m: Match, cfg: CliConfig): string {
   const when = formatDate(m.kickoff, { tz: cfg.tz, locale: cfg.lang });
-  return `${m.home.flag} ${m.home.name} vs ${m.away.name} ${m.away.flag} · ${when}`;
+  return `${withFlag(m.home.name, m.home.flag, 'home')} vs ${withFlag(m.away.name, m.away.flag, 'away')} · ${when}`;
 }
 
 /** Null-signal line, specific about finished matches (market reads are pre-match). */
@@ -1673,7 +1691,8 @@ const VIBES_FINAL = [
 ];
 
 /**
- * The live-score segment for a vibe line, e.g. "🇰🇷 1–1 🇨🇿 69'". Prefers the
+ * The live-score segment for a vibe line, e.g. "🇰🇷 1–1 🇨🇿 69'" (a club's sides
+ * by their codes: "ARS 2–1 CHE 50'"). Prefers the
  * CLAUDINHO_TEAM match, else the first live match; undefined when nothing is
  * live. Pure — exported for tests.
  */
@@ -1683,7 +1702,9 @@ export function vibeLiveSegment(live: readonly Match[], team?: string): string |
     (code && live.find((m) => m.home.code === code || m.away.code === code)) ?? live[0];
   if (!pick) return undefined;
   const minute = pick.status === 'HT' ? 'HT' : pick.minute ? `${pick.minute}'` : 'LIVE';
-  return `${pick.home.flag} ${scoreline(pick)} ${pick.away.flag} ${minute}`;
+  // A side's flag, or its code when it has none (a club): nothing in its place.
+  const tok = (side: Match['home']) => side.flag || side.code;
+  return `${tok(pick.home)} ${scoreline(pick)} ${tok(pick.away)} ${minute}`;
 }
 
 /** The vibe pool for a local date: opener/final days mix in themed lines. */
@@ -1801,7 +1822,8 @@ export function cmdVibe(ctx: Ctx): void {
   try {
     const state = readCurrentState(cfg.source, cfg.competition);
     liveSeg = vibeLiveSegment(
-      liveMatchesFromCache(state, (ctx.now ?? new Date()).getTime()).items,
+      // Sealed with the competition's written kind, like the statusline's.
+      liveMatchesFromCache(state, (ctx.now ?? new Date()).getTime(), teamKind(cfg.competition)).items,
       // Name-or-code, matching the statusline/hook (offline lookup).
       resolveEnvTeam(process.env.CLAUDINHO_TEAM, cfg.competition),
     );

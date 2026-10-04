@@ -1,12 +1,16 @@
 import pc from 'picocolors';
 import {
+  displayWidth,
   formatKickoff,
   isLive,
+  isMexicoNationalTeam,
   liveSourceLabel,
   matchFlavor,
   padVisible,
   scoreline,
   t as i18n,
+  teamKind,
+  withFlag,
   type Match,
 } from '@claudinho/core';
 import type { CliConfig } from './config';
@@ -39,9 +43,9 @@ function paint(enabled: boolean) {
 
 export type Painter = ReturnType<typeof paint>;
 
-/** Team cell for standings tables. */
-export function tableTeamCell(team: { flag: string; name: string }, flags: boolean): string {
-  return flags ? `${team.flag} ${team.name}` : team.name;
+/** Team cell for standings tables: the flag beside the name when there is one, the name alone otherwise. */
+export function tableTeamCell(team: { flag?: string; name: string }, flags: boolean): string {
+  return flags ? withFlag(team.name, team.flag, 'home') : team.name;
 }
 
 export function painterFor(cfg: CliConfig): Painter {
@@ -66,10 +70,41 @@ export function statusToken(m: Match, t: Translator, c: Painter): string {
   }
 }
 
+/** The home column's width when every shown home cell fits it (and its floor). */
+export const HOME_COLUMN = 22;
+/** The widest the home column grows to fit a list's widest cell; a wider cell pushes its own row. */
+export const HOME_COLUMN_MAX = 32;
+
+/**
+ * A match's home CELL, exactly as `matchLine` prints it: the flag, its space
+ * and the name when a flag prints (flags on, and the side has one), the name
+ * alone otherwise (flags off, or a club, which has no flag).
+ */
+export function homeCell(m: Match, flags: boolean): string {
+  return flags ? withFlag(m.home.name, m.home.flag, 'home') : m.home.name;
+}
+
+/**
+ * The width a list pads its home cells to, measured ONCE over the rows it
+ * shows: `max(22, min(32, the widest cell))` display columns. A list whose
+ * widest cell fits 22 columns is laid out as it always was; a wider cell
+ * widens every row to it, so the `vs` stays in one column; a cell past 32
+ * columns pushes its own row only.
+ */
+export function homeColumn(matches: readonly Match[], flags: boolean): number {
+  let widest = 0;
+  for (const m of matches) widest = Math.max(widest, displayWidth(homeCell(m, flags)));
+  return Math.max(HOME_COLUMN, Math.min(HOME_COLUMN_MAX, widest));
+}
+
 /**
  * One match as a single line, e.g.:
  *   🇲🇽 Mexico  1–0  South Africa 🇿🇦   67'
  *   🇧🇷 Brazil   vs  Morocco 🇲🇦        Thu 18:00
+ *   Arsenal         2–1  Chelsea          50'   (a club: no flag, nothing in its place)
+ *
+ * `homeWidth` is the list's home column ({@link homeColumn}), measured by the
+ * caller over the rows it shows.
  */
 export function matchLine(
   m: Match,
@@ -77,16 +112,17 @@ export function matchLine(
   t: Translator,
   c: Painter,
   flags = true,
+  homeWidth = HOME_COLUMN,
 ): string {
-  const home = flags ? `${m.home.flag} ${m.home.name}` : m.home.name;
-  const away = flags ? `${m.away.name} ${m.away.flag}` : m.away.name;
+  const home = homeCell(m, flags);
+  const away = flags ? withFlag(m.away.name, m.away.flag, 'away') : m.away.name;
   const mid = isLive(m.status) || m.status === 'FT'
     ? c.bold(scoreline(m))
     : c.dim('vs');
 
   // Display-width padding: a tag-sequence flag (England 🏴󠁧󠁢󠁥󠁮󠁧󠁿) is 14 UTF-16
   // units but 2 columns — padEnd would push its score ~10 columns out of line.
-  const left = `${padVisible(home, 22)} ${mid.padStart(3)}  ${away}`;
+  const left = `${padVisible(home, homeWidth)} ${mid.padStart(3)}  ${away}`;
 
   let right = '';
   if (m.status === 'SCHEDULED') {
@@ -96,10 +132,14 @@ export function matchLine(
   } else {
     right = statusToken(m, t, c);
   }
-  // Mexico's viral 2026 rally cry ("¿Y si sí?") takes the flair slot whenever MEX
-  // is playing — all locales, a fan flourish, not translated. Still silenced by
-  // --flavor off. Green so it pops past the usual dimmed commentary.
-  const mexRally = (m.home.code === 'MEX' || m.away.code === 'MEX') && cfg.flavor !== 'off';
+  // Mexico's viral 2026 rally cry ("¿Y si sí?") takes the flair slot whenever
+  // Mexico's NATIONAL TEAM is playing — all locales, a fan flourish, not
+  // translated. Still silenced by --flavor off. Green so it pops past the usual
+  // dimmed commentary. By identity in a competition that fields nations, never
+  // by the code: a club abbreviated MEX is not Mexico.
+  const kind = teamKind(cfg.competition);
+  const mexRally =
+    (isMexicoNationalTeam(m.home, kind) || isMexicoNationalTeam(m.away, kind)) && cfg.flavor !== 'off';
   const flair = mexRally ? '¿Y si sí?' : matchFlavor(m, { level: cfg.flavor, locale: cfg.lang });
   const tail = flair ? `   ${mexRally ? c.green(flair) : c.dim(flair)}` : '';
   return `  ${left}   ${right}${tail}`.trimEnd();

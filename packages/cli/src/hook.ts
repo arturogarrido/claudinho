@@ -10,9 +10,9 @@
  * only, no network) and must NEVER fail in a way that blocks the prompt. The
  * caller always exits 0.
  */
-import { lookupTeam, scoreline, type Match, type Team } from '@claudinho/core';
+import { lookupTeam, scoreline, withFlag, type Match, type Team, type TeamKind } from '@claudinho/core';
 import type { readState } from './cache';
-import { liveMatchesFromCache } from './statusline';
+import { defaultTeamKind, liveMatchesFromCache } from './statusline';
 
 /**
  * Live matches listed in the hook's context. Well above any real simultaneity
@@ -62,6 +62,13 @@ export interface HookOpts {
    * like `renderPrompt`'s `defaultCompetition` (this module stays env-free).
    */
   defaultCompetition?: boolean;
+  /**
+   * The cached teams' kind, the competition's written fact, resolved by the
+   * caller like `defaultCompetition`: a `nation` side carries its generated
+   * flag, a `club` side none, and nothing is printed in its place. Absent:
+   * `nation` on the bundled competition, `club` off it.
+   */
+  teamKind?: TeamKind;
 }
 
 /**
@@ -83,8 +90,8 @@ function line(m: Match, flags: boolean, pin: boolean): string {
   const minute = m.status === 'HT' ? 'half-time' : m.minute ? `${m.minute}'` : 'live';
   const h = rosterPinned(m.home, pin);
   const a = rosterPinned(m.away, pin);
-  const home = flags ? `${h.flag} ${h.name}` : h.name;
-  const away = flags ? `${a.name} ${a.flag}` : a.name;
+  const home = flags ? withFlag(h.name, h.flag, 'home') : h.name;
+  const away = flags ? withFlag(a.name, a.flag, 'away') : a.name;
   return `${home} ${scoreline(m)} ${away} (${minute})`;
 }
 
@@ -101,8 +108,9 @@ export function renderHook(
   const team = opts.team?.toUpperCase();
   const flags = opts.flags ?? true;
   const pin = opts.defaultCompetition ?? true;
+  const kind = opts.teamKind ?? defaultTeamKind(opts.defaultCompetition);
 
-  const liveList = liveMatchesFromCache(state, now.getTime());
+  const liveList = liveMatchesFromCache(state, now.getTime(), kind);
   let live: Match[] = [...liveList.items];
   // A malformed cache record does not establish that live scores are down.
   // Outside a match window the hook's contract is still zero added tokens.
