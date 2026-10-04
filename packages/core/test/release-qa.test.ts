@@ -107,3 +107,22 @@ describe.skipIf(!existsSync(CLI_DIST))('the built CLI answers the question the s
     expect(resolvedSlug(ask('foo'))).toBeUndefined();
   });
 });
+
+describe('the command-line form the script calls (not only the functions)', () => {
+  const LIB = path('../../../scripts/release-qa-lib.mjs');
+  const run = (args: string[], input = '') =>
+    execFileSync(process.execPath, [LIB, ...args], { input, encoding: 'utf8', env: { ...process.env, CLAUDINHO_COMPETITION: '' } });
+
+  it('`gate ""` (nothing resolved) FAILS, never a quiet skip; `gate <bundle>` runs; `gate <other>` skips', () => {
+    expect(existsSync(path('../dist/index.js')), 'core dist (pnpm -r build)').toBe(true);
+    expect(run(['gate', ''])).toMatch(/^fail:/);
+    expect(run(['gate', BUNDLE_COMPETITION])).toBe('run');
+    expect(run(['gate', 'eng.1'])).toMatch(/^skip/);
+  });
+
+  it('`slug` prints the resolved slug from the CLI\'s JSON, and nothing on an empty or unreadable input', () => {
+    expect(run(['slug'], JSON.stringify({ tables: null, competition: { slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'env' } }))).toBe('eng.1');
+    expect(run(['slug'], '')).toBe('');
+    expect(run(['slug'], 'not json')).toBe('');
+  });
+});

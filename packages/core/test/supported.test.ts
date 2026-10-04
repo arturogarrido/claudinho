@@ -69,6 +69,17 @@ describe('the table', () => {
     expect(entryOf('constructor')).toBeUndefined();
     expect(entryOf('__proto__')).toBeUndefined();
     expect(entryOf('fra.1')).toBeUndefined();
+    // By slug only: an alias is the resolver's business, not the table lookup's.
+    expect(entryOf('premier-league')).toBeUndefined();
+  });
+
+  it('is frozen row by row, and so is every derived view', () => {
+    for (const e of SUPPORTED) expect(Object.isFrozen(e), e.slug).toBe(true);
+    const d = deriveTables(SUPPORTED);
+    for (const [name, view] of Object.entries(d)) expect(Object.isFrozen(view), name).toBe(true);
+    expect(() => {
+      (d.teamKind as Record<string, unknown>)['fra.1'] = 'club';
+    }).toThrow();
   });
 
   it('states the capabilities as the code offers them today', () => {
