@@ -99,6 +99,11 @@ describe('the ambient pick', () => {
     delete process.env.CLAUDINHO_TEAM;
     cmdPrompt(ctxOf(), { cursor: undefined });
     expect(text()).toMatch(/^⚽ AFC 2–1 CHE 40'/);
+    // An empty one is absent: the pin decides.
+    writes = [];
+    process.env.CLAUDINHO_TEAM = '';
+    cmdPrompt(ctxOf(), { cursor: undefined });
+    expect(text()).toMatch(/^⚽ AFC 2–1 CHE 40'/);
   });
 });
 
