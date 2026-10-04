@@ -28,34 +28,12 @@ export type { MapContext };
 
 import { isLive } from '../normalize';
 import { parsedValue } from '../trust/result';
+import { standingsShapeOf } from '../kinds';
 
 const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 /** Default competition slug (the 2026 World Cup). */
 export const DEFAULT_COMPETITION = 'fifa.world';
 
-/**
- * What a competition's standings are, where it is not lettered or numbered
- * GROUPS (the default, also for a competition that is not listed):
- *   - `league`: the competition is authorised to serve exactly ONE table (a
- *     season, a league phase). That is a fact about the competition, written
- *     down here; it is never inferred from a payload having one child, because
- *     a grouped competition whose payload shrinks to one group is not a league.
- *   - `none`: the competition has no table (knockout from the first round).
- *     The provider then answers with no table list at all, and for such a
- *     competition, and only for one, that is an empty answer rather than an
- *     unreadable one. The canary checks the feed against it: the day it serves
- *     a table, that is a changed shape.
- * Adding a league to the product is one line here.
- */
-export const STANDINGS_SHAPE: Readonly<Record<string, 'league' | 'none'>> = Object.freeze({
-  'eng.1': 'league',
-  'esp.1': 'league',
-  'ita.1': 'league',
-  'ger.1': 'league',
-  'mex.1': 'league',
-  'uefa.champions': 'league',
-  'concacaf.champions': 'none',
-});
 // Versioned so upstream can distinguish releases (and a block aimed at one bad
 // version need not be a block on all of them). Inlined at build time via the
 // tsup define; '0.0' appears only on unbuilt dev/test runs.
@@ -343,7 +321,7 @@ export class EspnAdapter implements ProviderAdapter {
   readonly expectedStandingsGroups?: readonly string[];
   readonly standingsFallbackGroups?: readonly string[];
 
-  /** How this competition's standings payload is read (see `STANDINGS_SHAPE`). */
+  /** How this competition's standings payload is read (`standingsShapeOf`, from `STANDINGS_SHAPE`). */
   private readonly standingsShape: StandingsShape;
 
   /** Short-lived group-letter maps, by team code and by team id (built lazily from standings). */
@@ -382,7 +360,8 @@ export class EspnAdapter implements ProviderAdapter {
       opts.competition ??
       (opts.baseUrl === undefined ? DEFAULT_COMPETITION : competitionOfBase(opts.baseUrl));
     this.base = opts.baseUrl ?? competitionBase(this.competition);
-    this.standingsShape = STANDINGS_SHAPE[this.competition] ?? 'groups';
+    // By own property, like every written table (`standingsShapeOf`).
+    this.standingsShape = standingsShapeOf(this.competition);
     // The bundled groups and roster describe the default competition only, and
     // only when nothing redirected where we fetch.
     const bundled = this.competition === DEFAULT_COMPETITION && opts.baseUrl === undefined;

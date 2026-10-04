@@ -12,6 +12,7 @@
  * (no league season, no friendly). Every lookup is an OWN-property one: the
  * competition comes from an environment variable, and `constructor` is not one.
  */
+import type { StandingsShape } from './trust/espn';
 import type { Team } from './types';
 
 /** Whether a competition fields nations (a flag is generated from the name) or clubs (no flag). */
@@ -103,6 +104,43 @@ export function seasonSlugOf(competition: string | undefined): string | undefine
   return competition !== undefined && Object.hasOwn(SEASON_SLUG, competition)
     ? SEASON_SLUG[competition]
     : undefined;
+}
+
+/**
+ * What a competition's standings are, where it is not lettered or numbered
+ * GROUPS (the default, also for a competition that is not listed):
+ *   - `league`: the competition is authorised to serve exactly ONE table (a
+ *     season, a league phase). That is a fact about the competition, written
+ *     down here; it is never inferred from a payload having one child, because
+ *     a grouped competition whose payload shrinks to one group is not a league.
+ *   - `none`: the competition has no table (knockout from the first round).
+ *     The provider then answers with no table list at all, and for such a
+ *     competition, and only for one, that is an empty answer rather than an
+ *     unreadable one. The canary checks the feed against it: the day it serves
+ *     a table, that is a changed shape.
+ * Adding a league to the product is one line here. Read through
+ * {@link standingsShapeOf}, never by a bare index.
+ */
+export const STANDINGS_SHAPE: Readonly<Record<string, 'league' | 'none'>> = Object.freeze({
+  'eng.1': 'league',
+  'esp.1': 'league',
+  'ita.1': 'league',
+  'ger.1': 'league',
+  'mex.1': 'league',
+  'uefa.champions': 'league',
+  'concacaf.champions': 'none',
+});
+
+/**
+ * How a competition's standings payload is read: its written shape, or
+ * `groups` for one not written down. By own property: a bare index on the
+ * table gave a competition named like a prototype key (`constructor`) the
+ * `Object` function as its shape.
+ */
+export function standingsShapeOf(competition: string | undefined): StandingsShape {
+  return competition !== undefined && Object.hasOwn(STANDINGS_SHAPE, competition)
+    ? (STANDINGS_SHAPE[competition] as StandingsShape)
+    : 'groups';
 }
 
 /** Mexico's national team, by the provider's id: a written fact (`espn:203`). */

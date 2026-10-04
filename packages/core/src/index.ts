@@ -67,7 +67,6 @@ export {
   mapEspnEvent,
   parseStandings,
   ProviderError,
-  STANDINGS_SHAPE,
 } from './adapters/espn';
 export type { EspnAdapterOptions, MapContext, ProviderErrorKind } from './adapters/espn';
 export { DEFAULT_COOLDOWN_MS, MAX_COOLDOWN_MS, retryAfterMs } from './adapters/espn';
@@ -279,6 +278,8 @@ export {
   NO_BRACKET,
   resolveCompetition,
   SEASON_SLUG,
+  STANDINGS_SHAPE,
+  standingsShapeOf,
   TEAM_KIND,
   teamKind,
 } from './competition';

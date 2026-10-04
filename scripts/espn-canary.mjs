@@ -116,7 +116,7 @@ export const CANARY_COMPETITIONS = Object.freeze([
  *     must accept that answer. The day it serves a table, that is a changed
  *     shape, and a person decides what it means.
  */
-const shapeOf = (core, competition) => core.STANDINGS_SHAPE?.[competition] ?? 'groups';
+const shapeOf = (core, competition) => core.standingsShapeOf(competition);
 
 /**
  * The statistics the standings parser requires of every row. A copy of the
@@ -156,7 +156,8 @@ const CADENCE_YEARS = Object.freeze({
   'concacaf.nations.league': 2,
   'concacaf.gold': 2,
 });
-const cadenceOf = (competition) => CADENCE_YEARS[competition] ?? 1;
+// By own property, like every written table: a name like a prototype key is not one.
+const cadenceOf = (competition) => (Object.hasOwn(CADENCE_YEARS, competition) ? CADENCE_YEARS[competition] : 1);
 /**
  * Whether the seasons a competition's responses stated, in the order of the
  * dates asked, are NOT a turn: a turn is ONE step up, of at most the
