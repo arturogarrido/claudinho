@@ -411,6 +411,13 @@ describe('MCP tool output schemas', () => {
         ),
       );
       expect(kinds).toEqual(['live', 'table', 'bracket', 'match', 'next', 'today']);
+      // Asked for two at once, the kind the card would be (live > group > bracket > matchId > team > date).
+      const both = await Promise.all(
+        [{ live: true, group: 'A' }, { group: 'A', bracket: true }, { bracket: true, matchId: '1' }, { matchId: '1', team: 'MEX' }, { team: 'MEX', date: '2026-10-10' }].map(
+          async (a) => ((await toolGetShareSnippet(a)).data as { kind: string }).kind,
+        ),
+      );
+      expect(both).toEqual(['live', 'table', 'bracket', 'match', 'next']);
       // A keyed standings read's empty shape is `null`, every table's `[]`.
       expect(((await toolGetStandings({ group: 'A' })).data as { tables: unknown }).tables).toBeNull();
       expect(((await toolGetStandings({})).data as { tables: unknown }).tables).toEqual([]);
