@@ -56,7 +56,13 @@ export interface SelectedCompetition {
  */
 export type CompetitionSelection =
   | SelectedCompetition
-  | { readonly kind: 'refused'; readonly value: string; readonly aliases: string[] }
+  | {
+      readonly kind: 'refused';
+      readonly value: string;
+      readonly aliases: string[];
+      /** The source that gave the refused value (a flag or the environment: the file's reader refuses its own). */
+      readonly chosenBy: ChosenBy;
+    }
   | { readonly kind: 'none' };
 
 /**
@@ -76,7 +82,7 @@ export function selectedCompetition(slug: string, chosenBy: ChosenBy): SelectedC
 /** One value, from one source: an alias, a slug in the table, a raw slug, or refused. */
 function selectionFor(value: string, chosenBy: ChosenBy): CompetitionSelection {
   const named = competitionValue(value);
-  if (named === undefined) return { kind: 'refused', value, aliases: SUPPORTED.map((e) => e.alias) };
+  if (named === undefined) return { kind: 'refused', value, aliases: SUPPORTED.map((e) => e.alias), chosenBy };
   return selectedCompetition('row' in named ? named.row.slug : named.raw, chosenBy);
 }
 

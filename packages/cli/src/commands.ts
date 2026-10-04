@@ -64,6 +64,9 @@ import {
   type CompetitionSelection,
   type NextFixtureResult,
   type Pin,
+  pinUnder,
+  savedSlug,
+  competitionLabel,
   type UserConfig,
   type UserConfigRead,
   MARKETS_SCOPE_NOTE,
@@ -377,18 +380,42 @@ function precheck(
 /**
  * What a team-taking command (`next`, `share next`, `markets next`) is about,
  * by ONE precedence: the argument, then `CLAUDINHO_TEAM` (an empty one is
- * absent), then the saved pin (`cfg.pin`: set only when the saved choice
- * selected the competition, so an override leaves it out). A query is
+ * absent), then the saved pin (`cfg.pin`: a pin belongs to its competition,
+ * core `pinUnder`, so it is set whenever the selected competition is the
+ * file's, whoever chose it, and never under another). A query is
  * resolved as it always was; the pin is a team already resolved when it was
  * saved, and is never resolved again. Nothing of the three: undefined (the
  * command's usage error).
  */
-type TeamAsked = { readonly query: string } | { readonly pin: Pin };
+type TeamAsked = { readonly query: string; readonly from: 'argument' | 'env' } | { readonly pin: Pin };
 function teamAsked(team: string | undefined, cfg: CliConfig): TeamAsked | undefined {
-  if (team !== undefined) return { query: team };
+  if (team !== undefined) return { query: team, from: 'argument' };
   const env = process.env.CLAUDINHO_TEAM;
-  if (env) return { query: env };
+  if (env) {
+    // Set with nothing readable in it: it names no team, and says so (it is
+    // still the override: never the pin).
+    if (!humanLabel(env, 40)) throw new InputError(ENV_TEAM_UNREADABLE);
+    return { query: env, from: 'env' };
+  }
   return cfg.pin ? { pin: cfg.pin } : undefined;
+}
+
+/** CLAUDINHO_TEAM set with nothing readable in it (English, like the usage sentences). */
+const ENV_TEAM_UNREADABLE = "CLAUDINHO_TEAM names no team: pass one as the argument, or set CLAUDINHO_TEAM to a team's name or code.";
+
+/**
+ * A team-taking command's usage sentence, TRUE in each state it is said in:
+ * a team pinned for ANOTHER competition is named as such (it is not "none
+ * pinned": the pin belongs to its competition); otherwise the three ways to
+ * give a team.
+ */
+function teamUsage(command: string, cfg: CliConfig): string {
+  const file = cfg.userConfig?.read.kind === 'read' ? cfg.userConfig.read.config : undefined;
+  const at = file?.team && !cfg.pin ? savedSlug(file.competition) : undefined;
+  if (file?.team && at !== undefined) {
+    return `Usage: claudinho ${command} <team> (the pinned team, ${file.team.name}, is ${competitionLabel(at)}'s, not this competition's)`;
+  }
+  return `Usage: claudinho ${command} <team> (or set CLAUDINHO_TEAM, or pin one: claudinho follow <alias> --team <name>)`;
 }
 
 /**
@@ -657,11 +684,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   // knockout window so a confirmed R32+ tie (e.g. MEX vs ECU) surfaces here too.
   // Off the bundled competition core resolves the club and reads the schedule
   // ahead (yesterday to 14 days ahead); a saved pin is not resolved again.
-  const { code, next } = await nextAsked(
-    ctx,
-    team,
-    'Usage: claudinho next <team> (or set CLAUDINHO_TEAM, or pin one: claudinho follow <alias> --team <name>)',
-  );
+  const { code, next } = await nextAsked(ctx, team, teamUsage('next', cfg));
   const { fixture, degraded, source } = next;
   // Who the answer is about: the club resolved, else the query, else the nation's code.
   const label = next.team?.name ?? next.query ?? code;
@@ -1379,7 +1402,7 @@ export async function cmdMarkets(
   // not next week's (whose thin market would gate to an empty answer).
   if (target === 'next') {
     precheck(cfg, t);
-    const usage = 'Usage: claudinho markets next <team> (or set CLAUDINHO_TEAM, or pin one: claudinho follow <alias> --team <name>)';
+    const usage = teamUsage('markets next', cfg);
     const asked = teamAsked(team, cfg);
     if (!asked) throw new InputError(usage);
     // A saved pin is a team already resolved: its code is what a market read
@@ -1831,11 +1854,7 @@ export async function cmdShare(
     // Live-resolved (see cmdNext): overlay the knockout window so a confirmed
     // R32+ tie pastes here too, not just group games. A saved pin is not
     // resolved again.
-    const { code, next } = await nextAsked(
-      ctx,
-      team,
-      'Usage: claudinho share next <team> (or set CLAUDINHO_TEAM, or pin one: claudinho follow <alias> --team <name>)',
-    );
+    const { code, next } = await nextAsked(ctx, team, teamUsage('share next', cfg));
     const market = await reliableShareSignals(ctx, next.fixture ? [next.fixture] : []);
     emitMatchCard(ctx, nextShareCard(next, code, market, where), baseOptions, copy);
     return;
@@ -2058,25 +2077,28 @@ export async function cmdFollow(
   // Written whole or not at all, never through a link, readable by its owner
   // alone (0600 on every write, an existing file's wider mode not kept).
   writeFileAtomic(saved.path, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600, enforceMode: true, followSymlinks: false });
-  // In effect for the next command: an override that still decides, else the file just written.
-  followReport(ctx, 'write', { effect: overrideOr(cfg.selection, choice), saved: file, path: saved.path });
+  // What the NEXT command follows: the environment while it is set, else the file just written.
+  followReport(ctx, 'write', { effect: nextSelection({ kind: 'read', config: file }), saved: file, path: saved.path });
 }
 
 /**
- * The selection in effect for the next command after `follow` changed the
- * file: the flag or the environment while either decides (or is refused),
- * else what the file now says (`fromFile`: the choice written, or none after
- * `off`).
+ * What the NEXT command follows after `follow` changed the file: the
+ * environment while it is set (or its refusal), else what the file now says
+ * (`read`: the choice written, or nothing after `off`). Never this command's
+ * `--competition`: a flag decides the command it is given to, and no other.
+ * The edge's own resolution, asked with no flag.
  */
-function overrideOr(current: CompetitionSelection, fromFile: CompetitionSelection): CompetitionSelection {
-  if (current.kind === 'refused') return current;
-  if (current.kind === 'selected' && (current.chosenBy === 'flag' || current.chosenBy === 'env')) return current;
-  return fromFile;
+function nextSelection(read: UserConfigRead): CompetitionSelection {
+  return edgeSelection({}, read);
 }
 
 /** What `follow` reports, in every form (alone, after a write, after `off`). */
 interface FollowFacts {
-  /** The selection in effect for the next command. */
+  /**
+   * The competition reported: `follow` alone, this command's selection (its
+   * `--competition` included: the question asked); after a write or `off`,
+   * what the NEXT command follows (`nextSelection`).
+   */
   readonly effect: CompetitionSelection;
   /** The file as read (after a write: as written; after `off`: none). */
   readonly saved: UserConfig | null;
@@ -2089,24 +2111,50 @@ interface FollowFacts {
 
 /**
  * The ONE list of what `follow` says, printed as lines or as `--json` keys,
- * in the same order: the competition in effect (`competition`, through
- * `selectionExtras`; null, with `noCompetition`, when none); the pinned team
- * whenever the file holds one (`saved.team`); the source that decides instead
- * of the file while the file holds a choice (`override`: `env` or `flag`),
- * with the saved choice it overrides; why there is no saved choice (`reason`);
- * the path, said as what was done with it (`path`, and `removed` after `off`).
+ * in the same order:
+ *   - the competition in effect (`competition`, through `selectionExtras`;
+ *     null, with `noCompetition`, when none; null, with `refused: { value,
+ *     source }`, when a flag or the environment gave a value that is refused:
+ *     the text prints the refusal's sentence);
+ *   - the pinned team (`saved.team`) WITH the saved choice it belongs to: right
+ *     after the competition in effect when that IS the file's competition
+ *     (the pin applies), else after the saved choice's line, never as if in
+ *     effect under another competition;
+ *   - the saved choice, when another competition (or a refused value) is in
+ *     effect;
+ *   - the source that decides instead of the file while the file holds a
+ *     choice (`override`: `env` or `flag`), with the sentence that is TRUE of
+ *     the next command: under a flag with the environment also set, the
+ *     environment decides next, not the saved choice;
+ *   - why there is no saved choice (`reason`);
+ *   - the path, said as what was done with it (`path`, and `removed` after `off`).
  */
 function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFacts): void {
   const { cfg, t } = ctx;
   const { effect, saved, reason, path } = facts;
+  // Which overrides are at work, while the file holds a choice to override:
+  // this command's `--competition`, and the environment (set, valid or not),
+  // which outlives the command.
+  const flagRan = cfg.selection.kind === 'selected' && cfg.selection.chosenBy === 'flag';
+  const envSet = edgeSelection({}, NO_SAVED).kind !== 'none';
+  const reported = effect.kind === 'selected' ? effect.chosenBy : undefined;
+  // The override the JSON names: the source of the competition reported when
+  // it is not the file; after a write, a flag that ran this command when the
+  // environment does not decide the next one.
   const override =
-    saved !== null && effect.kind === 'selected' && (effect.chosenBy === 'env' || effect.chosenBy === 'flag')
-      ? effect.chosenBy
-      : undefined;
+    saved === null
+      ? undefined
+      : reported === 'env' || reported === 'flag'
+        ? reported
+        : flagRan && !envSet
+          ? ('flag' as const)
+          : undefined;
+  const refused = effect.kind === 'refused' ? { value: humanLabel(effect.value, 40), source: effect.chosenBy } : undefined;
   if (cfg.json) {
     emitJson({
       competition: selectionExtras(effect).competition ?? null,
       ...verdictExtras(selectionVerdict(effect)),
+      ...(refused ? { refused } : {}),
       ...(override ? { override } : {}),
       saved,
       ...(reason ? { reason } : {}),
@@ -2116,16 +2164,24 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
     return;
   }
   const c = painterFor(cfg);
+  // Whether the pin applies: the competition in effect is the file's.
+  const pinned = saved?.team !== undefined && pinUnder(effect.kind === 'selected' ? effect.slug : undefined, saved) !== undefined;
   out();
   if (effect.kind === 'selected') out(`  ${t('follow.following', { competition: modeLine(effect, cfg.lang) })}`);
   else out(`  ${selectionRefusal(effect, cfg.lang)}`);
-  if (saved?.team) out(`  ${t('follow.team', { team: pinLabel(saved.team) })}`);
+  if (saved?.team && pinned) out(`  ${t('follow.team', { team: pinLabel(saved.team) })}`);
   // The saved choice, when something else is in effect (an override, or a refused value).
   if (saved && !(effect.kind === 'selected' && effect.chosenBy === 'saved')) {
     const kept = savedSelection(saved.competition);
-    if (kept.kind === 'selected') out(c.dim(`  ${t('follow.saved', { competition: modeLine(kept, cfg.lang) })}`));
-    if (override) out(c.dim(`  ${t(override === 'env' ? 'follow.envWins' : 'follow.flagWins')}`));
+    // Its line when it is another competition than the one in effect.
+    if (kept.kind === 'selected' && !pinned && !(effect.kind === 'selected' && effect.slug === kept.slug)) {
+      out(c.dim(`  ${t('follow.saved', { competition: modeLine(kept, cfg.lang) })}`));
+    }
+    if (saved.team && !pinned) out(c.dim(`  ${t('follow.savedTeam', { team: pinLabel(saved.team) })}`));
   }
+  // The sentence true of the next command, while the file holds a choice.
+  const sentence = saved === null ? undefined : overrideSentence(flagRan, envSet);
+  if (sentence) out(c.dim(`  ${t(sentence)}`));
   if (reason && mode === 'show') out(c.dim(`  ${t(NO_SAVED_REASON[reason])}`));
   if (mode === 'write') out(c.dim(`  ${t('follow.path', { path })}`));
   else if (mode === 'off') out(`  ${t(facts.removed ? 'follow.removed' : 'follow.nothingToRemove', { path })}`);
@@ -2133,18 +2189,30 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
   out();
 }
 
+/**
+ * The sentence the overrides at work are said with, true of the NEXT command:
+ * a flag alone (it decides this command; without it the saved choice
+ * decides); the environment alone (it decides while set); both (the flag
+ * decides this command; without it the environment decides, then the saved
+ * choice); neither: none.
+ */
+function overrideSentence(flagRan: boolean, envSet: boolean): string | undefined {
+  if (flagRan) return envSet ? 'follow.flagEnvWins' : 'follow.flagWins';
+  return envSet ? 'follow.envWins' : undefined;
+}
+
 /** `follow off`: the file removed (a link removed, never its target); nothing there is no error. */
 function followOff(ctx: Ctx, saved: { path: string; read: UserConfigRead }): void {
-  const { cfg, t } = ctx;
+  const { t } = ctx;
   const there = !(saved.read.kind === 'none' && saved.read.reason === 'absent');
   try {
     rmSync(saved.path, { force: true });
   } catch {
     throw new InputError(t('follow.cannotRemove', { path: saved.path }));
   }
-  // In effect now: the flag or the environment, if either decides; else nothing.
+  // What the next command follows now: the environment, if it is set; else nothing.
   followReport(ctx, 'off', {
-    effect: overrideOr(cfg.selection, { kind: 'none' }),
+    effect: nextSelection(NO_SAVED),
     saved: null,
     reason: 'absent',
     path: saved.path,

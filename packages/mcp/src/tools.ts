@@ -79,6 +79,8 @@ import {
   type Pin,
   pinUnder,
   readUserConfig,
+  savedSlug,
+  competitionLabel,
   SUPPORTED,
   humanLabel,
   resolveMarketSource,
@@ -311,6 +313,8 @@ interface RequestChoice {
   readonly envTeam?: string;
   /** The user's saved team, only when the request is for its competition (whoever chose it). */
   readonly pin?: Pin;
+  /** The saved team when it is ANOTHER competition's: named by the no-team error, never applied. */
+  readonly elsewhere?: { readonly competition: string; readonly team: Pin };
 }
 
 /** The choice already resolved for a request, keyed by that request's args object. */
@@ -346,7 +350,15 @@ function choiceOf(args: CommonOpts): RequestChoice {
   const pin = pinUnder(selection.kind === 'selected' ? selection.slug : undefined, config);
   // The server's team, read here with its competition, once.
   const envTeam = process.env.CLAUDINHO_TEAM || undefined;
-  const choice: RequestChoice = { selection, ...(envTeam !== undefined ? { envTeam } : {}), ...(pin ? { pin } : {}) };
+  // A saved team that does not apply here, for the error to name truthfully.
+  const savedAt = config ? savedSlug(config.competition) : undefined;
+  const elsewhere = !pin && config?.team && savedAt !== undefined ? { competition: competitionLabel(savedAt), team: config.team } : undefined;
+  const choice: RequestChoice = {
+    selection,
+    ...(envTeam !== undefined ? { envTeam } : {}),
+    ...(pin ? { pin } : {}),
+    ...(elsewhere ? { elsewhere } : {}),
+  };
   perRequestChoice.set(args, choice);
   return choice;
 }
@@ -1049,19 +1061,40 @@ function nextTeamLabel(next: NextFixtureResult, fallback: string): string {
   return next.team?.name ?? next.query ?? fallback;
 }
 
-/** What `get_next_fixture` with no `team` says when there is no team to default to. */
+/** What `get_next_fixture` with no `team` says when there is no team to default to, and none pinned anywhere. */
 const NO_TEAM =
   'No team given and none pinned: pass `team`, or the user runs `claudinho follow <alias> --team <name>`.';
+
+/**
+ * Why `get_next_fixture` has no team, TRUE in each state: a team pinned for
+ * another competition is named as such (it is not "none pinned"); otherwise
+ * none is pinned at all.
+ */
+function noTeamError(choice: RequestChoice): Error {
+  if (choice.elsewhere) {
+    const { competition, team } = choice.elsewhere;
+    return new Error(
+      `No team given, and the pinned team is ${competition}'s (${team.name}), not this competition's: pass \`team\`, or the user runs \`claudinho follow <alias> --team <name>\`.`,
+    );
+  }
+  return new Error(NO_TEAM);
+}
+
+/** The server's CLAUDINHO_TEAM, set with nothing readable in it: named as such. */
+const ENV_TEAM_UNREADABLE =
+  "The server's CLAUDINHO_TEAM names no team: pass `team`, or set CLAUDINHO_TEAM to a team's name or code.";
 
 /**
  * The team `get_next_fixture` is about, by the CLI's precedence: the argument,
  * then the server's `CLAUDINHO_TEAM` (both a query, resolved alike), then the
  * user's saved pin (a team already resolved). None of the three: undefined.
  */
-function nextAsked(args: { team?: string } & CommonOpts): { query: string } | { pin: Pin } | undefined {
-  if (args.team !== undefined) return { query: args.team };
+function nextAsked(
+  args: { team?: string } & CommonOpts,
+): { query: string; from: 'argument' | 'env' } | { pin: Pin } | undefined {
+  if (args.team !== undefined) return { query: args.team, from: 'argument' };
   const choice = choiceOf(args);
-  if (choice.envTeam !== undefined) return { query: choice.envTeam };
+  if (choice.envTeam !== undefined) return { query: choice.envTeam, from: 'env' };
   return choice.pin ? { pin: choice.pin } : undefined;
 }
 
@@ -1086,7 +1119,10 @@ async function nextAnswer(
   // only for a request for its competition, however that was chosen (another
   // competition does not apply it). None: a tool error.
   const teamAsked = nextAsked(args);
-  if (teamAsked === undefined) throw new Error(NO_TEAM);
+  if (teamAsked === undefined) throw noTeamError(choiceOf(args));
+  // The server's CLAUDINHO_TEAM with nothing readable in it names no team (it
+  // is not schema-checked, unlike the argument): said so, before any read.
+  if ('from' in teamAsked && teamAsked.from === 'env' && !humanLabel(teamAsked.query, 40)) throw new Error(ENV_TEAM_UNREADABLE);
   const pin = 'pin' in teamAsked ? teamAsked.pin : undefined;
   const adapter = resolveAdapter(args);
   // The World Cup: a nation's code, or a name resolved against the bundled
@@ -1101,8 +1137,7 @@ async function nextAnswer(
       ? pin.code
       : pin.name
     : humanLabel('query' in teamAsked ? teamAsked.query : '', 40);
-  // A query with nothing readable in it (the server's CLAUDINHO_TEAM is not
-  // schema-checked) names no team.
+  // An argument with nothing readable in it (a direct call, past the schema) names no team.
   if (!query) throw new Error(NO_TEAM);
   const asked = pin
     ? { code: query }

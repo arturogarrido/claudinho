@@ -2,7 +2,7 @@
  * `get_next_fixture` with no `team`, beside the precedence case in
  * `first-run.test.ts` (0.11 · 2.5b): an EMPTY server `CLAUDINHO_TEAM` is
  * absent (the pin answers), and one with nothing readable in it names no team
- * (a tool error that says what to do, never a query for nothing, never the pin).
+ * (a tool error that says so and what to do, never a query for nothing, never the pin).
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -72,6 +72,7 @@ describe('the server CLAUDINHO_TEAM', () => {
 
   it('with nothing readable in it, it names no team: the tool error, never the pin', async () => {
     process.env.CLAUDINHO_TEAM = '​';
-    await expect(toolGetNextFixture({ adapter, now: NOW })).rejects.toThrow(/claudinho follow/);
+    // Named as such (0.11 2.5b round 2): the server's value names no team; never "none pinned", never the pin.
+    await expect(toolGetNextFixture({ adapter, now: NOW })).rejects.toThrow(/CLAUDINHO_TEAM names no team/);
   });
 });

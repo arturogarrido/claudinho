@@ -58,13 +58,14 @@ function present(env: PathEnv, name: string): string | undefined {
 }
 
 /**
- * An `XDG_*` base directory, as the base-directory specification defines one:
- * an ABSOLUTE path (for the platform the rule is asked for); a relative value
- * is invalid and ignored, so the next rule decides. The hot path must never
- * resolve its config or its cache against whatever directory the editor that
- * runs it happens to be in.
+ * A base directory from the environment (`XDG_CONFIG_HOME`, `XDG_CACHE_HOME`,
+ * and on Windows `APPDATA`, `LOCALAPPDATA`), as the base-directory
+ * specification defines one: an ABSOLUTE path (for the platform the rule is
+ * asked for); a relative value is invalid and ignored, so the next rule
+ * decides. The hot path must never resolve its config or its cache against
+ * whatever directory the editor that runs it happens to be in.
  */
-function xdgBase(env: PathEnv, name: string, platform: string): string | undefined {
+function baseDir(env: PathEnv, name: string, platform: string): string | undefined {
   const v = present(env, name);
   return v !== undefined && (platform === 'win32' ? win32 : posix).isAbsolute(v) ? v : undefined;
 }
@@ -72,14 +73,15 @@ function xdgBase(env: PathEnv, name: string, platform: string): string | undefin
 /**
  * Where the config file lives: `$XDG_CONFIG_HOME/claudinho/config.json` when
  * that is set to an absolute path (on every platform: tests and smokes set it;
- * a relative value is invalid and ignored, see {@link xdgBase}); else on
- * Windows `%APPDATA%\claudinho\config.json` when `APPDATA` is set; else
+ * a relative value is invalid and ignored, see {@link baseDir}); else on
+ * Windows `%APPDATA%\claudinho\config.json` when `APPDATA` is set to an
+ * absolute path (a relative one is ignored the same way); else
  * `<home>/.config/claudinho/config.json`. An empty variable is absent.
  */
 export function configPath(env: PathEnv, platform: string, home: string): string {
-  const xdg = xdgBase(env, 'XDG_CONFIG_HOME', platform);
+  const xdg = baseDir(env, 'XDG_CONFIG_HOME', platform);
   if (xdg) return join(xdg, 'claudinho', 'config.json');
-  const appData = platform === 'win32' ? present(env, 'APPDATA') : undefined;
+  const appData = platform === 'win32' ? baseDir(env, 'APPDATA', platform) : undefined;
   if (appData) return join(appData, 'claudinho', 'config.json');
   return join(home, '.config', 'claudinho', 'config.json');
 }
@@ -87,15 +89,16 @@ export function configPath(env: PathEnv, platform: string, home: string): string
 /**
  * Where the CLI's cache lives, by the same rule: `$XDG_CACHE_HOME/claudinho`
  * when set to an absolute path (a relative value is invalid and ignored, see
- * {@link xdgBase}); else on Windows `%LOCALAPPDATA%\claudinho` when set; else
+ * {@link baseDir}); else on Windows `%LOCALAPPDATA%\claudinho` when set to an
+ * absolute path (a relative one is ignored the same way); else
  * `<home>/.cache/claudinho`. (A Windows install that used `~/.cache` moves
  * once: it is a cache, refilled by one cold refresh, and the throttle note
  * lives beside the snapshot, so it moves with it.)
  */
 export function cacheDirFor(env: PathEnv, platform: string, home: string): string {
-  const xdg = xdgBase(env, 'XDG_CACHE_HOME', platform);
+  const xdg = baseDir(env, 'XDG_CACHE_HOME', platform);
   if (xdg) return join(xdg, 'claudinho');
-  const local = platform === 'win32' ? present(env, 'LOCALAPPDATA') : undefined;
+  const local = platform === 'win32' ? baseDir(env, 'LOCALAPPDATA', platform) : undefined;
   if (local) return join(local, 'claudinho');
   return join(home, '.cache', 'claudinho');
 }
