@@ -5,6 +5,7 @@ import {
   configPath,
   type FlavorLevel,
   type Pin,
+  pinUnder,
   readUserConfig,
   resolveCompetition,
   type UserConfigRead,
@@ -36,9 +37,11 @@ export interface CliConfig {
   selection: CompetitionSelection;
   /**
    * The team the user pinned with `claudinho follow <alias> --team <name>`,
-   * set ONLY when the saved choice is what selected the competition (a flag or
-   * an environment override leaves the pin another competition's, so it does
-   * not apply). Absent on a config built by hand.
+   * set ONLY when the selected competition IS the file's competition (an alias
+   * and its slug are one), whoever chose it: the file, the flag or the
+   * environment. The pin belongs to its competition, not to the source that
+   * chose it; under another competition it does not apply. Absent on a config
+   * built by hand.
    */
   pin?: Pin;
   /**
@@ -138,10 +141,10 @@ export function resolveConfig(opts: RawGlobalOpts, saved = readSavedChoice()): C
     opts.lang && !isSupportedLang(opts.lang) ? opts.lang : undefined;
   // The ONE place the CLI decides the competition (see `edgeSelection`).
   const selection = edgeSelection(opts, saved.read);
-  // The pin is the saved choice's: it applies only when the saved choice is
-  // what selected the competition (an override is another competition).
-  const team = saved.read.kind === 'read' ? saved.read.config.team : undefined;
-  const pin = selection.kind === 'selected' && selection.chosenBy === 'saved' && team ? { pin: team } : {};
+  // The pin belongs to its competition (core `pinUnder`, MCP's rule too): it
+  // applies whenever the selected competition is the file's, whoever chose it.
+  const team = pinUnder(selection.kind === 'selected' ? selection.slug : undefined, saved.read.kind === 'read' ? saved.read.config : undefined);
+  const pin = team ? { pin: team } : {};
   return {
     lang: pickLang(opts.lang),
     tz: opts.tz ?? process.env.CLAUDINHO_TZ ?? undefined,

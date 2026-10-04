@@ -13,7 +13,7 @@
  * `follow` to print. A pin that is not exactly a team is dropped, and the
  * competition stays.
  */
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import { lookAtOwnFile } from './files';
 import { BUNDLED_SLUG, competitionValue } from './supported';
 import { TEAM_CODE_COLUMNS } from './trust/match';
@@ -58,13 +58,26 @@ function present(env: PathEnv, name: string): string | undefined {
 }
 
 /**
+ * An `XDG_*` base directory, as the base-directory specification defines one:
+ * an ABSOLUTE path (for the platform the rule is asked for); a relative value
+ * is invalid and ignored, so the next rule decides. The hot path must never
+ * resolve its config or its cache against whatever directory the editor that
+ * runs it happens to be in.
+ */
+function xdgBase(env: PathEnv, name: string, platform: string): string | undefined {
+  const v = present(env, name);
+  return v !== undefined && (platform === 'win32' ? win32 : posix).isAbsolute(v) ? v : undefined;
+}
+
+/**
  * Where the config file lives: `$XDG_CONFIG_HOME/claudinho/config.json` when
- * that is set (on every platform: tests and smokes set it); else on Windows
- * `%APPDATA%\claudinho\config.json` when `APPDATA` is set; else
+ * that is set to an absolute path (on every platform: tests and smokes set it;
+ * a relative value is invalid and ignored, see {@link xdgBase}); else on
+ * Windows `%APPDATA%\claudinho\config.json` when `APPDATA` is set; else
  * `<home>/.config/claudinho/config.json`. An empty variable is absent.
  */
 export function configPath(env: PathEnv, platform: string, home: string): string {
-  const xdg = present(env, 'XDG_CONFIG_HOME');
+  const xdg = xdgBase(env, 'XDG_CONFIG_HOME', platform);
   if (xdg) return join(xdg, 'claudinho', 'config.json');
   const appData = platform === 'win32' ? present(env, 'APPDATA') : undefined;
   if (appData) return join(appData, 'claudinho', 'config.json');
@@ -73,13 +86,14 @@ export function configPath(env: PathEnv, platform: string, home: string): string
 
 /**
  * Where the CLI's cache lives, by the same rule: `$XDG_CACHE_HOME/claudinho`
- * when set; else on Windows `%LOCALAPPDATA%\claudinho` when set; else
+ * when set to an absolute path (a relative value is invalid and ignored, see
+ * {@link xdgBase}); else on Windows `%LOCALAPPDATA%\claudinho` when set; else
  * `<home>/.cache/claudinho`. (A Windows install that used `~/.cache` moves
  * once: it is a cache, refilled by one cold refresh, and the throttle note
  * lives beside the snapshot, so it moves with it.)
  */
 export function cacheDirFor(env: PathEnv, platform: string, home: string): string {
-  const xdg = present(env, 'XDG_CACHE_HOME');
+  const xdg = xdgBase(env, 'XDG_CACHE_HOME', platform);
   if (xdg) return join(xdg, 'claudinho');
   const local = platform === 'win32' ? present(env, 'LOCALAPPDATA') : undefined;
   if (local) return join(local, 'claudinho');
@@ -92,7 +106,9 @@ const NONE = (reason: NoConfigReason): UserConfigRead => ({ kind: 'none', reason
  * A pinned team, believed only as `{ id?, code, name }`: `id`, when the key is
  * there, matching the team-id grammar exactly (`espn:359`, as `sealTeam` keeps
  * one); `code` and `name` human labels as typed (refused, never repaired: a
- * control or invisible character, an emoji, a tail past the bound). The bounds
+ * control or invisible character, an emoji, a tail past the bound), the code
+ * upper-cased first, as `teamCode` cases a feed's (so a hand-written `mex` is
+ * the `MEX` the hot path and the commands both compare by). The bounds
  * are a TEAM's, the same two constants `sealTeam` applies (`code` at most
  * `TEAM_CODE_COLUMNS`, `name` at most `MAX_LABEL_COLUMNS`), because the writer
  * (`follow --team`) copies a resolved team's labels as they are: any tighter,
@@ -104,11 +120,13 @@ const NONE = (reason: NoConfigReason): UserConfigRead => ({ kind: 'none', reason
 function believedPin(raw: unknown, bundled: boolean): Pin | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
   const t = raw as Record<string, unknown>;
-  if (!isHumanLabel(t.code, TEAM_CODE_COLUMNS) || !isHumanLabel(t.name, MAX_LABEL_COLUMNS)) return undefined;
+  // Cased before it is bounded, as `teamCode` does (casing can grow a string).
+  const upper = typeof t.code === 'string' ? t.code.toUpperCase() : t.code;
+  if (!isHumanLabel(upper, TEAM_CODE_COLUMNS) || !isHumanLabel(t.name, MAX_LABEL_COLUMNS)) return undefined;
   const id = Object.hasOwn(t, 'id') ? opaqueId(t.id, TEAM_ID) : undefined;
   if (Object.hasOwn(t, 'id') && id === undefined) return undefined;
   if (id === undefined && !bundled) return undefined;
-  const code = humanLabel(t.code, TEAM_CODE_COLUMNS);
+  const code = humanLabel(upper, TEAM_CODE_COLUMNS);
   const name = humanLabel(t.name, MAX_LABEL_COLUMNS);
   return id !== undefined ? { id, code, name } : { code, name };
 }
@@ -143,10 +161,33 @@ export function readUserConfig(path: string): UserConfigRead {
   if (root.version !== 1) return NONE('version');
   const competition = root.competition;
   // The resolver's grammar, asked of the value as written (an alias stays an alias).
-  const named = typeof competition === 'string' ? competitionValue(competition) : undefined;
-  if (typeof competition !== 'string' || named === undefined) return NONE('competition');
-  const slug = 'row' in named ? named.row.slug : named.raw;
-  const team = Object.hasOwn(root, 'team') ? believedPin(root.team, slug === BUNDLED_SLUG) : undefined;
+  if (typeof competition !== 'string' || competitionValue(competition) === undefined) return NONE('competition');
+  const team = Object.hasOwn(root, 'team') ? believedPin(root.team, savedSlug(competition) === BUNDLED_SLUG) : undefined;
   const config: UserConfig = team ? { version: 1, competition, team } : { version: 1, competition };
   return { kind: 'read', config };
+}
+
+/**
+ * The slug a saved competition value names (`competitionValue`: an alias maps
+ * through the table, a slug is itself, a raw slug is itself), or undefined for
+ * a value the resolver's grammar refuses.
+ */
+export function savedSlug(value: string): string | undefined {
+  const named = competitionValue(value);
+  return named === undefined ? undefined : 'row' in named ? named.row.slug : named.raw;
+}
+
+/**
+ * The saved pin that applies to a request for `selected` (the slug the edge
+ * resolved, undefined when nothing or a refused value was): the file's team
+ * when the file's competition IS that competition (an alias and its slug are
+ * one), whatever chose it: the flag, the environment or the file itself. A
+ * pin belongs to its competition, not to the source that chose it; another
+ * competition does not apply it (a club's id is the same in every
+ * competition, so a pin never carries over by accident). The ONE rule both
+ * edges ask.
+ */
+export function pinUnder(selected: string | undefined, config: UserConfig | undefined): Pin | undefined {
+  if (selected === undefined || !config?.team) return undefined;
+  return savedSlug(config.competition) === selected ? config.team : undefined;
 }

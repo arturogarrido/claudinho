@@ -24,10 +24,10 @@ import { buildBracketView } from './bracket/resolve';
 import { loadBracketTopology } from './bracket/topology';
 import type { BracketResult, BracketView } from './bracket/types';
 
-import { bracketCapability, bundleApplies } from './competition';
+import { bracketCapability, bundleApplies, teamKind } from './competition';
 import { resolveClub, rosterFor } from './teams';
 import { agreedSeason } from './trust/season';
-import { isTeam } from './trust/match';
+import { isTeam, sealTeam } from './trust/match';
 import { humanLabel } from './trust/roles';
 import type { Pin } from './userConfig';
 import { SCHEDULE_AHEAD_DAYS, SCHEDULE_LOOKBACK_DAYS } from './span';
@@ -863,16 +863,21 @@ function teamAhead(
  * another club's id is never the pin's, whatever its labels). No roster is
  * read: the pin is the identity. `team` is the pin, on every answer; the
  * verdicts are `next`'s (`partial`, `betweenEditions`; never `unknownTeam` or
- * `rosterIncomplete`, which are about resolving a name). On the bundle the
- * nations carry no id: by code, exactly as `next <code>` answers.
+ * `rosterIncomplete`, which are about resolving a name). The team is built by
+ * the one constructor (`sealTeam` with the competition's written kind). On the
+ * bundle the nations carry no id: by code, exactly as `next <code>` answers.
  */
 export async function nextFixtureForPin(
   adapter: ProviderAdapter,
   pin: Pin,
   now: Date = new Date(),
 ): Promise<NextFixtureResult> {
-  if (bundleApplies(adapter.competition)) return getNextFixtureForTeam(adapter, pin.code, now);
-  const team: Team = pin.id !== undefined ? { code: pin.code, name: pin.name, id: pin.id } : { code: pin.code, name: pin.name };
+  // The pinned team through the ONE constructor, with the competition's
+  // written kind: a nation's flag generated, a club with no flag key.
+  const team = sealTeam(pin, teamKind(adapter.competition));
+  if (!team) return { degraded: false };
+  // On the bundle the answer is `next <code>`'s, by the bundle's convention.
+  if (bundleApplies(adapter.competition)) return getNextFixtureForTeam(adapter, team.code, now);
   const discovery = await getScheduleAhead(adapter, now);
   if (discovery.degraded) return { degraded: true, team };
   const season = discovery.season ? { season: discovery.season } : {};

@@ -1957,11 +1957,13 @@ function pinLabel(pin: Pin): string {
   return `${pin.name} (${pin.code})`;
 }
 
-/** The selection a saved value makes: the value resolved exactly as the flag would, described as saved. */
+/**
+ * The selection a saved value makes: the value resolved exactly as the flag
+ * would, described as saved. Never asked with an empty value (`follow ""` is
+ * refused before: an absent flag would let the environment decide).
+ */
 function savedSelection(value: string): CompetitionSelection {
-  // An empty value is no value (the flag would then be absent, and the
-  // environment would decide): refused as written, never another source.
-  const asFlag = value === '' ? ({ kind: 'refused', value, aliases: SUPPORTED.map((e) => e.alias) } as const) : edgeSelection({ competition: value }, NO_SAVED);
+  const asFlag = edgeSelection({ competition: value }, NO_SAVED);
   return asFlag.kind === 'selected' ? selectedCompetition(asFlag.slug, 'saved') : asFlag;
 }
 
@@ -2028,10 +2030,24 @@ export async function cmdFollow(
   ctx: Ctx,
 ): Promise<void> {
   const { cfg, t } = ctx;
+  // An argument that does not belong is refused, nothing written: `--list`
+  // with anything else, `off` with a team, and an empty competition (an
+  // absent value would let the environment's competition be saved).
+  if (opts.list && (target !== undefined || opts.team !== undefined)) throw new InputError(t('follow.usage'));
+  if (target === 'off' && opts.team !== undefined) throw new InputError(t('follow.usage'));
+  if (target === '') throw new InputError(t('follow.usage'));
   const saved = cfg.userConfig ?? readSavedChoice();
   if (opts.list) return followList(ctx, saved.path);
   if (target === 'off') return followOff(ctx, saved);
-  if (target === undefined && opts.team === undefined) return followShow(ctx, saved);
+  if (target === undefined && opts.team === undefined) {
+    followReport(ctx, 'show', {
+      effect: cfg.selection,
+      saved: saved.read.kind === 'read' ? saved.read.config : null,
+      ...(saved.read.kind === 'none' ? { reason: saved.read.reason } : {}),
+      path: saved.path,
+    });
+    return;
+  }
   // With `--team` alone, the competition already saved.
   const value = target ?? (saved.read.kind === 'read' ? saved.read.config.competition : undefined);
   if (value === undefined) throw new InputError(t('follow.teamUsage'));
@@ -2042,48 +2058,78 @@ export async function cmdFollow(
   // Written whole or not at all, never through a link, readable by its owner
   // alone (0600 on every write, an existing file's wider mode not kept).
   writeFileAtomic(saved.path, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600, enforceMode: true, followSymlinks: false });
-  if (cfg.json) {
-    emitJson({ ...selectionExtras(choice), path: saved.path, ...(pin ? { team: pin } : {}) });
-    return;
-  }
-  const c = painterFor(cfg);
-  out();
-  out(`  ${t('follow.following', { competition: modeLine(choice, cfg.lang) })}`);
-  if (pin) out(`  ${t('follow.team', { team: pinLabel(pin) })}`);
-  out(c.dim(`  ${t('follow.path', { path: saved.path })}`));
-  // What will still decide instead, while it is set.
-  if (cfg.selection.kind === 'selected' && cfg.selection.chosenBy === 'env') out(c.dim(`  ${t('follow.envWins')}`));
-  else if (cfg.selection.kind === 'refused') out(c.dim(`  ${selectionRefusal(cfg.selection, cfg.lang)}`));
-  out();
+  // In effect for the next command: an override that still decides, else the file just written.
+  followReport(ctx, 'write', { effect: overrideOr(cfg.selection, choice), saved: file, path: saved.path });
 }
 
-/** `follow` alone: the current choice and its source (or why there is none), the saved one, the path. */
-function followShow(ctx: Ctx, saved: { path: string; read: UserConfigRead }): void {
+/**
+ * The selection in effect for the next command after `follow` changed the
+ * file: the flag or the environment while either decides (or is refused),
+ * else what the file now says (`fromFile`: the choice written, or none after
+ * `off`).
+ */
+function overrideOr(current: CompetitionSelection, fromFile: CompetitionSelection): CompetitionSelection {
+  if (current.kind === 'refused') return current;
+  if (current.kind === 'selected' && (current.chosenBy === 'flag' || current.chosenBy === 'env')) return current;
+  return fromFile;
+}
+
+/** What `follow` reports, in every form (alone, after a write, after `off`). */
+interface FollowFacts {
+  /** The selection in effect for the next command. */
+  readonly effect: CompetitionSelection;
+  /** The file as read (after a write: as written; after `off`: none). */
+  readonly saved: UserConfig | null;
+  /** Why there is no saved choice, when there is none. */
+  readonly reason?: Extract<UserConfigRead, { kind: 'none' }>['reason'];
+  readonly path: string;
+  /** After `off`: whether there was a file to remove. */
+  readonly removed?: boolean;
+}
+
+/**
+ * The ONE list of what `follow` says, printed as lines or as `--json` keys,
+ * in the same order: the competition in effect (`competition`, through
+ * `selectionExtras`; null, with `noCompetition`, when none); the pinned team
+ * whenever the file holds one (`saved.team`); the source that decides instead
+ * of the file while the file holds a choice (`override`: `env` or `flag`),
+ * with the saved choice it overrides; why there is no saved choice (`reason`);
+ * the path, said as what was done with it (`path`, and `removed` after `off`).
+ */
+function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFacts): void {
   const { cfg, t } = ctx;
-  const current = cfg.selection;
+  const { effect, saved, reason, path } = facts;
+  const override =
+    saved !== null && effect.kind === 'selected' && (effect.chosenBy === 'env' || effect.chosenBy === 'flag')
+      ? effect.chosenBy
+      : undefined;
   if (cfg.json) {
     emitJson({
-      competition: selectionExtras(current).competition ?? null,
-      ...verdictExtras(selectionVerdict(current)),
-      path: saved.path,
-      ...(cfg.pin ? { team: cfg.pin } : {}),
-      ...(saved.read.kind === 'none' ? { reason: saved.read.reason } : {}),
+      competition: selectionExtras(effect).competition ?? null,
+      ...verdictExtras(selectionVerdict(effect)),
+      ...(override ? { override } : {}),
+      saved,
+      ...(reason ? { reason } : {}),
+      path,
+      ...(facts.removed !== undefined ? { removed: facts.removed } : {}),
     });
     return;
   }
   const c = painterFor(cfg);
   out();
-  if (current.kind === 'selected') out(`  ${t('follow.following', { competition: modeLine(current, cfg.lang) })}`);
-  else out(`  ${selectionRefusal(current, cfg.lang)}`);
-  if (cfg.pin) out(`  ${t('follow.team', { team: pinLabel(cfg.pin) })}`);
-  if (saved.read.kind === 'none') {
-    out(c.dim(`  ${t(NO_SAVED_REASON[saved.read.reason])}`));
-  } else if (!(current.kind === 'selected' && current.chosenBy === 'saved')) {
-    // Saved, and something else decides for now (the flag, the environment).
-    const kept = savedSelection(saved.read.config.competition);
+  if (effect.kind === 'selected') out(`  ${t('follow.following', { competition: modeLine(effect, cfg.lang) })}`);
+  else out(`  ${selectionRefusal(effect, cfg.lang)}`);
+  if (saved?.team) out(`  ${t('follow.team', { team: pinLabel(saved.team) })}`);
+  // The saved choice, when something else is in effect (an override, or a refused value).
+  if (saved && !(effect.kind === 'selected' && effect.chosenBy === 'saved')) {
+    const kept = savedSelection(saved.competition);
     if (kept.kind === 'selected') out(c.dim(`  ${t('follow.saved', { competition: modeLine(kept, cfg.lang) })}`));
+    if (override) out(c.dim(`  ${t(override === 'env' ? 'follow.envWins' : 'follow.flagWins')}`));
   }
-  out(c.dim(`  ${t('follow.file', { path: saved.path })}`));
+  if (reason && mode === 'show') out(c.dim(`  ${t(NO_SAVED_REASON[reason])}`));
+  if (mode === 'write') out(c.dim(`  ${t('follow.path', { path })}`));
+  else if (mode === 'off') out(`  ${t(facts.removed ? 'follow.removed' : 'follow.nothingToRemove', { path })}`);
+  else out(c.dim(`  ${t('follow.file', { path })}`));
   out();
 }
 
@@ -2096,17 +2142,14 @@ function followOff(ctx: Ctx, saved: { path: string; read: UserConfigRead }): voi
   } catch {
     throw new InputError(t('follow.cannotRemove', { path: saved.path }));
   }
-  // What decides now: the flag or the environment, if either; else nothing.
-  const now = edgeSelection({}, NO_SAVED);
-  if (cfg.json) {
-    emitJson({ ...selectionExtras(now), ...verdictExtras(selectionVerdict(now)), path: saved.path, removed: there });
-    return;
-  }
-  const c = painterFor(cfg);
-  out();
-  out(`  ${t(there ? 'follow.removed' : 'follow.nothingToRemove', { path: saved.path })}`);
-  if (now.kind === 'none') out(c.dim(`  ${selectionRefusal(now, cfg.lang)}`));
-  out();
+  // In effect now: the flag or the environment, if either decides; else nothing.
+  followReport(ctx, 'off', {
+    effect: overrideOr(cfg.selection, { kind: 'none' }),
+    saved: null,
+    reason: 'absent',
+    path: saved.path,
+    removed: there,
+  });
 }
 
 /**

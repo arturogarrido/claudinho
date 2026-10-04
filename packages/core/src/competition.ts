@@ -185,24 +185,18 @@ const NOTHING: VerdictSource = Object.freeze({});
 /**
  * Why a selection is not a competition, in the reader's language; undefined
  * for a competition. A refused value names the value (bounded) and the
- * aliases; nothing chosen says how to choose: on the command line
- * (`command`) the CLI's sentence (`claudinho follow <alias>`, `follow --list`),
- * on a tool request (`request`) the `noCompetition` verdict's sentence (the
- * `competition` argument, `list_competitions`, `claudinho follow`). The CLI
- * raises it as an input error, MCP a refused value as a tool error, before
- * any request.
+ * aliases; nothing chosen is the CLI's sentence (`claudinho follow <alias>`,
+ * `follow --list`): MCP answers nothing chosen with the `noCompetition`
+ * verdict's own sentence (`verdictNotice`), never this one. The CLI raises it
+ * as an input error, MCP a refused value as a tool error, before any request.
  */
-export function selectionRefusal(
-  selection: CompetitionSelection,
-  lang?: string,
-  flag: 'command' | 'request' = 'command',
-): string | undefined {
+export function selectionRefusal(selection: CompetitionSelection, lang?: string): string | undefined {
   if (selection.kind === 'selected') return undefined;
   if (selection.kind === 'refused') {
     const aliases = SUPPORTED.map((e) => e.alias).join(', ');
     return t(lang, 'selection.refused', { value: humanLabel(selection.value, 40), aliases });
   }
-  return flag === 'request' ? t(lang, 'competition.none') : t(lang, 'selection.none', { n: String(SUPPORTED.length) });
+  return t(lang, 'selection.none', { n: String(SUPPORTED.length) });
 }
 
 /** The competition whose schedule ships bundled in the clients: the World Cup. */

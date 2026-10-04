@@ -69,6 +69,14 @@ statusline: `ARS 2–1 CHE 50'`), with nothing where a nation's flag would be, a
 `next`/`match` say the stage it is in ("League", "Play-offs", or the provider's
 words for a phase Claudinho does not know).
 
+`claudinho follow <alias>` saves the competition every surface follows;
+`--team <name>` pins a team in it, resolved as `next <name>` resolves it. Pin a
+team while its competition has fixtures ahead: between editions `next` answers
+the verdict before it resolves a club, so there is nothing to pin (a `follow
+<alias>` without `--team` still works there). A pin is scoped to its
+competition, whatever chose it (`--competition`, `CLAUDINHO_COMPETITION`, or the
+saved choice), and never applies to another.
+
 ### Examples
 
 ```bash
@@ -220,7 +228,7 @@ The statusline reads from a local micro-cache and **never blocks on the
 network** (<150ms). When several matches are live it shows them all inline:
 `⚽ 🇳🇴 1–1 🇫🇷 87' · 🇸🇳 1–2 🇮🇶 86'`. Customize via env:
 
-- `CLAUDINHO_TEAM=MEX` — your team's match first, the others counted (`+N`) (a nation name works too, e.g. `CLAUDINHO_TEAM=mexico`); also the default team for `next`, `markets next`, and `share next` when the argument is omitted. A team pinned with `claudinho follow <alias> --team <name>` does the same when this is not set, under the competition you follow (not under an override): a preference, never a filter
+- `CLAUDINHO_TEAM=MEX` — your team's match first, the others counted (`+N`) (a nation name works too, e.g. `CLAUDINHO_TEAM=mexico`); also the default team for `next`, `markets next`, and `share next` when the argument is omitted. A team pinned with `claudinho follow <alias> --team <name>` does the same when this is not set, under its own competition (a pin is scoped to its competition, whatever chose it): a preference, never a filter
 - `CLAUDINHO_MAX=2` — cap how many live matches show inline (rest collapse to exact `+N`
   after a complete cache scan, or `+more` when the bounded scan cannot know the count; default: 8,
   and values above 8 are capped at 8)

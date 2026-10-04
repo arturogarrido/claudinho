@@ -178,7 +178,9 @@ Nothing is followed until you choose. Choose once with `claudinho follow premier
 (`claudinho follow --list` lists the table below, `claudinho follow` shows your choice and where it
 came from, `claudinho follow off` forgets it), and pin your team with `--team`
 (`claudinho follow premier-league --team Arsenal`): it becomes the team `next`, `share next` and
-`markets next` answer for, and its match comes first on the statusline and in the hook. The choice
+`markets next` answer for, and its match comes first on the statusline and in the hook. A pin is
+scoped to its competition: it applies whenever that competition is the one in effect, whatever
+chose it, and never to another. The choice
 is saved in `config.json` in your config directory (`~/.config/claudinho/`, or
 `$XDG_CONFIG_HOME/claudinho/`; `%APPDATA%\claudinho\` on Windows) and every surface reads it, the
 statusline, the hook and the MCP server included. For one command `--competition` wins over it

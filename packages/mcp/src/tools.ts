@@ -77,6 +77,7 @@ import {
   configPath,
   nextFixtureForPin,
   type Pin,
+  pinUnder,
   readUserConfig,
   SUPPORTED,
   humanLabel,
@@ -308,7 +309,7 @@ interface RequestChoice {
   readonly selection: SelectedCompetition | { readonly kind: 'none' };
   /** The server's `CLAUDINHO_TEAM` (an empty one is absent): a query, before the pin. */
   readonly envTeam?: string;
-  /** The user's saved team, only when the saved choice selected the competition. */
+  /** The user's saved team, only when the request is for its competition (whoever chose it). */
   readonly pin?: Pin;
 }
 
@@ -339,9 +340,10 @@ function choiceOf(args: CommonOpts): RequestChoice {
   const config = saved.kind === 'read' ? saved.config : undefined;
   const selection = resolveCompetition(args.competition, process.env.CLAUDINHO_COMPETITION, config?.competition);
   if (selection.kind === 'refused') throw new Error(selectionRefusal(selection, args.lang));
-  // The pin is the saved choice's: under a request's own competition or the
-  // server's environment it is another competition's, and does not apply.
-  const pin = selection.kind === 'selected' && selection.chosenBy === 'saved' ? config?.team : undefined;
+  // The pin belongs to its competition, not to the source that chose it: it
+  // applies to a request for the file's competition, however that request
+  // chose it (core `pinUnder`, the CLI's rule too).
+  const pin = pinUnder(selection.kind === 'selected' ? selection.slug : undefined, config);
   // The server's team, read here with its competition, once.
   const envTeam = process.env.CLAUDINHO_TEAM || undefined;
   const choice: RequestChoice = { selection, ...(envTeam !== undefined ? { envTeam } : {}), ...(pin ? { pin } : {}) };
@@ -357,8 +359,9 @@ export function selectionOf(args: CommonOpts): SelectedCompetition | { readonly 
 /** The request's competition, for a reader that can only run with one (a tool's answer, after `said`). */
 function selectedOf(args: CommonOpts): SelectedCompetition {
   const selection = selectionOf(args);
-  // `said` answers a request with none chosen before any answer runs.
-  if (selection.kind !== 'selected') throw new Error(selectionRefusal(selection, args.lang, 'request'));
+  // An invariant, not an answer: `said` answers a request with none chosen
+  // (the `noCompetition` verdict) before any answer runs.
+  if (selection.kind !== 'selected') throw new Error('invariant: a competition-reading answer ran with no competition chosen');
   return selection;
 }
 
@@ -1080,8 +1083,8 @@ async function nextAnswer(
   // The argument, then the server's CLAUDINHO_TEAM (a query, as an argument
   // is), then the user's saved pin: a team already resolved when it was saved
   // (by its id; by code for the World Cup's nations), never resolved again;
-  // only under the saved choice (a request's own competition, or the
-  // server's environment, is another competition). None: a tool error.
+  // only for a request for its competition, however that was chosen (another
+  // competition does not apply it). None: a tool error.
   const teamAsked = nextAsked(args);
   if (teamAsked === undefined) throw new Error(NO_TEAM);
   const pin = 'pin' in teamAsked ? teamAsked.pin : undefined;
