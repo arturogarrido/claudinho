@@ -272,9 +272,13 @@ const clubCtx = (adapter: ProviderAdapter, over: Partial<CliConfig> = {}) => ({
   marketProvider: new FakeMarketProvider(),
 });
 const LEAK = /🏳️|🇬🇧|🏴|undefined|Friendly|Amistoso|Amical|FRIENDLY/;
+// Nothing in the flag's place, not even its space: a home flag's gap would be a
+// row indented by three where rows indent by two, or a bullet or rank followed
+// by two spaces; an away flag's gap is a double space before a separator.
+const GAP = /\n {3,}[^\s│]|(^|\n)(•|\d+\.) {2}|\S {2}[·(—]/;
 const noLeak = (t: string, label: string) => {
   expect(t, label).not.toMatch(LEAK);
-  expect(t, label).not.toMatch(/\S {2}\S/); // nothing in the flag's place, not even its space
+  expect(t, label).not.toMatch(GAP);
 };
 const parsedOut = () => JSON.parse(text()) as Record<string, unknown>;
 const noFlagKey = (team: unknown, label: string) => {
@@ -293,7 +297,7 @@ describe('club rendering — the live state (Arsenal 2–1 Chelsea, 50\')', () =
     writes = [];
     await cmdToday('2026-10-04', clubCtx(LIVE_FEED(), { json: true }));
     const j = parsedOut();
-    const m = (j.fixtures as Array<Record<string, unknown>>)[0];
+    const m = (j.matches as Array<Record<string, unknown>>)[0];
     expect(m?.stage).toBe('REGULAR');
     noFlagKey(m?.home, 'today --json home');
     noFlagKey(m?.away, 'today --json away');
@@ -380,7 +384,7 @@ describe('club rendering — the live state (Arsenal 2–1 Chelsea, 50\')', () =
     writes = [];
     await cmdTable(undefined, clubCtx(LIVE_FEED(), { json: true }));
     const j = parsedOut();
-    const rows = (j.tables as Array<{ rows: Array<{ team: unknown }> }>)[0]?.rows;
+    const rows = (j.tables as Array<{ standings: Array<{ team: unknown }> }>)[0]?.standings;
     expect(rows?.length).toBe(3);
     for (const r of rows ?? []) noFlagKey(r.team, 'table --json row');
     writes = [];
@@ -449,7 +453,7 @@ describe('club rendering — the stage grammar reaches the surfaces', () => {
     expect(text()).toContain('Barrages');
     writes = [];
     await cmdToday('2026-10-10', clubCtx(PO(), { json: true }));
-    expect((parsedOut().fixtures as Array<Record<string, unknown>>)[0]?.stage).toBe('PO');
+    expect((parsedOut().matches as Array<Record<string, unknown>>)[0]?.stage).toBe('PO');
   });
 
   it('an unknown round: the provider\'s words on next, match and the cards; `stageLabel` in --json', async () => {
@@ -475,7 +479,7 @@ describe('club rendering — the stage grammar reaches the surfaces', () => {
     expect(m.stageLabel).toBe('Qualifying final');
     writes = [];
     await cmdToday('2026-10-10', clubCtx(OTHER(), { json: true }));
-    expect((parsedOut().fixtures as Array<Record<string, unknown>>)[0]?.stageLabel).toBe('Qualifying final');
+    expect((parsedOut().matches as Array<Record<string, unknown>>)[0]?.stageLabel).toBe('Qualifying final');
   });
 
   it('a record with no phase stated: no stage segment, no dangling separator, no "Group stage"', async () => {

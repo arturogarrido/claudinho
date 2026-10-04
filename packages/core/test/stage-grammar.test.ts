@@ -21,7 +21,7 @@ import {
 import type { Match, Stage } from '../src/types';
 import { parseCachedMatch, parseEspnEvent, parseEspnEvents } from '../src/trust';
 
-const roundTrip = <T>(v: T): unknown => JSON.parse(JSON.stringify(v));
+const roundTrip = <T>(v: T): Record<string, unknown> => JSON.parse(JSON.stringify(v)) as Record<string, unknown>;
 
 function event(slug: unknown, over: Record<string, unknown> = {}, compOver: Record<string, unknown> = {}) {
   return {
@@ -104,7 +104,8 @@ describe('a slug the grammar does not know is OTHER, with the provider\'s own wo
   it('a league play-off written on the season name is not the season: the year form matches the written name whole', () => {
     const m = parsed('2026-27-german-bundesliga-relegation-playoffs', 'ger.1');
     expect(m.stage).toBe('OTHER');
-    expect(m.stageLabel).toBe('2026 27 german bundesliga relegation playoffs');
+    // The provider's words, bounded at 40 columns like every human label.
+    expect(m.stageLabel).toBe('2026 27 german bundesliga relegation pla');
   });
 
   it('another league\'s season name is not this league\'s season', () => {
@@ -178,7 +179,7 @@ describe('an absent, malformed or oversized slug asserts nothing: OTHER with no 
     expect(slug.length).toBe(64);
     const m = parsed(slug, 'uefa.champions');
     expect(m.stage).toBe('OTHER');
-    expect(m.stageLabel).toBe(`${'a'.repeat(58)} final`);
+    expect(m.stageLabel).toBe(`A${'a'.repeat(39)}`);
     const upper = `${'A'.repeat(59)}-final`;
     expect(upper.length).toBe(65);
     expect(parsed(upper, 'uefa.champions').stageLabel).toBeUndefined();
@@ -240,7 +241,7 @@ describe('the label travels through the cache as a human label', () => {
   });
 
   it('the cache reader accepts the four new stages and still refuses an unknown one', () => {
-    const base = roundTrip(parsed('final', 'uefa.champions')) as Record<string, unknown>;
+    const base = roundTrip(parsed('final', 'uefa.champions'));
     for (const stage of ['REGULAR', 'LEAGUE', 'PO', 'OTHER']) {
       const r = parseCachedMatch({ ...base, stage }, { teamKind: 'club' });
       expect(r.kind, stage).toBe('valid');
@@ -254,6 +255,7 @@ describe('the formatters take the match: OTHER prints its words, an empty OTHER 
     id: '1',
     stage,
     kickoff: '2026-10-04T14:00:00.000Z',
+    venue: '',
     home: { code: 'ARS', name: 'Arsenal', id: 'espn:359' },
     away: { code: 'CHE', name: 'Chelsea', id: 'espn:363' },
     status: 'SCHEDULED',
@@ -300,6 +302,7 @@ describe('one knockout predicate, and the live window it decides', () => {
       id: '1',
       stage,
       kickoff: '2026-10-04T14:00:00.000Z',
+      venue: '',
       home: { code: 'ARS', name: 'Arsenal' },
       away: { code: 'CHE', name: 'Chelsea' },
       status: 'SCHEDULED',

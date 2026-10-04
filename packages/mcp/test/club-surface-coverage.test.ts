@@ -160,9 +160,13 @@ function feed(competition: string, events: Ev[], slug: string | null = '2026-27-
 const LIVE_FEED = () => feed('eng.1', [{ id: '800000010', date: '2026-10-04T14:00Z', home: ARS, away: CHE, state: 'in' }]);
 const SCHEDULED_FEED = () => feed('eng.1', [{ id: '800000011', date: SAT, home: ARS, away: LEE }]);
 const LEAK = /🏳️|🇬🇧|🏴|undefined|Friendly|Amistoso|Amical|FRIENDLY/;
+// Nothing in the flag's place, not even its space: a home flag's gap would be a
+// bullet followed by two spaces or a line starting with one; an away flag's gap
+// a double space before a separator.
+const GAP = /(^|\n)(•|\d+\.) {2}\S|(^|\n) {1,2}\S|\S {2}[·(—]/;
 const noLeak = (t: string, label: string) => {
   expect(t, label).not.toMatch(LEAK);
-  expect(t, label).not.toMatch(/\S {2}\S/);
+  expect(t, label).not.toMatch(GAP);
 };
 const noFlagKey = (team: unknown, label: string) => {
   expect(team, label).toBeTruthy();
@@ -235,9 +239,9 @@ describe('club rendering (MCP) — the live state', () => {
     const r = await toolGetStandings({ adapter: LIVE_FEED() });
     expect(r.text).toContain('Arsenal');
     noLeak(r.text, 'get_standings');
-    const tables = (r.data as Rec).tables as Array<{ rows: Array<{ team: unknown }> }>;
-    expect(tables[0]?.rows).toHaveLength(3);
-    for (const row of tables[0]?.rows ?? []) noFlagKey(row.team, 'get_standings row');
+    const tables = (r.data as Rec).tables as Array<{ standings: Array<{ team: unknown }> }>;
+    expect(tables[0]?.standings).toHaveLength(3);
+    for (const row of tables[0]?.standings ?? []) noFlagKey(row.team, 'get_standings row');
     strict('get_standings', r.data);
     const card = await toolGetShareSnippet({ group: 'LEAGUE', adapter: LIVE_FEED(), marketProvider: new FakeMarketProvider(), now: CLUB_NOW });
     expect(card.text).toContain('1. ARS');
