@@ -302,8 +302,10 @@ describe('admission that cannot be made visible: the gate fails closed only wher
     await refresh(QUIET);
     expect(asked).toHaveLength(0);
     expect(readCurrentState(SOURCE, WC)).toBeDefined();
-    // And for an unknown source.
-    rmSync(cachePath(SOURCE, WC), { force: true });
+    // And for an unknown source, with ITS record unreadable (its own path: `attempt.nope.fifa.world.json`).
+    writeFileSync(attemptRecordPath('nope', WC), JSON.stringify({ at: iso(QUIET - HOUR), count: 1 }));
+    chmodSync(attemptRecordPath('nope', WC), 0o000);
+    expect(readCurrentState('nope', WC)).toBeUndefined();
     await refresh(QUIET, WC, 'nope');
     expect(readCurrentState('nope', WC)).toBeDefined();
   });
@@ -333,7 +335,7 @@ describe('admission that cannot be made visible: the gate fails closed only wher
     expect(readCurrentState(SOURCE, WC)).toBeDefined();
   });
 
-  it('an ABSENT snapshot with a working record is still paced by it: two cycles, one set of requests, then the count settles when the snapshot reads back', async () => {
+  it('an ABSENT snapshot with a working record: the first cycle admits, heals and settles to 0; a settled record is due at once', async () => {
     // The first cycle admits (count 1), publishes a readable snapshot, settles to 0.
     await refresh(LIVE);
     expect(asked).toHaveLength(3);
@@ -442,5 +444,73 @@ describe('the rules the fourth reader found unpinned', () => {
     expect(asked).toHaveLength(0);
     expect(readCurrentState(SOURCE, WC)).toBeDefined();
     expect(existsSync(attemptRecordPath(SOURCE, WC))).toBe(false);
+  });
+});
+
+describe('the gate and the healable path, on every lane (the fourth reader\'s lane survivors)', () => {
+  const brokenRecord = (source = SOURCE, competition = WC) => mkdirSync(attemptRecordPath(source, competition), { recursive: true });
+  const unopenableSnapshot = (source: string, competition: string) => {
+    mkdirSync(cachePath(source, competition), { recursive: true }); // a directory at the path: cannot be opened as a file
+    expect(readCurrentState(source, competition)).toBeUndefined();
+  };
+  const rejectedSnapshot = (source: string, competition: string) => {
+    mkdirSync(join(dir, 'claudinho'), { recursive: true });
+    writeFileSync(cachePath(source, competition), '{ not json');
+    expect(readCurrentState(source, competition)).toBeUndefined();
+  };
+
+  it('the idle writer: an unopenable snapshot with a broken record does nothing; a rejected one heals', async () => {
+    brokenRecord();
+    unopenableSnapshot(SOURCE, WC);
+    await refresh(QUIET);
+    expect(readCurrentState(SOURCE, WC)).toBeUndefined();
+    expect(asked).toHaveLength(0);
+    rmSync(cachePath(SOURCE, WC), { recursive: true, force: true });
+    rejectedSnapshot(SOURCE, WC);
+    await refresh(QUIET);
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
+    expect(asked).toHaveLength(0);
+  });
+
+  it('the unknown-source lane: the same two cells, with that source\'s own record', async () => {
+    brokenRecord('nope', WC);
+    unopenableSnapshot('nope', WC);
+    await refresh(QUIET, WC, 'nope');
+    expect(readCurrentState('nope', WC)).toBeUndefined();
+    rmSync(cachePath('nope', WC), { recursive: true, force: true });
+    rejectedSnapshot('nope', WC);
+    await refresh(QUIET, WC, 'nope');
+    expect(readCurrentState('nope', WC)).toBeDefined();
+    expect(asked).toHaveLength(0);
+  });
+
+  it('off the bundle: the same two cells, with discovery\'s month request on the healing cycle only', async () => {
+    const at = Date.parse('2026-10-10T15:00:00Z');
+    answer = () => json({ leagues: [{ season: { year: 2026, displayName: '2026-27 Liga MX' } }], events: [] });
+    brokenRecord(SOURCE, MEX);
+    unopenableSnapshot(SOURCE, MEX);
+    publishes = 0;
+    await refresh(at, MEX);
+    // Discovery publishes BEFORE its request, so the gate shows in the publish count: none attempted.
+    expect(publishes).toBe(0);
+    expect(asked).toHaveLength(0);
+    expect(readCurrentState(SOURCE, MEX)).toBeUndefined();
+    rmSync(cachePath(SOURCE, MEX), { recursive: true, force: true });
+    rejectedSnapshot(SOURCE, MEX);
+    await refresh(at, MEX);
+    expect(asked).toEqual(['202610']);
+    expect(readCurrentState(SOURCE, MEX)).toBeDefined();
+  });
+
+  it('the bundle lane in a live window: the same two cells', async () => {
+    brokenRecord();
+    unopenableSnapshot(SOURCE, WC);
+    await refresh(LIVE);
+    expect(asked).toHaveLength(0);
+    rmSync(cachePath(SOURCE, WC), { recursive: true, force: true });
+    rejectedSnapshot(SOURCE, WC);
+    await refresh(LIVE);
+    expect(asked).toHaveLength(3);
+    expect(readCurrentState(SOURCE, WC)).toBeDefined();
   });
 });

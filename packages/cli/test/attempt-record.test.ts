@@ -275,4 +275,33 @@ describe('a cycle with a readable snapshot opens the record zero times (acceptan
       vi.unstubAllGlobals();
     }
   });
+
+  it('off the bundle too: a readable snapshot whose discovery is due makes its month request and opens the record zero times', async () => {
+    const MEX = 'mex.1';
+    const at = Date.parse('2026-10-10T15:00:00Z');
+    vi.stubGlobal('fetch', async () =>
+      new Response(JSON.stringify({ leagues: [{ season: { year: 2026, displayName: '2026-27 Liga MX' } }], events: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    try {
+      mkdirSync(join(dir, 'claudinho'), { recursive: true });
+      writeFileSync(attemptRecordPath(SOURCE, MEX), JSON.stringify({ at: iso(at - 2 * 60 * MIN), count: 6 }));
+      writeState({
+        updatedAt: iso(at - 60 * MIN),
+        live: [],
+        degraded: false,
+        source: SOURCE,
+        competition: MEX,
+        schedule: { index: [], updatedAt: iso(at - 120 * MIN), attemptedAt: iso(at - 120 * MIN), failures: 0, complete: true, season: { year: 2026, label: '2026-27 Liga MX' } },
+      } as CacheState);
+      opens.length = 0;
+      await runRefresh({ source: SOURCE, competition: MEX, now: new Date(at), jitterMs: 0 });
+      expect(opens.filter((p) => p === attemptRecordPath(SOURCE, MEX))).toHaveLength(0);
+      expect(readCurrentState(SOURCE, MEX)?.schedule?.updatedAt).toBe(iso(at)); // discovery ran
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
