@@ -201,7 +201,7 @@ describe('the orderings a mutation pass found reachable and unpinned (review, ro
     const ARS: Side = { id: '359', abbr: 'ARS', name: 'Arsenal' };
     const CHE: Side = { id: '363', abbr: 'CHE', name: 'Chelsea' };
     const inSpan: Ev = { id: '41', date: '2026-10-17T14:00Z', home: ARS, away: CHE };
-    const r = await toolGetMatch({ id: '41', adapter: feed({ competition: 'eng.1', season: PL, events: [inSpan], fail: 'days' }), now: new Date('2026-10-10T12:00:00Z') } as never);
+    const r = await toolGetMatch({ id: '41', competition: 'eng.1', adapter: feed({ competition: 'eng.1', season: PL, events: [inSpan], fail: 'days' }), now: new Date('2026-10-10T12:00:00Z') } as never);
     expect(r.text).toContain('earlier record');
     precedes(r.text, 'earlier record', 'Arsenal');
   });
@@ -211,7 +211,7 @@ describe('the orderings a mutation pass found reachable and unpinned (review, ro
       ({ team: { code: 'TTT', name: `Team ${i}-${rank}`, flag: '🏳️' }, played: 3, won: 1, drawn: 1, lost: 1, goalsFor: 3, goalsAgainst: 3, goalDiff: 0, points: 4, rank }) as StandingRow;
     const tables: GroupStandings[] = Array.from({ length: 41 }, (_, i) => ({ group: `A${i + 1}`, label: `League ${i + 1}`, rows: [row(i, 1), row(i, 2)] }));
     const adapter: ProviderAdapter = { ...base, competition: 'uefa.nations', fetchStandings: async () => attachFetchMeta([...tables], { complete: true }) };
-    const r = await toolGetStandings({ adapter } as never);
+    const r = await toolGetStandings({ competition: 'uefa.nations', adapter } as never);
     expect(r.text).toMatch(/(^|\n)\(showing 40 of 41 — list truncated\)\n/);
     expect(r.text).not.toContain('((showing');
     precedes(r.text, 'list truncated', 'League 1 (A1)');

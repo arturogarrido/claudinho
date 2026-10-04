@@ -112,7 +112,7 @@ describe('get_standings: the verdict, then the list’s truncation, before the t
   };
 
   it('the order, and what a cut keeps', async () => {
-    const r = await toolGetStandings({ adapter } as never);
+    const r = await toolGetStandings({ competition: 'uefa.nations', adapter } as never);
     inOrder(r.text, ['(Some tables could not be read', '(showing 40 of 41 — list truncated)', 'League 1 (A1)']);
     // The truncation note is its own line, not the tail of the last table.
     expect(r.text).not.toMatch(/Team number 39-20[^\n]*\n\(showing/);

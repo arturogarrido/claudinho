@@ -20,7 +20,8 @@ describe('server-lifetime adapter', () => {
 
   it('the standings:// resource reads through resolveAdapter, not a fresh adapter', () => {
     const src = readFileSync(fileURLToPath(new URL('../src/server.ts', import.meta.url)), 'utf8');
-    expect(src).toMatch(/standingsResourceText\(group, resolveAdapter\(\{\}\)\)/);
+    // One request object: its selection first (a refused one builds no adapter), then its adapter (0.11 · 2.5a).
+    expect(src).toMatch(/const selection = selectionOf\(request\);\s*const text = await standingsResourceText\(group, resolveAdapter\(request\), selection\)/);
     expect(src).not.toMatch(/standingsResourceText\(group, makeAdapter\(\)\)/);
   });
 });

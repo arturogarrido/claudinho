@@ -43,6 +43,8 @@ function flooding(status: Match['status'] = 'SCHEDULED'): ProviderAdapter {
   );
   return {
     name: 'flood',
+    // An adapter states the competition it serves (required since 0.11 · 2.0; checked against the request since 2.5a).
+    competition: 'fifa.world',
     fetchLive: async () => matches,
     fetchWindow: async () => matches,
     fetchGroupMap: async () => ({}),
@@ -75,6 +77,7 @@ describe('get_today / get_live describe their own truncation', () => {
     const one = [fixture(0)];
     const adapter = {
       name: 'one',
+      competition: 'fifa.world',
       fetchLive: async () => one,
       fetchWindow: async () => one,
       fetchGroupMap: async () => ({}),

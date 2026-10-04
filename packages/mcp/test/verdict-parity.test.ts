@@ -43,7 +43,9 @@ function adapter(competition: string): ProviderAdapter {
     },
   };
 }
+// The request states the competition its adapter serves (0.11 · 2.5a: a mismatch is refused before any read).
 const common = (competition: string) => ({
+  ...(competition === 'fifa.world' ? {} : { competition }),
   adapter: adapter(competition),
   marketProvider: new FakeMarketProvider(),
   now: NOW,
@@ -130,6 +132,7 @@ describe('found in review: a market read for a whole day, off the markets’ sco
     const r = await toolGetMarketSignal({
       date: '2026-10-01',
       tz: 'UTC',
+      competition: 'eng.1',
       adapter: withFixture,
       marketProvider: new FakeMarketProvider({ synthesize: true }),
       now: NOW,
@@ -152,7 +155,7 @@ describe('found in review: an outage never pastes as "no matches scheduled"', ()
   });
 
   it('off the bundle nothing but the provider knows the fixtures: the card says it could not ask', async () => {
-    const r = await toolGetShareSnippet({ date: '2026-10-01', tz: 'UTC', includeMarkets: false, ...common('eng.1'), adapter: down('eng.1') });
+    const r = await toolGetShareSnippet({ date: '2026-10-01', tz: 'UTC', includeMarkets: false, ...common('eng.1'), competition: 'eng.1', adapter: down('eng.1') });
     expect((r.data as { degraded?: boolean }).degraded).toBe(true);
     expect(r.text).toContain("Couldn't reach the data provider");
     expect(r.text).not.toContain('No matches scheduled');

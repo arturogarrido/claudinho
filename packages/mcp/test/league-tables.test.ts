@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { EspnAdapter, FakeMarketProvider } from '@claudinho/core';
+import { EspnAdapter, FakeMarketProvider, selectedCompetition } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v3';
 import { DISCLAIMER } from '../src/format';
@@ -172,17 +172,23 @@ describe('tables are missing: text and data both say so', () => {
 
 describe('standings://{key}', () => {
   it('a league by its key, a numbered group, a group under a league', async () => {
-    expect(await standingsResourceText('league', serving('eng.1'))).toContain('2026-27 English Premier League (LEAGUE)');
-    expect(await standingsResourceText('A1', serving('uefa.nations'))).toContain('Group A1 (A1)');
-    expect(await standingsResourceText('a-b', serving('concacaf.nations.league'))).toContain('League A, Group B (A-B)');
-    expect((await standingsResourceText('A', serving('uefa.euro'))).split('\n')[0]).toBe('Group A');
+    const sel = (slug: string) => selectedCompetition(slug, 'default');
+    expect(await standingsResourceText('league', serving('eng.1'), sel('eng.1'))).toContain('2026-27 English Premier League (LEAGUE)');
+    expect(await standingsResourceText('A1', serving('uefa.nations'), sel('uefa.nations'))).toContain('Group A1 (A1)');
+    expect(await standingsResourceText('a-b', serving('concacaf.nations.league'), sel('concacaf.nations.league'))).toContain('League A, Group B (A-B)');
+    // The mode line first (0.11 · 2.5a), then the table's title.
+    const euro = (await standingsResourceText('A', serving('uefa.euro'), sel('uefa.euro'))).split('\n');
+    expect(euro[0]).toBe('EURO');
+    expect(euro[1]).toBe('Group A');
   });
 
   it('a string that is not a key is refused before a request, and says what a key is', async () => {
     requests = 0;
     for (const junk of ['A B', 'Group A', '..%2FA', 'A/B', 'ABCDEFGHIJKLM', '']) {
-      const text = await standingsResourceText(junk, serving('uefa.euro'));
+      const text = await standingsResourceText(junk, serving('uefa.euro'), selectedCompetition('uefa.euro', 'default'));
       expect(text, JSON.stringify(junk)).toContain('Not a table.');
+      // The refusal names its competition first too, like every branch (0.11 · 2.5a).
+      expect(text.split('\n')[0], JSON.stringify(junk)).toBe('EURO');
       expect(text).toContain('standings://LEAGUE');
       expect(text).toContain('not affiliated with or endorsed by FIFA or Anthropic');
     }

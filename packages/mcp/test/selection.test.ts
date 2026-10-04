@@ -171,7 +171,9 @@ describe('the resources name their competition', () => {
       await server.close();
     }
   };
-  const textOf = (res: { contents: Array<{ text?: string }> }) => res.contents.map((c) => c.text ?? '').join('\n');
+  // A resource's contents are text or blob items; both carry `uri` (the SDK's union), so the helper takes that shape.
+  const textOf = (res: { contents: Array<{ uri: string; text?: unknown }> }) =>
+    res.contents.map((c) => (typeof c.text === 'string' ? c.text : '')).join('\n');
   afterEach(() => vi.unstubAllGlobals());
 
   it('standings://{key} begins with the mode line, like a tool\'s text: populated, empty and degraded', async () => {

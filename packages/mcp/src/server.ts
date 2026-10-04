@@ -16,6 +16,8 @@ import { z } from 'zod/v3';
 import {
   allFixtures,
   asFlavorLevel,
+  BUNDLE_COMPETITION,
+  competitionLabel,
   fixturesByDate,
   groups,
   humanLabel,
@@ -27,6 +29,7 @@ import {
 import { DISCLAIMER, matchList } from './format';
 import {
   resolveAdapter,
+  selectionOf,
   standingsResourceText,
   toolGetBracket,
   toolGetLive,
@@ -52,7 +55,7 @@ const VOICE =
     ? ''
     : `\nVoice: when relaying scores, narrate with lively, regionally-appropriate football-commentary energy in the user's language. Each match line may end with a short exclamation ("— ¡GOOOOL!") — use it as a tone cue. Keep every fact exact; never invent details and never impersonate or name a real commentator.`;
 
-export const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and standings for one football competition per request: the 2026 men's World Cup by default, the one the server is configured for (CLAUDINHO_COMPETITION), or the one a tool call names in its competition argument (an alias such as premier-league, or an ESPN slug such as eng.1). list_competitions lists the supported competitions, their aliases and what each offers, offline. Every answer's text starts with the competition it is for, and its structured data carries it as competition; an unknown competition is a tool error that lists the aliases.
+export const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and standings for one football competition per request: the 2026 men's World Cup by default, the one the server is configured for (CLAUDINHO_COMPETITION), or the one a tool call names in its competition argument (an alias such as premier-league, or an ESPN slug such as eng.1). list_competitions lists the supported competitions, their aliases and what each offers, offline. Every tool's text but get_team's, get_share_snippet's and list_competitions' starts with the competition it is for, and its structured data carries it as competition (get_share_snippet's card names it in its title; list_competitions says it last, as Current, and in data.current; get_team is the World Cup's roster). An unknown competition is a tool error that lists the aliases.
 get_next_fixture and get_share_snippet take a team as a name or a code: a club's ("Arsenal", "ARS") in a club competition, a nation's ("Mexico", "MEX") in the World Cup. Several teams matching one name come back as candidates; ask which one, never pick. get_market_signal takes a nation's 3-letter code (market signals are read for the World Cup alone). get_team resolves a nation's name to its code in the World Cup roster, offline; it knows no clubs.
 Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team, get_standings for standings tables, and get_bracket for the knockout tree (a league season with no knockout tie answers inapplicable).
 Off the World Cup, get_next_fixture and get_match search from yesterday to 14 days ahead: an empty answer carrying horizon or window is about that span, not about the team or the match. betweenEditions means the competition's edition has ended and the next has not started.
@@ -984,7 +987,7 @@ export function buildServer(): McpServer {
     {
       title: 'Standings table',
       description:
-        'One live standings table, by its key: a group letter (standings://A), or A1, A-B, LEAGUE. There is no all-tables form: use get_standings.',
+        "One live standings table, by its key: a group letter (standings://A), or A1, A-B, LEAGUE, for the server's competition, which its text names first. There is no all-tables form: use get_standings.",
       mimeType: 'text/plain',
     },
     async (uri, variables) => {
@@ -992,8 +995,12 @@ export function buildServer(): McpServer {
       // Shares the get_standings path → live standings, fail-closed roster, and
       // the SAME provider attribution + disclaimer — and the SAME server-lifetime
       // adapter, so a retained provider throttle (audit A12) covers the resource
-      // too instead of a fresh adapter per read fetching through it.
-      const text = await standingsResourceText(group, resolveAdapter({}));
+      // too instead of a fresh adapter per read fetching through it. The
+      // selection is resolved first (a refused one builds no adapter), once,
+      // for this read: the adapter is the one resolved for the same request.
+      const request = {};
+      const selection = selectionOf(request);
+      const text = await standingsResourceText(group, resolveAdapter(request), selection);
       return { contents: [{ uri: uri.href, mimeType: 'text/plain', text }] };
     },
   );
@@ -1006,12 +1013,14 @@ export function buildServer(): McpServer {
       title: 'Fixtures by date',
       // A resource URI has no timezone, so group by UTC for a stable, machine-
       // independent result. (The get_today tool groups by the caller's tz.)
-      description: 'Static fixture list for a UTC date (YYYY-MM-DD).',
+      description: 'Static fixture list for a UTC date (YYYY-MM-DD): the bundled World Cup schedule, whatever the server\'s competition, named first.',
       mimeType: 'text/plain',
     },
     async (uri, variables) => {
       const date = String(variables.date ?? '');
-      const text = matchList(fixturesByDate(date, undefined, 'UTC'), `No matches on ${date}.`);
+      // The bundled schedule is the World Cup's, whatever the server's
+      // competition: its text names it first.
+      const text = `${competitionLabel(BUNDLE_COMPETITION)}\n${matchList(fixturesByDate(date, undefined, 'UTC'), `No matches on ${date}.`)}`;
       return { contents: [{ uri: uri.href, mimeType: 'text/plain', text }] };
     },
   );
@@ -1020,8 +1029,8 @@ export function buildServer(): McpServer {
   server.registerPrompt(
     'tournament_today',
     {
-      title: "Today's tournament summary",
-      description: "Summarize today's matches and what to watch.",
+      title: "Today's matches",
+      description: "Summarize today's matches in the selected competition and what to watch.",
     },
     () => ({
       messages: [
@@ -1029,7 +1038,7 @@ export function buildServer(): McpServer {
           role: 'user',
           content: {
             type: 'text',
-            text: "Use the get_today and get_live tools to summarize today's football matches in the 2026 tournament. Highlight any matches in play, then list the rest with kickoff times in my timezone.",
+            text: "Use the get_today and get_live tools to summarize today's football matches in the selected competition (the server's, or the one the competition argument names). Highlight any matches in play, then list the rest with kickoff times in my timezone.",
           },
         },
       ],

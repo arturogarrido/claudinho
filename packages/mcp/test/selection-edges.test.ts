@@ -104,6 +104,25 @@ describe('through the server', () => {
   });
 });
 
+describe('the prompts', () => {
+  it('tournament_today is listed as the selected competition\'s, not the 2026 tournament\'s', async () => {
+    const [clientT, serverT] = InMemoryTransport.createLinkedPair();
+    const server = buildServer();
+    await server.connect(serverT);
+    const client = new Client({ name: 'selection-edges', version: '0.0.0' });
+    await client.connect(clientT);
+    try {
+      const { prompts } = await client.listPrompts();
+      const today = prompts.find((p) => p.name === 'tournament_today');
+      expect(today?.title).toBe("Today's matches");
+      expect(today?.description).toMatch(/selected competition/);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+});
+
 describe('the server instructions', () => {
   it('name list_competitions and the competition argument', () => {
     expect(INSTRUCTIONS).toContain('list_competitions');
@@ -120,8 +139,8 @@ describe('the request decides', () => {
     expect((r.data as Rec).competition).toMatchObject({ slug: 'eng.1', chosenBy: 'flag' });
   });
 
-  it('an injected adapter serves the reads; the argument is what the answer is said to be for', async () => {
-    const r = await toolGetShareSnippet({ live: true, competition: 'serie-a', adapter: adapterFor('eng.1'), marketProvider: new FakeMarketProvider(), now: NOW });
+  it('a card is said for the request\'s competition: its key, its title and its cue (the adapter serves the same one)', async () => {
+    const r = await toolGetShareSnippet({ live: true, competition: 'serie-a', adapter: adapterFor('ita.1'), marketProvider: new FakeMarketProvider(), now: NOW });
     expect((r.data as Rec).competition).toMatchObject({ slug: 'ita.1', alias: 'serie-a' });
     expect(r.text.split('\n')[0]).toBe('Live match pulse · Serie A');
     expect(r.text).toContain('npx @claudinho/cli --competition serie-a live');

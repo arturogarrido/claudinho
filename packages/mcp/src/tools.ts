@@ -173,9 +173,8 @@ const perRequestSelection = new WeakMap<object, SelectedCompetition>();
  * every helper a tool calls gets the same selection however many times it
  * asks. A value that is neither an alias nor a slug is a TOOL ERROR naming the
  * value and the aliases, thrown here, before any adapter is built or any
- * request made. The selection is the request's, never a shared adapter's: an
- * adapter injected for a test serves the reads, and the argument is still
- * what the text and the data say the answer is for.
+ * request made. The selection is the request's, never a shared adapter's; an
+ * adapter injected for a test must serve it (see {@link resolveAdapter}).
  */
 export function selectionOf(args: CommonOpts): SelectedCompetition {
   const known = perRequestSelection.get(args);
@@ -189,11 +188,20 @@ export function selectionOf(args: CommonOpts): SelectedCompetition {
 /**
  * The adapter for a request: the injected one (tests), else the
  * server-lifetime adapter for its source and its selection's competition.
- * The selection is resolved first, so a refused value never builds one.
+ * The selection is resolved first, so a refused value never builds one. An
+ * injected adapter that serves another competition than the request selected
+ * is refused here, before it is returned and so before any read: the selection
+ * says what the answer is for and the adapter reads it, and the two must never
+ * disagree (the body would be one competition's under another's name).
  */
 export function resolveAdapter(args: CommonOpts): ProviderAdapter {
   const { slug: competition } = selectionOf(args);
-  if (args.adapter) return args.adapter;
+  if (args.adapter) {
+    if (args.adapter.competition !== competition) {
+      throw new Error(`The injected adapter serves ${args.adapter.competition}; the request selected ${competition}.`);
+    }
+    return args.adapter;
+  }
   const resolved = perRequest.get(args);
   if (resolved) return resolved;
   const source = args.source ?? 'espn';
@@ -768,20 +776,29 @@ async function bracketAnswer(
  * Text body for the `standings://{group}` resource. Shares the `get_standings`
  * path so it carries the SAME provider attribution + disclaimer — a resource that
  * served live ESPN data must still say `Live data: ESPN` (provider-attribution
- * constraint). Pure given an adapter, so it's unit-testable.
+ * constraint). Pure given an adapter and the selection, so it's unit-testable.
+ *
+ * Like a tool's text it begins with the mode line (core `modeLine`, English: a
+ * resource takes no language), on every branch: a table, no such table, an
+ * outage, and a key that is not one. The caller resolves the selection before
+ * it builds the adapter.
  */
 export async function standingsResourceText(
   group: string,
   adapter: ProviderAdapter,
+  selection: SelectedCompetition,
 ): Promise<string> {
+  const named = (text: string) => `${modeLine(selection, undefined)}\n${text}`;
   // A resource URI is typed by anyone: what is not a table key is refused
   // here, before a request, with the grammar a key has.
   const g = tableKeyArg(group);
   if (!g) {
-    return disclaimed(
-      'Not a table. Use standings://A for a group, or a key such as standings://A1, standings://A-B or standings://LEAGUE.',
-      undefined,
-    ).text;
+    return named(
+      disclaimed(
+        'Not a table. Use standings://A for a group, or a key such as standings://A1, standings://A-B or standings://LEAGUE.',
+        undefined,
+      ).text,
+    );
   }
   const { tables, degraded, source } = await getStandings(adapter, g);
   const tb = tables[0];
@@ -794,7 +811,7 @@ export async function standingsResourceText(
   // rows before the rows.
   if (tb?.partial) text = `(${t(undefined, 'standings.partial', { n: String(tb.partial.omitted) })})\n${text}`;
   if (degraded && tb) text += '\n\n(Live standings unavailable — showing the group roster.)';
-  return disclaimed(text, source).text;
+  return named(disclaimed(text, source).text);
 }
 
 /** next_fixture: a team's next match, live-resolved across the knockout phase. */
@@ -887,8 +904,9 @@ export function toolGetTeam(args: { query: string }): ToolResult {
     text = `No team found for "${args.query}". Use a nation name or 3-letter code (e.g. Mexico, MEX).`;
   }
   // Which roster answered: the World Cup's, whatever competition is selected
-  // (get_team takes no competition and its data carries none).
-  return { ...disclaimed(`World Cup roster:\n${text}`), data };
+  // (get_team takes no competition and its data carries none). Core's
+  // sentence, the one CLI `team` prints too; English, like this tool's text.
+  return { ...disclaimed(`${t('en', 'team.roster')}\n${text}`), data };
 }
 
 /**

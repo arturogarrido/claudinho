@@ -62,7 +62,7 @@ const libSeason = () => ({ year: 2026, displayName: '2026 Copa Libertadores', en
 describe('get_next_fixture: a code two clubs share, against a table read whole', () => {
   it('the candidates in text and data, no fixture; the schema holds', async () => {
     const events: Ev[] = [{ id: '20', date: '2026-10-12T22:00Z', home: ALWAYS_READY, away: { id: '7003', abbr: 'BOC', name: 'Boca Juniors' } }];
-    const r = await toolGetNextFixture({ team: 'CAR', now: NOW, adapter: feed('conmebol.libertadores', { events, standings: LIB, season: libSeason }).adapter });
+    const r = await toolGetNextFixture({ team: 'CAR', now: NOW, competition: 'conmebol.libertadores', adapter: feed('conmebol.libertadores', { events, standings: LIB, season: libSeason }).adapter });
     expect(r.text).toContain('Carabobo (CAR)');
     expect(r.text).toContain('Always Ready (CAR)');
     expect(r.text).not.toContain('Boca');
@@ -75,14 +75,14 @@ describe('get_next_fixture: a code two clubs share, against a table read whole',
 describe('get_match: the provider\u2019s earlier record, said as such', () => {
   it('a found match whose refresh failed: text names the earlier record, data keeps it attributed and degraded', async () => {
     const inSpan: Ev = { id: '41', date: '2026-10-17T14:00Z', home: LIV, away: ARS };
-    const r = await toolGetMatch({ id: '41', adapter: feed('eng.1', { events: [inSpan], fail: (d) => (d.length === 8 ? json({}, 503) : undefined) }).adapter });
+    const r = await toolGetMatch({ id: '41', competition: 'eng.1', adapter: feed('eng.1', { events: [inSpan], fail: (d) => (d.length === 8 ? json({}, 503) : undefined) }).adapter });
     expect(r.text).toContain('earlier record');
     expect(r.data).toMatchObject({ degraded: true, match: { id: '41' }, source: 'espn' });
     strict('get_match', r.data);
   });
 
   it('a match card with discovery down says it could not ask, and carries degraded', async () => {
-    const r = await toolGetShareSnippet({ matchId: '41', now: NOW, adapter: feed('eng.1', { fail: () => json({}, 503) }).adapter });
+    const r = await toolGetShareSnippet({ matchId: '41', now: NOW, competition: 'eng.1', adapter: feed('eng.1', { fail: () => json({}, 503) }).adapter });
     expect(r.text).toContain("Couldn't reach the data provider");
     expect(r.data).toMatchObject({ degraded: true });
     strict('get_share_snippet', r.data);
@@ -91,10 +91,10 @@ describe('get_match: the provider\u2019s earlier record, said as such', () => {
 
 describe('the share card’s structured twin carries the span it says it searched', () => {
   it('next: horizon; a match id: window; the schema holds', async () => {
-    const next = await toolGetShareSnippet({ team: 'Arsenal', now: NOW, adapter: feed('eng.1', { events: [{ id: '13', date: '2026-10-11T15:00Z', home: CHE, away: LIV }] }).adapter });
+    const next = await toolGetShareSnippet({ team: 'Arsenal', now: NOW, competition: 'eng.1', adapter: feed('eng.1', { events: [{ id: '13', date: '2026-10-11T15:00Z', home: CHE, away: LIV }] }).adapter });
     expect(next.data).toMatchObject({ horizon: { days: 14 } });
     strict('get_share_snippet', next.data);
-    const match = await toolGetShareSnippet({ matchId: '41', now: NOW, adapter: feed('eng.1').adapter });
+    const match = await toolGetShareSnippet({ matchId: '41', now: NOW, competition: 'eng.1', adapter: feed('eng.1').adapter });
     expect(match.data).toMatchObject({ window: { from: '2026-10-09', to: '2026-10-24' } });
     strict('get_share_snippet', match.data);
   });
@@ -135,10 +135,10 @@ describe('the date card judges "nothing on this date" in the viewer’s zone, as
   const cup = () => feed('concacaf.champions', { events: [finalFT], standings: NONE, season: () => ENDED }).adapter;
 
   it('a UTC viewer: the final’s UTC date is the final, with no key; the day after, the key', async () => {
-    const day9 = await toolGetShareSnippet({ date: '2026-10-09', tz: 'UTC', now: NOW, adapter: cup() });
+    const day9 = await toolGetShareSnippet({ date: '2026-10-09', tz: 'UTC', now: NOW, competition: 'concacaf.champions', adapter: cup() });
     expect(day9.text).toContain('Toluca');
     expect((day9.data as { betweenEditions?: unknown }).betweenEditions).toBeUndefined();
-    const day10 = await toolGetShareSnippet({ date: '2026-10-10', tz: 'UTC', now: NOW, adapter: cup() });
+    const day10 = await toolGetShareSnippet({ date: '2026-10-10', tz: 'UTC', now: NOW, competition: 'concacaf.champions', adapter: cup() });
     expect(day10.data).toMatchObject({ betweenEditions: { label: '2026 Concacaf Champions Cup' } });
     strict('get_share_snippet', day10.data);
   });
