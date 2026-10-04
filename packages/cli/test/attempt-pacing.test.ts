@@ -303,8 +303,13 @@ describe('the settlement', () => {
     mkdirSync(join(dir, 'claudinho'), { recursive: true });
     writeFileSync(cachePath(SOURCE, WC), '{ not json');
     answer = () => {
-      rmSync(attemptRecordPath(SOURCE, WC), { force: true });
-      mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
+      // Idempotent across the three day requests: the first call swaps the file for a directory, the next
+      // two find it there (an `rmSync` of a directory without `recursive` throws, which would turn them
+      // into errors rather than throttles).
+      if (!existsSync(join(attemptRecordPath(SOURCE, WC), '.'))) {
+        rmSync(attemptRecordPath(SOURCE, WC), { force: true });
+        mkdirSync(attemptRecordPath(SOURCE, WC), { recursive: true });
+      }
       return new Response('slow down', { status: 429, headers: { 'retry-after': '120' } });
     };
     await refresh(LIVE);
