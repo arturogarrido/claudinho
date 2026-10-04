@@ -223,6 +223,7 @@ describe('outside every window on the bundle (the idle lane), and an unknown sou
     expect(readAttemptRecord('nope', WC, QUIET)).toEqual({ at: QUIET, count: 1 });
     expect(refreshWanted(QUIET + 5000, undefined, WC, 'nope')).toBe(false);
     cmdPrompt({ ...ctxOf(WC, 'nope'), now: new Date(QUIET + 5000) } as never, { cursor: undefined });
+    cmdHook({ ...ctxOf(WC, 'nope'), now: new Date(QUIET + 5000) } as never);
     expect(spawn).not.toHaveBeenCalled();
   });
 

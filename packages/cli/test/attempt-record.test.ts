@@ -44,7 +44,7 @@ import {
   writeBackoffNote,
   writeState,
 } from '../src/cache';
-import { refreshWanted } from '../src/refresh';
+import { refreshWanted, runRefresh } from '../src/refresh';
 
 const SOURCE = 'espn';
 const WC = 'fifa.world';
@@ -253,5 +253,26 @@ describe('the hot path asks the record only without a snapshot, after the lock a
     expect(refreshWanted(NOW, undefined, WC, 'nope')).toBe(false);
     rmSync(attemptRecordPath('nope', WC), { force: true });
     expect(refreshWanted(NOW, undefined, WC, 'nope')).toBe(true);
+  });
+});
+
+describe('a cycle with a readable snapshot opens the record zero times (acceptance 5, the cycle side)', () => {
+  it('a stale readable snapshot in a live window: the lane fetches, and the record on disk is never opened', async () => {
+    vi.stubGlobal('fetch', async () =>
+      new Response(JSON.stringify({ leagues: [{ season: { year: 2026, displayName: '2026 World Cup' } }], events: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    try {
+      writeRecord({ at: iso(NOW - 2 * 60 * MIN), count: 6 });
+      writeState(snapshot({ updatedAt: iso(NOW - 60 * MIN) }));
+      opens.length = 0;
+      await runRefresh({ source: SOURCE, competition: WC, now: new Date(NOW), jitterMs: 0 });
+      expect(opens.filter((p) => p === attemptRecordPath(SOURCE, WC))).toHaveLength(0);
+      expect(readCurrentState(SOURCE, WC)?.updatedAt).toBe(iso(NOW)); // the lane ran
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
