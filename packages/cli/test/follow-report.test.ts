@@ -512,7 +512,9 @@ describe('the team sentence promises nothing the next command cannot reach', () 
     writes = [];
     await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));
     expect(text()).toMatch(/CLAUDINHO_COMPETITION is refused/);
-    expect(text()).toMatch(/CLAUDINHO_TEAM is set, and the team-taking commands take it as their team once a competition is chosen\./);
+    // The gate the next command stops at is the refused variable, not a missing choice (a competition is saved).
+    expect(text()).toMatch(/CLAUDINHO_TEAM is set, and the team-taking commands take it as their team once CLAUDINHO_COMPETITION names a competition or is unset\./);
+    expect(text()).not.toMatch(/once a competition is chosen/);
     expect(text()).not.toMatch(/while it is\.$/m);
     expect(text()).not.toMatch(/wins over the saved team/);
     // The JSON still names the source as it is.
@@ -558,13 +560,41 @@ describe('a refused environment has no competition, so no pin (the fourth reader
     writes = [];
     await cmdFollow(undefined, {}, ctxOf());
     expect(text()).toMatch(/"bar"/);
-    expect(text()).toMatch(/take it as their team once a competition is chosen\./);
-    expect(text()).not.toMatch(/wins over the saved team|while it is\./);
+    expect(text()).toMatch(/take it as their team once CLAUDINHO_COMPETITION names a competition or is unset\./);
+    expect(text()).not.toMatch(/wins over the saved team|while it is\.|once a competition is chosen/);
     writes = [];
     await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));
-    expect(text()).toMatch(/take it as their team once a competition is chosen\./);
+    expect(text()).toMatch(/take it as their team once CLAUDINHO_COMPETITION names a competition or is unset\./);
     expect(text()).not.toMatch(/wins over the saved team/);
     delete process.env.CLAUDINHO_COMPETITION;
+    delete process.env.CLAUDINHO_TEAM;
+  });
+});
+
+describe('the "later" sentences name the gate the next command stops at', () => {
+  it('nothing chosen: "once a competition is chosen"; a refused CLAUDINHO_COMPETITION: "once CLAUDINHO_COMPETITION names a competition or is unset", for a readable and an unreadable team', async () => {
+    // A refused environment with a saved competition: choosing is not the fix.
+    await cmdFollow('world-cup', { team: 'Spain' }, ctxOf());
+    process.env.CLAUDINHO_COMPETITION = 'bar';
+    process.env.CLAUDINHO_TEAM = '   ';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/CLAUDINHO_TEAM is set but names no team; the team-taking commands refuse it once CLAUDINHO_COMPETITION names a competition or is unset\./);
+    expect(text()).not.toMatch(/once a competition is chosen/);
+    // The same refused environment with no file: still the variable's gate (it is met first).
+    await cmdFollow('off', {}, ctxOf());
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/refuse it once CLAUDINHO_COMPETITION names a competition or is unset\./);
+    // Nothing chosen, the environment unset: the choice's gate.
+    delete process.env.CLAUDINHO_COMPETITION;
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/refuse it once a competition is chosen\./);
+    process.env.CLAUDINHO_TEAM = 'Spain';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/take it as their team once a competition is chosen\./);
     delete process.env.CLAUDINHO_TEAM;
   });
 });
