@@ -39,8 +39,10 @@ const snapshot = (schedule: ScheduleSlice | undefined, over: Partial<CacheState>
   ...(schedule ? { schedule } : {}),
   ...over,
 });
-const line = (state: CacheState | undefined, opts: { team?: string } = {}) =>
-  renderPrompt(state, { defaultCompetition: false, now: new Date(NOW), ...opts });
+// The snapshot is a nations competition's (`uefa.nations`), so the kind the
+// caller resolves is `nation` unless a case says its rows are clubs.
+const line = (state: CacheState | undefined, opts: { team?: string; teamKind?: 'nation' | 'club' } = {}) =>
+  renderPrompt(state, { defaultCompetition: false, teamKind: 'nation', now: new Date(NOW), ...opts });
 const sched = (fixtures: Match[], over: Partial<ScheduleSlice> = {}): ScheduleSlice => ({
   index: fixtures.map((m) => entry(m.id, Date.parse(m.kickoff), m.status === 'SCHEDULED' || m.status === 'LIVE' || m.status === 'HT')),
   fixtures,
@@ -69,8 +71,16 @@ describe('a fixture days or minutes away', () => {
     expect(line(state)).toBe('🇪🇸 vs 🇫🇷 in 3h0m');
   });
 
-  it('clubs stay `⚽ —` until clubs can be drawn (stated: not this change)', () => {
-    expect(line(snapshot(sched([clubs('1', NOW + 52 * HOUR)])))).toBe('⚽ —');
+  it('clubs: a countdown by their codes (0.11 · 2.2: a club has no flag, and is a resolved side)', () => {
+    expect(line(snapshot(sched([clubs('1', NOW + 52 * HOUR)])), { teamKind: 'club' })).toBe('ARS vs LEE in 2d4h');
+    // Compact or not, flags on or off: the countdown token of a flagless side is its code.
+    const state = snapshot(sched([clubs('1', NOW + 52 * HOUR)]));
+    expect(renderPrompt(state, { defaultCompetition: false, teamKind: 'club', now: new Date(NOW), compact: false })).toBe('ARS vs LEE in 2d4h');
+    expect(renderPrompt(state, { defaultCompetition: false, teamKind: 'club', now: new Date(NOW), flags: false })).toBe('ARS vs LEE in 2d4h');
+  });
+
+  it('a nation competition\'s rows read as clubs would lose their flags: the kind is the caller\'s to state', () => {
+    expect(line(snapshot(sched([nations('1', NOW + 52 * HOUR)])), { teamKind: 'club' })).toBe('ESP vs FRA in 2d4h');
   });
 
   it('the knockout slice is the bundle’s: off the bundle it is not read for a countdown', () => {
@@ -93,8 +103,8 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
     expect(line(snapshot(inWindow, { degraded: true }, 5000))).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
   });
 
-  it('a club fixture in its window: no matchup, and still the truth that a match is on', () => {
-    expect(line(snapshot(sched([clubs('1', NOW - 30 * MIN)])))).toBe('⚽ live · syncing…');
+  it('a club fixture in its window: the matchup by codes, and the truth that a match is on', () => {
+    expect(line(snapshot(sched([clubs('1', NOW - 30 * MIN)])), { teamKind: 'club' })).toBe('⚽ ARS vs LEE live · syncing…');
   });
 
   it('a fixture only the index knows (no full record at hand): the same', () => {
