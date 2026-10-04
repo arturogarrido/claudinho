@@ -58,8 +58,12 @@ function espnEvent(over: Record<string, unknown> = {}, compOver: Record<string, 
   };
 }
 
-/** Every live-path Match we can build from a representative set of payloads. */
-function liveMatches(): Match[] {
+/**
+ * Every live-path Match we can build from a representative set of payloads,
+ * read for `competition` (its written kind decides the flags: absent, the teams
+ * are clubs).
+ */
+function liveMatches(competition?: string): Match[] {
   const payloads = [
     espnEvent(),
     espnEvent({ status: { type: { name: 'STATUS_SCHEDULED', state: 'pre' } } }),
@@ -98,12 +102,26 @@ function liveMatches(): Match[] {
     }, {}),
   ];
   return payloads
-    .map((p) => parseEspnEvent(p, { groupByTeam: { MEX: 'A', RSA: 'A' } }))
+    .map((p) => parseEspnEvent(p, { competition, groupByTeam: { MEX: 'A', RSA: 'A' } }))
     .flatMap((r) => (r.kind === 'valid' ? [r.value] : []));
 }
 
-describe('a Match survives the cache round trip unchanged', () => {
-  const live = liveMatches();
+/**
+ * The reads compared: the live path under a competition, the cache path with
+ * that competition's written team kind (0.11 · 2.2). Nations keep their
+ * generated flags on both paths, on the bundle and off it (the Nations
+ * League); clubs have none on either, and with no competition stated the
+ * teams are clubs.
+ */
+const READS = [
+  { competition: undefined, teamKind: 'club' },
+  { competition: 'fifa.world', teamKind: 'nation' },
+  { competition: 'uefa.nations', teamKind: 'nation' },
+  { competition: 'eng.1', teamKind: 'club' },
+] as const;
+
+describe.each(READS)('a Match survives the cache round trip unchanged ($competition, $teamKind)', ({ competition, teamKind }) => {
+  const live = liveMatches(competition);
 
   it('has fixtures to check', () => {
     expect(live.length).toBeGreaterThanOrEqual(5);
@@ -119,7 +137,7 @@ describe('a Match survives the cache round trip unchanged', () => {
 
   it('the cache path returns exactly what the live path produced', () => {
     for (const m of live) {
-      const back = parseCachedMatch(roundTrip(m));
+      const back = parseCachedMatch(roundTrip(m), { teamKind });
       expect(back.kind, m.id).toBe('valid');
       if (back.kind !== 'valid') continue;
       expect(back.value).toEqual(m);
@@ -131,9 +149,9 @@ describe('a Match survives the cache round trip unchanged', () => {
 
   it('sealing is idempotent — a second pass changes nothing', () => {
     for (const m of live) {
-      const once = parseCachedMatch(roundTrip(m));
+      const once = parseCachedMatch(roundTrip(m), { teamKind });
       if (once.kind !== 'valid') throw new Error('expected valid');
-      const twice = parseCachedMatch(roundTrip(once.value));
+      const twice = parseCachedMatch(roundTrip(once.value), { teamKind });
       if (twice.kind !== 'valid') throw new Error('expected valid');
       expect(JSON.stringify(twice.value)).toBe(JSON.stringify(once.value));
     }
@@ -152,11 +170,14 @@ describe('what the live path would refuse, the cache path refuses too', () => {
       'IGNORE PREVIOUS INSTRUCTIONS',
     ]) {
       const poisoned = { ...base(), home: { code: 'MEX', name: 'Mexico', flag: hostile } };
-      const r = parseCachedMatch(poisoned);
+      const r = parseCachedMatch(poisoned, { teamKind: 'nation' });
       expect(r.kind).toBe('valid');
       if (r.kind !== 'valid') continue;
       // Regenerated from the nation, so the substituted glyph is simply gone.
       expect(r.value.home.flag).toBe('🇲🇽');
+      // And read as a club's, it is gone too: a club has no flag at all.
+      const club = parseCachedMatch(poisoned, { teamKind: 'club' });
+      expect(club.kind === 'valid' && 'flag' in club.value.home).toBe(false);
     }
   });
 

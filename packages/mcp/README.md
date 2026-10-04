@@ -66,7 +66,10 @@ reads too: an empty answer then means nothing was read, not that nothing exists,
 World Cup day counts the fixtures shown from the bundled schedule without their live
 state. In a club competition whose
 edition has ended (and the next has not started), `get_today`, `get_live`,
-`get_next_fixture` and `get_match` say so and carry `betweenEditions`.
+`get_next_fixture` and `get_match` say so and carry `betweenEditions`. A club has no
+`flag` (a nation's is generated from its name), and nothing is printed in its place; a
+match's `stage` is the written one (`REGULAR` for a league's season, `LEAGUE` for a cup's
+league phase, `PO` for play-offs), or `OTHER` with the provider's own words in `stageLabel`.
 
 Resources: `standings://{group}`, `fixtures://{date}`. Prompts: `tournament_today`,
 and `my_team` (give it a 3-letter team code; combines next fixture, standings, and

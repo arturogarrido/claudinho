@@ -97,6 +97,20 @@ const ALIASES: ReadonlyArray<readonly [string, string]> = [
   // Names where Intl's English label differs from the common short form.
   ['Hong Kong', 'HK'], ['Myanmar', 'MM'], ['Palestine', 'PS'],
   ['Burma', 'MM'], ['Cape Verde', 'CV'],
+  // Concacaf nations as the provider spells them (measured in the recorded
+  // Gold Cup and Nations League feeds), and their usual variants. Written rows,
+  // not a wider normalization: `norm()` drops punctuation (so "St." and "St"
+  // are one row, but "&" loses the "and" and needs a row of its own), Intl's
+  // English names spell "&" and "St.", and rewriting "and" or "St." for every
+  // name would be a grammar change nobody measured. Bonaire is "Caribbean
+  // Netherlands" in Intl.
+  ['Trinidad and Tobago', 'TT'], ['Trinidad & Tobago', 'TT'],
+  ['St. Kitts and Nevis', 'KN'], ['Saint Kitts and Nevis', 'KN'], ['St. Kitts & Nevis', 'KN'],
+  ['Bonaire', 'BQ'],
+  ['St. Vincent and the Grenadines', 'VC'], ['Saint Vincent and the Grenadines', 'VC'],
+  ['St. Vincent & the Grenadines', 'VC'],
+  ['Turks and Caicos Islands', 'TC'], ['Turks & Caicos Islands', 'TC'],
+  ['Antigua and Barbuda', 'AG'], ['Antigua & Barbuda', 'AG'],
 ];
 
 /**

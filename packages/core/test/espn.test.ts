@@ -87,7 +87,8 @@ const knockout = {
  * fixture in this file is mappable, so unwrap and fail loudly if that changes.
  */
 function mapped(ev: unknown, ctx?: Parameters<typeof mapEspnEvent>[1]) {
-  const m = mapEspnEvent(ev as never, ctx);
+  // World Cup fixtures, read as the World Cup's (its teams are nations: flagged).
+  const m = mapEspnEvent(ev as never, { competition: 'fifa.world', ...ctx });
   if (!m) throw new Error('expected a mappable ESPN event, got undefined');
   return m;
 }

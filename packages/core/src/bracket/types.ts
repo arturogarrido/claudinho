@@ -41,7 +41,8 @@ export type SlotStatus = 'confirmed' | 'projected' | 'tbd';
 /** A resolved bracket participant for display. */
 export interface ResolvedParticipant {
   label: string;
-  flag: string;
+  /** A nation's flag, or the neutral 🏳️ of a slot not yet known; absent for a side with none. */
+  flag?: string;
   code?: string;
   status: SlotStatus;
 }

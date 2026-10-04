@@ -1,3 +1,4 @@
+import { isKnockoutStage } from '../schedule';
 import type { Match, Stage } from '../types';
 import { parseTeamSlot } from './parse';
 import {
@@ -29,7 +30,7 @@ export function orderByBracketIndex(matches: Match[]): Match[] {
  * Throws when ESPN introduces an unparsed placeholder or the graph is inconsistent.
  */
 export function buildBracketTopology(matches: Match[], generatedAt: string): BracketTopology {
-  const knockout = matches.filter((m) => m.stage !== 'GROUP' && m.stage !== 'FRIENDLY');
+  const knockout = matches.filter((m) => isKnockoutStage(m.stage));
   const problems: string[] = [];
   const nodes: BracketMatchNode[] = [];
 

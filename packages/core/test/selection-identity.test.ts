@@ -248,7 +248,8 @@ describe('identity — the provider’s stable id, on both paths', () => {
     const r = parseEspnEvent(event('401878761', '2026-10-10T11:30Z', ARSENAL, CHELSEA));
     expect(r.kind).toBe('valid');
     if (r.kind !== 'valid') return;
-    expect(r.value.home).toEqual({ code: 'ARS', name: 'Arsenal', flag: '🏳️', id: 'espn:359' });
+    // A club has no flag (0.11 · 2.2): with no competition stated, a team is a club.
+    expect(r.value.home).toEqual({ code: 'ARS', name: 'Arsenal', id: 'espn:359' });
     expect(r.value.away.id).toBe('espn:363');
   });
 

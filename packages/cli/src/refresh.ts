@@ -14,9 +14,11 @@ import {
   getLiveMatches,
   getLiveRead,
   getScheduleAhead,
+  isKnockoutStage,
   isKnownSource,
   makeAdapter,
   sealSeason,
+  teamKind,
   type Match,
   type ProviderAdapter,
   type SeasonInfo,
@@ -115,7 +117,7 @@ function nextStaticUpcoming(nowMs: number): Match | undefined {
 export function inKnockoutPhase(nowMs: number, competition: string): boolean {
   if (!bundleApplies(competition)) return false;
   const next = nextStaticUpcoming(nowMs);
-  return !!next && next.stage !== 'GROUP' && next.stage !== 'FRIENDLY';
+  return !!next && isKnockoutStage(next.stage);
 }
 
 /**
@@ -174,7 +176,10 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       if (idle) {
         try {
           // Under the lock, and only if nobody wrote one in the meantime (the
-          // same rule as the idle snapshot below).
+          // same rule as the idle snapshot below). A publish that did not
+          // happen (refused: an older snapshot's throttle could not be noted)
+          // leaves that snapshot, whose deadline every trigger still reads;
+          // nothing was asked, so there is nothing to settle.
           if (!readState(source, competition)) {
             publishState(
               {
@@ -224,6 +229,9 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     if (!idle) return;
     try {
       if (readBase()) return;
+      // A publish that did not happen (refused: an older snapshot's throttle
+      // could not be noted, so that snapshot stays and still carries it) needs
+      // nothing more: no request was made, and the next trigger asks again.
       const until = backoffInEffect(undefined, source, competition, nowMs);
       publishState(
         {
@@ -235,6 +243,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
           ...(until !== undefined ? { backoffUntil: new Date(until).toISOString() } : {}),
         },
         idle,
+        nowMs,
       );
     } finally {
       releaseLock(idle);
@@ -446,6 +455,9 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
           ...(fixtures && fixturesSeason ? { fixturesSeason } : {}),
         },
         token,
+        // The cycle's clock, not the carried live stamp: the throttle a
+        // snapshot of another format carried is judged at the time it is now.
+        clock(),
       );
     } catch {
       published = false;
@@ -495,16 +507,20 @@ function backoffToPublish(
 
 /**
  * After a cycle's final publish, refused, failed or done. A deadline the cycle
- * holds counts only once a reader will find it. A refused publish (the lease
- * was lost: the snapshot is the successor's, and the successor may not have
- * met this throttle), a failed one (the write THREW: the caller passes it as
- * not published), and a publish into a snapshot nobody can read all leave it
- * invisible: it goes to the note, which needs no lock, as a command's does.
+ * holds counts only once a reader will find it, so it goes to the note, which
+ * needs no lock, as a command's does (`ensureBackoffVisible`; a deadline the
+ * note already holds is only read): a refused publish (the lease was lost: the
+ * snapshot is the successor's, and the successor may not have met this
+ * throttle), a failed one (the write THREW: the caller passes it as not
+ * published), a publish into a snapshot nobody can read, and a reader of
+ * another format (which rejects this snapshot whole) would all miss it there.
  * One place, for the bundled cycle and the one off the bundle.
  *
  * The two idle-snapshot writers (`runRefresh`'s, for an unknown source and for
  * a cycle with nothing to ask) settle nothing: no request was made, so the
- * only deadline they write is one already in effect, the note's.
+ * only deadline they write is one already in effect: the note's, or one a
+ * snapshot of another format carried, which `writeState` notes before
+ * replacing it.
  */
 function settleBackoff(
   published: boolean,
@@ -515,7 +531,9 @@ function settleBackoff(
 ): void {
   if (backoffUntil) ensureBackoffVisible(source, competition, Date.parse(backoffUntil), at);
   if (!published && process.env.CLAUDINHO_DEBUG) {
-    process.stderr.write('claudinho: refresh snapshot not published (lease lost to a successor, or the write failed)\n');
+    process.stderr.write(
+      'claudinho: refresh snapshot not published (lease lost to a successor, the write failed, or an older snapshot\'s throttle could not be noted)\n',
+    );
   }
 }
 
@@ -589,7 +607,8 @@ async function refreshOffBundle(c: {
     // The schedule slice AS IT IS BELIEVED (`scheduleView`): what is carried
     // and written back is what was read through the rules, never the raw file.
     let index = view.index;
-    let display: Match[] = [...sealFixtures(base?.schedule?.fixtures).items];
+    // Sealed with the competition's written team kind, like every cached match.
+    let display: Match[] = [...sealFixtures(base?.schedule?.fixtures, teamKind(competition)).items];
     let scheduleSeason = view.season;
     let complete = view.complete;
     let scheduleUpdatedAt = view.updatedAt;
@@ -629,7 +648,7 @@ async function refreshOffBundle(c: {
       failures = before.failures + 1;
       let written = false;
       try {
-        written = publishState(snapshot(undefined), token);
+        written = publishState(snapshot(undefined), token, clock());
       } catch {
         written = false;
       }
@@ -697,7 +716,7 @@ async function refreshOffBundle(c: {
     // happen: the throttle this cycle met is still settled.
     let published = false;
     try {
-      published = publishState(snapshot(backoffUntil), token);
+      published = publishState(snapshot(backoffUntil), token, clock());
     } catch {
       published = false;
     }

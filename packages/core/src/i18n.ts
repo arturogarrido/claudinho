@@ -1,3 +1,5 @@
+import type { Match } from './types';
+
 /** Supported UI locales — same set as CLI/MCP `lang`. */
 export type Lang = 'en' | 'es' | 'pt' | 'fr';
 
@@ -54,6 +56,9 @@ const EN = {
   'stage.3p': 'Third-place play-off',
   'stage.f': 'Final',
   'stage.friendly': 'Friendly',
+  'stage.regular': 'League',
+  'stage.league': 'League phase',
+  'stage.po': 'Play-offs',
 };
 
 /**
@@ -116,6 +121,9 @@ const ES: Dict = {
   'stage.3p': 'Tercer puesto',
   'stage.f': 'Final',
   'stage.friendly': 'Amistoso',
+  'stage.regular': 'Liga',
+  'stage.league': 'Fase de liga',
+  'stage.po': 'Play-offs',
 };
 
 const PT: Dict = {
@@ -171,6 +179,9 @@ const PT: Dict = {
   'stage.3p': 'Disputa do 3.º lugar',
   'stage.f': 'Final',
   'stage.friendly': 'Amistoso',
+  'stage.regular': 'Liga',
+  'stage.league': 'Fase de liga',
+  'stage.po': 'Play-offs',
 };
 
 const FR: Dict = {
@@ -226,6 +237,9 @@ const FR: Dict = {
   'stage.3p': 'Match pour la 3e place',
   'stage.f': 'Finale',
   'stage.friendly': 'Match amical',
+  'stage.regular': 'Championnat',
+  'stage.league': 'Phase de ligue',
+  'stage.po': 'Barrages',
 };
 
 const CATALOGS: Record<Lang, Dict> = { en: EN, es: ES, pt: PT, fr: FR };
@@ -252,7 +266,7 @@ export function t(lang: string | undefined, key: string, vars?: Record<string, s
   );
 }
 
-const STAGE_KEYS: Record<string, string> = {
+const STAGE_KEYS: Readonly<Record<string, string>> = Object.freeze({
   GROUP: 'stage.groupStage',
   R32: 'stage.r32',
   R16: 'stage.r16',
@@ -261,11 +275,27 @@ const STAGE_KEYS: Record<string, string> = {
   '3P': 'stage.3p',
   F: 'stage.f',
   FRIENDLY: 'stage.friendly',
-};
+  REGULAR: 'stage.regular',
+  LEAGUE: 'stage.league',
+  PO: 'stage.po',
+});
 
-/** Localized knockout/group stage label for bracket rendering. */
-export function stageLabelI18n(lang: string | undefined, stage: string, group?: string): string {
-  if (group) return t(lang, 'stage.group', { group });
-  const key = STAGE_KEYS[stage];
-  return key ? t(lang, key) : stage;
+/**
+ * Localized stage label, from the match (its stage, its group letter under the
+ * group stage, and the words an OTHER stage carries). An `OTHER` stage prints
+ * the provider's own words untranslated, or NOTHING when it carries none: a
+ * caller that joins a stage into a line drops an empty one with its separator.
+ * A bare stage (a bracket round, a `bracket <stage>` filter) is passed as
+ * `{ stage }`.
+ */
+export function stageLabelI18n(
+  lang: string | undefined,
+  m: Pick<Match, 'stage' | 'group' | 'stageLabel'>,
+): string {
+  // A group letter belongs to the group stage (the seal drops one elsewhere).
+  if (m.group && m.stage === 'GROUP') return t(lang, 'stage.group', { group: m.group });
+  if (m.stage === 'OTHER') return m.stageLabel ?? '';
+  // OWN-property lookup: a stage typed by a reader can be any string.
+  const key = Object.hasOwn(STAGE_KEYS, m.stage) ? STAGE_KEYS[m.stage] : undefined;
+  return key ? t(lang, key) : m.stage;
 }

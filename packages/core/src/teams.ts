@@ -12,7 +12,8 @@
  * with the schedule ahead as positive evidence; identity there is the
  * provider's id, never the code.
  */
-import { STANDINGS_SHAPE } from './adapters/espn';
+import { isPlaceholderSide } from './bracket/placeholders';
+import { standingsShapeOf } from './kinds';
 import type { ProviderAdapter } from './adapters/types';
 import { getStandings, type NextFixtureResult } from './live';
 import { humanLabel } from './trust/roles';
@@ -42,7 +43,7 @@ export function allTeams(fixtures: Match[] = allFixtures()): TeamInfo[] {
   for (const m of fixtures) {
     if (m.stage !== 'GROUP') continue;
     for (const t of [m.home, m.away]) {
-      if (!/^[A-Z]{3}$/.test(t.code) || t.flag === '🏳️') continue;
+      if (!/^[A-Z]{3}$/.test(t.code) || isPlaceholderSide(t)) continue;
       if (!seen.has(t.code)) seen.set(t.code, { ...t, group: m.group ?? undefined });
     }
   }
@@ -144,7 +145,7 @@ export interface Roster {
  * already enriched from the standings asks once (a failed read is retried).
  */
 export async function rosterFor(adapter: ProviderAdapter): Promise<Roster> {
-  const tableAsked = STANDINGS_SHAPE[adapter.competition] !== 'none';
+  const tableAsked = standingsShapeOf(adapter.competition) !== 'none';
   if (!tableAsked) return { teams: [], complete: false, tableAsked };
   const read = await getStandings(adapter);
   const teams: Team[] = [];

@@ -19,7 +19,9 @@ function formatParticipant(
   locale?: string,
 ): string {
   const suffix = p.status === 'projected' ? ` ${t(locale, 'bracket.projected')}` : '';
-  if (!flags || p.flag === '🏳️') {
+  // Nothing in a flag's place: a slot not yet known (🏳️), or a side with no
+  // flag, is printed by its code (or its label), like a flagless terminal.
+  if (!flags || !p.flag || p.flag === '🏳️') {
     if (p.code && p.code !== 'TBD') return `${p.code}${suffix}`;
     return `${p.label}${suffix}`;
   }
@@ -200,5 +202,5 @@ export function formatBracketCompactLine(mv: BracketMatchView, opts: BracketForm
   const tail = m.status === 'SCHEDULED' && mv.kickoff
     ? ` · ${formatBracketKickoff(mv.kickoff, opts)}`
     : statusTail(m);
-  return `${stageLabelI18n(opts.locale, mv.stage)} · ${home} ${mid} ${away}${tail}`;
+  return `${stageLabelI18n(opts.locale, { stage: mv.stage })} · ${home} ${mid} ${away}${tail}`;
 }

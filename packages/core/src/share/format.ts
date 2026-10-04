@@ -24,6 +24,7 @@ import { marketBlock, marketLine } from '../markets/format';
 import type { MarketSignal } from '../markets/types';
 import { isLive, matchLocation, scoreline, stageLabel } from '../normalize';
 import { type StandingRow, tableTitle } from '../standings';
+import { withFlag } from '../text';
 import { formatDate, formatTime } from '../time';
 import type { Match } from '../types';
 
@@ -130,8 +131,9 @@ function statusTail(m: Match): string {
  * `share next`) carries the date too, so the snippet is self-contained.
  */
 function compactLine(m: Match, input: ShareSnippetInput, single: boolean): string {
-  const home = `${m.home.flag} ${m.home.code}`;
-  const away = `${m.away.code} ${m.away.flag}`;
+  // Nothing in a flag's place: a club (no flag) is its code alone.
+  const home = withFlag(m.home.code, m.home.flag, 'home');
+  const away = withFlag(m.away.code, m.away.flag, 'away');
   const opts = { tz: input.tz, locale: input.locale };
   let tail: string;
   if (m.status === 'SCHEDULED') {
@@ -146,7 +148,7 @@ function compactLine(m: Match, input: ShareSnippetInput, single: boolean): strin
 /** The multi-line `social` card for one match (no market lines — caller adds those). */
 function socialCard(m: Match, input: ShareSnippetInput): string[] {
   const lines: string[] = [];
-  const head = `${m.home.flag} ${m.home.name} ${mid(m)} ${m.away.name} ${m.away.flag}`;
+  const head = `${withFlag(m.home.name, m.home.flag, 'home')} ${mid(m)} ${withFlag(m.away.name, m.away.flag, 'away')}`;
   if (m.status === 'SCHEDULED') {
     lines.push(head);
     const date = formatDate(m.kickoff, { tz: input.tz, locale: input.locale });
@@ -161,7 +163,10 @@ function socialCard(m: Match, input: ShareSnippetInput): string[] {
   }
   const loc = matchLocation(m);
   if (loc) lines.push(loc);
-  if (m.stage !== 'GROUP') lines.push(stageLabel(m));
+  // The stage line, when there is a stage to state: an OTHER with no words
+  // pushes no line at all (never an empty one).
+  const stage = m.stage !== 'GROUP' ? stageLabel(m) : '';
+  if (stage) lines.push(stage);
   return lines;
 }
 
@@ -253,9 +258,12 @@ function gd(n: number): string {
   return n > 0 ? `+${n}` : `${n}`;
 }
 
-/** One standings line: "1. 🇲🇽 MEX  3 pts · 1-0-0 · +2" (rank · record W-D-L · GD). */
+/**
+ * One standings line: "1. 🇲🇽 MEX  3 pts · 1-0-0 · +2" (rank · record W-D-L ·
+ * GD); a club's row is its code alone, "1. ARS  3 pts · …".
+ */
 function tableRow(r: StandingRow, rank: number): string {
-  return `${rank}. ${r.team.flag} ${r.team.code}  ${r.points} pts · ${r.won}-${r.drawn}-${r.lost} · ${gd(r.goalDiff)}`;
+  return `${rank}. ${withFlag(r.team.code, r.team.flag, 'home')}  ${r.points} pts · ${r.won}-${r.drawn}-${r.lost} · ${gd(r.goalDiff)}`;
 }
 
 export interface ShareTableInput {

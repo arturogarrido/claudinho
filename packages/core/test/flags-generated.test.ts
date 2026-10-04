@@ -80,3 +80,34 @@ describe('flags are generated, never accepted', () => {
     expect(humanLabel(payload)).toBe('');
   });
 });
+
+describe('every nation the recorded nations feeds name has a flag (0.11 · 2.2: a 🏳️ on a nation side is a placeholder, so no real nation may be one)', () => {
+  const recorded = ['fifa.world', 'uefa.euro', 'conmebol.america', 'uefa.nations', 'concacaf.nations.league', 'concacaf.gold'];
+  const names = (file: string): string[] => {
+    const doc = JSON.parse(readFileSync(new URL(`./fixtures/standings/${file}.json`, import.meta.url), 'utf8')) as {
+      children?: Array<{ standings?: { entries?: Array<{ team?: { displayName?: string } }> } }>;
+    };
+    return (doc.children ?? []).flatMap((c) => (c.standings?.entries ?? []).map((e) => e.team?.displayName ?? ''));
+  };
+
+  it.each(recorded)('%s', (competition) => {
+    const missing = names(competition).filter((n) => productFlag(n) === '🏳️');
+    expect(missing).toEqual([]);
+  });
+
+  it('the Concacaf names the lookup used to miss, with their usual spellings', () => {
+    const expected: Array<[string, string]> = [
+      ['Trinidad and Tobago', '🇹🇹'],
+      ['Trinidad & Tobago', '🇹🇹'],
+      ['St. Kitts and Nevis', '🇰🇳'],
+      ['Saint Kitts and Nevis', '🇰🇳'],
+      ['Bonaire', '🇧🇶'],
+      ['St. Vincent and the Grenadines', '🇻🇨'],
+      ['Saint Vincent and the Grenadines', '🇻🇨'],
+      ['Turks and Caicos Islands', '🇹🇨'],
+      ['Antigua and Barbuda', '🇦🇬'],
+      ['Antigua & Barbuda', '🇦🇬'],
+    ];
+    for (const [name, flag] of expected) expect(productFlag(name), name).toBe(flag);
+  });
+});

@@ -24,10 +24,11 @@
 import { fetchMeta } from '../src/adapters/meta';
 import type { ProviderAdapter } from '../src/adapters/types';
 import { buildBracketTopology } from '../src/bracket/build';
-import { isResolvedNation } from '../src/bracket/placeholders';
+import { isPlaceholderSide } from '../src/bracket/placeholders';
 import type { BracketTopology } from '../src/bracket/types';
 import { EXPECTED_KNOCKOUT_COUNTS } from '../src/bracket/types';
-import { sanitizeBundledFixture } from '../src/schedule';
+import { isKnockoutStage, sanitizeBundledFixture } from '../src/schedule';
+import { withFlag } from '../src/text';
 import type { Match } from '../src/types';
 
 /** The edition the bundle describes: every window must state this season. */
@@ -153,9 +154,7 @@ export async function buildSchedule({ adapter, write, log, error }: BuildSchedul
   }
   const knockoutLeaks = all.filter(
     (m) =>
-      m.stage !== 'GROUP' &&
-      m.stage !== 'FRIENDLY' &&
-      (isResolvedNation(m.home) || isResolvedNation(m.away)),
+      isKnockoutStage(m.stage) && (!isPlaceholderSide(m.home) || !isPlaceholderSide(m.away)),
   );
   if (knockoutLeaks.length > 0) {
     problems.push(
@@ -194,6 +193,6 @@ export async function buildSchedule({ adapter, write, log, error }: BuildSchedul
   log(`wrote ${topology.matches.length} bracket nodes -> ${BRACKET_FILE}`);
   for (const m of all.slice(0, 3)) {
     const g = m.group ? ` [${m.group}]` : '';
-    log(`  e.g. ${m.kickoff}${g}  ${m.home.flag} ${m.home.name} vs ${m.away.name} ${m.away.flag}  @ ${m.venue}`);
+    log(`  e.g. ${m.kickoff}${g}  ${withFlag(m.home.name, m.home.flag, 'home')} vs ${withFlag(m.away.name, m.away.flag, 'away')}  @ ${m.venue}`);
   }
 }

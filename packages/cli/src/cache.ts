@@ -26,8 +26,18 @@ export { cacheDir } from './paths';
  * 4 (0.11): the `schedule` slice, and off the bundled competition a live stamp
  * that can say "never read". An older binary would poll that scope around the
  * clock from a version-4 file's live slice; it gets an empty cache instead.
+ *
+ * 5 (0.11): a club carries no flag (a version-4 file holds 🏳️ for every club),
+ * and a stage can be `REGULAR`, `LEAGUE`, `PO` or `OTHER`, with the provider's
+ * words beside an `OTHER` (a version-4 file holds `FRIENDLY` for every league
+ * match, and an older reader would drop the records whose stage it does not
+ * know). Rejected whole in both directions, like every bump. The one thing a
+ * rejection must NOT discard is a provider throttle: a snapshot's
+ * `backoffUntil` is a deadline the provider set, not match data, so it is read
+ * whatever the file's version (`backoffInEffect`) and made visible in the note
+ * before a snapshot of another version is replaced (`writeState`).
  */
-export const CACHE_VERSION = 4;
+export const CACHE_VERSION = 5;
 
 /** Hard byte ceiling before JSON parsing on the statusline hot path. */
 export const MAX_STATE_BYTES = 1024 * 1024;
@@ -231,12 +241,77 @@ export function readCurrentState(
   return s && s.source === source && s.competition === competition ? s : undefined;
 }
 
-/** Atomically write the cached state (version-stamped, to its scope's file). */
-export function writeState(state: CacheState): void {
+/**
+ * The ENVELOPE of a scope's snapshot file, whatever its format version: the
+ * parsed object when it is one and names THIS scope (its `source` and
+ * `competition`), else undefined. Read through the one bounded reader. For the
+ * one field that outlives a format bump, the provider's throttle deadline:
+ * nothing else in a file of another version is read.
+ */
+function snapshotEnvelope(source: string, competition: string): Record<string, unknown> | undefined {
+  try {
+    const bytes = readSmallFile(cachePath(source, competition), MAX_STATE_BYTES);
+    if (!bytes) return undefined;
+    const parsed: unknown = JSON.parse(bytes.toString('utf8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    const env = parsed as Record<string, unknown>;
+    return env.source === source && env.competition === competition ? env : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** An envelope's throttle deadline, if its stamp is one this product writes and it is believed at `now`. */
+function envelopeDeadline(env: Record<string, unknown> | undefined, now: number): number | undefined {
+  const until = env?.backoffUntil;
+  return validStamp(until) ? believedDeadline(Date.parse(until), now) : undefined;
+}
+
+/**
+ * Atomically write the cached state (version-stamped, to its scope's file).
+ * Returns whether the snapshot was written; THROWS when the write itself fails
+ * (an atomic write's rename can). A `false` is a write that did not happen,
+ * exactly as a throw is, for every caller.
+ *
+ * Before it REPLACES a snapshot of another format version, the throttle that
+ * snapshot carries (if believed at `now`) is put in the scope's note: a reader
+ * of that other version rejects the new snapshot whole, and must still find
+ * the deadline the provider set (`writeBackoffNote` keeps the later of the
+ * note's and this one). When the note cannot be made to hold it (the write
+ * failed, or what was written cannot be read back), the older snapshot is NOT
+ * replaced: it is the one place that deadline is still kept. A snapshot of
+ * this version is not re-noted here: its own writer settled its deadline in
+ * the note (`ensureBackoffVisible`).
+ *
+ * The file this would replace, and what the next reader of each format finds:
+ *
+ * | the file             | its believed deadline | the note             | written? | this format's reader                      | the other format's reader     |
+ * |----------------------|-----------------------|----------------------|----------|-------------------------------------------|-------------------------------|
+ * | none                 | -                     | -                    | yes      | the new snapshot                          | rejects it; the note if any   |
+ * | this version         | -                     | -                    | yes      | the new snapshot                          | rejects it; the note if any   |
+ * | another version      | none                  | -                    | yes      | the new snapshot                          | rejects it: nothing to protect |
+ * | another version      | yes                   | written, or as late  | yes      | the new snapshot, and the note            | rejects it; the deadline in the note |
+ * | another version      | yes                   | cannot be written    | NO       | rejects the old one; its deadline through `backoffInEffect` (no state read) | its own snapshot, deadline included |
+ *
+ * `now` is the writer's clock; by default the instant the new snapshot is
+ * stamped with (`updatedAt`), else the system's.
+ */
+export function writeState(state: CacheState, now: number = stampOrNow(state.updatedAt)): boolean {
+  const replaced = snapshotEnvelope(state.source, state.competition);
+  if (replaced !== undefined && replaced.version !== CACHE_VERSION) {
+    const until = envelopeDeadline(replaced, now);
+    if (until !== undefined && !writeBackoffNote(state.source, state.competition, until, now)) return false;
+  }
   writeFileAtomic(
     cachePath(state.source, state.competition),
     JSON.stringify({ ...state, version: CACHE_VERSION }),
   );
+  return true;
+}
+
+/** A stamp as epoch ms when it is one this product writes, else the system clock. */
+function stampOrNow(stamp: unknown): number {
+  return validStamp(stamp) ? Date.parse(stamp) : Date.now();
 }
 
 /** Longest a provider backoff may hold, whatever the file claims. */
@@ -264,12 +339,12 @@ export function believedDeadline(untilMs: number | undefined, now: number): numb
 // A throttle is written into the snapshot under the refresh lock. A command
 // that meets one while a refresher holds that lock (for as long as a request
 // can take) could not write it, exited, and the throttle was lost: the next
-// refresh asked the provider that had just said stop. The note is where a
-// throttle goes whenever a reader would not find it in the snapshot (the lock
-// was taken, the publish was refused or its write failed, the snapshot cannot
-// be read): a tiny file beside the snapshot, written atomically and WITHOUT
-// the lock, read by everything that reads a backoff (`ensureBackoffVisible`
-// decides).
+// refresh asked the provider that had just said stop. The note is where every
+// throttle a writer settles goes (`ensureBackoffVisible`): a tiny file beside
+// the snapshot, written atomically and WITHOUT the lock, read by everything
+// that reads a backoff, and in the same form by every format of the snapshot
+// (a reader of another format rejects the snapshot whole, deadline included,
+// so the snapshot's own copy is never the only one).
 // It is never deleted (an expired one is simply not believed, and the next
 // writer writes over it), so no cleanup can remove a deadline it did not read.
 
@@ -333,6 +408,14 @@ export function writeBackoffNote(source: string, competition: string, untilMs: n
  * command arming its adapter; and every writer, to keep the later deadline and
  * to know whether its own is in place. The two are validated separately, so an
  * unbelieved value on one side never hides a believed one on the other.
+ *
+ * With NO state (none was read: no file, or a file this reader rejected, such
+ * as one of another format version), the snapshot FILE's deadline is read
+ * whatever its version: the envelope's scope and stamp are checked, the
+ * believed-deadline rule is the same, and nothing else in it is read. A
+ * throttle the provider set must survive a format bump. The cost on the hot
+ * path: one more bounded read of the small snapshot file, only when the
+ * snapshot was rejected or absent (state undefined), never when it was read.
  */
 export function backoffInEffect(
   state: CacheState | undefined,
@@ -340,7 +423,12 @@ export function backoffInEffect(
   competition: string,
   now = Date.now(),
 ): number | undefined {
-  const snapshot = state?.backoffUntil ? believedDeadline(Date.parse(state.backoffUntil), now) : undefined;
+  const snapshot =
+    state === undefined
+      ? envelopeDeadline(snapshotEnvelope(source, competition), now)
+      : state.backoffUntil
+        ? believedDeadline(Date.parse(state.backoffUntil), now)
+        : undefined;
   const note = readBackoffNote(source, competition, now);
   if (snapshot === undefined) return note;
   return note === undefined ? snapshot : Math.max(snapshot, note);
@@ -349,24 +437,25 @@ export function backoffInEffect(
 /**
  * Make a throttle visible: called by every writer of a deadline AFTER its
  * attempt to publish one, whether the publish happened, was refused, failed
- * (it threw), or was never tried (the lock was someone else's). If the backoff
- * a reader would find (`backoffInEffect` of the snapshot as it is now, and the
- * note) is not at least as late as `untilMs`, the deadline goes to the note.
- * Returns whether it is now visible: false when `untilMs` itself is not
- * believed, or when the note could not be written or read back (never throws).
- * In whole milliseconds, as a stamp stores it and as `writeBackoffNote`
- * compares.
+ * (it threw), or was never tried (the lock was someone else's). The deadline
+ * goes to the NOTE unless the note already holds one at least as late
+ * (`writeBackoffNote` keeps the later). The snapshot's own copy does not count
+ * as visible: a reader of another format rejects this snapshot whole, and
+ * finds the deadline only in the note, whose form every format shares (the
+ * same reason `writeState` notes the deadline of a snapshot of another format
+ * before replacing it). Returns whether the note now holds it: false when
+ * `untilMs` itself is not believed, or when the note could not be written or
+ * read back (never throws). In whole milliseconds, as a stamp stores it.
  *
- * A write that HAPPENED is not one a reader will find: an atomic replacement
+ * The cost: one small atomic write per throttle a writer settles (a
+ * refresher's cycle that met one, a command that met one), never per cycle: a
+ * deadline the note already holds is only read. A write that HAPPENED to the
+ * snapshot is not one every reader will find either: an atomic replacement
  * keeps the mode of the file it replaces, so a snapshot nobody can read stays
  * one, and the deadline published into it is on disk and invisible.
  */
 export function ensureBackoffVisible(source: string, competition: string, untilMs: number, now = Date.now()): boolean {
-  const own = believedDeadline(Math.floor(untilMs), now);
-  if (own === undefined) return false;
-  const found = backoffInEffect(readCurrentState(source, competition), source, competition, now);
-  if (found !== undefined && found >= own) return true;
-  return writeBackoffNote(source, competition, own, now);
+  return writeBackoffNote(source, competition, untilMs, now);
 }
 
 /** Age of the latest fixtures ATTEMPT in ms (Infinity if never attempted). */
@@ -586,14 +675,19 @@ export function releaseLock(token: LockToken | undefined = heldToken): void {
  * window a refresher that lost its lease has to overwrite its successor; it
  * does not close it (two steps cannot, and Node offers no portable lock the
  * operating system holds). Stated, with the takeover race in `claimLock`.
- * Returns whether the write happened, which is not whether a reader will find
- * it (a snapshot nobody can read stays one): a writer with a throttle asks
- * `ensureBackoffVisible` afterwards, refused or not. It THROWS when the write
- * fails (an atomic write's rename can): every writer with a throttle catches
- * that, as a publish that did not happen, and still asks.
+ * Returns whether the write happened (`false`: the lock is not ours, or
+ * `writeState` refused to replace an older snapshot whose throttle could not
+ * be noted), which is not whether a reader will find it (a snapshot nobody can
+ * read stays one): a writer with a throttle asks `ensureBackoffVisible`
+ * afterwards, refused or not. It THROWS when the write fails (an atomic
+ * write's rename can): every writer catches that as a publish that did not
+ * happen, like a `false`, and a writer with a throttle still asks.
  */
-export function publishState(state: CacheState, token: LockToken | undefined = heldToken): boolean {
-  if (!holdsLock(token)) return false;
-  writeState(state);
-  return true;
+export function publishState(
+  state: CacheState,
+  token: LockToken | undefined = heldToken,
+  /** The writer's clock (see `writeState`); by default the snapshot's own stamp. */
+  now?: number,
+): boolean {
+  return holdsLock(token) && writeState(state, now);
 }

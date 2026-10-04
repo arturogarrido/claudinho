@@ -715,6 +715,9 @@ describe('a table key is not a fixture’s group', () => {
   const fixture = (home: [string, string, string], away: [string, string, string]) => ({
     id: '900001',
     date: '2026-10-10T15:00Z',
+    // A group-stage fixture: a group letter attaches under GROUP only, and a
+    // record with no slug states no phase at all (0.11 · 2.4).
+    season: { slug: 'group-stage' },
     status: { type: { name: 'STATUS_SCHEDULED', state: 'pre' } },
     competitions: [
       {

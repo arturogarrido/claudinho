@@ -90,7 +90,16 @@ could not. Nothing else builds a `Match` or a `MarketSignal` from raw input.
   **no emoji**, bounded by display columns *and* code points. `opaqueId` is
   checked against an exact grammar. `canonicalTimestamp` re-emits one form and
   refuses a date that does not exist. `productFlag` GENERATES the flag from the
-  nation.
+  nation, and only for a nation: `sealTeam(raw, kind)` takes the competition's
+  written team kind (`TEAM_KIND`), and a club gets no flag key at all. Both
+  paths state the kind (the adapter its competition, every cache reader
+  `teamKind(competition)`). Unstated, two defaults: the core constructor and
+  the parsers read a team as a CLUB (`SealOptions.teamKind`, a parse with no
+  `competition`); the ambient renderers (`renderPrompt`, `renderHook`) default
+  through `defaultTeamKind`: the bundle's NATIONS, unless `defaultCompetition`
+  is false, and then clubs. A season slug is read
+  by the written stage grammar (`stageFromSlug`): bounded first, matched whole,
+  `OTHER` with the provider's words (a 40-column label) for what it does not know.
 - **Never accept a product glyph from input.** While flags travelled through the
   text filter it needed an emoji carve-out, and a carve-out without a grammar is
   a covert channel: TAG characters, variation selectors and ZWJ each rode through

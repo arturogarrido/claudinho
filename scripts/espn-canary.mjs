@@ -83,8 +83,18 @@ import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /**
- * The competitions 0.11 supports. A plain list until the supported-set table
- * exists in core; the canary then reads that table instead.
+ * The fifteen competitions 0.11 SUPPORTS, the ones the canary asks. Core's
+ * written tables (`TEAM_KIND`, `COMPETITION_KIND` in
+ * `packages/core/src/kinds.ts`) hold these fifteen and one more, the friendly
+ * competition (`fifa.friendly`): its teams' kind and its stage grammar are
+ * written there because the `CLAUDINHO_COMPETITION` seam reaches it, but it is
+ * not in the supported set and the canary does not ask it. The canary keeps
+ * its own list of the fifteen on purpose: it reaches core only through the
+ * BUILT package, loaded at run time and handed to `runCanary({ core })`, while
+ * this list is read before that (by the run's own defaults and by the tests
+ * that name what it asks), so it cannot be derived from core in one line
+ * without loading core at import. A competition added to the supported set is
+ * added here too; no test compares the two lists yet.
  */
 export const CANARY_COMPETITIONS = Object.freeze([
   'fifa.world',
@@ -116,7 +126,7 @@ export const CANARY_COMPETITIONS = Object.freeze([
  *     must accept that answer. The day it serves a table, that is a changed
  *     shape, and a person decides what it means.
  */
-const shapeOf = (core, competition) => core.STANDINGS_SHAPE?.[competition] ?? 'groups';
+const shapeOf = (core, competition) => core.standingsShapeOf(competition);
 
 /**
  * The statistics the standings parser requires of every row. A copy of the
@@ -156,7 +166,8 @@ const CADENCE_YEARS = Object.freeze({
   'concacaf.nations.league': 2,
   'concacaf.gold': 2,
 });
-const cadenceOf = (competition) => CADENCE_YEARS[competition] ?? 1;
+// By own property, like every written table: a name like a prototype key is not one.
+const cadenceOf = (competition) => (Object.hasOwn(CADENCE_YEARS, competition) ? CADENCE_YEARS[competition] : 1);
 /**
  * Whether the seasons a competition's responses stated, in the order of the
  * dates asked, are NOT a turn: a turn is ONE step up, of at most the

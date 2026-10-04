@@ -39,7 +39,7 @@ const withCompetitors = (competitors: unknown) => ({
 
 describe('parseEspnEvent — a payload we cannot READ vs one that is not a fixture', () => {
   it('accepts a real event', () => {
-    const r = parseEspnEvent(EV);
+    const r = parseEspnEvent(EV, { competition: 'fifa.world' });
     expect(r.kind).toBe('valid');
     if (r.kind !== 'valid') return;
     expect(r.value.home).toEqual({ code: 'MEX', name: 'Mexico', flag: '🇲🇽', id: 'espn:203' });
@@ -103,6 +103,7 @@ describe('parseEspnEvent — a payload we cannot READ vs one that is not a fixtu
         { homeAway: 'home', team: { id: '203', abbreviation: 'MEX', displayName: 'Mexico', flag: '🏴' } },
         { homeAway: 'away', team: { id: '467', abbreviation: 'RSA', displayName: 'South Africa' } },
       ]),
+      { competition: 'fifa.world' },
     );
     expect(r.kind).toBe('valid');
     if (r.kind !== 'valid') return;

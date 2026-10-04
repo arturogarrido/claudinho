@@ -7,11 +7,28 @@
 import scheduleData from './data/schedule.2026.json';
 import type { BracketMatchNode } from './bracket/types';
 import { slotRefToTeam } from './bracket/placeholders';
-import type { Match } from './types';
+import type { Match, Stage } from './types';
 import { byKickoff } from './normalize';
 import { localDate } from './time';
 
 const SCHEDULE = scheduleData as unknown as Match[];
+
+/** The knockout stages: the tournament rounds and the play-offs. */
+const KNOCKOUT_STAGES: ReadonlySet<Stage> = new Set<Stage>(['R32', 'R16', 'QF', 'SF', '3P', 'F', 'PO']);
+
+/**
+ * Is this a knockout stage: a tie that is played until it is decided (extra
+ * time, penalties)? The rounds (`R32` to `F`, the third-place play-off) and the
+ * play-offs (`PO`). Not a group, a league's season, a cup's league phase, a
+ * friendly, or a phase the grammar does not know (`OTHER`). ONE predicate for
+ * every reader that asks "is this a knockout tie" (the bundle's knockout
+ * readers, the live window's length); on the bundle, whose stages are GROUP and
+ * the rounds, it says what `stage !== 'GROUP' && stage !== 'FRIENDLY'` said.
+ * Not the shootout rule: `sealMatch` refuses penalties on GROUP only.
+ */
+export function isKnockoutStage(stage: Stage): boolean {
+  return KNOCKOUT_STAGES.has(stage);
+}
 
 /**
  * Strip live/final state from a fixture for the bundled skeleton schedule.
@@ -33,7 +50,7 @@ export function sanitizeBundledFixture(m: Match, node?: BracketMatchNode): Match
     status: 'SCHEDULED',
     updatedAt: m.updatedAt,
   };
-  if (node && m.stage !== 'GROUP' && m.stage !== 'FRIENDLY') {
+  if (node && isKnockoutStage(m.stage)) {
     return {
       ...base,
       home: slotRefToTeam(node.home),
@@ -121,11 +138,13 @@ export const LIVE_WINDOW_MS = 140 * 60_000;
  */
 export const KNOCKOUT_EXTRA_TIME_MS = 60 * 60_000;
 
-/** Live-window length for a fixture — longer for knockout (extra time + penalties). */
+/**
+ * Live-window length for a fixture — longer for a knockout stage (extra time +
+ * penalties), the short one for every other (a group, a league's season, a
+ * cup's league phase, a friendly, a phase the grammar does not know).
+ */
 export function liveWindowMsFor(m: Match): number {
-  return m.stage === 'GROUP' || m.stage === 'FRIENDLY'
-    ? LIVE_WINDOW_MS
-    : LIVE_WINDOW_MS + KNOCKOUT_EXTRA_TIME_MS;
+  return isKnockoutStage(m.stage) ? LIVE_WINDOW_MS + KNOCKOUT_EXTRA_TIME_MS : LIVE_WINDOW_MS;
 }
 
 /**

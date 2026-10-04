@@ -1,8 +1,6 @@
 import type { Team } from '../types';
 import type { SlotRef } from './types';
-import { isResolvedNation, NATION_AS_GROUP_WINNER } from './placeholders';
-
-const PLACEHOLDER_FLAG = '🏳️';
+import { isPlaceholderSide, NATION_AS_GROUP_WINNER } from './placeholders';
 
 /**
  * Parse an ESPN home/away label into a bracket slot reference (name patterns only).
@@ -36,14 +34,14 @@ export function parseTeamSlot(team: Team): SlotRef | null {
   m = name.match(/^Semifinal (\d+) Loser$/);
   if (m) return { kind: 'loser', stage: 'SF', index: Number(m[1]) };
 
-  if (isResolvedNation(team)) {
+  if (!isPlaceholderSide(team)) {
     const group = NATION_AS_GROUP_WINNER[team.name];
     if (group) return { kind: 'group', position: 1, group };
     return { kind: 'seed', label: team.name, code: 'TBD' };
   }
 
   // Restored bundled knockout placeholder (post-sanitize seed label).
-  if (team.flag === PLACEHOLDER_FLAG && team.code === 'TBD') {
+  if (isPlaceholderSide(team) && team.code === 'TBD') {
     return { kind: 'seed', label: team.name, code: 'TBD' };
   }
 

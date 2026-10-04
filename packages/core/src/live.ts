@@ -11,6 +11,7 @@ import {
   allFixtures,
   fixturesByGroup,
   fixturesByTeam,
+  isKnockoutStage,
   LIVE_WINDOW_MS,
   nextFixtureForTeam,
   isUpcoming,
@@ -18,7 +19,7 @@ import {
 import { rosterAtZero, type GroupStandings } from './standings';
 import { localDate, shiftUtcDate } from './time';
 import type { Match, SeasonInfo, Stage, Team } from './types';
-import { isResolvedNation } from './bracket/placeholders';
+import { isPlaceholderSide } from './bracket/placeholders';
 import { buildBracketView } from './bracket/resolve';
 import { loadBracketTopology } from './bracket/topology';
 import type { BracketResult, BracketView } from './bracket/types';
@@ -421,7 +422,7 @@ let knockoutWindowMemo: { start: string; end: string } | null | undefined;
 export function knockoutWindow(): { start: string; end: string } | null {
   if (knockoutWindowMemo !== undefined) return knockoutWindowMemo;
   const days = allFixtures()
-    .filter((m) => m.stage !== 'GROUP' && m.stage !== 'FRIENDLY')
+    .filter((m) => isKnockoutStage(m.stage))
     .map((m) => m.kickoff.slice(0, 10).replace(/-/g, ''))
     .filter((d) => d.length === 8);
   knockoutWindowMemo = days.length
@@ -456,7 +457,7 @@ export async function getBracket(
     return { view, degraded: false, standingsDegraded: false, unsupported: true };
   }
   const topology = loadBracketTopology();
-  const base = allFixtures().filter((m) => m.stage !== 'GROUP' && m.stage !== 'FRIENDLY');
+  const base = allFixtures().filter((m) => isKnockoutStage(m.stage));
 
   let matches = base;
   let liveDegraded = true;
@@ -878,7 +879,7 @@ export interface KnockoutFixturesResult {
  * countdown (e.g. "🇲🇽 vs 🇪🇨 in 2d") instead of a 🏳️ placeholder. The cold-path
  * refresher calls this and caches the result; the statusline reads the cache.
  *
- * Returns only fixtures where BOTH nations are resolved (flag ≠ 🏳️) and kickoff
+ * Returns only fixtures where BOTH sides are resolved (neither is the 🏳️ placeholder) and kickoff
  * ≥ now, so a slot ESPN hasn't filled yet is simply absent (the statusline then
  * fails closed to "⚽ —", never a placeholder). **Fails closed with
  * `degraded: true` on a provider error** — the caller must keep its prior cached
@@ -901,11 +902,10 @@ export async function getKnockoutFixtures(
   const fixtures = live
     .filter(
       (m) =>
-        m.stage !== 'GROUP' &&
-        m.stage !== 'FRIENDLY' &&
+        isKnockoutStage(m.stage) &&
         isUpcoming(m, now) &&
-        isResolvedNation(m.home) &&
-        isResolvedNation(m.away),
+        !isPlaceholderSide(m.home) &&
+        !isPlaceholderSide(m.away),
     )
     .sort(byKickoff);
   const meta = fetchMeta(live);

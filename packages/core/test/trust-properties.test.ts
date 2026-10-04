@@ -39,7 +39,9 @@ import {
 import type { MarketSignal, Match } from '../src/index';
 
 // The boundary these properties now describe, under their historical names.
-const sanitizeMatchStrings = (m: unknown): Match | undefined => parsedValue(parseCachedMatch(m));
+// The fixtures here are World Cup nations: the cache is read with the kind
+// its competition states (a club's has no flag; see team-kind.test.ts).
+const sanitizeMatchStrings = (m: unknown): Match | undefined => parsedValue(parseCachedMatch(m, { teamKind: 'nation' }));
 /** Refusal is a legitimate verdict; these properties probe for it explicitly. */
 const trySanitizeMarketSignal = (
   sig: unknown,
@@ -63,6 +65,7 @@ const ESC = '\u001B';
 const MATCH_KEYS = [
   'id',
   'stage',
+  'stageLabel',
   'kickoff',
   'venue',
   'home',
@@ -140,12 +143,19 @@ describe('property: allowlist — no undeclared key survives', () => {
   };
 
   it('sanitizeMatchStrings emits only declared Match keys (teams included)', () => {
-    const clean = sanitizeMatchStrings({ ...goodMatch, ...injected } as Match);
-    expect(clean).toBeDefined();
-    expect(Object.keys(clean as Match).sort()).toEqual(
-      Object.keys(clean as Match)
-        .filter((k) => (MATCH_KEYS as readonly string[]).includes(k))
-        .sort(),
+    // A group match, and a phase the grammar does not know, which carries the
+    // provider's words (`stageLabel`, 0.11 · 2.4): every key either emits is declared.
+    for (const over of [{}, { stage: 'OTHER', stageLabel: 'Qualifying final', group: undefined }]) {
+      const clean = sanitizeMatchStrings({ ...goodMatch, ...over, ...injected } as Match);
+      expect(clean).toBeDefined();
+      expect(Object.keys(clean as Match).sort()).toEqual(
+        Object.keys(clean as Match)
+          .filter((k) => (MATCH_KEYS as readonly string[]).includes(k))
+          .sort(),
+      );
+    }
+    expect(sanitizeMatchStrings({ ...goodMatch, stage: 'OTHER', stageLabel: 'Qualifying final' } as Match)?.stageLabel).toBe(
+      'Qualifying final',
     );
     for (const side of ['home', 'away'] as const) {
       const team = { ...goodMatch[side], ...injected };
@@ -224,7 +234,7 @@ describe('property: control/format characters out, emoji intact', () => {
     // forced an emoji exemption — and that exemption is what TAG characters,
     // variation selectors and ZWJ each rode through in turn. Flags are now
     // produced from the nation, so no exemption exists to aim at.
-    const flags = [...new Set(allTeams().map((t) => t.flag))];
+    const flags = [...new Set(allTeams().flatMap((t) => (t.flag ? [t.flag] : [])))];
     flags.push('🏳️'); // the unresolved-slot placeholder
     expect(flags.length).toBeGreaterThan(40);
     for (const f of flags) {
@@ -382,6 +392,9 @@ describe('property: every field is validated by runtime type and range', () => {
       'x'.repeat(64),
     ],
     stage: [{ evil: 1 }, 'NOT_A_STAGE', 42, null],
+    // The provider's words beside an OTHER stage: a human label of 40 columns,
+    // and only on OTHER (this match is a GROUP one, so it is dropped whole).
+    stageLabel: [`Final${ESC}[31m`, 'a\nb', 'x'.repeat(80), 42, { toString: null }],
     kickoff: ['kickoff soon', `2026-06-11T19:00Z (${ESC}INJECTED)`, 42, null],
     venue: [`V${ESC}[2J`, 'a\nb'],
     home: [null, 'nope'],

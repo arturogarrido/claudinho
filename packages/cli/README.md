@@ -60,7 +60,10 @@ matching a name are listed, never guessed); `match <id>` looks from yesterday to
 14 days ahead and names the days it searched when the match is not there;
 `bracket` says when a league season has no bracket; and `today`, `live`, `next`
 and `match` say "between editions" once a competition's edition has ended and
-the next has not started.
+the next has not started. A club shows by its name (or its code on the
+statusline: `ARS 2–1 CHE 50'`), with nothing where a nation's flag would be, and
+`next`/`match` say the stage it is in ("League", "Play-offs", or the provider's
+words for a phase Claudinho does not know).
 
 ### Examples
 

@@ -14,7 +14,7 @@ import {
   fixturesInLiveWindow,
   hasLiveWindow,
   isLive,
-  isResolvedNation,
+  isPlaceholderSide,
   isTournamentWindowOver,
   LIVE_WINDOW_MS,
   mergeLive,
@@ -25,8 +25,10 @@ import {
   parsedValue,
   type BoundedList,
   truncateVisible,
+  withFlag,
   scoreline,
   type Match,
+  type TeamKind,
 } from '@claudinho/core';
 import { ageMs, type CacheState } from './cache';
 import { scheduleGateOpen, scheduleView } from './scheduleSlice';
@@ -73,9 +75,12 @@ export function inLiveWindow(now = Date.now(), fixtures: Match[] = allFixtures()
   return fixturesInLiveWindow(now, fixtures).length > 0;
 }
 
-/** Both nations known — i.e. not an unresolved bracket placeholder (🏳️). */
+/**
+ * Both sides known — neither is an unresolved bracket placeholder (🏳️). A club
+ * side has no flag and IS known: a club fixture is resolved.
+ */
 function isResolvedFixture(m: Match): boolean {
-  return isResolvedNation(m.home) && isResolvedNation(m.away);
+  return !isPlaceholderSide(m.home) && !isPlaceholderSide(m.away);
 }
 
 /**
@@ -129,14 +134,35 @@ export interface PromptOpts {
    * Resolved by the caller (this module stays env-free, like `flags`).
    */
   defaultCompetition?: boolean;
+  /**
+   * The cached teams' kind, the competition's written fact (`TEAM_KIND`),
+   * resolved by the caller like `defaultCompetition`: a `nation` side carries
+   * its generated flag, a `club` side none. Absent: `nation` on the bundled
+   * competition (the World Cup fields nations, by the written table), `club`
+   * off it. It is not the same question as `defaultCompetition`: six nation
+   * competitions are not the bundle.
+   */
+  teamKind?: TeamKind;
 }
 
-/** A team's compact token: emoji flag, or its 3-letter code when flags are off. */
-function teamTok(t: { code: string; flag: string }, flags: boolean): string {
-  return flags ? t.flag : t.code;
+/**
+ * The kind a hot-path reader seals the cache with when its caller stated none:
+ * the bundle fields nations; anything else is read as clubs (no flag is
+ * generated from a name nobody vouched for).
+ */
+export function defaultTeamKind(defaultCompetition: boolean | undefined): TeamKind {
+  return defaultCompetition === false ? 'club' : 'nation';
 }
 
-/** One match as a segment (no leading icon), e.g. "🇪🇸 1–1 🇮🇶 87'". */
+/**
+ * A team's compact token: its emoji flag, or its code when flags are off OR
+ * the side has no flag (a club): nothing in the flag's place.
+ */
+function teamTok(t: { code: string; flag?: string }, flags: boolean): string {
+  return flags && t.flag ? t.flag : t.code;
+}
+
+/** One match as a segment (no leading icon), e.g. "🇪🇸 1–1 🇮🇶 87'", or a club's "ARS 2–1 CHE 50'". */
 function matchSegment(m: Match, compact: boolean, flags: boolean): string {
   const minute = m.status === 'HT' ? 'HT' : m.minute ? `${m.minute}'` : 'LIVE';
   if (!flags) {
@@ -145,8 +171,9 @@ function matchSegment(m: Match, compact: boolean, flags: boolean): string {
     // non-compact converge here (the code is the whole token).
     return `${m.home.code} ${scoreline(m)} ${m.away.code} ${minute}`;
   }
-  const home = compact ? m.home.flag : `${m.home.flag} ${m.home.code}`;
-  const away = compact ? m.away.flag : `${m.away.code} ${m.away.flag}`;
+  // A side with no flag (a club) renders its code in either layout.
+  const home = compact ? teamTok(m.home, true) : withFlag(m.home.code, m.home.flag, 'home');
+  const away = compact ? teamTok(m.away, true) : withFlag(m.away.code, m.away.flag, 'away');
   return `${home} ${scoreline(m)} ${away} ${minute}`;
 }
 
@@ -190,8 +217,12 @@ const MAX_LIVE_EXAMINED = 512;
  *
  * `events: false` — this surface renders a scoreline, not a timeline, and
  * sealing per-event labels is the dominant cost on a 150ms budget.
+ *
+ * `kind` is the competition's written team kind: a nation side keeps its
+ * generated flag, a club side has none (the call states it; nothing is
+ * inferred from the records).
  */
-export function sealFixtures(raw: unknown): BoundedList<Match> {
+export function sealFixtures(raw: unknown, kind: TeamKind): BoundedList<Match> {
   if (raw === undefined) {
     return { items: [], total: 0, shown: 0, truncated: false, complete: true };
   }
@@ -208,7 +239,7 @@ export function sealFixtures(raw: unknown): BoundedList<Match> {
       readable = false;
       continue;
     }
-    const sealed = parsedValue(parseCachedMatch(rec, { events: false }));
+    const sealed = parsedValue(parseCachedMatch(rec, { events: false, teamKind: kind }));
     if (sealed) out.push(sealed);
     else readable = false;
   }
@@ -227,7 +258,9 @@ export function sealFixtures(raw: unknown): BoundedList<Match> {
 
 export function liveMatchesFromCache(
   state: CacheState | undefined,
-  nowMs = Date.now(),
+  nowMs: number,
+  /** The competition's written team kind (see `sealFixtures`), stated by every caller. */
+  kind: TeamKind,
 ): BoundedList<Match> {
   const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
   const rawLive = fresh ? state?.live : [];
@@ -265,7 +298,7 @@ export function liveMatchesFromCache(
       readable = false;
       continue;
     }
-    const sealed = parsedValue(parseCachedMatch(m, { events: false }));
+    const sealed = parsedValue(parseCachedMatch(m, { events: false, teamKind: kind }));
     if (sealed) out.push(sealed);
     else readable = false;
   }
@@ -311,8 +344,9 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   const compact = opts.compact ?? true;
   const flags = opts.flags ?? true;
   const team = opts.team?.toUpperCase();
+  const kind = opts.teamKind ?? defaultTeamKind(defaultCompetition);
 
-  const liveList = liveMatchesFromCache(state, nowMs);
+  const liveList = liveMatchesFromCache(state, nowMs, kind);
   const live = liveList.items;
 
   // The static bundle MERGED with the refresher's cached resolved knockout
@@ -327,7 +361,7 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // On the bundled competition they are the refresher's resolved knockout
   // pairings; off it, the schedule slice's display records (the knockout slice
   // is the bundle's and is never filled there).
-  const cachedFixtureList = sealFixtures(defaultCompetition ? state?.fixtures : state?.schedule?.fixtures);
+  const cachedFixtureList = sealFixtures(defaultCompetition ? state?.fixtures : state?.schedule?.fixtures, kind);
   // A partial fixture overlay cannot prove a pairing is absent, but every
   // sealed pairing it does contain is safe to display. Off the bundle, a
   // display record the provider says is postponed, cancelled or FINISHED has
