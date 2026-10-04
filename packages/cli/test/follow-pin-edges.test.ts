@@ -130,6 +130,31 @@ describe('follow writes what it was given, as its own file', () => {
   });
 });
 
+describe('the pin and the override, beside the main suites', () => {
+  it('a refused override carries no pin (the refusal is the answer), whatever the file holds', () => {
+    follow({ version: 1, competition: 'eng.1', team: { id: 'espn:359', code: 'ARS', name: 'Arsenal' } });
+    process.env.CLAUDINHO_COMPETITION = 'foo';
+    const cfg = resolveConfig({});
+    expect(cfg.selection.kind).toBe('refused');
+    expect(cfg.pin).toBeUndefined();
+    // And an empty environment is absent: the file chooses, and its pin applies.
+    process.env.CLAUDINHO_COMPETITION = '';
+    expect(resolveConfig({}).pin).toEqual({ id: 'espn:359', code: 'ARS', name: 'Arsenal' });
+  });
+
+  it('`follow off --json` under the environment: the environment is in effect, nothing is saved, nothing is overridden', async () => {
+    follow({ version: 1, competition: 'eng.1' });
+    process.env.CLAUDINHO_COMPETITION = 'laliga';
+    await cmdFollow('off', {}, { ...ctxOf(), cfg: { ...ctxOf().cfg, json: true } });
+    const j = JSON.parse(text());
+    expect(j.competition).toMatchObject({ slug: 'esp.1', chosenBy: 'env' });
+    expect(j.saved).toBeNull();
+    expect(j.override).toBeUndefined();
+    expect(j.removed).toBe(true);
+    expect(existsSync(configFile())).toBe(false);
+  });
+});
+
 describe('nothing chosen, beside the main first-run suite', () => {
   it('`_refresh` asks nobody and writes nothing', async () => {
     let fetched = 0;
