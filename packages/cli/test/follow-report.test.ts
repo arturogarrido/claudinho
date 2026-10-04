@@ -552,7 +552,7 @@ describe('the team sentence promises nothing the next command cannot reach', () 
   });
 });
 
-describe('a refused environment has no competition, so no pin (the fourth reader\'s survivor)', () => {
+describe('under a refused environment the team sentence is the future-tense one and never "wins" (the fourth reader\'s survivor, pinned by its outcome)', () => {
   it('with a readable team and a saved pin, a refused CLAUDINHO_COMPETITION never yields "wins over the saved team", with or without a flag', async () => {
     await cmdFollow('world-cup', { team: 'Spain' }, ctxOf());
     process.env.CLAUDINHO_TEAM = 'Spain';

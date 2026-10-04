@@ -18,6 +18,7 @@ let tmp: string;
 const ENV = ['XDG_CONFIG_HOME', 'CLAUDINHO_COMPETITION', 'CLAUDINHO_TEAM'] as const;
 const saved: Record<string, string | undefined> = {};
 const outSpy = vi.spyOn(process.stdout, 'write');
+let writes: string[] = [];
 let fetched = 0;
 const laliga: ProviderAdapter = {
   name: 'espn',
@@ -44,7 +45,11 @@ beforeEach(() => {
   }
   process.env.XDG_CONFIG_HOME = tmp;
   fetched = 0;
-  outSpy.mockImplementation(() => true);
+  writes = [];
+  outSpy.mockImplementation((c: unknown) => {
+    writes.push(String(c));
+    return true;
+  });
 });
 afterEach(() => {
   outSpy.mockReset();
@@ -58,8 +63,8 @@ const follow = (body: Record<string, unknown>) => {
   mkdirSync(join(tmp, 'claudinho'), { recursive: true });
   writeFileSync(join(tmp, 'claudinho', 'config.json'), JSON.stringify(body));
 };
-const ctxOf = (competition?: string) => {
-  const cfg = resolveConfig({ tz: 'UTC', color: false, source: 'espn', flavor: 'off', markets: false, ...(competition ? { competition } : {}) });
+const ctxOf = (competition?: string, json = false) => {
+  const cfg = resolveConfig({ tz: 'UTC', color: false, source: 'espn', flavor: 'off', markets: false, ...(competition ? { competition } : {}), ...(json ? { json: true } : {}) });
   return { cfg, t: makeT('en'), adapter: laliga, now: new Date('2026-10-10T15:00:00Z'), marketProvider: new FakeMarketProvider() };
 };
 const commands: Array<[string, (c: ReturnType<typeof ctxOf>) => Promise<void>]> = [
@@ -98,6 +103,27 @@ describe('the usage sentence', () => {
     const fromEnv = await cmdNext(undefined, ctxOf('world-cup')).catch((e: Error) => e.message);
     expect(fromEnv).toEqual(asArgument);
     expect(String(fromEnv)).toMatch(/No team found for " zzz"/);
+    delete process.env.CLAUDINHO_TEAM;
+  });
+
+  it('the competition is asked BEFORE the team: an unreadable CLAUDINHO_TEAM under a refused CLAUDINHO_COMPETITION meets the competition\'s refusal, never "names no team"; with nothing chosen, the first-run object', async () => {
+    follow({ version: 1, competition: 'world-cup', team: { code: 'MEX', name: 'Mexico' } });
+    process.env.CLAUDINHO_TEAM = '\u200B';
+    process.env.CLAUDINHO_COMPETITION = 'bar';
+    for (const [name, run] of commands) {
+      const err = await run(ctxOf()).catch((e: Error) => e.message);
+      expect(err, name).toMatch(/Unknown competition "bar"/);
+      expect(err, name).not.toMatch(/names no team/);
+    }
+    delete process.env.CLAUDINHO_COMPETITION;
+    // Nothing chosen (no file): the first-run object on stdout, the team never reached.
+    rmSync(join(tmp, 'claudinho'), { recursive: true, force: true });
+    for (const [name, run] of commands) {
+      writes = [];
+      const err = await run(ctxOf(undefined, true)).catch((e: Error) => e.message);
+      expect(err, name).not.toMatch(/names no team/);
+      expect(JSON.parse(writes.join('')), name).toEqual({ competition: null, noCompetition: true });
+    }
     delete process.env.CLAUDINHO_TEAM;
   });
 
