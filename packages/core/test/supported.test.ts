@@ -80,6 +80,14 @@ describe('the table', () => {
     expect(() => {
       (d.teamKind as Record<string, unknown>)['fra.1'] = 'club';
     }).toThrow();
+    // A derived Set refuses its mutators too (a frozen Set is not read-only by itself).
+    for (const view of [d.noBracket, d.marketCompetitions] as Array<Set<string>>) {
+      expect(() => view.add('fra.1')).toThrow();
+      expect(() => view.delete('eng.1')).toThrow();
+      expect(() => view.clear()).toThrow();
+      expect(view.has('fra.1')).toBe(false);
+    }
+    expect(d.noBracket.has('eng.1')).toBe(true);
   });
 
   it('states the capabilities as the code offers them today', () => {
