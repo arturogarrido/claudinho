@@ -34,10 +34,12 @@ describe('resolveCompetition(explicit, env, saved)', () => {
     expect(resolveCompetition('esp.copa_del_rey')).toMatchObject({ kind: 'selected', slug: 'esp.copa_del_rey', experimental: true });
     expect(resolveCompetition(undefined, 'eng.league_cup')).toMatchObject({ kind: 'selected', experimental: true });
     expect(resolveCompetition('esp._').kind).toBe('selected');
+    // The bound: 64 units is a slug, 65 is not (a dotted one, so the grammar alone does not refuse it).
+    expect(resolveCompetition(`${'a'.repeat(59)}.bcde`).kind).toBe('selected');
   });
 
   it('anything else is refused with the aliases, never a request', () => {
-    for (const bad of ['foo', 'ENG.1', 'eng.1 ', 'a b', 'premier league', '.eng', 'eng.', 'eng..1', 'x'.repeat(65), 'constructor', 'é.1']) {
+    for (const bad of ['foo', 'ENG.1', 'eng.1 ', 'a b', 'premier league', '.eng', 'eng.', 'eng..1', 'x'.repeat(65), `${'a'.repeat(60)}.bcde`, 'constructor', 'é.1']) {
       const r = resolveCompetition(bad);
       expect(r.kind, bad).toBe('refused');
       if (r.kind === 'refused') {

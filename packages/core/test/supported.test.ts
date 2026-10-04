@@ -152,10 +152,16 @@ describe('a sixteenth row is one row: every consumer takes the table as its inpu
     expect(capabilitiesOf('fra.1', table).standings).toBe('offered');
   });
 
-  it('the derivations never read the prototype', () => {
+  it('the derivations never read the prototype: the views have none', () => {
     const poisoned = [...SUPPORTED, { ...FAKE, slug: 'constructor', alias: 'constructor' }];
     const d = deriveTables(poisoned);
     expect(Object.hasOwn(d.teamKind, 'constructor')).toBe(true);
     expect(entryOf('toString', poisoned)).toBeUndefined();
+    const plain = deriveTables(SUPPORTED);
+    for (const view of [plain.teamKind, plain.competitionKind, plain.seasonSlug, plain.standingsShape, plain.cadenceYears] as Array<Record<string, unknown>>) {
+      expect(Object.getPrototypeOf(view)).toBeNull();
+      expect(view.constructor).toBeUndefined();
+      expect(view.toString).toBeUndefined();
+    }
   });
 });

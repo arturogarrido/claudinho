@@ -16,6 +16,7 @@ import { type CliConfig, resolveConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn(() => ({ unref: vi.fn() })) }));
+import { spawn } from 'node:child_process';
 
 const NOW = new Date('2026-10-04T12:00:00Z');
 const fixture: Match = {
@@ -242,6 +243,8 @@ describe('the ambient commands contain a bad selection', () => {
     writes = [];
     expect(() => cmdHook({ cfg, t: makeT('en') })).not.toThrow();
     expect(text()).toBe('');
+    // A refused selection names no competition: nothing is refreshed for it.
+    expect(spawn).not.toHaveBeenCalled();
     writes = [];
     expect(() => cmdVibe({ cfg, t: makeT('en') })).not.toThrow();
     expect(text()).toContain('#VibingLaVidaLoca');
