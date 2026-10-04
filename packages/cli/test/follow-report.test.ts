@@ -452,7 +452,7 @@ describe('the team sentence asks whether the pin APPLIES, not whether the file h
     await cmdFollow(undefined, {}, ctxOf({ competition: 'premier-league' }));
     expect(text()).toMatch(/wins over the saved team/);
     expect(text()).not.toMatch(/take it as their team/);
-    // Under the pin's own competition (by flag or saved), the pin applies: the wins sentence.
+    // Under the pin's own competition for the NEXT command (the saved choice, with or without this command's flag), the pin applies: the wins sentence.
     writes = [];
     await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));
     expect(text()).toMatch(/wins over the saved team/);
@@ -545,6 +545,25 @@ describe('the team sentence promises nothing the next command cannot reach', () 
     writes = [];
     await cmdFollow(undefined, {}, ctxOf());
     expect(text()).toMatch(/take it as their team while it is\./);
+    delete process.env.CLAUDINHO_COMPETITION;
+    delete process.env.CLAUDINHO_TEAM;
+  });
+});
+
+describe('a refused environment has no competition, so no pin (the fourth reader\'s survivor)', () => {
+  it('with a readable team and a saved pin, a refused CLAUDINHO_COMPETITION never yields "wins over the saved team", with or without a flag', async () => {
+    await cmdFollow('world-cup', { team: 'Spain' }, ctxOf());
+    process.env.CLAUDINHO_TEAM = 'Spain';
+    process.env.CLAUDINHO_COMPETITION = 'bar';
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf());
+    expect(text()).toMatch(/"bar"/);
+    expect(text()).toMatch(/take it as their team once a competition is chosen\./);
+    expect(text()).not.toMatch(/wins over the saved team|while it is\./);
+    writes = [];
+    await cmdFollow(undefined, {}, ctxOf({ competition: 'world-cup' }));
+    expect(text()).toMatch(/take it as their team once a competition is chosen\./);
+    expect(text()).not.toMatch(/wins over the saved team/);
     delete process.env.CLAUDINHO_COMPETITION;
     delete process.env.CLAUDINHO_TEAM;
   });
