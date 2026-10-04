@@ -2167,21 +2167,30 @@ interface FollowFacts {
  *     (`nextSelection`: the environment while set, else the saved choice;
  *     never this command's flag). The team-taking commands (`next`,
  *     `share next`, `markets next`; the others read no team) reach the team
- *     only once the competition is selected: when the next selection is
- *     refused, or none (nothing chosen), they stop before it (`precheck`).
+ *     only once the competition is selected; otherwise they stop before it
+ *     (`precheck`), at one of two gates, and the sentence names it. By the
+ *     next selection's three kinds:
+ *       - selected: no gate, the team is reached ("while it is");
+ *       - refused: the environment's refusal is the gate, met first whether
+ *         or not a competition is saved (a refused selection comes only from
+ *         `CLAUDINHO_COMPETITION`: the file's value is believed only when
+ *         valid); the team is reached "once CLAUDINHO_COMPETITION names a
+ *         competition or is unset";
+ *       - none: nothing is chosen (no environment, no believed file); the
+ *         team is reached "once a competition is chosen".
+ *     By the team's states:
  *       - unset (or empty): nothing (the pin, if it applies, is the `Team:`
  *         line);
- *       - set and readable (in `sources.team`): next selection selected, it
- *         wins over the saved team when the pin APPLIES to the next command's
- *         competition (core `pinUnder`; `teamEnvWins`), else the team-taking
- *         commands take it as their team (`teamEnv`: no pin, or a pin for
- *         another competition, which would not have applied); next
- *         selection refused or none, they take it once a competition is
- *         chosen (`teamEnvLater`);
- *       - set with nothing readable (in `refused.team`): next selection
- *         selected, the team-taking commands refuse it, whatever the pin
- *         (`teamEnvRefused`); refused or none, they refuse it once a
- *         competition is chosen (`teamEnvRefusedLater`).
+ *       - set and readable (in `sources.team`): selected, it wins over the
+ *         saved team when the pin APPLIES to the next command's competition
+ *         (core `pinUnder`; `teamEnvWins`), else the team-taking commands
+ *         take it as their team (`teamEnv`: no pin, or a pin for another
+ *         competition, which would not have applied); refused,
+ *         `teamEnvAfterEnv`; none, `teamEnvLater`;
+ *       - set with nothing readable (in `refused.team`): selected, the
+ *         team-taking commands refuse it, whatever the pin
+ *         (`teamEnvRefused`); refused, `teamEnvRefusedAfterEnv`; none,
+ *         `teamEnvRefusedLater`.
  *     The JSON's `sources.team` and `refused.team` are facts about the value,
  *     the same in every tense. Under either set state the pin is the saved
  *     team (`Saved team:`, the file holds it), never the team in effect;
@@ -2272,12 +2281,14 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
   // allows: unset, nothing; set and readable, over the saved team when the
   // pin applies to the next command's competition, else the team-taking
   // commands' team; set with nothing readable, refused by the team-taking
-  // commands, whatever the pin. When the next selection is refused or none,
-  // those commands stop before the team: "once a competition is chosen".
-  const reachesTeam = next.kind === 'selected';
-  if (teamEnv.kind === 'refused') out(c.dim(`  ${t(reachesTeam ? 'follow.teamEnvRefused' : 'follow.teamEnvRefusedLater')}`));
-  else if (teamEnv.kind === 'set') {
-    out(c.dim(`  ${t(!reachesTeam ? 'follow.teamEnvLater' : pinNext ? 'follow.teamEnvWins' : 'follow.teamEnv')}`));
+  // commands, whatever the pin. When the next selection is not selected,
+  // those commands stop before the team, and the sentence names the gate:
+  // a refused CLAUDINHO_COMPETITION, or nothing chosen.
+  const teamGate = next.kind === 'selected' ? undefined : next.kind === 'refused' ? 'env' : 'choice';
+  if (teamEnv.kind === 'refused') {
+    out(c.dim(`  ${t(teamGate === 'env' ? 'follow.teamEnvRefusedAfterEnv' : teamGate === 'choice' ? 'follow.teamEnvRefusedLater' : 'follow.teamEnvRefused')}`));
+  } else if (teamEnv.kind === 'set') {
+    out(c.dim(`  ${t(teamGate === 'env' ? 'follow.teamEnvAfterEnv' : teamGate === 'choice' ? 'follow.teamEnvLater' : pinNext ? 'follow.teamEnvWins' : 'follow.teamEnv')}`));
   }
   if (reason && mode === 'show') out(c.dim(`  ${t(NO_SAVED_REASON[reason])}`));
   if (mode === 'write') out(c.dim(`  ${t('follow.path', { path })}`));
