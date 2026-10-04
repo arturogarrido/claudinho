@@ -1,17 +1,27 @@
 /**
- * `lookAtEntry` (0.11, the cleanup PR, ledger row D8, rounds 2 and 3): what a
+ * `lookAtEntry` (0.11, the cleanup PR, ledger row D8, rounds 2 to 6): what a
  * RENAME onto a path would do. The CLI's refresher asks it of a snapshot it
  * could not use, to know whether a publish (an atomic write: a temporary file
- * renamed over the path) can heal it. Only a directory (the rename fails) and
- * a regular file whose own mode denies its owner a read (refused, with the
- * owner-read bit clear: the replacement is ours and keeps the bits) are
- * `unhealable`; a link to anything, a pipe, and a regular file refused with
- * the owner-read bit set (an access-control list, another owner's 0600: the
- * replacement is ours, readable) are `replaceable`; a regular file that opens
- * is `file`, whatever its size or content. The bounded reader's kinds cannot
- * answer it: `lookAtSmallFile` says `unreadable` alike for a file it cannot
- * open, one over its bound, and a link to nothing. Nothing is read, and the
- * look never waits (a pipe with no writer included).
+ * renamed over the path) can heal it, as far as the look can see. In order: no
+ * entry is `absent`; a link is `replaceable` whatever its own bits (the rename
+ * replaces the link and keeps nothing of it); a directory is `unhealable` (the
+ * rename fails); an entry whose owner-read bit is clear is MEASURED, since the
+ * replacement keeps those bits and gets what the directory gives a new file:
+ * a probe file made beside the path with those bits, opened read-only and
+ * removed, says `replaceable` when it read back (a directory whose inherited
+ * entries allow this user a read) and `unhealable` when it did not (a plain
+ * directory: a file at 000, 200 or 044, a pipe or a socket at 000, a mode-000
+ * file that opens through its own allow entry, which the replacement loses) or
+ * could not be made; a regular file with the bit set is `file` when it opens,
+ * whatever its size or content, and `replaceable` when refused (an
+ * access-control list, another owner's 0600: the replacement is ours with the
+ * bit set); a pipe or a socket with the bit set is `replaceable`. The look
+ * cannot see an immutable or append-only flag, under which the rename is
+ * refused whatever it answers. The bounded reader's kinds cannot answer any of
+ * this: `lookAtSmallFile` says `unreadable` alike for a file it cannot open,
+ * one over its bound, and a link to nothing. The look never waits (a pipe with
+ * no writer included), and leaves nothing behind where the directory lets the
+ * probe be removed.
  */
 import { execFileSync } from 'node:child_process';
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
