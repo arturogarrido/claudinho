@@ -129,6 +129,19 @@ describe('a throttle survives the version bump', () => {
     expect(JSON.parse(readFileSync(cachePath(SOURCE, PL), 'utf8')).version).toBe(CACHE_VERSION);
   });
 
+  it('a snapshot of THIS format with a deadline is replaced even when the note cannot be written: the refusal is for the other format\'s reader only', () => {
+    // A command meeting a longer throttle must still publish it over a
+    // current-format snapshot whose own deadline the note could not take: this
+    // format's readers read the snapshot. Refusing here would lose the later
+    // deadline and ask the provider as soon as the earlier one passed.
+    const earlier = NOW + 4 * MIN;
+    const later = NOW + 8 * MIN;
+    writeState({ updatedAt: new Date(NOW - MIN).toISOString(), live: [], degraded: false, source: SOURCE, competition: PL, backoffUntil: new Date(earlier).toISOString() });
+    mkdirSync(backoffNotePath(SOURCE, PL), { recursive: true });
+    expect(writeState({ updatedAt: new Date(NOW).toISOString(), live: [], degraded: false, source: SOURCE, competition: PL, backoffUntil: new Date(later).toISOString() })).toBe(true);
+    expect(backoffInEffect(readCurrentState(SOURCE, PL), SOURCE, PL, NOW)).toBe(later);
+  });
+
   it('a successful write reports true', () => {
     expect(writeState({ updatedAt: new Date(NOW).toISOString(), live: [], degraded: false, source: SOURCE, competition: PL })).toBe(true);
   });
