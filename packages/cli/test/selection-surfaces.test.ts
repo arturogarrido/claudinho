@@ -228,11 +228,14 @@ describe('team: the World Cup\'s roster, whatever the selection', () => {
     expect(() => cmdTeam('France', ctxOf(cfgOf({ competition: 'euro' })))).toThrow(InputError);
     expect(() => cmdTeam('France', ctxOf(cfgOf({ competition: 'euro' })))).toThrow(/team's name goes straight to `next`/);
     expect(() => cmdTeam('France', ctxOf(cfgOf({ competition: 'euro' })))).not.toThrow(/club's name/);
+    // The way back to the roster is named: the override, in every locale.
+    expect(() => cmdTeam('France', ctxOf(cfgOf({ competition: 'euro' })))).toThrow(/--competition world-cup/);
     process.env.CLAUDINHO_COMPETITION = 'uefa.nations';
     expect(() => cmdTeam('France', ctxOf(cfgOf()))).toThrow(InputError);
     delete process.env.CLAUDINHO_COMPETITION;
     for (const lang of ['es', 'pt', 'fr']) {
       expect(() => cmdTeam('France', { cfg: cfgOf({ competition: 'euro', lang }), t: makeT(lang) }), lang).toThrow(/next/);
+      expect(() => cmdTeam('France', { cfg: cfgOf({ competition: 'euro', lang }), t: makeT(lang) }), lang).toThrow(/--competition world-cup/);
     }
   });
 
