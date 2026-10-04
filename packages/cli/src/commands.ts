@@ -2165,13 +2165,16 @@ interface FollowFacts {
  *     saved choice, none is named), then the team override's, by
  *     `CLAUDINHO_TEAM`'s three states: unset (or empty), nothing (the pin, if
  *     it applies, is the `Team:` line); set and readable (in `sources.team`),
- *     the team-taking commands take it as their team (`teamEnv`), or, when
- *     the file holds a pin, it wins over the saved team (`teamEnvWins`, never
- *     without a pin); set with nothing readable (in `refused.team`), the
- *     team-taking commands refuse it, a pin or not (`teamEnvRefused`). The
+ *     it wins over the saved team when the pin APPLIES to the competition
+ *     reported (core `pinUnder`: the pin's own competition, reported as the
+ *     saved choice or named by the flag or the environment; `teamEnvWins`),
+ *     else the team-taking commands take it as their team (`teamEnv`: no
+ *     pin, or a pin for another competition, which would not have applied);
+ *     set with nothing readable (in `refused.team`), the team-taking
+ *     commands refuse it, whatever the pin (`teamEnvRefused`). The
  *     team-taking commands are `next`, `share next` and `markets next`; the
- *     others read no team. Under either set state the
- *     pin is the saved team, never the team in effect;
+ *     others read no team. Under either set state the pin is the saved team
+ *     (`Saved team:`, the file holds it), never the team in effect;
  *   - why there is no saved choice (`reason`);
  *   - the path, said as what was done with it (`path`, and `removed` after `off`).
  */
@@ -2217,10 +2220,11 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
     return;
   }
   const c = painterFor(cfg);
-  // Whether the pin is the team in effect: the competition reported is the
-  // file's, and no CLAUDINHO_TEAM overrides it.
-  const pinned =
-    teamEnv.kind === 'unset' && saved?.team !== undefined && pinUnder(effect.kind === 'selected' ? effect.slug : undefined, saved) !== undefined;
+  // Whether the pin applies to the competition reported (it is the file's,
+  // core `pinUnder`), and whether it is the team in effect: it applies and no
+  // CLAUDINHO_TEAM overrides it.
+  const pinApplies = saved?.team !== undefined && pinUnder(effect.kind === 'selected' ? effect.slug : undefined, saved) !== undefined;
+  const pinned = teamEnv.kind === 'unset' && pinApplies;
   out();
   if (effect.kind === 'selected') out(`  ${t('follow.following', { competition: modeLine(effect, cfg.lang) })}`);
   else out(`  ${selectionRefusal(effect, cfg.lang)}`);
@@ -2245,11 +2249,11 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
   const sentence = overrideSentence(flag ? 'ran' : flagRefused ? 'refused' : undefined, envState, saved !== null);
   if (sentence) out(c.dim(`  ${t(sentence)}`));
   // The team override's, in its three states: unset, nothing; set and
-  // readable, the team-taking commands' team (over the saved team when the
-  // file holds a pin); set with nothing readable, refused by the team-taking
-  // commands, a pin or not.
+  // readable, over the saved team when the pin applies to the competition
+  // reported, else the team-taking commands' team; set with nothing
+  // readable, refused by the team-taking commands, whatever the pin.
   if (teamEnv.kind === 'refused') out(c.dim(`  ${t('follow.teamEnvRefused')}`));
-  else if (teamEnv.kind === 'set') out(c.dim(`  ${t(saved?.team ? 'follow.teamEnvWins' : 'follow.teamEnv')}`));
+  else if (teamEnv.kind === 'set') out(c.dim(`  ${t(pinApplies ? 'follow.teamEnvWins' : 'follow.teamEnv')}`));
   if (reason && mode === 'show') out(c.dim(`  ${t(NO_SAVED_REASON[reason])}`));
   if (mode === 'write') out(c.dim(`  ${t('follow.path', { path })}`));
   else if (mode === 'off') out(`  ${t(facts.removed ? 'follow.removed' : 'follow.nothingToRemove', { path })}`);
