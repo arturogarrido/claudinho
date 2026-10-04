@@ -510,8 +510,11 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
 // owner a read, at the snapshot's path, a record nobody can read (its own mode 000, a directory
 // at its path) admits nothing. The provider is then not asked and nothing is
 // published, but the hot path, which cannot read the record either, still
-// starts a refresher on every tick. In every other state the cycle proceeds as
-// it did before this record existed, and its publish ends the loop.
+// starts a refresher on every tick. So does a cache directory whose new files
+// nobody can read (an inherited deny-read ACL): no cycle asks or publishes (the
+// lock cannot be read back by its claimer, so `claimLock` claims nothing); the
+// spawn per tick stays. In every other state the cycle proceeds as it did
+// before this record existed, and its publish ends the loop.
 
 /** A record is `{"at":"<ISO>","count":n}`: far below this (the note's bound). */
 const MAX_ATTEMPT_BYTES = MAX_NOTE_BYTES;
@@ -797,16 +800,38 @@ function writeExclusive(lp: string, token: LockToken): boolean {
  * that are never reused (a generation per acquisition); a rename-and-restore
  * takeover was designed and withdrawn, because it opens the lock path to a
  * third process while it runs.
+ *
+ * A claim the claimer cannot read back is no claim (0.11, the cleanup PR).
+ * After every exclusive create that succeeded (the first, the one after the
+ * lock was found gone, the one after a stale lock was removed) the token is
+ * READ BACK through the reader `holdsLock` uses, and a read that is not the
+ * token written (nothing read, or another's token) returns `undefined`. Every
+ * use of a token asks `holdsLock` (a publish, a release, the attempt record's
+ * settlement), so a token that fails it at the instant of its claim serves
+ * nothing: in a cache directory whose new files nobody can read (an inherited
+ * deny-read ACL) the lock is created and written and cannot be read back, and
+ * a cycle holding it asked the provider, on every tick, for an answer it could
+ * never publish. The entry is LEFT where it is: the read-back is the ownership
+ * check and it failed, so removing it would be the unguarded unlink audit A10
+ * closed (in the takeover race above, it can already be a successor's). The
+ * next claimer judges what it finds: unreadable, so stale, taken over, and
+ * refused again on its own read-back; once reads work again, an ordinary lock
+ * stamped by its last claimer, fresh for the lease and stale after it, like a
+ * refresher that died holding it. Every caller treats `undefined` as a lock
+ * held by another: nothing asked, nothing published, and a command's throttle
+ * goes to the note.
  */
 export function claimLock(now = Date.now()): LockToken | undefined {
   mkdirSync(cacheDir(), { recursive: true });
   const lp = lockPath();
   const token = `${process.pid} ${now} ${randomBytes(6).toString('hex')}`;
-  if (writeExclusive(lp, token)) return token;
+  /** After a create that succeeded: ours only when the token reads back as written (never removed otherwise). */
+  const readBack = (): LockToken | undefined => (readLockToken() === token ? token : undefined);
+  if (writeExclusive(lp, token)) return readBack();
   const age = lockAgeMs(now);
   // Gone since the create failed: nothing to remove. One more create; if
   // someone else got there first, the lock is theirs.
-  if (age === undefined) return writeExclusive(lp, token) ? token : undefined;
+  if (age === undefined) return writeExclusive(lp, token) ? readBack() : undefined;
   // There, and stale (by written timestamp / mtime): take it over.
   if (age > LOCK_STALE_MS) {
     try {
@@ -815,7 +840,7 @@ export function claimLock(now = Date.now()): LockToken | undefined {
       return undefined; // lost the race to remove it
     }
     // One retry; if someone else grabbed it first, give up (no recursion loop).
-    return writeExclusive(lp, token) ? token : undefined;
+    return writeExclusive(lp, token) ? readBack() : undefined;
   }
   return undefined;
 }
@@ -824,7 +849,8 @@ export function claimLock(now = Date.now()): LockToken | undefined {
  * True while the lock file still carries this token. The token is REQUIRED
  * (0.11, ledger row D3): the lock API has one form, the token `claimLock`
  * returned. There is no "this process's lock" kept in a module variable; an
- * `undefined` token (a claim that failed) holds nothing.
+ * `undefined` token (a claim that failed) holds nothing. `claimLock` already
+ * asked this once, at the instant of the claim: a token it returned read back.
  */
 export function holdsLock(token: LockToken | undefined): boolean {
   return token !== undefined && readLockToken() === token;
