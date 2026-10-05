@@ -4,7 +4,9 @@
  * JSON alongside the text so agents can consume the raw data.
  */
 import {
+  DISCLAIMER as CORE_DISCLAIMER,
   countdown,
+  FAN_PROJECT,
   formatKickoff,
   joinSegments,
   matchFlavor,
@@ -165,9 +167,8 @@ export function standingsTable(table: { group: string; label?: string }, rows: S
   return [header, cols, ...lines].join('\n');
 }
 
-/** The persistent legal disclaimer appended to responses. */
-export const DISCLAIMER =
-  'Claudinho is an independent fan project — not affiliated with or endorsed by FIFA or Anthropic.';
+/** The persistent legal disclaimer appended to responses: core's one sentence, after the fan line. */
+export const DISCLAIMER = `Claudinho is an ${FAN_PROJECT.toLowerCase()}. ${CORE_DISCLAIMER}`;
 
 /**
  * Keep only the signals whose match survived `capRecords`. A signal keyed to a

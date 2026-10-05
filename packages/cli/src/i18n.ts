@@ -1,3 +1,5 @@
+import { DISCLAIMER } from '@claudinho/core';
+
 /** Minimal message catalog. Keys are stable; values localized. */
 const EN = {
   'today.title': "Today's matches",
@@ -5,7 +7,7 @@ const EN = {
   'today.none': 'No matches scheduled for this date.',
   'live.title': 'Live now',
   'live.none': 'No matches in play right now.',
-  'signoff.complete': 'The World Cup is complete. Thanks for using Claudinho.',
+  'signoff.complete': 'The 2026 World Cup is over. Follow another competition: claudinho follow --list, then claudinho follow <alias>.',
   'signoff.star': 'Star the project:',
   'live.degraded': "Live scores unavailable right now — couldn't reach the data provider.",
   'feed.degraded': 'Live scores unavailable — showing the bundled schedule.',
@@ -86,7 +88,8 @@ const EN = {
   'follow.list.clubs': "clubs",
   'follow.list.notYet': "not yet: {list}",
   'follow.list.na': "n/a: {list}",
-  disclaimer: 'Not affiliated with FIFA or Anthropic.',
+  // Core's one sentence, imported (never spelled here); the other locales translate it, every item kept.
+  disclaimer: DISCLAIMER,
 };
 
 /**
@@ -102,7 +105,7 @@ const ES: Dict = {
   'today.none': 'No hay partidos para esta fecha.',
   'live.title': 'En vivo',
   'live.none': 'No hay partidos en juego ahora mismo.',
-  'signoff.complete': 'El Mundial ha terminado. Gracias por usar Claudinho.',
+  'signoff.complete': 'El Mundial 2026 ha terminado. Sigue otra competición: claudinho follow --list, luego claudinho follow <alias>.',
   'signoff.star': 'Dale una estrella al proyecto:',
   'live.degraded': 'Marcadores en vivo no disponibles — no se pudo conectar con el proveedor de datos.',
   'feed.degraded': 'Marcadores en vivo no disponibles — mostrando el calendario.',
@@ -183,7 +186,7 @@ const ES: Dict = {
   'follow.list.clubs': "clubes",
   'follow.list.notYet': "aún no: {list}",
   'follow.list.na': "no aplica: {list}",
-  disclaimer: 'No afiliado a FIFA ni Anthropic.',
+  disclaimer: 'Sin afiliación con la FIFA, con ninguna confederación, liga o club, ni con Anthropic.',
 };
 
 const PT: Dict = {
@@ -192,7 +195,7 @@ const PT: Dict = {
   'today.none': 'Nenhum jogo para esta data.',
   'live.title': 'Ao vivo',
   'live.none': 'Nenhum jogo em andamento agora.',
-  'signoff.complete': 'A Copa do Mundo terminou. Obrigado por usar o Claudinho.',
+  'signoff.complete': 'A Copa do Mundo de 2026 terminou. Siga outra competição: claudinho follow --list, depois claudinho follow <alias>.',
   'signoff.star': 'Dê uma estrela ao projeto:',
   'live.degraded': 'Placar ao vivo indisponível — não foi possível conectar ao provedor de dados.',
   'feed.degraded': 'Placar ao vivo indisponível — mostrando a tabela de jogos.',
@@ -218,7 +221,7 @@ const PT: Dict = {
   'status.ft': 'FIM',
   'status.postponed': 'adiado',
   'status.cancelled': 'cancelado',
-  'col.team': 'Seleção',
+  'col.team': 'Time',
   'col.p': 'J',
   'col.w': 'V',
   'col.d': 'E',
@@ -273,7 +276,7 @@ const PT: Dict = {
   'follow.list.clubs': "clubes",
   'follow.list.notYet': "ainda não: {list}",
   'follow.list.na': "não se aplica: {list}",
-  disclaimer: 'Não afiliado à FIFA nem à Anthropic.',
+  disclaimer: 'Sem afiliação com a FIFA, com nenhuma confederação, liga ou clube, nem com a Anthropic.',
 };
 
 const FR: Dict = {
@@ -282,7 +285,7 @@ const FR: Dict = {
   'today.none': 'Aucun match prévu pour cette date.',
   'live.title': 'En direct',
   'live.none': "Aucun match en cours pour l'instant.",
-  'signoff.complete': "La Coupe du Monde est terminée. Merci d'avoir utilisé Claudinho.",
+  'signoff.complete': 'La Coupe du Monde 2026 est terminée. Suivez une autre compétition : claudinho follow --list, puis claudinho follow <alias>.',
   'signoff.star': 'Mettez une étoile au projet :',
   'live.degraded': 'Scores en direct indisponibles — impossible de joindre le fournisseur de données.',
   'feed.degraded': 'Scores en direct indisponibles — affichage du calendrier.',
@@ -363,7 +366,7 @@ const FR: Dict = {
   'follow.list.clubs': "clubs",
   'follow.list.notYet': "pas encore : {list}",
   'follow.list.na': "sans objet : {list}",
-  disclaimer: 'Non affilié à la FIFA ni à Anthropic.',
+  disclaimer: 'Sans affiliation avec la FIFA, ni avec aucune confédération, ligue ou club, ni avec Anthropic.',
 };
 
 const CATALOGS: Record<string, Dict> = { en: EN, es: ES, pt: PT, fr: FR };

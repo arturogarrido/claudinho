@@ -8,6 +8,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { EspnAdapter, FakeMarketProvider, type ProviderAdapter } from '@claudinho/core';
 import { z } from 'zod/v3';
+import { DISCLAIMER } from '../src/format';
 import { buildServer, OUTPUT_SCHEMAS, toContent } from '../src/server';
 import { toolGetLive, toolGetMarketSignal, toolGetMatch, toolGetShareSnippet, toolGetToday } from '../src/tools';
 
@@ -243,8 +244,9 @@ describe('the day’s attribution is decided over what the text finally shows (0
     // whole text, so at 32,001 characters it ran into the original footer and kept "Li" of "Live data" before
     // "(truncated)". The retained prefix is capped at the original body's end.
     const MAX = 32_000;
-    const footer = '\nLive data: ESPN\n\nClaudinho is an independent fan project — not affiliated with or endorsed by FIFA or Anthropic.';
-    const cutFooter = '\n\nClaudinho is an independent fan project — not affiliated with or endorsed by FIFA or Anthropic.';
+    // The server's own footer (core's one sentence after the fan line, 0.11 · 2.7).
+    const footer = `\nLive data: ESPN\n\n${DISCLAIMER}`;
+    const cutFooter = `\n\n${DISCLAIMER}`;
     for (const over of [1, 2, 5, 12, 15, 16, 17, 40]) {
       const body = 'x'.repeat(MAX + over - footer.length);
       const text = toContent({ text: body + footer, footer, cutFooter, data: { ok: true } }).content[0]?.text ?? '';
@@ -253,7 +255,7 @@ describe('the day’s attribution is decided over what the text finally shows (0
       const before = text.slice(0, text.indexOf('\n(truncated)'));
       expect(before, String(over)).toMatch(/^x+$/);
       expect(text, String(over)).not.toMatch(/Live data|\nL/);
-      expect(text, String(over)).toMatch(/not affiliated/);
+      expect(text, String(over)).toContain(DISCLAIMER);
     }
     // Without a cut footer the whole footer is kept and the prefix still ends in the body.
     const body = 'x'.repeat(MAX + 1 - footer.length);

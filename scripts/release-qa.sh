@@ -26,6 +26,32 @@
 # gate) is decided on the selection the built CLI RESOLVED, through
 # scripts/release-qa-lib.mjs, whose rules a test runs offline.
 #
+# Then a short CLUB RENDER (0.11): the Premier League, followed in a SECOND
+# config directory of its own (`claudinho follow premier-league` there), renders
+# `today`, `live`, `next Arsenal`, `table`, `table LEAGUE`, `share next Arsenal`
+# and `table LEAGUE --lang pt` (the Portuguese "Time" column), then `prompt`
+# against a cache seeded in a temporary XDG_CACHE_HOME by the smoke's own helper
+# (scripts/statusline-seed.mjs), stamped fresh so the statusline starts no
+# refresher; a preload (scripts/spawn-count.mjs) counts the refreshers it would
+# start, and starts none. The bracket is not asked there. A between-editions
+# league is a VALID render (its sentence shown); an outage is reported as one,
+# and proves no populated render. When the header says the ENVIRONMENT chose the
+# competition (`env (…)`, read back from the CLI's --json, never from the
+# variable), the run is one pass of that competition and the club render is
+# skipped. Its checks count into the one final tally.
+#
+# Added work, counted per process (each command builds its own adapter; nothing
+# is shared between them), on a discovery span that touches two months:
+# `today` 4 (a three-day window and the standings enrichment), `live` 4,
+# `next Arsenal` 3 (two months of discovery, one table), `table` 1, `table
+# LEAGUE` 1, `share next Arsenal` 3, the Portuguese table 1: 17 GETs, plus a
+# roster retry where an enrichment fails. Each request has the adapter's
+# 6-second timeout and a window waits once for its parts, so the seven
+# sequential commands (each at most two waits) bound the network wait at about
+# 90 seconds and the club render under two minutes in the worst case: an
+# ESTIMATE from those stages, not a deadline the script enforces. The seeded
+# `prompt` asks nothing.
+#
 # Exit code: non-zero if a tripwire FAILS (real regression). A degraded/unreachable
 # feed downgrades tripwires to SKIP (exit 0) — a network blip must not block a release.
 
@@ -40,6 +66,10 @@ GROUP="${GROUP:-A}"
 
 # Default to the built dist (tests exactly what ships); CLI=claudinho overrides.
 cli() { if [ -n "${CLI:-}" ]; then $CLI "$@"; else node "$DIST" "$@"; fi; }
+# The club render's config and cache directories: the club competition followed
+# there, and every club command reads and writes the temporary cache, never the
+# operator's (a throttle met during the run stays in that scope and goes with it).
+club() { XDG_CONFIG_HOME="$QA_CLUB_CONFIG" XDG_CACHE_HOME="$QA_CLUB_CACHE" cli "$@"; }
 # The competition decisions, offline-testable (see the header).
 qa() { node "$ROOT/scripts/release-qa-lib.mjs" "$@"; }
 
@@ -65,6 +95,7 @@ process.stdout.write(formatBracketList(view, { tz, locale:'en', footer:false }))
 bold()    { printf '\033[1m%s\033[0m\n' "$1"; }
 banner()  { printf '\n\033[1;36m━━━ %s ━━━\033[0m\n' "$1"; }
 run()     { printf '\033[2m$ claudinho %s\033[0m\n' "$*"; cli "$@"; echo; }
+crun()    { printf '\033[2m$ claudinho %s\033[0m\n' "$*"; club "$@"; echo; }
 
 if [ -z "${CLI:-}" ] && [ ! -f "$DIST" ]; then
   echo "✗ build first:  pnpm -r build   (or run with CLI=claudinho)"; exit 1
@@ -73,7 +104,8 @@ fi
 # The run's own config directory: the World Cup followed in it, as a user
 # would (`claudinho follow world-cup`), never the developer's own choice.
 QA_CONFIG="$(mktemp -d "${TMPDIR:-/tmp}/claudinho-release-qa.XXXXXX")"
-trap 'rm -rf "$QA_CONFIG"' EXIT
+QA_CLUB_CONFIG=""; QA_CLUB_CACHE=""
+trap 'rm -rf "$QA_CONFIG" "${QA_CLUB_CONFIG:-}" "${QA_CLUB_CACHE:-}"' EXIT
 export XDG_CONFIG_HOME="$QA_CONFIG"
 if ! cli follow world-cup >/dev/null 2>&1; then
   # A CLI from before 0.11 has no `follow` (and answers its own default).
@@ -122,14 +154,60 @@ run share live
 banner "STATUSLINE (prompt)"
 run prompt
 
+# ── 4b. The club render (see the header): after the bundle pass, unless the
+# environment chose the competition. Decided from the same question the header
+# asks, never from the variable.
+CLUB_GATE="$(cli table Z --json 2>/dev/null | qa club)"
+CLUB_FOLLOW=""; CLUB_CARD=""; CLUB_PT=""; CLUB_PROMPT=""; CLUB_SPAWNS=""
+if [ "$CLUB_GATE" = "run" ]; then
+  QA_CLUB_CONFIG="$(mktemp -d "${TMPDIR:-/tmp}/claudinho-release-qa-club.XXXXXX")"
+  QA_CLUB_CACHE="$(mktemp -d "${TMPDIR:-/tmp}/claudinho-release-qa-cache.XXXXXX")"
+  club follow premier-league >/dev/null 2>&1
+  CLUB_FOLLOW="$(club follow --json 2>/dev/null)"
+  banner "$(qa club-header <<<"$CLUB_FOLLOW")"
+  crun today
+  crun live
+  crun next Arsenal
+  crun table
+  crun table LEAGUE
+  # In English: the card's validator asks core for its English sentences, and
+  # the flag wins over the operator's CLAUDINHO_LANG and LANG.
+  printf '\033[2m$ claudinho share next Arsenal --lang en --json   (its snippet)\033[0m\n'
+  CLUB_CARD="$(club share next Arsenal --lang en --json 2>/dev/null)"
+  qa snippet <<<"$CLUB_CARD"; echo; echo
+  printf '\033[2m$ claudinho table LEAGUE --lang pt\033[0m\n'
+  CLUB_PT="$(club table LEAGUE --lang pt 2>/dev/null)"
+  printf '%s\n\n' "$CLUB_PT"
+  # The smoke's own seed, in a cache directory of its own; the preload counts the
+  # refreshers `prompt` would start (and starts none).
+  node "$ROOT/scripts/statusline-seed.mjs" club "$QA_CLUB_CACHE" eng.1 >/dev/null
+  SPAWN_COUNT_URL="$(node -e 'process.stdout.write(require("node:url").pathToFileURL(process.argv[1]).href)' "$ROOT/scripts/spawn-count.mjs")"
+  printf '\033[2m$ claudinho prompt   (a cache seeded with a live club match)\033[0m\n'
+  CLUB_PROMPT="$(XDG_CACHE_HOME="$QA_CLUB_CACHE" QA_SPAWN_LOG="$QA_CLUB_CACHE/spawns.log" \
+    NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--import=$SPAWN_COUNT_URL" club prompt </dev/null 2>/dev/null)"
+  printf '%s\n' "$CLUB_PROMPT"
+  if [ -f "$QA_CLUB_CACHE/spawns.log" ]; then
+    CLUB_SPAWNS="$(wc -l <"$QA_CLUB_CACHE/spawns.log" | tr -d ' ')"
+  else
+    CLUB_SPAWNS=0
+  fi
+else
+  banner "CLUB RENDER: skipped (${CLUB_GATE#skip:})"
+fi
+
 # ── 5. Tripwires — the specific bugs that shipped this cycle ──────────────────
 banner "TRIPWIRES"
 PASS=0; FAIL=0; SKIP=0
-BR_EN="$(cli bracket 2>/dev/null)"
-BR_UTC="$(cli bracket --tz UTC 2>/dev/null)"
-BR_TYO="$(cli bracket --tz Asia/Tokyo 2>/dev/null)"
-SB="$(cli share bracket 2>/dev/null)"
-SBC="$(cli share bracket --style compact 2>/dev/null)"
+# The tripwires read English: their guards look for "Round of 32", the month
+# abbreviations and the English disclaimer, so these renders pass --lang en (the
+# flag wins over the operator's CLAUDINHO_LANG and LANG, which would otherwise
+# localize the bracket and skip four tripwires as a degraded feed). The UTC and
+# Asia/Tokyo renders differ only by --tz, so their comparison keeps its meaning.
+BR_EN="$(cli bracket --lang en 2>/dev/null)"
+BR_UTC="$(cli bracket --lang en --tz UTC 2>/dev/null)"
+BR_TYO="$(cli bracket --lang en --tz Asia/Tokyo 2>/dev/null)"
+SB="$(cli share bracket --lang en 2>/dev/null)"
+SBC="$(cli share bracket --lang en --style compact 2>/dev/null)"
 
 check() { # name ; pass-condition already evaluated into $1=ok/no
   if [ "$1" = "ok" ]; then printf '  \033[32m✓ PASS\033[0m  %s\n' "$2"; PASS=$((PASS+1))
@@ -347,6 +425,47 @@ try {
       check no "bundle↔live drift check: the competition gate gave no answer" ;;
   esac
 fi
+
+# C1-C4 — the club render (section 4b): what the club config followed, the
+# club card (a render, a VALID between-editions render, or an outage reported as
+# one) and its disclaimer, the Portuguese "Time" column, and the seeded prompt
+# (the seeded club match rendered, no refresher started). Counted into the same
+# tally; skipped as one when the club render was.
+case "$CLUB_GATE" in
+  run)
+    V="$(qa club-followed <<<"$CLUB_FOLLOW")"
+    [ "$V" = "ok" ] \
+      && check ok  "club render: the second config directory follows the Premier League" \
+      || check no  "club render: ${V#fail:}"
+    V="$(qa card <<<"$CLUB_CARD")"
+    case "$V" in
+      ok:*)      check ok "club render: share next Arsenal rendered (${V#ok:})" ;;
+      between:*) check ok "club render: between editions is a valid render (${V#between:})" ;;
+      outage:*)  printf '  \033[33m⚠ SKIP\033[0m  club render: outage (%s); a populated card is not proven\n' "${V#outage:}"
+                 SKIP=$((SKIP+1)) ;;
+      *)         check no "club render: ${V#*:}" ;;
+    esac
+    V="$(qa card-disclaimer <<<"$CLUB_CARD")"
+    [ "$V" = "ok" ] \
+      && check ok  "club render: the club share card carries the one disclaimer" \
+      || check no  "club render: ${V#fail:}"
+    V="$(qa pt-table <<<"$CLUB_PT")"
+    case "$V" in
+      ok:*)   check ok "club render: the Portuguese table's team column says Time" ;;
+      skip:*) printf '  \033[33m⚠ SKIP\033[0m  club render: the Portuguese column (%s)\n' "${V#skip:}"
+              SKIP=$((SKIP+1)) ;;
+      *)      check no "club render: the Portuguese table (${V#*:})" ;;
+    esac
+    V="$(qa prompt "$CLUB_SPAWNS" <<<"$CLUB_PROMPT")"
+    case "$V" in
+      ok:*) check ok "club render: the seeded prompt renders the club match and starts no refresher (${V#ok:})" ;;
+      *)    check no "club render: the seeded prompt (${V#*:})" ;;
+    esac ;;
+  skip:*)
+    printf '  \033[33m⚠ SKIP\033[0m  club render (%s)\n' "${CLUB_GATE#skip:}"
+    SKIP=$((SKIP+1)) ;;
+  *) check no "club render: the gate gave no answer" ;;
+esac
 
 echo
 bold "tripwires: $PASS passed · $FAIL failed · $SKIP skipped"

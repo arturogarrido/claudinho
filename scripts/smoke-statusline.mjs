@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 /**
- * Cross-platform statusline smoke: seed a fresh micro-cache, run the built
- * `claudinho prompt`, and assert it renders the seeded live match. Plain node
- * (no shell quoting) so the same command works on the Windows/macOS CI legs.
+ * Cross-platform statusline smoke: seed a fresh micro-cache (through
+ * `scripts/statusline-seed.mjs`, the one seed every script writes through), run
+ * the built `claudinho prompt`, and assert it renders the seeded live match.
+ * Plain node (no shell quoting) so the same command works on the Windows/macOS
+ * CI legs.
  *
  * Since 0.11 nothing is followed until the user chooses, so the run FOLLOWS the
  * World Cup the way a user does: a config file (`{ version: 1, competition:
@@ -22,6 +24,9 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// The one cache seed every script writes through (pinned to the CLI's format
+// and file name by packages/cli/test/smoke-cache-version.test.ts).
+import { seedState } from './statusline-seed.mjs';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 const dist = join(root, 'packages', 'cli', 'dist', 'index.js');
@@ -32,43 +37,32 @@ if (!existsSync(dist)) {
 
 const dir = mkdtempSync(join(tmpdir(), 'claudinho-smoke-'));
 try {
-  const cacheDir = join(dir, 'claudinho');
-  mkdirSync(cacheDir, { recursive: true });
   const now = new Date().toISOString();
   // Fresh on BOTH cadences (live + fixtures) so the hot path spawns no refresher
   // and touches no network — this smoke must pass on an offline runner.
-  writeFileSync(
-    join(cacheDir, 'state.json'),
-    JSON.stringify({
-      // = CACHE_VERSION in packages/cli/src/cache.ts. Pinned by
-      // packages/cli/test/smoke-cache-version.test.ts, because a "bump together"
-      // comment alone did not survive the 0.11 format change.
-      version: 5,
-      updatedAt: now,
-      degraded: false,
-      source: 'espn',
-      competition: 'fifa.world',
-      live: [
-        {
-          // Numeric: safeMatchId accepts only digits (every real ESPN and bundled
-          // id is numeric), so a cache record with a prose-shaped id is dropped.
-          id: '900001',
-          stage: 'GROUP',
-          group: 'A',
-          kickoff: now,
-          venue: 'Estadio Banorte',
-          home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
-          away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
-          status: 'LIVE',
-          minute: 30,
-          score: { home: 1, away: 0 },
-          updatedAt: now,
-        },
-      ],
-      fixtures: [],
-      fixturesUpdatedAt: now,
-    }),
-  );
+  seedState(dir, {
+    competition: 'fifa.world',
+    now,
+    live: [
+      {
+        // Numeric: safeMatchId accepts only digits (every real ESPN and bundled
+        // id is numeric), so a cache record with a prose-shaped id is dropped.
+        id: '900001',
+        stage: 'GROUP',
+        group: 'A',
+        kickoff: now,
+        venue: 'Estadio Banorte',
+        home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+        away: { code: 'ECU', name: 'Ecuador', flag: '🇪🇨' },
+        status: 'LIVE',
+        minute: 30,
+        score: { home: 1, away: 0 },
+        updatedAt: now,
+      },
+    ],
+    fixtures: [],
+    fixturesUpdatedAt: now,
+  });
 
   // The World Cup followed, as a user would (`claudinho follow world-cup`).
   const configDir = join(dir, 'config');

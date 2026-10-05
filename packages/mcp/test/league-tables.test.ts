@@ -190,7 +190,7 @@ describe('standings://{key}', () => {
       // The refusal names its competition first too, like every branch (0.11 · 2.5a).
       expect(text.split('\n')[0], JSON.stringify(junk)).toBe('EURO');
       expect(text).toContain('standings://LEAGUE');
-      expect(text).toContain('not affiliated with or endorsed by FIFA or Anthropic');
+      expect(text).toContain(DISCLAIMER);
     }
     expect(requests).toBe(0);
   });

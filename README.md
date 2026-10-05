@@ -12,12 +12,13 @@
 [![#VibingLaVidaLoca](https://img.shields.io/badge/%23VibingLaVidaLoca-⚽-ff5a5f)](https://github.com/arturogarrido/claudinho)
 [![GitHub stars](https://img.shields.io/github/stars/arturogarrido/claudinho?style=flat&logo=github&label=stars&color=f5c518)](https://github.com/arturogarrido/claudinho)
 
-**Live scores for the 2026 men's football tournament — in your terminal, your Claude Code / Cursor CLI statusline, and any MCP client.** No API key, no signup; all 104 fixtures ship bundled, so the schedule works offline.
+**Live football scores, fixtures and standings for the competition you follow (the World Cup, the Premier League, LALIGA, the Champions League and 11 more) in your terminal, your Claude Code and Cursor CLI statusline, and MCP clients.** No API key, no signup. The World Cup's 104 fixtures ship bundled; the other competitions' schedules are read from the feed. It ran the 2026 World Cup from the opener to the final.
 
 <p align="center">
-  <img src=".github/assets/hero.gif" alt="A Claude Code statusline flipping to a live World Cup score — South Korea 2–1 Czechia — while tests run in the terminal" width="800">
+  <img src=".github/assets/hero.gif" alt="A Claude Code statusline flipping to a live World Cup score (South Korea 2–1 Czechia) while tests run in the terminal" width="800">
 </p>
-<!-- HERO: real live-match capture from the Jun 11 opener — the statusline flips to
+<!-- HERO: a real live-match capture from the 2026 World Cup's opening day (Jun 11), a
+     tournament Claudinho ran from the opener to the final: the statusline flips to
      South Korea's 81st-minute winner (1–1 → 2–1) while pytest runs. -->
 
 ```bash
@@ -26,7 +27,7 @@ npx @claudinho/cli today      # try it in 10 seconds — no install, no key
 npx @claudinho/cli live       # what's on right now (during match windows)
 ```
 
-> ⭐ **Like it?** [Star the repo](https://github.com/arturogarrido/claudinho) — a fan project's only scoreboard is its stars. (`claudinho star` shows you how anytime.)
+> ⭐ **Like it?** [Star the repo](https://github.com/arturogarrido/claudinho): a fan project's only scoreboard is its stars. (`claudinho star` shows you how anytime.)
 
 While matches are live, your Claude Code or Cursor CLI statusline reads:
 
@@ -36,12 +37,13 @@ While matches are live, your Claude Code or Cursor CLI statusline reads:
 
 And `claudinho share` prints a card made for the group chat:
 
-<!-- DEMO CARD: verbatim output of `claudinho share table A`. Chosen over a single
-     match card because it has no fixed date to go stale (a played-and-passed fixture
-     reads as abandoned). Standings still drift across matchdays — REGENERATE
-     periodically, especially before any conversion-sensitive moment. Never hand-edit.
-     (0.11: the same rows re-rendered offline through the card builder for the new
-     format, the competition's title line and the `--competition` run cue.) -->
+<!-- DEMO CARD: verbatim output of `claudinho --competition world-cup --tz UTC share table A`.
+     Chosen over a single match card because it has no fixed date to go stale (a
+     played-and-passed fixture reads as abandoned). Standings still drift across
+     matchdays: REGENERATE periodically, especially before any conversion-sensitive
+     moment. Never hand-edit. Re-rendered on 2026-10-05 (0.11) through the CLI's own
+     `share table A` command, offline: a provider double served the capture's Group A
+     rows, at a frozen clock of 2026-06-28T12:00Z. -->
 ```text
 World Cup · standings
 
@@ -53,13 +55,13 @@ Group A · standings
 4. 🇨🇿 CZE  1 pts · 0-1-2 · -4
 
 Live data: ESPN
-#VibingLaVidaLoca · Independent fan project · not affiliated with FIFA or Anthropic.
+#VibingLaVidaLoca · Independent fan project · Not affiliated with FIFA, any confederation, league or club, or Anthropic.
 Try it: npx @claudinho/cli --competition world-cup table A
 ```
 
-> ⚠️ **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.**
+> ⚠️ **Not affiliated with FIFA, any confederation, league or club, or Anthropic. Nor endorsed by or connected to any of them.**
 > Claudinho is an independent, open-source fan project. It displays factual match data
-> (scores, fixtures, standings) and uses emoji flags only — no logos, emblems, kits,
+> (scores, fixtures, standings) and uses emoji flags only: no logos, emblems, kits,
 > broadcast footage, or player likenesses.
 
 ## Install
@@ -73,7 +75,7 @@ claudinho today
 claudinho next MEX --tz America/Mexico_City --lang es
 ```
 
-### Cursor CLI — statusline + MCP
+### Cursor CLI: statusline + MCP
 
 One command wires the live-score statusline and prints the MCP config to paste:
 
@@ -83,13 +85,13 @@ claudinho init cursor          # statusline → ~/.cursor/cli-config.json (+ the
 ```
 
 <p align="center">
-  <img src=".github/assets/cursor-cli-statusline.png" alt="A live World Cup score in a Cursor CLI statusline — Uzbekistan 0–1 Colombia, 42' — with a model and context line below it" width="520">
+  <img src=".github/assets/cursor-cli-statusline.png" alt="A live World Cup score in a Cursor CLI statusline (Uzbekistan 0–1 Colombia, 42') with a model and context line below it" width="520">
 </p>
 
 Restart your agent session to see it. Prefer to paste it yourself? `claudinho init cursor --print`
 emits the snippets, or copy them straight from here:
 
-**Statusline** — `~/.cursor/cli-config.json`:
+**Statusline**, in `~/.cursor/cli-config.json`:
 ```json
 {
   "statusLine": {
@@ -102,12 +104,12 @@ emits the snippets, or copy them straight from here:
 }
 ```
 
-**MCP tools** — `~/.cursor/mcp.json` (global) or a project `.cursor/mcp.json`:
+**MCP tools**, in `~/.cursor/mcp.json` (global) or a project `.cursor/mcp.json`:
 ```json
 { "mcpServers": { "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] } } }
 ```
 
-**Optional env** — a model + context line below the score, or scope to your team:
+**Optional env**: a model + context line below the score, or scope to your team:
 ```bash
 export CLAUDINHO_CURSOR_META=auto   # model + context % line under the score (recommended)
 export CLAUDINHO_TEAM=MEX           # your team's match first (the others counted); or pin one: claudinho follow <alias> --team <name>
@@ -117,10 +119,10 @@ export CLAUDINHO_NO_STAR=1          # suppress the occasional "star the repo" nu
 ```
 
 > **Note:** Cursor's `beforeSubmitPrompt` hook doesn't yet reliably inject context into the
-> model, so the score-aware *hook* stays Claude Code-only for now — the statusline and MCP
+> model, so the score-aware *hook* stays Claude Code-only for now; the statusline and MCP
 > server work great in Cursor.
 
-### Claude Code — statusline, score-aware hook, MCP
+### Claude Code: statusline, score-aware hook, MCP
 
 ```bash
 npm i -g @claudinho/cli
@@ -141,7 +143,7 @@ Restart Claude Code to activate.
 > with `--command`, e.g. `claudinho init-cursor-statusline --command "node ./packages/cli/dist/index.js prompt"`
 > (and `init-statusline` / `init-hook` for Claude Code).
 
-### Other MCP clients — Codex, Claude Desktop, Windsurf, Zed, VS Code
+### Other MCP clients: Codex, Claude Desktop, Windsurf, Zed, VS Code
 
 ```bash
 codex mcp add claudinho -- npx -y @claudinho/mcp    # Codex CLI
@@ -153,22 +155,22 @@ Everything else takes the standard stdio config:
 { "mcpServers": { "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] } } }
 ```
 
-Then just ask, mid-task — the agent calls the MCP server and answers with the score:
+Then just ask, mid-task: the agent calls the MCP server and answers with the score:
 
 <p align="center">
-  <img src=".github/assets/mcp-aha.gif" alt="An AI coding agent asked 'did Germany get through?' mid-task — it calls the Claudinho MCP server and answers with the result: Germany 1(3)–1(4) Paraguay, FT (Paraguay won on penalties)" width="720">
+  <img src=".github/assets/mcp-aha.gif" alt="An AI coding agent asked 'did Germany get through?' mid-task; it calls the Claudinho MCP server and answers with the result: Germany 1(3)–1(4) Paraguay, FT (Paraguay won on penalties)" width="720">
 </p>
 
 ## Surfaces
 
-- **CLI** — `today`, `live`, `next MEX`, `table`, `match <id>`, `bracket`, `markets`, `share`, `team` (name → code, e.g. `team "DR Congo"`) (plus `vibe` 😎 and `star` ⭐). `--json` on everything; TZ-aware via `--tz`; another competition with `--competition premier-league` (see [Competitions](#competitions)), named on a line after each answer's header (first where an answer has none; `table` once, before its tables) and as `competition` in `--json`; `share` prints no such line, its card's title names the competition and its cue selects it; `team` names the World Cup roster it reads. In a club competition `next` takes a club's name or code (`next Arsenal`) and searches the next 14 days, `match <id>` the same span, `bracket` says when a league has none, and an ended edition reads "between editions". A club shows by its name (or code), with nothing where a nation's flag would be, and `next` and `match` say the stage a match is in: "League" for a league's season, a cup's own round ("League phase", "Play-offs"), or the provider's words for a phase it does not know. When the provider sends a record Claudinho cannot read, every interactive command (and its `--json`) says its data may be incomplete instead of showing less as if it were all.
-- **Live statusline — Claude Code & Cursor CLI** — every live score inline; reads a local micro-cache, never blocks on the network. One command per agent: `claudinho init claude` / `claudinho init cursor` (also tmux & Starship via `claudinho prompt`).
-- **Score-aware hook (Claude Code)** — a `UserPromptSubmit` hook that drops the live score into the model's context during matches; zero tokens off-match. (Cursor parity pending — its hook can't reliably inject context yet.)
-- **MCP server** — 10 read-only tools (`get_today`, `get_live`, `get_match`, `get_next_fixture`, `get_standings`, `get_bracket`, `get_market_signal`, `get_share_snippet`, `get_team`, `list_competitions`) plus `my_team` / `tournament_today` prompts; every tool but `get_team` takes an optional `competition` (an alias such as `premier-league`).
-- **Prediction-market signals** — a read-only "who's favored" line (market-implied percentages, Source: Polymarket), shown only when a reliable market exists. **Informational only — not betting advice.** Opt out: `--no-markets` / `CLAUDINHO_MARKETS=off`.
-- **Shareable cards** — `claudinho share next MEX --copy` puts a plain-text match card on your clipboard; `claudinho share table A` does the same for a group's live standings; `claudinho share bracket` for the knockout tree.
+- **CLI**: `today`, `live`, `next MEX`, `table`, `match <id>`, `bracket`, `markets`, `share`, `team` (name → code, e.g. `team "DR Congo"`) (plus `vibe` 😎 and `star` ⭐). `--json` on everything; TZ-aware via `--tz`; another competition with `--competition premier-league` (see [Competitions](#competitions)), named on a line after each answer's header (first where an answer has none; `table` once, before its tables) and as `competition` in `--json`; `share` prints no such line, its card's title names the competition and its cue selects it; `team` names the World Cup roster it reads. In a club competition `next` takes a club's name or code (`next Arsenal`) and searches the next 14 days, `match <id>` the same span, `bracket` says when a league has none, and an ended edition reads "between editions". A club shows by its name (or code), with nothing where a nation's flag would be, and `next` and `match` say the stage a match is in: "League" for a league's season, a cup's own round ("League phase", "Play-offs"), or the provider's words for a phase it does not know. When the provider sends a record Claudinho cannot read, every interactive command (and its `--json`) says its data may be incomplete instead of showing less as if it were all.
+- **Live statusline, Claude Code & Cursor CLI**: every live score inline; reads a local micro-cache, never blocks on the network. One command per agent: `claudinho init claude` / `claudinho init cursor` (also tmux & Starship via `claudinho prompt`).
+- **Score-aware hook (Claude Code)**: a `UserPromptSubmit` hook that drops the live score into the model's context during matches; zero tokens off-match. (Cursor parity pending: its hook can't reliably inject context yet.)
+- **MCP server**: 10 read-only tools (`get_today`, `get_live`, `get_match`, `get_next_fixture`, `get_standings`, `get_bracket`, `get_market_signal`, `get_share_snippet`, `get_team`, `list_competitions`) plus `my_team` / `tournament_today` prompts; every tool but `get_team` takes an optional `competition` (an alias such as `premier-league`).
+- **Prediction-market signals**: a read-only "who's favored" line (market-implied percentages, Source: Polymarket), shown only when a reliable market exists. **Informational only, not betting advice.** Opt out: `--no-markets` / `CLAUDINHO_MARKETS=off`.
+- **Shareable cards**: `claudinho share next MEX --copy` puts a plain-text match card on your clipboard; `claudinho share table A` does the same for a group's live standings; `claudinho share bracket` for the knockout tree.
 
-Speaks `en` / `es` / `pt` / `fr`, with optional localized commentary flair (`¡GOOOOL!`) — dial it down with `--flavor subtle|off`.
+Speaks `en` / `es` / `pt` / `fr`, with optional localized commentary flair (`¡GOOOOL!`); dial it down with `--flavor subtle|off`.
 
 _Planned (not shipped yet):_ a desktop notifier and an AI pundit with a public accuracy scorecard.
 
@@ -238,36 +240,36 @@ posts, historical listings, automated mirrors, and events.
 
 **Do I need an API key or account?** No. Nothing to sign up for; `npx` and done.
 
-**Does it work offline?** The bundled data does — the full schedule, group fixtures, and the knockout bracket *structure* (all 104 fixtures ship bundled, no key). Anything *live* hits the network: scores, group standings, and a team's resolved knockout opponent (`next` once the draw fills in).
+**Does it work offline?** The World Cup's bundled data does: its full schedule, group fixtures, and the knockout bracket *structure* (the World Cup's 104 fixtures ship bundled, no key). The other competitions' schedules are read from the feed, so `today` and `next` need the network there. Anything *live* hits the network: scores, standings, and a team's resolved knockout opponent (`next` once the draw fills in).
 
 **Where does the data come from?** Live scores from ESPN's public scoreboard (attributed in output as `Live data: ESPN`); market signals from Polymarket public data. Rate limits respected.
 
-**Is the market line betting advice?** No. It's read-only, informational-only market data with attribution — no trading, no links — and it never appears on the statusline or hook.
+**Is the market line betting advice?** No. It's read-only, informational-only market data with attribution (no trading, no links), and it never appears on the statusline or hook.
 
 **Why no crests, kits, or player photos?** Legal-clean by design: facts and emoji flags only. A flag is a nation's: a club has none (and no crest), so it shows by its name or code.
 
-**Flags show as boxed letters (`CH`, `BA`)?** Some terminals — notably Warp — don't compose
+**Flags show as boxed letters (`CH`, `BA`)?** Some terminals (notably Warp) don't compose
 the regional-indicator pairs into flag glyphs, so 🇨🇭 renders as a boxed `CH`. claudinho
 auto-detects Warp and drops the flags: **3-letter codes on the statusline** (`MEX 1–0 RSA 67'`)
 and **plain team names in the hook**, `today` / `live` / `table`, and `next`. Force it anywhere with `CLAUDINHO_FLAGS=off`, or keep flags
 with `CLAUDINHO_FLAGS=on`.
 
-**Windows?** Works, but flag emoji rendering varies by terminal — best on macOS/Linux. See the
+**Windows?** Works, but flag emoji rendering varies by terminal; best on macOS/Linux. See the
 flags note above; `CLAUDINHO_FLAGS=off` gives clean codes on any terminal that can't render them.
 
 ## Why star?
 
-Claudinho is a solo, $0, organic fan project — a GitHub star is the only signal that it's worth maintaining, and the nudge to keep shipping through the final. A star also:
+Claudinho is a solo, $0, organic fan project: a GitHub star is the only signal that it's worth maintaining, and the nudge to keep shipping. A star also:
 
-- surfaces it for other devs hunting live scores during the tournament,
-- puts new releases in your feed — a desktop **notifier**, an AI pundit, and **other tournaments** are on the roadmap,
+- surfaces it for other devs hunting live scores in the competition they follow,
+- puts new releases in your feed (a desktop **notifier** and an AI pundit are on the roadmap),
 - takes one click → **[⭐ star Claudinho](https://github.com/arturogarrido/claudinho)**.
 
 New here? [`CONTRIBUTING.md`](CONTRIBUTING.md) has the layout, the dev loop, and good first issues.
 
 ## Privacy Policy
 
-Claudinho collects **no personal data** — no accounts, no telemetry, no analytics, no tracking. There is no Claudinho server. To show live results it makes read-only requests to public sports-data services (ESPN for scores/standings; Polymarket for informational-only market signals) with no account or personal data attached, and keeps a small cache in your local cache directory (`~/.cache/claudinho`). Full details: **[PRIVACY.md](PRIVACY.md)**.
+Claudinho collects **no personal data**: no accounts, no telemetry, no analytics, no tracking. There is no Claudinho server. To show live results it makes read-only requests to public sports-data services (ESPN for scores/standings; Polymarket for informational-only market signals) with no account or personal data attached, and keeps a small cache in your local cache directory (`~/.cache/claudinho`). Full details: **[PRIVACY.md](PRIVACY.md)**.
 
 ## Security
 

@@ -1,4 +1,5 @@
 import {
+  DISCLAIMER as CORE_DISCLAIMER,
   allFixtures,
   type GroupStandings,
   type Match,
@@ -140,7 +141,8 @@ afterEach(() => {
 const text = () => writes.join('');
 const json = () => JSON.parse(writes.join(''));
 const HASHTAG = '#VibingLaVidaLoca';
-const DISCLAIMER = 'not affiliated with FIFA or Anthropic';
+// The share card's footer carries core's one sentence (0.11 · 2.7).
+const DISCLAIMER = CORE_DISCLAIMER;
 const BANNED = /\b(bet|betting|wager|gambling|edge|lock|value pick)\b/i;
 const aTeam = () => upcoming().home.code;
 

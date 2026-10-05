@@ -14,7 +14,7 @@ Any user-visible formatter change must land on **all three surfaces** before mer
 | MCP | `toolGet*` in `packages/mcp/src/tools.ts` + `packages/mcp/test/tools.test.ts` |
 | Share | `formatShare*` + `packages/mcp/test/share.test.ts` |
 
-`scripts/release-qa.sh` exercises CLI + share rendering across locales and timezones; MCP arg threading is **not** rendered there — guard it with unit tests.
+`scripts/release-qa.sh` exercises CLI + share rendering across locales and timezones, the World Cup pass then a club render (the Premier League in a temporary config and cache of its own: `today`, `live`, `next Arsenal`, both tables, the `share next` card, the Portuguese table, a seeded `prompt` that must start no refresher); MCP arg threading is **not** rendered there: guard it with unit tests.
 
 ## Every answer names its competition (the mode line and the `competition` key)
 

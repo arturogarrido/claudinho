@@ -1,8 +1,8 @@
 # @claudinho/cli ⚽
 
-**The 2026 men's football tournament, right in your terminal.** Live scores, fixtures, group tables, and market signals — TZ-aware, localized, scriptable. No API key, no signup.
+**Live football scores, fixtures and standings in your terminal and your Claude Code and Cursor CLI statusline, for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 11 more.** The `claudinho` command: TZ-aware, localized, scriptable, with read-only market signals for the World Cup. No API key, no signup. It ran the 2026 World Cup from the opener to the final.
 
-> ⭐ Installing via `npx` or globally? **[Star the repo](https://github.com/arturogarrido/claudinho)** — a fan project runs on stars. (`claudinho star` shows you how anytime.)
+> ⭐ Installing via `npx` or globally? **[Star the repo](https://github.com/arturogarrido/claudinho)**: a fan project runs on stars. (`claudinho star` shows you how anytime.)
 
 ## Install
 
@@ -13,25 +13,28 @@ claudinho follow world-cup   # choose a competition once (claudinho follow --lis
 npx @claudinho/cli --competition world-cup today
 ```
 
-`claudinho today` on a knockout night — penalty shootouts and all:
+`claudinho today` on a World Cup knockout night, penalty shootouts and all:
 
-<!-- DEMO: verbatim `claudinho today <date>` from a knockout matchday. Shootouts render
-     as 1(3)–1(4). REGENERATE per matchday (capture after the day's games finish, so the
-     scores are live and current). Never hand-edit. (0.11: the mode line under the
-     header, `World Cup`, added for the new format; the rows are the capture's.) -->
+<!-- DEMO: verbatim `claudinho --tz America/Los_Angeles today 2026-06-29` with the World Cup
+     followed (`claudinho follow world-cup`), from a knockout matchday. Shootouts render as 1(3)–1(4). REGENERATE per matchday
+     (capture after the day's games finish, so the scores are live and current). Never
+     hand-edit. Re-rendered on 2026-10-05 (0.11) through the CLI's own `today` command,
+     offline: a provider double served the capture's three results on the bundled
+     fixtures' ids, at a frozen clock of 2026-06-30T12:00Z. A US zone, because the capture's
+     was west of UTC: in UTC the third tie (01:00Z on Jun 30) leaves this date. -->
 ```text
 Matches · 2026-06-29
   World Cup
 
-  🇧🇷 Brazil            2–1  Japan 🇯🇵   FT   into the history books!
-  🇩🇪 Germany           1(3)–1(4)  Paraguay 🇵🇾   FT   it's all over!
-  🇳🇱 Netherlands       1(2)–1(3)  Morocco 🇲🇦   FT   the final whistle blows!
+  🇧🇷 Brazil              2–1  Japan 🇯🇵   FT   into the history books!
+  🇩🇪 Germany             1(3)–1(4)  Paraguay 🇵🇾   FT   it's all over!
+  🇳🇱 Netherlands         1(2)–1(3)  Morocco 🇲🇦   FT   the final whistle blows!
 
 Live data: ESPN
-Not affiliated with FIFA or Anthropic.
+Not affiliated with FIFA, any confederation, league or club, or Anthropic.
 ```
 
-All 104 fixtures ship bundled, so the schedule works offline; only live scores hit the network.
+The World Cup's schedule ships bundled (104 fixtures), so it works offline and only its live scores hit the network; the other competitions' schedules are read from the feed, so `today` and `next` need the network there.
 
 ## Commands
 
@@ -103,31 +106,31 @@ CLAUDINHO_COMPETITION=laliga claudinho table          # the environment works to
 | Flag | Description |
 |---|---|
 | `--lang <code>` | `en`, `es`, `pt`, `fr` (also via `CLAUDINHO_LANG`; falls back to `$LANG`) |
-| `--tz <zone>` | IANA timezone, e.g. `America/Mexico_City` (also `CLAUDINHO_TZ`; default: system). Kickoff times **and** which day a fixture falls on are computed in this zone — a late-night-UTC match shows on the day you actually watch it. |
+| `--tz <zone>` | IANA timezone, e.g. `America/Mexico_City` (also `CLAUDINHO_TZ`; default: system). Kickoff times **and** which day a fixture falls on are computed in this zone: a late-night-UTC match shows on the day you actually watch it. |
 | `--json` | machine-readable output for scripting |
 | `--no-color` | disable ANSI color (also honors `NO_COLOR`; auto-off when piped) |
-| `-c, --competition <alias\|slug>` | the competition: an alias such as `premier-league` (the fifteen are listed in the [root README](https://github.com/arturogarrido/claudinho#competitions)), or an ESPN slug such as `eng.1` (any other lower-case dotted ESPN slug works too, labelled experimental). Also `CLAUDINHO_COMPETITION` (an alias or a slug), which the statusline and the hook follow, and the choice `claudinho follow <alias>` saves: the flag, then the environment, then the saved choice; with none, a command says so (exit 1; `--json` prints `{ "competition": null, "noCompetition": true }`), the statusline reads `⚽ claudinho follow`, and the hook stays silent. Every answer names its competition on a line after its header (`Premier League · from the command line`; first where an answer has none; `table` once, before its tables) and in `--json` as `competition`; `share` prints no such line: its card's title names the competition and its run cue selects it; `team` names the World Cup roster it reads. An unknown value is refused with the list. |
+| `-c, --competition <alias\|slug>` | the competition: an alias such as `premier-league` (the fifteen competitions are listed in the [root README](https://github.com/arturogarrido/claudinho#competitions)), or an ESPN slug such as `eng.1` (any other lower-case dotted ESPN slug works too, labelled experimental). Also `CLAUDINHO_COMPETITION` (an alias or a slug), which the statusline and the hook follow, and the choice `claudinho follow <alias>` saves: the flag, then the environment, then the saved choice; with none, a command says so (exit 1; `--json` prints `{ "competition": null, "noCompetition": true }`), the statusline reads `⚽ claudinho follow`, and the hook stays silent. Every answer names its competition on a line after its header (`Premier League · from the command line`; first where an answer has none; `table` once, before its tables) and in `--json` as `competition`; `share` prints no such line: its card's title names the competition and its run cue selects it; `team` names the World Cup roster it reads. An unknown value is refused with the list. |
 | `--source <name>` | live data provider (advanced; sensible default) |
 | `--flavor <level>` | commentary flair: `off`, `subtle`, `full` (default: `full`; also `CLAUDINHO_FLAVOR`) |
 | `--no-markets` | hide prediction-market signals in `today`/`match` (also `CLAUDINHO_MARKETS=off`) |
 
-Team codes are 3-letter (FIFA/IOC-style): `MEX`, `BRA`, `USA`, `ENG`, …
+Team codes: a nation's is FIFA-style, 3 letters (`MEX`, `BRA`, `USA`, `ENG`); a club's is the provider's abbreviation (`ARS`, `LEE`), and a club is also taken by name (`next Arsenal`).
 
 ### Commentary flair
 
-By default Claudinho narrates with a bit of localized football-broadcast energy —
+By default Claudinho narrates with a bit of localized football-broadcast energy:
 `¡GOOOOL!` on a goal, `¡a cancha llena!` before kickoff. These are generic,
 genre-style exclamations (no real commentator is quoted or impersonated),
 localized per `--lang`, and they never affect `--json` output.
 
-- `--flavor full` *(default)* — flair on fixtures, live play, goals, and full-time
-- `--flavor subtle` — only goals and full-time
-- `--flavor off` — just the facts
+- `--flavor full` *(default)*: flair on fixtures, live play, goals, and full-time
+- `--flavor subtle`: only goals and full-time
+- `--flavor off`: just the facts
 
 ## Prediction-market signals
 
-`claudinho markets` shows **read-only** prediction-market signals — "who's favored" as
-market-implied percentages — for a date, a match, or a team's next fixture:
+`claudinho markets` shows **read-only** prediction-market signals ("who's favored" as
+market-implied percentages) for a date, a match, or a team's next fixture:
 
 ```bash
 claudinho markets                 # today's signals
@@ -138,7 +141,7 @@ claudinho markets today --json    # structured sidecar output
 ```
 
 A short market line is also added under `claudinho today` and `claudinho match`
-when a reliable market is available. It's **informational only — not betting
+when a reliable market is available. It's **informational only, not betting
 advice:** market-implied percentages with attribution, no trading, no links. Data
 comes from Polymarket public market data and is shown
 only when the market maps cleanly to the result and is fresh.
@@ -147,20 +150,20 @@ default-on `today`/`match` enrichment. `false` means the optional read did not
 finish and is paired with an explicit warning, not a confident empty result.
 
 Opt out with `--no-markets` (per command) or `CLAUDINHO_MARKETS=off` (global). The
-statusline and hook **never** show market data — it stays off the hot path.
+statusline and hook **never** show market data: it stays off the hot path.
 
 > **How matches are matched:** event slugs are derived automatically from each
 > fixture (`fifwc-{home}-{away}-{date}`), so real signals appear for any match with a
-> live Polymarket market — no mapping needed (`mapping.2026.json` is for slug
+> live Polymarket market, with no mapping needed (`mapping.2026.json` is for slug
 > *overrides* only). Matching fails closed, so an unmatched fixture simply shows
-> nothing — and finished matches never show one (market signals are pre-match
+> nothing, and finished matches never show one (market signals are pre-match
 > and in-play reads). For an offline preview, set `CLAUDINHO_MARKETS_SOURCE=fake`
 > to render clearly-labeled synthetic **"demo data"** signals.
 
 ## Shareable snippets
 
 `claudinho share` prints a polished, **copy-pasteable** match card for chats,
-social posts, READMEs, and issue comments — your terminal football, ready to post:
+social posts, READMEs, and issue comments: your terminal football, ready to post:
 
 ```bash
 claudinho share                   # today's matches
@@ -173,25 +176,28 @@ claudinho share 760415            # one match by id
 claudinho share next MEX --copy   # …and copy it straight to the clipboard
 ```
 
-<!-- DEMO CARD: verbatim output of `claudinho share next MEX --tz America/Los_Angeles`.
-     REGENERATE before release — the matchup advances each round and any market block
-     drifts. Never hand-edit. -->
+<!-- DEMO CARD: verbatim output of `claudinho --competition world-cup --tz UTC share next MEX`.
+     REGENERATE before release: the matchup advances each round and any market block
+     drifts. Never hand-edit. Re-rendered on 2026-10-05 (0.11) through the CLI's own
+     `share next MEX` command, offline: a provider double served the Round of 32 tie the
+     capture showed (Mexico vs Ecuador, on the bundled fixture's id, kickoff and venue),
+     at a frozen clock of 2026-06-28T12:00Z. -->
 ```text
-Next up for Mexico
+Next up for Mexico · World Cup
 
 🇲🇽 Mexico vs Ecuador 🇪🇨
-Jun 30 · 18:00 America/Los_Angeles
+Jul 1 · 01:00 UTC
 Estadio Banorte, Mexico City, Mexico
 Round of 32
 
 Live data: ESPN
-#VibingLaVidaLoca · Independent fan project · not affiliated with FIFA or Anthropic.
-Try it: npx @claudinho/cli next MEX
+#VibingLaVidaLoca · Independent fan project · Not affiliated with FIFA, any confederation, league or club, or Anthropic.
+Try it: npx @claudinho/cli --competition world-cup next MEX
 ```
 
-Snippets are **plain text** (no color codes — they paste cleanly everywhere) and
+Snippets are **plain text** (no color codes: they paste cleanly everywhere) and
 carry the non-affiliation disclaimer on every paste. The market line uses the
-same reliable gate as `today`/`match` (**informational only — never betting
+same reliable gate as `today`/`match` (**informational only, never betting
 advice**) and disappears when no reliable market exists. Per-command options:
 
 | Flag | Description |
@@ -218,7 +224,7 @@ No clipboard tool? `claudinho share … | pbcopy` works too.
 
 ### Want an image?
 
-The snippet is plain text, so a screenshot *is* your share card — or render one with an
+The snippet is plain text, so a screenshot *is* your share card, or render one with an
 existing tool, e.g. `freeze --execute "claudinho share next MEX" -o card.png`
 (charmbracelet/freeze), `silicon`, or carbon.now.sh. Claudinho stays text-first:
 no bundled image renderer, no fonts or licensing to worry about.
@@ -234,17 +240,17 @@ The statusline reads from a local micro-cache and **never blocks on the
 network** (<150ms). When several matches are live it shows them all inline:
 `⚽ 🇳🇴 1–1 🇫🇷 87' · 🇸🇳 1–2 🇮🇶 86'`. Customize via env:
 
-- `CLAUDINHO_TEAM=MEX` — your team's match first, the others counted (`+N`) (a nation name works too, e.g. `CLAUDINHO_TEAM=mexico`); also the default team for `next`, `markets next`, and `share next` when the argument is omitted. A team pinned with `claudinho follow <alias> --team <name>` does the same when this is not set, under its own competition (a pin is scoped to its competition, whatever chose it): a preference, never a filter
-- `CLAUDINHO_MAX=2` — cap how many live matches show inline (rest collapse to exact `+N`
+- `CLAUDINHO_TEAM=MEX`: your team's match first, the others counted (`+N`) (a nation name works too, e.g. `CLAUDINHO_TEAM=mexico`); also the default team for `next`, `markets next`, and `share next` when the argument is omitted. A team pinned with `claudinho follow <alias> --team <name>` does the same when this is not set, under its own competition (a pin is scoped to its competition, whatever chose it): a preference, never a filter
+- `CLAUDINHO_MAX=2`: cap how many live matches show inline (rest collapse to exact `+N`
   after a complete cache scan, or `+more` when the bounded scan cannot know the count; default: 8,
   and values above 8 are capped at 8)
-- `CLAUDINHO_COMPACT=0` — show 3-letter codes alongside flags
-- `CLAUDINHO_FLAGS=off` — drop emoji flags for 3-letter codes (statusline) / plain names (`today`, `live`, `table`, `next`, hook); already automatic on terminals that can't render flag emoji, e.g. Warp
+- `CLAUDINHO_COMPACT=0`: show 3-letter codes alongside flags
+- `CLAUDINHO_FLAGS=off`: drop emoji flags for 3-letter codes (statusline) / plain names (`today`, `live`, `table`, `next`, hook); already automatic on terminals that can't render flag emoji, e.g. Warp
 
 A background refresher writes that cache. Whenever no cache could be read (none, unreadable, or rejected), its attempts are paced by a small attempt record beside the throttle note, both named by scope like the cache itself (`attempt*.json`, `backoff*.json`: bare for the World Cup, `attempt.json`; with the source and competition for another, `attempt.espn.eng.1.json` for the Premier League): after each attempt the next waits one minute, the wait doubling to at most thirty, and only an attempt whose own cache then reads back resets it (a cache repaired by hand does not, so if it disappears again the retained wait applies). A rewrite repairs most of what can be at the cache path (a corrupted cache, a link, a file or a pipe whose own mode lets its owner read it, a file refused by an access-control list or owned by another user included; not a file marked immutable or append-only, a flag the refresher cannot see, which it treats exactly as it would without the flag: one that cannot be read as a cache and is not among the entries named next as beyond a rewrite has its attempts paced while the attempt record works, and repeated as before the record existed when it does not; one that reads as a cache never involves the record, so the refresher fetches whenever an update is due and never replaces it, as before); it cannot repair a directory, or anything but a link whose own mode denies its owner a read (a file or a pipe at mode 000, say: a rewrite keeps those mode bits), unless the directory's own inherited permissions let a new file at those bits be read, which is measured, not assumed. There, if the attempt record cannot be written or read either, the refresher asks nothing while the statusline keeps starting one on every update, until a rewrite could repair the cache path (the entry removed, its owner-read bit set, or the directory's inherited permissions letting a new file at those bits be read) or the attempt record works again; a cache file that merely opens is not enough (a mode-000 file with its own allow-read access-control entry opens, and a rewrite keeps its bits, not its entry). The same holds in a cache directory whose new files nobody can read (an inherited deny-read access-control list): no attempt asks or publishes anything (the refresher cannot read back its own lock), and the statusline keeps starting one on every update, until files in that directory can be read again.
 
 Use the same `claudinho prompt` in **tmux** (`set -g status-right '#(claudinho prompt)'`)
-or a **Starship** custom command — it works in any shell.
+or a **Starship** custom command: it works in any shell.
 
 ### Score-aware Claude (hook)
 
@@ -263,7 +269,7 @@ claudinho init-cursor-statusline          # patches ~/.cursor/cli-config.json (b
 claudinho init-cursor-statusline --print  # just print the snippet
 ```
 
-Uses the same `claudinho prompt` hot path as Claude Code — so the same
+Uses the same `claudinho prompt` hot path as Claude Code, so the same
 `CLAUDINHO_TEAM` / `CLAUDINHO_MAX` / `CLAUDINHO_COMPACT` customizations above apply
 here too. Cursor-specific tuning is applied automatically (`updateIntervalMs: 1000`,
 `timeoutMs: 1500`).
@@ -286,31 +292,32 @@ claudinho init-cursor-statusline --command "node ./packages/cli/dist/index.js pr
 
 ## How it works
 
-The full fixture list (104 matches, groups, venues, host cities, kickoffs) ships **bundled**
-in the package, so the common path is offline and instant. Only live match
-state hits the network. Live scores come from **ESPN's** public scoreboard (a
+The World Cup's full fixture list (104 matches, groups, venues, host cities, kickoffs) ships
+**bundled** in the package, so its schedule is offline and instant; the other competitions'
+schedules are read from the feed, so `today` and `next` need the network there. Live match
+state always hits the network. Live scores come from **ESPN's** public scoreboard (a
 swappable provider, attributed in output as `Live data: ESPN`) and market signals
 from Polymarket; provider attribution and rate limits are respected.
 
 ## Privacy Policy
 
-No personal data collected — no accounts, no telemetry, no analytics, no tracking, and no
+No personal data collected: no accounts, no telemetry, no analytics, no tracking, and no
 Claudinho server. To show live results, the CLI makes read-only requests to public services
 (ESPN; Polymarket for informational-only market signals) with no account or personal data
 attached, though those services still receive standard request metadata (such as your IP
 address) like any HTTP call. It keeps a small cache of public match data in your local cache
 directory (`~/.cache/claudinho`, or `$XDG_CACHE_HOME/claudinho`), and the optional `init`
 commands update your Claude Code / Cursor settings file after saving a one-time
-`.claudinho.bak` backup — all on your machine, never uploaded. Full policy:
+`.claudinho.bak` backup, all on your machine, never uploaded. Full policy:
 [PRIVACY.md](https://github.com/arturogarrido/claudinho/blob/main/PRIVACY.md).
 
 ## License
 
 MIT © 2026 Arturo Garrido · [source & issues](https://github.com/arturogarrido/claudinho)
 
-> **Not affiliated with, endorsed by, or connected to FIFA or Anthropic.** An independent,
+> **Not affiliated with FIFA, any confederation, league or club, or Anthropic. Nor endorsed by or connected to any of them.** An independent,
 > open-source fan project showing factual match data (scores, fixtures, standings) with emoji
-> flags only — no logos, crests, kits, broadcast footage, or player likenesses.
+> flags only: no logos, crests, kits, broadcast footage, or player likenesses.
 
 ---
 

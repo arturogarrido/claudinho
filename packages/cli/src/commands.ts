@@ -111,6 +111,7 @@ import {
 } from './data';
 import { readMarketCache, writeMarketCache } from './marketCache';
 import { bumpRunCount, REPO_URL, shouldNudge } from './starNudge';
+import { TAGLINE } from './tagline';
 import { copyToClipboard } from './clipboard';
 import type {
   BracketShareCard,
@@ -1961,8 +1962,14 @@ export function vibeLiveSegment(live: readonly Match[], picked?: AmbientPick): s
   return `${tok(pick.home)} ${scoreline(pick)} ${tok(pick.away)} ${minute}`;
 }
 
-/** The vibe pool for a local date: opener/final days mix in themed lines. */
-export function vibePool(todayLocal: string, fixtures: Match[] = allFixtures()): string[] {
+/**
+ * The vibe pool for a local date. The themed opener and final lines are the
+ * BUNDLED competition's: they mix in only when it is the one selected
+ * (`bundled`: `bundleApplies` on the selection) AND the date is its schedule's
+ * first or last day; any other selection, or none, gets the everyday pool.
+ */
+export function vibePool(todayLocal: string, bundled: boolean, fixtures: Match[] = allFixtures()): string[] {
+  if (!bundled) return VIBES;
   let first: string | undefined;
   let last: string | undefined;
   for (const m of fixtures) {
@@ -2449,7 +2456,7 @@ export function cmdStar(ctx: Ctx): void {
   out('  ' + c.cyan(REPO_URL));
   out();
   out('  ' + c.dim('Built for devs & fans · #VibingLaVidaLoca ⚽'));
-  out('  ' + c.dim('Live World Cup scores in your terminal, Claude Code & Cursor — no API keys.'));
+  out('  ' + c.dim(TAGLINE));
   out();
 }
 
@@ -2487,8 +2494,17 @@ function endScoreCommand(ctx: Ctx): void {
 }
 
 /**
- * Post-tournament sign-off for the interactive score commands — it both EXPLAINS
- * why they're now empty and says goodbye.
+ * Post-tournament sign-off for the interactive score commands: it EXPLAINS why
+ * the bundled schedule has nothing left (the 2026 edition is over) and points at
+ * the switch (`claudinho follow --list`, then `claudinho follow <alias>`).
+ *
+ * When it prints, as it is: the BUNDLED competition is selected and every window
+ * of its bundled schedule has elapsed (`isTournamentWindowOver` on the clock),
+ * on the TEXT of `today`/`live`/`next` (never `--json`, `match`, `table` or
+ * `bracket`), a historical `today <date>` with its results included. It is not
+ * the between-editions verdict (`betweenEditions` is never stated on the bundle),
+ * and a provider's stated season end does not move it: the clock is the bundled
+ * schedule's.
  *
  * Split by intent, so the CTA rule still holds:
  *  - the informational line is LOCALIZED and prints on any non-`--json` run
@@ -2527,7 +2543,8 @@ function printInitStarCta(cfg: CliConfig): void {
 
 export function cmdVibe(ctx: Ctx): void {
   const { cfg } = ctx;
-  const pool = vibePool(localDate((ctx.now ?? new Date()).toISOString(), cfg.tz));
+  const bundled = cfg.selection.kind === 'selected' && bundleApplies(cfg.competition);
+  const pool = vibePool(localDate((ctx.now ?? new Date()).toISOString(), cfg.tz), bundled);
   const line = pool[Math.floor(Math.random() * pool.length)];
   let liveSeg: string | undefined;
   try {

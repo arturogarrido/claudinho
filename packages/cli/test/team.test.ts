@@ -1,3 +1,4 @@
+import { DISCLAIMER } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdTeam } from '../src/commands';
 import { makeT } from '../src/i18n';
@@ -36,7 +37,7 @@ describe('cmdTeam', () => {
     cmdTeam('DR Congo', ctx());
     expect(text()).toContain('COD');
     expect(text()).toContain('Congo DR');
-    expect(text()).toContain('Not affiliated');
+    expect(text()).toContain(DISCLAIMER);
   });
 
   it('lists candidates for an ambiguous query', () => {
@@ -49,7 +50,7 @@ describe('cmdTeam', () => {
   it('reports no match for an unknown query (fail-closed, still disclaimed)', () => {
     cmdTeam('zzz', ctx());
     expect(text()).toMatch(/No team found/i);
-    expect(text()).toContain('Not affiliated');
+    expect(text()).toContain(DISCLAIMER);
   });
 
   it('localizes labels (es): Grupo + Spanish disclaimer, team facts unchanged', () => {
@@ -57,6 +58,6 @@ describe('cmdTeam', () => {
     expect(text()).toContain('TUR');
     expect(text()).toContain('Türkiye');
     expect(text()).toContain('Grupo D');
-    expect(text()).toMatch(/No afiliado/);
+    expect(text()).toContain(makeT('es')('disclaimer'));
   });
 });

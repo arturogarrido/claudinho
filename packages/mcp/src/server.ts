@@ -54,15 +54,16 @@ export const SERVER_VERSION = process.env.CLAUDINHO_VERSION ?? '0.0.0-dev';
 const VOICE =
   asFlavorLevel(process.env.CLAUDINHO_FLAVOR) === 'off'
     ? ''
-    : `\nVoice: when relaying scores, narrate with lively, regionally-appropriate football-commentary energy in the user's language. Each match line may end with a short exclamation ("— ¡GOOOOL!") — use it as a tone cue. Keep every fact exact; never invent details and never impersonate or name a real commentator.`;
+    : `\nVoice: when relaying scores, narrate with lively, regionally-appropriate football-commentary energy in the user's language. Each match line may end with a short exclamation ("— ¡GOOOOL!"): use it as a tone cue. Keep every fact exact; never invent details and never impersonate or name a real commentator.`;
 
 export const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and standings for one football competition per request, chosen by the tool call's competition argument (an alias such as premier-league, or an ESPN slug such as eng.1), else the server's CLAUDINHO_COMPETITION, else the user's saved choice (set with claudinho follow <alias>). With none of the three, every competition-answering tool answers noCompetition with a sentence saying what to do: pass competition, or ask the user to run claudinho follow <alias>. list_competitions lists the supported competitions, their aliases and what each offers, offline. Every tool's text but get_team's, get_share_snippet's and list_competitions' starts with the competition it is for, and its structured data carries it as competition (get_share_snippet's card names it in its title; list_competitions says it last, as Current, and in data.current; get_team is the World Cup's roster). An unknown competition is a tool error that lists the aliases.
 get_next_fixture and get_share_snippet take a team as a name or a code: a club's ("Arsenal", "ARS") in a club competition, a nation's ("Mexico", "MEX") in the World Cup. get_next_fixture with no team answers for the server's CLAUDINHO_TEAM, else for the team the user pinned (claudinho follow <alias> --team <name>) when the request is for that team's competition. Several teams matching one name come back as candidates; ask which one, never pick. get_market_signal takes a nation's 3-letter code (market signals are read for the World Cup alone). get_team resolves a nation's name to its code in the World Cup roster, offline; it knows no clubs.
 Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team, get_standings for standings tables, and get_bracket for the knockout tree (a league season with no knockout tie answers inapplicable).
 Off the World Cup, get_next_fixture and get_match search from yesterday to 14 days ahead: an empty answer carrying horizon or window is about that span, not about the team or the match. betweenEditions means the competition's edition has ended and the next has not started.
+Never infer that a fixture is happening now from get_next_fixture or a team's next card: relay the returned competition, the fixture, its date and its state, and call it in play only when the returned state says so; an empty answer keeps its horizon or verdict, never an invented fixture.
 get_standings with no group returns every table. One table is selected by its key, which every table's title shows in parentheses unless it is a plain group letter: A to L for lettered groups, A1 for a numbered group, A-B for group B of league A, LEAGUE for a league's single table.
-Use get_market_signal for read-only prediction-market signals (a match, a team's current-or-next fixture, or a date). Market data is informational only — relay the percentages factually and never frame it as betting or trading advice.
-Use get_share_snippet to produce a ready-to-paste match card (for a match, a team's next fixture, a date, or live matches) — hand the user the returned snippet text verbatim.${VOICE}
+Use get_market_signal for read-only prediction-market signals (a match, a team's current-or-next fixture, or a date). Market data is informational only: relay the percentages factually and never frame it as betting or trading advice.
+Use get_share_snippet to produce a ready-to-paste match card (for a match, a team's next fixture, a date, or live matches), and hand the user the returned snippet text verbatim.${VOICE}
 ${DISCLAIMER}`;
 
 // Tightened, reusable input schemas (exported for tests). Rejecting bad input
@@ -837,7 +838,7 @@ export function buildServer(): McpServer {
     {
       title: 'Live matches',
       description:
-        'Only matches in play right now — each with current score and minute; an empty list means nothing is in play only when the read was whole (neither partial nor degraded says otherwise). Off the World Cup, betweenEditions means the competition\'s edition has ended and the next has not started. partial means the provider sent records that could not be used: an empty list then means no match in play could be read, not that none is. Use during matches for in-play state; for a full day\'s schedule including upcoming and finished, use get_today. tz/lang/flavor affect formatting only.',
+        'Only matches in play right now, each with current score and minute; an empty list means nothing is in play only when the read was whole (neither partial nor degraded says otherwise). Off the World Cup, betweenEditions means the competition\'s edition has ended and the next has not started. partial means the provider sent records that could not be used: an empty list then means no match in play could be read, not that none is. Use during matches for in-play state; for a full day\'s schedule including upcoming and finished, use get_today. tz/lang/flavor affect formatting only.',
       inputSchema: { ...commonArgs },
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: liveOut,
@@ -863,7 +864,7 @@ export function buildServer(): McpServer {
     {
       title: 'Standings',
       description:
-        'Live cumulative standings — omit group for every table, or pass one table\'s key: a group letter (A–L in the World Cup), A1 for a numbered group, A-B for group B of league A, LEAGUE for a league\'s single table. Each table that is not a lettered group carries a label (the provider\'s name) and its title shows the key in parentheses. Returns ranked rows (team, played, W/D/L, goal difference, points). incomplete:true means a table could not be read and the tables returned are not the whole competition; a table with partial is missing rows. Use get_today for fixtures/scores and get_next_fixture for one team. If unavailable, the World Cup returns its roster at zero; competitions without a compatible bundled roster return no tables. Both are flagged degraded.',
+        'Live cumulative standings: omit group for every table, or pass one table\'s key: a group letter (A–L in the World Cup), A1 for a numbered group, A-B for group B of league A, LEAGUE for a league\'s single table. Each table that is not a lettered group carries a label (the provider\'s name) and its title shows the key in parentheses. Returns ranked rows (team, played, W/D/L, goal difference, points). incomplete:true means a table could not be read and the tables returned are not the whole competition; a table with partial is missing rows. Use get_today for fixtures/scores and get_next_fixture for one team. If unavailable, the World Cup returns its roster at zero; competitions without a compatible bundled roster return no tables. Both are flagged degraded.',
       inputSchema: {
         group: groupArg.optional().describe('Table key: a group letter (A), or A1, A-B, LEAGUE (omit for all)'),
         ...commonArgs,
@@ -917,13 +918,13 @@ export function buildServer(): McpServer {
     {
       title: 'Prediction-market signal',
       description:
-        "Read-only prediction-market signals for a match (by id), a team's current-or-next fixture, or a date (default: today). Returns market-implied percentages with attribution; complete:false means the provider read was incomplete, not that no signal exists; partial says the same of the fixture read behind the answer (the provider sent fixture records that could not be used). Shown only before and during a match — finished matches have no market read. Informational only — relay the numbers factually; do not add betting, trading, or 'value' advice, and do not invent links.",
+        "Read-only prediction-market signals for a match (by id), a team's current-or-next fixture, or a date (default: today). Returns market-implied percentages with attribution; complete:false means the provider read was incomplete, not that no signal exists; partial says the same of the fixture read behind the answer (the provider sent fixture records that could not be used). Shown only before and during a match: finished matches have no market read. Informational only: relay the numbers factually; do not add betting, trading, or 'value' advice, and do not invent links.",
       inputSchema: {
         matchId: z.string().optional().describe('Match id (most specific)'),
         team: teamArg
           .optional()
           .describe(
-            "3-letter team code, e.g. MEX — resolves to the team's in-play match when one is live, else their next fixture",
+            "3-letter team code, e.g. MEX; resolves to the team's in-play match when one is live, else their next fixture",
           ),
         date: dateArg
           .optional()
@@ -942,7 +943,7 @@ export function buildServer(): McpServer {
     {
       title: 'Shareable match snippet',
       description:
-        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), one standings table (group: a table key, e.g. \"A\", \"A1\", \"A-B\" or \"LEAGUE\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data — hand the snippet text to the user verbatim. marketComplete:false is stated inside the card as an incomplete optional read; partial (on any match card, live and date included) is stated inside the card too: the provider sent records that could not be used. Off the World Cup a next card names the club resolved, and an empty card says the span searched (horizon, window) or that the competition is between editions. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
+        "A polished, copy-pasteable card (plain text) for a match (matchId), a team's next fixture (team), one standings table (group: a table key, e.g. \"A\", \"A1\", \"A-B\" or \"LEAGUE\"), the knockout bracket (bracket: true), a date (default: today), or live matches (live: true). Returns the ready-to-paste snippet plus structured data: hand the snippet text to the user verbatim. marketComplete:false is stated inside the card as an incomplete optional read; partial (on any match card, live and date included) is stated inside the card too: the provider sent records that could not be used. Off the World Cup a next card names the club resolved, and an empty card says the span searched (horizon, window) or that the competition is between editions. No links; it carries a non-affiliation disclaimer, and any market line stays informational only.",
       inputSchema: {
         matchId: z.string().optional().describe('Match id (most specific)'),
         team: clubArg
@@ -980,7 +981,7 @@ export function buildServer(): McpServer {
     {
       title: 'Resolve a team',
       description:
-        "The World Cup roster: resolve a nation name or 3-letter code to its FIFA code, flag, and group. Fuzzy and forgiving: accepts \"Mexico\", \"mex\", \"USA\", \"DR Congo\", \"Türkiye\"/\"Turkey\", \"Holland\", etc. Useful for the 3-letter code get_market_signal needs. It knows no clubs: get_next_fixture and get_share_snippet resolve a club's name themselves. Returns the single confident match (team), plus candidates (matches) when the query is ambiguous (e.g. \"south\" → South Africa, South Korea). Offline — reads the bundled roster, never the network.",
+        "The World Cup roster: resolve a nation name or 3-letter code to its FIFA code, flag, and group. Fuzzy and forgiving: accepts \"Mexico\", \"mex\", \"USA\", \"DR Congo\", \"Türkiye\"/\"Turkey\", \"Holland\", etc. Useful for the 3-letter code get_market_signal needs. It knows no clubs: get_next_fixture and get_share_snippet resolve a club's name themselves. Returns the single confident match (team), plus candidates (matches) when the query is ambiguous (e.g. \"south\" → South Africa, South Korea). Offline: reads the bundled roster, never the network.",
       inputSchema: {
         query: z.string().describe('Team name or 3-letter code, e.g. "Mexico", "MEX", "DR Congo"'),
       },
@@ -1093,7 +1094,7 @@ export function buildServer(): McpServer {
             role: 'user',
             content: {
               type: 'text',
-              text: `Using get_next_fixture, get_standings, and get_market_signal, tell me about ${team}'s next World Cup match, their current group standing, and what prediction markets currently say about that match. ${team} is a nation's code or name: get_next_fixture takes either; get_market_signal takes the 3-letter code (get_team gives it for a name), and prediction-market signals are read for the World Cup alone. Always state each fixture's date so a market read is never mistaken for a different match. Treat the market percentages as informational context only — relay them factually, never as betting or trading advice.`,
+              text: `Using get_next_fixture, get_standings, and get_market_signal, each called with competition: "world-cup" (this is the World Cup's prompt, whatever competition the user follows), tell me about ${team}'s next World Cup match, their current group standing, and what prediction markets currently say about that match. ${team} is a nation's code or name: get_next_fixture takes either; get_market_signal takes the 3-letter code (get_team gives it for a name), and prediction-market signals are read for the World Cup alone. Always state each fixture's date and its state (scheduled, in play or finished), so a market read is never mistaken for a different match. Treat the market percentages as informational context only: relay them factually, never as betting or trading advice.`,
             },
           },
         ],
