@@ -99,6 +99,28 @@ export function homeColumn(matches: readonly Match[], flags: boolean): number {
 }
 
 /**
+ * A match's away CELL, exactly as `matchLine` prints it: the name, then its
+ * space and the flag when a flag prints (flags on, and the side has one), the
+ * name alone otherwise.
+ */
+export function awayCell(m: Match, flags: boolean): string {
+  return flags ? withFlag(m.away.name, m.away.flag, 'away') : m.away.name;
+}
+
+/**
+ * The width a list pads its away cells to, measured ONCE over the rows it
+ * shows: the widest cell, at most {@link HOME_COLUMN_MAX} display columns (no
+ * floor: a list of short names is not widened). Every row's time and flair
+ * then start in one column; a cell past the ceiling pushes its own row only.
+ * One row (`next`) is measured on itself, so it is printed as it always was.
+ */
+export function awayColumn(matches: readonly Match[], flags: boolean): number {
+  let widest = 0;
+  for (const m of matches) widest = Math.max(widest, displayWidth(awayCell(m, flags)));
+  return Math.min(HOME_COLUMN_MAX, widest);
+}
+
+/**
  * The flair options of this invocation, ONE place: the level, the language,
  * the competition's team kind (a cry is said in a competition of its kind)
  * and the pin (it decides between two sides that both carry a cry; the pin
@@ -116,8 +138,9 @@ export function flairOpts(cfg: CliConfig): FlairOpts {
  *   🇧🇷 Brazil   vs  Morocco 🇲🇦        Thu 18:00
  *   Arsenal         2–1  Chelsea          50'   (a club: no flag, nothing in its place)
  *
- * `homeWidth` is the list's home column ({@link homeColumn}), measured by the
- * caller over the rows it shows. `flair` is the row's flair slot when the
+ * `homeWidth` is the list's home column ({@link homeColumn}) and `awayWidth`
+ * its away column ({@link awayColumn}), measured by the caller over the rows
+ * it shows (0, the default, pads nothing). `flair` is the row's flair slot when the
  * caller chose it for a list (core `matchFlairs`: the cries, and no phrase
  * twice in one list); without it the line's own (`matchFlair`).
  */
@@ -128,17 +151,20 @@ export function matchLine(
   c: Painter,
   flags = true,
   homeWidth = HOME_COLUMN,
+  awayWidth = 0,
   flair: Flair = matchFlair(m, flairOpts(cfg)),
 ): string {
   const home = homeCell(m, flags);
-  const away = flags ? withFlag(m.away.name, m.away.flag, 'away') : m.away.name;
+  const away = awayCell(m, flags);
   const mid = isLive(m.status) || m.status === 'FT'
     ? c.bold(scoreline(m))
     : c.dim('vs');
 
   // Display-width padding: a tag-sequence flag (England 🏴󠁧󠁢󠁥󠁮󠁧󠁿) is 14 UTF-16
   // units but 2 columns — padEnd would push its score ~10 columns out of line.
-  const left = `${padVisible(home, homeWidth)} ${mid.padStart(3)}  ${away}`;
+  // The away cell padded to the list's away column the same way, so the time
+  // and the flair line up whatever the away names' lengths.
+  const left = `${padVisible(home, homeWidth)} ${mid.padStart(3)}  ${padVisible(away, awayWidth)}`;
 
   let right = '';
   if (m.status === 'SCHEDULED') {

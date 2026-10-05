@@ -90,6 +90,7 @@ import Table from 'cli-table3';
 import { type CliConfig, edgeSelection, readSavedChoice } from './config';
 import type { Translator } from './i18n';
 import {
+  awayColumn,
   dataSource,
   disclaimer,
   flairOpts,
@@ -625,13 +626,14 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
       ),
     );
   } else {
-    // The home column, measured once over the rows shown; the flairs chosen
-    // once over them too, in print order (core `matchFlairs`: the cries, and
-    // no phrase twice).
+    // The home and away columns, measured once over the rows shown; the
+    // flairs chosen once over them too, in print order (core `matchFlairs`:
+    // the cries, and no phrase twice).
     const homeWidth = homeColumn(todays, flags);
+    const awayWidth = awayColumn(todays, flags);
     const flairs = matchFlairs(todays, flairOpts(cfg));
     for (const [i, m] of todays.entries()) {
-      out(matchLine(m, cfg, t, c, flags, homeWidth, flairs[i]));
+      out(matchLine(m, cfg, t, c, flags, homeWidth, awayWidth, flairs[i]));
       const s = market.signals.get(m.id);
       if (s) out('    ' + c.dim(marketLine(s, m)));
     }
@@ -683,12 +685,13 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
     // that was not whole says none in play was READ, not that none is.
     out(c.dim('  ' + (verdictNotice(live, cfg.lang) ?? liveNoneRead(live, cfg.lang) ?? t('live.none'))));
   } else {
-    // The home column, measured once over the rows shown; the flairs chosen
-    // once over them too, in print order (core `matchFlairs`: the cries, and
-    // no phrase twice).
+    // The home and away columns, measured once over the rows shown; the
+    // flairs chosen once over them too, in print order (core `matchFlairs`:
+    // the cries, and no phrase twice).
     const homeWidth = homeColumn(matches, flags);
+    const awayWidth = awayColumn(matches, flags);
     const flairs = matchFlairs(matches, flairOpts(cfg));
-    for (const [i, m] of matches.entries()) out(matchLine(m, cfg, t, c, flags, homeWidth, flairs[i]));
+    for (const [i, m] of matches.entries()) out(matchLine(m, cfg, t, c, flags, homeWidth, awayWidth, flairs[i]));
   }
   out();
   // The read was not whole: said after the list and before the attribution,
@@ -738,9 +741,13 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   // not whole is not elimination.
   const qualifiers = verdictQualifiers(next, cfg.lang);
   out();
+  // The header names who the answer is about, found or not (the team asked:
+  // the club resolved, else the query, else the nation's code); then the mode
+  // line, as every answer with a header prints it.
+  out(header(t('next.label', { team: label }), c));
+  modeOut(cfg, c);
+  out();
   if (!fixture) {
-    // No header on an empty answer: the mode line comes first.
-    modeOut(cfg, c);
     for (const q of qualifiers) out(c.dim('  ' + q));
     const notice = verdictNotice(next, cfg.lang);
     if (notice === undefined && next.candidates && next.candidates.length > 0) {
@@ -761,12 +768,9 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
     endScoreCommand(ctx);
     return;
   }
-  out(header(t('next.label', { team: label }), c));
-  modeOut(cfg, c);
-  out();
   for (const q of qualifiers) out(c.dim('  ' + q));
-  // One row: its home column is measured on it, like a list's.
-  out(matchLine(fixture, cfg, t, c, flags, homeColumn([fixture], flags)));
+  // One row: its home and away columns are measured on it, like a list's.
+  out(matchLine(fixture, cfg, t, c, flags, homeColumn([fixture], flags), awayColumn([fixture], flags)));
   // Localized (stageLabelI18n, like cmdBracket) — EN-only stageLabel here made
   // `next MEX --lang es` render "Round of 32" beside otherwise-Spanish copy.
   // A stage with nothing to say (an OTHER with no words) is no segment at all.

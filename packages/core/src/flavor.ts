@@ -623,7 +623,6 @@ export const FLAVOR_BANKS: Readonly<Record<string, FlavorBank>> = freezeBanks({
       'le but se fait attendre !',
       'match sous haute tension !',
       'les filets attendent !',
-      "c'est parti !",
       'allez mon petit bonhomme !',
       'au bout !',
       "et s'il allait marquer ?",

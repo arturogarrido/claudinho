@@ -225,9 +225,12 @@ describe('the mode line and the key on the branches with no header, and the rest
   const WC = 'World Cup · from the command line';
   const KEY = { slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', chosenBy: 'flag' };
 
-  it('next with no fixture, match with none, markets with none: the line comes first', async () => {
+  it('next with no fixture: its header, then the line; match with none, markets with none: the line comes first', async () => {
+    // `next` names the team asked whether or not it found a fixture (0.11 · 2.7c).
     await cmdNext('Everton', ctxOf(cfgOf({ competition: 'premier-league' })));
-    expect(text().trim().split('\n')[0]).toBe('Premier League · from the command line');
+    const [header, mode] = text().trim().split('\n');
+    expect(header).toBe('Next up for Everton');
+    expect(mode?.trim()).toBe('Premier League · from the command line');
     for (const call of [
       () => cmdMatch('999999', ctxOf(cfgOf({ competition: 'world-cup' }))),
       () => cmdMarkets('next', 'ZZZ', ctxOf(cfgOf({ competition: 'world-cup' }))),

@@ -97,6 +97,7 @@ import {
   boundedRecords,
   capSignals,
   DISCLAIMER,
+  headingLine,
   listTruncation,
   type FmtOpts,
   matchLine,
@@ -728,7 +729,7 @@ async function todayAnswer(
     dateUnreached(day, date, args.lang) ??
     dateNoneRead(day, date, args.lang) ??
     'No matches scheduled.';
-  const text = `Matches on ${date}:\n${matchRows(todays, empty, opts)}`;
+  const text = `${headingLine(args.lang, t(args.lang, 'today.onDate', { date }))}\n${matchRows(todays, empty, opts)}`;
   // Degraded ⇒ the live overlay failed: on the bundle these are static fixtures
   // with no live scores; off it there is no schedule to show.
   const degradedLine = degraded
@@ -793,7 +794,7 @@ async function liveAnswer(args: CommonOpts): Promise<ToolResult> {
   // first (kept by a cut).
   const text = degraded
     ? 'Live scores unavailable right now — could not reach the data provider.'
-    : `Live now:\n${matchRows(matches, verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? 'No matches in play right now.', opts)}`;
+    : `${headingLine(args.lang, t(args.lang, 'live.title'))}\n${matchRows(matches, verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? 'No matches in play right now.', opts)}`;
   const shownLive = boundedRecords(matches);
   return {
     // Every row a live list shows was served: a cut keeps its attribution
@@ -1168,6 +1169,9 @@ async function nextAnswer(
       : asked.answer;
   const { fixture, degraded, source } = next;
   const label = nextTeamLabel(next, code);
+  // Who the answer is about, found or not: "Next up for Mexico:" (core's
+  // catalog, in the request's language), then the fixture or the sentence.
+  const heading = headingLine(args.lang, t(args.lang, 'next.label', { team: label }));
   // The answer's own fields beside the verdicts: who it is about, the
   // candidates of an ambiguous name, the span a whole read searched, the season.
   const about = {
@@ -1187,7 +1191,7 @@ async function nextAnswer(
         : `No upcoming fixture found for ${label}.`);
     return {
       // "None found" from a window that was not whole says so: it is not elimination.
-      ...disclaimed(qualified(msg, next, args.lang), undefined, args.lang),
+      ...disclaimed(qualified(`${heading}\n${msg}`, next, args.lang), undefined, args.lang),
       data: { ...about, fixture: null, degraded, source: source ?? null, ...verdictExtras(next) },
     };
   }
@@ -1195,7 +1199,7 @@ async function nextAnswer(
   return {
     // `source` in data mirrors the text's "Live data: …" attribution (parity
     // with CLI `next --json`); null for a static group fixture (no live source).
-    ...disclaimed(qualified(`Next up for ${label}:\n${matchLine(fixture, opts)}`, next, args.lang), source, args.lang),
+    ...disclaimed(qualified(`${heading}\n${matchLine(fixture, opts)}`, next, args.lang), source, args.lang),
     data: { ...about, fixture, degraded, source: source ?? null, ...verdictExtras(next) },
   };
 }
