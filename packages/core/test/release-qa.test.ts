@@ -106,6 +106,20 @@ describe('the script asks those decisions, and sets no competition of its own', 
     expect(fallbacks).toEqual(['check no', 'check no']);
   });
 
+  it("the tripwires' renders are English, the language their guards read (the flag wins over CLAUDINHO_LANG and LANG)", () => {
+    const lines = code.split('\n').map((l) => l.trim());
+    for (const [name, line] of [
+      ['BR_EN', 'BR_EN="$(cli bracket --lang en 2>/dev/null)"'],
+      ['BR_UTC', 'BR_UTC="$(cli bracket --lang en --tz UTC 2>/dev/null)"'],
+      ['BR_TYO', 'BR_TYO="$(cli bracket --lang en --tz Asia/Tokyo 2>/dev/null)"'],
+      ['SB', 'SB="$(cli share bracket --lang en 2>/dev/null)"'],
+      ['SBC', 'SBC="$(cli share bracket --lang en --style compact 2>/dev/null)"'],
+    ]) {
+      const assigned = lines.filter((l) => l.startsWith(`${name}=`));
+      expect(assigned, name).toEqual([line]);
+    }
+  });
+
   it.skipIf(process.platform === 'win32')('parses', () => {
     expect(() => execFileSync('bash', ['-n', SCRIPT])).not.toThrow();
   });
