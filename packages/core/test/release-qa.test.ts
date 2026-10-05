@@ -18,7 +18,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { competitionLabel, driftGate, driftVerdict, resolvedSlug } from '../../../scripts/release-qa-lib.mjs';
 // The club render's decisions (0.11 · 2.7), through the namespace so each case fails on its own while they are owed.
@@ -285,8 +285,10 @@ describe('the club render: the script asks those decisions', () => {
 describe.skipIf(!existsSync(CLI_DIST))('the club render: the seeded prompt through the built CLI, with its refreshers counted', () => {
   const root = mkdtempSync(join(tmpdir(), 'claudinho-release-qa-club-'));
   afterAll(() => rmSync(root, { recursive: true, force: true }));
-  const SEED = path('../../../scripts/statusline-seed.mjs');
-  const COUNT = path('../../../scripts/spawn-count.mjs');
+  const SEED = pathToFileURL(path('../../../scripts/statusline-seed.mjs')).href; // a URL: a bare Windows path is no import specifier
+  // `--import` takes a URL specifier: a bare Windows path (`D:\...`) is read as a scheme and refused
+  // (ERR_UNSUPPORTED_ESM_URL_SCHEME), so the counter is named by its file URL, as the shell script names it.
+  const COUNT = pathToFileURL(path('../../../scripts/spawn-count.mjs')).href;
 
   const prompt = async (name: string, at: Date) => {
     const dir = join(root, name);
