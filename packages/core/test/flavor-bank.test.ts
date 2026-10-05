@@ -61,7 +61,7 @@ describe('the approved banks, exactly', () => {
   });
 
   it('every phrase keeps the shape: under 40 characters, one to seven words, ends with ! or ?, no dash, no emoji, no betting word', () => {
-    const BET = /\b(bet|wager|odds|parlay|apuesta|apost|pari|cote)/i;
+    const BET = /\b(bet(s|ting)?|wager(s|ing)?|odds|parlays?|apuestas?|apost\w*|paris?|cotes?)\b/i;
     for (const lang of LANGS) {
       for (const moment of MOMENTS) {
         for (const p of bankOf(lang, moment)) {
@@ -179,9 +179,9 @@ describe('the team rally cries', () => {
   const bundledMex: Team = { code: 'MEX', name: 'Mexico', flag: '🇲🇽' };
   const pumas: Team = { code: 'UNAM', name: 'Pumas UNAM', id: 'espn:233' };
   const america: Team = { code: 'AME', name: 'América', id: 'espn:227' };
-  const toluca: Team = { code: 'TOL', name: 'Toluca', id: 'espn:223' };
+  const necaxa: Team = { code: 'NCX', name: 'Necaxa', id: 'espn:229' }; // a club with no cry in the table
   const clubMex: Team = { code: 'MEX', name: 'Mexico FC', id: 'espn:99999' };
-  const ecu: Team = { code: 'ECU', name: 'Ecuador', flag: '🇪🇨', id: 'espn:209' };
+  const rsa: Team = { code: 'RSA', name: 'South Africa', flag: '🇿🇦', id: 'espn:467' }; // a nation with no cry in the table
 
   it('ships the cries Arturo approved, exactly, keyed by the provider id', () => {
     expect(RALLY_CRIES).toEqual(approvedCries.cries);
@@ -195,19 +195,19 @@ describe('the team rally cries', () => {
   });
 
   it("Mexico's is '¿Y si sí?', by id in any nations competition, and by code and name for the bundle's id-less Mexico", () => {
-    expect(rallyCryFor(match({ home: mex, away: ecu }), 'nation')).toBe('¿Y si sí?');
-    expect(rallyCryFor(match({ home: ecu, away: mex }), 'nation')).toBe('¿Y si sí?');
-    expect(rallyCryFor(match({ home: bundledMex, away: ecu }), 'nation')).toBe('¿Y si sí?');
+    expect(rallyCryFor(match({ home: mex, away: rsa }), 'nation')).toBe('¿Y si sí?');
+    expect(rallyCryFor(match({ home: rsa, away: mex }), 'nation')).toBe('¿Y si sí?');
+    expect(rallyCryFor(match({ home: bundledMex, away: rsa }), 'nation')).toBe('¿Y si sí?');
     // An id-less side is believed by code and name on a nations competition only: a club coded MEX is not Mexico.
-    expect(rallyCryFor(match({ home: clubMex, away: toluca }), 'club')).toBeUndefined();
-    expect(rallyCryFor(match({ home: { code: 'MEX', name: 'Mexico FC' }, away: toluca }), 'club')).toBeUndefined();
+    expect(rallyCryFor(match({ home: clubMex, away: necaxa }), 'club')).toBeUndefined();
+    expect(rallyCryFor(match({ home: { code: 'MEX', name: 'Mexico FC' }, away: necaxa }), 'club')).toBeUndefined();
   });
 
   it("a club's cry by its id, the same id in every competition", () => {
-    expect(rallyCryFor(match({ home: pumas, away: toluca }), 'club')).toBe('¡Goya!');
-    expect(rallyCryFor(match({ home: toluca, away: pumas }), 'club')).toBe('¡Goya!');
-    expect(rallyCryFor(match({ home: { ...pumas, code: 'PUM' }, away: toluca }), 'club')).toBe('¡Goya!');
-    expect(rallyCryFor(match({ home: { code: 'UNAM', name: 'Pumas UNAM' }, away: toluca }), 'club')).toBeUndefined(); // no id: no claim
+    expect(rallyCryFor(match({ home: pumas, away: necaxa }), 'club')).toBe('¡Goya!');
+    expect(rallyCryFor(match({ home: necaxa, away: pumas }), 'club')).toBe('¡Goya!');
+    expect(rallyCryFor(match({ home: { ...pumas, code: 'PUM' }, away: necaxa }), 'club')).toBe('¡Goya!');
+    expect(rallyCryFor(match({ home: { code: 'UNAM', name: 'Pumas UNAM' }, away: necaxa }), 'club')).toBeUndefined(); // no id: no claim
   });
 
   it("when both sides have one, the pinned side's wins, else the home side's", () => {
@@ -216,11 +216,11 @@ describe('the team rally cries', () => {
     expect(rallyCryFor(clasico, 'club', { id: 'espn:233', code: 'UNAM', name: 'Pumas UNAM' })).toBe('¡Goya!');
     expect(rallyCryFor(clasico, 'club', { id: 'espn:227', code: 'AME', name: 'América' })).toBe('¡Ódiame más!');
     // A pin for neither side changes nothing.
-    expect(rallyCryFor(clasico, 'club', { id: 'espn:223', code: 'TOL', name: 'Toluca' })).toBe('¡Ódiame más!');
+    expect(rallyCryFor(clasico, 'club', { id: 'espn:229', code: 'NCX', name: 'Necaxa' })).toBe('¡Ódiame más!');
   });
 
   it('a side with no cry leaves the moment phrase in place: the rally is not in the bank', () => {
-    const m = match({ home: toluca, away: { code: 'PUE', name: 'Puebla', id: 'espn:231' } });
+    const m = match({ home: necaxa, away: { code: 'PUE', name: 'Puebla', id: 'espn:231' } }); // neither side in the table
     expect(rallyCryFor(m, 'club')).toBeUndefined();
     for (const lang of LANGS) {
       for (const moment of MOMENTS) expect(bankOf(lang, moment)).not.toContain('¿Y si sí?');

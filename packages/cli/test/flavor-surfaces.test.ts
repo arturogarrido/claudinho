@@ -127,13 +127,13 @@ describe('the new moments reach the rows', () => {
 
 describe('the team rally cries', () => {
   const pumas = { code: 'UNAM', name: 'Pumas UNAM', id: 'espn:233' };
-  const toluca = { code: 'TOL', name: 'Toluca', id: 'espn:223' };
+  const necaxa = { code: 'NCX', name: 'Necaxa', id: 'espn:229' }; // no cry in the table
   const america = { code: 'AME', name: 'América', id: 'espn:227' };
 
   it("Pumas' match under Liga MX carries '¡Goya!' in the flair slot, in every language, and no moment phrase", async () => {
     for (const lang of ['en', 'es', 'pt', 'fr']) {
       writes = [];
-      await cmdToday('2026-10-10', ctx('mex.1', [fixture(1, { home: pumas, away: toluca })], { lang }));
+      await cmdToday('2026-10-10', ctx('mex.1', [fixture(1, { home: pumas, away: necaxa })], { lang }));
       expect(text(), lang).toContain('¡Goya!');
       expect(phrasesIn(text(), lang, 'scheduled').size, lang).toBe(0);
     }
@@ -150,13 +150,13 @@ describe('the team rally cries', () => {
   });
 
   it('--flavor off silences the cry; a side with no cry keeps its moment phrase; a club coded MEX is not Mexico', async () => {
-    await cmdToday('2026-10-10', ctx('mex.1', [fixture(1, { home: pumas, away: toluca })], { flavor: 'off' }));
+    await cmdToday('2026-10-10', ctx('mex.1', [fixture(1, { home: pumas, away: necaxa })], { flavor: 'off' }));
     expect(text()).not.toContain('¡Goya!');
     writes = [];
-    await cmdToday('2026-10-10', ctx('mex.1', [fixture(1, { home: toluca, away: { code: 'PUE', name: 'Puebla', id: 'espn:231' } })]));
+    await cmdToday('2026-10-10', ctx('mex.1', [fixture(1, { home: necaxa, away: { code: 'PUE', name: 'Puebla', id: 'espn:231' } })]));
     expect(phrasesIn(text(), 'en', 'scheduled').size).toBe(1);
     writes = [];
-    await cmdToday('2026-10-10', ctx('mex.1', [fixture(1, { home: { code: 'MEX', name: 'Mexico FC', id: 'espn:99999' }, away: toluca })]));
+    await cmdToday('2026-10-10', ctx('mex.1', [fixture(1, { home: { code: 'MEX', name: 'Mexico FC', id: 'espn:99999' }, away: necaxa })]));
     expect(text()).not.toContain('¿Y si sí?');
   });
 });
