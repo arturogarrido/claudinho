@@ -1,6 +1,6 @@
 {
   "name": "claudinho",
-  "description": "Live 2026 World Cup scores, fixtures, and group standings for your Cursor agent — a read-only MCP server. No API keys. Pairs with the Claudinho Cursor CLI statusline. Independent fan project, not affiliated with FIFA or Anthropic.",
+  "description": "A read-only MCP server with live football scores, fixtures and standings for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 11 more. No API key. Pairs with the Claudinho Cursor CLI statusline. Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic, nor with Cursor.",
   "version": "0.8.18",
   "author": { "name": "Arturo Garrido" },
   "homepage": "https://github.com/arturogarrido/claudinho#readme",
@@ -14,7 +14,21 @@
     "fixtures",
     "standings",
     "mcp",
-    "sports"
+    "sports",
+    "euro",
+    "copa-america",
+    "nations-league",
+    "concacaf-nations-league",
+    "gold-cup",
+    "premier-league",
+    "laliga",
+    "serie-a",
+    "bundesliga",
+    "liga-mx",
+    "champions-league",
+    "libertadores",
+    "concacaf-champions-cup",
+    "club-world-cup"
   ],
   "logo": ".github/assets/logo-400.png"
 }

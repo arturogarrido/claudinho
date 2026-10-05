@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { disclaimerLine } from '@claudinho/core';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, expect, it } from 'vitest';
@@ -46,7 +47,8 @@ describe('mcpb manifest', () => {
     const line = (manifest as unknown as { description?: string }).description ?? '';
     expect(line).not.toMatch(/2026 men's football tournament/);
     expect(line).toMatch(/competition/);
-    expect(line).toMatch(/Not affiliated with FIFA or Anthropic/);
+    // Core's one sentence, with the listing host's composition (0.11 · 2.7).
+    expect(line.endsWith(disclaimerLine('Smithery'))).toBe(true);
   });
 
   it('its blurbs do not contradict the tools: an empty live list may be a read that was not whole (0.11 2.1d)', () => {

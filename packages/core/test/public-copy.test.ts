@@ -53,7 +53,9 @@ describe('the framing', () => {
   it('the files that count the supported set count the table', () => {
     const WORDS: Record<number, string> = { 10: 'ten', 11: 'eleven', 12: 'twelve', 13: 'thirteen', 14: 'fourteen', 15: 'fifteen', 16: 'sixteen', 17: 'seventeen', 18: 'eighteen', 19: 'nineteen', 20: 'twenty' };
     const n = SUPPORTED.length;
-    const counting = /\b(\d{2}|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty) (supported )?competitions\b/gi;
+    // "15 competitions", "15 supported competitions", and core's listing's "(15 supported)" (the draft's verbatim
+    // string): the last one the first form of this pattern could not see, so core's count went unpinned.
+    const counting = /\b(\d{2}|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty) (?:(?:supported )?competitions\b|supported\b)/gi;
     for (const rel of ['packages/mcp/server.json', 'packages/core/package.json', 'AGENTS.md', 'packages/cli/README.md', 'packages/core/README.md']) {
       const text = collapsed(read(rel));
       const hits = [...text.matchAll(counting)].map((m) => String(m[1]).toLowerCase());
