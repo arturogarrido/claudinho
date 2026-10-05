@@ -23,7 +23,14 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { competitionLabel, driftGate, driftVerdict, resolvedSlug } from '../../../scripts/release-qa-lib.mjs';
 // The club render's decisions (0.11 · 2.7), through the namespace so each case fails on its own while they are owed.
 import * as qaLib from '../../../scripts/release-qa-lib.mjs';
-import { BUNDLE_COMPETITION, DISCLAIMER } from '../src';
+import {
+  BUNDLE_COMPETITION,
+  DISCLAIMER,
+  nextHorizonSentence,
+  nextNoneReadSentence,
+  verdictNotice,
+  verdictQualifiers,
+} from '../src';
 
 const path = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const SCRIPT = path('../../../scripts/release-qa.sh');
@@ -154,6 +161,15 @@ describe('the command-line form the script calls (not only the functions)', () =
     expect(run(['slug'], 'not json')).toBe('');
   });
 
+  it('`card` asks the built core\'s sentence builders (a horizon card whose snippet says its horizon is a render)', () => {
+    const text = `Next up for Arsenal · Premier League\n\n${nextHorizonSentence({ horizon: { days: 14 }, query: 'Arsenal' } as never, 'Arsenal', 'en')}\n\n${DISCLAIMER}`;
+    const json = JSON.stringify({ kind: 'next', team: 'Arsenal', snippet: text, matches: [], horizon: { days: 14 }, competition: { slug: 'eng.1', name: 'Premier League', chosenBy: 'saved' } });
+    expect(run(['card'], json)).toBe('ok:no fixture in the span, its sentence shown');
+    // The same card whose snippet does not say its horizon: the built core's sentence is what is asked for.
+    expect(run(['card'], json.replace(/No fixture for Arsenal[^\\]*days\./, 'Nothing.'))).toBe('fail:the horizon is not said in its snippet');
+    expect(run(['card'], '')).toBe('broken:the share command answered no card');
+  });
+
   it('`label` names what the CLI resolved, read from its JSON on standard input', () => {
     expect(run(['label'], JSON.stringify({ tables: null, competition: { slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', chosenBy: 'saved' } }))).toBe('saved (World Cup)');
     expect(run(['label'], JSON.stringify({ competition: null, noCompetition: true }))).toBe('none chosen');
@@ -194,18 +210,6 @@ describe('the club render: its decisions, offline', () => {
     expect(qaLib.CLUB).toEqual({ alias: 'premier-league', slug: 'eng.1', team: 'Arsenal' });
   });
 
-  it('the club card: a fixture is a render, between editions is a VALID render, an outage is reported as one, a card with no snippet is broken', () => {
-    const card = (extra: Record<string, unknown>) =>
-      JSON.stringify({ kind: 'next', snippet: `Next up for Arsenal · Premier League\n\n#VibingLaVidaLoca · Independent fan project · ${DISCLAIMER}`, matches: [], ...extra });
-    expect(qaLib.clubCardVerdict(card({ matches: [{ id: '1' }] })).kind).toBe('ok');
-    expect(qaLib.clubCardVerdict(card({})).kind).toBe('ok'); // no fixture in the span: its sentence is the render
-    expect(qaLib.clubCardVerdict(card({ betweenEditions: { ended: '2027-05-23' } })).kind).toBe('between');
-    expect(qaLib.clubCardVerdict(card({ degraded: true })).kind).toBe('outage');
-    expect(qaLib.clubCardVerdict(JSON.stringify({ kind: 'next' })).kind).toBe('broken');
-    expect(qaLib.clubCardVerdict('').kind).toBe('broken');
-    expect(qaLib.clubCardVerdict('not json').kind).toBe('broken');
-  });
-
   it('the club card carries the one disclaimer, whatever it answered (an outage and between editions included)', () => {
     const card = (snippet: string, extra: Record<string, unknown> = {}) => JSON.stringify({ kind: 'next', snippet, ...extra });
     expect(qaLib.cardCarriesDisclaimer(card(`x\n${DISCLAIMER}`), DISCLAIMER)).toBe(true);
@@ -215,9 +219,15 @@ describe('the club render: its decisions, offline', () => {
     expect(qaLib.cardCarriesDisclaimer(card(`x\n${DISCLAIMER}`), '')).toBe(false);
   });
 
-  it('the Portuguese table says Time in its team column; no table is reported, never passed; Seleção fails', () => {
-    expect(qaLib.ptTableVerdict('┌──────┬───┐\n│ Time │ J │\n├──────┼───┤\n│ ARS  │ 7 │').kind).toBe('ok');
-    expect(qaLib.ptTableVerdict('│ Seleção │ J │').kind).toBe('fail');
+  it('the Portuguese table: the header row\'s first cell is Time; any other header fails, naming it; no box row skips; nothing is broken', () => {
+    const table = (head: string) => `  Premier League\n\nPremier League (LEAGUE)\n┌──────┬───┐\n│ ${head} │ J │\n├──────┼───┤\n│ ARS  │ 7 │\n└──────┴───┘`;
+    expect(qaLib.ptTableVerdict(table('Time')).kind).toBe('ok');
+    const english = qaLib.ptTableVerdict(table('Team'));
+    expect(english.kind).toBe('fail');
+    expect(english.detail).toContain('Team');
+    const nation = qaLib.ptTableVerdict(table('Seleção'));
+    expect(nation.kind).toBe('fail');
+    expect(nation.detail).toContain('Seleção');
     expect(qaLib.ptTableVerdict('  Premier League\n  Classificação ao vivo indisponível.').kind).toBe('skip');
     expect(qaLib.ptTableVerdict('').kind).toBe('broken');
   });
@@ -229,6 +239,123 @@ describe('the club render: its decisions, offline', () => {
     expect(qaLib.promptVerdict('⚽ —', '0', seeded).kind).toBe('fail');
     expect(qaLib.promptVerdict("⚽ ARS 2–1 CHE 50'", '', seeded).kind).toBe('broken');
     expect(qaLib.promptVerdict("⚽ ARS 2–1 CHE 50'", 'x', seeded).kind).toBe('broken');
+  });
+});
+
+/**
+ * The club card (0.11 · 2.7, review round 1): `clubCardVerdict` asks the card
+ * what it answered and asks the SNIPPET whether it says so, with core's own
+ * sentence builders handed in. One case per row of its table, in its order.
+ */
+describe('the club card: what it answered, and whether its snippet says so', () => {
+  const CORE = { verdictNotice, verdictQualifiers, nextHorizonSentence, nextNoneReadSentence };
+  const ARS = { id: 'espn:359', code: 'ARS', name: 'Arsenal' };
+  const CHE = { id: 'espn:363', code: 'CHE', name: 'Chelsea' };
+  const FIXTURE = { id: '800000011', stage: 'REGULAR', kickoff: '2026-10-10T14:00:00.000Z', venue: 'Emirates Stadium', home: ARS, away: CHE, status: 'SCHEDULED', updatedAt: '2026-10-04T12:00:00.000Z' };
+  const PL = { slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'saved' };
+  const FOOTER = `#VibingLaVidaLoca · Independent fan project · ${DISCLAIMER}`;
+  const snippet = (...body: string[]) => ['Next up for Arsenal · Premier League', '', ...body, '', FOOTER].join('\n');
+  const card = (over: Record<string, unknown>, text: string) =>
+    JSON.stringify({ kind: 'next', target: 'next', team: ARS, snippet: text, matches: [], competition: PL, ...over });
+  // The sentence a card of this shape prints, from core's builders (never spelled here).
+  const said = (over: Record<string, unknown>) => {
+    const result = { team: ARS, query: 'Arsenal', ...over } as never;
+    return {
+      notice: verdictNotice(result, 'en') ?? '',
+      qualifiers: verdictQualifiers(result, 'en'),
+      horizon: nextHorizonSentence(result, 'Arsenal', 'en') ?? '',
+      noneRead: nextNoneReadSentence(result, 'Arsenal', 'en') ?? '',
+    };
+  };
+  const verdict = (json: string) => qaLib.clubCardVerdict(json, CORE);
+
+  it('no JSON, or no snippet: broken, the share command answered no card', () => {
+    for (const json of ['', 'not json', JSON.stringify({ kind: 'next', matches: [], competition: PL, team: ARS }), card({}, '')]) {
+      expect(verdict(json), json).toEqual({ kind: 'broken', detail: 'the share command answered no card' });
+    }
+  });
+
+  it('a card that is not this club render\'s next card is broken, and says what is wrong', () => {
+    const text = snippet(said({ horizon: { days: 14 } }).horizon);
+    const cases: Array<[Record<string, unknown>, RegExp]> = [
+      [{ kind: 'date' }, /kind/],
+      [{ kind: undefined }, /kind/],
+      [{ competition: { ...PL, slug: 'fifa.world' } }, /fifa\.world|competition/],
+      [{ competition: undefined }, /competition/],
+      [{ matches: undefined }, /matches/],
+      [{ matches: 'none' }, /matches/],
+      [{ team: undefined }, /team/],
+      [{ team: '' }, /team/],
+      [{ team: { code: 'ARS' } }, /team/],
+    ];
+    for (const [over, why] of cases) {
+      const v = verdict(card({ horizon: { days: 14 }, ...over }, text));
+      expect(v.kind, JSON.stringify(over)).toBe('broken');
+      expect(v.detail, JSON.stringify(over)).toMatch(why);
+    }
+  });
+
+  it('a betweenEditions that states no date is broken', () => {
+    for (const between of [{}, { ended: 'soon' }, { ended: 20270523 }, 'yes', true]) {
+      expect(verdict(card({ betweenEditions: between }, snippet('x'))), JSON.stringify(between)).toEqual({ kind: 'broken', detail: 'betweenEditions states no date' });
+    }
+  });
+
+  it('candidates: Arsenal resolved to several clubs, a failed render', () => {
+    const v = verdict(card({ team: 'Arsenal', candidates: [ARS, { id: 'espn:9', code: 'ARW', name: 'Arsenal Women' }] }, snippet('"Arsenal" is ambiguous.')));
+    expect(v).toEqual({ kind: 'fail', detail: '"Arsenal" resolved to 2 clubs; the club render asks one name that must resolve' });
+  });
+
+  it('a replacing verdict about the club, or the competition, is a failed render', () => {
+    for (const key of ['unknownTeam', 'rosterIncomplete', 'noCompetition', 'unsupported', 'inapplicable']) {
+      const v = verdict(card({ team: 'Arsenal', [key]: true }, snippet(said({ [key]: true }).notice)));
+      expect(v, key).toEqual({ kind: 'fail', detail: `the card answered ${key} for Arsenal` });
+    }
+  });
+
+  it('between editions is a VALID render when the snippet says so, and a failed one when it does not', () => {
+    const between = { betweenEditions: { ended: '2027-05-23' } };
+    expect(verdict(card(between, snippet(said(between).notice)))).toEqual({ kind: 'between', detail: 'the edition ended 2027-05-23, and the card says so' });
+    expect(verdict(card(between, snippet('No upcoming fixture found for Arsenal.')))).toEqual({ kind: 'fail', detail: "the card's betweenEditions is not said in its snippet" });
+  });
+
+  it('an outage is reported as one', () => {
+    expect(verdict(card({ team: 'Arsenal', degraded: true }, snippet("Couldn't reach the data provider.")))).toEqual({ kind: 'outage', detail: 'the provider could not be reached, and the card says so' });
+  });
+
+  it('a fixture: its two clubs must be in the snippet, and a read that was not whole must say so there', () => {
+    const fixture = { matches: [FIXTURE] };
+    expect(verdict(card(fixture, snippet('Arsenal vs Chelsea', 'Oct 10 · 14:00 UTC')))).toEqual({ kind: 'ok', detail: 'a fixture' });
+    expect(verdict(card(fixture, snippet('Arsenal vs', 'Oct 10 · 14:00 UTC')))).toEqual({ kind: 'fail', detail: 'the fixture is not in the snippet' });
+    const partial = { matches: [FIXTURE], partial: { omitted: 2 } };
+    const qualifiers = said({ ...partial, fixture: FIXTURE }).qualifiers;
+    expect(qualifiers.length).toBeGreaterThan(0);
+    expect(verdict(card(partial, snippet(...qualifiers, '', 'Arsenal vs Chelsea')))).toEqual({ kind: 'ok', detail: 'a fixture, the read was not whole and the card says so' });
+    expect(verdict(card(partial, snippet('Arsenal vs Chelsea')))).toEqual({ kind: 'fail', detail: "the card's partial read is not said in its snippet" });
+  });
+
+  it('no fixture READ in a span that was not whole: the none-read sentence must be in the snippet', () => {
+    const partial = { partial: {} };
+    const s = said(partial);
+    expect(s.noneRead).not.toBe('');
+    expect(verdict(card(partial, snippet(...s.qualifiers, s.noneRead)))).toEqual({ kind: 'ok', detail: 'no fixture READ in the span (the read was not whole), its sentence shown' });
+    const missing = verdict(card(partial, snippet(...s.qualifiers, 'No upcoming fixture found for Arsenal.')));
+    expect(missing.kind).toBe('fail');
+  });
+
+  it('no fixture in the span (a whole read): the horizon sentence must be in the snippet', () => {
+    const horizon = { horizon: { days: 14 } };
+    const s = said(horizon);
+    expect(s.horizon).not.toBe('');
+    expect(verdict(card(horizon, snippet(s.horizon)))).toEqual({ kind: 'ok', detail: 'no fixture in the span, its sentence shown' });
+    expect(verdict(card(horizon, snippet('No upcoming fixture found for Arsenal.')))).toEqual({ kind: 'fail', detail: 'the horizon is not said in its snippet' });
+  });
+
+  it('an empty card with no horizon and no partial verdict is broken (the next card has no such shape)', () => {
+    expect(verdict(card({}, snippet('No upcoming fixture found for Arsenal.')))).toEqual({
+      kind: 'broken',
+      detail: 'an empty card with no horizon and no partial verdict is not a shape the next card has',
+    });
   });
 });
 
@@ -264,6 +391,14 @@ describe('the club render: the script asks those decisions', () => {
     for (const q of ['qa club-followed', 'qa card', 'qa card-disclaimer', 'qa pt-table', 'qa prompt']) expect(code, q).toContain(q);
     // One summary line, after the club checks.
     expect(code.lastIndexOf('qa prompt')).toBeLessThan(code.indexOf('bold "tripwires: $PASS passed'));
+  });
+
+  it('every club command reads and writes the temporary cache, never the operator\'s (club() exports both directories)', () => {
+    const line = script.split('\n').find((l) => /^club\(\)\s*\{/.test(l)) ?? '';
+    expect(line).toContain('XDG_CONFIG_HOME="$QA_CLUB_CONFIG"');
+    expect(line).toContain('XDG_CACHE_HOME="$QA_CLUB_CACHE"');
+    // Created before the first club command.
+    expect(code.indexOf('QA_CLUB_CACHE="$(mktemp -d')).toBeLessThan(code.indexOf('club follow premier-league'));
   });
 
   it('seeds the prompt through the smoke\'s helper, in a cache directory of its own, and counts the refreshers it starts', () => {
@@ -312,9 +447,43 @@ describe.skipIf(!existsSync(CLI_DIST))('the club render: the seeded prompt throu
     expect(spawns).toEqual([]);
   });
 
-  it('a stale seed is counted (the control: the count sees a refresher, and none is started)', { timeout: 30_000 }, async () => {
+  it('a stale seed is counted (the control: the count sees a refresher)', { timeout: 30_000 }, async () => {
     const { spawns } = await prompt('stale', new Date(Date.now() - 2 * 3600e3));
     expect(spawns).toHaveLength(1);
     expect(spawns[0]).toContain('_refresh');
+  });
+});
+
+describe('the spawn counter starts nothing: its child is inert', () => {
+  const COUNT = pathToFileURL(path('../../../scripts/spawn-count.mjs')).href;
+  const SCRIPT_JS = [
+    "import { ChildProcess, spawn } from 'node:child_process';",
+    "const child = spawn(process.execPath, ['-e', '']);",
+    'process.stdout.write(JSON.stringify({ pid: child.pid ?? null, real: child instanceof ChildProcess }));',
+  ].join('\n');
+  const run = (log: string | undefined) => {
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    delete env.QA_SPAWN_LOG;
+    if (log !== undefined) env.QA_SPAWN_LOG = log;
+    return JSON.parse(
+      execFileSync(process.execPath, ['--import', COUNT, '--input-type=module', '-e', SCRIPT_JS], { env, encoding: 'utf8', timeout: 15_000 }),
+    ) as { pid: number | null; real: boolean };
+  };
+
+  it('with QA_SPAWN_LOG: the spawn is logged and no process is started', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'claudinho-spawn-count-'));
+    try {
+      const log = join(dir, 'spawns.log');
+      expect(run(log)).toEqual({ pid: null, real: false });
+      expect(readFileSync(log, 'utf8').split('\n').filter(Boolean)).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('without it: nothing changes (a real child, with a pid)', () => {
+    const answer = run(undefined);
+    expect(answer.real).toBe(true);
+    expect(typeof answer.pid).toBe('number');
   });
 });

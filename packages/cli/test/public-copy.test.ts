@@ -11,9 +11,9 @@
  */
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { DISCLAIMER, SUPPORTED } from '@claudinho/core';
+import { DISCLAIMER, type GroupStandings, type ProviderAdapter, SUPPORTED } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cmdStar, cmdVibe } from '../src/commands';
+import { cmdStar, cmdTable, cmdVibe } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 import { TOURNAMENT_COMPLETE_LINE } from '../src/statusline';
@@ -92,6 +92,46 @@ describe("Portuguese: a team is a 'time'", () => {
   it("the table's team column says Time, the word the other PT strings use", () => {
     expect(makeT('pt')('col.team')).toBe('Time');
     expect(makeT('en')('col.team')).toBe('Team');
+  });
+
+  it('a Portuguese club table renders Time in its header row, and no Seleção', async () => {
+    const row = (rank: number, id: string, code: string, name: string, won: number, drawn: number, lost: number, goalDiff: number) => ({
+      team: { id, code, name },
+      played: won + drawn + lost,
+      won,
+      drawn,
+      lost,
+      goalsFor: Math.max(goalDiff, 0),
+      goalsAgainst: Math.max(-goalDiff, 0),
+      goalDiff,
+      points: 3 * won + drawn,
+      rank,
+    });
+    const league: GroupStandings = {
+      group: 'LEAGUE',
+      label: 'English Premier League',
+      rows: [row(1, 'espn:359', 'ARS', 'Arsenal', 5, 1, 0, 9), row(2, 'espn:363', 'CHE', 'Chelsea', 4, 1, 1, 5)],
+    };
+    const adapter: ProviderAdapter = {
+      name: 'espn',
+      competition: 'eng.1',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate() {
+        return [];
+      },
+      async fetchLive() {
+        return [];
+      },
+      async fetchStandings() {
+        return [league];
+      },
+    };
+    await cmdTable('LEAGUE', { cfg: cfg({ competition: 'eng.1', lang: 'pt' }), t: makeT('pt'), adapter } as never);
+    const out = text();
+    const header = out.split('\n').find((line) => line.includes('│')) ?? '';
+    expect(header.split('│')[1]?.trim()).toBe('Time');
+    expect(out).toContain('Arsenal');
+    expect(out).not.toContain('Seleção');
   });
 });
 
