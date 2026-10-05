@@ -68,10 +68,10 @@ const text = () => writes.join('');
 const lines = () => text().split('\n');
 
 describe('an empty next answer keeps its header', () => {
-  it("on the bundle after the final: 'Next up for Mexico', then the mode line, then the sentence", async () => {
+  it("on the bundle after the final: 'Next up for MEX' (the bundle names the code, as the found form does), then the mode line, then the sentence", async () => {
     await cmdNext('MEX', ctx('fifa.world', [], AFTER_THE_FINAL));
     const out = lines();
-    const header = out.findIndex((l) => l.startsWith('Next up for Mexico'));
+    const header = out.findIndex((l) => l.startsWith('Next up for MEX'));
     const mode = out.findIndex((l) => l.includes('World Cup'));
     const sentence = out.findIndex((l) => /No upcoming fixture found for/.test(l));
     expect(header, text()).toBeGreaterThanOrEqual(0);
@@ -81,8 +81,7 @@ describe('an empty next answer keeps its header', () => {
 
   it('in Spanish too, and --json is unchanged (no header key)', async () => {
     await cmdNext('MEX', ctx('fifa.world', [], AFTER_THE_FINAL, { lang: 'es' }));
-    expect(text()).toMatch(/Próximo partido de Mexico|Próximo partido de México|Mexico/);
-    expect(lines().findIndex((l) => /^\S/.test(l) && /Mexico|México/.test(l))).toBeGreaterThanOrEqual(0);
+    expect(lines().findIndex((l) => l.startsWith('Próximo partido de MEX'))).toBeGreaterThanOrEqual(0);
     writes = [];
     await cmdNext('MEX', ctx('fifa.world', [], AFTER_THE_FINAL, { json: true }));
     const j = JSON.parse(text()) as Record<string, unknown>;

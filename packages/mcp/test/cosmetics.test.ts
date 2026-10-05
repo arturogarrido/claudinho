@@ -56,10 +56,10 @@ const noEnglish = (text: string, label: string) => {
 };
 
 describe('the empty get_next_fixture keeps its label', () => {
-  it("on the bundle after the final: 'Next up for Mexico:' then the sentence", async () => {
+  it("on the bundle after the final: 'Next up for MEX:' (the bundle names the code, as the found form does) then the sentence", async () => {
     process.env.CLAUDINHO_COMPETITION = 'fifa.world';
     const r = await toolGetNextFixture({ team: 'MEX', adapter: adapter('fifa.world', []), now: AFTER_THE_FINAL });
-    expect(r.text).toMatch(/^Next up for Mexico:/m);
+    expect(r.text).toMatch(/^Next up for MEX:/m);
     expect(r.text).toMatch(/No upcoming fixture found for/);
     expect((r.data as Record<string, unknown>).fixture).toBeNull();
   });
