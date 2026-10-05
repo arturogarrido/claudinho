@@ -23,6 +23,6 @@
     "gen:readme-matrix": "node scripts/gen-readme-matrix.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.14"
+    "@biomejs/biome": "^2.5.15"
   }
 }
