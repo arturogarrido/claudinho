@@ -57,12 +57,18 @@ describe("the server's copy", () => {
   it('no em-dash in the INSTRUCTIONS but the quoted voice example, and they say that "next" is not "now"', () => {
     noEmDash('INSTRUCTIONS', INSTRUCTIONS);
     expect(INSTRUCTIONS).toContain(VOICE_EXAMPLE);
-    expect(INSTRUCTIONS).toMatch(/never infer that a fixture is happening now from a `next` query/i);
+    // The MCP rule names the tool and the card an agent reads, not the CLI's command (0.11 · 2.7 round 1).
+    expect(INSTRUCTIONS).toMatch(/never infer that a fixture is happening now from get_next_fixture or a team's next card/i);
+    expect(INSTRUCTIONS).toContain('call it in play only when the returned state says so');
   });
 
-  it('the footer is the one disclaimer', () => {
+  it('the footer is the one disclaimer, after the fan line', () => {
     expect(DISCLAIMER).toContain(CORE_DISCLAIMER);
     expect(INSTRUCTIONS).toContain(CORE_DISCLAIMER);
+    // Spelled out: the composed line, not built from the constants it is made of.
+    const LINE = 'Claudinho is an independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic.';
+    expect(DISCLAIMER).toBe(LINE);
+    expect(INSTRUCTIONS).toContain(LINE);
   });
 
   it("the my_team prompt asks the World Cup's tools and relays the date and state, with no em-dash", async () => {
@@ -72,6 +78,7 @@ describe("the server's copy", () => {
       expect(text).toMatch(/competition:\s*"world-cup"/);
       expect(text).toMatch(/date/i);
       expect(text).toMatch(/\bstate\b|\bstatus\b/i);
+      expect(text).toContain('its state (scheduled, in play or finished)');
       noEmDash('my_team', text);
     });
   });

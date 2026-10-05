@@ -52,6 +52,8 @@ describe('--help (the built CLI)', () => {
     const help = execFileSync(process.execPath, [CLI, '--help'], { encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }).replace(/\s+/g, ' ');
     expect(help).toContain(FRAMING);
     expect(help).toContain(DISCLAIMER);
+    // The help's footer line, spelled out (not built from the constants it is made of).
+    expect(help).toContain('Claudinho is an independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic.');
     expect(help).not.toMatch(/—/);
   });
 });

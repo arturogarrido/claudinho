@@ -37,6 +37,7 @@ const FRAMED = [
   { rel: 'packages/mcp/README.md', text: () => collapsed(read('packages/mcp/README.md')) },
   { rel: 'packages/core/README.md', text: () => collapsed(read('packages/core/README.md')) },
   { rel: 'AGENTS.md', text: () => collapsed(read('AGENTS.md')) },
+  { rel: '.cursor-plugin/README.md', text: () => collapsed(read('.cursor-plugin/README.md')) },
 ];
 
 describe('the framing', () => {

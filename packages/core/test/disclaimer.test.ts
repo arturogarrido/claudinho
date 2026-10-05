@@ -12,7 +12,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DISCLAIMER, disclaimerLine, FAN_PROJECT } from '../src';
+import { DISCLAIMER, disclaimerLine, FAN_PROJECT, SHARE_DISCLAIMER } from '../src';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
@@ -80,21 +80,45 @@ describe('the static copies carry the constant', () => {
   });
 
   it('every public document says the sentence, verbatim, once whitespace is collapsed', () => {
-    for (const rel of [
-      'README.md',
-      'packages/cli/README.md',
-      'packages/mcp/README.md',
-      'packages/core/README.md',
-      '.cursor-plugin/README.md',
-      'CONTRIBUTING.md',
-      'PRIVACY.md',
-      'SECURITY.md',
-      'AGENTS.md',
-    ]) {
+    for (const rel of DOCUMENTS) {
       expect(collapsed(read(rel)), rel).toContain(SENTENCE);
     }
   });
+
+  it('no other spelling survives: every "affiliated with" in a public document or a listing string is the sentence', () => {
+    const OTHER_SPELLING = /affiliated with(?! FIFA, any confederation, league or club, or Anthropic)/i;
+    for (const rel of DOCUMENTS) expect(collapsed(read(rel)), rel).not.toMatch(OTHER_SPELLING);
+    const listings: Array<[string, unknown]> = [
+      ['packages/cli/package.json', json('packages/cli/package.json').description],
+      ['packages/mcp/package.json', json('packages/mcp/package.json').description],
+      ['packages/core/package.json', json('packages/core/package.json').description],
+      ['packages/mcp/server.json', json('packages/mcp/server.json').description],
+      ['manifest description', json('packages/mcp/mcpb/manifest.json').description],
+      ['manifest long_description', json('packages/mcp/mcpb/manifest.json').long_description],
+      ['.cursor-plugin/plugin.json', json('.cursor-plugin/plugin.json').description],
+    ];
+    for (const [label, text] of listings) expect(collapsed(String(text)), label).not.toMatch(OTHER_SPELLING);
+  });
 });
+
+describe('the composed footer, spelled out', () => {
+  it("the share card's footer is the fan line, a middle dot, then the sentence", () => {
+    expect(SHARE_DISCLAIMER).toBe('Independent fan project · Not affiliated with FIFA, any confederation, league or club, or Anthropic.');
+  });
+});
+
+/** The nine public documents that carry the sentence. */
+const DOCUMENTS = [
+  'README.md',
+  'packages/cli/README.md',
+  'packages/mcp/README.md',
+  'packages/core/README.md',
+  '.cursor-plugin/README.md',
+  'CONTRIBUTING.md',
+  'PRIVACY.md',
+  'SECURITY.md',
+  'AGENTS.md',
+];
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
