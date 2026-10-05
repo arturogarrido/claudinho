@@ -5,9 +5,9 @@
  * (the section titles, the status tokens, the stage words come from core's
  * catalog).
  */
-import type { Match, ProviderAdapter } from '@claudinho/core';
+import { t, type Match, type ProviderAdapter } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { toolGetLive, toolGetNextFixture, toolGetToday } from '../src/tools';
+import { toolGetLive, toolGetMatch, toolGetNextFixture, toolGetToday } from '../src/tools';
 
 const NOW = new Date('2026-10-10T15:00:00Z');
 const AFTER_THE_FINAL = new Date('2026-09-01T12:00:00Z');
@@ -130,6 +130,110 @@ describe('the MCP empty-state and outage sentences are localized too', () => {
       const live = await toolGetLive({ adapter: failing, now: NOW, lang, flavor: 'off' });
       expect(live.text, `live ${lang}`).not.toMatch(/couldn't reach the data provider|Live scores unavailable/);
       expect((live.data as Record<string, unknown>).degraded).toBe(true);
+    }
+  });
+});
+
+/** An adapter whose every read fails: the provider is down. */
+function down(competition: string): ProviderAdapter {
+  const fail = async (): Promise<Match[]> => {
+    throw new Error('down');
+  };
+  return { name: 'espn', competition, capabilities: { push: false, latencyHintSec: 0 }, fetchByDate: fail, fetchLive: fail, fetchWindow: fail };
+}
+const LANGS = ['es', 'pt', 'fr'];
+// The bundled opener (Jun 11, 2026, 19:00 UTC), read before the tournament: a
+// SCHEDULED record whose kickoff has passed on any clock these tests run on, as
+// a stale record or the bundle's skeleton during an outage is.
+const BEFORE_THE_OPENER = new Date('2026-06-01T12:00:00Z');
+const OPENER = '760415';
+
+describe("the countdown says 'now' in the reader's language (round 1)", () => {
+  for (const lang of LANGS) {
+    it(`get_today, get_match and get_next_fixture under ${lang}: the language's word, never the English 'now'`, async () => {
+      process.env.CLAUDINHO_COMPETITION = 'fifa.world';
+      const wc = adapter('fifa.world', []);
+      const texts = [
+        (await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: wc, now: BEFORE_THE_OPENER, lang, flavor: 'off' })).text,
+        (await toolGetMatch({ id: OPENER, adapter: wc, now: BEFORE_THE_OPENER, lang, flavor: 'off' })).text,
+        (await toolGetNextFixture({ team: 'MEX', adapter: wc, now: BEFORE_THE_OPENER, lang, flavor: 'off' })).text,
+      ];
+      for (const text of texts) {
+        expect(text, lang).toContain(`(${t(lang, 'countdown.now')})`);
+        expect(text, lang).not.toMatch(/\bnow\b/);
+      }
+    });
+  }
+  it("under en: '(now)', not '(in now)'", async () => {
+    process.env.CLAUDINHO_COMPETITION = 'fifa.world';
+    const r = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: adapter('fifa.world', []), now: BEFORE_THE_OPENER, flavor: 'off' });
+    expect(r.text).toContain('(now)');
+    expect(r.text).not.toMatch(/\bin now\b/);
+  });
+});
+
+describe('the outage and ambiguous sentences under a localized heading are localized (round 1)', () => {
+  for (const lang of LANGS) {
+    it(`under ${lang}: get_next_fixture's outage keeps the team, its ambiguous answer the candidates, get_match's outage the id`, async () => {
+      process.env.CLAUDINHO_COMPETITION = 'fifa.world';
+      // After the group stage, Mexico's knockout slots are the bundle's placeholders: no fixture, and the read failed.
+      const unreachable = await toolGetNextFixture({ team: 'MEX', adapter: down('fifa.world'), now: new Date('2026-07-20T12:00:00Z'), lang });
+      expect(unreachable.text).toContain(t(lang, 'next.unreachable', { team: 'MEX' }));
+      expect(unreachable.text).not.toMatch(/Couldn't reach|no upcoming fixture confirmed/);
+      expect((unreachable.data as Record<string, unknown>).degraded).toBe(true);
+      // "South" is two of the bundle's nations: the candidates, no fixture.
+      const ambiguous = await toolGetNextFixture({ team: 'South', adapter: adapter('fifa.world', []), now: new Date('2026-06-13T12:00:00Z'), lang });
+      expect(ambiguous.text).toContain(t(lang, 'team.ambiguous', { query: 'South' }));
+      expect(ambiguous.text).toMatch(/South Africa \(RSA\)/);
+      expect(ambiguous.text).not.toMatch(/is ambiguous|Did you mean/);
+      process.env.CLAUDINHO_COMPETITION = 'eng.1';
+      const match = await toolGetMatch({ id: '401999999', adapter: down('eng.1'), now: NOW, lang });
+      expect(match.text).toContain(t(lang, 'match.unreachable', { id: '401999999' }));
+      expect(match.text).not.toMatch(/Couldn't reach|could not be looked up/);
+    });
+  }
+});
+
+describe('every named localization of the MCP text is the catalog sentence (round 1)', () => {
+  it("get_today's degraded line: the bundled schedule's on the bundle, the provider's outage off it", async () => {
+    process.env.CLAUDINHO_COMPETITION = 'fifa.world';
+    const on = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: down('fifa.world'), now: BEFORE_THE_OPENER, lang: 'es', flavor: 'off' });
+    expect(on.text).toContain(`(${t('es', 'feed.degraded')})`);
+    process.env.CLAUDINHO_COMPETITION = 'eng.1';
+    const off = await toolGetToday({ date: '2026-10-10', tz: 'UTC', adapter: down('eng.1'), now: NOW, lang: 'es', flavor: 'off' });
+    expect(off.text).toContain(`(${t('es', 'live.degraded')})`);
+  });
+
+  it("get_match's degraded line and its unknown-id sentence", async () => {
+    process.env.CLAUDINHO_COMPETITION = 'fifa.world';
+    const degraded = await toolGetMatch({ id: OPENER, adapter: down('fifa.world'), now: BEFORE_THE_OPENER, lang: 'es', flavor: 'off' });
+    expect(degraded.text).toContain(`(${t('es', 'feed.degraded')})`);
+    const unknown = await toolGetMatch({ id: '999999', adapter: adapter('fifa.world', []), now: BEFORE_THE_OPENER, lang: 'es' });
+    expect(unknown.text).toContain(t('es', 'match.none', { id: '999999' }));
+  });
+
+  it("get_next_fixture's title", async () => {
+    process.env.CLAUDINHO_COMPETITION = 'fifa.world';
+    const r = await toolGetNextFixture({ team: 'MEX', adapter: adapter('fifa.world', []), now: BEFORE_THE_OPENER, lang: 'es', flavor: 'off' });
+    expect(r.text).toContain(`${t('es', 'heading', { title: t('es', 'next.label', { team: 'MEX' }) })}\n`);
+  });
+
+  it('the French title sets its colon off with a space', async () => {
+    const list = [fixture(1, { status: 'LIVE', minute: 30, score: { home: 1, away: 0 } })];
+    const live = await toolGetLive({ adapter: adapter('eng.1', list), now: NOW, lang: 'fr', flavor: 'off' });
+    expect(live.text).toContain(`${t('fr', 'live.title')} :\n`);
+    const today = await toolGetToday({ date: '2026-10-10', adapter: adapter('eng.1', list), now: NOW, lang: 'fr', flavor: 'off' });
+    expect(today.text).toContain(`${t('fr', 'today.onDate', { date: '2026-10-10' })} :\n`);
+  });
+
+  it("half-time and full-time are the MCP's words in every language, not the CLI's column tokens", async () => {
+    const list = [fixture(1, { status: 'HT', score: { home: 0, away: 0 } }), fixture(2, { status: 'FT', score: { home: 1, away: 1 } })];
+    for (const lang of ['en', ...LANGS]) {
+      expect(t(lang, 'status.halfTime'), lang).not.toBe(t(lang, 'status.ht'));
+      expect(t(lang, 'status.fullTime'), lang).not.toBe(t(lang, 'status.ft'));
+      const r = await toolGetToday({ date: '2026-10-10', adapter: adapter('eng.1', list), now: NOW, lang, flavor: 'off' });
+      expect(r.text, lang).toContain(`— ${t(lang, 'status.halfTime')} ·`);
+      expect(r.text, lang).toContain(`— ${t(lang, 'status.fullTime')} ·`);
     }
   });
 });

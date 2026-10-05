@@ -4,7 +4,7 @@
  * list's away column is padded so the time column lines up whatever the
  * away names' lengths.
  */
-import type { Match, ProviderAdapter } from '@claudinho/core';
+import { t as coreT, type Match, type ProviderAdapter } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdNext, cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
@@ -113,5 +113,24 @@ describe('the away column is padded', () => {
     const short = lines().find((l) => l.includes('Short'));
     expect(short).toBeDefined();
     expect((short as string).search(/\d\d:\d\d/)).toBeLessThan(70);
+  });
+});
+
+describe("the countdown says 'now' in the reader's language (0.11 · 2.7c, round 1)", () => {
+  // The bundled opener (Jun 11, 2026, 19:00 UTC) read before the tournament: a
+  // SCHEDULED record whose kickoff has passed on any clock this test runs on,
+  // as a stale record or the bundle's skeleton during an outage is.
+  const BEFORE_THE_OPENER = new Date('2026-06-01T12:00:00Z');
+  for (const lang of ['es', 'pt', 'fr']) {
+    it(`next MEX under ${lang}: the language's word for now, never the English one inside its "in"`, async () => {
+      await cmdNext('MEX', ctx('fifa.world', [], BEFORE_THE_OPENER, { lang }));
+      expect(text(), lang).not.toMatch(/\bnow\b/);
+      expect(text(), lang).toContain(coreT(lang, 'countdown.now'));
+    });
+  }
+  it("next MEX under en: 'now', not 'in now'", async () => {
+    await cmdNext('MEX', ctx('fifa.world', [], BEFORE_THE_OPENER));
+    expect(text()).toMatch(/\bnow\b/);
+    expect(text()).not.toMatch(/\bin now\b/);
   });
 });
