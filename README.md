@@ -170,7 +170,7 @@ Then just ask, mid-task: the agent calls the MCP server and answers with the sco
 - **Prediction-market signals**: a read-only "who's favored" line (market-implied percentages, Source: Polymarket), shown only when a reliable market exists. **Informational only, not betting advice.** Opt out: `--no-markets` / `CLAUDINHO_MARKETS=off`.
 - **Shareable cards**: `claudinho share next MEX --copy` puts a plain-text match card on your clipboard; `claudinho share table A` does the same for a group's live standings; `claudinho share bracket` for the knockout tree.
 
-Speaks `en` / `es` / `pt` / `fr`, with optional localized commentary flair (`¡GOOOOL!`); dial it down with `--flavor subtle|off`.
+Speaks `en` / `es` / `pt` / `fr`, with optional localized commentary flair (`¡GOOOOL!`): a few hundred lines across four languages, none repeated in a day's list while the bank lasts, and a team's own rally cry in its place when one of the sides has one (Mexico's "¿Y si sí?", Pumas' "¡Goya!", Arsenal's "COYG!"); dial it down with `--flavor subtle|off`.
 
 _Planned (not shipped yet):_ a desktop notifier and an AI pundit with a public accuracy scorecard.
 

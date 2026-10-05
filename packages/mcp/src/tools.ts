@@ -89,6 +89,7 @@ import {
   type ShareSnippetOptions,
   type Stage,
   statesPartial,
+  teamKind,
   type VerdictSource,
   withFlag,
 } from '@claudinho/core';
@@ -97,6 +98,7 @@ import {
   capSignals,
   DISCLAIMER,
   listTruncation,
+  type FmtOpts,
   matchLine,
   matchRows,
   standingsTable,
@@ -628,12 +630,16 @@ async function reliableMarketData(
   };
 }
 
-/** Flavor from the call arg, else the server env, else the default (full). */
-function fmtOpts(args: CommonOpts) {
+/**
+ * Flavor from the call arg, else the server env, else the default (full); the
+ * team kind of the competition the adapter serves (a rally cry's kind).
+ */
+function fmtOpts(args: CommonOpts, competition: string): FmtOpts {
   return {
     tz: args.tz,
     locale: args.lang,
     flavor: asFlavorLevel(args.flavor ?? process.env.CLAUDINHO_FLAVOR),
+    teamKind: teamKind(competition),
   };
 }
 
@@ -709,7 +715,7 @@ async function todayAnswer(
   // ONE bounded view: what the text lists, what `data` carries, and what the
   // day's attribution is decided over.
   const shownToday = boundedRecords(todays);
-  const opts = fmtOpts(args);
+  const opts = fmtOpts(args, adapter.competition);
   // A verdict (between editions) stands instead of the empty line. Where no
   // bundled schedule was merged, a failed read says the provider could not be
   // reached, and a read that was not whole says none was READ.
@@ -775,7 +781,7 @@ async function liveAnswer(args: CommonOpts): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
   const live = await getLiveMatches(adapter, args.now ?? new Date());
   const { matches, degraded, source } = live;
-  const opts = fmtOpts(args);
+  const opts = fmtOpts(args, adapter.competition);
   // Degraded ⇒ the live feed failed, NOT "nothing is on". Distinguish them so the
   // agent doesn't tell the user no matches are live when the provider is unreachable.
   // A verdict (between editions) stands instead of the empty line; a read that
@@ -836,7 +842,7 @@ async function matchAnswer(
       },
     };
   }
-  const opts = fmtOpts(args);
+  const opts = fmtOpts(args, adapter.competition);
   const now = args.now ?? new Date();
   let marketSignal: MarketSignal | undefined;
   let marketComplete = true;
@@ -1181,7 +1187,7 @@ async function nextAnswer(
       data: { ...about, fixture: null, degraded, source: source ?? null, ...verdictExtras(next) },
     };
   }
-  const opts = fmtOpts(args);
+  const opts = fmtOpts(args, adapter.competition);
   return {
     // `source` in data mirrors the text's "Live data: …" attribution (parity
     // with CLI `next --json`); null for a static group fixture (no live source).

@@ -8,8 +8,9 @@ import {
   countdown,
   FAN_PROJECT,
   formatKickoff,
+  flavorsFor,
   joinSegments,
-  matchFlavor,
+  matchFlair,
   matchLocation,
   padVisible,
   scoreline,
@@ -19,6 +20,7 @@ import {
   type FlavorLevel,
   type Match,
   type StandingRow,
+  type TeamKind,
 } from '@claudinho/core';
 import { type BoundedList, bounded } from '@claudinho/core';
 
@@ -35,9 +37,22 @@ export interface FmtOpts {
   tz?: string;
   locale?: string;
   flavor?: FlavorLevel;
+  /**
+   * The competition's team kind (core `teamKind` of the adapter's
+   * competition): a team's rally cry takes the flair slot only in a
+   * competition of the cry's kind. Absent (a static list), no side carries one.
+   */
+  teamKind?: TeamKind;
 }
 
-export function matchLine(m: Match, opts: FmtOpts = {}): string {
+/**
+ * One match as a line of text. `phrase` is the row's commentary phrase when a
+ * list chose it ({@link matchRows}: core `flavorsFor`, no phrase twice in one
+ * list); without it the match's own. The flair slot is core's one rule
+ * (`matchFlair`): a team's rally cry first (the home side's when both carry
+ * one: no pin here), else the phrase.
+ */
+export function matchLine(m: Match, opts: FmtOpts = {}, phrase?: string): string {
   // A flag beside a nation's name; a club's name alone (nothing in its place).
   const head = `${withFlag(m.home.name, m.home.flag, 'home')} ${scoreline(m)} ${withFlag(m.away.name, m.away.flag, 'away')}`;
   const stage = stageLabel(m);
@@ -49,7 +64,7 @@ export function matchLine(m: Match, opts: FmtOpts = {}): string {
   } else {
     tail = STATUS_LABEL[m.status];
   }
-  const flair = matchFlavor(m, { level: opts.flavor, locale: opts.locale });
+  const flair = matchFlair(m, { level: opts.flavor, locale: opts.locale, kind: opts.teamKind }, phrase).text;
   // The status, the stage and the location, joined with the empty ones
   // dropped: an OTHER with no words, or a record with no venue, leaves no
   // dangling separator.
@@ -113,10 +128,10 @@ export function truncationNote(list: BoundedList<unknown>): string {
  */
 export function matchRows(matches: Match[], empty: string, opts: FmtOpts = {}): string {
   if (matches.length === 0) return empty;
-  return matches
-    .slice(0, MAX_LIST_MATCHES)
-    .map((m) => `• ${matchLine(m, opts)}`)
-    .join('\n');
+  const shown = matches.slice(0, MAX_LIST_MATCHES);
+  // The phrases chosen once over the rows shown, in order: none twice.
+  const phrases = flavorsFor(shown, { level: opts.flavor, locale: opts.locale });
+  return shown.map((m, i) => `• ${matchLine(m, opts, phrases[i])}`).join('\n');
 }
 
 /**

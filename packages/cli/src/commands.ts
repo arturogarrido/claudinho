@@ -72,7 +72,8 @@ import {
   MARKETS_SCOPE_NOTE,
   marketSignalRendersFor,
   marketRelevant,
-  matchFlavor,
+  flavorsFor,
+  matchFlair,
   matchLocation,
   SHARE_HASHTAG,
   resolveMarketSource,
@@ -623,10 +624,12 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
       ),
     );
   } else {
-    // The home column, measured once over the rows shown.
+    // The home column, measured once over the rows shown; the phrases chosen
+    // once over them too, in print order, so no row repeats another's.
     const homeWidth = homeColumn(todays, flags);
-    for (const m of todays) {
-      out(matchLine(m, cfg, t, c, flags, homeWidth));
+    const phrases = flavorsFor(todays, { level: cfg.flavor, locale: cfg.lang });
+    for (const [i, m] of todays.entries()) {
+      out(matchLine(m, cfg, t, c, flags, homeWidth, phrases[i]));
       const s = market.signals.get(m.id);
       if (s) out('    ' + c.dim(marketLine(s, m)));
     }
@@ -678,9 +681,11 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
     // that was not whole says none in play was READ, not that none is.
     out(c.dim('  ' + (verdictNotice(live, cfg.lang) ?? liveNoneRead(live, cfg.lang) ?? t('live.none'))));
   } else {
-    // The home column, measured once over the rows shown.
+    // The home column, measured once over the rows shown; the phrases chosen
+    // once over them too, in print order, so no row repeats another's.
     const homeWidth = homeColumn(matches, flags);
-    for (const m of matches) out(matchLine(m, cfg, t, c, flags, homeWidth));
+    const phrases = flavorsFor(matches, { level: cfg.flavor, locale: cfg.lang });
+    for (const [i, m] of matches.entries()) out(matchLine(m, cfg, t, c, flags, homeWidth, phrases[i]));
   }
   out();
   // The read was not whole: said after the list and before the attribution,
@@ -1343,8 +1348,10 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
         `${formatKickoff(match.kickoff, { tz: cfg.tz, locale: cfg.lang })}  ${statusToken(match, t, c)}`.trimEnd(),
       ),
   );
-  const flair = matchFlavor(match, { level: cfg.flavor, locale: cfg.lang });
-  if (flair) out('  ' + c.cyan(flair));
+  // The flair slot's one rule (core `matchFlair`): a team's rally cry, green
+  // as on a match line, else the match's own phrase.
+  const flair = matchFlair(match, { level: cfg.flavor, locale: cfg.lang, kind: teamKind(cfg.competition), pin: cfg.pin });
+  if (flair.text) out('  ' + (flair.rally ? c.green(flair.text) : c.cyan(flair.text)));
   if (match.events?.length) {
     out();
     for (const e of match.events) {

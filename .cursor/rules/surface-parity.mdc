@@ -14,6 +14,8 @@ Any user-visible formatter change must land on **all three surfaces** before mer
 | MCP | `toolGet*` in `packages/mcp/src/tools.ts` + `packages/mcp/test/tools.test.ts` |
 | Share | `formatShare*` + `packages/mcp/test/share.test.ts` |
 
+The flair slot of a match line (a team's rally cry, else the moment's phrase; a list's phrases chosen once with `flavorsFor`) comes from core's `matchFlair` on CLI (`today`, `live`, `next`, `match`) and MCP (`get_today`, `get_live`, `get_match`, `get_next_fixture`) alike; share cards and the ambient surfaces carry none.
+
 `scripts/release-qa.sh` exercises CLI + share rendering across locales and timezones, the World Cup pass then a club render (the Premier League in a temporary config and cache of its own: `today`, `live`, `next Arsenal`, both tables, the `share next` card, the Portuguese table, a seeded `prompt` that must start no refresher); MCP arg threading is **not** rendered there: guard it with unit tests.
 
 ## Every answer names its competition (the mode line and the `competition` key)

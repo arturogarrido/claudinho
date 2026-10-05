@@ -3,9 +3,8 @@ import {
   displayWidth,
   formatKickoff,
   isLive,
-  isMexicoNationalTeam,
   liveSourceLabel,
-  matchFlavor,
+  matchFlair,
   padVisible,
   scoreline,
   t as i18n,
@@ -104,7 +103,9 @@ export function homeColumn(matches: readonly Match[], flags: boolean): number {
  *   Arsenal         2–1  Chelsea          50'   (a club: no flag, nothing in its place)
  *
  * `homeWidth` is the list's home column ({@link homeColumn}), measured by the
- * caller over the rows it shows.
+ * caller over the rows it shows. `phrase` is the row's commentary phrase when
+ * the caller chose it for a list (core `flavorsFor`: no phrase twice in one
+ * list); without it the match's own phrase (`matchFlavor`).
  */
 export function matchLine(
   m: Match,
@@ -113,6 +114,7 @@ export function matchLine(
   c: Painter,
   flags = true,
   homeWidth = HOME_COLUMN,
+  phrase?: string,
 ): string {
   const home = homeCell(m, flags);
   const away = flags ? withFlag(m.away.name, m.away.flag, 'away') : m.away.name;
@@ -132,16 +134,13 @@ export function matchLine(
   } else {
     right = statusToken(m, t, c);
   }
-  // Mexico's viral 2026 rally cry ("¿Y si sí?") takes the flair slot whenever
-  // Mexico's NATIONAL TEAM is playing — all locales, a fan flourish, not
-  // translated. Still silenced by --flavor off. Green so it pops past the usual
-  // dimmed commentary. By identity in a competition that fields nations, never
-  // by the code: a club abbreviated MEX is not Mexico.
-  const kind = teamKind(cfg.competition);
-  const mexRally =
-    (isMexicoNationalTeam(m.home, kind) || isMexicoNationalTeam(m.away, kind)) && cfg.flavor !== 'off';
-  const flair = mexRally ? '¿Y si sí?' : matchFlavor(m, { level: cfg.flavor, locale: cfg.lang });
-  const tail = flair ? `   ${mexRally ? c.green(flair) : c.dim(flair)}` : '';
+  // The flair slot (core `matchFlair`): a team's rally cry ("¿Y si sí?",
+  // "¡Goya!") when a side carries one, in every locale, green so it pops past
+  // the dimmed commentary; else the row's phrase. By identity in a competition
+  // of the cry's kind, never by the code: a club abbreviated MEX is not
+  // Mexico. Both silenced by --flavor off.
+  const flair = matchFlair(m, { level: cfg.flavor, locale: cfg.lang, kind: teamKind(cfg.competition), pin: cfg.pin }, phrase);
+  const tail = flair.text ? `   ${flair.rally ? c.green(flair.text) : c.dim(flair.text)}` : '';
   return `  ${left}   ${right}${tail}`.trimEnd();
 }
 

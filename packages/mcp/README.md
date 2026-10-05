@@ -105,10 +105,13 @@ labeled synthetic preview.
 
 ## Commentary flair
 
-Match lines in the text end with a short, localized, genre-style exclamation
-(`— ¡GOOOOL!`): generic energy, no real commentator quoted or impersonated, never
-in the structured JSON. Control with `CLAUDINHO_FLAVOR` (`off`|`subtle`|`full`,
-default `full`) in the server `env`, or per call via the `flavor` argument.
+Match lines in the text end with a short, localized exclamation for the match's
+moment (`— ¡GOOOOL!`): a few hundred lines in four languages, no real person named
+or impersonated, none repeated within one list while the bank lasts, never in the
+structured JSON. A team's own rally cry takes its place when one side has one
+(Mexico's `¿Y si sí?`, Pumas' `¡Goya!`, Arsenal's `COYG!`; the home side's when
+both do). Control with `CLAUDINHO_FLAVOR` (`off`|`subtle`|`full`, default `full`)
+in the server `env`, or per call via the `flavor` argument.
 
 ## How it works
 
