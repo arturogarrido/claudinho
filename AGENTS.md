@@ -347,7 +347,13 @@ unseen. (It covers CLI/share rendering; MCP arg-threading is guarded by
 the World Cup in a temporary config directory it creates and removes (`claudinho follow
 world-cup`, as a user would: the mode line names no source), and `CLAUDINHO_COMPETITION=<alias|slug>
 pnpm release:qa` renders another (the environment wins over the saved choice). Its header names
-the competition the built CLI RESOLVED, read back from `--json`, never assumed. What it decides about the
+the competition the built CLI RESOLVED, read back from `--json`, never assumed. After that pass it
+renders a short CLUB pass: the Premier League followed in a second temporary config directory
+(`today`, `live`, `next Arsenal`, `table`, `table LEAGUE`, `share next Arsenal`, the Portuguese
+table, and `prompt` against a cache seeded by the smoke's own helper, `scripts/statusline-seed.mjs`,
+with the refreshers it would start counted by `scripts/spawn-count.mjs`: none), never the bracket;
+a between-editions league is a valid render, an outage is reported as one, and the club pass is
+skipped when the header says the environment chose the competition. What it decides about the
 competition (the bundle-drift tripwire runs only when the competition the built CLI RESOLVED is
 the bundled one; an unresolved competition or an unreadable verdict FAILS, never SKIPs) lives in
 `scripts/release-qa-lib.mjs`, tested offline by `packages/core/test/release-qa.test.ts`.
