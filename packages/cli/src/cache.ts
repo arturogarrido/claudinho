@@ -6,7 +6,7 @@
  */
 import { closeSync, mkdirSync, openSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
-import { BUNDLE_COMPETITION, type Match, type ScheduleEntry, type SeasonInfo } from '@claudinho/core';
+import { BUNDLE_COMPETITION, lookAtEntry, type Match, type ScheduleEntry, type SeasonInfo } from '@claudinho/core';
 import { randomBytes } from 'node:crypto';
 import { cacheDir, lookAtSmallFile, readSmallFile, writeFileAtomic } from './paths';
 
@@ -457,6 +457,238 @@ export function ensureBackoffVisible(source: string, competition: string, untilM
   return writeBackoffNote(source, competition, untilMs, now);
 }
 
+// ---- the attempt record ----
+//
+// A snapshot whose FILE exists but cannot be read (mode 000) looks like "no
+// snapshot" to every reader, and the refresher's atomic replacement keeps the
+// mode of the file it replaces, so what it publishes stays unreadable: every
+// statusline tick started a refresher, and inside a live window every one of
+// them asked the provider (0.11, ledger row D8). An ATTEMPT is therefore
+// recorded where a reader finds it without the snapshot: a tiny file beside
+// the throttle note (`attempt<scope>.json`, `{"at":"<ISO>","count":n}`), named
+// by the same scope rule, written atomically under the refresh lock and never
+// deleted. Beside the note because it answers the same kind of question ("may
+// the provider be asked now?") for a reader that has no snapshot, in a form
+// every format of the snapshot shares.
+//
+// It is read ONLY when no snapshot could be read (the hot path's no-snapshot
+// branch, a refresher cycle whose base read is undefined): a readable snapshot
+// pays nothing, an old record on disk or not. Such a cycle records its attempt
+// first, under the lock, before any publish or request: `{ at: now, count:
+// previous + 1 }`, read back through the bounded reader (as `writeBackoffNote`
+// tells written from visible). The gate FAILS CLOSED ONLY WHERE THE LOOK SEES
+// THAT A PUBLISH COULD NOT HEAL. A publish is an atomic write, a temporary file
+// made in the cache directory and renamed over the snapshot's path: the
+// replacement is ours, keeps the mode bits of whatever it replaces but a link
+// and nothing else of the entry (no access-control entry of its own, no other
+// owner), and gets what the directory gives a new file (an inherited
+// access-control entry). So a publish heals what the rename replaces with a
+// file this process can read. The look (`snapshotUnhealable`) answers from the
+// entry's kind, its own bits, and a probe of what a new file there reads back
+// as, and names two states a publish cannot heal: a directory (the rename
+// cannot replace it) and an entry that is not a link whose own mode denies its
+// owner a read (the owner-read bit clear, mode 000, 200 or 044, whatever the
+// kind: a regular file, refused or opened through its other bits or an
+// access-control entry of its own; a pipe; a socket) where a file made there
+// with those bits does not read back (the directory's inherited permissions:
+// MEASURED with a probe file, never assumed). There the attempt is admitted
+// only when what is read back is what was written, else nothing is done. In
+// every other state the cycle goes on whether or not its attempt could be
+// recorded, and its publish heals in one cycle where the rename lands: no
+// entry; a symbolic link to anything (nothing of it is kept); any other entry
+// whose owner-read bit is set: a pipe or a socket (replaced by a file of ours
+// with those bits), a cache file refused (an access-control list, another
+// owner's 0600), and a cache file this reader opened and rejected (bad JSON,
+// another format version, larger than the reader's bound, another scope's);
+// and an entry whose bit is clear where a file made with those bits reads
+// back. The look cannot see a flag the system keeps beside the mode (an
+// immutable or append-only flag: the rename is refused), so an entry under
+// one is answered as it would be without it: where the look finds it healable
+// (one of the states just listed) it is not gated: its cycle goes on, its
+// publish is one that did not happen (the write throws), and the record left
+// as its admission paces it (see the stated limit); where it does not, it is
+// gated like the unflagged entry. A believed record that is not due stops the cycle in
+// every case.
+// When the cycle's snapshot then reads back usable, the record is settled to
+// `count: 0`. `count` is "admissions since the last persisted reset": a
+// conservative pacing state, not a history.
+//
+// BELIEVED when the file parses to an object whose `at` is a stamp this product
+// writes (`validStamp`) at most `FUTURE_SKEW_MS` ahead (the snapshot's rule);
+// a `count` that is not a non-negative safe integer reads as 0, the stamp kept.
+// NO age bound: a record of any age is believed and, past its delay, due, and
+// its count is carried into the next admission, so an incident inherits the
+// count of the one before it when no readable snapshot reset it in between
+// (its first attempt is immediate only when the retained record is due). The
+// alternative, a reset by age, let a late retry at the cap restart the ramp.
+// The pace: one minute, doubling per admission, at most thirty
+// (`attemptDelayMs`). The throttle is independent of it and settled as before.
+//
+// STATED LIMIT: where the look sees that a publish could not heal the
+// snapshot's path (above), a record nobody can read (its own mode 000, a
+// directory at its path) admits nothing. The provider is then not asked and
+// nothing is published, but the hot path, which cannot read the record either,
+// still starts a refresher on every tick, until a publish could heal the path
+// (the entry removed, its owner-read bit set, or the directory's inherited
+// permissions letting a new file with those bits be read) or the record works
+// again: never because the snapshot file can be opened (a mode-000 file with
+// its own allow-read entry opens, and its replacement, with the bits and
+// without the entry, would not). A cache directory whose new files nobody can
+// read (an inherited deny-read ACL) also starts a refresher on every tick: no
+// cycle asks or publishes (the lock cannot be read back by its claimer, so
+// `claimLock` claims nothing). In every other state the cycle proceeds as it
+// did before this record existed, and its publish ends the loop where the
+// rename lands. Where the system refuses the rename for a reason the look
+// cannot see (an immutable or append-only flag), the publish never lands, and
+// the entry is answered as it would be without the flag. One under such a
+// flag that the look finds healable and this reader REJECTED is a cycle with
+// no readable snapshot: with a working record its cycles are paced; with a
+// record nobody can read, each tick's cycle runs as before this record
+// existed (asking the provider whenever its lane has a read due); one the
+// look finds unhealable is gated like the unflagged entry. One
+// that READS is outside the record entirely (the record is read only when no
+// snapshot could be read): the provider is asked whenever a read is due and
+// the snapshot is never replaced, as before this record existed.
+
+/** A record is `{"at":"<ISO>","count":n}`: far below this (the note's bound). */
+const MAX_ATTEMPT_BYTES = MAX_NOTE_BYTES;
+
+/** The first delay after an admission, and the ceiling (the one `believedDeadline` uses). */
+const ATTEMPT_BASE_MS = 60_000;
+const ATTEMPT_MAX_MS = MAX_BACKOFF_MS;
+/** The count past which the delay no longer doubles: 2^(6-1) minutes is past the ceiling. */
+const ATTEMPT_DOUBLINGS = 6;
+
+/** A believed attempt record: when the last attempt was admitted (epoch ms), and the count since the last reset. */
+export interface AttemptRecord {
+  at: number;
+  count: number;
+}
+
+/** The attempt record of a cache scope: named like its snapshot and its note, by the same rule. */
+export function attemptRecordPath(source: string, competition: string): string {
+  return join(cacheDir(), `attempt${scopeSuffix(source, competition)}.json`);
+}
+
+/** The scope's attempt record if there is a readable one and it is believed at `now` (never throws). */
+export function readAttemptRecord(source: string, competition: string, now: number): AttemptRecord | undefined {
+  try {
+    const bytes = readSmallFile(attemptRecordPath(source, competition), MAX_ATTEMPT_BYTES);
+    if (!bytes) return undefined;
+    const parsed: unknown = JSON.parse(bytes.toString('utf8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    const { at, count } = parsed as { at?: unknown; count?: unknown };
+    if (!validStamp(at)) return undefined;
+    const atMs = Date.parse(at);
+    // A stamp in the future beyond the tolerated skew is wrong, not recent.
+    if (atMs - now > FUTURE_SKEW_MS) return undefined;
+    const believedCount = typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count : 0;
+    return { at: atMs, count: believedCount };
+  } catch {
+    return undefined;
+  }
+}
+
+/** How long after an admission the next one is due: 0 for a count of 0; else 1, 2, 4, 8, 16, 30, 30… minutes. */
+export function attemptDelayMs(count: number): number {
+  if (!(count > 0)) return 0;
+  return Math.min(ATTEMPT_BASE_MS * 2 ** (Math.min(count, ATTEMPT_DOUBLINGS) - 1), ATTEMPT_MAX_MS);
+}
+
+/** Whether an attempt may be admitted at `now`: no believed record, a count of 0, or its delay elapsed. */
+export function attemptDue(record: AttemptRecord | undefined, now: number): boolean {
+  if (record === undefined) return true;
+  const delay = attemptDelayMs(record.count);
+  return delay === 0 || now - record.at >= delay;
+}
+
+/**
+ * Write `{ at: now, count }` to the scope's record and ask what a reader would:
+ * true only when the record read back is exactly the one written. Never throws.
+ */
+function writeAttemptRecord(source: string, competition: string, now: number, count: number): boolean {
+  try {
+    const stamp = new Date(now).toISOString();
+    writeFileAtomic(attemptRecordPath(source, competition), JSON.stringify({ at: stamp, count }));
+    // Written is not readable: a replacement inherits the mode of the file it
+    // replaces, so a record nobody can read stays one.
+    const readBack = readAttemptRecord(source, competition, now);
+    return readBack !== undefined && readBack.at === Date.parse(stamp) && readBack.count === count;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * ADMIT an attempt at `now`, under the refresh lock, before anything is
+ * published or asked: write `{ at: now, count: believed count + 1 }` and read
+ * it back. Returns the count when the record read back is the one written,
+ * else undefined (the write failed, or what was written cannot be read). What
+ * the caller then does depends on the snapshot file (the refresher's
+ * `admitNoBaseCycle`): where a publish could not heal the snapshot's path
+ * (`snapshotUnhealable`), nothing; otherwise the cycle goes on. The carried
+ * count is clamped so the sum stays a safe integer (any count from 6 on waits
+ * the ceiling; above that it is only a count). Never throws.
+ */
+export function admitAttempt(source: string, competition: string, now: number): number | undefined {
+  try {
+    const previous = readAttemptRecord(source, competition, now)?.count ?? 0;
+    const count = Math.min(previous, Number.MAX_SAFE_INTEGER - 1) + 1;
+    return writeAttemptRecord(source, competition, now, count) ? count : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * SETTLE the record after a cycle whose snapshot reads back usable: write
+ * `{ at: now, count: 0 }` and return whether it reads back as that. A reset
+ * that fails or is not visible leaves the admission record, unread while the
+ * snapshot is usable. Never throws.
+ */
+export function settleAttempt(source: string, competition: string, now: number): boolean {
+  return writeAttemptRecord(source, competition, now, 0);
+}
+
+/**
+ * Whether a publish could NOT heal what is at the scope's snapshot path, as
+ * far as the look can SEE: it answers from the entry's kind, its own mode
+ * bits, and a probe of what a new file there reads back as, and cannot see a
+ * flag the system keeps beside the mode (an immutable or append-only flag:
+ * Node's `lstat` reports none), so an entry under such a flag is answered
+ * exactly as it would be without it: `false` where the look finds it healable
+ * (its owner-read bit set, or a file made there with its bits reads back),
+ * although the rename over it is refused, and `true` where it does not. A
+ * publish (an atomic write, its temporary file made in the cache directory)
+ * heals what its rename replaces with a file this process can read: the
+ * replacement is ours, keeps the mode bits of whatever it replaces but a link
+ * and nothing else of the entry (no access-control entry of its own, no other
+ * owner), and gets what the directory gives a new file. So: true for a
+ * directory (the rename cannot replace it), an entry that is not a link whose
+ * own mode denies its owner a read (the owner-read bit clear, whatever the
+ * kind: a regular file, refused or opened through its other bits or an
+ * access-control entry of its own; a pipe; a socket) where a file made there
+ * with those bits does not read back, and an entry nobody can look at (the
+ * directory above it cannot be searched). One look at the entry through core's
+ * `lookAtEntry` (`lstat`, never following a link; where the owner-read bit is
+ * clear, before any open, a probe file made beside the path with those bits,
+ * opened and removed: the directory's inherited permissions are measured, not
+ * assumed; an open only for a regular file; nothing read). False for
+ * everything a publish heals: no entry, a symbolic link to anything (nothing
+ * of it is kept), any other entry whose owner-read bit is set (a pipe or a
+ * socket, a cache file refused by an access-control list or another owner's
+ * 0600, a cache file that opens, whatever this reader made of its content:
+ * bad JSON, another format version, larger than `MAX_STATE_BYTES`, another
+ * scope's), and an entry whose bit is clear where the probe reads back.
+ * Asked by the refresher on a cycle whose base read is undefined: it is where
+ * the gate fails closed (`admitNoBaseCycle`). (The bounded reader's own kinds
+ * cannot ask it: `lookAtSmallFile` answers `unreadable` alike for a file it
+ * cannot open, one over its bound, and a link to nothing.) Never throws.
+ */
+export function snapshotUnhealable(source: string, competition: string): boolean {
+  return lookAtEntry(cachePath(source, competition)) === 'unhealable';
+}
+
 /** Age of the latest fixtures ATTEMPT in ms (Infinity if never attempted). */
 export function fixturesAttemptAgeMs(
   state: CacheState | undefined,
@@ -551,7 +783,7 @@ function lockAgeMs(now = Date.now()): number | undefined {
   // Lock exists but its content is unparseable — fall back to mtime, THROUGH
   // the same guard. Bypassing it here meant an unreadable lock dated 2099 was
   // permanently fresh and never released: `isLockFresh()` true and
-  // `acquireLock()` false, forever. Third time a timestamp fix has missed a
+  // `claimLock()` undefined, forever. Third time a timestamp fix has missed a
   // sibling, which is why every one of them now routes through `stampAgeMs`.
   return epochAgeMs(lock.mtimeMs, now);
 }
@@ -568,9 +800,6 @@ export function isLockFresh(now = Date.now()): boolean {
  * so ownership cannot be spoofed by pid reuse.
  */
 export type LockToken = string;
-
-/** The token this process last acquired through the no-argument API. */
-let heldToken: LockToken | undefined;
 
 /** The token in the lock file, read like its age (one descriptor, bounded, never waits). */
 function readLockToken(): string | undefined {
@@ -621,16 +850,38 @@ function writeExclusive(lp: string, token: LockToken): boolean {
  * that are never reused (a generation per acquisition); a rename-and-restore
  * takeover was designed and withdrawn, because it opens the lock path to a
  * third process while it runs.
+ *
+ * A claim the claimer cannot read back is no claim (0.11, the cleanup PR).
+ * After every exclusive create that succeeded (the first, the one after the
+ * lock was found gone, the one after a stale lock was removed) the token is
+ * READ BACK through the reader `holdsLock` uses, and a read that is not the
+ * token written (nothing read, or another's token) returns `undefined`. Every
+ * use of a token asks `holdsLock` (a publish, a release, the attempt record's
+ * settlement), so a token that fails it at the instant of its claim serves
+ * nothing: in a cache directory whose new files nobody can read (an inherited
+ * deny-read ACL) the lock is created and written and cannot be read back, and
+ * a cycle holding it asked the provider, on every tick, for an answer it could
+ * never publish. The entry is LEFT where it is: the read-back is the ownership
+ * check and it failed, so removing it would be the unguarded unlink audit A10
+ * closed (in the takeover race above, it can already be a successor's). The
+ * next claimer judges what it finds: unreadable, so stale, taken over, and
+ * refused again on its own read-back; once reads work again, an ordinary lock
+ * stamped by its last claimer, fresh for the lease and stale after it, like a
+ * refresher that died holding it. Every caller treats `undefined` as a lock
+ * held by another: nothing asked, nothing published, and a command's throttle
+ * goes to the note.
  */
 export function claimLock(now = Date.now()): LockToken | undefined {
   mkdirSync(cacheDir(), { recursive: true });
   const lp = lockPath();
   const token = `${process.pid} ${now} ${randomBytes(6).toString('hex')}`;
-  if (writeExclusive(lp, token)) return token;
+  /** After a create that succeeded: ours only when the token reads back as written (never removed otherwise). */
+  const readBack = (): LockToken | undefined => (readLockToken() === token ? token : undefined);
+  if (writeExclusive(lp, token)) return readBack();
   const age = lockAgeMs(now);
   // Gone since the create failed: nothing to remove. One more create; if
   // someone else got there first, the lock is theirs.
-  if (age === undefined) return writeExclusive(lp, token) ? token : undefined;
+  if (age === undefined) return writeExclusive(lp, token) ? readBack() : undefined;
   // There, and stale (by written timestamp / mtime): take it over.
   if (age > LOCK_STALE_MS) {
     try {
@@ -639,32 +890,30 @@ export function claimLock(now = Date.now()): LockToken | undefined {
       return undefined; // lost the race to remove it
     }
     // One retry; if someone else grabbed it first, give up (no recursion loop).
-    return writeExclusive(lp, token) ? token : undefined;
+    return writeExclusive(lp, token) ? readBack() : undefined;
   }
   return undefined;
 }
 
-/** True while the lock file still carries this token (default: this process's). */
-export function holdsLock(token: LockToken | undefined = heldToken): boolean {
+/**
+ * True while the lock file still carries this token. The token is REQUIRED
+ * (0.11, ledger row D3): the lock API has one form, the token `claimLock`
+ * returned. There is no "this process's lock" kept in a module variable; an
+ * `undefined` token (a claim that failed) holds nothing. `claimLock` already
+ * asked this once, at the instant of the claim: a token it returned read back.
+ */
+export function holdsLock(token: LockToken | undefined): boolean {
   return token !== undefined && readLockToken() === token;
 }
 
-/** Acquire the refresh lock for this process (the no-argument API). */
-export function acquireLock(now = Date.now()): boolean {
-  const token = claimLock(now);
-  if (token) heldToken = token;
-  return token !== undefined;
-}
-
-/** Release the lock — a no-op for anyone but its current holder. */
-export function releaseLock(token: LockToken | undefined = heldToken): void {
+/** Release the lock — a no-op for anyone but its current holder (the token is required). */
+export function releaseLock(token: LockToken | undefined): void {
   if (!holdsLock(token)) return;
   try {
     rmSync(lockPath(), { force: true });
   } catch {
     /* ignore */
   }
-  if (token === heldToken) heldToken = undefined;
 }
 
 /**
@@ -684,7 +933,8 @@ export function releaseLock(token: LockToken | undefined = heldToken): void {
  */
 export function publishState(
   state: CacheState,
-  token: LockToken | undefined = heldToken,
+  /** The owner token `claimLock` returned: required, like `holdsLock`'s. */
+  token: LockToken | undefined,
   /** The writer's clock (see `writeState`); by default the snapshot's own stamp. */
   now?: number,
 ): boolean {

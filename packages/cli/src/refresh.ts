@@ -24,17 +24,25 @@ import {
   type SeasonInfo,
 } from '@claudinho/core';
 import {
+  admitAttempt,
   ageMs,
+  attemptDue,
   backoffInEffect,
   type CacheState,
   ensureBackoffVisible,
   fixturesAgeMs,
   fixturesAttemptAgeMs,
+  holdsLock,
   isLockFresh,
+  type LockToken,
+  readAttemptRecord,
+  readCurrentState,
   readState,
   releaseLock,
   claimLock,
   publishState,
+  settleAttempt,
+  snapshotUnhealable,
 } from './cache';
 import {
   applyDiscovery,
@@ -156,7 +164,46 @@ export interface RefreshOpts {
   jitterMs?: number;
 }
 
-/** Perform one refresh cycle (idempotent, lock-guarded). */
+/**
+ * Perform one refresh cycle (idempotent, lock-guarded).
+ *
+ * A cycle whose base read is undefined (no snapshot of this scope and format
+ * could be read: none, unreadable, rejected) is paced by the scope's attempt
+ * record (0.11, ledger row D8), on EVERY lane: the bundle's live and knockout
+ * reads, the off-bundle discovery and live reads, both idle writers, and the
+ * unknown-source idle publish. Under the lock, in this order
+ * (`admitNoBaseCycle`, then `settleNoBaseCycle`):
+ *   1. the record believed and not due → return: nothing written, nothing
+ *      looked at, nothing asked;
+ *   2. RECORD the attempt (`admitAttempt`: `{ at, count + 1 }` written and read
+ *      back); recorded, the cycle goes on with no look. Only an attempt that
+ *      could not be recorded asks the look, last: the gate fails closed only
+ *      where the look sees that a publish could not heal
+ *      (`snapshotUnhealable`): with a directory, or an entry that is not a
+ *      link whose own mode denies its owner a read (a regular file, a pipe, a
+ *      socket: the replacement keeps the bits) where a file made there with
+ *      those bits does not read back (measured: the directory's inherited
+ *      permissions), at the snapshot's path, a record that is not visible →
+ *      release the lock and return, nothing published, nothing asked; in every
+ *      other state (no entry; a link, of which nothing is kept; any other entry
+ *      whose owner-read bit is set: a pipe, a cache file refused, a cache file
+ *      that opened and was rejected: bad JSON, another format, over the
+ *      reader's bound; an entry whose bit is clear where such a file reads
+ *      back) the cycle goes on whether or not the attempt could be recorded;
+ *   3. the lane, as before. The choice of the idle snapshot is the FIRST
+ *      look's: with nothing due (a believed throttle included) it calls the
+ *      idle writer, which reads the base under the lock, admits, and publishes
+ *      the idle snapshot (carrying the deadline when one is in effect), with no
+ *      request. Under the lock the bundle and off-bundle lanes return with
+ *      nothing published when nothing is due (a throttle that arrived between
+ *      the first look and the lock included), the admission standing; else the
+ *      lane's work and its own throttle checks, the throttle settled in the
+ *      note whatever the record did;
+ *   4. SETTLE, only while the lock is still ours: the snapshot reads back
+ *      usable → the record is reset to `count: 0` (`settleAttempt`; a reset
+ *      that fails leaves the admission record); else the admission stands.
+ * A cycle with a readable base neither reads nor writes the record.
+ */
 export async function runRefresh(opts: RefreshOpts): Promise<void> {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
@@ -169,18 +216,24 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
   // on PR #78). Fail closed: write ONE idle DEGRADED snapshot so the
   // statusline's no-cache spawn trigger goes quiet (`refreshWanted` asks the
   // same `isKnownSource` and starts nothing once it exists), and never touch
-  // the network. Interactive commands error loudly for the same config.
+  // the network. Interactive commands error loudly for the same config. Read
+  // through the scope-aware reader, like every other lane.
   if (!isKnownSource(source)) {
-    if (!readState(source, competition)) {
+    if (!readCurrentState(source, competition)) {
       const idle = claimLock();
       if (idle) {
+        let admitted = false;
         try {
           // Under the lock, and only if nobody wrote one in the meantime (the
-          // same rule as the idle snapshot below). A publish that did not
-          // happen (refused: an older snapshot's throttle could not be noted)
+          // same rule as the idle snapshot below), past the gate: a record not
+          // yet due stops it, and so does an attempt that cannot be recorded
+          // where a publish could not heal what is at the snapshot's path
+          // (`snapshotUnhealable`: it would be rewritten on every tick);
+          // otherwise it goes on whether or not the attempt was recorded. A publish that did not happen (refused: an older snapshot's throttle could not be noted)
           // leaves that snapshot, whose deadline every trigger still reads;
-          // nothing was asked, so there is nothing to settle.
-          if (!readState(source, competition)) {
+          // nothing was asked, so there is no throttle to settle.
+          if (!readCurrentState(source, competition) && admitNoBaseCycle(source, competition, nowMs, () => snapshotUnhealable(source, competition))) {
+            admitted = true;
             publishState(
               {
                 updatedAt: now.toISOString(),
@@ -193,6 +246,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
             );
           }
         } finally {
+          if (admitted) settleNoBaseCycle(source, competition, idle, nowMs);
           releaseLock(idle);
         }
       }
@@ -222,13 +276,21 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
    * match can be in play, and off it a missing snapshot always has a discovery
    * due — unless what stopped us is a backoff, and then the snapshot says so
    * (degraded, with the deadline). Written under the lock, and only if nobody
-   * wrote one in the meantime.
+   * wrote one in the meantime; with none read, only past the gate
+   * (`admitNoBaseCycle`): not while a believed record is not due, and, where
+   * a publish could not heal what is at the snapshot's path
+   * (`snapshotUnhealable`: it would be rewritten on every tick), only once the
+   * attempt reads back; in every other state it is written whether or not the
+   * attempt could be recorded.
    */
   const writeIdleSnapshot = (): void => {
     const idle = claimLock();
     if (!idle) return;
+    let admitted = false;
     try {
       if (readBase()) return;
+      if (!admitNoBaseCycle(source, competition, nowMs, () => snapshotUnhealable(source, competition))) return;
+      admitted = true;
       // A publish that did not happen (refused: an older snapshot's throttle
       // could not be noted, so that snapshot stays and still carries it) needs
       // nothing more: no request was made, and the next trigger asks again.
@@ -246,6 +308,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
         nowMs,
       );
     } finally {
+      if (admitted) settleNoBaseCycle(source, competition, idle, nowMs);
       releaseLock(idle);
     }
   };
@@ -295,6 +358,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
 
   const token = claimLock();
   if (!token) return;
+  let admitted = false;
   try {
     // THE decision, from the state as it is now that the lock is ours. The
     // first look ran before the lock: between the two, another refresher can
@@ -302,6 +366,14 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     // first look fetched again inside the cadence, right after being told to
     // stop.
     const base = readBase();
+    // No usable base: the gate first, before anything else (see `runRefresh`'s
+    // order). A record not yet due: nothing is done. An attempt that cannot be
+    // recorded: nothing is done where a publish could not heal what is at the
+    // snapshot's path (`snapshotUnhealable`); otherwise the cycle goes on.
+    if (base === undefined) {
+      if (!admitNoBaseCycle(source, competition, nowMs, () => snapshotUnhealable(source, competition))) return;
+      admitted = true;
+    }
     const { needLive, needFixtures } = plan(base);
     if (!needLive && !needFixtures) return;
 
@@ -464,7 +536,83 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     }
     settleBackoff(published, backoffUntil, source, competition, clock());
   } finally {
+    if (admitted) settleNoBaseCycle(source, competition, token, nowMs);
     releaseLock(token);
+  }
+}
+
+/**
+ * The gate of a cycle whose base read is undefined (0.11, ledger row D8),
+ * under the lock and before anything else the cycle does. One rule for every
+ * lane; `unhealable` asks whether the look SEES that a publish could not heal
+ * what is at the snapshot's path (`snapshotUnhealable`: a directory, or an
+ * entry that is not a link whose own mode denies its owner a read where a
+ * file made there with those bits does not read back). It is a function,
+ * asked LAST and only there: once the record was found due and the attempt
+ * could not be recorded, the one case its answer changes. A record that is
+ * not due returns with nothing written and nothing looked at, and an admitted
+ * cycle makes no look (no probe). False (the caller then publishes nothing,
+ * asks nothing, and releases the lock):
+ * - when the scope's attempt record is believed and not due (nothing is
+ *   written, nothing looked at), in every case: a snapshot that is absent or
+ *   rejected, with a working record, stays paced;
+ * - when the state is unhealable and the attempt cannot be made visible
+ *   (`admitAttempt`: the record written is not the one read back). A publish
+ *   cannot repair either state (an atomic write's rename cannot replace a
+ *   directory, and the replacement keeps the mode bits of whatever it
+ *   replaces but a link, and nothing else of it, so the replacement of an
+ *   entry whose owner-read bit is clear, a file or a pipe, is ours and
+ *   unreadable unless the directory lets a new file with those bits be read,
+ *   which `lookAtEntry` measures with a probe), so an attempt nobody can see
+ *   would be a cycle per tick.
+ * Everywhere else the attempt is recorded when it can be, and the cycle goes
+ * on either way. Where the rename lands it replaces what is there with a file
+ * of ours that reads back, so one cycle heals it: no entry; a link (nothing
+ * of it is kept); any other entry whose owner-read bit is set (the
+ * replacement keeps that bit, and none of an access-control list or another
+ * owner): a pipe or a socket, a cache file refused (an access-control list,
+ * another owner's 0600), and a cache file that opened and was rejected (bad
+ * JSON, another format version, over the reader's bound, another scope's);
+ * and an entry whose bit is clear where a file made with those bits reads
+ * back (an inherited allow-read entry on the directory). The look cannot see
+ * a flag the system keeps beside the mode (an immutable or append-only flag),
+ * so an entry under one is answered as it would be without it: where the look
+ * finds it healable it is not gated although the rename over it is refused:
+ * its publish is one that did not happen, and the record left as its
+ * admission paces the next cycle where the record works; where it does not,
+ * each cycle runs as before this record existed; where the look finds it
+ * unhealable it is gated like the unflagged entry. Gating the states a
+ * publish heals left a scope whose record could not be written or read with
+ * no usable snapshot ever (the statusline
+ * rendering with no snapshot: on the World Cup the bundled schedule's
+ * countdown, `live · syncing…` or its sign-off; off it `⚽ —`; until the
+ * record was removed too), where the base healed in a cycle.
+ */
+function admitNoBaseCycle(source: string, competition: string, nowMs: number, unhealable: () => boolean): boolean {
+  if (!attemptDue(readAttemptRecord(source, competition, nowMs), nowMs)) return false;
+  if (admitAttempt(source, competition, nowMs) !== undefined) return true;
+  // The look last, and only here: its answer changes the gate only for an attempt that could not be recorded.
+  return !unhealable();
+}
+
+/**
+ * The settlement of an admitted cycle, after its last publish (done, refused,
+ * thrown or never tried): while the lock is still ours, a snapshot that reads
+ * back usable resets the record to `count: 0`; a snapshot that does not leaves
+ * the admission record, its count already raised. Nothing is written once
+ * ownership is lost (the successor's files are the successor's). The reset's
+ * own result is not acted on: one that fails leaves the admission record,
+ * unread while the snapshot is usable. The throttle's settlement
+ * (`settleBackoff`) is apart from this and runs whatever the record did.
+ * Never throws: it runs in a `finally` that must still release the lock.
+ */
+function settleNoBaseCycle(source: string, competition: string, token: LockToken, nowMs: number): void {
+  try {
+    if (!holdsLock(token)) return;
+    if (readCurrentState(source, competition) === undefined) return;
+    settleAttempt(source, competition, nowMs);
+  } catch {
+    /* the admission record stands */
   }
 }
 
@@ -590,8 +738,17 @@ async function refreshOffBundle(c: {
 
   const token = claimLock();
   if (!token) return;
+  let admitted = false;
   try {
     const base = readBase();
+    // No usable base: the gate first (see `runRefresh`'s order and the bundle
+    // lane's comment): not due, nothing; an attempt that cannot be recorded
+    // stops the cycle only where a publish could not heal what is at the
+    // snapshot's path (`snapshotUnhealable`).
+    if (base === undefined) {
+      if (!admitNoBaseCycle(source, competition, nowMs, () => snapshotUnhealable(source, competition))) return;
+      admitted = true;
+    }
     const { view, needDiscovery, needLive } = plan(base);
     if (!needDiscovery && !needLive) return;
 
@@ -691,7 +848,7 @@ async function refreshOffBundle(c: {
       if (ageMs(base, nowMs) >= MIN_REFRESH_MS) {
         // The stamp is the moment the read was ADMITTED, not the start of a
         // cycle that first waited for discovery.
-        const admitted = clock();
+        const liveAt = clock();
         try {
           const r = await getLiveRead(adapter, now);
           live = r.matches;
@@ -704,7 +861,7 @@ async function refreshOffBundle(c: {
         } catch {
           degraded = true;
         }
-        updatedAt = new Date(admitted).toISOString();
+        updatedAt = new Date(liveAt).toISOString();
       }
       // Asked just now, or answered by a read less than `MIN_REFRESH_MS` old:
       // either way the probe has its answer, whatever that was.
@@ -722,6 +879,7 @@ async function refreshOffBundle(c: {
     }
     settleBackoff(published, backoffUntil, source, competition, clock());
   } finally {
+    if (admitted) settleNoBaseCycle(source, competition, token, nowMs);
     releaseLock(token);
   }
 }
@@ -808,9 +966,15 @@ export function shouldDiscover(
  * snapshot, or a match can be in play and the live slice is stale, or the
  * knockout slice is due (on the bundle), or discovery is due (off it). Never
  * during a backoff (with a snapshot or without one), never while a refresher
- * is already running, and, once its snapshot exists, never for a source nobody
- * can ask. Reads the already-loaded `state` and, last, the scope's throttle
- * note; no network.
+ * is already running, never while the scope's attempt record says the last
+ * attempt with no readable snapshot is too recent, and, once its snapshot
+ * exists, never for a source nobody can ask. Reads the already-loaded `state`
+ * and, last, the scope's throttle note; no network.
+ *
+ * With no snapshot the order is: the lock (fresh → no), the attempt record
+ * (believed and not due → no), the backoff (in effect → no), else start. The
+ * record is opened on this branch alone (a readable snapshot never opens it),
+ * and the note only once the record is due.
  */
 export function refreshWanted(
   now: number,
@@ -818,10 +982,17 @@ export function refreshWanted(
   competition: string,
   source = 'espn',
 ): boolean {
-  // No snapshot: start the refresher that writes one, unless one is running
-  // or a throttle is in the scope's note (the note exists without a snapshot).
-  // The backoff is asked last here too.
-  if (!state) return !isLockFresh(now) && backoffInEffect(undefined, source, competition, now) === undefined;
+  // No snapshot: start the refresher that writes one, unless one is running,
+  // or the last attempt to write one is too recent (a snapshot nobody can read
+  // looks like none on every tick: the attempt record paces it), or a throttle
+  // is in the scope's note (the note exists without a snapshot). The backoff
+  // is asked last here too. An unknown source is paced here like any other:
+  // its question comes after this branch.
+  if (!state) {
+    if (isLockFresh(now)) return false;
+    if (!attemptDue(readAttemptRecord(source, competition, now), now)) return false;
+    return backoffInEffect(undefined, source, competition, now) === undefined;
+  }
   // A source nobody can ask: the refresher refuses it and writes one idle,
   // degraded snapshot with no schedule (`runRefresh`, the same question). Once
   // that exists there is nothing to start, ever: "no schedule" is not "discovery

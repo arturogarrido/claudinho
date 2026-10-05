@@ -1091,6 +1091,9 @@ export function cmdPrompt(
     // branch is lock-deduped like the others: N concurrent statusline ticks on a
     // fresh install must fork one refresher, not N (and the refresher always
     // writes a snapshot, so this branch fires once, never per-tick forever).
+    // A snapshot that is written but cannot be READ (mode 000) looks like none
+    // on every tick: that branch is paced by the scope's attempt record, one
+    // minute doubling to thirty, until a snapshot reads back.
     if (refreshWanted(now?.getTime() ?? Date.now(), state, cfg.competition, cfg.source)) {
       spawnRefresh(cfg.source, cfg.competition);
     }

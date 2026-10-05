@@ -64,7 +64,11 @@ That includes `next`, which live-resolves knockout ties before falling back. `te
 genuinely offline lookup (it only consults the bundled roster).
 
 **Local writes only.** A cache in `$XDG_CACHE_HOME/claudinho` (default `~/.cache/claudinho`;
-`%LOCALAPPDATA%\claudinho` on Windows), written atomically via tmp+rename. The config file
+`%LOCALAPPDATA%\claudinho` on Windows), written atomically via tmp+rename; beside the cached
+snapshot (`state*.json`) it holds the throttle note (`backoff*.json`, a deadline) and the
+refresher's attempt record (`attempt*.json`, a timestamp and a count), one of each per scope:
+named bare for the World Cup (`state.json`), with the source and competition for another
+(`state.espn.eng.1.json`). The config file
 `config.json` in `$XDG_CONFIG_HOME/claudinho` (default `~/.config/claudinho`; `%APPDATA%\claudinho`
 on Windows), written only by `claudinho follow`: atomically, with mode 0600 set on every write,
 replacing (never writing through) a symbolic link at its path; the MCP server reads it and writes
