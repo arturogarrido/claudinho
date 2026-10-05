@@ -66,8 +66,10 @@ GROUP="${GROUP:-A}"
 
 # Default to the built dist (tests exactly what ships); CLI=claudinho overrides.
 cli() { if [ -n "${CLI:-}" ]; then $CLI "$@"; else node "$DIST" "$@"; fi; }
-# The club render's config directory: the club competition followed there.
-club() { XDG_CONFIG_HOME="$QA_CLUB_CONFIG" cli "$@"; }
+# The club render's config and cache directories: the club competition followed
+# there, and every club command reads and writes the temporary cache, never the
+# operator's (a throttle met during the run stays in that scope and goes with it).
+club() { XDG_CONFIG_HOME="$QA_CLUB_CONFIG" XDG_CACHE_HOME="$QA_CLUB_CACHE" cli "$@"; }
 # The competition decisions, offline-testable (see the header).
 qa() { node "$ROOT/scripts/release-qa-lib.mjs" "$@"; }
 
@@ -434,7 +436,7 @@ case "$CLUB_GATE" in
       between:*) check ok "club render: between editions is a valid render (${V#between:})" ;;
       outage:*)  printf '  \033[33m⚠ SKIP\033[0m  club render: outage (%s); a populated card is not proven\n' "${V#outage:}"
                  SKIP=$((SKIP+1)) ;;
-      *)         check no "club render: share next Arsenal answered no card (${V#*:})" ;;
+      *)         check no "club render: ${V#*:}" ;;
     esac
     V="$(qa card-disclaimer <<<"$CLUB_CARD")"
     [ "$V" = "ok" ] \
