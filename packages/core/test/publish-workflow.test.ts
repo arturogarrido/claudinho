@@ -13,7 +13,10 @@
  * nothing), exits 0 when npm serves the version, and fails with its own
  * `::error::` past the deadline.
  */
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -68,10 +71,14 @@ describe('publish.yml, the mcp-registry job', () => {
     const probe = wait.split('\n').find((l) => /\bnpm view\b/.test(l)) ?? '';
     expect(probe).not.toMatch(/2>\s*\/dev\/null/);
     // The probe's stderr goes to a file, and the step's own error prints that file's tail.
-    const err = /2>\s*"?([^\s"]+)"?/.exec(probe)?.[1];
+    const err = /2>("[^"\s]+")/.exec(probe)?.[1];
     expect(err, probe).toBeTruthy();
+    // The status is the probe's own: captured on the probe line, where `|| true`
+    // would make it 0 and a `PIPESTATUS` would read another command's.
+    expect(probe).toMatch(/\) && RC=0 \|\| RC=\$\?\s*$/);
     const after = wait.slice(wait.indexOf('::error::'));
-    expect(after).toMatch(new RegExp(`\\b(tail|cat)\\b[^\\n]*${(err as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    // The SAME quoted token, whole: `"$ERR"`, not a file nothing writes.
+    expect(after).toMatch(new RegExp(`\\b(head|tail|cat)\\b[^\\n]*${(err as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|;|$)`));
     // Every "not yet" attempt says why: the probe's exit status (124 is `timeout`'s).
     const notYet = wait.split('\n').filter((l) => /echo "attempt /.test(l) && /yet/.test(l));
     expect(notYet.length).toBeGreaterThanOrEqual(1);
@@ -81,5 +88,115 @@ describe('publish.yml, the mcp-registry job', () => {
   it('exits 0 when npm serves the version, and fails with its own ::error:: past the deadline', () => {
     expect(wait).toMatch(/if \[ "\$GOT" = "\$V" \]; then[^\n]*\bexit 0\b/);
     expect(wait).toMatch(/::error::[^\n]*\bexit 1\b/);
+  });
+});
+
+/**
+ * The step's `run:` block, de-indented: the script the runner executes under
+ * `bash -e`, with the deadline and the sleep shortened (the two literals are
+ * pinned above; the behaviour is the same at any length) so four states run
+ * in about a second.
+ */
+function stepScript(): string {
+  const at = wait.indexOf('run: |');
+  expect(at, 'the wait step has a run block').toBeGreaterThan(0);
+  const lines = wait.slice(at + 'run: |'.length).split('\n').slice(1);
+  const indent = /^(\s*)\S/.exec(lines.find((l) => l.trim()) ?? '')?.[1] ?? '';
+  return lines
+    .map((l) => l.slice(indent.length))
+    .join('\n')
+    .replace('DEADLINE=$((SECONDS + 480))', 'DEADLINE=$((SECONDS + 2))')
+    .replace(/\bsleep 20\b/g, 'sleep 0.2');
+}
+
+/** npm's own refusal of a version it does not serve (npm 11), five lines. */
+const E404 = [
+  'npm error code E404',
+  'npm error 404 No match found for version 0.11.0',
+  'npm error 404',
+  "npm error 404  '@claudinho/mcp@0.11.0' is not in this registry.",
+  'npm error A complete log of this run can be found in: /home/runner/.npm/_logs/debug-0.log',
+];
+/** A network refusal: the code and the reason first, generic advice after (npm 11 prints 21 lines). */
+const ECONNREFUSED = [
+  'npm error code ECONNREFUSED',
+  'npm error syscall connect',
+  'npm error errno ECONNREFUSED',
+  'npm error FetchError: request to https://registry.npmjs.org/@claudinho%2fmcp failed, reason: connect ECONNREFUSED',
+  'npm error     at ClientRequest.<anonymous>',
+  'npm error  If you are behind a proxy, please make sure that the',
+  "npm error 'proxy' config is set properly.  See: 'npm help config'",
+  'npm error A complete log of this run can be found in: /home/runner/.npm/_logs/debug-0.log',
+];
+
+type Stub = { npm?: string; timeout?: string };
+/** Runs the step under `bash -e` with stand-in `npm` and `timeout` scripts first on PATH. */
+function runStep(stub: Stub): { status: number | null; out: string } {
+  const dir = mkdtempSync(join(tmpdir(), 'wait-step-'));
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  // The stand-in `timeout` ignores its bound and ends the command after 0.3 s
+  // with GNU timeout's status, 124: one hung probe must not take 20 s here.
+  const timeout = stub.timeout ?? '#!/bin/bash\nshift\n"$@" & p=$!\nfor i in 1 2 3; do sleep 0.1; kill -0 $p 2>/dev/null || { wait $p; exit $?; }; done\nkill $p 2>/dev/null; wait $p 2>/dev/null; exit 124\n';
+  writeFileSync(join(bin, 'timeout'), timeout);
+  chmodSync(join(bin, 'timeout'), 0o755);
+  if (stub.npm !== undefined) {
+    writeFileSync(join(bin, 'npm'), stub.npm);
+    chmodSync(join(bin, 'npm'), 0o755);
+  }
+  const r = spawnSync('bash', ['-e', '-c', stepScript()], {
+    // Only the stand-ins and the system's own tools: no real npm on this PATH.
+    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir, RUNNER_TEMP: dir, GITHUB_REF_NAME: 'v0.11.0', COUNT: join(dir, 'count') },
+    encoding: 'utf8',
+    timeout: 20000,
+  });
+  return { status: r.status, out: `${r.stdout}${r.stderr}` };
+}
+const stderrLines = (lines: string[]) => lines.map((l) => `echo ${JSON.stringify(l)} >&2`).join('\n');
+const notYet = (out: string) => out.split('\n').filter((l) => /^attempt \d+ \(\d+s\): npm does not serve/.test(l));
+
+describe.skipIf(process.platform === 'win32')('the wait step, run offline under stand-in npm and timeout', () => {
+  it('exits 0 the moment npm serves the version, after saying why the earlier probe failed', () => {
+    const npm = `#!/bin/bash\nn=$(cat "$COUNT" 2>/dev/null || echo 0); n=$((n + 1)); echo $n > "$COUNT"\nif [ $n -ge 2 ]; then echo 0.11.0; exit 0; fi\n${stderrLines(E404)}\nexit 1\n`;
+    const { status, out } = runStep({ npm });
+    expect(status, out).toBe(0);
+    expect(out).toMatch(/^attempt 2 \(\d+s\): npm serves @claudinho\/mcp@0\.11\.0$/m);
+    expect(notYet(out), out).toEqual([expect.stringMatching(/\(exit 1\); retrying/)]);
+    expect(out).not.toMatch(/::error::/);
+  });
+
+  it('a version npm never serves: exit 1, every attempt with status 1, and the refusal printed under the error', () => {
+    const { status, out } = runStep({ npm: `#!/bin/bash\n${stderrLines(E404)}\nexit 1\n` });
+    expect(status, out).toBe(1);
+    expect(notYet(out).length).toBeGreaterThanOrEqual(2);
+    for (const l of notYet(out)) expect(l).toMatch(/\(exit 1\); retrying/);
+    const error = out.indexOf('::error::');
+    expect(error, out).toBeGreaterThanOrEqual(0);
+    expect(out.slice(error)).toContain('npm error code E404');
+  });
+
+  it('a network refusal: the error code and the reason reach the log, not only the advice npm prints last', () => {
+    const { status, out } = runStep({ npm: `#!/bin/bash\n${stderrLines(ECONNREFUSED)}\nexit 1\n` });
+    expect(status, out).toBe(1);
+    const tail = out.slice(out.indexOf('::error::'));
+    expect(tail).toContain('npm error code ECONNREFUSED');
+    expect(tail).toContain('reason: connect ECONNREFUSED');
+  });
+
+  it("a probe that hangs: every attempt says timeout's own status, 124", () => {
+    // `exec`: the sleeper IS the probe process, so the stand-in timeout's kill
+    // ends the writer of the substitution's pipe (a child left behind would
+    // hold it open and the substitution would wait for it).
+    const { status, out } = runStep({ npm: '#!/bin/bash\nexec sleep 30\n' });
+    expect(status, out).toBe(1);
+    expect(notYet(out).length).toBeGreaterThanOrEqual(1);
+    for (const l of notYet(out)) expect(l).toMatch(/\(exit 124\); retrying/);
+  });
+
+  it('no npm on the runner: every attempt says 127', () => {
+    const { status, out } = runStep({});
+    expect(status, out).toBe(1);
+    expect(notYet(out).length).toBeGreaterThanOrEqual(1);
+    for (const l of notYet(out)) expect(l).toMatch(/\(exit 127\); retrying/);
   });
 });
