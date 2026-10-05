@@ -44,7 +44,10 @@ describe('publish.yml, the mcp-registry job', () => {
     expect(wait).toMatch(/while \[ "?\$SECONDS"? -lt "?\$DEADLINE"? \]/);
     expect(wait).not.toMatch(/\bseq\b/);
     expect(wait).toMatch(/sleep \d+/);
-    expect(wait).toMatch(/echo "attempt [^"\n]*\$\{?SECONDS\}?/);
+    // Every attempt's line (served or not yet) carries the elapsed seconds.
+    const attempts = wait.split('\n').filter((l) => /echo "attempt /.test(l));
+    expect(attempts.length).toBeGreaterThanOrEqual(2);
+    for (const l of attempts) expect(l).toMatch(/\$\{?SECONDS\}?/);
   });
 
   it('bounds every probe, so a slow npm cannot outrun the deadline and the job timeout', () => {

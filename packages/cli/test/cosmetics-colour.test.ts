@@ -106,6 +106,28 @@ describe('the middle column, with colour on', () => {
     expect(new Set(away).size, rows.join('\n')).toBe(1);
   });
 
+  it('the middle column is bounded: a score past its ceiling pushes its own row, never the others', async () => {
+    const list = [
+      fixture(6, { home: team('ENG', 'England', 11), away: team('WAL', 'Wales', 12) }),
+      fixture(7, { home: team('SCO', 'Scotland', 13), away: team('NIR', 'Northern Ireland', 14), status: 'FT', score: { home: 2, away: 1 } }),
+      fixture(8, {
+        home: team('IRL', 'Ireland', 15),
+        away: team('ISL', 'Iceland', 16),
+        status: 'FT',
+        score: { home: 100, away: 100 },
+        shootout: { home: 100, away: 99 },
+      }),
+    ];
+    await cmdToday('2026-10-10', ctx(list));
+    const rowFor = (name: string): string => rowsOf(new RegExp(name))[0] ?? '';
+    const wales = rowFor('Wales');
+    const northernIreland = rowFor('Northern Ireland');
+    const iceland = rowFor('Iceland');
+    const at = (l: string) => l.search(TOKEN);
+    expect(at(wales), [wales, northernIreland, iceland].join('\n')).toBe(at(northernIreland));
+    expect(at(iceland)).toBeGreaterThan(at(wales));
+  });
+
   it('live: a score and a half-time score line up', async () => {
     const list = [
       fixture(4, { home: team('ESP', 'Spain', 7), away: team('SUI', 'Switzerland', 8), status: 'LIVE', minute: 12, score: { home: 0, away: 0 } }),

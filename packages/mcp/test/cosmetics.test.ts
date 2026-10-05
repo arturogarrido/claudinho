@@ -186,6 +186,8 @@ describe('the outage and ambiguous sentences under a localized heading are local
       expect(ambiguous.text).toContain(t(lang, 'team.ambiguous', { query: 'South' }));
       expect(ambiguous.text).toMatch(/South Africa \(RSA\)/);
       expect(ambiguous.text).not.toMatch(/is ambiguous|Did you mean/);
+      // The question closes after the candidates, set off with a space in French.
+      expect(ambiguous.text).toMatch(lang === 'fr' ? /\([A-Z]{3}\) \?/ : /\([A-Z]{3}\)\?/);
       process.env.CLAUDINHO_COMPETITION = 'eng.1';
       const match = await toolGetMatch({ id: '401999999', adapter: down('eng.1'), now: NOW, lang });
       expect(match.text).toContain(t(lang, 'match.unreachable', { id: '401999999' }));
