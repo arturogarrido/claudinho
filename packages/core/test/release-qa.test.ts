@@ -21,7 +21,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { competitionLabel, driftGate, driftVerdict, resolvedSlug } from '../../../scripts/release-qa-lib.mjs';
-import { BUNDLE_COMPETITION } from '../src';
+// The club render's decisions (0.11 · 2.7), through the namespace so each case fails on its own while they are owed.
+import * as qaLib from '../../../scripts/release-qa-lib.mjs';
+import { BUNDLE_COMPETITION, DISCLAIMER } from '../src';
 
 const path = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const SCRIPT = path('../../../scripts/release-qa.sh');
@@ -156,5 +158,161 @@ describe('the command-line form the script calls (not only the functions)', () =
     expect(run(['label'], JSON.stringify({ tables: null, competition: { slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', chosenBy: 'saved' } }))).toBe('saved (World Cup)');
     expect(run(['label'], JSON.stringify({ competition: null, noCompetition: true }))).toBe('none chosen');
     expect(run(['label'], '')).toBe('unresolved');
+  });
+});
+
+/**
+ * The club render (0.11 · 2.7): after the bundle pass, the script renders a
+ * club competition's surfaces (the Premier League, followed in a SECOND config
+ * directory of its own) and a seeded `prompt`, unless the header it already
+ * prints says the environment chose the competition (then the run is one pass
+ * of that competition). A between-editions league is a valid render, an outage
+ * is reported as one, and the bracket is not asked.
+ */
+describe('the club render: its decisions, offline', () => {
+  const header = (chosenBy: string, name = 'World Cup', slug = 'fifa.world') =>
+    JSON.stringify({ tables: null, competition: { slug, name, chosenBy } });
+
+  it('runs after a saved bundle pass, and is skipped when the environment chose the competition or nothing was resolved', () => {
+    expect(qaLib.clubPass(header('saved'))).toEqual({ kind: 'run' });
+    const env = qaLib.clubPass(header('env', 'LALIGA', 'esp.1'));
+    expect(env.kind).toBe('skip');
+    expect(env.kind === 'skip' && env.detail).toMatch(/environment/);
+    expect(env.kind === 'skip' && env.detail).toContain('LALIGA');
+    for (const nothing of [JSON.stringify({ competition: null, noCompetition: true }), '', 'not json']) {
+      expect(qaLib.clubPass(nothing).kind, nothing).toBe('skip');
+    }
+  });
+
+  it('the club header names what the club config resolved, and the club config must follow the Premier League', () => {
+    const followed = JSON.stringify({ competition: { slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'saved' }, saved: { version: 1, competition: 'eng.1' } });
+    expect(qaLib.clubHeader(followed)).toBe('club render · competition=saved (Premier League)');
+    expect(qaLib.clubHeader('')).toBe('club render · competition=unresolved');
+    expect(qaLib.clubFollowed(followed)).toEqual({ kind: 'ok' });
+    expect(qaLib.clubFollowed(JSON.stringify({ competition: { slug: 'fifa.world', name: 'World Cup', chosenBy: 'saved' } })).kind).toBe('fail');
+    expect(qaLib.clubFollowed('').kind).toBe('fail');
+    expect(qaLib.CLUB).toEqual({ alias: 'premier-league', slug: 'eng.1', team: 'Arsenal' });
+  });
+
+  it('the club card: a fixture is a render, between editions is a VALID render, an outage is reported as one, a card with no snippet is broken', () => {
+    const card = (extra: Record<string, unknown>) =>
+      JSON.stringify({ kind: 'next', snippet: `Next up for Arsenal · Premier League\n\n#VibingLaVidaLoca · Independent fan project · ${DISCLAIMER}`, matches: [], ...extra });
+    expect(qaLib.clubCardVerdict(card({ matches: [{ id: '1' }] })).kind).toBe('ok');
+    expect(qaLib.clubCardVerdict(card({})).kind).toBe('ok'); // no fixture in the span: its sentence is the render
+    expect(qaLib.clubCardVerdict(card({ betweenEditions: { ended: '2027-05-23' } })).kind).toBe('between');
+    expect(qaLib.clubCardVerdict(card({ degraded: true })).kind).toBe('outage');
+    expect(qaLib.clubCardVerdict(JSON.stringify({ kind: 'next' })).kind).toBe('broken');
+    expect(qaLib.clubCardVerdict('').kind).toBe('broken');
+    expect(qaLib.clubCardVerdict('not json').kind).toBe('broken');
+  });
+
+  it('the club card carries the one disclaimer, whatever it answered (an outage and between editions included)', () => {
+    const card = (snippet: string, extra: Record<string, unknown> = {}) => JSON.stringify({ kind: 'next', snippet, ...extra });
+    expect(qaLib.cardCarriesDisclaimer(card(`x\n${DISCLAIMER}`), DISCLAIMER)).toBe(true);
+    expect(qaLib.cardCarriesDisclaimer(card(`x\n${DISCLAIMER}`, { degraded: true }), DISCLAIMER)).toBe(true);
+    expect(qaLib.cardCarriesDisclaimer(card('x\nIndependent fan project · not affiliated with FIFA or Anthropic.'), DISCLAIMER)).toBe(false);
+    expect(qaLib.cardCarriesDisclaimer('', DISCLAIMER)).toBe(false);
+    expect(qaLib.cardCarriesDisclaimer(card(`x\n${DISCLAIMER}`), '')).toBe(false);
+  });
+
+  it('the Portuguese table says Time in its team column; no table is reported, never passed; Seleção fails', () => {
+    expect(qaLib.ptTableVerdict('┌──────┬───┐\n│ Time │ J │\n├──────┼───┤\n│ ARS  │ 7 │').kind).toBe('ok');
+    expect(qaLib.ptTableVerdict('│ Seleção │ J │').kind).toBe('fail');
+    expect(qaLib.ptTableVerdict('  Premier League\n  Classificação ao vivo indisponível.').kind).toBe('skip');
+    expect(qaLib.ptTableVerdict('').kind).toBe('broken');
+  });
+
+  it('the seeded prompt renders the seeded club match and starts no refresher', () => {
+    const seeded = 'ARS 2–1 CHE';
+    expect(qaLib.promptVerdict("⚽ ARS 2–1 CHE 50'", '0', seeded).kind).toBe('ok');
+    expect(qaLib.promptVerdict("⚽ ARS 2–1 CHE 50'", '1', seeded).kind).toBe('fail');
+    expect(qaLib.promptVerdict('⚽ —', '0', seeded).kind).toBe('fail');
+    expect(qaLib.promptVerdict("⚽ ARS 2–1 CHE 50'", '', seeded).kind).toBe('broken');
+    expect(qaLib.promptVerdict("⚽ ARS 2–1 CHE 50'", 'x', seeded).kind).toBe('broken');
+  });
+});
+
+describe('the club render: the script asks those decisions', () => {
+  const script = readFileSync(SCRIPT, 'utf8');
+  const code = script
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
+  const header = script
+    .split('\n')
+    .filter((line) => /^\s*#/.test(line))
+    .join('\n')
+    .replace(/\s+/g, ' ');
+
+  it('decides from the header question it already asks, never from the environment variable', () => {
+    expect(code).toContain('CLUB_GATE="$(cli table Z --json 2>/dev/null | qa club)"');
+    expect(code).not.toMatch(/\$\{?CLAUDINHO_COMPETITION/);
+  });
+
+  it('follows the Premier League in a SECOND config directory, after the bundle pass, and removes it', () => {
+    expect(code).toMatch(/QA_CLUB_CONFIG="\$\(mktemp -d/);
+    expect(code).toMatch(/trap '[^']*rm -rf [^']*"\$\{QA_CLUB_CONFIG:-\}"[^']*' EXIT/);
+    expect(code).toContain('club follow premier-league');
+    expect(code.indexOf('club follow premier-league')).toBeGreaterThan(code.indexOf('run prompt'));
+  });
+
+  it('renders the club surfaces, never the bracket, and counts its failures into the one final count', () => {
+    for (const asked of ['crun today', 'crun live', 'crun next Arsenal', 'crun table', 'crun table LEAGUE', 'club share next Arsenal --json', 'club table LEAGUE --lang pt']) {
+      expect(code, asked).toContain(asked);
+    }
+    expect(code).not.toMatch(/(crun|club) (share )?bracket/);
+    for (const q of ['qa club-followed', 'qa card', 'qa card-disclaimer', 'qa pt-table', 'qa prompt']) expect(code, q).toContain(q);
+    // One summary line, after the club checks.
+    expect(code.lastIndexOf('qa prompt')).toBeLessThan(code.indexOf('bold "tripwires: $PASS passed'));
+  });
+
+  it('seeds the prompt through the smoke\'s helper, in a cache directory of its own, and counts the refreshers it starts', () => {
+    expect(code).toMatch(/QA_CLUB_CACHE="\$\(mktemp -d/);
+    expect(code).toContain('scripts/statusline-seed.mjs" club "$QA_CLUB_CACHE"');
+    expect(code).toContain('QA_SPAWN_LOG=');
+    expect(code).toContain('spawn-count.mjs');
+    expect(code).toMatch(/XDG_CACHE_HOME="\$QA_CLUB_CACHE"/);
+  });
+
+  it('states the added work in its header: the GETs, the timeout and the estimate', () => {
+    expect(header).toMatch(/17 GETs/);
+    expect(header).toMatch(/two months/);
+    expect(header).toMatch(/6-second/);
+    expect(header).toMatch(/under two minutes/);
+  });
+});
+
+describe.skipIf(!existsSync(CLI_DIST))('the club render: the seeded prompt through the built CLI, with its refreshers counted', () => {
+  const root = mkdtempSync(join(tmpdir(), 'claudinho-release-qa-club-'));
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  const SEED = path('../../../scripts/statusline-seed.mjs');
+  const COUNT = path('../../../scripts/spawn-count.mjs');
+
+  const prompt = async (name: string, at: Date) => {
+    const dir = join(root, name);
+    const config = join(dir, 'config');
+    mkdirSync(join(config, 'claudinho'), { recursive: true });
+    writeFileSync(join(config, 'claudinho', 'config.json'), JSON.stringify({ version: 1, competition: 'premier-league' }));
+    const seed = (await import(SEED)) as { seedClub: (cacheHome: string, slug: string, now?: Date) => string };
+    seed.seedClub(join(dir, 'cache'), 'eng.1', at);
+    const log = join(dir, 'spawns.log');
+    const env: NodeJS.ProcessEnv = { ...process.env, XDG_CACHE_HOME: join(dir, 'cache'), XDG_CONFIG_HOME: config, QA_SPAWN_LOG: log };
+    delete env.CLAUDINHO_COMPETITION;
+    delete env.CLAUDINHO_TEAM;
+    const out = execFileSync(process.execPath, ['--import', COUNT, CLI_DIST, 'prompt'], { env, encoding: 'utf8', input: '', timeout: 15_000 });
+    const spawns = existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : [];
+    return { out, spawns };
+  };
+
+  it('a fresh seed renders the club match and starts no refresher', { timeout: 30_000 }, async () => {
+    const { out, spawns } = await prompt('fresh', new Date());
+    expect(out).toContain('ARS 2–1 CHE');
+    expect(spawns).toEqual([]);
+  });
+
+  it('a stale seed is counted (the control: the count sees a refresher, and none is started)', { timeout: 30_000 }, async () => {
+    const { spawns } = await prompt('stale', new Date(Date.now() - 2 * 3600e3));
+    expect(spawns).toHaveLength(1);
+    expect(spawns[0]).toContain('_refresh');
   });
 });
