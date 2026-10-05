@@ -111,8 +111,8 @@ or impersonated, none repeated within one list while the bank lasts, never in th
 structured JSON. A team's own rally cry takes its place when one side has one
 (Mexico's `¿Y si sí?`, Pumas' `¡Goya!`, Arsenal's `COYG!`): when both do, the team
 saved with `claudinho follow --team` for that competition, else the home side's
-(the server's `CLAUDINHO_TEAM` is the team-taking tools' default query, not a line
-preference). A row with a cry takes no line from the bank, a postponed or
+(the server's `CLAUDINHO_TEAM` is the team-taking tools' default query, not the
+cry's tiebreak). A row with a cry takes no line from the bank, a postponed or
 cancelled match prints neither, and the `fixtures://` resource prints a phrase,
 never a cry (it states no team kind). Control with `CLAUDINHO_FLAVOR`
 (`off`|`subtle`|`full`, default `full`; `subtle` is goals, full time, draws and

@@ -1,8 +1,9 @@
 /**
  * The MCP lines take their flairs from the same rules as the CLI: one rule
  * for a list (core `matchFlairs`: a row with a cry reserves no phrase), the
- * saved pin deciding between two cries on every line (`CLAUDINHO_TEAM` is the
- * team-taking tools' query, not a line preference), and no cry on a cancelled
+ * saved pin deciding between two cries on every line (`get_today`,
+ * `get_live`, `get_match`, `get_next_fixture`; `CLAUDINHO_TEAM` is the
+ * team-taking tools' query, not the cry's tiebreak), and no cry on a cancelled
  * match.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -11,7 +12,7 @@ import { join } from 'node:path';
 import type { Match, ProviderAdapter } from '@claudinho/core';
 import { FLAVOR_BANKS, matchFlavor, RALLY_CRIES } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { toolGetMatch, toolGetNextFixture, toolGetToday } from '../src/tools';
+import { toolGetLive, toolGetMatch, toolGetNextFixture, toolGetToday } from '../src/tools';
 
 const NOW = new Date('2026-10-10T12:00:00Z');
 const plainClub = (i: number) => ({ code: `P${i}`, name: `Plain ${i}`, id: `espn:${97000 + i}` });
@@ -40,7 +41,7 @@ function adapter(competition: string, matches: Match[]): ProviderAdapter {
       return matches;
     },
     async fetchLive() {
-      return [];
+      return matches.filter((m) => m.status === 'LIVE' || m.status === 'HT');
     },
     async fetchWindow() {
       return matches;
@@ -118,7 +119,15 @@ describe('the saved pin decides the clásico on the MCP lines', () => {
     expect(n.text).not.toContain('¡Ódiame más!');
   });
 
-  it("CLAUDINHO_TEAM is a team-taking tool's query, not a line preference: the pin still decides", async () => {
+  it("get_live: a clásico in play, served by the live read, prints Pumas' cry", async () => {
+    const live = fixture('800002701', { home: america, away: pumas, status: 'LIVE', minute: 30, score: { home: 0, away: 0 } });
+    const r = await toolGetLive({ adapter: adapter('mex.1', [live]), now: NOW, flavor: 'full' });
+    expect(r.text).toContain('América 0–0 Pumas UNAM');
+    expect(r.text).toContain('— ¡Goya!');
+    expect(r.text).not.toContain('¡Ódiame más!');
+  });
+
+  it("CLAUDINHO_TEAM is a team-taking tool's query, not the cry's tiebreak: the pin still decides", async () => {
     process.env.CLAUDINHO_TEAM = 'AME';
     const r = await toolGetToday({ date: '2026-10-10', adapter: adapter('mex.1', [clasico()]), now: NOW, flavor: 'full' });
     expect(r.text).toContain('— ¡Goya!');

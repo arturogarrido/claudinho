@@ -2,14 +2,18 @@
  * The CLI lists take their flairs from ONE rule (core `matchFlairs`): a row
  * with a cry reserves no phrase, so the rows without one keep distinct
  * phrases; a cancelled match prints no cry; the cry is green and a phrase is
- * not (picocolors forced on in this file: it detects no colour in a test run).
+ * not, on a list and on `match <id>` (picocolors forced on in this file: it
+ * detects no colour in a test run). The pin decides between two cries at
+ * every CLI call site (`today`, `live`, `next`, `match`), and the ambient
+ * pick prefers an id-less saved pin by its code whatever the feed names it.
  */
 import type { Match, ProviderAdapter } from '@claudinho/core';
 import { FLAVOR_BANKS, matchFlavor, RALLY_CRIES } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cmdToday } from '../src/commands';
+import { cmdLive, cmdMatch, cmdNext, cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
+import { pickAmbientMatch } from '../src/statusline';
 import { described } from './config-of';
 
 vi.mock('picocolors', async () => {
@@ -45,7 +49,7 @@ function adapter(competition: string, matches: Match[]): ProviderAdapter {
       return matches;
     },
     async fetchLive() {
-      return [];
+      return matches.filter((m) => m.status === 'LIVE' || m.status === 'HT');
     },
     async fetchWindow() {
       return matches;
@@ -118,5 +122,45 @@ describe('the cry is green, a phrase is not', () => {
     const plainLine = lines.find((l) => l.includes(phrase)) ?? '';
     expect(plainLine).not.toContain(`${GREEN}${phrase}`);
     expect(plainLine).not.toContain(GREEN);
+  });
+});
+
+describe('the cry is green on `match <id>` too', () => {
+  it('with colour on: the ANSI green around the cry; no green at all for a match with no cry', async () => {
+    const pumasRow = fixture('800002610', { home: { code: 'UNAM', name: 'Pumas UNAM', id: 'espn:233' } });
+    await cmdMatch('800002610', ctx('mex.1', [pumasRow], { color: true }));
+    expect(text()).toContain(`${GREEN}¡Goya!`);
+    writes = [];
+    await cmdMatch('800002611', ctx('mex.1', [fixture('800002611')], { color: true }));
+    expect(scheduledIn(text())).toHaveLength(1);
+    expect(text()).not.toContain(GREEN);
+  });
+});
+
+describe('the pin decides between two cries at every CLI call site', () => {
+  const america = { code: 'AME', name: 'América', id: 'espn:227' };
+  const pumas = { code: 'UNAM', name: 'Pumas UNAM', id: 'espn:233' };
+  const pinned = { pin: { id: 'espn:233', code: 'UNAM', name: 'Pumas UNAM' } };
+
+  it("live: a clásico in play prints the pinned side's cry, not the home side's", async () => {
+    const clasico = fixture('800002620', { home: america, away: pumas, status: 'LIVE', minute: 30, score: { home: 0, away: 0 } });
+    await cmdLive(ctx('mex.1', [clasico], pinned));
+    expect(text()).toContain('¡Goya!');
+    expect(text()).not.toContain('¡Ódiame más!');
+  });
+
+  it("next América: the line prints the pinned side's cry, the query being América", async () => {
+    await cmdNext('América', ctx('mex.1', [fixture('800002621', { home: america, away: pumas })], pinned));
+    expect(text()).toContain('¡Goya!');
+    expect(text()).not.toContain('¡Ódiame más!');
+  });
+});
+
+describe('the ambient pick: an id-less saved pin by its code', () => {
+  it("the saved United States picks the feed's United States of America", () => {
+    const mexCan = fixture('800002630', { home: { code: 'MEX', name: 'Mexico', id: 'espn:203' }, away: { code: 'CAN', name: 'Canada', id: 'espn:206' } });
+    const usaJam = fixture('800002631', { home: { code: 'USA', name: 'United States of America', id: 'espn:660' }, away: { code: 'JAM', name: 'Jamaica', id: 'espn:1038' } });
+    const picked = pickAmbientMatch([mexCan, usaJam], { team: { code: 'USA', name: 'United States' } });
+    expect(picked.map((m) => m.id)).toEqual(['800002631', '800002630']);
   });
 });

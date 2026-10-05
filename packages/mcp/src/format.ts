@@ -50,7 +50,7 @@ export interface FmtOpts {
    * The request's pinned team (the saved choice's, when it applies to the
    * request's competition): it decides between two sides that both carry a
    * cry, as on the CLI. The pin alone: `CLAUDINHO_TEAM` is the team-taking
-   * tools' query, not a line preference.
+   * tools' query, not the cry's tiebreak.
    */
   pin?: RallyPin;
 }

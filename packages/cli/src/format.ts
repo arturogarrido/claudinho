@@ -102,9 +102,9 @@ export function homeColumn(matches: readonly Match[], flags: boolean): number {
  * The flair options of this invocation, ONE place: the level, the language,
  * the competition's team kind (a cry is said in a competition of its kind)
  * and the pin (it decides between two sides that both carry a cry; the pin
- * alone: `CLAUDINHO_TEAM` is the team-taking commands' query, not a line
- * preference). A list hands them to core `matchFlairs`, one line to
- * `matchFlair`.
+ * alone: `CLAUDINHO_TEAM` is not the cry's tiebreak, it is the team-taking
+ * commands' query and the ambient pick's preference). A list hands them to
+ * core `matchFlairs`, one line to `matchFlair`.
  */
 export function flairOpts(cfg: CliConfig): FlairOpts {
   return { level: cfg.flavor, locale: cfg.lang, kind: teamKind(cfg.competition), pin: cfg.pin };
