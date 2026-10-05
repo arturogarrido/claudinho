@@ -96,3 +96,40 @@ describe('the MCP text is localized', () => {
     expect(r.text).toMatch(/postponed/);
   });
 });
+
+describe('the MCP empty-state and outage sentences are localized too', () => {
+  it('get_live with nothing in play, get_today with no fixture, get_next_fixture with no fixture: the catalog sentence under es, pt, fr', async () => {
+    for (const lang of ['es', 'pt', 'fr']) {
+      const live = await toolGetLive({ adapter: adapter('eng.1', []), now: NOW, lang, flavor: 'off' });
+      expect(live.text, `live ${lang}`).not.toMatch(/No matches in play right now/);
+      const today = await toolGetToday({ date: '2026-10-10', adapter: adapter('eng.1', []), now: NOW, lang, flavor: 'off' });
+      expect(today.text, `today ${lang}`).not.toMatch(/No matches scheduled|No fixture was read for/);
+      process.env.CLAUDINHO_COMPETITION = 'fifa.world';
+      const next = await toolGetNextFixture({ team: 'MEX', adapter: adapter('fifa.world', []), now: AFTER_THE_FINAL, lang });
+      expect(next.text, `next ${lang}`).not.toMatch(/No upcoming fixture found for/);
+      process.env.CLAUDINHO_COMPETITION = 'eng.1';
+    }
+  });
+
+  it('the degraded line under es, pt, fr is the catalog sentence, not English', async () => {
+    const failing: ProviderAdapter = {
+      name: 'espn',
+      competition: 'eng.1',
+      capabilities: { push: false, latencyHintSec: 0 },
+      async fetchByDate() {
+        throw new Error('down');
+      },
+      async fetchLive() {
+        throw new Error('down');
+      },
+      async fetchWindow() {
+        throw new Error('down');
+      },
+    };
+    for (const lang of ['es', 'pt', 'fr']) {
+      const live = await toolGetLive({ adapter: failing, now: NOW, lang, flavor: 'off' });
+      expect(live.text, `live ${lang}`).not.toMatch(/couldn't reach the data provider|Live scores unavailable/);
+      expect((live.data as Record<string, unknown>).degraded).toBe(true);
+    }
+  });
+});
