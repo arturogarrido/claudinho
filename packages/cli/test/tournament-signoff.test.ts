@@ -86,7 +86,7 @@ describe('post-tournament sign-off — interactive score commands', () => {
       writes = [];
       await run();
       const t = text();
-      expect(t).toContain('The World Cup is complete. Thanks for using Claudinho.');
+      expect(t).toContain(makeT('en')('signoff.complete'));
       expect(t).toContain('#VibingLaVidaLoca');
       expect(t).toContain('⭐ Star the project:');
       expect(t).toContain(REPO_URL);
@@ -99,13 +99,13 @@ describe('post-tournament sign-off — interactive score commands', () => {
     // it so the test has no side effect on the developer's cache dir.
     process.env.CLAUDINHO_NO_STAR = '1';
     await cmdToday(undefined, ctx(DURING));
-    expect(text()).not.toContain('The World Cup is complete');
+    expect(text()).not.toContain(makeT('en')('signoff.complete'));
   });
 
   it('never appears in --json (machine output stays clean)', async () => {
     await cmdToday(undefined, ctx(AFTER, { json: true }));
     const t = text();
-    expect(t).not.toContain('The World Cup is complete');
+    expect(t).not.toContain(makeT('en')('signoff.complete'));
     expect(t).not.toContain(REPO_URL);
   });
 
@@ -115,7 +115,7 @@ describe('post-tournament sign-off — interactive score commands', () => {
     process.env.CLAUDINHO_NO_STAR = '1';
     await cmdToday(undefined, ctx(AFTER));
     const t = text();
-    expect(t).toContain('The World Cup is complete');
+    expect(t).toContain(makeT('en')('signoff.complete'));
     expect(t).not.toContain('⭐ Star the project:');
     expect(t).not.toContain(REPO_URL);
   });
@@ -124,7 +124,7 @@ describe('post-tournament sign-off — interactive score commands', () => {
     process.stdout.isTTY = false;
     await cmdToday(undefined, ctx(AFTER));
     const t = text();
-    expect(t).toContain('The World Cup is complete');
+    expect(t).toContain(makeT('en')('signoff.complete'));
     expect(t).not.toContain(REPO_URL);
   });
 
@@ -143,7 +143,7 @@ describe('post-tournament sign-off — interactive score commands', () => {
     process.env.CLAUDINHO_NO_STAR = '1';
     await cmdToday(undefined, friendly);
     const t = text();
-    expect(t).not.toContain('The World Cup is complete');
+    expect(t).not.toContain(makeT('en')('signoff.complete'));
     expect(t).not.toContain(REPO_URL);
   });
 });
@@ -153,10 +153,11 @@ describe('post-tournament sign-off — localization (four-locale rule)', () => {
   // surfaces, so the copy must follow the user's --lang. Regression: Spanish
   // `today --lang es` output previously ended in an English sign-off.
   const cases = [
-    { lang: 'es', needle: 'El Mundial ha terminado', star: 'Dale una estrella' },
-    { lang: 'pt', needle: 'A Copa do Mundo terminou', star: 'Dê uma estrela' },
-    { lang: 'fr', needle: 'La Coupe du Monde est terminée', star: 'Mettez une étoile' },
-    { lang: 'en', needle: 'The World Cup is complete', star: 'Star the project' },
+    // The needle is the table's own sentence (0.11 · 2.7): a literal went vacuous when the copy changed.
+    { lang: 'es', needle: makeT('es')('signoff.complete'), star: 'Dale una estrella' },
+    { lang: 'pt', needle: makeT('pt')('signoff.complete'), star: 'Dê uma estrela' },
+    { lang: 'fr', needle: makeT('fr')('signoff.complete'), star: 'Mettez une étoile' },
+    { lang: 'en', needle: makeT('en')('signoff.complete'), star: 'Star the project' },
   ] as const;
 
   for (const { lang, needle, star } of cases) {
