@@ -343,6 +343,30 @@ describe('the club card: what it answered, and whether its snippet says so', () 
     expect(missing.kind).toBe('fail');
   });
 
+  it('an empty partial card must say its qualifier too: the none-read sentence alone is not enough', () => {
+    for (const partial of [{}, { omitted: 2 }]) {
+      const over = { partial };
+      const s = said(over);
+      expect(s.qualifiers.length, JSON.stringify(partial)).toBeGreaterThan(0);
+      expect(s.noneRead, JSON.stringify(partial)).not.toBe('');
+      expect(verdict(card(over, snippet(...s.qualifiers, s.noneRead))), JSON.stringify(partial)).toEqual({
+        kind: 'ok',
+        detail: 'no fixture READ in the span (the read was not whole), its sentence shown',
+      });
+      expect(verdict(card(over, snippet(s.noneRead))), JSON.stringify(partial)).toEqual({
+        kind: 'fail',
+        detail: "the card's partial read is not said in its snippet",
+      });
+    }
+  });
+
+  it('a horizon is believed only with a span: a positive whole number of days', () => {
+    for (const horizon of [{}, { days: 'soon' }, { days: 0 }, { days: 14.5 }, { days: -1 }, null, 'x']) {
+      const text = snippet(said({ horizon: { days: 14 } }).horizon);
+      expect(verdict(card({ horizon }, text)), JSON.stringify(horizon)).toEqual({ kind: 'broken', detail: 'horizon states no span' });
+    }
+  });
+
   it('no fixture in the span (a whole read): the horizon sentence must be in the snippet', () => {
     const horizon = { horizon: { days: 14 } };
     const s = said(horizon);
@@ -384,13 +408,19 @@ describe('the club render: the script asks those decisions', () => {
   });
 
   it('renders the club surfaces, never the bracket, and counts its failures into the one final count', () => {
-    for (const asked of ['crun today', 'crun live', 'crun next Arsenal', 'crun table', 'crun table LEAGUE', 'club share next Arsenal --json', 'club table LEAGUE --lang pt']) {
+    for (const asked of ['crun today', 'crun live', 'crun next Arsenal', 'crun table', 'crun table LEAGUE', 'club share next Arsenal --lang en --json', 'club table LEAGUE --lang pt']) {
       expect(code, asked).toContain(asked);
     }
     expect(code).not.toMatch(/(crun|club) (share )?bracket/);
     for (const q of ['qa club-followed', 'qa card', 'qa card-disclaimer', 'qa pt-table', 'qa prompt']) expect(code, q).toContain(q);
     // One summary line, after the club checks.
     expect(code.lastIndexOf('qa prompt')).toBeLessThan(code.indexOf('bold "tripwires: $PASS passed'));
+  });
+
+  it('the club card is rendered in English, the language its validator asks core for (the flag wins over CLAUDINHO_LANG and LANG)', () => {
+    const asked = code.split('\n').filter((l) => /club share next Arsenal/.test(l));
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toContain('CLUB_CARD="$(club share next Arsenal --lang en --json 2>/dev/null)"');
   });
 
   it('every club command reads and writes the temporary cache, never the operator\'s (club() exports both directories)', () => {
