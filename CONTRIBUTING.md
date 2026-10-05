@@ -1,8 +1,8 @@
 # Contributing to Claudinho ⚽
 
 Thanks for being here. Claudinho is an independent, open-source fan project that puts live
-football in your dev environment for the competition you follow: a CLI, a statusline, a
-score-aware hook, and an MCP server. Issues, fixes, and ideas are all welcome.
+football in your dev environment for the competition you follow, through a CLI, a statusline,
+a score-aware hook and an MCP server. Issues, fixes, and ideas are all welcome.
 
 **The fastest way to help: [⭐ star the repo](https://github.com/arturogarrido/claudinho).**
 It's a solo, $0 project, and stars are the signal that it's worth maintaining.

@@ -15,8 +15,8 @@ npx @claudinho/cli --competition world-cup today
 
 `claudinho today` on a World Cup knockout night, penalty shootouts and all:
 
-<!-- DEMO: verbatim `claudinho --competition world-cup --tz America/Los_Angeles today 2026-06-29`
-     from a knockout matchday. Shootouts render as 1(3)–1(4). REGENERATE per matchday
+<!-- DEMO: verbatim `claudinho --tz America/Los_Angeles today 2026-06-29` with the World Cup
+     followed (`claudinho follow world-cup`), from a knockout matchday. Shootouts render as 1(3)–1(4). REGENERATE per matchday
      (capture after the day's games finish, so the scores are live and current). Never
      hand-edit. Re-rendered on 2026-10-05 (0.11) through the CLI's own `today` command,
      offline: a provider double served the capture's three results on the bundled
@@ -114,7 +114,7 @@ CLAUDINHO_COMPETITION=laliga claudinho table          # the environment works to
 | `--flavor <level>` | commentary flair: `off`, `subtle`, `full` (default: `full`; also `CLAUDINHO_FLAVOR`) |
 | `--no-markets` | hide prediction-market signals in `today`/`match` (also `CLAUDINHO_MARKETS=off`) |
 
-Team codes are 3-letter (FIFA/IOC-style): `MEX`, `BRA`, `USA`, `ENG`, …
+Team codes: a nation's is FIFA-style, 3 letters (`MEX`, `BRA`, `USA`, `ENG`); a club's is the provider's abbreviation (`ARS`, `LEE`), and a club is also taken by name (`next Arsenal`).
 
 ### Commentary flair
 

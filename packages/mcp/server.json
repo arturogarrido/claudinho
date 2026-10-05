@@ -48,7 +48,7 @@
           "name": "CLAUDINHO_COMPETITION"
         },
         {
-          "description": "The team get_next_fixture answers for when a call names none, by name or code, e.g. Arsenal or ARS (optional; else the team pinned with claudinho follow --team)",
+          "description": "The team get_next_fixture answers for when a call names none, by name or code, e.g. Arsenal or ARS (optional; else the team pinned with claudinho follow --team, under its own competition)",
           "isRequired": false,
           "format": "string",
           "name": "CLAUDINHO_TEAM"
