@@ -255,7 +255,7 @@ describe("the countdown's 'in' is the reader's word too (round 2)", () => {
         (await toolGetMatch({ id: future.id, adapter: epl, now: LATE_2098, lang, flavor: 'off' })).text,
         (await toolGetNextFixture({ team: 'Arsenal', adapter: epl, now: LATE_2098, lang, flavor: 'off' })).text,
       ];
-      const [before] = t(lang, 'next.in', { countdown: '\u0000' }).split('\u0000');
+      const before = t(lang, 'next.in', { countdown: '\u0000' }).split('\u0000')[0] ?? '';
       for (const text of texts) {
         expect(text, lang).toMatch(new RegExp(`\\(${esc(before)}\\d+[dhm]`));
         expect(text, lang).not.toMatch(/\(in \d/);

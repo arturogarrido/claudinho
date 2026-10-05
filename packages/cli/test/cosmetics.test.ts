@@ -144,7 +144,7 @@ describe("the countdown's 'in' is the reader's word too (round 2)", () => {
   for (const lang of ['es', 'pt', 'fr']) {
     it(`next Arsenal under ${lang}: the language's "in" before the countdown, never the English one`, async () => {
       await cmdNext('Arsenal', ctx('eng.1', [future], LATE_2098, { lang }));
-      const [before] = coreT(lang, 'next.in', { countdown: '\u0000' }).split('\u0000');
+      const before = coreT(lang, 'next.in', { countdown: '\u0000' }).split('\u0000')[0] ?? '';
       // The CLI's line joins its segments with " · " and wraps nothing.
       expect(text(), lang).toMatch(new RegExp(`· ${esc(before)}\\d+[dhm]`));
       expect(text(), lang).not.toMatch(/· in \d/);
