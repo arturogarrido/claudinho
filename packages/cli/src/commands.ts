@@ -1,7 +1,7 @@
 import {
   allFixtures,
   bundleApplies,
-  countdown,
+  countdownPhrase,
   fixturesByDate,
   humanLabel,
   isTournamentWindowOver,
@@ -97,6 +97,7 @@ import {
   header,
   homeColumn,
   matchLine,
+  midColumn,
   type Painter,
   painterFor,
   statusToken,
@@ -626,14 +627,15 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
       ),
     );
   } else {
-    // The home and away columns, measured once over the rows shown; the
-    // flairs chosen once over them too, in print order (core `matchFlairs`:
-    // the cries, and no phrase twice).
+    // The home, middle and away columns, measured once over the rows shown;
+    // the flairs chosen once over them too, in print order (core
+    // `matchFlairs`: the cries, and no phrase twice).
     const homeWidth = homeColumn(todays, flags);
+    const midWidth = midColumn(todays);
     const awayWidth = awayColumn(todays, flags);
     const flairs = matchFlairs(todays, flairOpts(cfg));
     for (const [i, m] of todays.entries()) {
-      out(matchLine(m, cfg, t, c, flags, homeWidth, awayWidth, flairs[i]));
+      out(matchLine(m, cfg, t, c, flags, homeWidth, midWidth, awayWidth, flairs[i]));
       const s = market.signals.get(m.id);
       if (s) out('    ' + c.dim(marketLine(s, m)));
     }
@@ -685,13 +687,14 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
     // that was not whole says none in play was READ, not that none is.
     out(c.dim('  ' + (verdictNotice(live, cfg.lang) ?? liveNoneRead(live, cfg.lang) ?? t('live.none'))));
   } else {
-    // The home and away columns, measured once over the rows shown; the
-    // flairs chosen once over them too, in print order (core `matchFlairs`:
-    // the cries, and no phrase twice).
+    // The home, middle and away columns, measured once over the rows shown;
+    // the flairs chosen once over them too, in print order (core
+    // `matchFlairs`: the cries, and no phrase twice).
     const homeWidth = homeColumn(matches, flags);
+    const midWidth = midColumn(matches);
     const awayWidth = awayColumn(matches, flags);
     const flairs = matchFlairs(matches, flairOpts(cfg));
-    for (const [i, m] of matches.entries()) out(matchLine(m, cfg, t, c, flags, homeWidth, awayWidth, flairs[i]));
+    for (const [i, m] of matches.entries()) out(matchLine(m, cfg, t, c, flags, homeWidth, midWidth, awayWidth, flairs[i]));
   }
   out();
   // The read was not whole: said after the list and before the attribution,
@@ -769,8 +772,8 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
     return;
   }
   for (const q of qualifiers) out(c.dim('  ' + q));
-  // One row: its home and away columns are measured on it, like a list's.
-  out(matchLine(fixture, cfg, t, c, flags, homeColumn([fixture], flags), awayColumn([fixture], flags)));
+  // One row: its columns are measured on it, like a list's.
+  out(matchLine(fixture, cfg, t, c, flags, homeColumn([fixture], flags), midColumn([fixture]), awayColumn([fixture], flags)));
   // Localized (stageLabelI18n, like cmdBracket) — EN-only stageLabel here made
   // `next MEX --lang es` render "Round of 32" beside otherwise-Spanish copy.
   // A stage with nothing to say (an OTHER with no words) is no segment at all.
@@ -783,7 +786,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
         joinSegments(
           isLive(fixture.status)
             ? [stage, when]
-            : [stage, when, t('next.in', { countdown: countdown(fixture.kickoff) })],
+            : [stage, when, countdownPhrase(cfg.lang, fixture.kickoff)],
         ),
       ),
   );

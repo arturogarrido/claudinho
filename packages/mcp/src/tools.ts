@@ -829,9 +829,7 @@ async function matchAnswer(
       verdictNotice(found, args.lang) ??
       matchWindowSentence(found, args.id, args.lang) ??
       matchNoneReadSentence(found, args.id, args.lang) ??
-      (degraded
-        ? `Couldn't reach the data provider — match ${args.id} could not be looked up.`
-        : t(args.lang, 'match.none', { id: args.id }));
+      t(args.lang, degraded ? 'match.unreachable' : 'match.none', { id: args.id });
     return {
       ...disclaimed(qualified(msg, found, args.lang), undefined, args.lang),
       // "Not available for this competition" is not "no such id": the verdict
@@ -1054,9 +1052,16 @@ export function noCompetitionText(selection: { readonly kind: 'none' }): string 
 }
 
 /** next_fixture: a team's next match, live-resolved across the knockout phase. */
-/** "Did you mean" for a name that matched more than one team, as `get_team` says it. */
-function ambiguousText(query: string, teams: readonly { name: string; code: string }[]): string {
-  return `"${query}" is ambiguous. Did you mean: ${teams.map((t) => `${t.name} (${t.code})`).join(', ')}?`;
+/**
+ * "Did you mean" for a name that matched more than one team, in the
+ * request's language: core's catalog, the CLI's question (`team.ambiguous`)
+ * and the candidates (`get_team`, English by its rule, says it in English).
+ */
+function ambiguousText(lang: string | undefined, query: string, teams: readonly { name: string; code: string }[]): string {
+  return t(lang, 'team.ambiguousList', {
+    question: t(lang, 'team.ambiguous', { query }),
+    teams: teams.map((team) => `${team.name} (${team.code})`).join(', '),
+  });
 }
 
 /**
@@ -1180,10 +1185,8 @@ async function nextAnswer(
       verdictNotice(next, args.lang) ??
       nextHorizonSentence(next, code, args.lang) ??
       nextNoneReadSentence(next, code, args.lang) ??
-      (next.candidates ? ambiguousText(next.query ?? code, next.candidates) : undefined) ??
-      (degraded
-        ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${label}.`
-        : t(args.lang, 'next.none', { team: label }));
+      (next.candidates ? ambiguousText(args.lang, next.query ?? code, next.candidates) : undefined) ??
+      t(args.lang, degraded ? 'next.unreachable' : 'next.none', { team: label });
     return {
       // "None found" from a window that was not whole says so: it is not elimination.
       ...disclaimed(qualified(`${heading}\n${msg}`, next, args.lang), undefined, args.lang),

@@ -499,7 +499,6 @@ export const FLAVOR_BANKS: Readonly<Record<string, FlavorBank>> = freezeBanks({
       'segura a emoção!',
       'a bola não entra!',
       'respira fundo!',
-      'rola a bola!',
       'olho no lance!',
       'fecha o ângulo!',
       'ripa na chulipa!',

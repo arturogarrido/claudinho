@@ -129,8 +129,9 @@ To cut a release:
    a second job, `mcp-registry`, then publishes the tag's record to the official MCP Registry.
 
 **The MCP Registry record publishes automatically on every tag.** The `mcp-registry` job in
-`publish.yml` runs after the npm publish succeeded, waits until npm serves the version (`npm view`,
-up to 8 minutes, so the publisher's retries are spent on Registry errors), authenticates with GitHub Actions OIDC
+`publish.yml` runs after the npm publish succeeded, waits until npm serves the version (`npm view`
+to an 8-minute deadline, every probe bounded at 20 seconds, so the step ends by about 8m40s and the
+publisher's retries are spent on Registry errors), authenticates with GitHub Actions OIDC
 (`mcp-publisher login github-oidc` — no token, no device flow; the Registry JWT lives five minutes,
 which is why one minted on a laptop always lapsed between releases), publishes
 `packages/mcp/server.json`, and verifies the record. It skips a version the Registry already has

@@ -5,7 +5,7 @@
  */
 import {
   DISCLAIMER as CORE_DISCLAIMER,
-  countdown,
+  countdownPhrase,
   FAN_PROJECT,
   formatKickoff,
   joinSegments,
@@ -74,13 +74,13 @@ function flairOptsOf(opts: FmtOpts): FlairOpts {
 export function matchLine(m: Match, opts: FmtOpts = {}, flair: Flair = matchFlair(m, flairOptsOf(opts))): string {
   // A flag beside a nation's name; a club's name alone (nothing in its place).
   const head = `${withFlag(m.home.name, m.home.flag, 'home')} ${scoreline(m)} ${withFlag(m.away.name, m.away.flag, 'away')}`;
-  // The stage, the status tokens and the countdown's word in the request's
+  // The stage, the status tokens and the countdown's phrase in the request's
   // language (core's catalog; English when none is given).
   const lang = opts.locale;
   const stage = stageLabelI18n(lang, m);
   let tail: string;
   if (m.status === 'SCHEDULED') {
-    tail = `${formatKickoff(m.kickoff, opts)} (${t(lang, 'next.in', { countdown: countdown(m.kickoff) })})`;
+    tail = `${formatKickoff(m.kickoff, opts)} (${countdownPhrase(lang, m.kickoff)})`;
   } else if (m.status === 'LIVE') {
     tail = m.minute ? `${t(lang, 'status.live')} ${m.minute}'` : t(lang, 'status.live');
   } else {

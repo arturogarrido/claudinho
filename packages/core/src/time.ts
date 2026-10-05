@@ -2,6 +2,7 @@
  * Timezone-aware kickoff formatting and countdowns.
  * Pure Intl; no dependencies. Safe in Node and Workers.
  */
+import { t } from './i18n';
 import { isValidTimeZone } from './validate';
 
 function envTz(): string | undefined {
@@ -119,13 +120,16 @@ export function formatTime(iso: string, opts: FormatOpts = {}): string {
   }).format(when);
 }
 
-/** Compact human countdown until kickoff: "3d4h", "2h10m", "45m", or "now". */
+/** What {@link countdown} says of a kickoff that has passed (the statusline prints it as it is: English, by its rule). */
+export const COUNTDOWN_NOW = 'now';
+
+/** Compact human countdown until kickoff: "3d4h", "2h10m", "45m", or {@link COUNTDOWN_NOW}. */
 export function countdown(iso: string, from: Date = new Date()): string {
   const when = parsedDate(iso);
   // NaN arithmetic previously fell through every comparison and printed "NaNm".
   if (!when) return UNKNOWN_TIME;
   const ms = when.getTime() - from.getTime();
-  if (ms <= 0) return 'now';
+  if (ms <= 0) return COUNTDOWN_NOW;
   const totalMin = Math.floor(ms / 60000);
   const days = Math.floor(totalMin / 1440);
   const hours = Math.floor((totalMin % 1440) / 60);
@@ -133,6 +137,18 @@ export function countdown(iso: string, from: Date = new Date()): string {
   if (days > 0) return `${days}d${hours}h`;
   if (hours > 0) return `${hours}h${mins}m`;
   return `${mins}m`;
+}
+
+/**
+ * The countdown as the reader's phrase, ONE rule for every localized line that
+ * says it (CLI `next`, the MCP match line): "in 3d4h" (`next.in`), or, for a
+ * kickoff that has passed (a stale record, the bundle's skeleton during an
+ * outage), the language's own word for now (`countdown.now`), never the
+ * English word inside a translated "in".
+ */
+export function countdownPhrase(lang: string | undefined, iso: string, from: Date = new Date()): string {
+  const left = countdown(iso, from);
+  return left === COUNTDOWN_NOW ? t(lang, 'countdown.now') : t(lang, 'next.in', { countdown: left });
 }
 
 /**

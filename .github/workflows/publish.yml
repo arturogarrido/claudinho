@@ -104,7 +104,7 @@ jobs:
     needs: publish
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    # The npm wait (up to 8 min) and the publisher's retries (up to ~4 min) in sequence.
+    # The npm wait (an 8-min deadline, about 8m40s at most) and the publisher's retries (~4 min) in sequence.
     timeout-minutes: 20
     permissions:
       contents: read
@@ -156,21 +156,31 @@ jobs:
       # `mcpName`, and npm serves a version minutes after the publish job ends.
       # MEASURED: v0.10.0 published on the publisher's LAST of six 20 s attempts
       # (npm took ~110 s), v0.10.1 on attempt 8 of 12 (3m48s from the release to
-      # the record). So the job WAITS for npm first: up to 24 polls 20 s apart
-      # (8 min), each printed, and a version npm never serves fails the job
-      # here, as the publisher would have after its retries. The publisher's
-      # retries below are then spent on Registry errors, not on npm.
+      # the record). So the job WAITS for npm first, to a DEADLINE of eight
+      # minutes (bash's SECONDS: the step's elapsed time), polling every 20 s and
+      # printing each attempt with the elapsed seconds; a version npm has not
+      # served by then fails the job here, as the publisher would have after its
+      # retries. Each probe is BOUNDED: `npm view` has no timeout of its own (up
+      # to five minutes with two retries), so a count of attempts bounded
+      # nothing. GNU `timeout` (coreutils, on ubuntu-latest) ends a probe after
+      # 20 s whatever npm is doing, and npm's own options keep its one request
+      # inside that (15 s, no retries). So the step ends by about 8m40s: the
+      # deadline, one bounded probe and one sleep. The publisher's retries below
+      # are then spent on Registry errors, not on npm.
       - name: Wait for npm to serve the version
         if: steps.registry.outputs.exists != 'true'
         run: |
           V=${GITHUB_REF_NAME#v}
-          for attempt in $(seq 1 24); do
-            GOT=$(npm view @claudinho/mcp@"$V" version --prefer-online 2>/dev/null || true)
-            if [ "$GOT" = "$V" ]; then echo "attempt $attempt: npm serves @claudinho/mcp@$V"; exit 0; fi
-            echo "attempt $attempt: npm does not serve @claudinho/mcp@$V yet; retrying in 20s"
+          DEADLINE=$((SECONDS + 480))
+          attempt=0
+          while [ "$SECONDS" -lt "$DEADLINE" ]; do
+            attempt=$((attempt + 1))
+            GOT=$(timeout 20 npm view @claudinho/mcp@"$V" version --prefer-online --fetch-timeout=15000 --fetch-retries=0 2>/dev/null || true)
+            if [ "$GOT" = "$V" ]; then echo "attempt $attempt (${SECONDS}s): npm serves @claudinho/mcp@$V"; exit 0; fi
+            echo "attempt $attempt (${SECONDS}s): npm does not serve @claudinho/mcp@$V yet; retrying in 20s"
             sleep 20
           done
-          echo "::error::npm did not serve @claudinho/mcp@$V after 24 attempts (8 min)"; exit 1
+          echo "::error::npm did not serve @claudinho/mcp@$V within the 480 s deadline (${SECONDS}s elapsed, $attempt attempts)"; exit 1
 
       # Twelve 20 s attempts (≈4 min) stay, for a transient Registry error and
       # for the version URL the Registry fetches lagging the one npm answered
