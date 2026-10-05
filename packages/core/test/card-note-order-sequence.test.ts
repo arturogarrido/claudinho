@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { formatShareBracket } from '../src/bracket/format';
+import { DISCLAIMER } from '../src/disclaimer';
 import { formatShareSnippet, formatShareTable } from '../src/share/format';
 import type { Match } from '../src/types';
 
@@ -43,7 +44,7 @@ describe('a match card: the verdict note, the outage, the markets, then the matc
       inOrder(out, ['Matches · Jun 11', 'may be incomplete', 'Live data unavailable', 'Market data unavailable or incomplete', style === 'compact' ? 'MEX' : 'Mexico']);
       // The last block is the footer, and the one before it the matches.
       expect(blocks(out).at(-2)).toMatch(/MEX|Mexico/);
-      expect(blocks(out).at(-1)).toMatch(/not affiliated/);
+      expect(blocks(out).at(-1)).toContain(DISCLAIMER);
     }
   });
 

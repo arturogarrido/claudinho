@@ -37,7 +37,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   outSpy.mockReset();
-  process.stdout.isTTY = tty;
+  process.stdout.isTTY = tty as boolean;
 });
 const text = () => writes.join('');
 
@@ -47,7 +47,9 @@ function cfg(over: Partial<CliConfig> = {}): CliConfig {
 
 describe('--help (the built CLI)', () => {
   it('says the framing with the count the table gives, carries the one disclaimer, and has no em-dash', () => {
-    const help = execFileSync(process.execPath, [CLI, '--help'], { encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } });
+    // Commander wraps the description at the help width (80 columns when stdout is not a terminal), so the
+    // sentence is looked for on collapsed whitespace, as the Markdown guards look for theirs.
+    const help = execFileSync(process.execPath, [CLI, '--help'], { encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }).replace(/\s+/g, ' ');
     expect(help).toContain(FRAMING);
     expect(help).toContain(DISCLAIMER);
     expect(help).not.toMatch(/—/);

@@ -161,6 +161,9 @@ export type {
   MarketMappingTable,
 } from './markets/polymarket';
 
+// The one non-affiliation sentence, imported by every surface.
+export { DISCLAIMER, FAN_PROJECT, disclaimerLine } from './disclaimer';
+
 // Shareable terminal snippets (pure text artifacts; composes Match + the market
 // copy bank). The non-affiliation disclaimer is non-optional in every snippet.
 export { formatShareSnippet, formatShareTable, SHARE_HASHTAG, SHARE_DISCLAIMER } from './share/format';

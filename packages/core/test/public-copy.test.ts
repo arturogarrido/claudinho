@@ -56,7 +56,7 @@ describe('the framing', () => {
     const counting = /\b(\d{2}|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty) (supported )?competitions\b/gi;
     for (const rel of ['packages/mcp/server.json', 'packages/core/package.json', 'AGENTS.md', 'packages/cli/README.md', 'packages/core/README.md']) {
       const text = collapsed(read(rel));
-      const hits = [...text.matchAll(counting)].map((m) => m[1].toLowerCase());
+      const hits = [...text.matchAll(counting)].map((m) => String(m[1]).toLowerCase());
       expect(hits.length, `${rel} counts the supported set`).toBeGreaterThan(0);
       for (const hit of hits) expect(hit === String(n) || hit === WORDS[n], `${rel}: "${hit} competitions"`).toBe(true);
     }

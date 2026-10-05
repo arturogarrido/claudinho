@@ -42,12 +42,12 @@ export const DISPLAY_STALE_MS = 5 * 60_000;
 
 /**
  * Shown once every bundled fixture has been played, in place of a permanent,
- * unexplained "⚽ —". English-only like the rest of the statusline (a deliberate
+ * unexplained "⚽ —": it names the edition and points at the switch (`claudinho
+ * follow --list`). English-only like the rest of the statusline (a deliberate
  * carve-out from the four-locale rule for the two ambient surfaces), and CTA-free
  * by design — no star ask, no URL on the hot path.
  */
-export const TOURNAMENT_COMPLETE_LINE =
-  '⚽ World Cup 2026 is complete · Thanks for vibing with Claudinho';
+export const TOURNAMENT_COMPLETE_LINE = '⚽ World Cup 2026 is complete · claudinho follow --list';
 
 /**
  * The line with nothing chosen (no `--competition`, no `CLAUDINHO_COMPETITION`,

@@ -1,4 +1,5 @@
 import {
+  DISCLAIMER as CORE_DISCLAIMER,
   allFixtures,
   FakeMarketProvider,
   type GroupStandings,
@@ -76,7 +77,8 @@ const upcoming = (): Match =>
 const upcomingDate = () => upcoming().kickoff.slice(0, 10);
 
 const HASHTAG = '#VibingLaVidaLoca';
-const DISCLAIMER = 'not affiliated with FIFA or Anthropic';
+// The share card's footer carries core's one sentence (0.11 · 2.7).
+const DISCLAIMER = CORE_DISCLAIMER;
 const BANNED = /\b(bet|betting|wager|gambling|value pick|edge|lock)\b/i;
 
 type ShareData = {

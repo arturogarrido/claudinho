@@ -55,16 +55,16 @@ describe('the disclaimer constant', () => {
 describe('the static copies carry the constant', () => {
   it('the three npm descriptions end with it', () => {
     for (const rel of ['packages/cli/package.json', 'packages/mcp/package.json', 'packages/core/package.json']) {
-      expect(String(json(rel).description), rel).toMatch(new RegExp(`${escape(disclaimerLine())}$`));
+      expect(String(json(rel).description), rel).toMatch(new RegExp(`${escapeRe(disclaimerLine())}$`));
     }
   });
 
   it("the Smithery manifest's two descriptions end with its host composition, the Cursor plugin's with its own", () => {
     const manifest = json('packages/mcp/mcpb/manifest.json');
-    expect(String(manifest.description)).toMatch(new RegExp(`${escape(disclaimerLine('Smithery'))}$`));
-    expect(String(manifest.long_description)).toMatch(new RegExp(`${escape(disclaimerLine('Smithery'))}$`));
+    expect(String(manifest.description)).toMatch(new RegExp(`${escapeRe(disclaimerLine('Smithery'))}$`));
+    expect(String(manifest.long_description)).toMatch(new RegExp(`${escapeRe(disclaimerLine('Smithery'))}$`));
     const plugin = json('.cursor-plugin/plugin.json');
-    expect(String(plugin.description)).toMatch(new RegExp(`${escape(disclaimerLine('Cursor'))}$`));
+    expect(String(plugin.description)).toMatch(new RegExp(`${escapeRe(disclaimerLine('Cursor'))}$`));
   });
 
   it("the MCP Registry's card is the stated exception: the fan line alone, within the schema's 100 characters, and it lists the selection settings", () => {
@@ -96,6 +96,6 @@ describe('the static copies carry the constant', () => {
   });
 });
 
-function escape(s: string): string {
+function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

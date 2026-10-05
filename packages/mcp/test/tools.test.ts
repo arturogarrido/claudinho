@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  DISCLAIMER as CORE_DISCLAIMER,
   groups,
   matchFlavor,
   selectedCompetition,
@@ -96,7 +97,7 @@ describe('toolGetLive', () => {
     expect(r.text).toContain("LIVE 67'");
     // City + country travel with the venue so the model never guesses a city.
     expect(r.text).toContain('Estadio Banorte, Mexico City, Mexico');
-    expect(r.text).toContain('not affiliated');
+    expect(r.text).toContain(CORE_DISCLAIMER);
     expect((r.data as { count: number }).count).toBe(1);
     // Structured payload carries the city too.
     expect((r.data as { matches: Match[] }).matches[0]?.city).toBe('Mexico City');
@@ -405,7 +406,7 @@ describe('toolGetBracket', () => {
 });
 
 describe('standingsResourceText (standings:// resource)', () => {
-  const DISCLAIMER = 'not affiliated'; // matches the get_standings tool path
+  const DISCLAIMER = CORE_DISCLAIMER; // the get_standings tool path's footer carries core's one sentence
   // The selection the server resolved for the read (0.11 · 2.5a): the text names it first.
   const WC = selectedCompetition('fifa.world', 'saved');
 

@@ -19,6 +19,7 @@
  *  - English-only copy in v1 (consistent with the market bank); `tz`/`locale`
  *    still localize the kickoff date/time.
  */
+import { DISCLAIMER, FAN_PROJECT } from '../disclaimer';
 import { liveSourceLabel } from '../live';
 import { marketBlock, marketLine } from '../markets/format';
 import type { MarketSignal } from '../markets/types';
@@ -38,7 +39,7 @@ export const SHARE_HASHTAG = '#VibingLaVidaLoca';
  * The non-affiliation line. Non-optional in every snippet: a shared artifact is
  * decontextualized, so the legal disclaimer must travel with every paste.
  */
-export const SHARE_DISCLAIMER = 'Independent fan project · not affiliated with FIFA or Anthropic.';
+export const SHARE_DISCLAIMER = `${FAN_PROJECT} · ${DISCLAIMER}`;
 
 export interface ShareSnippetOptions {
   /** Snippet shape; defaults to `social`. */

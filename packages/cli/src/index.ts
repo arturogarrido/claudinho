@@ -1,7 +1,9 @@
+import { DISCLAIMER as CORE_DISCLAIMER, FAN_PROJECT } from '@claudinho/core';
 import { Command } from 'commander';
 import { resolveConfig, type RawGlobalOpts } from './config';
 import { readCursorPayloadBounded } from './cursorPayload';
 import { makeT } from './i18n';
+import { TAGLINE } from './tagline';
 import {
   cmdHook,
   cmdInitClaude,
@@ -41,8 +43,8 @@ handlePipeError(process.stderr);
 // Injected from package.json at build time (tsup `define`); falls back when run
 // unbuilt (e.g. tests). Single source of truth: packages/cli/package.json.
 const VERSION = process.env.CLAUDINHO_VERSION ?? '0.0.0-dev';
-const DISCLAIMER =
-  'Claudinho is an independent fan project. Not affiliated with or endorsed by FIFA or Anthropic.';
+// The help's disclaimer line: the fan line, then core's one sentence (imported, never spelled here).
+const DISCLAIMER = `Claudinho is an ${FAN_PROJECT.toLowerCase()}. ${CORE_DISCLAIMER}`;
 
 function ctxFrom(cmd: Command) {
   // Global opts live on the root program. Walk all the way up — a nested
@@ -66,10 +68,7 @@ const program = new Command();
 
 program
   .name('claudinho')
-  .description(
-    'The 2026 men’s football tournament in your terminal, your Claude Code / Cursor CLI statusline, and any MCP client.\n' +
-      DISCLAIMER,
-  )
+  .description(`${TAGLINE}\n${DISCLAIMER}`)
   .version(VERSION, '-v, --version')
   .option('--lang <code>', 'language: en, es, pt, fr')
   .option('--tz <zone>', 'IANA timezone, e.g. America/Mexico_City')
@@ -312,7 +311,7 @@ program
 
 program
   .command('star')
-  .description('how to support Claudinho — star the repo ⭐')
+  .description('how to support Claudinho: star the repo ⭐')
   .action((_opts, cmd) => {
     cmdStar(ctxFrom(cmd));
   });

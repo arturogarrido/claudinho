@@ -50,18 +50,24 @@ describe('vibePool', () => {
   ];
 
   it('mixes opener lines in on the first day only', () => {
-    expect(vibePool('2026-06-11', fixtures).length).toBeGreaterThan(
-      vibePool('2026-06-13', fixtures).length,
+    expect(vibePool('2026-06-11', true, fixtures).length).toBeGreaterThan(
+      vibePool('2026-06-13', true, fixtures).length,
     );
   });
 
   it('mixes final-day lines in on the last day', () => {
-    const finals = vibePool('2026-07-19', fixtures);
+    const finals = vibePool('2026-07-19', true, fixtures);
     expect(finals.some((l) => /final/i.test(l))).toBe(true);
   });
 
   it('is the plain pool on an ordinary day', () => {
-    const plain = vibePool('2026-06-13', fixtures);
+    const plain = vibePool('2026-06-13', true, fixtures);
     expect(plain.some((l) => /opening|final/i.test(l))).toBe(false);
+  });
+
+  it('is the plain pool on the first and last day when the bundled competition is not the one selected (0.11 · 2.7)', () => {
+    for (const day of ['2026-06-11', '2026-07-19']) {
+      expect(vibePool(day, false, fixtures)).toEqual(vibePool('2026-06-13', true, fixtures));
+    }
   });
 });

@@ -1,5 +1,6 @@
 import {
   allFixtures,
+  DISCLAIMER,
   FakeMarketProvider,
   type Match,
   type MarketProvider,
@@ -113,7 +114,7 @@ describe('cmdMarkets — date listing', () => {
     const o = text();
     expect(o).toContain(`Market signals · ${upcomingDate()}`);
     expect(o).toContain('informational only');
-    expect(o).toContain('Not affiliated with FIFA or Anthropic.');
+    expect(o).toContain(DISCLAIMER);
     expect(o).toContain('Prediction-market data is informational only.');
     expect(o).not.toMatch(/\b(bet|betting|wager|gambling|value pick|edge|lock)\b/i);
   });
@@ -287,7 +288,7 @@ describe('cmdMarkets — a competition without markets', () => {
     const o = text();
     expect(o).toContain('Market signals cover the World Cup only');
     expect(o).not.toContain('No market signals available');
-    expect(o).toContain('Not affiliated with FIFA or Anthropic.');
+    expect(o).toContain(DISCLAIMER);
     expect(consulted).not.toHaveBeenCalled();
   });
 
@@ -308,7 +309,7 @@ describe('cmdMarkets — a competition without markets', () => {
     const o = text();
     expect(o).toContain('Not available for this competition yet.');
     expect(o).not.toContain('Market signals cover the World Cup only');
-    expect(o).toContain('Not affiliated with FIFA or Anthropic.');
+    expect(o).toContain(DISCLAIMER);
     expect(consulted).not.toHaveBeenCalled();
   });
 });
