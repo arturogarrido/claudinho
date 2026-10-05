@@ -61,7 +61,7 @@ describe('the approved banks, exactly', () => {
   });
 
   it('every phrase keeps the shape: under 40 characters, one to seven words, ends with ! or ?, no dash, no emoji, no betting word', () => {
-    const BET = /\b(bet(s|ting)?|wager(s|ing)?|odds|parlays?|apuestas?|apost\w*|paris?|cotes?)\b/i;
+    const BET = /(?<!\p{L})(bet(s|ting)?|wager(s|ing)?|odds|parlays?|apuestas?|apost\p{L}*|paris?|cotes?)(?!\p{L})/iu;
     for (const lang of LANGS) {
       for (const moment of MOMENTS) {
         for (const p of bankOf(lang, moment)) {
