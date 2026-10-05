@@ -97,7 +97,8 @@ describe('get_live: the list-truncation line before the rows, surviving a cut (D
 describe('get_match: the degraded line and the market notice before the match (D7)', () => {
   it('the scheduled fixture shown while the live state is unavailable', async () => {
     const r = await toolGetMatch({ id: '760415', adapter: feed({ fail: true }) });
-    precedes(r.text, 'Live state unavailable', 'Mexico');
+    // The CLI's sentence for this state (core's `feed.degraded`, 0.11 · 2.7c).
+    precedes(r.text, 'Live scores unavailable — showing the bundled schedule', 'Mexico');
   });
 
   it('the market-incomplete notice', async () => {

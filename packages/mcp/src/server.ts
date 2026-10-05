@@ -124,7 +124,7 @@ const langArg = z
   .string()
   .optional()
   .describe(
-    'Locale for dates, provider attribution, and commentary: en, es, pt, fr (the summary scaffold stays English; other locales fall back to en)',
+    "Locale for dates, list titles, match status and stage words, the empty and outage sentences, provider attribution, and commentary: en, es, pt, fr (the market copy, a few notes and the disclaimer stay English; other locales fall back to en)",
   );
 
 // Shared optional args every competition-answering tool accepts (all but get_team).
@@ -821,7 +821,7 @@ export function buildServer(): McpServer {
     {
       title: "Today's matches",
       description:
-        "All fixtures for a date (default: today), with live score and minute overlaid on any match in play. Optional prediction-market enrichment carries marketComplete; false means the read was incomplete, not that no signal exists. Off the World Cup, betweenEditions means the competition's edition ended before that date. partial means the provider sent records that could not be used: on the World Cup a fixture may then show from the bundled schedule without its live state (the text counts them, and names no provider when none shown was served), and where no bundled schedule was merged, an empty day means no fixture could be read for it, not that none is scheduled. Use this for a whole day's card; for only in-play matches use get_live, for one team's match use get_next_fixture, for a single match's detail use get_match. Kickoffs render in tz; lang localizes dates, attribution, and commentary (en/es/pt/fr); flavor sets commentary tone.",
+        "All fixtures for a date (default: today), with live score and minute overlaid on any match in play. Optional prediction-market enrichment carries marketComplete; false means the read was incomplete, not that no signal exists. Off the World Cup, betweenEditions means the competition's edition ended before that date. partial means the provider sent records that could not be used: on the World Cup a fixture may then show from the bundled schedule without its live state (the text counts them, and names no provider when none shown was served), and where no bundled schedule was merged, an empty day means no fixture could be read for it, not that none is scheduled. Use this for a whole day's card; for only in-play matches use get_live, for one team's match use get_next_fixture, for a single match's detail use get_match. Kickoffs render in tz; lang localizes the title, dates, status and stage words, the empty and outage sentences, attribution, and commentary (en/es/pt/fr); flavor sets commentary tone.",
       inputSchema: {
         date: dateArg.optional().describe('Date as YYYY-MM-DD (default: today)'),
         ...commonArgs,

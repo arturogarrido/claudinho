@@ -93,7 +93,8 @@ describe('what a day or a live answer on a read that was not whole says, at the 
   it('on the bundle, a day the bundled schedule has no fixture on: the bundle\'s own empty answer, never "none read"', async () => {
     const r = await toolGetToday({ date: '2026-06-10', tz: 'UTC', adapter: wc([OPENER_REFUSED, KOR_CZE]) });
     expect(r.text).toContain(SENTENCE);
-    expect(r.text).toContain('No matches scheduled.');
+    // The CLI's sentence (core's `today.none`, 0.11 · 2.7c).
+    expect(r.text).toContain('No matches scheduled for this date.');
     expect(r.text).not.toMatch(/was read/);
   });
 

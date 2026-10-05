@@ -21,7 +21,6 @@ import {
   liveNoneRead,
   liveShareCard,
   marketsNoneRead,
-  EARLIER_RECORD_NOTE,
   matchNoneReadSentence,
   matchShareCard,
   matchWindowSentence,
@@ -97,6 +96,7 @@ import {
   boundedRecords,
   capSignals,
   DISCLAIMER,
+  headingLine,
   listTruncation,
   type FmtOpts,
   matchLine,
@@ -722,20 +722,18 @@ async function todayAnswer(
   const opts = fmtOpts(args, adapter.competition);
   // A verdict (between editions) stands instead of the empty line. Where no
   // bundled schedule was merged, a failed read says the provider could not be
-  // reached, and a read that was not whole says none was READ.
+  // reached, and a read that was not whole says none was READ. Every one of
+  // them, and the outage lines below, is core's catalog in the request's
+  // language (the CLI's sentences).
   const empty =
     verdictNotice(day, args.lang) ??
     dateUnreached(day, date, args.lang) ??
     dateNoneRead(day, date, args.lang) ??
-    'No matches scheduled.';
-  const text = `Matches on ${date}:\n${matchRows(todays, empty, opts)}`;
+    t(args.lang, 'today.none');
+  const text = `${headingLine(args.lang, t(args.lang, 'today.onDate', { date }))}\n${matchRows(todays, empty, opts)}`;
   // Degraded ⇒ the live overlay failed: on the bundle these are static fixtures
   // with no live scores; off it there is no schedule to show.
-  const degradedLine = degraded
-    ? day.skeleton
-      ? '(Live scores unavailable — showing the bundled schedule.)'
-      : "(Live scores unavailable — couldn't reach the data provider.)"
-    : undefined;
+  const degradedLine = degraded ? `(${t(args.lang, day.skeleton ? 'feed.degraded' : 'live.degraded')})` : undefined;
   const market = await reliableMarketData(args, todays);
   const marketLine = market.complete
     ? undefined
@@ -792,8 +790,8 @@ async function liveAnswer(args: CommonOpts): Promise<ToolResult> {
   // was not whole says none in play was READ. The read's own verdict is said
   // first (kept by a cut).
   const text = degraded
-    ? 'Live scores unavailable right now — could not reach the data provider.'
-    : `Live now:\n${matchRows(matches, verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? 'No matches in play right now.', opts)}`;
+    ? t(args.lang, 'live.degraded')
+    : `${headingLine(args.lang, t(args.lang, 'live.title'))}\n${matchRows(matches, verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? t(args.lang, 'live.none'), opts)}`;
   const shownLive = boundedRecords(matches);
   return {
     // Every row a live list shows was served: a cut keeps its attribution
@@ -831,9 +829,7 @@ async function matchAnswer(
       verdictNotice(found, args.lang) ??
       matchWindowSentence(found, args.id, args.lang) ??
       matchNoneReadSentence(found, args.id, args.lang) ??
-      (degraded
-        ? `Couldn't reach the data provider — match ${args.id} could not be looked up.`
-        : `No match found with id ${args.id}.`);
+      t(args.lang, degraded ? 'match.unreachable' : 'match.none', { id: args.id });
     return {
       ...disclaimed(qualified(msg, found, args.lang), undefined, args.lang),
       // "Not available for this competition" is not "no such id": the verdict
@@ -865,9 +861,7 @@ async function matchAnswer(
   // state. Off the bundled competition there is no static fixture: it is the
   // provider's own earlier record, whose state could not be refreshed.
   const degradedLine = degraded
-    ? found.earlierRecord
-      ? EARLIER_RECORD_NOTE
-      : '(Live state unavailable — showing the scheduled fixture.)'
+    ? `(${t(args.lang, found.earlierRecord ? 'feed.earlierRecord' : 'feed.degraded')})`
     : undefined;
   const marketLine = marketComplete
     ? undefined
@@ -1058,9 +1052,16 @@ export function noCompetitionText(selection: { readonly kind: 'none' }): string 
 }
 
 /** next_fixture: a team's next match, live-resolved across the knockout phase. */
-/** "Did you mean" for a name that matched more than one team, as `get_team` says it. */
-function ambiguousText(query: string, teams: readonly { name: string; code: string }[]): string {
-  return `"${query}" is ambiguous. Did you mean: ${teams.map((t) => `${t.name} (${t.code})`).join(', ')}?`;
+/**
+ * "Did you mean" for a name that matched more than one team, in the
+ * request's language: core's catalog, the CLI's question (`team.ambiguous`)
+ * and the candidates (`get_team`, English by its rule, says it in English).
+ */
+function ambiguousText(lang: string | undefined, query: string, teams: readonly { name: string; code: string }[]): string {
+  return t(lang, 'team.ambiguousList', {
+    question: t(lang, 'team.ambiguous', { query }),
+    teams: teams.map((team) => `${team.name} (${team.code})`).join(', '),
+  });
 }
 
 /**
@@ -1168,6 +1169,9 @@ async function nextAnswer(
       : asked.answer;
   const { fixture, degraded, source } = next;
   const label = nextTeamLabel(next, code);
+  // Who the answer is about, found or not: "Next up for Mexico:" (core's
+  // catalog, in the request's language), then the fixture or the sentence.
+  const heading = headingLine(args.lang, t(args.lang, 'next.label', { team: label }));
   // The answer's own fields beside the verdicts: who it is about, the
   // candidates of an ambiguous name, the span a whole read searched, the season.
   const about = {
@@ -1181,13 +1185,11 @@ async function nextAnswer(
       verdictNotice(next, args.lang) ??
       nextHorizonSentence(next, code, args.lang) ??
       nextNoneReadSentence(next, code, args.lang) ??
-      (next.candidates ? ambiguousText(next.query ?? code, next.candidates) : undefined) ??
-      (degraded
-        ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${label}.`
-        : `No upcoming fixture found for ${label}.`);
+      (next.candidates ? ambiguousText(args.lang, next.query ?? code, next.candidates) : undefined) ??
+      t(args.lang, degraded ? 'next.unreachable' : 'next.none', { team: label });
     return {
       // "None found" from a window that was not whole says so: it is not elimination.
-      ...disclaimed(qualified(msg, next, args.lang), undefined, args.lang),
+      ...disclaimed(qualified(`${heading}\n${msg}`, next, args.lang), undefined, args.lang),
       data: { ...about, fixture: null, degraded, source: source ?? null, ...verdictExtras(next) },
     };
   }
@@ -1195,7 +1197,7 @@ async function nextAnswer(
   return {
     // `source` in data mirrors the text's "Live data: …" attribution (parity
     // with CLI `next --json`); null for a static group fixture (no live source).
-    ...disclaimed(qualified(`Next up for ${label}:\n${matchLine(fixture, opts)}`, next, args.lang), source, args.lang),
+    ...disclaimed(qualified(`${heading}\n${matchLine(fixture, opts)}`, next, args.lang), source, args.lang),
     data: { ...about, fixture, degraded, source: source ?? null, ...verdictExtras(next) },
   };
 }

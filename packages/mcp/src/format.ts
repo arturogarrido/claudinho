@@ -5,7 +5,7 @@
  */
 import {
   DISCLAIMER as CORE_DISCLAIMER,
-  countdown,
+  countdownPhrase,
   FAN_PROJECT,
   formatKickoff,
   joinSegments,
@@ -14,7 +14,8 @@ import {
   matchLocation,
   padVisible,
   scoreline,
-  stageLabel,
+  stageLabelI18n,
+  t,
   tableTitle,
   withFlag,
   type Flair,
@@ -27,13 +28,16 @@ import {
 } from '@claudinho/core';
 import { type BoundedList, bounded } from '@claudinho/core';
 
-const STATUS_LABEL: Record<Match['status'], string> = {
-  SCHEDULED: 'scheduled',
-  LIVE: 'live',
-  HT: 'half-time',
-  FT: 'full-time',
-  POSTPONED: 'postponed',
-  CANCELLED: 'cancelled',
+/**
+ * The catalog key (core's `t`) of a status the line names in words: the MCP
+ * text says "half-time" where the CLI's column says "HT". A scheduled match
+ * says its kickoff, one in play `status.live` and its minute.
+ */
+const STATUS_KEY: Readonly<Record<Exclude<Match['status'], 'SCHEDULED' | 'LIVE'>, string>> = {
+  HT: 'status.halfTime',
+  FT: 'status.fullTime',
+  POSTPONED: 'status.postponed',
+  CANCELLED: 'status.cancelled',
 };
 
 export interface FmtOpts {
@@ -70,14 +74,17 @@ function flairOptsOf(opts: FmtOpts): FlairOpts {
 export function matchLine(m: Match, opts: FmtOpts = {}, flair: Flair = matchFlair(m, flairOptsOf(opts))): string {
   // A flag beside a nation's name; a club's name alone (nothing in its place).
   const head = `${withFlag(m.home.name, m.home.flag, 'home')} ${scoreline(m)} ${withFlag(m.away.name, m.away.flag, 'away')}`;
-  const stage = stageLabel(m);
+  // The stage, the status tokens and the countdown's phrase in the request's
+  // language (core's catalog; English when none is given).
+  const lang = opts.locale;
+  const stage = stageLabelI18n(lang, m);
   let tail: string;
   if (m.status === 'SCHEDULED') {
-    tail = `${formatKickoff(m.kickoff, opts)} (in ${countdown(m.kickoff)})`;
+    tail = `${formatKickoff(m.kickoff, opts)} (${countdownPhrase(lang, m.kickoff)})`;
   } else if (m.status === 'LIVE') {
-    tail = m.minute ? `LIVE ${m.minute}'` : 'LIVE';
+    tail = m.minute ? `${t(lang, 'status.live')} ${m.minute}'` : t(lang, 'status.live');
   } else {
-    tail = STATUS_LABEL[m.status];
+    tail = t(lang, STATUS_KEY[m.status]);
   }
   // The status, the stage and the location, joined with the empty ones
   // dropped: an OTHER with no words, or a record with no venue, leaves no
@@ -126,12 +133,22 @@ export function boundedRecords<T>(rows: T[], max = MAX_LIST_MATCHES): BoundedLis
  * failure as losing the statusline's "+N" marker: the reader cannot tell. Returns
  * '' when nothing was dropped.
  *
- * English, matching the surrounding MCP text labels ("Matches on {date}:",
- * "No matches scheduled.") which are hardcoded English today. Localizing one
- * line of an English block would be inconsistent; the block is a separate change.
+ * English, like the other notes a tool states beside its list (the market
+ * notice): by rule. The list's title, its rows' tokens, its empty-state
+ * sentence and its outage line are core's catalog ({@link headingLine},
+ * {@link matchLine}).
  */
 export function truncationNote(list: BoundedList<unknown>): string {
   return list.truncated ? `(showing ${list.shown} of ${list.total} — list truncated)` : '';
+}
+
+/**
+ * A title line that introduces the lines below it ("Live now:", "Matches on
+ * 2026-10-10:", "Next up for Arsenal:"), in the request's language: core's
+ * catalog, the colon included (French sets it off with a space).
+ */
+export function headingLine(lang: string | undefined, title: string): string {
+  return t(lang, 'heading', { title });
 }
 
 /**

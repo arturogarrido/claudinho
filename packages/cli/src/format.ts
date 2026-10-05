@@ -98,6 +98,63 @@ export function homeColumn(matches: readonly Match[], flags: boolean): number {
   return Math.max(HOME_COLUMN, Math.min(HOME_COLUMN_MAX, widest));
 }
 
+/** The middle column's width when every shown middle cell fits it (and its floor): `vs` and a plain score. */
+export const MID_COLUMN = 3;
+/** The widest the middle column grows to fit a list's widest score (a shootout's, `10(11)–10(10)`); a wider one pushes its own row. */
+export const MID_COLUMN_MAX = 13;
+
+/**
+ * A match's middle CELL, unpainted, exactly as `matchLine` prints it: the
+ * score once the match has one (in play, at half-time, finished: with a
+ * shootout, `1(4)–1(3)`), else `vs`.
+ */
+export function midCell(m: Match): string {
+  return showsScore(m) ? scoreline(m) : 'vs';
+}
+
+/** Whether a match's middle cell is its score (bold) rather than `vs` (dimmed). */
+function showsScore(m: Match): boolean {
+  return isLive(m.status) || m.status === 'FT';
+}
+
+/**
+ * The width a list pads its middle cells to, measured ONCE over the rows it
+ * shows on the UNPAINTED text: `max(3, min(13, the widest cell))` display
+ * columns. A list of `vs` and plain scores is laid out as it always was; a
+ * shootout score widens every row to it, so the away names and the time and
+ * status tokens start in one column each. The flair follows its row's token,
+ * whose width varies (`FT`, `55'`, `Sat 19:00`), so it does not line up. One
+ * row is measured on itself.
+ */
+export function midColumn(matches: readonly Match[]): number {
+  let widest = 0;
+  for (const m of matches) widest = Math.max(widest, displayWidth(midCell(m)));
+  return Math.max(MID_COLUMN, Math.min(MID_COLUMN_MAX, widest));
+}
+
+/**
+ * A match's away CELL, exactly as `matchLine` prints it: the name, then its
+ * space and the flag when a flag prints (flags on, and the side has one), the
+ * name alone otherwise.
+ */
+export function awayCell(m: Match, flags: boolean): string {
+  return flags ? withFlag(m.away.name, m.away.flag, 'away') : m.away.name;
+}
+
+/**
+ * The width a list pads its away cells to, measured ONCE over the rows it
+ * shows: the widest cell, at most {@link HOME_COLUMN_MAX} display columns (no
+ * floor: a list of short names is not widened). Every row's time or status
+ * token then starts in one column (the flair follows its row's token, so it
+ * does not); a cell past the ceiling pushes its own row only.
+ * One row (`next`) is measured on itself, so it is printed as it always was.
+ */
+export function awayColumn(matches: readonly Match[], flags: boolean): number {
+  let widest = 0;
+  for (const m of matches) widest = Math.max(widest, displayWidth(awayCell(m, flags)));
+  return Math.min(HOME_COLUMN_MAX, widest);
+}
+
 /**
  * The flair options of this invocation, ONE place: the level, the language,
  * the competition's team kind (a cry is said in a competition of its kind)
@@ -116,8 +173,10 @@ export function flairOpts(cfg: CliConfig): FlairOpts {
  *   🇧🇷 Brazil   vs  Morocco 🇲🇦        Thu 18:00
  *   Arsenal         2–1  Chelsea          50'   (a club: no flag, nothing in its place)
  *
- * `homeWidth` is the list's home column ({@link homeColumn}), measured by the
- * caller over the rows it shows. `flair` is the row's flair slot when the
+ * `homeWidth` is the list's home column ({@link homeColumn}), `midWidth` its
+ * middle column ({@link midColumn}) and `awayWidth` its away column
+ * ({@link awayColumn}), measured by the caller over the rows it shows (the
+ * away default, 0, pads nothing). `flair` is the row's flair slot when the
  * caller chose it for a list (core `matchFlairs`: the cries, and no phrase
  * twice in one list); without it the line's own (`matchFlair`).
  */
@@ -128,17 +187,25 @@ export function matchLine(
   c: Painter,
   flags = true,
   homeWidth = HOME_COLUMN,
+  midWidth = MID_COLUMN,
+  awayWidth = 0,
   flair: Flair = matchFlair(m, flairOpts(cfg)),
 ): string {
   const home = homeCell(m, flags);
-  const away = flags ? withFlag(m.away.name, m.away.flag, 'away') : m.away.name;
-  const mid = isLive(m.status) || m.status === 'FT'
-    ? c.bold(scoreline(m))
-    : c.dim('vs');
+  const away = awayCell(m, flags);
+  // The middle cell right-aligned to the list's middle column on its
+  // UNPAINTED text, then painted: padding a painted string counts its colour
+  // codes as columns, and a `vs` row then sat one column left of a score row.
+  const text = midCell(m);
+  const painted = showsScore(m) ? c.bold(text) : c.dim(text);
+  const mid = `${' '.repeat(Math.max(0, midWidth - displayWidth(text)))}${painted}`;
 
   // Display-width padding: a tag-sequence flag (England 🏴󠁧󠁢󠁥󠁮󠁧󠁿) is 14 UTF-16
   // units but 2 columns — padEnd would push its score ~10 columns out of line.
-  const left = `${padVisible(home, homeWidth)} ${mid.padStart(3)}  ${away}`;
+  // The away cell padded to the list's away column the same way, so the time
+  // and status tokens start in one column whatever the away names' lengths
+  // (the flair follows its row's token, whose width varies).
+  const left = `${padVisible(home, homeWidth)} ${mid}  ${padVisible(away, awayWidth)}`;
 
   let right = '';
   if (m.status === 'SCHEDULED') {

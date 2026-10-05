@@ -104,7 +104,8 @@ jobs:
     needs: publish
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The npm wait (an 8-min deadline, about 8m40s at most) and the publisher's retries (~4 min) in sequence.
+    timeout-minutes: 20
     permissions:
       contents: read
       id-token: write # exchanged by `mcp-publisher login github-oidc`
@@ -152,13 +153,50 @@ jobs:
 
       # The Registry validates the npm pin by fetching
       # https://registry.npmjs.org/@claudinho%2Fmcp/<version> and checking its
-      # `mcpName`; a version published seconds ago lags, so retry. MEASURED on
-      # the first run (v0.10.0): npm took ~110 s to serve the new version, and
-      # the loop succeeded on its LAST of six 20 s attempts — so the budget is
-      # now twelve (≈4 min, inside the 10 min job timeout). Login sits
-      # inside the loop because the Registry JWT lives five minutes, and inside
-      # the retry handling because a transient token exchange must not abort the
-      # job (`run` steps are `bash -e`). Success is decided by READING THE RECORD
+      # `mcpName`, and npm serves a version minutes after the publish job ends.
+      # MEASURED: v0.10.0 published on the publisher's LAST of six 20 s attempts
+      # (npm took ~110 s), v0.10.1 on attempt 8 of 12 (3m48s from the release to
+      # the record). So the job WAITS for npm first, to a DEADLINE of eight
+      # minutes (bash's SECONDS: the step's elapsed time), polling every 20 s and
+      # printing each attempt with the elapsed seconds; a version npm has not
+      # served by then fails the job here, as the publisher would have after its
+      # retries. Each probe is BOUNDED: `npm view` has no timeout of its own (up
+      # to five minutes with two retries), so a count of attempts bounded
+      # nothing. GNU `timeout` (coreutils, on ubuntu-latest) ends a probe after
+      # 20 s whatever npm is doing, and npm's own options keep its one request
+      # inside that (15 s, no retries). So the step ends by about 8m40s: the
+      # deadline, one bounded probe and one sleep. Every "not yet" line says the
+      # probe's exit status (124: the probe hit its 20 s; 127: no npm on the
+      # runner; 1: npm's own refusal, a 404 while the version is not served yet
+      # or a network error), and the step's error prints the head of the last
+      # probe's stderr, kept in a file: npm says what failed FIRST (its error
+      # code, then the syscall or the reason) and closes with generic advice, so
+      # the first four lines put the reason in the log beside the error.
+      # The publisher's retries below are then spent on Registry errors, not on
+      # npm.
+      - name: Wait for npm to serve the version
+        if: steps.registry.outputs.exists != 'true'
+        run: |
+          V=${GITHUB_REF_NAME#v}
+          ERR="${RUNNER_TEMP:-/tmp}/npm-view.err"
+          DEADLINE=$((SECONDS + 480))
+          attempt=0
+          while [ "$SECONDS" -lt "$DEADLINE" ]; do
+            attempt=$((attempt + 1))
+            # A command in an && / || list does not trip errexit: RC keeps the probe's status.
+            GOT=$(timeout 20 npm view @claudinho/mcp@"$V" version --prefer-online --fetch-timeout=15000 --fetch-retries=0 2>"$ERR") && RC=0 || RC=$?
+            if [ "$GOT" = "$V" ]; then echo "attempt $attempt (${SECONDS}s): npm serves @claudinho/mcp@$V"; exit 0; fi
+            echo "attempt $attempt (${SECONDS}s): npm does not serve @claudinho/mcp@$V yet (exit $RC); retrying in 20s"
+            sleep 20
+          done
+          echo "::error::npm did not serve @claudinho/mcp@$V within the 480 s deadline (${SECONDS}s elapsed, $attempt attempts); the last probe's stderr:"; head -n 4 "$ERR" || true; exit 1
+
+      # Twelve 20 s attempts (≈4 min) stay, for a transient Registry error and
+      # for the version URL the Registry fetches lagging the one npm answered
+      # above (each is cached on its own). Login sits inside the loop because
+      # the Registry JWT lives five minutes, and inside the retry handling
+      # because a transient token exchange must not abort the job (`run` steps
+      # are `bash -e`). Success is decided by READING THE RECORD
       # BACK, never by matching an error string: if a publish went through but
       # its response was lost, the retry is refused as a duplicate ("invalid
       # version: cannot publish duplicate version" in v1.8.1) — and the version
@@ -183,7 +221,7 @@ jobs:
             # An ambiguous failure: ask the Registry, not the error text.
             if published; then echo "Registry already has $SERVER_NAME@$V — treating as success"; exit 0; fi
             if permanent publish.log; then echo "::error::publish refused for authorization — not transient, not retrying"; exit 1; fi
-            echo "attempt $attempt failed (npm propagation or a transient Registry error); retrying in 20s"
+            echo "attempt $attempt failed (a transient Registry error, or npm still propagating); retrying in 20s"
             sleep 20
           done
           if published; then echo "Registry has $SERVER_NAME@$V after all"; exit 0; fi

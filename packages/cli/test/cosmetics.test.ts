@@ -1,0 +1,153 @@
+/**
+ * The matchday cosmetics (0.11 · 2.7c): an empty `next` answer keeps its
+ * header (the team asked, then the mode line, then the sentence), and a
+ * list's away column is padded so the time column lines up whatever the
+ * away names' lengths.
+ */
+import { t as coreT, type Match, type ProviderAdapter } from '@claudinho/core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cmdNext, cmdToday } from '../src/commands';
+import type { CliConfig } from '../src/config';
+import { makeT } from '../src/i18n';
+import { described } from './config-of';
+
+const AFTER_THE_FINAL = new Date('2026-09-01T12:00:00Z');
+const NOW = new Date('2026-10-10T15:00:00Z');
+
+function fixture(i: number, over: Partial<Match> = {}): Match {
+  return {
+    id: String(800000600 + i),
+    stage: 'REGULAR',
+    kickoff: '2026-10-10T14:00:00.000Z',
+    venue: `Ground ${i}`,
+    home: { code: `H${i}`, name: `Home ${i}`, id: `espn:${9200 + i}` },
+    away: { code: `A${i}`, name: `Away ${i}`, id: `espn:${9300 + i}` },
+    status: 'SCHEDULED',
+    updatedAt: NOW.toISOString(),
+    ...over,
+  };
+}
+function adapter(competition: string, matches: Match[]): ProviderAdapter {
+  return {
+    name: 'espn',
+    competition,
+    capabilities: { push: false, latencyHintSec: 0 },
+    async fetchByDate() {
+      return matches;
+    },
+    async fetchLive() {
+      return matches.filter((m) => m.status === 'LIVE' || m.status === 'HT');
+    },
+    async fetchWindow() {
+      return matches;
+    },
+  };
+}
+function cfg(competition: string, over: Partial<CliConfig> = {}): CliConfig {
+  return described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition, flavor: 'off', markets: false, ...over });
+}
+const ctx = (competition: string, matches: Match[], now: Date, over: Partial<CliConfig> = {}) => ({
+  cfg: cfg(competition, over),
+  t: makeT(over.lang ?? 'en'),
+  adapter: adapter(competition, matches),
+  marketProvider: undefined,
+  now,
+});
+
+const outSpy = vi.spyOn(process.stdout, 'write');
+let writes: string[] = [];
+beforeEach(() => {
+  writes = [];
+  outSpy.mockImplementation((c: unknown) => {
+    writes.push(String(c));
+    return true;
+  });
+});
+afterEach(() => outSpy.mockReset());
+const text = () => writes.join('');
+const lines = () => text().split('\n');
+
+describe('an empty next answer keeps its header', () => {
+  it("on the bundle after the final: 'Next up for MEX' (the bundle names the code, as the found form does), then the mode line, then the sentence", async () => {
+    await cmdNext('MEX', ctx('fifa.world', [], AFTER_THE_FINAL));
+    const out = lines();
+    const header = out.findIndex((l) => l.startsWith('Next up for MEX'));
+    const mode = out.findIndex((l) => l.includes('World Cup'));
+    const sentence = out.findIndex((l) => /No upcoming fixture found for/.test(l));
+    expect(header, text()).toBeGreaterThanOrEqual(0);
+    expect(mode).toBeGreaterThan(header);
+    expect(sentence).toBeGreaterThan(mode);
+  });
+
+  it('in Spanish too, and --json is unchanged (no header key)', async () => {
+    await cmdNext('MEX', ctx('fifa.world', [], AFTER_THE_FINAL, { lang: 'es' }));
+    expect(lines().findIndex((l) => l.startsWith('Próximo partido de MEX'))).toBeGreaterThanOrEqual(0);
+    writes = [];
+    await cmdNext('MEX', ctx('fifa.world', [], AFTER_THE_FINAL, { json: true }));
+    const j = JSON.parse(text()) as Record<string, unknown>;
+    expect(j.fixture).toBeNull();
+    expect(j).not.toHaveProperty('header');
+  });
+});
+
+describe('the away column is padded', () => {
+  it('a list with 6- and 7-letter away names prints its time tokens in one column', async () => {
+    const list = [
+      fixture(1, { home: { code: 'ROU', name: 'Romania', id: 'espn:1' }, away: { code: 'SWE', name: 'Sweden', id: 'espn:2' } }),
+      fixture(2, { home: { code: 'UKR', name: 'Ukraine', id: 'espn:3' }, away: { code: 'HUN', name: 'Hungary', id: 'espn:4' } }),
+      fixture(3, { home: { code: 'ITA', name: 'Italy', id: 'espn:5' }, away: { code: 'TUR', name: 'Türkiye', id: 'espn:6' } }),
+    ];
+    await cmdToday('2026-10-10', ctx('uefa.nations', list, NOW));
+    const rows = lines().filter((l) => /Sweden|Hungary|Türkiye/.test(l));
+    expect(rows.length).toBe(3);
+    const cols = rows.map((l) => l.search(/\d\d:\d\d/));
+    expect(new Set(cols).size, rows.join('\n')).toBe(1);
+  });
+
+  it('the padding is bounded like the home column: one very long away name does not push the rest off the screen', async () => {
+    const list = [
+      fixture(1, { away: { code: 'LNG', name: 'A Very Long Away Name Indeed Beyond Any Bound', id: 'espn:7' } }),
+      fixture(2, { away: { code: 'SHT', name: 'Short', id: 'espn:8' } }),
+    ];
+    await cmdToday('2026-10-10', ctx('uefa.nations', list, NOW));
+    const short = lines().find((l) => l.includes('Short'));
+    expect(short).toBeDefined();
+    expect((short as string).search(/\d\d:\d\d/)).toBeLessThan(70);
+  });
+});
+
+describe("the countdown says 'now' in the reader's language (0.11 · 2.7c, round 1)", () => {
+  // The bundled opener (Jun 11, 2026, 19:00 UTC) read before the tournament: a
+  // SCHEDULED record whose kickoff has passed on any clock this test runs on,
+  // as a stale record or the bundle's skeleton during an outage is.
+  const BEFORE_THE_OPENER = new Date('2026-06-01T12:00:00Z');
+  for (const lang of ['es', 'pt', 'fr']) {
+    it(`next MEX under ${lang}: the language's word for now, never the English one inside its "in"`, async () => {
+      await cmdNext('MEX', ctx('fifa.world', [], BEFORE_THE_OPENER, { lang }));
+      expect(text(), lang).not.toMatch(/\bnow\b/);
+      expect(text(), lang).toContain(coreT(lang, 'countdown.now'));
+    });
+  }
+  it("next MEX under en: 'now', not 'in now'", async () => {
+    await cmdNext('MEX', ctx('fifa.world', [], BEFORE_THE_OPENER));
+    expect(text()).toMatch(/\bnow\b/);
+    expect(text()).not.toMatch(/\bin now\b/);
+  });
+});
+
+describe("the countdown's 'in' is the reader's word too (round 2)", () => {
+  // A kickoff a week after a clock set in 2098: discovery's span holds it, and
+  // the countdown, which reads the real clock, says "in" until 2099.
+  const LATE_2098 = new Date('2098-12-25T12:00:00Z');
+  const future = fixture(1, { kickoff: '2099-01-01T15:00:00.000Z', home: { code: 'ARS', name: 'Arsenal', id: 'espn:359' } });
+  const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const lang of ['es', 'pt', 'fr']) {
+    it(`next Arsenal under ${lang}: the language's "in" before the countdown, never the English one`, async () => {
+      await cmdNext('Arsenal', ctx('eng.1', [future], LATE_2098, { lang }));
+      const before = coreT(lang, 'next.in', { countdown: '\u0000' }).split('\u0000')[0] ?? '';
+      // The CLI's line joins its segments with " · " and wraps nothing.
+      expect(text(), lang).toMatch(new RegExp(`· ${esc(before)}\\d+[dhm]`));
+      expect(text(), lang).not.toMatch(/· in \d/);
+    });
+  }
+});
