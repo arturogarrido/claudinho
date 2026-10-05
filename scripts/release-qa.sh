@@ -198,11 +198,16 @@ fi
 # ── 5. Tripwires — the specific bugs that shipped this cycle ──────────────────
 banner "TRIPWIRES"
 PASS=0; FAIL=0; SKIP=0
-BR_EN="$(cli bracket 2>/dev/null)"
-BR_UTC="$(cli bracket --tz UTC 2>/dev/null)"
-BR_TYO="$(cli bracket --tz Asia/Tokyo 2>/dev/null)"
-SB="$(cli share bracket 2>/dev/null)"
-SBC="$(cli share bracket --style compact 2>/dev/null)"
+# The tripwires read English: their guards look for "Round of 32", the month
+# abbreviations and the English disclaimer, so these renders pass --lang en (the
+# flag wins over the operator's CLAUDINHO_LANG and LANG, which would otherwise
+# localize the bracket and skip four tripwires as a degraded feed). The UTC and
+# Asia/Tokyo renders differ only by --tz, so their comparison keeps its meaning.
+BR_EN="$(cli bracket --lang en 2>/dev/null)"
+BR_UTC="$(cli bracket --lang en --tz UTC 2>/dev/null)"
+BR_TYO="$(cli bracket --lang en --tz Asia/Tokyo 2>/dev/null)"
+SB="$(cli share bracket --lang en 2>/dev/null)"
+SBC="$(cli share bracket --lang en --style compact 2>/dev/null)"
 
 check() { # name ; pass-condition already evaluated into $1=ok/no
   if [ "$1" = "ok" ]; then printf '  \033[32m✓ PASS\033[0m  %s\n' "$2"; PASS=$((PASS+1))
