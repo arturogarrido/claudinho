@@ -21,7 +21,6 @@ import {
   liveNoneRead,
   liveShareCard,
   marketsNoneRead,
-  EARLIER_RECORD_NOTE,
   matchNoneReadSentence,
   matchShareCard,
   matchWindowSentence,
@@ -723,20 +722,18 @@ async function todayAnswer(
   const opts = fmtOpts(args, adapter.competition);
   // A verdict (between editions) stands instead of the empty line. Where no
   // bundled schedule was merged, a failed read says the provider could not be
-  // reached, and a read that was not whole says none was READ.
+  // reached, and a read that was not whole says none was READ. Every one of
+  // them, and the outage lines below, is core's catalog in the request's
+  // language (the CLI's sentences).
   const empty =
     verdictNotice(day, args.lang) ??
     dateUnreached(day, date, args.lang) ??
     dateNoneRead(day, date, args.lang) ??
-    'No matches scheduled.';
+    t(args.lang, 'today.none');
   const text = `${headingLine(args.lang, t(args.lang, 'today.onDate', { date }))}\n${matchRows(todays, empty, opts)}`;
   // Degraded ⇒ the live overlay failed: on the bundle these are static fixtures
   // with no live scores; off it there is no schedule to show.
-  const degradedLine = degraded
-    ? day.skeleton
-      ? '(Live scores unavailable — showing the bundled schedule.)'
-      : "(Live scores unavailable — couldn't reach the data provider.)"
-    : undefined;
+  const degradedLine = degraded ? `(${t(args.lang, day.skeleton ? 'feed.degraded' : 'live.degraded')})` : undefined;
   const market = await reliableMarketData(args, todays);
   const marketLine = market.complete
     ? undefined
@@ -793,8 +790,8 @@ async function liveAnswer(args: CommonOpts): Promise<ToolResult> {
   // was not whole says none in play was READ. The read's own verdict is said
   // first (kept by a cut).
   const text = degraded
-    ? 'Live scores unavailable right now — could not reach the data provider.'
-    : `${headingLine(args.lang, t(args.lang, 'live.title'))}\n${matchRows(matches, verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? 'No matches in play right now.', opts)}`;
+    ? t(args.lang, 'live.degraded')
+    : `${headingLine(args.lang, t(args.lang, 'live.title'))}\n${matchRows(matches, verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? t(args.lang, 'live.none'), opts)}`;
   const shownLive = boundedRecords(matches);
   return {
     // Every row a live list shows was served: a cut keeps its attribution
@@ -834,7 +831,7 @@ async function matchAnswer(
       matchNoneReadSentence(found, args.id, args.lang) ??
       (degraded
         ? `Couldn't reach the data provider — match ${args.id} could not be looked up.`
-        : `No match found with id ${args.id}.`);
+        : t(args.lang, 'match.none', { id: args.id }));
     return {
       ...disclaimed(qualified(msg, found, args.lang), undefined, args.lang),
       // "Not available for this competition" is not "no such id": the verdict
@@ -866,9 +863,7 @@ async function matchAnswer(
   // state. Off the bundled competition there is no static fixture: it is the
   // provider's own earlier record, whose state could not be refreshed.
   const degradedLine = degraded
-    ? found.earlierRecord
-      ? EARLIER_RECORD_NOTE
-      : '(Live state unavailable — showing the scheduled fixture.)'
+    ? `(${t(args.lang, found.earlierRecord ? 'feed.earlierRecord' : 'feed.degraded')})`
     : undefined;
   const marketLine = marketComplete
     ? undefined
@@ -1188,7 +1183,7 @@ async function nextAnswer(
       (next.candidates ? ambiguousText(next.query ?? code, next.candidates) : undefined) ??
       (degraded
         ? `Couldn't reach the data provider — no upcoming fixture confirmed for ${label}.`
-        : `No upcoming fixture found for ${label}.`);
+        : t(args.lang, 'next.none', { team: label }));
     return {
       // "None found" from a window that was not whole says so: it is not elimination.
       ...disclaimed(qualified(`${heading}\n${msg}`, next, args.lang), undefined, args.lang),

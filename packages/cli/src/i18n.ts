@@ -2,14 +2,8 @@ import { DISCLAIMER, t as coreT } from '@claudinho/core';
 
 /** Minimal message catalog. Keys are stable; values localized. */
 const EN = {
-  'today.none': 'No matches scheduled for this date.',
-  'live.none': 'No matches in play right now.',
   'signoff.complete': 'The 2026 World Cup is over. Follow another competition: claudinho follow --list, then claudinho follow <alias>.',
   'signoff.star': 'Star the project:',
-  'live.degraded': "Live scores unavailable right now — couldn't reach the data provider.",
-  'feed.degraded': 'Live scores unavailable — showing the bundled schedule.',
-  'feed.earlierRecord': "Live state could not be refreshed — showing the provider's earlier record.",
-  'next.none': 'No upcoming fixture found for {team}.',
   'team.group': 'Group {group}',
   'team.ambiguous': '"{query}" is ambiguous. Did you mean:',
   'team.none': 'No team found for "{query}". Try a nation name or 3-letter code (e.g. Mexico, MEX).',
@@ -22,7 +16,6 @@ const EN = {
   'table.empty': 'No standings available.',
   'table.partial': 'Partial table — {n} rows could not be read.',
   'table.badKey': 'Not a table: "{key}". Use a group letter (A), or a key such as A1, A-B or LEAGUE.',
-  'match.none': 'No match found with id {id}.',
   'col.team': 'Team',
   'col.p': 'P',
   'col.w': 'W',
@@ -90,14 +83,8 @@ const EN = {
 type Dict = Record<keyof typeof EN, string>;
 
 const ES: Dict = {
-  'today.none': 'No hay partidos para esta fecha.',
-  'live.none': 'No hay partidos en juego ahora mismo.',
   'signoff.complete': 'El Mundial 2026 ha terminado. Sigue otra competición: claudinho follow --list, luego claudinho follow <alias>.',
   'signoff.star': 'Dale una estrella al proyecto:',
-  'live.degraded': 'Marcadores en vivo no disponibles — no se pudo conectar con el proveedor de datos.',
-  'feed.degraded': 'Marcadores en vivo no disponibles — mostrando el calendario.',
-  'feed.earlierRecord': 'No se pudo actualizar el estado en vivo — se muestra el registro anterior del proveedor.',
-  'next.none': 'No se encontró próximo partido para {team}.',
   'team.group': 'Grupo {group}',
   'team.ambiguous': '"{query}" es ambiguo. ¿Quisiste decir:',
   'team.none': 'No se encontró ningún equipo para "{query}". Prueba un nombre de país o un código de 3 letras (p. ej. Mexico, MEX).',
@@ -110,7 +97,6 @@ const ES: Dict = {
   'table.empty': 'No hay clasificación disponible.',
   'table.partial': 'Tabla parcial — no se pudieron leer {n} filas.',
   'table.badKey': 'No es una tabla: "{key}". Usa la letra de un grupo (A), o una clave como A1, A-B o LEAGUE.',
-  'match.none': 'No se encontró partido con id {id}.',
   'col.team': 'Equipo',
   'col.p': 'PJ',
   'col.w': 'G',
@@ -170,14 +156,8 @@ const ES: Dict = {
 };
 
 const PT: Dict = {
-  'today.none': 'Nenhum jogo para esta data.',
-  'live.none': 'Nenhum jogo em andamento agora.',
   'signoff.complete': 'A Copa do Mundo de 2026 terminou. Siga outra competição: claudinho follow --list, depois claudinho follow <alias>.',
   'signoff.star': 'Dê uma estrela ao projeto:',
-  'live.degraded': 'Placar ao vivo indisponível — não foi possível conectar ao provedor de dados.',
-  'feed.degraded': 'Placar ao vivo indisponível — mostrando a tabela de jogos.',
-  'feed.earlierRecord': 'Não foi possível atualizar o estado ao vivo — mostrando o registro anterior do provedor.',
-  'next.none': 'Nenhum próximo jogo encontrado para {team}.',
   'team.group': 'Grupo {group}',
   'team.ambiguous': '"{query}" é ambíguo. Você quis dizer:',
   'team.none': 'Nenhuma seleção encontrada para "{query}". Tente um nome de país ou um código de 3 letras (ex. Mexico, MEX).',
@@ -190,7 +170,6 @@ const PT: Dict = {
   'table.empty': 'Não há classificação disponível.',
   'table.partial': 'Tabela parcial — {n} linhas não puderam ser lidas.',
   'table.badKey': 'Não é uma tabela: "{key}". Use a letra de um grupo (A), ou uma chave como A1, A-B ou LEAGUE.',
-  'match.none': 'Nenhum jogo encontrado com id {id}.',
   'col.team': 'Time',
   'col.p': 'J',
   'col.w': 'V',
@@ -250,14 +229,8 @@ const PT: Dict = {
 };
 
 const FR: Dict = {
-  'today.none': 'Aucun match prévu pour cette date.',
-  'live.none': "Aucun match en cours pour l'instant.",
   'signoff.complete': 'La Coupe du Monde 2026 est terminée. Suivez une autre compétition : claudinho follow --list, puis claudinho follow <alias>.',
   'signoff.star': 'Mettez une étoile au projet :',
-  'live.degraded': 'Scores en direct indisponibles — impossible de joindre le fournisseur de données.',
-  'feed.degraded': 'Scores en direct indisponibles — affichage du calendrier.',
-  'feed.earlierRecord': 'L’état en direct n’a pas pu être actualisé — affichage de l’enregistrement précédent du fournisseur.',
-  'next.none': 'Aucun prochain match trouvé pour {team}.',
   'team.group': 'Groupe {group}',
   'team.ambiguous': '"{query}" est ambigu. Vouliez-vous dire :',
   'team.none': 'Aucune équipe trouvée pour "{query}". Essayez un nom de pays ou un code à 3 lettres (p. ex. Mexico, MEX).',
@@ -270,7 +243,6 @@ const FR: Dict = {
   'table.empty': 'Aucun classement disponible.',
   'table.partial': 'Classement partiel — {n} lignes n\'ont pas pu être lues.',
   'table.badKey': 'Ce n\'est pas un classement : « {key} ». Utilisez la lettre d\'un groupe (A), ou une clé comme A1, A-B ou LEAGUE.',
-  'match.none': 'Aucun match trouvé avec id {id}.',
   'col.team': 'Équipe',
   'col.p': 'J',
   'col.w': 'G',

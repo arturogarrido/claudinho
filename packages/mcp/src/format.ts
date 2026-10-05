@@ -133,9 +133,10 @@ export function boundedRecords<T>(rows: T[], max = MAX_LIST_MATCHES): BoundedLis
  * failure as losing the statusline's "+N" marker: the reader cannot tell. Returns
  * '' when nothing was dropped.
  *
- * English, like the list's empty-state and outage sentences ("No matches
- * scheduled."); the list's title and its rows' status tokens are core's
- * catalog ({@link headingLine}, {@link matchLine}).
+ * English, like the other notes a tool states beside its list (the market
+ * notice): by rule. The list's title, its rows' tokens, its empty-state
+ * sentence and its outage line are core's catalog ({@link headingLine},
+ * {@link matchLine}).
  */
 export function truncationNote(list: BoundedList<unknown>): string {
   return list.truncated ? `(showing ${list.shown} of ${list.total} — list truncated)` : '';

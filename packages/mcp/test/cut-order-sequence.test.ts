@@ -89,7 +89,8 @@ describe('get_today: the verdict, the unserved count, the truncation, the market
 describe('get_match: the outage before the markets, both before the match (D7)', () => {
   it('a degraded match whose market batch did not finish', async () => {
     const r = await toolGetMatch({ id: '760415', adapter: feed({ fail: true }), marketProvider: unfinished, now: NOW } as never);
-    inOrder(r.text, ['Live state unavailable', 'Market data unavailable or incomplete', 'Mexico']);
+    // The CLI's sentence for this state (core's `feed.degraded`, 0.11 · 2.7c).
+    inOrder(r.text, ['Live scores unavailable — showing the bundled schedule', 'Market data unavailable or incomplete', 'Mexico']);
   });
 });
 
