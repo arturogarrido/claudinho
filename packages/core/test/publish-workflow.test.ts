@@ -13,8 +13,8 @@
  * nothing), exits 0 when npm serves the version, and fails with its own
  * `::error::` past the deadline.
  */
-import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,21 +92,32 @@ describe('publish.yml, the mcp-registry job', () => {
 });
 
 /**
- * The step's `run:` block, de-indented: the script the runner executes under
- * `bash -e`, with the deadline and the sleep shortened (the two literals are
- * pinned above; the behaviour is the same at any length) so four states run
- * in about a second.
+ * The step's `run:` block, de-indented: the lines under `run: |` up to the
+ * first non-blank line indented less than its first (the block's end in YAML;
+ * the next step's comment, which the step's own text runs into, is not part of
+ * it), the script the runner executes under `bash -e`, with the deadline and
+ * the sleep shortened (the two literals are pinned above; the behaviour is the
+ * same at any length) so five states run in about a second.
  */
 function stepScript(): string {
   const at = wait.indexOf('run: |');
   expect(at, 'the wait step has a run block').toBeGreaterThan(0);
   const lines = wait.slice(at + 'run: |'.length).split('\n').slice(1);
   const indent = /^(\s*)\S/.exec(lines.find((l) => l.trim()) ?? '')?.[1] ?? '';
-  return lines
-    .map((l) => l.slice(indent.length))
+  const block: string[] = [];
+  for (const l of lines) {
+    if (l.trim() && !l.startsWith(indent)) break;
+    block.push(l.slice(indent.length));
+  }
+  return block
     .join('\n')
     .replace('DEADLINE=$((SECONDS + 480))', 'DEADLINE=$((SECONDS + 2))')
     .replace(/\bsleep 20\b/g, 'sleep 0.2');
+}
+
+/** Where the host keeps a tool, so the step's PATH can hold that tool and nothing else. */
+function hostTool(name: string): string {
+  return execFileSync('sh', ['-c', `command -v ${name}`], { encoding: 'utf8' }).trim();
 }
 
 /** npm's own refusal of a version it does not serve (npm 11), five lines. */
@@ -144,9 +155,15 @@ function runStep(stub: Stub): { status: number | null; out: string } {
     writeFileSync(join(bin, 'npm'), stub.npm);
     chmodSync(join(bin, 'npm'), 0o755);
   }
-  const r = spawnSync('bash', ['-e', '-c', stepScript()], {
-    // Only the stand-ins and the system's own tools: no real npm on this PATH.
-    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir, RUNNER_TEMP: dir, GITHUB_REF_NAME: 'v0.11.0', COUNT: join(dir, 'count') },
+  // The step's PATH holds the stubs and links to the three host tools the
+  // step and the stubs call, and nothing else: a host that keeps a real npm
+  // in /usr/bin would otherwise answer the no-npm state with a live request.
+  const tools = join(dir, 'tools');
+  mkdirSync(tools);
+  for (const name of ['sleep', 'head', 'cat']) symlinkSync(hostTool(name), join(tools, name));
+  // bash by its host path: the child's PATH (below) is where the SCRIPT looks, and spawn looks there too.
+  const r = spawnSync(hostTool('bash'), ['-e', '-c', stepScript()], {
+    env: { PATH: `${bin}:${tools}`, HOME: dir, RUNNER_TEMP: dir, GITHUB_REF_NAME: 'v0.11.0', COUNT: join(dir, 'count') },
     encoding: 'utf8',
     timeout: 20000,
   });
@@ -156,6 +173,12 @@ const stderrLines = (lines: string[]) => lines.map((l) => `echo ${JSON.stringify
 const notYet = (out: string) => out.split('\n').filter((l) => /^attempt \d+ \(\d+s\): npm does not serve/.test(l));
 
 describe.skipIf(process.platform === 'win32')('the wait step, run offline under stand-in npm and timeout', () => {
+  it('is the run block alone, and parses: the extraction stops where the YAML block does', () => {
+    const script = stepScript();
+    expect(script).not.toMatch(/- name:|mcp-publisher/);
+    expect(spawnSync('bash', ['-n', '-c', script], { encoding: 'utf8' }).status, script).toBe(0);
+  });
+
   it('exits 0 the moment npm serves the version, after saying why the earlier probe failed', () => {
     const npm = `#!/bin/bash\nn=$(cat "$COUNT" 2>/dev/null || echo 0); n=$((n + 1)); echo $n > "$COUNT"\nif [ $n -ge 2 ]; then echo 0.11.0; exit 0; fi\n${stderrLines(E404)}\nexit 1\n`;
     const { status, out } = runStep({ npm });
