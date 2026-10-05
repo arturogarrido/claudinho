@@ -97,7 +97,8 @@ describe('publish.yml, the mcp-registry job', () => {
  * the next step's comment, which the step's own text runs into, is not part of
  * it), the script the runner executes under `bash -e`, with the deadline and
  * the sleep shortened (the two literals are pinned above; the behaviour is the
- * same at any length) so five states run in about a second.
+ * same at any length): the served state ends on its second probe, the four
+ * others run to the two-second deadline, about ten seconds for the file.
  */
 function stepScript(): string {
   const at = wait.indexOf('run: |');
