@@ -30,12 +30,12 @@ const plainClub = (i: number): Team => ({ code: `P${i}`, name: `Plain ${i}`, id:
 const bank = (moment: string) => FLAVOR_BANKS.en?.[moment] ?? [];
 
 /** `n` cry-less fixtures whose OWN phrase is the same (found by asking matchFlavor). */
-function sharingOnePhrase(n: number, over: Partial<Match> = {}): Match[] {
+function sharingOnePhrase(n: number, over: Partial<Match> = {}, start = 800002100): Match[] {
   const mk = (k: number, i: number) => match({ id: String(k), home: plainClub(2 * i), away: plainClub(2 * i + 1), ...over });
-  const first = mk(800002100, 0);
+  const first = mk(start, 0);
   const own = matchFlavor(first, { level: 'full', locale: 'en' });
   const out = [first];
-  for (let k = 800002101; out.length < n; k++) {
+  for (let k = start + 1; out.length < n; k++) {
     const m = mk(k, out.length);
     if (matchFlavor(m, { level: 'full', locale: 'en' }) === own) out.push(m);
   }
@@ -71,6 +71,10 @@ describe('matchFlairs: a cry row reserves no phrase', () => {
     }
   });
 
+  it('off is silent on one line too, whatever phrase was handed in', () => {
+    expect(matchFlair(match({ home: plainClub(1), away: plainClub(2) }), { level: 'off', kind: 'club' }, 'set the alarm!')).toEqual({ text: '', rally: false });
+  });
+
   it('with no team kind the list is flavorsFor: no cries', () => {
     const list = [match(), match({ id: '800002002' })];
     expect(matchFlairs(list, { level: 'full', locale: 'en' })).toEqual(flavorsFor(list, { level: 'full', locale: 'en' }).map((text) => ({ text, rally: false })));
@@ -79,10 +83,16 @@ describe('matchFlairs: a cry row reserves no phrase', () => {
 
 describe('the cyclic step starts from the row\'s own phrase', () => {
   it("two rows sharing their own phrase: the second takes the bank's next one after it", () => {
-    const [a, b] = sharingOnePhrase(2);
     const scheduled = bank('scheduled');
-    const own = scheduled.indexOf(matchFlavor(a as Match, { level: 'full', locale: 'en' }));
-    expect(own).toBeGreaterThanOrEqual(0);
+    const ownIndex = (m: Match) => scheduled.indexOf(matchFlavor(m, { level: 'full', locale: 'en' }));
+    // A first row whose own phrase is neither of the bank's first two: a step
+    // that started from index 0 (skipping the taken one) would then give
+    // another phrase than the one after its own.
+    let start = 800002100;
+    while (ownIndex(match({ id: String(start), home: plainClub(0), away: plainClub(1) })) < 2) start++;
+    const [a, b] = sharingOnePhrase(2, {}, start);
+    const own = ownIndex(a as Match);
+    expect(own).toBeGreaterThanOrEqual(2);
     expect(flavorsFor([a as Match, b as Match], { level: 'full', locale: 'en' })).toEqual([scheduled[own], scheduled[(own + 1) % scheduled.length]]);
   });
 });
