@@ -186,6 +186,22 @@ export function isTeam(side: Team, team: Team): boolean {
   return side.code === team.code && side.name === team.name;
 }
 
+/**
+ * Is this side the PINNED team (`claudinho follow --team`): the one rule for
+ * every line or list that prefers the pin (the statusline's and the hook's
+ * pick, the rally cry between two sides that both carry one). A pin with no
+ * id (the World Cup's nations, which the config reader believes on the
+ * bundled competition alone) by its CODE, the bundle's contract: a nation's
+ * FIFA code is unique there, and the feed's name need not be the bundle's
+ * ("United States of America" for the saved "United States"). A pin with an
+ * id by {@link isTeam}: equal ids decide when the side carries one too, the
+ * code and the name when it carries none.
+ */
+export function isPinnedSide(side: Team, pin: { readonly id?: string; readonly code: string; readonly name: string }): boolean {
+  if (pin.id === undefined) return side.code === pin.code;
+  return isTeam(side, { id: pin.id, code: pin.code, name: pin.name });
+}
+
 function sealScorePair(raw: unknown): { home: number; away: number } | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const v = raw as { home?: unknown; away?: unknown };

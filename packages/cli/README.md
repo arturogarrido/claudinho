@@ -119,12 +119,21 @@ Team codes: a nation's is FIFA-style, 3 letters (`MEX`, `BRA`, `USA`, `ENG`); a 
 ### Commentary flair
 
 By default Claudinho narrates with a bit of localized football-broadcast energy:
-`¡GOOOOL!` on a goal, `¡a cancha llena!` before kickoff. These are generic,
-genre-style exclamations (no real commentator is quoted or impersonated),
-localized per `--lang`, and they never affect `--json` output.
+`¡GOOOOL!` on a goal, `¡a cancha llena!` before kickoff, something for the break,
+the last ten minutes and a draw. The bank holds a few hundred lines in four
+languages (genre exclamations and the catchphrases fans know; no real person is
+named or impersonated), localized per `--lang`; a day's list never prints the
+same line twice while the bank has another, and none of it reaches `--json`.
 
-- `--flavor full` *(default)*: flair on fixtures, live play, goals, and full-time
-- `--flavor subtle`: only goals and full-time
+When one side has a rally cry of its own, the cry takes the slot instead, in
+every language: Mexico's `¿Y si sí?`, Pumas' `¡Goya!`, Arsenal's `COYG!` (when
+both sides have one, the team you pinned with `follow --team`, else the home
+side's; `CLAUDINHO_TEAM` picks the team `next` asks about, not the cry). A row
+with a cry takes no line from the bank, so the others in the list stay
+different; a postponed or cancelled match prints neither.
+
+- `--flavor full` *(default)*: flair on fixtures, live play, goals, the break, the closing minutes, and full time
+- `--flavor subtle`: only goals, full time and draws, and the rally cries
 - `--flavor off`: just the facts
 
 ## Prediction-market signals

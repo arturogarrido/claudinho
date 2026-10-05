@@ -9,16 +9,21 @@ import {
   FAN_PROJECT,
   formatKickoff,
   joinSegments,
-  matchFlavor,
+  matchFlair,
+  matchFlairs,
   matchLocation,
   padVisible,
   scoreline,
   stageLabel,
   tableTitle,
   withFlag,
+  type Flair,
+  type FlairOpts,
   type FlavorLevel,
   type Match,
+  type RallyPin,
   type StandingRow,
+  type TeamKind,
 } from '@claudinho/core';
 import { type BoundedList, bounded } from '@claudinho/core';
 
@@ -35,9 +40,34 @@ export interface FmtOpts {
   tz?: string;
   locale?: string;
   flavor?: FlavorLevel;
+  /**
+   * The competition's team kind (core `teamKind` of the adapter's
+   * competition): a team's rally cry takes the flair slot only in a
+   * competition of the cry's kind. Absent (a static list), no side carries one.
+   */
+  teamKind?: TeamKind;
+  /**
+   * The request's pinned team (the saved choice's, when it applies to the
+   * request's competition): it decides between two sides that both carry a
+   * cry, as on the CLI. The pin alone: `CLAUDINHO_TEAM` is the team-taking
+   * tools' query, not the cry's tiebreak.
+   */
+  pin?: RallyPin;
 }
 
-export function matchLine(m: Match, opts: FmtOpts = {}): string {
+/** The flair options of these format options (core's flair rules take them). */
+function flairOptsOf(opts: FmtOpts): FlairOpts {
+  return { level: opts.flavor, locale: opts.locale, kind: opts.teamKind, pin: opts.pin };
+}
+
+/**
+ * One match as a line of text. `flair` is the row's flair slot when a list
+ * chose it ({@link matchRows}: core `matchFlairs`, the cries and no phrase
+ * twice in one list); without it the line's own (core `matchFlair`): a team's
+ * rally cry first (the pinned side's when both carry one, else the home
+ * side's), else the moment's phrase.
+ */
+export function matchLine(m: Match, opts: FmtOpts = {}, flair: Flair = matchFlair(m, flairOptsOf(opts))): string {
   // A flag beside a nation's name; a club's name alone (nothing in its place).
   const head = `${withFlag(m.home.name, m.home.flag, 'home')} ${scoreline(m)} ${withFlag(m.away.name, m.away.flag, 'away')}`;
   const stage = stageLabel(m);
@@ -49,12 +79,11 @@ export function matchLine(m: Match, opts: FmtOpts = {}): string {
   } else {
     tail = STATUS_LABEL[m.status];
   }
-  const flair = matchFlavor(m, { level: opts.flavor, locale: opts.locale });
   // The status, the stage and the location, joined with the empty ones
   // dropped: an OTHER with no words, or a record with no venue, leaves no
   // dangling separator.
   const base = `${head} — ${joinSegments([tail, stage, matchLocation(m)])}`;
-  return (flair ? `${base} — ${flair}` : base).trimEnd();
+  return (flair.text ? `${base} — ${flair.text}` : base).trimEnd();
 }
 
 /**
@@ -113,10 +142,11 @@ export function truncationNote(list: BoundedList<unknown>): string {
  */
 export function matchRows(matches: Match[], empty: string, opts: FmtOpts = {}): string {
   if (matches.length === 0) return empty;
-  return matches
-    .slice(0, MAX_LIST_MATCHES)
-    .map((m) => `• ${matchLine(m, opts)}`)
-    .join('\n');
+  const shown = matches.slice(0, MAX_LIST_MATCHES);
+  // The flairs chosen once over the rows shown, in order (core `matchFlairs`:
+  // the cries, and no phrase twice).
+  const flairs = matchFlairs(shown, flairOptsOf(opts));
+  return shown.map((m, i) => `• ${matchLine(m, opts, flairs[i])}`).join('\n');
 }
 
 /**

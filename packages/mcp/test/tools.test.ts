@@ -110,13 +110,16 @@ describe('toolGetLive', () => {
   });
 
   it('appends commentary flair at flavor=full and omits it at flavor=off', async () => {
-    const flair = matchFlavor(liveMatch(), { level: 'full' }); // goal moment, en
+    // A match whose sides carry no rally cry: Mexico's ("¿Y si sí?") would take
+    // the flair slot instead of the moment's phrase.
+    const plain = liveMatch({ home: { code: 'MAR', name: 'Morocco' } });
+    const flair = matchFlavor(plain, { level: 'full' }); // goal moment, en
     expect(flair).not.toBe('');
 
-    const full = await toolGetLive({ adapter: fakeAdapter({ live: [liveMatch()] }), flavor: 'full' });
+    const full = await toolGetLive({ adapter: fakeAdapter({ live: [plain] }), flavor: 'full' });
     expect(full.text).toContain(`— ${flair}`);
 
-    const off = await toolGetLive({ adapter: fakeAdapter({ live: [liveMatch()] }), flavor: 'off' });
+    const off = await toolGetLive({ adapter: fakeAdapter({ live: [plain] }), flavor: 'off' });
     expect(off.text).not.toContain(flair);
     // Structured data is unaffected by flavor — facts stay clean.
     expect((off.data as { matches: Match[] }).matches[0]?.score).toEqual({ home: 1, away: 0 });

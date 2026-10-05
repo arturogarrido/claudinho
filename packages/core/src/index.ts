@@ -20,12 +20,19 @@ export {
 } from './normalize';
 export {
   matchFlavor,
+  flavorsFor,
+  matchFlair,
+  matchFlairs,
   asFlavorLevel,
   isFlavorLevel,
   DEFAULT_FLAVOR,
+  FLAVOR_BANKS,
   FLAVOR_LEVELS,
+  FLAVOR_MOMENTS,
 } from './flavor';
-export type { FlavorLevel } from './flavor';
+export type { Flair, FlairOpts, FlavorBank, FlavorLevel, FlavorOpts, Moment as FlavorMoment } from './flavor';
+export { RALLY_CRIES, rallyCryFor, rallyEntryFor } from './rally';
+export type { RallyCry, RallyPin } from './rally';
 
 export {
   allFixtures,
@@ -249,6 +256,7 @@ export {
   definitiveNone,
   emptyBatch,
   isCacheable,
+  isPinnedSide,
   isTeam,
   humanLabel,
   isHumanLabel,

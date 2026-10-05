@@ -20,6 +20,7 @@
  * competition comes from a flag, an environment variable or a tool argument,
  * and `constructor` is not one.
  */
+import { rallyEntryFor } from './rally';
 import type { StandingsShape } from './trust/espn';
 import { SUPPORTED_TABLES, type TeamKind } from './supported';
 import type { Team } from './types';
@@ -129,14 +130,13 @@ export const MEXICO_TEAM_ID = 'espn:203';
 
 /**
  * Is this side Mexico's national team: the team the rally cry ("¿Y si sí?")
- * belongs to? By IDENTITY, in a competition that fields nations: the
- * provider's id when the side carries one (a present id that is not Mexico's
- * is never Mexico, whatever its labels say), or, for the bundle's id-less
- * Mexico, its code AND its name. A club abbreviated `MEX` never is; neither is
- * Mexico's id read under a club competition.
+ * belongs to? The Mexico case of the rally table's rule (`rally.ts`): by
+ * IDENTITY, in a competition that fields nations: the provider's id when the
+ * side carries one (a present id that is not Mexico's is never Mexico,
+ * whatever its labels say), or, for the bundle's id-less Mexico, its code AND
+ * its name. A club abbreviated `MEX` never is; neither is Mexico's id read
+ * under a club competition.
  */
 export function isMexicoNationalTeam(team: Team, kind: TeamKind): boolean {
-  if (kind !== 'nation') return false;
-  if (team.id !== undefined) return team.id === MEXICO_TEAM_ID;
-  return team.code === 'MEX' && team.name === 'Mexico';
+  return rallyEntryFor(team, kind)?.id === MEXICO_TEAM_ID;
 }

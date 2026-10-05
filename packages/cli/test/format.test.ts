@@ -27,29 +27,30 @@ function liveMatch(over: Partial<Match> = {}): Match {
   };
 }
 
-// Generic-flair wiring is tested on a NON-MEX match: MEX intentionally overrides
-// the genre flair with its "¿Y si sí?" rally cry (see matchLine), so it can't be
-// used to verify that the ordinary localized commentary flows through.
-const liveNonMex = (over: Partial<Match> = {}): Match =>
-  liveMatch({ home: { code: 'BRA', name: 'Brazil', flag: '🇧🇷' }, ...over });
-const render = (c: CliConfig) => matchLine(liveNonMex(), c, makeT(c.lang), painterFor(c));
+// Generic-flair wiring is tested on a match whose sides carry NO rally cry: a
+// team's cry (Mexico's "¿Y si sí?", Brazil's "Vai Brasil!": core's rally table)
+// takes the flair slot instead (see matchLine), so such a match can't be used to
+// verify that the ordinary localized commentary flows through.
+const liveNoCry = (over: Partial<Match> = {}): Match =>
+  liveMatch({ home: { code: 'MAR', name: 'Morocco' }, ...over });
+const render = (c: CliConfig) => matchLine(liveNoCry(), c, makeT(c.lang), painterFor(c));
 
 describe('matchLine — flavor wiring', () => {
   it('appends the localized flair at flavor=full', () => {
     const c = cfg({ flavor: 'full' });
-    const flair = matchFlavor(liveNonMex(), { level: 'full', locale: 'en' });
+    const flair = matchFlavor(liveNoCry(), { level: 'full', locale: 'en' });
     expect(flair).not.toBe('');
     expect(render(c)).toContain(flair);
   });
 
   it('omits flair at flavor=off', () => {
-    const flair = matchFlavor(liveNonMex(), { level: 'full', locale: 'en' });
+    const flair = matchFlavor(liveNoCry(), { level: 'full', locale: 'en' });
     expect(render(cfg({ flavor: 'off' }))).not.toContain(flair);
   });
 
   it('localizes the flair to the configured language', () => {
     const es = render(cfg({ flavor: 'full', lang: 'es' }));
-    expect(es).toContain(matchFlavor(liveNonMex(), { level: 'full', locale: 'es' }));
+    expect(es).toContain(matchFlavor(liveNoCry(), { level: 'full', locale: 'es' }));
   });
 
   it('drops flag emoji when flags are off (names only)', () => {
