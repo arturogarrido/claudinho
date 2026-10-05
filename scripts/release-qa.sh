@@ -170,8 +170,10 @@ if [ "$CLUB_GATE" = "run" ]; then
   crun next Arsenal
   crun table
   crun table LEAGUE
-  printf '\033[2m$ claudinho share next Arsenal --json   (its snippet)\033[0m\n'
-  CLUB_CARD="$(club share next Arsenal --json 2>/dev/null)"
+  # In English: the card's validator asks core for its English sentences, and
+  # the flag wins over the operator's CLAUDINHO_LANG and LANG.
+  printf '\033[2m$ claudinho share next Arsenal --lang en --json   (its snippet)\033[0m\n'
+  CLUB_CARD="$(club share next Arsenal --lang en --json 2>/dev/null)"
   qa snippet <<<"$CLUB_CARD"; echo; echo
   printf '\033[2m$ claudinho table LEAGUE --lang pt\033[0m\n'
   CLUB_PT="$(club table LEAGUE --lang pt 2>/dev/null)"

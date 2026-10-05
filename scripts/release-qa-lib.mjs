@@ -175,8 +175,11 @@ function notTheClubCard(card) {
  * what a reader sees, and the render passes only when the second says the
  * first. The sentences are core's own (`core`: `verdictNotice`,
  * `verdictQualifiers`, `nextHorizonSentence`, `nextNoneReadSentence`, handed
- * in), asked for and looked for in the snippet, never spelled here. The first
- * row that applies answers:
+ * in), asked for and looked for in the snippet, never spelled here. They are
+ * asked for in ENGLISH because the script renders the card in English
+ * (`share next Arsenal --lang en`: the flag wins over CLAUDINHO_LANG and LANG,
+ * so the operator's language cannot fail a valid card). The first row that
+ * applies answers:
  *   - no JSON, or no snippet: `broken`;
  *   - not this render's next card (its kind, its competition, its matches, its
  *     team): `broken`, naming what is wrong; a `betweenEditions` with no date:
@@ -189,9 +192,12 @@ function notTheClubCard(card) {
  *     populated card);
  *   - a fixture: `ok` when the snippet names both clubs and, on a read that
  *     was not whole, says so; else `fail`;
- *   - no fixture: `ok` when the snippet says the none-read sentence (a read
- *     that was not whole) or the horizon sentence (a whole read), else `fail`;
- *     an empty card with neither verdict is `broken` (no next card has it).
+ *   - no fixture, a read that was not whole: `ok` when the snippet says the
+ *     none-read sentence AND every qualifier sentence, else `fail`;
+ *   - no fixture, a whole read: a horizon with no span (`days` not a positive
+ *     whole number) is `broken`; `ok` when the snippet says the horizon
+ *     sentence, else `fail`; an empty card with neither verdict is `broken`
+ *     (no next card has it).
  */
 export function clubCardVerdict(shareJson, core) {
   const card = cardOf(shareJson);
@@ -235,9 +241,15 @@ export function clubCardVerdict(shareJson, core) {
   }
   if (partial) {
     if (!says(core.nextNoneReadSentence(result, CLUB.team, 'en'))) return { kind: 'fail', detail: "the card's none-read sentence is not said in its snippet" };
+    const qualifiers = core.verdictQualifiers(result, 'en');
+    if (qualifiers.length === 0 || !qualifiers.every(says)) return { kind: 'fail', detail: "the card's partial read is not said in its snippet" };
     return { kind: 'ok', detail: 'no fixture READ in the span (the read was not whole), its sentence shown' };
   }
-  if (card.horizon !== null && typeof card.horizon === 'object') {
+  if (card.horizon !== undefined) {
+    const days = card.horizon?.days;
+    if (card.horizon === null || typeof card.horizon !== 'object' || !(Number.isInteger(days) && days > 0)) {
+      return { kind: 'broken', detail: 'horizon states no span' };
+    }
     if (!says(core.nextHorizonSentence(result, CLUB.team, 'en'))) return { kind: 'fail', detail: 'the horizon is not said in its snippet' };
     return { kind: 'ok', detail: 'no fixture in the span, its sentence shown' };
   }
