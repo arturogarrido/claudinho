@@ -239,3 +239,27 @@ describe('every named localization of the MCP text is the catalog sentence (roun
     }
   });
 });
+
+describe("the countdown's 'in' is the reader's word too (round 2)", () => {
+  // A kickoff a week after a clock set in 2098: the dated read and discovery's
+  // span hold it, and the countdown, which reads the real clock, says "in"
+  // until 2099.
+  const LATE_2098 = new Date('2098-12-25T12:00:00Z');
+  const future = fixture(1, { kickoff: '2099-01-01T15:00:00.000Z', home: { code: 'ARS', name: 'Arsenal', id: 'espn:359' } });
+  const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const lang of LANGS) {
+    it(`get_today, get_match and get_next_fixture under ${lang}: the language's "in" before the countdown, never the English one`, async () => {
+      const epl = adapter('eng.1', [future]);
+      const texts = [
+        (await toolGetToday({ date: '2099-01-01', tz: 'UTC', adapter: epl, now: LATE_2098, lang, flavor: 'off' })).text,
+        (await toolGetMatch({ id: future.id, adapter: epl, now: LATE_2098, lang, flavor: 'off' })).text,
+        (await toolGetNextFixture({ team: 'Arsenal', adapter: epl, now: LATE_2098, lang, flavor: 'off' })).text,
+      ];
+      const [before] = t(lang, 'next.in', { countdown: '\u0000' }).split('\u0000');
+      for (const text of texts) {
+        expect(text, lang).toMatch(new RegExp(`\\(${esc(before)}\\d+[dhm]`));
+        expect(text, lang).not.toMatch(/\(in \d/);
+      }
+    });
+  }
+});

@@ -51,10 +51,31 @@ describe('publish.yml, the mcp-registry job', () => {
   });
 
   it('bounds every probe, so a slow npm cannot outrun the deadline and the job timeout', () => {
-    expect(wait).toMatch(/\btimeout \d+ npm view|--fetch-timeout=\d+/);
+    // Both halves of the bound, on the probe itself: GNU `timeout` ends the
+    // probe whatever npm does, and npm's own options keep its one request
+    // inside that (no retries: with npm's default two, one probe can take
+    // about 115 s and the step outruns the bound the comment states).
+    const probe = wait.split('\n').find((l) => /\bnpm view\b/.test(l)) ?? '';
+    expect(probe).toMatch(/\btimeout \d+ npm view\b/);
+    expect(probe).toMatch(/--fetch-timeout=\d+/);
+    expect(probe).toMatch(/--fetch-retries=0\b/);
     // The job's own timeout leaves room for the wait and the publisher's retries after it.
     const minutes = Number(/timeout-minutes: (\d+)/.exec(job)?.[1]);
     expect(minutes).toBeGreaterThanOrEqual(15);
+  });
+
+  it("keeps each probe's stderr and prints the last one with its error, so a 404, a network failure, a timed-out probe and a missing npm are told apart", () => {
+    const probe = wait.split('\n').find((l) => /\bnpm view\b/.test(l)) ?? '';
+    expect(probe).not.toMatch(/2>\s*\/dev\/null/);
+    // The probe's stderr goes to a file, and the step's own error prints that file's tail.
+    const err = /2>\s*"?([^\s"]+)"?/.exec(probe)?.[1];
+    expect(err, probe).toBeTruthy();
+    const after = wait.slice(wait.indexOf('::error::'));
+    expect(after).toMatch(new RegExp(`\\b(tail|cat)\\b[^\\n]*${(err as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    // Every "not yet" attempt says why: the probe's exit status (124 is `timeout`'s).
+    const notYet = wait.split('\n').filter((l) => /echo "attempt /.test(l) && /yet/.test(l));
+    expect(notYet.length).toBeGreaterThanOrEqual(1);
+    for (const l of notYet) expect(l).toMatch(/exit \$\{?\w+\}?/);
   });
 
   it('exits 0 when npm serves the version, and fails with its own ::error:: past the deadline', () => {

@@ -134,3 +134,20 @@ describe("the countdown says 'now' in the reader's language (0.11 · 2.7c, round
     expect(text()).not.toMatch(/\bin now\b/);
   });
 });
+
+describe("the countdown's 'in' is the reader's word too (round 2)", () => {
+  // A kickoff a week after a clock set in 2098: discovery's span holds it, and
+  // the countdown, which reads the real clock, says "in" until 2099.
+  const LATE_2098 = new Date('2098-12-25T12:00:00Z');
+  const future = fixture(1, { kickoff: '2099-01-01T15:00:00.000Z', home: { code: 'ARS', name: 'Arsenal', id: 'espn:359' } });
+  const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const lang of ['es', 'pt', 'fr']) {
+    it(`next Arsenal under ${lang}: the language's "in" before the countdown, never the English one`, async () => {
+      await cmdNext('Arsenal', ctx('eng.1', [future], LATE_2098, { lang }));
+      const [before] = coreT(lang, 'next.in', { countdown: '\u0000' }).split('\u0000');
+      // The CLI's line joins its segments with " · " and wraps nothing.
+      expect(text(), lang).toMatch(new RegExp(`· ${esc(before)}\\d+[dhm]`));
+      expect(text(), lang).not.toMatch(/· in \d/);
+    });
+  }
+});
