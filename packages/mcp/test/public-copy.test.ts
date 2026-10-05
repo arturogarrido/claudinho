@@ -71,6 +71,7 @@ describe("the server's copy", () => {
       const text = res.messages.map((m) => (m.content.type === 'text' ? (m.content.text ?? '') : '')).join('\n');
       expect(text).toMatch(/competition:\s*"world-cup"/);
       expect(text).toMatch(/date/i);
+      expect(text).toMatch(/\bstate\b|\bstatus\b/i);
       noEmDash('my_team', text);
     });
   });
