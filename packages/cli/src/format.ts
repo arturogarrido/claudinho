@@ -10,6 +10,8 @@ import {
   t as i18n,
   teamKind,
   withFlag,
+  type Flair,
+  type FlairOpts,
   type Match,
 } from '@claudinho/core';
 import type { CliConfig } from './config';
@@ -97,15 +99,27 @@ export function homeColumn(matches: readonly Match[], flags: boolean): number {
 }
 
 /**
+ * The flair options of this invocation, ONE place: the level, the language,
+ * the competition's team kind (a cry is said in a competition of its kind)
+ * and the pin (it decides between two sides that both carry a cry; the pin
+ * alone: `CLAUDINHO_TEAM` is the team-taking commands' query, not a line
+ * preference). A list hands them to core `matchFlairs`, one line to
+ * `matchFlair`.
+ */
+export function flairOpts(cfg: CliConfig): FlairOpts {
+  return { level: cfg.flavor, locale: cfg.lang, kind: teamKind(cfg.competition), pin: cfg.pin };
+}
+
+/**
  * One match as a single line, e.g.:
  *   🇲🇽 Mexico  1–0  South Africa 🇿🇦   67'
  *   🇧🇷 Brazil   vs  Morocco 🇲🇦        Thu 18:00
  *   Arsenal         2–1  Chelsea          50'   (a club: no flag, nothing in its place)
  *
  * `homeWidth` is the list's home column ({@link homeColumn}), measured by the
- * caller over the rows it shows. `phrase` is the row's commentary phrase when
- * the caller chose it for a list (core `flavorsFor`: no phrase twice in one
- * list); without it the match's own phrase (`matchFlavor`).
+ * caller over the rows it shows. `flair` is the row's flair slot when the
+ * caller chose it for a list (core `matchFlairs`: the cries, and no phrase
+ * twice in one list); without it the line's own (`matchFlair`).
  */
 export function matchLine(
   m: Match,
@@ -114,7 +128,7 @@ export function matchLine(
   c: Painter,
   flags = true,
   homeWidth = HOME_COLUMN,
-  phrase?: string,
+  flair: Flair = matchFlair(m, flairOpts(cfg)),
 ): string {
   const home = homeCell(m, flags);
   const away = flags ? withFlag(m.away.name, m.away.flag, 'away') : m.away.name;
@@ -134,12 +148,12 @@ export function matchLine(
   } else {
     right = statusToken(m, t, c);
   }
-  // The flair slot (core `matchFlair`): a team's rally cry ("¿Y si sí?",
-  // "¡Goya!") when a side carries one, in every locale, green so it pops past
-  // the dimmed commentary; else the row's phrase. By identity in a competition
-  // of the cry's kind, never by the code: a club abbreviated MEX is not
-  // Mexico. Both silenced by --flavor off.
-  const flair = matchFlair(m, { level: cfg.flavor, locale: cfg.lang, kind: teamKind(cfg.competition), pin: cfg.pin }, phrase);
+  // The flair slot (core `matchFlairs` / `matchFlair`): a team's rally cry
+  // ("¿Y si sí?", "¡Goya!") when a side carries one, in every locale, green so
+  // it pops past the dimmed commentary; else the row's phrase. By identity in
+  // a competition of the cry's kind, never by the code: a club abbreviated MEX
+  // is not Mexico. No cry on a postponed or cancelled line; both silenced by
+  // --flavor off.
   const tail = flair.text ? `   ${flair.rally ? c.green(flair.text) : c.dim(flair.text)}` : '';
   return `  ${left}   ${right}${tail}`.trimEnd();
 }

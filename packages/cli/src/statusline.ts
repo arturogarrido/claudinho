@@ -19,7 +19,7 @@ import {
   LIVE_WINDOW_MS,
   mergeLive,
   isUpcoming,
-  isTeam,
+  isPinnedSide,
   displayWidth,
   parseCachedMatch,
   parsedValue,
@@ -59,9 +59,10 @@ export const FIRST_RUN_LINE = '⚽ claudinho follow';
 /**
  * Whose match an ambient surface prefers: `CLAUDINHO_TEAM`, a CODE compared as
  * it always was (no roster read on the hot path); or the saved pin, a team
- * (`{ id?, code, name }`): one with an id is matched by `isTeam` against the
- * sealed records (the id decides, whatever the labels), one without (the
- * World Cup's nations) by code.
+ * (`{ id?, code, name }`), matched by core's one pin predicate
+ * (`isPinnedSide`): one with an id by `isTeam` against the sealed records (the
+ * id decides, whatever the labels), one without (the World Cup's nations) by
+ * code.
  */
 export type AmbientPick = { readonly code: string } | { readonly team: Pin } | undefined;
 
@@ -88,12 +89,11 @@ function isPicked(m: Match, pick: AmbientPick): boolean {
     const code = pick.code.toUpperCase();
     return m.home?.code === code || m.away?.code === code;
   }
-  const team = pick.team;
-  // By code only for a pin without an id, which the config reader believes on
-  // the bundled competition alone (its nations carry no id; a nation's FIFA
-  // code is unique there, and the feed's name need not equal the bundle's).
-  if (team.id === undefined) return m.home?.code === team.code || m.away?.code === team.code;
-  return isTeam(m.home, team) || isTeam(m.away, team);
+  // The one pin predicate (core `isPinnedSide`): by code for a pin without an
+  // id, which the config reader believes on the bundled competition alone (its
+  // nations carry no id; a nation's FIFA code is unique there, and the feed's
+  // name need not equal the bundle's); by `isTeam` for one with an id.
+  return (m.home !== undefined && isPinnedSide(m.home, pick.team)) || (m.away !== undefined && isPinnedSide(m.away, pick.team));
 }
 
 /**

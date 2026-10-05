@@ -13,7 +13,8 @@ import { makeT } from '../src/i18n';
 import { described } from './config-of';
 
 vi.mock('picocolors', async () => {
-  const actual = await vi.importActual<typeof import('picocolors')>('picocolors');
+  // A CommonJS module: its namespace carries the colours object as `default`.
+  const actual = (await vi.importActual('picocolors')) as { default: { createColors: (enabled?: boolean) => unknown } };
   return { default: actual.default.createColors(true) };
 });
 

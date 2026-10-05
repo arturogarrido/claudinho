@@ -72,8 +72,8 @@ import {
   MARKETS_SCOPE_NOTE,
   marketSignalRendersFor,
   marketRelevant,
-  flavorsFor,
   matchFlair,
+  matchFlairs,
   matchLocation,
   SHARE_HASHTAG,
   resolveMarketSource,
@@ -92,6 +92,7 @@ import type { Translator } from './i18n';
 import {
   dataSource,
   disclaimer,
+  flairOpts,
   header,
   homeColumn,
   matchLine,
@@ -624,12 +625,13 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
       ),
     );
   } else {
-    // The home column, measured once over the rows shown; the phrases chosen
-    // once over them too, in print order, so no row repeats another's.
+    // The home column, measured once over the rows shown; the flairs chosen
+    // once over them too, in print order (core `matchFlairs`: the cries, and
+    // no phrase twice).
     const homeWidth = homeColumn(todays, flags);
-    const phrases = flavorsFor(todays, { level: cfg.flavor, locale: cfg.lang });
+    const flairs = matchFlairs(todays, flairOpts(cfg));
     for (const [i, m] of todays.entries()) {
-      out(matchLine(m, cfg, t, c, flags, homeWidth, phrases[i]));
+      out(matchLine(m, cfg, t, c, flags, homeWidth, flairs[i]));
       const s = market.signals.get(m.id);
       if (s) out('    ' + c.dim(marketLine(s, m)));
     }
@@ -681,11 +683,12 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
     // that was not whole says none in play was READ, not that none is.
     out(c.dim('  ' + (verdictNotice(live, cfg.lang) ?? liveNoneRead(live, cfg.lang) ?? t('live.none'))));
   } else {
-    // The home column, measured once over the rows shown; the phrases chosen
-    // once over them too, in print order, so no row repeats another's.
+    // The home column, measured once over the rows shown; the flairs chosen
+    // once over them too, in print order (core `matchFlairs`: the cries, and
+    // no phrase twice).
     const homeWidth = homeColumn(matches, flags);
-    const phrases = flavorsFor(matches, { level: cfg.flavor, locale: cfg.lang });
-    for (const [i, m] of matches.entries()) out(matchLine(m, cfg, t, c, flags, homeWidth, phrases[i]));
+    const flairs = matchFlairs(matches, flairOpts(cfg));
+    for (const [i, m] of matches.entries()) out(matchLine(m, cfg, t, c, flags, homeWidth, flairs[i]));
   }
   out();
   // The read was not whole: said after the list and before the attribution,
@@ -1350,7 +1353,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   );
   // The flair slot's one rule (core `matchFlair`): a team's rally cry, green
   // as on a match line, else the match's own phrase.
-  const flair = matchFlair(match, { level: cfg.flavor, locale: cfg.lang, kind: teamKind(cfg.competition), pin: cfg.pin });
+  const flair = matchFlair(match, flairOpts(cfg));
   if (flair.text) out('  ' + (flair.rally ? c.green(flair.text) : c.cyan(flair.text)));
   if (match.events?.length) {
     out();

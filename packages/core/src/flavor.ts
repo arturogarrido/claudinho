@@ -14,7 +14,8 @@
  * purpose, and here to match (`flavor-bank.test.ts` compares them).
  *
  * A team's rally cry is not a phrase of the bank: it takes the slot instead
- * of the moment's phrase (`rally.ts`, through {@link matchFlair}).
+ * of the moment's phrase (`rally.ts`, through {@link matchFlairs} for a list
+ * and {@link matchFlair} for one line).
  */
 import { rallyCryFor, type RallyPin } from './rally';
 import type { TeamKind } from './supported';
@@ -155,24 +156,58 @@ export function flavorsFor(matches: readonly Match[], opts: FlavorOpts = {}): st
   });
 }
 
+/** What a flair slot holds: the text (empty for none), and whether it is a team's rally cry (the CLI prints one green). */
+export interface Flair {
+  text: string;
+  rally: boolean;
+}
+
 /**
- * What a match line's flair slot holds, ONE rule for every line that has one
- * (CLI `today`, `live`, `next`, `match`; MCP text): the match's team rally
- * cry when a side carries one and the level is not `off` (`rally: true`, in
- * every language: a fan's cry is not translated), else the phrase the caller
- * handed in (a list's, from {@link flavorsFor}), else the match's own phrase.
- * `kind` is the competition's team kind; without it no side carries a cry (a
- * kind nobody stated vouches for nothing). `pin` is the pinned team, which
- * decides when both sides carry one.
+ * What a flair is chosen with: the level and the language, the competition's
+ * team kind (without it no side carries a cry: a kind nobody stated vouches
+ * for nothing), and the pinned team, which decides when both sides carry one.
  */
-export function matchFlair(
-  m: Match,
-  opts: FlavorOpts & { kind?: TeamKind; pin?: RallyPin },
-  phrase?: string,
-): { text: string; rally: boolean } {
-  const level = opts.level ?? DEFAULT_FLAVOR;
-  if (level === 'off') return { text: '', rally: false };
-  const cry = opts.kind === undefined ? undefined : rallyCryFor(m, opts.kind, opts.pin);
+export type FlairOpts = FlavorOpts & { kind?: TeamKind; pin?: RallyPin };
+
+/**
+ * The match's rally cry when its line carries one: the level is not `off`
+ * (`subtle` prints cries too, on every moment), the match has a moment (a
+ * postponed or cancelled line stays sober), a team kind is stated, and a side
+ * carries a cry.
+ */
+function cryOf(m: Match, opts: FlairOpts): string | undefined {
+  if ((opts.level ?? DEFAULT_FLAVOR) === 'off' || opts.kind === undefined || momentOf(m) === undefined) return undefined;
+  return rallyCryFor(m, opts.kind, opts.pin);
+}
+
+/**
+ * The flair slots of a list of match lines, in order: ONE rule for every list
+ * (CLI `today` and `live`, MCP `get_today` and `get_live`). A row whose side
+ * carries a cry ({@link cryOf}) prints the cry (`rally: true`, in every
+ * language: a fan's cry is not translated) and reserves no phrase; the other
+ * rows get the phrases {@link flavorsFor} gives them, as a list of their own,
+ * so they stay distinct while the bank allows whatever the cries around them.
+ * With no team kind the list is `flavorsFor`'s.
+ */
+export function matchFlairs(matches: readonly Match[], opts: FlairOpts = {}): Flair[] {
+  const cries = matches.map((m) => cryOf(m, opts));
+  const phrases = flavorsFor(
+    matches.filter((_, i) => cries[i] === undefined),
+    opts,
+  );
+  let next = 0;
+  return cries.map((cry) => (cry !== undefined ? { text: cry, rally: true } : { text: phrases[next++] ?? '', rally: false }));
+}
+
+/**
+ * What ONE match line's flair slot holds (CLI `next` and `match`, MCP
+ * `get_match` and `get_next_fixture`): the list of one ({@link matchFlairs}),
+ * so the match's cry, else the phrase the caller handed in, else the match's
+ * own phrase; `off` is silent whatever was handed in.
+ */
+export function matchFlair(m: Match, opts: FlairOpts, phrase?: string): Flair {
+  if ((opts.level ?? DEFAULT_FLAVOR) === 'off') return { text: '', rally: false };
+  const cry = cryOf(m, opts);
   if (cry !== undefined) return { text: cry, rally: true };
   return { text: phrase ?? matchFlavor(m, opts), rally: false };
 }
@@ -216,7 +251,6 @@ export const FLAVOR_BANKS: Readonly<Record<string, FlavorBank>> = freezeBanks({
       'nobody has blinked yet!',
       'still waiting for the breakthrough!',
       'the net is still waiting!',
-      'early doors!',
       'park the bus!',
     ],
     goal: [
@@ -395,7 +429,6 @@ export const FLAVOR_BANKS: Readonly<Record<string, FlavorBank>> = freezeBanks({
       '¡con el corazón en la mano!',
       '¡es ahora o nunca!',
       '¡uff, uff y recontra uff!',
-      '¡tiempo de descuento!',
     ],
     ft: [
       '¡suena el silbatazo final!',
@@ -645,7 +678,6 @@ export const FLAVOR_BANKS: Readonly<Record<string, FlavorBank>> = freezeBanks({
       "dernier quart d'heure !",
       'le temps presse !',
       "jusqu'au bout !",
-      'dans les arrêts de jeu !',
       "c'est le money time !",
     ],
     ft: [

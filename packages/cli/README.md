@@ -127,10 +127,13 @@ same line twice while the bank has another, and none of it reaches `--json`.
 
 When one side has a rally cry of its own, the cry takes the slot instead, in
 every language: Mexico's `¿Y si sí?`, Pumas' `¡Goya!`, Arsenal's `COYG!` (when
-both sides have one, your pinned team's, else the home side's).
+both sides have one, the team you pinned with `follow --team`, else the home
+side's; `CLAUDINHO_TEAM` picks the team `next` asks about, not the cry). A row
+with a cry takes no line from the bank, so the others in the list stay
+different; a postponed or cancelled match prints neither.
 
 - `--flavor full` *(default)*: flair on fixtures, live play, goals, the break, the closing minutes, and full time
-- `--flavor subtle`: only goals and full time (a win or a draw), and the rally cries
+- `--flavor subtle`: only goals, full time and draws, and the rally cries
 - `--flavor off`: just the facts
 
 ## Prediction-market signals

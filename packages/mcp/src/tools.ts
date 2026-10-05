@@ -632,14 +632,18 @@ async function reliableMarketData(
 
 /**
  * Flavor from the call arg, else the server env, else the default (full); the
- * team kind of the competition the adapter serves (a rally cry's kind).
+ * team kind of the competition the adapter serves (a rally cry's kind); the
+ * request's pin (its saved team, when it applies to the request's
+ * competition), which decides between two cries on every line.
  */
 function fmtOpts(args: CommonOpts, competition: string): FmtOpts {
+  const pin = choiceOf(args).pin;
   return {
     tz: args.tz,
     locale: args.lang,
     flavor: asFlavorLevel(args.flavor ?? process.env.CLAUDINHO_FLAVOR),
     teamKind: teamKind(competition),
+    ...(pin ? { pin } : {}),
   };
 }
 

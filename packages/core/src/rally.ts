@@ -11,14 +11,15 @@
  * team, whatever its labels say), or, for an id-less side in a nations
  * competition (the bundle's nations), by its code AND its name. A club's side
  * with no id carries none: a club's code is a label, not an identity. When
- * both sides carry one, the pinned side's cry when the pin is one of them,
- * else the home side's.
+ * both sides carry one, the pinned side's cry when the pin is one of them (the
+ * one pin predicate, `isPinnedSide`), else the home side's.
  *
  * The content is pinned to the approved fixture
  * `test/fixtures/rally-cries.approved.json`: a cry is changed there, on
  * purpose, and here to match (`flavor-bank.test.ts` compares them).
  */
 import type { TeamKind } from './supported';
+import { isPinnedSide } from './trust/match';
 import type { Match, Team } from './types';
 
 /** One team's cry: the provider's id (the key), its code and name (labels), its kind, the cry. */
@@ -122,13 +123,6 @@ export function rallyEntryFor(team: Team, kind: TeamKind): RallyCry | undefined 
   return RALLY_CRIES.find((c) => c.kind === 'nation' && c.code === team.code && c.name === team.name);
 }
 
-/** Is this side the pinned team: by id when both carry one, else by code and name. */
-function isPinned(team: Team, pin: RallyPin | undefined): boolean {
-  if (pin === undefined) return false;
-  if (team.id !== undefined && pin.id !== undefined) return team.id === pin.id;
-  return team.code === pin.code && team.name === pin.name;
-}
-
 /**
  * The rally cry a match's line carries, or undefined when neither side has
  * one: the side's that has one; when both have one, the pinned side's when
@@ -138,7 +132,8 @@ export function rallyCryFor(m: Match, kind: TeamKind, pin?: RallyPin): string | 
   const home = rallyEntryFor(m.home, kind);
   const away = rallyEntryFor(m.away, kind);
   if (home !== undefined && away !== undefined) {
-    return isPinned(m.away, pin) && !isPinned(m.home, pin) ? away.cry : home.cry;
+    const awayPinned = pin !== undefined && isPinnedSide(m.away, pin) && !isPinnedSide(m.home, pin);
+    return awayPinned ? away.cry : home.cry;
   }
   return (home ?? away)?.cry;
 }
