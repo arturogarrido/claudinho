@@ -165,22 +165,29 @@ jobs:
       # nothing. GNU `timeout` (coreutils, on ubuntu-latest) ends a probe after
       # 20 s whatever npm is doing, and npm's own options keep its one request
       # inside that (15 s, no retries). So the step ends by about 8m40s: the
-      # deadline, one bounded probe and one sleep. The publisher's retries below
-      # are then spent on Registry errors, not on npm.
+      # deadline, one bounded probe and one sleep. Every "not yet" line says the
+      # probe's exit status (124: the probe hit its 20 s; 127: no npm on the
+      # runner; 1: npm's own refusal, a 404 while the version is not served yet
+      # or a network error), and the step's error prints the tail of the last
+      # probe's stderr, kept in a file, so the reason is in the log beside it.
+      # The publisher's retries below are then spent on Registry errors, not on
+      # npm.
       - name: Wait for npm to serve the version
         if: steps.registry.outputs.exists != 'true'
         run: |
           V=${GITHUB_REF_NAME#v}
+          ERR="${RUNNER_TEMP:-/tmp}/npm-view.err"
           DEADLINE=$((SECONDS + 480))
           attempt=0
           while [ "$SECONDS" -lt "$DEADLINE" ]; do
             attempt=$((attempt + 1))
-            GOT=$(timeout 20 npm view @claudinho/mcp@"$V" version --prefer-online --fetch-timeout=15000 --fetch-retries=0 2>/dev/null || true)
+            # A command in an && / || list does not trip errexit: RC keeps the probe's status.
+            GOT=$(timeout 20 npm view @claudinho/mcp@"$V" version --prefer-online --fetch-timeout=15000 --fetch-retries=0 2>"$ERR") && RC=0 || RC=$?
             if [ "$GOT" = "$V" ]; then echo "attempt $attempt (${SECONDS}s): npm serves @claudinho/mcp@$V"; exit 0; fi
-            echo "attempt $attempt (${SECONDS}s): npm does not serve @claudinho/mcp@$V yet; retrying in 20s"
+            echo "attempt $attempt (${SECONDS}s): npm does not serve @claudinho/mcp@$V yet (exit $RC); retrying in 20s"
             sleep 20
           done
-          echo "::error::npm did not serve @claudinho/mcp@$V within the 480 s deadline (${SECONDS}s elapsed, $attempt attempts)"; exit 1
+          echo "::error::npm did not serve @claudinho/mcp@$V within the 480 s deadline (${SECONDS}s elapsed, $attempt attempts); the last probe's stderr:"; tail -n 5 "$ERR" || true; exit 1
 
       # Twelve 20 s attempts (≈4 min) stay, for a transient Registry error and
       # for the version URL the Registry fetches lagging the one npm answered

@@ -121,8 +121,10 @@ function showsScore(m: Match): boolean {
  * The width a list pads its middle cells to, measured ONCE over the rows it
  * shows on the UNPAINTED text: `max(3, min(13, the widest cell))` display
  * columns. A list of `vs` and plain scores is laid out as it always was; a
- * shootout score widens every row to it, so the away names, the time and the
- * flair stay in one column each. One row is measured on itself.
+ * shootout score widens every row to it, so the away names and the time and
+ * status tokens start in one column each. The flair follows its row's token,
+ * whose width varies (`FT`, `55'`, `Sat 19:00`), so it does not line up. One
+ * row is measured on itself.
  */
 export function midColumn(matches: readonly Match[]): number {
   let widest = 0;
@@ -142,8 +144,9 @@ export function awayCell(m: Match, flags: boolean): string {
 /**
  * The width a list pads its away cells to, measured ONCE over the rows it
  * shows: the widest cell, at most {@link HOME_COLUMN_MAX} display columns (no
- * floor: a list of short names is not widened). Every row's time and flair
- * then start in one column; a cell past the ceiling pushes its own row only.
+ * floor: a list of short names is not widened). Every row's time or status
+ * token then starts in one column (the flair follows its row's token, so it
+ * does not); a cell past the ceiling pushes its own row only.
  * One row (`next`) is measured on itself, so it is printed as it always was.
  */
 export function awayColumn(matches: readonly Match[], flags: boolean): number {
@@ -200,7 +203,8 @@ export function matchLine(
   // Display-width padding: a tag-sequence flag (England 🏴󠁧󠁢󠁥󠁮󠁧󠁿) is 14 UTF-16
   // units but 2 columns — padEnd would push its score ~10 columns out of line.
   // The away cell padded to the list's away column the same way, so the time
-  // and the flair line up whatever the away names' lengths.
+  // and status tokens start in one column whatever the away names' lengths
+  // (the flair follows its row's token, whose width varies).
   const left = `${padVisible(home, homeWidth)} ${mid}  ${padVisible(away, awayWidth)}`;
 
   let right = '';
