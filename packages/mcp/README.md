@@ -9,7 +9,7 @@ read-only Polymarket signals for the World Cup) hit the network. It ran the 2026
 the opener to the final.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/arturogarrido/claudinho/main/.github/assets/mcp-aha.gif" alt="An AI coding agent mid-task: asked 'did Germany get through?', it calls the Claudinho MCP server and answers with the result: 🇩🇪 Germany 1(3)–1(4) Paraguay 🇵🇾, FT (Paraguay won the shootout)" width="760">
+  <img src="https://raw.githubusercontent.com/arturogarrido/claudinho/main/.github/assets/mcp-aha.gif" alt="An AI coding agent mid-task during the 2026 World Cup: asked 'did Germany get through?', it calls the Claudinho MCP server and answers with the result: 🇩🇪 Germany 1(3)–1(4) Paraguay 🇵🇾, FT (Paraguay won the shootout)" width="760">
 </p>
 
 > ⭐ Added via `npx` or your MCP config? **[Star the repo](https://github.com/arturogarrido/claudinho)**: a fan project runs on stars.
