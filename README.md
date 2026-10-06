@@ -15,11 +15,11 @@
 **Live football scores, fixtures and standings for the competition you follow (the World Cup, the Premier League, LALIGA, the Champions League and 11 more) in your terminal, your Claude Code and Cursor CLI statusline, and MCP clients.** No API key, no signup. The World Cup's 104 fixtures ship bundled; the other competitions' schedules are read from the feed. It ran the 2026 World Cup from the opener to the final.
 
 <p align="center">
-  <img src=".github/assets/hero.gif" alt="A Claude Code statusline flipping to a live World Cup score (South Korea 2–1 Czechia) while tests run in the terminal" width="800">
+  <img src=".github/assets/hero.png" alt="The claudinho live list in a terminal during a UEFA Nations League matchday: nine matches in play at 48' to 50', each row with its flags, score, minute and a commentary phrase (England 2–0 Czechia, Croatia 1–0 Spain, Scotland 1–0 Slovenia)" width="800">
 </p>
-<!-- HERO: a real live-match capture from the 2026 World Cup's opening day (Jun 11), a
-     tournament Claudinho ran from the opener to the final: the statusline flips to
-     South Korea's 81st-minute winner (1–1 → 2–1) while pytest runs. -->
+<!-- HERO: a real capture, `claudinho --competition nations-league live` on Oct 6, 2026, the
+     second half of the UEFA Nations League's 11:45 PDT batch (nine matches in play) and
+     the first matchday 0.11 ran. Not a recording: a PNG from a real terminal session. -->
 
 ```bash
 npx @claudinho/cli follow world-cup   # choose a competition once (follow --list shows them all)
