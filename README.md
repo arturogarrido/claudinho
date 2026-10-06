@@ -15,24 +15,25 @@
 **Live football scores, fixtures and standings for the competition you follow (the World Cup, the Premier League, LALIGA, the Champions League and 11 more) in your terminal, your Claude Code and Cursor CLI statusline, and MCP clients.** No API key, no signup. The World Cup's 104 fixtures ship bundled; the other competitions' schedules are read from the feed. It ran the 2026 World Cup from the opener to the final.
 
 <p align="center">
-  <img src=".github/assets/hero.gif" alt="A Claude Code statusline flipping to a live World Cup score (South Korea 2–1 Czechia) while tests run in the terminal" width="800">
+  <img src=".github/assets/hero.png" alt="The claudinho live list in a terminal during a UEFA Nations League matchday: nine matches in play at 48' to 50', each row with its flags, score, minute and a commentary phrase or a rally cry (England 2–0 Czechia, Croatia 1–0 Spain, Scotland 1–0 Slovenia)" width="800">
 </p>
-<!-- HERO: a real live-match capture from the 2026 World Cup's opening day (Jun 11), a
-     tournament Claudinho ran from the opener to the final: the statusline flips to
-     South Korea's 81st-minute winner (1–1 → 2–1) while pytest runs. -->
+<!-- HERO: a real capture, `claudinho --competition nations-league live` on Oct 6, 2026, the
+     second half of the UEFA Nations League's 11:45 PDT batch (nine matches in play) and
+     the first matchday 0.11 ran. Not a recording: the command's real output at that moment,
+     rendered to a PNG. -->
 
 ```bash
-npx @claudinho/cli follow world-cup   # choose a competition once (follow --list shows them all)
+npx @claudinho/cli follow nations-league   # choose a competition once (follow --list shows them all)
 npx @claudinho/cli today      # try it in 10 seconds — no install, no key
 npx @claudinho/cli live       # what's on right now (during match windows)
 ```
 
 > ⭐ **Like it?** [Star the repo](https://github.com/arturogarrido/claudinho): a fan project's only scoreboard is its stars. (`claudinho star` shows you how anytime.)
 
-While matches are live, your Claude Code or Cursor CLI statusline reads:
+While matches are live, your Claude Code or Cursor CLI statusline reads (the same moment as the capture above, eight matches shown and one counted):
 
 ```text
-⚽ 🇳🇴 1–1 🇫🇷 87' · 🇸🇳 1–2 🇮🇶 86'
+⚽ 🇦🇱 1–0 🇸🇲 49' · 🇧🇾 1–0 🇫🇮 50' · 🇭🇷 1–0 🇪🇸 50' · 🏴󠁧󠁢󠁥󠁮󠁧󠁿 2–0 🇨🇿 50' · 🇪🇪 0–0 🇮🇸 50' · 🇱🇺 0–2 🇧🇬 50' · 🇲🇩 0–2 🇸🇰 49' · 🏴󠁧󠁢󠁳󠁣󠁴󠁿 1–0 🇸🇮 48' +1
 ```
 
 And `claudinho share` prints a card made for the group chat:
@@ -87,6 +88,7 @@ claudinho init cursor          # statusline → ~/.cursor/cli-config.json (+ the
 <p align="center">
   <img src=".github/assets/cursor-cli-statusline.png" alt="A live World Cup score in a Cursor CLI statusline (Uzbekistan 0–1 Colombia, 42') with a model and context line below it" width="520">
 </p>
+<p align="center"><sub>Captured during the 2026 World Cup group stage.</sub></p>
 
 Restart your agent session to see it. Prefer to paste it yourself? `claudinho init cursor --print`
 emits the snippets, or copy them straight from here:
@@ -158,8 +160,9 @@ Everything else takes the standard stdio config:
 Then just ask, mid-task: the agent calls the MCP server and answers with the score:
 
 <p align="center">
-  <img src=".github/assets/mcp-aha.gif" alt="An AI coding agent asked 'did Germany get through?' mid-task; it calls the Claudinho MCP server and answers with the result: Germany 1(3)–1(4) Paraguay, FT (Paraguay won on penalties)" width="720">
+  <img src=".github/assets/mcp-aha.gif" alt="An AI coding agent asked 'did Germany get through?' mid-task during the 2026 World Cup; it calls the Claudinho MCP server and answers with the result: Germany 1(3)–1(4) Paraguay, FT (Paraguay won on penalties)" width="720">
 </p>
+<p align="center"><sub>Captured during the 2026 World Cup knockout rounds.</sub></p>
 
 ## Surfaces
 

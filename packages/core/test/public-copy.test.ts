@@ -124,8 +124,10 @@ describe('no em-dash in authored prose', () => {
 
 describe('every en dash stays (a score, a range, an alt text)', () => {
   // The counts each file had before the sweep (Oct 5, 2026, main f48fd45): a sweep that touched one fails here.
+  // README.md: 8 → 14 on Oct 6, 2026, when the statusline example became the real eight-match line of the
+  // Nations League capture (eight scores); the three dashes of the old hero alt and comment left with it.
   const BEFORE: Record<string, number> = {
-    'README.md': 8,
+    'README.md': 14,
     'packages/cli/README.md': 7,
     'packages/mcp/README.md': 1,
     'packages/core/README.md': 0,
