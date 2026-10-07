@@ -121,9 +121,10 @@ options:
   --timeout <seconds>                       each child's deadline (default 60; the MCP session 30): TERM, then KILL after 2 s;
                                             a capture signals script's group and the descendants ps lists, and when ps does not
                                             answer the TERM is withheld: ps is asked again at the KILL, and a descendant it still
-                                            cannot list, or one whose script had already left, may have survived (the phase
-                                            fails); the second ps costs its own bound, so the KILL is sent at most after the
-                                            deadline, the ps bound (${PS_TIMEOUT_MS / 1000} s), the grace and the ps bound again
+                                            cannot list, or one whose script had already left (exited, or a zombie or absent in
+                                            ps's answer), may have survived (the phase fails); the second ps costs its own
+                                            bound, so the KILL is sent at most after the deadline, the ps bound
+                                            (${PS_TIMEOUT_MS / 1000} s), the grace and the ps bound again
   --env KEY=VALUE                           a scenario key only, with a value: ${SCENARIO_KEYS.join(', ')}
   --dry-run                                 seed: say what would be written, write nothing
 
@@ -549,14 +550,17 @@ function alive(pid) {
 }
 
 /**
- * Every descendant of a pid, read once from the process table (pid and parent pid), before any signal. `ps` runs with
- * PATH alone and a bound (PS_TIMEOUT_MS, then SIGKILL): a `ps` that is missing, exits nonzero or does not answer in
- * time gives no tree and a reason (`{ tree: [], failure }`). What follows a failure is the caller's (`startChild`: at
- * the deadline the TERM is withheld and the table asked once more at the KILL step, each ask costing this bound).
+ * Every descendant of a pid, read once from the process table (pid, parent pid and state), before any signal, and the
+ * state of the pid itself in that same snapshot: `leader` is `alive` (in the table, a state not starting with `Z`),
+ * `zombie` (in the table as a zombie: it has exited, its children reparented) or `absent` (not in the table). `ps` runs
+ * with PATH alone and a bound (PS_TIMEOUT_MS, then SIGKILL): a `ps` that is missing, exits nonzero or does not answer
+ * in time gives no tree, no leader and a reason (`{ tree: [], failure, leader: null }`). What follows a failure is the
+ * caller's (`startChild`: at the deadline the TERM is withheld and the table asked once more at the KILL step, each
+ * ask costing this bound).
  */
 function descendantsOf(pid) {
   // SIGKILL at the bound: a `ps` that ignores TERM must not hold the controller past it.
-  const r = spawnSync('ps', ['-A', '-o', 'pid=', '-o', 'ppid='], {
+  const r = spawnSync('ps', ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'stat='], {
     env: { PATH: process.env.PATH ?? '' },
     timeout: PS_TIMEOUT_MS,
     killSignal: 'SIGKILL',
@@ -570,12 +574,16 @@ function descendantsOf(pid) {
         : r.signal
           ? `signal ${r.signal}`
           : `exit ${r.status}`;
-    return { tree: [], failure };
+    return { tree: [], failure, leader: null };
   }
   const children = new Map();
+  let leader = 'absent';
   for (const line of r.stdout.split('\n')) {
-    const [p, pp] = line.trim().split(/\s+/).map(Number);
+    const [ps, pps, stat = ''] = line.trim().split(/\s+/);
+    const p = Number(ps);
+    const pp = Number(pps);
     if (!Number.isInteger(p) || !Number.isInteger(pp)) continue;
+    if (p === pid) leader = stat.startsWith('Z') ? 'zombie' : 'alive';
     if (!children.has(pp)) children.set(pp, []);
     children.get(pp).push(p);
   }
@@ -587,7 +595,7 @@ function descendantsOf(pid) {
       queue.push(c);
     }
   }
-  return { tree: found, failure: null };
+  return { tree: found, failure: null, leader };
 }
 
 function signal(target, sig) {
@@ -683,17 +691,22 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       if (!unrecordedAtDeadline) kill('SIGTERM');
       killStep = new Promise((stepDone) => {
         killTimer = setTimeout(() => {
-          // The KILL step after an unrecorded deadline. A second `ps` vouches only for a leader still alive: what it
-          // finds is killed with the group, and a second failure kills the group alone and leaves a descendant that may
-          // have survived. A leader that has already exited (its status reaped) took the ancestry with it: its children
-          // were reparented, and its pid may be another process's by now, so the table is not asked and a descendant
-          // may have survived whatever it would answer.
+          // The KILL step after an unrecorded deadline. A second `ps` vouches only for a leader still alive IN ITS OWN
+          // SNAPSHOT: what it finds is then killed with the group. A second failure kills the group alone and leaves a
+          // descendant that may have survived. A leader that has already exited took the ancestry with it (its children
+          // were reparented), so a descendant may have survived: when Node already knows it gone (its status reaped,
+          // its pid perhaps another process's by now), the table is not asked; when the snapshot shows it a zombie or
+          // absent (it exited while the lookup blocked the loop, so Node's exit fields were still empty), what the
+          // snapshot found is not killed and the survivor is said.
           if (group && child.pid && unrecordedAtDeadline) {
             if (child.exitCode !== null || child.signalCode !== null) survivorPossible = true;
             else {
               const found = record();
               if (found.failure) survivorPossible = true;
-              else tree = [...new Set([...tree, ...found.tree])];
+              else if (found.leader !== 'alive') {
+                survivorPossible = true;
+                err.push(Buffer.from(`verify: ps answered, but the group's leader was ${found.leader} in it; descendants not traced\n`));
+              } else tree = [...new Set([...tree, ...found.tree])];
             }
           }
           kill('SIGKILL');
