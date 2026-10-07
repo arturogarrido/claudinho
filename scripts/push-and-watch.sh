@@ -73,14 +73,16 @@
 # that ignores TERM under a parent that dies of it is still killed by its own
 # pid. The recorded pids are written, before that first signal, to
 # `tree.<pid>` in the temporary directory, one line, and the file is removed
-# after the last KILL; a later stop of the same process takes in the pids of a
-# file left there, and replaces it. A stop that does not finish leaves its file:
+# after the last KILL. A record left by an unfinished stop is taken in by the
+# next stop of the same process, which signals its pids too and replaces it:
 # when the script is TERMed while the watchdog waits on a call that ignores
-# TERM, cleanup KILLs the watchdog (its file stays, naming the call's whole
-# tree), then stops the call with those pids too (its own walk no longer finds a
-# grandchild whose parent died of TERM). Cleanup then sends KILL to each pid
-# still alive (`kill -0`) in any file left, and removes the temporary
-# directory. It never tags, merges or comments.
+# TERM, cleanup KILLs the watchdog (its record stays, naming the call's whole
+# tree), then stops the call, which takes those pids in (its own walk no longer
+# finds a grandchild whose parent died of TERM). Cleanup reaps the watchdog,
+# then the call, then the timer, and removes the temporary directory. A second
+# TERM or INT while cleanup waits ends it at once (the user asking to stop
+# now), which is why cleanup's waits are short. It never tags, merges or
+# comments.
 #
 # Options:
 #   --timeout <min>   how long to wait for the run (default 30 minutes)
@@ -146,9 +148,11 @@ fi
 # Every process this script starts is one of three, each held in a global
 # while it runs: the deadline timer, a gh call (PROBE_PID) and its watchdog
 # (WATCHDOG_PID). Cleanup on every exit reaps the watchdog, then the gh call,
-# then the timer (each with its descendants, by recorded pids), sends KILL to
-# each pid still alive in a record a stop left in place (stop_tree), and removes
-# the temporary directory. An interrupt or a TERM ends the script through it (a
+# then the timer (each with its descendants, by recorded pids), and removes the
+# temporary directory. A record left by an unfinished stop is taken in by the
+# next stop of the same process (stop_tree): the watchdog's, left when cleanup
+# KILLs it mid-stop, by cleanup's stop of the gh call, which always follows the
+# watchdog's. An interrupt or a TERM ends the script through it (a
 # script's background job ignores SIGINT, and a TERM to the script's pid reaches
 # nothing else, so they would otherwise outlive the script).
 TIMER=""
@@ -189,8 +193,7 @@ descendants_of() {
 # go; then KILL to each recorded descendant still alive (`kill -0`) and to the
 # process if it is; then the record is removed (once a process is gone its pid
 # may be given to another). A stop killed before its end leaves the record for
-# the next stop of the same pid, and for cleanup. Quiet: bash otherwise reports
-# a killed job.
+# the next stop of the same pid. Quiet: bash otherwise reports a killed job.
 stop_tree() {
   local pid=$1 tries=$2 i=0 desc k rec="" earlier=""
   [ -n "$pid" ] || return 0
@@ -222,21 +225,10 @@ reap() {
 } 2>/dev/null
 
 cleanup() {
-  local rec line k
   reap "$WATCHDOG_PID"; WATCHDOG_PID=""
   reap "$PROBE_PID"; PROBE_PID=""
   reap "$TIMER"; TIMER=""
-  if [ -n "$WORK" ]; then
-    # A record still here is a stop that did not finish and that no later stop
-    # of its pid took in: KILL each pid it names that is still alive.
-    for rec in "$WORK"/tree.*; do
-      [ -f "$rec" ] || continue
-      line=""
-      read -r line <"$rec"
-      for k in $line; do is_pid "$k" && kill -0 "$k" && kill -9 "$k"; done
-    done 2>/dev/null
-    rm -rf "$WORK"
-  fi
+  if [ -n "$WORK" ]; then rm -rf "$WORK"; fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT
