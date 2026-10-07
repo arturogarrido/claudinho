@@ -119,12 +119,12 @@ options:
                                             <label>.rpc.jsonl, so no two labels' files can coincide (capture's <label> alike)
   --keep                                    keep the temporary HOME, config and cache
   --timeout <seconds>                       each child's deadline (default 60; the MCP session 30): TERM, then KILL after 2 s;
-                                            a capture signals script's group and the descendants ps lists, and when ps does not
-                                            answer the TERM is withheld: ps is asked again at the KILL, and a descendant it still
-                                            cannot list, or one whose script had already left (exited, or a zombie or absent in
-                                            ps's answer), may have survived (the phase fails); the second ps costs its own
-                                            bound, so the KILL is sent at most after the deadline, the ps bound
-                                            (${PS_TIMEOUT_MS / 1000} s), the grace and the ps bound again
+                                            a capture signals script's group (while it exists) and the descendants ps lists, and
+                                            when ps does not answer, or its answer shows script already gone (a zombie or absent),
+                                            the TERM is withheld: ps is asked again at the KILL, and a descendant it still cannot
+                                            list, or one whose script had already left, may have survived (the phase fails); the
+                                            second ps costs its own bound, so the KILL is sent at most after the deadline, the ps
+                                            bound (${PS_TIMEOUT_MS / 1000} s), the grace and the ps bound again
   --env KEY=VALUE                           a scenario key only, with a value: ${SCENARIO_KEYS.join(', ')}
   --dry-run                                 seed: say what would be written, write nothing
 
@@ -622,13 +622,15 @@ function signal(target, sig) {
  * process group of its own (detached) and the deadline signals the whole group and every descendant recorded before
  * the first signal, then waits until they are gone. The group (`-pid`) is signalled, by every step, while it still
  * EXISTS, whether or not the leader's exit is recorded (a group's id is not reused while any member lives, and a member
- * outside every recorded tree is reached only so), and never once it is gone; a plain child's pid is signalled while
- * its exit is not recorded; the recorded tree by pid (its pids were seen alive at the deadline). When the process
- * table did not answer at the deadline, the TERM is WITHHELD (the child's stderr evidence says the table did not answer): nothing is signalled until the KILL step,
- * after the grace, which asks the table once more and sends KILL to the group and to what it found; when it fails
- * again, or when the group's leader has already exited (its children reparented: no table can find them from its pid),
- * KILL goes to the group alone and the result says `survivorPossible` (a descendant may have survived; the phase
- * fails). The child is in `running` until it is reaped and its group and recorded tree are gone: a second interrupt
+ * outside every recorded tree is reached only so), and never once it has been seen gone (the group is then retired
+ * for this child: never probed or signalled again); a plain child's pid is signalled while its exit is not recorded;
+ * the recorded tree by pid (its pids were seen alive at the deadline). A lookup vouches for a tree only when its own
+ * snapshot shows the leader alive. When the lookup at the deadline did not vouch (the table did not answer, or showed
+ * the leader a zombie or absent: it left while the lookup blocked the loop), the TERM is WITHHELD (the child's stderr
+ * evidence says why): nothing is signalled until the KILL step, after the grace, which asks the table once more and
+ * sends KILL to the group and to what it found; when that lookup does not vouch either, or when the leader's exit is
+ * already recorded (its children reparented: no table can find them from its pid), KILL goes to the group alone and
+ * the result says `survivorPossible` (a descendant may have survived; the phase fails). The child is in `running` until it is reaped and its group and recorded tree are gone: a second interrupt
  * of the controller sends KILL to it (to them, for a group child) at once (`killRunning`). The result says `killed`
  * when the controller's signal reached a child that had not exited (a timeout or an interrupt). Returns the child and a
  * promise of its result.
@@ -666,13 +668,17 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       if (!keepStdin) child.stdin.end();
     }
     let tree = [];
-    // Set once the process table answered for this child: a tree was recorded (possibly empty).
+    // Set once a lookup vouched for this child: the table answered with the leader alive, a tree was recorded (possibly
+    // empty).
     let recorded = false;
+    // Set once the group was seen gone (`groupExists` false): the group target is retired for the rest of this child.
+    let groupRetired = false;
     let killed = false;
     let aborted = false;
-    // Set when the process table did not answer at the deadline: the TERM is withheld and the KILL step asks again.
+    // Set when the lookup at the deadline did not vouch: the TERM is withheld and the KILL step asks again.
     let unrecordedAtDeadline = false;
-    // Set when it did not answer at the KILL step either: a descendant may have survived, and the phase says so.
+    // Set when the KILL step's lookup did not vouch either, or the leader's exit was recorded by then: a descendant may
+    // have survived, and the phase says so.
     let survivorPossible = false;
     let killStep = null;
     /**
@@ -682,33 +688,54 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
      * is reached only through the group; never once it is gone (nothing is sent, so a reused pid is not signalled).
      * The window between that check and the signal remains: the group's last member could die and its id be taken by a
      * new group in between. It cannot be closed on Darwin (no pidfd for a group); it lasts from one system call to the
-     * next. Then the recorded tree, by pid (its pids were seen alive at the deadline). A plain child: its pid while its
-     * exit is not recorded (the pid may be another process's by then).
+     * next. A group seen gone once is retired (`groupLive`). Then the recorded tree, by pid (its pids were seen alive at
+     * the deadline). A plain child: its pid while its exit is not recorded (the pid may be another process's by then).
      */
     const kill = (sig) => {
       if (!child.pid) return;
       if (group) {
-        if (groupExists(child.pid)) signal(-child.pid, sig);
+        if (groupLive()) signal(-child.pid, sig);
         for (const pid of tree) signal(pid, sig);
       } else if (child.exitCode === null && child.signalCode === null) signal(child.pid, sig);
     };
-    /** Asks the process table for the group leader's descendants; a failure is said on the phase's stderr. */
+    /**
+     * Whether this child's group is still a target: it exists now (`groupExists`) and has never been seen gone. Once it
+     * answers false the group is retired for the rest of this child, never probed or signalled again: a group id seen
+     * gone may be another group's later (a new process with that pid leading a group of its own), and from then on the
+     * recorded descendants, by pid, are all that is signalled and waited on. No test can force a group id's reuse.
+     */
+    const groupLive = () => {
+      if (groupRetired) return false;
+      if (groupExists(child.pid)) return true;
+      groupRetired = true;
+      return false;
+    };
+    /**
+     * Asks the process table for the group leader's descendants. The lookup vouches only when the table answered and its
+     * own snapshot shows the leader alive; a failure, or a leader that was a zombie or absent in it, is said on the
+     * phase's stderr and vouches for nothing.
+     */
     const record = () => {
       const found = descendantsOf(child.pid);
+      const vouched = found.failure === null && found.leader === 'alive';
       if (found.failure) err.push(Buffer.from(`verify: ps did not answer (${found.failure}); descendants not recorded\n`));
+      else if (!vouched) err.push(Buffer.from(`verify: ps answered, but the group's leader was ${found.leader} in it; descendants not traced\n`));
       else recorded = true;
-      return found;
+      return { ...found, vouched };
     };
     const abort = () => {
       if (finished || aborted) return;
       aborted = true;
       killed = child.exitCode === null && child.signalCode === null;
       if (group && child.pid) {
+        // The deadline's lookup vouches only for a leader alive in its own snapshot: a zombie or an absent leader (it
+        // left while the lookup blocked the loop, so Node's exit fields were still empty) took the ancestry with it, and
+        // the deadline counts as unrecorded, as when the table did not answer.
         const found = record();
-        tree = found.tree;
-        unrecordedAtDeadline = found.failure !== null;
+        tree = found.vouched ? found.tree : [];
+        unrecordedAtDeadline = found.failure !== null || found.leader !== 'alive';
       }
-      // When the table did not answer, the TERM is WITHHELD: nothing is signalled at the deadline, so the group stays
+      // When the lookup did not vouch, the TERM is WITHHELD: nothing is signalled at the deadline, so the group stays
       // whole for the grace and its descendants stay findable (Darwin's `script` dies at a TERM without passing it on,
       // and its child, reparented, could no longer be found). The second `ps` at the KILL step costs its own bound, so
       // the KILL is sent at most after the deadline, the `ps` bound, the grace and the `ps` bound again.
@@ -726,11 +753,8 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
             if (child.exitCode !== null || child.signalCode !== null) survivorPossible = true;
             else {
               const found = record();
-              if (found.failure) survivorPossible = true;
-              else if (found.leader !== 'alive') {
-                survivorPossible = true;
-                err.push(Buffer.from(`verify: ps answered, but the group's leader was ${found.leader} in it; descendants not traced\n`));
-              } else tree = [...new Set([...tree, ...found.tree])];
+              if (!found.vouched) survivorPossible = true;
+              else tree = [...new Set([...tree, ...found.tree])];
             }
           }
           kill('SIGKILL');
@@ -765,8 +789,9 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
         // the descendants, even when the group itself is already gone: it runs before the evidence is final.
         if (unrecordedAtDeadline && killStep) await killStep;
         // The group, and every descendant recorded before the first signal, gone before the evidence is final (the KILL
-        // here, like every signal, reaches the group while it exists; the probe sends no signal).
-        for (let i = 0; i < 200 && (alive(-child.pid) || tree.some(alive)); i++) {
+        // here, like every signal, reaches the group while it exists; the probe sends no signal). Once the group is seen
+        // gone it is retired, and the recorded descendants alone are waited on.
+        for (let i = 0; i < 200 && (groupLive() || tree.some(alive)); i++) {
           if (i === 40) kill('SIGKILL');
           await sleep(50);
         }
