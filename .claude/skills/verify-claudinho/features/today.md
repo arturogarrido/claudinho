@@ -34,5 +34,5 @@ recorded feed must prove and are not asserted yet.
   bundle it shows the bundled schedule and says so (offline: proven above, both).
 - A read that was not whole says "may be incomplete" and never "none" (replay).
 - Between editions the day says the edition ended (replay).
-- The structured twin carries every verdict the text says (AGENTS.md, the verdict bullet; offline: `degraded`,
+- The structured twin carries every verdict the text says (AGENTS.md "A verdict becomes output in ONE place"; offline: `degraded`,
   `noCompetition` proven above).

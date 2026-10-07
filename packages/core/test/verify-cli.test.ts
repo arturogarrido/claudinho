@@ -20,9 +20,15 @@
  *   - `capture`: the whole process group under `script` killed at the deadline (Darwin and Linux);
  *   - the evidence survives cleanup; the temporary HOME, config and cache do not (unless `--keep`);
  *   - the preloads are named by ABSOLUTE path on the child's NODE_OPTIONS, quoted when the path has a space;
- *   - the two SKILL.md copies byte-equal, the map's path named by both; and THE MAP'S TRIPWIRE: every `offline:` line
- *     of every feature file names a command `--help` lists, and that command, run through the control CLI, exits as
- *     the file says and prints the marker the file names.
+ *   - the logs are per PHASE (`<label>.<phase>.fetches`, `.spawns`), every aggregate entry naming its phase; the label
+ *     is reserved in `--out` when a command starts (a taken label is refused); the MCP server's own exit is part of
+ *     `ok`; a reply is judged before it is believed (a result or an error, `tools` an array, `content` an array);
+ *     every launch function of child_process is recorded and inert; `ps` is bounded; a preload that cannot write its
+ *     log says so on stderr and the phase fails; the live preload logs the attempt before the request;
+ *   - the two SKILL.md copies byte-equal, the map's path named by both, every AGENTS.md lead the skill cites present
+ *     there; and THE MAP'S TRIPWIRE: every `offline:` line of every feature file (at least one per file, twelve in
+ *     all) names a command `--help` lists, and that command, run through the control CLI, exits as the file says and
+ *     prints the marker the file names.
  * The wrapper's exit: 0 when `ok`, 1 when a phase failed (a nonzero child, a miss, a malformed recording, a timeout,
  * an MCP failure), 2 for a usage error or a refusal before any child. The tree under test is the repository the
  * script lives in, or `VERIFY_ROOT` in the controller's OWN environment (the test's seam for a fake tree).
@@ -30,7 +36,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -46,17 +52,27 @@ const MCP_DIST = join(ROOT, 'packages/mcp/dist/index.js');
 const SKILL = join(ROOT, '.claude/skills/verify-claudinho/SKILL.md');
 const SKILL_MIRROR = join(ROOT, '.cursor/skills/verify-claudinho/SKILL.md');
 const FEATURES = join(ROOT, '.claude/skills/verify-claudinho/features');
+const AGENTS = join(ROOT, 'AGENTS.md');
+const PRELOADS = { offline: join(ROOT, 'scripts/offline-preload.mjs'), replay: join(ROOT, 'scripts/replay-preload.mjs'), live: join(ROOT, 'scripts/live-preload.mjs') };
+/** The bold leads of AGENTS.md the skill and the map cite by their words. */
+const CITED_LEADS = [
+  'Every data vendor implements the `ProviderAdapter` interface',
+  'Text has ROLES, not one universal cleaner',
+  'A verdict becomes output in ONE place',
+  'The competition is decided ONCE, at the edge, and then travels as a value',
+  'Knockout/team-facing surfaces MUST live-resolve',
+];
 const VERSION = JSON.parse(readFileSync(join(ROOT, 'packages/cli/package.json'), 'utf8')).version as string;
 const SLOW = 90_000;
 const SCENARIO_KEYS = ['CLAUDINHO_COMPETITION', 'CLAUDINHO_TEAM', 'CLAUDINHO_SOURCE', 'CLAUDINHO_MARKETS_SOURCE', 'LANG', 'TZ'];
 
 type Phase = { exit: number | null; timedOut?: boolean; stdout: string; stderr: string };
-type Fetch = { url: string; mode: string; outcome: string };
+type Fetch = { url: string; mode: string; outcome: string; phase?: string };
 type Check = { name: string; ok: boolean; detail?: string };
 type Result = {
   ok: boolean; mode?: string; timedOut?: boolean; error?: string; synthetic?: boolean;
   phases?: Record<string, Phase>; spawns?: unknown[]; fetches?: Fetch[]; env?: string[]; paths?: Record<string, string>;
-  checks?: Check[]; tools?: Array<{ name: string; outputSchema?: unknown }>; content?: Array<{ type: string; text?: string }>;
+  checks?: Check[]; tools?: Array<{ name: string; outputSchema?: unknown }>; content?: Array<{ type: string; text?: string }>; failures?: string[]; exit?: number | null;
   structuredContent?: Record<string, unknown>; isError?: boolean; wrote?: string | null; [k: string]: unknown;
 };
 
@@ -97,6 +113,15 @@ const twinOf = (res: Result | null): unknown => JSON.parse(res?.phases?.twin?.st
 const at = (o: unknown, path: string): unknown => path.split('.').reduce((v: unknown, k) => (v == null ? undefined : (v as Record<string, unknown>)[k]), o);
 const sha = (url: string) => createHash('sha256').update(url).digest('hex').slice(0, 24);
 const pidFile = () => join(scratch, `pid-${++n}`);
+/** A directory holding one executable stub, to go first on the controller's PATH. */
+function stubTool(name: string, body: string): string {
+  const dir = mkdtempSync(join(scratch, `stub-${name}-`));
+  writeFileSync(join(dir, name), `#!/bin/sh\n${body}\n`);
+  chmodSync(join(dir, name), 0o755);
+  return dir;
+}
+const withTool = (dir: string) => `${dir}:${process.env.PATH ?? ''}`;
+const jsonLines = (file: string): unknown[] => readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as unknown);
 const readPid = (f: string) => Number(readFileSync(f, 'utf8').trim());
 
 /** A fake repository root for the controller's seam: an ES-module cli dist answering `--version`, an mcp dist, the two package.json files. */
@@ -111,9 +136,9 @@ function fakeRoot(cli: string, mcp = 'process.exit(0);\n', version = VERSION): s
   return root;
 }
 /** A fake stdio MCP server: a line-delimited JSON-RPC reader; `boot` printed first (a stray line); `list` false never answers tools/list. */
-function fakeServer(o: { boot?: string; list?: boolean; pid?: string; schema?: boolean } = {}): string {
+function fakeServer(o: { boot?: string; list?: boolean; pid?: string; schema?: boolean; exitCode?: number; shape?: 'empty' | 'badTools' | 'badCall' } = {}): string {
   return `${o.pid ? `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(o.pid)}, String(process.pid));\n` : ''}${o.boot ? `console.log(${JSON.stringify(o.boot)});\n` : ''}
-const reply = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\\n');
+const reply = (id, result) => process.stdout.write(JSON.stringify(${o.shape === 'empty' ? '{ jsonrpc: \'2.0\', id }' : '{ jsonrpc: \'2.0\', id, result }'}) + '\\n');
 let buf = '';
 process.stdin.on('data', (d) => {
   buf += d;
@@ -123,11 +148,11 @@ process.stdin.on('data', (d) => {
     const msg = JSON.parse(line);
     if (msg.id == null) continue;
     if (msg.method === 'initialize') reply(msg.id, { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '0' } });
-    else if (msg.method === 'tools/list') { if (${o.list === false ? 'false' : 'true'}) reply(msg.id, { tools: [{ name: 't', description: 'd', inputSchema: { type: 'object' }${o.schema === false ? '' : ', outputSchema: { type: \'object\' }'} }] }); }
-    else reply(msg.id, { content: [{ type: 'text', text: 'ok' }], structuredContent: {} });
+    else if (msg.method === 'tools/list') { if (${o.list === false ? 'false' : 'true'}) reply(msg.id, ${o.shape === 'badTools' ? "{ tools: 'nope' }" : `{ tools: [{ name: 't', description: 'd', inputSchema: { type: 'object' }${o.schema === false ? '' : ', outputSchema: { type: \'object\' }'} }] }`}); }
+    else reply(msg.id, ${o.shape === 'badCall' ? '{}' : "{ content: [{ type: 'text', text: 'ok' }], structuredContent: {} }"});
   }
 });
-process.stdin.on('end', () => process.exit(0));
+process.stdin.on('end', () => process.exit(${o.exitCode ?? 0}));
 setTimeout(() => {}, 600000);
 `;
 }
@@ -172,11 +197,29 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(r.status).toBe(1);
     expect(res?.ok).toBe(false);
     expect((res?.checks ?? []).some((c) => !c.ok && /packages\/cli\/dist/.test(`${c.name} ${c.detail ?? ''}`))).toBe(true);
+    const noMcp = fakeRoot('process.exit(0);\n');
+    rmSync(join(noMcp, 'packages/mcp/dist'), { recursive: true });
+    const m = verify(['doctor', '--json', '--out', out()], { env: { VERIFY_ROOT: noMcp } });
+    expect(m.r.status, 'a root with no mcp dist').toBe(1);
+    expect((m.res?.checks ?? []).find((c) => c.name === 'mcp-dist')?.ok).toBe(false);
+    expect((m.res?.checks ?? []).find((c) => c.name === 'mcp-dist')?.detail ?? '').toContain('packages/mcp/dist');
     const stale = fakeRoot('process.exit(0);\n', 'process.exit(0);\n', '0.0.0-stale');
     const v = verify(['doctor', '--json', '--out', out()], { env: { VERIFY_ROOT: stale } });
     expect(v.r.status, 'a dist whose --version differs from package.json').toBe(1);
     expect((v.res?.checks ?? []).find((c) => c.name === 'version')?.ok).toBe(false);
     expect((v.res?.checks ?? []).filter((c) => c.name !== 'version').every((c) => c.ok), 'only the version check fails').toBe(true);
+    // the version child is a phase with a deadline: a dist that prints the version and hangs FAILs the check
+    const hang = fakeRoot('process.exit(0);\n');
+    writeFileSync(join(hang, 'packages/cli/dist/index.js'), `console.log(${JSON.stringify(VERSION)}); setTimeout(() => {}, 600000);\n`);
+    const o = out();
+    const h = verify(['doctor', '--json', '--out', o, '--timeout', '1'], { env: { VERIFY_ROOT: hang } });
+    expect(h.r.status, 'a --version that hangs').toBe(1);
+    const version = (h.res?.checks ?? []).find((c) => c.name === 'version');
+    expect(version?.ok).toBe(false);
+    expect(version?.detail ?? '').toMatch(/timed out/);
+    expect(h.res?.timedOut).toBe(true);
+    expect(h.res?.phases?.version?.timedOut).toBe(true);
+    for (const f of ['doctor.version.txt', 'doctor.version.err', 'doctor.version.exit']) expect(readdirSync(o), f).toContain(f);
   });
 
   it('run refuses the install commands, star, _refresh and --copy before any child; the temporary and the operator\'s settings stay untouched', () => {
@@ -194,6 +237,10 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
       ['a capture label that is not a file name', ['capture', '../x', '--', 'team', 'mexico']],
       ['--synthetic without --replay', ['run', '--offline', '--synthetic', '--', 'team', 'mexico']],
       ['an unknown option', ['run', '--offline', '--frobnicate', '--', 'team', 'mexico']],
+      ['an --env scenario key with an empty value', ['run', '--offline', '--env', 'CLAUDINHO_COMPETITION=', '--', 'team', 'mexico']],
+      ['an --env scenario key with an empty value (prompt)', ['prompt', '--env', 'CLAUDINHO_TEAM=']],
+      ['a --cache that is a file', ['prompt', '--cache', join(ROOT, 'package.json')]],
+      ['a --cache that is a file (seed none)', ['seed', 'none', '--cache', join(ROOT, 'package.json')]],
     ] as Array<[string, string[]]>) {
       const { r, res } = verify([args[0] as string, '--json', '--out', out(), ...args.slice(1)]);
       expect(r.status, why).toBe(2);
@@ -272,7 +319,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     const root = fakeRoot("await fetch('https://example.invalid/control').catch(() => {}); console.log('done');\n");
     const a = verify(['run', '--json', '--out', out(), '--offline', '--', 'today'], { env: { VERIFY_ROOT: root } });
     expect(a.r.status, a.res?.error).toBe(0);
-    expect(a.res?.fetches).toEqual([{ url: 'https://example.invalid/control', mode: 'offline', outcome: 'blocked' }]);
+    expect(a.res?.fetches).toEqual([{ url: 'https://example.invalid/control', mode: 'offline', outcome: 'blocked', phase: 'main' }]);
     expect(a.res?.phases?.main?.stdout).toContain('done');
     const corpus = mkdtempSync(join(scratch, 'corpus-'));
     const b = verify(['run', '--json', '--out', out(), '--replay', corpus, '--', 'today'], { env: { VERIFY_ROOT: root } });
@@ -280,8 +327,18 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(b.res?.ok).toBe(false);
     expect(b.res?.phases?.main?.exit, 'the child\'s own exit is kept').toBe(0);
     expect((b.res?.fetches ?? []).map((f) => f.outcome)).toEqual(['miss']);
+    expect((b.res?.failures ?? []).some((f) => /main.*miss/.test(f)), 'the failure names the phase').toBe(true);
     expect(existsSync(join(corpus, 'misses.log')), 'misses are run-owned, never the corpus\'s').toBe(false);
     expect(readdirSync(corpus), 'the corpus is never written').toEqual([]);
+  });
+
+  it('two concurrent runs with one label and directory: exactly one is refused', async () => {
+    const o = out();
+    const [a, b] = await Promise.all([
+      verifyAsync(['run', '--json', '--out', o, '--label', 'twin', '--offline', '--', 'team', 'mexico']),
+      verifyAsync(['run', '--json', '--out', o, '--label', 'twin', '--offline', '--', 'team', 'mexico']),
+    ]);
+    expect([a.r.status, b.r.status].sort()).toEqual([0, 2]);
   });
 
   it('two concurrent replays under one empty corpus each own their one miss', async () => {
@@ -315,6 +372,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(ok.res?.synthetic).toBe(false);
     expect((ok.res?.fetches ?? []).length).toBeGreaterThan(0);
     expect((ok.res?.fetches ?? []).every((f) => f.outcome === 'replayed:raw' && f.mode === 'replay')).toBe(true);
+    expect(new Set((ok.res?.fetches ?? []).map((f) => f.phase)), 'the main and the twin phase each logged their own').toEqual(new Set(['main', 'twin']));
     expect(at(twinOf(ok.res), 'degraded')).toBe(false);
     expect(at(twinOf(ok.res), 'source')).toBe('espn');
     expect(ok.res?.phases?.main?.stdout).toContain('Live data: ESPN');
@@ -356,6 +414,13 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     const two = verify(['run', '--json', '--out', out(), '--offline', '--replay', corpus, '--', 'team', 'mexico']);
     expect(two.r.status).toBe(2);
     expect(two.res?.phases ?? {}).toEqual({});
+    // the evidence never lands in the corpus
+    for (const o of [corpus, join(corpus, 'evidence')]) {
+      const inside = verify(['run', '--json', '--out', o, '--replay', corpus, '--', 'team', 'mexico']);
+      expect(inside.r.status, `--out ${o}`).toBe(2);
+      expect(inside.res?.phases ?? {}).toEqual({});
+    }
+    expect(readdirSync(corpus).some((f) => f.endsWith('.result.json')), 'nothing written into the corpus').toBe(false);
   });
 
   it('the preloads ride NODE_OPTIONS by absolute path, quoted: the control CLI works from a directory with a space', { timeout: SLOW }, () => {
@@ -388,7 +453,8 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(at(today.res?.structuredContent, 'degraded')).toBe(true);
     expect(at(today.res?.structuredContent, 'competition.slug')).toBe('eng.1');
     expect((today.res?.fetches ?? []).length).toBeGreaterThan(0);
-    expect((today.res?.fetches ?? []).every((f) => f.outcome === 'blocked')).toBe(true);
+    expect((today.res?.fetches ?? []).every((f) => f.outcome === 'blocked' && f.phase === 'server')).toBe(true);
+    expect(today.res?.exit, 'the server exited on its own').toBe(0);
     const bad = verify(['mcp', '--json', '--out', out(), 'get_today', '{"competition":"nope"}']);
     expect(bad.res?.ok).toBe(false);
     expect(bad.res?.isError).toBe(true);
@@ -413,9 +479,30 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     const b = verify(['mcp', '--json', '--out', out(), '--list'], { env: { VERIFY_ROOT: bare } });
     expect(b.res?.ok, 'a tool without an outputSchema fails the session').toBe(false);
     expect(b.r.status).toBe(1);
+    // the server's own exit is part of ok
+    const seven = fakeRoot('process.exit(0);\n', fakeServer({ exitCode: 7 }));
+    const x = verify(['mcp', '--json', '--out', out(), '--list'], { env: { VERIFY_ROOT: seven } });
+    expect(x.res?.ok, 'a valid session whose server exits 7').toBe(false);
+    expect(x.r.status).toBe(1);
+    expect(x.res?.exit).toBe(7);
+    expect((x.res?.failures ?? []).some((f) => /server exit 7/.test(f))).toBe(true);
+    // a reply is judged before it is believed
+    const empty = fakeRoot('process.exit(0);\n', fakeServer({ shape: 'empty' }));
+    const e = verify(['mcp', '--json', '--out', out(), '--list'], { env: { VERIFY_ROOT: empty } });
+    expect(e.res?.ok, 'a reply with neither result nor error').toBe(false);
+    expect(e.r.status).toBe(1);
+    expect(e.res?.error ?? '').toMatch(/malformed reply to initialize/);
+    const badTools = fakeRoot('process.exit(0);\n', fakeServer({ shape: 'badTools' }));
+    const bt = verify(['mcp', '--json', '--out', out(), '--list'], { env: { VERIFY_ROOT: badTools } });
+    expect(bt.res?.ok, 'tools that are not an array').toBe(false);
+    expect(bt.res?.error ?? '').toMatch(/malformed reply to tools\/list/);
+    const badCall = fakeRoot('process.exit(0);\n', fakeServer({ shape: 'badCall' }));
+    const bc = verify(['mcp', '--json', '--out', out(), 't'], { env: { VERIFY_ROOT: badCall } });
+    expect(bc.res?.ok, 'a call result without content').toBe(false);
+    expect(bc.res?.error ?? '').toMatch(/malformed reply to tools\/call/);
     const pf = pidFile();
     const root = fakeRoot('process.exit(0);\n', fakeServer({ list: false, pid: pf }));
-    const { r, res } = verify(['mcp', '--json', '--out', out(), '--timeout', '2', '--list'], { env: { VERIFY_ROOT: root } });
+    const { r, res } = verify(['mcp', '--json', '--out', out(), '--timeout', '2', '--list'], { env: { VERIFY_ROOT: root }, timeout: 20_000 });
     expect(r.status).toBe(1);
     expect(res?.ok).toBe(false);
     expect(res?.timedOut).toBe(true);
@@ -455,12 +542,20 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(r.status, 'nothing chosen is exit 1 on both phases, so the wrapper is 1').toBe(1);
     expect(res?.ok).toBe(false);
     const files = readdirSync(o);
-    for (const f of ['ev.main.txt', 'ev.main.err', 'ev.main.exit', 'ev.twin.txt', 'ev.twin.err', 'ev.twin.exit', 'ev.spawns', 'ev.fetches', 'ev.result.json']) expect(files, f).toContain(f);
+    for (const f of ['ev.main.txt', 'ev.main.err', 'ev.main.exit', 'ev.main.spawns', 'ev.main.fetches', 'ev.twin.txt', 'ev.twin.err', 'ev.twin.exit', 'ev.twin.spawns', 'ev.twin.fetches', 'ev.result.json']) expect(files, f).toContain(f);
+    expect(files).not.toContain('ev.fetches');
     expect(readFileSync(join(o, 'ev.main.exit'), 'utf8').trim()).toBe('1');
     expect(readFileSync(join(o, 'ev.twin.txt'), 'utf8')).toMatch(/"noCompetition": true/);
     expect(readFileSync(join(o, 'ev.main.err'), 'utf8')).toMatch(/No competition chosen/);
-    expect(readFileSync(join(o, 'ev.fetches'), 'utf8')).toBe('');
+    expect(readFileSync(join(o, 'ev.main.fetches'), 'utf8')).toBe('');
     expect(JSON.parse(readFileSync(join(o, 'ev.result.json'), 'utf8')).ok).toBe(false);
+    // the label is reserved: a second run with the same label and directory is refused and the first's files stand
+    const before = Object.fromEntries(files.map((f) => [f, readFileSync(join(o, f), 'utf8')]));
+    const again = verify(['run', '--json', '--out', o, '--label', 'ev', '--offline', '--', 'team', 'mexico']);
+    expect(again.r.status, 'a taken label').toBe(2);
+    expect(again.res?.error ?? '').toMatch(/taken/);
+    for (const [f, text] of Object.entries(before)) expect(readFileSync(join(o, f), 'utf8'), f).toBe(text);
+    expect(readdirSync(o).sort()).toEqual(files.sort());
     for (const key of ['home', 'config', 'cache']) {
       const p = res?.paths?.[key] ?? '';
       expect(p, key).not.toBe('');
@@ -478,13 +573,18 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
   it('a hung child ends at the deadline: killed and reaped, timedOut, the partial evidence kept, nonzero', { timeout: SLOW }, async () => {
     const pf = pidFile();
     const root = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf)}, String(process.pid)); console.log('started'); setTimeout(() => {}, 600000);\n`);
-    const { r, res } = verify(['run', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: root } });
+    const { r, res } = verify(['run', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: root }, timeout: 20_000 });
     expect(r.status).toBe(1);
     expect(res?.ok).toBe(false);
     expect(res?.timedOut).toBe(true);
     expect(res?.phases?.main?.timedOut).toBe(true);
     expect(res?.phases?.main?.stdout).toContain('started');
     expect(await until(() => !pidAlive(readPid(pf)), 3000), 'the child was reaped').toBe(true);
+    const polite = fakeRoot(`process.on('SIGTERM', () => { console.log('term'); process.exit(3); }); console.log('up'); setTimeout(() => {}, 600000);\n`);
+    const t = verify(['run', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: polite }, timeout: 20_000 });
+    expect(t.res?.timedOut).toBe(true);
+    expect(t.res?.phases?.main?.exit, 'TERM first: the handler exited 3 before any KILL').toBe(3);
+    expect(t.res?.phases?.main?.stdout).toContain('term');
     const ignoring = fakeRoot(`process.on('SIGTERM', () => {}); console.log('ignoring'); setTimeout(() => {}, 600000);\n`);
     const k = verify(['run', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: ignoring }, timeout: 20_000 });
     expect(k.res?.timedOut, 'TERM ignored, KILL follows').toBe(true);
@@ -504,19 +604,110 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(seven.res?.phases?.main?.exit, 'the child\'s status is the capture\'s').toBe(7);
     expect(seven.res?.ok).toBe(false);
     const pf = pidFile();
-    const root = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf)}, String(process.pid)); process.on('SIGTERM', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
+    // ignoring TERM and HUP both: only the KILL of the recorded descendants ends it (the pty's hangup cannot)
+    const root = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf)}, String(process.pid)); process.on('SIGTERM', () => {}); process.on('SIGHUP', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
     const o2 = out();
-    const hung = verify(['capture', 'hang', '--json', '--out', o2, '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: root } });
+    const hung = verify(['capture', 'hang', '--json', '--out', o2, '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: root }, timeout: 20_000 });
     expect(hung.r.status).toBe(1);
     expect(hung.res?.ok).toBe(false);
     expect(hung.res?.timedOut).toBe(true);
     expect(await until(() => existsSync(pf), 3000)).toBe(true);
-    expect(await until(() => !pidAlive(readPid(pf)), 5000), 'the TERM-ignoring child under script is gone').toBe(true);
+    expect(await until(() => !pidAlive(readPid(pf)), 5000), 'the TERM-and-HUP-ignoring child under script is gone').toBe(true);
     expect(existsSync(join(o2, 'hang.ansi')), 'the partial transcript is kept').toBe(true);
     expect(readFileSync(join(o2, 'hang.txt'), 'utf8')).toContain('hanging');
   });
 
-  it('the two SKILL.md copies are byte-equal and both name the one map; the map has the five surfaces', () => {
+  it('capture: a ps that never answers cannot hold the deadline; the kill proceeds and the stderr says so', { timeout: SLOW }, async () => {
+    const pf = pidFile();
+    const root = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf)}, String(process.pid)); process.on('SIGTERM', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
+    const ps = stubTool('ps', 'sleep 30');
+    const o = out();
+    const r = verify(['capture', 'ps', '--json', '--out', o, '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: root, PATH: withTool(ps) }, timeout: 25_000 });
+    expect(r.res, `the wrapper returned: ${r.stderr.slice(0, 200)}`).not.toBeNull();
+    expect(r.res?.timedOut).toBe(true);
+    expect(readFileSync(join(o, 'ps.main.err'), 'utf8')).toMatch(/ps did not answer/);
+    expect(await until(() => !pidAlive(readPid(pf)), 5000), 'the child is gone (the pty hung up when script died)').toBe(true);
+  });
+
+  it('capture: script\'s own header and footer lines leave the .txt and stay in the .ansi', () => {
+    const script = stubTool('script', [
+      'if [ "$2" = "-F" ]; then f=$3; shift 3; cmd="$*"; else f=$6; cmd=$5; fi',
+      'echo "Script started on 2026-10-07 19:00:00+00:00 [COMMAND=\\"$cmd\\"]" > "$f"',
+      'if [ "$2" = "-F" ]; then "$@" >> "$f" 2>&1; rc=$?; else sh -c "$cmd" >> "$f" 2>&1; rc=$?; fi',
+      'echo "Script done on 2026-10-07 19:00:01+00:00 [COMMAND_EXIT_CODE=\\"$rc\\"]" >> "$f"',
+      'exit $rc',
+    ].join('\n'));
+    const o = out();
+    const r = verify(['capture', 'hdr', '--json', '--out', o, '--offline', '--', 'team', 'mexico'], { env: { PATH: withTool(script) } });
+    expect(r.r.status, r.res?.error).toBe(0);
+    const txt = readFileSync(join(o, 'hdr.txt'), 'utf8');
+    expect(txt).toContain('Mexico');
+    expect(txt).not.toMatch(/Script (started|done) on/);
+    expect(readFileSync(join(o, 'hdr.ansi'), 'utf8')).toMatch(/Script started on/);
+  });
+
+  it('every launch function of child_process is recorded and starts nothing', () => {
+    const root = fakeRoot(`import { exec, execFile, execSync, spawnSync, fork } from 'node:child_process';
+execFile('echo', ['a'], (e, o) => console.log('cbfile', JSON.stringify(String(o))));
+exec('echo b', (e, o) => console.log('cbexec', JSON.stringify(String(o))));
+console.log('sync', JSON.stringify(String(execSync('echo c'))));
+const r = spawnSync('echo', ['d']); console.log('spawnsync', r.status, JSON.stringify(String(r.stdout ?? '')));
+fork(new URL('./child.js', import.meta.url).pathname);
+setTimeout(() => {}, 200);
+`);
+    writeFileSync(join(root, 'packages/cli/dist/child.js'), "console.log('forked');\n");
+    const { r, res } = verify(['run', '--json', '--out', out(), '--offline', '--', 'today'], { env: { VERIFY_ROOT: root } });
+    expect(r.status, res?.phases?.main?.stderr).toBe(0);
+    expect((res?.spawns ?? []).map((s) => (s as string[])[0])).toEqual(['echo', 'echo b', 'echo c', 'echo', join(root, 'packages/cli/dist/child.js')]);
+    const stdout = res?.phases?.main?.stdout ?? '';
+    expect(stdout).toContain('cbfile ""');
+    expect(stdout).toContain('cbexec ""');
+    expect(stdout).toContain('sync ""');
+    expect(stdout).toContain('spawnsync 0 ""');
+    expect(stdout).not.toContain('forked');
+  });
+
+  it('a preload that cannot write its log says so on stderr and the phase fails; the live preload logs the attempt first', () => {
+    const missing = join(scratch, 'no-such-dir', 'fetches');
+    const corpus = mkdtempSync(join(scratch, 'corpus-'));
+    const stub = join(mkdtempSync(join(scratch, 'stub-'))), stub503 = join(stub, 'stub503.mjs'), never = join(stub, 'never.mjs');
+    writeFileSync(stub503, "globalThis.fetch = async () => new Response('x', { status: 503 });\n");
+    writeFileSync(never, "globalThis.fetch = () => new Promise(() => {}); setTimeout(() => process.exit(0), 300);\n");
+    const probe = "try { const r = await fetch('https://example.invalid/p'); console.log('status', r.status); } catch (e) { console.log('rejected', e.message); }";
+    const run = (imports: string[], env: Record<string, string>) => spawnSync(process.execPath, [...imports.flatMap((i) => ['--import', i]), '--input-type=module', '-e', probe], { env: { PATH: process.env.PATH ?? '', ...env }, encoding: 'utf8', timeout: 20_000 });
+    const off = run([PRELOADS.offline], { VERIFY_FETCH_LOG: missing });
+    expect(off.stderr).toMatch(/verify-preload: could not record blocked for https:\/\/example\.invalid\/p/);
+    expect(off.stdout).toContain('rejected');
+    const rep = run([PRELOADS.replay], { VERIFY_FETCH_LOG: missing, VERIFY_REPLAY_CORPUS: corpus });
+    expect(rep.stderr).toMatch(/verify-preload: could not record miss for/);
+    expect(rep.stdout).toContain('rejected');
+    const live = run([stub503, PRELOADS.live], { VERIFY_FETCH_LOG: missing });
+    expect(live.stderr).toMatch(/verify-preload: could not record live:sent for/);
+    expect(live.stdout).toContain('status 503');
+    // the live preload, with a log: the attempt before the request, the status after; a request that never settles leaves the attempt
+    const log = join(mkdtempSync(join(scratch, 'live-')), 'fetches');
+    writeFileSync(log, '');
+    run([stub503, PRELOADS.live], { VERIFY_FETCH_LOG: log });
+    expect(jsonLines(log)).toEqual([{ url: 'https://example.invalid/p', mode: 'live', outcome: 'live:sent' }, { url: 'https://example.invalid/p', mode: 'live', outcome: 'live:503' }]);
+    writeFileSync(log, '');
+    run([never, PRELOADS.live], { VERIFY_FETCH_LOG: log });
+    expect(jsonLines(log)).toEqual([{ url: 'https://example.invalid/p', mode: 'live', outcome: 'live:sent' }]);
+    // the controller fails a phase whose stderr carries the marker
+    const root = fakeRoot("process.stderr.write('verify-preload: could not record blocked for https://x/: boom\\n'); console.log('done');\n");
+    const { r, res } = verify(['run', '--json', '--out', out(), '--offline', '--', 'today'], { env: { VERIFY_ROOT: root } });
+    expect(r.status).toBe(1);
+    expect(res?.ok).toBe(false);
+    expect((res?.failures ?? []).some((f) => /could not be recorded/.test(f))).toBe(true);
+  });
+
+  it('the two SKILL.md copies are byte-equal and both name the one map; the map has the five surfaces; every cited AGENTS.md lead exists', () => {
+    const agents = readFileSync(AGENTS, 'utf8');
+    const cited = [SKILL, ...readdirSync(FEATURES).map((f) => join(FEATURES, f))].map((f) => readFileSync(f, 'utf8')).join('\n');
+    for (const lead of CITED_LEADS) {
+      expect(agents, `AGENTS.md has the lead "${lead}"`).toContain(lead);
+      expect(cited, `the skill or the map cites "${lead}"`).toContain(`"${lead}"`);
+    }
+    expect(cited, 'no bullet is cited by a nickname').not.toMatch(/the \w+(-\w+)? bullets?\b/);
     expect(readFileSync(SKILL, 'utf8')).toBe(readFileSync(SKILL_MIRROR, 'utf8'));
     for (const f of [SKILL, SKILL_MIRROR]) expect(readFileSync(f, 'utf8')).toContain('.claude/skills/verify-claudinho/features/');
     expect(readdirSync(FEATURES).sort()).toEqual(['live.md', 'next.md', 'statusline.md', 'table.md', 'today.md']);
@@ -564,8 +755,9 @@ function check(clause: string, res: Result | null): void {
 
 describe.skipIf(process.platform === 'win32')('the map\'s tripwire: every offline line of every feature file drives and proves', () => {
   const lines = offlineLines(FEATURES);
-  it('reads at least the five surfaces\' lines, each naming a command --help lists', () => {
-    expect(lines.length).toBeGreaterThanOrEqual(11);
+  it('reads twelve lines, at least one per feature file, each naming a command --help lists', () => {
+    expect(lines.length, 'the map grows by a deliberate change of this number').toBe(12);
+    for (const f of ['live.md', 'next.md', 'statusline.md', 'table.md', 'today.md']) expect(lines.some((l) => l.file === f), `${f} drives something`).toBe(true);
     const help = spawnSync(process.execPath, [VERIFY, '--help'], { encoding: 'utf8', env: testEnv() }).stdout;
     for (const l of lines) expect(help, `${l.file}: ${l.command}`).toMatch(new RegExp(`^\\s*${(l.command.split(' ')[0] as string)}\\b`, 'm'));
   });

@@ -23,6 +23,6 @@ The `offline:` line above, run by `packages/core/test/verify-cli.test.ts`.
 ## The gotchas paid for
 
 - An empty answer keeps its header and says the outage; it never invents a fixture (offline: proven above).
-- A knockout slot shows real nations from the live overlay, never the bundle's placeholder (replay; AGENTS.md, the
-  knockout-surface bullet).
+- A knockout slot shows real nations from the live overlay, never the bundle's placeholder (replay; AGENTS.md
+  "Knockout/team-facing surfaces MUST live-resolve").
 - The horizon is the answer's own sentence, not a verdict (replay).

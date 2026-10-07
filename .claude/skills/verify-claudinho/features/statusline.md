@@ -20,9 +20,9 @@ hook on every prompt submit, after `claudinho follow <alias>`.
 - offline: `prompt`
   proves: exit 0; stdout contains "⚽ claudinho follow"; spawns = 0; fetches = []
 - offline: `hook --seed club --slug eng.1 --follow premier-league`
-  proves: exit 0; stdout contains "[Claudinho — live football scores right now]"; stdout contains "Arsenal 2–1 Chelsea (50')"; spawns = 0
+  proves: exit 0; stdout contains "[Claudinho — live football scores right now]"; stdout contains "Arsenal 2–1 Chelsea (50')"; spawns = 0; fetches = []
 - offline: `hook`
-  proves: exit 0; stdout is empty; spawns = 0
+  proves: exit 0; stdout is empty; spawns = 0; fetches = []
 
 ## What proves it
 

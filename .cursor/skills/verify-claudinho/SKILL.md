@@ -17,14 +17,16 @@ to start and nothing to stop.
 ## Doctor
 
 ```
-node scripts/verify.mjs doctor --json
+node scripts/verify.mjs doctor
 ```
 
-Checks, each printed ok or FAIL, the exit nonzero on any FAIL: Node at or above the engines floor; the CLI and MCP
-dists present and the CLI dist's `--version` equal to `packages/cli/package.json`; a temporary config directory made
-and removed; a temporary cache directory made, written and removed (the harness's own, never the operator's);
-`CLAUDINHO_COMPETITION` and `CLAUDINHO_TEAM` REPORTED as set or unset (a report: the children never see them). The
-feed is not asked.
+Checks, each printed as a line `ok <name>` or `FAIL <name>` with its detail, the exit nonzero on any FAIL (`--json`
+prints the same as one object, the `checks` list with each check's `ok` and detail, and no lines): Node at or above
+the engines floor; the CLI and MCP dists present and the CLI dist's `--version` equal to `packages/cli/package.json`
+(that child is the phase `version`, with its own evidence and the deadline `--timeout` sets; a timeout FAILs it
+whatever it printed); a temporary config directory made and removed; a temporary cache directory made, written and
+removed (the harness's own, never the operator's); `CLAUDINHO_COMPETITION` and `CLAUDINHO_TEAM` REPORTED as set or
+unset (a report: the children never see them). The feed is not asked.
 
 ## Drive
 
@@ -63,13 +65,19 @@ the hook on the statusline's file). Every `offline:` line of those files is run 
 ## Evidence
 
 Under `--out <dir>` (default: a timestamped directory under the temporary root, printed by every command): per
-phase `<label>.<phase>.txt` (stdout), `.err` (stderr) and `.exit`; `<label>.spawns` (one JSON line per spawn the
-product asked for); `<label>.fetches` (one JSON line per fetch attempt: the URL, the mode and the outcome `blocked`,
-`replayed:raw`, `replayed:synthetic`, `miss`, `malformed`, `live:<status>` or `live:error`); `<label>.result.json`
-(the aggregate: `ok`, the mode, every phase's exit, the environment's keys, the paths). `ok` is false on any
-phase's nonzero exit, any miss or malformed recording, a timeout, or an MCP failure; the child's own exit is kept
-beside it. A capture writes `<label>.ansi` and `<label>.txt` from the combined pty stream. The PNG card is the
-maintainer's private demo tool, not this skill's.
+phase (`follow`, `main`, `twin`; the MCP session's `server`; doctor's `version`) `<label>.<phase>.txt` (stdout),
+`.err` (stderr), `.exit`, `.spawns` (one JSON line per launch the product asked for, recorded and never started:
+`spawn`, `exec`, `execFile`, `fork` and their sync forms alike) and `.fetches` (one JSON line per fetch attempt: the
+URL, the mode and the outcome `blocked`, `replayed:raw`, `replayed:synthetic`, `miss`, `malformed`, or, live,
+`live:sent` before the request and `live:<status>` or `live:error` after it); `<label>.result.json` (the aggregate:
+`ok`, the mode, every phase's exit, the fetch and spawn entries each naming their phase, the environment's keys,
+the paths). The label is reserved in `--out` when a command starts: a second command with the same label and
+directory is refused, so no run's evidence is ever overwritten or mixed. `ok` is false on any phase's nonzero
+exit, the MCP server's own nonzero exit, any miss or malformed recording, a fetch attempt the preload could not
+record (it says so on the child's stderr), a timeout, or an MCP failure; the child's own exit is kept beside it. A
+capture writes `<label>.ansi` (the combined pty stream as `script` wrote it) and `<label>.txt` (the same with the
+escapes and `script`'s own header and footer lines removed, so its first line is the product's). The PNG card is
+the maintainer's private demo tool, not this skill's.
 
 ## Cleanup
 
@@ -80,9 +88,9 @@ evidence directory is never removed.
 
 | Changed behavior | The evidence to select |
 |---|---|
-| Provider parsing or a trust boundary | the recorded payloads and hostile inputs in `packages/core/test/`, the live and cache parity (AGENTS.md "Conventions", the trust bullets) |
-| A verdict or its presentation | the CLI text and `--json` twin, the MCP text and `data`, the share cards, a qualifier surviving a cut (`run --twin`, `mcp`; the verdict bullet) |
-| Selection, configuration, the cache | precedence (`--env CLAUDINHO_COMPETITION` against `--follow`), refused inputs, cold, stale and partial state, the next call, concurrency (`run`, `seed`, `prompt`; the selection bullet) |
+| Provider parsing or a trust boundary | the recorded payloads and hostile inputs in `packages/core/test/`, the live and cache parity (AGENTS.md "Conventions": "Every data vendor implements the `ProviderAdapter` interface" and "Text has ROLES, not one universal cleaner") |
+| A verdict or its presentation | the CLI text and `--json` twin, the MCP text and `data`, the share cards, a qualifier surviving a cut (`run --twin`, `mcp`; AGENTS.md "A verdict becomes output in ONE place") |
+| Selection, configuration, the cache | precedence (`--env CLAUDINHO_COMPETITION` against `--follow`), refused inputs, cold, stale and partial state, the next call, concurrency (`run`, `seed`, `prompt`; AGENTS.md "The competition is decided ONCE, at the edge, and then travels as a value") |
 | The statusline or the hook | the line, the spawn count, no network and no market work (`prompt`, `hook` on a seed) |
 | An MCP contract | the base and head `tools/list` (`mcp --list` on both), the stdio smoke |
 | Distribution or a release | the packaging contents, the manifests, `pnpm release:qa` (a person, live) |
