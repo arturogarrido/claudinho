@@ -431,7 +431,8 @@ const STEP_KEYS = new Set(['name', 'id', 'if', 'with', 'env', 'shell', 'working-
  * less; a one-line `run:` or `uses:` value is the command. Every other shape throws, naming the job: a flow
  * mapping, a sequence or a bare scalar where a key belongs, a key no step has, `|-`, `|+`, `>`, an empty `run:`
  * (a plain multi-line scalar), a one-line value continued on a deeper line, a step with neither `run:` nor `uses:`
- * (or both), a dash at another column, an inline `steps:` and a job-level `uses:` (a reusable workflow).
+ * (or both), a dash at another column, an inline `steps:`, a job-level `uses:` (a reusable workflow), and a job's
+ * own line that is not a bare lowercase key (a quoted key, a flow form, a sequence).
  */
 export function workflowSteps(yaml: string): Step[] {
   const lines = yaml.split('\n');
@@ -469,6 +470,9 @@ export function workflowSteps(yaml: string): Step[] {
       const afterSteps = inSteps;
       inSteps = false;
       if (afterSteps && /^ {4}-/.test(l)) refuse('unreadable step (a sequence at 4 spaces)', i);
+      // A job's own key is a bare lowercase key, as every job key in ci.yml is: a quoted key ('steps':, "uses":),
+      // a flow form or a sequence at this indent is refused, so the rules below only ever see a bare key.
+      if (!/^ {4}([a-z][a-z0-9-]*):(?=\s|$)/.test(l)) refuse('unreadable job key (not a bare lowercase key)', i);
       if (/^ {4}steps:\s*(#.*)?$/.test(l)) inSteps = true;
       else if (/^ {4}steps:/.test(l)) refuse('unreadable steps (an inline value)', i);
       else if (/^ {4}uses:/.test(l)) refuse('unread job shape (a job-level uses:, a reusable workflow)', i);
