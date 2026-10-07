@@ -524,23 +524,33 @@ let interrupted = false;
 /**
  * The second interrupt's KILL, beside `abort`: every running child gets KILL at once (no grace), a group child to its
  * group (while the group exists) and to its recorded tree, a plain child (`run`'s phases, the MCP server, the ambient
- * commands) to its pid (while its exit is not recorded: the pid may be another process's by then). Returns whether a descendant may have survived it: a group child had an unrecorded deadline (`ps` did not answer
- * there), or has no recorded tree at all (its deadline not reached).
+ * commands) to its pid (while its exit is not recorded: the pid may be another process's by then). Returns null when
+ * no descendant may have survived it, else the distinct reasons known (possibly none): a group child had an unrecorded
+ * deadline (`ps` did not answer there), has no recorded tree at all (its deadline not reached), or has a possible
+ * survivor already (its `survivorReason`).
  */
 function killRunning() {
   let lost = false;
-  for (const entry of running) if (entry.killNow()) lost = true;
-  return lost;
+  const reasons = new Set();
+  for (const entry of running) {
+    const r = entry.killNow();
+    if (!r) continue;
+    lost = true;
+    if (r.reason) reasons.add(r.reason);
+  }
+  return lost ? [...reasons] : null;
 }
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
     if (interrupted) {
       // The second interrupt does not wait for the evidence, but kills what it can reach before leaving.
-      if (killRunning()) {
+      const reasons = killRunning();
+      if (reasons) {
         try {
-          // Synchronous: the exit follows at once.
-          writeSync(2, "verify: interrupted twice; a capture's descendants may have survived\n");
+          // Synchronous: the exit follows at once. The line names the reasons known, when there are any.
+          const why = reasons.map((r) => `${r}; `).join('');
+          writeSync(2, `verify: interrupted twice; ${why}a capture's descendants may have survived\n`);
         } catch {
           // stderr is gone; the exit status still says the run was interrupted.
         }
@@ -627,11 +637,16 @@ function groupExists(pgid) {
   }
 }
 
+/**
+ * Sends a signal and reports whether the kernel answered ESRCH (no such process or group: it is gone, and its id may be
+ * another's later). Any other refusal (EPERM) is not a disappearance and reports false.
+ */
 function signal(target, sig) {
   try {
     process.kill(target, sig);
-  } catch {
-    // Already gone.
+    return false;
+  } catch (e) {
+    return e?.code === 'ESRCH';
   }
 }
 
@@ -720,14 +735,15 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
      * (`groupLive`), whether or not the leader's exit is recorded, since a process group's id cannot be reused while any
      * member lives and a member outside every recorded tree (reparented before the deadline) is reached only through the
      * group; never once it is retired. Then the recorded tree, by pid (its pids were seen alive at the deadline), less
-     * every pid the wait loop has seen gone (`treeLive`). A plain child: its pid while its exit is not recorded (the pid
-     * may be another process's by then).
+     * every pid seen gone (`treeLive`). A signal answered ESRCH is that same observation: the group is retired as gone
+     * (`retireGone`), a descendant leaves `tree` for the rest of this child, so no later path signals that id again. A
+     * plain child: its pid while its exit is not recorded (the pid may be another process's by then).
      */
     const kill = (sig) => {
       if (!child.pid) return;
       if (group) {
-        if (groupLive()) signal(-child.pid, sig);
-        for (const pid of tree) signal(pid, sig);
+        if (groupLive() && signal(-child.pid, sig)) retireGone();
+        tree = tree.filter((pid) => !signal(pid, sig));
       } else if (child.exitCode === null && child.signalCode === null) signal(child.pid, sig);
     };
     /**
@@ -752,11 +768,16 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
      * taken by a new leader that itself exited leaving members, a group indistinguishable from the original remnant. No
      * test can force a pid's reuse.
      */
+    /** The group seen gone (`groupExists` false, or ESRCH on a signal to it): retired, said once the controller signals. */
+    const retireGone = () => {
+      if (groupRetired) return;
+      groupRetired = true;
+      if (signalling) err.push(Buffer.from('verify: the group is gone; not signalled again\n'));
+    };
     const groupLive = () => {
       if (groupRetired) return false;
       if (!groupExists(child.pid)) {
-        groupRetired = true;
-        if (signalling) err.push(Buffer.from('verify: the group is gone; not signalled again\n'));
+        retireGone();
         return false;
       }
       if ((child.exitCode !== null || child.signalCode !== null) && alive(child.pid)) {
@@ -768,8 +789,8 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       return true;
     };
     /**
-     * Whether a recorded descendant is still alive, retiring every one seen gone (`alive` false: no such process): it
-     * leaves `tree` for the rest of this child, so no later signal path (the wait loop's own KILL, the KILL step, an
+     * Whether a recorded descendant is still alive, retiring every one seen gone (`alive` false: no such process; a
+     * signal answered ESRCH is the same observation, in `kill`): it leaves `tree` for the rest of this child, so no later signal path (the wait loop's own KILL, the KILL step, an
      * interrupt's `killNow`) signals that pid again, since a pid seen gone may be another process's later (the group's
      * hazard, closed the same way). A pid still alive, or refused (another user's: EPERM), stays. No test can force a
      * pid's reuse.
@@ -844,15 +865,17 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
     };
     /**
      * The second interrupt's KILL for this child (see `killRunning`), through `kill`: a group child's group (while it
-     * exists) and recorded tree get KILL at once, and the answer is whether a descendant may have survived
-     * it (an unrecorded deadline, or no tree recorded); a plain child gets KILL to its pid while its exit is not
-     * recorded, and leaves no descendant this controller could have recorded.
+     * exists) and recorded tree get KILL at once; a plain child gets KILL to its pid while its exit is not recorded.
+     * The answer is false when no descendant may have survived it, else `{ reason }`: a possible survivor already said
+     * (`survivorPossible`, whatever its reason, which the answer carries), or, for a group child, an unrecorded deadline
+     * or no tree recorded (no reason known yet: null).
      */
     const killNow = () => {
       if (!child.pid) return false;
       signalling = true;
       kill('SIGKILL');
-      return group && (unrecordedAtDeadline || !recorded);
+      if (survivorPossible) return { reason: survivorReason };
+      return group && (unrecordedAtDeadline || !recorded) ? { reason: null } : false;
     };
     const entry = { abort, killNow };
     const deadline = setTimeout(() => {
