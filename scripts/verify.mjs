@@ -74,6 +74,17 @@ const GRACE_MS = 2000;
 const GROUP_PROBE_MS = 50;
 /** How long the process table may take to answer before a group is killed without its recorded descendants. */
 const PS_TIMEOUT_MS = 5000;
+/**
+ * Why a descendant of a capture may have survived (a phase's `survivorReason`, its failure line
+ * `<phase>: <reason>; a descendant may have survived`): the KILL step's lookup failed; the group's leader had left
+ * before a lookup could vouch for it (reaped, or a zombie or absent in the snapshot); the leader's pid was held by
+ * another process while the group still existed.
+ */
+const SURVIVOR = {
+  noPs: 'ps did not answer',
+  leaderGone: "the group's leader was gone before ps could vouch",
+  idReused: "the group's id was reused while the group still existed",
+};
 /** The line a fetch preload writes on its own stderr when its log could not be written: the phase then fails. */
 const PRELOAD_UNRECORDED = 'verify-preload: could not record';
 /**
@@ -492,7 +503,10 @@ function phaseOf(r, argv) {
   const p = { exit: r.exit, stdout: r.stdout, stderr: r.stderr, argv };
   if (r.signal) p.signal = r.signal;
   if (r.timedOut) p.timedOut = true;
-  if (r.survivorPossible) p.survivorPossible = true;
+  if (r.survivorPossible) {
+    p.survivorPossible = true;
+    p.survivorReason = r.survivorReason;
+  }
   return p;
 }
 
@@ -637,7 +651,7 @@ function signal(target, sig) {
  * evidence says why): nothing is signalled until the KILL step, after the grace, which asks the table once more and
  * sends KILL to the group and to what it found; when that lookup does not vouch either, or when the leader's exit is
  * already recorded (its children reparented: no table can find them from its pid), KILL goes to the group alone and
- * the result says `survivorPossible` (a descendant may have survived; the phase fails). The child is in `running`
+ * the result says `survivorPossible` with its `survivorReason` (a descendant may have survived; the phase fails). The child is in `running`
  * until it is reaped and its group and recorded tree are gone: a second interrupt of the controller sends KILL to it
  * (to them, for a group child) at once (`killRunning`). The result says `killed`
  * when the controller's signal reached a child that had not exited (a timeout or an interrupt). Returns the child and a
@@ -692,8 +706,14 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
     // Set when the lookup at the deadline did not vouch: the TERM is withheld and the KILL step asks again.
     let unrecordedAtDeadline = false;
     // Set when the KILL step's lookup did not vouch either, or the leader's exit was recorded by then, or the group was
-    // retired as ambiguous (`groupLive`): a descendant may have survived, and the phase says so.
+    // retired as ambiguous (`groupLive`): a descendant may have survived, and the phase says so, with the FIRST reason
+    // seen (one of SURVIVOR's).
     let survivorPossible = false;
+    let survivorReason = null;
+    const survivor = (reason) => {
+      if (!survivorPossible) survivorReason = reason;
+      survivorPossible = true;
+    };
     let killStep = null;
     /**
      * Every signal the controller sends this child. A group child: the group (`-pid`) while it is still this child's
@@ -741,7 +761,7 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       }
       if ((child.exitCode !== null || child.signalCode !== null) && alive(child.pid)) {
         groupRetired = true;
-        survivorPossible = true;
+        survivor(SURVIVOR.idReused);
         err.push(Buffer.from("verify: the group's id was reused while the group still existed; not signalled again, a member may have survived\n"));
         return false;
       }
@@ -809,10 +829,11 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
           // absent (it exited while the lookup blocked the loop, so Node's exit fields were still empty), what the
           // snapshot found is not killed and the survivor is said.
           if (group && child.pid && unrecordedAtDeadline) {
-            if (child.exitCode !== null || child.signalCode !== null) survivorPossible = true;
+            if (child.exitCode !== null || child.signalCode !== null) survivor(SURVIVOR.leaderGone);
             else {
               const found = record();
-              if (!found.vouched) survivorPossible = true;
+              if (found.failure !== null) survivor(SURVIVOR.noPs);
+              else if (!found.vouched) survivor(SURVIVOR.leaderGone);
               else tree = [...new Set([...tree, ...found.tree])];
             }
           }
@@ -877,7 +898,10 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
         stdout: Buffer.concat(out).toString('utf8'),
         stderr: Buffer.concat(err).toString('utf8'),
       };
-      if (survivorPossible) r.survivorPossible = true;
+      if (survivorPossible) {
+        r.survivorPossible = true;
+        r.survivorReason = survivorReason;
+      }
       if (startError) r.stderr += `could not start ${command}: ${startError.message}\n`;
       done(r);
     };
@@ -941,7 +965,7 @@ function failuresOf(phases, fetches, combined = []) {
     if (p.timedOut) failures.push(`${name} timed out`);
     else if (p.exit !== 0) failures.push(`${name} exit ${p.exit ?? p.signal ?? 'null'}`);
     if (unrecorded(p.stderr) || (combined.includes(name) && unrecorded(p.stdout))) failures.push(`${name}: a fetch attempt could not be recorded`);
-    if (p.survivorPossible) failures.push(`${name}: ps did not answer; a descendant may have survived`);
+    if (p.survivorPossible) failures.push(`${name}: ${p.survivorReason ?? SURVIVOR.noPs}; a descendant may have survived`);
   }
   for (const f of fetches) {
     if (f.outcome === 'miss' || f.outcome === 'malformed') failures.push(`${f.phase}: ${f.outcome}: ${f.url}`);
