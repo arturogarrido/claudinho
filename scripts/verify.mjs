@@ -39,6 +39,7 @@ import {
   rmSync,
   statSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { StringDecoder } from 'node:string_decoder';
@@ -120,7 +121,9 @@ options:
   --timeout <seconds>                       each child's deadline (default 60; the MCP session 30): TERM, then KILL after 2 s;
                                             a capture signals script's group and the descendants ps lists, and when ps does not
                                             answer the TERM is withheld: ps is asked again at the KILL, and a descendant it still
-                                            cannot list may have survived (the phase fails)
+                                            cannot list, or one whose script had already left, may have survived (the phase
+                                            fails); the second ps costs its own bound, so the KILL is sent at most after the
+                                            deadline, the ps bound (${PS_TIMEOUT_MS / 1000} s), the grace and the ps bound again
   --env KEY=VALUE                           a scenario key only, with a value: ${SCENARIO_KEYS.join(', ')}
   --dry-run                                 seed: say what would be written, write nothing
 
@@ -492,15 +495,42 @@ function phaseOf(r, argv) {
 
 // ───────────────────────────── children ─────────────────────────────
 
-/** The aborts of the children running now, called on an interrupt of the controller. */
+/**
+ * The children running now, one entry `{ abort, killNow }` each: the first interrupt of the controller calls every
+ * `abort` (the deadline's path: TERM, the grace, KILL, the evidence kept), the second `killRunningGroups`, then leaves
+ * (130). An entry leaves the set when its child is reaped and, for a group child, once its group and its recorded tree
+ * are gone, so a second interrupt during that wait still reaches them.
+ */
 const running = new Set();
 let interrupted = false;
+
+/**
+ * The second interrupt's KILL, beside `abort`: for every running child started with `group`, KILL at once (no grace)
+ * to its group and to its recorded tree. Returns whether a descendant may have survived it: one of those children had
+ * an unrecorded deadline (`ps` did not answer there), or has no recorded tree at all (its deadline not reached).
+ */
+function killRunningGroups() {
+  let lost = false;
+  for (const entry of running) if (entry.killNow()) lost = true;
+  return lost;
+}
+
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
-    // The second interrupt does not wait for the evidence.
-    if (interrupted) process.exit(130);
+    if (interrupted) {
+      // The second interrupt does not wait for the evidence, but kills what it can reach before leaving.
+      if (killRunningGroups()) {
+        try {
+          // Synchronous: the exit follows at once.
+          writeSync(2, "verify: interrupted twice; a capture's descendants may have survived\n");
+        } catch {
+          // stderr is gone; the exit status still says the run was interrupted.
+        }
+      }
+      process.exit(130);
+    }
     interrupted = true;
-    for (const abort of running) abort();
+    for (const entry of running) entry.abort();
   });
 }
 
@@ -520,7 +550,8 @@ function alive(pid) {
 /**
  * Every descendant of a pid, read once from the process table (pid and parent pid), before any signal. `ps` runs with
  * PATH alone and a bound (PS_TIMEOUT_MS, then SIGKILL): a `ps` that is missing, exits nonzero or does not answer in
- * time gives no tree and a reason (`{ tree: [], failure }`), and the caller kills at once without the descendants.
+ * time gives no tree and a reason (`{ tree: [], failure }`). What follows a failure is the caller's (`startChild`: at
+ * the deadline the TERM is withheld and the table asked once more at the KILL step, each ask costing this bound).
  */
 function descendantsOf(pid) {
   // SIGKILL at the bound: a `ps` that ignores TERM must not hold the controller past it.
@@ -573,9 +604,11 @@ function signal(target, sig) {
  * the first signal, then waits until they are gone. When the process table did not answer at the deadline, the TERM
  * is WITHHELD (the child's stderr evidence says the table did not answer): nothing is signalled until the KILL step,
  * after the grace, which asks the table once more and sends KILL to the group and to what it found; when it fails
- * again, KILL goes to the group alone and the result says `survivorPossible` (a descendant may have survived; the
- * phase fails). The result says `killed` when the controller's signal reached a child that had not exited (a timeout
- * or an interrupt). Returns the child and a promise of its result.
+ * again, or when the group's leader has already exited (its children reparented: no table can find them from its pid),
+ * KILL goes to the group alone and the result says `survivorPossible` (a descendant may have survived; the phase
+ * fails). The child is in `running` until it is reaped and its group and recorded tree are gone: a second interrupt
+ * of the controller sends KILL to them at once (`killRunningGroups`). The result says `killed` when the controller's
+ * signal reached a child that had not exited (a timeout or an interrupt). Returns the child and a promise of its result.
  */
 function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepStdin = false, group = false, onLine }) {
   let child;
@@ -610,6 +643,8 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       if (!keepStdin) child.stdin.end();
     }
     let tree = [];
+    // Set once the process table answered for this child: a tree was recorded (possibly empty).
+    let recorded = false;
     let killed = false;
     let aborted = false;
     // Set when the process table did not answer at the deadline: the TERM is withheld and the KILL step asks again.
@@ -628,6 +663,7 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
     const record = () => {
       const found = descendantsOf(child.pid);
       if (found.failure) err.push(Buffer.from(`verify: ps did not answer (${found.failure}); descendants not recorded\n`));
+      else recorded = true;
       return found;
     };
     const abort = () => {
@@ -641,33 +677,49 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       }
       // When the table did not answer, the TERM is WITHHELD: nothing is signalled at the deadline, so the group stays
       // whole for the grace and its descendants stay findable (Darwin's `script` dies at a TERM without passing it on,
-      // and its child, reparented, could no longer be found). The bound is the same: the deadline plus the grace.
+      // and its child, reparented, could no longer be found). The second `ps` at the KILL step costs its own bound, so
+      // the KILL is sent at most after the deadline, the `ps` bound, the grace and the `ps` bound again.
       if (!unrecordedAtDeadline) kill('SIGTERM');
       killStep = new Promise((stepDone) => {
         killTimer = setTimeout(() => {
-          // The KILL step: when the table did not answer at the deadline, it is asked once more, and what it finds is
-          // killed with the group; a second failure kills the group alone and leaves a descendant that may have survived.
+          // The KILL step after an unrecorded deadline. A second `ps` vouches only for a leader still alive: what it
+          // finds is killed with the group, and a second failure kills the group alone and leaves a descendant that may
+          // have survived. A leader that has already exited (its status reaped) took the ancestry with it: its children
+          // were reparented, and its pid may be another process's by now, so the table is not asked and a descendant
+          // may have survived whatever it would answer.
           if (group && child.pid && unrecordedAtDeadline) {
-            const found = record();
-            if (found.failure) survivorPossible = true;
-            else tree = [...new Set([...tree, ...found.tree])];
+            if (child.exitCode !== null || child.signalCode !== null) survivorPossible = true;
+            else {
+              const found = record();
+              if (found.failure) survivorPossible = true;
+              else tree = [...new Set([...tree, ...found.tree])];
+            }
           }
           kill('SIGKILL');
           stepDone();
         }, GRACE_MS);
       });
     };
+    /**
+     * The second interrupt's KILL for this child (see `killRunningGroups`): a group child's group and recorded tree get
+     * KILL at once; returns whether a descendant may have survived it (an unrecorded deadline, or no tree recorded).
+     */
+    const killNow = () => {
+      if (!group || !child.pid) return false;
+      kill('SIGKILL');
+      return unrecordedAtDeadline || !recorded;
+    };
+    const entry = { abort, killNow };
     const deadline = setTimeout(() => {
       timedOut = true;
       abort();
     }, timeoutMs);
-    running.add(abort);
+    running.add(entry);
     const finish = async (code, sig, startError) => {
       if (finished) return;
       finished = true;
       clearTimeout(deadline);
       clearTimeout(exitTimer);
-      running.delete(abort);
       if (group && child.pid) {
         // When the table did not answer at the deadline, the KILL step (after the grace) is the second chance to find
         // the descendants, even when the group itself is already gone: it runs before the evidence is final.
@@ -678,6 +730,8 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
           await sleep(50);
         }
       }
+      // Out of the running set only now: until its group and recorded tree are gone, a second interrupt reaches them.
+      running.delete(entry);
       if (killTimer) clearTimeout(killTimer);
       lineBuf += decoder.end();
       if (onLine && lineBuf) onLine(lineBuf);
@@ -1149,13 +1203,14 @@ const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 /**
  * A reply is judged before it is believed, envelope then body. The ENVELOPE: an object with `jsonrpc: '2.0'` and
  * EXACTLY ONE of `result` (an object, not null, not an array) or `error` (an object with an integer `code` and a string
- * `message`). The BODY, per step: `initialize`: `protocolVersion` a string, `capabilities` an object, `serverInfo` an
- * object with a string `name`; `tools/list`: `tools` an array, each tool an object with a string `name` and an object
- * `inputSchema`, and `outputSchema`, when the key is present, an object (a tool without the key is the session's own
- * `tools without an outputSchema` failure); `tools/call`: `content` an array, each item an object with a string `type`,
- * and a string `text` when `type` is `text`; `isError`, when present, a boolean; `structuredContent`, when present, an
- * object. (An object is never null and never an array.) Returns `{ result }` for a valid result, else `{ failure }`:
- * the JSON-RPC error as it came, or `malformed reply to <step>: <the reply's JSON, cut at 200>`.
+ * `message`). The BODY, per step, by the protocol's specification: `initialize`: `protocolVersion` a string,
+ * `capabilities` an object, `serverInfo` an object with a string `name` and a string `version`; `tools/list`: `tools`
+ * an array, each tool an object with a string `name` and an `inputSchema` that is an object whose `type` is `object`,
+ * and `outputSchema`, when the key is present, an object whose `type` is `object` (a tool without the key is the
+ * session's own `tools without an outputSchema` failure); `tools/call`: `content` an array whose every item is one of
+ * the specification's content types (`contentValid`); `isError`, when present, a boolean; `structuredContent`, when
+ * present, an object. (An object is never null and never an array.) Returns `{ result }` for a valid result, else
+ * `{ failure }`: the JSON-RPC error as it came, or `malformed reply to <step>: <the reply's JSON, cut at 200>`.
  */
 function judgeReply(step, msg) {
   const malformed = () => ({ failure: `malformed reply to ${step}: ${JSON.stringify(msg).slice(0, 200)}` });
@@ -1173,20 +1228,47 @@ function judgeReply(step, msg) {
   return bodyValid(step, r) ? { result: r } : malformed();
 }
 
+/** Whether a tool's schema (`inputSchema`, `outputSchema`) is what the specification makes it: an object of type `object`. */
+const isObjectSchema = (s) => isObject(s) && s.type === 'object';
+
+/**
+ * Whether a `tools/call` content item is one of the specification's content types with the fields its type needs:
+ * `text` (a string `text`), `image` and `audio` (a string `data` and a string `mimeType`), `resource` (an object
+ * `resource` with a string `uri` and a string `text` or a string `blob`), `resource_link` (a string `uri` and a string
+ * `name`). Any other `type` is malformed.
+ */
+function contentValid(c) {
+  if (!isObject(c) || typeof c.type !== 'string') return false;
+  switch (c.type) {
+    case 'text':
+      return typeof c.text === 'string';
+    case 'image':
+    case 'audio':
+      return typeof c.data === 'string' && typeof c.mimeType === 'string';
+    case 'resource':
+      return isObject(c.resource) && typeof c.resource.uri === 'string' && (typeof c.resource.text === 'string' || typeof c.resource.blob === 'string');
+    case 'resource_link':
+      return typeof c.uri === 'string' && typeof c.name === 'string';
+    default:
+      return false;
+  }
+}
+
 /** Whether a result's body has the fields its step needs (see `judgeReply`). */
 function bodyValid(step, r) {
   if (step === 'initialize') {
-    return typeof r.protocolVersion === 'string' && isObject(r.capabilities) && isObject(r.serverInfo) && typeof r.serverInfo.name === 'string';
+    const info = r.serverInfo;
+    return typeof r.protocolVersion === 'string' && isObject(r.capabilities) && isObject(info) && typeof info.name === 'string' && typeof info.version === 'string';
   }
   if (step === 'tools/list') {
     if (!Array.isArray(r.tools)) return false;
     return r.tools.every(
-      (t) => isObject(t) && typeof t.name === 'string' && isObject(t.inputSchema) && (!Object.hasOwn(t, 'outputSchema') || isObject(t.outputSchema)),
+      (t) => isObject(t) && typeof t.name === 'string' && isObjectSchema(t.inputSchema) && (!Object.hasOwn(t, 'outputSchema') || isObjectSchema(t.outputSchema)),
     );
   }
   if (step === 'tools/call') {
     if (!Array.isArray(r.content)) return false;
-    const items = r.content.every((c) => isObject(c) && typeof c.type === 'string' && (c.type !== 'text' || typeof c.text === 'string'));
+    const items = r.content.every(contentValid);
     const isError = !Object.hasOwn(r, 'isError') || typeof r.isError === 'boolean';
     const structured = !Object.hasOwn(r, 'structuredContent') || isObject(r.structuredContent);
     return items && isError && structured;
