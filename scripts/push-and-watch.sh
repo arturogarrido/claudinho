@@ -17,11 +17,15 @@
 #   1. the repository: HOST/OWNER/NAME read from `git remote get-url origin`
 #      (`https://HOST/OWNER/NAME[.git][/]`, `http://...`,
 #      `ssh://[user@]HOST[:port]/OWNER/NAME[.git]` or
-#      `[user@]HOST:OWNER/NAME[.git]`; anything else refuses); `gh api --hostname
-#      HOST repos/OWNER/NAME` (REST: the GraphQL-backed `gh repo view` is refused
-#      in some environments) must answer the same OWNER/NAME, so gh reads the
-#      repository pushed to; every later gh call is bound to it (`gh run ... -R
-#      HOST/OWNER/NAME`, `gh api --hostname HOST`);
+#      `[user@]HOST:OWNER/NAME[.git]`; anything else refuses); every push URL
+#      (`git remote get-url --push --all origin`, one per line: the fetch URL
+#      when no pushurl is set) must read as the same HOST/OWNER/NAME (compared
+#      without case, as GitHub names them), so the push and the reads name one
+#      repository; `gh api --hostname HOST repos/OWNER/NAME` (REST: the
+#      GraphQL-backed `gh repo view` is refused in some environments) must
+#      answer the same OWNER/NAME, so gh reads the repository pushed to; every
+#      later gh call is bound to it (`gh run ... -R HOST/OWNER/NAME`, `gh api
+#      --hostname HOST`);
 #   2. the branch: the argument must be a branch name (`git check-ref-format
 #      --branch` prints it back unchanged) and a local branch (`git show-ref
 #      --verify refs/heads/<branch>`); the local SHA is `git rev-parse --verify
@@ -269,6 +273,27 @@ parse_origin() {
   return 0
 }
 
+# repo_of <url>: HOST/OWNER/NAME of a URL (parse_origin in a subshell, so the
+# globals stay the fetch URL's); nonzero when it is not one of the four forms.
+repo_of() {
+  parse_origin "$1" || return 1
+  printf '%s/%s/%s' "$REPO_HOST" "$REPO_OWNER" "$REPO_NAME"
+}
+lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+# shown_url <url>: the URL for a message, its userinfo (a token can ride there)
+# replaced by `***` in a scheme://user[:password]@host form.
+shown_url() {
+  local u=$1 scheme rest auth
+  case "$u" in
+    *://*)
+      scheme=${u%%://*}; rest=${u#*://}; auth=${rest%%/*}
+      case "$auth" in
+        *@*) printf '%s://***@%s%s' "$scheme" "${auth##*@}" "${rest#"$auth"}"; return 0 ;;
+      esac ;;
+  esac
+  printf '%s' "$u"
+}
+
 # 1. The repository: HOST/OWNER/NAME, and every gh call below bound to it.
 REPO_HOST=""
 REPO_OWNER=""
@@ -277,12 +302,26 @@ origin_url=$(git remote get-url origin) || refuse "repository: git remote get-ur
 parse_origin "$origin_url" ||
   refuse "repository: cannot read host/owner/name from origin's URL (https://, http://, ssh:// or [user@]host:owner/name); nothing pushed"
 REPO="$REPO_HOST/$REPO_OWNER/$REPO_NAME"
+# Every push URL names the same repository: `git push origin` uses them, the reads use the fetch URL's.
+push_urls=$(git remote get-url --push --all origin) ||
+  refuse "repository: git remote get-url --push --all origin failed; nothing pushed"
+n_push=0
+while IFS= read -r push_url; do
+  [ -n "$push_url" ] || continue
+  n_push=$((n_push + 1))
+  push_repo=$(repo_of "$push_url") || push_repo=""
+  if [ -z "$push_repo" ] || [ "$(lower "$push_repo")" != "$(lower "$REPO")" ]; then
+    refuse "repository: origin's push URL $(shown_url "$push_url") is not $REPO; nothing pushed"
+  fi
+done <<EOF
+$push_urls
+EOF
+[ "$n_push" -gt 0 ] || refuse "repository: origin has no push URL (git remote get-url --push --all origin printed nothing); nothing pushed"
 probe deadline gh api --hostname "$REPO_HOST" "repos/$REPO_OWNER/$REPO_NAME" --jq=.full_name
 rc=$?
 [ $rc -eq 0 ] || probe_failed "gh api --hostname $REPO_HOST repos/$REPO_OWNER/$REPO_NAME" $rc "nothing pushed"
 gh_repo=""
 read -r gh_repo <"$WORK/out" || true
-lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 if [ -z "$gh_repo" ] || [ "$(lower "$gh_repo")" != "$(lower "$REPO_OWNER/$REPO_NAME")" ]; then
   refuse "repository mismatch: origin is $REPO, gh answers '$gh_repo' on $REPO_HOST; nothing pushed"
 fi
