@@ -1006,9 +1006,10 @@ async function cmdMcp(args, json) {
   // server's own exit), or the follow phase's when the session never started; then the interrupt.
   const errors = [];
   if (session) {
-    writeFileSync(join(out, `${label}.txt`), session.stdout);
-    writeFileSync(join(out, `${label}.err`), session.stderr);
-    writeFileSync(join(out, `${label}.exit`), `${session.exit ?? session.signal ?? 'null'}\n`);
+    // The session is the phase `server`: its stdout, stderr and exit beside its logs (the .rpc.jsonl stays the label's).
+    writeFileSync(join(out, `${label}.server.txt`), session.stdout);
+    writeFileSync(join(out, `${label}.server.err`), session.stderr);
+    writeFileSync(join(out, `${label}.server.exit`), `${session.exit ?? session.signal ?? 'null'}\n`);
     errors.push(...session.errors);
   }
   errors.push(...failuresOf(phases, []));
