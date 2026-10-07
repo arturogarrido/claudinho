@@ -751,12 +751,14 @@ async function cmdDoctor(args, json) {
       const got = r.stdout.trim();
       const asked = readLines(phaseLog.fetchLog).length;
       const lost = unrecorded(r.stderr);
+      // A timeout is the detail whatever the child printed; otherwise what it said, and what it tried.
       let detail;
       if (r.timedOut) detail = `--version timed out after ${timeoutMs / 1000} s`;
-      else if (r.exit === 0) detail = `the dist says ${got}, packages/cli/package.json ${want}`;
-      else detail = `--version exited ${r.exit ?? r.signal}: ${r.stderr.trim().slice(0, 200)}`;
-      if (asked) detail += `; it tried the network ${asked} time(s)`;
-      if (lost) detail += '; a fetch attempt could not be recorded';
+      else {
+        detail = r.exit === 0 ? `the dist says ${got}, packages/cli/package.json ${want}` : `--version exited ${r.exit ?? r.signal}: ${r.stderr.trim().slice(0, 200)}`;
+        if (asked) detail += `; it tried the network ${asked} time(s)`;
+        if (lost) detail += '; a fetch attempt could not be recorded';
+      }
       check('version', !r.timedOut && r.exit === 0 && got === want && asked === 0 && !lost, detail);
     }
   } finally {
