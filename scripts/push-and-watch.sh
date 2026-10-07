@@ -104,6 +104,20 @@ else
   TIMEOUT=$((TIMEOUT_MIN * 60))
 fi
 
+# Cleanup on every exit: the deadline timer stopped and reaped (quietly: a
+# reaped job is otherwise reported), the temporary directory removed. An
+# interrupt ends the script through it (a script's background job ignores
+# SIGINT, so the timer would otherwise outlive the script).
+TIMER=""
+WORK=""
+cleanup() {
+  if [ -n "$TIMER" ]; then kill "$TIMER" 2>/dev/null; wait "$TIMER" 2>/dev/null; fi
+  if [ -n "$WORK" ]; then rm -rf "$WORK"; fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 # The deadline: a timer that exits when the time is up.
 sleep "$TIMEOUT" </dev/null >/dev/null 2>&1 &
 TIMER=$!
@@ -112,9 +126,7 @@ PASSED=0
 cd "$(dirname "$0")/.." || { echo "push-and-watch: cannot enter the repository root" >&2; exit 2; }
 
 tmp_base=${TMPDIR:-/tmp}
-WORK=$(mktemp -d "${tmp_base%/}/push-watch.XXXXXX") || { echo "push-and-watch: cannot create a temporary directory" >&2; exit 2; }
-# On exit the timer is stopped and reaped (quietly: a reaped job is otherwise reported).
-trap 'kill "$TIMER" 2>/dev/null; wait "$TIMER" 2>/dev/null; rm -rf "$WORK"' EXIT
+WORK=$(mktemp -d "${tmp_base%/}/push-watch.XXXXXX") || { WORK=""; echo "push-and-watch: cannot create a temporary directory" >&2; exit 2; }
 
 refuse() {
   echo "REFUSED ($1)"
@@ -142,6 +154,7 @@ probe() {
   "$@" </dev/null >"$WORK/out" 2>"$WORK/err" &
   pid=$!
   (
+    trap - EXIT INT TERM
     while kill -0 "$pid" 2>/dev/null; do
       if ! kill -0 "$TIMER" 2>/dev/null && [ "$SECONDS" -ge "$late_end" ]; then
         : >"$WORK/killed.$pid"
@@ -320,7 +333,8 @@ if ! grep -q . "$WORK/out"; then
 fi
 # awk splits on each tab (a single-character FS other than space keeps empty
 # fields); the durations are computed from the timestamps in awk (no GNU date).
-awk -F '\t' '
+awk '
+BEGIN { FS = "\t" }
 function epoch(ts,   y, m, d, era, yoe, doy, doe) {
   if (length(ts) < 19 || substr(ts, 5, 1) != "-" || substr(ts, 11, 1) != "T") return -1
   y = substr(ts, 1, 4) + 0; m = substr(ts, 6, 2) + 0; d = substr(ts, 9, 2) + 0
