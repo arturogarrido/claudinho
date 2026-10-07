@@ -357,59 +357,151 @@ describe.skipIf(process.platform === 'win32')('scripts/gate.sh, run offline unde
  */
 type Step = { job: string; index: number; kind: 'run' | 'uses'; text: string; continueOnError: boolean };
 
-/** A small YAML-free reader of the workflow's jobs: enough for this file's shape, refusing what it does not read. */
+/** The keys a step may carry; any other key, or any other shape where a key belongs, is refused. */
+const STEP_KEYS = new Set(['name', 'id', 'if', 'with', 'env', 'shell', 'working-directory', 'continue-on-error', 'timeout-minutes', 'run', 'uses']);
+
+/**
+ * A small YAML-free reader of the workflow's jobs: enough for this file's shape, refusing what it does not read.
+ * Jobs are the keys at 2 spaces under `jobs:`, a job's own keys are at 4, its steps are items at `      - ` (6
+ * spaces, a dash) and a step's keys are at 8 (the item's first key on the dash line). A `run: |` block is read
+ * from the indent of its first non-blank line, which must be deeper than 8, to the first non-blank line indented
+ * less; a one-line `run:` or `uses:` value is the command. Every other shape throws, naming the job: a flow
+ * mapping, a sequence or a bare scalar where a key belongs, a key no step has, `|-`, `|+`, `>`, an empty `run:`
+ * (a plain multi-line scalar), a one-line value continued on a deeper line, a step with neither `run:` nor `uses:`
+ * (or both), a dash at another column, an inline `steps:` and a job-level `uses:` (a reusable workflow).
+ */
 export function workflowSteps(yaml: string): Step[] {
   const lines = yaml.split('\n');
   const steps: Step[] = [];
+  const continueJobs = new Set<string>();
+  const indentOf = (s: string) => s.length - s.replace(/^ +/, '').length;
+  const skippable = (s: string) => s.trim() === '' || s.trim().startsWith('#');
+  const scalarOf = (raw: string) => raw.replace(/(^|\s+)#.*$/, '').trim();
+  let inJobs = false;
   let job = '';
-  let jobContinue = false;
   let inSteps = false;
   let index = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i] ?? '';
-    const jobKey = /^  ([a-z][a-z0-9-]*):\s*$/.exec(l);
-    if (jobKey && !inSteps) { job = jobKey[1] ?? ''; jobContinue = false; index = 0; }
-    else if (jobKey && inSteps && l.startsWith('  ') && !l.startsWith('    ')) { job = jobKey[1] ?? ''; jobContinue = false; inSteps = false; index = 0; }
-    if (/^    continue-on-error:\s*true/.test(l)) jobContinue = true;
-    if (/^    steps:\s*$/.test(l)) { inSteps = true; continue; }
-    if (!inSteps) continue;
-    const run = /^      - run: (.*)$/.exec(l) ?? /^        run: (.*)$/.exec(l);
-    const uses = /^      - uses: (.*)$/.exec(l) ?? /^        uses: (.*)$/.exec(l);
-    if (run) {
-      let text = run[1] ?? '';
-      if (text === '|') {
-        // the block: to the first less-indented line, as the publish workflow's test reads one
-        const block: string[] = [];
-        for (let j = i + 1; j < lines.length; j++) {
-          const b = lines[j] ?? '';
-          if (b.trim() && !b.startsWith('          ')) break;
-          block.push(b.slice(10));
-        }
-        text = block.join('\n').trim();
-      }
-      text = text.replace(/\s+#.*$/, '').trim();
-      if (/\$\{\{/.test(text)) throw new Error(`unreadable run shape in ${job}: ${text}`);
-      steps.push({ job, index: index++, kind: 'run', text, continueOnError: jobContinue });
-    } else if (uses) {
-      steps.push({ job, index: index++, kind: 'uses', text: (uses[1] ?? '').replace(/\s+#.*$/, '').trim(), continueOnError: jobContinue });
-    }
-    if (/^        shell:/.test(l) && !/bash/.test(l)) throw new Error(`a shell other than bash in ${job}`);
+  function refuse(what: string, at: number): never {
+    throw new Error(`${what} in ${job}: ${(lines[at] ?? '').trim()}`);
   }
-  return steps;
+  let i = 0;
+  while (i < lines.length) {
+    const l = lines[i] ?? '';
+    if (skippable(l)) { i++; continue; }
+    const n = indentOf(l);
+    if (n === 0) {
+      if (/^jobs:/.test(l) && !/^jobs:\s*(#.*)?$/.test(l)) throw new Error(`unreadable jobs: ${l}`);
+      inJobs = /^jobs:/.test(l); job = ''; inSteps = false;
+      i++; continue;
+    }
+    if (!inJobs) { i++; continue; }
+    if (n === 2) {
+      const key = /^ {2}([A-Za-z_][A-Za-z0-9_-]*):\s*(#.*)?$/.exec(l);
+      if (!key) throw new Error(`unreadable job key: ${l}`);
+      job = key[1] ?? ''; inSteps = false; index = 0;
+      i++; continue;
+    }
+    if (n < 4) refuse('unreadable line', i);
+    if (n === 4) {
+      const afterSteps = inSteps;
+      inSteps = false;
+      if (afterSteps && /^ {4}-/.test(l)) refuse('unreadable step (a sequence at 4 spaces)', i);
+      if (/^ {4}steps:\s*(#.*)?$/.test(l)) inSteps = true;
+      else if (/^ {4}steps:/.test(l)) refuse('unreadable steps (an inline value)', i);
+      else if (/^ {4}uses:/.test(l)) refuse('unread job shape (a job-level uses:, a reusable workflow)', i);
+      else if (/^ {4}continue-on-error:\s*true\s*(#.*)?$/.test(l)) continueJobs.add(job);
+      i++; continue;
+    }
+    if (!inSteps) { i++; continue; }
+    if (!/^ {6}- /.test(l)) refuse('unreadable step', i);
+    // One step: its first key on the dash line, then its keys at 8, to the next item or a line indented less.
+    const fields = new Map<string, string>();
+    let j = i;
+    let text = l.slice(8);
+    for (;;) {
+      const kv = /^([A-Za-z][A-Za-z0-9_-]*):(?: +(.*))?$/.exec(text);
+      const key = kv?.[1] ?? '';
+      if (!kv || !STEP_KEYS.has(key)) refuse('unreadable step', j);
+      if (fields.has(key)) refuse(`a second ${key}: in one step`, j);
+      const value = scalarOf(kv[2] ?? '');
+      const keyAt = j;
+      j++;
+      if (key === 'run' && value === '|') {
+        let first = j;
+        while (first < lines.length && (lines[first] ?? '').trim() === '') first++;
+        const blockIndent = indentOf(lines[first] ?? '');
+        if (first >= lines.length || blockIndent <= 8) refuse('an empty run: | block', keyAt);
+        const block: string[] = [];
+        while (j < lines.length) {
+          const b = lines[j] ?? '';
+          if (b.trim() !== '' && indentOf(b) < blockIndent) break;
+          block.push(b.slice(blockIndent));
+          j++;
+        }
+        const end = lines[j] ?? '';
+        if (j < lines.length && indentOf(end) > 8 && !skippable(end)) refuse('unreadable step (a line inside the run: | block\'s indent)', j);
+        fields.set(key, block.join('\n').trim());
+      } else if (key === 'run' || key === 'uses') {
+        if (value === '') refuse(`an empty ${key}: (a plain multi-line scalar, or nothing)`, keyAt);
+        if (/^[|>]/.test(value)) refuse(`a ${key}: block this reader does not read`, keyAt);
+        fields.set(key, value);
+        while (j < lines.length && skippable(lines[j] ?? '')) j++;
+        if (j < lines.length && indentOf(lines[j] ?? '') > 8) refuse(`a one-line ${key}: continued on a deeper line`, j);
+      } else {
+        if (key === 'shell' && !/bash/.test(value)) throw new Error(`a shell other than bash in ${job}`);
+        fields.set(key, value);
+        // the key's own deeper lines: a mapping under with: or env:, a continued name
+        while (j < lines.length && (skippable(lines[j] ?? '') || indentOf(lines[j] ?? '') > 8)) j++;
+      }
+      while (j < lines.length && skippable(lines[j] ?? '')) j++;
+      const next = lines[j] ?? '';
+      if (j >= lines.length || indentOf(next) < 8) break;
+      if (indentOf(next) > 8) refuse('unreadable step', j);
+      text = next.slice(8);
+    }
+    const run = fields.get('run');
+    const uses = fields.get('uses');
+    if (run === undefined && uses === undefined) refuse('a step with neither run: nor uses:', i);
+    if (run !== undefined && uses !== undefined) refuse('a step with both run: and uses:', i);
+    if (run !== undefined) {
+      if (/\$\{\{/.test(run)) throw new Error(`unreadable run shape in ${job}: ${run}`);
+      steps.push({ job, index: index++, kind: 'run', text: run, continueOnError: false });
+    } else {
+      steps.push({ job, index: index++, kind: 'uses', text: uses ?? '', continueOnError: false });
+    }
+    i = j;
+  }
+  return steps.map((s) => ({ ...s, continueOnError: continueJobs.has(s.job) }));
 }
+
+/** The excluded commands, each by its WHOLE text: a command added inside one of these blocks matches none. */
+const INSTALL = 'pnpm install --frozen-lockfile';
+const NODE20_CLI_BLOCK = [
+  'node --version',
+  'node packages/cli/dist/index.js --competition world-cup next MEX',
+  'node packages/cli/dist/index.js --competition world-cup table A',
+  'node packages/cli/dist/index.js vibe',
+  'echo "Node 20 runtime OK"',
+].join('\n');
+const OS_MATRIX_CLI_BLOCK = [
+  'node packages/cli/dist/index.js --competition world-cup next MEX',
+  'node packages/cli/dist/index.js --competition world-cup table A',
+].join('\n');
+const STDIO_SMOKE_FILE = 'node packages/mcp/scripts/stdio-smoke.mjs';
+const AUDIT_ALL = 'pnpm audit || true';
 
 /** The exclusions, each with its reason; every other gating command must be a gate step. */
 const EXCLUDED: Array<{ match: (s: Step) => boolean; reason: string }> = [
-  { match: (s) => s.kind === 'run' && /^pnpm install --frozen-lockfile$/.test(s.text), reason: 'the install: already installed locally' },
-  { match: (s) => s.kind === 'run' && s.job === 'runtime-node20' && /node packages\/cli\/dist\/index\.js/.test(s.text), reason: 'the Node-20 job runs the BUILT local CLI on the engines floor: a Node-version check the gate cannot make' },
-  { match: (s) => s.kind === 'run' && s.job === 'runtime-node20' && /node packages\/mcp\/scripts\/stdio-smoke\.mjs/.test(s.text), reason: 'the same stdio smoke file under Node 20; the gate runs it through the package script under the developer Node' },
-  { match: (s) => s.kind === 'run' && s.job === 'os-matrix' && /node packages\/cli\/dist\/index\.js/.test(s.text), reason: 'the offline CLI smoke on three operating systems' },
-  { match: (s) => s.kind === 'run' && s.job === 'os-matrix' && /node packages\/mcp\/scripts\/stdio-smoke\.mjs/.test(s.text), reason: 'the same stdio smoke file on three operating systems' },
-  { match: (s) => s.kind === 'run' && /^pnpm audit \|\| true$/.test(s.text), reason: 'non-blocking by its own `|| true`' },
+  { match: (s) => s.kind === 'run' && s.text === INSTALL, reason: 'the install: already installed locally' },
+  { match: (s) => s.kind === 'run' && s.job === 'runtime-node20' && s.text === NODE20_CLI_BLOCK, reason: 'the Node-20 job runs the BUILT local CLI on the engines floor: a Node-version check the gate cannot make' },
+  { match: (s) => s.kind === 'run' && s.job === 'runtime-node20' && s.text === STDIO_SMOKE_FILE, reason: 'the same stdio smoke file under Node 20; the gate runs it through the package script under the developer Node' },
+  { match: (s) => s.kind === 'run' && s.job === 'os-matrix' && s.text === OS_MATRIX_CLI_BLOCK, reason: 'the offline CLI smoke on the Windows and macOS runners' },
+  { match: (s) => s.kind === 'run' && s.job === 'os-matrix' && s.text === STDIO_SMOKE_FILE, reason: 'the same stdio smoke file on the Windows and macOS runners' },
+  { match: (s) => s.kind === 'run' && s.text === AUDIT_ALL, reason: 'non-blocking by its own `|| true`' },
   { match: (s) => s.kind === 'uses' && /^(actions\/checkout|pnpm\/action-setup|actions\/setup-node|actions\/upload-artifact)@/.test(s.text), reason: 'a setup or upload action, not a check' },
 ];
 /** A command the gate runs through another spelling of the same file. */
-const EQUIVALENT: Record<string, string> = { 'node packages/mcp/scripts/stdio-smoke.mjs': 'pnpm -F @claudinho/mcp smoke:stdio' };
+const EQUIVALENT: Record<string, string> = { [STDIO_SMOKE_FILE]: 'pnpm -F @claudinho/mcp smoke:stdio' };
 
 export function classify(steps: Step[], gateCommands: string[]): { run: Step[]; excluded: Array<[Step, string]>; unclassified: Step[] } {
   const run: Step[] = []; const excluded: Array<[Step, string]> = []; const unclassified: Step[] = [];
