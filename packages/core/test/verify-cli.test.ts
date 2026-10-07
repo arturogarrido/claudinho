@@ -69,7 +69,7 @@ const VERSION = JSON.parse(readFileSync(join(ROOT, 'packages/cli/package.json'),
 const SLOW = 90_000;
 const SCENARIO_KEYS = ['CLAUDINHO_COMPETITION', 'CLAUDINHO_TEAM', 'CLAUDINHO_SOURCE', 'CLAUDINHO_MARKETS_SOURCE', 'LANG', 'TZ'];
 
-type Phase = { exit: number | null; timedOut?: boolean; stdout: string; stderr: string };
+type Phase = { exit: number | null; timedOut?: boolean; survivorPossible?: boolean; survivorReason?: string; stdout: string; stderr: string };
 type Fetch = { url: string; mode: string; outcome: string; phase?: string };
 type Check = { name: string; ok: boolean; detail?: string };
 type Result = {
@@ -726,7 +726,8 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(r.res, r.stderr.slice(0, 200)).not.toBeNull();
     expect(existsSync(marker), 'ps was asked at the deadline and failed').toBe(true);
     expect(await until(() => existsSync(pf), 3000)).toBe(true);
-    expect((r.res?.failures ?? []).some((f) => /may have survived/.test(f)), 'the leader was gone at the KILL step: the second ps vouches for nothing').toBe(true);
+    expect((r.res?.failures ?? []).some((f) => /the group's leader was gone before ps could vouch; a descendant may have survived/.test(f)), 'the leader was gone at the KILL step: the second ps vouches for nothing, and the line says why').toBe(true);
+    expect(r.res?.phases?.main?.survivorReason).toMatch(/leader was gone/);
     const orphan = readPid(pf);
     expect(pidAlive(orphan), 'the survivor the result named is alive').toBe(true);
     try { process.kill(orphan, 'SIGKILL'); } catch { /* already gone */ }
@@ -744,7 +745,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     const d = verify(['capture', 'during', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: rootd, PATH: `${leavingLate}:${withTool(slowSecond)}` }, timeout: 40_000 });
     expect(d.res, d.stderr.slice(0, 200)).not.toBeNull();
     expect(await until(() => existsSync(pfd), 3000)).toBe(true);
-    expect((d.res?.failures ?? []).some((f) => /may have survived/.test(f)), 'the leader left while the second ps ran: the snapshot vouches for nothing').toBe(true);
+    expect((d.res?.failures ?? []).some((f) => /the group's leader was gone before ps could vouch; a descendant may have survived/.test(f)), 'the leader left while the second ps ran: the snapshot vouches for nothing, and the line says why').toBe(true);
     const orphand = readPid(pfd);
     expect(pidAlive(orphand), 'the survivor the result named is alive').toBe(true);
     try { process.kill(orphand, 'SIGKILL'); } catch { /* already gone */ }
@@ -762,7 +763,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     const f = verify(['capture', 'first', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: rootf, PATH: `${leavingEarly}:${withTool(slowFirst)}` }, timeout: 40_000 });
     expect(f.res, f.stderr.slice(0, 200)).not.toBeNull();
     expect(await until(() => existsSync(pff), 3000)).toBe(true);
-    expect((f.res?.failures ?? []).some((x) => /may have survived/.test(x)), 'the leader left while the first ps ran: that snapshot vouches for nothing').toBe(true);
+    expect((f.res?.failures ?? []).some((x) => /the group's leader was gone before ps could vouch; a descendant may have survived/.test(x)), 'the leader left while the first ps ran: that snapshot vouches for nothing, and the line says why').toBe(true);
     expect(f.res?.phases?.main?.stderr ?? '').toMatch(/leader was (zombie|absent)/);
     const orphanf = readPid(pff);
     expect(pidAlive(orphanf), 'the survivor the result named is alive').toBe(true);
