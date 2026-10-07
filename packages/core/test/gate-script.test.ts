@@ -72,7 +72,20 @@ case "$1 $2" in
   "write-tree "*|"write-tree")
     n=$(grep -c '^write-tree' "$calls")
     if [ "$n" -ge 2 ] && [ -e "$STATE/tree-changes" ]; then echo T2; elif [ "$n" -ge 3 ] && [ -e "$STATE/tree-changes-late" ]; then echo T3; else echo T1; fi; exit 0 ;;
-  "rev-parse --verify") echo H0; exit 0 ;;
+  "rev-parse --verify")
+    # HEAD answers H0; MERGE_HEAD, CHERRY_PICK_HEAD and REVERT_HEAD answer a SHA only while the matching
+    # $STATE/<op>-in-progress exists (or, for merge-in-progress-after, from the second MERGE_HEAD question on).
+    case "$*" in
+      *MERGE_HEAD*)
+        n=$(grep -c 'MERGE_HEAD' "$calls")
+        [ -e "$STATE/merge-in-progress" ] && { echo M1; exit 0; }
+        [ -e "$STATE/merge-in-progress-after" ] && [ "$n" -ge 2 ] && { echo M1; exit 0; }
+        exit 1 ;;
+      *CHERRY_PICK_HEAD*) [ -e "$STATE/cherry-pick-in-progress" ] && { echo P1; exit 0; }; exit 1 ;;
+      *REVERT_HEAD*) [ -e "$STATE/revert-in-progress" ] && { echo R1; exit 0; }; exit 1 ;;
+      *) echo H0; exit 0 ;;
+    esac ;;
+  "rev-parse --git-path") echo "$STATE/gitdir/$3"; exit 0 ;;
   "rev-parse --show-toplevel") echo "$GATE_ROOT"; exit 0 ;;
   "commit-tree "*) [ -e "$STATE/commit-tree-fails" ] && { echo "fatal: not a valid object name" >&2; exit 128; }; echo C1; exit 0 ;;
   "update-ref "*) [ -e "$STATE/update-ref-fails" ] && { echo "error: cannot lock ref 'HEAD': is at H1 but expected H0" >&2; exit 1; }; exit 0 ;;
@@ -242,6 +255,56 @@ describe.skipIf(process.platform === 'win32')('scripts/gate.sh, run offline unde
     expect(r.status).not.toBe(0);
     expect(r.out).toMatch(/^commit REFUSED \(nothing staged/m);
     expect(pnpmCalls(sb)).toEqual([]);
+    expect(committed(sb)).toBe(false);
+  });
+
+  it('a merge in progress (MERGE_HEAD) refuses --commit before any step: the gate makes plain commits only', () => {
+    const sb = sandbox();
+    writeFileSync(join(sb.state, 'merge-in-progress'), '');
+    const msg = withMessage(sb);
+    const r = run(sb, ['--commit', msg]);
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/^commit REFUSED \(.*merge is in progress/m);
+    expect(pnpmCalls(sb)).toEqual([]);
+    expect(committed(sb)).toBe(false);
+    expect(gitCalls(sb).some((c) => c.startsWith('git commit-tree'))).toBe(false);
+  });
+
+  it('a cherry-pick or a revert in progress refuses --commit before any step', () => {
+    for (const [state, word] of [['cherry-pick-in-progress', 'cherry-pick'], ['revert-in-progress', 'revert']] as const) {
+      const sb = sandbox();
+      writeFileSync(join(sb.state, state), '');
+      const msg = withMessage(sb);
+      const r = run(sb, ['--commit', msg]);
+      expect(r.status, state).not.toBe(0);
+      expect(r.out, state).toMatch(new RegExp(`^commit REFUSED \\(.*${word} is in progress`, 'm'));
+      expect(pnpmCalls(sb), state).toEqual([]);
+      expect(committed(sb), state).toBe(false);
+    }
+  });
+
+  it('a rebase in progress (the rebase-merge or rebase-apply directory) refuses --commit before any step', () => {
+    for (const dir of ['rebase-merge', 'rebase-apply']) {
+      const sb = sandbox();
+      mkdirSync(join(sb.state, 'gitdir', dir), { recursive: true });
+      const msg = withMessage(sb);
+      const r = run(sb, ['--commit', msg]);
+      expect(r.status, dir).not.toBe(0);
+      expect(r.out, dir).toMatch(/^commit REFUSED \(.*rebase is in progress/m);
+      expect(pnpmCalls(sb), dir).toEqual([]);
+      expect(committed(sb), dir).toBe(false);
+    }
+  });
+
+  it('a merge started DURING the steps refuses the commit after them: the question is asked again', () => {
+    const sb = sandbox();
+    writeFileSync(join(sb.state, 'merge-in-progress-after'), '');
+    const msg = withMessage(sb);
+    const r = run(sb, ['--commit', msg]);
+    expect(r.status).not.toBe(0);
+    expect(pnpmCalls(sb).length, 'the steps ran').toBeGreaterThan(0);
+    expect(r.out).toMatch(/^commit REFUSED \(.*merge is in progress/m);
+    expect(gitCalls(sb).some((c) => c.startsWith('git commit-tree'))).toBe(false);
     expect(committed(sb)).toBe(false);
   });
 
@@ -562,6 +625,13 @@ describe.skipIf(process.platform === 'win32')('the tripwire: every gating step o
 
   it('a folded block (run: >) is refused, naming the job', () => {
     expect(() => workflowSteps(withJob('extra-folded', '      - run: >\n          pnpm run\n          extra-check\n'))).toThrow(/extra-folded/);
+  });
+
+  it('a quoted job key (\'steps\': or "uses":) is refused, naming the job: a job the reader cannot read is never skipped', () => {
+    const quoted = `${yaml.trimEnd()}\n  extra-quoted:\n    runs-on: ubuntu-latest\n    'steps':\n      - run: pnpm run extra-check\n`;
+    expect(() => workflowSteps(quoted)).toThrow(/extra-quoted/);
+    const quotedUses = `${yaml.trimEnd()}\n  extra-reusable:\n    "uses": someone/reusable/.github/workflows/check.yml@abc\n`;
+    expect(() => workflowSteps(quotedUses)).toThrow(/extra-reusable/);
   });
 
   it('a step with neither run: nor uses: is refused, naming the job', () => {

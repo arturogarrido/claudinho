@@ -21,8 +21,11 @@
  *     or a job without a conclusion is nonzero; any non-`(non-gating)` job not `success` is nonzero;
  *   - strict by default: no run is nonzero naming the SHA and the PR lookup; `--allow-no-run` with no PR exits
  *     0 with `pushed; CI not verified (no pull request)`;
- *   - every process the script starts is reaped with its children: at the deadline (the probe's child dies with
- *     it) and on a TERM to the script's own pid (the probe, its child and the work directory are gone after).
+ *   - every process the script starts is reaped with its children, by pids RECORDED before the first signal (a
+ *     child that ignores TERM under a parent that dies of it is killed by its own pid): at the deadline and on a TERM
+ *     to the script's own pid (the probe, its child and the work directory are gone after);
+ *   - the remote ref is matched by its exact name (`git ls-remote` matches a tail); every push URL of origin must be
+ *     the fetch URL's repository.
  * Test seams, documented in the script: PUSH_WATCH_POLL_SECONDS and PUSH_WATCH_TIMEOUT_SECONDS.
  */
 import { spawnSync } from 'node:child_process';
@@ -34,7 +37,7 @@ import { COMMON_HOST_TOOLS, hostTool, makeSandbox, parses, pidAlive, runScript, 
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..');
 const SCRIPT = join(ROOT, 'scripts/push-and-watch.sh');
-const HOST = [...COMMON_HOST_TOOLS, 'kill', 'pkill'] as const;
+const HOST = [...COMMON_HOST_TOOLS, 'kill', 'pkill', 'pgrep'] as const;
 const HOST_GIT = hostTool('git');
 const LOCAL = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const OTHER = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
@@ -54,10 +57,22 @@ const STUBS = {
   git: `
 case "$1" in
   rev-parse) [ -e "$STATE/local-sha" ] && cat "$STATE/local-sha" || echo ${LOCAL}; exit 0 ;;
-  remote) [ -e "$STATE/origin-url" ] && cat "$STATE/origin-url" || echo "https://github.com/arturogarrido/claudinho.git"; exit 0 ;;
+  remote)
+    # get-url origin: the fetch URL; get-url --push --all origin: the push URL(s), the fetch URL unless $STATE/push-url
+    fetch=$([ -e "$STATE/origin-url" ] && cat "$STATE/origin-url" || echo "https://github.com/arturogarrido/claudinho.git")
+    case "$*" in
+      *--push*) [ -e "$STATE/push-url" ] && cat "$STATE/push-url" || echo "$fetch"; exit 0 ;;
+      *) echo "$fetch"; exit 0 ;;
+    esac ;;
   check-ref-format) shift; exec "${HOST_GIT}" check-ref-format "$@" ;;
   show-ref) [ -e "$STATE/no-branch" ] && exit 1; exit 0 ;;
-  ls-remote) sha=$([ -e "$STATE/remote-sha" ] && cat "$STATE/remote-sha" || echo ${OTHER}); printf '%s\\trefs/heads/%s\\n' "$sha" "$3"; exit 0 ;;
+  ls-remote)
+    # a decoy line FIRST when $STATE/ls-remote-decoy exists: a deeper ref whose name ends in the asked pattern (git
+    # matches the tail); with $STATE/ls-remote-absent-first the FIRST call prints the decoy alone (the branch absent)
+    n=$(( $(cat "$STATE/ls-remote-calls" 2>/dev/null || echo 0) + 1 )); echo $n > "$STATE/ls-remote-calls"
+    [ -e "$STATE/ls-remote-decoy" ] && printf '%s\\trefs/heads/archive/%s\\n' "${LOCAL}" "$3"
+    if [ -e "$STATE/ls-remote-absent-first" ] && [ "$n" -le 1 ]; then printf '%s\\trefs/tags/%s\\n' "${LOCAL}" "$3"; exit 0; fi
+    sha=$([ -e "$STATE/remote-sha" ] && cat "$STATE/remote-sha" || echo ${OTHER}); printf '%s\\t%s\\n' "$sha" "$3"; exit 0 ;;
   push) [ -e "$STATE/push-fails" ] && { echo "error: failed to push some refs" >&2; exit 1; }; [ -e "$STATE/remote-sha" ] || echo ${LOCAL} > "$STATE/remote-sha"; exit 0 ;;
 esac
 exit 0
@@ -74,6 +89,8 @@ case "$1 $2" in
     echo "gh: unknown api path '$path'" >&2; exit 1 ;;
   "run list")
     if [ -e "$STATE/hang" ]; then sleep 30 & echo $! > "$STATE/gh-child"; wait $! && : > "$STATE/hang-finished"; fi
+    # hang-ignore-term: the child IGNORES TERM (inherited across exec) while this parent dies of it
+    if [ -e "$STATE/hang-ignore-term" ]; then ( trap '' TERM; exec sleep 30 ) & echo $! > "$STATE/gh-child"; wait $! && : > "$STATE/hang-finished"; fi
     n=$(( $(cat "$STATE/runs-calls" 2>/dev/null || echo 0) + 1 )); echo $n > "$STATE/runs-calls"
     while [ $n -gt 0 ] && [ ! -e "$STATE/runs.$n.tsv" ]; do n=$((n-1)); done
     [ $n -gt 0 ] && cat "$STATE/runs.$n.tsv"; exit 0 ;;
@@ -201,6 +218,33 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     const r = run(sb, []);
     expect(r.status, r.out).toBe(0);
     expect(sb.calls().filter((c) => /^git push /.test(c))).toEqual(['git push origin refs/heads/feature/x:refs/heads/feature/x']);
+  });
+
+  it('a push URL that is not the fetch URL\'s repository (origin.pushurl) refuses before anything: the push and the reads must name one repository', () => {
+    const sb = sandbox();
+    seed(sb, { 'push-url': 'https://ghe.example/arturogarrido/claudinho.git\n' });
+    const r = run(sb, []);
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/push URL/i);
+    expect(pushed(sb)).toBe(false);
+    expect(ghCalls(sb)).toEqual([]);
+    expect(sb.calls().some((c) => /^git remote get-url --push/.test(c)), 'the push URL was asked').toBe(true);
+  });
+
+  it('the remote ref is matched by its exact name: a deeper ref ending in refs/heads/<b> listed first never stands for the branch', () => {
+    // before the push: the decoy carries the LOCAL SHA, the branch itself is behind (OTHER): a push is required
+    const sb = sandbox();
+    seed(sb, { 'ls-remote-decoy': '', 'runs.1.tsv': RUN('8', LOCAL, 'completed', 'success'), 'jobs-8.tsv': JOBS_OK });
+    const r = run(sb, []);
+    expect(r.status, r.out).toBe(0);
+    expect(pushed(sb), 'the decoy did not pass for "already at"').toBe(true);
+    expect(r.out).not.toMatch(/already at/);
+    // the branch absent remotely on the first read (a decoy alone): pushed, then read back by its exact name
+    const sb2 = sandbox();
+    seed(sb2, { 'ls-remote-absent-first': '', 'runs.1.tsv': RUN('9', LOCAL, 'completed', 'success'), 'jobs-9.tsv': JOBS_OK });
+    const r2 = run(sb2, []);
+    expect(r2.status, r2.out).toBe(0);
+    expect(pushed(sb2)).toBe(true);
   });
 
   it('a run queued or in progress for ANOTHER SHA refuses the push, naming it', () => {
@@ -364,6 +408,33 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     expect(await until(() => !pidAlive(ghChild), 3000), `the probe's child ${ghChild} is dead after TERM`).toBe(true);
     expect(existsSync(join(sb.state, 'hang-finished'))).toBe(false);
     expect(workDirs(sb), 'the work directory is removed').toEqual([]);
+  });
+
+  it('a child that ignores TERM under a parent that dies of it is still gone after the deadline: the pids are recorded before the first signal', { timeout: 20000 }, async () => {
+    const sb = sandbox();
+    seed(sb, { 'remote-sha': LOCAL, 'hang-ignore-term': '' });
+    const r = run(sb, [], { PUSH_WATCH_TIMEOUT_SECONDS: '2' });
+    expect(r.status).not.toBe(0);
+    const child = pidIn(sb, 'gh-child');
+    const dead = await until(() => !pidAlive(child), 3000);
+    if (!dead) try { process.kill(child, 'SIGKILL'); } catch {}
+    expect(dead, `the TERM-ignoring child ${child} was killed by its recorded pid`).toBe(true);
+    expect(existsSync(join(sb.state, 'hang-finished'))).toBe(false);
+  });
+
+  it('a TERM to the script while a probe\'s child ignores TERM: the child is still gone, by its recorded pid', { timeout: 20000 }, async () => {
+    const sb = sandbox();
+    seed(sb, { 'remote-sha': LOCAL, 'hang-ignore-term': '' });
+    const { child, done } = startScript(SCRIPT, ['feature/x'], sb, { PUSH_WATCH_POLL_SECONDS: '0', PUSH_WATCH_TIMEOUT_SECONDS: '30' }, { cwd: ROOT });
+    expect(await until(() => existsSync(join(sb.state, 'gh-child')), 8000), 'the probe started').toBe(true);
+    const ghChild = pidIn(sb, 'gh-child');
+    child.kill('SIGTERM');
+    const r = await done;
+    expect(r.status, r.out).toBe(143);
+    const dead = await until(() => !pidAlive(ghChild), 3000);
+    if (!dead) try { process.kill(ghChild, 'SIGKILL'); } catch {}
+    expect(dead, `the TERM-ignoring child ${ghChild} is dead after TERM`).toBe(true);
+    expect(workDirs(sb)).toEqual([]);
   });
 
   it('no run within the timeout is nonzero by default, naming the SHA and the PR lookup; --allow-no-run with no PR exits 0 with its line', { timeout: 20000 }, () => {
