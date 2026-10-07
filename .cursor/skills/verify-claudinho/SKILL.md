@@ -59,9 +59,9 @@ provider). Every child has a deadline (`--timeout <s>`, 60 by default; the MCP s
 when it passes (TERM, a grace of two seconds, KILL), its partial evidence kept. A capture's deadline reaches the whole
 process group and the descendants `ps` recorded before the first signal; when `ps` did not answer, the TERM is
 withheld so the group stays whole for the grace, `ps` is asked again at the KILL step (it vouches only for a leader
-alive in its own snapshot; a leader already gone is neither asked about nor signalled again, since its pid may be
-another process's by then), and a descendant it still could not see is said in the result (`a descendant may have
-survived`), never silently left.
+alive in its own snapshot; a leader already gone is not asked about, since its pid may be another process's by
+then), the group is signalled while it still exists and never after (a living group's id cannot be reused), and a
+descendant it still could not see is said in the result (`a descendant may have survived`), never silently left.
 
 The feature map, one file per surface with how to drive it and what proves it, lives at
 `.claude/skills/verify-claudinho/features/` (five surfaces so far: `today`, `live`, `next`, `table`, `statusline`,
