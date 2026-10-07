@@ -14,38 +14,52 @@
 #   scripts/push-and-watch.sh <branch> [--timeout <min>] [--allow-no-run]
 #
 # In order, each refusal exiting nonzero before the next step:
-#   1. the repository: the owner/name of `git remote get-url origin` (https or
-#      ssh) must equal `gh repo view`'s, so gh reads the repository pushed to;
-#   2. the local SHA: `git rev-parse --verify refs/heads/<branch>`, never HEAD;
-#   3. before the push: the CI workflow's runs for the branch (`gh run list
-#      --workflow ci.yml`); a gh failure refuses, and so does a run not yet
-#      completed for ANOTHER SHA (the push would cancel it: wait for it, or
-#      cancel it yourself);
+#   1. the repository: HOST/OWNER/NAME read from `git remote get-url origin`
+#      (`https://HOST/OWNER/NAME[.git][/]`, `http://...`,
+#      `ssh://[user@]HOST[:port]/OWNER/NAME[.git]` or
+#      `[user@]HOST:OWNER/NAME[.git]`; anything else refuses); `gh api --hostname
+#      HOST repos/OWNER/NAME` (REST: the GraphQL-backed `gh repo view` is refused
+#      in some environments) must answer the same OWNER/NAME, so gh reads the
+#      repository pushed to; every later gh call is bound to it (`gh run ... -R
+#      HOST/OWNER/NAME`, `gh api --hostname HOST`);
+#   2. the branch: the argument must be a branch name (`git check-ref-format
+#      --branch` prints it back unchanged) and a local branch (`git show-ref
+#      --verify refs/heads/<branch>`); the local SHA is `git rev-parse --verify
+#      refs/heads/<branch>`, never HEAD;
+#   3. before the push: the CI workflow's runs for the branch (`gh run list -R
+#      HOST/OWNER/NAME --workflow ci.yml`); a gh failure refuses, and so does a
+#      run not yet completed for ANOTHER SHA (the push would cancel it: wait for
+#      it, or cancel it yourself);
 #   4. the push: when `git ls-remote origin refs/heads/<branch>` already equals
 #      the local SHA nothing is pushed and the run is only watched (re-running
-#      the script after a timeout does this); else `git push origin <branch>`
-#      (a failed push exits at once) and `git ls-remote` read back, which must
-#      equal the local SHA;
+#      the script after a timeout does this); else `git push origin
+#      refs/heads/<branch>:refs/heads/<branch>` (both ends named; a failed push
+#      exits at once) and `git ls-remote` read back, which must equal the local
+#      SHA;
 #   5. the watch: the run list asked every PUSH_WATCH_POLL_SECONDS until the
 #      deadline; the first (newest) line for the full local SHA is the run; a
 #      completed run is read at once; a run still pending at the deadline exits
 #      nonzero naming it; no run for the SHA exits nonzero naming the SHA and the
-#      pull requests found for the branch, except with --allow-no-run when there
-#      is none (CI runs on pull requests and on main): then it prints
-#      `pushed; CI not verified (no pull request)` and exits 0;
-#   6. the jobs (`gh run view <id>`): a table of the SHA read back and every job
-#      with its conclusion, start, completion and duration. An empty job list, a
-#      job with no conclusion, or any job not named `(non-gating)` whose
-#      conclusion is not `success` exits nonzero.
+#      open pull requests found for the branch (`gh api --hostname HOST
+#      repos/OWNER/NAME/pulls?state=open&head=OWNER:<branch>`), except with
+#      --allow-no-run when there is none (CI runs on pull requests and on main):
+#      then it prints `pushed; CI not verified (no pull request)` and exits 0;
+#   6. the jobs (`gh run view -R HOST/OWNER/NAME <id>`): a table of the SHA read
+#      back and every job with its conclusion, start, completion and duration.
+#      An empty job list, a job with no conclusion, or any job not named
+#      `(non-gating)` whose conclusion is not `success` exits nonzero.
 #
 # Every gh call is bounded (macOS has no `timeout`): it runs in the background,
-# a watchdog kills it when the deadline passes, and a killed call is reported
-# with the word "deadline". The deadline is a background `sleep` started first,
-# so it is as exact as `sleep` (bash 3.2's $SECONDS counts whole seconds). The
-# reads after the watch (a completed run's jobs, the pull request lookup after no
-# run) get the time left or 30 seconds, whichever is longer. A run list cut at
-# the deadline ends the watch on what the earlier answers showed. It never tags,
-# merges or comments.
+# a watchdog kills it, its children first, when the deadline passes, and a
+# killed call is reported with the word "deadline". The deadline is a background
+# `sleep` started first, so it is as exact as `sleep` (bash 3.2's $SECONDS counts
+# whole seconds). The reads after the watch (a completed run's jobs, the pull
+# request lookup after no run) get the time left or 30 seconds, whichever is
+# longer. A run list cut at the deadline ends the watch on what the earlier
+# answers showed. Every process the script starts (the deadline timer, a gh call
+# and its watchdog) is reaped with its children on every exit, an interrupt or a
+# TERM included, and the temporary directory is removed. It never tags, merges
+# or comments.
 #
 # Options:
 #   --timeout <min>   how long to wait for the run (default 30 minutes)
@@ -104,14 +118,40 @@ else
   TIMEOUT=$((TIMEOUT_MIN * 60))
 fi
 
-# Cleanup on every exit: the deadline timer stopped and reaped (quietly: a
-# reaped job is otherwise reported), the temporary directory removed. An
-# interrupt ends the script through it (a script's background job ignores
-# SIGINT, so the timer would otherwise outlive the script).
+# Every process this script starts is one of three, each held in a global
+# while it runs: the deadline timer, a gh call (PROBE_PID) and its watchdog
+# (WATCHDOG_PID). Cleanup on every exit reaps the watchdog, then the gh call,
+# then the timer, and removes the temporary directory. An interrupt or a TERM
+# ends the script through it (a script's background job ignores SIGINT, and a
+# TERM to the script's pid reaches nothing else, so they would otherwise outlive
+# the script).
 TIMER=""
 WORK=""
+PROBE_PID=""
+WATCHDOG_PID=""
+
+# reap <pid>: stops a process this script started, with its children: the
+# children first (once the process is gone they are re-parented and `pkill -P`
+# no longer finds them), then the process; TERM, a bounded wait, KILL if it is
+# still alive, then waited for. Quiet: bash otherwise reports a killed job.
+reap() {
+  local pid=$1 i=0
+  [ -n "$pid" ] || return 0
+  pkill -P "$pid"
+  kill "$pid"
+  while kill -0 "$pid" && [ $i -lt 50 ]; do sleep 0.02; i=$((i + 1)); done
+  if kill -0 "$pid"; then
+    pkill -9 -P "$pid"
+    kill -9 "$pid"
+  fi
+  wait "$pid"
+  return 0
+} 2>/dev/null
+
 cleanup() {
-  if [ -n "$TIMER" ]; then kill "$TIMER" 2>/dev/null; wait "$TIMER" 2>/dev/null; fi
+  reap "$WATCHDOG_PID"; WATCHDOG_PID=""
+  reap "$PROBE_PID"; PROBE_PID=""
+  reap "$TIMER"; TIMER=""
   if [ -n "$WORK" ]; then rm -rf "$WORK"; fi
 }
 trap cleanup EXIT
@@ -143,35 +183,43 @@ deadline_passed() {
 
 # probe <deadline|late> <command...>: runs the command with no stdin, its stdout
 # in $WORK/out and its stderr in $WORK/err (so nothing it leaves running holds
-# this script's output). A watchdog kills it when its bound passes: `deadline`,
-# the deadline; `late`, the deadline or LATE_BOUND seconds from the call's start,
-# whichever is later ($SECONDS is whole seconds: one more, so never shorter).
+# this script's output). A watchdog kills it, its children first, when its bound
+# passes: `deadline`, the deadline; `late`, the deadline or LATE_BOUND seconds
+# from the call's start, whichever is later ($SECONDS is whole seconds: one more,
+# so never shorter). PROBE_PID and WATCHDOG_PID name the two while the call runs
+# (cleanup reaps them on an exit in between) and are cleared when it returns.
 # Returns the command's own status, or 124 when the watchdog killed it.
 probe() {
-  local mode=$1 pid watchdog rc late_end=0
+  local mode=$1 pid rc late_end=0
   shift
   if [ "$mode" = "late" ]; then late_end=$((SECONDS + LATE_BOUND + 1)); fi
   "$@" </dev/null >"$WORK/out" 2>"$WORK/err" &
-  pid=$!
+  PROBE_PID=$!
+  pid=$PROBE_PID
   (
     trap - EXIT INT TERM
     while kill -0 "$pid" 2>/dev/null; do
       if ! kill -0 "$TIMER" 2>/dev/null && [ "$SECONDS" -ge "$late_end" ]; then
         : >"$WORK/killed.$pid"
+        pkill -P "$pid" 2>/dev/null
         kill "$pid" 2>/dev/null
         i=0
         while kill -0 "$pid" 2>/dev/null && [ $i -lt 100 ]; do sleep 0.02; i=$((i + 1)); done
-        kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+        if kill -0 "$pid" 2>/dev/null; then
+          pkill -9 -P "$pid" 2>/dev/null
+          kill -9 "$pid" 2>/dev/null
+        fi
         exit 0
       fi
       sleep 0.02
     done
   ) </dev/null >/dev/null 2>&1 &
-  watchdog=$!
+  WATCHDOG_PID=$!
   wait "$pid" 2>/dev/null
   rc=$?
-  kill "$watchdog" 2>/dev/null
-  wait "$watchdog" 2>/dev/null
+  reap "$WATCHDOG_PID"
+  WATCHDOG_PID=""
+  PROBE_PID=""
   if [ -e "$WORK/killed.$pid" ]; then return 124; fi
   return $rc
 }
@@ -185,30 +233,66 @@ probe_failed() {
   refuse "$1 failed (exit $2): $(probe_error)${3:+; $3}"
 }
 
-# 1. The repository.
+# parse_origin <url>: sets REPO_HOST, REPO_OWNER and REPO_NAME from one of the
+# four forms the header names; returns nonzero for anything else (a local path,
+# file://, a host with credentials or a port in an https URL, a deeper path).
+parse_origin() {
+  local u=$1 rest authority path
+  case "$u" in
+    https://*/*|http://*/*)
+      rest=${u#*://}
+      authority=${rest%%/*}
+      path=${rest#*/} ;;
+    ssh://*/*)
+      rest=${u#ssh://}
+      authority=${rest%%/*}
+      path=${rest#*/}
+      authority=${authority#*@}
+      authority=${authority%%:*} ;;
+    *://*) return 1 ;;
+    *:*)
+      authority=${u%%:*}
+      path=${u#*:}
+      case "$authority" in */*) return 1 ;; esac
+      authority=${authority#*@} ;;
+    *) return 1 ;;
+  esac
+  path=${path%/}
+  path=${path%.git}
+  REPO_HOST=$authority
+  REPO_OWNER=${path%%/*}
+  REPO_NAME=${path#*/}
+  [ "$REPO_NAME" != "$path" ] || return 1
+  case "$REPO_HOST" in ''|*[!A-Za-z0-9.-]*) return 1 ;; esac
+  case "$REPO_OWNER" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
+  case "$REPO_NAME" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
+  return 0
+}
+
+# 1. The repository: HOST/OWNER/NAME, and every gh call below bound to it.
+REPO_HOST=""
+REPO_OWNER=""
+REPO_NAME=""
 origin_url=$(git remote get-url origin) || refuse "repository: git remote get-url origin failed"
-repo=${origin_url%/}
-repo=${repo%.git}
-origin_name=${repo##*/}
-repo=${repo%/*}
-origin_owner=${repo##*[/:]}
-if [ -z "$origin_owner" ] || [ -z "$origin_name" ] || [ "$origin_owner" = "$repo" ]; then
-  refuse "repository: cannot read owner/name from origin's URL: $origin_url"
-fi
-origin_repo="$origin_owner/$origin_name"
-probe deadline gh repo view --json nameWithOwner --jq=.nameWithOwner
+parse_origin "$origin_url" ||
+  refuse "repository: cannot read host/owner/name from origin's URL (https://, http://, ssh:// or [user@]host:owner/name); nothing pushed"
+REPO="$REPO_HOST/$REPO_OWNER/$REPO_NAME"
+probe deadline gh api --hostname "$REPO_HOST" "repos/$REPO_OWNER/$REPO_NAME" --jq=.full_name
 rc=$?
-[ $rc -eq 0 ] || probe_failed "gh repo view" $rc "nothing pushed"
+[ $rc -eq 0 ] || probe_failed "gh api --hostname $REPO_HOST repos/$REPO_OWNER/$REPO_NAME" $rc "nothing pushed"
 gh_repo=""
 read -r gh_repo <"$WORK/out" || true
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
-if [ -z "$gh_repo" ] || [ "$(lower "$gh_repo")" != "$(lower "$origin_repo")" ]; then
-  refuse "repository mismatch: origin is $origin_repo, gh resolves '$gh_repo'; nothing pushed"
+if [ -z "$gh_repo" ] || [ "$(lower "$gh_repo")" != "$(lower "$REPO_OWNER/$REPO_NAME")" ]; then
+  refuse "repository mismatch: origin is $REPO, gh answers '$gh_repo' on $REPO_HOST; nothing pushed"
 fi
-echo "repository  $origin_repo (origin and gh agree)"
+echo "repository  $REPO (origin and gh agree)"
 
-# 2. The local SHA, from the branch's own ref.
-local_sha=$(git rev-parse --verify "refs/heads/$BRANCH") || refuse "no local branch refs/heads/$BRANCH"
+# 2. The branch: a branch name, an existing local branch, and its SHA from its own ref.
+checked=$(git check-ref-format --branch "$BRANCH" 2>/dev/null) && [ "$checked" = "$BRANCH" ] ||
+  refuse "branch: '$BRANCH' is not a branch name (git check-ref-format --branch); nothing pushed"
+git show-ref --verify --quiet "refs/heads/$BRANCH" || refuse "no local branch refs/heads/$BRANCH; nothing pushed"
+local_sha=$(git rev-parse --verify "refs/heads/$BRANCH") || refuse "no local branch refs/heads/$BRANCH; nothing pushed"
 case "$local_sha" in
   *[!0-9a-f]*|'') refuse "git rev-parse returned '$local_sha' for refs/heads/$BRANCH" ;;
 esac
@@ -217,12 +301,28 @@ if [ ${#local_sha} -ne 40 ] && [ ${#local_sha} -ne 64 ]; then
 fi
 echo "branch      $BRANCH at $local_sha"
 
+# urlencode <text>: the text percent-encoded byte by byte for a query value
+# (letters, digits, `._~-` and `/` kept), so a branch name's `#`, `&`, `+` or `%`
+# cannot end or change the pull-request query.
+urlencode() {
+  local LC_ALL=C
+  local s=$1 out="" c v i
+  for ((i = 0; i < ${#s}; i++)); do
+    c=${s:i:1}
+    case "$c" in
+      [A-Za-z0-9._~/-]) out="$out$c" ;;
+      *) v=$(printf '%d' "'$c"); out="$out$(printf '%%%02X' $((v & 255)))" ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
 # The CI workflow's runs for the branch, newest first, one TSV line each: id,
 # headSha, event, status, conclusion. Tabs become \037 so an empty field stays a
 # field when read (a tab is whitespace to `read`, and runs of it collapse).
 US=$(printf '\037')
 list_runs() {
-  probe deadline gh run list --workflow "$WORKFLOW" --branch "$BRANCH" --limit 20 \
+  probe deadline gh run list -R "$REPO" --workflow "$WORKFLOW" --branch "$BRANCH" --limit 20 \
     --json databaseId,headSha,event,status,conclusion \
     --jq='.[] | [.databaseId,.headSha,.event,.status,.conclusion] | @tsv'
   local rc=$?
@@ -247,10 +347,10 @@ remote_sha=$(printf '%s\n' "$remote_line" | head -n 1 | cut -f 1)
 if [ "$remote_sha" = "$local_sha" ]; then
   echo "remote      origin/$BRANCH already at $local_sha: no push, watching only"
 else
-  git push origin "$BRANCH"
+  git push origin "refs/heads/$BRANCH:refs/heads/$BRANCH"
   rc=$?
   if [ $rc -ne 0 ]; then
-    echo "push FAIL (git push origin $BRANCH exit $rc): nothing watched"
+    echo "push FAIL (git push origin refs/heads/$BRANCH:refs/heads/$BRANCH exit $rc): nothing watched"
     exit 1
   fi
   remote_line=$(git ls-remote origin "refs/heads/$BRANCH") || refuse "git ls-remote origin refs/heads/$BRANCH failed after the push"
@@ -307,13 +407,14 @@ if [ -z "$run_id" ] || [ "$run_status" != "completed" ]; then
     exit 1
   fi
   echo "no run for $local_sha within ${TIMEOUT}s ($WORKFLOW on $BRANCH)"
-  probe late gh pr list --head "$BRANCH" --json number --jq=length
+  probe late gh api --hostname "$REPO_HOST" \
+    "repos/$REPO_OWNER/$REPO_NAME/pulls?state=open&head=$REPO_OWNER:$(urlencode "$BRANCH")" --jq=length
   rc=$?
-  [ $rc -eq 0 ] || probe_failed "gh pr list" $rc "CI not verified"
+  [ $rc -eq 0 ] || probe_failed "gh api (the open pull requests for $BRANCH)" $rc "CI not verified"
   prs=""
   read -r prs <"$WORK/out" || true
-  is_count "$prs" || refuse "gh pr list printed '$prs', not a count; CI not verified"
-  echo "$prs pull request(s) found for $BRANCH"
+  is_count "$prs" || refuse "gh api printed '$prs' for the open pull requests, not a count; CI not verified"
+  echo "$prs open pull request(s) found for $BRANCH"
   if [ "$ALLOW_NO_RUN" -eq 1 ] && [ "$prs" -eq 0 ]; then
     echo "pushed; CI not verified (no pull request)"
     exit 0
@@ -322,7 +423,7 @@ if [ -z "$run_id" ] || [ "$run_status" != "completed" ]; then
 fi
 
 # 6. The jobs.
-probe late gh run view "$run_id" --json jobs \
+probe late gh run view -R "$REPO" "$run_id" --json jobs \
   --jq='.jobs[] | [.name,.conclusion,.startedAt,.completedAt] | @tsv'
 rc=$?
 [ $rc -eq 0 ] || probe_failed "gh run view $run_id" $rc "CI not verified"
