@@ -58,16 +58,19 @@
 #      `(non-gating)` whose conclusion is not `success` exits nonzero.
 #
 # Every gh call is bounded (macOS has no `timeout`): it runs in the background,
-# a watchdog kills it, its children first, when the deadline passes, and a
-# killed call is reported with the word "deadline". The deadline is a background
+# a watchdog kills it and its children when the deadline passes, and a killed
+# call is reported with the word "deadline". The deadline is a background
 # `sleep` started first, so it is as exact as `sleep` (bash 3.2's $SECONDS counts
 # whole seconds). The reads after the watch (a completed run's jobs, the pull
 # request lookup after no run) get the time left or 30 seconds, whichever is
 # longer. A run list cut at the deadline ends the watch on what the earlier
 # answers showed. Every process the script starts (the deadline timer, a gh call
 # and its watchdog) is reaped with its children on every exit, an interrupt or a
-# TERM included, and the temporary directory is removed. It never tags, merges
-# or comments.
+# TERM included, and the temporary directory is removed. A process is stopped by
+# pids RECORDED before the first signal (`pgrep -P`): TERM to each recorded child
+# and to the process, a bounded wait, then KILL to each one still alive, so a
+# child that ignores TERM under a parent that dies of it is still killed by its
+# own pid. It never tags, merges or comments.
 #
 # Options:
 #   --timeout <min>   how long to wait for the run (default 30 minutes)
@@ -129,30 +132,39 @@ fi
 # Every process this script starts is one of three, each held in a global
 # while it runs: the deadline timer, a gh call (PROBE_PID) and its watchdog
 # (WATCHDOG_PID). Cleanup on every exit reaps the watchdog, then the gh call,
-# then the timer, and removes the temporary directory. An interrupt or a TERM
-# ends the script through it (a script's background job ignores SIGINT, and a
-# TERM to the script's pid reaches nothing else, so they would otherwise outlive
-# the script).
+# then the timer (each with its children, by recorded pids), and removes the
+# temporary directory. An interrupt or a TERM ends the script through it (a
+# script's background job ignores SIGINT, and a TERM to the script's pid reaches
+# nothing else, so they would otherwise outlive the script).
 TIMER=""
 WORK=""
 PROBE_PID=""
 WATCHDOG_PID=""
 
-# reap <pid>: stops a process this script started, with its children: the
-# children first (once the process is gone they are re-parented and `pkill -P`
-# no longer finds them), then the process; TERM, a bounded wait, KILL if it is
-# still alive, then waited for. Quiet: bash otherwise reports a killed job.
-reap() {
-  local pid=$1 i=0
+# stop_tree <pid> <tries>: stops a process this script started, with its
+# children, by pids RECORDED before the first signal (`pgrep -P`: once the
+# process is gone its children are re-parented and its pid no longer finds them,
+# and a child that ignores TERM would outlive it). TERM to each recorded child
+# and to the process; up to <tries> waits of 0.02s for the process to go; then
+# KILL to each recorded child still alive (`kill -0`) and to the process if it
+# is. Quiet: bash otherwise reports a killed job.
+stop_tree() {
+  local pid=$1 tries=$2 i=0 kids k
   [ -n "$pid" ] || return 0
-  pkill -P "$pid"
+  kids=$(pgrep -P "$pid")
+  for k in $kids; do kill "$k"; done
   kill "$pid"
-  while kill -0 "$pid" && [ $i -lt 50 ]; do sleep 0.02; i=$((i + 1)); done
-  if kill -0 "$pid"; then
-    pkill -9 -P "$pid"
-    kill -9 "$pid"
-  fi
-  wait "$pid"
+  while kill -0 "$pid" && [ $i -lt "$tries" ]; do sleep 0.02; i=$((i + 1)); done
+  for k in $kids; do kill -0 "$k" && kill -9 "$k"; done
+  kill -0 "$pid" && kill -9 "$pid"
+  return 0
+} 2>/dev/null
+
+# reap <pid>: stop_tree, then the process waited for (it is this shell's child).
+reap() {
+  [ -n "$1" ] || return 0
+  stop_tree "$1" 50
+  wait "$1"
   return 0
 } 2>/dev/null
 
@@ -191,11 +203,12 @@ deadline_passed() {
 
 # probe <deadline|late> <command...>: runs the command with no stdin, its stdout
 # in $WORK/out and its stderr in $WORK/err (so nothing it leaves running holds
-# this script's output). A watchdog kills it, its children first, when its bound
-# passes: `deadline`, the deadline; `late`, the deadline or LATE_BOUND seconds
-# from the call's start, whichever is later ($SECONDS is whole seconds: one more,
-# so never shorter). PROBE_PID and WATCHDOG_PID name the two while the call runs
-# (cleanup reaps them on an exit in between) and are cleared when it returns.
+# this script's output). A watchdog stops it and its children (stop_tree) when
+# its bound passes: `deadline`, the deadline; `late`, the deadline or LATE_BOUND
+# seconds from the call's start, whichever is later ($SECONDS is whole seconds:
+# one more, so never shorter). PROBE_PID and WATCHDOG_PID name the two while the
+# call runs (cleanup reaps them on an exit in between) and are cleared when it
+# returns.
 # Returns the command's own status, or 124 when the watchdog killed it.
 probe() {
   local mode=$1 pid rc late_end=0
@@ -209,14 +222,11 @@ probe() {
     while kill -0 "$pid" 2>/dev/null; do
       if ! kill -0 "$TIMER" 2>/dev/null && [ "$SECONDS" -ge "$late_end" ]; then
         : >"$WORK/killed.$pid"
-        pkill -P "$pid" 2>/dev/null
-        kill "$pid" 2>/dev/null
-        i=0
-        while kill -0 "$pid" 2>/dev/null && [ $i -lt 100 ]; do sleep 0.02; i=$((i + 1)); done
-        if kill -0 "$pid" 2>/dev/null; then
-          pkill -9 -P "$pid" 2>/dev/null
-          kill -9 "$pid" 2>/dev/null
-        fi
+        # From here the watchdog finishes what it started: the caller reaps it
+        # (TERM) as soon as the call is gone, which must not land between the
+        # TERM sent to a recorded child and the KILL that child may still need.
+        trap '' TERM
+        stop_tree "$pid" 100
         exit 0
       fi
       sleep 0.02
