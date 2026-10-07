@@ -73,7 +73,12 @@ const GRACE_MS = 2000;
 const PS_TIMEOUT_MS = 5000;
 /** The line a fetch preload writes on its own stderr when its log could not be written: the phase then fails. */
 const PRELOAD_UNRECORDED = 'verify-preload: could not record';
-const LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/**
+ * A label: a letter or digit, then letters, digits, dashes and underscores, 64 at most, and NO dot. Every evidence
+ * file is `<label>.<phase>.<ext>`, `<label>.ansi`, `<label>.txt`, `<label>.result.json` or `<label>.rpc.jsonl`, so with
+ * no dot inside a label no two labels' files can coincide (`demo` and `demo.main` would share `demo.main.txt`).
+ */
+const LABEL = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const SLUG = /^[a-z0-9_]+(\.[a-z0-9_]+)+$/;
 
 const HELP = `usage: node scripts/verify.mjs <command> [options]
@@ -107,7 +112,10 @@ options:
   --json                                    stdout is one JSON object; human lines go to stderr
   --out <dir>                               the evidence directory (default <TMPDIR>/claudinho-verify/<timestamp>), never removed,
                                             never the replay corpus or inside it
-  --label <name>                            the evidence files' prefix (default: the command), reserved in --out: a taken one is refused
+  --label <name>                            the evidence files' prefix (default: the command), reserved in --out: a taken one is refused;
+                                            a letter or digit, then letters, digits, - and _ (64 at most) and no dot: every evidence
+                                            file is <label>.<phase>.<ext>, <label>.ansi, <label>.txt, <label>.result.json or
+                                            <label>.rpc.jsonl, so no two labels' files can coincide (capture's <label> alike)
   --keep                                    keep the temporary HOME, config and cache
   --timeout <seconds>                       each child's deadline (default 60; the MCP session 30)
   --env KEY=VALUE                           a scenario key only, with a value: ${SCENARIO_KEYS.join(', ')}
@@ -115,7 +123,8 @@ options:
 
 refused before any child: the install commands (init, init-statusline, init-hook, init-cursor-statusline,
 claude, cursor), star, _refresh, any --copy, an --env key that is not a scenario key or has no value, a --cache
-that is not a directory, an --out inside the replay corpus, and a label already taken in --out.
+that is not a directory, an evidence directory (--out or the default) inside the replay corpus, a label with a dot,
+and a label already taken in --out.
 evidence, per phase: <label>.<phase>.txt, .err, .exit, .fetches, .spawns; <label>.result.json.
 exit: 0 ok; 1 a phase failed (a nonzero child, a miss, a malformed recording, a timeout, an MCP failure); 2 usage.
 `;
@@ -228,7 +237,11 @@ function timeoutOf(opts, fallbackS) {
 
 function labelOf(value, fallback) {
   const label = value ?? fallback;
-  if (!LABEL.test(label)) throw refuse(`the label ${JSON.stringify(label)} is not a file name (letters, digits, dot, dash, underscore)`);
+  if (!LABEL.test(label)) {
+    throw refuse(
+      `the label ${JSON.stringify(label)} is not a valid label: a letter or digit, then letters, digits, dashes and underscores, 64 at most, and no dot (no two labels' evidence files may coincide)`,
+    );
+  }
   return label;
 }
 
@@ -353,8 +366,8 @@ function within(path, dir) {
 
 /**
  * The evidence directory: the one asked for, or a fresh timestamped one under the controller's TMPDIR. Never removed,
- * and never the replay corpus or a directory inside it (the corpus is never written): that `--out` is refused before
- * anything is made.
+ * and never the replay corpus or a directory inside it (the corpus is never written): the default path is checked with
+ * `within` like an asked `--out`, and either is refused before anything is made.
  */
 function makeOut(asked, corpus = null) {
   if (asked !== undefined) {
@@ -365,10 +378,15 @@ function makeOut(asked, corpus = null) {
     return out;
   }
   const base = join(tmpdir(), 'claudinho-verify');
-  mkdirSync(base, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const insideCorpus = (out) => {
+    if (corpus && within(out, corpus)) throw refuse(`the evidence directory ${out} is inside the replay corpus; pass --out outside it`);
+  };
+  insideCorpus(join(base, stamp));
+  mkdirSync(base, { recursive: true });
   for (let n = 0; ; n++) {
     const out = join(base, n === 0 ? stamp : `${stamp}-${n}`);
+    insideCorpus(out);
     try {
       mkdirSync(out);
       return out;
@@ -452,6 +470,7 @@ function phaseOf(r, argv) {
   const p = { exit: r.exit, stdout: r.stdout, stderr: r.stderr, argv };
   if (r.signal) p.signal = r.signal;
   if (r.timedOut) p.timedOut = true;
+  if (r.survivorPossible) p.survivorPossible = true;
   return p;
 }
 
@@ -484,11 +503,17 @@ function alive(pid) {
 
 /**
  * Every descendant of a pid, read once from the process table (pid and parent pid), before any signal. `ps` runs with
- * PATH alone and a bound (PS_TIMEOUT_MS): a `ps` that is missing, exits nonzero or does not answer in time gives no
- * tree and a reason (`{ tree: [], failure }`), and the caller kills at once without the descendants.
+ * PATH alone and a bound (PS_TIMEOUT_MS, then SIGKILL): a `ps` that is missing, exits nonzero or does not answer in
+ * time gives no tree and a reason (`{ tree: [], failure }`), and the caller kills at once without the descendants.
  */
 function descendantsOf(pid) {
-  const r = spawnSync('ps', ['-A', '-o', 'pid=', '-o', 'ppid='], { env: { PATH: process.env.PATH ?? '' }, timeout: PS_TIMEOUT_MS, encoding: 'utf8' });
+  // SIGKILL at the bound: a `ps` that ignores TERM must not hold the controller past it.
+  const r = spawnSync('ps', ['-A', '-o', 'pid=', '-o', 'ppid='], {
+    env: { PATH: process.env.PATH ?? '' },
+    timeout: PS_TIMEOUT_MS,
+    killSignal: 'SIGKILL',
+    encoding: 'utf8',
+  });
   if (r.error || r.status !== 0) {
     const failure = r.error?.code === 'ETIMEDOUT'
       ? `no answer within ${PS_TIMEOUT_MS / 1000} s`
@@ -530,8 +555,10 @@ function signal(target, sig) {
  * kept, a deadline after which it is sent TERM, then KILL after a grace, and reaped. With `group`, the child leads a
  * process group of its own (detached) and the deadline signals the whole group and every descendant recorded before
  * the first signal, then waits until they are gone; when the process table did not answer, the kill proceeds at once
- * without the descendants and the child's stderr evidence says so. The result says `killed` when the controller's
- * signal reached a child that had not exited (a timeout or an interrupt). Returns the child and a promise of its result.
+ * without the descendants and the child's stderr evidence says so, and the KILL step (after the grace) asks the table
+ * once more and kills what it finds with the group; when it fails again, the result says `survivorPossible` (a
+ * descendant may have survived; the phase fails). The result says `killed` when the controller's signal reached a
+ * child that had not exited (a timeout or an interrupt). Returns the child and a promise of its result.
  */
 function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepStdin = false, group = false, onLine }) {
   let child;
@@ -567,6 +594,12 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
     }
     let tree = [];
     let killed = false;
+    let aborted = false;
+    // Set when the process table did not answer at the TERM: the KILL step then asks it once more.
+    let unrecordedAtTerm = false;
+    // Set when it did not answer at the KILL step either: a descendant may have survived, and the phase says so.
+    let survivorPossible = false;
+    let killStep = null;
     const kill = (sig) => {
       if (!child.pid) return;
       if (group) {
@@ -574,16 +607,35 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
         for (const pid of tree) signal(pid, sig);
       } else signal(child.pid, sig);
     };
+    /** Asks the process table for the group leader's descendants; a failure is said on the phase's stderr. */
+    const record = () => {
+      const found = descendantsOf(child.pid);
+      if (found.failure) err.push(Buffer.from(`verify: ps did not answer (${found.failure}); descendants not recorded\n`));
+      return found;
+    };
     const abort = () => {
-      if (finished || killTimer) return;
+      if (finished || aborted) return;
+      aborted = true;
       killed = child.exitCode === null && child.signalCode === null;
       if (group && child.pid) {
-        const found = descendantsOf(child.pid);
+        const found = record();
         tree = found.tree;
-        if (found.failure) err.push(Buffer.from(`verify: ps did not answer (${found.failure}); descendants not recorded\n`));
+        unrecordedAtTerm = found.failure !== null;
       }
       kill('SIGTERM');
-      killTimer = setTimeout(() => kill('SIGKILL'), GRACE_MS);
+      killStep = new Promise((stepDone) => {
+        killTimer = setTimeout(() => {
+          // The KILL step: when the table did not answer at the TERM, it is asked once more, and what it finds is
+          // killed with the group; a second failure leaves a descendant that may have survived.
+          if (group && child.pid && unrecordedAtTerm) {
+            const found = record();
+            if (found.failure) survivorPossible = true;
+            else tree = [...new Set([...tree, ...found.tree])];
+          }
+          kill('SIGKILL');
+          stepDone();
+        }, GRACE_MS);
+      });
     };
     const deadline = setTimeout(() => {
       timedOut = true;
@@ -597,6 +649,9 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       clearTimeout(exitTimer);
       running.delete(abort);
       if (group && child.pid) {
+        // When the table did not answer at the TERM, the KILL step (after the grace) is the second chance to find the
+        // descendants, even when the group itself is already gone: it runs before the evidence is final.
+        if (unrecordedAtTerm && killStep) await killStep;
         // The group, and every descendant recorded before the first signal, gone before the evidence is final.
         for (let i = 0; i < 200 && (alive(-child.pid) || tree.some(alive)); i++) {
           if (i === 40) kill('SIGKILL');
@@ -614,6 +669,7 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
         stdout: Buffer.concat(out).toString('utf8'),
         stderr: Buffer.concat(err).toString('utf8'),
       };
+      if (survivorPossible) r.survivorPossible = true;
       if (startError) r.stderr += `could not start ${command}: ${startError.message}\n`;
       done(r);
     };
@@ -677,6 +733,7 @@ function failuresOf(phases, fetches, combined = []) {
     if (p.timedOut) failures.push(`${name} timed out`);
     else if (p.exit !== 0) failures.push(`${name} exit ${p.exit ?? p.signal ?? 'null'}`);
     if (unrecorded(p.stderr) || (combined.includes(name) && unrecorded(p.stdout))) failures.push(`${name}: a fetch attempt could not be recorded`);
+    if (p.survivorPossible) failures.push(`${name}: ps did not answer; a descendant may have survived`);
   }
   for (const f of fetches) {
     if (f.outcome === 'miss' || f.outcome === 'malformed') failures.push(`${f.phase}: ${f.outcome}: ${f.url}`);
@@ -1065,11 +1122,15 @@ const rpcError = (step, e) => `${step}: JSON-RPC error ${e.code}: ${e.message}`;
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /**
- * A reply is judged before it is believed. VALID: an object with `jsonrpc: '2.0'` and EXACTLY ONE of `result` (an
- * object, not null, not an array) or `error` (an object with an integer `code` and a string `message`); a
- * `tools/list` result's `tools` must be an array, a `tools/call` result's `content` an array. Returns `{ result }`
- * for a valid result, else `{ failure }`: the JSON-RPC error as it came, or `malformed reply to <step>: <the reply's
- * JSON, cut at 200>`.
+ * A reply is judged before it is believed, envelope then body. The ENVELOPE: an object with `jsonrpc: '2.0'` and
+ * EXACTLY ONE of `result` (an object, not null, not an array) or `error` (an object with an integer `code` and a string
+ * `message`). The BODY, per step: `initialize`: `protocolVersion` a string, `capabilities` an object, `serverInfo` an
+ * object with a string `name`; `tools/list`: `tools` an array, each tool an object with a string `name` and an object
+ * `inputSchema`, and `outputSchema`, when the key is present, an object (a tool without the key is the session's own
+ * `tools without an outputSchema` failure); `tools/call`: `content` an array, each item an object with a string `type`,
+ * and a string `text` when `type` is `text`; `isError`, when present, a boolean; `structuredContent`, when present, an
+ * object. (An object is never null and never an array.) Returns `{ result }` for a valid result, else `{ failure }`:
+ * the JSON-RPC error as it came, or `malformed reply to <step>: <the reply's JSON, cut at 200>`.
  */
 function judgeReply(step, msg) {
   const malformed = () => ({ failure: `malformed reply to ${step}: ${JSON.stringify(msg).slice(0, 200)}` });
@@ -1084,9 +1145,28 @@ function judgeReply(step, msg) {
   }
   const r = msg.result;
   if (!isObject(r)) return malformed();
-  if (step === 'tools/list' && !Array.isArray(r.tools)) return malformed();
-  if (step === 'tools/call' && !Array.isArray(r.content)) return malformed();
-  return { result: r };
+  return bodyValid(step, r) ? { result: r } : malformed();
+}
+
+/** Whether a result's body has the fields its step needs (see `judgeReply`). */
+function bodyValid(step, r) {
+  if (step === 'initialize') {
+    return typeof r.protocolVersion === 'string' && isObject(r.capabilities) && isObject(r.serverInfo) && typeof r.serverInfo.name === 'string';
+  }
+  if (step === 'tools/list') {
+    if (!Array.isArray(r.tools)) return false;
+    return r.tools.every(
+      (t) => isObject(t) && typeof t.name === 'string' && isObject(t.inputSchema) && (!Object.hasOwn(t, 'outputSchema') || isObject(t.outputSchema)),
+    );
+  }
+  if (step === 'tools/call') {
+    if (!Array.isArray(r.content)) return false;
+    const items = r.content.every((c) => isObject(c) && typeof c.type === 'string' && (c.type !== 'text' || typeof c.text === 'string'));
+    const isError = !Object.hasOwn(r, 'isError') || typeof r.isError === 'boolean';
+    const structured = !Object.hasOwn(r, 'structuredContent') || isObject(r.structuredContent);
+    return items && isError && structured;
+  }
+  return true;
 }
 
 /**
