@@ -20,11 +20,14 @@
  *   - `capture`: the whole process group under `script` killed at the deadline (Darwin and Linux);
  *   - the evidence survives cleanup; the temporary HOME, config and cache do not (unless `--keep`);
  *   - the preloads are named by ABSOLUTE path on the child's NODE_OPTIONS, quoted when the path has a space;
- *   - the logs are per PHASE (`<label>.<phase>.fetches`, `.spawns`), every aggregate entry naming its phase; the label
- *     is reserved in `--out` when a command starts (a taken label is refused); the MCP server's own exit is part of
- *     `ok`; a reply is judged before it is believed (a result or an error, `tools` an array, `content` an array);
- *     every launch function of child_process is recorded and inert; `ps` is bounded; a preload that cannot write its
- *     log says so on stderr and the phase fails; the live preload logs the attempt before the request;
+ *   - the logs are per PHASE (`<label>.<phase>.fetches`, `.spawns`), every fetch entry naming its phase; the label
+ *     is reserved in `--out` when a command starts (a taken label is refused) and has no dot (so no two labels'
+ *     files coincide); the evidence directory, default or asked, is never inside the replay corpus; the MCP server's
+ *     own exit is part of `ok`; a reply is judged before it is believed, envelope and body (a result or an error; the
+ *     initialize fields; each tool's shape; each content item; `isError` a boolean); every launch function of
+ *     child_process is recorded and inert; `ps` is bounded and killed hard, asked again at the KILL step, and a
+ *     descendant it may have missed is said; a preload that cannot write its log says so on stderr and the phase
+ *     fails; the live preload logs the attempt before the request;
  *   - the two SKILL.md copies byte-equal, the map's path named by both, every AGENTS.md lead the skill cites present
  *     there; and THE MAP'S TRIPWIRE: every `offline:` line of every feature file (at least one per file, twelve in
  *     all) names a command `--help` lists, and that command, run through the control CLI, exits as the file says and
@@ -90,7 +93,7 @@ function out(): string { const d = join(scratch, `out-${++n}`); mkdirSync(d, { r
 type Run = { r: ReturnType<typeof spawnSync>; res: Result | null; stdout: string; stderr: string };
 /** Runs the control CLI and parses its one JSON object (`--json` is in `args`). */
 function verify(args: string[], opts: { env?: Record<string, string>; strip?: string[]; timeout?: number; script?: string } = {}): Run {
-  const r = spawnSync(process.execPath, [opts.script ?? VERIFY, ...args], { env: testEnv(opts.env, opts.strip), encoding: 'utf8', timeout: opts.timeout ?? SLOW, input: '', cwd: ROOT });
+  const r = spawnSync(process.execPath, [opts.script ?? VERIFY, ...args], { env: testEnv(opts.env, opts.strip), encoding: 'utf8', timeout: opts.timeout ?? SLOW, killSignal: 'SIGKILL', input: '', cwd: ROOT });
   let res: Result | null = null;
   try { res = JSON.parse(String(r.stdout)); } catch { res = null; }
   return { r, res, stdout: String(r.stdout ?? ''), stderr: String(r.stderr ?? '') };
@@ -136,7 +139,7 @@ function fakeRoot(cli: string, mcp = 'process.exit(0);\n', version = VERSION): s
   return root;
 }
 /** A fake stdio MCP server: a line-delimited JSON-RPC reader; `boot` printed first (a stray line); `list` false never answers tools/list. */
-function fakeServer(o: { boot?: string; list?: boolean; pid?: string; schema?: boolean; exitCode?: number; shape?: 'empty' | 'badTools' | 'badCall' } = {}): string {
+function fakeServer(o: { boot?: string; list?: boolean; pid?: string; schema?: boolean; exitCode?: number; shape?: 'empty' | 'badTools' | 'badCall' | 'emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError' } = {}): string {
   return `${o.pid ? `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(o.pid)}, String(process.pid));\n` : ''}${o.boot ? `console.log(${JSON.stringify(o.boot)});\n` : ''}
 const reply = (id, result) => process.stdout.write(JSON.stringify(${o.shape === 'empty' ? '{ jsonrpc: \'2.0\', id }' : '{ jsonrpc: \'2.0\', id, result }'}) + '\\n');
 let buf = '';
@@ -147,9 +150,9 @@ process.stdin.on('data', (d) => {
     if (!line.trim()) continue;
     const msg = JSON.parse(line);
     if (msg.id == null) continue;
-    if (msg.method === 'initialize') reply(msg.id, { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '0' } });
-    else if (msg.method === 'tools/list') { if (${o.list === false ? 'false' : 'true'}) reply(msg.id, ${o.shape === 'badTools' ? "{ tools: 'nope' }" : `{ tools: [{ name: 't', description: 'd', inputSchema: { type: 'object' }${o.schema === false ? '' : ', outputSchema: { type: \'object\' }'} }] }`}); }
-    else reply(msg.id, ${o.shape === 'badCall' ? '{}' : "{ content: [{ type: 'text', text: 'ok' }], structuredContent: {} }"});
+    if (msg.method === 'initialize') reply(msg.id, ${o.shape === 'emptyInit' ? '{}' : "{ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '0' } }"});
+    else if (msg.method === 'tools/list') { if (${o.list === false ? 'false' : 'true'}) reply(msg.id, ${o.shape === 'badTools' ? "{ tools: 'nope' }" : `{ tools: [{ name: 't', description: 'd', inputSchema: { type: 'object' }${o.schema === false ? '' : o.shape === 'badSchema' ? ', outputSchema: 0' : ', outputSchema: { type: \'object\' }'} }] }`}); }
+    else reply(msg.id, ${o.shape === 'badCall' ? '{}' : o.shape === 'nullContent' ? '{ content: [null] }' : o.shape === 'numberText' ? "{ content: [{ type: 'text', text: 123 }] }" : o.shape === 'stringIsError' ? "{ content: [{ type: 'text', text: 'ok' }], isError: 'true' }" : "{ content: [{ type: 'text', text: 'ok' }], structuredContent: {} }"});
   }
 });
 process.stdin.on('end', () => process.exit(${o.exitCode ?? 0}));
@@ -237,6 +240,8 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
       ['a capture label that is not a file name', ['capture', '../x', '--', 'team', 'mexico']],
       ['--synthetic without --replay', ['run', '--offline', '--synthetic', '--', 'team', 'mexico']],
       ['an unknown option', ['run', '--offline', '--frobnicate', '--', 'team', 'mexico']],
+      ['a label with a dot (two labels\' files could coincide)', ['run', '--label', 'demo.main', '--offline', '--', 'team', 'mexico']],
+      ['a capture label with a dot', ['capture', 'demo.main', '--', 'team', 'mexico']],
       ['an --env scenario key with an empty value', ['run', '--offline', '--env', 'CLAUDINHO_COMPETITION=', '--', 'team', 'mexico']],
       ['an --env scenario key with an empty value (prompt)', ['prompt', '--env', 'CLAUDINHO_TEAM=']],
       ['a --cache that is a file', ['prompt', '--cache', join(ROOT, 'package.json')]],
@@ -422,6 +427,10 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
       expect(inside.r.status, `--out ${o}`).toBe(2);
       expect(inside.res?.phases ?? {}).toEqual({});
     }
+    const dflt = verify(['run', '--json', '--replay', corpus, '--', 'team', 'mexico'], { env: { TMPDIR: corpus } });
+    expect(dflt.r.status, 'the default evidence directory would sit inside the corpus').toBe(2);
+    expect(dflt.res?.error ?? '').toMatch(/inside the replay corpus/);
+    expect(existsSync(join(corpus, 'claudinho-verify')), 'nothing made under the corpus').toBe(false);
     expect(readdirSync(corpus).some((f) => f.endsWith('.result.json')), 'nothing written into the corpus').toBe(false);
   });
 
@@ -502,6 +511,20 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     const bc = verify(['mcp', '--json', '--out', out(), 't'], { env: { VERIFY_ROOT: badCall } });
     expect(bc.res?.ok, 'a call result without content').toBe(false);
     expect(bc.res?.error ?? '').toMatch(/malformed reply to tools\/call/);
+    // the BODIES are judged too
+    for (const [shape, argv, step] of [
+      ['emptyInit', ['--list'], 'initialize'],
+      ['badSchema', ['--list'], 'tools/list'],
+      ['nullContent', ['t'], 'tools/call'],
+      ['numberText', ['t'], 'tools/call'],
+      ['stringIsError', ['t'], 'tools/call'],
+    ] as Array<['emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError', string[], string]>) {
+      const root = fakeRoot('process.exit(0);\n', fakeServer({ shape }));
+      const v = verify(['mcp', '--json', '--out', out(), ...argv], { env: { VERIFY_ROOT: root } });
+      expect(v.res?.ok, shape).toBe(false);
+      expect(v.r.status, shape).toBe(1);
+      expect(v.res?.error ?? '', shape).toContain(`malformed reply to ${step}`);
+    }
     const pf = pidFile();
     const root = fakeRoot('process.exit(0);\n', fakeServer({ list: false, pid: pf }));
     const { r, res } = verify(['mcp', '--json', '--out', out(), '--timeout', '2', '--list'], { env: { VERIFY_ROOT: root }, timeout: 20_000 });
@@ -628,7 +651,41 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(r.res, `the wrapper returned: ${r.stderr.slice(0, 200)}`).not.toBeNull();
     expect(r.res?.timedOut).toBe(true);
     expect(readFileSync(join(o, 'ps.main.err'), 'utf8')).toMatch(/ps did not answer/);
+    expect((r.res?.failures ?? []).some((f) => /may have survived/.test(f)), 'a ps that never answered: the result says a descendant may have survived').toBe(true);
     expect(await until(() => !pidAlive(readPid(pf)), 5000), 'the child is gone (the pty hung up when script died)').toBe(true);
+    // a ps that ignores TERM is killed hard at its bound
+    const pf2 = pidFile();
+    const root2 = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf2)}, String(process.pid)); process.on('SIGTERM', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
+    const stubborn = stubTool('ps', "trap '' TERM; sleep 30");
+    const r2 = verify(['capture', 'ps2', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: root2, PATH: withTool(stubborn) }, timeout: 25_000 });
+    expect(r2.res, 'the wrapper returned although ps ignores TERM').not.toBeNull();
+    expect(r2.res?.timedOut).toBe(true);
+    expect(await until(() => !pidAlive(readPid(pf2)), 5000)).toBe(true);
+  });
+
+  it('capture: a ps that fails at TERM and answers at KILL still reaps the descendants; one that never answers leaves a survivor the result names', { timeout: SLOW }, async () => {
+    // a child that ignores TERM and HUP: only the KILL of a recorded descendant ends it
+    const pf = pidFile();
+    const root = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf)}, String(process.pid)); process.on('SIGTERM', () => {}); process.on('SIGHUP', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
+    const marker = join(scratch, `ps-once-${++n}`);
+    const once = stubTool('ps', `if [ ! -e "${marker}" ]; then : > "${marker}"; sleep 30; else exec /bin/ps "$@"; fi`);
+    const a = verify(['capture', 'once', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: root, PATH: withTool(once) }, timeout: 40_000 });
+    expect(a.res, a.stderr.slice(0, 200)).not.toBeNull();
+    expect(a.res?.timedOut).toBe(true);
+    expect(existsSync(marker), 'ps was asked at TERM').toBe(true);
+    expect(await until(() => !pidAlive(readPid(pf)), 5000), 'ps answered at KILL: the descendant was reaped').toBe(true);
+    expect((a.res?.failures ?? []).some((f) => /may have survived/.test(f)), 'no survivor line when the second ps answered').toBe(false);
+    const pf2 = pidFile();
+    const root2 = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf2)}, String(process.pid)); process.on('SIGTERM', () => {}); process.on('SIGHUP', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
+    const never = stubTool('ps', 'sleep 30');
+    const b = verify(['capture', 'never', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: root2, PATH: withTool(never) }, timeout: 40_000 });
+    expect(b.res).not.toBeNull();
+    expect(b.res?.ok).toBe(false);
+    expect((b.res?.failures ?? []).some((f) => /main: ps did not answer; a descendant may have survived/.test(f)), 'the survivor is said').toBe(true);
+    expect(await until(() => existsSync(pf2), 3000)).toBe(true);
+    const orphan = readPid(pf2);
+    try { process.kill(orphan, 'SIGKILL'); } catch { /* already gone */ }
+    expect(await until(() => !pidAlive(orphan), 5000), 'the test reaped the survivor itself').toBe(true);
   });
 
   it('capture: script\'s own header and footer lines leave the .txt and stay in the .ansi', () => {

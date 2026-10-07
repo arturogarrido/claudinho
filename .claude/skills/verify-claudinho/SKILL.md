@@ -21,7 +21,8 @@ node scripts/verify.mjs doctor
 ```
 
 Checks, each printed as a line `ok <name>` or `FAIL <name>` with its detail, the exit nonzero on any FAIL (`--json`
-prints the same as one object, the `checks` list with each check's `ok` and detail, and no lines): Node at or above
+prints the same as one object, the `checks` list with each check's `ok` and detail, and no check lines; the
+evidence path still goes to stderr): Node at or above
 the engines floor; the CLI and MCP dists present and the CLI dist's `--version` equal to `packages/cli/package.json`
 (that child is the phase `version`, with its own evidence and the deadline `--timeout` sets; a timeout FAILs it
 whatever it printed); a temporary config directory made and removed; a temporary cache directory made, written and
