@@ -312,6 +312,7 @@ function childEnv({ mode, corpus, synthetic, homes, spawnLog, fetchLog, scenario
 function makeOut(asked) {
   if (asked !== undefined) {
     const out = resolve(asked);
+    if (existsSync(out) && !statSync(out).isDirectory()) throw refuse(`--out ${out} is not a directory`);
     mkdirSync(out, { recursive: true });
     return out;
   }
@@ -1156,4 +1157,3 @@ main(process.argv.slice(2)).then(
     process.exitCode = 1;
   },
 );
-
