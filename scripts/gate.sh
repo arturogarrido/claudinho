@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 #
 # gate.sh — CI's gating list, run locally, every step printing a verdict, and a
-# commit only when every step printed ok.
+# commit only when every step printed ok, or, with --allow-offline-audit, when
+# the audit alone was skipped offline (the commit line says so and the exit
+# stays nonzero).
 #
 # Why this exists: a gate typed by hand as `a && b && c | tail` stops at the
 # first failure (so the later checks say nothing), prints nothing when a step
@@ -40,24 +42,37 @@
 #   scripts/gate.sh --base main              # the diff-check base (default origin/main)
 #   scripts/gate.sh --commit <message-file> [--allow-offline-audit]
 #
-# --commit <message-file> commits what is STAGED, with `git commit -F` and no
-# `git add`, only when every step printed ok. Before any step it refuses when a
-# tracked file differs between the working tree and the index (`git diff
-# --quiet`), when an untracked, not ignored file exists (the checks would read
-# what no commit carries), and when nothing is staged; it records `git
-# write-tree`, and after the steps asks the same questions again: a working
-# tree, an untracked list or an index that changed during the gate refuses the
-# commit. A FAIL refuses whatever the flags; the audit's SKIP refuses unless
-# --allow-offline-audit, which the commit line then names. --only with --commit
-# is refused before any step.
+# --commit <message-file> commits what is STAGED, with no `git add`, only when
+# every step printed ok, or, with --allow-offline-audit, when the audit alone was
+# skipped offline (the commit line says so and the exit stays nonzero). Before
+# any step it refuses when a tracked file differs between the working tree and
+# the index (`git diff --quiet`), when an untracked, not ignored file exists (the
+# checks would read what no commit carries), and when nothing is staged; it
+# records the index's tree (`git write-tree`) and HEAD (`git rev-parse --verify
+# HEAD`), and after the steps asks the same questions again: a working tree, an
+# untracked list or an index that changed during the gate refuses the commit. A
+# FAIL refuses whatever the flags; the audit's SKIP refuses unless
+# --allow-offline-audit. --only with --commit is refused before any step.
+# The commit is the tree recorded before the steps, never the index as it is at
+# the end: `git commit-tree <tree> -p <HEAD> -F <message-file>`, then `git
+# update-ref HEAD <new> <HEAD>`, which moves HEAD only if it is still the HEAD
+# recorded before the steps (a HEAD moved during the gate fails the commit). It
+# is not `git commit`: no commit hook runs, and the message file is taken
+# verbatim (no comment stripping, no template, no editor). A failed commit-tree
+# or update-ref is `commit FAIL` and exit 1.
 #
 # Environment:
-#   GATE_LOG_DIR  where each step's log is written (default $TMPDIR/claudinho-gate)
+#   GATE_LOG_DIR  the directory under which each run makes its own log directory
+#                 (`mktemp -d`, run.XXXXXX, private to its owner), named in the
+#                 summary (default $TMPDIR/claudinho-gate); a file beside it, an
+#                 older run's log, is never read as this run's
 #   GATE_ROOT     the repository root to run in (default: this script's parent
 #                 directory); a test seam
 #
 # Exit code: 0 when every step printed ok (and the commit, when asked, was made);
-# 1 on any FAIL or SKIP, or a refused or failed commit; 2 on a usage error.
+# 1 on any FAIL or SKIP (a commit made with --allow-offline-audit included), or a
+# refused or failed commit; 2 on a usage error or a log directory that cannot be
+# made.
 
 set -u
 
@@ -167,8 +182,8 @@ fi
 cd "$ROOT" || { echo "gate: cannot enter $ROOT" >&2; exit 2; }
 
 tmp_base=${TMPDIR:-/tmp}
-LOG_DIR="${GATE_LOG_DIR:-${tmp_base%/}/claudinho-gate}"
-mkdir -p "$LOG_DIR" || { echo "gate: cannot create the log directory $LOG_DIR" >&2; exit 2; }
+LOG_BASE="${GATE_LOG_DIR:-${tmp_base%/}/claudinho-gate}"
+mkdir -p "$LOG_BASE" || { echo "gate: cannot create the log directory $LOG_BASE" >&2; exit 2; }
 
 # The working tree's three answers. Each function prints its answer and returns
 # nonzero when git itself failed (an answer the gate cannot read is no answer).
@@ -207,6 +222,7 @@ tree_answer() {
 }
 
 TREE_BEFORE=""
+HEAD0=""
 if [ "$COMMIT" -eq 1 ]; then
   answer=$(unstaged_answer) || refuse_early "$answer"
   [ "$answer" = "none" ] || refuse_early "unstaged changes: git diff --quiet reports a tracked file that differs from the index; stage it or stash it"
@@ -220,7 +236,15 @@ if [ "$COMMIT" -eq 1 ]; then
     *) refuse_early "git diff --cached --quiet failed (exit $rc)" ;;
   esac
   TREE_BEFORE=$(tree_answer) || refuse_early "$TREE_BEFORE"
+  # The parent of the commit, read now: the commit moves HEAD only from here.
+  HEAD0=$(git rev-parse --verify --quiet HEAD) || HEAD0=""
+  [ -n "$HEAD0" ] || refuse_early "no HEAD commit to build on"
 fi
+
+# This run's own log directory, made fresh (mode 0700 by mktemp): a log another
+# run wrote, or an older one beside it, is never read as this run's.
+LOG_DIR=$(mktemp -d "${LOG_BASE%/}/run.XXXXXX") || LOG_DIR=""
+[ -n "$LOG_DIR" ] && [ -d "$LOG_DIR" ] || { echo "gate: cannot create a log directory under $LOG_BASE" >&2; exit 2; }
 
 # A failed audit is offline only by a named signature, and never when the
 # registry answered with findings.
@@ -300,17 +324,30 @@ if [ "$COMMIT" -eq 1 ]; then
       echo "commit REFUSED (audit skipped offline; --allow-offline-audit to commit anyway)"
       COMMIT_STATE="refused"
     else
-      git commit -F "$COMMIT_MSG"
+      # The commit is the tree the steps validated, on the HEAD recorded before
+      # them: an index staged after the comparison cannot reach it, and a HEAD
+      # moved during the gate refuses the compare-and-swap.
+      new=$(git commit-tree "$TREE_BEFORE" -p "$HEAD0" -F "$COMMIT_MSG")
       rc=$?
-      if [ $rc -ne 0 ]; then
-        echo "commit FAIL (git commit -F exit $rc)"
+      if [ $rc -ne 0 ] || [ -z "$new" ]; then
+        echo "commit FAIL (git commit-tree exit $rc)"
         COMMIT_STATE="failed"
-      elif [ $N_SKIP -gt 0 ]; then
-        echo "commit ok (--allow-offline-audit: the audit step was skipped offline, not verified)"
-        COMMIT_STATE="made with --allow-offline-audit"
       else
-        echo "commit ok"
-        COMMIT_STATE="made"
+        git update-ref -m "gate: commit" HEAD "$new" "$HEAD0"
+        rc=$?
+        if [ $rc -ne 0 ]; then
+          echo "commit FAIL (git update-ref exit $rc: HEAD is no longer $HEAD0, or the ref could not be written)"
+          COMMIT_STATE="failed"
+        else
+          if [ $N_SKIP -gt 0 ]; then
+            echo "commit ok (--allow-offline-audit: the audit step was skipped offline, not verified)"
+            COMMIT_STATE="made with --allow-offline-audit"
+          else
+            echo "commit ok"
+            COMMIT_STATE="made"
+          fi
+          echo "committed $new (tree $TREE_BEFORE, parent $HEAD0)"
+        fi
       fi
     fi
   fi
