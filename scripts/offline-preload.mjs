@@ -10,8 +10,12 @@
  * Never a Response: an HTTP-shaped 403 or 429 would be read as a provider
  * throttle and persist a backoff into the run's cache; a rejection is what an
  * unplugged cable looks like, so the product renders its outage path.
+ *
+ * A log that cannot be written is SAID: one line `verify-preload: could not
+ * record <outcome> for <url>: <error>` on this process's stderr (the control
+ * CLI fails the phase that carries it), and the attempt is still rejected.
  */
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, writeSync } from 'node:fs';
 
 const log = process.env.VERIFY_FETCH_LOG;
 
@@ -27,13 +31,18 @@ function urlOf(input) {
   }
 }
 
-/** One line per attempt; a log that cannot be written never lets a request through. */
+/** One line per attempt; a log that cannot be written is said on stderr and never lets a request through. */
 function record(url, outcome) {
   if (!log) return;
   try {
     appendFileSync(log, `${JSON.stringify({ url, mode: 'offline', outcome })}\n`);
-  } catch {
-    // The rejection below still happens: an unrecorded attempt is still blocked.
+  } catch (e) {
+    // The rejection below still happens: an unrecorded attempt is still blocked, and the stderr says it was not recorded.
+    try {
+      writeSync(2, `verify-preload: could not record ${outcome} for ${url}: ${e?.message ?? e}\n`);
+    } catch {
+      // No stderr to say it on.
+    }
   }
 }
 

@@ -23,10 +23,13 @@
  * `miss` (no recording for the key) or `malformed` (a file that cannot be read,
  * is not JSON, fails a type rule, or a Response that cannot be built). A miss
  * and a malformed recording reject as the offline preload does, with a network
- * failure, never a status.
+ * failure, never a status. A log that cannot be written is SAID: one line
+ * `verify-preload: could not record <outcome> for <url>: <error>` on this
+ * process's stderr (the control CLI fails the phase that carries it), and the
+ * attempt is still decided as above.
  */
 import { createHash } from 'node:crypto';
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 
 const log = process.env.VERIFY_FETCH_LOG;
@@ -45,13 +48,18 @@ function urlOf(input) {
   }
 }
 
-/** One line per attempt; a log that cannot be written never changes what is served. */
+/** One line per attempt; a log that cannot be written is said on stderr and never changes what is served. */
 function record(url, outcome) {
   if (!log) return;
   try {
     appendFileSync(log, `${JSON.stringify({ url, mode: 'replay', outcome })}\n`);
-  } catch {
-    // An unrecorded attempt is still decided as below.
+  } catch (e) {
+    // An unrecorded attempt is still decided as below, and the stderr says it was not recorded.
+    try {
+      writeSync(2, `verify-preload: could not record ${outcome} for ${url}: ${e?.message ?? e}\n`);
+    } catch {
+      // No stderr to say it on.
+    }
   }
 }
 

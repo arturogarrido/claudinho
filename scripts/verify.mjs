@@ -10,8 +10,12 @@
  * gets PATH; a temporary HOME (and USERPROFILE, APPDATA, LOCALAPPDATA on Windows); absolute temporary
  * XDG_CONFIG_HOME and XDG_CACHE_HOME; the run's TMPDIR; TZ=UTC; LANG=en_US.UTF-8; CLAUDINHO_NO_STAR=1; NO_COLOR=1
  * (not under `capture`); NODE_OPTIONS loading the mode's fetch preload and `spawn-count.mjs` by absolute path, quoted;
- * QA_SPAWN_LOG and VERIFY_FETCH_LOG naming the run's evidence; the replay corpus in replay mode; and the `--env`
- * pairs, which take only the scenario keys. Nothing else of the operator's environment reaches a child.
+ * QA_SPAWN_LOG and VERIFY_FETCH_LOG naming the PHASE's evidence (`<label>.<phase>.spawns`, `<label>.<phase>.fetches`,
+ * each created empty before that phase's child); the replay corpus in replay mode; and the `--env` pairs, which take
+ * only the scenario keys, each with a value. Nothing else of the operator's environment reaches a child.
+ *
+ * The label is reserved when a command starts: `<label>.result.json` is created exclusively (a pending object), so a
+ * second run with the same label and `--out` is refused before it writes anything; the result replaces it at the end.
  *
  * The output: with `--json`, stdout is ONE JSON object and every human line goes to stderr. The exit: 0 when `ok`;
  * 1 when a phase failed (a nonzero child, a replay miss, a malformed recording, a timeout, an MCP failure); 2 for a
@@ -25,18 +29,20 @@ import {
   appendFileSync,
   closeSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   openSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { StringDecoder } from 'node:string_decoder';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { seedClub, stateFileName } from './statusline-seed.mjs';
 
@@ -63,6 +69,10 @@ const CLI_VALUE_OPTIONS = new Set(['--lang', '--tz', '-c', '--competition', '--s
 const DEFAULT_TIMEOUT_S = 60;
 const DEFAULT_MCP_TIMEOUT_S = 30;
 const GRACE_MS = 2000;
+/** How long the process table may take to answer before a group is killed without its recorded descendants. */
+const PS_TIMEOUT_MS = 5000;
+/** The line a fetch preload writes on its own stderr when its log could not be written: the phase then fails. */
+const PRELOAD_UNRECORDED = 'verify-preload: could not record';
 const LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const SLUG = /^[a-z0-9_]+(\.[a-z0-9_]+)+$/;
 
@@ -72,7 +82,7 @@ Drives the built Claudinho binary (pnpm -r build first) in an environment built 
 offline by default, and keeps the evidence of every child under --out.
 
 commands:
-  doctor                                    the dists, the version, a temporary config and cache; reports CLAUDINHO_COMPETITION and CLAUDINHO_TEAM
+  doctor [--timeout <s>]                    the dists, the version (phase version), a temporary config and cache; reports CLAUDINHO_COMPETITION and CLAUDINHO_TEAM
   run [mode] [--follow <alias>] [--twin] -- <argv...>
                                             the CLI's command (phase main), after its own follow (phase follow), and again with --json (phase twin)
   mcp [mode] [--follow <alias>] <tool> [<json arguments>]
@@ -95,15 +105,18 @@ modes (one at most):
 
 options:
   --json                                    stdout is one JSON object; human lines go to stderr
-  --out <dir>                               the evidence directory (default <TMPDIR>/claudinho-verify/<timestamp>), never removed
-  --label <name>                            the evidence files' prefix (default: the command)
+  --out <dir>                               the evidence directory (default <TMPDIR>/claudinho-verify/<timestamp>), never removed,
+                                            never the replay corpus or inside it
+  --label <name>                            the evidence files' prefix (default: the command), reserved in --out: a taken one is refused
   --keep                                    keep the temporary HOME, config and cache
   --timeout <seconds>                       each child's deadline (default 60; the MCP session 30)
-  --env KEY=VALUE                           a scenario key only: ${SCENARIO_KEYS.join(', ')}
+  --env KEY=VALUE                           a scenario key only, with a value: ${SCENARIO_KEYS.join(', ')}
   --dry-run                                 seed: say what would be written, write nothing
 
 refused before any child: the install commands (init, init-statusline, init-hook, init-cursor-statusline,
-claude, cursor), star, _refresh, any --copy, and an --env key that is not a scenario key.
+claude, cursor), star, _refresh, any --copy, an --env key that is not a scenario key or has no value, a --cache
+that is not a directory, an --out inside the replay corpus, and a label already taken in --out.
+evidence, per phase: <label>.<phase>.txt, .err, .exit, .fetches, .spawns; <label>.result.json.
 exit: 0 ok; 1 a phase failed (a nonzero child, a miss, a malformed recording, a timeout, an MCP failure); 2 usage.
 `;
 
@@ -116,7 +129,7 @@ const VALUE_OPTIONS = new Set(['--out', '--label', '--follow', '--replay', '--en
 const FLAG_OPTIONS = new Set(['--json', '--offline', '--live', '--twin', '--keep', '--synthetic', '--dry-run', '--list']);
 const MODE_OPTIONS = ['--offline', '--replay', '--live'];
 const ALLOWED = {
-  doctor: ['--json', '--out', '--label'],
+  doctor: ['--json', '--out', '--label', '--timeout'],
   run: ['--json', '--out', '--label', '--offline', '--replay', '--live', '--synthetic', '--follow', '--twin', '--keep', '--timeout', '--env'],
   replay: ['--json', '--out', '--label', '--offline', '--replay', '--live', '--synthetic', '--follow', '--twin', '--keep', '--timeout', '--env'],
   capture: ['--json', '--out', '--offline', '--replay', '--live', '--synthetic', '--follow', '--keep', '--timeout', '--env'],
@@ -183,7 +196,9 @@ function scenarioEnv(pairs) {
     if (!SCENARIO_KEYS.includes(key)) {
       throw refuse(`--env ${key} is not a scenario key; --env takes only ${SCENARIO_KEYS.join(', ')}`);
     }
-    env[key] = pair.slice(eq + 1);
+    const value = pair.slice(eq + 1);
+    if (value === '') throw refuse(`--env ${key}= has no value; a scenario key takes a non-empty value`);
+    env[key] = value;
   }
   return env;
 }
@@ -278,7 +293,7 @@ function makeHomes(cacheDir) {
   return homes;
 }
 
-/** Every child's environment, built from scratch: nothing of the operator's but PATH. */
+/** Every child's environment, built from scratch: nothing of the operator's but PATH. The logs are the phase's. */
 function childEnv({ mode, corpus, synthetic, homes, spawnLog, fetchLog, scenario, color = false }) {
   const env = {
     PATH: process.env.PATH ?? '',
@@ -308,10 +323,43 @@ function childEnv({ mode, corpus, synthetic, homes, spawnLog, fetchLog, scenario
   return { ...env, ...scenario };
 }
 
-/** The evidence directory: the one asked for, or a fresh timestamped one under the controller's TMPDIR. Never removed. */
-function makeOut(asked) {
+/** The keys of a child's environment: the last phase's, or (no phase ran) the ones a phase would have had. */
+function envKeys(env, base) {
+  return Object.keys(env ?? childEnv({ ...base, fetchLog: '', spawnLog: '' })).sort();
+}
+
+/** A path as the file system names it: its nearest existing ancestor's real path, then the rest as given. */
+function realOf(path) {
+  const rest = [];
+  let p = resolve(path);
+  for (;;) {
+    try {
+      return join(realpathSync.native(p), ...rest);
+    } catch {
+      const parent = dirname(p);
+      if (parent === p) return resolve(path);
+      rest.unshift(basename(p));
+      p = parent;
+    }
+  }
+}
+
+/** Whether `path` is `dir` or inside it, both named as the file system names them. */
+function within(path, dir) {
+  const a = realOf(path);
+  const b = realOf(dir);
+  return a === b || a.startsWith(b.endsWith(sep) ? b : `${b}${sep}`);
+}
+
+/**
+ * The evidence directory: the one asked for, or a fresh timestamped one under the controller's TMPDIR. Never removed,
+ * and never the replay corpus or a directory inside it (the corpus is never written): that `--out` is refused before
+ * anything is made.
+ */
+function makeOut(asked, corpus = null) {
   if (asked !== undefined) {
     const out = resolve(asked);
+    if (corpus && within(out, corpus)) throw refuse(`--out ${out} is inside the replay corpus`);
     if (existsSync(out) && !statSync(out).isDirectory()) throw refuse(`--out ${out} is not a directory`);
     mkdirSync(out, { recursive: true });
     return out;
@@ -330,6 +378,22 @@ function makeOut(asked) {
   }
 }
 
+/**
+ * Reserves the label in the evidence directory before any evidence is written: `<label>.result.json` is created
+ * exclusively, holding a pending object, and the command's result replaces it at the end (a run cut before its end
+ * leaves the pending object). A label already there is another run's evidence: refused, and nothing is written.
+ */
+function reserveLabel(out, label, command) {
+  const path = join(out, `${label}.result.json`);
+  try {
+    writeFileSync(path, `${JSON.stringify({ ok: false, pending: true, command, label }, null, 2)}\n`, { flag: 'wx' });
+  } catch (e) {
+    if (e?.code === 'EEXIST') throw refuse(`the label ${label} is taken in ${out}: another run's evidence; pick another --label or --out`);
+    throw e;
+  }
+  return path;
+}
+
 function readLines(path) {
   if (!existsSync(path)) return [];
   return readFileSync(path, 'utf8').split('\n').filter((l) => l.trim() !== '');
@@ -344,6 +408,37 @@ function readJsonLines(path) {
       return { unparsed: line };
     }
   });
+}
+
+/**
+ * The logs of a command's phases: `logsFor(phase)` creates `<label>.<phase>.fetches` and `<label>.<phase>.spawns`
+ * EMPTY and returns their paths, for that phase's child alone; `collect()` reads them back in phase order. A fetch
+ * entry gets `phase` added here (the preloads write exactly their three keys); a spawn entry stays the array the spawn
+ * counter wrote (an unparsed line of either is `{ unparsed, phase }`).
+ */
+function phaseLogs(out, label) {
+  const logged = [];
+  return {
+    logsFor(phase) {
+      const fetchLog = join(out, `${label}.${phase}.fetches`);
+      const spawnLog = join(out, `${label}.${phase}.spawns`);
+      writeFileSync(fetchLog, '');
+      writeFileSync(spawnLog, '');
+      logged.push({ phase, fetchLog, spawnLog });
+      return { fetchLog, spawnLog };
+    },
+    collect() {
+      const fetches = [];
+      const spawns = [];
+      for (const { phase, fetchLog, spawnLog } of logged) {
+        for (const f of readJsonLines(fetchLog)) {
+          fetches.push(f !== null && typeof f === 'object' && !Array.isArray(f) ? { ...f, phase } : { unparsed: JSON.stringify(f), phase });
+        }
+        for (const s of readJsonLines(spawnLog)) spawns.push(s !== null && typeof s === 'object' && !Array.isArray(s) ? { ...s, phase } : s);
+      }
+      return { fetches, spawns };
+    },
+  };
 }
 
 function writePhase(out, label, phase, r) {
@@ -387,10 +482,23 @@ function alive(pid) {
   }
 }
 
-/** Every descendant of a pid, read once from the process table (pid and parent pid), before any signal. */
+/**
+ * Every descendant of a pid, read once from the process table (pid and parent pid), before any signal. `ps` runs with
+ * PATH alone and a bound (PS_TIMEOUT_MS): a `ps` that is missing, exits nonzero or does not answer in time gives no
+ * tree and a reason (`{ tree: [], failure }`), and the caller kills at once without the descendants.
+ */
 function descendantsOf(pid) {
-  const r = spawnSync('ps', ['-A', '-o', 'pid=', '-o', 'ppid='], { encoding: 'utf8' });
-  if (r.status !== 0) return [];
+  const r = spawnSync('ps', ['-A', '-o', 'pid=', '-o', 'ppid='], { env: { PATH: process.env.PATH ?? '' }, timeout: PS_TIMEOUT_MS, encoding: 'utf8' });
+  if (r.error || r.status !== 0) {
+    const failure = r.error?.code === 'ETIMEDOUT'
+      ? `no answer within ${PS_TIMEOUT_MS / 1000} s`
+      : r.error
+        ? r.error.message
+        : r.signal
+          ? `signal ${r.signal}`
+          : `exit ${r.status}`;
+    return { tree: [], failure };
+  }
   const children = new Map();
   for (const line of r.stdout.split('\n')) {
     const [p, pp] = line.trim().split(/\s+/).map(Number);
@@ -406,7 +514,7 @@ function descendantsOf(pid) {
       queue.push(c);
     }
   }
-  return found;
+  return { tree: found, failure: null };
 }
 
 function signal(target, sig) {
@@ -421,7 +529,9 @@ function signal(target, sig) {
  * Starts one child: stdin a pipe ended at once (kept open with `keepStdin`, or a file descriptor), stdout and stderr
  * kept, a deadline after which it is sent TERM, then KILL after a grace, and reaped. With `group`, the child leads a
  * process group of its own (detached) and the deadline signals the whole group and every descendant recorded before
- * the first signal, then waits until they are gone. Returns the child and a promise of its result.
+ * the first signal, then waits until they are gone; when the process table did not answer, the kill proceeds at once
+ * without the descendants and the child's stderr evidence says so. The result says `killed` when the controller's
+ * signal reached a child that had not exited (a timeout or an interrupt). Returns the child and a promise of its result.
  */
 function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepStdin = false, group = false, onLine }) {
   let child;
@@ -456,6 +566,7 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       if (!keepStdin) child.stdin.end();
     }
     let tree = [];
+    let killed = false;
     const kill = (sig) => {
       if (!child.pid) return;
       if (group) {
@@ -465,7 +576,12 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
     };
     const abort = () => {
       if (finished || killTimer) return;
-      if (group && child.pid) tree = descendantsOf(child.pid);
+      killed = child.exitCode === null && child.signalCode === null;
+      if (group && child.pid) {
+        const found = descendantsOf(child.pid);
+        tree = found.tree;
+        if (found.failure) err.push(Buffer.from(`verify: ps did not answer (${found.failure}); descendants not recorded\n`));
+      }
       kill('SIGTERM');
       killTimer = setTimeout(() => kill('SIGKILL'), GRACE_MS);
     };
@@ -494,6 +610,7 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
         exit: code,
         signal: sig,
         timedOut,
+        killed,
         stdout: Buffer.concat(out).toString('utf8'),
         stderr: Buffer.concat(err).toString('utf8'),
       };
@@ -545,16 +662,25 @@ function phaseLines(phases) {
   return lines;
 }
 
-/** Why a run is not ok, from its phases and its fetch log. */
-function failuresOf(phases, fetches) {
+/** Whether a child's stderr says its fetch preload could not write the log (so its attempts are not all on record). */
+function unrecorded(stderr) {
+  return typeof stderr === 'string' && stderr.includes(PRELOAD_UNRECORDED);
+}
+
+/**
+ * Why a run is not ok, from its phases (their exits, deadlines and stderr; `combined` names the phases whose stdout is
+ * the child's stderr too, a capture's pty transcript) and its fetch entries (each naming its phase).
+ */
+function failuresOf(phases, fetches, combined = []) {
   const failures = [];
   for (const [name, p] of Object.entries(phases)) {
     if (p.timedOut) failures.push(`${name} timed out`);
     else if (p.exit !== 0) failures.push(`${name} exit ${p.exit ?? p.signal ?? 'null'}`);
+    if (unrecorded(p.stderr) || (combined.includes(name) && unrecorded(p.stdout))) failures.push(`${name}: a fetch attempt could not be recorded`);
   }
   for (const f of fetches) {
-    if (f.outcome === 'miss' || f.outcome === 'malformed') failures.push(`${f.outcome}: ${f.url}`);
-    else if (f.unparsed !== undefined) failures.push(`an unreadable fetch log line: ${String(f.unparsed).slice(0, 120)}`);
+    if (f.outcome === 'miss' || f.outcome === 'malformed') failures.push(`${f.phase}: ${f.outcome}: ${f.url}`);
+    else if (f.unparsed !== undefined) failures.push(`${f.phase}: an unreadable fetch log line: ${String(f.unparsed).slice(0, 120)}`);
   }
   return failures;
 }
@@ -582,7 +708,11 @@ async function cmdDoctor(args, json) {
   const { opts, positionals, childArgv } = parseArgs('doctor', args);
   if (positionals.length || childArgv) throw refuse('doctor takes no arguments');
   const label = labelOf(opts.label, 'doctor');
+  const timeoutMs = timeoutOf(opts, DEFAULT_TIMEOUT_S);
   const out = makeOut(opts.out);
+  reserveLabel(out, label, 'doctor');
+  const logs = phaseLogs(out, label);
+  const phases = {};
   const checks = [];
   const check = (name, ok, detail) => checks.push({ name, ok, detail });
 
@@ -601,10 +731,6 @@ async function cmdDoctor(args, json) {
   const mcpThere = existsSync(MCP);
   check('mcp-dist', mcpThere, mcpThere ? `${MCP_REL} present` : `${MCP_REL} missing: run pnpm -r build`);
 
-  const fetchLog = join(out, `${label}.fetches`);
-  const spawnLog = join(out, `${label}.spawns`);
-  writeFileSync(fetchLog, '');
-  writeFileSync(spawnLog, '');
   const homes = makeHomes();
   try {
     let want = null;
@@ -616,13 +742,22 @@ async function cmdDoctor(args, json) {
     if (!cliThere) check('version', false, `no ${CLI_REL} to ask for --version`);
     else if (typeof want !== 'string') check('version', false, 'packages/cli/package.json has no version');
     else {
-      const env = childEnv({ mode: 'offline', homes, spawnLog, fetchLog, scenario: {} });
-      const r = await runChild(process.execPath, [CLI, '--version'], { env, timeoutMs: DEFAULT_TIMEOUT_S * 1000 });
+      // The --version child is the phase `version`: its evidence, its own logs, the deadline.
+      const phaseLog = logs.logsFor('version');
+      const env = childEnv({ mode: 'offline', homes, ...phaseLog, scenario: {} });
+      const r = await runChild(process.execPath, [CLI, '--version'], { env, timeoutMs });
+      writePhase(out, label, 'version', r);
+      phases.version = phaseOf(r, ['--version']);
       const got = r.stdout.trim();
-      const asked = readLines(fetchLog).length;
-      let detail = r.exit === 0 ? `the dist says ${got}, packages/cli/package.json ${want}` : `--version exited ${r.exit ?? r.signal}: ${r.stderr.trim().slice(0, 200)}`;
+      const asked = readLines(phaseLog.fetchLog).length;
+      const lost = unrecorded(r.stderr);
+      let detail;
+      if (r.timedOut) detail = `--version timed out after ${timeoutMs / 1000} s`;
+      else if (r.exit === 0) detail = `the dist says ${got}, packages/cli/package.json ${want}`;
+      else detail = `--version exited ${r.exit ?? r.signal}: ${r.stderr.trim().slice(0, 200)}`;
       if (asked) detail += `; it tried the network ${asked} time(s)`;
-      check('version', r.exit === 0 && got === want && asked === 0, detail);
+      if (lost) detail += '; a fetch attempt could not be recorded';
+      check('version', !r.timedOut && r.exit === 0 && got === want && asked === 0 && !lost, detail);
     }
   } finally {
     rmSync(homes.root, { recursive: true, force: true });
@@ -647,9 +782,22 @@ async function cmdDoctor(args, json) {
   const said = (k) => `${k} is ${process.env[k] ? 'set' : 'unset'}`;
   check('env', true, `${said('CLAUDINHO_COMPETITION')}; ${said('CLAUDINHO_TEAM')} (a report: the children never see them)`);
 
-  const fetches = readJsonLines(fetchLog);
-  const ok = checks.every((c) => c.ok);
-  const result = { ok, command: 'doctor', root: ROOT, checks, fetches, paths: { out } };
+  const { fetches, spawns } = logs.collect();
+  const timedOut = Object.values(phases).some((p) => p.timedOut);
+  const ok = checks.every((c) => c.ok) && !interrupted;
+  const result = {
+    ok,
+    command: 'doctor',
+    label,
+    root: ROOT,
+    checks,
+    phases,
+    timedOut,
+    ...(interrupted ? { interrupted: true } : {}),
+    spawns,
+    fetches,
+    paths: { out },
+  };
   writeFileSync(join(out, `${label}.result.json`), `${JSON.stringify(result, null, 2)}\n`);
   emit(result, json, [...checks.map((c) => `${c.ok ? 'ok  ' : 'FAIL'} ${c.name.padEnd(10)} ${c.detail}`), `evidence: ${out}`]);
   return ok ? 0 : 1;
@@ -681,17 +829,17 @@ async function cmdRun(command, args, json) {
   if (capture && !['darwin', 'linux'].includes(process.platform)) throw refuse(`capture runs on Darwin and Linux only, not on ${process.platform}`);
   if (!existsSync(CLI)) throw refuse(`${CLI_REL} is missing under ${ROOT}: run pnpm -r build`);
 
-  const out = makeOut(opts.out);
-  const spawnLog = join(out, `${label}.spawns`);
-  const fetchLog = join(out, `${label}.fetches`);
-  writeFileSync(spawnLog, '');
-  writeFileSync(fetchLog, '');
+  const out = makeOut(opts.out, corpus);
+  reserveLabel(out, label, command);
+  const logs = phaseLogs(out, label);
   const homes = makeHomes();
-  const env = childEnv({ mode, corpus, synthetic, homes, spawnLog, fetchLog, scenario, color: capture });
+  const envFor = (phase) => childEnv({ mode, corpus, synthetic, homes, ...logs.logsFor(phase), scenario, color: capture });
   const phases = {};
+  let env = null;
   try {
     let go = true;
     if (follow) {
+      env = envFor('follow');
       const r = await runChild(process.execPath, [CLI, 'follow', follow], { env, timeoutMs });
       writePhase(out, label, 'follow', r);
       phases.follow = phaseOf(r, ['follow', follow]);
@@ -699,6 +847,7 @@ async function cmdRun(command, args, json) {
     }
     const argv = withLang(childArgv);
     if (go && !interrupted) {
+      env = envFor('main');
       if (capture) phases.main = await capturePhase(out, label, argv, env, timeoutMs);
       else {
         const r = await runChild(process.execPath, [CLI, ...argv], { env, timeoutMs });
@@ -708,6 +857,7 @@ async function cmdRun(command, args, json) {
     }
     if (go && opts.twin && !interrupted) {
       const twin = withArgs(argv, ['--json']);
+      env = envFor('twin');
       const r = await runChild(process.execPath, [CLI, ...twin], { env, timeoutMs });
       writePhase(out, label, 'twin', r);
       phases.twin = phaseOf(r, twin);
@@ -715,9 +865,8 @@ async function cmdRun(command, args, json) {
   } finally {
     cleanup(homes, opts.keep);
   }
-  const spawns = readJsonLines(spawnLog);
-  const fetches = readJsonLines(fetchLog);
-  const failures = failuresOf(phases, fetches);
+  const { spawns, fetches } = logs.collect();
+  const failures = failuresOf(phases, fetches, capture ? ['main'] : []);
   if (interrupted) failures.push('interrupted');
   const timedOut = Object.values(phases).some((p) => p.timedOut);
   const result = {
@@ -735,7 +884,7 @@ async function cmdRun(command, args, json) {
     failures,
     spawns,
     fetches,
-    env: Object.keys(env).sort(),
+    env: envKeys(env, { mode, corpus, synthetic, homes, scenario, color: capture }),
     paths: { out, home: homes.home, config: homes.config, cache: homes.cache, tmp: homes.tmp },
   };
   writeFileSync(join(out, `${label}.result.json`), `${JSON.stringify(result, null, 2)}\n`);
@@ -755,8 +904,12 @@ const ANSI = new RegExp(`${ESC}(?:\\[[0-?]*[ -/]*[@-~]|\\][^${BEL}${ESC}]*(?:${B
 /** BSD `script` echoes the end of its stdin into the transcript as a caret D and two backspaces. */
 const EOF_ECHO = new RegExp(`\\^D${BS}${BS}`, 'g');
 
+/** util-linux's `script` writes a header and a footer line into the transcript; Darwin's `-q` writes neither. */
+const SCRIPT_LINES = /^Script (started|done) on .*(?:\n|$)/gm;
+
+/** The `.txt` of a capture: the transcript without escapes, carriage returns, BSD's EOF echo or `script`'s own lines. */
 function stripTranscript(text) {
-  return text.replace(EOF_ECHO, '').replace(ANSI, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return text.replace(EOF_ECHO, '').replace(ANSI, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(SCRIPT_LINES, '');
 }
 
 function shellQuote(arg) {
@@ -820,41 +973,53 @@ async function cmdMcp(args, json) {
   if (!existsSync(MCP)) throw refuse(`${MCP_REL} is missing under ${ROOT}: run pnpm -r build`);
   if (follow && !existsSync(CLI)) throw refuse(`${CLI_REL} is missing under ${ROOT}: run pnpm -r build`);
 
-  const out = makeOut(opts.out);
-  const spawnLog = join(out, `${label}.spawns`);
-  const fetchLog = join(out, `${label}.fetches`);
+  const out = makeOut(opts.out, corpus);
+  reserveLabel(out, label, 'mcp');
+  const logs = phaseLogs(out, label);
   const rpcLog = join(out, `${label}.rpc.jsonl`);
-  for (const f of [spawnLog, fetchLog, rpcLog]) writeFileSync(f, '');
+  writeFileSync(rpcLog, '');
   const homes = makeHomes();
-  const env = childEnv({ mode, corpus, synthetic, homes, spawnLog, fetchLog, scenario });
+  const envFor = (phase) => childEnv({ mode, corpus, synthetic, homes, ...logs.logsFor(phase), scenario });
   const phases = {};
+  let env = null;
   let session = null;
   try {
     let go = true;
     if (follow) {
+      env = envFor('follow');
       const r = await runChild(process.execPath, [CLI, 'follow', follow], { env, timeoutMs: followTimeoutMs });
       writePhase(out, label, 'follow', r);
       phases.follow = phaseOf(r, ['follow', follow]);
       go = r.exit === 0 && !r.timedOut;
     }
-    if (go && !interrupted) session = await mcpSession({ env, timeoutMs, list, tool, toolArgs, rpcLog });
+    if (go && !interrupted) {
+      env = envFor('server');
+      session = await mcpSession({ env, timeoutMs, list, tool, toolArgs, rpcLog });
+    }
   } finally {
     cleanup(homes, opts.keep);
   }
+  const { fetches, spawns } = logs.collect();
+  // The session's own failures (a protocol error, a malformed or missing reply, a stray line, the deadline, the
+  // server's own exit), or the follow phase's when the session never started; then the interrupt.
   const errors = [];
   if (session) {
     writeFileSync(join(out, `${label}.txt`), session.stdout);
     writeFileSync(join(out, `${label}.err`), session.stderr);
     writeFileSync(join(out, `${label}.exit`), `${session.exit ?? session.signal ?? 'null'}\n`);
-    if (session.error) errors.push(session.error);
-  } else if (phases.follow) errors.push(`follow ${phases.follow.timedOut ? 'timed out' : `exit ${phases.follow.exit ?? phases.follow.signal}`}`);
+    errors.push(...session.errors);
+  }
+  errors.push(...failuresOf(phases, []));
   if (interrupted) errors.push('interrupted');
-  const fetches = readJsonLines(fetchLog);
-  const spawns = readJsonLines(spawnLog);
-  const fetchFailures = failuresOf({}, fetches);
-  const timedOut = Boolean(session?.timedOut) || Object.values(phases).some((p) => p.timedOut);
   const isError = session?.isError === true;
-  const ok = errors.length === 0 && !isError && !timedOut && fetchFailures.length === 0;
+  const failures = [
+    ...errors,
+    ...(isError && !errors.length ? [`the tool answered isError: ${textOf(session.reply).slice(0, 200)}`] : []),
+    ...(session && unrecorded(session.stderr) ? ['server: a fetch attempt could not be recorded'] : []),
+    ...failuresOf({}, fetches),
+  ];
+  const timedOut = Boolean(session?.timedOut) || Object.values(phases).some((p) => p.timedOut);
+  const ok = failures.length === 0 && !isError && !timedOut;
   const result = {
     ok,
     command: 'mcp',
@@ -869,10 +1034,11 @@ async function cmdMcp(args, json) {
     exit: session?.exit ?? null,
     ...(session?.signal ? { signal: session.signal } : {}),
     ...(Object.keys(phases).length ? { phases } : {}),
-    failures: [...errors, ...(isError && !errors.length ? [`the tool answered isError: ${textOf(session.reply).slice(0, 200)}`] : []), ...fetchFailures],
+    ...(interrupted ? { interrupted: true } : {}),
+    failures,
     spawns,
     fetches,
-    env: Object.keys(env).sort(),
+    env: envKeys(env, { mode, corpus, synthetic, homes, scenario }),
     paths: { out, home: homes.home, config: homes.config, cache: homes.cache, tmp: homes.tmp },
   };
   writeFileSync(join(out, `${label}.result.json`), `${JSON.stringify(result, null, 2)}\n`);
@@ -892,14 +1058,42 @@ function textOf(result) {
   return typeof c?.text === 'string' ? c.text : '';
 }
 
-const rpcError = (step, e) => `${step}: JSON-RPC error ${e?.code ?? '?'}: ${e?.message ?? JSON.stringify(e)}`;
+const rpcError = (step, e) => `${step}: JSON-RPC error ${e.code}: ${e.message}`;
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * A reply is judged before it is believed. VALID: an object with `jsonrpc: '2.0'` and EXACTLY ONE of `result` (an
+ * object, not null, not an array) or `error` (an object with an integer `code` and a string `message`); a
+ * `tools/list` result's `tools` must be an array, a `tools/call` result's `content` an array. Returns `{ result }`
+ * for a valid result, else `{ failure }`: the JSON-RPC error as it came, or `malformed reply to <step>: <the reply's
+ * JSON, cut at 200>`.
+ */
+function judgeReply(step, msg) {
+  const malformed = () => ({ failure: `malformed reply to ${step}: ${JSON.stringify(msg).slice(0, 200)}` });
+  if (!isObject(msg) || msg.jsonrpc !== '2.0') return malformed();
+  const hasResult = Object.hasOwn(msg, 'result');
+  const hasError = Object.hasOwn(msg, 'error');
+  if (hasResult === hasError) return malformed();
+  if (hasError) {
+    const e = msg.error;
+    if (!isObject(e) || !Number.isInteger(e.code) || typeof e.message !== 'string') return malformed();
+    return { failure: rpcError(step, e) };
+  }
+  const r = msg.result;
+  if (!isObject(r)) return malformed();
+  if (step === 'tools/list' && !Array.isArray(r.tools)) return malformed();
+  if (step === 'tools/call' && !Array.isArray(r.content)) return malformed();
+  return { result: r };
+}
 
 /**
  * One stdio session with the built server: initialize (protocol 2024-11-05, as the stdio smoke), initialized,
  * tools/list (every tool must declare an outputSchema), then tools/call unless listing; each request waits for its
- * reply, then stdin is closed and the server's own exit awaited, all within the deadline. The server's stdout is
- * read line by line: a line that is not a JSON-RPC 2.0 message is a stray line, which fails the session without
- * ending it.
+ * reply, judged before it is believed (`judgeReply`: a protocol error, a malformed or a missing reply ends the steps),
+ * then stdin is closed and the server's own exit awaited, all within the deadline. The server's stdout is read line by
+ * line: a line that is not a JSON-RPC 2.0 message is a stray line, which fails the session without ending it. The
+ * server's own exit is part of the verdict (`server exit <n>`, `server signal <sig>`) unless the controller's kill
+ * explains it, when the deadline (or the interrupt) is the one failure and the exit is still reported.
  */
 async function mcpSession({ env, timeoutMs, list, tool, toolArgs, rpcLog }) {
   const waiters = new Map();
@@ -914,7 +1108,7 @@ async function mcpSession({ env, timeoutMs, list, tool, toolArgs, rpcLog }) {
     } catch {
       msg = undefined;
     }
-    if (msg === null || typeof msg !== 'object' || msg.jsonrpc !== '2.0') {
+    if (!isObject(msg) || msg.jsonrpc !== '2.0') {
       stray.push(text);
       log('stray', text);
       return;
@@ -948,24 +1142,32 @@ async function mcpSession({ env, timeoutMs, list, tool, toolArgs, rpcLog }) {
   let tools = null;
   let reply = null;
   const missing = (step) => (ended ? `no reply to ${step} (the server ended)` : `no reply to ${step}`);
-  const init = await ask(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'verify-claudinho', version: '1' } });
-  if (!init) errors.push(missing('initialize'));
-  else if (init.error) errors.push(rpcError('initialize', init.error));
-  else {
+  /** Asks one step and judges its reply: the result when it is valid, else null with the failure recorded. */
+  const step = async (id, method, params) => {
+    const msg = await ask(id, method, params);
+    if (!msg) {
+      errors.push(missing(method));
+      return null;
+    }
+    const judged = judgeReply(method, msg);
+    if (judged.failure) {
+      errors.push(judged.failure);
+      return null;
+    }
+    return judged.result;
+  };
+  const init = await step(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'verify-claudinho', version: '1' } });
+  if (init) {
     send({ jsonrpc: '2.0', method: 'notifications/initialized' });
-    const listed = await ask(2, 'tools/list', {});
-    if (!listed) errors.push(missing('tools/list'));
-    else if (listed.error) errors.push(rpcError('tools/list', listed.error));
-    else {
-      tools = (Array.isArray(listed.result?.tools) ? listed.result.tools : []).map((t) => ({ name: t?.name, outputSchema: t?.outputSchema }));
+    const listed = await step(2, 'tools/list', {});
+    if (listed) {
+      tools = listed.tools.map((t) => ({ name: t?.name, outputSchema: t?.outputSchema }));
       const bare = tools.filter((t) => t.outputSchema == null).map((t) => t.name);
       if (bare.length) errors.push(`tools without an outputSchema: ${bare.join(', ')}`);
       if (!list) {
-        const called = await ask(3, 'tools/call', { name: tool, arguments: toolArgs });
-        if (!called) errors.push(missing('tools/call'));
-        else if (called.error) errors.push(rpcError('tools/call', called.error));
-        else {
-          reply = called.result ?? {};
+        const called = await step(3, 'tools/call', { name: tool, arguments: toolArgs });
+        if (called) {
+          reply = called;
           // The SDK answers a protocol failure inside a call (an unknown tool, arguments its schema refuses) as a
           // tool result whose text is "MCP error <code>: ..."; that is a protocol error, not the tool's own.
           if (reply.isError === true && /^MCP error -?\d+:/.test(textOf(reply))) errors.push(`tools/call: ${textOf(reply)}`);
@@ -976,16 +1178,38 @@ async function mcpSession({ env, timeoutMs, list, tool, toolArgs, rpcLog }) {
   started.child?.stdin?.end();
   const r = await result;
   if (r.timedOut) errors.unshift(`timed out after ${timeoutMs / 1000} s`);
+  else if (!r.killed) {
+    if (r.signal) errors.push(`server signal ${r.signal}`);
+    else if (r.exit !== 0) errors.push(`server exit ${r.exit}`);
+  }
   if (stray.length) errors.push(`${stray.length} stray line(s) on the server's stdout, the first: ${stray[0].slice(0, 200)}`);
-  return { ...r, tools, reply, isError: reply?.isError === true, error: errors.length ? errors.join('; ') : null };
+  return { ...r, tools, reply, isError: reply?.isError === true, errors };
 }
 
 // ───────────────────────────── seed, prompt, hook ─────────────────────────────
 
+/** `--cache`: an absolute path, and a directory when something is already there (a file, or a link to nothing, is refused). */
 function cacheOf(value) {
   if (value === undefined) return undefined;
   if (!isAbsolute(value)) throw refuse(`--cache takes an absolute directory, got ${JSON.stringify(value)}`);
-  return resolve(value);
+  const cache = resolve(value);
+  let there = false;
+  try {
+    lstatSync(cache);
+    there = true;
+  } catch {
+    there = false;
+  }
+  if (there) {
+    let dir = false;
+    try {
+      dir = statSync(cache).isDirectory();
+    } catch {
+      dir = false;
+    }
+    if (!dir) throw refuse(`--cache ${cache} is not a directory`);
+  }
+  return cache;
 }
 
 function slugOf(value) {
@@ -1047,25 +1271,26 @@ async function cmdAmbient(command, args, json) {
   }
 
   const out = makeOut(opts.out);
-  const spawnLog = join(out, `${label}.spawns`);
-  const fetchLog = join(out, `${label}.fetches`);
-  writeFileSync(spawnLog, '');
-  writeFileSync(fetchLog, '');
+  reserveLabel(out, label, command);
+  const logs = phaseLogs(out, label);
   const homes = makeHomes(cacheDir);
-  const env = childEnv({ mode: 'offline', homes, spawnLog, fetchLog, scenario });
+  const envFor = (phase) => childEnv({ mode: 'offline', homes, ...logs.logsFor(phase), scenario });
   const phases = {};
+  let env = null;
   let seeded = null;
   try {
     // The seed first, before any child: a refused seed starts nothing.
     if (plan) seeded = applySeed(plan, homes.cache);
     let go = true;
     if (follow) {
+      env = envFor('follow');
       const r = await runChild(process.execPath, [CLI, 'follow', follow], { env, timeoutMs });
       writePhase(out, label, 'follow', r);
       phases.follow = phaseOf(r, ['follow', follow]);
       go = r.exit === 0 && !r.timedOut;
     }
     if (go && !interrupted) {
+      env = envFor('main');
       const t0 = performance.now();
       const r = await runChild(process.execPath, [CLI, command], { env, timeoutMs });
       const ms = Math.round(performance.now() - t0);
@@ -1075,8 +1300,7 @@ async function cmdAmbient(command, args, json) {
   } finally {
     cleanup(homes, opts.keep);
   }
-  const spawns = readJsonLines(spawnLog);
-  const fetches = readJsonLines(fetchLog);
+  const { spawns, fetches } = logs.collect();
   const failures = failuresOf(phases, fetches);
   if (interrupted) failures.push('interrupted');
   const result = {
@@ -1093,7 +1317,7 @@ async function cmdAmbient(command, args, json) {
     failures,
     spawns,
     fetches,
-    env: Object.keys(env).sort(),
+    env: envKeys(env, { mode: 'offline', homes, scenario }),
     paths: { out, home: homes.home, config: homes.config, cache: homes.cache, tmp: homes.tmp },
   };
   writeFileSync(join(out, `${label}.result.json`), `${JSON.stringify(result, null, 2)}\n`);

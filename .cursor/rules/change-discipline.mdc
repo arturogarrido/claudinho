@@ -34,6 +34,7 @@ The short form:
    pushed SHA); with `--commit <message-file>` it commits only when every step is ok, or, with
    `--allow-offline-audit`, when the audit alone was skipped offline (the commit line says so
    and the exit stays nonzero).
-   The `verify-claudinho` skill and `node scripts/verify.mjs` are the offline inner loop; `release:qa` stays the live pass.
+   The `verify-claudinho` skill and `node scripts/verify.mjs` are the offline inner loop; the control
+   CLI replaces neither CI's jobs nor the live pass, `release:qa`.
    User-facing behavior and releases also need `release:qa` after build. Rerun checks
    for new changes, failures, or unresolved concerns; after a push, verify CI on that SHA.
