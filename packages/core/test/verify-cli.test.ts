@@ -705,6 +705,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect((b.res?.failures ?? []).some((f) => /main: ps did not answer; a descendant may have survived/.test(f)), 'the survivor is said').toBe(true);
     expect(await until(() => existsSync(pf2), 3000)).toBe(true);
     const orphan = readPid(pf2);
+    expect(pidAlive(orphan), 'the survivor the result named is alive').toBe(true);
     try { process.kill(orphan, 'SIGKILL'); } catch { /* already gone */ }
     expect(await until(() => !pidAlive(orphan), 5000), 'the test reaped the survivor itself').toBe(true);
   });
@@ -726,6 +727,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(await until(() => existsSync(pf), 3000)).toBe(true);
     expect((r.res?.failures ?? []).some((f) => /may have survived/.test(f)), 'the leader was gone at the KILL step: the second ps vouches for nothing').toBe(true);
     const orphan = readPid(pf);
+    expect(pidAlive(orphan), 'the survivor the result named is alive').toBe(true);
     try { process.kill(orphan, 'SIGKILL'); } catch { /* already gone */ }
     expect(await until(() => !pidAlive(orphan), 5000)).toBe(true);
     // the leader leaves DURING the second lookup: the snapshot shows it gone (or a zombie) and vouches for nothing
@@ -743,6 +745,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(await until(() => existsSync(pfd), 3000)).toBe(true);
     expect((d.res?.failures ?? []).some((f) => /may have survived/.test(f)), 'the leader left while the second ps ran: the snapshot vouches for nothing').toBe(true);
     const orphand = readPid(pfd);
+    expect(pidAlive(orphand), 'the survivor the result named is alive').toBe(true);
     try { process.kill(orphand, 'SIGKILL'); } catch { /* already gone */ }
     expect(await until(() => !pidAlive(orphand), 5000)).toBe(true);
   });
@@ -774,6 +777,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(b.status).toBe(130);
     expect(b.stderr).toMatch(/interrupted twice; a capture's descendants may have survived/);
     const orphan = readPid(pf2);
+    expect(pidAlive(orphan), 'the survivor the result named is alive').toBe(true);
     try { process.kill(orphan, 'SIGKILL'); } catch { /* already gone */ }
     expect(await until(() => !pidAlive(orphan), 5000)).toBe(true);
     // a plain child (no group) that ignores TERM is killed by the second interrupt too
