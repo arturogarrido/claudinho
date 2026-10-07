@@ -8,7 +8,7 @@
  * The tests pin the CALLS a script makes ("no `git push` ran") by reading the
  * record a stub wrote, never by inferring it from the script's output.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
+import { type ChildProcess, execFileSync, spawn, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -83,4 +83,44 @@ export function runScript(
 /** `bash -n` on a script: the whole file parses before any state is run. */
 export function parses(script: string): number | null {
   return spawnSync(hostTool('bash'), ['-n', script], { encoding: 'utf8' }).status;
+}
+
+/**
+ * Starts `bash <script> <args>` in the sandbox WITHOUT waiting: for a test that signals the script while it runs
+ * (a TERM to its pid alone) and then reads what it left behind. `done` resolves when the process closes.
+ */
+export function startScript(
+  script: string,
+  args: string[],
+  sandbox: Sandbox,
+  extraEnv: Record<string, string> = {},
+  opts: { cwd?: string } = {},
+): { child: ChildProcess; done: Promise<{ status: number | null; signal: NodeJS.Signals | null; out: string }> } {
+  const child = spawn(hostTool('bash'), [script, ...args], {
+    env: { ...sandbox.env, ...extraEnv },
+    cwd: opts.cwd ?? sandbox.dir,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let out = '';
+  child.stdout?.on('data', (d: Buffer) => { out += d.toString(); });
+  child.stderr?.on('data', (d: Buffer) => { out += d.toString(); });
+  const done = new Promise<{ status: number | null; signal: NodeJS.Signals | null; out: string }>((resolve) => {
+    child.on('close', (status, signal) => resolve({ status, signal, out }));
+  });
+  return { child, done };
+}
+
+/** Whether a process id is alive (signal 0). */
+export function pidAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+/** Polls `cond` every 50 ms until it holds or `ms` have passed; returns whether it held. */
+export async function until(cond: () => boolean, ms = 5000): Promise<boolean> {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (cond()) return true;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return cond();
 }
