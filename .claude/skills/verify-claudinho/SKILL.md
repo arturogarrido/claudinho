@@ -70,8 +70,8 @@ phase (`follow`, `main`, `twin`; the MCP session's `server`; doctor's `version`)
 `spawn`, `exec`, `execFile`, `fork` and their sync forms alike) and `.fetches` (one JSON line per fetch attempt: the
 URL, the mode and the outcome `blocked`, `replayed:raw`, `replayed:synthetic`, `miss`, `malformed`, or, live,
 `live:sent` before the request and `live:<status>` or `live:error` after it); `<label>.result.json` (the aggregate:
-`ok`, the mode, every phase's exit, the fetch and spawn entries each naming their phase, the environment's keys,
-the paths). The label is reserved in `--out` when a command starts: a second command with the same label and
+`ok`, the mode, every phase's exit, the fetch entries each naming their phase, the spawn entries in phase order
+(the counter's arrays; their phase is their file's), the environment's keys, the paths). The label is reserved in `--out` when a command starts: a second command with the same label and
 directory is refused, so no run's evidence is ever overwritten or mixed. `ok` is false on any phase's nonzero
 exit, the MCP server's own nonzero exit, any miss or malformed recording, a fetch attempt the preload could not
 record (it says so on the child's stderr), a timeout, or an MCP failure; the child's own exit is kept beside it. A

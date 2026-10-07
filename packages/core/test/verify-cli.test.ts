@@ -36,7 +36,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -240,12 +240,14 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
       ['an --env scenario key with an empty value', ['run', '--offline', '--env', 'CLAUDINHO_COMPETITION=', '--', 'team', 'mexico']],
       ['an --env scenario key with an empty value (prompt)', ['prompt', '--env', 'CLAUDINHO_TEAM=']],
       ['a --cache that is a file', ['prompt', '--cache', join(ROOT, 'package.json')]],
-      ['a --cache that is a file (seed none)', ['seed', 'none', '--cache', join(ROOT, 'package.json')]],
     ] as Array<[string, string[]]>) {
       const { r, res } = verify([args[0] as string, '--json', '--out', out(), ...args.slice(1)]);
       expect(r.status, why).toBe(2);
       expect(res?.phases ?? {}, why).toEqual({});
     }
+    const seedFile = verify(['seed', 'none', '--cache', join(ROOT, 'package.json'), '--json']);
+    expect(seedFile.r.status, 'a --cache that is a file (seed none, which takes no --out)').toBe(2);
+    expect(seedFile.res?.error ?? '').toMatch(/not a directory/);
   });
 
   it('--env accepts only the scenario keys, on every command: a harness-owned key or an unknown one is refused before any child', { timeout: SLOW }, () => {
@@ -658,7 +660,7 @@ setTimeout(() => {}, 200);
     writeFileSync(join(root, 'packages/cli/dist/child.js'), "console.log('forked');\n");
     const { r, res } = verify(['run', '--json', '--out', out(), '--offline', '--', 'today'], { env: { VERIFY_ROOT: root } });
     expect(r.status, res?.phases?.main?.stderr).toBe(0);
-    expect((res?.spawns ?? []).map((s) => (s as string[])[0])).toEqual(['echo', 'echo b', 'echo c', 'echo', join(root, 'packages/cli/dist/child.js')]);
+    expect((res?.spawns ?? []).map((s) => (s as string[])[0])).toEqual(['echo', 'echo b', 'echo c', 'echo', join(realpathSync(root), 'packages/cli/dist/child.js')]);
     const stdout = res?.phases?.main?.stdout ?? '';
     expect(stdout).toContain('cbfile ""');
     expect(stdout).toContain('cbexec ""');
