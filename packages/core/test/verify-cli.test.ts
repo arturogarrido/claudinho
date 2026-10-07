@@ -431,6 +431,10 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(dflt.r.status, 'the default evidence directory would sit inside the corpus').toBe(2);
     expect(dflt.res?.error ?? '').toMatch(/inside the replay corpus/);
     expect(existsSync(join(corpus, 'claudinho-verify')), 'nothing made under the corpus').toBe(false);
+    const homesIn = verify(['run', '--json', '--out', out(), '--replay', corpus, '--keep', '--', 'team', 'mexico'], { env: { TMPDIR: corpus } });
+    expect(homesIn.r.status, 'the temporary root would sit inside the corpus').toBe(2);
+    expect(homesIn.res?.error ?? '').toMatch(/temporary root .* is inside the replay corpus/);
+    expect(readdirSync(corpus).some((f) => f.startsWith('claudinho-verify')), 'no temporary root under the corpus').toBe(false);
     expect(readdirSync(corpus).some((f) => f.endsWith('.result.json')), 'nothing written into the corpus').toBe(false);
   });
 
@@ -573,7 +577,10 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(readFileSync(join(o, 'ev.twin.txt'), 'utf8')).toMatch(/"noCompetition": true/);
     expect(readFileSync(join(o, 'ev.main.err'), 'utf8')).toMatch(/No competition chosen/);
     expect(readFileSync(join(o, 'ev.main.fetches'), 'utf8')).toBe('');
-    expect(JSON.parse(readFileSync(join(o, 'ev.result.json'), 'utf8')).ok).toBe(false);
+    const aggregate = JSON.parse(readFileSync(join(o, 'ev.result.json'), 'utf8'));
+    expect(aggregate.ok).toBe(false);
+    expect(aggregate.pending, 'the aggregate replaced the pending object').toBeUndefined();
+    expect(aggregate.phases?.main?.exit).toBe(1);
     // the label is reserved: a second run with the same label and directory is refused and the first's files stand
     const before = Object.fromEntries(files.map((f) => [f, readFileSync(join(o, f), 'utf8')]));
     const again = verify(['run', '--json', '--out', o, '--label', 'ev', '--offline', '--', 'team', 'mexico']);
