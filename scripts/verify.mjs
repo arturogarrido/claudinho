@@ -497,7 +497,7 @@ function phaseOf(r, argv) {
 
 /**
  * The children running now, one entry `{ abort, killNow }` each: the first interrupt of the controller calls every
- * `abort` (the deadline's path: TERM, the grace, KILL, the evidence kept), the second `killRunningGroups`, then leaves
+ * `abort` (the deadline's path: TERM, the grace, KILL, the evidence kept), the second `killRunning`, then leaves
  * (130). An entry leaves the set when its child is reaped and, for a group child, once its group and its recorded tree
  * are gone, so a second interrupt during that wait still reaches them.
  */
@@ -505,11 +505,12 @@ const running = new Set();
 let interrupted = false;
 
 /**
- * The second interrupt's KILL, beside `abort`: for every running child started with `group`, KILL at once (no grace)
- * to its group and to its recorded tree. Returns whether a descendant may have survived it: one of those children had
- * an unrecorded deadline (`ps` did not answer there), or has no recorded tree at all (its deadline not reached).
+ * The second interrupt's KILL, beside `abort`: every running child gets KILL at once (no grace), a group child to its
+ * group and to its recorded tree, a plain child (`run`'s phases, the MCP server, the ambient commands) to its pid.
+ * Returns whether a descendant may have survived it: a group child had an unrecorded deadline (`ps` did not answer
+ * there), or has no recorded tree at all (its deadline not reached).
  */
-function killRunningGroups() {
+function killRunning() {
   let lost = false;
   for (const entry of running) if (entry.killNow()) lost = true;
   return lost;
@@ -519,7 +520,7 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
     if (interrupted) {
       // The second interrupt does not wait for the evidence, but kills what it can reach before leaving.
-      if (killRunningGroups()) {
+      if (killRunning()) {
         try {
           // Synchronous: the exit follows at once.
           writeSync(2, "verify: interrupted twice; a capture's descendants may have survived\n");
@@ -607,7 +608,7 @@ function signal(target, sig) {
  * again, or when the group's leader has already exited (its children reparented: no table can find them from its pid),
  * KILL goes to the group alone and the result says `survivorPossible` (a descendant may have survived; the phase
  * fails). The child is in `running` until it is reaped and its group and recorded tree are gone: a second interrupt
- * of the controller sends KILL to them at once (`killRunningGroups`). The result says `killed` when the controller's
+ * of the controller sends KILL to it (to them, for a group child) at once (`killRunning`). The result says `killed` when the controller's
  * signal reached a child that had not exited (a timeout or an interrupt). Returns the child and a promise of its result.
  */
 function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepStdin = false, group = false, onLine }) {
@@ -701,11 +702,17 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       });
     };
     /**
-     * The second interrupt's KILL for this child (see `killRunningGroups`): a group child's group and recorded tree get
-     * KILL at once; returns whether a descendant may have survived it (an unrecorded deadline, or no tree recorded).
+     * The second interrupt's KILL for this child (see `killRunning`): a group child's group and recorded tree get KILL at
+     * once, and the answer is whether a descendant may have survived it (an unrecorded deadline, or no tree recorded); a
+     * plain child gets KILL to its pid while it has not exited (an exited child's pid may be another process's), and
+     * leaves no descendant this controller could have recorded.
      */
     const killNow = () => {
-      if (!group || !child.pid) return false;
+      if (!child.pid) return false;
+      if (!group) {
+        if (child.exitCode === null && child.signalCode === null) kill('SIGKILL');
+        return false;
+      }
       kill('SIGKILL');
       return unrecordedAtDeadline || !recorded;
     };
