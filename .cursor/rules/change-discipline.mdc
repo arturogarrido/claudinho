@@ -29,5 +29,8 @@ The short form:
    [AGENTS.md's private-document boundary check](../../AGENTS.md#private-document-boundary-check).
    Code, dependency, and executable config
    changes need build → typecheck → test → lint plus relevant CI smoke/pack checks.
+   `scripts/gate.sh` runs that list locally with one verdict per step (not `release:qa`,
+   not CI's Node 20, Windows and macOS jobs, which `scripts/push-and-watch.sh` reads on the
+   pushed SHA).
    User-facing behavior and releases also need `release:qa` after build. Rerun checks
    for new changes, failures, or unresolved concerns; after a push, verify CI on that SHA.
