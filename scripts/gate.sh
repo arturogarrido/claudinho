@@ -44,14 +44,19 @@
 #
 # --commit <message-file> commits what is STAGED, with no `git add`, only when
 # every step printed ok, or, with --allow-offline-audit, when the audit alone was
-# skipped offline (the commit line says so and the exit stays nonzero). Before
-# any step it refuses when a tracked file differs between the working tree and
-# the index (`git diff --quiet`), when an untracked, not ignored file exists (the
-# checks would read what no commit carries), and when nothing is staged; it
-# records the index's tree (`git write-tree`) and HEAD (`git rev-parse --verify
-# HEAD`), and after the steps asks the same questions again: a working tree, an
-# untracked list or an index that changed during the gate refuses the commit. A
-# FAIL refuses whatever the flags; the audit's SKIP refuses unless
+# skipped offline (the commit line says so and the exit stays nonzero). The gate
+# makes plain single-parent commits only. Before any step it refuses when a
+# tracked file differs between the working tree and the index (`git diff
+# --quiet`), when an untracked, not ignored file exists (the checks would read
+# what no commit carries), when nothing is staged, and when a git operation is in
+# progress: a merge, a cherry-pick or a revert (`git rev-parse --verify --quiet`
+# answers MERGE_HEAD, CHERRY_PICK_HEAD or REVERT_HEAD), a rebase (the
+# rebase-merge or rebase-apply directory at `git rev-parse --git-path`) or a
+# bisect (BISECT_LOG there): finish it or abort it first. It records the index's
+# tree (`git write-tree`) and HEAD (`git rev-parse --verify HEAD`), and after the
+# steps asks the same questions again: a working tree, an untracked list or an
+# index that changed during the gate, or an operation started during it, refuses
+# the commit. A FAIL refuses whatever the flags; the audit's SKIP refuses unless
 # --allow-offline-audit. --only with --commit is refused before any step.
 # The commit is the tree recorded before the steps, never the index as it is at
 # the end: `git commit-tree <tree> -p <HEAD> -F <message-file>`, then `git
@@ -221,6 +226,34 @@ tree_answer() {
   echo "$out"
 }
 
+# The git operation in progress, by name (merge, cherry-pick, revert, rebase,
+# bisect), or nothing when none is: the commit below is a plain single-parent
+# commit-tree, which would drop a merge's second parent and step outside a
+# rebase's, a cherry-pick's, a revert's or a bisect's sequence.
+operation_answer() {
+  local ref op rc dir path
+  for ref in MERGE_HEAD:merge CHERRY_PICK_HEAD:cherry-pick REVERT_HEAD:revert; do
+    op=${ref#*:}; ref=${ref%%:*}
+    git rev-parse --verify --quiet "$ref" >/dev/null
+    rc=$?
+    case $rc in
+      0) echo "$op"; return 0 ;;
+      1) ;;
+      *) echo "git rev-parse --verify --quiet $ref failed (exit $rc)"; return 1 ;;
+    esac
+  done
+  for dir in rebase-merge rebase-apply BISECT_LOG; do
+    path=$(git rev-parse --git-path "$dir")
+    rc=$?
+    if [ $rc -ne 0 ] || [ -z "$path" ]; then echo "git rev-parse --git-path $dir failed (exit $rc)"; return 1; fi
+    case $dir in
+      BISECT_LOG) if [ -e "$path" ]; then echo "bisect"; return 0; fi ;;
+      *) if [ -d "$path" ]; then echo "rebase"; return 0; fi ;;
+    esac
+  done
+  echo ""
+}
+
 TREE_BEFORE=""
 HEAD0=""
 if [ "$COMMIT" -eq 1 ]; then
@@ -235,6 +268,8 @@ if [ "$COMMIT" -eq 1 ]; then
     1) ;;
     *) refuse_early "git diff --cached --quiet failed (exit $rc)" ;;
   esac
+  answer=$(operation_answer) || refuse_early "$answer"
+  [ -z "$answer" ] || refuse_early "a $answer is in progress: finish it or abort it first; the gate makes plain commits only"
   TREE_BEFORE=$(tree_answer) || refuse_early "$TREE_BEFORE"
   # The parent of the commit, read now: the commit moves HEAD only from here.
   HEAD0=$(git rev-parse --verify --quiet HEAD) || HEAD0=""
@@ -299,8 +334,8 @@ if [ "$COMMIT" -eq 1 ]; then
     echo "commit REFUSED ($N_FAIL step(s) FAIL: $FAILED)"
     COMMIT_STATE="refused"
   else
-    # The same three questions as before the steps: what the steps saw is what
-    # would be committed only if none of the answers moved.
+    # The same questions as before the steps: what the steps saw is what would
+    # be committed only if none of the answers moved.
     answer=$(unstaged_answer)
     if [ $? -ne 0 ]; then reason="$answer"
     elif [ "$answer" != "none" ]; then reason="git diff --quiet now reports a tracked file that differs from the index"
@@ -315,6 +350,12 @@ if [ "$COMMIT" -eq 1 ]; then
       answer=$(tree_answer)
       if [ $? -ne 0 ]; then reason="$answer"
       elif [ "$answer" != "$TREE_BEFORE" ]; then reason="git write-tree was $TREE_BEFORE, now $answer"
+      fi
+    fi
+    if [ -z "$reason" ]; then
+      answer=$(operation_answer)
+      if [ $? -ne 0 ]; then reason="$answer"
+      elif [ -n "$answer" ]; then reason="a $answer is in progress"
       fi
     fi
     if [ -n "$reason" ]; then
