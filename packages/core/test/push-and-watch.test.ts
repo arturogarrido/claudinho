@@ -93,6 +93,10 @@ case "$1 $2" in
     if [ -e "$STATE/hang-ignore-term" ]; then ( trap '' TERM; exec sleep 30 ) & echo $! > "$STATE/gh-child"; wait $! && : > "$STATE/hang-finished"; fi
     # hang-grandchild: a helper (dies of TERM) whose own child ignores TERM; the grandchild's pid in gh-grandchild
     if [ -e "$STATE/hang-grandchild" ]; then ( ( trap '' TERM; exec sleep 30 ) & echo $! > "$STATE/gh-grandchild"; wait ) & echo $! > "$STATE/gh-child"; wait $! && : > "$STATE/hang-finished"; fi
+    # hang-grandchild-ignore: the same tree, and this gh ignores TERM too, AFTER forking the helper (the helper still
+    # dies of TERM; gh then becomes a sleep that keeps ignoring it): the watchdog's wait on gh lasts its full tries,
+    # the window a TERM to the script can land in
+    if [ -e "$STATE/hang-grandchild-ignore" ]; then ( ( trap '' TERM; exec sleep 30 ) & echo $! > "$STATE/gh-grandchild"; wait ) & echo $! > "$STATE/gh-child"; trap '' TERM; wait $!; exec sleep 30; fi
     n=$(( $(cat "$STATE/runs-calls" 2>/dev/null || echo 0) + 1 )); echo $n > "$STATE/runs-calls"
     while [ $n -gt 0 ] && [ ! -e "$STATE/runs.$n.tsv" ]; do n=$((n-1)); done
     [ $n -gt 0 ] && cat "$STATE/runs.$n.tsv"; exit 0 ;;
@@ -462,6 +466,26 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     const dead = await until(() => !pidAlive(grandchild), 3000);
     if (!dead) try { process.kill(grandchild, 'SIGKILL'); } catch {}
     expect(dead, `the TERM-ignoring grandchild ${grandchild} is dead after TERM`).toBe(true);
+    expect(workDirs(sb)).toEqual([]);
+  });
+
+  it('a TERM to the script WHILE the watchdog is escalating (a probe that ignores TERM, a helper dead of it, a grandchild that ignores it): the recorded grandchild is still gone', { timeout: 25000 }, async () => {
+    const sb = sandbox();
+    seed(sb, { 'remote-sha': LOCAL, 'hang-grandchild-ignore': '' });
+    const { child, done } = startScript(SCRIPT, ['feature/x'], sb, { PUSH_WATCH_POLL_SECONDS: '0', PUSH_WATCH_TIMEOUT_SECONDS: '2' }, { cwd: ROOT });
+    expect(await until(() => existsSync(join(sb.state, 'gh-grandchild')), 8000), 'the probe and its helper started').toBe(true);
+    const grandchild = pidIn(sb, 'gh-grandchild');
+    const gh = pidIn(sb, 'gh-child');
+    // the deadline passes at 2 s; the watchdog then TERMs the tree (the helper dies, gh and the grandchild ignore it)
+    // and waits its tries on gh before its KILL: the TERM to the script lands inside that wait
+    await new Promise((r) => setTimeout(r, 2600));
+    child.kill('SIGTERM');
+    const r = await done;
+    expect(r.status, `status ${r.status} signal ${r.signal}: ${r.out}`).toBe(143);
+    const dead = await until(() => !pidAlive(grandchild), 3000);
+    if (!dead) try { process.kill(grandchild, 'SIGKILL'); } catch {}
+    try { process.kill(gh, 'SIGKILL'); } catch {}
+    expect(dead, `the grandchild ${grandchild}, recorded by the watchdog before its first signal, is dead after the TERM to the script`).toBe(true);
     expect(workDirs(sb)).toEqual([]);
   });
 
