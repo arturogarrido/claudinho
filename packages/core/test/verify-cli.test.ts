@@ -100,18 +100,18 @@ const pidFile = () => join(scratch, `pid-${++n}`);
 const readPid = (f: string) => Number(readFileSync(f, 'utf8').trim());
 
 /** A fake repository root for the controller's seam: an ES-module cli dist answering `--version`, an mcp dist, the two package.json files. */
-function fakeRoot(cli: string, mcp = 'process.exit(0);\n'): string {
+function fakeRoot(cli: string, mcp = 'process.exit(0);\n', version = VERSION): string {
   const root = mkdtempSync(join(scratch, 'root-'));
   for (const p of ['cli', 'mcp']) {
     mkdirSync(join(root, 'packages', p, 'dist'), { recursive: true });
     writeFileSync(join(root, 'packages', p, 'package.json'), JSON.stringify({ name: `@claudinho/${p}`, version: VERSION, type: 'module' }));
   }
-  writeFileSync(join(root, 'packages/cli/dist/index.js'), `if (process.argv.includes('--version')) { console.log(${JSON.stringify(VERSION)}); process.exit(0); }\n${cli}`);
+  writeFileSync(join(root, 'packages/cli/dist/index.js'), `if (process.argv.includes('--version')) { console.log(${JSON.stringify(version)}); process.exit(0); }\n${cli}`);
   writeFileSync(join(root, 'packages/mcp/dist/index.js'), mcp);
   return root;
 }
 /** A fake stdio MCP server: a line-delimited JSON-RPC reader; `boot` printed first (a stray line); `list` false never answers tools/list. */
-function fakeServer(o: { boot?: string; list?: boolean; pid?: string } = {}): string {
+function fakeServer(o: { boot?: string; list?: boolean; pid?: string; schema?: boolean } = {}): string {
   return `${o.pid ? `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(o.pid)}, String(process.pid));\n` : ''}${o.boot ? `console.log(${JSON.stringify(o.boot)});\n` : ''}
 const reply = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\\n');
 let buf = '';
@@ -123,12 +123,12 @@ process.stdin.on('data', (d) => {
     const msg = JSON.parse(line);
     if (msg.id == null) continue;
     if (msg.method === 'initialize') reply(msg.id, { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '0' } });
-    else if (msg.method === 'tools/list') { if (${o.list === false ? 'false' : 'true'}) reply(msg.id, { tools: [{ name: 't', description: 'd', inputSchema: { type: 'object' }, outputSchema: { type: 'object' } }] }); }
+    else if (msg.method === 'tools/list') { if (${o.list === false ? 'false' : 'true'}) reply(msg.id, { tools: [{ name: 't', description: 'd', inputSchema: { type: 'object' }${o.schema === false ? '' : ', outputSchema: { type: \'object\' }'} }] }); }
     else reply(msg.id, { content: [{ type: 'text', text: 'ok' }], structuredContent: {} });
   }
 });
 process.stdin.on('end', () => process.exit(0));
-setTimeout(() => {}, 60000);
+setTimeout(() => {}, 600000);
 `;
 }
 
@@ -172,6 +172,11 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(r.status).toBe(1);
     expect(res?.ok).toBe(false);
     expect((res?.checks ?? []).some((c) => !c.ok && /packages\/cli\/dist/.test(`${c.name} ${c.detail ?? ''}`))).toBe(true);
+    const stale = fakeRoot('process.exit(0);\n', 'process.exit(0);\n', '0.0.0-stale');
+    const v = verify(['doctor', '--json', '--out', out()], { env: { VERIFY_ROOT: stale } });
+    expect(v.r.status, 'a dist whose --version differs from package.json').toBe(1);
+    expect((v.res?.checks ?? []).find((c) => c.name === 'version')?.ok).toBe(false);
+    expect((v.res?.checks ?? []).filter((c) => c.name !== 'version').every((c) => c.ok), 'only the version check fails').toBe(true);
   });
 
   it('run refuses the install commands, star, _refresh and --copy before any child; the temporary and the operator\'s settings stay untouched', () => {
@@ -183,9 +188,20 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     }
     expect(existsSync(join(scratch, 'home', '.claude', 'settings.json'))).toBe(false);
     expect(existsSync(join(scratch, 'home', '.cursor'))).toBe(false);
+    for (const [why, args] of [
+      ['no argv after --', ['run', '--offline']],
+      ['a label that is not a file name', ['run', '--label', '../x', '--offline', '--', 'team', 'mexico']],
+      ['a capture label that is not a file name', ['capture', '../x', '--', 'team', 'mexico']],
+      ['--synthetic without --replay', ['run', '--offline', '--synthetic', '--', 'team', 'mexico']],
+      ['an unknown option', ['run', '--offline', '--frobnicate', '--', 'team', 'mexico']],
+    ] as Array<[string, string[]]>) {
+      const { r, res } = verify([args[0] as string, '--json', '--out', out(), ...args.slice(1)]);
+      expect(r.status, why).toBe(2);
+      expect(res?.phases ?? {}, why).toEqual({});
+    }
   });
 
-  it('--env accepts only the scenario keys, on every command: a harness-owned key or an unknown one is refused before any child', () => {
+  it('--env accepts only the scenario keys, on every command: a harness-owned key or an unknown one is refused before any child', { timeout: SLOW }, () => {
     const corpus = mkdtempSync(join(scratch, 'corpus-'));
     const forms: Array<[string, string[]]> = [
       ['run', ['run', '--offline', '--', 'team', 'mexico']],
@@ -211,6 +227,17 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     for (const k of SCENARIO_KEYS) expect(['CLAUDINHO_COMPETITION', 'LANG', 'TZ'].includes(k) || !(res?.env ?? []).includes(k), k).toBe(true);
   });
 
+  it('a follow the CLI refuses stops the run before the main phase, its evidence kept, the wrapper 1', () => {
+    const o = out();
+    const { r, res } = verify(['run', '--json', '--out', o, '--label', 'f', '--offline', '--follow', 'not-an-alias', '--twin', '--', 'team', 'mexico']);
+    expect(r.status).toBe(1);
+    expect(res?.ok).toBe(false);
+    expect(res?.phases?.follow?.exit).not.toBe(0);
+    expect(res?.phases?.main, 'no main phase after a refused follow').toBeUndefined();
+    expect(res?.phases?.twin).toBeUndefined();
+    expect(readdirSync(o)).toContain('f.follow.err');
+  });
+
   it('the child\'s environment is built from scratch: the test\'s own competition, team, language and zone never reach it', { timeout: SLOW }, () => {
     const { r, res } = verify(['run', '--json', '--out', out(), '--offline', '--follow', 'premier-league', '--twin', '--', 'today', '2026-10-07']);
     expect(r.status, `${res?.error} ${res?.phases?.main?.stderr}`).toBe(0);
@@ -224,7 +251,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(res?.phases?.follow?.exit).toBe(0);
     expect(res?.phases?.main?.exit).toBe(0);
     expect(res?.phases?.main?.stdout).toContain('Premier League');
-    expect(res?.phases?.main?.stdout).not.toMatch(/Mundial|Partidos|Resultados/); // the test's Spanish never reached the child
+    expect(res?.phases?.main?.stdout, 'English: the test\'s Spanish never reached the child').toContain("Couldn't reach the data provider");
     expect(res?.phases?.main?.stdout).not.toContain(String.fromCodePoint(0x1b)); // NO_COLOR
     expect(res?.paths?.home ?? '').not.toBe(join(scratch, 'home')); // the controller's HOME is not the child's
   });
@@ -291,8 +318,9 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(at(twinOf(ok.res), 'degraded')).toBe(false);
     expect(at(twinOf(ok.res), 'source')).toBe('espn');
     expect(ok.res?.phases?.main?.stdout).toContain('Live data: ESPN');
-    // a corrupt recording: an object body is not a recording (the three type rules)
-    const first = urls[0] as string;
+    // a corrupt recording: an object body is not a recording (the three type rules). The adapter asks the standings
+    // (group enrichment) BEFORE the scoreboard and never fails on them, so the corrupted recording must be a day's.
+    const first = urls.find((u) => /scoreboard/.test(u)) as string;
     writeFileSync(join(corpus, `${sha(first)}.json`), JSON.stringify({ url: first, status: 200, body: { events: [] } }));
     const bad = verify(['run', '--json', '--out', out(), '--replay', corpus, '--follow', 'premier-league', '--', 'today', '2026-10-07']);
     expect(bad.r.status).toBe(1);
@@ -381,6 +409,10 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     const ok = verify(['mcp', '--json', '--out', out(), '--list'], { env: { VERIFY_ROOT: clean } });
     expect(ok.res?.ok, 'the same server without the stray line is fine').toBe(true);
     expect((ok.res?.tools ?? []).map((t) => t.name)).toEqual(['t']);
+    const bare = fakeRoot('process.exit(0);\n', fakeServer({ schema: false }));
+    const b = verify(['mcp', '--json', '--out', out(), '--list'], { env: { VERIFY_ROOT: bare } });
+    expect(b.res?.ok, 'a tool without an outputSchema fails the session').toBe(false);
+    expect(b.r.status).toBe(1);
     const pf = pidFile();
     const root = fakeRoot('process.exit(0);\n', fakeServer({ list: false, pid: pf }));
     const { r, res } = verify(['mcp', '--json', '--out', out(), '--timeout', '2', '--list'], { env: { VERIFY_ROOT: root } });
@@ -410,6 +442,11 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(readdirSync(none)).toEqual([]);
     const rel = verify(['seed', 'club', '--slug', 'eng.1', '--cache', 'relative/dir', '--json']);
     expect(rel.r.status, 'a relative cache is a usage error').toBe(2);
+    const full = mkdtempSync(join(scratch, 'cache-'));
+    writeFileSync(join(full, 'keep.txt'), 'mine');
+    const refused = verify(['seed', 'none', '--cache', full, '--json']);
+    expect(refused.r.status, 'seed none refuses a directory with entries').toBe(2);
+    expect(readdirSync(full), 'and deletes nothing').toEqual(['keep.txt']);
   });
 
   it('the evidence survives cleanup, per phase, the empty logs included; the temporary HOME, config and cache do not (unless --keep)', { timeout: SLOW }, () => {
@@ -440,7 +477,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
 
   it('a hung child ends at the deadline: killed and reaped, timedOut, the partial evidence kept, nonzero', { timeout: SLOW }, async () => {
     const pf = pidFile();
-    const root = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf)}, String(process.pid)); console.log('started'); setTimeout(() => {}, 60000);\n`);
+    const root = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf)}, String(process.pid)); console.log('started'); setTimeout(() => {}, 600000);\n`);
     const { r, res } = verify(['run', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: root } });
     expect(r.status).toBe(1);
     expect(res?.ok).toBe(false);
@@ -448,7 +485,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(res?.phases?.main?.timedOut).toBe(true);
     expect(res?.phases?.main?.stdout).toContain('started');
     expect(await until(() => !pidAlive(readPid(pf)), 3000), 'the child was reaped').toBe(true);
-    const ignoring = fakeRoot(`process.on('SIGTERM', () => {}); console.log('ignoring'); setTimeout(() => {}, 60000);\n`);
+    const ignoring = fakeRoot(`process.on('SIGTERM', () => {}); console.log('ignoring'); setTimeout(() => {}, 600000);\n`);
     const k = verify(['run', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: ignoring }, timeout: 20_000 });
     expect(k.res?.timedOut, 'TERM ignored, KILL follows').toBe(true);
     expect(k.res?.phases?.main?.stdout).toContain('ignoring');
@@ -467,7 +504,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(seven.res?.phases?.main?.exit, 'the child\'s status is the capture\'s').toBe(7);
     expect(seven.res?.ok).toBe(false);
     const pf = pidFile();
-    const root = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf)}, String(process.pid)); process.on('SIGTERM', () => {}); console.log('hanging'); setTimeout(() => {}, 60000);\n`);
+    const root = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf)}, String(process.pid)); process.on('SIGTERM', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
     const o2 = out();
     const hung = verify(['capture', 'hang', '--json', '--out', o2, '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: root } });
     expect(hung.r.status).toBe(1);
