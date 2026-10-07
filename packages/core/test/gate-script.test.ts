@@ -569,15 +569,20 @@ describe.skipIf(process.platform === 'win32')('the tripwire: every gating step o
   });
 
   it('an expression inside a run: | block is refused, naming the job', () => {
-    expect(() => workflowSteps(withJob('extra-expr', '      - run: |\n          echo ${{ github.sha }}\n'))).toThrow(/extra-expr/);
+    const expr = `$${'{{ github.sha }}'}`; // assembled, so the fixture is not itself a template placeholder
+    expect(() => workflowSteps(withJob('extra-expr', `      - run: |\n          echo ${expr}\n`))).toThrow(/extra-expr/);
   });
 
-  it('an unnamed - run: | block (its content two columns in from the dash) is read whole, and is unclassified', () => {
-    const steps = workflowSteps(withJob('extra-unnamed', '      - run: |\n        node --version\n        pnpm run extra-check\n'));
+  it('an unnamed - run: | block (its content two columns deeper than run:) is read whole, and is unclassified', () => {
+    const steps = workflowSteps(withJob('extra-unnamed', '      - run: |\n          node --version\n          pnpm run extra-check\n'));
     const step = steps.find((s) => s.job === 'extra-unnamed');
     expect(step?.text).toBe('node --version\npnpm run extra-check');
     const { unclassified } = classify(steps, gateList());
     expect(unclassified.map((s) => `${s.job}: ${s.text}`)).toEqual(['extra-unnamed: node --version\npnpm run extra-check']);
+  });
+
+  it('a run: | block whose content is not deeper than its key (invalid YAML: an empty block) is refused, naming the job, never read as an empty command', () => {
+    expect(() => workflowSteps(withJob('extra-shallow', '      - run: |\n        node --version\n        pnpm run extra-check\n'))).toThrow(/extra-shallow/);
   });
 
   it('a command added inside the Node-20 CLI block is unclassified: an exclusion matches the whole block, never a substring', () => {
