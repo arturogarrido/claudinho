@@ -21,8 +21,8 @@
  *     or a job without a conclusion is nonzero; any non-`(non-gating)` job not `success` is nonzero;
  *   - strict by default: no run is nonzero naming the SHA and the PR lookup; `--allow-no-run` with no PR exits
  *     0 with `pushed; CI not verified (no pull request)`;
- *   - every process the script starts is reaped with its children, by pids RECORDED before the first signal (a
- *     child that ignores TERM under a parent that dies of it is killed by its own pid): at the deadline and on a TERM
+ *   - every process the script starts is reaped with its descendants, by pids RECORDED to the leaves before the
+ *     first signal (a child, or a grandchild, that ignores TERM under a parent that dies of it is killed by its own pid): at the deadline and on a TERM
  *     to the script's own pid (the probe, its child and the work directory are gone after);
  *   - the remote ref is matched by its exact name (`git ls-remote` matches a tail); every push URL of origin must be
  *     the fetch URL's repository.
@@ -91,6 +91,8 @@ case "$1 $2" in
     if [ -e "$STATE/hang" ]; then sleep 30 & echo $! > "$STATE/gh-child"; wait $! && : > "$STATE/hang-finished"; fi
     # hang-ignore-term: the child IGNORES TERM (inherited across exec) while this parent dies of it
     if [ -e "$STATE/hang-ignore-term" ]; then ( trap '' TERM; exec sleep 30 ) & echo $! > "$STATE/gh-child"; wait $! && : > "$STATE/hang-finished"; fi
+    # hang-grandchild: a helper (dies of TERM) whose own child ignores TERM; the grandchild's pid in gh-grandchild
+    if [ -e "$STATE/hang-grandchild" ]; then ( ( trap '' TERM; exec sleep 30 ) & echo $! > "$STATE/gh-grandchild"; wait ) & echo $! > "$STATE/gh-child"; wait $! && : > "$STATE/hang-finished"; fi
     n=$(( $(cat "$STATE/runs-calls" 2>/dev/null || echo 0) + 1 )); echo $n > "$STATE/runs-calls"
     while [ $n -gt 0 ] && [ ! -e "$STATE/runs.$n.tsv" ]; do n=$((n-1)); done
     [ $n -gt 0 ] && cat "$STATE/runs.$n.tsv"; exit 0 ;;
@@ -434,6 +436,32 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     const dead = await until(() => !pidAlive(ghChild), 3000);
     if (!dead) try { process.kill(ghChild, 'SIGKILL'); } catch {}
     expect(dead, `the TERM-ignoring child ${ghChild} is dead after TERM`).toBe(true);
+    expect(workDirs(sb)).toEqual([]);
+  });
+
+  it('a GRANDCHILD that ignores TERM (under a helper that dies of it) is gone after the deadline: the descendants are recorded to the leaves', { timeout: 20000 }, async () => {
+    const sb = sandbox();
+    seed(sb, { 'remote-sha': LOCAL, 'hang-grandchild': '' });
+    const r = run(sb, [], { PUSH_WATCH_TIMEOUT_SECONDS: '2' });
+    expect(r.status).not.toBe(0);
+    const grandchild = pidIn(sb, 'gh-grandchild');
+    const dead = await until(() => !pidAlive(grandchild), 3000);
+    if (!dead) try { process.kill(grandchild, 'SIGKILL'); } catch {}
+    expect(dead, `the TERM-ignoring grandchild ${grandchild} was killed by its recorded pid`).toBe(true);
+  });
+
+  it('a TERM to the script while a probe has a TERM-ignoring grandchild: the grandchild is gone too', { timeout: 20000 }, async () => {
+    const sb = sandbox();
+    seed(sb, { 'remote-sha': LOCAL, 'hang-grandchild': '' });
+    const { child, done } = startScript(SCRIPT, ['feature/x'], sb, { PUSH_WATCH_POLL_SECONDS: '0', PUSH_WATCH_TIMEOUT_SECONDS: '30' }, { cwd: ROOT });
+    expect(await until(() => existsSync(join(sb.state, 'gh-grandchild')), 8000), 'the probe and its helper started').toBe(true);
+    const grandchild = pidIn(sb, 'gh-grandchild');
+    child.kill('SIGTERM');
+    const r = await done;
+    expect(r.status, r.out).toBe(143);
+    const dead = await until(() => !pidAlive(grandchild), 3000);
+    if (!dead) try { process.kill(grandchild, 'SIGKILL'); } catch {}
+    expect(dead, `the TERM-ignoring grandchild ${grandchild} is dead after TERM`).toBe(true);
     expect(workDirs(sb)).toEqual([]);
   });
 

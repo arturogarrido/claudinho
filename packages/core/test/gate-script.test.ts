@@ -296,6 +296,17 @@ describe.skipIf(process.platform === 'win32')('scripts/gate.sh, run offline unde
     }
   });
 
+  it('a pending cherry-pick or revert sequence (the sequencer directory, no CHERRY_PICK_HEAD) refuses --commit before any step', () => {
+    const sb = sandbox();
+    mkdirSync(join(sb.state, 'gitdir', 'sequencer'), { recursive: true });
+    const msg = withMessage(sb);
+    const r = run(sb, ['--commit', msg]);
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/^commit REFUSED \(.*sequence is in progress/m);
+    expect(pnpmCalls(sb)).toEqual([]);
+    expect(committed(sb)).toBe(false);
+  });
+
   it('a merge started DURING the steps refuses the commit after them: the question is asked again', () => {
     const sb = sandbox();
     writeFileSync(join(sb.state, 'merge-in-progress-after'), '');
@@ -636,6 +647,13 @@ describe.skipIf(process.platform === 'win32')('the tripwire: every gating step o
     expect(() => workflowSteps(quoted)).toThrow(/extra-quoted/);
     const quotedUses = `${yaml.trimEnd()}\n  extra-reusable:\n    "uses": someone/reusable/.github/workflows/check.yml@abc\n`;
     expect(() => workflowSteps(quotedUses)).toThrow(/extra-reusable/);
+  });
+
+  it('a job whose keys sit deeper than four spaces (valid YAML the reader does not read) is refused, naming the job: never skipped', () => {
+    const six = `${yaml.trimEnd()}\n  extra-deep:\n      runs-on: ubuntu-latest\n      steps:\n        - run: pnpm run extra-check\n`;
+    expect(() => workflowSteps(six)).toThrow(/extra-deep/);
+    const five = `${yaml.trimEnd()}\n  extra-five:\n     runs-on: ubuntu-latest\n     steps:\n       - run: pnpm run extra-check\n`;
+    expect(() => workflowSteps(five)).toThrow(/extra-five/);
   });
 
   it('a step with neither run: nor uses: is refused, naming the job', () => {
