@@ -66,12 +66,21 @@
 # longer. A run list cut at the deadline ends the watch on what the earlier
 # answers showed. Every process the script starts (the deadline timer, a gh call
 # and its watchdog) is reaped with its descendants on every exit, an interrupt
-# or a TERM included, and the temporary directory is removed. A process is
-# stopped by pids RECORDED to the leaves before the first signal (`pgrep -P` on
-# the process, then on each pid found, at most 32 levels deep): TERM to each
-# recorded descendant and to the process, a bounded wait, then KILL to each one
-# still alive, so a child or a grandchild that ignores TERM under a parent that
-# dies of it is still killed by its own pid. It never tags, merges or comments.
+# or a TERM included. A process is stopped by pids RECORDED to the leaves before
+# the first signal (`pgrep -P` on the process, then on each pid found, at most
+# 32 levels deep): TERM to each recorded descendant and to the process, a
+# bounded wait, then KILL to each one still alive, so a child or a grandchild
+# that ignores TERM under a parent that dies of it is still killed by its own
+# pid. The recorded pids are written, before that first signal, to
+# `tree.<pid>` in the temporary directory, one line, and the file is removed
+# after the last KILL; a later stop of the same process takes in the pids of a
+# file left there, and replaces it. A stop that does not finish leaves its file:
+# when the script is TERMed while the watchdog waits on a call that ignores
+# TERM, cleanup KILLs the watchdog (its file stays, naming the call's whole
+# tree), then stops the call with those pids too (its own walk no longer finds a
+# grandchild whose parent died of TERM). Cleanup then sends KILL to each pid
+# still alive (`kill -0`) in any file left, and removes the temporary
+# directory. It never tags, merges or comments.
 #
 # Options:
 #   --timeout <min>   how long to wait for the run (default 30 minutes)
@@ -120,6 +129,10 @@ done
 
 [ -n "$BRANCH" ] || usage_error "a branch is required"
 is_count() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; return 0; }
+# is_pid <text>: a pid as a record holds one (digits, no leading zero, above 1),
+# so a token read back is never sent a signal as 0 or a negative number (kill
+# reads those as a process group, -1 as every process) or as 1 (launchd).
+is_pid() { case "$1" in ''|0*|1|*[!0-9]*) return 1 ;; esac; return 0; }
 is_count "$TIMEOUT_MIN" || usage_error "--timeout: not a number of minutes: '$TIMEOUT_MIN'"
 POLL=${PUSH_WATCH_POLL_SECONDS:-15}
 is_count "$POLL" || usage_error "PUSH_WATCH_POLL_SECONDS: not a number of seconds: '$POLL'"
@@ -133,8 +146,9 @@ fi
 # Every process this script starts is one of three, each held in a global
 # while it runs: the deadline timer, a gh call (PROBE_PID) and its watchdog
 # (WATCHDOG_PID). Cleanup on every exit reaps the watchdog, then the gh call,
-# then the timer (each with its descendants, by recorded pids), and removes the
-# temporary directory. An interrupt or a TERM ends the script through it (a
+# then the timer (each with its descendants, by recorded pids), sends KILL to
+# each pid still alive in a record a stop left in place (stop_tree), and removes
+# the temporary directory. An interrupt or a TERM ends the script through it (a
 # script's background job ignores SIGINT, and a TERM to the script's pid reaches
 # nothing else, so they would otherwise outlive the script).
 TIMER=""
@@ -166,19 +180,36 @@ descendants_of() {
 # descendants, by pids RECORDED to the leaves before the first signal
 # (descendants_of: once a process is gone its children are re-parented and its
 # pid no longer finds them, so a child, or a grandchild under a child, that
-# ignores TERM would outlive it). TERM to each recorded descendant and to the
-# process; up to <tries> waits of 0.02s for the process to go; then KILL to each
-# recorded descendant still alive (`kill -0`) and to the process if it is.
-# Quiet: bash otherwise reports a killed job.
+# ignores TERM would outlive it). Before the first signal the pids are written
+# to $WORK/tree.<pid> ($pid, then each descendant, one line), replacing an
+# earlier record for the same pid after taking in its pids: that record is a
+# stop of this process that did not finish (a watchdog killed while it waited),
+# and it names descendants this walk can no longer find. TERM to each recorded
+# descendant and to the process; up to <tries> waits of 0.02s for the process to
+# go; then KILL to each recorded descendant still alive (`kill -0`) and to the
+# process if it is; then the record is removed (once a process is gone its pid
+# may be given to another). A stop killed before its end leaves the record for
+# the next stop of the same pid, and for cleanup. Quiet: bash otherwise reports
+# a killed job.
 stop_tree() {
-  local pid=$1 tries=$2 i=0 desc k
+  local pid=$1 tries=$2 i=0 desc k rec="" earlier=""
   [ -n "$pid" ] || return 0
   desc=$(descendants_of "$pid")
+  if [ -n "$WORK" ] && [ -d "$WORK" ]; then
+    rec="$WORK/tree.$pid"
+    if [ -f "$rec" ]; then read -r earlier <"$rec"; fi
+    for k in $earlier; do
+      is_pid "$k" && [ "$k" != "$pid" ] || continue
+      case " $desc " in *" $k "*) ;; *) desc="$desc $k" ;; esac
+    done
+    echo $pid $desc >"$rec"
+  fi
   for k in $desc; do kill "$k"; done
   kill "$pid"
   while kill -0 "$pid" && [ $i -lt "$tries" ]; do sleep 0.02; i=$((i + 1)); done
   for k in $desc; do kill -0 "$k" && kill -9 "$k"; done
   kill -0 "$pid" && kill -9 "$pid"
+  if [ -n "$rec" ]; then rm -f "$rec"; fi
   return 0
 } 2>/dev/null
 
@@ -191,10 +222,21 @@ reap() {
 } 2>/dev/null
 
 cleanup() {
+  local rec line k
   reap "$WATCHDOG_PID"; WATCHDOG_PID=""
   reap "$PROBE_PID"; PROBE_PID=""
   reap "$TIMER"; TIMER=""
-  if [ -n "$WORK" ]; then rm -rf "$WORK"; fi
+  if [ -n "$WORK" ]; then
+    # A record still here is a stop that did not finish and that no later stop
+    # of its pid took in: KILL each pid it names that is still alive.
+    for rec in "$WORK"/tree.*; do
+      [ -f "$rec" ] || continue
+      line=""
+      read -r line <"$rec"
+      for k in $line; do is_pid "$k" && kill -0 "$k" && kill -9 "$k"; done
+    done 2>/dev/null
+    rm -rf "$WORK"
+  fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT
