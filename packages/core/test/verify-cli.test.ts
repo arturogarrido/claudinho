@@ -644,6 +644,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(existsSync(join(o, 'cap.ansi'))).toBe(true);
     expect(readFileSync(join(o, 'cap.txt'), 'utf8')).toContain('Mexico');
     expect(readFileSync(join(o, 'cap.txt'), 'utf8').includes(String.fromCodePoint(0x1b)), 'no escapes in the .txt').toBe(false);
+    expect(readFileSync(join(o, 'cap.main.err'), 'utf8'), 'a capture that ended on its own says nothing about its group').not.toMatch(/verify: the group/);
     expect(good.res?.env ?? []).not.toContain('NO_COLOR');
     const status = fakeRoot("console.log('seven'); process.exit(7);\n");
     const seven = verify(['capture', 'seven', '--json', '--out', out(), '--', 'today'], { env: { VERIFY_ROOT: status } });
