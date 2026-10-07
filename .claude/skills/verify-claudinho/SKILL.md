@@ -56,7 +56,10 @@ node scripts/verify.mjs capture <label> --follow premier-league --json -- today 
 `init-cursor-statusline`, `claude`, `cursor`), `star`, `_refresh` and any `--copy` (they write the operator's
 settings or the clipboard, outside the sandbox). `--follow --team` is not offered (pinning a club reads the
 provider). Every child has a deadline (`--timeout <s>`, 60 by default; the MCP session 30) and is killed and reaped
-when it passes, its partial evidence kept.
+when it passes (TERM, a grace of two seconds, KILL), its partial evidence kept. A capture's deadline reaches the whole
+process group and the descendants `ps` recorded before the first signal; when `ps` did not answer, the TERM is
+withheld so the group stays whole for the grace, `ps` is asked again at the KILL step, and a descendant it still
+could not see is said in the result (`a descendant may have survived`), never silently left.
 
 The feature map, one file per surface with how to drive it and what proves it, lives at
 `.claude/skills/verify-claudinho/features/` (five surfaces so far: `today`, `live`, `next`, `table`, `statusline`,
