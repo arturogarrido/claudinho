@@ -117,14 +117,17 @@ options:
                                             file is <label>.<phase>.<ext>, <label>.ansi, <label>.txt, <label>.result.json or
                                             <label>.rpc.jsonl, so no two labels' files can coincide (capture's <label> alike)
   --keep                                    keep the temporary HOME, config and cache
-  --timeout <seconds>                       each child's deadline (default 60; the MCP session 30)
+  --timeout <seconds>                       each child's deadline (default 60; the MCP session 30): TERM, then KILL after 2 s;
+                                            a capture signals script's group and the descendants ps lists, and when ps does not
+                                            answer the TERM is withheld: ps is asked again at the KILL, and a descendant it still
+                                            cannot list may have survived (the phase fails)
   --env KEY=VALUE                           a scenario key only, with a value: ${SCENARIO_KEYS.join(', ')}
   --dry-run                                 seed: say what would be written, write nothing
 
 refused before any child: the install commands (init, init-statusline, init-hook, init-cursor-statusline,
 claude, cursor), star, _refresh, any --copy, an --env key that is not a scenario key or has no value, a --cache
-that is not a directory, an evidence directory (--out or the default) inside the replay corpus, a label with a dot,
-and a label already taken in --out.
+that is not a directory, an evidence directory (--out or the default) or a temporary root (under TMPDIR) inside the
+replay corpus, a label with a dot, and a label already taken in --out.
 evidence, per phase: <label>.<phase>.txt, .err, .exit, .fetches, .spawns; <label>.result.json.
 exit: 0 ok; 1 a phase failed (a nonzero child, a miss, a malformed recording, a timeout, an MCP failure); 2 usage.
 `;
@@ -294,9 +297,22 @@ function nodeOptionValue(path) {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
+/**
+ * Where the run's temporary root will be made: `<the controller's tmpdir()>/claudinho-verify-env-XXXXXX`. In replay
+ * mode it is checked with `within` like the evidence directory and, inside the corpus, refused before anything is
+ * made (the corpus is never written, the temporary homes included). Returns the template `makeHomes` takes.
+ */
+function homesTemplate(corpus = null) {
+  const template = join(tmpdir(), 'claudinho-verify-env-');
+  if (corpus && within(template, corpus)) {
+    throw refuse(`the temporary root ${template}XXXXXX is inside the replay corpus; set TMPDIR outside it`);
+  }
+  return template;
+}
+
 /** The run's temporary homes: HOME, the XDG config and cache homes, TMPDIR (all absolute), under one root. */
-function makeHomes(cacheDir) {
-  const root = mkdtempSync(join(tmpdir(), 'claudinho-verify-env-'));
+function makeHomes(template, cacheDir) {
+  const root = mkdtempSync(template);
   const homes = { root, home: join(root, 'home'), config: join(root, 'config'), cache: cacheDir ?? join(root, 'cache'), tmp: join(root, 'tmp') };
   for (const d of [homes.home, homes.config, homes.cache, homes.tmp]) mkdirSync(d, { recursive: true });
   if (WINDOWS) {
@@ -554,11 +570,12 @@ function signal(target, sig) {
  * Starts one child: stdin a pipe ended at once (kept open with `keepStdin`, or a file descriptor), stdout and stderr
  * kept, a deadline after which it is sent TERM, then KILL after a grace, and reaped. With `group`, the child leads a
  * process group of its own (detached) and the deadline signals the whole group and every descendant recorded before
- * the first signal, then waits until they are gone; when the process table did not answer, the kill proceeds at once
- * without the descendants and the child's stderr evidence says so, and the KILL step (after the grace) asks the table
- * once more and kills what it finds with the group; when it fails again, the result says `survivorPossible` (a
- * descendant may have survived; the phase fails). The result says `killed` when the controller's signal reached a
- * child that had not exited (a timeout or an interrupt). Returns the child and a promise of its result.
+ * the first signal, then waits until they are gone. When the process table did not answer at the deadline, the TERM
+ * is WITHHELD (the child's stderr evidence says the table did not answer): nothing is signalled until the KILL step,
+ * after the grace, which asks the table once more and sends KILL to the group and to what it found; when it fails
+ * again, KILL goes to the group alone and the result says `survivorPossible` (a descendant may have survived; the
+ * phase fails). The result says `killed` when the controller's signal reached a child that had not exited (a timeout
+ * or an interrupt). Returns the child and a promise of its result.
  */
 function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepStdin = false, group = false, onLine }) {
   let child;
@@ -595,8 +612,8 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
     let tree = [];
     let killed = false;
     let aborted = false;
-    // Set when the process table did not answer at the TERM: the KILL step then asks it once more.
-    let unrecordedAtTerm = false;
+    // Set when the process table did not answer at the deadline: the TERM is withheld and the KILL step asks again.
+    let unrecordedAtDeadline = false;
     // Set when it did not answer at the KILL step either: a descendant may have survived, and the phase says so.
     let survivorPossible = false;
     let killStep = null;
@@ -620,14 +637,17 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       if (group && child.pid) {
         const found = record();
         tree = found.tree;
-        unrecordedAtTerm = found.failure !== null;
+        unrecordedAtDeadline = found.failure !== null;
       }
-      kill('SIGTERM');
+      // When the table did not answer, the TERM is WITHHELD: nothing is signalled at the deadline, so the group stays
+      // whole for the grace and its descendants stay findable (Darwin's `script` dies at a TERM without passing it on,
+      // and its child, reparented, could no longer be found). The bound is the same: the deadline plus the grace.
+      if (!unrecordedAtDeadline) kill('SIGTERM');
       killStep = new Promise((stepDone) => {
         killTimer = setTimeout(() => {
-          // The KILL step: when the table did not answer at the TERM, it is asked once more, and what it finds is
-          // killed with the group; a second failure leaves a descendant that may have survived.
-          if (group && child.pid && unrecordedAtTerm) {
+          // The KILL step: when the table did not answer at the deadline, it is asked once more, and what it finds is
+          // killed with the group; a second failure kills the group alone and leaves a descendant that may have survived.
+          if (group && child.pid && unrecordedAtDeadline) {
             const found = record();
             if (found.failure) survivorPossible = true;
             else tree = [...new Set([...tree, ...found.tree])];
@@ -649,9 +669,9 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       clearTimeout(exitTimer);
       running.delete(abort);
       if (group && child.pid) {
-        // When the table did not answer at the TERM, the KILL step (after the grace) is the second chance to find the
-        // descendants, even when the group itself is already gone: it runs before the evidence is final.
-        if (unrecordedAtTerm && killStep) await killStep;
+        // When the table did not answer at the deadline, the KILL step (after the grace) is the second chance to find
+        // the descendants, even when the group itself is already gone: it runs before the evidence is final.
+        if (unrecordedAtDeadline && killStep) await killStep;
         // The group, and every descendant recorded before the first signal, gone before the evidence is final.
         for (let i = 0; i < 200 && (alive(-child.pid) || tree.some(alive)); i++) {
           if (i === 40) kill('SIGKILL');
@@ -766,6 +786,7 @@ async function cmdDoctor(args, json) {
   if (positionals.length || childArgv) throw refuse('doctor takes no arguments');
   const label = labelOf(opts.label, 'doctor');
   const timeoutMs = timeoutOf(opts, DEFAULT_TIMEOUT_S);
+  const template = homesTemplate();
   const out = makeOut(opts.out);
   reserveLabel(out, label, 'doctor');
   const logs = phaseLogs(out, label);
@@ -788,7 +809,7 @@ async function cmdDoctor(args, json) {
   const mcpThere = existsSync(MCP);
   check('mcp-dist', mcpThere, mcpThere ? `${MCP_REL} present` : `${MCP_REL} missing: run pnpm -r build`);
 
-  const homes = makeHomes();
+  const homes = makeHomes(template);
   try {
     let want = null;
     try {
@@ -888,10 +909,12 @@ async function cmdRun(command, args, json) {
   if (capture && !['darwin', 'linux'].includes(process.platform)) throw refuse(`capture runs on Darwin and Linux only, not on ${process.platform}`);
   if (!existsSync(CLI)) throw refuse(`${CLI_REL} is missing under ${ROOT}: run pnpm -r build`);
 
+  // Neither directory the run makes may sit inside the replay corpus: both are checked before either is made.
+  const template = homesTemplate(corpus);
   const out = makeOut(opts.out, corpus);
   reserveLabel(out, label, command);
   const logs = phaseLogs(out, label);
-  const homes = makeHomes();
+  const homes = makeHomes(template);
   const envFor = (phase) => childEnv({ mode, corpus, synthetic, homes, ...logs.logsFor(phase), scenario, color: capture });
   const phases = {};
   let env = null;
@@ -1032,12 +1055,14 @@ async function cmdMcp(args, json) {
   if (!existsSync(MCP)) throw refuse(`${MCP_REL} is missing under ${ROOT}: run pnpm -r build`);
   if (follow && !existsSync(CLI)) throw refuse(`${CLI_REL} is missing under ${ROOT}: run pnpm -r build`);
 
+  // Neither directory the session makes may sit inside the replay corpus: both are checked before either is made.
+  const template = homesTemplate(corpus);
   const out = makeOut(opts.out, corpus);
   reserveLabel(out, label, 'mcp');
   const logs = phaseLogs(out, label);
   const rpcLog = join(out, `${label}.rpc.jsonl`);
   writeFileSync(rpcLog, '');
-  const homes = makeHomes();
+  const homes = makeHomes(template);
   const envFor = (phase) => childEnv({ mode, corpus, synthetic, homes, ...logs.logsFor(phase), scenario });
   const phases = {};
   let env = null;
@@ -1353,10 +1378,11 @@ async function cmdAmbient(command, args, json) {
     throw refuse(`--seed none needs an empty cache directory; ${cacheDir} has entries`);
   }
 
+  const template = homesTemplate();
   const out = makeOut(opts.out);
   reserveLabel(out, label, command);
   const logs = phaseLogs(out, label);
-  const homes = makeHomes(cacheDir);
+  const homes = makeHomes(template, cacheDir);
   const envFor = (phase) => childEnv({ mode: 'offline', homes, ...logs.logsFor(phase), scenario });
   const phases = {};
   let env = null;
