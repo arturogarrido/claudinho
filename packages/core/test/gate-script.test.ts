@@ -38,7 +38,8 @@ case "$*" in
   "-r test") [ -e "$STATE/fail-test" ] && { echo "FAIL test/x.test.ts"; exit 1; } ;;
   "audit --prod")
     [ -e "$STATE/audit-offline" ] && { echo "ERR_PNPM_AUDIT_ENDPOINT_NOT_EXISTS  request to https://registry.npmjs.org/-/npm/v1/security/audits failed, reason: getaddrinfo ENOTFOUND registry.npmjs.org" >&2; exit 1; }
-    [ -e "$STATE/audit-vuln" ] && { echo "2 vulnerabilities found"; echo "Severity: 1 high | 1 moderate" >&2; exit 1; } ;;
+    [ -e "$STATE/audit-vuln" ] && { echo "2 vulnerabilities found"; echo "Severity: 1 high | 1 moderate" >&2; exit 1; }
+    [ -e "$STATE/audit-other" ] && { echo "ERR_PNPM_AUDIT_BAD_RESPONSE  The audit endpoint returned HTML" >&2; exit 1; } ;;
 esac
 exit 0
 `,
@@ -224,6 +225,14 @@ describe.skipIf(process.platform === 'win32')('scripts/gate.sh, run offline unde
     expect(r.status).not.toBe(0);
     expect(verdictOf(r.out, 'audit')).toMatch(/^audit FAIL \(\d+s\)$/);
     expect(committed(sb)).toBe(false);
+  });
+
+  it('audit failing with neither a signature nor a findings line is FAIL, never SKIP (the signature is required)', () => {
+    const sb = sandbox();
+    writeFileSync(join(sb.state, 'audit-other'), '');
+    const r = run(sb, []);
+    expect(r.status).not.toBe(0);
+    expect(verdictOf(r.out, 'audit')).toMatch(/^audit FAIL \(\d+s\)$/);
   });
 
   it('the PATH the tests give the script is exactly the stubs plus the named host tools', () => {

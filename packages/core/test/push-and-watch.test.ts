@@ -217,7 +217,7 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     seed(sb, { 'runs.1.tsv': RUN('82', LOCAL, 'completed', 'success'), 'jobs-82.tsv': 'build · typecheck · test (Node 22)\t\t2026-10-07T04:00:00Z\t\n' });
     const r = run(sb, []);
     expect(r.status).not.toBe(0);
-    expect(r.out).toMatch(/conclusion/i); // the refusal names what was missing
+    expect(r.out).toMatch(/no conclusion/i); // the refusal names what was missing (the table's header alone must not satisfy this)
     expect(r.out).not.toMatch(/no run for/);
   });
 
