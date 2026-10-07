@@ -750,6 +750,23 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(await until(() => !pidAlive(orphand), 5000)).toBe(true);
   });
 
+  it('capture: a member of the leader\'s own group outside any recorded tree is reached by the group signal while the group exists, after the leader\'s own death too', { timeout: SLOW }, async () => {
+    const pf = pidFile();
+    const root = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf)}, String(process.pid)); process.on('SIGTERM', () => {}); process.on('SIGHUP', () => {}); console.log('member'); setTimeout(() => {}, 600000);\n`);
+    // a script that starts its command in its OWN GROUP (no new session) through a subshell that exits at once, so the
+    // member is reparented before the deadline and no recorded tree holds it; the script then outlives the deadline
+    const grouped = stubTool('script', [
+      'if [ "$2" = "-F" ]; then f=$3; shift 3; ( "$@" > "$f" 2>&1 & ); else f=$6; cmd=$5; ( sh -c "$cmd" > "$f" 2>&1 & ); fi',
+      'sleep 30',
+    ].join('\n'));
+    const r = verify(['capture', 'member', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: root, PATH: withTool(grouped) }, timeout: 40_000 });
+    expect(r.res, r.stderr.slice(0, 200)).not.toBeNull();
+    expect(r.res?.timedOut).toBe(true);
+    expect(await until(() => existsSync(pf), 3000)).toBe(true);
+    expect(await until(() => !pidAlive(readPid(pf)), 5000), 'the member died by the group signal after the leader did').toBe(true);
+    expect((r.res?.failures ?? []).some((f) => /may have survived/.test(f)), 'no survivor line: the group was reached').toBe(false);
+  });
+
   it('capture: a second interrupt kills every running capture\'s group and recorded tree before leaving, and says when a descendant may have survived', { timeout: SLOW }, async () => {
     const interruptTwice = (pf: string, env: Record<string, string>) =>
       new Promise<{ status: number | null; stderr: string; child: ChildProcess }>((done) => {
