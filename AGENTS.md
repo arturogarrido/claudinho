@@ -88,6 +88,10 @@ bundled schema. Hand-edit `biome.json` when necessary; `biome migrate` reformats
 - **User-facing behavior and releases:** also run `pnpm release:qa` after build and inspect the
   output. Keep the "Release readiness" and feature acceptance gates below; a skipped live-feed
   check is not verified behavior.
+  The `verify-claudinho` skill (`.claude/skills/verify-claudinho/SKILL.md`) and its control CLI,
+  `node scripts/verify.mjs`, are the offline inner loop: one surface of the built binary driven in
+  an environment built from scratch, offline unless told otherwise, with the evidence of every
+  child kept, while `pnpm release:qa` stays the live pass.
 - Add tests for changed behavior and failure modes. Do not add tests that merely repeat prose or
   implementation details. Once required checks pass, rerun or broaden them only for a subsequent
   change, a failure, or an unresolved concern. After a push, verify CI on that exact SHA.
