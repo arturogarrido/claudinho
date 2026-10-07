@@ -139,7 +139,7 @@ function fakeRoot(cli: string, mcp = 'process.exit(0);\n', version = VERSION): s
   return root;
 }
 /** A fake stdio MCP server: a line-delimited JSON-RPC reader; `boot` printed first (a stray line); `list` false never answers tools/list. */
-function fakeServer(o: { boot?: string; list?: boolean; pid?: string; schema?: boolean; exitCode?: number; shape?: 'empty' | 'badTools' | 'badCall' | 'emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError' | 'noVersion' | 'arraySchema' | 'bogusContent' | 'bareImage' | 'nullResource' } = {}): string {
+function fakeServer(o: { boot?: string; list?: boolean; pid?: string; schema?: boolean; exitCode?: number; shape?: 'empty' | 'badTools' | 'badCall' | 'emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError' | 'noVersion' | 'arraySchema' | 'bogusContent' | 'bareImage' | 'nullResource' | 'audioOk' | 'linkOk' | 'blobOk' | 'audioNoMime' | 'linkNoName' | 'resourceNoBody' } = {}): string {
   return `${o.pid ? `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(o.pid)}, String(process.pid));\n` : ''}${o.boot ? `console.log(${JSON.stringify(o.boot)});\n` : ''}
 const reply = (id, result) => process.stdout.write(JSON.stringify(${o.shape === 'empty' ? '{ jsonrpc: \'2.0\', id }' : '{ jsonrpc: \'2.0\', id, result }'}) + '\\n');
 let buf = '';
@@ -152,7 +152,7 @@ process.stdin.on('data', (d) => {
     if (msg.id == null) continue;
     if (msg.method === 'initialize') reply(msg.id, ${o.shape === 'emptyInit' ? '{}' : o.shape === 'noVersion' ? "{ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'fake' } }" : "{ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '0' } }"});
     else if (msg.method === 'tools/list') { if (${o.list === false ? 'false' : 'true'}) reply(msg.id, ${o.shape === 'badTools' ? "{ tools: 'nope' }" : `{ tools: [{ name: 't', description: 'd', inputSchema: { type: '${o.shape === 'arraySchema' ? 'array' : 'object'}' }${o.schema === false ? '' : o.shape === 'badSchema' ? ', outputSchema: 0' : ', outputSchema: { type: \'object\' }'} }] }`}); }
-    else reply(msg.id, ${o.shape === 'badCall' ? '{}' : o.shape === 'nullContent' ? '{ content: [null] }' : o.shape === 'numberText' ? "{ content: [{ type: 'text', text: 123 }] }" : o.shape === 'stringIsError' ? "{ content: [{ type: 'text', text: 'ok' }], isError: 'true' }" : o.shape === 'bogusContent' ? "{ content: [{ type: 'bogus' }] }" : o.shape === 'bareImage' ? "{ content: [{ type: 'image' }] }" : o.shape === 'nullResource' ? "{ content: [{ type: 'resource', resource: null }] }" : "{ content: [{ type: 'text', text: 'ok' }], structuredContent: {} }"});
+    else reply(msg.id, ${o.shape === 'badCall' ? '{}' : o.shape === 'nullContent' ? '{ content: [null] }' : o.shape === 'numberText' ? "{ content: [{ type: 'text', text: 123 }] }" : o.shape === 'stringIsError' ? "{ content: [{ type: 'text', text: 'ok' }], isError: 'true' }" : o.shape === 'bogusContent' ? "{ content: [{ type: 'bogus' }] }" : o.shape === 'bareImage' ? "{ content: [{ type: 'image' }] }" : o.shape === 'nullResource' ? "{ content: [{ type: 'resource', resource: null }] }" : o.shape === 'audioOk' ? "{ content: [{ type: 'audio', data: 'AA==', mimeType: 'audio/wav' }] }" : o.shape === 'linkOk' ? "{ content: [{ type: 'resource_link', uri: 'file:///a', name: 'a' }] }" : o.shape === 'blobOk' ? "{ content: [{ type: 'resource', resource: { uri: 'file:///a', blob: 'AA==' } }] }" : o.shape === 'audioNoMime' ? "{ content: [{ type: 'audio', data: 'AA==' }] }" : o.shape === 'linkNoName' ? "{ content: [{ type: 'resource_link', uri: 'file:///a' }] }" : o.shape === 'resourceNoBody' ? "{ content: [{ type: 'resource', resource: { uri: 'file:///a' } }] }" : "{ content: [{ type: 'text', text: 'ok' }], structuredContent: {} }"});
   }
 });
 process.stdin.on('end', () => process.exit(${o.exitCode ?? 0}));
@@ -527,12 +527,21 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
       ['bogusContent', ['t'], 'tools/call'],
       ['bareImage', ['t'], 'tools/call'],
       ['nullResource', ['t'], 'tools/call'],
-    ] as Array<['emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError' | 'noVersion' | 'arraySchema' | 'bogusContent' | 'bareImage' | 'nullResource', string[], string]>) {
+      ['audioNoMime', ['t'], 'tools/call'],
+      ['linkNoName', ['t'], 'tools/call'],
+      ['resourceNoBody', ['t'], 'tools/call'],
+    ] as Array<['emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError' | 'noVersion' | 'arraySchema' | 'bogusContent' | 'bareImage' | 'nullResource' | 'audioNoMime' | 'linkNoName' | 'resourceNoBody', string[], string]>) {
       const root = fakeRoot('process.exit(0);\n', fakeServer({ shape }));
       const v = verify(['mcp', '--json', '--out', out(), ...argv], { env: { VERIFY_ROOT: root } });
       expect(v.res?.ok, shape).toBe(false);
       expect(v.r.status, shape).toBe(1);
       expect(v.res?.error ?? '', shape).toContain(`malformed reply to ${step}`);
+    }
+    // the grammar's other valid items pass
+    for (const shape of ['audioOk', 'linkOk', 'blobOk'] as const) {
+      const root = fakeRoot('process.exit(0);\n', fakeServer({ shape }));
+      const v = verify(['mcp', '--json', '--out', out(), 't'], { env: { VERIFY_ROOT: root } });
+      expect(v.res?.ok, `${shape}: ${v.res?.error}`).toBe(true);
     }
     const pf = pidFile();
     const root = fakeRoot('process.exit(0);\n', fakeServer({ list: false, pid: pf }));
@@ -750,6 +759,22 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     const orphan = readPid(pf2);
     try { process.kill(orphan, 'SIGKILL'); } catch { /* already gone */ }
     expect(await until(() => !pidAlive(orphan), 5000)).toBe(true);
+    // a plain child (no group) that ignores TERM is killed by the second interrupt too
+    const pf3 = pidFile();
+    const root3 = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf3)}, String(process.pid)); process.on('SIGTERM', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
+    const plain = await new Promise<{ status: number | null }>((done) => {
+      const child = spawn(process.execPath, [VERIFY, 'run', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: testEnv({ VERIFY_ROOT: root3 }), cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+      child.on('close', (status) => done({ status }));
+      (async () => {
+        await until(() => existsSync(pf3), 5000);
+        await new Promise((t) => setTimeout(t, 1500));
+        child.kill('SIGINT');
+        await new Promise((t) => setTimeout(t, 300));
+        child.kill('SIGINT');
+      })();
+    });
+    expect(plain.status).toBe(130);
+    expect(await until(() => !pidAlive(readPid(pf3)), 5000), 'the plain child was killed before the controller left').toBe(true);
   });
 
   it('capture: script\'s own header and footer lines leave the .txt and stay in the .ansi', () => {
