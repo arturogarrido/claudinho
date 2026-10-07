@@ -680,6 +680,9 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
     let recorded = false;
     // Set once the group target is retired for the rest of this child (`groupLive`): seen gone, or its id reused.
     let groupRetired = false;
+    // Set once the controller has started signalling this child (the deadline's abort, an interrupt, the wait loop's own
+    // KILL): only from then on is a retirement of the group said on the phase's stderr.
+    let signalling = false;
     let killed = false;
     let aborted = false;
     // Set when the lookup at the deadline did not vouch: the TERM is withheld and the KILL step asks again.
@@ -704,8 +707,9 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
     };
     /**
      * Whether this child's group is still a target. The group is ours only while nothing says otherwise, and it is
-     * RETIRED for the rest of this child (never probed or signalled again, one stderr line saying so) as soon as either
-     * is observed: (i) it does not exist (`groupExists` false once: it emptied, and its id may be another group's
+     * RETIRED for the rest of this child (never probed or signalled again) as soon as either is observed, and the
+     * retirement is said (one stderr line) once the controller has started signalling the group; a child that ended on
+     * its own retires its group silently in the wait loop: (i) it does not exist (`groupExists` false once: it emptied, and its id may be another group's
      * later); (ii) the leader's exit is recorded (Node has reaped it, so its pid is free) and a process holds the
      * leader's pid (signal 0 to the pid succeeds, or is refused for another user's process): a reused pid, hence a
      * reused group id (no pid is reused while a group with that id has a member, so the original group had emptied).
@@ -722,7 +726,7 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       else if ((child.exitCode !== null || child.signalCode !== null) && alive(child.pid)) reason = "the group's id was reused";
       if (reason === null) return true;
       groupRetired = true;
-      err.push(Buffer.from(`verify: ${reason}; not signalled again\n`));
+      if (signalling) err.push(Buffer.from(`verify: ${reason}; not signalled again\n`));
       return false;
     };
     const stopProbe = () => {
@@ -745,6 +749,7 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
     const abort = () => {
       if (finished || aborted) return;
       aborted = true;
+      signalling = true;
       killed = child.exitCode === null && child.signalCode === null;
       if (group && child.pid) {
         // The deadline's lookup vouches only for a leader alive in its own snapshot: a zombie or an absent leader (it
@@ -795,6 +800,7 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
      */
     const killNow = () => {
       if (!child.pid) return false;
+      signalling = true;
       kill('SIGKILL');
       return group && (unrecordedAtDeadline || !recorded);
     };
@@ -817,7 +823,10 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
         // here, like every signal, reaches the group while it exists; the probe sends no signal). Once the group is seen
         // gone it is retired, and the recorded descendants alone are waited on.
         for (let i = 0; i < 200 && (groupLive() || tree.some(alive)); i++) {
-          if (i === 40) kill('SIGKILL');
+          if (i === 40) {
+            signalling = true;
+            kill('SIGKILL');
+          }
           await sleep(50);
         }
       }
