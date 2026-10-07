@@ -507,8 +507,9 @@ let interrupted = false;
 
 /**
  * The second interrupt's KILL, beside `abort`: every running child gets KILL at once (no grace), a group child to its
- * group and to its recorded tree, a plain child (`run`'s phases, the MCP server, the ambient commands) to its pid.
- * Returns whether a descendant may have survived it: a group child had an unrecorded deadline (`ps` did not answer
+ * group and to its recorded tree, a plain child (`run`'s phases, the MCP server, the ambient commands) to its pid; a
+ * child whose exit Node has recorded is not signalled itself (nor its group): its pid may be another process's by
+ * then. Returns whether a descendant may have survived it: a group child had an unrecorded deadline (`ps` did not answer
  * there), or has no recorded tree at all (its deadline not reached).
  */
 function killRunning() {
@@ -610,14 +611,17 @@ function signal(target, sig) {
  * Starts one child: stdin a pipe ended at once (kept open with `keepStdin`, or a file descriptor), stdout and stderr
  * kept, a deadline after which it is sent TERM, then KILL after a grace, and reaped. With `group`, the child leads a
  * process group of its own (detached) and the deadline signals the whole group and every descendant recorded before
- * the first signal, then waits until they are gone. When the process table did not answer at the deadline, the TERM
+ * the first signal, then waits until they are gone. Once Node has recorded the child's exit (`exitCode` or
+ * `signalCode` set), neither its pid nor its group (`-pid`) is signalled again, by any step: the pid may belong to
+ * another process by then; the recorded tree still is (its pids were seen alive at the deadline). When the process table did not answer at the deadline, the TERM
  * is WITHHELD (the child's stderr evidence says the table did not answer): nothing is signalled until the KILL step,
  * after the grace, which asks the table once more and sends KILL to the group and to what it found; when it fails
  * again, or when the group's leader has already exited (its children reparented: no table can find them from its pid),
  * KILL goes to the group alone and the result says `survivorPossible` (a descendant may have survived; the phase
  * fails). The child is in `running` until it is reaped and its group and recorded tree are gone: a second interrupt
- * of the controller sends KILL to it (to them, for a group child) at once (`killRunning`). The result says `killed` when the controller's
- * signal reached a child that had not exited (a timeout or an interrupt). Returns the child and a promise of its result.
+ * of the controller sends KILL to it (to them, for a group child) at once (`killRunning`). The result says `killed`
+ * when the controller's signal reached a child that had not exited (a timeout or an interrupt). Returns the child and a
+ * promise of its result.
  */
 function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepStdin = false, group = false, onLine }) {
   let child;
@@ -661,12 +665,18 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
     // Set when it did not answer at the KILL step either: a descendant may have survived, and the phase says so.
     let survivorPossible = false;
     let killStep = null;
+    /**
+     * Every signal the controller sends this child: to the group (`-pid`) and the recorded tree for a group child, to
+     * the pid for a plain one. Once Node has recorded the child's exit, its pid and its group are skipped (the pid may
+     * be another process's by then); the recorded tree is still signalled (its pids were seen alive at the deadline).
+     */
     const kill = (sig) => {
       if (!child.pid) return;
+      const exited = child.exitCode !== null || child.signalCode !== null;
       if (group) {
-        signal(-child.pid, sig);
+        if (!exited) signal(-child.pid, sig);
         for (const pid of tree) signal(pid, sig);
-      } else signal(child.pid, sig);
+      } else if (!exited) signal(child.pid, sig);
     };
     /** Asks the process table for the group leader's descendants; a failure is said on the phase's stderr. */
     const record = () => {
@@ -715,19 +725,15 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       });
     };
     /**
-     * The second interrupt's KILL for this child (see `killRunning`): a group child's group and recorded tree get KILL at
-     * once, and the answer is whether a descendant may have survived it (an unrecorded deadline, or no tree recorded); a
-     * plain child gets KILL to its pid while it has not exited (an exited child's pid may be another process's), and
-     * leaves no descendant this controller could have recorded.
+     * The second interrupt's KILL for this child (see `killRunning`), through `kill`: a group child's group (while its
+     * exit is not recorded) and recorded tree get KILL at once, and the answer is whether a descendant may have survived
+     * it (an unrecorded deadline, or no tree recorded); a plain child gets KILL to its pid while its exit is not
+     * recorded, and leaves no descendant this controller could have recorded.
      */
     const killNow = () => {
       if (!child.pid) return false;
-      if (!group) {
-        if (child.exitCode === null && child.signalCode === null) kill('SIGKILL');
-        return false;
-      }
       kill('SIGKILL');
-      return unrecordedAtDeadline || !recorded;
+      return group && (unrecordedAtDeadline || !recorded);
     };
     const entry = { abort, killNow };
     const deadline = setTimeout(() => {
@@ -744,7 +750,8 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
         // When the table did not answer at the deadline, the KILL step (after the grace) is the second chance to find
         // the descendants, even when the group itself is already gone: it runs before the evidence is final.
         if (unrecordedAtDeadline && killStep) await killStep;
-        // The group, and every descendant recorded before the first signal, gone before the evidence is final.
+        // The group, and every descendant recorded before the first signal, gone before the evidence is final (the KILL
+        // here, like every signal, skips the group once the leader's exit is recorded; the probe sends no signal).
         for (let i = 0; i < 200 && (alive(-child.pid) || tree.some(alive)); i++) {
           if (i === 40) kill('SIGKILL');
           await sleep(50);
