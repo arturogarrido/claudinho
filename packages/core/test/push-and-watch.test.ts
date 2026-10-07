@@ -1,6 +1,6 @@
 /**
  * `scripts/push-and-watch.sh`: the push rule as code (PR A, the process made executable). Run OFFLINE under
- * stand-in `git` and `gh` on a hermetic PATH; every stand-in records its calls, so "no `git push` ran" and "no
+ * stub `git` and `gh` on a hermetic PATH; every stub records its calls, so "no `git push` ran" and "no
  * `gh run` call after a failed push" are read from the record.
  *
  * The contract pinned here (the draft's "Tracked", revision 3):
@@ -31,7 +31,7 @@ const LOCAL = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const OTHER = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
 /**
- * The stand-ins answer from `$STATE`:
+ * The stubs answer from `$STATE`:
  *   local-sha (default LOCAL) · remote-sha (default OTHER: the branch is behind) · push-fails · repo (gh's
  *   nameWithOwner, default arturogarrido/claudinho) · gh-fails · hang (gh run list sleeps) · pr-count (default 0)
  *   runs.<n>.tsv: the run list the n-th `gh run list` call prints (id, headSha, event, status, conclusion);
@@ -79,7 +79,7 @@ function run(sb: Sandbox, args: string[], env: Record<string, string> = {}) {
 const pushed = (sb: Sandbox) => sb.calls().some((c) => /^git push /.test(c));
 const ghCalls = (sb: Sandbox) => sb.calls().filter((c) => c.startsWith('gh '));
 
-describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run offline under stand-in git and gh', () => {
+describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run offline under stub git and gh', () => {
   it('exists and parses whole (bash -n), bash 3.2 and BSD tools only, no jq, no node', () => {
     expect(existsSync(SCRIPT), 'scripts/push-and-watch.sh').toBe(true);
     expect(parses(SCRIPT)).toBe(0);
@@ -131,7 +131,7 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
   it('ls-remote disagreeing with the local SHA after the push is nonzero, no wait', () => {
     const sb = sandbox();
     seed(sb, { 'remote-sha': OTHER });
-    // the push stand-in leaves remote-sha as seeded (OTHER), so the read-back disagrees
+    // the push stub leaves remote-sha as seeded (OTHER), so the read-back disagrees
     const r = run(sb, []);
     expect(r.status).not.toBe(0);
     expect(pushed(sb)).toBe(true);
@@ -221,7 +221,7 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     expect(r.out).not.toMatch(/no run for/);
   });
 
-  it('a run still in progress at the deadline is nonzero naming that run, distinct from "no run"', () => {
+  it('a run still in progress at the deadline is nonzero naming that run, distinct from "no run"', { timeout: 10000 }, () => {
     const sb = sandbox();
     seed(sb, { 'runs.1.tsv': RUN('91', LOCAL, 'in_progress', '') });
     const r = run(sb, [], { PUSH_WATCH_TIMEOUT_SECONDS: '1' });
@@ -230,17 +230,17 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     expect(r.out).not.toMatch(/no run for/);
   });
 
-  it('a probe that hangs is killed at the deadline: nonzero within the bound', () => {
+  it('a probe that hangs is killed at the deadline: nonzero within the bound', { timeout: 20000 }, () => {
     const sb = sandbox();
     seed(sb, { 'remote-sha': LOCAL, hang: '' });
     const started = Date.now();
     const r = run(sb, [], { PUSH_WATCH_TIMEOUT_SECONDS: '2' });
     expect(r.status).not.toBe(0);
-    expect(Date.now() - started).toBeLessThan(20000); // the stand-in would sleep 30 s: a bound was applied
+    expect(Date.now() - started).toBeLessThan(20000); // the stub would sleep 30 s: a bound was applied
     expect(r.out).toMatch(/deadline|timed out|killed/i);
   });
 
-  it('no run within the timeout is nonzero by default, naming the SHA and the PR lookup; --allow-no-run with no PR exits 0 with its line', () => {
+  it('no run within the timeout is nonzero by default, naming the SHA and the PR lookup; --allow-no-run with no PR exits 0 with its line', { timeout: 20000 }, () => {
     const sb = sandbox();
     seed(sb, { 'runs.1.tsv': '' });
     const r = run(sb, [], { PUSH_WATCH_TIMEOUT_SECONDS: '1' });

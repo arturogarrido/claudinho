@@ -1,8 +1,8 @@
 /**
  * `scripts/gate.sh`: CI's gating list run locally, every step printing a verdict, a commit only on all green
- * (PR A, the process made executable). Run OFFLINE under stand-in `pnpm`, `node`, `git` on a PATH that holds
- * the stand-ins and a named set of host tools, and nothing else of the host's (the shape of the publish
- * workflow's test). Every stand-in records the calls it receives, so "no `git commit` ran" is read from the
+ * (PR A, the process made executable). Run OFFLINE under stub `pnpm`, `node`, `git` on a PATH that holds
+ * the stubs and a named set of host tools, and nothing else of the host's (the shape of the publish
+ * workflow's test). Every stub records the calls it receives, so "no `git commit` ran" is read from the
  * record, never inferred from the script's output.
  *
  * The contract pinned here (the draft's "Tracked", revision 3):
@@ -29,7 +29,7 @@ const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..');
 const GATE = join(ROOT, 'scripts/gate.sh');
 const HOST = [...COMMON_HOST_TOOLS, 'kill'] as const;
 
-/** The stand-ins. Each reads `$STATE/<flag>` files the test seeds and records every call (the sandbox's prelude). */
+/** The stubs. Each reads `$STATE/<flag>` files the test seeds and records every call (the sandbox's prelude). */
 const STUBS = {
   // pnpm: `-r typecheck` fails when $STATE/fail-typecheck exists; `audit --prod` fails offline or with a finding.
   pnpm: `
@@ -80,7 +80,7 @@ const added = (sb: Sandbox) => gitCalls(sb).some((c) => /^git add /.test(c));
 
 const EXPECTED_STEPS = ['build', 'typecheck', 'test', 'lint', 'stdio-smoke', 'pack', 'statusline-smoke', 'audit', 'qa-syntax', 'diff-check'];
 
-describe.skipIf(process.platform === 'win32')('scripts/gate.sh, run offline under stand-in pnpm, node and git', () => {
+describe.skipIf(process.platform === 'win32')('scripts/gate.sh, run offline under stub pnpm, node and git', () => {
   it('exists and parses whole (bash -n), bash 3.2 and BSD tools only', () => {
     expect(existsSync(GATE), 'scripts/gate.sh').toBe(true);
     expect(parses(GATE)).toBe(0);
@@ -226,7 +226,7 @@ describe.skipIf(process.platform === 'win32')('scripts/gate.sh, run offline unde
     expect(committed(sb)).toBe(false);
   });
 
-  it('the PATH the tests give the script is exactly the stand-ins plus the named host tools', () => {
+  it('the PATH the tests give the script is exactly the stubs plus the named host tools', () => {
     const sb = sandbox();
     const dirs = (sb.env.PATH ?? '').split(':');
     expect(dirs).toHaveLength(2);
@@ -287,8 +287,8 @@ export function workflowSteps(yaml: string): Step[] {
 /** The exclusions, each with its reason; every other gating command must be a gate step. */
 const EXCLUDED: Array<{ match: (s: Step) => boolean; reason: string }> = [
   { match: (s) => s.kind === 'run' && /^pnpm install --frozen-lockfile$/.test(s.text), reason: 'the install: already installed locally' },
-  { match: (s) => s.kind === 'run' && s.job === 'runtime-smoke' && /node packages\/cli\/dist\/index\.js/.test(s.text), reason: 'the Node-20 job runs the BUILT local CLI on the engines floor: a Node-version check the gate cannot make' },
-  { match: (s) => s.kind === 'run' && s.job === 'runtime-smoke' && /node packages\/mcp\/scripts\/stdio-smoke\.mjs/.test(s.text), reason: 'the same stdio smoke file under Node 20; the gate runs it through the package script under the developer Node' },
+  { match: (s) => s.kind === 'run' && s.job === 'runtime-node20' && /node packages\/cli\/dist\/index\.js/.test(s.text), reason: 'the Node-20 job runs the BUILT local CLI on the engines floor: a Node-version check the gate cannot make' },
+  { match: (s) => s.kind === 'run' && s.job === 'runtime-node20' && /node packages\/mcp\/scripts\/stdio-smoke\.mjs/.test(s.text), reason: 'the same stdio smoke file under Node 20; the gate runs it through the package script under the developer Node' },
   { match: (s) => s.kind === 'run' && s.job === 'os-matrix' && /node packages\/cli\/dist\/index\.js/.test(s.text), reason: 'the offline CLI smoke on three operating systems' },
   { match: (s) => s.kind === 'run' && s.job === 'os-matrix' && /node packages\/mcp\/scripts\/stdio-smoke\.mjs/.test(s.text), reason: 'the same stdio smoke file on three operating systems' },
   { match: (s) => s.kind === 'run' && /^pnpm audit \|\| true$/.test(s.text), reason: 'non-blocking by its own `|| true`' },
@@ -320,7 +320,7 @@ describe.skipIf(process.platform === 'win32')('the tripwire: every gating step o
 
   it('reads every job, both run forms and the uses steps', () => {
     const steps = workflowSteps(yaml);
-    expect(new Set(steps.map((s) => s.job))).toEqual(new Set(['build-test', 'runtime-smoke', 'os-matrix', 'coverage', 'audit']));
+    expect(new Set(steps.map((s) => s.job))).toEqual(new Set(['build-test', 'runtime-node20', 'os-matrix', 'coverage', 'audit']));
     expect(steps.some((s) => s.text.includes('\n')), 'a run: | block was read whole').toBe(true);
     expect(steps.find((s) => s.text.startsWith('pnpm lint'))?.text, 'the trailing comment is stripped').toBe('pnpm lint');
     expect(steps.some((s) => s.kind === 'uses')).toBe(true);
