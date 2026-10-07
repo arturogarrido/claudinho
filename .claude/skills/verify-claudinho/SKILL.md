@@ -60,10 +60,9 @@ when it passes (TERM, a grace of two seconds, KILL), its partial evidence kept. 
 process group and the descendants `ps` recorded before the first signal; when `ps` did not answer, or its snapshot
 showed the leader already gone (a snapshot vouches only for a leader alive in it), the TERM is withheld so the
 group stays whole for the grace and `ps` is asked again at the KILL step (a leader already reaped is not asked about,
-since its pid may be another process's by then); the group is signalled only while nothing says it is another's
-(once seen gone, or its id held by another process, it is retired), and a descendant the controller could not see,
-or could no longer tell from another's, is said in the result (`a descendant may have survived`), never silently
-left.
+since its pid may be another process's by then); the group and each recorded descendant are signalled only while not yet seen gone (each is retired at its
+first ESRCH, the group and the tree probed every 50 ms through the grace), and a descendant the controller could not
+see is said in the result with its reason (`a descendant may have survived`), never silently left.
 
 The feature map, one file per surface with how to drive it and what proves it, lives at
 `.claude/skills/verify-claudinho/features/` (five surfaces so far: `today`, `live`, `next`, `table`, `statusline`,
