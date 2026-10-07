@@ -51,13 +51,16 @@
 # what no commit carries), when nothing is staged, and when a git operation is in
 # progress: a merge, a cherry-pick or a revert (`git rev-parse --verify --quiet`
 # answers MERGE_HEAD, CHERRY_PICK_HEAD or REVERT_HEAD), a rebase (the
-# rebase-merge or rebase-apply directory at `git rev-parse --git-path`) or a
-# bisect (BISECT_LOG there): finish it or abort it first. It records the index's
-# tree (`git write-tree`) and HEAD (`git rev-parse --verify HEAD`), and after the
-# steps asks the same questions again: a working tree, an untracked list or an
-# index that changed during the gate, or an operation started during it, refuses
-# the commit. A FAIL refuses whatever the flags; the audit's SKIP refuses unless
-# --allow-offline-audit. --only with --commit is refused before any step.
+# rebase-merge or rebase-apply directory at `git rev-parse --git-path`), a
+# cherry-pick or revert sequence (the sequencer directory there, which a
+# sequence of several commits keeps between them, also once CHERRY_PICK_HEAD or
+# REVERT_HEAD is gone) or a bisect (BISECT_LOG there): finish it or abort it
+# first. It records the index's tree (`git write-tree`) and HEAD (`git rev-parse
+# --verify HEAD`), and after the steps asks the same questions again: a working
+# tree, an untracked list or an index that changed during the gate, or an
+# operation started during it, refuses the commit. A FAIL refuses whatever the
+# flags; the audit's SKIP refuses unless --allow-offline-audit. --only with
+# --commit is refused before any step.
 # The commit is the tree recorded before the steps, never the index as it is at
 # the end: `git commit-tree <tree> -p <HEAD> -F <message-file>`, then `git
 # update-ref HEAD <new> <HEAD>`, which moves HEAD only if it is still the HEAD
@@ -227,9 +230,12 @@ tree_answer() {
 }
 
 # The git operation in progress, by name (merge, cherry-pick, revert, rebase,
-# bisect), or nothing when none is: the commit below is a plain single-parent
-# commit-tree, which would drop a merge's second parent and step outside a
-# rebase's, a cherry-pick's, a revert's or a bisect's sequence.
+# cherry-pick or revert sequence, bisect), or nothing when none is: the commit
+# below is a plain single-parent commit-tree, which would drop a merge's second
+# parent and step outside a rebase's, a cherry-pick's, a revert's, a sequence's
+# or a bisect's run. A sequence (`git cherry-pick A B C`, `git revert A B`)
+# keeps its sequencer directory between its commits, also once CHERRY_PICK_HEAD or
+# REVERT_HEAD is gone.
 operation_answer() {
   local ref op rc dir path
   for ref in MERGE_HEAD:merge CHERRY_PICK_HEAD:cherry-pick REVERT_HEAD:revert; do
@@ -242,12 +248,13 @@ operation_answer() {
       *) echo "git rev-parse --verify --quiet $ref failed (exit $rc)"; return 1 ;;
     esac
   done
-  for dir in rebase-merge rebase-apply BISECT_LOG; do
+  for dir in rebase-merge rebase-apply sequencer BISECT_LOG; do
     path=$(git rev-parse --git-path "$dir")
     rc=$?
     if [ $rc -ne 0 ] || [ -z "$path" ]; then echo "git rev-parse --git-path $dir failed (exit $rc)"; return 1; fi
     case $dir in
       BISECT_LOG) if [ -e "$path" ]; then echo "bisect"; return 0; fi ;;
+      sequencer) if [ -d "$path" ]; then echo "cherry-pick or revert sequence"; return 0; fi ;;
       *) if [ -d "$path" ]; then echo "rebase"; return 0; fi ;;
     esac
   done
