@@ -34,12 +34,16 @@
 #      HOST/OWNER/NAME --workflow ci.yml`); a gh failure refuses, and so does a
 #      run not yet completed for ANOTHER SHA (the push would cancel it: wait for
 #      it, or cancel it yourself);
-#   4. the push: when `git ls-remote origin refs/heads/<branch>` already equals
-#      the local SHA nothing is pushed and the run is only watched (re-running
-#      the script after a timeout does this); else `git push origin
+#   4. the push: the remote SHA is the first field of the one line of `git
+#      ls-remote origin refs/heads/<branch>` whose ref is exactly
+#      `refs/heads/<branch>` (ls-remote matches a pattern by its tail, so a tag or
+#      a deeper branch ending in that name is listed too, and ignored; no such
+#      line: the branch is absent remotely); when it already equals the local
+#      SHA nothing is pushed and the run is only watched (re-running the script
+#      after a timeout does this); else `git push origin
 #      refs/heads/<branch>:refs/heads/<branch>` (both ends named; a failed push
-#      exits at once) and `git ls-remote` read back, which must equal the local
-#      SHA;
+#      exits at once) and `git ls-remote` read back the same way, which must
+#      equal the local SHA;
 #   5. the watch: the run list asked every PUSH_WATCH_POLL_SECONDS until the
 #      deadline; the first (newest) line for the full local SHA is the run; a
 #      completed run is read at once; a run still pending at the deadline exits
@@ -380,10 +384,29 @@ while IFS="$US" read -r id sha event status conclusion; do
   fi
 done <"$WORK/runs"
 
+# remote_sha_of <ls-remote output>: the first field of the line whose second
+# field is exactly refs/heads/<branch>; nothing when no line is (the branch is
+# absent remotely). `git ls-remote` matches its pattern by the ref's tail, so a
+# tag or a deeper branch whose name ends in refs/heads/<branch> is listed too,
+# possibly first: it never stands for the branch.
+TAB=$(printf '\t')
+remote_sha_of() {
+  local line
+  while IFS= read -r line; do
+    case "$line" in
+      *"$TAB"*)
+        if [ "${line#*$TAB}" = "refs/heads/$BRANCH" ]; then printf '%s' "${line%%$TAB*}"; return 0; fi ;;
+    esac
+  done <<EOF
+$1
+EOF
+  return 0
+}
+
 # 4. The push, read back.
 remote_line=$(git ls-remote origin "refs/heads/$BRANCH") || refuse "git ls-remote origin refs/heads/$BRANCH failed; nothing pushed"
-remote_sha=$(printf '%s\n' "$remote_line" | head -n 1 | cut -f 1)
-if [ "$remote_sha" = "$local_sha" ]; then
+remote_sha=$(remote_sha_of "$remote_line")
+if [ -n "$remote_sha" ] && [ "$remote_sha" = "$local_sha" ]; then
   echo "remote      origin/$BRANCH already at $local_sha: no push, watching only"
 else
   git push origin "refs/heads/$BRANCH:refs/heads/$BRANCH"
@@ -393,9 +416,9 @@ else
     exit 1
   fi
   remote_line=$(git ls-remote origin "refs/heads/$BRANCH") || refuse "git ls-remote origin refs/heads/$BRANCH failed after the push"
-  remote_sha=$(printf '%s\n' "$remote_line" | head -n 1 | cut -f 1)
+  remote_sha=$(remote_sha_of "$remote_line")
   if [ "$remote_sha" != "$local_sha" ]; then
-    refuse "ls-remote mismatch after the push: origin/$BRANCH is '$remote_sha', local is $local_sha"
+    refuse "ls-remote mismatch after the push: origin/$BRANCH is ${remote_sha:-absent (no line for refs/heads/$BRANCH)}, local is $local_sha"
   fi
   echo "pushed      origin/$BRANCH = $local_sha (read back with git ls-remote)"
 fi
