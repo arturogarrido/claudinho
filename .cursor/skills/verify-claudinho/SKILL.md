@@ -57,11 +57,13 @@ node scripts/verify.mjs capture <label> --follow premier-league --json -- today 
 settings or the clipboard, outside the sandbox). `--follow --team` is not offered (pinning a club reads the
 provider). Every child has a deadline (`--timeout <s>`, 60 by default; the MCP session 30) and is killed and reaped
 when it passes (TERM, a grace of two seconds, KILL), its partial evidence kept. A capture's deadline reaches the whole
-process group and the descendants `ps` recorded before the first signal; when `ps` did not answer, the TERM is
-withheld so the group stays whole for the grace, `ps` is asked again at the KILL step (it vouches only for a leader
-alive in its own snapshot; a leader already gone is not asked about, since its pid may be another process's by
-then), the group is signalled while it still exists and never after (a living group's id cannot be reused), and a
-descendant it still could not see is said in the result (`a descendant may have survived`), never silently left.
+process group and the descendants `ps` recorded before the first signal; when `ps` did not answer, or its snapshot
+showed the leader already gone (a snapshot vouches only for a leader alive in it), the TERM is withheld so the
+group stays whole for the grace and `ps` is asked again at the KILL step (a leader already reaped is not asked about,
+since its pid may be another process's by then); the group is signalled only while nothing says it is another's
+(once seen gone, or its id held by another process, it is retired), and a descendant the controller could not see,
+or could no longer tell from another's, is said in the result (`a descendant may have survived`), never silently
+left.
 
 The feature map, one file per surface with how to drive it and what proves it, lives at
 `.claude/skills/verify-claudinho/features/` (five surfaces so far: `today`, `live`, `next`, `table`, `statusline`,
