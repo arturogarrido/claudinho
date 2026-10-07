@@ -37,7 +37,7 @@
  * script lives in, or `VERIFY_ROOT` in the controller's OWN environment (the test's seam for a fake tree).
  * Never a wall-clock assertion; every dated command pins its date.
  */
-import { spawn, spawnSync } from 'node:child_process';
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -139,7 +139,7 @@ function fakeRoot(cli: string, mcp = 'process.exit(0);\n', version = VERSION): s
   return root;
 }
 /** A fake stdio MCP server: a line-delimited JSON-RPC reader; `boot` printed first (a stray line); `list` false never answers tools/list. */
-function fakeServer(o: { boot?: string; list?: boolean; pid?: string; schema?: boolean; exitCode?: number; shape?: 'empty' | 'badTools' | 'badCall' | 'emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError' } = {}): string {
+function fakeServer(o: { boot?: string; list?: boolean; pid?: string; schema?: boolean; exitCode?: number; shape?: 'empty' | 'badTools' | 'badCall' | 'emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError' | 'noVersion' | 'arraySchema' | 'bogusContent' | 'bareImage' | 'nullResource' } = {}): string {
   return `${o.pid ? `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(o.pid)}, String(process.pid));\n` : ''}${o.boot ? `console.log(${JSON.stringify(o.boot)});\n` : ''}
 const reply = (id, result) => process.stdout.write(JSON.stringify(${o.shape === 'empty' ? '{ jsonrpc: \'2.0\', id }' : '{ jsonrpc: \'2.0\', id, result }'}) + '\\n');
 let buf = '';
@@ -150,9 +150,9 @@ process.stdin.on('data', (d) => {
     if (!line.trim()) continue;
     const msg = JSON.parse(line);
     if (msg.id == null) continue;
-    if (msg.method === 'initialize') reply(msg.id, ${o.shape === 'emptyInit' ? '{}' : "{ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '0' } }"});
-    else if (msg.method === 'tools/list') { if (${o.list === false ? 'false' : 'true'}) reply(msg.id, ${o.shape === 'badTools' ? "{ tools: 'nope' }" : `{ tools: [{ name: 't', description: 'd', inputSchema: { type: 'object' }${o.schema === false ? '' : o.shape === 'badSchema' ? ', outputSchema: 0' : ', outputSchema: { type: \'object\' }'} }] }`}); }
-    else reply(msg.id, ${o.shape === 'badCall' ? '{}' : o.shape === 'nullContent' ? '{ content: [null] }' : o.shape === 'numberText' ? "{ content: [{ type: 'text', text: 123 }] }" : o.shape === 'stringIsError' ? "{ content: [{ type: 'text', text: 'ok' }], isError: 'true' }" : "{ content: [{ type: 'text', text: 'ok' }], structuredContent: {} }"});
+    if (msg.method === 'initialize') reply(msg.id, ${o.shape === 'emptyInit' ? '{}' : o.shape === 'noVersion' ? "{ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'fake' } }" : "{ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '0' } }"});
+    else if (msg.method === 'tools/list') { if (${o.list === false ? 'false' : 'true'}) reply(msg.id, ${o.shape === 'badTools' ? "{ tools: 'nope' }" : `{ tools: [{ name: 't', description: 'd', inputSchema: { type: '${o.shape === 'arraySchema' ? 'array' : 'object'}' }${o.schema === false ? '' : o.shape === 'badSchema' ? ', outputSchema: 0' : ', outputSchema: { type: \'object\' }'} }] }`}); }
+    else reply(msg.id, ${o.shape === 'badCall' ? '{}' : o.shape === 'nullContent' ? '{ content: [null] }' : o.shape === 'numberText' ? "{ content: [{ type: 'text', text: 123 }] }" : o.shape === 'stringIsError' ? "{ content: [{ type: 'text', text: 'ok' }], isError: 'true' }" : o.shape === 'bogusContent' ? "{ content: [{ type: 'bogus' }] }" : o.shape === 'bareImage' ? "{ content: [{ type: 'image' }] }" : o.shape === 'nullResource' ? "{ content: [{ type: 'resource', resource: null }] }" : "{ content: [{ type: 'text', text: 'ok' }], structuredContent: {} }"});
   }
 });
 process.stdin.on('end', () => process.exit(${o.exitCode ?? 0}));
@@ -522,7 +522,12 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
       ['nullContent', ['t'], 'tools/call'],
       ['numberText', ['t'], 'tools/call'],
       ['stringIsError', ['t'], 'tools/call'],
-    ] as Array<['emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError', string[], string]>) {
+      ['noVersion', ['--list'], 'initialize'],
+      ['arraySchema', ['--list'], 'tools/list'],
+      ['bogusContent', ['t'], 'tools/call'],
+      ['bareImage', ['t'], 'tools/call'],
+      ['nullResource', ['t'], 'tools/call'],
+    ] as Array<['emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError' | 'noVersion' | 'arraySchema' | 'bogusContent' | 'bareImage' | 'nullResource', string[], string]>) {
       const root = fakeRoot('process.exit(0);\n', fakeServer({ shape }));
       const v = verify(['mcp', '--json', '--out', out(), ...argv], { env: { VERIFY_ROOT: root } });
       expect(v.res?.ok, shape).toBe(false);
@@ -693,6 +698,58 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     const orphan = readPid(pf2);
     try { process.kill(orphan, 'SIGKILL'); } catch { /* already gone */ }
     expect(await until(() => !pidAlive(orphan), 5000), 'the test reaped the survivor itself').toBe(true);
+  });
+
+  it('capture: a second ps vouches only for a leader still alive; a leader that died during the withheld grace leaves a survivor the result names', { timeout: SLOW }, async () => {
+    const pf = pidFile();
+    const root = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf)}, String(process.pid)); process.on('SIGTERM', () => {}); process.on('SIGHUP', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
+    // a script that starts its command DETACHED and leaves during the grace: the child is reparented before the second ps
+    const leaving = stubTool('script', [
+      'if [ "$2" = "-F" ]; then f=$3; shift 3; ( "$@" > "$f" 2>&1 & ); else f=$6; cmd=$5; ( sh -c "$cmd" > "$f" 2>&1 & ); fi',
+      'sleep 1.5',
+      'exit 0',
+    ].join('\n'));
+    const marker = join(scratch, `ps-once-${++n}`);
+    const once = stubTool('ps', `if [ ! -e "${marker}" ]; then : > "${marker}"; sleep 30; else exec /bin/ps "$@"; fi`);
+    const r = verify(['capture', 'left', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: root, PATH: `${leaving}:${withTool(once)}` }, timeout: 40_000 });
+    expect(r.res, r.stderr.slice(0, 200)).not.toBeNull();
+    expect(existsSync(marker), 'ps was asked at the deadline and failed').toBe(true);
+    expect(await until(() => existsSync(pf), 3000)).toBe(true);
+    expect((r.res?.failures ?? []).some((f) => /may have survived/.test(f)), 'the leader was gone at the KILL step: the second ps vouches for nothing').toBe(true);
+    const orphan = readPid(pf);
+    try { process.kill(orphan, 'SIGKILL'); } catch { /* already gone */ }
+    expect(await until(() => !pidAlive(orphan), 5000)).toBe(true);
+  });
+
+  it('capture: a second interrupt kills every running capture\'s group and recorded tree before leaving, and says when a descendant may have survived', { timeout: SLOW }, async () => {
+    const interruptTwice = (pf: string, env: Record<string, string>) =>
+      new Promise<{ status: number | null; stderr: string; child: ChildProcess }>((done) => {
+        const child = spawn(process.execPath, [VERIFY, 'capture', 'int', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: testEnv(env), cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+        let stderr = '';
+        child.stderr?.on('data', (d) => { stderr += d; });
+        child.on('close', (status) => done({ status, stderr, child }));
+        (async () => {
+          await until(() => existsSync(pf), 5000);
+          await new Promise((t) => setTimeout(t, 1500)); // past the deadline: the controller is in its abort
+          child.kill('SIGINT');
+          await new Promise((t) => setTimeout(t, 300));
+          child.kill('SIGINT');
+        })();
+      });
+    const pf = pidFile();
+    const root = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf)}, String(process.pid)); process.on('SIGTERM', () => {}); process.on('SIGHUP', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
+    const a = await interruptTwice(pf, { VERIFY_ROOT: root });
+    expect(a.status, 'the second interrupt exits 130').toBe(130);
+    expect(await until(() => !pidAlive(readPid(pf)), 5000), 'with a working ps the recorded tree was killed before leaving').toBe(true);
+    const pf2 = pidFile();
+    const root2 = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf2)}, String(process.pid)); process.on('SIGTERM', () => {}); process.on('SIGHUP', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
+    const never = stubTool('ps', 'sleep 30');
+    const b = await interruptTwice(pf2, { VERIFY_ROOT: root2, PATH: withTool(never) });
+    expect(b.status).toBe(130);
+    expect(b.stderr).toMatch(/interrupted twice; a capture's descendants may have survived/);
+    const orphan = readPid(pf2);
+    try { process.kill(orphan, 'SIGKILL'); } catch { /* already gone */ }
+    expect(await until(() => !pidAlive(orphan), 5000)).toBe(true);
   });
 
   it('capture: script\'s own header and footer lines leave the .txt and stay in the .ansi', () => {
