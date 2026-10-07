@@ -436,14 +436,15 @@ const STEP_KEYS = new Set(['name', 'id', 'if', 'with', 'env', 'shell', 'working-
 
 /**
  * A small YAML-free reader of the workflow's jobs: enough for this file's shape, refusing what it does not read.
- * Jobs are the keys at 2 spaces under `jobs:`, a job's own keys are at 4, its steps are items at `      - ` (6
- * spaces, a dash) and a step's keys are at 8 (the item's first key on the dash line). A `run: |` block is read
- * from the indent of its first non-blank line, which must be deeper than 8, to the first non-blank line indented
- * less; a one-line `run:` or `uses:` value is the command. Every other shape throws, naming the job: a flow
- * mapping, a sequence or a bare scalar where a key belongs, a key no step has, `|-`, `|+`, `>`, an empty `run:`
- * (a plain multi-line scalar), a one-line value continued on a deeper line, a step with neither `run:` nor `uses:`
- * (or both), a dash at another column, an inline `steps:`, a job-level `uses:` (a reusable workflow), and a job's
- * own line that is not a bare lowercase key (a quoted key, a flow form, a sequence).
+ * Jobs are the keys at 2 spaces under `jobs:`, a job's own keys are at 4 (a job whose first key sits deeper is
+ * refused), its steps are items at `      - ` (6 spaces, a dash) and a step's keys are at 8 (the item's first key
+ * on the dash line). A `run: |` block is read from the indent of its first non-blank line, which must be deeper
+ * than 8, to the first non-blank line indented less; a one-line `run:` or `uses:` value is the command. Every
+ * other shape throws, naming the job: a flow mapping, a sequence or a bare scalar where a key belongs, a key no
+ * step has, `|-`, `|+`, `>`, an empty `run:` (a plain multi-line scalar), a one-line value continued on a deeper
+ * line, a step with neither `run:` nor `uses:` (or both), a dash at another column, an inline `steps:`, a
+ * job-level `uses:` (a reusable workflow), and a job's own line that is not a bare lowercase key (a quoted key, a
+ * flow form, a sequence).
  */
 export function workflowSteps(yaml: string): Step[] {
   const lines = yaml.split('\n');
@@ -455,6 +456,9 @@ export function workflowSteps(yaml: string): Step[] {
   let inJobs = false;
   let job = '';
   let inSteps = false;
+  // A job key was just read and its first key not yet: that key must sit at 4 spaces. A job whose keys sit
+  // deeper (5, 6, ...) is valid YAML this reader would otherwise pass over line by line, its steps unread.
+  let jobOpen = false;
   let index = 0;
   function refuse(what: string, at: number): never {
     throw new Error(`${what} in ${job}: ${(lines[at] ?? '').trim()}`);
@@ -466,17 +470,19 @@ export function workflowSteps(yaml: string): Step[] {
     const n = indentOf(l);
     if (n === 0) {
       if (/^jobs:/.test(l) && !/^jobs:\s*(#.*)?$/.test(l)) throw new Error(`unreadable jobs: ${l}`);
-      inJobs = /^jobs:/.test(l); job = ''; inSteps = false;
+      inJobs = /^jobs:/.test(l); job = ''; inSteps = false; jobOpen = false;
       i++; continue;
     }
     if (!inJobs) { i++; continue; }
     if (n === 2) {
       const key = /^ {2}([A-Za-z_][A-Za-z0-9_-]*):\s*(#.*)?$/.exec(l);
       if (!key) throw new Error(`unreadable job key: ${l}`);
-      job = key[1] ?? ''; inSteps = false; index = 0;
+      job = key[1] ?? ''; inSteps = false; index = 0; jobOpen = true;
       i++; continue;
     }
     if (n < 4) refuse('unreadable line', i);
+    if (jobOpen && n !== 4) refuse('unreadable job (its keys are not at 4 spaces)', i);
+    jobOpen = false;
     if (n === 4) {
       const afterSteps = inSteps;
       inSteps = false;
