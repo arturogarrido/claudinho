@@ -748,6 +748,25 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(pidAlive(orphand), 'the survivor the result named is alive').toBe(true);
     try { process.kill(orphand, 'SIGKILL'); } catch { /* already gone */ }
     expect(await until(() => !pidAlive(orphand), 5000)).toBe(true);
+    // the leader leaves DURING THE FIRST lookup: that snapshot vouches for nothing either, the deadline counts as unrecorded
+    const pff = pidFile();
+    const rootf = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pff)}, String(process.pid)); process.on('SIGTERM', () => {}); process.on('SIGHUP', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
+    const leavingEarly = stubTool('script', [
+      'if [ "$2" = "-F" ]; then f=$3; shift 3; ( perl -e \'use POSIX qw(setsid); setsid(); exec @ARGV\' -- "$@" > "$f" 2>&1 & ); else f=$6; cmd=$5; ( perl -e \'use POSIX qw(setsid); setsid(); exec @ARGV\' -- sh -c "$cmd" > "$f" 2>&1 & ); fi',
+      'sleep 1.3',
+      'exit 0',
+    ].join('\n'));
+    const markerf = join(scratch, `ps-once-${++n}`);
+    const slowFirst = stubTool('ps', `if [ ! -e "${markerf}" ]; then : > "${markerf}"; sleep 2; fi; exec /bin/ps "$@"`);
+    const f = verify(['capture', 'first', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: rootf, PATH: `${leavingEarly}:${withTool(slowFirst)}` }, timeout: 40_000 });
+    expect(f.res, f.stderr.slice(0, 200)).not.toBeNull();
+    expect(await until(() => existsSync(pff), 3000)).toBe(true);
+    expect((f.res?.failures ?? []).some((x) => /may have survived/.test(x)), 'the leader left while the first ps ran: that snapshot vouches for nothing').toBe(true);
+    expect(f.res?.phases?.main?.stderr ?? '').toMatch(/leader was (zombie|absent)/);
+    const orphanf = readPid(pff);
+    expect(pidAlive(orphanf), 'the survivor the result named is alive').toBe(true);
+    try { process.kill(orphanf, 'SIGKILL'); } catch { /* already gone */ }
+    expect(await until(() => !pidAlive(orphanf), 5000)).toBe(true);
   });
 
   it('capture: a member of the leader\'s own group outside any recorded tree is reached by the group signal while the group exists, after the leader\'s own death too', { timeout: SLOW }, async () => {
