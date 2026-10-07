@@ -728,6 +728,23 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     const orphan = readPid(pf);
     try { process.kill(orphan, 'SIGKILL'); } catch { /* already gone */ }
     expect(await until(() => !pidAlive(orphan), 5000)).toBe(true);
+    // the leader leaves DURING the second lookup: the snapshot shows it gone (or a zombie) and vouches for nothing
+    const pfd = pidFile();
+    const rootd = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pfd)}, String(process.pid)); process.on('SIGTERM', () => {}); process.on('SIGHUP', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
+    const leavingLate = stubTool('script', [
+      'if [ "$2" = "-F" ]; then f=$3; shift 3; ( "$@" > "$f" 2>&1 & ); else f=$6; cmd=$5; ( sh -c "$cmd" > "$f" 2>&1 & ); fi',
+      'sleep 9',
+      'exit 0',
+    ].join('\n'));
+    const markerd = join(scratch, `ps-once-${++n}`);
+    const slowSecond = stubTool('ps', `if [ ! -e "${markerd}" ]; then : > "${markerd}"; sleep 30; else sleep 2; exec /bin/ps "$@"; fi`);
+    const d = verify(['capture', 'during', '--json', '--out', out(), '--timeout', '1', '--offline', '--', 'today'], { env: { VERIFY_ROOT: rootd, PATH: `${leavingLate}:${withTool(slowSecond)}` }, timeout: 40_000 });
+    expect(d.res, d.stderr.slice(0, 200)).not.toBeNull();
+    expect(await until(() => existsSync(pfd), 3000)).toBe(true);
+    expect((d.res?.failures ?? []).some((f) => /may have survived/.test(f)), 'the leader left while the second ps ran: the snapshot vouches for nothing').toBe(true);
+    const orphand = readPid(pfd);
+    try { process.kill(orphand, 'SIGKILL'); } catch { /* already gone */ }
+    expect(await until(() => !pidAlive(orphand), 5000)).toBe(true);
   });
 
   it('capture: a second interrupt kills every running capture\'s group and recorded tree before leaving, and says when a descendant may have survived', { timeout: SLOW }, async () => {
