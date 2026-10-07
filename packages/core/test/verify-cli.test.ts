@@ -713,9 +713,9 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
   it('capture: a second ps vouches only for a leader still alive; a leader that died during the withheld grace leaves a survivor the result names', { timeout: SLOW }, async () => {
     const pf = pidFile();
     const root = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pf)}, String(process.pid)); process.on('SIGTERM', () => {}); process.on('SIGHUP', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
-    // a script that starts its command DETACHED and leaves during the grace: the child is reparented before the second ps
+    // a script that starts its command in its OWN SESSION (as script does) and leaves during the grace: the child is reparented before the second ps and no group signal can reach it
     const leaving = stubTool('script', [
-      'if [ "$2" = "-F" ]; then f=$3; shift 3; ( "$@" > "$f" 2>&1 & ); else f=$6; cmd=$5; ( sh -c "$cmd" > "$f" 2>&1 & ); fi',
+      'if [ "$2" = "-F" ]; then f=$3; shift 3; ( perl -e \'use POSIX qw(setsid); setsid(); exec @ARGV\' -- "$@" > "$f" 2>&1 & ); else f=$6; cmd=$5; ( perl -e \'use POSIX qw(setsid); setsid(); exec @ARGV\' -- sh -c "$cmd" > "$f" 2>&1 & ); fi',
       'sleep 1.5',
       'exit 0',
     ].join('\n'));
@@ -734,7 +734,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     const pfd = pidFile();
     const rootd = fakeRoot(`import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(pfd)}, String(process.pid)); process.on('SIGTERM', () => {}); process.on('SIGHUP', () => {}); console.log('hanging'); setTimeout(() => {}, 600000);\n`);
     const leavingLate = stubTool('script', [
-      'if [ "$2" = "-F" ]; then f=$3; shift 3; ( "$@" > "$f" 2>&1 & ); else f=$6; cmd=$5; ( sh -c "$cmd" > "$f" 2>&1 & ); fi',
+      'if [ "$2" = "-F" ]; then f=$3; shift 3; ( perl -e \'use POSIX qw(setsid); setsid(); exec @ARGV\' -- "$@" > "$f" 2>&1 & ); else f=$6; cmd=$5; ( perl -e \'use POSIX qw(setsid); setsid(); exec @ARGV\' -- sh -c "$cmd" > "$f" 2>&1 & ); fi',
       'sleep 9',
       'exit 0',
     ].join('\n'));
