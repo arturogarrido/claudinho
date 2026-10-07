@@ -9,6 +9,7 @@ alwaysApply: true
 
 - **One user-facing feature → one minor.** Stack review fixes (tz, dates, guards) into the **same PR** before merge when they belong to the same feature.
 - Do **not** tag npm until CI is green **and** `pnpm release:qa` passes (tripwires at the end must be 0 failed).
+- `scripts/gate.sh` runs CI's gating list locally (not `pnpm release:qa`, not CI's Node 20, Windows and macOS jobs), and `scripts/push-and-watch.sh <branch>` reads CI's per-job result on the pushed SHA.
 - Before tagging: `git diff main` must not include accidental private paths (`docs/`, `CLAUDE.local.md`, `.env`).
 
 ## Commit attribution

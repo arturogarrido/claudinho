@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Bundle & bracket PR readiness
 
-Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint`** (mirror CI — build first because cli/mcp import `@claudinho/core` from dist; `build` alone does not typecheck).
+Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint`** (mirror CI — build first because cli/mcp import `@claudinho/core` from dist; `build` alone does not typecheck). `scripts/gate.sh` runs the same gate with CI's smokes and guards, one verdict per step; it does not run `pnpm release:qa` or replace CI's Node 20, Windows and macOS jobs, which `scripts/push-and-watch.sh` reads on the pushed SHA.
 
 ## Bundled schedule invariant
 

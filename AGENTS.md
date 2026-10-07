@@ -75,6 +75,12 @@ bundled schema. Hand-edit `biome.json` when necessary; `biome migrate` reformats
   configuration, commands, package contents, or product behavior also change.
 - **Code, dependencies, or executable configuration:** iterate with affected tests, then run
   `pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint` before declaring the change ready.
+  `scripts/gate.sh` is the local form of that gate with CI's smokes and guards (one verdict per
+  step, `--commit <message-file>` committing only when every step is ok, or, with
+  `--allow-offline-audit`, when the audit alone was skipped offline (the commit line says so and
+  the exit stays nonzero)); it does not run `pnpm release:qa`, does not fetch the live feed, and
+  does not replace CI's Node 20, Windows and macOS jobs, which `scripts/push-and-watch.sh`
+  enforces on the pushed SHA.
   Build first because CLI/MCP checks use core's generated output. Run the relevant CI smoke and
   packaging checks; MCP contract changes also require the
   [base/head `tools/list` comparison](CONTRIBUTING.md#comparing-mcp-tool-contracts) and

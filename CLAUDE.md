@@ -16,4 +16,5 @@ This project uses **AGENTS.md** as the primary agent guide. Read it first:
   They define completion, checks by change type, and when an independent reviewer is required.
 - **After a push to a branch with CI**, confirm the run's `headSha` matches the pushed commit,
   wait for completion, and report the per-job result. A successful watch command alone is not
-  proof that a queued run passed.
+  proof that a queued run passed. `scripts/push-and-watch.sh <branch>` is the form of it: it
+  pushes, reads the SHA back, and prints the per-job result of the CI run on that SHA.
