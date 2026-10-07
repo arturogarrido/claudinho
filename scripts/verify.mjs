@@ -77,13 +77,11 @@ const PS_TIMEOUT_MS = 5000;
 /**
  * Why a descendant of a capture may have survived (a phase's `survivorReason`, its failure line
  * `<phase>: <reason>; a descendant may have survived`): the KILL step's lookup failed; the group's leader had left
- * before a lookup could vouch for it (reaped, or a zombie or absent in the snapshot); the leader's pid was held by
- * another process while the group still existed.
+ * before a lookup could vouch for it (reaped, or a zombie or absent in the snapshot).
  */
 const SURVIVOR = {
   noPs: 'ps did not answer',
   leaderGone: "the group's leader was gone before ps could vouch",
-  idReused: "the group's id was reused while the group still existed",
 };
 /** The line a fetch preload writes on its own stderr when its log could not be written: the phase then fails. */
 const PRELOAD_UNRECORDED = 'verify-preload: could not record';
@@ -656,11 +654,11 @@ function signal(target, sig) {
  * process group of its own (detached) and the deadline signals the whole group and every descendant recorded before
  * the first signal, then waits until they are gone. The group (`-pid`) is signalled, by every step, while it still
  * EXISTS, whether or not the leader's exit is recorded (a group's id is not reused while any member lives, and a member
- * outside every recorded tree is reached only so), and never once it is retired for this child (seen gone, or the
- * leader's pid seen held by another process: `groupLive`, which says when; never probed or signalled again); a
- * plain child's pid is signalled while its exit is not recorded; the recorded tree by pid (its pids were seen alive at
- * the deadline), less every pid the wait loop has seen gone, retired the same way (`treeLive`: never signalled again,
- * since a pid seen gone may be another process's later). A lookup vouches for a tree only when its own
+ * outside every recorded tree is reached only so), and never once it is retired for this child (seen gone:
+ * `groupLive`, which says when; never probed or signalled again); a plain child's pid is signalled while its exit is
+ * not recorded; the recorded tree by pid (its pids were seen alive at the deadline), less every pid seen gone (by the
+ * probe through the grace, the wait loop, or a signal's ESRCH), retired the same way (`treeLive`: never signalled
+ * again, since a pid seen gone may be another process's later). A lookup vouches for a tree only when its own
  * snapshot shows the leader alive. When the lookup at the deadline did not vouch (the table did not answer, or showed
  * the leader a zombie or absent: it left while the lookup blocked the loop), the TERM is WITHHELD (the child's stderr
  * evidence says why): nothing is signalled until the KILL step, after the grace, which asks the table once more and
@@ -686,7 +684,8 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
     let timedOut = false;
     let finished = false;
     let killTimer = null;
-    // Between the deadline and the KILL step: the group probed every GROUP_PROBE_MS, so its emptying is seen within it.
+    // Between the deadline and the KILL step: the group and the recorded tree probed every GROUP_PROBE_MS, so a group's
+    // emptying or a descendant's death is seen within that interval.
     let probeTimer = null;
     let exitTimer = null;
     let lineBuf = '';
@@ -710,8 +709,7 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
     // Set once a lookup vouched for this child: the table answered with the leader alive, a tree was recorded (possibly
     // empty).
     let recorded = false;
-    // Set once the group target is retired for the rest of this child (`groupLive`): seen gone, or its leader's pid held
-    // by another process while the group still existed.
+    // Set once the group target is retired for the rest of this child (`groupLive`, `retireGone`): seen gone.
     let groupRetired = false;
     // Set once the controller has started signalling this child (the deadline's abort, an interrupt, the wait loop's own
     // KILL): only from then on is a retirement of the group said on the phase's stderr.
@@ -720,9 +718,8 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
     let aborted = false;
     // Set when the lookup at the deadline did not vouch: the TERM is withheld and the KILL step asks again.
     let unrecordedAtDeadline = false;
-    // Set when the KILL step's lookup did not vouch either, or the leader's exit was recorded by then, or the group was
-    // retired as ambiguous (`groupLive`): a descendant may have survived, and the phase says so, with the FIRST reason
-    // seen (one of SURVIVOR's).
+    // Set when the KILL step's lookup did not vouch either, or the leader's exit was recorded by then: a descendant may
+    // have survived, and the phase says so, with the FIRST reason seen (one of SURVIVOR's).
     let survivorPossible = false;
     let survivorReason = null;
     const survivor = (reason) => {
@@ -746,54 +743,40 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
         tree = tree.filter((pid) => !signal(pid, sig));
       } else if (child.exitCode === null && child.signalCode === null) signal(child.pid, sig);
     };
-    /**
-     * Whether this child's group is still a target. The group is ours only while nothing says otherwise; once it is
-     * RETIRED it is never probed or signalled again for the rest of this child, and the recorded descendants, by pid,
-     * are all that is signalled and waited on. "The pid is held" below means: the leader's exit is recorded (Node has
-     * reaped it, so its pid is free) and a process holds the leader's pid (signal 0 to the pid succeeds, or is refused
-     * for another user's process). A pid is free at the reap while a group id stays in use until its last member
-     * leaves; Linux does not hand out a pid still in use as a group id, Darwin may. The four states:
-     *   - the group is gone (`groupExists` false): retired; said (`the group is gone`) only once the controller has
-     *     started signalling the group, so a child that ended on its own retires it silently in the wait loop; its id
-     *     may be another group's later;
-     *   - the pid is held and the group is gone: the same (the first state decides);
-     *   - the pid is held and the group still exists: ambiguous, the group may be another's (a new process took the
-     *     pid) while a reparented member of the original keeps it alive: retired (not signalled, it may be another's)
-     *     and `survivorPossible` set (a member of the original may remain unseen), with its own stderr line whether or
-     *     not the controller has signalled (the phase fails, and the line says why). On Linux this cannot arise;
-     *   - neither: the group is ours, and signalled.
-     * Between the deadline and the KILL step it is probed every GROUP_PROBE_MS, so an emptying is seen within that
-     * interval rather than at the step. The residue, which no check here can close (Darwin has no pidfd for a group):
-     * the one-syscall gap between a check and its signal; and, inside one probe interval, the group emptied, its id
-     * taken by a new leader that itself exited leaving members, a group indistinguishable from the original remnant. No
-     * test can force a pid's reuse.
-     */
     /** The group seen gone (`groupExists` false, or ESRCH on a signal to it): retired, said once the controller signals. */
     const retireGone = () => {
       if (groupRetired) return;
       groupRetired = true;
       if (signalling) err.push(Buffer.from('verify: the group is gone; not signalled again\n'));
     };
+    /**
+     * Whether this child's group is still a target. It is, until it is observed gone (`groupExists` false here, or a
+     * group signal answered ESRCH in `kill`); it is then RETIRED for the rest of this child (`retireGone`), never probed
+     * or signalled again, and the recorded descendants, by pid, are all that is signalled and waited on. A process
+     * holding the reaped leader's pid while the group still exists is no sign of reuse: a recycled pid is outside the
+     * original group (a new `setsid` fails while any process keeps that group id, and a group signal reaches the
+     * group's members alone), so the group is still signalled then, and that signal is what reaches a reparented member.
+     * Between the deadline and the KILL step it is probed every GROUP_PROBE_MS, so an emptying is seen within that
+     * interval rather than at the step. The residue, which no check here can close (Darwin has no pidfd for a group):
+     * the one-syscall gap between a check and its signal; and, inside one probe interval, a group that emptied, was taken
+     * by a new `setsid` leader and left with that leader's members after its exit, indistinguishable from the original
+     * remnant (a holder whose own group id equals the old id IS that new group's leader, outside ours only while it
+     * lives). No test can force a pid's reuse.
+     */
     const groupLive = () => {
       if (groupRetired) return false;
-      if (!groupExists(child.pid)) {
-        retireGone();
-        return false;
-      }
-      if ((child.exitCode !== null || child.signalCode !== null) && alive(child.pid)) {
-        groupRetired = true;
-        survivor(SURVIVOR.idReused);
-        err.push(Buffer.from("verify: the group's id was reused while the group still existed; not signalled again, a member may have survived\n"));
-        return false;
-      }
-      return true;
+      if (groupExists(child.pid)) return true;
+      retireGone();
+      return false;
     };
     /**
      * Whether a recorded descendant is still alive, retiring every one seen gone (`alive` false: no such process; a
-     * signal answered ESRCH is the same observation, in `kill`): it leaves `tree` for the rest of this child, so no later signal path (the wait loop's own KILL, the KILL step, an
-     * interrupt's `killNow`) signals that pid again, since a pid seen gone may be another process's later (the group's
-     * hazard, closed the same way). A pid still alive, or refused (another user's: EPERM), stays. No test can force a
-     * pid's reuse.
+     * signal answered ESRCH is the same observation, in `kill`). Asked by the probe through the grace (every
+     * GROUP_PROBE_MS, so a pid that died after its TERM is retired before the grace-end KILL or an interrupt's
+     * `killNow`; the window is one probe interval) and by the wait loop. A pid seen gone leaves `tree` for the rest of
+     * this child, so no later signal path (the wait loop's own KILL, the KILL step, an interrupt's `killNow`) signals
+     * that pid again, since a pid seen gone may be another process's later (the group's hazard, closed the same way). A
+     * pid still alive, or refused (another user's: EPERM), stays. No test can force a pid's reuse.
      */
     const treeLive = () => {
       tree = tree.filter(alive);
@@ -831,7 +814,10 @@ function startChild(command, args, { env, cwd = ROOT, timeoutMs, stdinFd, keepSt
       }
       if (group && child.pid) {
         probeTimer = setInterval(() => {
-          if (!groupLive()) stopProbe();
+          // Both asked on every pass: the group's emptying and each descendant's death are seen within one interval.
+          const groupThere = groupLive();
+          const treeThere = treeLive();
+          if (!groupThere && !treeThere) stopProbe();
         }, GROUP_PROBE_MS);
       }
       // When the lookup did not vouch, the TERM is WITHHELD: nothing is signalled at the deadline, so the group stays
