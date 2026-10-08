@@ -55,7 +55,10 @@ node packages/cli/dist/index.js today --tz America/Mexico_City --lang es
   `scripts/push-and-watch.sh <branch>` pushes, reads the SHA back, and prints the per-job
   result of the CI run on that SHA. User-facing behavior also requires
   `pnpm release:qa` and an output review. Prose-only changes use diff, link, contract,
-  and private-document-boundary checks.
+  and private-document-boundary checks. While you work, the `verify-claudinho` skill's control
+  CLI, `node scripts/verify.mjs` (`--help` lists its commands), drives one surface of the built
+  binary offline in an environment of its own and keeps the evidence; it is the inner loop, and the
+  control CLI replaces neither CI's jobs nor the live pass, `pnpm release:qa`.
 
 ## Adding a competition
 
