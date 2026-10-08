@@ -75,9 +75,11 @@ describe('my_team prompt', () => {
       expect(text).toMatch(/never invent/);
       expect(text).toMatch(/horizon|verdict/);
       expect(text).toMatch(/competition (the answer|it) names/);
-      // A typed team the competition does not hold is the unknownTeam VERDICT (not an error): relayed, then the ask.
-      expect(text).toMatch(/unknownTeam/);
-      expect(text).toMatch(/relay/);
+      // An unknownTeam VERDICT (not an error) is relayed as it is, then the ask; the sentence is gated on the answer and
+      // glosses nothing (off the World Cup the verdict is about the table read whole and the next 14 days: a club out
+      // in a qualifying round is in no table yet played in the competition).
+      expect(text).toMatch(/If it answers unknownTeam, relay that answer as it is/);
+      expect(text).not.toMatch(/the team is not in this competition/);
       // The standing is the team's row of its table, and a competition with no table is said so.
       expect(text).toMatch(/row of its table/);
       expect(text).toMatch(/no table/);
@@ -110,6 +112,11 @@ describe('my_team prompt', () => {
       // sentence covers).
       expect(text).toMatch(/If it answers unknownTeam/);
       expect(text).not.toMatch(/answers unknownTeam when/);
+      // The error's conditions are the tool's: no team given, CLAUDINHO_TEAM unset AND no pin for this competition, or
+      // CLAUDINHO_TEAM holding nothing readable (with CLAUDINHO_TEAM=Chelsea and no pin the tool answers for Chelsea).
+      expect(text).toMatch(/CLAUDINHO_TEAM is unset/);
+      // The error answer names no team, so the call sentence does not claim every answer does.
+      expect(text).not.toMatch(/its answer names the team/);
       expect(text).toMatch(/CLAUDINHO_TEAM/);
       expect(text).not.toContain('undefined');
       expect(text).not.toMatch(/\bnull\b/);
