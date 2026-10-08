@@ -75,7 +75,9 @@ describe('my_team prompt', () => {
     await withClient(async (client) => {
       // A client may omit `arguments`, send an empty object, or send the argument left blank: each is "no team".
       const texts = await Promise.all(
-        [undefined, {}, { team: '' }].map((args) => client.getPrompt({ name: 'my_team', arguments: args }).then(promptText)),
+        ([undefined, {}, { team: '' }] as (Record<string, string> | undefined)[]).map((args) =>
+          client.getPrompt({ name: 'my_team', arguments: args }).then(promptText),
+        ),
       );
       expect(new Set(texts).size, 'the three forms of "no team" are one prompt').toBe(1);
       const text = texts[0] as string;
