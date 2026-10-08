@@ -105,7 +105,11 @@ describe('my_team prompt', () => {
       expect(text).toMatch(/with no team/);
       expect(text).toMatch(/ask me which team/);
       expect(text).toMatch(/an error/); // no team given and none pinned (or an unreadable CLAUDINHO_TEAM) is a tool error
-      expect(text).toMatch(/unknownTeam/); // a CLAUDINHO_TEAM naming a team the competition does not hold is a verdict
+      // An unknownTeam answer is relayed; the sentence is gated on the ANSWER, never on a cause (a miss under a partial
+      // read, an incomplete roster, or a World Cup code the bundle lacks answer something else, which the empty-answer
+      // sentence covers).
+      expect(text).toMatch(/If it answers unknownTeam/);
+      expect(text).not.toMatch(/answers unknownTeam when/);
       expect(text).toMatch(/CLAUDINHO_TEAM/);
       expect(text).not.toContain('undefined');
       expect(text).not.toMatch(/\bnull\b/);
