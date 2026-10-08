@@ -26,11 +26,10 @@ makes it green, read by every reader on every head.
    live-feed check is not verified behavior.
 8. An MCP contract change (AGENTS.md "Validation scope"): `pnpm -F @claudinho/mcp smoke:stdio` and the base/head
    `tools/list` comparison of CONTRIBUTING.md "Comparing MCP tool contracts".
-9. The first push and the pull request, as the Push section says:
-   `bash scripts/push-and-watch.sh <branch> --allow-no-run`, then
+9. The first push and the pull request, as the Push section says: `git push -u origin <branch>`, then
    `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>` (the body as Evidence says),
    then the push line, which pushes nothing (the remote already has the head) and reads CI per job on it. Every
-   later push is the plain push line.
+   later push is the push line.
 10. The review rounds (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
     `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`): every reader confirms every head, nothing
     pending, P3 included; a fix made after review is read again by every reader. HOLD the SHA the readers confirmed.
@@ -59,10 +58,10 @@ bash scripts/push-and-watch.sh <branch>
 Every push after the pull request exists is this line: it refuses to push while a CI run for another SHA on the
 branch is pending (the push would cancel it), pushes, reads the remote SHA back and prints every job's conclusion for
 the CI run on that SHA; a run still pending at the deadline is watched again by running the same line (nothing is
-pushed twice). The FIRST push is `bash scripts/push-and-watch.sh <branch> --allow-no-run`: before the pull request
-there is no run to watch, and the flag ends it at `pushed; CI not verified (no pull request)`. Then
-`gh pr create --base main --head <branch> --title "<subject>" --body-file <file>`, then this line, to read CI per job
-on that head.
+pushed twice). The FIRST push is a plain `git push -u origin <branch>`: CI runs on pull requests and on main alone,
+so before the pull request there is no run, and the watch would poll for one until its deadline (30 minutes by
+default). Then `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>`, then this line,
+which pushes nothing (the remote already has the head) and reads CI per job on it.
 
 ## Evidence
 

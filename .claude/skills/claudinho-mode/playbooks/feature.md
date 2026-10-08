@@ -28,11 +28,10 @@ bug-fix playbook holds; a feature adds a plan gate, acceptance criteria and ever
    pass, and a skipped live-feed check is not verified behavior.
 9. An MCP contract change (AGENTS.md "Validation scope"): `pnpm -F @claudinho/mcp smoke:stdio` and the base/head
    `tools/list` comparison of CONTRIBUTING.md "Comparing MCP tool contracts", compared by bytes.
-10. The first push and the pull request, as the Push section says:
-    `bash scripts/push-and-watch.sh <branch> --allow-no-run`, then
+10. The first push and the pull request, as the Push section says: `git push -u origin <branch>`, then
     `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>` (the body as Evidence says),
     then the push line, which pushes nothing (the remote already has the head) and reads CI per job on it. Every
-    later push is the plain push line.
+    later push is the push line.
 11. The review rounds (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
     `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`): every reader confirms every head, nothing
     pending, P3 included. HOLD the SHA the readers confirmed.
@@ -57,8 +56,8 @@ bash scripts/push-and-watch.sh <branch>
 
 Every push after the pull request exists is this line: it refuses while another SHA's run is pending, pushes, reads
 the remote SHA back and prints every job's conclusion for the CI run on that SHA. Read the per-job table after every
-push, before the next round. The FIRST push is `bash scripts/push-and-watch.sh <branch> --allow-no-run` (before the
-pull request there is no run to watch; the flag ends it at `pushed; CI not verified (no pull request)`), then
+push, before the next round. The FIRST push is a plain `git push -u origin <branch>` (CI runs on pull requests and
+on main alone: before the pull request there is no run, and the watch would poll for one until its deadline), then
 `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>`, then this line.
 
 ## Evidence

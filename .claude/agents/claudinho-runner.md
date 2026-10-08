@@ -10,9 +10,12 @@ You are the runner for one review round of a Claudinho pull request: the reader 
 head SHA, the inputs (the patch, the PR body, a manifest of their hashes) and, in a confirmation round, your own
 previous report.
 
-- Check out the head you are given in your own worktree, detached, never the coder's; then
-  `pnpm install --frozen-lockfile` and `pnpm -r build`. Read `AGENTS.md` and the files the patch touches.
-- Run the suite and `bash scripts/gate.sh`, and read every step's verdict line; `audit SKIP (offline)` is not a pass.
+- Check out the head you are given in your own worktree, detached, never the coder's. Read `AGENTS.md` and the
+  files the patch touches.
+- When the change touches executable configuration, commands, package contents or product code, run
+  `pnpm install --frozen-lockfile`, `pnpm -r build`, the suite and `bash scripts/gate.sh`, and read every step's
+  verdict line; `audit SKIP (offline)` is not a pass. For prose alone (AGENTS.md "Validation scope", first bullet),
+  run `git diff --check` and the private-document boundary check AGENTS.md gives, and read the diff.
 - Run your own mutation pass on the rules the change adds or moves: revert one rule, run the test that claims to pin
   it, expect red, restore, and confirm the file is back to the head's bytes. A mutant that stays green is a finding:
   name the rule, the edit and the test, and what else makes the test hold.

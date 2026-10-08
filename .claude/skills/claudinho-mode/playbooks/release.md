@@ -5,9 +5,11 @@ maintainer's: never a tag or a publish by an agent.
 
 ## Steps
 
+0. The release branch and its own worktree, never the main checkout: `git worktree add -b <branch> <path> main`;
+   every later step runs in `<path>`.
 1. The batch: what is on main since the last tag, which of it is user-facing and which MCP-affecting (a tool's shape
    or description). A hotfix is live data correctness only (AGENTS.md "Release cadence").
-2. The version bump on a release branch, in the three `package.json` files (`packages/cli/package.json`,
+2. The version bump on the release branch, in the three `package.json` files (`packages/cli/package.json`,
    `packages/mcp/package.json`, `packages/core/package.json`), `packages/mcp/mcpb/manifest.json` and
    `packages/mcp/server.json` (AGENTS.md "Releasing"); the guards `manifest.test.ts` and `server.test.ts` fail on a
    drift.
@@ -16,8 +18,10 @@ maintainer's: never a tag or a publish by an agent.
    tripwires. A SKIP is not a pass; a feed outage is reported as one.
 5. For an MCP-affecting release: the base and head `tools/list` compared (CONTRIBUTING.md "Comparing MCP tool
    contracts").
-6. Commit with the trailer, then the first push and the pull request (the Push section), and CI per job on the
-   pushed SHA.
+6. Commit with the trailer. The first push is a plain `git push -u origin <branch>`; then
+   `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>` (the body ends with the
+   trailers of the agents whose commits the branch carries and the generated-with line the coding client asks for);
+   then the push line below, which pushes nothing (the remote already has the head) and reads CI per job on it.
 7. Before the merge is recommended: the review rounds on the release head
    (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
    `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`) and the review ledger's merge check passing,
@@ -47,9 +51,10 @@ CI's Node 20, Windows and macOS jobs (the push watch).
 bash scripts/push-and-watch.sh <branch>
 ```
 
-The release branch's first push is `bash scripts/push-and-watch.sh <branch> --allow-no-run` (no run to watch before
-its pull request), then `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>`, then this
-line, which reads the head's CI per job; every later push is this line.
+The release branch's first push is a plain `git push -u origin <branch>` (CI runs on pull requests and on main
+alone: before the pull request there is no run, and the watch would poll for one until its deadline), then
+`gh pr create --base main --head <branch> --title "<subject>" --body-file <file>`, then this line, which reads the
+head's CI per job; every later push is this line.
 
 ## Evidence
 

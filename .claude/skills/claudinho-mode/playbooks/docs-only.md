@@ -33,9 +33,9 @@ behavior also change (AGENTS.md "Validation scope"); then the feature or bug-fix
 6. The gate below only when the change also touches executable configuration, commands, package contents or product
    behavior (AGENTS.md "Validation scope", first bullet); prose alone stops at steps 3 to 5.
 7. Commit with the trailer. The first push and the pull request, as the Push section says:
-   `bash scripts/push-and-watch.sh <branch> --allow-no-run`, then
+   `git push -u origin <branch>`, then
    `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>` (the body as Evidence says),
-   then the push line to read CI per job on that head. Every later push is the plain push line.
+   then the push line to read CI per job on that head. Every later push is the push line.
 8. The review rounds (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
    `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`), as for any PR. HOLD the SHA the readers
    confirmed.
@@ -62,8 +62,8 @@ bash scripts/push-and-watch.sh <branch>
 ```
 
 Every push after the pull request exists is this line: it refuses while another SHA's run is pending, pushes, reads
-the SHA back and prints each job's conclusion. The FIRST push is
-`bash scripts/push-and-watch.sh <branch> --allow-no-run` (no run to watch before the pull request), then
+the SHA back and prints each job's conclusion. The FIRST push is a plain `git push -u origin <branch>` (CI runs on
+pull requests and on main alone, so before the pull request there is no run to watch), then
 `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>`, then this line.
 
 ## Evidence

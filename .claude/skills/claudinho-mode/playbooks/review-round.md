@@ -11,9 +11,11 @@ verdict and finding becomes a row before anything goes back to the coder.
    tree nobody is editing.
 3. The inputs as files: the full patch against the base (`git diff <base>...<head>`), the PR body, and a manifest of
    their hashes; the first 12 hex of the manifest's digest name the inputs every verdict line must carry.
-4. The runner on the head (`.claude/agents/claudinho-runner.md`): its own worktree, the suite, the gate, its own
-   mutation pass, and whatever the readers could not run. The verifier (`.claude/agents/claudinho-verifier.md`)
-   when a surface changed.
+4. The runner on the head (`.claude/agents/claudinho-runner.md`), in its own worktree. When the change touches
+   executable configuration, commands, package contents or product code, it installs, builds, runs the suite and
+   `bash scripts/gate.sh`, its own mutation pass and whatever the readers could not run; for prose alone (AGENTS.md
+   "Validation scope", first bullet) it runs `git diff --check` and the private-document boundary check and reads the
+   diff. The verifier (`.claude/agents/claudinho-verifier.md`) when a surface changed.
 5. Every verdict read from its verdict line by name (`- Verdict: <value> · inputs <12 hex>`), never from a tail, a
    grep of the body or a summary; inputs that do not match the manifest void the verdict.
 6. The triage: one row per (reader, finding), each with a disposition: fix, not a defect (with the proof), or
@@ -23,8 +25,8 @@ verdict and finding becomes a row before anything goes back to the coder.
 8. The fix list checked against the standing rules (AGENTS.md "Conventions", "Rules and their enforcers", "Change
    discipline") and the plan-gate questions before it goes to the coder; the coder's commit carries its trailer
    and never edits a test.
-9. Run the gate below on the fixed head, push with the push line below, and read the per-job CI after every push,
-   before the next round.
+9. Run the gate below on the fixed head (for prose alone, `git diff --check` and the private-document boundary
+   check), push with the push line below, and read the per-job CI after every push, before the next round.
 10. Then the confirmation round (`.claude/skills/claudinho-mode/playbooks/confirmation-round.md`).
 
 ## Gate
@@ -33,7 +35,10 @@ verdict and finding becomes a row before anything goes back to the coder.
 bash scripts/gate.sh
 ```
 
-Run on the fixed head before it is pushed, and by the runner on the head it reads; every step's verdict read.
+Run on the fixed head before it is pushed, and by the runner on the head it reads, when the change touches executable
+configuration, commands, package contents or product code; every step's verdict read. For prose alone (AGENTS.md
+"Validation scope", first bullet) the runner and the fix run `git diff --check` and the private-document boundary
+check instead.
 
 ## Push
 
