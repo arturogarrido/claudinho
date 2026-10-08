@@ -63,6 +63,9 @@ describe('the playbooks', () => {
   for (const kind of KINDS) {
     it(`${kind}: quotes the gate and push lines, never the paraphrase, and carries the reply shape`, () => {
       const text = read(join(PLAYBOOKS, `${kind}.md`));
+      // The lines as they are run, each on a line of its own (a mention inside a sentence is not the quoted command).
+      expect(text).toMatch(/^\s*bash scripts\/gate\.sh\s*$/m);
+      expect(text).toMatch(/^\s*bash scripts\/push-and-watch\.sh <branch>\s*$/m);
       expect(text).toContain(GATE_LINE);
       expect(text).toContain(PUSH_LINE);
       expect(text).not.toMatch(PARAPHRASE);
