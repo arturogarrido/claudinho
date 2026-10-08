@@ -86,9 +86,10 @@ match's `stage` is the written one (`REGULAR` for a league's season, `LEAGUE` fo
 league phase, `PO` for play-offs), or `OTHER` with the provider's own words in `stageLabel`.
 
 Resources: `standings://{group}` (its text starts with the competition it is for, like a tool's), `fixtures://{date}` (the bundled World Cup schedule, named first, whatever the competition). Prompts: `tournament_today`,
-and `my_team` (the World Cup's: give it a nation's code or name; it asks the World Cup's
-tools, `competition: "world-cup"`, for the next fixture with its date and state, the
-standings, and the prediction-market read).
+and `my_team` (the competition you follow: give it a club's or a nation's code or name, or
+none for your team (the server's `CLAUDINHO_TEAM`, else the one pinned with `claudinho follow --team`);
+it asks for the next fixture with its date and state and the team's standing, and on the World Cup
+for the prediction-market read of that fixture).
 
 ## Market signals
 
