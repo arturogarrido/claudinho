@@ -35,6 +35,10 @@ describe('my_team prompt', () => {
       expect(team?.required ?? false, 'a team is optional: with none, the pinned team').toBe(false);
       expect(team?.description).toMatch(/club|nation/i);
       expect(team?.description).toMatch(/follow --team/);
+      expect(team?.description).toMatch(/CLAUDINHO_TEAM/);
+      expect(team?.description?.indexOf('CLAUDINHO_TEAM'), 'the environment wins, so it is named first').toBeLessThan(
+        team?.description?.indexOf('follow --team') ?? -1,
+      );
       expect(team?.description).not.toMatch(/World Cup nation/);
       expect(p?.arguments?.map((a) => a.name)).toEqual(['team']);
     });
@@ -55,11 +59,22 @@ describe('my_team prompt', () => {
       expect(text).toMatch(/no competition argument/);
       expect(text).toMatch(/noCompetition/);
       expect(text).toMatch(/claudinho follow <alias>/);
-      // The market read is conditional on the competition, in the approved words, with the code's provenance.
+      // The market read is conditional on the competition and bound to the RETURNED fixture (by its id, never by the
+      // team's code: a code selects the team's current match, which can differ from its next one); off the World
+      // Cup the agent calls nothing and says nothing about markets.
       expect(text).toMatch(/[Oo]nly when the competition is the World Cup/);
-      expect(text).toContain('market signals are read for the World Cup alone');
-      expect(text).toMatch(/3-letter code/);
-      expect(text).toContain('get_team');
+      expect(text).toMatch(/matchId/);
+      expect(text).toMatch(/the fixture get_next_fixture returned|the fixture it returned|that fixture's id/);
+      expect(text).not.toMatch(/3-letter code/);
+      expect(text).toMatch(/do not call get_market_signal/);
+      expect(text).toMatch(/say nothing about markets/);
+      expect(text).not.toMatch(/anyway/);
+      expect(text).not.toContain('market signals are read for the World Cup alone');
+      // An empty answer keeps its horizon or verdict; the competition the answer names is relayed.
+      expect(text).toMatch(/no fixture/);
+      expect(text).toMatch(/never invent/);
+      expect(text).toMatch(/horizon|verdict/);
+      expect(text).toMatch(/competition (the answer|it) names/);
       // The standing is the team's row of its table, and a competition with no table is said so.
       expect(text).toMatch(/row of its table/);
       expect(text).toMatch(/no table/);
@@ -86,6 +101,8 @@ describe('my_team prompt', () => {
       expect(text).toContain('claudinho follow --team');
       expect(text).toMatch(/with no team/);
       expect(text).toMatch(/ask me which team/);
+      expect(text).toMatch(/an error/); // the no-team answer is a tool error, not a structured verdict
+      expect(text).toMatch(/CLAUDINHO_TEAM/);
       expect(text).not.toContain('undefined');
       expect(text).not.toMatch(/\bnull\b/);
       expect(text).toContain('get_standings');

@@ -85,7 +85,8 @@ describe("the server's copy", () => {
         expect(text).toMatch(/competition I follow/);
         expect(text).toMatch(/date/i);
         expect(text).toContain('its state (scheduled, in play or finished)');
-        expect(text).toContain('market signals are read for the World Cup alone');
+        expect(text).toMatch(/do not call get_market_signal/);
+        expect(text).toMatch(/matchId/);
         noEmDash('my_team', text);
       }
     });
