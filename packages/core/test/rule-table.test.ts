@@ -1,7 +1,8 @@
 /**
  * The rule table in AGENTS.md ("Rules and their enforcers", PR C): every row names an enforcer that exists (a test
  * file under a package's test/, a script under scripts/, a workflow under .github/workflows/), so a rename cannot
- * leave a dangling row; exactly one row says it has none. The prose of a row is the readers'.
+ * leave a dangling row; exactly one row says it has none; every row's Refuses and Limit cells are filled. A row
+ * naming a real but unrelated enforcer passes this structural test: that is the readers' to catch.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -45,6 +46,9 @@ describe('the rule table', () => {
     let none = 0;
     for (const cells of all) {
       const enforcer = cells[1] ?? '';
+      // A row says what its enforcer refuses and what it does not: an empty cell is a claim nobody can read.
+      expect((cells[2] ?? '').length, `row "${cells[0]}" has a Refuses cell`).toBeGreaterThan(8);
+      expect((cells[3] ?? '').length, `row "${cells[0]}" has a Limit cell`).toBeGreaterThan(3);
       if (/^\*?\*?none\b/i.test(enforcer)) {
         none += 1;
         continue;

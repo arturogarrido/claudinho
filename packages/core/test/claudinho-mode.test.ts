@@ -77,6 +77,23 @@ describe('the playbooks', () => {
       expect(text).not.toMatch(/\bdocs\/[\w.-]+/);
     });
   }
+  it('the PR-making playbooks create the branch, the worktree and the pull request their later steps use', () => {
+    for (const kind of ['bug-fix', 'feature', 'docs-only']) {
+      const text = read(join(PLAYBOOKS, `${kind}.md`));
+      expect(text, `${kind}: a worktree on a new branch`).toMatch(/git worktree add -b <branch>|git switch -c <branch>/);
+      expect(text, `${kind}: the pull request`).toContain('gh pr create');
+      expect(text, `${kind}: the first push has no run to watch`).toContain('--allow-no-run');
+    }
+  });
+
+  it('every playbook that ends in a merge requires the review and confirmation rounds first', () => {
+    for (const kind of ['bug-fix', 'feature', 'docs-only', 'dependency-bump', 'release']) {
+      const text = read(join(PLAYBOOKS, `${kind}.md`));
+      expect(text, `${kind}: the confirmation round`).toContain('playbooks/confirmation-round.md');
+      expect(text, `${kind}: the merge bound to the confirmed SHA`).toMatch(/--match-head-commit/);
+    }
+  });
+
   it('the feature and bug-fix playbooks name the verify skill; the release playbook names release:qa', () => {
     expect(read(join(PLAYBOOKS, 'feature.md'))).toContain('scripts/verify.mjs');
     expect(read(join(PLAYBOOKS, 'bug-fix.md'))).toContain('scripts/verify.mjs');
