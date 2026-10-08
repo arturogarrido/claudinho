@@ -1122,15 +1122,33 @@ export function buildServer(): McpServer {
       return { messages: [{ role: 'user', content: { type: 'text', text } }] };
     },
   );
-  // The protocol lets a client leave `arguments` out of prompts/get when no
+  // "No team" arrives in three forms, and each is read as no team (the pinned
+  // one): `arguments` left out of prompts/get (the protocol allows it when no
   // argument is required, and the SDK parses the arguments object as sent, so
-  // a request with none would be refused ("Required"). A missing `arguments` is
-  // read as {} (no team: the pinned one); the schema keeps the shape the SDK
-  // lists the arguments from (`team`, not required).
-  myTeam.argsSchema = Object.assign(
-    z.preprocess((v) => v ?? {}, z.object(myTeamArgs)),
-    { shape: myTeamArgs },
-  );
+  // a request with none would be refused: "Required"), an empty object, and
+  // the argument left blank (a client may send a blank field as ""). A blank
+  // team is the empty string or ordinary spaces only (U+0020): it is dropped
+  // before `clubArg`, whose `min(1)` would refuse it. Anything else, a tab, a
+  // no-break space or an invisible character included, goes to `clubArg` as
+  // it is, so a 41-character or an invisible-character team is still refused.
+  //
+  // This replaces the schema the SDK built from `myTeamArgs`, and relies on
+  // three SDK internals (1.31.0, `server/mcp.js` and `server/zod-compat.js`),
+  // which a future SDK could break: prompts/list builds the arguments from the
+  // schema's `shape`, read through `getObjectShape` (so the `shape` property
+  // keeps the listing `[{ name: 'team', required: false, description }]`);
+  // prompts/get keeps a schema that has a `shape` (`normalizeObjectSchema`)
+  // and parses `request.params.arguments` with it through `safeParseAsync`
+  // (so the preprocess runs before the object parse); and
+  // `RegisteredPrompt.argsSchema` is a plain assignable field (the prompt's
+  // `update({ argsSchema })` would rebuild it from a shape and drop this).
+  const blankTeamIsNone = (v: unknown): unknown => {
+    if (v === undefined || v === null) return {};
+    if (typeof v !== 'object') return v;
+    const { team, ...rest } = v as { team?: unknown };
+    return typeof team === 'string' && /^ *$/.test(team) ? rest : v;
+  };
+  myTeam.argsSchema = Object.assign(z.preprocess(blankTeamIsNone, z.object(myTeamArgs)), { shape: myTeamArgs });
 
   return server;
 }
