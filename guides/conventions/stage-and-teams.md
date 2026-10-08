@@ -1,10 +1,6 @@
 # Conventions: stages and teams
 
-This guide holds the narration behind the `AGENTS.md` "Conventions" bullet "The stage comes from a written grammar over the WHOLE season slug, with the competition's written kind", moved out of `AGENTS.md` word for word. It also holds what `.cursor/rules/trust-boundary.mdc` and `.cursor/rules/surface-parity.mdc` stated that no bullet does, under a heading naming the rule. `AGENTS.md` stays canonical.
-
-## The stage comes from a written grammar over the WHOLE season slug, with the competition's written kind
-
-Measured on the real feed (Oct 3, 2026): the season slugs above, `torneo-apertura` and `clausura---quarterfinals|semifinals|finals` (`mex.1`), `league-phase` (`uefa.champions`, `uefa.nations`), `knockout-round-playoffs` (`uefa.champions`), `relegation-playoffs` (`uefa.nations`), and the tournament rounds. UNMEASURED, so `OTHER` with their words until written down: `ita.1`'s and `ger.1`'s play-offs, and `fifa.cwc` (no event served).
+No sentence of the `AGENTS.md` "Conventions" bullets this guide serves ("The stage comes from a written grammar over the WHOLE season slug, with the competition's written kind" and "A team's identity is the provider's id; its code is a label") moved: each is a rule, a pointer, a list or a number, and stays in `AGENTS.md`. It also holds what `.cursor/rules/trust-boundary.mdc` and `.cursor/rules/surface-parity.mdc` stated that no bullet does, under a heading naming the rule. `AGENTS.md` stays canonical.
 
 ## From `.cursor/rules/trust-boundary.mdc`
 

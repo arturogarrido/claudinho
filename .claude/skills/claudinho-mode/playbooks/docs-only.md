@@ -6,6 +6,8 @@ behavior also change (AGENTS.md "Validation scope"); then the feature or bug-fix
 
 ## Steps
 
+0. A branch and its own worktree, never the main checkout: `git worktree add -b <branch> <path> main`; every later
+   step runs in `<path>`.
 1. Restate the ask in one line and name the files the change touches.
 2. Edit. A count of the supported set, the framing and the disclaimer derive from core's table and constant: the
    guards in AGENTS.md "Rules and their enforcers" name which files are pinned.
@@ -28,18 +30,30 @@ behavior also change (AGENTS.md "Validation scope"); then the feature or bug-fix
    only, never by a path under it.
 5. Links and stated contracts checked: every relative link resolves, every command the prose names runs as written,
    every claim about a script, a test or a flag read against that file.
-6. No build of its own unless executable configuration changed; the gate below is the PR's gate whatever its kind,
-   and CI runs the same list on the pushed head.
-7. Commit with the trailer, push with the push line below, read CI per job, then the review rounds as for any PR.
+6. The gate below only when the change also touches executable configuration, commands, package contents or product
+   behavior (AGENTS.md "Validation scope", first bullet); prose alone stops at steps 3 to 5.
+7. Commit with the trailer. The first push and the pull request, as the Push section says:
+   `bash scripts/push-and-watch.sh <branch> --allow-no-run`, then
+   `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>` (the body as Evidence says),
+   then the push line to read CI per job on that head. Every later push is the plain push line.
+8. The review rounds (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
+   `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`), as for any PR. HOLD the SHA the readers
+   confirmed.
+9. The merge, when authorized: read `gh pr view <n> --json headRefOid`; when it differs from the held SHA, REFUSE
+   the merge (a push after the confirmation is an unreviewed head: it goes back to the confirmation round); else
+   `gh pr merge <n> --squash --match-head-commit <held sha>`. Then CI per job on the merge commit.
 
 ## Gate
+
+When the change also touches executable configuration, commands, package contents or product behavior (AGENTS.md
+"Validation scope", first bullet), run:
 
 ```
 bash scripts/gate.sh
 ```
 
-Every step's verdict read; its `diff-check` and `pack` steps are the two that read prose (the whitespace check and
-the private-path scan).
+Every step's verdict read. Prose alone needs `git diff --check`, the private-document boundary check above, and the
+links checked; CI still runs its list on the pushed head, read per job by the push line.
 
 ## Push
 
@@ -47,14 +61,19 @@ the private-path scan).
 bash scripts/push-and-watch.sh <branch>
 ```
 
-It refuses while another SHA's run is pending, pushes, reads the SHA back and prints each job's conclusion.
+Every push after the pull request exists is this line: it refuses while another SHA's run is pending, pushes, reads
+the SHA back and prints each job's conclusion. The FIRST push is
+`bash scripts/push-and-watch.sh <branch> --allow-no-run` (no run to watch before the pull request), then
+`gh pr create --base main --head <branch> --title "<subject>" --body-file <file>`, then this line.
 
 ## Evidence
 
 - The boundary check's JSON (zero leaks, zero tracked private files), the `git diff --check` result, the links
   checked.
-- The commit ends with `Co-Authored-By: <Agent> (<Model>) <agent-no-reply-email>`, the model actually in use, and the
-  PR body credits the same.
+- The commit ends with `Co-Authored-By: <Agent> (<Model>) <agent-no-reply-email>`, the model actually in use. The PR
+  body file ends with the trailers of the agents whose commits the branch carries (two when a coordinator and a
+  coder both committed) and the generated-with line the coding client asks for.
+- The held SHA and the merge commit.
 - Kept privately, by role: the review ledger and the pre-push scan's result.
 
 ## Reply

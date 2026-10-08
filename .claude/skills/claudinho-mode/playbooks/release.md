@@ -16,15 +16,21 @@ maintainer's: never a tag or a publish by an agent.
    tripwires. A SKIP is not a pass; a feed outage is reported as one.
 5. For an MCP-affecting release: the base and head `tools/list` compared (CONTRIBUTING.md "Comparing MCP tool
    contracts").
-6. Commit with the trailer, push with the push line below, CI per job on the pushed SHA, the PR merged by the
-   maintainer.
-7. The tag is the maintainer's (`git tag vX.Y.Z` on the release commit, pushed by them). Then watch the publish
-   workflow on the tag (`.github/workflows/publish.yml`): its two jobs, `publish` and `mcp-registry`, read per job
-   with `gh run list --workflow publish.yml` and `gh run view <id>`; the npm versions, the GitHub Release and the
-   Registry record checked afterwards.
-8. The `.mcpb`/Smithery decision for an MCP-affecting release: the bundle is a snapshot; rebuilt with
-   `pnpm -F @claudinho/mcp build:mcpb`, audited at its root, published by the maintainer.
-9. The post-release chore: `npm i -g @claudinho/cli@latest`.
+6. Commit with the trailer, then the first push and the pull request (the Push section), and CI per job on the
+   pushed SHA.
+7. Before the merge is recommended: the review rounds on the release head
+   (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
+   `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`) and the review ledger's merge check passing,
+   with the confirmed SHA held.
+8. The merge is the maintainer's: `gh pr view <n> --json headRefOid` read against the held SHA (a different head
+   goes back to the confirmation round), then `gh pr merge <n> --squash --match-head-commit <held sha>`.
+9. The tag is the maintainer's (`git tag vX.Y.Z` on the release commit, pushed by them). Then watch the publish
+   workflow on the tag (`.github/workflows/publish.yml`): its two jobs, `publish` and `mcp-registry`, the run found
+   with `gh run list --workflow publish.yml` and read per job with `gh run view <id> --json jobs`; the npm versions,
+   the GitHub Release and the Registry record checked afterwards.
+10. The `.mcpb`/Smithery decision for an MCP-affecting release: the bundle is a snapshot; rebuilt with
+    `pnpm -F @claudinho/mcp build:mcpb`, audited at its root, published by the maintainer.
+11. The post-release chore: `npm i -g @claudinho/cli@latest`.
 
 ## Gate
 
@@ -41,12 +47,14 @@ CI's Node 20, Windows and macOS jobs (the push watch).
 bash scripts/push-and-watch.sh <branch>
 ```
 
-The release branch's head, its per-job CI read before the maintainer merges and tags.
+The release branch's first push is `bash scripts/push-and-watch.sh <branch> --allow-no-run` (no run to watch before
+its pull request), then `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>`, then this
+line, which reads the head's CI per job; every later push is this line.
 
 ## Evidence
 
 - The gate's log directory, the `pnpm release:qa` output with its counts, the `tools/list` comparison, the publish
-  run's per-job result, the npm, Release and Registry checks.
+  run's per-job result, the npm, Release and Registry checks, the held SHA and the merge commit.
 - The release commit ends with `Co-Authored-By: <Agent> (<Model>) <agent-no-reply-email>`, the model actually in use.
 - Kept privately, by role: the release log entry in the private procedure.
 
@@ -57,6 +65,6 @@ numbered "What I need from you": per item the context, the options, the recommen
 
 ## Ask
 
-- Merge the release PR and push the tag on the release commit.
+- Merge the release PR at the confirmed head and push the tag on the release commit.
 - The `.mcpb`/Smithery re-publish, for an MCP-affecting release.
 - Anything `pnpm release:qa` showed that the maintainer should eyeball before the tag.

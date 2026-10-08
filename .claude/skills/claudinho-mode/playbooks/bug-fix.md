@@ -5,6 +5,8 @@ makes it green, read by every reader on every head.
 
 ## Steps
 
+0. A branch and its own worktree, never the main checkout: `git worktree add -b <branch> <path> main`; every later
+   step runs in `<path>`.
 1. Restate the ask in one line: what is wrong, on which surface (CLI text or `--json`, MCP text or `data`, the
    statusline, the hook, a share card), and what the right output is.
 2. Find the test that pins the behavior, or write the failing one first. Run it and read the count from vitest's
@@ -20,13 +22,23 @@ makes it green, read by every reader on every head.
 5. Prove the test pins the rule: revert the rule, run the test, read red, restore (for a call-site bug, remove the
    call). Rerun the verify skill's command from step 3 and keep its evidence.
 6. Run the gate below and read it step by step.
-7. Push with the push line below and read CI per job on the pushed SHA.
-8. The review rounds (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
-   `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`): every reader confirms every head, nothing
-   pending, P3 included; a fix made after review is read again by every reader.
-9. The merge, when the maintainer authorized it: `gh pr merge <n> --squash --match-head-commit <sha>`, the SHA read
-   from `gh pr view <n> --json headRefOid`, never typed; then CI per job on the merge commit.
-10. The records, kept by role (see Evidence), then the reply.
+7. A user-facing change (AGENTS.md "Validation scope"): `pnpm release:qa` after a build, read whole; a skipped
+   live-feed check is not verified behavior.
+8. An MCP contract change (AGENTS.md "Validation scope"): `pnpm -F @claudinho/mcp smoke:stdio` and the base/head
+   `tools/list` comparison of CONTRIBUTING.md "Comparing MCP tool contracts".
+9. The first push and the pull request, as the Push section says:
+   `bash scripts/push-and-watch.sh <branch> --allow-no-run`, then
+   `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>` (the body as Evidence says),
+   then the push line, which pushes nothing (the remote already has the head) and reads CI per job on it. Every
+   later push is the plain push line.
+10. The review rounds (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
+    `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`): every reader confirms every head, nothing
+    pending, P3 included; a fix made after review is read again by every reader. HOLD the SHA the readers confirmed.
+11. The merge, when the maintainer authorized it: read `gh pr view <n> --json headRefOid`; when it differs from the
+    held SHA, REFUSE the merge (a push after the confirmation is an unreviewed head: it goes back to the
+    confirmation round); else `gh pr merge <n> --squash --match-head-commit <held sha>`. Then CI per job on the merge
+    commit.
+12. The records, kept by role (see Evidence), then the reply.
 
 ## Gate
 
@@ -44,17 +56,24 @@ read every line, not the last one. `audit SKIP (offline)` is not a pass. To comm
 bash scripts/push-and-watch.sh <branch>
 ```
 
-It refuses to push while a CI run for another SHA on the branch is pending (the push would cancel it), pushes, reads
-the remote SHA back and prints every job's conclusion for the CI run on that SHA. Its exit is the answer; a run still
-pending at the deadline is watched again by running the same line (nothing is pushed twice).
+Every push after the pull request exists is this line: it refuses to push while a CI run for another SHA on the
+branch is pending (the push would cancel it), pushes, reads the remote SHA back and prints every job's conclusion for
+the CI run on that SHA; a run still pending at the deadline is watched again by running the same line (nothing is
+pushed twice). The FIRST push is `bash scripts/push-and-watch.sh <branch> --allow-no-run`: before the pull request
+there is no run to watch, and the flag ends it at `pushed; CI not verified (no pull request)`. Then
+`gh pr create --base main --head <branch> --title "<subject>" --body-file <file>`, then this line, to read CI per job
+on that head.
 
 ## Evidence
 
 - The red test's commit, with its count in the message; the coder's commit, ending with the trailer
   `Co-Authored-By: <Agent> (<Model>) <agent-no-reply-email>`, the model actually in use (AGENTS.md "Commit
-  attribution"), and the PR body crediting the same.
+  attribution").
+- The PR body file: the ask, the acceptance or reproduction, the checks run, and at its end the two trailers (the
+  coordinator's, for the tests, and the coder's, for the change, each with the model actually in use) and the
+  generated-with line the coding client asks for.
 - The gate's log directory (named in its summary), the push watch's per-job table, the verify skill's evidence
-  directory.
+  directory, the held SHA and the merge commit.
 - Kept privately, by role: the review ledger (one row per reader per head), the triage, the pre-push scan's result,
   the private procedure's account of the run.
 

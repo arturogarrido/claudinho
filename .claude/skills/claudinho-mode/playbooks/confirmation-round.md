@@ -19,9 +19,10 @@ pending.
    another confirmation round; the round count is recorded.
 6. The gate below on the head, and the CI run on that SHA read per job.
 7. The merge check, by role (the review ledger's): every reader CONFIRMED on the same head SHA, the CI run on that
-   SHA green per job.
-8. The merge, when authorized: `gh pr merge <n> --squash --match-head-commit <sha>`, the SHA read from
-   `gh pr view <n> --json headRefOid`, never typed.
+   SHA green per job. HOLD that SHA: it is the only one the merge may name.
+8. The merge, when authorized: read `gh pr view <n> --json headRefOid`; when it differs from the held SHA, REFUSE
+   the merge (a push after the confirmation is an unreviewed head: this round runs again on it); else
+   `gh pr merge <n> --squash --match-head-commit <held sha>`, the SHA copied from the merge check, never typed.
 9. The merged tree compared with the gated head's: `git rev-parse <merge>^{tree}` against
    `git rev-parse <head>^{tree}`; a difference (a base that moved) is gated again. CI per job on the merge commit.
 

@@ -1,6 +1,6 @@
 # Conventions: reads off the bundled competition
 
-This guide holds the narration behind the `AGENTS.md` "Conventions" bullets "Off the bundled competition, `next`, `match <id>` and `bracket` answer from the competition itself" and "A window is composed of the requests the provider accepts", moved out of `AGENTS.md` word for word and in the bullets' order. Where a bullet kept the first clause of a sentence, the guide quotes that clause before the narration that followed it. It also holds what `.cursor/rules/trust-boundary.mdc` stated that no bullet does, under a heading naming the rule. `AGENTS.md` stays canonical.
+This guide holds the narration behind the `AGENTS.md` "Conventions" bullets "Off the bundled competition, `next`, `match <id>` and `bracket` answer from the competition itself" and "A window is composed of the requests the provider accepts", moved out of `AGENTS.md` word for word and in the bullets' order. Where the narration continues a sentence `AGENTS.md` kept, or refers to one, the guide quotes that sentence or clause first. It also holds what `.cursor/rules/trust-boundary.mdc` stated that no bullet does, under a heading naming the rule. `AGENTS.md` stays canonical.
 
 ## Off the bundled competition, `next`, `match <id>` and `bracket` answer from the competition itself
 

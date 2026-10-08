@@ -5,9 +5,11 @@ bug-fix playbook holds; a feature adds a plan gate, acceptance criteria and ever
 
 ## Steps
 
+0. A branch and its own worktree, never the main checkout: `git worktree add -b <branch> <path> main`; every later
+   step runs in `<path>`.
 1. Restate the ask in one line, then write the Definition of Done before any code (AGENTS.md "Definition of Done"):
    three to five acceptance criteria from the user's point of view and what the change does NOT cover, in the PR
-   description (drafted locally when no PR exists yet).
+   body file (the pull request is opened at step 10).
 2. A plan gate for a large or risky change, two rounds at most (the cap). The design packet, kept by role: the ask
    restated, the callers' examples, every state axis with its values, the owner of each decision, the next call and
    its concurrency, and two designs when a real choice exists. The readers read the packet before any code.
@@ -19,17 +21,24 @@ bug-fix playbook holds; a feature adds a plan gate, acceptance criteria and ever
 5. The verify skill per surface (`.claude/skills/verify-claudinho/SKILL.md`): `node scripts/verify.mjs doctor`, then
    `run --twin`, `mcp`, `prompt` or `hook` for each surface the change touches, offline, the evidence kept. A new
    surface gets its file in `.claude/skills/verify-claudinho/features/`.
-6. For an MCP contract change: the base and head `tools/list` compared by bytes (CONTRIBUTING.md "Comparing MCP tool
-   contracts") and `pnpm -F @claudinho/mcp smoke:stdio`.
-7. The mutation pass (revert each rule, run its test, read red, restore) and the real-feed parity against the base
+6. The mutation pass (revert each rule, run its test, read red, restore) and the real-feed parity against the base
    branch, key order included; both kept by role.
-8. Run the gate below, read it step by step; for a user-facing change, `pnpm release:qa` after the build, read whole
-   (a SKIP is not a pass, a skipped live check is not verified behavior).
-9. Push with the push line below; CI per job on the pushed SHA.
-10. The review and confirmation rounds (`.claude/skills/claudinho-mode/playbooks/review-round.md`,
-    `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`); every reader confirms every head.
-11. The merge, when authorized: `gh pr merge <n> --squash --match-head-commit <sha>`, the SHA read from
-    `gh pr view <n> --json headRefOid`, never typed; CI per job on the merge commit; then the reply.
+7. Run the gate below and read it step by step.
+8. A user-facing change (AGENTS.md "Validation scope"): `pnpm release:qa` after a build, read whole; a SKIP is not a
+   pass, and a skipped live-feed check is not verified behavior.
+9. An MCP contract change (AGENTS.md "Validation scope"): `pnpm -F @claudinho/mcp smoke:stdio` and the base/head
+   `tools/list` comparison of CONTRIBUTING.md "Comparing MCP tool contracts", compared by bytes.
+10. The first push and the pull request, as the Push section says:
+    `bash scripts/push-and-watch.sh <branch> --allow-no-run`, then
+    `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>` (the body as Evidence says),
+    then the push line, which pushes nothing (the remote already has the head) and reads CI per job on it. Every
+    later push is the plain push line.
+11. The review rounds (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
+    `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`): every reader confirms every head, nothing
+    pending, P3 included. HOLD the SHA the readers confirmed.
+12. The merge, when authorized: read `gh pr view <n> --json headRefOid`; when it differs from the held SHA, REFUSE
+    the merge (a push after the confirmation is an unreviewed head: it goes back to the confirmation round); else
+    `gh pr merge <n> --squash --match-head-commit <held sha>`. Then CI per job on the merge commit, and the reply.
 
 ## Gate
 
@@ -46,16 +55,21 @@ neither `pnpm release:qa` nor CI's Node 20, Windows and macOS jobs: the first is
 bash scripts/push-and-watch.sh <branch>
 ```
 
-It refuses while another SHA's run is pending, pushes, reads the remote SHA back and prints every job's conclusion
-for the CI run on that SHA. Read the per-job table after every push, before the next round.
+Every push after the pull request exists is this line: it refuses while another SHA's run is pending, pushes, reads
+the remote SHA back and prints every job's conclusion for the CI run on that SHA. Read the per-job table after every
+push, before the next round. The FIRST push is `bash scripts/push-and-watch.sh <branch> --allow-no-run` (before the
+pull request there is no run to watch; the flag ends it at `pushed; CI not verified (no pull request)`), then
+`gh pr create --base main --head <branch> --title "<subject>" --body-file <file>`, then this line.
 
 ## Evidence
 
-- The acceptance criteria and the exclusions in the PR body; the red tests' commit; the coder's commit with the
-  trailer `Co-Authored-By: <Agent> (<Model>) <agent-no-reply-email>` (the model actually in use), credited the same
-  in the PR body.
+- The red tests' commit; the coder's commit with the trailer
+  `Co-Authored-By: <Agent> (<Model>) <agent-no-reply-email>` (the model actually in use).
+- The PR body file: the acceptance criteria and the exclusions, the checks run, and at its end the two trailers (the
+  coordinator's, for the tests, and the coder's, for the change, each with the model actually in use) and the
+  generated-with line the coding client asks for.
 - The verify skill's evidence directory per surface, the gate's log directory, the push watch's table, the
-  `tools/list` comparison when the contract moved, the `pnpm release:qa` output.
+  `tools/list` comparison when the contract moved, the `pnpm release:qa` output, the held SHA and the merge commit.
 - Kept privately, by role: the design packet and its readers' reports, the mutation runner's rows, the parity corpus
   and its comparison, the review ledger, the triage, the private procedure's account.
 

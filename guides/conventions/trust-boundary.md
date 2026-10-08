@@ -1,6 +1,6 @@
 # Conventions: the trust boundary
 
-This guide holds the narration behind the `AGENTS.md` "Conventions" bullets "Every data vendor implements the `ProviderAdapter` interface" and "Text has ROLES, not one universal cleaner", moved out of `AGENTS.md` word for word and in the bullets' order. Where a bullet kept the first clause of a sentence, the guide quotes that clause before the narration that followed it. It also holds what `.cursor/rules/trust-boundary.mdc` stated that no bullet does, under a heading naming the rule. `AGENTS.md` stays canonical.
+This guide holds the narration behind the `AGENTS.md` "Conventions" bullets "Every data vendor implements the `ProviderAdapter` interface" and "Text has ROLES, not one universal cleaner", moved out of `AGENTS.md` word for word and in the bullets' order. Where the narration continues a sentence `AGENTS.md` kept, or refers to one, the guide quotes that sentence or clause first. It also holds what `.cursor/rules/trust-boundary.mdc` stated that no bullet does, under a heading naming the rule. `AGENTS.md` stays canonical.
 
 ## Every data vendor implements the `ProviderAdapter` interface
 
@@ -8,7 +8,7 @@ This guide holds the narration behind the `AGENTS.md` "Conventions" bullets "Eve
 
 ## Text has ROLES, not one universal cleaner
 
-That last one is load-bearing: while flags travelled through the text filter, the filter needed an emoji carve-out, and a carve-out without its own grammar is a covert channel (TAG characters, variation selectors and ZWJ each rode through it in turn — a `🏴` plus 42 tag characters is one 2-column glyph spelling a full instruction sentence).
+(AGENTS.md keeps "A human label is prose (no controls, no format characters, no emoji — bounded by display columns AND code points); an identifier is checked against an exact grammar; a timestamp is re-emitted canonically; a flag is **generated** from the nation, never read from a payload or a cache file.") That last one is load-bearing: while flags travelled through the text filter, the filter needed an emoji carve-out, and a carve-out without its own grammar is a covert channel (TAG characters, variation selectors and ZWJ each rode through it in turn — a `🏴` plus 42 tag characters is one 2-column glyph spelling a full instruction sentence).
 
 ## From `.cursor/rules/trust-boundary.mdc`
 

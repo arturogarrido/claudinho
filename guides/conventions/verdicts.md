@@ -1,6 +1,6 @@
 # Conventions: verdicts
 
-This guide holds the narration behind the `AGENTS.md` "Conventions" bullet "A verdict becomes output in ONE place", moved out of `AGENTS.md` word for word. Where a bullet kept the first clause of a sentence, the guide quotes that clause before the narration that followed it. It also holds what `.cursor/rules/surface-parity.mdc` stated that no bullet does, under a heading naming the rule. `AGENTS.md` stays canonical.
+This guide holds the narration behind the `AGENTS.md` "Conventions" bullet "A verdict becomes output in ONE place", moved out of `AGENTS.md` word for word. Where the narration continues a sentence `AGENTS.md` kept, or refers to one, the guide quotes that sentence or clause first. It also holds what `.cursor/rules/surface-parity.mdc` stated that no bullet does, under a heading naming the rule. `AGENTS.md` stays canonical.
 
 ## A verdict becomes output in ONE place
 

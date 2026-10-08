@@ -26,18 +26,30 @@ repository-root path.
 | A release: the version bump, the gate, the tag's watch | `.claude/skills/claudinho-mode/playbooks/release.md` | "Releasing", "Release readiness", "Release cadence"; `guides/conventions/bundle-and-bracket.md` (the bundle and the bracket tripwires) |
 | The fallback: work no kind above matches | `.claude/skills/claudinho-mode/playbooks/feature.md` | every AGENTS.md section and every guide under `guides/conventions/` the diff touches |
 
-The guides hold the narration behind the AGENTS.md "Conventions" bullets (a bullet whose narration moved ends with its
-`Narration:` line) and what the Cursor glob rules stated that no bullet does. By area:
+The guides hold the narration behind the AGENTS.md "Conventions" bullets and what the Cursor glob rules stated that no
+bullet does. An area below names its bullet by the bullet's lead; a guide is named only where that bullet ends with a
+`Narration:` line, and "the bullet alone" means the bullet kept every sentence:
 
-| Area | Guide |
-|---|---|
-| A provider adapter, the trust module, text roles, the cache constructors | `guides/conventions/trust-boundary.md` |
-| Standings tables and their keys | `guides/conventions/standings.md` |
-| A verdict, a qualifier, a cut text | `guides/conventions/verdicts.md` |
-| `next`, `match <id>` and `bracket` off the bundle; composed windows and seasons | `guides/conventions/off-bundle-reads.md` |
-| The refresher, the lock, the throttle note, discovery and the live gate | `guides/conventions/refresher.md` |
-| The competition selection, the supported table, the mode line, the pin | `guides/conventions/selection.md` |
-| Stages, team identity, flags and clubs | `guides/conventions/stage-and-teams.md` |
-| The bundled schedule, the bracket, knockout and team-facing surfaces | `guides/conventions/bundle-and-bracket.md` |
-| Bounds, the flair slot, format options, `release:qa`'s renders, share cards | `guides/conventions/surfaces.md` |
-| Market signals | AGENTS.md "Conventions" alone (its bullet kept every sentence) |
+| Area | AGENTS.md "Conventions" bullet | Guide |
+|---|---|---|
+| A provider adapter, the trust module, the cache constructors | "Every data vendor implements the `ProviderAdapter` interface" | `guides/conventions/trust-boundary.md` |
+| Text roles, flags generated from a nation | "Text has ROLES, not one universal cleaner" | `guides/conventions/trust-boundary.md` |
+| Standings tables and their keys | "A table has a key, and the key comes from the raw name" | the bullet alone |
+| Where standings come from | "Standings come from the provider's standings feed, NOT computed from a match window" | `guides/conventions/standings.md` |
+| A verdict, a qualifier, a cut text | "A verdict becomes output in ONE place" | `guides/conventions/verdicts.md` |
+| `next`, `match <id>` and `bracket` off the bundle | "Off the bundled competition, `next`, `match <id>` and `bracket` answer from the competition itself" | `guides/conventions/off-bundle-reads.md` |
+| Composed windows and seasons | "A window is composed of the requests the provider accepts" | `guides/conventions/off-bundle-reads.md` |
+| The lock, the throttle note, the attempt record | "A refresher decides under the lock, and a throttle always has somewhere to be written" | the bullet alone |
+| Discovery and the live gate | "Off the bundled competition the refresher discovers, then polls only when a match can be in play" | `guides/conventions/refresher.md` |
+| The supported table | "The supported set is ONE table, and every written fact of a competition derives from it" | the bullet alone |
+| The competition selection, the saved choice, the pin | "The competition is decided ONCE, at the edge, and then travels as a value" | `guides/conventions/selection.md` |
+| Stages | "The stage comes from a written grammar over the WHOLE season slug, with the competition's written kind" | the bullet alone |
+| Team identity, flags and clubs | "A team's identity is the provider's id; its code is a label" | the bullet alone |
+| The bracket's pairings | "The live fixture's pairing wins over the static topology's winner-refs" | `guides/conventions/bundle-and-bracket.md` |
+| Knockout and team-facing surfaces | "Knockout/team-facing surfaces MUST live-resolve" | `guides/conventions/bundle-and-bracket.md` |
+| Market signals | "Market signals use a separate `MarketProvider` interface" | the bullet alone |
+
+What a Cursor glob rule stated that no bullet does is in the guide named in that rule's last paragraph:
+`guides/conventions/trust-boundary.md`, `guides/conventions/off-bundle-reads.md`, `guides/conventions/verdicts.md`,
+`guides/conventions/selection.md`, `guides/conventions/stage-and-teams.md`, `guides/conventions/bundle-and-bracket.md`
+and `guides/conventions/surfaces.md`, each under a heading naming the rule.
