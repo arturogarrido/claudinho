@@ -55,8 +55,11 @@ describe('the rule table', () => {
         if (n.endsWith('.test.ts')) {
           const where = testPackages(n);
           expect(where.length, `${n} exists under a package's test/`).toBeGreaterThan(0);
-          // A row that names packages in parentheses after the file names only packages that hold it.
-          const claimed = [...enforcer.matchAll(/\(([a-z, ]+)\)/g)].flatMap((m) => (m[1] as string).split(',').map((s) => s.trim()));
+          // The parenthesized packages right after THIS file's name are the packages that hold it (a cell may name
+          // several files, each with its own group: `a.test.ts` (core, cli), `b.test.ts` (core)).
+          const after = enforcer.slice(enforcer.indexOf(`\`${n}\``) + n.length + 2);
+          const group = /^\s*\(([a-z, ]+)\)/.exec(after);
+          const claimed = group ? (group[1] as string).split(',').map((s) => s.trim()) : [];
           for (const c of claimed) if (PACKAGES.includes(c)) expect(where, `${n} in ${c}`).toContain(c);
         } else if (n.startsWith('scripts/')) {
           expect(existsSync(join(ROOT, n)), n).toBe(true);
