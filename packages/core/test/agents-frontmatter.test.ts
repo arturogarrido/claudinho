@@ -16,7 +16,8 @@ const FIELDS = new Set(['name', 'description', 'model', 'tools', 'isolation', 'e
 /** The author's literal list of this build's model aliases (the docs list these four). */
 const MODELS = new Set(['opus', 'sonnet', 'haiku', 'fable']);
 
-const split = (text: string): { fm: Record<string, string>; body: string } => {
+const split = (raw: string): { fm: Record<string, string>; body: string } => {
+  const text = raw.replace(/\r\n/g, '\n'); // a Windows checkout's CRLF
   const m = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text);
   const fm: Record<string, string> = {};
   for (const line of (m?.[1] ?? '').split('\n')) {

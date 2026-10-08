@@ -18,7 +18,8 @@ const KINDS = ['bug-fix', 'feature', 'review-round', 'confirmation-round', 'docs
 const GATE_LINE = 'bash scripts/gate.sh';
 const PUSH_LINE = 'bash scripts/push-and-watch.sh';
 const PARAPHRASE = /build, typecheck, test, lint, pack guard/i;
-const read = (p: string) => readFileSync(p, 'utf8');
+// A Windows checkout converts LF to CRLF: every text is read with LF so the frontmatter and line rules hold there too.
+const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
 const frontmatter = (text: string): Record<string, string> => {
   const m = /^---\n([\s\S]*?)\n---\n/.exec(text);
   const out: Record<string, string> = {};

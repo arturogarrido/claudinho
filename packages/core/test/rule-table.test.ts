@@ -13,7 +13,7 @@ const HEADING = '## Rules and their enforcers';
 const PACKAGES = ['core', 'cli', 'mcp'];
 
 function section(): string {
-  const text = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
+  const text = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8').replace(/\r\n/g, '\n'); // a Windows checkout's CRLF
   const a = text.indexOf(HEADING);
   expect(a, HEADING).toBeGreaterThanOrEqual(0);
   const b = text.indexOf('\n## ', a + HEADING.length);

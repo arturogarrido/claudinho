@@ -26,7 +26,8 @@ const NAMED = ['World Cup', 'Premier League', 'LALIGA', 'Champions League'] as c
 function walk(rel: string): string[] {
   const abs = join(ROOT, rel);
   if (!existsSync(abs)) return [];
-  return readdirSync(abs, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(rel, e.name)) : [join(rel, e.name)]));
+  // Forward slashes whatever the platform: the paths are compared as repository paths (`guides/...`).
+  return readdirSync(abs, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(`${rel}/${e.name}`) : [`${rel}/${e.name}`]));
 }
 const REST = SUPPORTED.length - NAMED.length;
 const FRAMING = `the World Cup, the Premier League, LALIGA, the Champions League and ${REST} more`;
