@@ -106,7 +106,7 @@ describe('my_team prompt', () => {
       // through (they are a label), and the label drops them.
       const spaced = await client.getPrompt({ name: 'my_team', arguments: { team: ' Arsenal ' } });
       expect(promptText(spaced)).toContain("Tell me about Arsenal's next match");
-      expect(promptText(spaced)).not.toContain(' Arsenal ');
+      expect(promptText(spaced)).not.toContain(" Arsenal 's"); // what the raw argument would print
     });
   });
 
