@@ -1108,18 +1108,19 @@ export function buildServer(): McpServer {
           : "Tell me about my team's next match and its current standing.",
         "Call each tool for the competition I follow: pass no competition argument (the server's competition applies, else my saved choice).",
         'If a tool answers noCompetition, tell me to run claudinho follow <alias> and stop.',
+        'If a tool answers an error naming the competitions, relay it and stop.',
         ...(team
           ? [
               `Call get_next_fixture with ${team} as team (a team's code or name).`,
               'If it answers unknownTeam, relay that answer as it is, then ask me which team and stop.',
             ]
           : [
-              "Call get_next_fixture with no team: it answers for my team, the server's CLAUDINHO_TEAM when it is set, else the team I pinned with claudinho follow --team.",
+              "Call get_next_fixture with no team: it answers for my team, the server's CLAUDINHO_TEAM when it is set, else the team I pinned for this competition with claudinho follow --team.",
               "It answers an error when no team was given, the server's CLAUDINHO_TEAM is unset and none is pinned for this competition, or when CLAUDINHO_TEAM holds nothing readable: then ask me which team and stop.",
               'If it answers unknownTeam, relay that answer as it is, then ask me which team and stop.',
             ]),
         "Always state the fixture's date and its state (scheduled, in play or finished), and call it in play only when the state says so: a next fixture is not a match happening now.",
-        'If get_next_fixture answers no fixture, relay that answer as it is, with its horizon or its verdict, and never invent a fixture.',
+        'If get_next_fixture answers no fixture, relay that answer as it is, with its horizon or its verdict when it carries one, and never invent a fixture.',
         'Name the competition the answer names.',
         `For the standing, call get_standings and read ${team ? `${team}'s` : "that team's"} row of its table (its group, or the league table).`,
         'When the competition has no table, or the answer says tables could not be read, say so.',
