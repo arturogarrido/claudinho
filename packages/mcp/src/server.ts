@@ -1077,29 +1077,59 @@ export function buildServer(): McpServer {
     }),
   );
 
-  server.registerPrompt(
+  // The followed competition's prompt: the tools are called with no
+  // competition argument (the server's, else the user's saved choice), so the
+  // prompt never resolves a competition itself. The market read alone is the
+  // World Cup's (market signals are read for the World Cup alone).
+  const myTeamArgs = {
+    team: clubArg
+      .optional()
+      .describe(
+        "A club's or a nation's code or name in the competition you follow, e.g. Arsenal, ARS, Mexico or MEX. Omit it for your team: the one pinned with claudinho follow --team, or the server's CLAUDINHO_TEAM when it is set",
+      ),
+  };
+  const myTeam = server.registerPrompt(
     'my_team',
     {
       title: 'My team',
       description:
-        "Focus on one World Cup nation's next match, group situation, and the prediction-market read (market signals are read for the World Cup alone).",
-      argsSchema: { team: clubArg.describe("A World Cup nation's 3-letter code or name, e.g. MEX or Mexico") },
+        "Focus on one team's next match in the competition you follow: its date and state, the team's standing in the table, and, on the World Cup, the prediction-market read.",
+      argsSchema: myTeamArgs,
     },
     ({ team: asked }) => {
-      // The bounded label, never the raw argument, goes into the prompt.
-      const team = humanLabel(asked, 40);
-      return {
-        messages: [
-          {
-            role: 'user',
-            content: {
-              type: 'text',
-              text: `Using get_next_fixture, get_standings, and get_market_signal, each called with competition: "world-cup" (this is the World Cup's prompt, whatever competition the user follows), tell me about ${team}'s next World Cup match, their current group standing, and what prediction markets currently say about that match. ${team} is a nation's code or name: get_next_fixture takes either; get_market_signal takes the 3-letter code (get_team gives it for a name), and prediction-market signals are read for the World Cup alone. Always state each fixture's date and its state (scheduled, in play or finished), so a market read is never mistaken for a different match. Treat the market percentages as informational context only: relay them factually, never as betting or trading advice.`,
-            },
-          },
-        ],
-      };
+      // The bounded label, never the raw argument, goes into the prompt. No
+      // team: the pinned one.
+      const team = asked === undefined ? '' : humanLabel(asked, 40);
+      const text = [
+        team
+          ? `Tell me about ${team}'s next match and ${team}'s current standing.`
+          : "Tell me about my team's next match and its current standing.",
+        "Call each tool for the competition I follow: pass no competition argument (the server's competition applies, else my saved choice).",
+        'If a tool answers noCompetition, tell me to run claudinho follow <alias> and stop.',
+        ...(team
+          ? [`Call get_next_fixture with ${team} as team (a team's code or name).`]
+          : [
+              "My team is the one I pinned with claudinho follow --team: call get_next_fixture with no team, and it answers for that team (or for the server's CLAUDINHO_TEAM, which wins when it is set) and names it.",
+              'If it answers that it has no team, ask me which team and stop.',
+            ]),
+        "Always state the fixture's date and its state (scheduled, in play or finished), and call it in play only when the state says so: a next fixture is not a match happening now.",
+        `For the standing, call get_standings and read ${team ? `${team}'s` : "that team's"} row of its table (its group, or the league table).`,
+        'When the competition has no table, or the answer says tables could not be read, say so.',
+        "Only when the competition is the World Cup (each tool's answer names its competition first), also call get_market_signal with the nation's 3-letter code (get_team gives it for a name) and relay what prediction markets say about that match.",
+        'In any other competition, say that market signals are read for the World Cup alone, and do not call get_market_signal.',
+        'Treat the market percentages as informational context only: relay them factually, never as betting or trading advice.',
+      ].join(' ');
+      return { messages: [{ role: 'user', content: { type: 'text', text } }] };
     },
+  );
+  // The protocol lets a client leave `arguments` out of prompts/get when no
+  // argument is required, and the SDK parses the arguments object as sent, so
+  // a request with none would be refused ("Required"). A missing `arguments` is
+  // read as {} (no team: the pinned one); the schema keeps the shape the SDK
+  // lists the arguments from (`team`, not required).
+  myTeam.argsSchema = Object.assign(
+    z.preprocess((v) => v ?? {}, z.object(myTeamArgs)),
+    { shape: myTeamArgs },
   );
 
   return server;
