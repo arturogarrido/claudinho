@@ -70,10 +70,14 @@ describe('my_team prompt', () => {
       expect(text).toMatch(/say nothing about markets/);
       expect(text).not.toMatch(/anyway/);
       expect(text).not.toContain('market signals are read for the World Cup alone');
-      // An empty answer keeps its horizon or verdict; the competition the answer names is relayed.
+      // An empty answer keeps its horizon or verdict WHEN it carries one (the World Cup's "No upcoming fixture found" and
+      // a degraded answer carry neither); the competition the answer names is relayed.
       expect(text).toMatch(/no fixture/);
       expect(text).toMatch(/never invent/);
-      expect(text).toMatch(/horizon|verdict/);
+      expect(text).toMatch(/horizon or its verdict when it carries one/);
+      // A refused competition (a CLAUDINHO_COMPETITION value the resolver refuses) is a tool error naming the aliases on
+      // every tool: relayed, then stop; it is not the no-team error.
+      expect(text).toMatch(/error naming the competitions/);
       expect(text).toMatch(/competition (the answer|it) names/);
       // An unknownTeam VERDICT (not an error) is relayed as it is, then the ask; the sentence is gated on the answer and
       // glosses nothing (off the World Cup the verdict is about the table read whole and the next 14 days: a club out
@@ -102,8 +106,9 @@ describe('my_team prompt', () => {
       expect(new Set(texts).size, 'the three forms of "no team" are one prompt').toBe(1);
       const text = texts[0] as string;
       expect(text).toContain('get_next_fixture');
-      expect(text).toMatch(/pinned/);
+      expect(text).toMatch(/pinned for this competition with claudinho follow --team/); // a pin applies under its competition alone
       expect(text).toContain('claudinho follow --team');
+      expect(text).toMatch(/error naming the competitions/);
       expect(text).toMatch(/with no team/);
       expect(text).toMatch(/ask me which team/);
       expect(text).toMatch(/an error/); // no team given and none pinned (or an unreadable CLAUDINHO_TEAM) is a tool error
