@@ -73,8 +73,12 @@ describe('my_team prompt', () => {
 
   it('with no team: the pinned team, named as such, and the ask when there is none', async () => {
     await withClient(async (client) => {
-      const res = await client.getPrompt({ name: 'my_team' });
-      const text = promptText(res);
+      // A client may omit `arguments`, send an empty object, or send the argument left blank: each is "no team".
+      const texts = await Promise.all(
+        [undefined, {}, { team: '' }].map((args) => client.getPrompt({ name: 'my_team', arguments: args }).then(promptText)),
+      );
+      expect(new Set(texts).size, 'the three forms of "no team" are one prompt').toBe(1);
+      const text = texts[0] as string;
       expect(text).toContain('get_next_fixture');
       expect(text).toMatch(/pinned/);
       expect(text).toContain('claudinho follow --team');
