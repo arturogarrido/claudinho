@@ -1109,10 +1109,14 @@ export function buildServer(): McpServer {
         "Call each tool for the competition I follow: pass no competition argument (the server's competition applies, else my saved choice).",
         'If a tool answers noCompetition, tell me to run claudinho follow <alias> and stop.',
         ...(team
-          ? [`Call get_next_fixture with ${team} as team (a team's code or name).`]
+          ? [
+              `Call get_next_fixture with ${team} as team (a team's code or name).`,
+              'If it answers unknownTeam (the team is not in this competition), relay that answer as it is, then ask me which team and stop.',
+            ]
           : [
               "Call get_next_fixture with no team: it answers for my team, the server's CLAUDINHO_TEAM when it is set, else the team I pinned with claudinho follow --team, and its answer names the team.",
-              "If it answers an error because it has no team (none was given and none is pinned for this competition, or the server's CLAUDINHO_TEAM names no team), ask me which team and stop.",
+              "It answers an error when no team was given and none is pinned for this competition, or when the server's CLAUDINHO_TEAM holds nothing readable: then ask me which team and stop.",
+              "It answers unknownTeam when the server's CLAUDINHO_TEAM names a team this competition does not hold: relay that answer as it is, then ask me which team and stop.",
             ]),
         "Always state the fixture's date and its state (scheduled, in play or finished), and call it in play only when the state says so: a next fixture is not a match happening now.",
         'If get_next_fixture answers no fixture, relay that answer as it is, with its horizon or its verdict, and never invent a fixture.',
