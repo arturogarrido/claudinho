@@ -1080,12 +1080,14 @@ export function buildServer(): McpServer {
   // The followed competition's prompt: the tools are called with no
   // competition argument (the server's, else the user's saved choice), so the
   // prompt never resolves a competition itself. The market read alone is the
-  // World Cup's (market signals are read for the World Cup alone).
+  // World Cup's (market signals are read for the World Cup alone), and it is
+  // asked of the fixture get_next_fixture returned, by its id: a team's code
+  // selects the team's current match, which can differ from its next one.
   const myTeamArgs = {
     team: clubArg
       .optional()
       .describe(
-        "A club's or a nation's code or name in the competition you follow, e.g. Arsenal, ARS, Mexico or MEX. Omit it for your team: the one pinned with claudinho follow --team, or the server's CLAUDINHO_TEAM when it is set",
+        "A club's or a nation's code or name in the competition you follow, e.g. Arsenal, ARS, Mexico or MEX. Omit it for your team: the server's CLAUDINHO_TEAM when it is set, else the one pinned with claudinho follow --team",
       ),
   };
   const myTeam = server.registerPrompt(
@@ -1098,7 +1100,7 @@ export function buildServer(): McpServer {
     },
     ({ team: asked }) => {
       // The bounded label, never the raw argument, goes into the prompt. No
-      // team: the pinned one.
+      // team: the server's CLAUDINHO_TEAM, else the pinned one.
       const team = asked === undefined ? '' : humanLabel(asked, 40);
       const text = [
         team
@@ -1109,15 +1111,17 @@ export function buildServer(): McpServer {
         ...(team
           ? [`Call get_next_fixture with ${team} as team (a team's code or name).`]
           : [
-              "My team is the one I pinned with claudinho follow --team: call get_next_fixture with no team, and it answers for that team (or for the server's CLAUDINHO_TEAM, which wins when it is set) and names it.",
-              'If it answers that it has no team, ask me which team and stop.',
+              "Call get_next_fixture with no team: it answers for my team, the server's CLAUDINHO_TEAM when it is set, else the team I pinned with claudinho follow --team, and its answer names the team.",
+              "If it answers an error because it has no team (none was given and none is pinned for this competition, or the server's CLAUDINHO_TEAM names no team), ask me which team and stop.",
             ]),
         "Always state the fixture's date and its state (scheduled, in play or finished), and call it in play only when the state says so: a next fixture is not a match happening now.",
+        'If get_next_fixture answers no fixture, relay that answer as it is, with its horizon or its verdict, and never invent a fixture.',
+        'Name the competition the answer names.',
         `For the standing, call get_standings and read ${team ? `${team}'s` : "that team's"} row of its table (its group, or the league table).`,
         'When the competition has no table, or the answer says tables could not be read, say so.',
-        "Only when the competition is the World Cup (each tool's answer names its competition first), also call get_market_signal with the nation's 3-letter code (get_team gives it for a name) and relay what prediction markets say about that match.",
-        'In any other competition, say that market signals are read for the World Cup alone, and do not call get_market_signal.',
-        'Treat the market percentages as informational context only: relay them factually, never as betting or trading advice.',
+        "Only when the competition is the World Cup and get_next_fixture returned a fixture, also call get_market_signal with matchId set to that fixture's id (fixture.id in its data), never with the team's code, and relay what prediction markets say about that match.",
+        'In any other competition, do not call get_market_signal and say nothing about markets.',
+        'When you relay market percentages, treat them as informational context only: relay them factually, never as betting or trading advice.',
       ].join(' ');
       return { messages: [{ role: 'user', content: { type: 'text', text } }] };
     },
