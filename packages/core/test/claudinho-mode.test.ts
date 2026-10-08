@@ -78,11 +78,15 @@ describe('the playbooks', () => {
     });
   }
   it('the PR-making playbooks create the branch, the worktree and the pull request their later steps use', () => {
-    for (const kind of ['bug-fix', 'feature', 'docs-only']) {
+    for (const kind of ['bug-fix', 'feature', 'docs-only', 'dependency-bump', 'release']) {
       const text = read(join(PLAYBOOKS, `${kind}.md`));
       expect(text, `${kind}: a worktree on a new branch`).toMatch(/git worktree add -b <branch>|git switch -c <branch>/);
+      // The first push is a plain push: the watch script polls for a run until its deadline, and a branch with no
+      // pull request has none to find (CI runs on pull requests and on main), so the pull request is created first
+      // and the watch line reads CI once it exists.
+      expect(text, `${kind}: the first push is a plain push`).toContain('git push -u origin <branch>');
       expect(text, `${kind}: the pull request`).toContain('gh pr create');
-      expect(text, `${kind}: the first push has no run to watch`).toContain('--allow-no-run');
+      expect(text, `${kind}: never a watch before the pull request`).not.toContain('--allow-no-run');
     }
   });
 
