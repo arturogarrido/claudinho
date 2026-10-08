@@ -12,7 +12,8 @@ A Dependabot PR, an advisory, or a hand-made bump. The title is not the change: 
    starts at the watch (step 8), on a checkout of its branch; steps 1 to 6 run there as for any head.
 1. Read the lockfile delta, not the PR title: `git diff <base> <head> -- pnpm-lock.yaml`, every package that moved
    listed with its old and new version, runtime and dev apart. A runtime bump can move a whole subtree.
-2. Check the PR's CI date: a green run older than the newest advisory is stale; run the checks again on the head.
+2. A Dependabot-made PR: check its CI date (a green run older than the newest advisory is stale; run the checks again
+   on the head); a hand-made bump has none yet.
 3. The audit, its exit captured without a pipe: `pnpm audit --prod; echo "exit $?"` (a pipe reports the status of
    its last command, not the audit's).
 4. For a runtime dependency (the MCP SDK and what it loads): the modules that changed in its dist, walked from the
