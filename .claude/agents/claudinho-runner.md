@@ -12,13 +12,14 @@ previous report.
 
 - Check out the head you are given in your own worktree, detached, never the coder's. Read `AGENTS.md` and the
   files the patch touches.
-- When the change touches executable configuration, commands, package contents or product code, run
-  `pnpm install --frozen-lockfile`, `pnpm -r build`, the suite and `bash scripts/gate.sh`, and read every step's
-  verdict line; `audit SKIP (offline)` is not a pass. For prose alone (AGENTS.md "Validation scope", first bullet),
-  run `git diff --check` and the private-document boundary check AGENTS.md gives, and read the diff.
-- Run your own mutation pass on the rules the change adds or moves: revert one rule, run the test that claims to pin
-  it, expect red, restore, and confirm the file is back to the head's bytes. A mutant that stays green is a finding:
-  name the rule, the edit and the test, and what else makes the test hold.
+- One rule decides what you run. When the head changed code, a test or executable configuration (commands, package
+  contents, workflows, scripts): `pnpm install --frozen-lockfile`, `pnpm -r build`, the suite, `bash scripts/gate.sh`
+  (every step's verdict line read; `audit SKIP (offline)` is not a pass) and your own mutation pass on the rules the
+  change adds or moves: revert one rule, run the test that claims to pin it, expect red, restore, and confirm the
+  file is back to the head's bytes; a mutant that stays green is a finding: name the rule, the edit and the test,
+  and what else makes the test hold. When the head changed prose alone (AGENTS.md "Validation scope", first
+  bullet): `git diff --check` and the private-document boundary check AGENTS.md gives, and read the diff; no
+  mutation pass (a moved rule's text is not a rule's code).
 - Run what the readers could not: the scripts and their states, the smokes, the verify skill
   (`node scripts/verify.mjs`) on a touched surface.
 - You change nothing on the branch, commit nothing and push nothing.

@@ -5,7 +5,9 @@ A Dependabot PR, an advisory, or a hand-made bump. The title is not the change: 
 ## Steps
 
 0. The branch. A hand-made bump gets its own branch and worktree, never the main checkout:
-   `git worktree add -b <branch> <path> main`; the bump is made there and every later step runs in `<path>`. A
+   `git worktree add -b <branch> <path> main`; the bump is made there and COMMITTED there at once, with the trailer
+   `Co-Authored-By: <Agent> (<Model>) <agent-no-reply-email>`. That commit's SHA is `<head>`, the head every later
+   step reads (step 1's lockfile diff, step 5's pair, the push), and every later step runs in `<path>`. A
    Dependabot-made PR already has its branch and its pull request: its path through the push and the pull request
    starts at the watch (step 8), on a checkout of its branch; steps 1 to 6 run there as for any head.
 1. Read the lockfile delta, not the PR title: `git diff <base> <head> -- pnpm-lock.yaml`, every package that moved
@@ -20,12 +22,15 @@ A Dependabot PR, an advisory, or a hand-made bump. The title is not the change: 
 5. Two bumps open at once are merged in simulation before either lands, heads `<a>` and `<b>`:
    `git merge-tree --write-tree <a> <b>` (it prints a tree), then
    `git commit-tree <tree> -p <a> -p <b> -m "simulated pair"` (a commit no ref names), then
-   `git worktree add --detach <path> <commit>`, and the gate below there. A conflict-free merge can still be a
-   broken lockfile: install it frozen. After the first lands, the second is rebased and gated again.
+   `git worktree add --detach <pair-path> <commit>` (its own path, never step 0's `<path>`), the gate below there,
+   then `git worktree remove <pair-path>`. A conflict-free merge can still be a broken lockfile: install it frozen.
+   After the first lands, the second is rebased and gated again.
 6. Run the gate below on each head, and on the simulated pair.
-7. A hand-made bump: commit with the trailer; the first push is a plain `git push -u origin <branch>`; then
+7. A hand-made bump, already committed at step 0, is only pushed here: the first push is a plain
+   `git push -u origin <branch>`; then
    `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>` (the body ends with the
-   trailers of the agents whose commits the branch carries and the generated-with line the coding client asks for).
+   trailers of the agents whose commits the branch carries and the generated-with line the coding client asks for);
+   then the watch (step 8).
 8. The watch, per job: `bash scripts/push-and-watch.sh <branch>` on a checkout of the branch (it pushes nothing when
    the remote already has the head, and reads CI per job on it), or `gh run view <run-id> --json jobs` for the CI run
    whose head SHA is the PR's. Never `gh run list --commit <sha>`: it lists runs, not jobs.
@@ -54,8 +59,9 @@ Every step's verdict read; its `audit` step is the registry's answer, and `audit
 bash scripts/push-and-watch.sh <branch>
 ```
 
-For a hand-made bump the first push is a plain `git push -u origin <branch>` (CI runs on pull requests and on main
-alone: before the pull request there is no run, and the watch would poll for one until its deadline), then
+For a hand-made bump (committed at step 0, so nothing is committed here) the first push is a plain
+`git push -u origin <branch>` (CI runs on pull requests and on main alone: before the pull request there is no run,
+and the watch would poll for one until its deadline), then
 `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>`, then this line, which pushes
 nothing when the remote already has the head and prints each job's conclusion on it; every later push is this line.
 A Dependabot head is not pushed by the agent: this line on a checkout of its branch only watches it (step 8).
