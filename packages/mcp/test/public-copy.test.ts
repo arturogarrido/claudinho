@@ -3,9 +3,9 @@
  * the tool descriptions, the input descriptions, the INSTRUCTIONS (the quoted
  * voice example `— ¡GOOOOL!` excepted: a renderer's separator) or the prompt's
  * text; the footer is core's one disclaimer; the INSTRUCTIONS carry the "next is
- * not now" rule; the `my_team` prompt tells the agent to ask the World Cup's
- * tools (it is the World Cup's prompt: the markets are) and to relay the
- * fixture's date and state; and the Smithery manifest's tool blurbs are the
+ * not now" rule; the `my_team` prompt is the followed competition's (the tools
+ * called with no competition argument, the market read only on the World Cup)
+ * and relays the fixture's date and state; and the Smithery manifest's tool blurbs are the
  * tools' full descriptions, so the caveats the manifest guard requires stay.
  */
 import { readFileSync } from 'node:fs';
@@ -71,15 +71,23 @@ describe("the server's copy", () => {
     expect(INSTRUCTIONS).toContain(LINE);
   });
 
-  it("the my_team prompt asks the World Cup's tools and relays the date and state, with no em-dash", async () => {
+  it("the my_team prompt is the followed competition's, relays the date and state, and has no em-dash in its copy", async () => {
     await withClient(async (client) => {
-      const res = await client.getPrompt({ name: 'my_team', arguments: { team: 'MEX' } });
-      const text = res.messages.map((m) => (m.content.type === 'text' ? (m.content.text ?? '') : '')).join('\n');
-      expect(text).toMatch(/competition:\s*"world-cup"/);
-      expect(text).toMatch(/date/i);
-      expect(text).toMatch(/\bstate\b|\bstatus\b/i);
-      expect(text).toContain('its state (scheduled, in play or finished)');
-      noEmDash('my_team', text);
+      const { prompts } = await client.listPrompts();
+      const p = prompts.find((x) => x.name === 'my_team');
+      expect(p?.description).not.toMatch(/World Cup nation/);
+      noEmDash('my_team description', p?.description ?? '');
+      for (const a of p?.arguments ?? []) noEmDash(`my_team argument ${a.name}`, a.description ?? '');
+      for (const args of [{ team: 'MEX' }, undefined]) {
+        const res = await client.getPrompt({ name: 'my_team', arguments: args });
+        const text = res.messages.map((m) => (m.content.type === 'text' ? (m.content.text ?? '') : '')).join('\n');
+        expect(text).not.toMatch(/competition:\s*"world-cup"/);
+        expect(text).toMatch(/competition I follow/);
+        expect(text).toMatch(/date/i);
+        expect(text).toContain('its state (scheduled, in play or finished)');
+        expect(text).toContain('market signals are read for the World Cup alone');
+        noEmDash('my_team', text);
+      }
     });
   });
 
