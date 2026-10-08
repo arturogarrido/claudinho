@@ -75,6 +75,9 @@ describe('my_team prompt', () => {
       expect(text).toMatch(/never invent/);
       expect(text).toMatch(/horizon|verdict/);
       expect(text).toMatch(/competition (the answer|it) names/);
+      // A typed team the competition does not hold is the unknownTeam VERDICT (not an error): relayed, then the ask.
+      expect(text).toMatch(/unknownTeam/);
+      expect(text).toMatch(/relay/);
       // The standing is the team's row of its table, and a competition with no table is said so.
       expect(text).toMatch(/row of its table/);
       expect(text).toMatch(/no table/);
@@ -101,7 +104,8 @@ describe('my_team prompt', () => {
       expect(text).toContain('claudinho follow --team');
       expect(text).toMatch(/with no team/);
       expect(text).toMatch(/ask me which team/);
-      expect(text).toMatch(/an error/); // the no-team answer is a tool error, not a structured verdict
+      expect(text).toMatch(/an error/); // no team given and none pinned (or an unreadable CLAUDINHO_TEAM) is a tool error
+      expect(text).toMatch(/unknownTeam/); // a CLAUDINHO_TEAM naming a team the competition does not hold is a verdict
       expect(text).toMatch(/CLAUDINHO_TEAM/);
       expect(text).not.toContain('undefined');
       expect(text).not.toMatch(/\bnull\b/);
