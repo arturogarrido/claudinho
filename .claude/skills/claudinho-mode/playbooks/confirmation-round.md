@@ -1,0 +1,62 @@
+# Playbook: confirmation round
+
+Every reader reads the head again after a fix. A PR merges only when every reader confirms the same head with nothing
+pending.
+
+## Steps
+
+1. The inputs as files with a manifest of their hashes: the delta patch since the previous reviewed head
+   (`git diff <previous-head> <head>`), the full patch against the base, the PR body, and, for each reader, that
+   reader's own previous report (never another reader's).
+2. A detached checkout at the head for the readers; the runner (`.claude/agents/claudinho-runner.md`) on the head in
+   its own worktree, its mutation pass rerun on the rules the fix touched.
+3. Every reader asked again after every fix, including a reader that confirmed the previous head: a fix made after
+   review is read by every reader.
+4. Each verdict read from its verdict line by name, its inputs matched against the manifest. A verdict is CONFIRMED
+   only with nothing pending, P3 included; a deferral counts only as a tracked row the raising reader accepted in
+   writing.
+5. A new finding opens a fix list (`.claude/skills/claudinho-mode/playbooks/review-round.md`, steps 6 to 9) and
+   another confirmation round; the round count is recorded.
+6. The gate below on the head, and the CI run on that SHA read per job.
+7. The merge check, by role (the review ledger's): every reader CONFIRMED on the same head SHA, the CI run on that
+   SHA green per job.
+8. The merge, when authorized: `gh pr merge <n> --squash --match-head-commit <sha>`, the SHA read from
+   `gh pr view <n> --json headRefOid`, never typed.
+9. The merged tree compared with the gated head's: `git rev-parse <merge>^{tree}` against
+   `git rev-parse <head>^{tree}`; a difference (a base that moved) is gated again. CI per job on the merge commit.
+
+## Gate
+
+```
+bash scripts/gate.sh
+```
+
+Every step's verdict line read on the head the readers confirmed; the merged tree gated again when it differs.
+
+## Push
+
+```
+bash scripts/push-and-watch.sh <branch>
+```
+
+Each fix head is pushed with it and its per-job CI read before the confirmation round is prepared.
+
+## Evidence
+
+- Each reader's report per head, kept whole; the delta patch and the manifest.
+- Kept privately, by role: the review ledger's row per reader per head and its merge check, the triage, the private
+  procedure's account of the rounds.
+- The squash commit's message keeps the trailer `Co-Authored-By: <Agent> (<Model>) <agent-no-reply-email>` of the
+  agent and model that did the work.
+
+## Reply
+
+A status ends Running, Blocked on you or Done; Done names the merge commit, the tree comparison and the per-job CI.
+The run ends with a numbered "What I need from you": per item the context, the options, the recommendation and the
+default.
+
+## Ask
+
+- Merge at the confirmed head, when the merge is not already authorized.
+- A reader that cannot run (out of budget): wait for it, or the maintainer's decision; never a merge without every
+  reader's confirmation.

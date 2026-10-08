@@ -37,6 +37,10 @@ node packages/cli/dist/index.js today --tz America/Mexico_City --lang es
   layout, the provider/adapter model, the resultless-schedule and knockout
   live-resolve invariants, and the "apply the change to every surface" rule (CLI text
   **and** `--json`, MCP `data` **and** text, share, READMEs).
+- **Start any task at the router skill,
+  [`.claude/skills/claudinho-mode/SKILL.md`](.claude/skills/claudinho-mode/SKILL.md)**, which names
+  the playbook for the task's kind; a failure class that shipped or repeated, and the enforcer that
+  refuses it, are listed in [`AGENTS.md` → Rules and their enforcers](AGENTS.md#rules-and-their-enforcers).
 - **Hard constraints (legal, don't violate):** facts and **emoji flags only**: never
   crests, kits, player photos, or FIFA/Anthropic logos. Keep the *"Not affiliated with
   FIFA, any confederation, league or club, or Anthropic."* disclaimer (core's `DISCLAIMER`,
