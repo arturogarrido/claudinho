@@ -139,9 +139,9 @@ function fakeRoot(cli: string, mcp = 'process.exit(0);\n', version = VERSION): s
   return root;
 }
 /** A fake stdio MCP server: a line-delimited JSON-RPC reader; `boot` printed first (a stray line); `list` false never answers tools/list. */
-function fakeServer(o: { boot?: string; list?: boolean; pid?: string; schema?: boolean; exitCode?: number; shape?: 'empty' | 'badTools' | 'badCall' | 'emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError' | 'noVersion' | 'arraySchema' | 'bogusContent' | 'bareImage' | 'nullResource' | 'audioOk' | 'linkOk' | 'blobOk' | 'audioNoMime' | 'linkNoName' | 'resourceNoBody' } = {}): string {
+function fakeServer(o: { boot?: string; list?: boolean; pid?: string; schema?: boolean; exitCode?: number; shape?: 'empty' | 'badTools' | 'badCall' | 'emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError' | 'noVersion' | 'arraySchema' | 'bogusContent' | 'bareImage' | 'nullResource' | 'audioOk' | 'linkOk' | 'blobOk' | 'audioNoMime' | 'linkNoName' | 'resourceNoBody' | 'nullResult' } = {}): string {
   return `${o.pid ? `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(o.pid)}, String(process.pid));\n` : ''}${o.boot ? `console.log(${JSON.stringify(o.boot)});\n` : ''}
-const reply = (id, result) => process.stdout.write(JSON.stringify(${o.shape === 'empty' ? '{ jsonrpc: \'2.0\', id }' : '{ jsonrpc: \'2.0\', id, result }'}) + '\\n');
+const reply = (id, result) => process.stdout.write(JSON.stringify(${o.shape === 'empty' ? '{ jsonrpc: \'2.0\', id }' : o.shape === 'nullResult' ? '{ jsonrpc: \'2.0\', id, result: null }' : '{ jsonrpc: \'2.0\', id, result }'}) + '\\n');
 let buf = '';
 process.stdin.on('data', (d) => {
   buf += d;
@@ -249,6 +249,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
       const { r, res } = verify([args[0] as string, '--json', '--out', out(), ...args.slice(1)]);
       expect(r.status, why).toBe(2);
       expect(res?.phases ?? {}, why).toEqual({});
+      if (why === 'an unknown option') expect(res?.error ?? '', why).toMatch(/unknown option --frobnicate/);
     }
     const seedFile = verify(['seed', 'none', '--cache', join(ROOT, 'package.json'), '--json']);
     expect(seedFile.r.status, 'a --cache that is a file (seed none, which takes no --out)').toBe(2);
@@ -431,6 +432,17 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(dflt.r.status, 'the default evidence directory would sit inside the corpus').toBe(2);
     expect(dflt.res?.error ?? '').toMatch(/inside the replay corpus/);
     expect(existsSync(join(corpus, 'claudinho-verify')), 'nothing made under the corpus').toBe(false);
+    const tmpRoot = mkdtempSync(join(scratch, 'tmp-'));
+    const verifyDir = join(tmpRoot, 'claudinho-verify');
+    mkdirSync(verifyDir);
+    for (const url of urls) {
+      const body = /standings/.test(url) ? standings : JSON.stringify({ events: [] });
+      writeFileSync(join(verifyDir, `${sha(url)}.json`), JSON.stringify({ url, status: 200, body }));
+    }
+    const dfltOnly = verify(['run', '--json', '--replay', verifyDir, '--', 'team', 'mexico'], { env: { TMPDIR: tmpRoot } });
+    expect(dfltOnly.r.status, 'the corpus is the default evidence base itself: the default path is inside it while the temporary root is not').toBe(2);
+    expect(dfltOnly.res?.error ?? '').toMatch(/the evidence directory .* is inside the replay corpus/);
+    expect(readdirSync(verifyDir).some((f) => !f.endsWith('.json')), 'nothing made under the corpus').toBe(false);
     const homesIn = verify(['run', '--json', '--out', out(), '--replay', corpus, '--keep', '--', 'team', 'mexico'], { env: { TMPDIR: corpus } });
     expect(homesIn.r.status, 'the temporary root would sit inside the corpus').toBe(2);
     expect(homesIn.res?.error ?? '').toMatch(/temporary root .* is inside the replay corpus/);
@@ -530,7 +542,8 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
       ['audioNoMime', ['t'], 'tools/call'],
       ['linkNoName', ['t'], 'tools/call'],
       ['resourceNoBody', ['t'], 'tools/call'],
-    ] as Array<['emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError' | 'noVersion' | 'arraySchema' | 'bogusContent' | 'bareImage' | 'nullResource' | 'audioNoMime' | 'linkNoName' | 'resourceNoBody', string[], string]>) {
+      ['nullResult', ['--list'], 'initialize'],
+    ] as Array<['emptyInit' | 'badSchema' | 'nullContent' | 'numberText' | 'stringIsError' | 'noVersion' | 'arraySchema' | 'bogusContent' | 'bareImage' | 'nullResource' | 'audioNoMime' | 'linkNoName' | 'resourceNoBody' | 'nullResult', string[], string]>) {
       const root = fakeRoot('process.exit(0);\n', fakeServer({ shape }));
       const v = verify(['mcp', '--json', '--out', out(), ...argv], { env: { VERIFY_ROOT: root } });
       expect(v.res?.ok, shape).toBe(false);
