@@ -102,6 +102,11 @@ describe('my_team prompt', () => {
       expect(r).toMatch(/^refused:/);
       const ok = await client.getPrompt({ name: 'my_team', arguments: { team: 'O&M' } });
       expect(promptText(ok)).toContain('O&M');
+      // The bounded LABEL reaches the prompt, not the raw argument: the schema lets ordinary spaces at the ends
+      // through (they are a label), and the label drops them.
+      const spaced = await client.getPrompt({ name: 'my_team', arguments: { team: ' Arsenal ' } });
+      expect(promptText(spaced)).toContain("Tell me about Arsenal's next match");
+      expect(promptText(spaced)).not.toContain(' Arsenal ');
     });
   });
 
