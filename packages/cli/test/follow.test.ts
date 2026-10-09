@@ -15,7 +15,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EspnAdapter, type ProviderAdapter } from '@claudinho/core';
+import { EspnAdapter, type ProviderAdapter, SUPPORTED } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdFollow, InputError } from '../src/commands';
 import { resolveConfig } from '../src/config';
@@ -266,13 +266,13 @@ describe('reading the choice back', () => {
     expect(resolveConfig({}).selection.kind).toBe('none');
   });
 
-  it('`follow --list` prints the fifteen with the current one marked; `follow off` removes the file', async () => {
+  it('`follow --list` prints every row with the current one marked; `follow off` removes the file', async () => {
     await cmdFollow('premier-league', {}, ctxOf());
     writes = [];
     await cmdFollow(undefined, { list: true }, ctxOf());
     const rows = text().split('\n').filter((l) => /\b(world-cup|premier-league|club-world-cup)\b/.test(l));
     expect(rows.length).toBeGreaterThanOrEqual(3);
-    expect(text().split('\n').filter((l) => /· (nations|clubs) ·|· (nation|club) ·/.test(l))).toHaveLength(15);
+    expect(text().split('\n').filter((l) => /· (nations|clubs) ·|· (nation|club) ·/.test(l))).toHaveLength(SUPPORTED.length);
     const current = text().split('\n').find((l) => l.includes('premier-league')) ?? '';
     expect(current).toMatch(/\*|current|›|→|✓/);
     writes = [];

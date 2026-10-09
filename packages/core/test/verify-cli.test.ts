@@ -44,6 +44,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { SUPPORTED } from '../src';
 import { pidAlive, until } from './hermetic-shell';
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..');
@@ -469,7 +470,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect((list.res?.tools ?? []).every((t) => t.outputSchema != null)).toBe(true);
     const comps = verify(['mcp', '--json', '--out', out(), 'list_competitions']);
     expect(comps.res?.ok).toBe(true);
-    expect((at(comps.res?.structuredContent, 'competitions') as unknown[]).length).toBe(15);
+    expect((at(comps.res?.structuredContent, 'competitions') as unknown[]).length).toBe(SUPPORTED.length);
     expect((comps.res?.content ?? []).some((c) => c.type === 'text' && (c.text ?? '').length > 0)).toBe(true);
     const team = verify(['mcp', '--json', '--out', out(), 'get_team', '{"query":"mexico"}']);
     expect(at(team.res?.structuredContent, 'team.code')).toBe('MEX');

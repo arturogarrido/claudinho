@@ -10,7 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { readFileSync } from 'node:fs';
 import type { Match, ProviderAdapter } from '@claudinho/core';
-import { FakeMarketProvider, t as coreT } from '@claudinho/core';
+import { FakeMarketProvider, SUPPORTED, t as coreT } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v3';
 import { buildServer, INSTRUCTIONS, OUTPUT_SCHEMAS } from '../src/server';
@@ -219,10 +219,10 @@ describe('the resources name their competition', () => {
 });
 
 describe('list_competitions', () => {
-  it('lists the fifteen with their capabilities and the current selection, offline, within its strict schema', async () => {
+  it('lists every row with its capabilities and the current selection, offline, within its strict schema', async () => {
     const r = await toolListCompetitions({ competition: 'premier-league' });
     const data = r.data as { competitions: Array<Rec>; current: Rec | null };
-    expect(data.competitions).toHaveLength(15);
+    expect(data.competitions).toHaveLength(SUPPORTED.length);
     expect(data.competitions[0]).toMatchObject({ slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', teams: 'nation', kind: 'cup', capabilities: { scores: 'offered', next: 'offered', standings: 'offered', bracket: 'offered', markets: 'offered' } });
     expect(data.competitions.find((c) => c.slug === 'eng.1')).toMatchObject({ alias: 'premier-league', teams: 'club', kind: 'league', capabilities: { bracket: 'not-applicable', markets: 'not-offered-yet' } });
     expect(data.current).toEqual(PL);

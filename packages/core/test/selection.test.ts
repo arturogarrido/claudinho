@@ -7,7 +7,7 @@
  * no competition (`none`, 2.5b): no default anyone falls into without choosing.
  */
 import { describe, expect, it } from 'vitest';
-import { modeLine, resolveCompetition, selectionExtras } from '../src';
+import { modeLine, resolveCompetition, selectionExtras, SUPPORTED } from '../src';
 
 describe('resolveCompetition(explicit, env, saved)', () => {
   it('an alias or a slug, from the flag', () => {
@@ -45,7 +45,7 @@ describe('resolveCompetition(explicit, env, saved)', () => {
       if (r.kind === 'refused') {
         expect(r.value).toBe(bad);
         expect(r.aliases).toContain('premier-league');
-        expect(r.aliases).toHaveLength(15);
+        expect(r.aliases).toHaveLength(SUPPORTED.length);
       }
     }
   });

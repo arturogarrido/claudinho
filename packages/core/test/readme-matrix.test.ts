@@ -42,8 +42,8 @@ describe('the README matrix', () => {
     const { renderMatrix } = (await import(SCRIPT)) as Generator;
     const committed = blockOf(readFileSync(README, 'utf8'));
     expect(committed).toBe(renderMatrix(SUPPORTED, capabilitiesOf).trim());
-    // Fifteen rows, each naming its alias, and the five capabilities as columns.
-    expect(committed.split('\n').filter((l) => l.startsWith('| `')).length).toBe(15);
+    // One row per competition, each naming its alias, and the five capabilities as columns.
+    expect(committed.split('\n').filter((l) => l.startsWith('| `')).length).toBe(SUPPORTED.length);
     expect(committed).toContain('premier-league');
     expect(committed).toContain('world-cup');
     expect(committed).toMatch(/scores.*next.*standings.*bracket.*markets/i);

@@ -490,7 +490,7 @@ describe('found in review: a throttle is the provider speaking to the runner, no
     for (const status of [403, 429]) {
       const r = await run(() => json({}, status, { 'retry-after': '300' }), ['eng.1', 'esp.1', 'ita.1']);
       expect(r.urls, `status ${status}`).toHaveLength(1);
-      expect(r.rows).toHaveLength(15);
+      expect(r.rows).toHaveLength(core.SUPPORTED.length);
       expect(new Set(r.rows.map((row) => row.verdict))).toEqual(new Set(['blocked']));
       expect(r.rows.at(-1)?.detail).toMatch(/not asked/);
       expect(r.red).toBe(false);
@@ -1404,12 +1404,12 @@ describe('the canary takes its competitions and their cadences from the table it
     cadenceYears: 2 as const,
   };
   // Built inside each case: the table is a 2.5a export, and a file must load on the base.
-  const sixteen = () => ({ ...core, SUPPORTED: Object.freeze([...(core.SUPPORTED ?? []), fake]) }) as typeof core;
+  const withFake = () => ({ ...core, SUPPORTED: Object.freeze([...(core.SUPPORTED ?? []), fake]) }) as typeof core;
   const discovery = (r: { rows: Array<{ request: string; verdict: string }> }) => r.rows.find((x) => x.request === 'discovery');
 
-  it('with no `competitions` given, every row of the table is asked, the sixteenth included', async () => {
+  it('with no `competitions` given, every row of the table is asked, the added row included', async () => {
     const f = feed(healthy);
-    const r = await runCanary({ core: sixteen(), fetchImpl: f.fetchImpl, now: NOW, pauseMs: 0 });
+    const r = await runCanary({ core: withFake(), fetchImpl: f.fetchImpl, now: NOW, pauseMs: 0 });
     const asked = [...new Set(r.rows.map((row) => row.competition))];
     expect(asked).toEqual([...core.SUPPORTED.map((e) => e.slug), 'fra.1']);
     expect(r.rows.filter((row) => row.competition === 'fra.1').map((row) => row.request)).toEqual(['live', 'day', 'window', 'discovery', 'standings']);
@@ -1419,9 +1419,9 @@ describe('the canary takes its competitions and their cadences from the table it
     const at = new Date('2026-10-25T12:00:00Z');
     const months = (nov: number) => (url: string) =>
       json(url.includes('/standings') ? standings() : asked(url) === '202611' ? { leagues: [{ season: { ...SEASON, year: nov } }], events: [] } : scoreboard(url));
-    const twoUp = await runCanary({ core: sixteen(), competitions: ['fra.1'], fetchImpl: feed(months(2028)).fetchImpl, now: at, pauseMs: 0 });
+    const twoUp = await runCanary({ core: withFake(), competitions: ['fra.1'], fetchImpl: feed(months(2028)).fetchImpl, now: at, pauseMs: 0 });
     expect(discovery(twoUp)?.verdict).toBe('ok');
-    const threeUp = await runCanary({ core: sixteen(), competitions: ['fra.1'], fetchImpl: feed(months(2029)).fetchImpl, now: at, pauseMs: 0 });
+    const threeUp = await runCanary({ core: withFake(), competitions: ['fra.1'], fetchImpl: feed(months(2029)).fetchImpl, now: at, pauseMs: 0 });
     expect(discovery(threeUp)?.verdict).toBe('changed');
     // The same slug under the real table (where it is not written) turns by one.
     const unknownTwoUp = await runCanary({ core, competitions: ['fra.1'], fetchImpl: feed(months(2028)).fetchImpl, now: at, pauseMs: 0 });

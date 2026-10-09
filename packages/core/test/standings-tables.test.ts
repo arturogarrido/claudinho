@@ -2,7 +2,7 @@
  * 0.11 PR 2.3 — every table shape the supported competitions serve.
  *
  * The table parser read one shape: children named `Group <letter>`. Six of the
- * fifteen competitions serve that. Six serve one league table and answered
+ * then fifteen competitions serve that. Six served one league table (seven since the Liga AUF Uruguaya, Oct 2026) and answered
  * "unavailable"; the UEFA Nations League serves numbered groups and answered
  * the same; one has no table; and the Concacaf Nations League, whose tables are named
  * "League A, Group B", was read WRONG: each table was taken for the letter its
