@@ -90,6 +90,38 @@ describe('the playbooks', () => {
     }
   });
 
+  it('a worktree a playbook makes is installed before anything is built, tested or gated in it', () => {
+    // scripts/gate.sh starts at `pnpm -r build` (it has no install step): in a worktree git just made, with no
+    // node_modules, its build step fails with `tsup: command not found` (measured on Oct 8, 2026). So step 0, the
+    // step that makes the worktree, says `pnpm install --frozen-lockfile` in it before the first numbered step that
+    // builds, tests or gates there.
+    for (const kind of ['bug-fix', 'feature', 'docs-only', 'dependency-bump', 'release']) {
+      const text = read(join(PLAYBOOKS, `${kind}.md`));
+      const made = text.search(/git worktree add -b <branch>|git switch -c <branch>/);
+      expect(made, `${kind}: the worktree step`).toBeGreaterThanOrEqual(0);
+      const next = text.indexOf('\n1. ', made);
+      const step0 = text.slice(made, next === -1 ? undefined : next);
+      expect(step0, `${kind}: the install in the step that makes the worktree`).toContain('pnpm install --frozen-lockfile');
+    }
+  });
+
+  it('the simulated dependency pair is installed and gated in its own worktree, which is removed only after the gate', () => {
+    const text = read(join(PLAYBOOKS, 'dependency-bump.md'));
+    const added = text.indexOf('git worktree add --detach <pair-path>');
+    const removed = text.indexOf('git worktree remove <pair-path>');
+    expect(added, 'the pair is checked out at its own path').toBeGreaterThanOrEqual(0);
+    expect(removed, 'the pair is removed').toBeGreaterThan(added);
+    const held = text.slice(added, removed);
+    // A conflict-free merge can still be a broken lockfile: the frozen install is the check, and it needs the checkout.
+    expect(held, 'the frozen install between the checkout and its removal').toContain('pnpm install --frozen-lockfile');
+    expect(held, 'the gate between the checkout and its removal').toMatch(/gate/);
+    // Step 6 runs the gate on the pair: the removal comes after it, never inside step 5.
+    expect(removed, 'the removal after step 6').toBeGreaterThan(text.indexOf('\n6. '));
+    // Step 0 says every later step runs in `<path>`; the pair is the exception, said where the rule is.
+    const step0 = text.slice(text.indexOf('0. '), text.indexOf('\n1. '));
+    expect(step0, 'the exception stated where the rule is').toContain('<pair-path>');
+  });
+
   it('every playbook that ends in a merge requires the review and confirmation rounds first', () => {
     for (const kind of ['bug-fix', 'feature', 'docs-only', 'dependency-bump', 'release']) {
       const text = read(join(PLAYBOOKS, `${kind}.md`));
