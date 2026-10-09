@@ -105,18 +105,34 @@ describe('the playbooks', () => {
     }
   });
 
-  it('the simulated dependency pair is installed and gated in its own worktree, which is removed only after the gate', () => {
+  it('the dependency playbook installs the BUMPED lockfile on every head it gates: after the commit, on a Dependabot checkout, after a rebase', () => {
+    const text = read(join(PLAYBOOKS, 'dependency-bump.md'));
+    const step0 = text.slice(text.indexOf('0. '), text.indexOf('\n1. '));
+    // An install made before the bump reads main's lockfile and leaves the bumped dependencies off disk; the frozen
+    // install of the bumped lockfile is itself the first check (a lockfile the install refuses is a broken bump).
+    expect(step0, 'never before the bump').not.toMatch(/before the bump/);
+    expect(step0, 'the bumped lockfile is what is installed').toMatch(/bumped lockfile/);
+    // A Dependabot-made PR is read on a checkout of its branch: that checkout is installed first, like any head.
+    const dependabot = step0.slice(step0.indexOf('Dependabot'));
+    expect(dependabot, 'the Dependabot checkout installed first').toContain('pnpm install --frozen-lockfile');
+    // A rebase makes a new head: it is installed frozen again before it is gated.
+    expect(text, 'a rebased head installed again').toMatch(/rebased[^.]*installed frozen/);
+  });
+
+  it('the simulated dependency pair is installed, gated and removed inside the step that makes it', () => {
     const text = read(join(PLAYBOOKS, 'dependency-bump.md'));
     const added = text.indexOf('git worktree add --detach <pair-path>');
     const removed = text.indexOf('git worktree remove <pair-path>');
     expect(added, 'the pair is checked out at its own path').toBeGreaterThanOrEqual(0);
     expect(removed, 'the pair is removed').toBeGreaterThan(added);
     const held = text.slice(added, removed);
-    // A conflict-free merge can still be a broken lockfile: the frozen install is the check, and it needs the checkout.
-    expect(held, 'the frozen install between the checkout and its removal').toContain('pnpm install --frozen-lockfile');
-    expect(held, 'the gate between the checkout and its removal').toMatch(/gate/);
-    // Step 6 runs the gate on the pair: the removal comes after it, never inside step 5.
-    expect(removed, 'the removal after step 6').toBeGreaterThan(text.indexOf('\n6. '));
+    // A conflict-free merge can still be a broken lockfile: the frozen install is the check, and it needs the checkout;
+    // the gate runs on the installed pair; only then is the pair removed.
+    const installed = held.indexOf('pnpm install --frozen-lockfile');
+    expect(installed, 'the frozen install between the checkout and its removal').toBeGreaterThanOrEqual(0);
+    expect(held.indexOf('gate', installed), 'the gate after the install, before the removal').toBeGreaterThan(installed);
+    // The pair exists only when two bumps are open (step 5): a step that always runs must not remove it.
+    expect(removed, 'the removal inside step 5').toBeLessThan(text.indexOf('\n6. '));
     // Step 0 says every later step runs in `<path>`; the pair is the exception, said where the rule is.
     const step0 = text.slice(text.indexOf('0. '), text.indexOf('\n1. '));
     expect(step0, 'the exception stated where the rule is').toContain('<pair-path>');
