@@ -6,13 +6,16 @@ A Dependabot PR, an advisory, or a hand-made bump. The title is not the change: 
 
 0. The branch. A hand-made bump gets its own branch and worktree, never the main checkout:
    `git worktree add -b <branch> <path> main`; the bump is made there and COMMITTED there at once, with the trailer
-   `Co-Authored-By: <Agent> (<Model>) <agent-no-reply-email>`. Right after the worktree is made, before the bump:
-   `pnpm install --frozen-lockfile` in `<path>`, before anything is built, tested or gated there (a worktree git
-   just made has no `node_modules`). That commit's SHA is `<head>`, the head every later step reads (step 1's
-   lockfile diff, step 5's pair, the push), and every later step runs in `<path>` (but step 5's pair, which runs in
-   its own worktree, `<pair-path>`). A Dependabot-made PR already has its branch and its pull request: its path
-   through the push and the pull request starts at the watch (step 8), on a checkout of its branch; steps 1 to 6
-   run there as for any head.
+   `Co-Authored-By: <Agent> (<Model>) <agent-no-reply-email>`. That commit's SHA is `<head>`, the head every later
+   step reads (step 1's lockfile diff, step 5's pair, the push), and every later step runs in `<path>` (but step 5's
+   pair, which runs in its own worktree, `<pair-path>`). Then, on `<head>`, `pnpm install --frozen-lockfile` in
+   `<path>`: the frozen install of the bumped lockfile is the first check (an install the lockfile refuses is a
+   broken bump), and it is what puts the bumped dependencies on disk for steps 3 to 6 (a worktree git just made has
+   no `node_modules`; the gate starts at `pnpm -r build` and installs nothing). A Dependabot-made PR already has its
+   branch and its pull request: it is read on a checkout of its branch, `pnpm install --frozen-lockfile` there on its
+   head first, then steps 1 to 6 as for any head; its path through the push and the pull request starts at the watch
+   (step 8). After any rebase (step 5's second bump, a Dependabot rebase) the head is new: it is installed frozen
+   again before it is gated.
 1. Read the lockfile delta, not the PR title: `git diff <base> <head> -- pnpm-lock.yaml`, every package that moved
    listed with its old and new version, runtime and dev apart. A runtime bump can move a whole subtree.
 2. A Dependabot-made PR: check its CI date (a green run older than the newest advisory is stale; run the checks again
@@ -28,10 +31,9 @@ A Dependabot PR, an advisory, or a hand-made bump. The title is not the change: 
    `git commit-tree <tree> -p <a> -p <b> -m "simulated pair"` (a commit no ref names), then
    `git worktree add --detach <pair-path> <commit>` (its own path, never step 0's `<path>`), then
    `pnpm install --frozen-lockfile` in `<pair-path>` (a conflict-free merge can still be a broken lockfile: the
-   frozen install is that check), then the gate below there (step 6). After the first lands, the second is rebased
-   and gated again.
-6. Run the gate below on each head, and on the simulated pair in `<pair-path>`; then, once every gate has run,
-   `git worktree remove <pair-path>`.
+   frozen install is that check), then the gate below there, then `git worktree remove <pair-path>` (the pair
+   exists only in this step). After the first lands, the second is rebased, installed frozen and gated again.
+6. Run the gate below on each head (installed frozen at step 0); the simulated pair's gate ran in step 5.
 7. A hand-made bump, already committed at step 0, is only pushed here: the first push is a plain
    `git push -u origin <branch>`; then
    `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>` (the body ends with the
