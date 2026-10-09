@@ -61,11 +61,11 @@ describe('the README matrix', () => {
     expect(blockOf(lf)).toBe(renderMatrix(SUPPORTED, capabilitiesOf).trim());
   });
 
-  it('a sixteenth row renders with no other change', async () => {
+  it('a row past the table renders with no other change', async () => {
     const { renderMatrix } = (await import(SCRIPT)) as Generator;
     const fake = { slug: 'fra.1', alias: 'ligue-1', name: 'Ligue 1', teams: 'club', kind: 'league', seasonSlug: 'ligue-1', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 };
     const out = renderMatrix([...SUPPORTED, fake], capabilitiesOf);
-    expect(out.split('\n').filter((l) => l.startsWith('| `')).length).toBe(16);
+    expect(out.split('\n').filter((l) => l.startsWith('| `')).length).toBe(SUPPORTED.length + 1);
     expect(out).toContain('ligue-1');
     expect(out).toContain('Ligue 1');
   });

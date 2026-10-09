@@ -76,6 +76,7 @@ describe('the shapes are written down, per competition', () => {
       'ita.1': 'league',
       'ger.1': 'league',
       'mex.1': 'league',
+      'uru.1': 'league',
       'uefa.champions': 'league',
       'concacaf.champions': 'none',
     });

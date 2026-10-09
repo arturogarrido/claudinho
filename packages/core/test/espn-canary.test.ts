@@ -490,7 +490,9 @@ describe('found in review: a throttle is the provider speaking to the runner, no
     for (const status of [403, 429]) {
       const r = await run(() => json({}, status, { 'retry-after': '300' }), ['eng.1', 'esp.1', 'ita.1']);
       expect(r.urls, `status ${status}`).toHaveLength(1);
-      expect(r.rows).toHaveLength(core.SUPPORTED.length);
+      // Three competitions asked, five rows each (the request forms off the bundle; the first blocked, the rest not
+      // asked): a count of this run, not of the table.
+      expect(r.rows).toHaveLength(3 * 5);
       expect(new Set(r.rows.map((row) => row.verdict))).toEqual(new Set(['blocked']));
       expect(r.rows.at(-1)?.detail).toMatch(/not asked/);
       expect(r.red).toBe(false);
@@ -931,7 +933,7 @@ describe('found in review: absence is a finding, and the product’s own parser 
     // A league serves one table; one competition has none; the rest are groups.
     for (const c of Object.keys(core.STANDINGS_SHAPE)) expect(CANARY_COMPETITIONS, c).toContain(c);
     expect(CANARY_COMPETITIONS.filter((c) => core.STANDINGS_SHAPE[c] === 'league').sort()).toEqual(
-      ['eng.1', 'esp.1', 'ger.1', 'ita.1', 'mex.1', 'uefa.champions'].sort(),
+      ['eng.1', 'esp.1', 'ger.1', 'ita.1', 'mex.1', 'uru.1', 'uefa.champions'].sort(),
     );
   });
 
@@ -1244,6 +1246,7 @@ describe('what it watches and how it reports', () => {
         'ita.1',
         'ger.1',
         'mex.1',
+        'uru.1',
         'uefa.champions',
         'concacaf.champions',
         'fifa.cwc',
