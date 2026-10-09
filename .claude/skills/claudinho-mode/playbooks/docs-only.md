@@ -7,7 +7,8 @@ behavior also change (AGENTS.md "Validation scope"); then the feature or bug-fix
 ## Steps
 
 0. A branch and its own worktree, never the main checkout: `git worktree add -b <branch> <path> main`; every later
-   step runs in `<path>`.
+   step runs in `<path>`. Then `pnpm install --frozen-lockfile` in `<path>`, before anything is built, tested or
+   gated there (a worktree git just made has no `node_modules`).
 1. Restate the ask in one line and name the files the change touches.
 2. Edit. A count of the supported set, the framing and the disclaimer derive from core's table and constant: the
    guards in AGENTS.md "Rules and their enforcers" name which files are pinned.

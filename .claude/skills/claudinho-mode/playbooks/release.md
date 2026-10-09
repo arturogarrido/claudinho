@@ -6,7 +6,8 @@ maintainer's: never a tag or a publish by an agent.
 ## Steps
 
 0. The release branch and its own worktree, never the main checkout: `git worktree add -b <branch> <path> main`;
-   every later step runs in `<path>`.
+   every later step runs in `<path>`. Then `pnpm install --frozen-lockfile` in `<path>`, before anything is built,
+   tested or gated there (a worktree git just made has no `node_modules`).
 1. The batch: what is on main since the last tag, which of it is user-facing and which MCP-affecting (a tool's shape
    or description). A hotfix is live data correctness only (AGENTS.md "Release cadence").
 2. The version bump on the release branch, in the three `package.json` files (`packages/cli/package.json`,

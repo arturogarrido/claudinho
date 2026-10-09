@@ -6,7 +6,8 @@ bug-fix playbook holds; a feature adds a plan gate, acceptance criteria and ever
 ## Steps
 
 0. A branch and its own worktree, never the main checkout: `git worktree add -b <branch> <path> main`; every later
-   step runs in `<path>`.
+   step runs in `<path>`. Then `pnpm install --frozen-lockfile` in `<path>`, before anything is built, tested or
+   gated there (a worktree git just made has no `node_modules`).
 1. Restate the ask in one line, then write the Definition of Done before any code (AGENTS.md "Definition of Done"):
    three to five acceptance criteria from the user's point of view and what the change does NOT cover, in the PR
    body file (the pull request is opened at step 10).

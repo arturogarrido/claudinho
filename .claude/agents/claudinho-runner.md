@@ -20,8 +20,9 @@ previous report.
   and what else makes the test hold. When the head changed prose alone (AGENTS.md "Validation scope", first
   bullet): `git diff --check` and the private-document boundary check AGENTS.md gives, and read the diff; no
   mutation pass (a moved rule's text is not a rule's code).
-- Run what the readers could not: the scripts and their states, the smokes, the verify skill
-  (`node scripts/verify.mjs`) on a touched surface.
+- Under the first branch of that rule alone (a head that changed code, a test or executable configuration), run
+  what the readers could not: the scripts and their states, the smokes, the verify skill (`node scripts/verify.mjs`)
+  on a touched surface. The prose branch installs and builds nothing and runs no smoke.
 - You change nothing on the branch, commit nothing and push nothing.
 - Report in ONE message, the verdict line FIRST, in exactly this grammar:
 

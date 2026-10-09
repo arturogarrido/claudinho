@@ -6,7 +6,8 @@ makes it green, read by every reader on every head.
 ## Steps
 
 0. A branch and its own worktree, never the main checkout: `git worktree add -b <branch> <path> main`; every later
-   step runs in `<path>`.
+   step runs in `<path>`. Then `pnpm install --frozen-lockfile` in `<path>`, before anything is built, tested or
+   gated there (a worktree git just made has no `node_modules`).
 1. Restate the ask in one line: what is wrong, on which surface (CLI text or `--json`, MCP text or `data`, the
    statusline, the hook, a share card), and what the right output is.
 2. Find the test that pins the behavior, or write the failing one first. Run it and read the count from vitest's
