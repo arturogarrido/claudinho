@@ -1,5 +1,5 @@
 /**
- * The supported set, as ONE table: the fifteen competitions the product
+ * The supported set, as ONE table: the sixteen competitions the product
  * answers for, one row each, and every written fact about a competition that
  * the rest of the code reads (its teams' kind, its own kind, a league's season
  * name, its standings shape, what `bracket` and the market sidecar offer, how
@@ -77,14 +77,15 @@ export interface CompetitionEntry {
 export const BUNDLED_SLUG = 'fifa.world';
 
 /**
- * The fifteen, in the order they are listed.
+ * The sixteen, in the order they are listed.
  *   - Nations: the World Cup, the Euro, the Copa America (four-yearly), the
  *     UEFA Nations League, the Concacaf Nations League (its next editions are
  *     2026/27 and 2028/29, by Concacaf's published 2026 to 2030 calendar) and
  *     the Gold Cup (two-yearly).
- *   - The five leagues, yearly. A league's season name as measured on the real
- *     feed (Oct 3, 2026); `mex.1` has none (its slugs are `torneo-apertura`,
- *     `torneo-clausura` and its play-off rounds).
+ *   - The six leagues, yearly. A league's season name as measured on the real
+ *     feed (Oct 3, 2026); `mex.1` and `uru.1` have none (their slugs are
+ *     `torneo-apertura`, `torneo-clausura` and, for `mex.1`, its play-off
+ *     rounds).
  *   - The four club cups. The Champions League's league phase reads as one
  *     table; the Concacaf Champions Cup has none (knockout from the first
  *     round); the Club World Cup is four-yearly.
@@ -111,6 +112,7 @@ export const SUPPORTED: readonly CompetitionEntry[] = Object.freeze(
       { slug: 'ita.1', alias: 'serie-a', name: 'Serie A', teams: 'club', kind: 'league', seasonSlug: 'italian-serie-a', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
       { slug: 'ger.1', alias: 'bundesliga', name: 'Bundesliga', teams: 'club', kind: 'league', seasonSlug: 'german-bundesliga', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
       { slug: 'mex.1', alias: 'liga-mx', name: 'Liga MX', teams: 'club', kind: 'league', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
+      { slug: 'uru.1', alias: 'liga-auf', name: 'Liga AUF Uruguaya', teams: 'club', kind: 'league', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
       { slug: 'uefa.champions', alias: 'champions-league', name: 'Champions League', teams: 'club', kind: 'cup', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
       { slug: 'conmebol.libertadores', alias: 'libertadores', name: 'Libertadores', teams: 'club', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
       { slug: 'concacaf.champions', alias: 'concacaf-champions-cup', name: 'Concacaf Champions Cup', teams: 'club', kind: 'cup', standings: 'none', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
@@ -160,8 +162,8 @@ export interface DerivedTables {
 
 /**
  * The views every consumer reads, derived from a table. A function of the
- * table, so a test can run it on one with a sixteenth row and see every view
- * carry it. Every view is frozen.
+ * table, so a test can run it on one with a row past the table's end and
+ * see every view carry it. Every view is frozen.
  *
  * A row that offers a bracket for any competition but the bundled one is
  * REFUSED here, at load, naming it: an offered bracket needs a knockout

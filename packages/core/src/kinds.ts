@@ -4,7 +4,7 @@
  * a league's season name, its standings shape. Facts of the competition, one
  * entry each, never inferred from a name, a slug or a payload.
  *
- * The supported fifteen are ONE table (`supported.ts`); every view below is
+ * The supported sixteen are ONE table (`supported.ts`); every view below is
  * derived from it. Beside it, the EXPERIMENTAL extras: competitions the product
  * does not support but whose kinds are written down because the raw-slug
  * escape hatch reaches them. They OVERRIDE the table for their slug.

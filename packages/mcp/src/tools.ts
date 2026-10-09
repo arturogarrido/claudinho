@@ -172,7 +172,7 @@ export interface CommonOpts {
 const adapters = new Map<string, ProviderAdapter>();
 
 /**
- * How many adapters the server keeps, at most. Fifteen supported competitions
+ * How many adapters the server keeps, at most. Sixteen supported competitions
  * and room for as many raw slugs again, so a client walking
  * `list_competitions` never evicts a supported one, while a client asking
  * distinct raw slugs cannot grow the server without limit. An evicted adapter

@@ -249,7 +249,8 @@ export const ESPN_ID = /^[0-9]{1,20}$/;
  * provider's own id (`espn:359`). Namespaced so two providers' ids can never
  * collide, and exact so it stays an identifier — it lands verbatim in `--json`
  * and MCP `structuredContent`. Measured Oct 2 2026: 432 ESPN team rows across
- * 15 competitions, every id numeric and the same for a club in each of them.
+ * the 15 competitions then supported, every id numeric and the same for a club
+ * in each of them.
  */
 export const TEAM_ID = /^[a-z][a-z0-9]{1,15}:[0-9]{1,20}$/;
 

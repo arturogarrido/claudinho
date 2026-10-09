@@ -1,6 +1,6 @@
 {
   "name": "claudinho",
-  "description": "A read-only MCP server with live football scores, fixtures and standings for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 11 more. No API key. Pairs with the Claudinho Cursor CLI statusline. Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic, nor with Cursor.",
+  "description": "A read-only MCP server with live football scores, fixtures and standings for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 12 more. No API key. Pairs with the Claudinho Cursor CLI statusline. Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic, nor with Cursor.",
   "version": "0.8.18",
   "author": { "name": "Arturo Garrido" },
   "homepage": "https://github.com/arturogarrido/claudinho#readme",
@@ -25,6 +25,7 @@
     "serie-a",
     "bundesliga",
     "liga-mx",
+    "liga-auf",
     "champions-league",
     "libertadores",
     "concacaf-champions-cup",

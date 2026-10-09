@@ -1,7 +1,7 @@
 # Claudinho: Cursor Marketplace plugin
 
 **A read-only MCP server with live football scores, fixtures and standings for the competition
-you follow: the World Cup, the Premier League, LALIGA, the Champions League and 11 more.** No API
+you follow: the World Cup, the Premier League, LALIGA, the Champions League and 12 more.** No API
 key. Pairs with the Claudinho Cursor CLI statusline.
 
 **MCP-only.** This folder is the Cursor Marketplace manifest for the

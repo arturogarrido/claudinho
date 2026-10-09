@@ -2,7 +2,7 @@
 
 **An MCP server with live football scores, fixtures, standings and paste-ready match cards for
 the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and
-11 more.** Ask your agent in Claude Code, Cursor, Codex, Claude Desktop, Windsurf, Zed, VS Code,
+12 more.** Ask your agent in Claude Code, Cursor, Codex, Claude Desktop, Windsurf, Zed, VS Code,
 or any MCP client (stdio). No API key, no signup. The World Cup's 104 fixtures ship bundled; the
 other competitions' schedules are read from the feed, and live scores (and the optional,
 read-only Polymarket signals for the World Cup) hit the network. It ran the 2026 World Cup from
