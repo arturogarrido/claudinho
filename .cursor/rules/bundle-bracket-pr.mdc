@@ -8,44 +8,6 @@ alwaysApply: false
 
 Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint`** (mirror CI — build first because cli/mcp import `@claudinho/core` from dist; `build` alone does not typecheck). `scripts/gate.sh` runs the same gate with CI's smokes and guards, one verdict per step; it does not run `pnpm release:qa` or replace CI's Node 20, Windows and macOS jobs, which `scripts/push-and-watch.sh` reads on the pushed SHA.
 
-## Bundled schedule invariant
-
-`schedule.*.json` is a **resultless skeleton**: no scores/status, no confirmed nations in knockout slots.
-
-- `sanitizeBundledFixture` must restore topology placeholders for KO home/away.
-- `gen:schedule` must **fail** if any knockout fixture carries a real nation flag, and at once,
-  writing nothing, on a window that failed, carried no account, was not whole, or stated another
-  season (or none), and on a fixture served by two windows; its expected counts are named facts (`GROUPS`, `TEAMS_PER_GROUP`) and core's
-  `EXPECTED_KNOCKOUT_COUNTS`, never literals or this run's own topology.
-- Test degraded `getBracket()` on the bundle: seed/winner slots stay `tbd`, never `confirmed`.
-
-## Knockout resolution
-
-- Advance winners from **score OR `winnerCode`** (ESPN `competitor.winner` for penalties).
-- Always test FT draw + `winnerCode` — routine in knockouts.
-- Group slots project from live standings once **≥1 match played** (`hasGroupStarted`); **`confirmed`** when every team has played a full round-robin (`played >= n - 1` for `n` teams); **`(proj.)`** only mid-group. TBD at 0 games or when standings are degraded.
-
-## Topology indexing
-
-- Assign each bundled match's 1-based index within its stage by ascending numeric ESPN event id
-  (`orderByBracketIndex` in `packages/core/src/bracket/build.ts`), never by kickoff sort order.
-- **The live fixture's pairing wins.** ESPN's bundled placeholder winner/loser refs do not
-  reliably describe its actual feeder assignment. Use the participant served for that fixture;
-  project from a bundled feeder ref only when the target fixture is absent from the merged set.
-- Keep the disagreeing-feeder `P1 GUARD` in `packages/core/test/bracket-resolve.test.ts` green,
-  and cover the feeder fallback when the target fixture is absent. See `AGENTS.md` → Conventions.
-
-## Live hybrid paths
-
-- When knockout fetch fails but standings succeed: set `source` from standings provider.
-- Share/MCP: inner `formatBracketList({ footer: false })`, outer layer adds attribution/notices **once**.
-- CLI/MCP wrappers: option types must match the formatter (`ShareBracketOptions`, not `ShareSnippetOptions`).
-- **Surface parity:** see `.cursor/rules/surface-parity.mdc` — every bracket formatter path passes `tz` + `locale`; statusline knockouts indirect-resolve via cached `getKnockoutFixtures` (hot path fail-closed).
-
-## Pre-merge QA
-
-After `pnpm -r build`, run **`pnpm release:qa`** (`scripts/release-qa.sh`). Eyeball every section; tripwires at the end encode the 0.8.x bracket regressions (calendar month, tz threading, share disclaimer).
-
 ## Adversarial tests (add when touching bracket/schedule)
 
 | Scenario | Assert |
@@ -63,3 +25,5 @@ After `pnpm -r build`, run **`pnpm release:qa`** (`scripts/release-qa.sh`). Eyeb
 | Statusline knockout countdown (cached fixtures) | Real nations or `⚽ —`; never `🏳️` |
 | Statusline stale cache during live KO | `live · syncing…` without `🏳️`; resolved pairing when cache has it |
 | Empty fixtures cache at phase boundary | Re-polls after short TTL (~60s), not 15min |
+
+The invariants are `AGENTS.md` "Conventions" (canonical: the bundled schedule, the live pairing, the knockout surfaces). Their narration, and the knockout resolution, topology indexing, live hybrid paths and pre-merge QA this rule carried, are in `guides/conventions/bundle-and-bracket.md`; the adversarial test table stays in this rule, where the PR template cites it.

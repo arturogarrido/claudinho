@@ -38,3 +38,7 @@ The short form:
    CLI replaces neither CI's jobs nor the live pass, `release:qa`.
    User-facing behavior and releases also need `release:qa` after build. Rerun checks
    for new changes, failures, or unresolved concerns; after a push, verify CI on that SHA.
+8. **Start every task at the router skill**, `.claude/skills/claudinho-mode/SKILL.md`
+   (mirrored at `.cursor/skills/claudinho-mode/SKILL.md`), which names the playbook for the
+   task's kind, and find a failure class and the enforcer that refuses it in
+   **`AGENTS.md` → "Rules and their enforcers"**.

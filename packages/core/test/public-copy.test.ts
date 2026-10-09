@@ -10,7 +10,7 @@
  * Every en dash (U+2013: a score, a range, an alt text) stays: each file's count
  * is pinned to the count it had before the sweep.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -22,6 +22,13 @@ const collapsed = (text: string) => text.replace(/\s+/g, ' ');
 const json = (rel: string) => JSON.parse(read(rel)) as Record<string, unknown>;
 
 const NAMED = ['World Cup', 'Premier League', 'LALIGA', 'Champions League'] as const;
+/** Every file under a repository-root directory, as root-relative paths (empty when the directory is absent). */
+function walk(rel: string): string[] {
+  const abs = join(ROOT, rel);
+  if (!existsSync(abs)) return [];
+  // Forward slashes whatever the platform: the paths are compared as repository paths (`guides/...`).
+  return readdirSync(abs, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(`${rel}/${e.name}`) : [`${rel}/${e.name}`]));
+}
 const REST = SUPPORTED.length - NAMED.length;
 const FRAMING = `the World Cup, the Premier League, LALIGA, the Champions League and ${REST} more`;
 
@@ -57,10 +64,14 @@ describe('the framing', () => {
     // "15 competitions", "15 supported competitions", and core's listing's "(15 supported)" (the draft's verbatim
     // string): the last one the first form of this pattern could not see, so core's count went unpinned.
     const counting = /\b(\d{2}|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty) (?:(?:supported )?competitions\b|supported\b)/gi;
-    for (const rel of ['packages/mcp/server.json', 'packages/core/package.json', 'AGENTS.md', 'packages/cli/README.md', 'packages/core/README.md']) {
+    // The guides (PR C) hold the conventions' moved narration, counts included: every file under guides/ counts the
+    // table too (the framing and the dash rule stay on their own lists; a guide may carry em dashes as AGENTS.md does).
+    const guides = walk('guides').filter((f) => f.endsWith('.md'));
+    expect(guides.length, 'guides/ holds at least one markdown file').toBeGreaterThan(0);
+    for (const rel of ['packages/mcp/server.json', 'packages/core/package.json', 'AGENTS.md', 'packages/cli/README.md', 'packages/core/README.md', ...guides]) {
       const text = collapsed(read(rel));
       const hits = [...text.matchAll(counting)].map((m) => String(m[1]).toLowerCase());
-      expect(hits.length, `${rel} counts the supported set`).toBeGreaterThan(0);
+      if (!rel.startsWith('guides/')) expect(hits.length, `${rel} counts the supported set`).toBeGreaterThan(0);
       for (const hit of hits) expect(hit === String(n) || hit === WORDS[n], `${rel}: "${hit} competitions"`).toBe(true);
     }
   });
