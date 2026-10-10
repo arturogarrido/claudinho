@@ -145,11 +145,24 @@ export interface LiveResult {
 }
 
 /**
- * The clock a read counts by when its caller gave none: the adapter's, when
- * it states one (a test injects it there), else the wall clock.
+ * The clock a read counts by when its caller gave none: the adapter's read
+ * clock (`ProviderAdapter.now`, the one its reads and its cooldown count by; a
+ * test injects it there), else the wall clock.
  */
 function clockOf(adapter: ProviderAdapter): Date {
   return new Date(adapter.now?.() ?? Date.now());
+}
+
+/**
+ * THE clock of a request: the one its caller gave (a test's, a command's
+ * context), else the adapter's read clock ({@link clockOf}: the clock the
+ * adapter's reads and its cooldown count by, the wall clock in production).
+ * A surface reads it ONCE per request, after resolving its adapter, and hands
+ * it to every read and every rendering of the request, so a lookup and a
+ * countdown in one answer agree on "now".
+ */
+export function requestClock(adapter: ProviderAdapter, given?: Date): Date {
+  return given ?? clockOf(adapter);
 }
 
 /**

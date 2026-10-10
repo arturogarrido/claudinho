@@ -39,6 +39,7 @@ import {
   getMarketSignals,
   resolvedValues,
   getMatchById,
+  requestClock,
   isFinished,
   isLive,
   isReliableMarketSignal,
@@ -514,18 +515,27 @@ function teamQuery(raw: string, usage: string, t: Translator, competition: strin
  * games pass; core overlays the live knockout window (off the bundled
  * competition it reads the schedule ahead).
  */
-async function nextAsked(ctx: Ctx, team: string | undefined, usage: string): Promise<{ code: string; next: NextFixtureResult }> {
+async function nextAsked(
+  ctx: Ctx,
+  team: string | undefined,
+  usage: string,
+): Promise<{ code: string; next: NextFixtureResult; now: Date }> {
   const { cfg, t } = ctx;
   const asked = teamAsked(team, cfg);
   if (!asked) throw new InputError(usage);
-  const now = ctx.now ?? new Date();
   if ('pin' in asked) {
     // The World Cup's nations are named by code; a club by its name.
     const code = bundleApplies(cfg.competition) ? asked.pin.code : asked.pin.name;
-    return { code, next: await nextFixtureForPin(adapterFor(ctx), asked.pin, now) };
+    const adapter = adapterFor(ctx);
+    // The request's clock (the one given, else the adapter's read clock), read
+    // once: the read, and returned for the caller's rendering of it.
+    const now = requestClock(adapter, ctx.now);
+    return { code, next: await nextFixtureForPin(adapter, asked.pin, now), now };
   }
   const code = teamQuery(asked.query, usage, t, cfg.competition);
-  return { code, next: await getNextFixtureForTeam(adapterFor(ctx), code, now) };
+  const adapter = adapterFor(ctx);
+  const now = requestClock(adapter, ctx.now);
+  return { code, next: await getNextFixtureForTeam(adapter, code, now), now };
 }
 
 /**
@@ -746,14 +756,13 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
 export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void> {
   const { cfg, t } = ctx;
   precheck(cfg, t);
-  // The command's clock, read once: the fixture's read and the countdown are both relative to it.
-  const now = ctx.now ?? new Date();
   // Live-resolved: the bundled knockout slots are resultless placeholders, so a
   // static lookup goes blind once a team's group games pass — overlay the live
   // knockout window so a confirmed R32+ tie (e.g. MEX vs ECU) surfaces here too.
   // Off the bundled competition core resolves the club and reads the schedule
   // ahead (yesterday to 14 days ahead); a saved pin is not resolved again.
-  const { code, next } = await nextAsked({ ...ctx, now }, team, teamUsage('next', cfg));
+  // The request's clock comes back with the answer: the one the read took, for the countdown.
+  const { code, next, now } = await nextAsked(ctx, team, teamUsage('next', cfg));
   const { fixture, degraded, source } = next;
   // Who the answer is about: the club resolved, else the query, else the nation's code.
   const label = next.team?.name ?? next.query ?? code;
@@ -1418,11 +1427,14 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   // ±1-day window fetch: the provider buckets scoreboard days in its own zone,
   // so fetching only the fixture's UTC date can miss its live/final state.
   // Off the bundled competition the id is looked for in the schedule ahead.
-  const found = await getMatchById(adapterFor(ctx), id, ctx.now);
+  const adapter = adapterFor(ctx);
+  // The request's clock (the one given, else the adapter's read clock), read once: the read and the market's relevance.
+  const now = requestClock(adapter, ctx.now);
+  const found = await getMatchById(adapter, id, now);
   const { match, degraded, source: liveSource } = found;
 
   const market = match
-    ? await reliableMarketSignalFor(ctx, match)
+    ? await reliableMarketSignalFor({ ...ctx, now }, match)
     : { signal: undefined, complete: true };
 
   if (cfg.json) {
@@ -1634,7 +1646,6 @@ export async function cmdMarkets(
   // markets <id>  (anything that isn't a date or the "today" keyword)
   if (target && target !== 'today' && !isValidDate(target)) {
     precheck(cfg, t);
-    const now = ctx.now ?? new Date();
     // The market's scope is asked BEFORE any match lookup: off it nothing is
     // read for this competition, so no request is made to find the match.
     const scope = marketScopeVerdict(cfg.competition, 0);
@@ -1661,7 +1672,10 @@ export async function cmdMarkets(
       return;
     }
     // Live overlay (±1-day window) so FT gates the resolved market correctly.
-    const found = await getMatchById(adapterFor(ctx), target, now);
+    const adapter = adapterFor(ctx);
+    // The request's clock (the one given, else the adapter's read clock), read once: the read and the relevance.
+    const now = requestClock(adapter, ctx.now);
+    const found = await getMatchById(adapter, target, now);
     const { match } = found;
     const market =
       match && marketRelevant(match, now)

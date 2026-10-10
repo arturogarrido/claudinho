@@ -44,6 +44,7 @@ import {
   getMarketSignals,
   resolvedValues,
   getMatchById,
+  requestClock,
   getMatchesForDate,
   getNextFixtureForTeam,
   getStandings,
@@ -607,12 +608,13 @@ export async function cachedMarketSignals(
 async function reliableMarketData(
   args: CommonOpts,
   matches: readonly Match[],
+  /** The tool's request clock (`requestClock`), read once by the tool. */
+  now: Date,
 ): Promise<{
   data: Record<string, ReturnType<typeof marketData>> | undefined;
   complete: boolean;
 }> {
   if (!marketsEnabled()) return { data: undefined, complete: true };
-  const now = args.now ?? new Date();
   // Market reads are pre-match/in-play artifacts — never fetch/show for
   // finished matches (a resolved "favorite" reads as a bug, not information).
   const relevant = matches.filter((m) => marketRelevant(m, now));
@@ -713,8 +715,9 @@ async function todayAnswer(
   args: { date?: string } & CommonOpts,
 ): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
-  // The request's clock, read once: the day asked by default, and the countdown on its lines.
-  const now = args.now ?? new Date();
+  // The request's clock (the one given, else the adapter's read clock), read
+  // once: the day asked by default, the market relevance, the lines' countdown.
+  const now = requestClock(adapter, args.now);
   const date = args.date ?? localDate(now.toISOString(), args.tz);
   // The viewer's zone, the one the day is filed by below: the read judges
   // "nothing on this date" in it too.
@@ -739,7 +742,7 @@ async function todayAnswer(
   // Degraded ⇒ the live overlay failed: on the bundle these are static fixtures
   // with no live scores; off it there is no schedule to show.
   const degradedLine = degraded ? `(${t(args.lang, day.skeleton ? 'feed.degraded' : 'live.degraded')})` : undefined;
-  const market = await reliableMarketData(args, todays);
+  const market = await reliableMarketData(args, todays, now);
   const marketLine = market.complete
     ? undefined
     : '(Market data unavailable or incomplete — not all fixtures were checked.)';
@@ -786,8 +789,8 @@ export function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
 }
 async function liveAnswer(args: CommonOpts): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
-  // The request's clock, read once: the live read and the lines.
-  const now = args.now ?? new Date();
+  // The request's clock (the one given, else the adapter's read clock), read once: the live read and the lines.
+  const now = requestClock(adapter, args.now);
   const live = await getLiveMatches(adapter, now);
   const { matches, degraded, source } = live;
   const opts = fmtOpts(args, adapter.competition, now);
@@ -826,8 +829,10 @@ async function matchAnswer(
   // (ESPN: US/Eastern), so fetching only the fixture's UTC date can miss its
   // live/final state and silently render the match as still scheduled.
   const adapter = resolveAdapter(args);
-  // The request's clock, read once: the match's read, its market relevance and its line's countdown.
-  const now = args.now ?? new Date();
+  // The request's clock (the one given, else the adapter's read clock, as
+  // `getMatchById` would take it), read once: the match's read and its span,
+  // its market relevance and its line's countdown.
+  const now = requestClock(adapter, args.now);
   const found = await getMatchById(adapter, args.id, now);
   const { match, degraded, source: liveSource } = found;
   if (!match) {
@@ -1168,8 +1173,9 @@ async function nextAnswer(
   // bundled knockout slots are placeholders, so a static lookup goes blind once
   // a team's group games pass (it would answer "no upcoming fixture" even after
   // ESPN confirmed the tie). Fails closed to the static result on a feed outage.
-  // The caller's clock is still threaded for deterministic tests.
-  const now = args.now ?? new Date();
+  // The request's clock (the one given, else the adapter's read clock), read
+  // once: the read and the line's countdown.
+  const now = requestClock(adapter, args.now);
   const next = pin
     ? await nextFixtureForPin(adapter, pin, now)
     : 'code' in asked
@@ -1272,7 +1278,6 @@ async function marketAnswer(
   args: { matchId?: string; team?: string; date?: string } & CommonOpts,
 ): Promise<ToolResult> {
   const provider = resolveMarketProvider(args);
-  const now = args.now ?? new Date();
 
   // Most specific: a single match by id — with live overlay so FT gates the
   // resolved market correctly (the static fixture's status never changes).
@@ -1293,7 +1298,10 @@ async function marketAnswer(
         },
       };
     }
-    const found = await getMatchById(resolveAdapter(args), args.matchId, now);
+    const adapter = resolveAdapter(args);
+    // The request's clock (the one given, else the adapter's read clock), read once: the read and the relevance.
+    const now = requestClock(adapter, args.now);
+    const found = await getMatchById(adapter, args.matchId, now);
     const { match } = found;
     const relevant = match ? marketRelevant(match, now) : false;
     const batch =
@@ -1330,7 +1338,10 @@ async function marketAnswer(
     const code = args.team.toUpperCase();
     // Live-confirmed selection: handles extra time past the static window AND
     // early FTs inside it (the static fixture's status is forever SCHEDULED).
-    const picked = await marketFixtureForTeam(resolveAdapter(args), code, now);
+    const adapter = resolveAdapter(args);
+    // The request's clock (the one given, else the adapter's read clock), read once: the pick and the relevance.
+    const now = requestClock(adapter, args.now);
+    const picked = await marketFixtureForTeam(adapter, code, now);
     const { match: fixture, degraded } = picked;
     const relevant = fixture ? marketRelevant(fixture, now) : false;
     const batch =
@@ -1366,9 +1377,12 @@ async function marketAnswer(
     };
   }
 
-  // A date's matches (default: today).
+  // A date's matches (default: today). The request's clock (the one given,
+  // else the adapter's read clock), read once: the day and the relevance.
+  const adapter = resolveAdapter(args);
+  const now = requestClock(adapter, args.now);
   const date = args.date ?? localDate(now.toISOString(), args.tz);
-  const day = await getMatchesForDate(resolveAdapter(args), date, resolveTz(args.tz));
+  const day = await getMatchesForDate(adapter, date, resolveTz(args.tz));
   // The fixture read's verdict is part of the answer where markets are read
   // (off their scope the scope verdict is the whole answer, as before).
   const fixtureRead = marketsCoverCompetition(competitionOf(args)) ? day : {};
@@ -1432,9 +1446,10 @@ async function marketAnswer(
 async function reliableSignalMap(
   args: CommonOpts,
   matches: readonly Match[],
+  /** The card's request clock (`requestClock`), read once by its branch. */
+  now: Date,
 ): Promise<MarketSignalsResult> {
   if (!marketsEnabled()) return { signals: new Map(), complete: true };
-  const now = args.now ?? new Date();
   const relevant = matches.filter((m) => marketRelevant(m, now));
   if (relevant.length === 0) return { signals: new Map(), complete: true };
   const result = await cachedMarketSignals(args, relevant);
@@ -1555,10 +1570,10 @@ async function shareAnswer(args: ShareArgs): Promise<ToolResult> {
   // Per-call opt-out: `includeMarkets: false` skips the provider ENTIRELY (no
   // fetch) and yields no market data — not merely suppressed rendering. The env
   // opt-out (CLAUDINHO_MARKETS=off) is handled inside reliableSignalMap.
-  const signalsFor = (ms: readonly Match[]): Promise<MarketSignalsResult> =>
+  const signalsFor = (ms: readonly Match[], now: Date): Promise<MarketSignalsResult> =>
     args.includeMarkets === false
       ? Promise.resolve({ signals: new Map(), complete: true })
-      : reliableSignalMap(args, ms);
+      : reliableSignalMap(args, ms, now);
 
   // The competition goes on the card: its title names it and its run cue
   // selects it. The SELECTION's (what the answer is said to be for), like the
@@ -1568,7 +1583,8 @@ async function shareAnswer(args: ShareArgs): Promise<ToolResult> {
 
   // live: matches in play right now (no market enrichment, matching the CLI).
   if (args.live) {
-    const live = await getLiveMatches(resolveAdapter(args), args.now ?? new Date());
+    const adapter = resolveAdapter(args);
+    const live = await getLiveMatches(adapter, requestClock(adapter, args.now));
     // Bounded like the date branch: a share card is returned through MCP
     // before a human ever sees it. The count is STATED, not silently lost.
     const shownLive = boundedRecords(live.matches);
@@ -1651,8 +1667,11 @@ async function shareAnswer(args: ShareArgs): Promise<ToolResult> {
 
   // a single match by id, with live overlay (±1-day window — see toolGetMatch).
   if (args.matchId) {
-    const found = await getMatchById(resolveAdapter(args), args.matchId, args.now);
-    const market = await signalsFor(found.match ? [found.match] : []);
+    const adapter = resolveAdapter(args);
+    // The request's clock (the one given, else the adapter's read clock), read once: the read and the market.
+    const now = requestClock(adapter, args.now);
+    const found = await getMatchById(adapter, args.matchId, now);
+    const market = await signalsFor(found.match ? [found.match] : [], now);
     return shareResult(matchShareCard(found, args.matchId, market, where), options);
   }
 
@@ -1669,19 +1688,24 @@ async function shareAnswer(args: ShareArgs): Promise<ToolResult> {
     const code = 'code' in asked ? asked.code : query;
     // Overlay the live knockout window so a confirmed R32+ tie pastes too (see
     // getNextFixtureForTeam / toolGetNextFixture); fail closed on an outage.
-    const next = 'code' in asked ? await getNextFixtureForTeam(adapter, code, args.now ?? new Date()) : asked.answer;
-    const market = await signalsFor(next.fixture ? [next.fixture] : []);
+    // The request's clock (the one given, else the adapter's read clock), read once: the read and the market.
+    const now = requestClock(adapter, args.now);
+    const next = 'code' in asked ? await getNextFixtureForTeam(adapter, code, now) : asked.answer;
+    const market = await signalsFor(next.fixture ? [next.fixture] : [], now);
     return shareResult(nextShareCard(next, code, market, where), options);
   }
 
-  // a date's matches (default: today).
-  const date = args.date ?? localDate((args.now ?? new Date()).toISOString(), args.tz);
-  const day = await getMatchesForDate(resolveAdapter(args), date, resolveTz(args.tz));
+  // a date's matches (default: today). The request's clock (the one given,
+  // else the adapter's read clock), read once: the day and the market.
+  const adapter = resolveAdapter(args);
+  const now = requestClock(adapter, args.now);
+  const date = args.date ?? localDate(now.toISOString(), args.tz);
+  const day = await getMatchesForDate(adapter, date, resolveTz(args.tz));
   const todays = fixturesByDate(date, day.matches, args.tz);
   // Bounded like every other model-facing payload — a share card is
   // returned through MCP before a human ever sees it.
   const shownToday = boundedRecords(todays);
-  const market = await signalsFor(shownToday.items);
+  const market = await signalsFor(shownToday.items, now);
   return shareResult(
     dateShareCard(
       {

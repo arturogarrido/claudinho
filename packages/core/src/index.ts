@@ -94,6 +94,7 @@ export {
   SCHEDULE_LOOKBACK_DAYS,
   EARLIER_RECORD_NOTE,
   getMatchById,
+  requestClock,
   getStandings,
   getBracket,
   getNextFixtureForTeam,

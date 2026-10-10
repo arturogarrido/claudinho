@@ -1050,8 +1050,9 @@ export function buildServer(): McpServer {
     },
     async (uri, variables) => {
       const date = String(variables.date ?? '');
-      // The read's own clock, read once here: a resource carries none, and a
-      // scheduled line's countdown is relative to the moment it is read.
+      // The read's own clock, read once here: a resource carries none, and
+      // there is no adapter in scope to ask for its read clock (this is the
+      // bundled schedule); a scheduled line counts down from the moment of the read.
       const now = new Date();
       // The bundled schedule is the World Cup's, whatever the server's
       // competition: its text names it first.
