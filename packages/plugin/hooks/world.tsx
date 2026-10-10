@@ -1,4 +1,4 @@
-import { mock, test } from 'claude-code/testing'
+import { mock, type test } from 'claude-code/testing'
 
 /** The world beneath the plugin, shared by the three test files (a helper module: a test file imported by another would run its tests again). */
 export const START = { cwd: '/tmp/claudinho-test', surface: 'terminal', isInteractive: true } as const

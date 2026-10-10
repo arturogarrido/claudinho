@@ -176,7 +176,7 @@ the `+N` count kept), `context` (the hook's block, or `null`), `live` (the live 
 `picked` and `pinned`), `current` (whether that list is a current snapshot's, the read that filled
 it was whole: an empty list means nothing is on only when it is), `next` (the fixture the countdown names), `pick`, `competition`,
 `degraded`, `source`, `updatedAt`, `staleAfter` (when its live scores stop being shown) and
-`disclaimer` (the non-affiliation sentence). Like the statusline it reads only the local cache,
+`disclaimer` (the non-affiliation sentence). Beside `line` the view says what the line is, `idle` (the edition-complete line, however narrow it was fitted) and `empty` (nothing known), read before the fit so a program never reads a pace or a visibility off the text; and each live record carries `line`, the hook's own line for it with its flags and roster names, which a program says and never composes. Like the statusline it reads only the local cache,
 never the network, and starts the refresher when the cache is stale. The command itself exits 0
 whatever the cache holds (with nothing chosen it prints the `noCompetition` object and the
 first-run line); any other `--columns` value is refused by the option parser, as a wrong option is

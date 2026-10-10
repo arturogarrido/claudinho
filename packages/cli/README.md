@@ -287,7 +287,7 @@ one line, for a program that draws them itself: `line` (what `claudinho prompt` 
 columns with the `+N` count kept; N a positive integer), `context` (the hook's block, or `null`),
 `live` (the live matches, each marked `picked` and `pinned`), `current` (an empty list means nothing
 is on only when this is true), `next`, `pick`, `competition`, `degraded`, `source`, `updatedAt`,
-`staleAfter` and `disclaimer` (the non-affiliation sentence). It reads only the local cache, never
+`staleAfter` and `disclaimer` (the non-affiliation sentence). Beside `line` the view says what the line is, `idle` (the edition-complete line, however narrow it was fitted) and `empty` (nothing known), read before the fit so a program never reads a pace or a visibility off the text; and each live record carries `line`, the hook's own line for it with its flags and roster names, which a program says and never composes. It reads only the local cache, never
 the network; the command itself exits 0 whatever the cache holds, and any other `--columns` value is
 refused by the option parser, as a wrong option is for every command.
 
