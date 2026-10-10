@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { listTruncation, MAX_LIST_MATCHES, matchList, matchRows } from '../src/format';
 import { toContent } from '../src/server';
 import { toolGetMatch, toolGetStandings, toolGetToday } from '../src/tools';
+const NOW_PROOF = new Date('2026-06-08T00:00:00Z'); // the request's clock, which the line's options take
 
 const WC_SEASON = { year: 2026, startDate: '2026-06-11T04:00Z', endDate: '2026-12-31T04:59Z', displayName: '2026 FIFA World Cup' };
 type Side = { id: string; abbr: string; name: string };
@@ -148,10 +149,10 @@ describe('the list helpers: rows, the truncation sentence, and the list a cut ne
   });
 
   it('the rows say nothing about what they did not show; the list says it after them (fixtures://)', () => {
-    expect(matchRows(over, 'none')).not.toContain('truncated');
-    expect(matchRows(over, 'none').split('\n')).toHaveLength(MAX_LIST_MATCHES);
-    expect(matchList(over, 'none')).toBe(`${matchRows(over, 'none')}\n• (list truncated — 2 more not shown)`);
-    expect(matchList(fits, 'none')).toBe(matchRows(fits, 'none'));
-    expect(matchList([], 'none')).toBe('none');
+    expect(matchRows(over, 'none', { now: NOW_PROOF })).not.toContain('truncated');
+    expect(matchRows(over, 'none', { now: NOW_PROOF }).split('\n')).toHaveLength(MAX_LIST_MATCHES);
+    expect(matchList(over, 'none', { now: NOW_PROOF })).toBe(`${matchRows(over, 'none', { now: NOW_PROOF })}\n• (list truncated — 2 more not shown)`);
+    expect(matchList(fits, 'none', { now: NOW_PROOF })).toBe(matchRows(fits, 'none', { now: NOW_PROOF }));
+    expect(matchList([], 'none', { now: NOW_PROOF })).toBe('none');
   });
 });

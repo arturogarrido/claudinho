@@ -101,7 +101,7 @@ describe('get_match and get_next_fixture: the cry where the phrase was', () => {
 
 describe('the static list states no team kind', () => {
   it('fixtures:// (matchList with no options) prints the phrase, never a cry', () => {
-    const out = matchList([fixture()], 'none');
+    const out = matchList([fixture()], 'none', { now: NOW });
     expect(out).not.toContain('¡Ódiame más!');
     expect(scheduledPhrases(out)).toHaveLength(1);
   });

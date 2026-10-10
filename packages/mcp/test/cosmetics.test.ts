@@ -145,7 +145,7 @@ const LANGS = ['es', 'pt', 'fr'];
 // The bundled opener (Jun 11, 2026, 19:00 UTC), read before the tournament: a
 // SCHEDULED record whose kickoff has passed on any clock these tests run on, as
 // a stale record or the bundle's skeleton during an outage is.
-const BEFORE_THE_OPENER = new Date('2026-06-01T12:00:00Z');
+const BEFORE_THE_OPENER = new Date('2026-06-11T19:00:00Z'); // the opener's kickoff instant: on the request's clock the countdown is "now" (it used to be June 1, ten days before, and the "now" came from the wall clock)
 const OPENER = '760415';
 
 describe("the countdown says 'now' in the reader's language (round 1)", () => {
