@@ -25,7 +25,7 @@ export const DEFAULT_MAX_AGE_MS = 15 * 60_000;
  * "markets favor X 100%" after full time reads as a bug, not information.
  * An unparseable kickoff fails open (the reliability gate still applies).
  */
-export function marketRelevant(match: Match, now: Date = new Date()): boolean {
+export function marketRelevant(match: Match, now: Date): boolean {
   // A live overlay outranks the time window in BOTH directions: a match in
   // extra time runs past kickoff+140min and its in-play read stays legitimate,
   // while an early FT ends relevance before the window does.

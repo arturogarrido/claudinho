@@ -286,13 +286,17 @@ export async function marketSignalsFor(
   return { signals: result, complete };
 }
 
-/** Strict-gated signals for the default-on annotation; empty when markets are off. */
+/**
+ * Strict-gated signals for the default-on annotation; empty when markets are off.
+ * `now` is the request's clock (the one its command read once): relevance and
+ * freshness are judged by it, never by the wall clock.
+ */
 async function reliableMarketSignals(
   ctx: Ctx,
   matches: Match[],
+  now: Date,
 ): Promise<MarketSignalsResult> {
   if (ctx.cfg.markets === false) return { signals: new Map(), complete: true };
-  const now = ctx.now ?? new Date();
   // Market reads are pre-match/in-play artifacts: never fetch (or show) them
   // for finished matches — "markets favor X" after full time reads as a bug.
   const relevant = matches.filter((m) => marketRelevant(m, now));
@@ -311,8 +315,9 @@ async function reliableMarketSignals(
 async function reliableMarketSignalFor(
   ctx: Ctx,
   match: Match,
+  now: Date,
 ): Promise<{ signal: MarketSignal | undefined; complete: boolean }> {
-  const result = await reliableMarketSignals(ctx, [match]);
+  const result = await reliableMarketSignals(ctx, [match], now);
   return { signal: result.signals.get(match.id), complete: result.complete };
 }
 
@@ -624,13 +629,15 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   const { cfg, t } = ctx;
   precheck(cfg, t, date);
   const adapter = adapterFor(ctx);
-  const targetDate = date ?? localDate((ctx.now ?? new Date()).toISOString(), cfg.tz);
+  // The request's one clock: the default date and the market gate read it.
+  const now = requestClock(adapter, ctx.now);
+  const targetDate = date ?? localDate(now.toISOString(), cfg.tz);
   // The viewer's zone, the one the day is filed by below: the read judges
   // "nothing on this date" in it too.
   const day = await getMatchesForDate(adapter, targetDate, resolveTz(cfg.tz));
   const { matches, degraded, source } = day;
   const todays = fixturesByDate(targetDate, matches, cfg.tz);
-  const market = await reliableMarketSignals(ctx, todays);
+  const market = await reliableMarketSignals(ctx, todays, now);
 
   // `--json` keeps the overlay's provider in `source` and states the verdict;
   // the text names the provider only for a day it served something of.
@@ -710,7 +717,7 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   const { cfg, t } = ctx;
   precheck(cfg, t);
   const adapter = adapterFor(ctx);
-  const live = await getLiveMatches(adapter, ctx.now ?? new Date());
+  const live = await getLiveMatches(adapter, requestClock(adapter, ctx.now));
   const { matches, degraded, source } = live;
 
   if (cfg.json) {
@@ -1434,7 +1441,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   const { match, degraded, source: liveSource } = found;
 
   const market = match
-    ? await reliableMarketSignalFor({ ...ctx, now }, match)
+    ? await reliableMarketSignalFor(ctx, match, now)
     : { signal: undefined, complete: true };
 
   if (cfg.json) {
@@ -1584,10 +1591,13 @@ export async function cmdMarkets(
     // selects by (the World Cup's nations, the sidecar's one competition);
     // off the World Cup the sidecar answers "not available" for it, as for any.
     const code = 'pin' in asked ? asked.pin.code : resolveTeamArg(asked.query, usage, t, cfg.competition);
-    const now = ctx.now ?? new Date();
+    const adapter = adapterFor(ctx);
+    // The request's clock (the one given, else the adapter's read clock), read
+    // once: the pick, the relevance and the no-signal line.
+    const now = requestClock(adapter, ctx.now);
     // Live-confirmed selection: handles extra time past the static window AND
     // early FTs inside it (the static fixture's status is forever SCHEDULED).
-    const picked = await marketFixtureForTeam(adapterFor(ctx), code, now);
+    const picked = await marketFixtureForTeam(adapter, code, now);
     const { match: fixture, degraded } = picked;
     const market =
       fixture && marketRelevant(fixture, now)
@@ -1721,9 +1731,12 @@ export async function cmdMarkets(
   // markets [today | <date>]
   const explicitDate = target && target !== 'today' ? target : undefined;
   precheck(cfg, t, explicitDate);
-  const now = ctx.now ?? new Date();
+  const adapter = adapterFor(ctx);
+  // The request's clock (the one given, else the adapter's read clock), read
+  // once: the default date and the relevance.
+  const now = requestClock(adapter, ctx.now);
   const date = explicitDate ?? localDate(now.toISOString(), cfg.tz);
-  const day = await getMatchesForDate(adapterFor(ctx), date, resolveTz(cfg.tz));
+  const day = await getMatchesForDate(adapter, date, resolveTz(cfg.tz));
   const todays = fixturesByDate(date, day.matches, cfg.tz);
   const relevant = todays.filter((m) => marketRelevant(m, now));
   const { signals, complete } = await marketSignalsFor(ctx, relevant, MARKETS_CMD_OPTS);
@@ -1817,8 +1830,9 @@ function pickShareStyle(v: string | undefined): ShareStyle {
 async function reliableShareSignals(
   ctx: Ctx,
   matches: Match[],
+  now: Date,
 ): Promise<MarketSignalsResult> {
-  const raw = await reliableMarketSignals(ctx, matches);
+  const raw = await reliableMarketSignals(ctx, matches, now);
   const out = new Map<string, MarketSignal>();
   for (const [id, s] of raw.signals) {
     const m = matches.find((x) => x.id === id);
@@ -1979,7 +1993,8 @@ export async function cmdShare(
   // share live — lean: no market enrichment (and no extra fetch).
   if (target === 'live') {
     precheck(cfg, t);
-    const live = await getLiveMatches(adapterFor(ctx), ctx.now ?? new Date());
+    const adapter = adapterFor(ctx);
+    const live = await getLiveMatches(adapter, requestClock(adapter, ctx.now));
     emitMatchCard(ctx, liveShareCard(live, where), { ...baseOptions, includeMarkets: false }, copy);
     return;
   }
@@ -2033,7 +2048,7 @@ export async function cmdShare(
     // resolved again.
     // The clock that selected the fixture judges its market: one clock per request.
     const { code, next, now } = await nextAsked(ctx, team, teamUsage('share next', cfg));
-    const market = await reliableShareSignals({ ...ctx, now }, next.fixture ? [next.fixture] : []);
+    const market = await reliableShareSignals(ctx, next.fixture ? [next.fixture] : [], now);
     emitMatchCard(ctx, nextShareCard(next, code, market, where), baseOptions, copy);
     return;
   }
@@ -2048,7 +2063,7 @@ export async function cmdShare(
     // once: the clock that finds the match judges its market.
     const now = requestClock(adapter, ctx.now);
     const found = await getMatchById(adapter, target, now);
-    const market = await reliableShareSignals({ ...ctx, now }, found.match ? [found.match] : []);
+    const market = await reliableShareSignals(ctx, found.match ? [found.match] : [], now);
     emitMatchCard(ctx, matchShareCard(found, target, market, where), baseOptions, copy);
     return;
   }
@@ -2056,11 +2071,15 @@ export async function cmdShare(
   // share [today | <date>]
   const explicitDate = target && target !== 'today' ? target : undefined;
   precheck(cfg, t, explicitDate);
-  const date = explicitDate ?? localDate((ctx.now ?? new Date()).toISOString(), cfg.tz);
-  const day = await getMatchesForDate(adapterFor(ctx), date, resolveTz(cfg.tz));
+  const adapter = adapterFor(ctx);
+  // The request's clock (the one given, else the adapter's read clock), read
+  // once: the default date and the market gate.
+  const now = requestClock(adapter, ctx.now);
+  const date = explicitDate ?? localDate(now.toISOString(), cfg.tz);
+  const day = await getMatchesForDate(adapter, date, resolveTz(cfg.tz));
   const { matches: all, degraded, source } = day;
   const todays = fixturesByDate(date, all, cfg.tz);
-  const market = await reliableShareSignals(ctx, todays);
+  const market = await reliableShareSignals(ctx, todays, now);
   emitMatchCard(
     ctx,
     dateShareCard(
@@ -2199,7 +2218,10 @@ async function pinFor(ctx: Ctx, competition: string, query: string): Promise<Pin
   if (!isKnownSource(cfg.source)) {
     throw new InputError(t('err.source', { source: cfg.source, sources: KNOWN_SOURCES.join(', ') }));
   }
-  const next = await getNextFixtureForTeam(adapterServing(ctx, competition), label, ctx.now ?? new Date());
+  const adapter = adapterServing(ctx, competition);
+  // The request's clock (the one given, else the adapter's read clock): the
+  // span the club is resolved against.
+  const next = await getNextFixtureForTeam(adapter, label, requestClock(adapter, ctx.now));
   if (next.team) {
     const { id, code, name } = next.team;
     return id !== undefined ? { id, code, name } : { code, name };
@@ -2706,7 +2728,10 @@ function printInitStarCta(cfg: CliConfig): void {
 export function cmdVibe(ctx: Ctx): void {
   const { cfg } = ctx;
   const bundled = cfg.selection.kind === 'selected' && bundleApplies(cfg.competition);
-  const pool = vibePool(localDate((ctx.now ?? new Date()).toISOString(), cfg.tz), bundled);
+  // One clock for the command: the day's pool and the cache read. Cache-only,
+  // like `prompt`, so no adapter is built for its read clock.
+  const now = ctx.now ?? new Date();
+  const pool = vibePool(localDate(now.toISOString(), cfg.tz), bundled);
   const line = pool[Math.floor(Math.random() * pool.length)];
   let liveSeg: string | undefined;
   try {
@@ -2715,7 +2740,7 @@ export function cmdVibe(ctx: Ctx): void {
     const state = readCurrentState(cfg.source, cfg.competition);
     liveSeg = vibeLiveSegment(
       // Sealed with the competition's written kind, like the statusline's.
-      liveMatchesFromCache(state, (ctx.now ?? new Date()).getTime(), teamKind(cfg.competition)).items,
+      liveMatchesFromCache(state, now.getTime(), teamKind(cfg.competition)).items,
       // The statusline's and the hook's pick (offline).
       ambientPick(cfg),
     );
