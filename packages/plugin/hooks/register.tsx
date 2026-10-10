@@ -42,9 +42,10 @@ let busy = false
 
 /**
  * What `claudinho ambient --json` prints, as far as this module reads it: a selected competition's VIEW (an object
- * with a `live` object holding an `items` array), or one of the two shapes that are no view: the first-run object
- * (no competition chosen: `noCompetition`, the one line) and the fallback object (a refused value or a failure: the
- * line and `empty`; an older CLI's `{ line }` has the same shape).
+ * with a `live` object holding an `items` array that says what its line is, `idle` and `empty` as two booleans), or
+ * a shape that is no view: the first-run object (no competition chosen: `noCompetition`, the one line), the fallback
+ * object (a refused value or a failure: the line and `empty`; an older CLI's `{ line }` has the same shape), and a
+ * view from a CLI older than `idle` and `empty` (a live list and neither).
  */
 type View = {
   line: string
@@ -167,10 +168,18 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   }
   const view: View = answer
   // What the line IS comes from the fields, never the text (which `--columns` may have cut): the first-run object
-  // (nothing chosen) is hidden and idle; an object that is no view (the fallback object, an older CLI's `{ line }`)
-  // is hidden and not idle; a view that says `empty` is hidden; one that says `idle` is read slowly.
+  // (nothing chosen) is hidden and idle; an object that is no view the plugin reads is hidden and not idle, never
+  // current (the context cleared, the baseline kept, nothing toasted); a view that says `empty` is hidden; one that
+  // says `idle` is read slowly. A view the plugin reads has its `live` list AND says what its line is, `idle` and
+  // `empty` as two booleans: the fallback object, an older CLI's `{ line }`, and a view from a CLI older than those
+  // two fields (a live list and neither) are no view.
   const firstRun = view.noCompetition === true
-  const isView = !firstRun && isObject(view.live) && Array.isArray(view.live.items)
+  const isView =
+    !firstRun &&
+    isObject(view.live) &&
+    Array.isArray(view.live.items) &&
+    typeof view.idle === 'boolean' &&
+    typeof view.empty === 'boolean'
   const idle = firstRun || (isView && view.idle === true)
   const hidden = !isView || view.empty === true || view.line.trim() === ''
   await update($, pace, () => ({ ranAt: now, idle }))

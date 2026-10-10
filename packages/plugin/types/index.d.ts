@@ -1,7 +1,9 @@
 /**
  * The contract of the claudinho plugin: what it keeps in the session (`$.state`), each value under
  * `PluginState.claudinho`. Everything is read from `claudinho ambient --json`, the installed CLI's view of its
- * local cache; the plugin never fetches.
+ * local cache; the plugin never fetches. A view is readable when it carries its `live` list and says what its line
+ * is, `idle` and `empty` as two booleans (`@claudinho/cli` 0.11.2 or later); anything else (the first-run object, the
+ * fallback object, a view from an older CLI) is no view: hidden, never current, the baseline kept.
  */
 
 /** The band's line as the CLI fitted it, or null when there is nothing to show (or the last run failed). */
