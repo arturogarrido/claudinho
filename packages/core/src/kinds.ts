@@ -49,7 +49,7 @@ function withExtras<V>(base: Readonly<Record<string, V>>, extra: (e: { teams: Te
 /**
  * The teams each competition fields: the supported table's (`nation` for the
  * World Cup, the Euro, the Copa America, both Nations Leagues and the Gold
- * Cup; `club` for the five leagues and the four club cups), and the friendly
+ * Cup; `club` for the six leagues and the four club cups), and the friendly
  * competition's (`nation`). An unlisted competition fields clubs: a nations
  * competition the set does not list renders its teams by name until it is
  * written down.
@@ -64,7 +64,7 @@ export function teamKind(competition: string | undefined): TeamKind {
 }
 
 /**
- * Each competition's kind: the supported table's (`league`: the five leagues,
+ * Each competition's kind: the supported table's (`league`: the six leagues,
  * whose regular season the stage grammar reads as `REGULAR`; `cup`: the other
  * ten), and `friendly` for `fifa.friendly`, the one competition whose
  * `friendly` slug is the `FRIENDLY` stage.
