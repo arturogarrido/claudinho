@@ -138,6 +138,7 @@ import {
   type AmbientPick,
   FIRST_RUN_LINE,
   flagsEnabled,
+  NOTHING_KNOWN_LINE,
   liveMatchesFromCache,
   pickAmbientMatch,
   renderPrompt,
@@ -1188,8 +1189,11 @@ export function cmdHook({ cfg, now }: Ctx): void {
   }
 }
 
-/** What `ambient` prints when it can say nothing else: the statusline's empty line, as an object. */
-const AMBIENT_EMPTY = JSON.stringify({ line: '⚽ —' });
+/**
+ * What `ambient` prints when it can say nothing else (a refused value, a failure): the statusline's empty line and
+ * `empty`, the view's own word for it, as an object with no view.
+ */
+const AMBIENT_EMPTY = JSON.stringify({ line: NOTHING_KNOWN_LINE, empty: true });
 
 /**
  * `claudinho ambient --json` — the statusline and the hook as ONE JSON object

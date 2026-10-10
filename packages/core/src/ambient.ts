@@ -11,8 +11,8 @@
  *     choice): the selection's structured twin, `competition: null` beside the
  *     verdict that says nothing is chosen, and `line` (the statusline's
  *     first-run line); no cache is read and no refresher started;
- *   - a value that is no competition, or a failure anywhere: `line` alone, the
- *     statusline's empty line;
+ *   - a value that is no competition, or a failure anywhere: `line` (the
+ *     statusline's empty line) and `empty: true` alone, no view;
  *   - a selected competition: an {@link AmbientView}.
  */
 import type { CompetitionKey } from './competition';

@@ -40,7 +40,8 @@ option if you want another value than the default. The plugin is active in that 
   flags and the roster's names, `⚽ 🇲🇽 Mexico 1–0 South Africa 🇿🇦 (67')`): one toast per match per change. Best
   effort, never every goal. A change is never said as it happens from a view the CLI could not vouch for (stale,
   degraded, or a read that was not whole), and a goal across such a gap, or across a failed run, is said at the first
-  current view after it: late, never lost. The first view of a match says nothing, and neither does a change of
+  current view after it: late, never lost while the match stays in the list (a match gone from the next current
+  view and back is observed afresh). The first view of a match says nothing, and neither does a change of
   competition.
 - **The context**: while a match is live, each prompt you submit carries the hook's live-score block beside it, for
   the model, from the plugin's last run (never a run on submit), and only while that run is recent and its scores are

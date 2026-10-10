@@ -162,7 +162,8 @@ saved, no toast), `all` or `off`. A toast is the hook's own line for the match (
 the roster's names on a nations competition), one per match per change, and best effort, never every
 goal: a change is never said as it happens from a view the CLI could not vouch for (stale, degraded,
 or a read that was not whole), a goal across such a gap or a failed run is said at the first current
-view after it (late, never lost), and the first view of a match says nothing. At the end of an
+view after it (late, never lost while the match stays in the list: one gone from the next current
+view and back is observed afresh), and the first view of a match says nothing. At the end of an
 edition the band shows the World Cup's sign-off line, the one end-of-edition line the statusline
 prints; after another competition's season the statusline says nothing is known, and the band shows
 nothing. More in the plugin's

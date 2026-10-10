@@ -41,8 +41,10 @@ let columns = DEFAULT_COLUMNS
 let busy = false
 
 /**
- * What `claudinho ambient --json` prints, as far as this module reads it: a selected competition's view, or the
- * first-run object (no competition chosen: `noCompetition`, the one line, no view).
+ * What `claudinho ambient --json` prints, as far as this module reads it: a selected competition's VIEW (an object
+ * with a `live` object holding an `items` array), or one of the two shapes that are no view: the first-run object
+ * (no competition chosen: `noCompetition`, the one line) and the fallback object (a refused value or a failure: the
+ * line and `empty`; an older CLI's `{ line }` has the same shape).
  */
 type View = {
   line: string
@@ -165,15 +167,17 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   }
   const view: View = answer
   // What the line IS comes from the fields, never the text (which `--columns` may have cut): the first-run object
-  // (nothing chosen) is hidden and idle; a view that says `empty` is hidden; one that says `idle` is read slowly.
+  // (nothing chosen) is hidden and idle; an object that is no view (the fallback object, an older CLI's `{ line }`)
+  // is hidden and not idle; a view that says `empty` is hidden; one that says `idle` is read slowly.
   const firstRun = view.noCompetition === true
-  const idle = firstRun || view.idle === true
-  const hidden = firstRun || view.empty === true || view.line.trim() === ''
+  const isView = !firstRun && isObject(view.live) && Array.isArray(view.live.items)
+  const idle = firstRun || (isView && view.idle === true)
+  const hidden = !isView || view.empty === true || view.line.trim() === ''
   await update($, pace, () => ({ ranAt: now, idle }))
   await update($, band, () => (hidden ? null : { text: view.line }))
 
-  // The first-run object is no current view: it clears the context and keeps the baseline, as any view that is not.
-  if (view.current === true) {
+  // The two shapes that are no view are no current view either: each clears the context and keeps the baseline.
+  if (isView && view.current === true) {
     const prev = await read($, baseline)
     for (const text of toastsFor(view, prev, option)) $.ui.toast(text)
     await update($, baseline, () => baselineOf(view))
@@ -184,8 +188,15 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     }))
   } else {
     // A view that is not current says nothing about play: no toast and no context. It keeps the baseline, which only
-    // a current view replaces (and a disappearance or a competition change rebases), so a change across the gap is
-    // said at the next current view, late, never lost.
+    // a current view replaces (and a disappearance rebases), so a change across the gap is said at the next current
+    // view, late, never lost while the match stays in the list. A change of competition is observed whatever the
+    // view's vouching: a view of another competition than the baseline's clears it (a view stating none, or the same
+    // one, leaves it).
+    const slug = isView ? slugOf(view) : ''
+    if (slug !== '') {
+      const prev = await read($, baseline)
+      if (prev && prev.slug !== slug) await update($, baseline, () => null)
+    }
     await update($, lastContext, () => null)
   }
 }
