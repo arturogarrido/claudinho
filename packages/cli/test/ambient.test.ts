@@ -197,7 +197,9 @@ describe('claudinho ambient --json', () => {
     // The cold refresh whose discovery and live probe both failed writes exactly this: a fresh stamp, no live
     // records, `degraded: true`, no schedule window. The line says nothing is known; so must the view.
     const at = NOW.toISOString();
-    writeState({ updatedAt: at, live: [], degraded: true, source: 'espn', competition: 'eng.1', schedule: { updatedAt: at, attemptedAt: at, failures: 1, complete: false } } as never, NOW.getTime());
+    // The snapshot even CLAIMS a whole read (the refresher never writes that beside `degraded`; a stated rule gets its
+    // own case): degraded alone makes it not current.
+    writeState({ updatedAt: at, live: [], degraded: true, source: 'espn', competition: 'eng.1', schedule: { updatedAt: at, attemptedAt: at, failures: 1, complete: false }, liveComplete: true } as never, NOW.getTime());
     cmdAmbient(ctx());
     let v = view();
     expect(v.line).toBe('⚽ —');
@@ -205,7 +207,7 @@ describe('claudinho ambient --json', () => {
     // A fresh degraded snapshot that still carries a live record: the line shows it (best effort, as before), the
     // list carries it, and `current` is still false: a program may show it and must not conclude from it.
     writes = [];
-    writeState({ updatedAt: at, live: [live('1', ARS, CHE, [2, 1])], degraded: true, source: 'espn', competition: 'eng.1', schedule: { updatedAt: at, attemptedAt: at, failures: 1, complete: false } } as never, NOW.getTime());
+    writeState({ updatedAt: at, live: [live('1', ARS, CHE, [2, 1])], degraded: true, source: 'espn', competition: 'eng.1', schedule: { updatedAt: at, attemptedAt: at, failures: 1, complete: false }, liveComplete: true } as never, NOW.getTime());
     cmdAmbient(ctx());
     v = view();
     expect(v.line).toBe("⚽ ARS 2–1 CHE 50'");

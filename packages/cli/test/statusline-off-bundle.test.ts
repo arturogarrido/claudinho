@@ -136,7 +136,9 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
     // A FRESH, NON-degraded snapshot whose live scan was not whole (its live slice unreadable) in the window: the
     // line syncs (an incomplete scan with a match that may be on), and `current` is false by the syncing clause
     // ALONE: the stamp believed, inside the window, the snapshot not degraded.
-    const unread = ambientView(snapshot(inWindow, { live: 'not a list' as never }, 5000), { defaultCompetition: false, teamKind: 'nation', now: new Date(NOW) });
+    // The snapshot states a WHOLE read; its slice is unreadable on disk (poisoned after the read): only the
+    // syncing clause decides here.
+    const unread = ambientView(snapshot(inWindow, { live: 'not a list' as never, liveComplete: true } as never, 5000), { defaultCompetition: false, teamKind: 'nation', now: new Date(NOW) });
     expect(unread.line).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
     expect(unread.live.complete).toBe(false);
     expect(unread).toMatchObject({ current: false, degraded: false, updatedAt: iso(NOW - 5000) });
