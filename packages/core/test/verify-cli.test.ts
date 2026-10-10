@@ -941,7 +941,7 @@ type Line = { file: string; command: string; clauses: string[] };
 export function offlineLines(dir: string): Line[] {
   const lines: Line[] = [];
   for (const f of readdirSync(dir).sort()) {
-    const text = readFileSync(join(dir, f), 'utf8').split('\n');
+    const text = readFileSync(join(dir, f), 'utf8').split(/\r?\n/);
     for (let i = 0; i < text.length; i++) {
       const m = /^- offline: `(.+)`$/.exec(text[i] ?? '');
       if (!m) continue;
