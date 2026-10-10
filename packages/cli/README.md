@@ -1,6 +1,6 @@
 # @claudinho/cli ⚽
 
-**Live football scores, fixtures and standings in your terminal and your Claude Code and Cursor CLI statusline, for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 12 more.** The `claudinho` command: TZ-aware, localized, scriptable, with read-only market signals for the World Cup. No API key, no signup. It ran the 2026 World Cup from the opener to the final.
+**Live football scores, fixtures and standings in your terminal and your Claude Code and Cursor CLI statusline (and, for a program, `claudinho ambient --json`: the statusline and the hook as one JSON object), for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 12 more.** The `claudinho` command: TZ-aware, localized, scriptable, with read-only market signals for the World Cup. No API key, no signup. It ran the 2026 World Cup from the opener to the final.
 
 > ⭐ Installing via `npx` or globally? **[Star the repo](https://github.com/arturogarrido/claudinho)**: a fan project runs on stars. (`claudinho star` shows you how anytime.)
 
@@ -111,7 +111,7 @@ CLAUDINHO_COMPETITION=laliga claudinho table          # the environment works to
 | `--tz <zone>` | IANA timezone, e.g. `America/Mexico_City` (also `CLAUDINHO_TZ`; default: system). Kickoff times **and** which day a fixture falls on are computed in this zone: a late-night-UTC match shows on the day you actually watch it. |
 | `--json` | machine-readable output for scripting |
 | `--no-color` | disable ANSI color (also honors `NO_COLOR`; auto-off when piped) |
-| `-c, --competition <alias\|slug>` | the competition: an alias such as `premier-league` (the sixteen competitions are listed in the [root README](https://github.com/arturogarrido/claudinho#competitions)), or an ESPN slug such as `eng.1` (any other lower-case dotted ESPN slug works too, labelled experimental). Also `CLAUDINHO_COMPETITION` (an alias or a slug), which the statusline and the hook follow, and the choice `claudinho follow <alias>` saves: the flag, then the environment, then the saved choice; with none, a command says so (exit 1; `--json` prints `{ "competition": null, "noCompetition": true }`), the statusline reads `⚽ claudinho follow`, and the hook stays silent. Every answer names its competition on a line after its header (`Premier League · from the command line`; first where an answer has none; `table` once, before its tables) and in `--json` as `competition`; `share` prints no such line: its card's title names the competition and its run cue selects it; `team` names the World Cup roster it reads. An unknown value is refused with the list. |
+| `-c, --competition <alias\|slug>` | the competition: an alias such as `premier-league` (the sixteen competitions are listed in the [root README](https://github.com/arturogarrido/claudinho#competitions)), or an ESPN slug such as `eng.1` (any other lower-case dotted ESPN slug works too, labelled experimental). Also `CLAUDINHO_COMPETITION` (an alias or a slug), which the statusline, the hook and `ambient --json` follow, and the choice `claudinho follow <alias>` saves: the flag, then the environment, then the saved choice; with none, a command says so (exit 1; `--json` prints `{ "competition": null, "noCompetition": true }`), the statusline reads `⚽ claudinho follow` (`ambient --json` prints it as `line` beside `competition: null`), and the hook stays silent. Every answer names its competition on a line after its header (`Premier League · from the command line`; first where an answer has none; `table` once, before its tables) and in `--json` as `competition`; `share` prints no such line: its card's title names the competition and its run cue selects it; `team` names the World Cup roster it reads. An unknown value is refused with the list. |
 | `--source <name>` | live data provider (advanced; sensible default) |
 | `--flavor <level>` | commentary flair: `off`, `subtle`, `full` (default: `full`; also `CLAUDINHO_FLAVOR`) |
 | `--no-markets` | hide prediction-market signals in `today`/`match` (also `CLAUDINHO_MARKETS=off`) |
@@ -282,11 +282,12 @@ MCP one-liner; an edited command (a wrapper, `npx -y @claudinho/cli hook`) stays
 
 `claudinho ambient --json [--columns N]` prints the statusline and the hook as one JSON object on
 one line, for a program that draws them itself: `line` (what `claudinho prompt` prints, fitted to N
-columns with the `+N` count kept), `context` (the hook's block, or `null`), `live` (the live
-matches, each marked `picked` and `pinned`), `next`, `pick`, `competition`, `degraded`, `source`,
-`updatedAt`, `staleAfter` and `disclaimer` (the non-affiliation sentence). It reads only the local
-cache, never the network; the command itself exits 0 whatever the cache holds, and a wrong option is
-refused by the option parser as for every command.
+columns with the `+N` count kept; N a positive integer), `context` (the hook's block, or `null`),
+`live` (the live matches, each marked `picked` and `pinned`), `current` (an empty list means nothing
+is on only when this is true), `next`, `pick`, `competition`, `degraded`, `source`, `updatedAt`,
+`staleAfter` and `disclaimer` (the non-affiliation sentence). It reads only the local cache, never
+the network; the command itself exits 0 whatever the cache holds, and any other `--columns` value is
+refused by the option parser, as a wrong option is for every command.
 
 ## Statusline (Cursor CLI)
 

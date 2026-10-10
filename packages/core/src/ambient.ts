@@ -53,11 +53,24 @@ export interface AmbientView {
   /** The hook's block, as `claudinho hook` prints it while a match is live; `null` when it prints nothing. */
   readonly context: string | null;
   /**
-   * The live matches the statusline reads (fresh within the display window),
-   * the preference's first: `total` is exact only when `complete`; an empty
-   * list with `complete: false` is "not known", never "nothing on".
+   * The live matches the statusline reads (a believed snapshot's, inside the
+   * display window), the preference's first. `complete` says the scan was
+   * whole and `total` is exact only then; an empty list with `complete: false`
+   * is "not known". An empty list is "nothing on" ONLY beside `current: true`:
+   * with `current: false` (no snapshot, a stale one, a stamp the reader does
+   * not believe, the syncing window) it says nothing about play, a match may
+   * be on (`line` is the authority: it prints `live · syncing…` then), and a
+   * program must never read `complete && items.length === 0` alone as
+   * "nothing on".
    */
   readonly live: BoundedList<AmbientMatch>;
+  /**
+   * The live list is a believed snapshot's inside its display window (its
+   * stamp's age, by the reader's own rule, is finite and short of the window)
+   * and the line is not syncing: then, and only then, an empty list means
+   * the feed said nothing is in play.
+   */
+  readonly current: boolean;
   /**
    * The fixture the statusline's countdown names (its resolved pairing; the
    * preference's first), whether or not a match is in play now; `null` when
@@ -81,13 +94,17 @@ export interface AmbientView {
   readonly competition: CompetitionKey;
   /** The snapshot says its last refresh failed (`false` with no snapshot). */
   readonly degraded: boolean;
-  /** The provider the snapshot was read from, or `null` with no snapshot. */
+  /** The provider the snapshot was read from, whatever its stamp; `null` with no snapshot. */
   readonly source: string | null;
-  /** When the snapshot was written (ISO 8601), or `null` with no snapshot. */
+  /**
+   * When the snapshot was written (ISO 8601, re-emitted canonically), or
+   * `null` with no snapshot or a stamp the reader does not believe (further in
+   * the future than its clock-skew allowance: its live scores are not shown).
+   */
   readonly updatedAt: string | null;
   /**
    * When the snapshot's live scores stop being shown (`updatedAt` plus the
-   * statusline's display window), or `null` with no snapshot.
+   * statusline's display window), or `null` whenever `updatedAt` is.
    */
   readonly staleAfter: string | null;
   /** The non-affiliation sentence, core's `DISCLAIMER`. */

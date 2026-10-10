@@ -1242,6 +1242,7 @@ export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): 
       line: read.line,
       context: read.context,
       live: read.live,
+      current: read.current,
       next: read.next,
       pick: pick === undefined ? null : 'code' in pick ? { code: pick.code } : pick.team,
       ...(preference.unreadable ? { pickUnreadable: true as const } : {}),

@@ -447,58 +447,21 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
     return fitLiveLine(shown.map((m) => matchSegment(m, compact, flags)), overflow, liveList.complete, width);
   }
 
-  // Cold/stale cache during a live window: a countdown here is actively
-  // misleading — a match is on, and the static schedule alone tells us that.
-  // Say "live · syncing" until the refresher lands a snapshot. A FRESH,
-  // NON-DEGRADED snapshot with no live matches is trusted as-is (per the feed
-  // nothing is in play — early FT, delay, postponement) and falls through to
-  // the countdown; a degraded snapshot means "the fetch failed", not "the
-  // feed said empty", so it must not bring the countdown back mid-match.
-  const cacheFresh =
-    !!state &&
-    state.degraded !== true &&
-    ageMs(state, nowMs) < DISPLAY_STALE_MS;
-  // An incomplete scan only justifies "syncing" when the schedule says a match
-  // may actually be on. On a quiet morning (or after the tournament), cache
-  // junk must not turn into a false live-score outage claim.
-  if ((!cacheFresh || !liveList.complete) && !defaultCompetition) {
-    // Off the bundle the schedule slice's GATE says whether a match can be in
-    // play: a discovered fixture inside its window, or a match that was seen
-    // in play and not yet seen to end. Not a probe: that is the refresher
-    // asking a question, not a reason to say a match is on.
-    if (scheduleGateOpen(scheduleView(state?.schedule, nowMs), nowMs, { probe: false })) {
-      // The fixtures there is a full record for, inside their (flat) window
-      // (one that has none was left out above), the picked team's first.
-      const win = pickAmbientMatch(
-        cachedFixtures
-          .filter((m) => {
-            const k = Date.parse(m.kickoff);
-            return k <= nowMs && nowMs < k + LIVE_WINDOW_MS;
-          })
-          .sort(byKickoff),
-        pick,
-      );
-      const first = win[0];
-      const matchup =
-        first && isResolvedFixture(first)
-          ? `${teamTok(first.home, flags)} vs ${teamTok(first.away, flags)} `
-          : '';
-      const more = win.length - 1;
-      return fitWithMarker(`⚽ ${matchup}live · syncing…`, more > 0 ? ` +${more}` : '', width);
-    }
-  } else if (!cacheFresh || !liveList.complete) {
-    const win = pickAmbientMatch(fixturesInLiveWindow(nowMs, schedule), pick);
+  // Cold/stale cache during a live window: say "live · syncing" (see
+  // `syncingWindow`, the one rule, which the ambient view asks too).
+  const win = syncingWindow(state, nowMs, liveList.complete, defaultCompetition, cachedFixtures, schedule, pick);
+  if (win) {
     const first = win[0];
-    if (first) {
-      const more = win.length - 1;
-      // Drop the matchup when the in-window fixture is still a 🏳️ placeholder
-      // (a knockout the overlay hasn't resolved) — never paste "🏳️ vs 🏳️"; just
-      // say a match is on and we're syncing.
-      const matchup = isResolvedFixture(first)
+    // Drop the matchup when the first fixture in its window is still a
+    // placeholder (a knockout the overlay hasn't resolved), or when off the
+    // bundle there is none (the gate alone says a match can be on): never paste
+    // a placeholder pairing; just say a match is on and we're syncing.
+    const matchup =
+      first && isResolvedFixture(first)
         ? `${teamTok(first.home, flags)} vs ${teamTok(first.away, flags)} `
         : '';
-      return fitWithMarker(`⚽ ${matchup}live · syncing…`, more > 0 ? ` +${more}` : '', width);
-    }
+    const more = win.length - 1;
+    return fitWithMarker(`⚽ ${matchup}live · syncing…`, more > 0 ? ` +${more}` : '', width);
   }
 
   // Nothing (relevant) live → next-fixture countdown over the merged schedule
@@ -538,10 +501,16 @@ function lineColumns(opts: PromptOpts): number {
 /**
  * A line and its overflow marker fitted to `width`: the marker is the honest
  * part of the line (it says the list goes on), so its room is RESERVED and it
- * is appended after the cut, never cut off the end.
+ * is appended after the cut, never cut off the end. A body with no room left
+ * beside the marker is dropped whole (no ellipsis), so the line is the marker
+ * alone; a width that cannot hold the marker itself gets the marker cut to
+ * it, never anything wider.
  */
 function fitWithMarker(body: string, marker: string, width: number): string {
-  return truncateVisible(body, width - displayWidth(marker)) + marker;
+  const markerWidth = displayWidth(marker);
+  if (markerWidth > width) return truncateVisible(marker, width);
+  const room = width - markerWidth;
+  return (room < 1 ? '' : truncateVisible(body, room)) + marker;
 }
 
 /**
@@ -594,6 +563,57 @@ export function countdownSchedule(
       ? undefined
       : [];
   return { cachedFixtures, schedule };
+}
+
+/**
+ * THE syncing window, asked only when no live match was read: a countdown here
+ * is actively misleading (a match is on, and the schedule alone tells us
+ * that), so the line says "live · syncing" until the refresher lands a
+ * snapshot. A FRESH, NON-DEGRADED snapshot whose scan was whole is trusted
+ * as-is (per the feed nothing is in play: early FT, delay, postponement) and
+ * is no window; a degraded snapshot means "the fetch failed", not "the feed
+ * said empty", so it must not bring the countdown back mid-match. An
+ * incomplete scan only justifies "syncing" when the schedule says a match may
+ * actually be on: on a quiet morning (or after the tournament), cache junk
+ * must not turn into a false live-score outage claim. Returns the fixtures in
+ * their window, the picked team's first, or undefined when there is no
+ * window. Off the bundle the list may be empty: the gate alone says a match
+ * can be on.
+ */
+export function syncingWindow(
+  state: CacheState | undefined,
+  nowMs: number,
+  /** Whether the live scan was whole (`liveMatchesFromCache`'s `complete`). */
+  liveComplete: boolean,
+  defaultCompetition: boolean,
+  /** The sealed cached fixtures `countdownSchedule` read. */
+  cachedFixtures: readonly Match[],
+  schedule: Match[] | undefined,
+  pick: AmbientPick,
+): Match[] | undefined {
+  const cacheFresh = !!state && state.degraded !== true && ageMs(state, nowMs) < DISPLAY_STALE_MS;
+  if (cacheFresh && liveComplete) return undefined;
+  if (!defaultCompetition) {
+    // Off the bundle the schedule slice's GATE says whether a match can be in
+    // play: a discovered fixture inside its window, or a match that was seen
+    // in play and not yet seen to end. Not a probe: that is the refresher
+    // asking a question, not a reason to say a match is on.
+    if (!scheduleGateOpen(scheduleView(state?.schedule, nowMs), nowMs, { probe: false })) return undefined;
+    // The fixtures there is a full record for, inside their (flat) window
+    // (one that has none was left out by `countdownSchedule`), the picked
+    // team's first.
+    return pickAmbientMatch(
+      cachedFixtures
+        .filter((m) => {
+          const k = Date.parse(m.kickoff);
+          return k <= nowMs && nowMs < k + LIVE_WINDOW_MS;
+        })
+        .sort(byKickoff),
+      pick,
+    );
+  }
+  const win = pickAmbientMatch(fixturesInLiveWindow(nowMs, schedule), pick);
+  return win.length > 0 ? win : undefined;
 }
 
 /**

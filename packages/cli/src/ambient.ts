@@ -7,7 +7,7 @@
  */
 import type { AmbientMatch, AmbientView, Pin } from '@claudinho/core';
 import { isPinnedSide } from '@claudinho/core';
-import { type CacheState, validStamp } from './cache';
+import { type CacheState, stampAgeMs } from './cache';
 import { renderHook } from './hook';
 import {
   countdownFixture,
@@ -19,6 +19,7 @@ import {
   pickAmbientMatch,
   type PromptOpts,
   renderPrompt,
+  syncingWindow,
 } from './statusline';
 
 /** What the ambient view reads beyond the line's options. */
@@ -43,9 +44,12 @@ export type AmbientRead = Omit<AmbientView, 'competition' | 'disclaimer' | 'pick
  * ordered by the one preference (`pickAmbientMatch`), each record marked
  * `picked` (the preference's side) and `pinned` (the saved pin's, by core's
  * `isPinnedSide`), with the reader's own `total`/`shown`/`truncated`/
- * `complete`; the fixture the countdown names; the snapshot's own facts and
- * the deadline of its live scores. Pure and total like `renderPrompt`: no
- * network, no market, no file read, and a malformed snapshot never throws.
+ * `complete`; whether that list is `current` (a believed snapshot's inside
+ * its display window, the line not syncing: the one rule, `syncingWindow`);
+ * the fixture the countdown names; the snapshot's own facts and the deadline
+ * of its live scores, its stamp judged by the reader's own rule
+ * (`stampAgeMs`). Pure and total like `renderPrompt`: no network, no market,
+ * no file read, and a malformed snapshot never throws.
  */
 export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {}): AmbientRead {
   const now = opts.now ?? new Date();
@@ -62,15 +66,25 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
     pinned: pin !== undefined && (isPinnedSide(m.home, pin) || isPinnedSide(m.away, pin)),
   }));
   const context = renderHook(state, read);
-  const { schedule } = countdownSchedule(state, defaultCompetition, kind);
-  // The snapshot's stamp, re-emitted canonically, and the instant its live
-  // scores stop being shown; neither without a stamp that is one.
-  const stamp = state && validStamp(state.updatedAt) ? Date.parse(state.updatedAt) : undefined;
+  const { cachedFixtures, schedule } = countdownSchedule(state, defaultCompetition, kind);
+  // The snapshot's stamp by the reader's own rule (`stampAgeMs`, as
+  // `liveMatchesFromCache` judges it): one further in the future than the
+  // skew allowance is not believed, and gives neither a stamp nor a deadline.
+  // A believed one is re-emitted canonically, with the instant its live
+  // scores stop being shown.
+  const age = stampAgeMs(state?.updatedAt, nowMs);
+  const stamp = state && Number.isFinite(age) ? Date.parse(state.updatedAt) : undefined;
   const staleAt = stamp === undefined ? undefined : new Date(stamp + DISPLAY_STALE_MS);
+  // The list is current when the reader's window holds the snapshot and the
+  // line is not syncing (asked, like the line asks it, only with no live match read).
+  const syncing =
+    list.items.length === 0 &&
+    syncingWindow(state, nowMs, list.complete, defaultCompetition, cachedFixtures, schedule, opts.pick) !== undefined;
   return {
     line: renderPrompt(state, read),
     context: context === '' ? null : context,
     live: { items, total: list.total, shown: list.shown, truncated: list.truncated, complete: list.complete },
+    current: stamp !== undefined && age < DISPLAY_STALE_MS && !syncing,
     next: countdownFixture(nowMs, schedule, opts.pick) ?? null,
     degraded: state?.degraded === true,
     source: typeof state?.source === 'string' ? state.source : null,

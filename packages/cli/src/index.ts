@@ -1,5 +1,5 @@
 import { DISCLAIMER as CORE_DISCLAIMER, FAN_PROJECT } from '@claudinho/core';
-import { Command } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
 import { resolveConfig, type RawGlobalOpts } from './config';
 import { readCursorPayloadBounded } from './cursorPayload';
 import { makeT } from './i18n';
@@ -229,22 +229,23 @@ program
   });
 
 /**
- * `--columns <n>`: a positive integer, else no fit (the line keeps its own
- * ceiling). A value it cannot read is no error: `ambient` prints its object.
+ * `--columns <n>`'s argument parser: a positive integer, and anything else is
+ * refused by the option parser as every wrong option is (its message and
+ * exit, before the command runs; nothing on stdout).
  */
-function columnsOf(value: unknown): number | undefined {
-  if (typeof value !== 'string' || !/^\d+$/.test(value)) return undefined;
-  const n = Number.parseInt(value, 10);
-  return n > 0 ? n : undefined;
+function positiveInteger(value: string): number {
+  const n = /^\d+$/.test(value) ? Number.parseInt(value, 10) : 0;
+  if (!(n > 0)) throw new InvalidArgumentError('a positive integer');
+  return n;
 }
 
 program
   .command('ambient')
   .description('print the statusline and hook as one JSON object (for a program: the Claude Code plugin)')
-  .option('--columns <n>', 'fit the line to this many display columns')
-  .action((opts, cmd) => {
+  .option('--columns <n>', 'fit the line to this many display columns (a positive integer)', positiveInteger)
+  .action((opts: { columns?: number }, cmd) => {
     // No stdin read (unlike `prompt`): a program runs it with nothing to say.
-    cmdAmbient(ctxFrom(cmd), { columns: columnsOf(opts.columns) });
+    cmdAmbient(ctxFrom(cmd), { columns: opts.columns });
   });
 
 // One-step setup aliases. `init cursor` / `init claude` compose the granular
