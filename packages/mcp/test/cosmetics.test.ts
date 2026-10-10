@@ -242,8 +242,8 @@ describe('every named localization of the MCP text is the catalog sentence (roun
 
 describe("the countdown's 'in' is the reader's word too (round 2)", () => {
   // A kickoff a week after a clock set in 2098: the dated read and discovery's
-  // span hold it, and the countdown, which reads the real clock, says "in"
-  // until 2099.
+  // span hold it, and the countdown, relative to the request's clock like
+  // every other read of the request (`countdown-clock.test.ts`), says "in".
   const LATE_2098 = new Date('2098-12-25T12:00:00Z');
   const future = fixture(1, { kickoff: '2099-01-01T15:00:00.000Z', home: { code: 'ARS', name: 'Arsenal', id: 'espn:359' } });
   const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

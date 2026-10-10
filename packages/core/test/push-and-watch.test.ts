@@ -126,7 +126,23 @@ function run(sb: Sandbox, args: string[], env: Record<string, string> = {}) {
 }
 const pushed = (sb: Sandbox) => sb.calls().some((c) => /^git push /.test(c));
 const ghCalls = (sb: Sandbox) => sb.calls().filter((c) => c.startsWith('gh '));
-const pidIn = (sb: Sandbox, file: string) => Number(readFileSync(join(sb.state, file), 'utf8').trim());
+// A pid file is READY when it holds a positive integer: the stub writes `echo $! > file` after starting the
+// process, and a helper's own child writes its file beside it, so one file can exist before the other, or exist
+// empty, when the test looks (CI on the 0.11.2 release commit: ENOENT on `gh-child` while `gh-grandchild` was
+// already there). A read that is not a positive integer throws: `process.kill(0)` would signal this group.
+const pidReady = (sb: Sandbox, file: string): boolean => {
+  try {
+    const n = Number(readFileSync(join(sb.state, file), 'utf8').trim());
+    return Number.isInteger(n) && n > 0;
+  } catch {
+    return false;
+  }
+};
+const pidIn = (sb: Sandbox, file: string) => {
+  const n = Number(readFileSync(join(sb.state, file), 'utf8').trim());
+  if (!(Number.isInteger(n) && n > 0)) throw new Error(`${file}: not a pid: ${JSON.stringify(readFileSync(join(sb.state, file), 'utf8'))}`);
+  return n;
+};
 const workDirs = (sb: Sandbox) => readdirSync(sb.dir).filter((n) => n.startsWith('push-watch.'));
 
 describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run offline under stub git and gh', () => {
@@ -405,7 +421,7 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     const sb = sandbox();
     seed(sb, { 'remote-sha': LOCAL, hang: '' });
     const { child, done } = startScript(SCRIPT, ['feature/x'], sb, { PUSH_WATCH_POLL_SECONDS: '0', PUSH_WATCH_TIMEOUT_SECONDS: '30' }, { cwd: ROOT });
-    expect(await until(() => existsSync(join(sb.state, 'gh-child')), 8000), 'the probe started').toBe(true);
+    expect(await until(() => pidReady(sb, 'gh-child'), 8000), 'the probe started').toBe(true);
     const ghChild = pidIn(sb, 'gh-child');
     expect(pidAlive(ghChild)).toBe(true);
     child.kill('SIGTERM');
@@ -432,7 +448,7 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     const sb = sandbox();
     seed(sb, { 'remote-sha': LOCAL, 'hang-ignore-term': '' });
     const { child, done } = startScript(SCRIPT, ['feature/x'], sb, { PUSH_WATCH_POLL_SECONDS: '0', PUSH_WATCH_TIMEOUT_SECONDS: '30' }, { cwd: ROOT });
-    expect(await until(() => existsSync(join(sb.state, 'gh-child')), 8000), 'the probe started').toBe(true);
+    expect(await until(() => pidReady(sb, 'gh-child'), 8000), 'the probe started').toBe(true);
     const ghChild = pidIn(sb, 'gh-child');
     child.kill('SIGTERM');
     const r = await done;
@@ -458,7 +474,7 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     const sb = sandbox();
     seed(sb, { 'remote-sha': LOCAL, 'hang-grandchild': '' });
     const { child, done } = startScript(SCRIPT, ['feature/x'], sb, { PUSH_WATCH_POLL_SECONDS: '0', PUSH_WATCH_TIMEOUT_SECONDS: '30' }, { cwd: ROOT });
-    expect(await until(() => existsSync(join(sb.state, 'gh-grandchild')), 8000), 'the probe and its helper started').toBe(true);
+    expect(await until(() => pidReady(sb, 'gh-grandchild'), 8000), 'the probe and its helper started').toBe(true);
     const grandchild = pidIn(sb, 'gh-grandchild');
     child.kill('SIGTERM');
     const r = await done;
@@ -473,7 +489,7 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     const sb = sandbox();
     seed(sb, { 'remote-sha': LOCAL, 'hang-grandchild-ignore': '' });
     const { child, done } = startScript(SCRIPT, ['feature/x'], sb, { PUSH_WATCH_POLL_SECONDS: '0', PUSH_WATCH_TIMEOUT_SECONDS: '2' }, { cwd: ROOT });
-    expect(await until(() => existsSync(join(sb.state, 'gh-grandchild')), 8000), 'the probe and its helper started').toBe(true);
+    expect(await until(() => pidReady(sb, 'gh-grandchild') && pidReady(sb, 'gh-child'), 8000), 'the probe and its helper started').toBe(true);
     const grandchild = pidIn(sb, 'gh-grandchild');
     const gh = pidIn(sb, 'gh-child');
     // the deadline passes at 2 s; the watchdog then TERMs the tree (the helper dies, gh and the grandchild ignore it)
