@@ -49,7 +49,8 @@ const seed = (matches: Match[], ageMs = 0) => {
   // The schedule slice as the refresher writes it off the bundle (the smoke's seed writes the same): a snapshot
   // with none says discovery was never made, and `refreshWanted` then starts one on a cache of any age.
   const schedule = { updatedAt: at, attemptedAt: at, failures: 0, complete: true };
-  writeState({ updatedAt: at, live: matches, degraded: false, source: 'espn', competition: 'eng.1', schedule } as never, NOW.getTime());
+  // The read that filled the slice was WHOLE (the snapshot states it: an empty list is "nothing on" only then).
+  writeState({ updatedAt: at, live: matches, degraded: false, source: 'espn', competition: 'eng.1', schedule, liveComplete: true } as never, NOW.getTime());
 };
 const cfg = (over: Partial<CliConfig> = {}): CliConfig =>
   described({ lang: 'en', tz: undefined, json: true, color: false, source: 'espn', competition: 'eng.1', flavor: 'off', markets: true, ...over });
@@ -210,6 +211,22 @@ describe('claudinho ambient --json', () => {
     expect(v.line).toBe("⚽ ARS 2–1 CHE 50'");
     expect((v.live as { items: unknown[] }).items).toHaveLength(1);
     expect(v).toMatchObject({ current: false, degraded: true });
+  });
+
+  it('the read\'s completeness is the snapshot\'s to state: an empty list after a read that was not whole is never current; absent is not whole; a value that is not a boolean is not believed', () => {
+    // A live read that succeeded but omitted a record (an unreadable score beside readable siblings) is not
+    // degraded and persists an empty list: the view must not call that "nothing on".
+    const at = NOW.toISOString();
+    const schedule = { updatedAt: at, attemptedAt: at, failures: 0, complete: true };
+    for (const [liveComplete, current] of [[false, false], [undefined, false], ['yes', false], [true, true]] as const) {
+      writes = [];
+      writeState({ updatedAt: at, live: [], degraded: false, source: 'espn', competition: 'eng.1', schedule, ...(liveComplete === undefined ? {} : { liveComplete }) } as never, NOW.getTime());
+      cmdAmbient(ctx());
+      const v = view();
+      expect(v.current, `liveComplete ${String(liveComplete)}`).toBe(current);
+      expect(v).toMatchObject({ degraded: false, live: { items: [], complete: true } });
+      expect(v.line).toBe('⚽ —'); // no discovered window: nothing to sync to
+    }
   });
 
   it('`pinned` is identity: a pin with the record\'s id pins under another code; a pin with another id does not pin the same code', () => {

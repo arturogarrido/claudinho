@@ -142,6 +142,17 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
     expect(unread).toMatchObject({ current: false, degraded: false, updatedAt: iso(NOW - 5000) });
   });
 
+  it('a fresh, non-degraded snapshot whose READ was not whole (the snapshot says so) syncs in the window, as an unreadable slice does; one whose read was whole is trusted', () => {
+    const opts = { defaultCompetition: false, teamKind: 'nation' as const, now: new Date(NOW) };
+    const notWhole = ambientView(snapshot(inWindow, { liveComplete: false } as never, 5000), opts);
+    expect(notWhole.line).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
+    expect(notWhole).toMatchObject({ current: false, degraded: false });
+    expect(line(snapshot(inWindow, { liveComplete: false } as never, 5000))).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
+    const whole = ambientView(snapshot(inWindow, { liveComplete: true } as never, 5000), opts);
+    expect(whole.line).not.toContain('syncing');
+    expect(whole).toMatchObject({ current: true, degraded: false });
+  });
+
   it('the syncing line at the marker\'s own width keeps the count and nothing wider', () => {
     const state = snapshot(sched([nations('1', NOW - 30 * MIN), fixture('2', NOW - 20 * MIN, ['GER', 'Germany'], ['ITA', 'Italy'])]));
     const cut = line(state, { columns: 3 });

@@ -47,6 +47,7 @@ vi.mock('../src/cache', async (importOriginal) => {
   };
 });
 
+import { ambientView } from '../src/ambient';
 import { cachePath, type CacheState, readState, type ScheduleSlice, writeBackoffNote, writeState } from '../src/cache';
 import { refreshWanted, runRefresh } from '../src/refresh';
 import { renderHook } from '../src/hook';
@@ -318,6 +319,7 @@ describe('the continuation: a match seen in play keeps the gate open until it is
     await refresh(AFTER);
     expect(held()).toBe(iso(KICKOFF + 6 * HOUR));
     expect(state()?.degraded).toBe(true);
+    expect(state()?.liveComplete).toBe(false); // a failed read is not whole
   });
 
   it('an INCOMPLETE read with none in play leaves it: such a read does not prove the match is over', async () => {
@@ -327,6 +329,12 @@ describe('the continuation: a match seen in play keeps the gate open until it is
     await refresh(AFTER);
     expect(state()?.live).toEqual([]);
     expect(held()).toBe(iso(KICKOFF + 6 * HOUR));
+    // The snapshot states that the read was not whole, so the view's empty list is not current and the line syncs
+    // (the continuation keeps the gate open): an omitted record is never "nothing on".
+    expect(state()?.liveComplete).toBe(false);
+    const v = ambientView(state(), { defaultCompetition: false, teamKind: 'club', now: new Date(AFTER) });
+    expect(v).toMatchObject({ current: false, degraded: false });
+    expect(v.line).toContain('live · syncing…');
   });
 
   it('a read that holds only an EARLIER match in play does not shorten it', async () => {
@@ -352,6 +360,8 @@ describe('the continuation: a match seen in play keeps the gate open until it is
     await refresh(AFTER);
     expect(days()).toHaveLength(3);
     expect(held()).toBeUndefined();
+    expect(state()?.liveComplete).toBe(true); // a whole read: the snapshot says so
+    expect(ambientView(state(), { defaultCompetition: false, teamKind: 'club', now: new Date(AFTER) })).toMatchObject({ current: true, degraded: false });
     asked = [];
     expect(wanted(AFTER + MIN)).toBe(false);
     await refresh(AFTER + MIN);

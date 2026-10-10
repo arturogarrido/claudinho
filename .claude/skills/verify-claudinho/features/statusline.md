@@ -25,11 +25,11 @@ hook on every prompt submit, after `claudinho follow <alias>`.
 - offline: `hook`
   proves: exit 0; stdout is empty; spawns = 0; fetches = []
 - offline: `ambient --seed club --slug eng.1 --follow premier-league`
-  proves: exit 0; stdout contains "⚽ ARS 2–1 CHE 50'"; stdout contains "Arsenal 2–1 Chelsea (50')"; stdout contains "Not affiliated with FIFA"; stdout contains "premier-league"; spawns = 0; fetches = []
+  proves: exit 0; stdout contains "⚽ ARS 2–1 CHE 50'"; stdout contains "Arsenal 2–1 Chelsea (50')"; stdout contains ""current":true"; stdout contains "Not affiliated with FIFA"; stdout contains "premier-league"; spawns = 0; fetches = []
 - offline: `ambient`
   proves: exit 0; stdout contains "noCompetition"; stdout contains "⚽ claudinho follow"; spawns = 0; fetches = []
 - offline: `ambient --seed none --follow premier-league`
-  proves: exit 0; stdout contains "⚽ —"; spawns = 1; fetches = []
+  proves: exit 0; stdout contains "⚽ —"; stdout contains ""current":false"; spawns = 1; fetches = []
 
 ## What proves it
 
