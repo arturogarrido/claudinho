@@ -32,6 +32,6 @@ Any user-visible formatter change must land on **all three surfaces** before mer
 
 ## Format opts invariant
 
-If a core formatter accepts `tz`, `locale`, `flags`, or `date`, **every wrapper** passes them from `CliConfig` / `CommonOpts`.
+If a core formatter accepts `tz`, `locale`, `flags`, or `date`, **every wrapper** passes them from `CliConfig` / `CommonOpts`; a formatter that renders relative to now (a countdown) takes the request's ONE clock (`ctx.now` / `args.now`, else the adapter's read clock) as a required parameter, never a `new Date()` of its own.
 
 The rest is `AGENTS.md` "Conventions" (canonical) and the guides that hold what this rule stated that no bullet does: `guides/conventions/surfaces.md` (the flair slot, what `release:qa` renders, the format opts example, the regression tests), `guides/conventions/selection.md` (the mode line and the pinned team), `guides/conventions/verdicts.md` (verdict forwarding), `guides/conventions/bundle-and-bracket.md` (the knockout live-resolve history and its exceptions) and `guides/conventions/stage-and-teams.md` (clubs and stages).

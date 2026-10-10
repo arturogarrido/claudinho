@@ -117,19 +117,21 @@ describe('the away column is padded', () => {
 });
 
 describe("the countdown says 'now' in the reader's language (0.11 · 2.7c, round 1)", () => {
-  // The bundled opener (Jun 11, 2026, 19:00 UTC) read before the tournament: a
-  // SCHEDULED record whose kickoff has passed on any clock this test runs on,
-  // as a stale record or the bundle's skeleton during an outage is.
-  const BEFORE_THE_OPENER = new Date('2026-06-11T19:00:00Z'); // the opener's kickoff instant: on the request's clock the countdown is "now" (it used to be June 1, ten days before, and the "now" came from the wall clock)
+  // The bundled opener (Jun 11, 2026, 19:00 UTC) read AT its kickoff instant on
+  // the request's clock: a SCHEDULED record whose kickoff is not ahead of the
+  // request, as a stale record or the bundle's skeleton during an outage is, so
+  // the countdown is the language's word for now. (The clock used to sit ten
+  // days before the opener, and the "now" came from the wall clock.)
+  const AT_THE_OPENER = new Date('2026-06-11T19:00:00Z');
   for (const lang of ['es', 'pt', 'fr']) {
     it(`next MEX under ${lang}: the language's word for now, never the English one inside its "in"`, async () => {
-      await cmdNext('MEX', ctx('fifa.world', [], BEFORE_THE_OPENER, { lang }));
+      await cmdNext('MEX', ctx('fifa.world', [], AT_THE_OPENER, { lang }));
       expect(text(), lang).not.toMatch(/\bnow\b/);
       expect(text(), lang).toContain(coreT(lang, 'countdown.now'));
     });
   }
   it("next MEX under en: 'now', not 'in now'", async () => {
-    await cmdNext('MEX', ctx('fifa.world', [], BEFORE_THE_OPENER));
+    await cmdNext('MEX', ctx('fifa.world', [], AT_THE_OPENER));
     expect(text()).toMatch(/\bnow\b/);
     expect(text()).not.toMatch(/\bin now\b/);
   });
@@ -137,7 +139,8 @@ describe("the countdown says 'now' in the reader's language (0.11 · 2.7c, round
 
 describe("the countdown's 'in' is the reader's word too (round 2)", () => {
   // A kickoff a week after a clock set in 2098: discovery's span holds it, and
-  // the countdown, which reads the real clock, says "in" until 2099.
+  // the countdown, relative to the request's clock like every other read of
+  // the command (`club-lines-extra.test.ts`), says "in".
   const LATE_2098 = new Date('2098-12-25T12:00:00Z');
   const future = fixture(1, { kickoff: '2099-01-01T15:00:00.000Z', home: { code: 'ARS', name: 'Arsenal', id: 'espn:359' } });
   const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
