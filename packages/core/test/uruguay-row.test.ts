@@ -23,7 +23,6 @@ describe('the Liga AUF Uruguaya row', () => {
     expect(row?.bracket).toBe('not-offered-yet');
     expect(row?.markets).toBe('not-offered-yet');
     expect(row?.cadenceYears).toBe(1);
-    expect(SUPPORTED.length).toBe(16);
   });
 
   it('is selected by its alias and by its slug, never as experimental', () => {

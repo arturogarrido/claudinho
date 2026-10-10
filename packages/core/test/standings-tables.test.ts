@@ -90,6 +90,7 @@ describe('a league: one table, key LEAGUE, labelled with the provider’s name',
     ['ita.1', 20, '2026-2027 Italian Serie A'],
     ['ger.1', 18, '2026-27 German Bundesliga'],
     ['mex.1', 18, '2026 Torneo Apertura'],
+    ['uru.1', 16, 'Torneo Clausura 2026'],
     ['uefa.champions', 36, 'League Phase'],
   ] as const) {
     it(`${slug}: ${rows} rows, live, attributed`, async () => {

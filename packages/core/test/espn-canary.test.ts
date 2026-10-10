@@ -1393,7 +1393,7 @@ describe('the window across a season turn (0.11 2.1b): the canary asks it the wa
 });
 
 describe('the canary takes its competitions and their cadences from the table it is handed (0.11 · 2.5a, D3)', () => {
-  // A sixteenth row is one row: the canary asks it and applies its cadence with no change to the script.
+  // A row past the table is one row: the canary asks it and applies its cadence with no change to the script.
   const fake = {
     slug: 'fra.1',
     alias: 'ligue-1',
@@ -1418,7 +1418,7 @@ describe('the canary takes its competitions and their cadences from the table it
     expect(r.rows.filter((row) => row.competition === 'fra.1').map((row) => row.request)).toEqual(['live', 'day', 'window', 'discovery', 'standings']);
   });
 
-  it('the cadence is the row\'s: the sixteenth turns by two', async () => {
+  it('the cadence is the row\'s: the added row turns by two', async () => {
     const at = new Date('2026-10-25T12:00:00Z');
     const months = (nov: number) => (url: string) =>
       json(url.includes('/standings') ? standings() : asked(url) === '202611' ? { leagues: [{ season: { ...SEASON, year: nov } }], events: [] } : scoreboard(url));

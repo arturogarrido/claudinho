@@ -1,0 +1,1042 @@
+{
+ "name": "Liga AUF Uruguaya",
+ "season": {
+  "year": 2026,
+  "displayName": "2026 Liga AUF Uruguaya"
+ },
+ "children": [
+  {
+   "id": "1",
+   "name": "Torneo Clausura 2026",
+   "abbreviation": "2026 Clausura",
+   "standings": {
+    "entries": [
+     {
+      "team": {
+       "id": "19002",
+       "abbreviation": "MCT",
+       "displayName": "Montevideo City Torque"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 10.0
+       },
+       {
+        "name": "losses",
+        "value": 2.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 10.0
+       },
+       {
+        "name": "points",
+        "value": 22.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 10.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 20.0
+       },
+       {
+        "name": "ties",
+        "value": 1.0
+       },
+       {
+        "name": "wins",
+        "value": 7.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 1.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "5492",
+       "abbreviation": "LIV",
+       "displayName": "Liverpool"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 10.0
+       },
+       {
+        "name": "losses",
+        "value": 1.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 10.0
+       },
+       {
+        "name": "points",
+        "value": 21.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 8.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 18.0
+       },
+       {
+        "name": "ties",
+        "value": 3.0
+       },
+       {
+        "name": "wins",
+        "value": 6.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 2.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "2683",
+       "abbreviation": "PEN",
+       "displayName": "Peñarol"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 9.0
+       },
+       {
+        "name": "losses",
+        "value": 1.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 9.0
+       },
+       {
+        "name": "points",
+        "value": 19.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 6.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 15.0
+       },
+       {
+        "name": "ties",
+        "value": 2.0
+       },
+       {
+        "name": "wins",
+        "value": 6.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 1.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 3.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "10000",
+       "abbreviation": "MAL",
+       "displayName": "Deportivo Maldonado"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 10.0
+       },
+       {
+        "name": "losses",
+        "value": 2.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 8.0
+       },
+       {
+        "name": "points",
+        "value": 18.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 6.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 14.0
+       },
+       {
+        "name": "ties",
+        "value": 3.0
+       },
+       {
+        "name": "wins",
+        "value": 5.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 4.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "2684",
+       "abbreviation": "NAC",
+       "displayName": "Nacional"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 9.0
+       },
+       {
+        "name": "losses",
+        "value": 2.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 4.0
+       },
+       {
+        "name": "points",
+        "value": 17.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 9.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 13.0
+       },
+       {
+        "name": "ties",
+        "value": 2.0
+       },
+       {
+        "name": "wins",
+        "value": 5.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 5.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "5501",
+       "abbreviation": "WAN",
+       "displayName": "Montevideo Wanderers"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 9.0
+       },
+       {
+        "name": "losses",
+        "value": 2.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 1.0
+       },
+       {
+        "name": "points",
+        "value": 15.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 11.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 12.0
+       },
+       {
+        "name": "ties",
+        "value": 3.0
+       },
+       {
+        "name": "wins",
+        "value": 4.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 6.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "8416",
+       "abbreviation": "JUV",
+       "displayName": "Juventud"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 9.0
+       },
+       {
+        "name": "losses",
+        "value": 1.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 4.0
+       },
+       {
+        "name": "points",
+        "value": 14.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 6.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 10.0
+       },
+       {
+        "name": "ties",
+        "value": 5.0
+       },
+       {
+        "name": "wins",
+        "value": 3.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 7.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "5490",
+       "abbreviation": "CER",
+       "displayName": "Cerro"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 9.0
+       },
+       {
+        "name": "losses",
+        "value": 3.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -2.0
+       },
+       {
+        "name": "points",
+        "value": 14.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 11.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 9.0
+       },
+       {
+        "name": "ties",
+        "value": 2.0
+       },
+       {
+        "name": "wins",
+        "value": 4.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 8.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "9903",
+       "abbreviation": "RAC",
+       "displayName": "Racing (Montevideo)"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 9.0
+       },
+       {
+        "name": "losses",
+        "value": 3.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 1.0
+       },
+       {
+        "name": "points",
+        "value": 12.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 8.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 9.0
+       },
+       {
+        "name": "ties",
+        "value": 3.0
+       },
+       {
+        "name": "wins",
+        "value": 3.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 9.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "6866",
+       "abbreviation": "PSO",
+       "displayName": "Progreso"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 9.0
+       },
+       {
+        "name": "losses",
+        "value": 5.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -3.0
+       },
+       {
+        "name": "points",
+        "value": 12.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 12.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 9.0
+       },
+       {
+        "name": "ties",
+        "value": 0.0
+       },
+       {
+        "name": "wins",
+        "value": 4.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 10.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "9999",
+       "abbreviation": "BOS",
+       "displayName": "Boston River"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 9.0
+       },
+       {
+        "name": "losses",
+        "value": 4.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -2.0
+       },
+       {
+        "name": "points",
+        "value": 9.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 12.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 10.0
+       },
+       {
+        "name": "ties",
+        "value": 3.0
+       },
+       {
+        "name": "wins",
+        "value": 2.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 11.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "1007",
+       "abbreviation": "DSC",
+       "displayName": "Defensor Sporting"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 9.0
+       },
+       {
+        "name": "losses",
+        "value": 5.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -7.0
+       },
+       {
+        "name": "points",
+        "value": 8.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 16.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 9.0
+       },
+       {
+        "name": "ties",
+        "value": 2.0
+       },
+       {
+        "name": "wins",
+        "value": 2.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 12.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "4817",
+       "abbreviation": "DAN",
+       "displayName": "Danubio"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 10.0
+       },
+       {
+        "name": "losses",
+        "value": 5.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -7.0
+       },
+       {
+        "name": "points",
+        "value": 7.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 11.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 4.0
+       },
+       {
+        "name": "ties",
+        "value": 4.0
+       },
+       {
+        "name": "wins",
+        "value": 1.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 13.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "9902",
+       "abbreviation": "CERR",
+       "displayName": "Cerro Largo"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 9.0
+       },
+       {
+        "name": "losses",
+        "value": 4.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -6.0
+       },
+       {
+        "name": "points",
+        "value": 5.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 12.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 6.0
+       },
+       {
+        "name": "ties",
+        "value": 5.0
+       },
+       {
+        "name": "wins",
+        "value": 0.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 14.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "131688",
+       "abbreviation": "CEFC",
+       "displayName": "Central Español Fútbol Club"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 9.0
+       },
+       {
+        "name": "losses",
+        "value": 6.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -11.0
+       },
+       {
+        "name": "points",
+        "value": 5.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 16.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 5.0
+       },
+       {
+        "name": "ties",
+        "value": 2.0
+       },
+       {
+        "name": "wins",
+        "value": 1.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 15.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "21403",
+       "abbreviation": "ALB",
+       "displayName": "Albion FC"
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 9.0
+       },
+       {
+        "name": "losses",
+        "value": 8.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -9.0
+       },
+       {
+        "name": "points",
+        "value": 3.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 18.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 9.0
+       },
+       {
+        "name": "ties",
+        "value": 0.0
+       },
+       {
+        "name": "wins",
+        "value": 1.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "deductions",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 16.0
+       },
+       {
+        "name": "rankChange",
+        "value": 0.0
+       },
+       {
+        "name": "overall"
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

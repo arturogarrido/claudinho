@@ -2,7 +2,7 @@
  * The root package.json (private: nobody's listing) says the cli package's
  * first clause (0.11 · 2.7), and so carries the framing's count: it is pinned
  * to the supported table like every other static copy that carries it, so a
- * sixteenth row fails here too until the sentence is updated.
+ * new row fails here too until the sentence is updated.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

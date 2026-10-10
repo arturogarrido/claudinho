@@ -2,7 +2,7 @@
  * Public copy (0.11 · 2.7): the framing every listing says, the counts it
  * carries, the keywords, and the dash rule. The framing names four competitions
  * and counts the rest ("and 11 more"): the digit is `SUPPORTED.length - 4` and
- * the names are rows of the table, so a sixteenth row fails here until every
+ * the names are rows of the table, so a new row fails here until every
  * copy is updated; "15" or "fifteen" counting the supported set is pinned the
  * same way. No em-dash (U+2014) in authored prose: the listing strings and the
  * public Markdown outside fenced blocks and inline code, with the quoted voice

@@ -3,7 +3,7 @@
  * `scripts/gen-readme-matrix.mjs` renders the rows between two markers in the
  * root README, and this guard fails when the committed block differs from the
  * generator's output, so the public matrix cannot drift from the data. The
- * generator takes a table, so a sixteenth row renders with no other change.
+ * generator takes a table, so a new row renders with no other change.
  *
  * The README is a text file git may check out with CRLF (a default Windows
  * checkout; `.gitattributes` pins only `scripts/`), so the guard compares the

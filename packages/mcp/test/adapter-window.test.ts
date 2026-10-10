@@ -12,6 +12,7 @@
  *
  * Own file: the module-level adapter map and the armed window outlive a test.
  */
+import { SUPPORTED } from '@claudinho/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { KEPT_ADAPTERS_MAX, keptAdapterCount, resolveAdapter, toolGetLive, toolGetStandings, toolGetToday } from '../src/tools';
 
@@ -52,7 +53,8 @@ describe('the kept adapters are bounded', () => {
   it('distinct raw slugs past the bound evict the oldest; a kept competition keeps its instance; an adapter built after an eviction is inside the window', () => {
     for (let i = 0; i < KEPT_ADAPTERS_MAX + 8; i++) resolveAdapter({ competition: `probe.x${i}` });
     expect(keptAdapterCount()).toBeLessThanOrEqual(KEPT_ADAPTERS_MAX);
-    expect(KEPT_ADAPTERS_MAX).toBeGreaterThanOrEqual(16);
+    // The bound is the supported set and room for as many raw slugs again: a count of the table, derived from it.
+    expect(KEPT_ADAPTERS_MAX).toBeGreaterThanOrEqual(2 * SUPPORTED.length);
     // A competition asked again returns its kept instance while it is kept; one asked once more after
     // an eviction is a fresh instance, armed from the source's window like any other.
     expect(resolveAdapter({ competition: `probe.x${KEPT_ADAPTERS_MAX + 7}` })).toBe(resolveAdapter({ competition: `probe.x${KEPT_ADAPTERS_MAX + 7}` }));
