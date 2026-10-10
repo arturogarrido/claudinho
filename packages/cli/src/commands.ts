@@ -2031,8 +2031,9 @@ export async function cmdShare(
     // Live-resolved (see cmdNext): overlay the knockout window so a confirmed
     // R32+ tie pastes here too, not just group games. A saved pin is not
     // resolved again.
-    const { code, next } = await nextAsked(ctx, team, teamUsage('share next', cfg));
-    const market = await reliableShareSignals(ctx, next.fixture ? [next.fixture] : []);
+    // The clock that selected the fixture judges its market: one clock per request.
+    const { code, next, now } = await nextAsked(ctx, team, teamUsage('share next', cfg));
+    const market = await reliableShareSignals({ ...ctx, now }, next.fixture ? [next.fixture] : []);
     emitMatchCard(ctx, nextShareCard(next, code, market, where), baseOptions, copy);
     return;
   }
@@ -2042,8 +2043,12 @@ export async function cmdShare(
     precheck(cfg, t);
     // ±1-day window fetch (see cmdMatch): the provider's scoreboard day can
     // differ from the fixture's UTC date.
-    const found = await getMatchById(adapterFor(ctx), target, ctx.now);
-    const market = await reliableShareSignals(ctx, found.match ? [found.match] : []);
+    const adapter = adapterFor(ctx);
+    // The request's clock (the one given, else the adapter's read clock), read
+    // once: the clock that finds the match judges its market.
+    const now = requestClock(adapter, ctx.now);
+    const found = await getMatchById(adapter, target, now);
+    const market = await reliableShareSignals({ ...ctx, now }, found.match ? [found.match] : []);
     emitMatchCard(ctx, matchShareCard(found, target, market, where), baseOptions, copy);
     return;
   }
