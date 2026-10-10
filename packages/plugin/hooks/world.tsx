@@ -55,4 +55,3 @@ export const world = async (
     $.ui.mount({ plugin: 'claudinho', surface: 'terminal', component: 'AbovePrompt', props: { ...PROPS, ...props }, viewport: { columns: 100, rows: 30 } })
   return { clock, argvs, stdins, mount }
 }
-
