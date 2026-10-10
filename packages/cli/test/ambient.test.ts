@@ -165,7 +165,7 @@ describe('claudinho ambient --json', () => {
   });
 
   it('a stamp the reader does not believe (future skew) gives no updatedAt, no staleAfter and current false; one inside the allowance is believed', () => {
-    const base = { live: [live('1', ARS, CHE, [2, 1])], degraded: false, source: 'espn', competition: 'eng.1' };
+    const base = { live: [live('1', ARS, CHE, [2, 1])], degraded: false, source: 'espn', competition: 'eng.1', liveComplete: true };
     const opts = { flags: false, defaultCompetition: false, teamKind: 'club' as const, now: NOW };
     const future = ambientView({ ...base, updatedAt: '2099-01-01T00:00:00.000Z' }, opts);
     expect(future.live.items).toEqual([]);
