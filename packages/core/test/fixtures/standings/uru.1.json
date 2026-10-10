@@ -51,27 +51,12 @@
         "value": 7.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 1.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -115,27 +100,12 @@
         "value": 6.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 2.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -179,27 +149,12 @@
         "value": 6.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
         "value": 1.0
        },
        {
-        "name": "ppg",
-        "value": 0.0
-       },
-       {
         "name": "rank",
         "value": 3.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -243,27 +198,12 @@
         "value": 5.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 4.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -307,27 +247,12 @@
         "value": 5.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 5.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -371,27 +296,12 @@
         "value": 4.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 6.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -435,27 +345,12 @@
         "value": 3.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 7.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -499,27 +394,12 @@
         "value": 4.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 8.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -563,27 +443,12 @@
         "value": 3.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 9.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -627,27 +492,12 @@
         "value": 4.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 10.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -691,27 +541,12 @@
         "value": 2.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 11.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -755,27 +590,12 @@
         "value": 2.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 12.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -819,27 +639,12 @@
         "value": 1.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 13.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -883,27 +688,12 @@
         "value": 0.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 14.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -947,27 +737,12 @@
         "value": 1.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 15.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      },
@@ -1011,27 +786,12 @@
         "value": 1.0
        },
        {
-        "name": "advanced",
-        "value": 0.0
-       },
-       {
         "name": "deductions",
-        "value": 0.0
-       },
-       {
-        "name": "ppg",
         "value": 0.0
        },
        {
         "name": "rank",
         "value": 16.0
-       },
-       {
-        "name": "rankChange",
-        "value": 0.0
-       },
-       {
-        "name": "overall"
        }
       ]
      }

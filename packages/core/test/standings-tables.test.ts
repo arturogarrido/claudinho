@@ -9,7 +9,7 @@
  * name ends in, so four of nine were shown as the whole competition.
  *
  * The payloads under `fixtures/standings/` were recorded from the real feed on
- * Oct 2 2026 and slimmed to what the parser reads (names, ids, statistics).
+ * Oct 2 2026 (the Liga AUF Uruguaya's on Oct 9 2026) and slimmed to what the parser reads (names, ids, statistics).
  * Every repair test here goes payload → parser → adapter → domain.
  */
 import { readFileSync } from 'node:fs';
