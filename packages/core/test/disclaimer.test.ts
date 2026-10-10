@@ -67,6 +67,15 @@ describe('the static copies carry the constant', () => {
     expect(String(plugin.description)).toMatch(new RegExp(`${escapeRe(disclaimerLine('Cursor'))}$`));
   });
 
+  it("the Claude Code plugin's manifest and its marketplace entry end with the sentence itself (Anthropic is already named in it)", () => {
+    const manifest = json('packages/plugin/.claude-plugin/plugin.json');
+    expect(String(manifest.description)).toMatch(new RegExp(`${escapeRe(disclaimerLine())}$`));
+    const market = json('.claude-plugin/marketplace.json') as { plugins?: Array<{ name?: unknown; description?: unknown }> };
+    const entry = (market.plugins ?? []).find((e) => e.name === 'claudinho');
+    expect(entry, 'the marketplace lists the plugin').toBeDefined();
+    expect(String(entry?.description)).toMatch(new RegExp(`${escapeRe(disclaimerLine())}$`));
+  });
+
   it("the MCP Registry's card is the stated exception: the fan line alone, within the schema's 100 characters, and it lists the selection settings", () => {
     const server = json('packages/mcp/server.json');
     expect(String(server.description)).toBe(
@@ -96,6 +105,8 @@ describe('the static copies carry the constant', () => {
       ['manifest description', json('packages/mcp/mcpb/manifest.json').description],
       ['manifest long_description', json('packages/mcp/mcpb/manifest.json').long_description],
       ['.cursor-plugin/plugin.json', json('.cursor-plugin/plugin.json').description],
+      ['packages/plugin/.claude-plugin/plugin.json', json('packages/plugin/.claude-plugin/plugin.json').description],
+      ['.claude-plugin/marketplace.json', ((json('.claude-plugin/marketplace.json') as { plugins?: Array<{ description?: unknown }> }).plugins ?? [])[0]?.description],
     ];
     for (const [label, text] of listings) expect(collapsed(String(text)), label).not.toMatch(OTHER_SPELLING);
   });
@@ -107,9 +118,10 @@ describe('the composed footer, spelled out', () => {
   });
 });
 
-/** The nine public documents that carry the sentence. */
+/** The ten public documents that carry the sentence. */
 const DOCUMENTS = [
   'README.md',
+  'packages/plugin/README.md',
   'packages/cli/README.md',
   'packages/mcp/README.md',
   'packages/core/README.md',
