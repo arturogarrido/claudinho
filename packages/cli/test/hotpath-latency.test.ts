@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import type { Match } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeState } from '../src/cache';
-import { cmdHook, cmdPrompt } from '../src/commands';
+import { cmdAmbient, cmdHook, cmdPrompt } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import * as cursorPayload from '../src/cursorPayload';
@@ -110,13 +110,14 @@ afterEach(() => {
 });
 
 describe('hot path performs no I/O beyond the cache read (in-process)', () => {
-  it('cmdPrompt/cmdHook with a fresh cache: zero fetches, zero refresher spawns', () => {
+  it('cmdPrompt/cmdHook/cmdAmbient with a fresh cache: zero fetches, zero refresher spawns', () => {
     seedFreshCache();
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const outSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     try {
       cmdPrompt({ cfg: cfg(), t: makeT('en') });
       cmdHook({ cfg: cfg(), t: makeT('en') });
+      cmdAmbient({ cfg: cfg(), t: makeT('en') });
     } finally {
       outSpy.mockRestore();
     }

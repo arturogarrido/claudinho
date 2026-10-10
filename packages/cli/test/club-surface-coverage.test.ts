@@ -15,7 +15,7 @@ import { cmdBracket, cmdHook, cmdLive, cmdMarkets, cmdMatch, cmdNext, cmdPrompt,
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
-import { renderPrompt } from '../src/statusline';
+import { ambientView, renderPrompt } from '../src/statusline';
 
 /**
  * Club-surface coverage, first version (audit A03, CONTAINED): under a
@@ -177,6 +177,23 @@ describe('club surface coverage — no World Cup leakage off the bundle', () => 
 });
 
 describe('statusline off the bundle', () => {
+  it('the ambient view renders a club by its code and name with no flag key, like the line', () => {
+    const cache: CacheState = {
+      updatedAt: NOW.toISOString(),
+      live: [{ ...pl, status: 'LIVE', minute: 50, score: { home: 2, away: 1 } }],
+      degraded: false,
+      source: 'espn',
+      competition: 'eng.1',
+    };
+    const v = ambientView(cache, { defaultCompetition: false, teamKind: 'club', flags: false, now: NOW });
+    expect(v.line).toBe("⚽ BOU 2–1 BRE 50'");
+    expect(v.live.items).toHaveLength(1);
+    expect(v.live.items[0]?.home).toEqual({ code: 'BOU', name: 'Bournemouth', id: 'espn:349' });
+    expect('flag' in (v.live.items[0]?.home ?? {})).toBe(false);
+    expect(v.context).toContain('Bournemouth 2–1 Brentford');
+    expect(v.context).not.toMatch(WC);
+  });
+
   it('never counts down to a bundled World Cup fixture', () => {
     // A June 2026 clock, when the bundle had upcoming group games: with no
     // cached fixtures the hot path must fail closed, not read the skeleton.

@@ -26,7 +26,7 @@ import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
 import type { CacheState } from '../src/cache';
-import { renderPrompt } from '../src/statusline';
+import { renderPrompt, ambientView } from '../src/statusline';
 
 // A confirmed R32 tie ESPN has filed over the bundled placeholder slot 760486
 // (in the bundle: "Group A 2nd" vs "Group B 2nd", both 🏳️). The overlay carries
@@ -161,6 +161,15 @@ describe('statusline hot-path contract — live-resolve from cache, else fail cl
     expect(line).toContain('🇲🇽'); // resolved home
     expect(line).toContain('🇪🇨'); // resolved away
     expect(line).not.toContain(PLACEHOLDER_FLAG);
+  });
+
+  it('the ambient view counts down to the resolved tie by name, and to nothing when the cache lacks it', () => {
+    const cache = baseCache({ fixtures: [r32MexEcu()], fixturesUpdatedAt: KNOCKOUT_NOW.toISOString() });
+    const v = ambientView(cache, { pick: { code: 'MEX' }, now: KNOCKOUT_NOW });
+    expect(v.next?.home.name).toBe('Mexico');
+    expect(v.next?.away.name).toBe('Ecuador');
+    expect(JSON.stringify(v)).not.toContain(PLACEHOLDER_FLAG);
+    expect(ambientView(baseCache(), { pick: { code: 'MEX' }, now: KNOCKOUT_NOW }).next).toBeNull();
   });
 
   it('fails closed to "⚽ —" (no 🏳️ leak) when the cache lacks the fixture', () => {
