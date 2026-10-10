@@ -192,6 +192,26 @@ describe('claudinho ambient --json', () => {
     expect(v.pick).toEqual({ code: 'BOU' });
   });
 
+  it('a fresh DEGRADED snapshot is never current: an empty list after a failed read says nothing was read, not that nothing is on', () => {
+    // The cold refresh whose discovery and live probe both failed writes exactly this: a fresh stamp, no live
+    // records, `degraded: true`, no schedule window. The line says nothing is known; so must the view.
+    const at = NOW.toISOString();
+    writeState({ updatedAt: at, live: [], degraded: true, source: 'espn', competition: 'eng.1', schedule: { updatedAt: at, attemptedAt: at, failures: 1, complete: false } } as never, NOW.getTime());
+    cmdAmbient(ctx());
+    let v = view();
+    expect(v.line).toBe('⚽ —');
+    expect(v).toMatchObject({ current: false, degraded: true, live: { items: [], complete: true } });
+    // A fresh degraded snapshot that still carries a live record: the line shows it (best effort, as before), the
+    // list carries it, and `current` is still false: a program may show it and must not conclude from it.
+    writes = [];
+    writeState({ updatedAt: at, live: [live('1', ARS, CHE, [2, 1])], degraded: true, source: 'espn', competition: 'eng.1', schedule: { updatedAt: at, attemptedAt: at, failures: 1, complete: false } } as never, NOW.getTime());
+    cmdAmbient(ctx());
+    v = view();
+    expect(v.line).toBe("⚽ ARS 2–1 CHE 50'");
+    expect((v.live as { items: unknown[] }).items).toHaveLength(1);
+    expect(v).toMatchObject({ current: false, degraded: true });
+  });
+
   it('`pinned` is identity: a pin with the record\'s id pins under another code; a pin with another id does not pin the same code', () => {
     seed([live('1', ARS, CHE, [2, 1]), live('2', BOU, BRE, [0, 0])]);
     cmdAmbient(ctx({ pin: { id: 'espn:359', code: 'XXX', name: 'Elsewhere' } }));
