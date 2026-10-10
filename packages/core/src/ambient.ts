@@ -47,7 +47,8 @@ export interface AmbientView {
    * The statusline's line, as `claudinho prompt` prints it (the same reader,
    * the same options), fitted to `--columns N` when given: whole matches are
    * kept while they fit and the rest counted in the `+N` (or `+more`) suffix,
-   * which is never cut.
+   * which is never cut while the width holds it; below the suffix's own width
+   * the line is the width's cut, never wider than asked.
    */
   readonly line: string;
   /** The hook's block, as `claudinho hook` prints it while a match is live; `null` when it prints nothing. */
