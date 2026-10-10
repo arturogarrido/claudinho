@@ -38,25 +38,37 @@ function feed(events: Ev[]): ProviderAdapter {
   return new EspnAdapter({ competition: 'eng.1', fetchImpl, now: () => ADAPTER_CLOCK.getTime() }) as ProviderAdapter;
 }
 const IN_SPAN: Ev = { id: '41', date: '2026-09-27T14:00:00Z' }; // Sep 20 15:00Z to Sep 27 14:00Z: six days and twenty-three hours
-const cfg = (): CliConfig => described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'eng.1', flavor: 'off', markets: false });
+const cfg = (over: Partial<CliConfig> = {}): CliConfig => described({ lang: 'en', tz: 'UTC', json: false, color: false, source: 'espn', competition: 'eng.1', flavor: 'off', markets: false, ...over });
 // No `now` on the context: the command takes the adapter's.
-const ctx = (adapter: ProviderAdapter) => ({ cfg: cfg(), t: makeT('en'), adapter, marketProvider: new FakeMarketProvider() });
+const ctx = (adapter: ProviderAdapter, over: Partial<CliConfig> = {}) => ({ cfg: cfg(over), t: makeT('en'), adapter, marketProvider: new FakeMarketProvider() });
 
 const outSpy = vi.spyOn(process.stdout, 'write');
 let writes: string[] = [];
+const TEAM_ENV = process.env.CLAUDINHO_TEAM;
 beforeEach(() => {
   writes = [];
+  delete process.env.CLAUDINHO_TEAM; // the pin case asks for the pin: the environment must name no team
   outSpy.mockImplementation((c: unknown) => {
     writes.push(String(c));
     return true;
   });
 });
-afterEach(() => outSpy.mockReset());
+afterEach(() => {
+  outSpy.mockReset();
+  if (TEAM_ENV === undefined) delete process.env.CLAUDINHO_TEAM;
+  else process.env.CLAUDINHO_TEAM = TEAM_ENV;
+});
 const text = () => writes.join('');
 
 describe("a command whose context carries no clock takes the adapter's read clock", () => {
   it("next: the fixture is found in the adapter clock's span and its countdown counts from that clock", async () => {
     await cmdNext('Arsenal', ctx(feed([IN_SPAN])));
+    expect(text()).toContain('Liverpool');
+    expect(text()).toContain('in 6d23h');
+  });
+
+  it("next with no argument, the pinned team: the pin's branch takes the adapter's clock too", async () => {
+    await cmdNext(undefined, ctx(feed([IN_SPAN]), { pin: { id: 'espn:359', code: 'ARS', name: 'Arsenal' } }));
     expect(text()).toContain('Liverpool');
     expect(text()).toContain('in 6d23h');
   });
