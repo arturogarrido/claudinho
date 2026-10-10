@@ -277,6 +277,8 @@ off-match it's silent (zero added tokens). Restart Claude Code to activate.
 (`claudinho prompt`) and the live-score hook (`claudinho hook`) that `init claude` wrote to
 `~/.claude/settings.json`, keeps every other setting, then prints the plugin's install line and the
 MCP one-liner; an edited command (a wrapper, `npx -y @claudinho/cli hook`) stays, and it names it.
+The plugin itself (the band above the prompt, the score toasts, the prompt context) installs from the
+repository: see the [Claude Code plugin](https://github.com/arturogarrido/claudinho#claude-code-plugin) section.
 
 ### For a program: `claudinho ambient --json`
 

@@ -140,11 +140,27 @@ claude mcp add claudinho -- npx -y @claudinho/mcp
 
 Restart Claude Code to activate.
 
-**Moving to the Claude Code plugin?** `claudinho init plugin` removes the statusline
+#### Claude Code plugin
+
+The plugin draws the live score or the countdown above the prompt (the band), raises a toast when a
+score changes, and puts the live-score block beside each prompt for the model while a match is on,
+all from the installed CLI (`claudinho ambient --json`), never a fetch of its own. Install the CLI
+and follow a competition, then run `claudinho init plugin` first: it removes the statusline
 (`claudinho prompt`) and the live-score hook (`claudinho hook`) that `init claude` wrote to
-`~/.claude/settings.json`, keeps every other setting, then prints the plugin's install line and the
-MCP one-liner. It removes those two exact commands only: an edited one (a wrapper,
-`npx -y @claudinho/cli hook`) stays where it is, and the command names it for you.
+`~/.claude/settings.json`, keeps every other setting, and prints the install line and the MCP
+one-liner. It removes those two exact commands only: an edited one (a wrapper,
+`npx -y @claudinho/cli hook`) stays where it is, and the command names it for you. Then, at the
+prompt of a Claude Code session in a terminal:
+
+```
+/plugin install claudinho --marketplace arturogarrido/claudinho
+```
+
+Answer `y` to add the marketplace, then choose a scope. The `toasts` option (in `/config`) is
+`pinned` by default (your pinned team's match, `claudinho follow <alias> --team <name>`; with no pin
+saved, no toast), `all` or `off`. The toasts are best effort, a score change the plugin saw between
+two of its runs, never every goal. More in the plugin's
+[README](https://github.com/arturogarrido/claudinho/tree/main/packages/plugin#readme).
 
 #### For a program: `claudinho ambient --json`
 
