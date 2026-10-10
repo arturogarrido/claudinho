@@ -11,7 +11,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { renderHook } from '../src/hook';
-import { ambientView, liveMatchesFromCache, renderPrompt } from '../src/statusline';
+import { ambientView } from '../src/ambient';
+import { liveMatchesFromCache, renderPrompt } from '../src/statusline';
 
 const NOW = new Date('2026-06-20T20:00:00Z');
 /** Passes the cheap shape test (LIVE + two codes) but cannot be sealed. */

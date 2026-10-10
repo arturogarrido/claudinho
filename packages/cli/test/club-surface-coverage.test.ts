@@ -15,7 +15,8 @@ import { cmdBracket, cmdHook, cmdLive, cmdMarkets, cmdMatch, cmdNext, cmdPrompt,
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
-import { ambientView, renderPrompt } from '../src/statusline';
+import { ambientView } from '../src/ambient';
+import { renderPrompt } from '../src/statusline';
 
 /**
  * Club-surface coverage, first version (audit A03, CONTAINED): under a

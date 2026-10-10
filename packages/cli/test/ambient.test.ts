@@ -12,10 +12,13 @@ import type { Match } from '@claudinho/core';
 import { DISCLAIMER } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeBackoffNote, writeState } from '../src/cache';
-import { cmdAmbient } from '../src/commands';
+import { ambientView } from '../src/ambient';
+import { cmdAmbient, cmdPrompt } from '../src/commands';
+import * as cursorPayload from '../src/cursorPayload';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
-import { DISPLAY_STALE_MS, renderHook, renderPrompt } from '../src/statusline';
+import { renderHook } from '../src/hook';
+import { DISPLAY_STALE_MS, renderPrompt } from '../src/statusline';
 import { described } from './config-of';
 
 vi.mock('node:child_process', async (importOriginal) => {
@@ -43,7 +46,10 @@ const live = (id: string, home: typeof ARS, away: typeof ARS, score: [number, nu
 });
 const seed = (matches: Match[], ageMs = 0) => {
   const at = new Date(NOW.getTime() - ageMs).toISOString();
-  writeState({ updatedAt: at, live: matches, degraded: false, source: 'espn', competition: 'eng.1' }, NOW.getTime());
+  // The schedule slice as the refresher writes it off the bundle (the smoke's seed writes the same): a snapshot
+  // with none says discovery was never made, and `refreshWanted` then starts one on a cache of any age.
+  const schedule = { updatedAt: at, attemptedAt: at, failures: 0, complete: true };
+  writeState({ updatedAt: at, live: matches, degraded: false, source: 'espn', competition: 'eng.1', schedule } as never, NOW.getTime());
 };
 const cfg = (over: Partial<CliConfig> = {}): CliConfig =>
   described({ lang: 'en', tz: undefined, json: true, color: false, source: 'espn', competition: 'eng.1', flavor: 'off', markets: true, ...over });
@@ -111,6 +117,31 @@ describe('claudinho ambient --json', () => {
     expect(view().line).toBe(renderPrompt({ updatedAt: NOW.toISOString(), live: [live('1', ARS, CHE, [2, 1]), live('2', BOU, BRE, [0, 0]), live('3', BRE, BOU, [1, 1])], degraded: false, source: 'espn', competition: 'eng.1' }, { flags: false, defaultCompetition: false, teamKind: 'club', now: NOW }));
   });
 
+  it('fits WHOLE segments to --columns: a segment that does not fit beside the marker is counted in it', () => {
+    seed([live('1', BOU, BRE, [0, 1]), live('2', ARS, CHE, [2, 1]), live('3', BRE, BOU, [1, 1])]);
+    cmdAmbient(ctx(), { columns: 30 });
+    expect(view().line).toBe("⚽ BOU 0–1 BRE 50' +2");
+    writes = [];
+    cmdAmbient(ctx(), { columns: 40 });
+    expect(view().line).toBe("⚽ BOU 0–1 BRE 50' · ARS 2–1 CHE 50' +1");
+  });
+
+  it('the 200-column ceiling is the same fitter: at the ceiling whole segments are dropped and counted (prompt and ambient alike)', () => {
+    // Eight segments (the cap) of 25 columns (codes at their 8-column bound) joined by " · " come to 223 columns:
+    // seven fit beside " +1" (198), the eighth is counted, never cut mid-segment, and the marker survives.
+    const wide = { code: 'ABCDEFGH', name: 'Wide Home', id: 'espn:1001' };
+    const also = { code: 'IJKLMNOP', name: 'Wide Away', id: 'espn:1002' };
+    const many = Array.from({ length: 8 }, (_, i) => live(String(i + 1), wide, also, [i % 4, 1]));
+    seed(many);
+    cmdAmbient(ctx());
+    const fitted = String(view().line);
+    expect(fitted.split(' · ')).toHaveLength(7);
+    expect(fitted).toMatch(/ \+1$/u);
+    expect(fitted).not.toContain('…');
+    expect(ambientView({ updatedAt: NOW.toISOString(), live: many, degraded: false, source: 'espn', competition: 'eng.1' }, { flags: false, defaultCompetition: false, teamKind: 'club', now: NOW }).line).toBe(fitted);
+    expect(renderPrompt({ updatedAt: NOW.toISOString(), live: many, degraded: false, source: 'espn', competition: 'eng.1' }, { flags: false, defaultCompetition: false, teamKind: 'club', now: NOW })).toBe(fitted);
+  });
+
   it('`pinned` is the saved pin\'s side by id; `picked` is the ambient preference\'s side; `pick` says which', () => {
     seed([live('1', ARS, CHE, [2, 1]), live('2', BOU, BRE, [0, 0])]);
     cmdAmbient(ctx({ pin: { id: 'espn:359', code: 'ARS', name: 'Arsenal' } }));
@@ -136,18 +167,29 @@ describe('claudinho ambient --json', () => {
     expect(vi.mocked(spawn)).not.toHaveBeenCalled();
   });
 
-  it('triggers the refresher exactly as prompt does: none on a fresh cache, one on a stale one', () => {
+  it('triggers the refresher exactly as prompt does: none on a fresh cache, one once discovery is due (measured against prompt)', () => {
+    vi.spyOn(cursorPayload, 'readCursorPayload').mockReturnValue(undefined);
+    const STALE = 2 * 3600_000; // discovery is hourly off the bundle: due on a two-hour-old slice
     seed([live('1', ARS, CHE, [2, 1])]);
     cmdAmbient(ctx());
     expect(vi.mocked(spawn)).not.toHaveBeenCalled();
-    seed([live('1', ARS, CHE, [2, 1])], 10 * 60_000);
+    seed([live('1', ARS, CHE, [2, 1])], STALE);
+    writes = [];
     cmdAmbient(ctx());
     expect(vi.mocked(spawn)).toHaveBeenCalledTimes(1);
     expect(view()).toMatchObject({ live: { items: [], complete: true } }); // stale: the reader shows nothing
+    // prompt on the same two caches: the same two answers (one trigger, `refreshWanted`).
+    vi.mocked(spawn).mockClear();
+    seed([live('1', ARS, CHE, [2, 1])]);
+    cmdPrompt(ctx());
+    expect(vi.mocked(spawn)).not.toHaveBeenCalled();
+    seed([live('1', ARS, CHE, [2, 1])], STALE);
+    cmdPrompt(ctx());
+    expect(vi.mocked(spawn)).toHaveBeenCalledTimes(1);
   });
 
   it('a throttle in effect stops the spawn, as it stops prompt\'s (the one trigger, the note consulted)', () => {
-    seed([live('1', ARS, CHE, [2, 1])], 10 * 60_000);
+    seed([live('1', ARS, CHE, [2, 1])], 2 * 3600_000); // discovery due (the case above spawns here)
     writeBackoffNote('espn', 'eng.1', NOW.getTime() + 10 * 60_000, NOW.getTime());
     cmdAmbient(ctx());
     expect(vi.mocked(spawn)).not.toHaveBeenCalled();

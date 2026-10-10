@@ -26,7 +26,8 @@ import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
 import type { CacheState } from '../src/cache';
-import { renderPrompt, ambientView } from '../src/statusline';
+import { ambientView } from '../src/ambient';
+import { renderPrompt } from '../src/statusline';
 
 // A confirmed R32 tie ESPN has filed over the bundled placeholder slot 760486
 // (in the bundle: "Group A 2nd" vs "Group B 2nd", both 🏳️). The overlay carries

@@ -41,7 +41,7 @@ const snapshot = (schedule: ScheduleSlice | undefined, over: Partial<CacheState>
 });
 // The snapshot is a nations competition's (`uefa.nations`), so the kind the
 // caller resolves is `nation` unless a case says its rows are clubs.
-const line = (state: CacheState | undefined, opts: { pick?: AmbientPick; teamKind?: 'nation' | 'club' } = {}) =>
+const line = (state: CacheState | undefined, opts: { pick?: AmbientPick; teamKind?: 'nation' | 'club'; columns?: number } = {}) =>
   renderPrompt(state, { defaultCompetition: false, teamKind: 'nation', now: new Date(NOW), ...opts });
 const sched = (fixtures: Match[], over: Partial<ScheduleSlice> = {}): ScheduleSlice => ({
   index: fixtures.map((m) => entry(m.id, Date.parse(m.kickoff), m.status === 'SCHEDULED' || m.status === 'LIVE' || m.status === 'HT')),
@@ -119,6 +119,13 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
   it('two fixtures in their windows: the first, and how many more', () => {
     const state = snapshot(sched([nations('1', NOW - 30 * MIN), fixture('2', NOW - 20 * MIN, ['GER', 'Germany'], ['ITA', 'Italy'])]));
     expect(line(state)).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing… +1');
+  });
+
+  it('the syncing line fitted to a width keeps its count: the marker is reserved, the matchup is what gets cut', () => {
+    const state = snapshot(sched([nations('1', NOW - 30 * MIN), fixture('2', NOW - 20 * MIN, ['GER', 'Germany'], ['ITA', 'Italy'])]));
+    const cut = line(state, { columns: 20 });
+    expect(cut).toMatch(/ \+1$/u);
+    expect(cut.length).toBeLessThan('⚽ 🇪🇸 vs 🇫🇷 live · syncing… +1'.length);
   });
 
   for (const off of ['POSTPONED', 'CANCELLED', 'FT'] as const) {

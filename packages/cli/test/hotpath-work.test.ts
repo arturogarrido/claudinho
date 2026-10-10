@@ -14,7 +14,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { renderHook } from '../src/hook';
-import { ambientView, renderPrompt } from '../src/statusline';
+import { ambientView } from '../src/ambient';
+import { renderPrompt } from '../src/statusline';
 
 /** Unassigned code points: every cluster is rejected, so none can short-circuit. */
 const JUNK = '\u{FFF0}'.repeat(4096);
