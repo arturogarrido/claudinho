@@ -123,8 +123,11 @@ export function formatTime(iso: string, opts: FormatOpts = {}): string {
 /** What {@link countdown} says of a kickoff that has passed (the statusline prints it as it is: English, by its rule). */
 export const COUNTDOWN_NOW = 'now';
 
-/** Compact human countdown until kickoff: "3d4h", "2h10m", "45m", or {@link COUNTDOWN_NOW}. */
-export function countdown(iso: string, from: Date = new Date()): string {
+/**
+ * Compact human countdown until kickoff: "3d4h", "2h10m", "45m", or {@link COUNTDOWN_NOW}, from `from`: the clock of
+ * the request or render that says it, which every caller hands in (no default: the wall clock is never read here).
+ */
+export function countdown(iso: string, from: Date): string {
   const when = parsedDate(iso);
   // NaN arithmetic previously fell through every comparison and printed "NaNm".
   if (!when) return UNKNOWN_TIME;
@@ -144,9 +147,11 @@ export function countdown(iso: string, from: Date = new Date()): string {
  * says it (CLI `next`, the MCP match line): "in 3d4h" (`next.in`), or, for a
  * kickoff that has passed (a stale record, the bundle's skeleton during an
  * outage), the language's own word for now (`countdown.now`), never the
- * English word inside a translated "in".
+ * English word inside a translated "in". Relative to the REQUEST's clock
+ * (`from`), the one every other read of the request takes and every caller
+ * passes: the wall clock is never read here.
  */
-export function countdownPhrase(lang: string | undefined, iso: string, from: Date = new Date()): string {
+export function countdownPhrase(lang: string | undefined, iso: string, from: Date): string {
   const left = countdown(iso, from);
   return left === COUNTDOWN_NOW ? t(lang, 'countdown.now') : t(lang, 'next.in', { countdown: left });
 }

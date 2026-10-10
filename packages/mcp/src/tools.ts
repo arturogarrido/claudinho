@@ -637,9 +637,11 @@ async function reliableMarketData(
  * request's pin (its saved team, when it applies to the request's
  * competition), which decides between two cries on every line.
  */
-function fmtOpts(args: CommonOpts, competition: string): FmtOpts {
+function fmtOpts(args: CommonOpts, competition: string, now: Date): FmtOpts {
   const pin = choiceOf(args).pin;
   return {
+    // The tool's clock, read once where the tool reads it: a line's countdown is relative to it.
+    now,
     tz: args.tz,
     locale: args.lang,
     flavor: asFlavorLevel(args.flavor ?? process.env.CLAUDINHO_FLAVOR),
@@ -711,7 +713,9 @@ async function todayAnswer(
   args: { date?: string } & CommonOpts,
 ): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
-  const date = args.date ?? localDate((args.now ?? new Date()).toISOString(), args.tz);
+  // The request's clock, read once: the day asked by default, and the countdown on its lines.
+  const now = args.now ?? new Date();
+  const date = args.date ?? localDate(now.toISOString(), args.tz);
   // The viewer's zone, the one the day is filed by below: the read judges
   // "nothing on this date" in it too.
   const day = await getMatchesForDate(adapter, date, resolveTz(args.tz));
@@ -720,7 +724,7 @@ async function todayAnswer(
   // ONE bounded view: what the text lists, what `data` carries, and what the
   // day's attribution is decided over.
   const shownToday = boundedRecords(todays);
-  const opts = fmtOpts(args, adapter.competition);
+  const opts = fmtOpts(args, adapter.competition, now);
   // A verdict (between editions) stands instead of the empty line. Where no
   // bundled schedule was merged, a failed read says the provider could not be
   // reached, and a read that was not whole says none was READ. Every one of
@@ -782,9 +786,11 @@ export function toolGetLive(args: CommonOpts = {}): Promise<ToolResult> {
 }
 async function liveAnswer(args: CommonOpts): Promise<ToolResult> {
   const adapter = resolveAdapter(args);
-  const live = await getLiveMatches(adapter, args.now ?? new Date());
+  // The request's clock, read once: the live read and the lines.
+  const now = args.now ?? new Date();
+  const live = await getLiveMatches(adapter, now);
   const { matches, degraded, source } = live;
-  const opts = fmtOpts(args, adapter.competition);
+  const opts = fmtOpts(args, adapter.competition, now);
   // Degraded ⇒ the live feed failed, NOT "nothing is on". Distinguish them so the
   // agent doesn't tell the user no matches are live when the provider is unreachable.
   // A verdict (between editions) stands instead of the empty line; a read that
@@ -820,7 +826,9 @@ async function matchAnswer(
   // (ESPN: US/Eastern), so fetching only the fixture's UTC date can miss its
   // live/final state and silently render the match as still scheduled.
   const adapter = resolveAdapter(args);
-  const found = await getMatchById(adapter, args.id, args.now);
+  // The request's clock, read once: the match's read, its market relevance and its line's countdown.
+  const now = args.now ?? new Date();
+  const found = await getMatchById(adapter, args.id, now);
   const { match, degraded, source: liveSource } = found;
   if (!match) {
     // A verdict first; then the span a whole read searched; an outage is
@@ -843,8 +851,7 @@ async function matchAnswer(
       },
     };
   }
-  const opts = fmtOpts(args, adapter.competition);
-  const now = args.now ?? new Date();
+  const opts = fmtOpts(args, adapter.competition, now);
   let marketSignal: MarketSignal | undefined;
   let marketComplete = true;
   if (marketsEnabled() && marketRelevant(match, now)) {
@@ -1194,7 +1201,7 @@ async function nextAnswer(
       data: { ...about, fixture: null, degraded, source: source ?? null, ...verdictExtras(next) },
     };
   }
-  const opts = fmtOpts(args, adapter.competition);
+  const opts = fmtOpts(args, adapter.competition, now);
   return {
     // `source` in data mirrors the text's "Live data: …" attribution (parity
     // with CLI `next --json`); null for a static group fixture (no live source).
@@ -1286,7 +1293,7 @@ async function marketAnswer(
         },
       };
     }
-    const found = await getMatchById(resolveAdapter(args), args.matchId);
+    const found = await getMatchById(resolveAdapter(args), args.matchId, now);
     const { match } = found;
     const relevant = match ? marketRelevant(match, now) : false;
     const batch =

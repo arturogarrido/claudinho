@@ -746,12 +746,14 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
 export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void> {
   const { cfg, t } = ctx;
   precheck(cfg, t);
+  // The command's clock, read once: the fixture's read and the countdown are both relative to it.
+  const now = ctx.now ?? new Date();
   // Live-resolved: the bundled knockout slots are resultless placeholders, so a
   // static lookup goes blind once a team's group games pass — overlay the live
   // knockout window so a confirmed R32+ tie (e.g. MEX vs ECU) surfaces here too.
   // Off the bundled competition core resolves the club and reads the schedule
   // ahead (yesterday to 14 days ahead); a saved pin is not resolved again.
-  const { code, next } = await nextAsked(ctx, team, teamUsage('next', cfg));
+  const { code, next } = await nextAsked({ ...ctx, now }, team, teamUsage('next', cfg));
   const { fixture, degraded, source } = next;
   // Who the answer is about: the club resolved, else the query, else the nation's code.
   const label = next.team?.name ?? next.query ?? code;
@@ -822,7 +824,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
         joinSegments(
           isLive(fixture.status)
             ? [stage, when]
-            : [stage, when, countdownPhrase(cfg.lang, fixture.kickoff)],
+            : [stage, when, countdownPhrase(cfg.lang, fixture.kickoff, now)],
         ),
       ),
   );
@@ -1659,7 +1661,7 @@ export async function cmdMarkets(
       return;
     }
     // Live overlay (±1-day window) so FT gates the resolved market correctly.
-    const found = await getMatchById(adapterFor(ctx), target);
+    const found = await getMatchById(adapterFor(ctx), target, now);
     const { match } = found;
     const market =
       match && marketRelevant(match, now)

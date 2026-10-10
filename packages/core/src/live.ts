@@ -621,7 +621,7 @@ export async function marketFixtureForTeam(
   if (candidate) {
     // The refresh's verdict is merged with the window's below; what it served
     // describes the refresh alone, not the market answer, and is not kept.
-    const { partial, served: _served, ...r } = await getMatchById(adapter, candidate.id);
+    const { partial, served: _served, ...r } = await getMatchById(adapter, candidate.id, now);
     refreshRead = partial ? { partial } : {};
     // A second read that fails hands back the BUNDLED fixture, which for a
     // knockout tie is a placeholder. The candidate came from the overlay that
