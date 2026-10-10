@@ -109,10 +109,13 @@ describe('`match`: the stage and the location, joined with the empty ones droppe
 });
 
 describe('`next`: a stage with no words is no segment, in either branch', () => {
-  it('a fixture still to come: the time and the countdown, no leading separator', async () => {
+  it('a fixture still to come: the time and the countdown from the CONTEXT clock, no leading separator', async () => {
     await cmdNext('Arsenal', ctx(feed(null)));
-    const row = lines().find((l) => l.includes('Sat 11:30') && l.includes('in '));
-    expect(row).toMatch(/^ {2}Sat 11:30 · in \S/);
+    // The context's clock is Oct 4, 14:50Z and the kickoff Oct 10, 11:30Z: five days, twenty hours and forty
+    // minutes, "in 5d20h", whatever the wall clock says. On Oct 10, 2026, after 11:30Z, the line said "now": the
+    // countdown read the wall clock while every other read of the command took the context's (CI red on `main`
+    // at the 0.11.2 release commit, green on the same tree an hour before).
+    expect(lines()).toContain('  Sat 11:30 · in 5d20h');
   });
 
   it('a match in play: the time alone', async () => {

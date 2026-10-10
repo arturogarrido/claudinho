@@ -26,7 +26,9 @@ formatBracketList(view, { footer: false, locale: args.lang });
 
 // ✅ GOOD
 formatBracketList(view, { footer: false, locale: args.lang, tz: args.tz });
-// or reuse fmtOpts(args) where shapes align
+// or reuse fmtOpts(args, competition, now) where shapes align: the request's ONE clock
+// (`args.now`, else the adapter's read clock), read once per request, is a required
+// field of the line's options, so a line built without it does not compile
 ```
 
 ### Regression tests

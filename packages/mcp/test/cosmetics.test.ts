@@ -142,10 +142,12 @@ function down(competition: string): ProviderAdapter {
   return { name: 'espn', competition, capabilities: { push: false, latencyHintSec: 0 }, fetchByDate: fail, fetchLive: fail, fetchWindow: fail };
 }
 const LANGS = ['es', 'pt', 'fr'];
-// The bundled opener (Jun 11, 2026, 19:00 UTC), read before the tournament: a
-// SCHEDULED record whose kickoff has passed on any clock these tests run on, as
-// a stale record or the bundle's skeleton during an outage is.
-const BEFORE_THE_OPENER = new Date('2026-06-01T12:00:00Z');
+// The bundled opener (Jun 11, 2026, 19:00 UTC), read AT its kickoff instant on
+// the request's clock: a SCHEDULED record whose kickoff is not ahead of the
+// request, as a stale record or the bundle's skeleton during an outage is, so
+// the countdown is the language's word for now. (The clock used to sit ten days
+// before the opener, and the "now" came from the wall clock.)
+const AT_THE_OPENER = new Date('2026-06-11T19:00:00Z');
 const OPENER = '760415';
 
 describe("the countdown says 'now' in the reader's language (round 1)", () => {
@@ -154,9 +156,9 @@ describe("the countdown says 'now' in the reader's language (round 1)", () => {
       process.env.CLAUDINHO_COMPETITION = 'fifa.world';
       const wc = adapter('fifa.world', []);
       const texts = [
-        (await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: wc, now: BEFORE_THE_OPENER, lang, flavor: 'off' })).text,
-        (await toolGetMatch({ id: OPENER, adapter: wc, now: BEFORE_THE_OPENER, lang, flavor: 'off' })).text,
-        (await toolGetNextFixture({ team: 'MEX', adapter: wc, now: BEFORE_THE_OPENER, lang, flavor: 'off' })).text,
+        (await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: wc, now: AT_THE_OPENER, lang, flavor: 'off' })).text,
+        (await toolGetMatch({ id: OPENER, adapter: wc, now: AT_THE_OPENER, lang, flavor: 'off' })).text,
+        (await toolGetNextFixture({ team: 'MEX', adapter: wc, now: AT_THE_OPENER, lang, flavor: 'off' })).text,
       ];
       for (const text of texts) {
         expect(text, lang).toContain(`(${t(lang, 'countdown.now')})`);
@@ -166,7 +168,7 @@ describe("the countdown says 'now' in the reader's language (round 1)", () => {
   }
   it("under en: '(now)', not '(in now)'", async () => {
     process.env.CLAUDINHO_COMPETITION = 'fifa.world';
-    const r = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: adapter('fifa.world', []), now: BEFORE_THE_OPENER, flavor: 'off' });
+    const r = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: adapter('fifa.world', []), now: AT_THE_OPENER, flavor: 'off' });
     expect(r.text).toContain('(now)');
     expect(r.text).not.toMatch(/\bin now\b/);
   });
@@ -199,7 +201,7 @@ describe('the outage and ambiguous sentences under a localized heading are local
 describe('every named localization of the MCP text is the catalog sentence (round 1)', () => {
   it("get_today's degraded line: the bundled schedule's on the bundle, the provider's outage off it", async () => {
     process.env.CLAUDINHO_COMPETITION = 'fifa.world';
-    const on = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: down('fifa.world'), now: BEFORE_THE_OPENER, lang: 'es', flavor: 'off' });
+    const on = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: down('fifa.world'), now: AT_THE_OPENER, lang: 'es', flavor: 'off' });
     expect(on.text).toContain(`(${t('es', 'feed.degraded')})`);
     process.env.CLAUDINHO_COMPETITION = 'eng.1';
     const off = await toolGetToday({ date: '2026-10-10', tz: 'UTC', adapter: down('eng.1'), now: NOW, lang: 'es', flavor: 'off' });
@@ -208,15 +210,15 @@ describe('every named localization of the MCP text is the catalog sentence (roun
 
   it("get_match's degraded line and its unknown-id sentence", async () => {
     process.env.CLAUDINHO_COMPETITION = 'fifa.world';
-    const degraded = await toolGetMatch({ id: OPENER, adapter: down('fifa.world'), now: BEFORE_THE_OPENER, lang: 'es', flavor: 'off' });
+    const degraded = await toolGetMatch({ id: OPENER, adapter: down('fifa.world'), now: AT_THE_OPENER, lang: 'es', flavor: 'off' });
     expect(degraded.text).toContain(`(${t('es', 'feed.degraded')})`);
-    const unknown = await toolGetMatch({ id: '999999', adapter: adapter('fifa.world', []), now: BEFORE_THE_OPENER, lang: 'es' });
+    const unknown = await toolGetMatch({ id: '999999', adapter: adapter('fifa.world', []), now: AT_THE_OPENER, lang: 'es' });
     expect(unknown.text).toContain(t('es', 'match.none', { id: '999999' }));
   });
 
   it("get_next_fixture's title", async () => {
     process.env.CLAUDINHO_COMPETITION = 'fifa.world';
-    const r = await toolGetNextFixture({ team: 'MEX', adapter: adapter('fifa.world', []), now: BEFORE_THE_OPENER, lang: 'es', flavor: 'off' });
+    const r = await toolGetNextFixture({ team: 'MEX', adapter: adapter('fifa.world', []), now: AT_THE_OPENER, lang: 'es', flavor: 'off' });
     expect(r.text).toContain(`${t('es', 'heading', { title: t('es', 'next.label', { team: 'MEX' }) })}\n`);
   });
 
@@ -242,8 +244,8 @@ describe('every named localization of the MCP text is the catalog sentence (roun
 
 describe("the countdown's 'in' is the reader's word too (round 2)", () => {
   // A kickoff a week after a clock set in 2098: the dated read and discovery's
-  // span hold it, and the countdown, which reads the real clock, says "in"
-  // until 2099.
+  // span hold it, and the countdown, relative to the request's clock like
+  // every other read of the request (`countdown-clock.test.ts`), says "in".
   const LATE_2098 = new Date('2098-12-25T12:00:00Z');
   const future = fixture(1, { kickoff: '2099-01-01T15:00:00.000Z', home: { code: 'ARS', name: 'Arsenal', id: 'espn:359' } });
   const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

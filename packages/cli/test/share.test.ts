@@ -236,6 +236,40 @@ describe('cmdShare — market gating (fail closed)', () => {
     expect(text()).toContain('informational only');
   });
 
+  it("includes a reliable market block when the context carries no clock and the adapter's clock is before kickoff: the fixture and its market on ONE clock", async () => {
+    // The request's clock is the adapter's (no `ctx.now`), an hour before the
+    // kickoff: the fixture is selected by it, and the market's relevance must
+    // be judged by the same instant, never by the wall clock (which has passed
+    // every bundled kickoff): `share next` once dropped the clock `nextAsked`
+    // returned and judged the market by the wall clock, omitting a signal the
+    // request's clock made reliable (the 0.11.2 clock fix, round 2).
+    const fixture = upcoming();
+    const before = new Date(Date.parse(fixture.kickoff) - 3_600_000);
+    const sig = (m: Match): MarketSignal => ({
+      ...freshSig(m),
+      asOf: before.toISOString(),
+      fetchedAt: before.toISOString(),
+    });
+    const adapterAtBefore: ProviderAdapter = { ...fakeAdapter, now: () => before.getTime() };
+    const { now: _dropped, ...noClock } = ctx({}, provider((m) => (m.id === fixture.id ? sig(m) : undefined)));
+    await cmdShare('next', fixture.home.code, {}, { ...noClock, adapter: adapterAtBefore });
+    expect(text()).toContain('informational only');
+  });
+
+  it("share <id>: the record and its market on ONE clock too (no context clock, the adapter's before kickoff)", async () => {
+    const fixture = upcoming();
+    const before = new Date(Date.parse(fixture.kickoff) - 3_600_000);
+    const sig = (m: Match): MarketSignal => ({
+      ...freshSig(m),
+      asOf: before.toISOString(),
+      fetchedAt: before.toISOString(),
+    });
+    const adapterAtBefore: ProviderAdapter = { ...fakeAdapter, now: () => before.getTime() };
+    const { now: _dropped, ...noClock } = ctx({}, provider((m) => (m.id === fixture.id ? sig(m) : undefined)));
+    await cmdShare(fixture.id, undefined, {}, { ...noClock, adapter: adapterAtBefore });
+    expect(text()).toContain('informational only');
+  });
+
   it('omits a STALE signal (reliability gate)', async () => {
     const stale = (m: Match): MarketSignal => ({ ...freshSig(m), stale: true });
     await cmdShare('next', aTeam(), {}, ctx({}, provider(stale)));

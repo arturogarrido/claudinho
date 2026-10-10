@@ -41,6 +41,13 @@ const STATUS_KEY: Readonly<Record<Exclude<Match['status'], 'SCHEDULED' | 'LIVE'>
 };
 
 export interface FmtOpts {
+  /**
+   * The request's clock (a tool's `now`, read once where the tool reads it):
+   * a scheduled line's countdown is relative to it, as every other read of the
+   * request is. Required: options built without the request's clock do not
+   * compile, so no line counts down from the wall clock.
+   */
+  now: Date;
   tz?: string;
   locale?: string;
   flavor?: FlavorLevel;
@@ -71,16 +78,17 @@ function flairOptsOf(opts: FmtOpts): FlairOpts {
  * rally cry first (the pinned side's when both carry one, else the home
  * side's), else the moment's phrase.
  */
-export function matchLine(m: Match, opts: FmtOpts = {}, flair: Flair = matchFlair(m, flairOptsOf(opts))): string {
+export function matchLine(m: Match, opts: FmtOpts, flair: Flair = matchFlair(m, flairOptsOf(opts))): string {
   // A flag beside a nation's name; a club's name alone (nothing in its place).
   const head = `${withFlag(m.home.name, m.home.flag, 'home')} ${scoreline(m)} ${withFlag(m.away.name, m.away.flag, 'away')}`;
   // The stage, the status tokens and the countdown's phrase in the request's
-  // language (core's catalog; English when none is given).
+  // language (core's catalog; English when none is given), the countdown from
+  // the request's clock.
   const lang = opts.locale;
   const stage = stageLabelI18n(lang, m);
   let tail: string;
   if (m.status === 'SCHEDULED') {
-    tail = `${formatKickoff(m.kickoff, opts)} (${countdownPhrase(lang, m.kickoff)})`;
+    tail = `${formatKickoff(m.kickoff, opts)} (${countdownPhrase(lang, m.kickoff, opts.now)})`;
   } else if (m.status === 'LIVE') {
     tail = m.minute ? `${t(lang, 'status.live')} ${m.minute}'` : t(lang, 'status.live');
   } else {
@@ -157,7 +165,7 @@ export function headingLine(lang: string | undefined, title: string): string {
  * cut can reach states that BEFORE the rows ({@link listTruncation}), and
  * {@link matchList} states it after them.
  */
-export function matchRows(matches: Match[], empty: string, opts: FmtOpts = {}): string {
+export function matchRows(matches: Match[], empty: string, opts: FmtOpts): string {
   if (matches.length === 0) return empty;
   const shown = matches.slice(0, MAX_LIST_MATCHES);
   // The flairs chosen once over the rows shown, in order (core `matchFlairs`:
@@ -183,7 +191,7 @@ export function listTruncation(matches: readonly Match[]): string | undefined {
  * `fixtures://` resource). A tool's text says the truncation first:
  * {@link matchRows} after {@link listTruncation}.
  */
-export function matchList(matches: Match[], empty: string, opts: FmtOpts = {}): string {
+export function matchList(matches: Match[], empty: string, opts: FmtOpts): string {
   const rows = matchRows(matches, empty, opts);
   const truncated = listTruncation(matches);
   return truncated ? `${rows}\n• ${truncated}` : rows;

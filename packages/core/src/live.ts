@@ -145,11 +145,24 @@ export interface LiveResult {
 }
 
 /**
- * The clock a read counts by when its caller gave none: the adapter's, when
- * it states one (a test injects it there), else the wall clock.
+ * The clock a read counts by when its caller gave none: the adapter's read
+ * clock (`ProviderAdapter.now`, the one its reads and its cooldown count by; a
+ * test injects it there), else the wall clock.
  */
 function clockOf(adapter: ProviderAdapter): Date {
   return new Date(adapter.now?.() ?? Date.now());
+}
+
+/**
+ * THE clock of a request: the one its caller gave (a test's, a command's
+ * context), else the adapter's read clock ({@link clockOf}: the clock the
+ * adapter's reads and its cooldown count by, the wall clock in production).
+ * A surface reads it ONCE per request, after resolving its adapter, and hands
+ * it to every read and every rendering of the request, so a lookup and a
+ * countdown in one answer agree on "now".
+ */
+export function requestClock(adapter: ProviderAdapter, given?: Date): Date {
+  return given ?? clockOf(adapter);
 }
 
 /**
@@ -621,7 +634,7 @@ export async function marketFixtureForTeam(
   if (candidate) {
     // The refresh's verdict is merged with the window's below; what it served
     // describes the refresh alone, not the market answer, and is not kept.
-    const { partial, served: _served, ...r } = await getMatchById(adapter, candidate.id);
+    const { partial, served: _served, ...r } = await getMatchById(adapter, candidate.id, now);
     refreshRead = partial ? { partial } : {};
     // A second read that fails hands back the BUNDLED fixture, which for a
     // knockout tie is a placeholder. The candidate came from the overlay that

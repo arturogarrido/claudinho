@@ -24,16 +24,17 @@ const club = (over: Partial<Match> = {}): Match => ({
 
 describe('the match line', () => {
   it('a venue-less record ends in its stage, not in a separator', () => {
-    expect(matchLine(club(), { flavor: 'off' })).toBe("Arsenal 2–1 Chelsea — LIVE 50' · League");
+    expect(matchLine(club(), { flavor: 'off', now: new Date('2026-10-04T14:50:00.000Z') })).toBe("Arsenal 2–1 Chelsea — LIVE 50' · League");
   });
 
   it('an OTHER with no words and no venue: the status alone', () => {
-    expect(matchLine(club({ stage: 'OTHER' }), { flavor: 'off' })).toBe("Arsenal 2–1 Chelsea — LIVE 50'");
+    expect(matchLine(club({ stage: 'OTHER' }), { flavor: 'off', now: new Date('2026-10-04T14:50:00.000Z') })).toBe("Arsenal 2–1 Chelsea — LIVE 50'");
   });
 
   it('with a venue and words: every segment, once each', () => {
     const line = matchLine(club({ stage: 'OTHER', stageLabel: 'Qualifying final', venue: 'Emirates Stadium', city: 'London' }), {
       flavor: 'off',
+      now: new Date('2026-10-04T14:50:00.000Z'),
     });
     expect(line).toBe("Arsenal 2–1 Chelsea — LIVE 50' · Qualifying final · Emirates Stadium, London");
   });
@@ -47,7 +48,7 @@ describe('the match line', () => {
         group: 'A',
         venue: 'Estadio Banorte',
       }),
-      { flavor: 'off' },
+      { flavor: 'off', now: new Date('2026-10-04T14:50:00.000Z') },
     );
     expect(line).toBe("\u{1F1F2}\u{1F1FD} Mexico 2–1 South Africa \u{1F1FF}\u{1F1E6} — LIVE 50' · Group A · Estadio Banorte");
   });
