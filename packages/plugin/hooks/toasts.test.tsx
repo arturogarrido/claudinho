@@ -115,10 +115,20 @@ describe('silence', () => {
     expect(texts).toEqual([])
   })
 
-  test('a competition change observed through a view that is NOT current rebases too: a return to the first competition toasts nothing', { options: { toasts: 'all' } }, async ($, on) => {
+  test('a non-current view of another competition is a gap like any other: it vouches for nothing, the baseline is left, and the goal is said at the next current view of the first competition', { options: { toasts: 'all' } }, async ($, on) => {
     const texts = toasted(on)
     const other = { competition: { slug: 'esp.1', alias: 'laliga', name: 'LALIGA', chosenBy: 'saved' } }
     const { clock } = await world($, on, [live([match('1', [1, 0])]), live([], { ...other, current: false }), live([match('1', [2, 0])])])
+    await clock.advance(15_000)
+    expect(texts).toEqual([]) // the non-current view of the other competition says nothing
+    await clock.advance(15_000)
+    expect(texts).toEqual(["⚽ Arsenal 2–0 Chelsea (60')"]) // the goal across the gap, said late, never lost
+  })
+
+  test('a CURRENT view of another competition replaces the baseline: nothing is compared across competitions, and a return observes afresh', { options: { toasts: 'all' } }, async ($, on) => {
+    const texts = toasted(on)
+    const other = { competition: { slug: 'esp.1', alias: 'laliga', name: 'LALIGA', chosenBy: 'saved' } }
+    const { clock } = await world($, on, [live([match('1', [1, 0])]), live([match('9', [0, 0], { line: "Barcelona 0–0 Sevilla (10')" })], other), live([match('1', [2, 0])])])
     await clock.advance(15_000)
     await clock.advance(15_000)
     expect(texts).toEqual([])
