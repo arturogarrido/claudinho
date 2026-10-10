@@ -175,3 +175,20 @@ jobs:
       # Surface dev-toolchain advisories for visibility, without failing.
       - name: Audit all dependencies (non-blocking)
         run: pnpm audit || true
+
+  # The Claude Code plugin (packages/plugin, no package.json and no dependencies): its manifest, the root marketplace
+  # file and its hooks module validated, and its tests run by the engine's own kit, under the pinned Claude Code CLI.
+  plugin:
+    name: plugin (validate · test, Claude Code 2.1.296)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - run: npm install -g @anthropic-ai/claude-code@2.1.296
+      - run: |
+          claude plugin validate .
+          claude plugin validate packages/plugin
+          claude plugin test packages/plugin

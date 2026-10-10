@@ -574,8 +574,13 @@ const OS_MATRIX_CLI_BLOCK = [
 const STDIO_SMOKE_FILE = 'node packages/mcp/scripts/stdio-smoke.mjs';
 const AUDIT_ALL = 'pnpm audit || true';
 
+/** The plugin job's two steps: the pinned Claude Code CLI, and its own validate and test, which the gate cannot run. */
+export const PLUGIN_INSTALL = 'npm install -g @anthropic-ai/claude-code@2.1.296';
+export const PLUGIN_CHECKS = 'claude plugin validate .\nclaude plugin validate packages/plugin\nclaude plugin test packages/plugin';
 /** The exclusions, each with its reason; every other gating command must be a gate step. */
 const EXCLUDED: Array<{ match: (s: Step) => boolean; reason: string }> = [
+  { match: (s) => s.kind === 'run' && s.job === 'plugin' && s.text === PLUGIN_INSTALL, reason: 'the plugin job installs the pinned Claude Code CLI, which the gate does not have' },
+  { match: (s) => s.kind === 'run' && s.job === 'plugin' && s.text === PLUGIN_CHECKS, reason: "the plugin job's validate and test run under that CLI; the gate cannot run them" },
   { match: (s) => s.kind === 'run' && s.text === INSTALL, reason: 'the install: already installed locally' },
   { match: (s) => s.kind === 'run' && s.job === 'runtime-node20' && s.text === NODE20_CLI_BLOCK, reason: 'the Node-20 job runs the BUILT local CLI on the engines floor: a Node-version check the gate cannot make' },
   { match: (s) => s.kind === 'run' && s.job === 'runtime-node20' && s.text === STDIO_SMOKE_FILE, reason: 'the same stdio smoke file under Node 20; the gate runs it through the package script under the developer Node' },
@@ -612,7 +617,7 @@ describe.skipIf(process.platform === 'win32')('the tripwire: every gating step o
 
   it('reads every job, both run forms and the uses steps', () => {
     const steps = workflowSteps(yaml);
-    expect(new Set(steps.map((s) => s.job))).toEqual(new Set(['build-test', 'runtime-node20', 'os-matrix', 'coverage', 'audit']));
+    expect(new Set(steps.map((s) => s.job))).toEqual(new Set(['build-test', 'runtime-node20', 'os-matrix', 'coverage', 'audit', 'plugin']));
     expect(steps.some((s) => s.text.includes('\n')), 'a run: | block was read whole').toBe(true);
     expect(steps.find((s) => s.text.startsWith('pnpm lint'))?.text, 'the trailing comment is stripped').toBe('pnpm lint');
     expect(steps.some((s) => s.kind === 'uses')).toBe(true);
@@ -624,6 +629,13 @@ describe.skipIf(process.platform === 'win32')('the tripwire: every gating step o
     for (const cmd of ['pnpm -r build', 'pnpm -r typecheck', 'pnpm -r test', 'pnpm lint', 'node scripts/check-pack.mjs', 'node scripts/smoke-statusline.mjs', 'pnpm audit --prod']) {
       expect(run.some((s) => (EQUIVALENT[s.text] ?? s.text) === cmd), cmd).toBe(true);
     }
+  });
+
+  it("the plugin job's two steps are the named exclusions, exactly: its install line and its checks block", () => {
+    const { excluded } = classify(workflowSteps(yaml), gateList());
+    const plugin = excluded.filter(([s]) => s.job === 'plugin' && s.kind === 'run').map(([s]) => s.text);
+    expect(plugin).toEqual([PLUGIN_INSTALL, PLUGIN_CHECKS]);
+    expect(yaml).toMatch(/^ {2}plugin:\n {4}name: plugin \(validate · test, Claude Code 2\.1\.296\)\n/m);
   });
 
   it('a synthetic gating job added to the workflow is named by the tripwire', () => {

@@ -1,0 +1,14 @@
+{
+  "name": "claudinho",
+  "owner": {
+    "name": "Arturo Garrido"
+  },
+  "description": "Claudinho for Claude Code: live football for the competition you follow, from the installed claudinho CLI. Not affiliated with FIFA, any confederation, league or club, or Anthropic.",
+  "plugins": [
+    {
+      "name": "claudinho",
+      "source": "./packages/plugin",
+      "description": "Live football in Claude Code for the competition you follow: the score or the countdown above the prompt, a toast when a score changes, and the live score beside your prompt for the model, from the installed claudinho CLI. Live data: ESPN. Not affiliated with FIFA, any confederation, league or club, or Anthropic."
+    }
+  ]
+}

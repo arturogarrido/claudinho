@@ -50,6 +50,12 @@ export const DISPLAY_STALE_MS = 5 * 60_000;
 export const TOURNAMENT_COMPLETE_LINE = '⚽ World Cup 2026 is complete · claudinho follow --list';
 
 /**
+ * The line for "nothing known": no live match read, no window to sync in, no
+ * fixture to count down to (and no sign-off). Not "nothing is on".
+ */
+export const NOTHING_KNOWN_LINE = '⚽ —';
+
+/**
  * The line with nothing chosen (no `--competition`, no `CLAUDINHO_COMPETITION`,
  * no saved choice): the one command that chooses, instead of a score. The
  * statusline reads no cache and starts no refresher for it.
@@ -394,7 +400,19 @@ const DEFAULT_MAX_SEGMENTS = 8;
 const MAX_LINE_COLUMNS = 200;
 
 export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {}): string {
-  return truncateVisible(renderPromptLine(state, opts), lineColumns(opts));
+  return promptLine(state, opts).line;
+}
+
+/**
+ * ONE render of the line, both forms: `unfitted`, what the renderer chose
+ * before the width's final cut (so `TOURNAMENT_COMPLETE_LINE` and
+ * `NOTHING_KNOWN_LINE` are themselves there, whatever the width), and `line`,
+ * that string fitted to the width (`renderPrompt`'s answer). `ambient --json`
+ * says what the line is from the first and prints the second.
+ */
+export function promptLine(state: CacheState | undefined, opts: PromptOpts = {}): { line: string; unfitted: string } {
+  const unfitted = renderPromptLine(state, opts);
+  return { line: truncateVisible(unfitted, lineColumns(opts)), unfitted };
 }
 
 function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}): string {
@@ -489,7 +507,7 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
     return TOURNAMENT_COMPLETE_LINE;
   }
 
-  return '⚽ —';
+  return NOTHING_KNOWN_LINE;
 }
 
 /** The width a line is fitted to: the caller's `columns`, never above the ceiling. */

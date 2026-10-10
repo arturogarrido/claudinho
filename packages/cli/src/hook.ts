@@ -89,7 +89,16 @@ function rosterPinned(t: Team, pin: boolean): Team {
   return team ? { ...t, name: team.name, flag: team.flag } : t;
 }
 
-function line(m: Match, flags: boolean, pin: boolean): string {
+/**
+ * THE hook's line for one live match, as `claudinho hook` prints it and
+ * `ambient --json` carries it on each record (`line`): the two names (pinned to
+ * the bundled roster on the bundled competition, `pin`), each with its flag when
+ * `flags` is on and the side has one, the scoreline with a shootout's tally, and
+ * the minute token (`67'`, `half-time`, else `live`). One formatter: a program
+ * says this line, never composes one.
+ */
+export function hookLine(m: Match, opts: { flags: boolean; pin: boolean }): string {
+  const { flags, pin } = opts;
   const minute = m.status === 'HT' ? 'half-time' : m.minute ? `${m.minute}'` : 'live';
   const h = rosterPinned(m.home, pin);
   const a = rosterPinned(m.away, pin);
@@ -126,7 +135,7 @@ export function renderHook(
   // the hook, the surface that actually writes into the model, had none.
   const shown = live.slice(0, MAX_HOOK_MATCHES);
   const overflow = live.length - shown.length;
-  const lines = shown.map((mm) => line(mm, flags, pin)).join('\n');
+  const lines = shown.map((mm) => hookLine(mm, { flags, pin })).join('\n');
   // Truncation is stated, never silent (English-only, like the rest of the
   // hook — see the ambient-surface carve-out in AGENTS.md).
   const more = !liveList.complete

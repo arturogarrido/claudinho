@@ -140,11 +140,34 @@ claude mcp add claudinho -- npx -y @claudinho/mcp
 
 Restart Claude Code to activate.
 
-**Moving to the Claude Code plugin?** `claudinho init plugin` removes the statusline
+#### Claude Code plugin
+
+The plugin draws the live score or the countdown above the prompt (the band), raises a toast when a
+score changes, and puts the live-score block beside each prompt for the model while a match is on,
+all from the installed CLI (`claudinho ambient --json`), never a fetch of its own. Install the CLI
+(0.11.2 or later: an older one's band shows nothing and nothing toasts) and follow a competition, then run `claudinho init plugin` first: it removes the statusline
 (`claudinho prompt`) and the live-score hook (`claudinho hook`) that `init claude` wrote to
-`~/.claude/settings.json`, keeps every other setting, then prints the plugin's install line and the
-MCP one-liner. It removes those two exact commands only: an edited one (a wrapper,
-`npx -y @claudinho/cli hook`) stays where it is, and the command names it for you.
+`~/.claude/settings.json`, keeps every other setting, and prints the install line and the MCP
+one-liner. It removes those two exact commands only: an edited one (a wrapper,
+`npx -y @claudinho/cli hook`) stays where it is, and the command names it for you. Then, at the
+prompt of a Claude Code session in a terminal:
+
+```
+/plugin install claudinho --marketplace arturogarrido/claudinho
+```
+
+Answer `y` to add the marketplace, then choose a scope. The `toasts` option (in `/config`) is
+`pinned` by default (your pinned team's match, `claudinho follow <alias> --team <name>`; with no pin
+saved, no toast), `all` or `off`. A toast is the hook's own line for the match (with its flags and
+the roster's names on a nations competition), one per match per change, and best effort, never every
+goal: a change is never said as it happens from a view the CLI could not vouch for (stale, degraded,
+or a read that was not whole), a goal across such a gap or a failed run is said at the first current
+view after it (late, never lost while the match stays in the list: one gone from the next current
+view and back is observed afresh), and the first view of a match says nothing. At the end of an
+edition the band shows the World Cup's sign-off line, the one end-of-edition line the statusline
+prints; after another competition's season the statusline says nothing is known, and the band shows
+nothing. More in the plugin's
+[README](https://github.com/arturogarrido/claudinho/tree/main/packages/plugin#readme).
 
 #### For a program: `claudinho ambient --json`
 
@@ -154,7 +177,7 @@ the `+N` count kept), `context` (the hook's block, or `null`), `live` (the live 
 `picked` and `pinned`), `current` (whether that list is a current snapshot's, the read that filled
 it was whole: an empty list means nothing is on only when it is), `next` (the fixture the countdown names), `pick`, `competition`,
 `degraded`, `source`, `updatedAt`, `staleAfter` (when its live scores stop being shown) and
-`disclaimer` (the non-affiliation sentence). Like the statusline it reads only the local cache,
+`disclaimer` (the non-affiliation sentence). Beside `line` the view says what the line is, `idle` (the edition-complete line, however narrow it was fitted) and `empty` (nothing known), read before the fit so a program never reads a pace or a visibility off the text; and each live record carries `line`, the hook's own line for it with its flags and roster names, which a program says and never composes. Like the statusline it reads only the local cache,
 never the network, and starts the refresher when the cache is stale. The command itself exits 0
 whatever the cache holds (with nothing chosen it prints the `noCompetition` object and the
 first-run line); any other `--columns` value is refused by the option parser, as a wrong option is

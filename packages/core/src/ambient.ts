@@ -11,8 +11,8 @@
  *     choice): the selection's structured twin, `competition: null` beside the
  *     verdict that says nothing is chosen, and `line` (the statusline's
  *     first-run line); no cache is read and no refresher started;
- *   - a value that is no competition, or a failure anywhere: `line` alone, the
- *     statusline's empty line;
+ *   - a value that is no competition, or a failure anywhere: `line` (the
+ *     statusline's empty line) and `empty: true` alone, no view;
  *   - a selected competition: an {@link AmbientView}.
  */
 import type { CompetitionKey } from './competition';
@@ -39,6 +39,14 @@ export type AmbientMatch = Match & {
    * World Cup's nations); whatever `CLAUDINHO_TEAM` prefers.
    */
   readonly pinned: boolean;
+  /**
+   * The hook's own line for this record, as `claudinho hook` prints it (the
+   * names, pinned to the World Cup's roster on the bundle, each with its flag
+   * where flags are on and the side has one, the scoreline with a shootout's
+   * tally, the minute token: `67'`, `half-time`, `live`). A program says it,
+   * never composes one.
+   */
+  readonly line: string;
 };
 
 /** The ambient view of a selected competition, its keys in this order. */
@@ -51,6 +59,21 @@ export interface AmbientView {
    * the line is the width's cut, never wider than asked.
    */
   readonly line: string;
+  /**
+   * The line is the one long-lived line, the edition's sign-off (the World
+   * Cup's, once every bundled window has closed): nothing changes until the
+   * user follows another competition, so a program reads it slowly. Said of
+   * the line before any fit: a program reads the pace from this, never from the
+   * text, which `--columns` may have cut.
+   */
+  readonly idle: boolean;
+  /**
+   * The line says nothing is known (`⚽ —`): no live match read, no window to
+   * sync in, nothing to count down to. A program shows nothing for it. Said
+   * of the line before any fit: a program reads the visibility from this,
+   * never from the text.
+   */
+  readonly empty: boolean;
   /** The hook's block, as `claudinho hook` prints it while a match is live; `null` when it prints nothing. */
   readonly context: string | null;
   /**

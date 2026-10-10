@@ -138,6 +138,7 @@ import {
   type AmbientPick,
   FIRST_RUN_LINE,
   flagsEnabled,
+  NOTHING_KNOWN_LINE,
   liveMatchesFromCache,
   pickAmbientMatch,
   renderPrompt,
@@ -1188,8 +1189,11 @@ export function cmdHook({ cfg, now }: Ctx): void {
   }
 }
 
-/** What `ambient` prints when it can say nothing else: the statusline's empty line, as an object. */
-const AMBIENT_EMPTY = JSON.stringify({ line: '⚽ —' });
+/**
+ * What `ambient` prints when it can say nothing else (a refused value, a failure): the statusline's empty line and
+ * `empty`, the view's own word for it, as an object with no view.
+ */
+const AMBIENT_EMPTY = JSON.stringify({ line: NOTHING_KNOWN_LINE, empty: true });
 
 /**
  * `claudinho ambient --json` — the statusline and the hook as ONE JSON object
@@ -1200,8 +1204,9 @@ const AMBIENT_EMPTY = JSON.stringify({ line: '⚽ —' });
  * market read, `prompt`'s refresher trigger. It never reads stdin (a program
  * runs it with nothing to say), and it always exits 0: nothing chosen prints
  * the selection's twin and the first-run line, a value that is no competition
- * the empty line alone (both with no cache read and no refresher), and a
- * failure the empty line as an object, so a reader always gets one.
+ * the one fallback object (`AMBIENT_EMPTY`: the empty line and `empty: true`,
+ * no view; both with no cache read and no refresher), and a failure the same
+ * fallback object, so a reader always gets one.
  */
 export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): void {
   let printed = false;
@@ -1240,6 +1245,8 @@ export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): 
     const pick = preference.pick;
     const view: AmbientView = {
       line: read.line,
+      idle: read.idle,
+      empty: read.empty,
       context: read.context,
       live: read.live,
       current: read.current,

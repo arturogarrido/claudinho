@@ -1,0 +1,18 @@
+{
+  "name": "claudinho",
+  "version": "0.1.0",
+  "description": "Live football in Claude Code for the competition you follow: the score or the countdown above the prompt, a toast when a score changes, and the live score beside your prompt for the model, all from the installed claudinho CLI's local cache. Live data: ESPN. Not affiliated with FIFA, any confederation, league or club, or Anthropic.",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Arturo Garrido"
+  },
+  "userConfig": {
+    "toasts": {
+      "type": "string",
+      "title": "Score toasts",
+      "options": ["pinned", "all", "off"],
+      "default": "pinned",
+      "description": "Which score changes raise a toast: pinned, your pinned team's match (claudinho follow <alias> --team <name>); with no pin saved, pinned toasts nothing. all, every live match of the competition you follow; off, none."
+    }
+  }
+}
