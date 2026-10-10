@@ -449,7 +449,7 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
 
   // Cold/stale cache during a live window: say "live · syncing" (see
   // `syncingWindow`, the one rule, which the ambient view asks too).
-  const win = syncingWindow(state, nowMs, liveList.complete, defaultCompetition, cachedFixtures, schedule, pick);
+  const win = syncingWindow(state, nowMs, liveWhole(liveList.complete, state), defaultCompetition, cachedFixtures, schedule, pick);
   if (win) {
     const first = win[0];
     // Drop the matchup when the first fixture in its window is still a
@@ -569,9 +569,10 @@ export function countdownSchedule(
  * THE syncing window, asked only when no live match was read: a countdown here
  * is actively misleading (a match is on, and the schedule alone tells us
  * that), so the line says "live · syncing" until the refresher lands a
- * snapshot. A FRESH, NON-DEGRADED snapshot whose scan was whole is trusted
- * as-is (per the feed nothing is in play: early FT, delay, postponement) and
- * is no window; a degraded snapshot means "the fetch failed", not "the feed
+ * snapshot. A FRESH, NON-DEGRADED snapshot whose live slice is whole
+ * (`liveWhole`: the scan, and the read that filled it as the snapshot states)
+ * is trusted as-is (per the feed nothing is in play: early FT, delay,
+ * postponement) and is no window; a degraded snapshot means "the fetch failed", not "the feed
  * said empty", so it must not bring the countdown back mid-match. An
  * incomplete scan only justifies "syncing" when the schedule says a match may
  * actually be on: on a quiet morning (or after the tournament), cache junk
@@ -580,10 +581,21 @@ export function countdownSchedule(
  * window. Off the bundle the list may be empty: the gate alone says a match
  * can be on.
  */
+/**
+ * Whether the live slice the line read is WHOLE: the scan was
+ * (`liveMatchesFromCache`'s `complete`), and the snapshot does not say the
+ * read that filled it was not (`liveComplete: false`: an omitted record is
+ * never "nothing on"). A snapshot that says nothing (written before the field)
+ * is judged by its scan alone, as it always was.
+ */
+export function liveWhole(scanComplete: boolean, state: CacheState | undefined): boolean {
+  return scanComplete && state?.liveComplete !== false;
+}
+
 export function syncingWindow(
   state: CacheState | undefined,
   nowMs: number,
-  /** Whether the live scan was whole (`liveMatchesFromCache`'s `complete`). */
+  /** Whether the live slice is whole ({@link liveWhole}). */
   liveComplete: boolean,
   defaultCompetition: boolean,
   /** The sealed cached fixtures `countdownSchedule` read. */

@@ -16,6 +16,7 @@ import {
   defaultTeamKind,
   isPicked,
   liveMatchesFromCache,
+  liveWhole,
   pickAmbientMatch,
   type PromptOpts,
   renderPrompt,
@@ -45,8 +46,8 @@ export type AmbientRead = Omit<AmbientView, 'competition' | 'disclaimer' | 'pick
  * `picked` (the preference's side) and `pinned` (the saved pin's, by core's
  * `isPinnedSide`), with the reader's own `total`/`shown`/`truncated`/
  * `complete`; whether that list is `current` (a believed snapshot's inside
- * its display window, not degraded, the line not syncing: the one rule,
- * `syncingWindow`);
+ * its display window, not degraded, its read whole as the snapshot states,
+ * the line not syncing: the one rule, `syncingWindow`);
  * the fixture the countdown names; the snapshot's own facts and the deadline
  * of its live scores, its stamp judged by the reader's own rule
  * (`stampAgeMs`). Pure and total like `renderPrompt`: no network, no market,
@@ -79,17 +80,21 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
   // The list is current when the reader's window holds the snapshot, the
   // snapshot is not degraded (as the line's own rule has it: a degraded
   // snapshot means the fetch failed, not that the feed said nothing; a live
-  // record it still carries is listed, best effort, and is not current), and
-  // the line is not syncing (asked, like the line asks it, only with no live
-  // match read).
+  // record it still carries is listed, best effort, and is not current), the
+  // snapshot SAYS the read that filled its live slice was whole
+  // (`liveComplete: true`; one that says nothing, written before the field,
+  // is not current until the next refresh), and the line is not syncing
+  // (asked, like the line asks it, only with no live match read).
   const syncing =
     list.items.length === 0 &&
-    syncingWindow(state, nowMs, list.complete, defaultCompetition, cachedFixtures, schedule, opts.pick) !== undefined;
+    syncingWindow(state, nowMs, liveWhole(list.complete, state), defaultCompetition, cachedFixtures, schedule, opts.pick) !==
+      undefined;
   return {
     line: renderPrompt(state, read),
     context: context === '' ? null : context,
     live: { items, total: list.total, shown: list.shown, truncated: list.truncated, complete: list.complete },
-    current: stamp !== undefined && age < DISPLAY_STALE_MS && state?.degraded !== true && !syncing,
+    current:
+      stamp !== undefined && age < DISPLAY_STALE_MS && state?.degraded !== true && state?.liveComplete === true && !syncing,
     next: countdownFixture(nowMs, schedule, opts.pick) ?? null,
     degraded: state?.degraded === true,
     source: typeof state?.source === 'string' ? state.source : null,

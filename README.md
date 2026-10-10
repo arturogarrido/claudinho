@@ -151,8 +151,8 @@ MCP one-liner. It removes those two exact commands only: an edited one (a wrappe
 The statusline and the hook as one JSON object on one line, for a program that draws them itself:
 `line` (what `claudinho prompt` prints; `--columns N`, N a positive integer, fits it to N columns,
 the `+N` count kept), `context` (the hook's block, or `null`), `live` (the live matches, each marked
-`picked` and `pinned`), `current` (whether that list is a current snapshot's: an empty list means
-nothing is on only when it is), `next` (the fixture the countdown names), `pick`, `competition`,
+`picked` and `pinned`), `current` (whether that list is a current snapshot's, the read that filled
+it was whole: an empty list means nothing is on only when it is), `next` (the fixture the countdown names), `pick`, `competition`,
 `degraded`, `source`, `updatedAt`, `staleAfter` (when its live scores stop being shown) and
 `disclaimer` (the non-affiliation sentence). Like the statusline it reads only the local cache,
 never the network, and starts the refresher when the cache is stale. The command itself exits 0

@@ -59,7 +59,8 @@ export interface AmbientView {
    * whole and `total` is exact only then; an empty list with `complete: false`
    * is "not known". An empty list is "nothing on" ONLY beside `current: true`:
    * with `current: false` (no snapshot, a stale one, a stamp the reader does
-   * not believe, a degraded one, the syncing window) it says nothing about
+   * not believe, a degraded one, one whose read was not whole or that does
+   * not say, the syncing window) it says nothing about
    * play, a match may be on (`line` is the authority: it prints
    * `live · syncing…` in the window), and a program must never read
    * `complete && items.length === 0` alone as "nothing on". A degraded
@@ -71,9 +72,12 @@ export interface AmbientView {
    * The live list is a believed snapshot's inside its display window (its
    * stamp's age, by the reader's own rule, is finite and short of the window),
    * the snapshot is not degraded (a degraded one means the fetch failed, not
-   * that the feed said nothing: it is never current, whatever it carries), and
-   * the line is not syncing: then, and only then, an empty list means the
-   * feed said nothing is in play.
+   * that the feed said nothing: it is never current, whatever it carries), the
+   * snapshot states that the read that filled its live slice was whole (a read
+   * that was not, an unreadable record left out beside readable ones, is never
+   * current; nor is a snapshot that does not say, written before 0.11.2, until
+   * one refresh cycle rewrites it), and the line is not syncing: then, and
+   * only then, an empty list means the feed said nothing is in play.
    */
   readonly current: boolean;
   /**
