@@ -1,6 +1,6 @@
 {
   "name": "@claudinho/mcp",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "mcpName": "io.github.arturogarrido/claudinho",
   "description": "An MCP server with live football scores, fixtures, standings and paste-ready match cards for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 12 more. Works with Claude Code, Cursor, Codex, Claude Desktop, Windsurf, Zed and any MCP client. No API key. Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic.",
   "type": "module",
