@@ -236,6 +236,11 @@ describe("the market gates take the adapter's read clock (no context clock)", ()
     expect(text()).toContain('56%');
   });
 
+  it("match <id>: the record and its market line on the adapter clock", async () => {
+    await cmdMatch(fixture.id, wcCtx());
+    expect(text()).toContain('56%');
+  });
+
   it("share with no date: the adapter clock's day, and its fixture's market block", async () => {
     await cmdShare(undefined, undefined, {}, wcCtx());
     expect(text()).toContain('56%');
