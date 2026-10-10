@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "claudinho",
   "display_name": "Claudinho ⚽",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "An MCP server for live football scores, fixtures and standings for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 12 more. Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic, nor with Smithery.",
   "long_description": "An MCP server with live football scores, fixtures, standings and paste-ready match cards for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 12 more. Works with Claude Code, Cursor, Codex, Claude Desktop, Windsurf, Zed and any MCP client. No API key. Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic, nor with Smithery.",
   "author": {
