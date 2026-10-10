@@ -88,6 +88,14 @@ describe('the line is the hook\'s, verbatim', () => {
 })
 
 describe('silence', () => {
+  test('a CLI older than the fields: a view with a live list and neither `idle` nor `empty` is never current, so nothing is compared across it and nothing toasts', async ($, on) => {
+    const texts = toasted(on)
+    const older = (score: [number, number]) => JSON.stringify({ line: "⚽ ARS 2–1 CHE 60'", context: null, live: { items: [match('1', score)], total: 1, shown: 1, truncated: false, complete: true }, current: true, next: null, pick: null, competition: { slug: 'eng.1' }, degraded: false, source: 'espn', updatedAt: '2026-10-10T15:00:00.000Z', staleAfter: '2026-10-10T15:05:00.000Z' })
+    const { clock } = await world($, on, [older([1, 0]), older([2, 0])])
+    await clock.advance(15_000)
+    expect(texts).toEqual([])
+  })
+
   test('the first observation of an id, and an unchanged score', async ($, on) => {
     const texts = toasted(on)
     const { clock } = await world($, on, [live([match('1', [2, 0])])])

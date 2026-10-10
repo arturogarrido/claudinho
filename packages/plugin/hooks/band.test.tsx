@@ -49,6 +49,12 @@ describe('what the band shows', () => {
     })
   }
 
+  test('a CLI older than the fields: a view with a live list and neither `idle` nor `empty` is no view the plugin reads, hidden whatever its line', async ($, on) => {
+    const older = JSON.stringify({ line: "⚽ ARS 2–1 CHE 50'", context: null, live: { items: [{ id: '1', status: 'LIVE', score: { home: 2, away: 1 } }], total: 1, shown: 1, truncated: false, complete: true }, current: true, next: null, pick: null, competition: { slug: 'eng.1' }, degraded: false, source: 'espn', updatedAt: '2026-10-10T15:00:00.000Z', staleAfter: '2026-10-10T15:05:00.000Z' })
+    const { mount } = await world($, on, [older])
+    expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+
   test('the text alone decides nothing: a line that reads like the first-run line, with the view saying it is neither empty nor idle, is shown', async ($, on) => {
     const { mount } = await world($, on, [view('⚽ claudinho follow')])
     expect(await (await mount()).findAll({ type: 'Text', text: '⚽ claudinho follow' })).toHaveLength(1)
