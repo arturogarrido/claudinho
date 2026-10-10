@@ -1,8 +1,9 @@
 import { DISCLAIMER as CORE_DISCLAIMER, FAN_PROJECT } from '@claudinho/core';
-import { Command, InvalidArgumentError } from 'commander';
+import { Command } from 'commander';
 import { resolveConfig, type RawGlobalOpts } from './config';
 import { readCursorPayloadBounded } from './cursorPayload';
 import { makeT } from './i18n';
+import { positiveInteger } from './options';
 import { TAGLINE } from './tagline';
 import {
   cmdAmbient,
@@ -227,17 +228,6 @@ program
     const cursor = await readCursorPayloadBounded();
     cmdPrompt(ctxFrom(cmd), { cursor });
   });
-
-/**
- * `--columns <n>`'s argument parser: a positive integer, and anything else is
- * refused by the option parser as every wrong option is (its message and
- * exit, before the command runs; nothing on stdout).
- */
-function positiveInteger(value: string): number {
-  const n = /^\d+$/.test(value) ? Number.parseInt(value, 10) : 0;
-  if (!(n > 0)) throw new InvalidArgumentError('a positive integer');
-  return n;
-}
 
 program
   .command('ambient')
