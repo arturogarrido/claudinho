@@ -6,10 +6,13 @@ installed `claudinho` CLI (`claudinho ambient --json`, the CLI's local cache) an
 
 ## Install
 
-The plugin runs the `claudinho` command, so install the CLI and choose a competition first:
+The plugin runs the `claudinho` command, so install the CLI and choose a competition first. It needs
+`@claudinho/cli` 0.11.2 or later, the first whose `claudinho ambient --json` says what its line is (`idle`,
+`empty`), carries the hook's own line on each live record, and marks its fallback object `empty`; with an older CLI
+the band shows nothing and nothing toasts.
 
 ```bash
-npm i -g @claudinho/cli
+npm i -g @claudinho/cli              # 0.11.2 or later
 claudinho follow premier-league      # or any alias from `claudinho follow --list`
 claudinho init plugin                # removes the statusline and hook `init claude` wrote, if you ran it
 ```

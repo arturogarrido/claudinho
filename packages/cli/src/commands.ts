@@ -1204,8 +1204,9 @@ const AMBIENT_EMPTY = JSON.stringify({ line: NOTHING_KNOWN_LINE, empty: true });
  * market read, `prompt`'s refresher trigger. It never reads stdin (a program
  * runs it with nothing to say), and it always exits 0: nothing chosen prints
  * the selection's twin and the first-run line, a value that is no competition
- * the empty line alone (both with no cache read and no refresher), and a
- * failure the empty line as an object, so a reader always gets one.
+ * the one fallback object (`AMBIENT_EMPTY`: the empty line and `empty: true`,
+ * no view; both with no cache read and no refresher), and a failure the same
+ * fallback object, so a reader always gets one.
  */
 export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): void {
   let printed = false;

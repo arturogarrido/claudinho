@@ -145,7 +145,7 @@ Restart Claude Code to activate.
 The plugin draws the live score or the countdown above the prompt (the band), raises a toast when a
 score changes, and puts the live-score block beside each prompt for the model while a match is on,
 all from the installed CLI (`claudinho ambient --json`), never a fetch of its own. Install the CLI
-and follow a competition, then run `claudinho init plugin` first: it removes the statusline
+(0.11.2 or later: an older one's band shows nothing and nothing toasts) and follow a competition, then run `claudinho init plugin` first: it removes the statusline
 (`claudinho prompt`) and the live-score hook (`claudinho hook`) that `init claude` wrote to
 `~/.claude/settings.json`, keeps every other setting, and prints the install line and the MCP
 one-liner. It removes those two exact commands only: an edited one (a wrapper,

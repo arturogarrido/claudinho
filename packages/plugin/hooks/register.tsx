@@ -187,16 +187,10 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
       ranAt: now,
     }))
   } else {
-    // A view that is not current says nothing about play: no toast and no context. It keeps the baseline, which only
-    // a current view replaces (and a disappearance rebases), so a change across the gap is said at the next current
-    // view, late, never lost while the match stays in the list. A change of competition is observed whatever the
-    // view's vouching: a view of another competition than the baseline's clears it (a view stating none, or the same
-    // one, leaves it).
-    const slug = isView ? slugOf(view) : ''
-    if (slug !== '') {
-      const prev = await read($, baseline)
-      if (prev && prev.slug !== slug) await update($, baseline, () => null)
-    }
+    // A view that is not current, of any competition, says nothing about play: the context clears and the baseline
+    // stays. Only a current view replaces it (a current view of another competition compares nothing and replaces
+    // it; a disappearance rebases), so a change across the gap is said at the next current view, late, never lost
+    // while the match stays in the list.
     await update($, lastContext, () => null)
   }
 }
