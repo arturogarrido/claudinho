@@ -256,6 +256,20 @@ describe('cmdShare — market gating (fail closed)', () => {
     expect(text()).toContain('informational only');
   });
 
+  it("share <id>: the record and its market on ONE clock too (no context clock, the adapter's before kickoff)", async () => {
+    const fixture = upcoming();
+    const before = new Date(Date.parse(fixture.kickoff) - 3_600_000);
+    const sig = (m: Match): MarketSignal => ({
+      ...freshSig(m),
+      asOf: before.toISOString(),
+      fetchedAt: before.toISOString(),
+    });
+    const adapterAtBefore: ProviderAdapter = { ...fakeAdapter, now: () => before.getTime() };
+    const { now: _dropped, ...noClock } = ctx({}, provider((m) => (m.id === fixture.id ? sig(m) : undefined)));
+    await cmdShare(fixture.id, undefined, {}, { ...noClock, adapter: adapterAtBefore });
+    expect(text()).toContain('informational only');
+  });
+
   it('omits a STALE signal (reliability gate)', async () => {
     const stale = (m: Match): MarketSignal => ({ ...freshSig(m), stale: true });
     await cmdShare('next', aTeam(), {}, ctx({}, provider(stale)));
