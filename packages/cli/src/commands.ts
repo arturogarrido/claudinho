@@ -133,9 +133,9 @@ import type {
   ShareStyle,
 } from '@claudinho/core';
 import { readCurrentState } from './cache';
+import { ambientView } from './ambient';
 import {
   type AmbientPick,
-  ambientView,
   FIRST_RUN_LINE,
   flagsEnabled,
   liveMatchesFromCache,

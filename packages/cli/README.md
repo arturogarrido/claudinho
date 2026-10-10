@@ -53,9 +53,11 @@ claudinho share [target]    # copy-pasteable snippet: today | live | <date> | <i
 claudinho prompt            # one compact status line (for statusline/tmux/Starship)
 claudinho init cursor       # one-step Cursor setup: statusline + MCP paste (--print for snippets)
 claudinho init claude       # one-step Claude Code setup: statusline + hook + MCP one-liner
+claudinho init plugin       # remove the statusline and hook init claude wrote, for the Claude Code plugin
 claudinho init-statusline   # (granular) wire just the Claude Code statusline
 claudinho init-cursor-statusline  # (granular) wire just the Cursor CLI statusline
 claudinho hook              # live-score context for a Claude Code hook (silent off-match)
+claudinho ambient --json    # the statusline and the hook as one JSON object, for a program (--columns N)
 claudinho init-hook         # (granular) make Claude itself score-aware (UserPromptSubmit)
 claudinho vibe              # a matchday-coder one-liner (#VibingLaVidaLoca)
 claudinho star              # how to support the project (star the repo ⭐)
@@ -270,6 +272,21 @@ claudinho init-hook                # patches ~/.claude/settings.json (backs up f
 Wires `claudinho hook` into Claude Code's `UserPromptSubmit`. During a match,
 the live score is injected into Claude's context so it can mention it naturally;
 off-match it's silent (zero added tokens). Restart Claude Code to activate.
+
+**Moving to the Claude Code plugin?** `claudinho init plugin` removes the statusline
+(`claudinho prompt`) and the live-score hook (`claudinho hook`) that `init claude` wrote to
+`~/.claude/settings.json`, keeps every other setting, then prints the plugin's install line and the
+MCP one-liner; an edited command (a wrapper, `npx -y @claudinho/cli hook`) stays, and it names it.
+
+### For a program: `claudinho ambient --json`
+
+`claudinho ambient --json [--columns N]` prints the statusline and the hook as one JSON object on
+one line, for a program that draws them itself: `line` (what `claudinho prompt` prints, fitted to N
+columns with the `+N` count kept), `context` (the hook's block, or `null`), `live` (the live
+matches, each marked `picked` and `pinned`), `next`, `pick`, `competition`, `degraded`, `source`,
+`updatedAt`, `staleAfter` and `disclaimer` (the non-affiliation sentence). It reads only the local
+cache, never the network; the command itself exits 0 whatever the cache holds, and a wrong option is
+refused by the option parser as for every command.
 
 ## Statusline (Cursor CLI)
 

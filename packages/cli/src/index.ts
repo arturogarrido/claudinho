@@ -251,7 +251,7 @@ program
 // init-* commands into a single command per agent (statusline + hook + MCP).
 const init = program
   .command('init')
-  .description('one-step setup for your agent: `init cursor` or `init claude`');
+  .description('one-step setup for your agent: `init cursor` or `init claude`; `init plugin` for the Claude Code plugin');
 
 init
   .command('cursor')

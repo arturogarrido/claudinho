@@ -25,6 +25,7 @@ Any user-visible formatter change must land on **all three surfaces** before mer
 | MCP `get_bracket` / `get_next_fixture` | `toolGetBracket` / `toolGetNextFixture` | same (no `team`: the server's `CLAUDINHO_TEAM`, else the pin through `nextFixtureForPin`) |
 | MCP `get_share_snippet{bracket,next}` | `toolGetShareSnippet` | same |
 | **statusline** | `renderPrompt` + `runRefresh` | hot path, NO network — indirect: refresher caches `getKnockoutFixtures` → `CacheState.fixtures`; `renderPrompt` merges them, **failing closed to `⚽ —`** when the cache lacks the pairing; unresolved placeholders dropped in syncing (never 🏳️). Empty successful fetch uses a **short TTL** (~60s); provider errors keep prior cache. **`cmdPrompt` and `cmdHook`** both spawn fixtures refresh in knockout phase. |
+| **`ambient --json`** | `cmdAmbient` → `ambientView` | the statusline's cache through the same reader: its `line` and `next` come from the resolved pairings and fail closed the same way (`⚽ —`, `next: null`); hot path, NO network, the same refresher trigger as `cmdPrompt`. |
 
 **Adding a team-facing surface? Add it to BOTH coverage tests and this table.**
 

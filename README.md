@@ -154,8 +154,9 @@ The statusline and the hook as one JSON object on one line, for a program that d
 `pinned`), `next` (the fixture the countdown names), `pick`, `competition`, `degraded`, `source`,
 `updatedAt`, `staleAfter` (when its live scores stop being shown) and `disclaimer` (the
 non-affiliation sentence). Like the statusline it reads only the local cache, never the network,
-and starts the refresher when the cache is stale; it always exits 0 (with nothing chosen it prints
-the `noCompetition` object and the first-run line).
+and starts the refresher when the cache is stale. The command itself exits 0 whatever the cache
+holds (with nothing chosen it prints the `noCompetition` object and the first-run line); a wrong
+option is refused by the option parser as for every command.
 
 > **Monorepo / local dev?** The `init cursor` / `init claude` aliases wire the global
 > `claudinho`. To point a statusline or hook at a local build, use the granular commands
