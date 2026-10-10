@@ -20,6 +20,8 @@ const match = (id: string, score: [number, number], over: Record<string, unknown
   updatedAt: '2026-10-10T15:00:00.000Z',
   picked: true,
   pinned: true,
+  // The hook's own line for the record, as the CLI prints it: the plugin says it and composes nothing.
+  line: `Arsenal ${score[0]}–${score[1]} Chelsea (60')`,
   ...over,
 })
 const live = (items: Array<Record<string, unknown>>, over: Record<string, unknown> = {}) =>
@@ -51,7 +53,7 @@ describe('a goal', () => {
 
   test('the minute token follows the hook: half-time, and live with no minute', async ($, on) => {
     const texts = toasted(on)
-    const { clock } = await world($, on, [live([match('1', [0, 0])]), live([match('1', [1, 0], { status: 'HT', minute: undefined })]), live([match('1', [1, 1], { minute: undefined })])])
+    const { clock } = await world($, on, [live([match('1', [0, 0])]), live([match('1', [1, 0], { status: 'HT', minute: undefined, line: 'Arsenal 1–0 Chelsea (half-time)' })]), live([match('1', [1, 1], { minute: undefined, line: 'Arsenal 1–1 Chelsea (live)' })])])
     await clock.advance(15_000)
     await clock.advance(15_000)
     expect(texts).toEqual(['⚽ Arsenal 1–0 Chelsea (half-time)', '⚽ Arsenal 1–1 Chelsea (live)'])
@@ -59,12 +61,29 @@ describe('a goal', () => {
 
   test("a shootout tally change is its own toast, with the hook's scoreline; an absent prior tally is never compared", async ($, on) => {
     const texts = toasted(on)
-    const shootout = (h: number, a: number) => match('1', [1, 1], { stage: 'F', minute: 120, shootout: { home: h, away: a } })
-    const { clock } = await world($, on, [live([match('1', [1, 1], { stage: 'F', minute: 120 })]), live([shootout(1, 0)]), live([shootout(1, 1)])])
+    const shootout = (h: number, a: number) => match('1', [1, 1], { stage: 'F', minute: 120, shootout: { home: h, away: a }, line: `Arsenal 1(${h})–1(${a}) Chelsea (120')` })
+    const { clock } = await world($, on, [live([match('1', [1, 1], { stage: 'F', minute: 120, line: "Arsenal 1–1 Chelsea (120')" })]), live([shootout(1, 0)]), live([shootout(1, 1)])])
     await clock.advance(15_000)
     expect(texts).toEqual([]) // the tally appeared: nothing to compare it with
     await clock.advance(15_000)
     expect(texts).toEqual(["⚽ Arsenal 1(1)–1(1) Chelsea (120')"])
+  })
+})
+
+describe('the line is the hook\'s, verbatim', () => {
+  test('a nation match toasts the hook\'s line with its flags and roster names, which the plugin never composes', async ($, on) => {
+    const texts = toasted(on)
+    const nation = (score: [number, number]) => match('7', score, { home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' }, away: { code: 'RSA', name: 'South Africa', flag: '🇿🇦' }, minute: 67, line: `🇲🇽 Mexico ${score[0]}–${score[1]} South Africa 🇿🇦 (67')` })
+    const { clock } = await world($, on, [live([nation([0, 0])]), live([nation([1, 0])])])
+    await clock.advance(15_000)
+    expect(texts).toEqual(["⚽ 🇲🇽 Mexico 1–0 South Africa 🇿🇦 (67')"])
+  })
+
+  test('a regulation and a shootout change in one tick are one toast for the match', async ($, on) => {
+    const texts = toasted(on)
+    const { clock } = await world($, on, [live([match('1', [1, 1], { stage: 'F', minute: 120, shootout: { home: 2, away: 2 }, line: "Arsenal 1(2)–1(2) Chelsea (120')" })]), live([match('1', [2, 1], { stage: 'F', minute: 120, shootout: { home: 3, away: 2 }, line: "Arsenal 2(3)–1(2) Chelsea (120')" })])])
+    await clock.advance(15_000)
+    expect(texts).toEqual(["⚽ Arsenal 2(3)–1(2) Chelsea (120')"])
   })
 })
 
@@ -78,12 +97,13 @@ describe('silence', () => {
   })
 
   for (const [why, over] of [['stale (not current)', { current: false }], ['degraded', { current: false, degraded: true }]] as const) {
-    test(`a view that is not current never toasts and rebases: ${why}`, async ($, on) => {
+    test(`a view that is not current never toasts and leaves the baseline: the next current view compares with the last current one (${why})`, async ($, on) => {
       const texts = toasted(on)
       const { clock } = await world($, on, [live([match('1', [1, 0])]), live([match('1', [2, 0])], over), live([match('1', [3, 0])])])
       await clock.advance(15_000)
+      expect(texts).toEqual([]) // the non-current view says nothing about play
       await clock.advance(15_000)
-      expect(texts).toEqual([]) // the view after the non-current one is the first observation again
+      expect(texts).toEqual(["⚽ Arsenal 3–0 Chelsea (60')"]) // the goal across the gap is said, late, never lost
     })
   }
 

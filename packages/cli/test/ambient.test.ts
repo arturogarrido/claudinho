@@ -102,7 +102,9 @@ describe('claudinho ambient --json', () => {
     expect(v.pick).toBeNull();
     expect(v.competition).toEqual({ slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'saved' });
     expect(v).toMatchObject({ current: true, degraded: false, source: 'espn', updatedAt: NOW.toISOString(), disclaimer: DISCLAIMER });
-    expect(Object.keys(v)).toEqual(['line', 'context', 'live', 'current', 'next', 'pick', 'competition', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer']);
+    expect(Object.keys(v)).toEqual(['line', 'idle', 'empty', 'context', 'live', 'current', 'next', 'pick', 'competition', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer']);
+    expect(v).toMatchObject({ idle: false, empty: false });
+    expect(items[0]?.line).toBe("Arsenal 2–1 Chelsea (50')"); // the hook's own line for the record
     expect(v.staleAfter).toBe(new Date(NOW.getTime() + DISPLAY_STALE_MS).toISOString());
     expect(vi.mocked(spawn)).not.toHaveBeenCalled();
   });
@@ -231,6 +233,35 @@ describe('claudinho ambient --json', () => {
     }
   });
 
+  it('the view says what its line is, before any fit: the edition-complete line is `idle` however narrow the band', () => {
+    // The World Cup after its final: every window elapsed, no fixture to count down to, the sign-off line.
+    const AUG = new Date('2026-08-01T12:00:00Z');
+    const state = { updatedAt: AUG.toISOString(), live: [], degraded: false, source: 'espn', competition: 'fifa.world', liveComplete: true } as never;
+    const wide = ambientView(state, { defaultCompetition: true, teamKind: 'nation', now: AUG });
+    expect(wide.line).toBe('⚽ World Cup 2026 is complete · claudinho follow --list');
+    expect(wide).toMatchObject({ idle: true, empty: false });
+    const narrow = ambientView(state, { defaultCompetition: true, teamKind: 'nation', now: AUG, columns: 10 });
+    expect(displayWidth(narrow.line)).toBeLessThanOrEqual(10);
+    expect(narrow.line).not.toBe(wide.line); // fitted
+    expect(narrow).toMatchObject({ idle: true, empty: false }); // and still the idle line, by the field
+    // Off the bundle a season's end prints nothing known: empty, never idle.
+    const off = ambientView({ ...(state as object), competition: 'eng.1' } as never, { defaultCompetition: false, teamKind: 'club', now: AUG });
+    expect(off.line).toBe('⚽ —');
+    expect(off).toMatchObject({ idle: false, empty: true });
+  });
+
+  it("each live record carries the hook's own line for it, flags and roster names as the hook prints them: one formatter", () => {
+    const JUN = new Date('2026-06-20T20:00:00Z');
+    const mexRsa = { id: '700123', stage: 'GROUP', group: 'A', kickoff: '2026-06-20T19:00:00Z', venue: 'Estadio Azteca', home: { code: 'MEX', name: 'Mexico' }, away: { code: 'RSA', name: 'South Africa' }, score: { home: 1, away: 0 }, minute: 67, status: 'LIVE', updatedAt: '2026-06-20T20:00:00Z' };
+    const state = { updatedAt: JUN.toISOString(), live: [mexRsa], degraded: false, source: 'espn', competition: 'fifa.world', liveComplete: true } as never;
+    const flagged = ambientView(state, { defaultCompetition: true, teamKind: 'nation', now: JUN, flags: true });
+    expect(flagged.live.items[0]?.line).toBe("🇲🇽 Mexico 1–0 South Africa 🇿🇦 (67')");
+    expect(renderHook(state, { defaultCompetition: true, teamKind: 'nation', now: JUN, flags: true })).toContain(flagged.live.items[0]?.line);
+    const plain = ambientView(state, { defaultCompetition: true, teamKind: 'nation', now: JUN, flags: false });
+    expect(plain.live.items[0]?.line).toBe("Mexico 1–0 South Africa (67')");
+    expect(renderHook(state, { defaultCompetition: true, teamKind: 'nation', now: JUN, flags: false })).toContain(plain.live.items[0]?.line);
+  });
+
   it('`pinned` is identity: a pin with the record\'s id pins under another code; a pin with another id does not pin the same code', () => {
     seed([live('1', ARS, CHE, [2, 1]), live('2', BOU, BRE, [0, 0])]);
     cmdAmbient(ctx({ pin: { id: 'espn:359', code: 'XXX', name: 'Elsewhere' } }));
@@ -299,6 +330,7 @@ describe('claudinho ambient --json', () => {
     cmdAmbient(ctx());
     const v = view();
     expect(v.line).toBe('⚽ —');
+    expect(v).toMatchObject({ empty: true, idle: false }); // the view SAYS nothing is known: a program never greps the line
     expect(v.live).toMatchObject({ items: [], total: 0, shown: 0, complete: true });
     expect(v.current).toBe(false);
     expect(v.context).toBeNull();

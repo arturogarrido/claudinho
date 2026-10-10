@@ -8,10 +8,12 @@ const ok = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '', isSt
 export const NOW = Date.parse('2026-10-10T15:00:00.000Z')
 export const COMPLETE = '⚽ World Cup 2026 is complete · claudinho follow --list'
 
-/** The view the CLI prints for a line, with nothing live (the band reads `line` alone). */
+/** The view the CLI prints for a line, with nothing live: `idle` and `empty` SAY what the line is (the band never reads the text). */
 export const view = (line: string, over: Record<string, unknown> = {}) =>
   JSON.stringify({
     line,
+    idle: false,
+    empty: false,
     context: null,
     live: { items: [], total: 0, shown: 0, truncated: false, complete: true },
     current: false,
@@ -30,7 +32,7 @@ export const view = (line: string, over: Record<string, unknown> = {}) =>
 export const world = async (
   $: Parameters<Parameters<typeof test>[1]>[0],
   on: Parameters<Parameters<typeof test>[1]>[1],
-  answers: Array<string | Error>,
+  answers: Array<string | Error | { stdout: string; truncated: true }>,
   start: { isInteractive: boolean } = START,
 ) => {
   // The clock starts at a fixed instant, five minutes before the views' `staleAfter` (15:05Z): the context's deadline
@@ -51,6 +53,7 @@ export const world = async (
     stdins.push(e.init?.stdin)
     const a = answers[Math.min(argvs.length - 1, answers.length - 1)]
     if (a instanceof Error) throw a
+    if (typeof a === 'object') return { value: { ...ok(`${a.stdout}\n`).value, isStdoutTruncated: true } }
     return ok(`${a}\n`)
   })
   await $.session.start({ ...START, ...start })
@@ -59,3 +62,6 @@ export const world = async (
     $.ui.mount({ plugin: 'claudinho', surface: 'terminal', component: 'AbovePrompt', props: { ...PROPS, ...props }, viewport: { columns: 100, rows: 30 } })
   return { clock, argvs, stdins, mount }
 }
+
+/** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */
+export const FIRST_RUN = JSON.stringify({ competition: null, noCompetition: true, line: '⚽ claudinho follow' })
