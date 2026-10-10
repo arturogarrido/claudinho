@@ -2,10 +2,10 @@ import { describe, expect, test } from 'claude-code/testing'
 import { view, world } from './world'
 
 /**
- * The toasts: a score change of a match whose id was in the previous CURRENT view's list (`current: true` twice),
- * said as `⚽` and the hook's own line for it; the first observation of an id, a view that is not current, a
- * disappearance or a competition change rebase the baseline silently; `toasts` picks the pinned matches (the
- * default), all, or none.
+ * The toasts: a score change of a match whose id was in the last CURRENT view's list, said as `⚽` and the hook's
+ * own line for it (which each record carries); the first observation of an id, a disappearance and a competition
+ * change rebase the baseline silently; a view that is not current and a failed run leave it; `toasts` picks the
+ * pinned matches (the default), all, or none.
  */
 const match = (id: string, score: [number, number], over: Record<string, unknown> = {}) => ({
   id,
@@ -110,6 +110,15 @@ describe('silence', () => {
   test('a match that left the list and came back is observed afresh', async ($, on) => {
     const texts = toasted(on)
     const { clock } = await world($, on, [live([match('1', [1, 0])]), live([]), live([match('1', [2, 0])])])
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(texts).toEqual([])
+  })
+
+  test('a competition change observed through a view that is NOT current rebases too: a return to the first competition toasts nothing', { options: { toasts: 'all' } }, async ($, on) => {
+    const texts = toasted(on)
+    const other = { competition: { slug: 'esp.1', alias: 'laliga', name: 'LALIGA', chosenBy: 'saved' } }
+    const { clock } = await world($, on, [live([match('1', [1, 0])]), live([], { ...other, current: false }), live([match('1', [2, 0])])])
     await clock.advance(15_000)
     await clock.advance(15_000)
     expect(texts).toEqual([])

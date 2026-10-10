@@ -293,7 +293,7 @@ describe('claudinho ambient --json', () => {
     expect(view()).toEqual({ competition: null, noCompetition: true, line: '⚽ claudinho follow' });
     writes = [];
     cmdAmbient({ ...ctx(), cfg: cfg({ selection: { kind: 'refused', value: 'nope', aliases: ['premier-league'], chosenBy: 'env' }, competition: '' }) });
-    expect(view()).toEqual({ line: '⚽ —' });
+    expect(view()).toEqual({ line: '⚽ —', empty: true }); // the fallback object says nothing is known, as a view does
     expect(vi.mocked(spawn)).not.toHaveBeenCalled();
   });
 

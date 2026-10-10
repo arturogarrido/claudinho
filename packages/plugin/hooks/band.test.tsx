@@ -42,6 +42,13 @@ describe('what the band shows', () => {
     })
   }
 
+  for (const [why, answer] of [["the CLI's fallback object (a refused value, a throw before the view): it says empty", '{"line":"⚽ —","empty":true}'], ['an older CLI\'s line-only object: not a view (no live list), hidden whatever its line', '{"line":"⚽ —"}'], ['a line-only object with a score-like line: still not a view', '{"line":"⚽ ARS 2–1 CHE 50\'"}']] as const) {
+    test(`shows nothing on ${why}`, async ($, on) => {
+      const { mount } = await world($, on, [answer])
+      expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
+    })
+  }
+
   test('the text alone decides nothing: a line that reads like the first-run line, with the view saying it is neither empty nor idle, is shown', async ($, on) => {
     const { mount } = await world($, on, [view('⚽ claudinho follow')])
     expect(await (await mount()).findAll({ type: 'Text', text: '⚽ claudinho follow' })).toHaveLength(1)
