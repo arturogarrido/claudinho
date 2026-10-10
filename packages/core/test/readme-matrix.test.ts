@@ -3,7 +3,7 @@
  * `scripts/gen-readme-matrix.mjs` renders the rows between two markers in the
  * root README, and this guard fails when the committed block differs from the
  * generator's output, so the public matrix cannot drift from the data. The
- * generator takes a table, so a sixteenth row renders with no other change.
+ * generator takes a table, so a new row renders with no other change.
  *
  * The README is a text file git may check out with CRLF (a default Windows
  * checkout; `.gitattributes` pins only `scripts/`), so the guard compares the
@@ -42,8 +42,8 @@ describe('the README matrix', () => {
     const { renderMatrix } = (await import(SCRIPT)) as Generator;
     const committed = blockOf(readFileSync(README, 'utf8'));
     expect(committed).toBe(renderMatrix(SUPPORTED, capabilitiesOf).trim());
-    // Fifteen rows, each naming its alias, and the five capabilities as columns.
-    expect(committed.split('\n').filter((l) => l.startsWith('| `')).length).toBe(15);
+    // One row per competition, each naming its alias, and the five capabilities as columns.
+    expect(committed.split('\n').filter((l) => l.startsWith('| `')).length).toBe(SUPPORTED.length);
     expect(committed).toContain('premier-league');
     expect(committed).toContain('world-cup');
     expect(committed).toMatch(/scores.*next.*standings.*bracket.*markets/i);
@@ -61,11 +61,11 @@ describe('the README matrix', () => {
     expect(blockOf(lf)).toBe(renderMatrix(SUPPORTED, capabilitiesOf).trim());
   });
 
-  it('a sixteenth row renders with no other change', async () => {
+  it('a row past the table renders with no other change', async () => {
     const { renderMatrix } = (await import(SCRIPT)) as Generator;
     const fake = { slug: 'fra.1', alias: 'ligue-1', name: 'Ligue 1', teams: 'club', kind: 'league', seasonSlug: 'ligue-1', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 };
     const out = renderMatrix([...SUPPORTED, fake], capabilitiesOf);
-    expect(out.split('\n').filter((l) => l.startsWith('| `')).length).toBe(16);
+    expect(out.split('\n').filter((l) => l.startsWith('| `')).length).toBe(SUPPORTED.length + 1);
     expect(out).toContain('ligue-1');
     expect(out).toContain('Ligue 1');
   });

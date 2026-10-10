@@ -1,9 +1,9 @@
 /**
- * The supported set is ONE data table (0.11 · 2.5a, D3): fifteen rows, each a
+ * The supported set is ONE data table (0.11 · 2.5a, D3): one row per competition, each a
  * slug, an alias, a name, its teams' kind, its own kind, its season name, its
  * standings shape, its bracket and markets capabilities and its cadence. Every
  * other written fact derives from it, and adding a competition is one row: a
- * test adds a fake sixteenth and every consumer takes it with no other change.
+ * test adds a fake row past the table and every consumer takes it with no other change.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -24,18 +24,19 @@ import {
 
 const SLUGS = [
   'fifa.world', 'uefa.euro', 'conmebol.america', 'uefa.nations', 'concacaf.nations.league', 'concacaf.gold',
-  'eng.1', 'esp.1', 'ita.1', 'ger.1', 'mex.1', 'uefa.champions', 'conmebol.libertadores', 'concacaf.champions', 'fifa.cwc',
+  'eng.1', 'esp.1', 'ita.1', 'ger.1', 'mex.1',
+  'uru.1', 'uefa.champions', 'conmebol.libertadores', 'concacaf.champions', 'fifa.cwc',
 ];
 const ALIASES: Record<string, string> = {
   'fifa.world': 'world-cup', 'uefa.euro': 'euro', 'conmebol.america': 'copa-america', 'uefa.nations': 'nations-league',
   'concacaf.nations.league': 'concacaf-nations-league', 'concacaf.gold': 'gold-cup', 'eng.1': 'premier-league',
-  'esp.1': 'laliga', 'ita.1': 'serie-a', 'ger.1': 'bundesliga', 'mex.1': 'liga-mx', 'uefa.champions': 'champions-league',
+  'esp.1': 'laliga', 'ita.1': 'serie-a', 'ger.1': 'bundesliga', 'mex.1': 'liga-mx', 'uru.1': 'liga-auf', 'uefa.champions': 'champions-league',
   'conmebol.libertadores': 'libertadores', 'concacaf.champions': 'concacaf-champions-cup', 'fifa.cwc': 'club-world-cup',
 };
 const NAMES: Record<string, string> = {
   'fifa.world': 'World Cup', 'uefa.euro': 'EURO', 'conmebol.america': 'Copa América', 'uefa.nations': 'UEFA Nations League',
   'concacaf.nations.league': 'Concacaf Nations League', 'concacaf.gold': 'Gold Cup', 'eng.1': 'Premier League',
-  'esp.1': 'LALIGA', 'ita.1': 'Serie A', 'ger.1': 'Bundesliga', 'mex.1': 'Liga MX', 'uefa.champions': 'Champions League',
+  'esp.1': 'LALIGA', 'ita.1': 'Serie A', 'ger.1': 'Bundesliga', 'mex.1': 'Liga MX', 'uru.1': 'Liga AUF Uruguaya', 'uefa.champions': 'Champions League',
   'conmebol.libertadores': 'Libertadores', 'concacaf.champions': 'Concacaf Champions Cup', 'fifa.cwc': 'Club World Cup',
 };
 const FAKE: CompetitionEntry = {
@@ -52,7 +53,7 @@ const FAKE: CompetitionEntry = {
 };
 
 describe('the table', () => {
-  it('has the fifteen, each with its alias and name', () => {
+  it('has every row, each with its alias and name', () => {
     expect(SUPPORTED.map((e) => e.slug)).toEqual(SLUGS);
     for (const e of SUPPORTED) {
       expect(e.alias, e.slug).toBe(ALIASES[e.slug]);
@@ -60,7 +61,7 @@ describe('the table', () => {
       expect(e.alias, e.slug).toMatch(/^[a-z][a-z0-9-]*$/);
       expect(e.alias, e.slug).not.toContain('.');
     }
-    expect(new Set(SUPPORTED.map((e) => e.alias)).size).toBe(15);
+    expect(new Set(SUPPORTED.map((e) => e.alias)).size).toBe(SLUGS.length);
     expect(Object.isFrozen(SUPPORTED)).toBe(true);
   });
 
@@ -122,7 +123,7 @@ describe('every other written fact derives from the table', () => {
     expect(SEASON_SLUG).toEqual(derived.seasonSlug);
     expect(derived.seasonSlug).toEqual({ 'eng.1': 'english-premier-league', 'esp.1': 'laliga', 'ita.1': 'italian-serie-a', 'ger.1': 'german-bundesliga' });
     expect(STANDINGS_SHAPE).toEqual(derived.standingsShape);
-    expect(derived.standingsShape).toEqual({ 'eng.1': 'league', 'esp.1': 'league', 'ita.1': 'league', 'ger.1': 'league', 'mex.1': 'league', 'uefa.champions': 'league', 'concacaf.champions': 'none' });
+    expect(derived.standingsShape).toEqual({ 'eng.1': 'league', 'esp.1': 'league', 'ita.1': 'league', 'ger.1': 'league', 'mex.1': 'league', 'uru.1': 'league', 'uefa.champions': 'league', 'concacaf.champions': 'none' });
   });
 
   it('the bracket and markets capabilities', () => {
@@ -139,7 +140,7 @@ describe('every other written fact derives from the table', () => {
   // derived view: `espn-canary.test.ts` pins those reads (0.11 · 2.5a, the dead views deleted).
 });
 
-describe('a sixteenth row is one row: every consumer takes the table as its input', () => {
+describe('an added row is one row: every consumer takes the table as its input', () => {
   const table = [...SUPPORTED, FAKE];
   const derived = deriveTables(table);
 
@@ -155,7 +156,7 @@ describe('a sixteenth row is one row: every consumer takes the table as its inpu
   it('the list and the lookups take a table', () => {
     const listed = listCompetitions(table, null);
     expect(listed.competitions.map((c) => c.slug)).toEqual([...SLUGS, 'fra.1']);
-    const last = listed.competitions[15];
+    const last = listed.competitions[SLUGS.length];
     expect(last).toMatchObject({ slug: 'fra.1', alias: 'ligue-1', name: 'Ligue 1', teams: 'club', kind: 'league', capabilities: { scores: 'offered', next: 'offered', standings: 'offered', bracket: 'not-offered-yet', markets: 'not-offered-yet' } });
     expect(listed.current).toBeNull();
     expect(entryOf('fra.1', table)?.alias).toBe('ligue-1');

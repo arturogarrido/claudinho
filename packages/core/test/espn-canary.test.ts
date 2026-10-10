@@ -490,7 +490,9 @@ describe('found in review: a throttle is the provider speaking to the runner, no
     for (const status of [403, 429]) {
       const r = await run(() => json({}, status, { 'retry-after': '300' }), ['eng.1', 'esp.1', 'ita.1']);
       expect(r.urls, `status ${status}`).toHaveLength(1);
-      expect(r.rows).toHaveLength(15);
+      // Three competitions asked, five rows each (the request forms off the bundle; the first blocked, the rest not
+      // asked): a count of this run, not of the table.
+      expect(r.rows).toHaveLength(3 * 5);
       expect(new Set(r.rows.map((row) => row.verdict))).toEqual(new Set(['blocked']));
       expect(r.rows.at(-1)?.detail).toMatch(/not asked/);
       expect(r.red).toBe(false);
@@ -931,7 +933,7 @@ describe('found in review: absence is a finding, and the product’s own parser 
     // A league serves one table; one competition has none; the rest are groups.
     for (const c of Object.keys(core.STANDINGS_SHAPE)) expect(CANARY_COMPETITIONS, c).toContain(c);
     expect(CANARY_COMPETITIONS.filter((c) => core.STANDINGS_SHAPE[c] === 'league').sort()).toEqual(
-      ['eng.1', 'esp.1', 'ger.1', 'ita.1', 'mex.1', 'uefa.champions'].sort(),
+      ['eng.1', 'esp.1', 'ger.1', 'ita.1', 'mex.1', 'uru.1', 'uefa.champions'].sort(),
     );
   });
 
@@ -1244,6 +1246,7 @@ describe('what it watches and how it reports', () => {
         'ita.1',
         'ger.1',
         'mex.1',
+        'uru.1',
         'uefa.champions',
         'concacaf.champions',
         'fifa.cwc',
@@ -1390,7 +1393,7 @@ describe('the window across a season turn (0.11 2.1b): the canary asks it the wa
 });
 
 describe('the canary takes its competitions and their cadences from the table it is handed (0.11 · 2.5a, D3)', () => {
-  // A sixteenth row is one row: the canary asks it and applies its cadence with no change to the script.
+  // A row past the table is one row: the canary asks it and applies its cadence with no change to the script.
   const fake = {
     slug: 'fra.1',
     alias: 'ligue-1',
@@ -1404,24 +1407,24 @@ describe('the canary takes its competitions and their cadences from the table it
     cadenceYears: 2 as const,
   };
   // Built inside each case: the table is a 2.5a export, and a file must load on the base.
-  const sixteen = () => ({ ...core, SUPPORTED: Object.freeze([...(core.SUPPORTED ?? []), fake]) }) as typeof core;
+  const withFake = () => ({ ...core, SUPPORTED: Object.freeze([...(core.SUPPORTED ?? []), fake]) }) as typeof core;
   const discovery = (r: { rows: Array<{ request: string; verdict: string }> }) => r.rows.find((x) => x.request === 'discovery');
 
-  it('with no `competitions` given, every row of the table is asked, the sixteenth included', async () => {
+  it('with no `competitions` given, every row of the table is asked, the added row included', async () => {
     const f = feed(healthy);
-    const r = await runCanary({ core: sixteen(), fetchImpl: f.fetchImpl, now: NOW, pauseMs: 0 });
+    const r = await runCanary({ core: withFake(), fetchImpl: f.fetchImpl, now: NOW, pauseMs: 0 });
     const asked = [...new Set(r.rows.map((row) => row.competition))];
     expect(asked).toEqual([...core.SUPPORTED.map((e) => e.slug), 'fra.1']);
     expect(r.rows.filter((row) => row.competition === 'fra.1').map((row) => row.request)).toEqual(['live', 'day', 'window', 'discovery', 'standings']);
   });
 
-  it('the cadence is the row\'s: the sixteenth turns by two', async () => {
+  it('the cadence is the row\'s: the added row turns by two', async () => {
     const at = new Date('2026-10-25T12:00:00Z');
     const months = (nov: number) => (url: string) =>
       json(url.includes('/standings') ? standings() : asked(url) === '202611' ? { leagues: [{ season: { ...SEASON, year: nov } }], events: [] } : scoreboard(url));
-    const twoUp = await runCanary({ core: sixteen(), competitions: ['fra.1'], fetchImpl: feed(months(2028)).fetchImpl, now: at, pauseMs: 0 });
+    const twoUp = await runCanary({ core: withFake(), competitions: ['fra.1'], fetchImpl: feed(months(2028)).fetchImpl, now: at, pauseMs: 0 });
     expect(discovery(twoUp)?.verdict).toBe('ok');
-    const threeUp = await runCanary({ core: sixteen(), competitions: ['fra.1'], fetchImpl: feed(months(2029)).fetchImpl, now: at, pauseMs: 0 });
+    const threeUp = await runCanary({ core: withFake(), competitions: ['fra.1'], fetchImpl: feed(months(2029)).fetchImpl, now: at, pauseMs: 0 });
     expect(discovery(threeUp)?.verdict).toBe('changed');
     // The same slug under the real table (where it is not written) turns by one.
     const unknownTwoUp = await runCanary({ core, competitions: ['fra.1'], fetchImpl: feed(months(2028)).fetchImpl, now: at, pauseMs: 0 });

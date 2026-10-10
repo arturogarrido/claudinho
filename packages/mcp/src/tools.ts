@@ -172,13 +172,14 @@ export interface CommonOpts {
 const adapters = new Map<string, ProviderAdapter>();
 
 /**
- * How many adapters the server keeps, at most. Fifteen supported competitions
- * and room for as many raw slugs again, so a client walking
- * `list_competitions` never evicts a supported one, while a client asking
- * distinct raw slugs cannot grow the server without limit. An evicted adapter
- * loses no throttle window: the window is remembered per source.
+ * How many adapters the server keeps, at most: the supported set and room for
+ * as many raw slugs again, derived from the table so a new row needs no edit
+ * here; a client walking `list_competitions` never evicts a supported one,
+ * while a client asking distinct raw slugs cannot grow the server without
+ * limit. An evicted adapter loses no throttle window: the window is
+ * remembered per source.
  */
-export const KEPT_ADAPTERS_MAX = 32;
+export const KEPT_ADAPTERS_MAX = 2 * SUPPORTED.length;
 
 /** How many adapters the server keeps now. A test seam: nothing in the server reads it. */
 export function keptAdapterCount(): number {

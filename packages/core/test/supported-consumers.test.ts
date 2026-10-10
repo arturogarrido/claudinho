@@ -2,7 +2,7 @@
  * The table is the ONE place a supported competition is written down
  * (0.11 · 2.5a). The derived views equal the old literal tables, so a test of
  * their VALUES cannot tell a view derived from the table from a copy written
- * beside it, which would not take a sixteenth row. This guard asks the source
+ * beside it, which would not take a new row. This guard asks the source
  * instead: no code outside the table's module spells a supported slug (the
  * bundled competition's slug is written there too, once: `BUNDLED_SLUG`, which
  * the adapter's `DEFAULT_COMPETITION` is).
@@ -49,7 +49,7 @@ describe('no written fact of a supported competition outside the table', () => {
 
   it('each written view is read from the table\'s derived views, by name, in the module that exports it', () => {
     // A view that equals the table's today but is written beside it (a copy,
-    // or a set built from another constant) would not take a sixteenth row.
+    // or a set built from another constant) would not take a new row.
     const reads: Array<[string, string[]]> = [
       ['packages/core/src/kinds.ts', ['teamKind', 'competitionKind', 'seasonSlug', 'standingsShape']],
       ['packages/core/src/competition.ts', ['noBracket']],

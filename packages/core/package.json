@@ -1,7 +1,7 @@
 {
   "name": "@claudinho/core",
   "version": "0.11.0",
-  "description": "The engine behind Claudinho: the domain model, the provider adapters (ESPN), live scores and standings for the competition you follow (15 supported), the bundled 2026 World Cup schedule with its knockout bracket and read-only Polymarket sidecar. Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic.",
+  "description": "The engine behind Claudinho: the domain model, the provider adapters (ESPN), live scores and standings for the competition you follow (16 supported), the bundled 2026 World Cup schedule with its knockout bracket and read-only Polymarket sidecar. Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic.",
   "type": "module",
   "license": "MIT",
   "author": "Arturo Garrido",
@@ -56,6 +56,7 @@
     "serie-a",
     "bundesliga",
     "liga-mx",
+    "liga-auf",
     "champions-league",
     "libertadores",
     "concacaf-champions-cup",

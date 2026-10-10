@@ -3,8 +3,8 @@
   "name": "claudinho",
   "display_name": "Claudinho ⚽",
   "version": "0.11.0",
-  "description": "An MCP server for live football scores, fixtures and standings for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 11 more. Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic, nor with Smithery.",
-  "long_description": "An MCP server with live football scores, fixtures, standings and paste-ready match cards for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 11 more. Works with Claude Code, Cursor, Codex, Claude Desktop, Windsurf, Zed and any MCP client. No API key. Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic, nor with Smithery.",
+  "description": "An MCP server for live football scores, fixtures and standings for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 12 more. Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic, nor with Smithery.",
+  "long_description": "An MCP server with live football scores, fixtures, standings and paste-ready match cards for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 12 more. Works with Claude Code, Cursor, Codex, Claude Desktop, Windsurf, Zed and any MCP client. No API key. Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic, nor with Smithery.",
   "author": {
     "name": "Arturo Garrido",
     "url": "https://github.com/arturogarrido/claudinho"
@@ -14,7 +14,7 @@
   "support": "https://github.com/arturogarrido/claudinho/issues",
   "license": "MIT",
   "privacy_policies": ["https://github.com/arturogarrido/claudinho/blob/main/PRIVACY.md"],
-  "keywords": ["football", "soccer", "world-cup", "live-scores", "euro", "copa-america", "nations-league", "concacaf-nations-league", "gold-cup", "premier-league", "laliga", "serie-a", "bundesliga", "liga-mx", "champions-league", "libertadores", "concacaf-champions-cup", "club-world-cup"],
+  "keywords": ["football", "soccer", "world-cup", "live-scores", "euro", "copa-america", "nations-league", "concacaf-nations-league", "gold-cup", "premier-league", "laliga", "serie-a", "bundesliga", "liga-mx", "liga-auf", "champions-league", "libertadores", "concacaf-champions-cup", "club-world-cup"],
   "server": {
     "type": "node",
     "entry_point": "server/index.js",

@@ -2,14 +2,14 @@
  * 0.11 PR 2.3 — every table shape the supported competitions serve.
  *
  * The table parser read one shape: children named `Group <letter>`. Six of the
- * fifteen competitions serve that. Six serve one league table and answered
+ * then fifteen competitions serve that. Six served one league table (seven since the Liga AUF Uruguaya, Oct 2026) and answered
  * "unavailable"; the UEFA Nations League serves numbered groups and answered
  * the same; one has no table; and the Concacaf Nations League, whose tables are named
  * "League A, Group B", was read WRONG: each table was taken for the letter its
  * name ends in, so four of nine were shown as the whole competition.
  *
  * The payloads under `fixtures/standings/` were recorded from the real feed on
- * Oct 2 2026 and slimmed to what the parser reads (names, ids, statistics).
+ * Oct 2 2026 (the Liga AUF Uruguaya's on Oct 9 2026) and slimmed to what the parser reads (names, ids, statistics).
  * Every repair test here goes payload → parser → adapter → domain.
  */
 import { readFileSync } from 'node:fs';
@@ -76,6 +76,7 @@ describe('the shapes are written down, per competition', () => {
       'ita.1': 'league',
       'ger.1': 'league',
       'mex.1': 'league',
+      'uru.1': 'league',
       'uefa.champions': 'league',
       'concacaf.champions': 'none',
     });
@@ -89,6 +90,7 @@ describe('a league: one table, key LEAGUE, labelled with the provider’s name',
     ['ita.1', 20, '2026-2027 Italian Serie A'],
     ['ger.1', 18, '2026-27 German Bundesliga'],
     ['mex.1', 18, '2026 Torneo Apertura'],
+    ['uru.1', 16, 'Torneo Clausura 2026'],
     ['uefa.champions', 36, 'League Phase'],
   ] as const) {
     it(`${slug}: ${rows} rows, live, attributed`, async () => {

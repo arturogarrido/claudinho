@@ -68,7 +68,7 @@ describe('the derived views have no prototype', () => {
 });
 
 describe('a listing states each row\'s own capabilities, from the table it is given', () => {
-  it('a sixteenth row unlike a raw slug: no table, no bracket, markets offered', () => {
+  it('a row past the table, unlike a raw slug: no table, no bracket, markets offered', () => {
     const odd: CompetitionEntry = { ...SUPPORTED[0], slug: 'xyz.1', alias: 'xyz', name: 'XYZ', standings: 'none', bracket: 'not-applicable', markets: 'offered' } as CompetitionEntry;
     const listed = listCompetitions([...SUPPORTED, odd], null).competitions.find((c) => c.slug === 'xyz.1');
     expect(listed?.capabilities).toEqual({ scores: 'offered', next: 'offered', standings: 'not-applicable', bracket: 'not-applicable', markets: 'offered' });
@@ -136,7 +136,7 @@ describe('the README matrix states core\'s capability rule, cell by cell', () =>
     cadenceYears: 1,
   };
 
-  it('every row of the table, a sixteenth included, renders capabilitiesOf', async () => {
+  it('every row of the table, an added row included, renders capabilitiesOf', async () => {
     const { renderMatrix } = (await import(SCRIPT)) as { renderMatrix: (table: readonly CompetitionEntry[], caps: typeof capabilitiesOf) => string };
     const table = [...SUPPORTED, fake];
     const rows = renderMatrix(table, capabilitiesOf)

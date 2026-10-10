@@ -12,7 +12,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { Match, ProviderAdapter } from '@claudinho/core';
-import { FakeMarketProvider } from '@claudinho/core';
+import { FakeMarketProvider, SUPPORTED } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildServer, INSTRUCTIONS } from '../src/server';
 import {
@@ -96,7 +96,7 @@ describe('through the server', () => {
       const r = (await client.callTool({ name: 'list_competitions', arguments: { competition: 'laliga' } })) as { isError?: boolean; structuredContent?: Rec };
       expect(r.isError).toBeFalsy();
       expect(r.structuredContent?.current).toEqual({ slug: 'esp.1', alias: 'laliga', name: 'LALIGA', chosenBy: 'flag' });
-      expect(r.structuredContent?.competitions).toHaveLength(15);
+      expect(r.structuredContent?.competitions).toHaveLength(SUPPORTED.length);
     } finally {
       await client.close();
       await server.close();

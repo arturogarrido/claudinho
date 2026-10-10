@@ -12,7 +12,7 @@
 [![#VibingLaVidaLoca](https://img.shields.io/badge/%23VibingLaVidaLoca-⚽-ff5a5f)](https://github.com/arturogarrido/claudinho)
 [![GitHub stars](https://img.shields.io/github/stars/arturogarrido/claudinho?style=flat&logo=github&label=stars&color=f5c518)](https://github.com/arturogarrido/claudinho)
 
-**Live football scores, fixtures and standings for the competition you follow (the World Cup, the Premier League, LALIGA, the Champions League and 11 more) in your terminal, your Claude Code and Cursor CLI statusline, and MCP clients.** No API key, no signup. The World Cup's 104 fixtures ship bundled; the other competitions' schedules are read from the feed. It ran the 2026 World Cup from the opener to the final.
+**Live football scores, fixtures and standings for the competition you follow (the World Cup, the Premier League, LALIGA, the Champions League and 12 more) in your terminal, your Claude Code and Cursor CLI statusline, and MCP clients.** No API key, no signup. The World Cup's 104 fixtures ship bundled; the other competitions' schedules are read from the feed. It ran the 2026 World Cup from the opener to the final.
 
 <p align="center">
   <img src=".github/assets/hero.png" alt="The claudinho live list in a terminal during a UEFA Nations League matchday: nine matches in play at 48' to 50', each row with its flags, score, minute and a commentary phrase or a rally cry (England 2–0 Czechia, Croatia 1–0 Spain, Scotland 1–0 Slovenia)" width="800">
@@ -211,6 +211,7 @@ chosen they answer `noCompetition`), and `list_competitions` lists the table bel
 | `serie-a` | Serie A | clubs | yes | yes | yes | not yet | not yet |
 | `bundesliga` | Bundesliga | clubs | yes | yes | yes | not yet | not yet |
 | `liga-mx` | Liga MX | clubs | yes | yes | yes | not yet | not yet |
+| `liga-auf` | Liga AUF Uruguaya | clubs | yes | yes | yes | not yet | not yet |
 | `champions-league` | Champions League | clubs | yes | yes | yes | not yet | not yet |
 | `libertadores` | Libertadores | clubs | yes | yes | yes | not yet | not yet |
 | `concacaf-champions-cup` | Concacaf Champions Cup | clubs | yes | yes | n/a | not yet | not yet |

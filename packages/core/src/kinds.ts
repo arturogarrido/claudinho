@@ -4,7 +4,7 @@
  * a league's season name, its standings shape. Facts of the competition, one
  * entry each, never inferred from a name, a slug or a payload.
  *
- * The supported fifteen are ONE table (`supported.ts`); every view below is
+ * The supported sixteen are ONE table (`supported.ts`); every view below is
  * derived from it. Beside it, the EXPERIMENTAL extras: competitions the product
  * does not support but whose kinds are written down because the raw-slug
  * escape hatch reaches them. They OVERRIDE the table for their slug.
@@ -49,7 +49,7 @@ function withExtras<V>(base: Readonly<Record<string, V>>, extra: (e: { teams: Te
 /**
  * The teams each competition fields: the supported table's (`nation` for the
  * World Cup, the Euro, the Copa America, both Nations Leagues and the Gold
- * Cup; `club` for the five leagues and the four club cups), and the friendly
+ * Cup; `club` for the six leagues and the four club cups), and the friendly
  * competition's (`nation`). An unlisted competition fields clubs: a nations
  * competition the set does not list renders its teams by name until it is
  * written down.
@@ -64,7 +64,7 @@ export function teamKind(competition: string | undefined): TeamKind {
 }
 
 /**
- * Each competition's kind: the supported table's (`league`: the five leagues,
+ * Each competition's kind: the supported table's (`league`: the six leagues,
  * whose regular season the stage grammar reads as `REGULAR`; `cup`: the other
  * ten), and `friendly` for `fifa.friendly`, the one competition whose
  * `friendly` slug is the `FRIENDLY` stage.

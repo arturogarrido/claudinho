@@ -17,9 +17,9 @@ import {
   teamKind,
 } from '../src';
 
-/** The supported set: the canary's fifteen. */
+/** The supported set, one slug per row, by the kind each is written down as (the Liga AUF Uruguaya a league since Oct 2026). */
 const NATIONS = ['fifa.world', 'uefa.euro', 'conmebol.america', 'uefa.nations', 'concacaf.nations.league', 'concacaf.gold'];
-const LEAGUES = ['eng.1', 'esp.1', 'ita.1', 'ger.1', 'mex.1'];
+const LEAGUES = ['eng.1', 'esp.1', 'ita.1', 'ger.1', 'mex.1', 'uru.1'];
 const CLUB_CUPS = ['uefa.champions', 'conmebol.libertadores', 'concacaf.champions', 'fifa.cwc'];
 const SUPPORTED = [...NATIONS, ...LEAGUES, ...CLUB_CUPS];
 
@@ -47,7 +47,7 @@ describe('TEAM_KIND: which competitions field nations', () => {
 });
 
 describe('COMPETITION_KIND: a league, a cup, or the friendly competition', () => {
-  it('lists the supported fifteen and the friendly competition', () => {
+  it('lists every supported competition and the friendly competition', () => {
     expect(Object.keys(COMPETITION_KIND).sort()).toEqual([...SUPPORTED, 'fifa.friendly'].sort());
   });
 

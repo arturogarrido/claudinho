@@ -12,7 +12,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DISCLAIMER, disclaimerLine, FAN_PROJECT, SHARE_DISCLAIMER } from '../src';
+import { DISCLAIMER, disclaimerLine, FAN_PROJECT, SHARE_DISCLAIMER, SUPPORTED } from '../src';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
@@ -70,7 +70,7 @@ describe('the static copies carry the constant', () => {
   it("the MCP Registry's card is the stated exception: the fan line alone, within the schema's 100 characters, and it lists the selection settings", () => {
     const server = json('packages/mcp/server.json');
     expect(String(server.description)).toBe(
-      'Live football scores, fixtures and standings for 15 supported competitions. Unofficial fan project.',
+      `Live football scores, fixtures and standings for ${SUPPORTED.length} supported competitions. Unofficial fan project.`,
     );
     expect(String(server.description).length).toBeLessThanOrEqual(100);
     if (typeof server.title === 'string') expect(server.title.length).toBeLessThanOrEqual(100);
