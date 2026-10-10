@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { view, world } from './band.test'
+import { view, world } from './world'
 
 /**
  * The prompt context: on submit, the last CURRENT view's `context` is attached beside the prompt while that view is
@@ -16,16 +16,14 @@ const current = (over: Record<string, unknown> = {}) =>
     ...over,
   })
 
-const submit = async ($: Parameters<Parameters<typeof test>[1]>[0], on: Parameters<Parameters<typeof test>[1]>[1]) => {
-  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
-  return $.prompt.submit({ text: 'what changed?' })
-}
+/** The bottom `prompt.submit` hook is registered by `world()`, before the test first calls `$` (the kit's rule). */
+const submit = async ($: Parameters<Parameters<typeof test>[1]>[0]) => $.prompt.submit({ text: 'what changed?' })
 
 describe('what a prompt carries', () => {
   test("the last current view's context, attached beside the prompt, with no run on submit", async ($, on) => {
     const { argvs } = await world($, on, [current()])
     const runs = argvs.length
-    const r = await submit($, on)
+    const r = await submit($)
     expect(r.text).toBe('what changed?')
     expect(r.context).toEqual([CONTEXT])
     expect(argvs.length).toBe(runs) // nothing ran on submit
@@ -34,7 +32,7 @@ describe('what a prompt carries', () => {
   for (const [why, answer] of [['no context', current({ context: null })], ['not current', current({ current: false })], ['nothing known', view('⚽ —')]] as const) {
     test(`nothing when the view carries ${why}`, async ($, on) => {
       await world($, on, [answer])
-      const r = await submit($, on)
+      const r = await submit($)
       expect(r.context ?? []).toEqual([])
     })
   }
@@ -42,17 +40,17 @@ describe('what a prompt carries', () => {
   test('nothing once the view is older than two periods with no newer current view', async ($, on) => {
     const { clock } = await world($, on, [current(), new Error('timeout')])
     await clock.advance(31_000) // two periods and a bit, every fire failing since
-    const r = await submit($, on)
+    const r = await submit($)
     expect(r.context ?? []).toEqual([])
   })
 
   test('a newer current view replaces the context; a failed run between keeps the last one within its window', async ($, on) => {
     const { clock } = await world($, on, [current(), new Error('timeout'), current({ context: 'later' })])
     await clock.advance(15_000)
-    let r = await submit($, on)
+    let r = await submit($)
     expect(r.context).toEqual([CONTEXT])
     await clock.advance(15_000)
-    r = await submit($, on)
+    r = await submit($)
     expect(r.context).toEqual(['later'])
   })
 })

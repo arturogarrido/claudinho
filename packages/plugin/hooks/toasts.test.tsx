@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { view, world } from './band.test'
+import { view, world } from './world'
 
 /**
  * The toasts: a score change of a match whose id was in the previous CURRENT view's list (`current: true` twice),
@@ -35,6 +35,7 @@ const toasted = (on: Parameters<Parameters<typeof test>[1]>[1]) => {
   const texts: string[] = []
   on('ui.toast', (_$, e) => {
     texts.push(e.text)
+    return { value: undefined } // the bottom answers as the engine does: a toast has no result
   })
   return texts
 }

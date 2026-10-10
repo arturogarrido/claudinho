@@ -633,9 +633,9 @@ describe.skipIf(process.platform === 'win32')('the tripwire: every gating step o
 
   it("the plugin job's two steps are the named exclusions, exactly: its install line and its checks block", () => {
     const { excluded } = classify(workflowSteps(yaml), gateList());
-    const plugin = excluded.filter(([s]) => s.job === 'plugin').map(([s]) => s.text);
+    const plugin = excluded.filter(([s]) => s.job === 'plugin' && s.kind === 'run').map(([s]) => s.text);
     expect(plugin).toEqual([PLUGIN_INSTALL, PLUGIN_CHECKS]);
-    expect(yaml).toMatch(/^  plugin:\n    name: plugin \(validate · test, Claude Code 2\.1\.296\)\n/m);
+    expect(yaml).toMatch(/^ {2}plugin:\n {4}name: plugin \(validate · test, Claude Code 2\.1\.296\)\n/m);
   });
 
   it('a synthetic gating job added to the workflow is named by the tripwire', () => {
