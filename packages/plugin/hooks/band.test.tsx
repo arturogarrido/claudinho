@@ -52,6 +52,13 @@ describe('what the band shows', () => {
     expect(await (await mount()).findAll({ type: 'Text', text: "⚽ ARS 2–1 CHE 50'" })).toHaveLength(1)
   })
 
+  test('a failed run after a shown line shows nothing: the band never keeps a line the plugin cannot vouch for', async ($, on) => {
+    const { clock, mount } = await world($, on, [view("⚽ ARS 2–1 CHE 50'"), new Error('timeout')])
+    expect(await (await mount()).findAll({ type: 'Text', text: "⚽ ARS 2–1 CHE 50'" })).toHaveLength(1)
+    await clock.advance(15_000)
+    expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+
   test('yields to a survey and to a band with no row', async ($, on) => {
     const { mount } = await world($, on, [view("⚽ ARS 2–1 CHE 50'")])
     expect(await (await mount({ hasSurvey: true })).findAll({ type: 'Text' })).toHaveLength(0)

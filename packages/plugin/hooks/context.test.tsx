@@ -37,6 +37,19 @@ describe('what a prompt carries', () => {
     })
   }
 
+  test("nothing when the view is already past its own deadline, however fresh its run (the deadline alone decides)", async ($, on) => {
+    await world($, on, [current({ staleAfter: '2026-10-10T14:59:00.000Z' })]) // a minute before the clock's start
+    const r = await submit($)
+    expect(r.context ?? []).toEqual([])
+  })
+
+  test('a view that is not current clears a context a current view had set', async ($, on) => {
+    const { clock } = await world($, on, [current(), current({ current: false })])
+    await clock.advance(15_000)
+    const r = await submit($)
+    expect(r.context ?? []).toEqual([])
+  })
+
   test('nothing once the view is older than two periods with no newer current view', async ($, on) => {
     const { clock } = await world($, on, [current(), new Error('timeout')])
     await clock.advance(31_000) // two periods and a bit, every fire failing since
