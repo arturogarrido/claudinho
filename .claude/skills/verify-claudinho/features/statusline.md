@@ -1,9 +1,10 @@
-# statusline (and the hook)
+# statusline (the hook, and the ambient view)
 
 ## What it does
 
-The one-line ambient score for Claude Code's and Cursor's statusline (`claudinho prompt`), and the hook that puts
-the live context into a prompt (`claudinho hook`). Both read the local micro-cache only, in under 150 ms, and never
+The one-line ambient score for Claude Code's and Cursor's statusline (`claudinho prompt`), the hook that puts
+the live context into a prompt (`claudinho hook`), and the structured twin of both for a program (`claudinho ambient
+--json`: the line, the context, the sealed live list, the selection, the snapshot's deadline, the disclaimer). Both read the local micro-cache only, in under 150 ms, and never
 the network; a refresher is spawned when the cache is stale, and that spawn is what the drive records.
 
 ## How a user reaches it
@@ -23,11 +24,18 @@ hook on every prompt submit, after `claudinho follow <alias>`.
   proves: exit 0; stdout contains "[Claudinho — live football scores right now]"; stdout contains "Arsenal 2–1 Chelsea (50')"; spawns = 0; fetches = []
 - offline: `hook`
   proves: exit 0; stdout is empty; spawns = 0; fetches = []
+- offline: `ambient --seed club --slug eng.1 --follow premier-league`
+  proves: exit 0; stdout contains "⚽ ARS 2–1 CHE 50'"; stdout contains "Arsenal 2–1 Chelsea (50')"; stdout contains ""current":true"; stdout contains "Not affiliated with FIFA"; stdout contains "premier-league"; spawns = 0; fetches = []
+- offline: `ambient`
+  proves: exit 0; stdout contains "noCompetition"; stdout contains "⚽ claudinho follow"; spawns = 0; fetches = []
+- offline: `ambient --seed none --follow premier-league`
+  proves: exit 0; stdout contains "⚽ —"; stdout contains ""current":false"; spawns = 1; fetches = []
 
 ## What proves it
 
 The `offline:` lines above, run by `packages/core/test/verify-cli.test.ts`. There is no replay line: the ambient
-surfaces are cache-only.
+surfaces are cache-only. The `ambient` lines prove the structured twin prints the same line and context as the two
+text surfaces, carries the disclaimer and the selection, and triggers the refresher as `prompt` does.
 
 ## The gotchas paid for
 

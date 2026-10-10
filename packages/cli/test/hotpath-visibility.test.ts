@@ -11,6 +11,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { renderHook } from '../src/hook';
+import { ambientView } from '../src/ambient';
 import { liveMatchesFromCache, renderPrompt } from '../src/statusline';
 
 const NOW = new Date('2026-06-20T20:00:00Z');
@@ -32,6 +33,10 @@ describe('junk cannot crowd out a live score', () => {
     expect(liveMatchesFromCache(state, NOW.getTime(), 'nation').items).toHaveLength(1);
     expect(renderPrompt(state, { now: NOW })).toContain('1–0');
     expect(renderHook(state, { now: NOW })).toContain('Mexico');
+    const v = ambientView(state, { now: NOW });
+    expect(v.live.items.map((m) => m.id)).toEqual(['700123']);
+    expect(v.line).toContain('1–0');
+    expect(v.context).toContain('Mexico');
   });
 
   it('and behind 400 of them', () => {
@@ -50,6 +55,7 @@ describe('junk cannot crowd out a live score', () => {
     // Generous absolute ceiling only as a smoke check; the real assertion is
     // that the result count is capped, which is deterministic.
     expect(liveMatchesFromCache(state, NOW.getTime(), 'nation').items.length).toBeLessThanOrEqual(64);
+    expect(ambientView(state, { now: NOW }).live.items.length).toBeLessThanOrEqual(64);
     expect(performance.now() - t).toBeLessThan(2_000);
   }, 120_000);
 });

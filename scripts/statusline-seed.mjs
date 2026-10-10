@@ -56,7 +56,8 @@ export const SEEDED_CLUB_MATCH = 'ARS 2–1 CHE';
 /**
  * A live club match, as the refresher would have cached it a moment ago: the
  * provider's team ids, no flags (a club has none), the league's written stage,
- * and the schedule slice discovered `now` (so discovery is not due either).
+ * a live read that was whole (`liveComplete`), and the schedule slice
+ * discovered `now` (so discovery is not due either).
  */
 export function seedClub(cacheHome, competition, now = new Date()) {
   const at = now.toISOString();
@@ -78,6 +79,7 @@ export function seedClub(cacheHome, competition, now = new Date()) {
         updatedAt: at,
       },
     ],
+    liveComplete: true,
     schedule: { updatedAt: at, attemptedAt: at, failures: 0, complete: true },
   });
 }

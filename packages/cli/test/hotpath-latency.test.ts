@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import type { Match } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeState } from '../src/cache';
-import { cmdHook, cmdPrompt } from '../src/commands';
+import { cmdAmbient, cmdHook, cmdPrompt } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import * as cursorPayload from '../src/cursorPayload';
@@ -110,13 +110,14 @@ afterEach(() => {
 });
 
 describe('hot path performs no I/O beyond the cache read (in-process)', () => {
-  it('cmdPrompt/cmdHook with a fresh cache: zero fetches, zero refresher spawns', () => {
+  it('cmdPrompt/cmdHook/cmdAmbient with a fresh cache: zero fetches, zero refresher spawns', () => {
     seedFreshCache();
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const outSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     try {
       cmdPrompt({ cfg: cfg(), t: makeT('en') });
       cmdHook({ cfg: cfg(), t: makeT('en') });
+      cmdAmbient({ cfg: cfg(), t: makeT('en') });
     } finally {
       outSpy.mockRestore();
     }
@@ -126,7 +127,7 @@ describe('hot path performs no I/O beyond the cache read (in-process)', () => {
   });
 });
 
-describe.skipIf(!existsSync(DIST))('built `prompt` stays inside the latency budget', () => {
+describe.skipIf(!existsSync(DIST))('built `prompt` (and `ambient --json`, the plugin\'s timer) stays inside the latency budget', () => {
   // Loose bounds absorb CI-runner noise while still catching an order-of-magnitude
   // regression (the real budget is <150ms; warm p50 measured ~50ms on dev hardware).
   const BOUND_MS = process.platform === 'win32' ? 1500 : 500;
@@ -142,7 +143,9 @@ describe.skipIf(!existsSync(DIST))('built `prompt` stays inside the latency budg
       const env = { ...process.env }; // carries XDG_CACHE_HOME + CLAUDINHO_FLAGS from beforeEach
       const promptTimes: number[] = [];
       const floorTimes: number[] = [];
+      const ambientTimes: number[] = [];
       let lastOut = '';
+      let lastAmbient = '';
       for (let i = 0; i < 10; i++) {
         // Interleave a bare `node -e ''` with each prompt run so both samples
         // see the same load profile — the floor is the calibration probe.
@@ -157,8 +160,12 @@ describe.skipIf(!existsSync(DIST))('built `prompt` stays inside the latency budg
           timeout: 15_000,
         });
         promptTimes.push(performance.now() - t0);
+        t0 = performance.now();
+        lastAmbient = execFileSync(process.execPath, [DIST, 'ambient', '--json'], { env, encoding: 'utf8', input: '', timeout: 15_000 });
+        ambientTimes.push(performance.now() - t0);
       }
       expect(lastOut).toContain('🇲🇽'); // it actually rendered from the seeded cache
+      expect((JSON.parse(lastAmbient) as { line: string }).line).toBe(lastOut.trim()); // the same line, as one object
       // MIN of the runs, not the median: co-scheduling noise (e.g. `pnpm -r test`
       // running three suites on one machine) only ever ADDS time, so under load
       // the median measures the machine, not the binary (observed: median 890ms
@@ -181,6 +188,8 @@ describe.skipIf(!existsSync(DIST))('built `prompt` stays inside the latency budg
         `prompt runs: ${promptTimes.map((t) => t.toFixed(0)).join(', ')}ms; ` +
           `bare-node floor: ${floor.toFixed(0)}ms → bound ${bound.toFixed(0)}ms`,
       ).toBeLessThan(bound);
+      // The plugin runs `ambient --json` on its timer: the same reader, the same bound.
+      expect(Math.min(...ambientTimes), `ambient runs: ${ambientTimes.map((t) => t.toFixed(0)).join(', ')}ms → bound ${bound.toFixed(0)}ms`).toBeLessThan(bound);
     },
   );
 });

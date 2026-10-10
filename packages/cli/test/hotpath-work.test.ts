@@ -14,6 +14,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { renderHook } from '../src/hook';
+import { ambientView } from '../src/ambient';
 import { renderPrompt } from '../src/statusline';
 
 /** Unassigned code points: every cluster is rejected, so none can short-circuit. */
@@ -67,6 +68,39 @@ describe('a poisoned cache cannot make the statusline slow', () => {
     expect(line).toContain('🇲🇽');
     // Nothing from the hostile payload reaches the line.
     expect(line).not.toContain('\u{FFF0}');
+  });
+});
+
+describe('the ambient view is bounded like the line it carries', () => {
+  it('reads no events field and serializes none', () => {
+    let touched = 0;
+    const match = liveMatch(0, 0);
+    Object.defineProperty(match, 'events', {
+      enumerable: true,
+      get() {
+        touched += 1;
+        return Array.from({ length: 128 }, () => ({ player: JUNK }));
+      },
+    });
+    const state = { version: 3, updatedAt: new Date().toISOString(), live: [match], degraded: false, source: 'espn', competition: 'fifa.world' } as never;
+    const v = ambientView(state, { now: new Date() });
+    expect(touched).toBe(0);
+    expect(v.line).toContain('1–0');
+    expect(v.live.items).toHaveLength(1);
+    expect('events' in (v.live.items[0] as object)).toBe(false);
+    expect(JSON.stringify(v)).not.toContain(JUNK.slice(0, 8));
+    expect(touched).toBe(0); // the serialization read it neither
+  });
+
+  it('states what it never examined: the list is truncated and not complete, the line says +more', () => {
+    const NOW = new Date('2026-06-20T20:00:00Z');
+    const junk = { status: 'LIVE', home: { code: 'AAA' }, away: { code: 'BBB' } };
+    const real = { ...liveMatch(123, 0), kickoff: '2026-06-20T19:00:00Z', updatedAt: '2026-06-20T19:59:00Z' };
+    const state = { version: 3, updatedAt: '2026-06-20T19:59:30Z', live: [real, ...Array.from({ length: 599 }, () => ({ ...junk }))], degraded: false, source: 'espn', competition: 'fifa.world' } as never;
+    const v = ambientView(state, { now: NOW });
+    expect(v.live.items.map((m) => m.id)).toEqual(['700123']);
+    expect(v.live).toMatchObject({ shown: 1, truncated: true, complete: false });
+    expect(v.line).toContain('+more');
   });
 });
 

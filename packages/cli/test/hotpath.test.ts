@@ -5,7 +5,7 @@ import type { Match, MarketProvider } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as cursorPayload from '../src/cursorPayload';
 import { writeState } from '../src/cache';
-import { cmdHook, cmdPrompt, cmdVibe } from '../src/commands';
+import { cmdAmbient, cmdHook, cmdPrompt, cmdVibe } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
@@ -102,11 +102,12 @@ afterEach(() => {
 });
 
 describe('hot path never consults market data', () => {
-  it('cmdPrompt and cmdHook do not call a market provider', () => {
+  it('cmdPrompt, cmdHook and cmdAmbient do not call a market provider', () => {
     const { provider, findSignal, findSignals } = spyProvider();
     const ctx = { cfg: cfg(), t: makeT('en'), marketProvider: provider };
     cmdPrompt(ctx);
     cmdHook(ctx);
+    cmdAmbient(ctx);
     expect(findSignal).not.toHaveBeenCalled();
     expect(findSignals).not.toHaveBeenCalled();
   });

@@ -140,6 +140,26 @@ claude mcp add claudinho -- npx -y @claudinho/mcp
 
 Restart Claude Code to activate.
 
+**Moving to the Claude Code plugin?** `claudinho init plugin` removes the statusline
+(`claudinho prompt`) and the live-score hook (`claudinho hook`) that `init claude` wrote to
+`~/.claude/settings.json`, keeps every other setting, then prints the plugin's install line and the
+MCP one-liner. It removes those two exact commands only: an edited one (a wrapper,
+`npx -y @claudinho/cli hook`) stays where it is, and the command names it for you.
+
+#### For a program: `claudinho ambient --json`
+
+The statusline and the hook as one JSON object on one line, for a program that draws them itself:
+`line` (what `claudinho prompt` prints; `--columns N`, N a positive integer, fits it to N columns,
+the `+N` count kept), `context` (the hook's block, or `null`), `live` (the live matches, each marked
+`picked` and `pinned`), `current` (whether that list is a current snapshot's, the read that filled
+it was whole: an empty list means nothing is on only when it is), `next` (the fixture the countdown names), `pick`, `competition`,
+`degraded`, `source`, `updatedAt`, `staleAfter` (when its live scores stop being shown) and
+`disclaimer` (the non-affiliation sentence). Like the statusline it reads only the local cache,
+never the network, and starts the refresher when the cache is stale. The command itself exits 0
+whatever the cache holds (with nothing chosen it prints the `noCompetition` object and the
+first-run line); any other `--columns` value is refused by the option parser, as a wrong option is
+for every command.
+
 > **Monorepo / local dev?** The `init cursor` / `init claude` aliases wire the global
 > `claudinho`. To point a statusline or hook at a local build, use the granular commands
 > with `--command`, e.g. `claudinho init-cursor-statusline --command "node ./packages/cli/dist/index.js prompt"`
@@ -167,7 +187,7 @@ Then just ask, mid-task: the agent calls the MCP server and answers with the sco
 ## Surfaces
 
 - **CLI**: `today`, `live`, `next MEX`, `table`, `match <id>`, `bracket`, `markets`, `share`, `team` (name → code, e.g. `team "DR Congo"`) (plus `vibe` 😎 and `star` ⭐). `--json` on everything; TZ-aware via `--tz`; another competition with `--competition premier-league` (see [Competitions](#competitions)), named on a line after each answer's header (first where an answer has none; `table` once, before its tables) and as `competition` in `--json`; `share` prints no such line, its card's title names the competition and its cue selects it; `team` names the World Cup roster it reads. In a club competition `next` takes a club's name or code (`next Arsenal`) and searches the next 14 days, `match <id>` the same span, `bracket` says when a league has none, and an ended edition reads "between editions". A club shows by its name (or code), with nothing where a nation's flag would be, and `next` and `match` say the stage a match is in: "League" for a league's season, a cup's own round ("League phase", "Play-offs"), or the provider's words for a phase it does not know. When the provider sends a record Claudinho cannot read, every interactive command (and its `--json`) says its data may be incomplete instead of showing less as if it were all.
-- **Live statusline, Claude Code & Cursor CLI**: every live score inline; reads a local micro-cache, never blocks on the network. One command per agent: `claudinho init claude` / `claudinho init cursor` (also tmux & Starship via `claudinho prompt`).
+- **Live statusline, Claude Code & Cursor CLI**: every live score inline; reads a local micro-cache, never blocks on the network. One command per agent: `claudinho init claude` / `claudinho init cursor` (also tmux & Starship via `claudinho prompt`). For a program, `claudinho ambient --json` prints the statusline and the hook as one JSON object.
 - **Score-aware hook (Claude Code)**: a `UserPromptSubmit` hook that drops the live score into the model's context during matches; zero tokens off-match. (Cursor parity pending: its hook can't reliably inject context yet.)
 - **MCP server**: 10 read-only tools (`get_today`, `get_live`, `get_match`, `get_next_fixture`, `get_standings`, `get_bracket`, `get_market_signal`, `get_share_snippet`, `get_team`, `list_competitions`) plus `my_team` / `tournament_today` prompts; every tool but `get_team` takes an optional `competition` (an alias such as `premier-league`).
 - **Prediction-market signals**: a read-only "who's favored" line (market-implied percentages, Source: Polymarket), shown only when a reliable market exists. **Informational only, not betting advice.** Opt out: `--no-markets` / `CLAUDINHO_MARKETS=off`.

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { initCursorStatusline, initHook, initStatusline, isSameCommand } from '../src/install';
+import { initCursorStatusline, initHook, initPlugin, initStatusline, isSameCommand } from '../src/install';
 
 let dir: string;
 let path: string;
@@ -225,5 +225,70 @@ describe('initCursorStatusline', () => {
     initCursorStatusline({ path, command: custom });
     const written = JSON.parse(readFileSync(path, 'utf8'));
     expect(written.statusLine.command).toBe(custom);
+  });
+});
+
+describe('initPlugin: removes exactly the entries init claude writes, keeps everything else', () => {
+  const ours = () => ({
+    theme: 'dark',
+    statusLine: { type: 'command', command: 'claudinho prompt' },
+    hooks: {
+      Stop: [{ hooks: [{ type: 'command', command: 'other' }] }],
+      UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'claudinho hook' }] }],
+    },
+  });
+
+  it('removes the statusline and the hook, drops the emptied matcher and event key, keeps the rest', () => {
+    writeFileSync(path, JSON.stringify(ours()));
+    const res = initPlugin({ path });
+    expect(res.action).toBe('written');
+    const w = JSON.parse(readFileSync(path, 'utf8'));
+    expect(w.theme).toBe('dark');
+    expect('statusLine' in w).toBe(false);
+    expect(w.hooks.Stop[0].hooks[0].command).toBe('other');
+    expect('UserPromptSubmit' in w.hooks).toBe(false);
+    expect(res.message).toContain('/plugin install claudinho --marketplace arturogarrido/claudinho');
+  });
+
+  it('keeps a wrapper or an edited command, and names it for the user', () => {
+    const edited = ours();
+    edited.statusLine = { type: 'command', command: 'node /x/claudinho prompt' };
+    edited.hooks.UserPromptSubmit = [{ hooks: [{ type: 'command', command: 'npx -y @claudinho/cli hook' }] }];
+    writeFileSync(path, JSON.stringify(edited));
+    const res = initPlugin({ path });
+    const w = JSON.parse(readFileSync(path, 'utf8'));
+    expect(w.statusLine.command).toBe('node /x/claudinho prompt');
+    expect(w.hooks.UserPromptSubmit[0].hooks[0].command).toBe('npx -y @claudinho/cli hook');
+    expect(res.message).toContain('node /x/claudinho prompt');
+    expect(res.message).toContain('npx -y @claudinho/cli hook');
+  });
+
+  it('keeps a sibling command in the same matcher and drops only ours', () => {
+    const shared = ours();
+    shared.hooks.UserPromptSubmit = [{ hooks: [{ type: 'command', command: 'lint' }, { type: 'command', command: 'claudinho hook' }] }];
+    writeFileSync(path, JSON.stringify(shared));
+    initPlugin({ path });
+    const w = JSON.parse(readFileSync(path, 'utf8'));
+    expect(w.hooks.UserPromptSubmit[0].hooks.map((h: { command: string }) => h.command)).toEqual(['lint']);
+  });
+
+  it('with nothing of ours in the file, writes nothing and says so; prints the install lines either way', () => {
+    const before = JSON.stringify({ theme: 'dark' });
+    writeFileSync(path, before);
+    const res = initPlugin({ path });
+    expect(res.action).toBe('already');
+    expect(readFileSync(path, 'utf8')).toBe(before);
+    expect(res.message).toContain('/plugin install claudinho --marketplace arturogarrido/claudinho');
+    expect(initPlugin({ path: join(dir, 'absent.json') }).action).toBe('already');
+  });
+
+  it('refuses a file that is not an object or has an unexpected hooks shape, writing nothing', () => {
+    writeFileSync(path, '[1, 2]');
+    expect(initPlugin({ path }).action).toBe('manual');
+    expect(readFileSync(path, 'utf8')).toBe('[1, 2]');
+    const odd = JSON.stringify({ hooks: { UserPromptSubmit: 'claudinho hook' } });
+    writeFileSync(path, odd);
+    expect(initPlugin({ path }).action).toBe('manual');
+    expect(readFileSync(path, 'utf8')).toBe(odd);
   });
 });

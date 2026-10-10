@@ -50,6 +50,17 @@ export interface CacheState {
   version?: number;
   updatedAt: string; // ISO 8601
   live: Match[];
+  /**
+   * Whether the read that last filled `live` was WHOLE (the provider's answer
+   * read entire: core's `LiveReadResult.complete`): the one fact the live
+   * slice carries about its read, asked by the statusline's syncing rule and
+   * `ambient --json`'s `current`. `false` after a read that was not whole or
+   * failed, and on a snapshot whose empty `live` nothing read (the idle ones).
+   * Absent on a snapshot written before the field (it says nothing). A value
+   * of any other type is not believed: the reader reads it as absent (never a
+   * rejection of the snapshot: the live slice stays usable).
+   */
+  liveComplete?: boolean;
   degraded: boolean;
   source: string;
   /** Competition slug the live data was fetched for (e.g. "fifa.world"). */
@@ -221,7 +232,10 @@ export function readState(source: string, competition: string): CacheState | und
     const bytes = readSmallFile(cachePath(source, competition), MAX_STATE_BYTES);
     if (!bytes) return undefined;
     const parsed: unknown = JSON.parse(bytes.toString('utf8'));
-    return isCacheState(parsed) ? parsed : undefined;
+    if (!isCacheState(parsed)) return undefined;
+    // A `liveComplete` that is not a boolean is not believed: read as absent.
+    if (parsed.liveComplete !== undefined && typeof parsed.liveComplete !== 'boolean') delete parsed.liveComplete;
+    return parsed;
   } catch {
     return undefined;
   }

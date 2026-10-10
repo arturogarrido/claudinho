@@ -85,6 +85,9 @@ import {
   teamKind,
   withFlag,
   type Stage,
+  type AmbientView,
+  type CompetitionKey,
+  DISCLAIMER,
 } from '@claudinho/core';
 import Table from 'cli-table3';
 import { type CliConfig, edgeSelection, readSavedChoice } from './config';
@@ -130,6 +133,7 @@ import type {
   ShareStyle,
 } from '@claudinho/core';
 import { readCurrentState } from './cache';
+import { ambientView } from './ambient';
 import {
   type AmbientPick,
   FIRST_RUN_LINE,
@@ -145,7 +149,14 @@ import {
   readCursorPayload,
   renderPromptOutput,
 } from './cursorPayload';
-import { type InitResult, initCursorStatusline, initHook, initStatusline } from './install';
+import {
+  CLAUDE_MCP_ONELINER,
+  type InitResult,
+  initCursorStatusline,
+  initHook,
+  initPlugin,
+  initStatusline,
+} from './install';
 import { withPersistedBackoff } from './providerBackoff';
 import { writeFileAtomic } from './paths';
 import { rmSync } from 'node:fs';
@@ -565,12 +576,36 @@ function resolveEnvTeam(raw: string | undefined, competition: string): string | 
  *     saved team because this surface cannot read it.
  */
 function ambientPick(cfg: CliConfig): AmbientPick {
+  return ambientPreference(cfg).pick;
+}
+
+/**
+ * {@link ambientPick}, and whether `CLAUDINHO_TEAM` was present but unreadable
+ * here (the third state: no preference, never the pin), which `ambient --json`
+ * states as `pickUnreadable`. The environment is read once, here.
+ */
+function ambientPreference(cfg: CliConfig): { pick: AmbientPick; unreadable: boolean } {
   const raw = process.env.CLAUDINHO_TEAM;
   if (raw) {
     const code = resolveEnvTeam(raw, cfg.competition);
-    return code ? { code } : undefined;
+    return code ? { pick: { code }, unreadable: false } : { pick: undefined, unreadable: true };
   }
-  return cfg.pin ? { team: cfg.pin } : undefined;
+  return { pick: cfg.pin ? { team: cfg.pin } : undefined, unreadable: false };
+}
+
+/**
+ * The statusline line's two knobs from the environment, read at the edge for
+ * `prompt` and `ambient` alike (one line): `CLAUDINHO_COMPACT` (`0`, `false`
+ * or `no` adds the codes beside the flags) and `CLAUDINHO_MAX` (how many live
+ * matches render before the rest collapse to "+N").
+ */
+function promptLineEnv(): { compact: boolean; max: number | undefined } {
+  const compact = !['0', 'false', 'no'].includes(
+    (process.env.CLAUDINHO_COMPACT ?? '').toLowerCase(),
+  );
+  const maxRaw = Number.parseInt(process.env.CLAUDINHO_MAX ?? '', 10);
+  const max = Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : undefined;
+  return { compact, max };
 }
 
 /** `claudinho today [date]` */
@@ -1079,11 +1114,7 @@ export function cmdPrompt(
       out(renderPromptOutput('⚽ —', payload));
       return;
     }
-    const compact = !['0', 'false', 'no'].includes(
-      (process.env.CLAUDINHO_COMPACT ?? '').toLowerCase(),
-    );
-    const maxRaw = Number.parseInt(process.env.CLAUDINHO_MAX ?? '', 10);
-    const max = Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : undefined;
+    const { compact, max } = promptLineEnv();
     // Only trust a snapshot fetched for this invocation's source + competition.
     const state = readCurrentState(cfg.source, cfg.competition);
     const scoreLine = renderPrompt(state, {
@@ -1157,6 +1188,85 @@ export function cmdHook({ cfg, now }: Ctx): void {
   }
 }
 
+/** What `ambient` prints when it can say nothing else: the statusline's empty line, as an object. */
+const AMBIENT_EMPTY = JSON.stringify({ line: '⚽ —' });
+
+/**
+ * `claudinho ambient --json` — the statusline and the hook as ONE JSON object
+ * on one line, for a program that renders them itself (the Claude Code
+ * plugin): core's `AmbientView`, read from the cache by the statusline's own
+ * reader (`ambientView`), with the pick, the selection and the disclaimer. The
+ * HOT PATH's rules, as `prompt`: synchronous, the cache only, no network, no
+ * market read, `prompt`'s refresher trigger. It never reads stdin (a program
+ * runs it with nothing to say), and it always exits 0: nothing chosen prints
+ * the selection's twin and the first-run line, a value that is no competition
+ * the empty line alone (both with no cache read and no refresher), and a
+ * failure the empty line as an object, so a reader always gets one.
+ */
+export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): void {
+  let printed = false;
+  try {
+    if (cfg.selection.kind === 'none') {
+      // The selection's structured twin (core's), and the first-run line.
+      out(
+        JSON.stringify({
+          ...selectionExtras(cfg.selection),
+          ...verdictExtras(selectionVerdict(cfg.selection)),
+          line: FIRST_RUN_LINE,
+        }),
+      );
+      return;
+    }
+    if (cfg.selection.kind !== 'selected') {
+      out(AMBIENT_EMPTY);
+      return;
+    }
+    const { compact, max } = promptLineEnv();
+    const preference = ambientPreference(cfg);
+    // Only trust a snapshot fetched for this invocation's source + competition.
+    const state = readCurrentState(cfg.source, cfg.competition);
+    const read = ambientView(state, {
+      pick: preference.pick,
+      // The SAVED pin, for each record's `pinned` (whatever CLAUDINHO_TEAM picks).
+      pin: cfg.pin,
+      compact,
+      max,
+      flags: flagsEnabled(),
+      defaultCompetition: bundleApplies(cfg.competition),
+      teamKind: teamKind(cfg.competition),
+      now,
+      columns: opts.columns,
+    });
+    const pick = preference.pick;
+    const view: AmbientView = {
+      line: read.line,
+      context: read.context,
+      live: read.live,
+      current: read.current,
+      next: read.next,
+      pick: pick === undefined ? null : 'code' in pick ? { code: pick.code } : pick.team,
+      ...(preference.unreadable ? { pickUnreadable: true as const } : {}),
+      // A selected competition: core's key is present (see `selectionExtras`).
+      ...(selectionExtras(cfg.selection) as { competition: CompetitionKey }),
+      degraded: read.degraded,
+      source: read.source,
+      updatedAt: read.updatedAt,
+      staleAfter: read.staleAfter,
+      disclaimer: DISCLAIMER,
+    };
+    out(JSON.stringify(view));
+    printed = true;
+    // The statusline's trigger, unchanged (see cmdPrompt): the backoff note
+    // consulted, the no-cache branch lock-deduped and paced.
+    if (refreshWanted(now?.getTime() ?? Date.now(), state, cfg.competition, cfg.source)) {
+      spawnRefresh(cfg.source, cfg.competition);
+    }
+  } catch {
+    // A reader always gets one object, and only one.
+    if (!printed) out(AMBIENT_EMPTY);
+  }
+}
+
 /** `claudinho _refresh` — internal cold-path cache refresher. */
 export async function cmdRefresh({ cfg }: Ctx): Promise<void> {
   // Spawned with the slug its parent resolved; a selection that is no
@@ -1225,9 +1335,6 @@ export const CURSOR_MCP_SNIPPET = `{
   }
 }`;
 
-/** The Claude Code MCP install one-liner (the `claude` CLI writes the config). */
-const CLAUDE_MCP_ONELINER = 'claude mcp add claudinho -- npx -y @claudinho/mcp';
-
 /**
  * `claudinho init cursor` — one-step Cursor CLI setup: wire the statusline, then
  * surface the MCP config (a paste — Cursor has no `mcp add`) and the restart cue.
@@ -1283,6 +1390,16 @@ export function cmdInitClaude(opts: { print?: boolean }, { cfg }: Ctx): void {
   out('→ Restart Claude Code to see it.');
   printInitChoose(cfg);
   if (statusRes.action === 'written' || hookRes.action === 'written') printInitStarCta(cfg);
+}
+
+/**
+ * `claudinho init plugin` — remove the statusline and the hook `init claude`
+ * wrote (exactly those commands; an edited one stays and is named), then say
+ * how to install the plugin and the MCP tools. Needs no competition; Claude
+ * Code's settings only.
+ */
+export function cmdInitPlugin({ cfg }: Ctx): void {
+  printInitResult(initPlugin(), cfg);
 }
 
 /** `claudinho match <id>` */

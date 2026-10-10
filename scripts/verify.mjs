@@ -6,8 +6,8 @@
  *
  *   node scripts/verify.mjs --help
  *
- * Every child (the bootstrap `follow`, the main command, the `--json` twin, the capture, the MCP server, the hook)
- * gets PATH; a temporary HOME (and USERPROFILE, APPDATA, LOCALAPPDATA on Windows); absolute temporary
+ * Every child (the bootstrap `follow`, the main command, the `--json` twin, the capture, the MCP server, the hook, the
+ * ambient view) gets PATH; a temporary HOME (and USERPROFILE, APPDATA, LOCALAPPDATA on Windows); absolute temporary
  * XDG_CONFIG_HOME and XDG_CACHE_HOME; the run's TMPDIR; TZ=UTC; LANG=en_US.UTF-8; CLAUDINHO_NO_STAR=1; NO_COLOR=1
  * (not under `capture`); NODE_OPTIONS loading the mode's fetch preload and `spawn-count.mjs` by absolute path, quoted;
  * QA_SPAWN_LOG and VERIFY_FETCH_LOG naming the PHASE's evidence (`<label>.<phase>.spawns`, `<label>.<phase>.fetches`,
@@ -110,6 +110,8 @@ commands:
                                             the statusline on that cache home, stdin at EOF
   hook [--seed club --slug <slug> | --seed none] [--follow <alias>] [--cache <dir>]
                                             the hook, the same way
+  ambient [--seed club --slug <slug> | --seed none] [--follow <alias>] [--cache <dir>]
+                                            ambient --json (the line, the context, the live list, one JSON object), the same way
   replay <corpus> [--synthetic] [--follow <alias>] [--twin] -- <argv...>
                                             run --replay <corpus>
   capture <label> [mode] [--follow <alias>] -- <argv...>
@@ -142,7 +144,8 @@ options:
 refused before any child: the install commands (init, init-statusline, init-hook, init-cursor-statusline,
 claude, cursor), star, _refresh, any --copy, an --env key that is not a scenario key or has no value, a --cache
 that is not a directory, an evidence directory (--out or the default) or a temporary root (under TMPDIR) inside the
-replay corpus, a label with a dot, and a label already taken in --out.
+replay corpus, a label with a dot, and a label already taken in --out; for prompt, hook and ambient, a positional
+or a -- argv, --slug without --seed club, and --seed none on a cache directory that has entries.
 evidence, per phase: <label>.<phase>.txt, .err, .exit, .fetches, .spawns; <label>.result.json.
 exit: 0 ok; 1 a phase failed (a nonzero child, a miss, a malformed recording, a timeout, an MCP failure); 2 usage.
 `;
@@ -164,6 +167,7 @@ const ALLOWED = {
   seed: ['--json', '--slug', '--cache', '--dry-run'],
   prompt: ['--json', '--out', '--label', '--seed', '--slug', '--follow', '--cache', '--keep', '--timeout', '--env'],
   hook: ['--json', '--out', '--label', '--seed', '--slug', '--follow', '--cache', '--keep', '--timeout', '--env'],
+  ambient: ['--json', '--out', '--label', '--seed', '--slug', '--follow', '--cache', '--keep', '--timeout', '--env'],
 };
 
 /**
@@ -1543,7 +1547,7 @@ async function mcpSession({ env, timeoutMs, list, tool, toolArgs, rpcLog }) {
   return { ...r, tools, reply, isError: reply?.isError === true, errors };
 }
 
-// ───────────────────────────── seed, prompt, hook ─────────────────────────────
+// ───────────────────────────── seed, prompt, hook, ambient ─────────────────────────────
 
 /** `--cache`: an absolute path, and a directory when something is already there (a file, or a link to nothing, is refused). */
 function cacheOf(value) {
@@ -1612,6 +1616,9 @@ async function cmdSeed(args, json) {
   return 0;
 }
 
+/** The CLI argv of an ambient command's main phase: `prompt`, `hook`, or `ambient --json` (the structured twin). */
+const AMBIENT_ARGV = { prompt: ['prompt'], hook: ['hook'], ambient: ['ambient', '--json'] };
+
 async function cmdAmbient(command, args, json) {
   const { opts, positionals, childArgv } = parseArgs(command, args);
   const scenario = scenarioEnv(opts.env);
@@ -1650,10 +1657,11 @@ async function cmdAmbient(command, args, json) {
     if (go && !interrupted) {
       env = envFor('main');
       const t0 = performance.now();
-      const r = await runChild(process.execPath, [CLI, command], { env, timeoutMs });
+      const argv = AMBIENT_ARGV[command];
+      const r = await runChild(process.execPath, [CLI, ...argv], { env, timeoutMs });
       const ms = Math.round(performance.now() - t0);
       writePhase(out, label, 'main', r);
-      phases.main = { ...phaseOf(r, [command]), ms };
+      phases.main = { ...phaseOf(r, argv), ms };
     }
   } finally {
     cleanup(homes, opts.keep);
@@ -1717,6 +1725,7 @@ async function main(argv) {
         return await cmdSeed(args, json);
       case 'prompt':
       case 'hook':
+      case 'ambient':
         return await cmdAmbient(command, args, json);
       default:
         throw refuse(`unknown command ${JSON.stringify(command)} (see --help)`);

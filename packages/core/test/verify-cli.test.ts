@@ -29,7 +29,7 @@
  *     descendant it may have missed is said; a preload that cannot write its log says so on stderr and the phase
  *     fails; the live preload logs the attempt before the request;
  *   - the two SKILL.md copies byte-equal, the map's path named by both, every AGENTS.md lead the skill cites present
- *     there; and THE MAP'S TRIPWIRE: every `offline:` line of every feature file (at least one per file, twelve in
+ *     there; and THE MAP'S TRIPWIRE: every `offline:` line of every feature file (at least one per file, fifteen in
  *     all) names a command `--help` lists, and that command, run through the control CLI, exits as the file says and
  *     prints the marker the file names.
  * The wrapper's exit: 0 when `ok`, 1 when a phase failed (a nonzero child, a miss, a malformed recording, a timeout,
@@ -941,7 +941,7 @@ type Line = { file: string; command: string; clauses: string[] };
 export function offlineLines(dir: string): Line[] {
   const lines: Line[] = [];
   for (const f of readdirSync(dir).sort()) {
-    const text = readFileSync(join(dir, f), 'utf8').split('\n');
+    const text = readFileSync(join(dir, f), 'utf8').split(/\r?\n/);
     for (let i = 0; i < text.length; i++) {
       const m = /^- offline: `(.+)`$/.exec(text[i] ?? '');
       if (!m) continue;
@@ -976,8 +976,8 @@ function check(clause: string, res: Result | null): void {
 
 describe.skipIf(process.platform === 'win32')('the map\'s tripwire: every offline line of every feature file drives and proves', () => {
   const lines = offlineLines(FEATURES);
-  it('reads twelve lines, at least one per feature file, each naming a command --help lists', () => {
-    expect(lines.length, 'the map grows by a deliberate change of this number').toBe(12);
+  it('reads fifteen lines, at least one per feature file, each naming a command --help lists', () => {
+    expect(lines.length, 'the map grows by a deliberate change of this number').toBe(15);
     for (const f of ['live.md', 'next.md', 'statusline.md', 'table.md', 'today.md']) expect(lines.some((l) => l.file === f), `${f} drives something`).toBe(true);
     const help = spawnSync(process.execPath, [VERIFY, '--help'], { encoding: 'utf8', env: testEnv() }).stdout;
     for (const l of lines) expect(help, `${l.file}: ${l.command}`).toMatch(new RegExp(`^\\s*${(l.command.split(' ')[0] as string)}\\b`, 'm'));

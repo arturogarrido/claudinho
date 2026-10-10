@@ -11,7 +11,6 @@ import {
   isUpcoming,
   byKickoff,
   getKnockoutFixtures,
-  getLiveMatches,
   getLiveRead,
   getScheduleAhead,
   isKnockoutStage,
@@ -238,6 +237,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
               {
                 updatedAt: now.toISOString(),
                 live: [],
+                liveComplete: false, // nothing was read
                 degraded: true, // no live provider served this scope — never claim otherwise
                 source,
                 competition,
@@ -299,6 +299,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
         {
           updatedAt: now.toISOString(),
           live: [],
+          liveComplete: false, // nothing was read
           degraded: until !== undefined,
           source,
           competition,
@@ -380,6 +381,9 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     // Carry the slice we're NOT refreshing this cycle so a fixtures-only refresh
     // doesn't drop live (and vice-versa).
     let live: Match[] = base?.live ?? [];
+    // Carried with the slice it describes (as read back); with no snapshot,
+    // an empty slice nothing read is not whole.
+    let liveComplete: boolean | undefined = base ? base.liveComplete : false;
     let degraded = base?.degraded ?? false;
     let updatedAt = base?.updatedAt ?? now.toISOString();
     let fixtures = base?.fixtures;
@@ -402,13 +406,16 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
     if (needLive) {
       // Use the domain helper, not adapter.fetchLive() directly: it fetches a
       // ±1-day window around `now` so a late kickoff filed under the provider's
-      // adjacent day bucket is still detected (see core getLiveMatches). Without
+      // adjacent day bucket is still detected (see core getLiveRead). Without
       // this the statusline cache reads empty mid-match and shows a countdown.
-      // getLiveMatches fails closed internally; the try also guards adapter
+      // getLiveRead fails closed internally; the try also guards adapter
       // construction so any error degrades rather than skipping the cache write.
+      // Its `complete` is stored with the slice: an empty list from a read that
+      // was not whole does not say nothing is on.
       try {
-        const r = await getLiveMatches(adapter, now);
+        const r = await getLiveRead(adapter, now);
         live = r.matches;
+        liveComplete = r.complete === true;
         degraded = r.degraded;
         // The stored season describes the response that last refreshed `live`.
         // A response that ANSWERED replaces it with whatever it stated — and if
@@ -417,6 +424,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
         // failed replaced nothing, so the snapshot keeps the season it had.
         if (!r.degraded) season = r.season;
       } catch {
+        liveComplete = false;
         degraded = true;
       }
       updatedAt = now.toISOString();
@@ -515,6 +523,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
         {
           updatedAt,
           live,
+          ...(liveComplete !== undefined ? { liveComplete } : {}),
           degraded,
           source,
           competition,
@@ -756,8 +765,11 @@ async function refreshOffBundle(c: {
     const clock = () => nowMs + (Date.now() - realStart);
     const adapter = liveAdapter(source, competition, clock);
 
-    // The live slice, carried unless this cycle reads it.
+    // The live slice, carried unless this cycle reads it, with what it says
+    // of the read that filled it (as read back; with no snapshot, an empty
+    // slice nothing read is not whole).
     let live: Match[] = base?.live ?? [];
+    let liveComplete: boolean | undefined = base ? base.liveComplete : false;
     let degraded = base?.degraded ?? false;
     let updatedAt = base?.updatedAt ?? NEVER;
     let season: SeasonInfo | undefined = sealSeason(base?.season);
@@ -778,6 +790,7 @@ async function refreshOffBundle(c: {
     const snapshot = (backoffUntil: string | undefined): CacheState => ({
       updatedAt,
       live,
+      ...(liveComplete !== undefined ? { liveComplete } : {}),
       degraded,
       source,
       competition,
@@ -852,6 +865,7 @@ async function refreshOffBundle(c: {
         try {
           const r = await getLiveRead(adapter, now);
           live = r.matches;
+          liveComplete = r.complete === true;
           degraded = r.degraded;
           if (!r.degraded) season = r.season;
           // An observation never lowers the continuation; only a read that
@@ -859,6 +873,7 @@ async function refreshOffBundle(c: {
           if (r.matches.length > 0) inPlayUntil = raiseInPlay(inPlayUntil, r.matches, nowMs);
           else if (!r.degraded && r.complete) inPlayUntil = undefined;
         } catch {
+          liveComplete = false;
           degraded = true;
         }
         updatedAt = new Date(liveAt).toISOString();

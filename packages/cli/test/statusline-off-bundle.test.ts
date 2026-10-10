@@ -5,10 +5,11 @@
  *
  * `⚽ —` is the line for "nothing known", not for "nothing is on".
  */
-import type { Match } from '@claudinho/core';
+import { displayWidth, type Match } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import type { CacheState, ScheduleSlice } from '../src/cache';
 import { renderHook } from '../src/hook';
+import { ambientView } from '../src/ambient';
 import { type AmbientPick, renderPrompt } from '../src/statusline';
 
 const NOW = Date.parse('2026-10-10T15:00:00.000Z');
@@ -41,7 +42,7 @@ const snapshot = (schedule: ScheduleSlice | undefined, over: Partial<CacheState>
 });
 // The snapshot is a nations competition's (`uefa.nations`), so the kind the
 // caller resolves is `nation` unless a case says its rows are clubs.
-const line = (state: CacheState | undefined, opts: { pick?: AmbientPick; teamKind?: 'nation' | 'club' } = {}) =>
+const line = (state: CacheState | undefined, opts: { pick?: AmbientPick; teamKind?: 'nation' | 'club'; columns?: number } = {}) =>
   renderPrompt(state, { defaultCompetition: false, teamKind: 'nation', now: new Date(NOW), ...opts });
 const sched = (fixtures: Match[], over: Partial<ScheduleSlice> = {}): ScheduleSlice => ({
   index: fixtures.map((m) => entry(m.id, Date.parse(m.kickoff), m.status === 'SCHEDULED' || m.status === 'LIVE' || m.status === 'HT')),
@@ -119,6 +120,53 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
   it('two fixtures in their windows: the first, and how many more', () => {
     const state = snapshot(sched([nations('1', NOW - 30 * MIN), fixture('2', NOW - 20 * MIN, ['GER', 'Germany'], ['ITA', 'Italy'])]));
     expect(line(state)).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing… +1');
+  });
+
+  it('the ambient view during the syncing window says the live list is not current: a program must not read it as "nothing on"', () => {
+    const v = ambientView(snapshot(inWindow), { defaultCompetition: false, teamKind: 'nation', now: new Date(NOW) });
+    expect(v.line).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
+    expect(v.live.items).toEqual([]);
+    expect(v.current).toBe(false);
+    // A FRESH but degraded snapshot in the window: the line is still syncing (nothing was read), and so is the
+    // view's verdict on its list, by the line's own rule, not by the snapshot's age.
+    const fresh = ambientView(snapshot(inWindow, { degraded: true }, 5000), { defaultCompetition: false, teamKind: 'nation', now: new Date(NOW) });
+    expect(fresh.line).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
+    expect(fresh).toMatchObject({ current: false, degraded: true });
+    expect(fresh.updatedAt).toBe(iso(NOW - 5000));
+    // A FRESH, NON-degraded snapshot whose live scan was not whole (its live slice unreadable) in the window: the
+    // line syncs (an incomplete scan with a match that may be on), and `current` is false by the syncing clause
+    // ALONE: the stamp believed, inside the window, the snapshot not degraded.
+    // The snapshot states a WHOLE read; its slice is unreadable on disk (poisoned after the read): only the
+    // syncing clause decides here.
+    const unread = ambientView(snapshot(inWindow, { live: 'not a list' as never, liveComplete: true } as never, 5000), { defaultCompetition: false, teamKind: 'nation', now: new Date(NOW) });
+    expect(unread.line).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
+    expect(unread.live.complete).toBe(false);
+    expect(unread).toMatchObject({ current: false, degraded: false, updatedAt: iso(NOW - 5000) });
+  });
+
+  it('a fresh, non-degraded snapshot whose READ was not whole (the snapshot says so) syncs in the window, as an unreadable slice does; one whose read was whole is trusted', () => {
+    const opts = { defaultCompetition: false, teamKind: 'nation' as const, now: new Date(NOW) };
+    const notWhole = ambientView(snapshot(inWindow, { liveComplete: false } as never, 5000), opts);
+    expect(notWhole.line).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
+    expect(notWhole).toMatchObject({ current: false, degraded: false });
+    expect(line(snapshot(inWindow, { liveComplete: false } as never, 5000))).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
+    const whole = ambientView(snapshot(inWindow, { liveComplete: true } as never, 5000), opts);
+    expect(whole.line).not.toContain('syncing');
+    expect(whole).toMatchObject({ current: true, degraded: false });
+  });
+
+  it('the syncing line at the marker\'s own width keeps the count and nothing wider', () => {
+    const state = snapshot(sched([nations('1', NOW - 30 * MIN), fixture('2', NOW - 20 * MIN, ['GER', 'Germany'], ['ITA', 'Italy'])]));
+    const cut = line(state, { columns: 3 });
+    expect(cut).toMatch(/\+1$/u);
+    expect(displayWidth(cut)).toBeLessThanOrEqual(3);
+  });
+
+  it('the syncing line fitted to a width keeps its count: the marker is reserved, the matchup is what gets cut', () => {
+    const state = snapshot(sched([nations('1', NOW - 30 * MIN), fixture('2', NOW - 20 * MIN, ['GER', 'Germany'], ['ITA', 'Italy'])]));
+    const cut = line(state, { columns: 20 });
+    expect(cut).toMatch(/ \+1$/u);
+    expect(cut.length).toBeLessThan('⚽ 🇪🇸 vs 🇫🇷 live · syncing… +1'.length);
   });
 
   for (const off of ['POSTPONED', 'CANCELLED', 'FT'] as const) {

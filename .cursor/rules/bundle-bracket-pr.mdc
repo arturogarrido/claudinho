@@ -22,8 +22,8 @@ Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r
 | Knockout kickoffs span >1 week | Output includes month + day (not weekday-only) |
 | `formatShareBracket` social + compact | Same date format as CLI list |
 | `formatShareBracket` / `toolGetBracket` | Each disclaimer line once |
-| Statusline knockout countdown (cached fixtures) | Real nations or `⚽ —`; never `🏳️` |
-| Statusline stale cache during live KO | `live · syncing…` without `🏳️`; resolved pairing when cache has it |
+| Statusline and `ambient --json` knockout countdown (cached fixtures) | Real nations or `⚽ —`; never `🏳️` |
+| Statusline and `ambient --json` stale cache during live KO | `live · syncing…` without `🏳️`; resolved pairing when cache has it |
 | Empty fixtures cache at phase boundary | Re-polls after short TTL (~60s), not 15min |
 
 The invariants are `AGENTS.md` "Conventions" (canonical: the bundled schedule, the live pairing, the knockout surfaces). Their narration, and the knockout resolution, topology indexing, live hybrid paths and pre-merge QA this rule carried, are in `guides/conventions/bundle-and-bracket.md`; the adversarial test table stays in this rule, where the PR template cites it.
