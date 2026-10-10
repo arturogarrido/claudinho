@@ -158,6 +158,21 @@ describe('claudinho ambient --json', () => {
     expect(v.pick).toEqual({ code: 'BOU' });
   });
 
+  it('a CLAUDINHO_TEAM the hot path cannot read (a name off the bundle): no preference, never the pin, said as pickUnreadable', () => {
+    seed([live('1', ARS, CHE, [2, 1]), live('2', BOU, BRE, [0, 0])]);
+    process.env.CLAUDINHO_TEAM = 'Arsenal';
+    cmdAmbient(ctx({ pin: { id: 'espn:359', code: 'ARS', name: 'Arsenal' } }));
+    const v = view();
+    expect(v.pick).toBeNull();
+    expect(v.pickUnreadable).toBe(true);
+    const items = (v.live as { items: Array<Record<string, unknown>> }).items;
+    expect(items.map((m) => [m.id, m.picked, m.pinned])).toEqual([['1', false, true], ['2', false, false]]); // the order kept, the pin still named
+    writes = [];
+    delete process.env.CLAUDINHO_TEAM;
+    cmdAmbient(ctx({ pin: { id: 'espn:359', code: 'ARS', name: 'Arsenal' } }));
+    expect('pickUnreadable' in view()).toBe(false);
+  });
+
   it('nothing chosen: the first-run object alone, no cache read, no spawn; a refused value: the empty line alone', () => {
     cmdAmbient({ ...ctx(), cfg: cfg({ selection: { kind: 'none' }, competition: '' }) });
     expect(view()).toEqual({ competition: null, noCompetition: true, line: '⚽ claudinho follow' });
