@@ -1,6 +1,6 @@
 {
   "name": "@claudinho/cli",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Live football scores, fixtures and standings in your terminal and your Claude Code and Cursor CLI statusline, for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 12 more. No API key. Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic.",
   "type": "module",
   "license": "MIT",
