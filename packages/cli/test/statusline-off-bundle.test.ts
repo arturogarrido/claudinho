@@ -127,6 +127,12 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
     expect(v.line).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
     expect(v.live.items).toEqual([]);
     expect(v.current).toBe(false);
+    // A FRESH but degraded snapshot in the window: the line is still syncing (nothing was read), and so is the
+    // view's verdict on its list, by the line's own rule, not by the snapshot's age.
+    const fresh = ambientView(snapshot(inWindow, { degraded: true }, 5000), { defaultCompetition: false, teamKind: 'nation', now: new Date(NOW) });
+    expect(fresh.line).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
+    expect(fresh).toMatchObject({ current: false, degraded: true });
+    expect(fresh.updatedAt).toBe(iso(NOW - 5000));
   });
 
   it('the syncing line at the marker\'s own width keeps the count and nothing wider', () => {
