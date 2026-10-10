@@ -27,12 +27,18 @@ import {
   truncateVisible,
   withFlag,
   scoreline,
+  type AmbientMatch,
+  type AmbientView,
   type Match,
   type Pin,
   type TeamKind,
 } from '@claudinho/core';
-import { ageMs, type CacheState } from './cache';
+import { ageMs, type CacheState, validStamp } from './cache';
+import { renderHook } from './hook';
 import { scheduleGateOpen, scheduleView } from './scheduleSlice';
+
+// The hook's renderer, beside the line's: `ambientView` carries both.
+export { renderHook };
 
 // The live-window constant lives in core (shared with the market-relevance
 // gate); re-exported here so existing call sites keep importing from this file.
@@ -197,6 +203,12 @@ export interface PromptOpts {
    * competitions are not the bundle.
    */
   teamKind?: TeamKind;
+  /**
+   * The width to fit the line to, in display columns (`ambient --columns N`):
+   * never wider than the line's own ceiling, {@link MAX_LINE_COLUMNS}. Absent
+   * (or not a positive number): that ceiling, as `prompt` has always had it.
+   */
+  columns?: number;
 }
 
 /**
@@ -388,7 +400,7 @@ const DEFAULT_MAX_SEGMENTS = 8;
 const MAX_LINE_COLUMNS = 200;
 
 export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {}): string {
-  return truncateVisible(renderPromptLine(state, opts), MAX_LINE_COLUMNS);
+  return truncateVisible(renderPromptLine(state, opts), lineColumns(opts));
 }
 
 function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}): string {
@@ -408,30 +420,8 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // resolve itself, so this overlay is how the statusline shows real pairings
   // (still NETWORK-FREE: reads only the cache). Used by both the syncing and
   // next-fixture branches below.
-  // Sanitized like the live slice above — cached fixtures render on the
-  // countdown/syncing lines, so they get the same poisoned-cache defense.
-  // Malformed entries (null, {}, missing kickoff/teams) are dropped, never
-  // allowed to throw the whole statusline blank downstream.
-  // On the bundled competition they are the refresher's resolved knockout
-  // pairings; off it, the schedule slice's display records (the knockout slice
-  // is the bundle's and is never filled there).
-  const cachedFixtureList = sealFixtures(defaultCompetition ? state?.fixtures : state?.schedule?.fixtures, kind);
-  // A partial fixture overlay cannot prove a pairing is absent, but every
-  // sealed pairing it does contain is safe to display. Off the bundle, a
-  // display record the provider says is postponed, cancelled or FINISHED has
-  // no window and nothing to count down to: it is named nowhere on the line,
-  // by the index's own rule (`hasLiveWindow`).
-  const cachedFixtures = defaultCompetition
-    ? [...cachedFixtureList.items]
-    : cachedFixtureList.items.filter((m) => hasLiveWindow(m.status));
-  // Off the bundle the skeleton is ANOTHER competition's schedule: the
-  // countdown may read cached fixtures only, never the bundle (audit A03).
-  const bundle = defaultCompetition ? allFixtures() : [];
-  const schedule = cachedFixtures.length
-    ? mergeLive(bundle, cachedFixtures)
-    : defaultCompetition
-      ? undefined
-      : [];
+  const { cachedFixtures, schedule } = countdownSchedule(state, defaultCompetition, kind);
+  const width = lineColumns(opts);
 
   if (live.length > 0) {
     // The picked team's match first (a preference, never a filter). When it is
@@ -455,13 +445,12 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
     // set. An incomplete scan gets a nonnumeric marker: unexamined records may
     // be junk or valid matches, so no exact count exists.
     const overflow = live.length - shown.length;
-    const marker = !liveList.complete ? ' +more' : overflow > 0 ? ` +${overflow}` : '';
     // The overflow marker is the honest part of this line — it is what says the
     // list is incomplete — so it must survive the width cap. Truncating the
     // whole line afterwards cut the marker off the end, turning a truncated
-    // list back into one that looks complete. Reserve its room and append it.
-    const body = '⚽ ' + shown.map((m) => matchSegment(m, compact, flags)).join(' · ');
-    return truncateVisible(body, MAX_LINE_COLUMNS - displayWidth(marker)) + marker;
+    // list back into one that looks complete. Reserve its room and append it;
+    // a segment that does not fit beside it is counted in it.
+    return fitLiveLine(shown.map((m) => matchSegment(m, compact, flags)), overflow, liveList.complete, width);
   }
 
   // Cold/stale cache during a live window: a countdown here is actively
@@ -501,7 +490,7 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
           ? `${teamTok(first.home, flags)} vs ${teamTok(first.away, flags)} `
           : '';
       const more = win.length - 1;
-      return `⚽ ${matchup}live · syncing…` + (more > 0 ? ` +${more}` : '');
+      return fitWithMarker(`⚽ ${matchup}live · syncing…`, more > 0 ? ` +${more}` : '', width);
     }
   } else if (!cacheFresh || !liveList.complete) {
     const win = pickAmbientMatch(fixturesInLiveWindow(nowMs, schedule), pick);
@@ -514,14 +503,14 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
       const matchup = isResolvedFixture(first)
         ? `${teamTok(first.home, flags)} vs ${teamTok(first.away, flags)} `
         : '';
-      return `⚽ ${matchup}live · syncing…` + (more > 0 ? ` +${more}` : '');
+      return fitWithMarker(`⚽ ${matchup}live · syncing…`, more > 0 ? ` +${more}` : '', width);
     }
   }
 
   // Nothing (relevant) live → next-fixture countdown over the merged schedule
   // (resolved knockout pairings show; unresolved 🏳️ slots are skipped, so this
   // fails closed to "⚽ —", never "🏳️ vs 🏳️"), the picked team's next first.
-  const next = pickAmbientMatch(upcomingResolved(nowMs, schedule), pick)[0];
+  const next = countdownFixture(nowMs, schedule, pick);
   if (next) {
     return `${teamTok(next.home, flags)} vs ${teamTok(next.away, flags)} in ${countdown(next.kickoff, now)}`;
   }
@@ -544,4 +533,138 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   }
 
   return '⚽ —';
+}
+
+/** The width a line is fitted to: the caller's `columns`, never above the ceiling. */
+function lineColumns(opts: PromptOpts): number {
+  const c = opts.columns;
+  return typeof c === 'number' && c >= 1 ? Math.min(Math.floor(c), MAX_LINE_COLUMNS) : MAX_LINE_COLUMNS;
+}
+
+/**
+ * A line and its overflow marker fitted to `width`: the marker is the honest
+ * part of the line (it says the list goes on), so its room is RESERVED and it
+ * is appended after the cut, never cut off the end.
+ */
+function fitWithMarker(body: string, marker: string, width: number): string {
+  return truncateVisible(body, width - displayWidth(marker)) + marker;
+}
+
+/**
+ * The live line fitted to `width`: whole segments are kept while they fit
+ * beside the marker, and the ones that do not are COUNTED in it (`+N`), as the
+ * ones past `max` are; an incomplete scan keeps its nonnumeric `+more`. Only a
+ * single segment wider than the width is cut, its marker reserved.
+ */
+function fitLiveLine(segments: readonly string[], overflow: number, complete: boolean, width: number): string {
+  const markerFor = (dropped: number): string =>
+    !complete ? ' +more' : overflow + dropped > 0 ? ` +${overflow + dropped}` : '';
+  const bodyOf = (kept: number): string => '⚽ ' + segments.slice(0, kept).join(' · ');
+  let kept = segments.length;
+  while (kept > 1 && displayWidth(bodyOf(kept)) + displayWidth(markerFor(segments.length - kept)) > width) kept--;
+  return fitWithMarker(bodyOf(kept), markerFor(segments.length - kept), width);
+}
+
+/**
+ * What the countdown and the syncing line read: on the bundled competition
+ * the static schedule merged with the refresher's resolved knockout pairings,
+ * off it the schedule slice's display records alone (never the bundle).
+ */
+function countdownSchedule(
+  state: CacheState | undefined,
+  defaultCompetition: boolean,
+  kind: TeamKind,
+): { cachedFixtures: Match[]; schedule: Match[] | undefined } {
+  // Sanitized like the live slice: cached fixtures render on the
+  // countdown/syncing lines, so they get the same poisoned-cache defense.
+  // Malformed entries (null, {}, missing kickoff/teams) are dropped, never
+  // allowed to throw the whole statusline blank downstream.
+  // On the bundled competition they are the refresher's resolved knockout
+  // pairings; off it, the schedule slice's display records (the knockout slice
+  // is the bundle's and is never filled there).
+  const cachedFixtureList = sealFixtures(defaultCompetition ? state?.fixtures : state?.schedule?.fixtures, kind);
+  // A partial fixture overlay cannot prove a pairing is absent, but every
+  // sealed pairing it does contain is safe to display. Off the bundle, a
+  // display record the provider says is postponed, cancelled or FINISHED has
+  // no window and nothing to count down to: it is named nowhere on the line,
+  // by the index's own rule (`hasLiveWindow`).
+  const cachedFixtures = defaultCompetition
+    ? [...cachedFixtureList.items]
+    : cachedFixtureList.items.filter((m) => hasLiveWindow(m.status));
+  // Off the bundle the skeleton is ANOTHER competition's schedule: the
+  // countdown may read cached fixtures only, never the bundle (audit A03).
+  const bundle = defaultCompetition ? allFixtures() : [];
+  const schedule = cachedFixtures.length
+    ? mergeLive(bundle, cachedFixtures)
+    : defaultCompetition
+      ? undefined
+      : [];
+  return { cachedFixtures, schedule };
+}
+
+/**
+ * The fixture the countdown names: the soonest upcoming RESOLVED one (an
+ * unresolved placeholder slot is skipped, so the line fails closed to "⚽ —",
+ * never a placeholder pairing), the picked team's next first.
+ */
+function countdownFixture(nowMs: number, schedule: Match[] | undefined, pick: AmbientPick): Match | undefined {
+  return pickAmbientMatch(upcomingResolved(nowMs, schedule), pick)[0];
+}
+
+/** What the ambient view reads beyond the line's options. */
+export interface AmbientOpts extends PromptOpts {
+  /**
+   * The SAVED pin (`claudinho follow <alias> --team`, `cfg.pin`): the side a
+   * record's `pinned` names, whatever `pick` prefers (`CLAUDINHO_TEAM`'s code
+   * picks a match; it never pins one). Absent: the pin `pick` carries, if any.
+   */
+  pin?: Pin;
+}
+
+/** The ambient view as the cache gives it: the command adds the selection, the disclaimer and the pick. */
+export type AmbientRead = Omit<AmbientView, 'competition' | 'disclaimer' | 'pick' | 'pickUnreadable'>;
+
+/**
+ * THE ambient reader of `claudinho ambient --json` (core's `AmbientView`, less
+ * what the command knows): the line `prompt` prints and the block `hook`
+ * prints (their own renderers, with the SAME options and one clock), and the
+ * structured twin of what they read: the live list from the same reader
+ * (`liveMatchesFromCache`: the display window, the examine cap, no `events`),
+ * ordered by the one preference (`pickAmbientMatch`), each record marked
+ * `picked` (the preference's side) and `pinned` (the saved pin's, by core's
+ * `isPinnedSide`), with the reader's own `total`/`shown`/`truncated`/
+ * `complete`; the fixture the countdown names; the snapshot's own facts and
+ * the deadline of its live scores. Pure and total like `renderPrompt`: no
+ * network, no market, no file read, and a malformed snapshot never throws.
+ */
+export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {}): AmbientRead {
+  const now = opts.now ?? new Date();
+  const nowMs = now.getTime();
+  const defaultCompetition = opts.defaultCompetition ?? true;
+  const kind = opts.teamKind ?? defaultTeamKind(opts.defaultCompetition);
+  const pin = opts.pin ?? (opts.pick && 'team' in opts.pick ? opts.pick.team : undefined);
+  const read = { ...opts, now };
+
+  const list = liveMatchesFromCache(state, nowMs, kind);
+  const items: AmbientMatch[] = pickAmbientMatch(list.items, opts.pick).map((m) => ({
+    ...m,
+    picked: isPicked(m, opts.pick),
+    pinned: pin !== undefined && (isPinnedSide(m.home, pin) || isPinnedSide(m.away, pin)),
+  }));
+  const context = renderHook(state, read);
+  const { schedule } = countdownSchedule(state, defaultCompetition, kind);
+  // The snapshot's stamp, re-emitted canonically, and the instant its live
+  // scores stop being shown; neither without a stamp that is one.
+  const stamp = state && validStamp(state.updatedAt) ? Date.parse(state.updatedAt) : undefined;
+  const staleAt = stamp === undefined ? undefined : new Date(stamp + DISPLAY_STALE_MS);
+  return {
+    line: renderPrompt(state, read),
+    context: context === '' ? null : context,
+    live: { items, total: list.total, shown: list.shown, truncated: list.truncated, complete: list.complete },
+    next: countdownFixture(nowMs, schedule, opts.pick) ?? null,
+    degraded: state?.degraded === true,
+    source: typeof state?.source === 'string' ? state.source : null,
+    updatedAt: stamp === undefined ? null : new Date(stamp).toISOString(),
+    staleAfter: staleAt === undefined || Number.isNaN(staleAt.getTime()) ? null : staleAt.toISOString(),
+  };
 }

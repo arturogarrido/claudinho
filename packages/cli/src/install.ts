@@ -2,6 +2,7 @@
  * `claudinho init-statusline` / `init-cursor-statusline` — wire claudinho into
  * Claude Code or Cursor CLI statuslines. Safe: preserves existing settings,
  * backs up before overwriting, and refuses to clobber unparseable files.
+ * `claudinho init plugin` removes what `init claude` wrote, the same way.
  */
 import { copyFileSync, existsSync, lstatSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -102,6 +103,14 @@ function manual(path: string, snippet: string, why: string): InitResult {
  * `written` — a success report with nothing installed (audit A13).
  */
 function readSettings(path: string, snippet: string): InitResult | Record<string, unknown> {
+  return readSettingsOr(path, (why) => manual(path, snippet, why));
+}
+
+/** {@link readSettings} with the caller's own answer to a file it will not touch (`why` names the reason). */
+function readSettingsOr(
+  path: string,
+  refuse: (why: string) => InitResult,
+): InitResult | Record<string, unknown> {
   // An existing symlink whose target is gone is not "absent": replacing it
   // with a regular file would silently detach a dotfiles setup (review P3).
   let entry: ReturnType<typeof lstatSync> | undefined;
@@ -111,15 +120,15 @@ function readSettings(path: string, snippet: string): InitResult | Record<string
     return {}; // nothing there: a fresh settings file
   }
   if (entry.isSymbolicLink() && !existsSync(path)) {
-    return manual(path, snippet, 'Settings path is a symlink to a missing file:');
+    return refuse('Settings path is a symlink to a missing file:');
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(path, 'utf8'));
   } catch {
-    return manual(path, snippet, 'Could not parse');
+    return refuse('Could not parse');
   }
-  if (!isSettingsObject(parsed)) return manual(path, snippet, 'Not a JSON settings object:');
+  if (!isSettingsObject(parsed)) return refuse('Not a JSON settings object:');
   return parsed;
 }
 
@@ -269,5 +278,113 @@ export function initHook(opts: InitOpts = {}): InitResult {
     action: 'written',
     path,
     message: `Live-score hook configured in ${path}. Restart Claude Code; during matches, the score is injected into context on each prompt.`,
+  };
+}
+
+// ---- The Claude Code plugin ----
+
+/** The line that installs the Claude Code plugin from this repository's marketplace (typed in Claude Code). */
+export const PLUGIN_INSTALL_LINE = '/plugin install claudinho --marketplace arturogarrido/claudinho';
+
+/** The Claude Code MCP install one-liner (the `claude` CLI writes the config). */
+export const CLAUDE_MCP_ONELINER = 'claude mcp add claudinho -- npx -y @claudinho/mcp';
+
+/** What every `init plugin` message ends with: the two install lines, each on its own line. */
+const PLUGIN_NEXT = `Install the plugin (in Claude Code), and the MCP tools (in a shell):\n${PLUGIN_INSTALL_LINE}\n${CLAUDE_MCP_ONELINER}`;
+
+/**
+ * A command that runs Claudinho but is not the one `init claude` writes (a
+ * wrapper script, `npx -y @claudinho/cli hook`, an edited path): left in
+ * place, and named so the user can remove it if the plugin replaces it.
+ */
+const RUNS_CLAUDINHO = /claudinho/i;
+
+/**
+ * Remove what `claudinho init claude` wrote to Claude Code's settings, for the
+ * Claude Code plugin (whose band and prompt context replace them): the
+ * `statusLine` whose command is EXACTLY `claudinho prompt`, and every
+ * `hooks.UserPromptSubmit` command that is exactly `claudinho hook`; a matcher
+ * left with no command is dropped, then the event key left with no matcher,
+ * then a `hooks` left empty. Everything else stays as it was. A command that
+ * runs Claudinho otherwise (a wrapper, an edited command) stays, and the
+ * message names it. The same refusals as `init` (a symlink to nothing, a file
+ * that is not a settings object, an unexpected `hooks` shape): nothing
+ * written. Nothing of ours there (or no file at all): `already`, the file
+ * untouched. The message always ends with the plugin's install line and the
+ * MCP one-liner. Claude Code's settings only: Cursor's are not touched.
+ */
+export function initPlugin(opts: { path?: string } = {}): InitResult {
+  const path = opts.path ?? claudeSettingsPath();
+  const refuse = (why: string): InitResult => ({
+    action: 'manual',
+    path,
+    message: `${why} ${path}. Nothing was changed: remove the "statusLine" whose command is "${DEFAULT_PROMPT_COMMAND}" and the "hooks.${CLAUDE_HOOK_EVENT}" command "${HOOK_COMMAND}" yourself, if they are there.\n${PLUGIN_NEXT}`,
+  });
+  const parsed = readSettingsOr(path, refuse);
+  if (isInitResult(parsed)) return parsed;
+  const settings = parsed;
+  // The containers we edit must have the shapes we assume, as for `initHook`.
+  if (settings.hooks !== undefined && !isSettingsObject(settings.hooks)) {
+    return refuse('Unexpected "hooks" shape in');
+  }
+  const hooks = settings.hooks as Record<string, unknown> | undefined;
+  const eventSlot = hooks?.[CLAUDE_HOOK_EVENT];
+  if (eventSlot !== undefined && (!Array.isArray(eventSlot) || !validHookMatchers(eventSlot))) {
+    return refuse(`Unexpected "hooks.${CLAUDE_HOOK_EVENT}" shape in`);
+  }
+
+  const left = new Set<string>();
+  const removed: string[] = [];
+  const statusLine = settings.statusLine;
+  if (isSettingsObject(statusLine) && typeof statusLine.command === 'string') {
+    if (statusLine.command === DEFAULT_PROMPT_COMMAND) {
+      delete settings.statusLine;
+      removed.push('the statusline');
+    } else if (RUNS_CLAUDINHO.test(statusLine.command)) {
+      left.add(statusLine.command);
+    }
+  }
+  if (hooks && Array.isArray(eventSlot)) {
+    let dropped = 0;
+    const matchers: ClaudeHookMatcher[] = [];
+    for (const matcher of eventSlot as ClaudeHookMatcher[]) {
+      const commands = matcher.hooks;
+      if (!commands) {
+        matchers.push(matcher);
+        continue;
+      }
+      const kept = commands.filter((h) => h.command !== HOOK_COMMAND);
+      for (const h of kept) if (typeof h.command === 'string' && RUNS_CLAUDINHO.test(h.command)) left.add(h.command);
+      dropped += commands.length - kept.length;
+      // A matcher that held only ours goes with it; one that held others keeps them.
+      if (kept.length === commands.length) matchers.push(matcher);
+      else if (kept.length > 0) matchers.push({ ...matcher, hooks: kept });
+    }
+    if (dropped > 0) {
+      removed.push('the live-score hook');
+      if (matchers.length > 0) hooks[CLAUDE_HOOK_EVENT] = matchers;
+      else {
+        delete hooks[CLAUDE_HOOK_EVENT];
+        if (Object.keys(hooks).length === 0) delete settings.hooks;
+      }
+    }
+  }
+
+  const named = left.size
+    ? `\nLeft in place (not the commands init claude writes; remove them yourself if the plugin replaces them):\n${[...left].map((c) => `  ${c}`).join('\n')}`
+    : '';
+  if (removed.length === 0) {
+    return {
+      action: 'already',
+      path,
+      message: `Nothing init claude wrote is in ${path}; nothing was changed.${named}\n${PLUGIN_NEXT}`,
+    };
+  }
+  backupOnce(path);
+  writeFileAtomic(path, JSON.stringify(settings, null, 2) + '\n', SETTINGS_WRITE);
+  return {
+    action: 'written',
+    path,
+    message: `Removed ${removed.join(' and ')} that init claude wrote from ${path}.${named}\n${PLUGIN_NEXT}`,
   };
 }

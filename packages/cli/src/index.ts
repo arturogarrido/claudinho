@@ -5,11 +5,13 @@ import { readCursorPayloadBounded } from './cursorPayload';
 import { makeT } from './i18n';
 import { TAGLINE } from './tagline';
 import {
+  cmdAmbient,
   cmdHook,
   cmdInitClaude,
   cmdInitCursor,
   cmdInitCursorStatusline,
   cmdInitHook,
+  cmdInitPlugin,
   cmdInitStatusline,
   cmdLive,
   cmdMarkets,
@@ -226,6 +228,25 @@ program
     cmdPrompt(ctxFrom(cmd), { cursor });
   });
 
+/**
+ * `--columns <n>`: a positive integer, else no fit (the line keeps its own
+ * ceiling). A value it cannot read is no error: `ambient` prints its object.
+ */
+function columnsOf(value: unknown): number | undefined {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) return undefined;
+  const n = Number.parseInt(value, 10);
+  return n > 0 ? n : undefined;
+}
+
+program
+  .command('ambient')
+  .description('print the statusline and hook as one JSON object (for a program: the Claude Code plugin)')
+  .option('--columns <n>', 'fit the line to this many display columns')
+  .action((opts, cmd) => {
+    // No stdin read (unlike `prompt`): a program runs it with nothing to say.
+    cmdAmbient(ctxFrom(cmd), { columns: columnsOf(opts.columns) });
+  });
+
 // One-step setup aliases. `init cursor` / `init claude` compose the granular
 // init-* commands into a single command per agent (statusline + hook + MCP).
 const init = program
@@ -251,6 +272,17 @@ init
   .action((opts, cmd) => {
     try {
       cmdInitClaude(opts, ctxFrom(cmd));
+    } catch (e) {
+      fail(e);
+    }
+  });
+
+init
+  .command('plugin')
+  .description('remove the statusline and hook that init claude wrote, for the Claude Code plugin')
+  .action((_opts, cmd) => {
+    try {
+      cmdInitPlugin(ctxFrom(cmd));
     } catch (e) {
       fail(e);
     }

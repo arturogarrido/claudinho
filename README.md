@@ -140,6 +140,23 @@ claude mcp add claudinho -- npx -y @claudinho/mcp
 
 Restart Claude Code to activate.
 
+**Moving to the Claude Code plugin?** `claudinho init plugin` removes the statusline
+(`claudinho prompt`) and the live-score hook (`claudinho hook`) that `init claude` wrote to
+`~/.claude/settings.json`, keeps every other setting, then prints the plugin's install line and the
+MCP one-liner. It removes those two exact commands only: an edited one (a wrapper,
+`npx -y @claudinho/cli hook`) stays where it is, and the command names it for you.
+
+#### For a program: `claudinho ambient --json`
+
+The statusline and the hook as one JSON object on one line, for a program that draws them itself:
+`line` (what `claudinho prompt` prints; `--columns N` fits it to N columns, the `+N` count kept),
+`context` (the hook's block, or `null`), `live` (the live matches, each marked `picked` and
+`pinned`), `next` (the fixture the countdown names), `pick`, `competition`, `degraded`, `source`,
+`updatedAt`, `staleAfter` (when its live scores stop being shown) and `disclaimer` (the
+non-affiliation sentence). Like the statusline it reads only the local cache, never the network,
+and starts the refresher when the cache is stale; it always exits 0 (with nothing chosen it prints
+the `noCompetition` object and the first-run line).
+
 > **Monorepo / local dev?** The `init cursor` / `init claude` aliases wire the global
 > `claudinho`. To point a statusline or hook at a local build, use the granular commands
 > with `--command`, e.g. `claudinho init-cursor-statusline --command "node ./packages/cli/dist/index.js prompt"`

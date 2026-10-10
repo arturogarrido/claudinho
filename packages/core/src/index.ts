@@ -170,6 +170,8 @@ export type {
 
 // The one non-affiliation sentence, imported by every surface.
 export { DISCLAIMER, FAN_PROJECT, disclaimerLine } from './disclaimer';
+// What `claudinho ambient --json` prints (a type only: the CLI builds it from its cache).
+export type { AmbientMatch, AmbientView } from './ambient';
 
 // Shareable terminal snippets (pure text artifacts; composes Match + the market
 // copy bank). The non-affiliation disclaimer is non-optional in every snippet.
