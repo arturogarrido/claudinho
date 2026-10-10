@@ -5,10 +5,11 @@
  *
  * `⚽ —` is the line for "nothing known", not for "nothing is on".
  */
-import type { Match } from '@claudinho/core';
+import { displayWidth, type Match } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import type { CacheState, ScheduleSlice } from '../src/cache';
 import { renderHook } from '../src/hook';
+import { ambientView } from '../src/ambient';
 import { type AmbientPick, renderPrompt } from '../src/statusline';
 
 const NOW = Date.parse('2026-10-10T15:00:00.000Z');
@@ -119,6 +120,20 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
   it('two fixtures in their windows: the first, and how many more', () => {
     const state = snapshot(sched([nations('1', NOW - 30 * MIN), fixture('2', NOW - 20 * MIN, ['GER', 'Germany'], ['ITA', 'Italy'])]));
     expect(line(state)).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing… +1');
+  });
+
+  it('the ambient view during the syncing window says the live list is not current: a program must not read it as "nothing on"', () => {
+    const v = ambientView(snapshot(inWindow), { defaultCompetition: false, teamKind: 'nation', now: new Date(NOW) });
+    expect(v.line).toBe('⚽ 🇪🇸 vs 🇫🇷 live · syncing…');
+    expect(v.live.items).toEqual([]);
+    expect(v.current).toBe(false);
+  });
+
+  it('the syncing line at the marker\'s own width keeps the count and nothing wider', () => {
+    const state = snapshot(sched([nations('1', NOW - 30 * MIN), fixture('2', NOW - 20 * MIN, ['GER', 'Germany'], ['ITA', 'Italy'])]));
+    const cut = line(state, { columns: 3 });
+    expect(cut).toMatch(/\+1$/u);
+    expect(displayWidth(cut)).toBeLessThanOrEqual(3);
   });
 
   it('the syncing line fitted to a width keeps its count: the marker is reserved, the matchup is what gets cut', () => {

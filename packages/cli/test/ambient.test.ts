@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Match } from '@claudinho/core';
-import { DISCLAIMER } from '@claudinho/core';
+import { DISCLAIMER, displayWidth } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeBackoffNote, writeState } from '../src/cache';
 import { ambientView } from '../src/ambient';
@@ -100,7 +100,8 @@ describe('claudinho ambient --json', () => {
     expect(v.next).toBeNull();
     expect(v.pick).toBeNull();
     expect(v.competition).toEqual({ slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'saved' });
-    expect(v).toMatchObject({ degraded: false, source: 'espn', updatedAt: NOW.toISOString(), disclaimer: DISCLAIMER });
+    expect(v).toMatchObject({ current: true, degraded: false, source: 'espn', updatedAt: NOW.toISOString(), disclaimer: DISCLAIMER });
+    expect(Object.keys(v)).toEqual(['line', 'context', 'live', 'current', 'next', 'pick', 'competition', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer']);
     expect(v.staleAfter).toBe(new Date(NOW.getTime() + DISPLAY_STALE_MS).toISOString());
     expect(vi.mocked(spawn)).not.toHaveBeenCalled();
   });
@@ -140,6 +141,39 @@ describe('claudinho ambient --json', () => {
     expect(fitted).not.toContain('…');
     expect(ambientView({ updatedAt: NOW.toISOString(), live: many, degraded: false, source: 'espn', competition: 'eng.1' }, { flags: false, defaultCompetition: false, teamKind: 'club', now: NOW }).line).toBe(fitted);
     expect(renderPrompt({ updatedAt: NOW.toISOString(), live: many, degraded: false, source: 'espn', competition: 'eng.1' }, { flags: false, defaultCompetition: false, teamKind: 'club', now: NOW })).toBe(fitted);
+    // prompt's OWN write on the same cache (the command, not its renderer).
+    vi.spyOn(cursorPayload, 'readCursorPayload').mockReturnValue(undefined);
+    writes = [];
+    cmdPrompt(ctx());
+    expect(writes.join('').trim()).toBe(fitted);
+  });
+
+  it('at a width at or below the marker\'s own, the marker is what survives and the line never exceeds the width', () => {
+    seed([live('1', ARS, CHE, [2, 1]), live('2', BOU, BRE, [0, 0])]);
+    cmdAmbient(ctx(), { columns: 3 }); // " +1" is 3 columns: the body gets none
+    expect(String(view().line)).toMatch(/\+1$/u);
+    expect(displayWidth(String(view().line))).toBeLessThanOrEqual(3);
+    writes = [];
+    cmdAmbient(ctx(), { columns: 2 }); // below the marker: the width's cut, nothing wider
+    expect(displayWidth(String(view().line))).toBeLessThanOrEqual(2);
+    writes = [];
+    seed([live('1', ARS, CHE, [2, 1]), ...Array.from({ length: 599 }, () => ({ status: 'LIVE', home: { code: 'AAA' }, away: { code: 'BBB' } }))] as Match[]);
+    cmdAmbient(ctx(), { columns: 6 }); // " +more" is 6 columns
+    expect(String(view().line)).toMatch(/\+more$/u);
+    expect(displayWidth(String(view().line))).toBeLessThanOrEqual(6);
+  });
+
+  it('a stamp the reader does not believe (future skew) gives no updatedAt, no staleAfter and current false; one inside the allowance is believed', () => {
+    const base = { live: [live('1', ARS, CHE, [2, 1])], degraded: false, source: 'espn', competition: 'eng.1' };
+    const opts = { flags: false, defaultCompetition: false, teamKind: 'club' as const, now: NOW };
+    const future = ambientView({ ...base, updatedAt: '2099-01-01T00:00:00.000Z' }, opts);
+    expect(future.live.items).toEqual([]);
+    expect(future).toMatchObject({ updatedAt: null, staleAfter: null, current: false, source: 'espn' });
+    const near = new Date(NOW.getTime() + 30_000).toISOString(); // inside the reader's skew allowance
+    const soon = ambientView({ ...base, updatedAt: near }, opts);
+    expect(soon.live.items.map((m) => m.id)).toEqual(['1']);
+    expect(soon).toMatchObject({ updatedAt: near, current: true });
+    expect(soon.staleAfter).toBe(new Date(NOW.getTime() + 30_000 + DISPLAY_STALE_MS).toISOString());
   });
 
   it('`pinned` is the saved pin\'s side by id; `picked` is the ambient preference\'s side; `pick` says which', () => {
@@ -156,6 +190,17 @@ describe('claudinho ambient --json', () => {
     items = (v.live as { items: Array<Record<string, unknown>> }).items;
     expect(items.map((m) => [m.id, m.picked, m.pinned])).toEqual([['2', true, false], ['1', false, true]]);
     expect(v.pick).toEqual({ code: 'BOU' });
+  });
+
+  it('`pinned` is identity: a pin with the record\'s id pins under another code; a pin with another id does not pin the same code', () => {
+    seed([live('1', ARS, CHE, [2, 1]), live('2', BOU, BRE, [0, 0])]);
+    cmdAmbient(ctx({ pin: { id: 'espn:359', code: 'XXX', name: 'Elsewhere' } }));
+    let items = (view().live as { items: Array<Record<string, unknown>> }).items;
+    expect(items.map((m) => [m.id, m.pinned])).toEqual([['1', true], ['2', false]]);
+    writes = [];
+    cmdAmbient(ctx({ pin: { id: 'espn:999', code: 'ARS', name: 'Arsenal' } }));
+    items = (view().live as { items: Array<Record<string, unknown>> }).items;
+    expect(items.map((m) => [m.id, m.pinned])).toEqual([['1', false], ['2', false]]);
   });
 
   it('a CLAUDINHO_TEAM the hot path cannot read (a name off the bundle): no preference, never the pin, said as pickUnreadable', () => {
@@ -192,7 +237,7 @@ describe('claudinho ambient --json', () => {
     writes = [];
     cmdAmbient(ctx());
     expect(vi.mocked(spawn)).toHaveBeenCalledTimes(1);
-    expect(view()).toMatchObject({ live: { items: [], complete: true } }); // stale: the reader shows nothing
+    expect(view()).toMatchObject({ live: { items: [], complete: true }, current: false }); // stale: the reader shows nothing, and says the list is not current
     // prompt on the same two caches: the same two answers (one trigger, `refreshWanted`).
     vi.mocked(spawn).mockClear();
     seed([live('1', ARS, CHE, [2, 1])]);
@@ -216,6 +261,7 @@ describe('claudinho ambient --json', () => {
     const v = view();
     expect(v.line).toBe('⚽ —');
     expect(v.live).toMatchObject({ items: [], total: 0, shown: 0, complete: true });
+    expect(v.current).toBe(false);
     expect(v.context).toBeNull();
     expect(v.staleAfter).toBeNull();
     expect(v.updatedAt).toBeNull();

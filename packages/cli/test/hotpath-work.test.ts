@@ -73,12 +73,23 @@ describe('a poisoned cache cannot make the statusline slow', () => {
 
 describe('the ambient view is bounded like the line it carries', () => {
   it('reads no events field and serializes none', () => {
-    const state = { version: 3, updatedAt: new Date().toISOString(), live: [liveMatch(0, 500)], degraded: false, source: 'espn', competition: 'fifa.world' } as never;
+    let touched = 0;
+    const match = liveMatch(0, 0);
+    Object.defineProperty(match, 'events', {
+      enumerable: true,
+      get() {
+        touched += 1;
+        return Array.from({ length: 128 }, () => ({ player: JUNK }));
+      },
+    });
+    const state = { version: 3, updatedAt: new Date().toISOString(), live: [match], degraded: false, source: 'espn', competition: 'fifa.world' } as never;
     const v = ambientView(state, { now: new Date() });
+    expect(touched).toBe(0);
     expect(v.line).toContain('1–0');
     expect(v.live.items).toHaveLength(1);
     expect('events' in (v.live.items[0] as object)).toBe(false);
     expect(JSON.stringify(v)).not.toContain(JUNK.slice(0, 8));
+    expect(touched).toBe(0); // the serialization read it neither
   });
 
   it('states what it never examined: the list is truncated and not complete, the line says +more', () => {
