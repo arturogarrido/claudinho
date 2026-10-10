@@ -7,24 +7,19 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoPace,
  * The claudinho plugin: the live score or the countdown above the prompt (the band), a toast when a score changes,
  * and the live score beside the prompt for the model.
  *
- * The CLI owns the data (its cache, its refresher, the network, the backoff): this module runs the one binary,
- * `claudinho ambient --json --columns <the band's columns>`, with an argument array, bounded, and reads the one JSON
- * object it prints. No binary, a timeout, an answer that is not the object: silence, never a blocked turn. Every
- * run is also what triggers the CLI's refresher, so the band runs at the live pace on every line but the two idle
- * ones. Best effort throughout: a toast says a score change this module observed between two runs, never every goal.
+ * The CLI owns the data (its cache, its refresher, the network, the backoff) and the words: this module runs the one
+ * binary, `claudinho ambient --json --columns <the band's columns>`, with an argument array, bounded, and reads the
+ * fields of the one JSON object it prints, never its text: what the line IS (`idle`, `empty`, the first run's
+ * `noCompetition`), whether its list is `current`, and the hook's own line on each record, said verbatim. No binary,
+ * a timeout, a cut or an answer that is not the object: silence, never a blocked turn. Every run is also what
+ * triggers the CLI's refresher, so the band runs at the live pace on every line but the idle ones. Best effort
+ * throughout: a toast says a score change this module observed between two current views, never every goal.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
 const pace = atom({ plugin: 'claudinho', key: 'pace' } as const, { ranAt: 0, idle: false } as ClaudinhoPace)
 const baseline = atom({ plugin: 'claudinho', key: 'baseline' } as const, null as ClaudinhoBaseline)
 const lastContext = atom({ plugin: 'claudinho', key: 'context' } as const, null as ClaudinhoContext)
-
-/** Nothing chosen: never shown (a band that nags), and idle. */
-const FOLLOW = /^⚽\s*claudinho follow\s*$/u
-/** The edition over: shown (it is information), and idle. */
-const COMPLETE = /^⚽ .* is complete · claudinho follow --list$/u
-/** Nothing known yet: never shown, and not idle (a cold cache's refresher may fill it within seconds). */
-const NOTHING = /^⚽\s*(—|-)?\s*$/u
 
 const LIVE_MS = 15_000
 const IDLE_MS = 300_000
@@ -45,9 +40,15 @@ let columns = DEFAULT_COLUMNS
 /** At most one run in flight: the guard is taken before the first await. */
 let busy = false
 
-/** The view `claudinho ambient --json` prints, as far as this module reads it. */
+/**
+ * What `claudinho ambient --json` prints, as far as this module reads it: a selected competition's view, or the
+ * first-run object (no competition chosen: `noCompetition`, the one line, no view).
+ */
 type View = {
   line: string
+  noCompetition?: unknown
+  idle?: unknown
+  empty?: unknown
   context?: unknown
   live?: { items?: unknown }
   current?: unknown
@@ -57,18 +58,15 @@ type View = {
 
 type Item = {
   id: string
-  home?: { name?: unknown }
-  away?: { name?: unknown }
+  line?: unknown
   score?: unknown
   shootout?: unknown
-  minute?: unknown
-  status?: unknown
   pinned?: unknown
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-/** The first line of the CLI's stdout as the view, or null for anything else (a run that failed). */
+/** The first line of the CLI's stdout as the view (or the first-run object), or null for anything else (a run that failed). */
 function parseView(stdout: string): View | null {
   const first = (stdout.split('\n')[0] ?? '').trim()
   if (!first) return null
@@ -94,59 +92,44 @@ function itemsOf(view: View): Item[] {
   return items.filter((m): m is Item => isObject(m) && typeof m.id === 'string')
 }
 
-/**
- * The hook's own line for a match (`claudinho hook`): the names, the scoreline (`H–A`, or `H(h)–A(a)` with a
- * shootout tally), and the minute token (`half-time` at half-time, the minute, else `live`).
- */
-function hookLine(m: Item): string | undefined {
-  const home = m.home?.name
-  const away = m.away?.name
-  const score = tally(m.score)
-  if (typeof home !== 'string' || typeof away !== 'string' || !score) return undefined
-  const shootout = tally(m.shootout)
-  const scoreline = shootout
-    ? `${score.home}(${shootout.home})–${score.away}(${shootout.away})`
-    : `${score.home}–${score.away}`
-  const minute = m.status === 'HT' ? 'half-time' : typeof m.minute === 'number' && m.minute ? `${m.minute}'` : 'live'
-  return `${home} ${scoreline} ${away} (${minute})`
-}
+/** The view's competition, by its slug ('' when it states none). */
+const slugOf = (view: View): string =>
+  isObject(view.competition) && typeof view.competition.slug === 'string' ? view.competition.slug : ''
 
-/** Two tallies differ (both present). */
+/** Two tallies differ. */
 const changed = (a: { home: number; away: number }, b: { home: number; away: number }) => a.home !== b.home || a.away !== b.away
 
 /**
- * The toasts of a CURRENT view against the previous current view's baseline, under the option: a regulation change
- * of a match whose id was there is one toast; a shootout change its own, compared only when both carry a tally; a
- * new id is the first observation (silent). A competition change rebases with nothing to compare.
+ * The toasts of a CURRENT view against the last current view's baseline, under the option: ONE toast per match whose
+ * id was there and whose regulation score or shootout tally changed (a tally compared only when both carry one), its
+ * text `⚽` and the record's own line, verbatim (a record with no line says nothing). A new id is the first
+ * observation (silent); a competition change rebases with nothing to compare.
  */
 function toastsFor(view: View, prev: ClaudinhoBaseline, option: ToastsOption): string[] {
-  const slug = isObject(view.competition) && typeof view.competition.slug === 'string' ? view.competition.slug : ''
-  if (option === 'off' || !prev || prev.slug !== slug) return []
+  if (option === 'off' || !prev || prev.slug !== slugOf(view)) return []
   const before = new Map(prev.items.map((t) => [t.id, t]))
   const texts: string[] = []
   for (const m of itemsOf(view)) {
     if (option === 'pinned' && m.pinned !== true) continue
     const was = before.get(m.id)
-    if (!was) continue
-    const text = hookLine(m)
-    if (!text) continue
+    if (!was || typeof m.line !== 'string' || m.line === '') continue
     const score = tally(m.score)
-    if (score && was.score && changed(score, was.score)) texts.push(`⚽ ${text}`)
     const shootout = tally(m.shootout)
-    if (shootout && was.shootout && changed(shootout, was.shootout)) texts.push(`⚽ ${text}`)
+    const regulation = !!(score && was.score && changed(score, was.score))
+    const penalties = !!(shootout && was.shootout && changed(shootout, was.shootout))
+    if (regulation || penalties) texts.push(`⚽ ${m.line}`)
   }
   return texts
 }
 
 /** The baseline a CURRENT view leaves for the next one: its competition and each match's tallies. */
 function baselineOf(view: View): ClaudinhoBaseline {
-  const slug = isObject(view.competition) && typeof view.competition.slug === 'string' ? view.competition.slug : ''
   const items: ClaudinhoTally[] = itemsOf(view).map((m) => {
     const score = tally(m.score)
     const shootout = tally(m.shootout)
     return { id: m.id, ...(score ? { score } : {}), ...(shootout ? { shootout } : {}) }
   })
-  return { slug, items }
+  return { slug: slugOf(view), items }
 }
 
 /** One run of the CLI, bounded; at most one in flight; paced by the last line unless `force`. */
@@ -169,7 +152,8 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
       timeoutMs: RUN_TIMEOUT_MS,
       stdin: '',
     })
-    if (r.exitCode === 0) answer = parseView(r.stdout)
+    // A cut stdout is no answer: its first line may be part of an object.
+    if (r.exitCode === 0 && r.isStdoutTruncated !== true) answer = parseView(r.stdout)
   } catch {
     // No binary, a timeout, a refused spawn: a failed run.
   }
@@ -180,12 +164,15 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     return
   }
   const view: View = answer
-  const line = view.line
-  const idle = FOLLOW.test(line) || COMPLETE.test(line)
-  const hidden = FOLLOW.test(line) || NOTHING.test(line) || line.trim() === ''
+  // What the line IS comes from the fields, never the text (which `--columns` may have cut): the first-run object
+  // (nothing chosen) is hidden and idle; a view that says `empty` is hidden; one that says `idle` is read slowly.
+  const firstRun = view.noCompetition === true
+  const idle = firstRun || view.idle === true
+  const hidden = firstRun || view.empty === true || view.line.trim() === ''
   await update($, pace, () => ({ ranAt: now, idle }))
-  await update($, band, () => (hidden ? null : { text: line }))
+  await update($, band, () => (hidden ? null : { text: view.line }))
 
+  // The first-run object is no current view: it clears the context and keeps the baseline, as any view that is not.
   if (view.current === true) {
     const prev = await read($, baseline)
     for (const text of toastsFor(view, prev, option)) $.ui.toast(text)
@@ -196,9 +183,9 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
       ranAt: now,
     }))
   } else {
-    // A view that is not current says nothing about play: no toast, no context, and the next current view is
-    // observed afresh.
-    await update($, baseline, () => null)
+    // A view that is not current says nothing about play: no toast and no context. It keeps the baseline, which only
+    // a current view replaces (and a disappearance or a competition change rebases), so a change across the gap is
+    // said at the next current view, late, never lost.
     await update($, lastContext, () => null)
   }
 }

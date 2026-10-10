@@ -8,12 +8,13 @@
 export type ClaudinhoBand = { text: string } | null
 
 /**
- * The band's pace: when the last run started (the clock's milliseconds) and whether its line was one of the two
- * idle lines (nothing chosen, the edition over), which are read once per five minutes instead of every fire.
+ * The band's pace: when the last run started (the clock's milliseconds) and whether the CLI said its answer was idle
+ * (the first-run object, nothing chosen; or a view whose `idle` is true, the edition over), which is read once per
+ * five minutes instead of every fire.
  */
 export type ClaudinhoPace = { ranAt: number; idle: boolean }
 
-/** One live match as the toasts remember it: its id and its two tallies. */
+/** One live match as the toasts remember it: its id and its two tallies (the words are the CLI's record's own `line`). */
 export type ClaudinhoTally = {
   id: string
   score?: { home: number; away: number }
@@ -21,8 +22,9 @@ export type ClaudinhoTally = {
 }
 
 /**
- * The toasts' baseline: the previous CURRENT view's live matches, under its competition. Replaced by every current
- * view, emptied by a view that is not current, left by a failed run; null before the first current view.
+ * The toasts' baseline: the last CURRENT view's live matches, under its competition. Replaced by every current view,
+ * kept through a view that is not current and through a failed run (a change across the gap is said at the next
+ * current view); null before the first current view.
  */
 export type ClaudinhoBaseline = { slug: string; items: ClaudinhoTally[] } | null
 

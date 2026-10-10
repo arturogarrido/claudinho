@@ -1240,6 +1240,8 @@ export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): 
     const pick = preference.pick;
     const view: AmbientView = {
       line: read.line,
+      idle: read.idle,
+      empty: read.empty,
       context: read.context,
       live: read.live,
       current: read.current,

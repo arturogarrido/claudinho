@@ -28,13 +28,20 @@ option if you want another value than the default. The plugin is active in that 
 ## What it does, and what it does not promise
 
 - **The band** above the prompt shows the line `claudinho prompt` prints: the live score, or the countdown to the
-  next fixture. It shows nothing when nothing is chosen or nothing is known yet, and it shows the end of an edition.
-  It runs the CLI every 15 seconds (every five minutes on the two idle lines), which is also what keeps the CLI's
-  cache fresh. The CLI fits the line to the band's width and keeps its `+N` count of other matches; the engine cuts
-  anything wider. A headless session (`claude -p`, the SDK) runs nothing.
-- **The toasts** say a score change the plugin observed between two of its runs, as `⚽` and the hook's line for the
-  match (`⚽ Arsenal 2–1 Chelsea (67')`). Best effort, never every goal: a change the plugin did not see between two
-  current views (the first sight of a match, a stale or failed read, a change of competition) is silent.
+  next fixture. It shows nothing when nothing is chosen or nothing is known. At the end of an edition: the World
+  Cup's sign-off line (`⚽ World Cup 2026 is complete · claudinho follow --list`) is the one end-of-edition line the
+  statusline prints, and the band shows it; after another competition's season the statusline says nothing is known,
+  and the band shows nothing. It runs the CLI every 15 seconds (every five minutes on the sign-off line and while
+  nothing is chosen), which is also what keeps the CLI's cache fresh. The CLI fits the line to the band's width and
+  keeps its `+N` count of other matches; the engine cuts anything wider. What the band shows and how often it reads
+  come from what the CLI says the line is, never from its text. A headless session (`claude -p`, the SDK) runs nothing.
+- **The toasts** say a score change the plugin observed between two current views, as `⚽` and the hook's own line
+  for the match, the one `claudinho hook` prints (`⚽ Arsenal 2–1 Chelsea (67')`; on a nations competition with its
+  flags and the roster's names, `⚽ 🇲🇽 Mexico 1–0 South Africa 🇿🇦 (67')`): one toast per match per change. Best
+  effort, never every goal. A change is never said as it happens from a view the CLI could not vouch for (stale,
+  degraded, or a read that was not whole), and a goal across such a gap, or across a failed run, is said at the first
+  current view after it: late, never lost. The first view of a match says nothing, and neither does a change of
+  competition.
 - **The context**: while a match is live, each prompt you submit carries the hook's live-score block beside it, for
   the model, from the plugin's last run (never a run on submit), and only while that run is recent and its scores are
   inside their display window.

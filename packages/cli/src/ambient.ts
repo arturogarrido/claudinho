@@ -8,7 +8,7 @@
 import type { AmbientMatch, AmbientView, Pin } from '@claudinho/core';
 import { isPinnedSide } from '@claudinho/core';
 import { type CacheState, stampAgeMs } from './cache';
-import { renderHook } from './hook';
+import { hookLine, renderHook } from './hook';
 import {
   countdownFixture,
   countdownSchedule,
@@ -17,10 +17,12 @@ import {
   isPicked,
   liveMatchesFromCache,
   liveWhole,
+  NOTHING_KNOWN_LINE,
   pickAmbientMatch,
+  promptLine,
   type PromptOpts,
-  renderPrompt,
   syncingWindow,
+  TOURNAMENT_COMPLETE_LINE,
 } from './statusline';
 
 /** What the ambient view reads beyond the line's options. */
@@ -39,12 +41,14 @@ export type AmbientRead = Omit<AmbientView, 'competition' | 'disclaimer' | 'pick
 /**
  * THE ambient reader of `claudinho ambient --json` (core's `AmbientView`, less
  * what the command knows): the line `prompt` prints and the block `hook`
- * prints (their own renderers, with the SAME options and one clock), and the
+ * prints (their own renderers, with the SAME options and one clock), what that
+ * line IS (`idle`, `empty`: from the one render, before the width's cut), and the
  * structured twin of what they read: the live list from the same reader
  * (`liveMatchesFromCache`: the display window, the examine cap, no `events`),
  * ordered by the one preference (`pickAmbientMatch`), each record marked
  * `picked` (the preference's side) and `pinned` (the saved pin's, by core's
- * `isPinnedSide`), with the reader's own `total`/`shown`/`truncated`/
+ * `isPinnedSide`) and carrying the hook's own line for it (`hookLine`, the
+ * formatter `claudinho hook` prints with), with the reader's own `total`/`shown`/`truncated`/
  * `complete`; whether that list is `current` (a believed snapshot's inside
  * its display window, not degraded, its read whole as the snapshot states,
  * the line not syncing: the one rule, `syncingWindow`);
@@ -60,13 +64,20 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
   const kind = opts.teamKind ?? defaultTeamKind(opts.defaultCompetition);
   const pin = opts.pin ?? (opts.pick && 'team' in opts.pick ? opts.pick.team : undefined);
   const read = { ...opts, now };
+  // The hook's own options for each record's line: the same flags, and its
+  // roster names on the bundled competition.
+  const hookOpts = { flags: opts.flags ?? true, pin: defaultCompetition };
 
   const list = liveMatchesFromCache(state, nowMs, kind);
   const items: AmbientMatch[] = pickAmbientMatch(list.items, opts.pick).map((m) => ({
     ...m,
     picked: isPicked(m, opts.pick),
     pinned: pin !== undefined && (isPinnedSide(m.home, pin) || isPinnedSide(m.away, pin)),
+    line: hookLine(m, hookOpts),
   }));
+  // ONE render of the line: what it is is read before the width's cut (a
+  // narrow band cuts the text, never what the view says of it).
+  const prompt = promptLine(state, read);
   const context = renderHook(state, read);
   const { cachedFixtures, schedule } = countdownSchedule(state, defaultCompetition, kind);
   // The snapshot's stamp by the reader's own rule (`stampAgeMs`, as
@@ -90,7 +101,9 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
     syncingWindow(state, nowMs, liveWhole(list.complete, state), defaultCompetition, cachedFixtures, schedule, opts.pick) !==
       undefined;
   return {
-    line: renderPrompt(state, read),
+    line: prompt.line,
+    idle: prompt.unfitted === TOURNAMENT_COMPLETE_LINE,
+    empty: prompt.unfitted === NOTHING_KNOWN_LINE,
     context: context === '' ? null : context,
     live: { items, total: list.total, shown: list.shown, truncated: list.truncated, complete: list.complete },
     current:

@@ -158,8 +158,14 @@ prompt of a Claude Code session in a terminal:
 
 Answer `y` to add the marketplace, then choose a scope. The `toasts` option (in `/config`) is
 `pinned` by default (your pinned team's match, `claudinho follow <alias> --team <name>`; with no pin
-saved, no toast), `all` or `off`. The toasts are best effort, a score change the plugin saw between
-two of its runs, never every goal. More in the plugin's
+saved, no toast), `all` or `off`. A toast is the hook's own line for the match (with its flags and
+the roster's names on a nations competition), one per match per change, and best effort, never every
+goal: a change is never said as it happens from a view the CLI could not vouch for (stale, degraded,
+or a read that was not whole), a goal across such a gap or a failed run is said at the first current
+view after it (late, never lost), and the first view of a match says nothing. At the end of an
+edition the band shows the World Cup's sign-off line, the one end-of-edition line the statusline
+prints; after another competition's season the statusline says nothing is known, and the band shows
+nothing. More in the plugin's
 [README](https://github.com/arturogarrido/claudinho/tree/main/packages/plugin#readme).
 
 #### For a program: `claudinho ambient --json`
