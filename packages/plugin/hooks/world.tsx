@@ -4,6 +4,8 @@ import { mock, test } from 'claude-code/testing'
 export const START = { cwd: '/tmp/claudinho-test', surface: 'terminal', isInteractive: true } as const
 export const PROPS = { hasSurvey: false, isWorking: false, maxRows: 5, bodyColumns: 80 } as const
 const ok = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
+/** The clock's start: the views the tests build are stamped 15:00Z with a 15:05Z deadline. */
+export const NOW = Date.parse('2026-10-10T15:00:00.000Z')
 export const COMPLETE = '⚽ World Cup 2026 is complete · claudinho follow --list'
 
 /** The view the CLI prints for a line, with nothing live (the band reads `line` alone). */
@@ -31,7 +33,9 @@ export const world = async (
   answers: Array<string | Error>,
   start: { isInteractive: boolean } = START,
 ) => {
-  const clock = mock.clock(on)
+  // The clock starts at a fixed instant, five minutes before the views' `staleAfter` (15:05Z): the context's deadline
+  // is then a property of the test, never of the wall clock the kit might start from.
+  const clock = mock.clock(on, { now: NOW })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('ui.render', { component: 'AbovePrompt' }, ($$, e) => {
     const { Box } = $$.ui.resolve(e)
