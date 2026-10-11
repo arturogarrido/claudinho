@@ -754,3 +754,82 @@ describe("a start whose roster reply comes late", () => {
     expect([before, after]).toEqual([1, 1])
   })
 })
+
+describe('module loads are ordered: a clear never erases a newer load\'s line', () => {
+  test("an old load's detach clear landing after a newer load wrote its line leaves that line in place", async ($, on) => {
+    // This module plays the old load. A newer load (a later stamp) has written its line to the host's state, which the
+    // band answers from the moment this load's own first write landed.
+    const NEWER = { text: "⚽ ARS 3–1 CHE 80'", seq: 1, load: 'a-newer-load', loadAt: Number.MAX_SAFE_INTEGER }
+    let firstLanded = false
+    const writes: unknown[] = []
+    on('state.get', (_$, e, next) => {
+      if (firstLanded && e.key === 'band') return { value: { value: NEWER, version: 99 } }
+      return next(e)
+    })
+    on('state.set', async (_$, e, next) => {
+      if (e.key !== 'band') return next(e)
+      if (!firstLanded) {
+        const r = await next(e)
+        firstLanded = true
+        return r
+      }
+      writes.push(e.value)
+      return { value: { isSet: true, version: 100 } }
+    })
+    const { detach } = await world($, on, [view(LINE)], { start: DESKTOP_START, surfaces: ['desktop'] })
+    expect(firstLanded).toBe(true)
+    await detach('desktop')
+    expect(writes).toHaveLength(1)
+    expect(writes[0]).toEqual(NEWER)
+  })
+})
+
+describe('what the band never draws, whatever its number', () => {
+  test("a previous load's line numbered 1 (the number this load's first run takes): not drawn while that run is in flight", async ($, on) => {
+    let written = false
+    on('state.get', (_$, e, next) => {
+      if (!written && e.key === 'band') return { value: { value: { text: LINE, seq: 1, load: 'a-previous-load', loadAt: 1 }, version: 0 } }
+      return next(e)
+    })
+    on('state.set', (_$, e, next) => {
+      if (e.key === 'band') written = true
+      return next(e)
+    })
+    const { argvs, mount } = await world($, on, [held(view("⚽ ARS 3–1 CHE 80'"))])
+    expect(argvs).toHaveLength(1)
+    expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+
+  test('the value the released 0.1.0 left ({ text } alone): not drawn while the first run is in flight', async ($, on) => {
+    let written = false
+    on('state.get', (_$, e, next) => {
+      if (!written && e.key === 'band') return { value: { value: { text: LINE }, version: 0 } }
+      return next(e)
+    })
+    on('state.set', (_$, e, next) => {
+      if (e.key === 'band') written = true
+      return next(e)
+    })
+    const { argvs, mount } = await world($, on, [held(view("⚽ ARS 3–1 CHE 80'"))])
+    expect(argvs).toHaveLength(1)
+    expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+})
+
+describe("a start's clear lands", () => {
+  test("a module load starting with no band surface writes the band clear over a previous load's line (the write lands, not only asked)", async ($, on) => {
+    let landed: unknown = 'none'
+    on('state.get', (_$, e, next) => {
+      if (landed === 'none' && e.key === 'band') return { value: { value: { text: LINE, seq: 3, load: 'a-previous-load', loadAt: 1 }, version: 0 } }
+      return next(e)
+    })
+    on('state.set', async (_$, e, next) => {
+      if (e.key !== 'band') return next(e)
+      const r = await next(e)
+      landed = e.value
+      return r
+    })
+    await world($, on, [view(LINE)], { start: DESKTOP_START, surfaces: [] })
+    expect(landed).toBeNull()
+  })
+})
