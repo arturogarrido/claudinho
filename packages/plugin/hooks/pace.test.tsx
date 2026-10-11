@@ -373,9 +373,11 @@ describe('a two-write change refused half-way leaves a state the next fire repai
 
 describe('a window coming back while a slower detach hook beneath ours runs', () => {
   test('the last desktop client detached, a slow hook beneath, the window back before it ends: no old line while the new run is in flight', async ($, on) => {
-    const { attach, detachStart, mount, releaseDetach } = await world($, on, [view(LINE), held(view('⚽ ARS 3–1 CHE 80\''))], { start: DESKTOP_START, surfaces: ['desktop'], holdDetach: true })
+    const { attach, clock, detachStart, mount, releaseDetach } = await world($, on, [view(LINE), held(view('⚽ ARS 3–1 CHE 80\''))], { start: DESKTOP_START, surfaces: ['desktop'], holdDetach: true })
     expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: LINE })).toHaveLength(1)
     const leaving = detachStart('desktop')
+    // The detach reaches the slow hook beneath ours before the window comes back.
+    await clock.advance(1)
     await attach('desktop', 'app')
     expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
     await releaseDetach()
