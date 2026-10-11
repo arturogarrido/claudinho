@@ -229,7 +229,7 @@ export function buildMarketSignal(input: BuildSignalInput): MarketSignal {
     source: input.source,
     sourceMarketId: input.sourceMarketId,
     asOf: input.asOf,
-    fetchedAt: input.fetchedAt ?? new Date().toISOString(),
+    fetchedAt: input.fetchedAt ?? (input.now ?? new Date()).toISOString(),
     outcomes,
     favorite,
     liquidity: input.liquidity,

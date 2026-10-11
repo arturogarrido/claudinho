@@ -21,12 +21,15 @@
  *
  * `ambiguous` is accepted only as a real boolean and otherwise fails CLOSED, so
  * a malformed value cannot coerce its way into looking trustworthy.
+ *
+ * A signal fetched after the judging clock (beyond `FUTURE_SKEW_MS`) is no
+ * evidence for that request: it is refused as `unresolved`, never a negative.
  */
 import { KNOWN_MARKET_SOURCES } from '../markets/format';
-import { deriveFavorite, isStaleSignal } from '../markets/normalize';
+import { FUTURE_SKEW_MS, deriveFavorite, isStaleSignal } from '../markets/normalize';
 import type { MarketOutcome, MarketSignal } from '../markets/types';
 import { takeBounded } from './bounded';
-import { type ParseResult, ambiguous, malformed, valid } from './result';
+import { type ParseResult, ambiguous, malformed, unresolved, valid } from './result';
 import { canonicalTimestamp, humanLabel, member, opaqueId, probability, quantity } from './roles';
 
 /** Legs read from one signal. A 1X2 market has three. */
@@ -133,6 +136,16 @@ export function sealMarketSignal(
   if (sourceMarketId) out.sourceMarketId = sourceMarketId;
   out.asOf = canonicalTimestamp(s.asOf) ?? '';
   out.fetchedAt = canonicalTimestamp(s.fetchedAt) ?? '';
+  // A signal fetched after the clock it is judged by is no evidence for that
+  // request: each leg was priced at most `FUTURE_SKEW_MS` after its own fetch
+  // clock, and nothing in the signal says which. Unresolved, never a negative:
+  // the bytes may be right under another clock. An empty `fetchedAt` stays valid.
+  if (out.fetchedAt !== '') {
+    const judgedAt = (options.now ?? new Date()).getTime();
+    if (Date.parse(out.fetchedAt) - judgedAt > FUTURE_SKEW_MS) {
+      return unresolved('signal was fetched after the clock it is judged by');
+    }
+  }
   out.outcomes = outcomes;
   // Fail closed: only an explicit `false` reads as "not ambiguous".
   const isAmbiguous = s.ambiguous !== false;
