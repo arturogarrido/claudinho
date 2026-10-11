@@ -19,7 +19,8 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoTally
  * `AbovePrompt`, asked of the session's roster at every run, first and again as the last step before the spawn (the
  * desktop app's session starts with no surface and attaches after; a plugin loaded into an open desktop session hears
  * a start with no surface while the roster holds the desktop). A run that finds none attached (`claude -p`, the SDK, a
- * phone or an editor alone), or cannot read the roster, starts no process and clears the band. A roster read refused at
+ * phone or an editor alone), or cannot read the roster, starts no process and clears the band. A start that finds none
+ * attached clears the band, including a line another load left, without starting the pace. A roster read refused at
  * the start is unknown, so the pace starts and each run asks again: a read denied for good costs one read per 15
  * seconds and no process. Each run is handed a PATH: the host's own, then the folders npm, Homebrew, nvm, Volta, pnpm
  * and Bun install global commands into, so a session started with a bare PATH still finds the CLI and its `node` (on
@@ -488,8 +489,9 @@ export const register: Register = (on, options) => {
     : 'pinned'
 
   on('session.start', async ($, e, next) => {
-    // The start's own surface is not the question (the desktop app's is null, as `-p`'s): the roster is. A read that
-    // rejects is unknown: the pace starts, and each run asks again.
+    // The start's own surface is not the question (the desktop app's is null, as `-p`'s): the roster is. No band
+    // surface: clear every run so far and any line another load left. A read that rejects is unknown: the pace starts,
+    // and each run asks again.
     let start: boolean
     try {
       start = await drawable($)
@@ -497,6 +499,13 @@ export const register: Register = (on, options) => {
       start = true
     }
     if (start) ensurePace($, option)
+    else {
+      try {
+        await clear($, runSeq)
+      } catch {
+        // A refused clear must not stop next(e); the next run's step 1 clears again.
+      }
+    }
     return next(e)
   })
 
