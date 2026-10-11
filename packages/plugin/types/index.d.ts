@@ -12,14 +12,6 @@
  */
 export type ClaudinhoBand = { text: string } | null
 
-/**
- * The band's pace: when the last run started (the clock's milliseconds) and whether the CLI said its answer was idle
- * (the first-run object, nothing chosen; or a view whose `idle` is true, the edition over), which is read once per
- * five minutes instead of every fire. `ranAt` is read only while `idle` is true; `{ ranAt: 0, idle: false }` is what a
- * clear leaves (a run that found no surface that draws the band, or the last such surface detached).
- */
-export type ClaudinhoPace = { ranAt: number; idle: boolean }
-
 /** One live match as the toasts remember it: its id and its two tallies (the words are the CLI's record's own `line`). */
 export type ClaudinhoTally = {
   id: string
@@ -45,7 +37,6 @@ declare module 'claude-code' {
   interface PluginState {
     claudinho: {
       band: ClaudinhoBand
-      pace: ClaudinhoPace
       baseline: ClaudinhoBaseline
       context: ClaudinhoContext
     }
