@@ -9,10 +9,10 @@
 /**
  * The band's line as the CLI fitted it, or null when there is nothing to show, the last run failed, or a run found no
  * surface that draws the band (none attached, or the roster could not be read). The writer is identified by `load`,
- * the module load that landed it, and `seq`, its run number. A line another load wrote is covered by every clear of
- * this load.
+ * the module load that landed it, and `seq`, its run number. Loads are ordered by `loadAt`, the stamp each takes when
+ * it loads: a clear never erases a newer load's line, and a different load with the same stamp is kept.
  */
-export type ClaudinhoBand = { text: string; seq: number; load: string } | null
+export type ClaudinhoBand = { text: string; seq: number; load: string; loadAt: number } | null
 
 /** One live match as the toasts remember it: its id and its two tallies (the words are the CLI's record's own `line`). */
 export type ClaudinhoTally = {

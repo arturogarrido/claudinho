@@ -20,7 +20,7 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoTally
  * desktop app's session starts with no surface and attaches after; a plugin loaded into an open desktop session hears
  * a start with no surface while the roster holds the desktop). A run that finds none attached (`claude -p`, the SDK, a
  * phone or an editor alone), or cannot read the roster, starts no process and clears the band. A start that finds none
- * attached clears the band, including a line another load left, without starting the pace. A roster read refused at
+ * attached clears the band, including a line an older load left, without starting the pace. A roster read refused at
  * the start is unknown, so the pace starts and each run asks again: a read denied for good costs one read per 15
  * seconds and no process. Each run is handed a PATH: the host's own, then the folders npm, Homebrew, nvm, Volta, pnpm
  * and Bun install global commands into, so a session started with a bare PATH still finds the CLI and its `node` (on
@@ -35,19 +35,22 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoTally
  * The pace is the module's, set synchronously, loosened when a run passes the gate
  * and tightened only after its band write landed. Runs are numbered as they pass the gate; a line's writer is
  * identified by its module load and its run number. A clear invalidates the runs it covers: a line or a tightened pace
- * is written only by a run no clear has invalidated; a clear erases a line that landed from a run it covers, and every
- * clear of this load covers a line another load wrote. A run invalidated while its write was pending clears its own
- * line once that write lands. A current view writes its baseline before it raises the toasts computed against the
- * previous one, so a refused baseline write tells the change once, late, never twice. A refused context write leaves
- * the previous context, which ages out within its stated 30 seconds.
+ * is written only by a run no clear has invalidated; a clear erases a line that landed from a run it covers, or a
+ * provably older load's line. Loads are ordered by the stamp each takes when it loads (`loadAt`): a clear never
+ * erases a newer load's line, and a different load with the same stamp is kept. A run invalidated while its write was
+ * pending clears its own line once that write lands. A current view writes its baseline before it raises the toasts
+ * computed against the previous one, so a refused baseline write tells the change once, late, never twice. A refused
+ * context write leaves the previous context, which ages out within its stated 30 seconds.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
 const baseline = atom({ plugin: 'claudinho', key: 'baseline' } as const, null as ClaudinhoBaseline)
 const lastContext = atom({ plugin: 'claudinho', key: 'context' } as const, null as ClaudinhoContext)
 
+/** The stamp that orders this module load, carried by every line it lands in the host's state. */
+const LOAD_AT = Date.now()
 /** The identity of this module load, carried by every line it lands in the host's state. */
-const LOAD = `${Date.now()}-${Math.random()}`
+const LOAD = `${LOAD_AT}-${Math.random()}`
 const LIVE_MS = 15_000
 const IDLE_MS = 300_000
 const RUN_TIMEOUT_MS = 2_000
@@ -104,32 +107,39 @@ const drawable = async ($: EngineInterface): Promise<boolean> => (await $.sessio
 
 /**
  * A clear covering every run numbered up to `upTo`: those runs are invalidated, the pace goes back to its initial
- * value (synchronously, no clock read), so the next run the roster allows
- * is never held by an idle gap, and the band is erased when the line standing was written by another load or a run it
- * covers (or there is none): a line a newer run of this load wrote is kept. The check is made when the write is applied
- * (`update` applies its function again on a version miss), so a newer run's line that landed first, or during the retry,
- * is kept. By value would not do: an idle line's text repeats exactly. A line with no load is from another load; no
- * numbered writer counts as 0.
+ * value (synchronously, no clock read), so the next run the roster allows is never held by an idle gap. The band is
+ * erased when this load's line comes from a covered run, or when the line is provably older: its `loadAt` is below
+ * this load's stamp, or is not a number (a value left by an earlier version). A newer run of this load, a newer load,
+ * or a different load with the same stamp keeps its line. The check is made when the write is applied (`update`
+ * applies its function again on a version miss), so a line that landed first, or during the retry, is judged then.
+ * By value would not do: an idle line's text repeats exactly.
  */
 async function clear($: EngineInterface, upTo: number): Promise<void> {
   invalidUpTo = Math.max(invalidUpTo, upTo)
   pace = { ranAt: 0, idle: false }
   await update($, band, (cur) =>
-    cur === null || cur.load !== LOAD || (typeof cur.seq === 'number' ? cur.seq : 0) <= upTo ? null : cur,
+    cur === null ||
+    (cur.load === LOAD && cur.seq <= upTo) ||
+    typeof cur.loadAt !== 'number' ||
+    cur.loadAt < LOAD_AT
+      ? null
+      : cur,
   )
 }
 
 /**
  * The band write of run `seq`: nothing when a clear has invalidated it (the function hands back what stands), else its
- * value with its module load and run number. A run invalidated while its write was pending clears only its own line
- * after it lands. A refusal of that second write is repaired by the next fire's clear.
+ * value with its module load, load stamp and run number. A run invalidated while its write was pending clears only
+ * its own line after it lands. A refusal of that second write is repaired by the next fire's clear.
  */
 async function bandWrite(
   $: EngineInterface,
   seq: number,
-  value: Omit<NonNullable<ClaudinhoBand>, 'seq' | 'load'> | null,
+  value: Omit<NonNullable<ClaudinhoBand>, 'seq' | 'load' | 'loadAt'> | null,
 ): Promise<void> {
-  await update($, band, (cur) => (seq <= invalidUpTo ? cur : value === null ? null : { ...value, seq, load: LOAD }))
+  await update($, band, (cur) =>
+    seq <= invalidUpTo ? cur : value === null ? null : { ...value, seq, load: LOAD, loadAt: LOAD_AT },
+  )
   if (seq <= invalidUpTo) {
     await update($, band, (cur) => (cur !== null && cur.load === LOAD && cur.seq === seq ? null : cur))
   }
@@ -491,7 +501,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     // The start's own surface is not the question (the desktop app's is null, as `-p`'s): the roster is. No band
-    // surface: clear every run numbered when the hook began and any line another load left, keeping a run an attach
+    // surface: clear every run numbered when the hook began and any line an older load left, keeping a run an attach
     // started while the roster read was pending. A read that rejects is unknown: the pace starts, and each run asks again.
     const upTo = runSeq
     let start: boolean
