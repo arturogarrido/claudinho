@@ -68,7 +68,7 @@ describe('a signal is evidence for a clock only if it was fetched at or before i
   it('a fetchedAt absent, empty, unparseable or of the wrong type: refused as malformed (no clock can place it)', () => {
     const { fetchedAt: _f, ...absent } = base;
     for (const raw of [absent, { ...base, fetchedAt: '' }, { ...base, fetchedAt: 'nope' }, { ...base, fetchedAt: 12345 }]) {
-      expect(parseCachedMarketSignal(raw, { now: NOW }).kind, JSON.stringify(raw.fetchedAt ?? 'absent')).toBe('malformed');
+      expect(parseCachedMarketSignal(raw, { now: NOW }).kind, JSON.stringify((raw as Record<string, unknown>).fetchedAt ?? 'absent')).toBe('malformed');
     }
   });
 
