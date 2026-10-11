@@ -127,6 +127,7 @@ import type {
   MatchShareCard,
   MarketProvider,
   MarketSignal,
+  MarketSignalOptions,
   ProviderAdapter,
   ShareSnippetOptions,
   TableShareCard,
@@ -236,12 +237,22 @@ interface MarketSignalsResult {
 
 type MarketProviderFactory = (source: string | undefined, competition: string) => MarketProvider;
 
+/**
+ * `now` is the request's clock, REQUIRED: the provider stamps a signal's
+ * staleness by the clock it is handed (`options.now`), so a read without it
+ * would judge a signal priced at the request's clock by the wall clock. It is
+ * handed to the provider on every branch (the injected provider, a free one,
+ * the Polymarket cache miss). The market cache's TTL is its own (not the
+ * request's clock).
+ */
 export async function marketSignalsFor(
   ctx: Ctx,
   matches: Match[],
-  opts: MarketFetchOpts = {},
+  baseOpts: MarketFetchOpts,
+  now: Date,
   providerFactory: MarketProviderFactory = makeMarketProvider,
 ): Promise<MarketSignalsResult> {
+  const opts: MarketSignalOptions = { ...baseOpts, now };
   if (ctx.marketProvider) {
     const b = await getMarketSignals(ctx.marketProvider, matches, opts);
     return { signals: resolvedValues(b), complete: b.complete };
@@ -301,7 +312,7 @@ async function reliableMarketSignals(
   // for finished matches — "markets favor X" after full time reads as a bug.
   const relevant = matches.filter((m) => marketRelevant(m, now));
   if (relevant.length === 0) return { signals: new Map(), complete: true };
-  const raw = await marketSignalsFor(ctx, relevant, DEFAULT_ON_MARKET_OPTS);
+  const raw = await marketSignalsFor(ctx, relevant, DEFAULT_ON_MARKET_OPTS, now);
   const out = new Map<string, MarketSignal>();
   for (const [id, s] of raw.signals) {
     const m = relevant.find((x) => x.id === id);
@@ -709,7 +720,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   const src = attribution.attributed ? dataSource(source, cfg.lang, c) : '';
   if (src) out(src);
   out(disclaimer(t, c));
-  endScoreCommand(ctx);
+  endScoreCommand(ctx, now);
 }
 
 /** `claudinho live` */
@@ -717,7 +728,9 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   const { cfg, t } = ctx;
   precheck(cfg, t);
   const adapter = adapterFor(ctx);
-  const live = await getLiveMatches(adapter, requestClock(adapter, ctx.now));
+  // The request's one clock: the live window and the sign-off read it.
+  const now = requestClock(adapter, ctx.now);
+  const live = await getLiveMatches(adapter, now);
   const { matches, degraded, source } = live;
 
   if (cfg.json) {
@@ -756,7 +769,7 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
-  endScoreCommand(ctx);
+  endScoreCommand(ctx, now);
 }
 
 /** `claudinho next [team]` (team defaults to CLAUDINHO_TEAM, then the saved pin) */
@@ -768,7 +781,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   // knockout window so a confirmed R32+ tie (e.g. MEX vs ECU) surfaces here too.
   // Off the bundled competition core resolves the club and reads the schedule
   // ahead (yesterday to 14 days ahead); a saved pin is not resolved again.
-  // The request's clock comes back with the answer: the one the read took, for the countdown.
+  // The request's clock comes back with the answer: the one the read took, for the countdown and the sign-off.
   const { code, next, now } = await nextAsked(ctx, team, teamUsage('next', cfg));
   const { fixture, degraded, source } = next;
   // Who the answer is about: the club resolved, else the query, else the nation's code.
@@ -822,7 +835,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
     // Post-tournament this is the ONLY branch `next` takes (no team has an
     // upcoming fixture), so the sign-off has to live here too — the early
     // return below would otherwise skip it on the one surface that needs it most.
-    endScoreCommand(ctx);
+    endScoreCommand(ctx, now);
     return;
   }
   for (const q of qualifiers) out(c.dim('  ' + q));
@@ -850,7 +863,7 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
   const src = dataSource(source, cfg.lang, c);
   if (src) out(src);
   out(disclaimer(t, c));
-  endScoreCommand(ctx);
+  endScoreCommand(ctx, now);
 }
 
 /**
@@ -1601,7 +1614,7 @@ export async function cmdMarkets(
     const { match: fixture, degraded } = picked;
     const market =
       fixture && marketRelevant(fixture, now)
-        ? await marketSignalsFor(ctx, [fixture], MARKETS_CMD_OPTS)
+        ? await marketSignalsFor(ctx, [fixture], MARKETS_CMD_OPTS, now)
         : { signals: new Map<string, MarketSignal>(), complete: true };
     const sig = fixture ? market.signals.get(fixture.id) : undefined;
     const shown =
@@ -1689,7 +1702,7 @@ export async function cmdMarkets(
     const { match } = found;
     const market =
       match && marketRelevant(match, now)
-        ? await marketSignalsFor(ctx, [match], MARKETS_CMD_OPTS)
+        ? await marketSignalsFor(ctx, [match], MARKETS_CMD_OPTS, now)
         : { signals: new Map<string, MarketSignal>(), complete: true };
     const sig = match ? market.signals.get(match.id) : undefined;
     const shown = market.complete && match && sig && marketDisplayable(match, sig) ? sig : undefined;
@@ -1739,7 +1752,7 @@ export async function cmdMarkets(
   const day = await getMatchesForDate(adapter, date, resolveTz(cfg.tz));
   const todays = fixturesByDate(date, day.matches, cfg.tz);
   const relevant = todays.filter((m) => marketRelevant(m, now));
-  const { signals, complete } = await marketSignalsFor(ctx, relevant, MARKETS_CMD_OPTS);
+  const { signals, complete } = await marketSignalsFor(ctx, relevant, MARKETS_CMD_OPTS, now);
   const rows = relevant
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
     .filter(
@@ -2668,11 +2681,12 @@ function maybeStarNudge(ctx: Ctx): void {
  * Cup, so with another competition selected its "windows elapsed"
  * answer says nothing about that feed, and appending a World Cup goodbye to a
  * live alternate competition would simply be wrong.
+ *
+ * `now` is the request's clock (the one its command read once), REQUIRED: a
+ * request pinned to a June day is not told the edition is over by the wall clock.
  */
-function endScoreCommand(ctx: Ctx): void {
-  const over =
-    bundleApplies(ctx.cfg.competition) &&
-    isTournamentWindowOver(ctx.now?.getTime() ?? Date.now());
+function endScoreCommand(ctx: Ctx, now: Date): void {
+  const over = bundleApplies(ctx.cfg.competition) && isTournamentWindowOver(now.getTime());
   if (over) printTournamentSignOff(ctx);
   else maybeStarNudge(ctx);
 }
@@ -2683,7 +2697,7 @@ function endScoreCommand(ctx: Ctx): void {
  * the switch (`claudinho follow --list`, then `claudinho follow <alias>`).
  *
  * When it prints, as it is: the BUNDLED competition is selected and every window
- * of its bundled schedule has elapsed (`isTournamentWindowOver` on the clock),
+ * of its bundled schedule has elapsed (`isTournamentWindowOver` on the request's clock),
  * on the TEXT of `today`/`live`/`next` (never `--json`, `match`, `table` or
  * `bracket`), a historical `today <date>` with its results included. It is not
  * the between-editions verdict (`betweenEditions` is never stated on the bundle),

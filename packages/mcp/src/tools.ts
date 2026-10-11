@@ -545,33 +545,40 @@ function memKey(competition: string, id: string): string {
 /**
  * Market signals with an in-process cache + fetch deadline so optional
  * enrichment never slows get_today/get_match. Injected providers bypass it.
+ *
+ * `now` is the tool's request clock, REQUIRED: the provider stamps a signal's
+ * staleness by the clock it is handed (`options.now`), so it is handed on every
+ * branch (the injected provider, a free one, the Polymarket miss). The memory
+ * cache's TTL is its own (the wall clock, not the request's).
  */
 export async function cachedMarketSignals(
   args: CommonOpts,
   matches: readonly Match[],
+  now: Date,
   providerFactory: MarketProviderFactory = makeMarketProvider,
 ): Promise<MarketSignalsResult> {
+  const clock = { now };
   if (args.marketProvider) {
-    const batch = await getMarketSignals(args.marketProvider, matches);
+    const batch = await getMarketSignals(args.marketProvider, matches, clock);
     return { signals: resolvedValues(batch), complete: batch.complete };
   }
   const source = resolveMarketSource();
   const competition = competitionOf(args);
   if (source !== 'polymarket') {
-    const batch = await getMarketSignals(
-      providerFactory(source, competition),
-      matches,
-      DEFAULT_ON_MARKET_OPTS,
-    );
+    const batch = await getMarketSignals(providerFactory(source, competition), matches, {
+      ...DEFAULT_ON_MARKET_OPTS,
+      ...clock,
+    });
     return { signals: resolvedValues(batch), complete: batch.complete };
   }
-  const now = Date.now();
+  // The memory cache's own clock (its TTL), not the request's.
+  const memNow = Date.now();
   const result = new Map<string, MarketSignal>();
   const miss: Match[] = [];
   for (const m of matches) {
     const e = marketMem.get(memKey(competition, m.id));
     const ttl = e?.signal ? MEM_POSITIVE_TTL : MEM_NEGATIVE_TTL;
-    const fresh = e && now - e.at <= ttl;
+    const fresh = e && memNow - e.at <= ttl;
     // A cached signal is keyed by match id, but the FIXTURE behind that id can
     // change — a knockout slot degrading back to a placeholder — so a hit has to
     // be re-checked against the match in hand. The CLI has done this since
@@ -586,18 +593,17 @@ export async function cachedMarketSignals(
   }
   let complete = true;
   if (miss.length > 0) {
-    const batch = await getMarketSignals(
-      providerFactory('polymarket', competition),
-      miss,
-      DEFAULT_ON_MARKET_OPTS,
-    );
+    const batch = await getMarketSignals(providerFactory('polymarket', competition), miss, {
+      ...DEFAULT_ON_MARKET_OPTS,
+      ...clock,
+    });
     const fetched = resolvedValues(batch);
     complete = batch.complete;
     // Cache only ids whose verdict may be remembered (see `isCacheable`): a
     // conclusion drawn from a payload we READ, including a stable ambiguity.
     // A shape we could not read and a deadline that expired are retried.
     for (const id of cacheableKeys(batch)) {
-      marketMem.set(memKey(competition, id), { at: now, signal: fetched.get(id) ?? null });
+      marketMem.set(memKey(competition, id), { at: memNow, signal: fetched.get(id) ?? null });
     }
     for (const [id, s] of fetched) result.set(id, s);
   }
@@ -619,7 +625,7 @@ async function reliableMarketData(
   // finished matches (a resolved "favorite" reads as a bug, not information).
   const relevant = matches.filter((m) => marketRelevant(m, now));
   if (relevant.length === 0) return { data: undefined, complete: true };
-  const result = await cachedMarketSignals(args, relevant);
+  const result = await cachedMarketSignals(args, relevant, now);
   const out: Record<string, ReturnType<typeof marketData>> = {};
   for (const m of relevant) {
     const s = result.signals.get(m.id);
@@ -860,7 +866,7 @@ async function matchAnswer(
   let marketSignal: MarketSignal | undefined;
   let marketComplete = true;
   if (marketsEnabled() && marketRelevant(match, now)) {
-    const market = await cachedMarketSignals(args, [match]);
+    const market = await cachedMarketSignals(args, [match], now);
     marketComplete = market.complete;
     const s = market.signals.get(match.id);
     if (s && isReliableMarketSignal(s, { now }) && marketSignalRendersFor(match, s)) marketSignal = s;
@@ -1306,7 +1312,7 @@ async function marketAnswer(
     const relevant = match ? marketRelevant(match, now) : false;
     const batch =
       match && relevant
-        ? await getMarketSignals(provider, [match], MARKETS_TOOL_OPTS)
+        ? await getMarketSignals(provider, [match], { ...MARKETS_TOOL_OPTS, now })
         : { results: new Map(), complete: true };
     const sig = match ? resolvedValues(batch).get(match.id) : undefined;
     const shown = batch.complete && match && sig && marketDisplayable(match, sig) ? sig : undefined;
@@ -1346,7 +1352,7 @@ async function marketAnswer(
     const relevant = fixture ? marketRelevant(fixture, now) : false;
     const batch =
       fixture && relevant
-        ? await getMarketSignals(provider, [fixture], MARKETS_TOOL_OPTS)
+        ? await getMarketSignals(provider, [fixture], { ...MARKETS_TOOL_OPTS, now })
         : { results: new Map(), complete: true };
     const sig = fixture ? resolvedValues(batch).get(fixture.id) : undefined;
     const shown =
@@ -1387,7 +1393,7 @@ async function marketAnswer(
   // (off their scope the scope verdict is the whole answer, as before).
   const fixtureRead = marketsCoverCompetition(competitionOf(args)) ? day : {};
   const todays = fixturesByDate(date, day.matches, args.tz).filter((m) => marketRelevant(m, now));
-  const batch = await getMarketSignals(provider, todays, MARKETS_TOOL_OPTS);
+  const batch = await getMarketSignals(provider, todays, { ...MARKETS_TOOL_OPTS, now });
   const signals = resolvedValues(batch);
   const all = todays
     .map((m) => ({ match: m, signal: signals.get(m.id) }))
@@ -1452,7 +1458,7 @@ async function reliableSignalMap(
   if (!marketsEnabled()) return { signals: new Map(), complete: true };
   const relevant = matches.filter((m) => marketRelevant(m, now));
   if (relevant.length === 0) return { signals: new Map(), complete: true };
-  const result = await cachedMarketSignals(args, relevant);
+  const result = await cachedMarketSignals(args, relevant, now);
   const out = new Map<string, MarketSignal>();
   for (const m of relevant) {
     const s = result.signals.get(m.id);
