@@ -74,6 +74,7 @@ import {
   selectionExtras,
   selectionRefusal,
   selectionVerdict,
+  sealMarketSignal,
   configPath,
   nextFixtureForPin,
   type Pin,
@@ -548,8 +549,9 @@ function memKey(competition: string, id: string): string {
  *
  * `now` is the tool's request clock, REQUIRED: the provider stamps a signal's
  * staleness by the clock it is handed (`options.now`), so it is handed on every
- * branch (the injected provider, a free one, the Polymarket miss). The memory
- * cache's TTL is its own (the wall clock, not the request's).
+ * branch (the injected provider, a free one, the Polymarket miss), and a memory
+ * hit is re-sealed against it. The memory cache's TTL is its own (the wall
+ * clock, not the request's).
  */
 export async function cachedMarketSignals(
   args: CommonOpts,
@@ -585,8 +587,18 @@ export async function cachedMarketSignals(
     // 0.8.12 (`marketSignalRendersFor`); MCP accepted on the id alone, so a
     // changed pairing both hid the market line and suppressed the refetch that
     // would have produced a real one, for the full ten-minute TTL.
-    if (fresh && (!e.signal || marketSignalRendersFor(m, e.signal))) {
-      if (e.signal) result.set(m.id, e.signal);
+    if (!fresh) {
+      miss.push(m);
+      continue;
+    }
+    if (!e.signal) continue; // a remembered negative within its TTL
+    // A hit is handed back RE-SEALED against this request's clock (core's one
+    // seal), never with the flag the writing request stamped: its staleness is
+    // derived from its `asOf` as THIS request sees it. A hit whose re-seal is
+    // not valid is a miss (refetched), never served.
+    const resealed = sealMarketSignal(e.signal, { now });
+    if (resealed.kind === 'valid' && marketSignalRendersFor(m, resealed.value)) {
+      result.set(m.id, resealed.value);
     } else {
       miss.push(m);
     }

@@ -242,7 +242,8 @@ type MarketProviderFactory = (source: string | undefined, competition: string) =
  * staleness by the clock it is handed (`options.now`), so a read without it
  * would judge a signal priced at the request's clock by the wall clock. It is
  * handed to the provider on every branch (the injected provider, a free one,
- * the Polymarket cache miss). The market cache's TTL is its own (not the
+ * the Polymarket cache miss), and a cache hit is sealed against it, so its
+ * staleness is this request's. The market cache's TTL is its own (not the
  * request's clock).
  */
 export async function marketSignalsFor(
@@ -264,7 +265,14 @@ export async function marketSignalsFor(
     return { signals: resolvedValues(b), complete: b.complete };
   }
   const competition = ctx.cfg.competition;
-  const { signals: cached, checked: cachedIds } = readMarketCache('polymarket', competition);
+  // The cache's TTL on its own clock (the wall clock); a hit sealed against the
+  // request's, so its staleness is this request's judgement, not the writer's.
+  const { signals: cached, checked: cachedIds } = readMarketCache(
+    'polymarket',
+    competition,
+    Date.now(),
+    now,
+  );
   const result = new Map<string, MarketSignal>();
   const miss: Match[] = [];
   for (const m of matches) {
