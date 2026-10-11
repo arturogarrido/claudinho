@@ -637,3 +637,44 @@ describe('an invalidated run never writes its line, even for an instant', () => 
     expect(written).not.toContain(OLD)
   })
 })
+
+describe('a line another module load wrote (a hot reload keeps the host state, not the module)', () => {
+  // The kit loads the module once, so a hook beneath ours stamps the first line as a previous load's: another load
+  // tag and a run number higher than any this load has taken, as a value left before a reload looks.
+  test("the last window leaving clears a previous load's line: a window attaching again shows no old line while its run is in flight", async ($, on) => {
+    let stamped = false
+    on('state.set', (_$, e, next) => {
+      if (!stamped && e.key === 'band' && e.value !== null) {
+        stamped = true
+        const previous = { ...e.value, seq: 50, load: 'a-previous-load' } as unknown as typeof e.value
+        return next({ ...e, value: previous })
+      }
+      return next(e)
+    })
+    const { attach, detach, mount } = await world($, on, [view(LINE), held(view("⚽ ARS 3–1 CHE 80'"))], { start: DESKTOP_START, surfaces: ['desktop'] })
+    expect(stamped).toBe(true)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: LINE })).toHaveLength(1)
+    await detach('desktop')
+    await attach('desktop', 'app')
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+
+  test("a roster refused for good clears a previous load's line at the next fire", async ($, on) => {
+    let stamped = false
+    on('state.set', (_$, e, next) => {
+      if (!stamped && e.key === 'band' && e.value !== null) {
+        stamped = true
+        const previous = { ...e.value, seq: 50, load: 'a-previous-load' } as unknown as typeof e.value
+        return next({ ...e, value: previous })
+      }
+      return next(e)
+    })
+    const { clock, denyRoster, mount } = await world($, on, [view(LINE)])
+    expect(stamped).toBe(true)
+    expect(await (await mount()).findAll({ type: 'Text', text: LINE })).toHaveLength(1)
+    denyRoster(true)
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+})

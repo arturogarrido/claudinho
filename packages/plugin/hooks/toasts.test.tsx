@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { view, world } from './world'
+import { held, view, world } from './world'
 
 /**
  * The toasts: a score change of a match whose id was in the last CURRENT view's list, said as `⚽` and the hook's
@@ -198,5 +198,17 @@ describe('the baseline before the toast', () => {
     await clock.advance(15_000)
     expect(writes).toBeGreaterThanOrEqual(3)
     expect(texts).toEqual(["⚽ Arsenal 2–0 Chelsea (60')"])
+  })
+})
+
+describe('a run the last window leaving invalidated', () => {
+  test('its current view still toasts the change it observed (the band stays clear)', async ($, on) => {
+    const texts = toasted(on)
+    const { clock, detach, release, mount } = await world($, on, [live([match('1', [1, 0])]), held(live([match('1', [2, 0])]))], { start: { surface: null, isInteractive: false }, surfaces: ['desktop'] })
+    await clock.advance(15_000)
+    await detach('desktop')
+    await release()
+    expect(texts).toEqual(["⚽ Arsenal 2–0 Chelsea (60')"])
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
   })
 })
