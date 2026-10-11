@@ -4,7 +4,7 @@
  * signal's staleness with the clock it is handed (`options.now`); a branch that hands none lets it stamp by the
  * wall clock.
  */
-import { allFixtures, buildMarketSignal, type MarketProvider, valid } from '@claudinho/core';
+import { allFixtures, buildMarketSignal, type MarketProvider, type MarketSignal, valid } from '@claudinho/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cachedMarketSignals } from '../src/tools';
 
@@ -55,7 +55,7 @@ describe("a cached signal is judged by the reading request's clock", () => {
   // A provider as the real one behaves: it hands `buildMarketSignal` no `fetchedAt` (the builder stamps the clock
   // it is handed), and it refuses a leg priced after its clock (the per-leg future guard): `newestLeg` is the latest
   // leg's price time, and a read whose clock is more than a minute before it gets no answer for the match.
-  function pricing(newestLeg: Date = asOf) {
+  function pricing(newestLeg: Date = asOf, dropFetchedAt = false) {
     let calls = 0;
     const provider: MarketProvider = {
       name: 'pricing',
@@ -69,7 +69,7 @@ describe("a cached signal is judged by the reading request's clock", () => {
             ms.map((m) => [
               m.id,
               valid(
-                buildMarketSignal({
+                (dropFetchedAt ? ({ fetchedAt: _drop, ...rest }: MarketSignal) => rest as MarketSignal : (x: MarketSignal) => x)(buildMarketSignal({
                   match: m,
                   source: 'polymarket',
                   asOf: asOf.toISOString(),
@@ -80,7 +80,7 @@ describe("a cached signal is judged by the reading request's clock", () => {
                   ],
                   liquidity: 250_000,
                   now: options?.now,
-                }),
+                })),
               ),
             ] as const),
           ),
@@ -125,5 +125,26 @@ describe("a cached signal is judged by the reading request's clock", () => {
     expect(calls()).toBe(2);
     expect(second.signals.has(m.id)).toBe(false);
     expect(second.complete).toBe(false);
+  });
+
+  it('a leg priced 75 s after the reading clock, fetched 30 s after it: no hit, the uncached answer (incomplete)', async () => {
+    process.env.CLAUDINHO_MARKETS_SOURCE = 'polymarket';
+    const { provider, calls } = pricing(new Date(T.getTime() + 75_000));
+    const m = fixture('991206');
+    const first = await cachedMarketSignals({}, [m], new Date(T.getTime() + 30_000), () => provider);
+    expect(first.signals.has(m.id)).toBe(true);
+    const second = await cachedMarketSignals({}, [m], T, () => provider);
+    expect(calls()).toBe(2);
+    expect(second.signals.has(m.id)).toBe(false);
+    expect(second.complete).toBe(false);
+  });
+
+  it('a cached signal with no fetchedAt: no hit (refetched), never served as fresh', async () => {
+    process.env.CLAUDINHO_MARKETS_SOURCE = 'polymarket';
+    const { provider, calls } = pricing(asOf, true);
+    const m = fixture('991207');
+    await cachedMarketSignals({}, [m], T, () => provider);
+    await cachedMarketSignals({}, [m], T, () => provider);
+    expect(calls()).toBe(2);
   });
 });

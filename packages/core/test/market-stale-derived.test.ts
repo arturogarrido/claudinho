@@ -51,20 +51,31 @@ describe("a signal's staleness is derived from its asOf against the clock the se
  * it as unresolved (never a definitive negative), so a cache hit read under an earlier clock is a miss and is fetched
  * again. A signal's `fetchedAt` is the clock its builder was handed.
  */
-describe('a signal fetched after the judging clock is refused, not served', () => {
-  it('fetched more than a minute after the clock: refused as unresolved', () => {
-    const r = parseCachedMarketSignal({ ...base, fetchedAt: new Date(NOW.getTime() + 61_000).toISOString() }, { now: NOW });
+describe('a signal is evidence for a clock only if it was fetched at or before it', () => {
+  // Every leg was priced at most a minute after the signal's fetch clock F (the provider's per-leg guard), so a read
+  // at J serves it only when F <= J: its legs are then at most a minute after J, the uncached read's own bound. Any
+  // allowance on F would compound with the leg's.
+  it('fetched one millisecond after the clock: refused as unresolved', () => {
+    const r = parseCachedMarketSignal({ ...base, fetchedAt: new Date(NOW.getTime() + 1).toISOString() }, { now: NOW });
     expect(r.kind).toBe('unresolved');
   });
 
-  it('fetched within a minute after the clock: valid', () => {
-    const r = parseCachedMarketSignal({ ...base, fetchedAt: new Date(NOW.getTime() + 59_000).toISOString() }, { now: NOW });
+  it('fetched at the clock: valid', () => {
+    const r = parseCachedMarketSignal({ ...base, fetchedAt: NOW.toISOString() }, { now: NOW });
     expect(r.kind).toBe('valid');
   });
 
-  it("the builder stamps fetchedAt with the clock it is handed", () => {
+  it('a fetchedAt absent, empty, unparseable or of the wrong type: refused as malformed (no clock can place it)', () => {
+    const { fetchedAt: _f, ...absent } = base;
+    for (const raw of [absent, { ...base, fetchedAt: '' }, { ...base, fetchedAt: 'nope' }, { ...base, fetchedAt: 12345 }]) {
+      expect(parseCachedMarketSignal(raw, { now: NOW }).kind, JSON.stringify(raw.fetchedAt ?? 'absent')).toBe('malformed');
+    }
+  });
+
+  it('the builder stamps fetchedAt with the clock it is handed', () => {
     const match = { id: '760415', home: { code: 'MEX', name: 'Mexico' }, away: { code: 'ECU', name: 'Ecuador' } } as unknown as Match;
     const s = buildMarketSignal({ match, source: 'polymarket', asOf: base.asOf, outcomes: base.outcomes as never, liquidity: 500_000, now: NOW });
     expect(s.fetchedAt).toBe(NOW.toISOString());
+    expect(s.outcomes).toHaveLength(3);
   });
 });
