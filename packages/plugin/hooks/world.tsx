@@ -55,6 +55,9 @@ export type WorldOptions = {
   beneath?: string
   /** The roster read rejects while `session.start` runs (a hook's `{ deny }`), then answers. */
   rosterDeniedAtStart?: boolean
+  /** The start's first roster read is held (answering the roster as it stood when asked) until `releaseRosterRead`;
+   *  the world then does not wait for the start, which the test awaits as `startDone`. */
+  holdStartRoster?: boolean
   /** The first `$.env.get` of each name listed is refused (`{ deny }`); later reads answer. */
   refuseEnvOnce?: string[]
   /** The engine's own `session.detach` answers only once the test releases it (a slow hook beneath ours). */
@@ -169,7 +172,9 @@ export const world = async (
     await clock.advance(1)
   }
   rosterRejects = options.rosterDeniedAtStart === true
-  await $.session.start({ cwd: START.cwd, ...start })
+  if (options.holdStartRoster) holdNext = true
+  const startDone = $.session.start({ cwd: START.cwd, ...start })
+  if (!options.holdStartRoster) await startDone
   rosterRejects = false
   await clock.advance(1)
   /** A client attaches (the roster gains it), then the clock lets the run it starts begin. */
@@ -231,7 +236,7 @@ export const world = async (
     $.ui.mount({ plugin: 'claudinho', surface, component: 'AbovePrompt', props: { ...PROPS, ...props }, viewport: { columns: 100, rows: 30 } })
   /** How many times the plugin asked for the roster: what a timer ticking for nobody would show. */
   const rosterReads = () => surfaceReads
-  return { clock, argvs, stdins, envs, envReads, lists, probes, mount, attach, detach, detachStart, releaseDetach, release, releaseListing, denyRoster, denyRosterFrom, holdNextRosterRead, releaseRosterRead, rosterReads }
+  return { clock, argvs, stdins, envs, envReads, lists, probes, mount, attach, detach, detachStart, releaseDetach, release, releaseListing, denyRoster, denyRosterFrom, holdNextRosterRead, releaseRosterRead, rosterReads, startDone }
 }
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */

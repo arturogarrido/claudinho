@@ -697,3 +697,58 @@ describe('a module load that starts with no band surface', () => {
     expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
   })
 })
+
+describe("the band never draws a line another module load wrote", () => {
+  // The host keeps the band across a reload; the kit loads the module once, so the band is answered as a previous load
+  // left it until this load's first write lands (as in the start case above).
+  const PREVIOUS = { text: LINE, seq: 3, load: 'a-previous-load' }
+
+  test("a terminal at start, the first run in flight: the previous load's line is not drawn", async ($, on) => {
+    let written = false
+    on('state.get', (_$, e, next) => {
+      if (!written && e.key === 'band') return { value: { value: PREVIOUS, version: 0 } }
+      return next(e)
+    })
+    on('state.set', (_$, e, next) => {
+      if (e.key === 'band') written = true
+      return next(e)
+    })
+    const { argvs, mount } = await world($, on, [held(view("⚽ ARS 3–1 CHE 80'"))])
+    expect(argvs).toHaveLength(1)
+    expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+
+  test("the start's clear refused: a window attaching later does not draw the previous load's line while its run is in flight", async ($, on) => {
+    let refused = false
+    on('state.get', (_$, e, next) => {
+      if (e.key === 'band') return { value: { value: PREVIOUS, version: 0 } }
+      return next(e)
+    })
+    on('state.set', (_$, e, next) => {
+      if (!refused && e.key === 'band' && e.value === null) {
+        refused = true
+        return { deny: 'state.set denied' }
+      }
+      return next(e)
+    })
+    const { attach, mount } = await world($, on, [held(view("⚽ ARS 3–1 CHE 80'"))], { start: DESKTOP_START, surfaces: [] })
+    expect(refused).toBe(true)
+    await attach('desktop', 'app')
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+})
+
+describe("a start whose roster reply comes late", () => {
+  test("does not erase the line a window attaching meanwhile has drawn", async ($, on) => {
+    const FRESH = "⚽ ARS 3–1 CHE 80'"
+    const { attach, clock, mount, releaseRosterRead, startDone } = await world($, on, [view(FRESH)], { start: DESKTOP_START, surfaces: [], holdStartRoster: true })
+    await attach('desktop', 'app')
+    const before = (await (await mount({}, 'desktop')).findAll({ type: 'Text', text: FRESH })).length
+    await releaseRosterRead()
+    await startDone
+    await clock.advance(1)
+    const after = (await (await mount({}, 'desktop')).findAll({ type: 'Text', text: FRESH })).length
+    // [drawn before the start's late reply, drawn after it]
+    expect([before, after]).toEqual([1, 1])
+  })
+})
