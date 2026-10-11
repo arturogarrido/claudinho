@@ -516,3 +516,18 @@ describe('a clear invalidates the runs it covers: they neither write nor tighten
     expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: LINE2 })).toHaveLength(1)
   })
 })
+
+describe('a run the detach invalidated answers after its clear completed', () => {
+  test('its answer is not written: no line while the reconnect\'s run is in flight', async ($, on) => {
+    const OLD = "⚽ ARS 2–2 CHE 70'"
+    const { argvs, attach, clock, detach, mount, release } = await world($, on, [view(LINE), held(view(OLD)), held(view('⚽ ARS 3–2 CHE 80\''))], { start: DESKTOP_START, surfaces: ['desktop'] })
+    await clock.advance(15_000)
+    expect(argvs).toHaveLength(2)
+    await detach('desktop')
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
+    await attach('desktop', 'app')
+    await release()
+    expect(argvs).toHaveLength(3)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+})
