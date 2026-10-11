@@ -393,3 +393,48 @@ describe('a forced run over an idle pace', () => {
     expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: COMPLETE })).toHaveLength(1)
   })
 })
+
+describe("a detach's clear applied in the instant after a reconnect's answer landed", () => {
+  test("the clear retried after the answer's write landed, before its run went on, keeps the answer", async ($, on) => {
+    let holdClear = false
+    let holdAnswer = false
+    let releaseClear: () => void = () => {}
+    let releaseAnswer: () => void = () => {}
+    let answerLanded = false
+    on('state.set', async (_$, e, next) => {
+      if (holdClear && e.key === 'band' && e.value === null) {
+        holdClear = false
+        await new Promise<void>((resolve) => {
+          releaseClear = resolve
+        })
+        return next(e)
+      }
+      if (holdAnswer && e.key === 'band' && e.value !== null) {
+        holdAnswer = false
+        // The answer lands here; the run that wrote it waits until the test lets it go on.
+        const r = await next(e)
+        answerLanded = true
+        await new Promise<void>((resolve) => {
+          releaseAnswer = resolve
+        })
+        return r
+      }
+      return next(e)
+    })
+    const { attach, clock, detachStart, mount } = await world($, on, [view(LINE), view(COMPLETE, { idle: true })], { start: DESKTOP_START, surfaces: ['desktop'] })
+    holdClear = true
+    const leaving = detachStart('desktop')
+    await clock.advance(1)
+    expect(holdClear).toBe(false)
+    holdAnswer = true
+    await attach('desktop', 'app')
+    expect(answerLanded).toBe(true)
+    // The clear goes on now, while the answer's run has not yet gone past its write.
+    releaseClear()
+    await leaving
+    await clock.advance(1)
+    releaseAnswer()
+    await clock.advance(1)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: COMPLETE })).toHaveLength(1)
+  })
+})
