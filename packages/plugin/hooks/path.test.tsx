@@ -109,3 +109,54 @@ describe('the PATH handed to the run', () => {
     expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
   })
 })
+
+describe('the nvm lookup is bounded', () => {
+  test('a listing that never answers: the first run goes on after a second, with no nvm folder', async ($, on) => {
+    const { argvs, clock, envs } = await world($, on, [view(LINE)], { nvm: 'hold' })
+    await clock.advance(900)
+    expect(argvs).toHaveLength(0)
+    await clock.advance(200)
+    expect(argvs).toHaveLength(1)
+    expect(envs[0]).toEqual({ PATH: [BARE_PATH, ...AFTER_NVM].join(':') })
+  })
+
+  test('a probe for the CLI that never answers: the first run goes on after a second, with no nvm folder', async ($, on) => {
+    const { argvs, clock, envs } = await world($, on, [view(LINE)], { nvm: [dir('v22.17.0')], bins: 'hold' })
+    await clock.advance(900)
+    expect(argvs).toHaveLength(0)
+    await clock.advance(200)
+    expect(argvs).toHaveLength(1)
+    expect(envs[0]).toEqual({ PATH: [BARE_PATH, ...AFTER_NVM].join(':') })
+  })
+
+  test("300 version folders: the listing's first 256 are read, and the 8 newest of them kept", async ($, on) => {
+    const many = Array.from({ length: 300 }, (_, i) => dir(`v${i + 1}.0.0`))
+    const { envs } = await world($, on, [view(LINE)], { nvm: many })
+    const kept = Array.from({ length: 8 }, (_, i) => `${NVM}/v${256 - i}.0.0/bin`)
+    expect(envs[0]).toEqual({ PATH: [BARE_PATH, ...kept, ...AFTER_NVM].join(':') })
+  })
+})
+
+describe("nvm's folders that hold the CLI come first", () => {
+  test('the CLI in an older version only: that folder first, so the node beside the CLI is the one it was installed with', async ($, on) => {
+    const { envs } = await world($, on, [view(LINE)], { nvm: [dir('v24.11.1'), dir('v22.17.0')], bins: [`${NVM}/v22.17.0/bin/claudinho`] })
+    expect(envs[0]).toEqual({ PATH: [BARE_PATH, `${NVM}/v22.17.0/bin`, `${NVM}/v24.11.1/bin`, ...AFTER_NVM].join(':') })
+  })
+
+  test('the CLI in no nvm folder (pnpm, bun, npm-global): every nvm version stays, for its node', async ($, on) => {
+    const { envs } = await world($, on, [view(LINE)], { nvm: [dir('v22.17.0')], bins: [] })
+    expect((envs[0]?.PATH ?? '').split(':')).toContain(`${NVM}/v22.17.0/bin`)
+  })
+})
+
+describe('a HOME that is no absolute folder adds nothing under it', () => {
+  test('a HOME holding the PATH separator', async ($, on) => {
+    const { envs } = await world($, on, [view(LINE)], { env: { PATH: BARE_PATH, HOME: '/Users/a:relative-home' } })
+    expect(envs[0]).toEqual({ PATH: [BARE_PATH, '/opt/homebrew/bin', '/usr/local/bin'].join(':') })
+  })
+
+  test('a relative HOME', async ($, on) => {
+    const { envs } = await world($, on, [view(LINE)], { env: { PATH: BARE_PATH, HOME: 'relative/home' } })
+    expect(envs[0]).toEqual({ PATH: [BARE_PATH, '/opt/homebrew/bin', '/usr/local/bin'].join(':') })
+  })
+})
