@@ -30,10 +30,11 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoTally
  * at every run and the PATH is never kept. A band drawn beneath ours in the hook chain (a plugin registered after ours,
  * or the engine's own) stays, under our line: we never drop it.
  *
- * One host-state write per change: the pace is the module's, set synchronously, loosened when a run passes the gate
+ * The pace is the module's, set synchronously, loosened when a run passes the gate
  * and tightened only after its band write landed. Runs are numbered as they pass the gate, and a clear invalidates the
- * runs it covers: a line or a tightened pace is written only by a run no clear has invalidated, and a clear erases only
- * a line written by a run it covers. A current view writes its baseline before it raises the toasts computed against the previous one, so a
+ * runs it covers: a line or a tightened pace is written only by a run no clear has invalidated; a clear erases only a
+ * line that landed from a run it covers; a run invalidated while its write was pending clears its own line once that
+ * write lands. A current view writes its baseline before it raises the toasts computed against the previous one, so a
  * refused baseline write tells the change once, late, never twice. A refused context write leaves the previous
  * context, which ages out within its stated 30 seconds.
  */
@@ -75,8 +76,6 @@ let pace = { ranAt: 0, idle: false }
 let runSeq = 0
 /** Runs numbered up to this one are invalidated by a clear: they write no line and tighten no pace. */
 let invalidUpTo = 0
-/** The number of the run whose band write last applied (0: none). */
-let lastWriter = 0
 /**
  * The pace (the forced first run, then every 15 seconds) is started once per module load, by whichever comes first of
  * a start or an attach of a band surface. A reload makes a fresh module and drops the previous one's timers.
@@ -99,29 +98,33 @@ const drawsBand = (surface: unknown): boolean => surface === 'terminal' || surfa
 const drawable = async ($: EngineInterface): Promise<boolean> => (await $.session.surfaces()).some(drawsBand)
 
 /**
- * A clear covering every run numbered up to `upTo`: those runs are invalidated (they write no line and tighten no pace
- * after it), the pace goes back to its initial value (synchronously, no clock read), so the next run the roster allows
+ * A clear covering every run numbered up to `upTo`: those runs are invalidated, the pace goes back to its initial
+ * value (synchronously, no clock read), so the next run the roster allows
  * is never held by an idle gap, and the band is erased only when the line standing was written by a run it covers (or
  * there is none): a line a newer run wrote is kept. The check is made when the write is applied (`update` applies its
  * function again on a version miss), so a newer run's line that landed first, or during the retry, is kept. By value
- * would not do: an idle line's text repeats exactly.
+ * would not do: an idle line's text repeats exactly. A line from an older plugin with no numbered writer counts as 0.
  */
 async function clear($: EngineInterface, upTo: number): Promise<void> {
   invalidUpTo = Math.max(invalidUpTo, upTo)
   pace = { ranAt: 0, idle: false }
-  await update($, band, (cur) => (lastWriter <= upTo ? null : cur))
+  await update($, band, (cur) => (cur === null || (typeof cur.seq === 'number' ? cur.seq : 0) <= upTo ? null : cur))
 }
 
 /**
  * The band write of run `seq`: nothing when a clear has invalidated it (the function hands back what stands), else its
- * value, the run recorded as the last writer in the same application.
+ * value with its run number. A run invalidated while its write was pending clears only its own line after it lands.
+ * A refusal of that second write is repaired by the next fire's clear.
  */
-function bandWrite($: EngineInterface, seq: number, value: ClaudinhoBand): Promise<ClaudinhoBand> {
-  return update($, band, (cur) => {
-    if (seq <= invalidUpTo) return cur
-    lastWriter = Math.max(lastWriter, seq)
-    return value
-  })
+async function bandWrite(
+  $: EngineInterface,
+  seq: number,
+  value: Omit<NonNullable<ClaudinhoBand>, 'seq'> | null,
+): Promise<void> {
+  await update($, band, (cur) => (seq <= invalidUpTo ? cur : value === null ? null : { ...value, seq }))
+  if (seq <= invalidUpTo) {
+    await update($, band, (cur) => (cur !== null && cur.seq === seq ? null : cur))
+  }
 }
 
 /** Whether a run may go on: a band surface is attached; a roster read that rejects is no. */

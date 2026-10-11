@@ -8,9 +8,10 @@
 
 /**
  * The band's line as the CLI fitted it, or null when there is nothing to show, the last run failed, or a run found no
- * surface that draws the band (none attached, or the roster could not be read).
+ * surface that draws the band (none attached, or the roster could not be read). `seq` is the number of the run whose
+ * write landed it.
  */
-export type ClaudinhoBand = { text: string } | null
+export type ClaudinhoBand = { text: string; seq: number } | null
 
 /** One live match as the toasts remember it: its id and its two tallies (the words are the CLI's record's own `line`). */
 export type ClaudinhoTally = {
