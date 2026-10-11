@@ -23,8 +23,10 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoPace,
  * the start is unknown, so the pace starts and each run asks again: a read denied for good costs one read per 15
  * seconds and no process. Each run is handed a PATH: the host's own, then the folders npm, Homebrew, nvm, Volta, pnpm
  * and Bun install global commands into, so a session started with a bare PATH still finds the CLI and its `node` (on
- * Windows nothing is handed); nvm's part is looked up once, within one second. A band drawn beneath ours in the hook
- * chain (a plugin registered after ours, or the engine's own) stays, under our line: we never drop it.
+ * Windows nothing is handed). nvm's part is looked up once per load; while that lookup has not answered, each run waits
+ * at most a second for it and uses the PATH without nvm's folders, and the first run that finds it answered keeps the
+ * PATH with them. A band drawn beneath ours in the hook chain (a plugin registered after ours, or the engine's own)
+ * stays, under our line: we never drop it.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -57,14 +59,30 @@ let forcedPending = false
  * a start or an attach of a band surface. A reload makes a fresh module and drops the previous one's timers.
  */
 let paced = false
-/** The `env` every run is handed, computed once per module load on the first run (undefined: none, on Windows). */
-let runEnvOnce: Promise<{ PATH: string } | undefined> | null = null
+/**
+ * The `env` every run is handed, kept for the rest of the module load once it is whole (nvm's lookup answered, or not
+ * needed); `env` undefined: none, on Windows.
+ */
+let runEnvKept: { env: { PATH: string } | undefined } | null = null
+/** nvm's lookup, started once per module load by the first run that needs it. */
+let nvmOnce: Promise<string[]> | null = null
+/** nvm's lookup's answer once it has settled. */
+let nvmAnswer: string[] | null = null
 
 /** The two surfaces that raise `AbovePrompt`. */
 const drawsBand = (surface: unknown): boolean => surface === 'terminal' || surface === 'desktop'
 
 /** Whether a surface that draws the band is attached to the session now (a read that rejects is the caller's to read). */
 const drawable = async ($: EngineInterface): Promise<boolean> => (await $.session.surfaces()).some(drawsBand)
+
+/**
+ * The band cleared and the pace back to its initial value (no clock read), so the next run the roster allows is never
+ * held by an idle gap.
+ */
+async function clear($: EngineInterface): Promise<void> {
+  await update($, band, () => null)
+  await update($, pace, () => ({ ranAt: 0, idle: false }))
+}
 
 /** Whether a run may go on: a band surface is attached; a roster read that rejects is no. */
 async function mayRun($: EngineInterface): Promise<boolean> {
@@ -86,8 +104,8 @@ async function orUnset(get: () => Promise<string | undefined>): Promise<string |
 }
 
 const NVM_VERSION = /^v(\d+)\.(\d+)\.(\d+)$/
-/** The one deadline over nvm's whole lookup (the listing, the sort and the probes). */
-const NVM_DEADLINE_MS = 1_000
+/** How long a run waits for nvm's lookup (the listing, the sort and the probes) before it goes on without it. */
+const NVM_WAIT_MS = 1_000
 /** The listing's entries read, before any per-entry work. */
 const NVM_ENTRIES_MAX = 256
 /** The version folders kept, the newest by number. */
@@ -95,10 +113,10 @@ const NVM_VERSIONS_MAX = 8
 
 /**
  * nvm's version folders' `bin`, of the first 256 entries the listing gives, at most the 8 newest by number: those whose
- * `bin/claudinho` exists first, then the rest, each newest first; none when the folder cannot be listed, and none once
- * `expired()` (nothing is probed after the deadline).
+ * `bin/claudinho` exists first, then the rest, each newest first; none when the folder cannot be listed (an error or a
+ * refusal is an answer). Never rejects.
  */
-async function nvmLookup($: EngineInterface, home: string, expired: () => boolean): Promise<string[]> {
+async function nvmLookup($: EngineInterface, home: string): Promise<string[]> {
   const root = `${home}/.nvm/versions/node`
   let entries: Awaited<ReturnType<EngineInterface['fs']['list']>>
   try {
@@ -106,7 +124,6 @@ async function nvmLookup($: EngineInterface, home: string, expired: () => boolea
   } catch {
     return []
   }
-  if (expired()) return []
   const versions: Array<{ name: string; parts: [number, number, number] }> = []
   for (const entry of entries.slice(0, NVM_ENTRIES_MAX)) {
     const m = entry.kind === 'dir' ? NVM_VERSION.exec(entry.name) : null
@@ -127,40 +144,44 @@ async function nvmLookup($: EngineInterface, home: string, expired: () => boolea
   return [...bins.filter((_, i) => holds[i]), ...bins.filter((_, i) => !holds[i])]
 }
 
-/** nvm's part of the PATH, bounded: past one second (or a deadline that cannot be kept), none for this module load. */
-async function nvmBins($: EngineInterface, home: string): Promise<string[]> {
-  let expired = false
+/**
+ * nvm's part of the PATH: the lookup's answer once it has settled, else null after this run has waited a second for it
+ * (or at once when the wait cannot be kept). The lookup is started once per module load and never again.
+ */
+async function nvmBins($: EngineInterface, home: string): Promise<string[] | null> {
+  if (nvmAnswer) return nvmAnswer
+  nvmOnce ??= nvmLookup($, home).then((bins) => {
+    nvmAnswer = bins
+    return bins
+  })
   const stop = new AbortController()
-  const deadline = $.clock.sleep(NVM_DEADLINE_MS, { signal: stop.signal }).then(
-    () => {
-      expired = true
-      return [] as string[]
-    },
-    () => {
-      expired = true
-      return [] as string[]
-    },
+  const waited = $.clock.sleep(NVM_WAIT_MS, { signal: stop.signal }).then(
+    () => null,
+    () => null,
   )
-  const lookup = nvmLookup($, home, () => expired)
-  const bins = await Promise.race([lookup, deadline])
-  if (!expired) stop.abort()
+  const bins = await Promise.race([nvmOnce, waited])
+  if (bins) stop.abort()
   return bins
 }
 
 /**
  * The `env` a run is handed: none on Windows; else `PATH` = the host's PATH, then (under a HOME) nvm's version folders
  * and the user-level global-bin folders, then the system ones; each folder once, its first place kept, so the host's
- * order wins. Never rejects.
+ * order wins. `whole` is false while nvm's lookup has not answered (the PATH then has none of its folders). Never
+ * rejects.
  */
-async function computeRunEnv($: EngineInterface): Promise<{ PATH: string } | undefined> {
-  if ((await orUnset(() => $.env.get('OS'))) === 'Windows_NT') return undefined
+async function computeRunEnv($: EngineInterface): Promise<{ env: { PATH: string } | undefined; whole: boolean }> {
+  if ((await orUnset(() => $.env.get('OS'))) === 'Windows_NT') return { env: undefined, whole: true }
+  let whole = true
   const folders: string[] = []
   const host = await orUnset(() => $.env.get('PATH'))
   if (host) folders.push(...host.split(':').filter((s) => s !== ''))
   // A folder under HOME only when HOME is an absolute path that holds no PATH separator.
   const home = await orUnset(() => $.env.get('HOME'))
   if (home?.startsWith('/') && !home.includes(':')) {
-    folders.push(...(await nvmBins($, home)))
+    const nvm = await nvmBins($, home)
+    if (nvm) folders.push(...nvm)
+    else whole = false
     folders.push(
       `${home}/.volta/bin`,
       `${home}/.local/share/pnpm`,
@@ -171,12 +192,15 @@ async function computeRunEnv($: EngineInterface): Promise<{ PATH: string } | und
     )
   }
   folders.push('/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin')
-  return { PATH: [...new Set(folders)].join(':') }
+  return { env: { PATH: [...new Set(folders)].join(':') }, whole }
 }
 
-function runEnv($: EngineInterface): Promise<{ PATH: string } | undefined> {
-  runEnvOnce ??= computeRunEnv($)
-  return runEnvOnce
+/** The `env` for this run: the kept one, else computed now and kept when it is whole. */
+async function runEnv($: EngineInterface): Promise<{ PATH: string } | undefined> {
+  if (runEnvKept) return runEnvKept.env
+  const { env, whole } = await computeRunEnv($)
+  if (whole) runEnvKept = { env }
+  return env
 }
 
 /**
@@ -299,10 +323,10 @@ function tick($: EngineInterface, option: ToastsOption, force = false): Promise<
 
 async function run($: EngineInterface, option: ToastsOption, force: boolean): Promise<void> {
   // (1) No surface that draws the band (none yet, the last one detached, or the roster cannot be read): no process,
-  // and the band cleared, so a band surface attaching again never shows an old line; the pace, the baseline and the
-  // context are left.
+  // the band cleared, so a band surface attaching again never shows an old line, and the pace reset, so the next run
+  // the roster allows is not held by an idle gap; the baseline and the context are left.
   if (!(await mayRun($))) {
-    await update($, band, () => null)
+    await clear($)
     return
   }
   // (2) On a non-idle line the timer is the only pace; the age check is the idle gap's alone.
@@ -313,7 +337,7 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   const env = await runEnv($)
   // (4) The roster again, the last await before the spawn: the surface may have left while the PATH was looked up.
   if (!(await mayRun($))) {
-    await update($, band, () => null)
+    await clear($)
     return
   }
   // (5) The spawn.
@@ -415,6 +439,16 @@ export const register: Register = (on, options) => {
       })
     }
     return next(e)
+  })
+
+  on('session.detach', async ($, e, next) => {
+    // The session is ending: nothing to do.
+    if (e.reason === 'end') return next(e)
+    // The client is already out of the roster here. The last band surface gone: the band cleared at once, so a quick
+    // re-attach never shows an old line. No run and no timer started.
+    const r = await next(e)
+    if (!(await mayRun($))) await clear($)
+    return r
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

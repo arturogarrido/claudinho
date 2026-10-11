@@ -42,7 +42,8 @@ made in a terminal then loads in the Code tab too.
   usual installers put global commands in, in this order: nvm's (`~/.nvm/versions/node/<version>/bin`, the eight
   newest versions), `~/.volta/bin`, `~/.local/share/pnpm`, `~/Library/pnpm`, `~/.bun/bin`, `~/.npm-global/bin`,
   `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` and `/bin`. Among nvm's folders, those that hold
-  the CLI come first, then the others, each group newest first. The folders under `~` are used only when `HOME` is an
+  the CLI come first, then the others, each group newest first. Until nvm's folders have been read, each run waits at
+  most a second for them and otherwise runs without them. The folders under `~` are used only when `HOME` is an
   absolute path with no `:` in it. A CLI installed anywhere else leaves the band empty. On Windows the plugin uses
   Claude Code's own `PATH` alone.
 - **Beside other plugins.** A band drawn beneath ours in the hook chain (a plugin registered after ours, or Claude
