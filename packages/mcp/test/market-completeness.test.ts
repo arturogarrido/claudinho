@@ -13,6 +13,7 @@ import {
   type MarketProvider,
   type MarketSignal,
   type ProviderAdapter,
+  sealMarketSignal,
   valid,
 } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
@@ -194,7 +195,10 @@ describe('cachedMarketSignals completeness through the production memory cache',
       const mixed = await cachedMarketSignals({}, [hit, miss], new Date(stamp), () => partial);
 
       expect(fetchedIds).toEqual([miss.id]);
-      expect(mixed.signals.get(hit.id)).toBe(signal);
+      // A memory hit comes back re-sealed by the reading request's clock (a new object; the seal's own fields).
+      const resealed = sealMarketSignal(signal, { now: new Date(stamp) });
+      expect(resealed.kind).toBe('valid');
+      expect(mixed.signals.get(hit.id)).toEqual(resealed.kind === 'valid' ? resealed.value : undefined);
       expect(mixed.signals.has(miss.id)).toBe(false);
       expect(mixed.complete).toBe(false);
     } finally {

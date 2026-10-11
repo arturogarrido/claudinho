@@ -492,7 +492,8 @@ describe('property: an ABSENT field is at least as rejecting as a wrong one', ()
       expect(withAbsent.outcomes.length).toBeLessThanOrEqual(
         Math.max(withWrong?.outcomes.length ?? 0, goodSignal.outcomes.length),
       );
-      if (field === 'stale') expect(withAbsent.stale).toBe(true);
+      // `stale` is derived from `asOf` against the clock, never read: an absent flag and a wrong one derive the same.
+      if (field === 'stale') expect(withAbsent.stale).toBe(withWrong!.stale);
       if (field === 'ambiguous') expect(withAbsent.ambiguous).toBe(true);
       if (field === 'asOf') expect(withAbsent.stale).toBe(true);
     }

@@ -37,44 +37,44 @@ afterEach(() => {
 describe('market-signals cache', () => {
   it('round-trips a fresh positive signal', () => {
     writeMarketCache('polymarket', 'fifa.world', ['760415'], new Map([['760415', signal]]), NOW);
-    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW + 60_000);
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW + 60_000, new Date(NOW + 60_000));
     expect(signals.get('760415')?.favorite?.teamCode).toBe('MEX');
     expect(checked.has('760415')).toBe(true);
   });
 
   it('negatively caches a checked-but-empty match', () => {
     writeMarketCache('polymarket', 'fifa.world', ['999'], new Map(), NOW); // attempted, no signal
-    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW + 60_000);
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW + 60_000, new Date(NOW + 60_000));
     expect(signals.has('999')).toBe(false);
     expect(checked.has('999')).toBe(true); // known → skip re-fetch
   });
 
   it('expires positive entries after the positive TTL', () => {
     writeMarketCache('polymarket', 'fifa.world', ['760415'], new Map([['760415', signal]]), NOW);
-    expect(readMarketCache('polymarket', 'fifa.world', NOW + 11 * 60_000).checked.has('760415')).toBe(false);
+    expect(readMarketCache('polymarket', 'fifa.world', NOW + 11 * 60_000, new Date(NOW + 11 * 60_000)).checked.has('760415')).toBe(false);
   });
 
   it('expires negative entries sooner than positive', () => {
     writeMarketCache('polymarket', 'fifa.world', ['999'], new Map(), NOW);
     // 5 minutes later: the negative entry (3m TTL) is gone, so we'd re-check.
-    expect(readMarketCache('polymarket', 'fifa.world', NOW + 5 * 60_000).checked.has('999')).toBe(false);
+    expect(readMarketCache('polymarket', 'fifa.world', NOW + 5 * 60_000, new Date(NOW + 5 * 60_000)).checked.has('999')).toBe(false);
   });
 
   it('does not bleed across source or competition', () => {
     writeMarketCache('polymarket', 'fifa.world', ['760415'], new Map([['760415', signal]]), NOW);
-    expect(readMarketCache('polymarket', 'fifa.friendly', NOW).checked.size).toBe(0);
-    expect(readMarketCache('other', 'fifa.world', NOW).checked.size).toBe(0);
+    expect(readMarketCache('polymarket', 'fifa.friendly', NOW, new Date(NOW)).checked.size).toBe(0);
+    expect(readMarketCache('other', 'fifa.world', NOW, new Date(NOW)).checked.size).toBe(0);
   });
 
   it('ignores an empty attempt list and reads empty when absent', () => {
     writeMarketCache('polymarket', 'fifa.world', [], new Map(), NOW);
-    expect(readMarketCache('polymarket', 'fifa.world', NOW).checked.size).toBe(0);
+    expect(readMarketCache('polymarket', 'fifa.world', NOW, new Date(NOW)).checked.size).toBe(0);
   });
 
   it('merges a later attempt into the existing cache', () => {
     writeMarketCache('polymarket', 'fifa.world', ['760415'], new Map([['760415', signal]]), NOW);
     writeMarketCache('polymarket', 'fifa.world', ['888'], new Map(), NOW + 1000);
-    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW + 60_000);
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW + 60_000, new Date(NOW + 60_000));
     expect(signals.has('760415')).toBe(true);
     expect(checked.has('888')).toBe(true);
   });
@@ -93,8 +93,8 @@ describe('market-signals cache — malformed file must not crash a command', () 
       competition: 'fifa.world',
       entries: { '760415': null, '760416': 'nope', '760417': 42 },
     });
-    expect(() => readMarketCache('polymarket', 'fifa.world', NOW)).not.toThrow();
-    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+    expect(() => readMarketCache('polymarket', 'fifa.world', NOW, new Date(NOW))).not.toThrow();
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW, new Date(NOW));
     expect(signals.size).toBe(0);
     // Critically: a malformed entry must NOT be marked checked, or a junk file
     // would suppress the real fetch for that match.
@@ -112,8 +112,8 @@ describe('market-signals cache — malformed file must not crash a command', () 
         },
       },
     });
-    expect(() => readMarketCache('polymarket', 'fifa.world', NOW)).not.toThrow();
-    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+    expect(() => readMarketCache('polymarket', 'fifa.world', NOW, new Date(NOW))).not.toThrow();
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW, new Date(NOW));
     // A signal whose source sanitizes to nothing is malformed, not a negative
     // result: it must be dropped AND left unchecked so the real fetch still runs.
     expect(signals.has('760415')).toBe(false);
@@ -127,7 +127,7 @@ describe('market-signals cache — malformed file must not crash a command', () 
         competition: 'fifa.world',
         entries: { '760415': { fetchedAt: '2026-06-11T14:56:00Z', signal: bad } },
       });
-      const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+      const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW, new Date(NOW));
       expect(signals.has('760415')).toBe(false);
       expect(checked.has('760415')).toBe(false);
     }
@@ -140,7 +140,7 @@ describe('market-signals cache — malformed file must not crash a command', () 
       competition: 'fifa.world',
       entries: { '760415': { fetchedAt: '2026-06-11T14:59:00Z', signal: null } },
     });
-    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW, new Date(NOW));
     expect(signals.has('760415')).toBe(false);
     expect(checked.has('760415')).toBe(true);
   });
@@ -177,7 +177,7 @@ describe('market-signals cache — malformed file must not crash a command', () 
         competition: 'fifa.world',
         entries: { '760415': { fetchedAt: '2026-06-11T14:59:00Z', signal: bad } },
       });
-      const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+      const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW, new Date(NOW));
       expect(signals.has('760415'), label).toBe(false);
       expect(checked.has('760415'), `${label} must NOT suppress the refetch`).toBe(false);
     }
@@ -199,7 +199,7 @@ describe('market-signals cache — malformed file must not crash a command', () 
         },
       },
     });
-    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+    const { signals, checked } = readMarketCache('polymarket', 'fifa.world', NOW, new Date(NOW));
     expect(signals.get('760415')?.stale).toBe(true); // honestly flagged...
     expect(checked.has('760415')).toBe(true); // ...but still a real result
   });
@@ -210,14 +210,14 @@ describe('market-signals cache — malformed file must not crash a command', () 
       competition: 'fifa.world',
       entries: { '760415': { fetchedAt: '2099-01-01T00:00:00Z', signal: null } },
     });
-    const { checked } = readMarketCache('polymarket', 'fifa.world', NOW);
+    const { checked } = readMarketCache('polymarket', 'fifa.world', NOW, new Date(NOW));
     expect(checked.has('760415')).toBe(false);
   });
 
   it('tolerates entries being absent or a non-object', () => {
     for (const entries of [undefined, null, 'x', 7, []]) {
       poison({ source: 'polymarket', competition: 'fifa.world', entries });
-      expect(() => readMarketCache('polymarket', 'fifa.world', NOW)).not.toThrow();
+      expect(() => readMarketCache('polymarket', 'fifa.world', NOW, new Date(NOW))).not.toThrow();
     }
   });
 
@@ -228,7 +228,7 @@ describe('market-signals cache — malformed file must not crash a command', () 
       entries: {},
       padding: 'x'.repeat(1024 * 1024),
     });
-    expect(readMarketCache('polymarket', 'fifa.world', NOW)).toEqual({
+    expect(readMarketCache('polymarket', 'fifa.world', NOW, new Date(NOW))).toEqual({
       signals: new Map(),
       checked: new Set(),
     });
@@ -241,7 +241,7 @@ describe('market-signals cache — malformed file must not crash a command', () 
     }
     entries.late = { fetchedAt: '2026-06-11T14:59:00Z', signal: null };
     poison({ source: 'polymarket', competition: 'fifa.world', entries });
-    const result = readMarketCache('polymarket', 'fifa.world', NOW);
+    const result = readMarketCache('polymarket', 'fifa.world', NOW, new Date(NOW));
     expect(result.checked.size).toBe(256);
     expect(result.checked.has('late')).toBe(false);
   });
