@@ -25,7 +25,7 @@ export const DEFAULT_MAX_AGE_MS = 15 * 60_000;
  * "markets favor X 100%" after full time reads as a bug, not information.
  * An unparseable kickoff fails open (the reliability gate still applies).
  */
-export function marketRelevant(match: Match, now: Date = new Date()): boolean {
+export function marketRelevant(match: Match, now: Date): boolean {
   // A live overlay outranks the time window in BOTH directions: a match in
   // extra time runs past kickoff+140min and its in-play read stays legitimate,
   // while an early FT ends relevance before the window does.
@@ -224,12 +224,16 @@ export function buildMarketSignal(input: BuildSignalInput): MarketSignal {
   const outcomes = normalizeOutcomes(input.outcomes);
   const ambiguous = input.ambiguous === true || !mapsCleanly(input.match, outcomes);
   const favorite = ambiguous ? undefined : deriveFavorite(outcomes);
+  // ONE clock read: the `fetchedAt` stamp, the staleness and the seal all judge
+  // by the same instant, so a wall clock stepping backwards between two reads
+  // can never make the builder seal its own output as fetched after its clock.
+  const clock = input.now ?? new Date();
   const signal: MarketSignal = {
     matchId: input.match.id,
     source: input.source,
     sourceMarketId: input.sourceMarketId,
     asOf: input.asOf,
-    fetchedAt: input.fetchedAt ?? new Date().toISOString(),
+    fetchedAt: input.fetchedAt ?? clock.toISOString(),
     outcomes,
     favorite,
     liquidity: input.liquidity,
@@ -237,7 +241,7 @@ export function buildMarketSignal(input: BuildSignalInput): MarketSignal {
     stale: false,
     ambiguous,
   };
-  signal.stale = isStaleSignal(signal, { now: input.now, maxAgeMs: input.maxAgeMs });
+  signal.stale = isStaleSignal(signal, { now: clock, maxAgeMs: input.maxAgeMs });
   // BOTH PATHS END HERE. The cache reader seals what it reads; the live provider
   // seals what it builds. Without this the claim that they share a constructor
   // was an argument about which fields happened to be derived from already-clean
@@ -247,7 +251,7 @@ export function buildMarketSignal(input: BuildSignalInput): MarketSignal {
   //
   // `ambiguous` is preserved rather than recomputed: only the builder knows the
   // fixture the outcomes were mapped against.
-  const sealed = sealMarketSignal(signal, { now: input.now, maxAgeMs: input.maxAgeMs });
+  const sealed = sealMarketSignal(signal, { now: clock, maxAgeMs: input.maxAgeMs });
   if (sealed.kind !== 'valid') {
     // The outcomes are DROPPED, not carried through flagged.
     //

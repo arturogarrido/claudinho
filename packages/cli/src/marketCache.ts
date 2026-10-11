@@ -118,11 +118,22 @@ export interface MarketCacheRead {
   checked: Set<string>;
 }
 
-/** Read fresh cache entries for a source+competition (positive + negative). */
+/**
+ * Read fresh cache entries for a source+competition (positive + negative).
+ *
+ * Two clocks, kept apart. `now` is the cache's own (the wall clock in
+ * production): the TTL arithmetic, `fetchedAt` against the TTLs and the
+ * forward-dated skew. `requestNow` is the READING request's clock: a cached
+ * signal is sealed against it, so its staleness is derived from its `asOf` as
+ * the request sees it, never by the writer's clock or the wall clock. It is
+ * required; the market read (`marketSignalsFor`) hands it beside the wall
+ * clock as `now`.
+ */
 export function readMarketCache(
   source: string,
   competition: string,
   now = Date.now(),
+  requestNow: Date,
 ): MarketCacheRead {
   const signals = new Map<string, MarketSignal>();
   const checked = new Set<string>();
@@ -159,9 +170,11 @@ export function readMarketCache(
     // file is attacker-writable in a way the MarketSignal type is not, and the
     // formatters interpolate several of these fields straight into output
     // (marketSourceLabel falls through to `source` verbatim for an unrecognized
-    // provider). `now` is threaded so the DERIVED staleness agrees with the TTL
-    // arithmetic above instead of reading the wall clock.
-    const sealed = parseCachedMarketSignal(entry.signal, { now: new Date(now) });
+    // provider). The seal takes the READING request's clock, not the TTL's: the
+    // DERIVED staleness is the request's judgement of the signal's `asOf` (the
+    // entry may have been written under another request's clock), while
+    // whether the entry is still worth keeping is the cache's, above.
+    const sealed = parseCachedMarketSignal(entry.signal, { now: requestNow });
     // A signal we could not read is not a negative result: it must NOT reach
     // `checked`, or a corrupt entry suppresses the real fetch for the full TTL.
     if (sealed.kind !== 'valid') continue;

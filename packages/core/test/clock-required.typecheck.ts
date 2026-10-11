@@ -5,11 +5,18 @@
  * `@ts-expect-error` whose error disappears (the parameter made optional again)
  * is itself the error.
  */
+import { marketRelevant } from '../src/markets/normalize';
 import { countdown, countdownPhrase } from '../src/time';
+import type { Match } from '../src/types';
 
 export function refused(): void {
   // @ts-expect-error the clock is required: a countdown without one would read the wall clock
   countdown('2026-10-10T11:30:00.000Z');
   // @ts-expect-error the clock is required: a countdown phrase without one would read the wall clock
   countdownPhrase('en', '2026-10-10T11:30:00.000Z');
+}
+
+export function refusedGate(m: Match): boolean {
+  // @ts-expect-error the clock is required: a market relevance gate without one would judge by the wall clock
+  return marketRelevant(m);
 }

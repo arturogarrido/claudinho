@@ -83,7 +83,7 @@ async function requestsPerRun(markets: unknown[], runs = 3): Promise<number[]> {
   const out: number[] = [];
   for (let run = 0; run < runs; run++) {
     requests = 0;
-    const { checked } = readMarketCache('polymarket', 'fifa.world', NOW.getTime());
+    const { checked } = readMarketCache('polymarket', 'fifa.world', NOW.getTime(), new Date(NOW.getTime()));
     const miss = ids.filter((id) => !checked.has(id)).map(fixture);
     if (miss.length > 0) {
       const provider = new PolymarketProvider({ fetchImpl, now: NOW });

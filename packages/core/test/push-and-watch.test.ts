@@ -29,7 +29,7 @@
  * Test seams, documented in the script: PUSH_WATCH_POLL_SECONDS and PUSH_WATCH_TIMEOUT_SECONDS.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -39,6 +39,7 @@ const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../..');
 const SCRIPT = join(ROOT, 'scripts/push-and-watch.sh');
 const HOST = [...COMMON_HOST_TOOLS, 'kill', 'pkill', 'pgrep'] as const;
 const HOST_GIT = hostTool('git');
+const HOST_SLEEP = hostTool('sleep');
 const LOCAL = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const OTHER = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
@@ -51,6 +52,14 @@ const OTHER = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
  *   runs.<n>.tsv: the run list the n-th `gh run list` call prints (id, headSha, event, status, conclusion);
  *   the highest n available answers every later call · jobs-<id>.tsv: the jobs `gh run view … <id>` prints
  *   (name, conclusion, startedAt, completedAt). Every answer is TSV: the script asks `gh --jq` for TSV.
+ *   deadline-at (n): THE DEADLINE IS A POINT IN THE SEQUENCE, never a wall-clock second. The script's deadline
+ *   is a `sleep "$TIMEOUT"` it starts first (the timer); the sandbox's `sleep` (below) ends that timer when
+ *   `$STATE/deadline` exists. The n-th `gh run list` call creates it on entry and then blocks, so the deadline
+ *   passes while poll n is outstanding and the watchdog cuts it: exactly n calls, whatever the host's speed. In
+ *   the hang modes the deadline is created once the hang's pid files hold pids (when deadline-at is seeded).
+ *   slow-identity (seconds): the identity probe (`gh api repos/<owner>/<name>`, before the push) answers that
+ *   much later: a slow host's pre-watch phase, the one both macOS flakes of Oct 10, 2026 were cut in.
+ * The hang stubs sleep by the host's path, so no `sleep` of theirs is ever taken for the timer.
  * `git check-ref-format` is delegated to the host's git: the branch-name grammar is measured, not re-implemented.
  */
 const STUBS = {
@@ -84,20 +93,25 @@ case "$1 $2" in
     path=""; for a in "$@"; do case "$a" in repos/*) path=$a ;; esac; done
     case "$path" in
       *"/pulls?"*) [ -e "$STATE/pr-count" ] && cat "$STATE/pr-count" || echo 0; exit 0 ;;
-      repos/*) [ -e "$STATE/repo" ] && cat "$STATE/repo" || echo "arturogarrido/claudinho"; exit 0 ;;
+      repos/*) [ -e "$STATE/slow-identity" ] && "${HOST_SLEEP}" "$(cat "$STATE/slow-identity")"; [ -e "$STATE/repo" ] && cat "$STATE/repo" || echo "arturogarrido/claudinho"; exit 0 ;;
     esac
     echo "gh: unknown api path '$path'" >&2; exit 1 ;;
   "run list")
-    if [ -e "$STATE/hang" ]; then sleep 30 & echo $! > "$STATE/gh-child"; wait $! && : > "$STATE/hang-finished"; fi
+    n=$(( $(cat "$STATE/runs-calls" 2>/dev/null || echo 0) + 1 )); echo $n > "$STATE/runs-calls"
+    at=$(cat "$STATE/deadline-at" 2>/dev/null || echo 0)
+    # the deadline once the hang's pid files hold pids (each written by echo after its fork, possibly late)
+    hang_deadline() { [ "$at" -gt 0 ] || return 0; for f in "$@"; do while ! grep -q '^[1-9][0-9]*$' "$STATE/$f" 2>/dev/null; do "${HOST_SLEEP}" 0.02; done; done; : > "$STATE/deadline"; }
+    if [ -e "$STATE/hang" ]; then "${HOST_SLEEP}" 30 & echo $! > "$STATE/gh-child"; hang_deadline gh-child; wait $! && : > "$STATE/hang-finished"; fi
     # hang-ignore-term: the child IGNORES TERM (inherited across exec) while this parent dies of it
-    if [ -e "$STATE/hang-ignore-term" ]; then ( trap '' TERM; exec sleep 30 ) & echo $! > "$STATE/gh-child"; wait $! && : > "$STATE/hang-finished"; fi
+    if [ -e "$STATE/hang-ignore-term" ]; then ( trap '' TERM; exec "${HOST_SLEEP}" 30 ) & echo $! > "$STATE/gh-child"; hang_deadline gh-child; wait $! && : > "$STATE/hang-finished"; fi
     # hang-grandchild: a helper (dies of TERM) whose own child ignores TERM; the grandchild's pid in gh-grandchild
-    if [ -e "$STATE/hang-grandchild" ]; then ( ( trap '' TERM; exec sleep 30 ) & echo $! > "$STATE/gh-grandchild"; wait ) & echo $! > "$STATE/gh-child"; wait $! && : > "$STATE/hang-finished"; fi
+    if [ -e "$STATE/hang-grandchild" ]; then ( ( trap '' TERM; exec "${HOST_SLEEP}" 30 ) & echo $! > "$STATE/gh-grandchild"; wait ) & echo $! > "$STATE/gh-child"; hang_deadline gh-child gh-grandchild; wait $! && : > "$STATE/hang-finished"; fi
     # hang-grandchild-ignore: the same tree, and this gh ignores TERM too, AFTER forking the helper (the helper still
     # dies of TERM; gh then becomes a sleep that keeps ignoring it): the watchdog's wait on gh lasts its full tries,
     # the window a TERM to the script can land in
-    if [ -e "$STATE/hang-grandchild-ignore" ]; then ( ( trap '' TERM; exec sleep 30 ) & echo $! > "$STATE/gh-grandchild"; wait ) & echo $! > "$STATE/gh-child"; trap '' TERM; wait $!; exec sleep 30; fi
-    n=$(( $(cat "$STATE/runs-calls" 2>/dev/null || echo 0) + 1 )); echo $n > "$STATE/runs-calls"
+    if [ -e "$STATE/hang-grandchild-ignore" ]; then ( ( trap '' TERM; exec "${HOST_SLEEP}" 30 ) & echo $! > "$STATE/gh-grandchild"; wait ) & echo $! > "$STATE/gh-child"; trap '' TERM; hang_deadline gh-child gh-grandchild; wait $!; exec "${HOST_SLEEP}" 30; fi
+    # the deadline poll: it passes while this call is outstanding (never inside an answer the watchdog could cut)
+    if [ "$at" -gt 0 ] && [ "$n" -ge "$at" ]; then : > "$STATE/deadline"; exec "${HOST_SLEEP}" 30; fi
     while [ $n -gt 0 ] && [ ! -e "$STATE/runs.$n.tsv" ]; do n=$((n-1)); done
     [ $n -gt 0 ] && cat "$STATE/runs.$n.tsv"; exit 0 ;;
   "run view")
@@ -112,14 +126,33 @@ const JOBS_OK = ['build · typecheck · test (Node 22)', 'audit (shipped deps)',
   .map((n) => `${n}\tsuccess\t2026-10-07T04:00:00Z\t2026-10-07T04:01:20Z\n`).join('');
 const BOUND = 'github.com/arturogarrido/claudinho';
 
+/**
+ * The sandbox's `sleep`, written after the stubs and WITHOUT their `$CALLS` line (the script's 20 ms polls would
+ * flood the record): a fractional argument (the script's polls, 0.02 and 0.1) is the host's sleep, exec'd; a whole
+ * number is the script's deadline timer (its only one, line `sleep "$TIMEOUT" &`), which ends when `$STATE/deadline`
+ * exists or after its seconds, whichever is first. The script asks the timer only `kill -0` and reaps it with TERM
+ * then KILL: a trap-less bash loop answers both as `sleep` does. The seconds are a backstop under runScript's bound.
+ */
+const TIMER_SLEEP = `#!/bin/bash
+case "$1" in *.*) exec "${HOST_SLEEP}" "$@" ;; esac
+end=$(( $(date +%s) + $1 ))
+while [ ! -e "$STATE/deadline" ] && [ "$(date +%s)" -lt "$end" ]; do "${HOST_SLEEP}" 0.02; done
+`;
 function sandbox(): Sandbox {
-  return makeSandbox(STUBS, HOST, 'watch-');
+  const sb = makeSandbox(STUBS, HOST, 'watch-');
+  writeFileSync(join(sb.bin, 'sleep'), TIMER_SLEEP);
+  chmodSync(join(sb.bin, 'sleep'), 0o755);
+  return sb;
 }
+// A deadline that a case reaches is a point in the stub's sequence (deadline-at); the seconds are only a backstop,
+// far past any host's pre-watch phase, so a case that never names one never reaches it.
+const BACKSTOP = '20';
+const runListCalls = (sb: Sandbox) => sb.calls().filter((c) => /^gh run list/.test(c)).length;
 function seed(sb: Sandbox, files: Record<string, string>) {
   for (const [k, v] of Object.entries(files)) writeFileSync(join(sb.state, k), v);
 }
 function runBranch(sb: Sandbox, branch: string, args: string[], env: Record<string, string> = {}) {
-  return runScript(SCRIPT, [branch, ...args], sb, { PUSH_WATCH_POLL_SECONDS: '0', PUSH_WATCH_TIMEOUT_SECONDS: '3', ...env }, { cwd: ROOT, timeout: 30000 });
+  return runScript(SCRIPT, [branch, ...args], sb, { PUSH_WATCH_POLL_SECONDS: '0', PUSH_WATCH_TIMEOUT_SECONDS: BACKSTOP, ...env }, { cwd: ROOT, timeout: 30000 });
 }
 function run(sb: Sandbox, args: string[], env: Record<string, string> = {}) {
   return runBranch(sb, 'feature/x', args, env);
@@ -195,8 +228,8 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
 
   it('no GraphQL-backed gh command is used: the identity and the pull-request count are REST reads (gh api)', () => {
     const sb = sandbox();
-    seed(sb, { 'runs.1.tsv': '' });
-    run(sb, [], { PUSH_WATCH_TIMEOUT_SECONDS: '1' });
+    seed(sb, { 'runs.1.tsv': '', 'deadline-at': '3' });
+    run(sb, []);
     const gh = ghCalls(sb);
     expect(gh.some((c) => /^gh repo view/.test(c))).toBe(false);
     expect(gh.some((c) => /^gh pr list/.test(c))).toBe(false);
@@ -398,17 +431,43 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
 
   it('a run still in progress at the deadline is nonzero naming that run, distinct from "no run"', { timeout: 10000 }, () => {
     const sb = sandbox();
-    seed(sb, { 'runs.1.tsv': RUN('91', LOCAL, 'in_progress', '') });
-    const r = run(sb, [], { PUSH_WATCH_TIMEOUT_SECONDS: '1' });
+    // the pre-push check (call 1), the watch's first answer (call 2), the deadline while call 3 is outstanding
+    seed(sb, { 'runs.1.tsv': RUN('91', LOCAL, 'in_progress', ''), 'deadline-at': '3' });
+    const r = run(sb, []);
     expect(r.status).not.toBe(0);
-    expect(r.out).toContain('91');
+    expect(r.out).toContain('run 91 for');
+    expect(r.out).toContain('still in_progress at the deadline');
     expect(r.out).not.toMatch(/no run for/);
+    expect(runListCalls(sb), 'the deadline passed at the sequence point the case names').toBe(3);
+  });
+
+  // The two macOS flakes of Oct 10, 2026: a slow host spent the old one-second deadline before the watch began (the
+  // in-progress case's output stopped at "killed at the deadline (1s) before any answer"). The deadline is a point
+  // in the stubs' sequence now, so a pre-watch phase longer than the old deadline changes nothing.
+  it('a slow host (the identity probe answering 1.5 s late) still names the run in progress at the deadline', { timeout: 15000 }, () => {
+    const sb = sandbox();
+    seed(sb, { 'runs.1.tsv': RUN('91', LOCAL, 'in_progress', ''), 'deadline-at': '3', 'slow-identity': '1.5' });
+    const r = run(sb, []);
+    expect(r.status).not.toBe(0);
+    expect(r.out).toContain('still in_progress at the deadline');
+    expect(r.out).not.toMatch(/before any answer/);
+    expect(runListCalls(sb)).toBe(3);
+  });
+
+  it('a slow host (the identity probe answering 1.5 s late) still reaches "no run" and the pull-request lookup', { timeout: 15000 }, () => {
+    const sb = sandbox();
+    seed(sb, { 'runs.1.tsv': '', 'deadline-at': '3', 'slow-identity': '1.5' });
+    const r = run(sb, []);
+    expect(r.status).not.toBe(0);
+    expect(r.out).toContain(`no run for ${LOCAL}`);
+    expect(r.out).toMatch(/open pull request\(s\) found/);
+    expect(runListCalls(sb)).toBe(3);
   });
 
   it('a probe that hangs is killed at the deadline WITH its child: the stub\'s sleep never completes, nonzero, "deadline" said', { timeout: 20000 }, async () => {
     const sb = sandbox();
-    seed(sb, { 'remote-sha': LOCAL, hang: '' });
-    const r = run(sb, [], { PUSH_WATCH_TIMEOUT_SECONDS: '2' });
+    seed(sb, { 'remote-sha': LOCAL, hang: '', 'deadline-at': '1' });
+    const r = run(sb, []);
     expect(r.status).not.toBe(0);
     expect(r.out).toMatch(/deadline|timed out|killed/i);
     expect(existsSync(join(sb.state, 'hang-finished')), 'the sleep was cut, never completed').toBe(false);
@@ -434,8 +493,8 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
 
   it('a child that ignores TERM under a parent that dies of it is still gone after the deadline: the pids are recorded before the first signal', { timeout: 20000 }, async () => {
     const sb = sandbox();
-    seed(sb, { 'remote-sha': LOCAL, 'hang-ignore-term': '' });
-    const r = run(sb, [], { PUSH_WATCH_TIMEOUT_SECONDS: '2' });
+    seed(sb, { 'remote-sha': LOCAL, 'hang-ignore-term': '', 'deadline-at': '1' });
+    const r = run(sb, []);
     expect(r.status).not.toBe(0);
     const child = pidIn(sb, 'gh-child');
     const dead = await until(() => !pidAlive(child), 3000);
@@ -461,8 +520,8 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
 
   it('a GRANDCHILD that ignores TERM (under a helper that dies of it) is gone after the deadline: the descendants are recorded to the leaves', { timeout: 20000 }, async () => {
     const sb = sandbox();
-    seed(sb, { 'remote-sha': LOCAL, 'hang-grandchild': '' });
-    const r = run(sb, [], { PUSH_WATCH_TIMEOUT_SECONDS: '2' });
+    seed(sb, { 'remote-sha': LOCAL, 'hang-grandchild': '', 'deadline-at': '1' });
+    const r = run(sb, []);
     expect(r.status).not.toBe(0);
     const grandchild = pidIn(sb, 'gh-grandchild');
     const dead = await until(() => !pidAlive(grandchild), 3000);
@@ -487,14 +546,16 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
 
   it('a TERM to the script WHILE the watchdog is escalating (a probe that ignores TERM, a helper dead of it, a grandchild that ignores it): the recorded grandchild is still gone', { timeout: 25000 }, async () => {
     const sb = sandbox();
-    seed(sb, { 'remote-sha': LOCAL, 'hang-grandchild-ignore': '' });
-    const { child, done } = startScript(SCRIPT, ['feature/x'], sb, { PUSH_WATCH_POLL_SECONDS: '0', PUSH_WATCH_TIMEOUT_SECONDS: '2' }, { cwd: ROOT });
+    seed(sb, { 'remote-sha': LOCAL, 'hang-grandchild-ignore': '', 'deadline-at': '1' });
+    const { child, done } = startScript(SCRIPT, ['feature/x'], sb, { PUSH_WATCH_POLL_SECONDS: '0', PUSH_WATCH_TIMEOUT_SECONDS: BACKSTOP }, { cwd: ROOT });
     expect(await until(() => pidReady(sb, 'gh-grandchild') && pidReady(sb, 'gh-child'), 8000), 'the probe and its helper started').toBe(true);
     const grandchild = pidIn(sb, 'gh-grandchild');
     const gh = pidIn(sb, 'gh-child');
-    // the deadline passes at 2 s; the watchdog then TERMs the tree (the helper dies, gh and the grandchild ignore it)
-    // and waits its tries on gh before its KILL: the TERM to the script lands inside that wait
-    await new Promise((r) => setTimeout(r, 2600));
+    // the deadline passes once both pids are written; the watchdog records the tree, TERMs it (the helper, `gh-child`,
+    // dies of it; gh and the grandchild ignore it) and waits its tries on gh (100 x 20 ms) before its KILL. The
+    // helper's death is the state that says the watchdog's TERM landed: the TERM to the script follows it at once,
+    // inside that wait, on any host (never a fixed delay from a marker written before the signal).
+    expect(await until(() => !pidAlive(gh), 8000), 'the watchdog TERMed the tree: the helper is dead of it').toBe(true);
     child.kill('SIGTERM');
     const r = await done;
     expect(r.status, `status ${r.status} signal ${r.signal}: ${r.out}`).toBe(143);
@@ -507,20 +568,21 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
 
   it('no run within the timeout is nonzero by default, naming the SHA and the PR lookup; --allow-no-run with no PR exits 0 with its line', { timeout: 20000 }, () => {
     const sb = sandbox();
-    seed(sb, { 'runs.1.tsv': '' });
-    const r = run(sb, [], { PUSH_WATCH_TIMEOUT_SECONDS: '1' });
+    seed(sb, { 'runs.1.tsv': '', 'deadline-at': '3' });
+    const r = run(sb, []);
     expect(r.status).not.toBe(0);
-    expect(r.out).toContain(LOCAL);
-    expect(r.out).toMatch(/pull request/);
+    expect(r.out).toContain(`no run for ${LOCAL}`);
+    expect(r.out).toMatch(/open pull request\(s\) found/);
+    expect(runListCalls(sb)).toBe(3);
     const sb2 = sandbox();
-    seed(sb2, { 'runs.1.tsv': '' });
-    const r2 = run(sb2, ['--allow-no-run'], { PUSH_WATCH_TIMEOUT_SECONDS: '1' });
+    seed(sb2, { 'runs.1.tsv': '', 'deadline-at': '3' });
+    const r2 = run(sb2, ['--allow-no-run']);
     expect(r2.status, r2.out).toBe(0);
     expect(r2.out).toContain('pushed; CI not verified (no pull request)');
     // and with a PR open, the allowance does not apply: still nonzero
     const sb3 = sandbox();
-    seed(sb3, { 'runs.1.tsv': '', 'pr-count': '1' });
-    expect(run(sb3, ['--allow-no-run'], { PUSH_WATCH_TIMEOUT_SECONDS: '1' }).status).not.toBe(0);
+    seed(sb3, { 'runs.1.tsv': '', 'pr-count': '1', 'deadline-at': '3' });
+    expect(run(sb3, ['--allow-no-run']).status).not.toBe(0);
   });
 
   it('the local SHA is refs/heads/<branch>: rev-parse is asked for the ref, never HEAD', () => {

@@ -361,9 +361,13 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
   });
 
   it('rejects a timestamp of the wrong RUNTIME type even when Date.parse would accept it', () => {
-    const clean = sanitizeMarketSignal({ ...base, asOf: [2026] as never, fetchedAt: 12345 as never });
+    // `asOf` blanks (and so reads stale); `fetchedAt` is the clock the signal was read by, and a signal that cannot
+    // be placed in time is no evidence for any request: refused as malformed, never a throw.
+    const clean = sanitizeMarketSignal({ ...base, asOf: [2026] as never });
     expect(clean.asOf).toBe('');
-    expect(clean.fetchedAt).toBe('');
+    expect(clean.stale).toBe(true);
+    expect(() => sealMarketSignal({ ...base, fetchedAt: 12345 as never })).not.toThrow();
+    expect(sealMarketSignal({ ...base, fetchedAt: 12345 as never }).kind).toBe('malformed');
   });
 
   it('RECOMPUTES favorite from sanitized outcomes — a crafted one cannot contradict them', () => {
@@ -386,16 +390,18 @@ describe('sanitizeMarketSignal — the market cache is attacker-writable too', (
     const clean = sanitizeMarketSignal({
       ...base,
       asOf: 'not-a-date',
-      fetchedAt: 'nope',
       liquidity: Number.POSITIVE_INFINITY,
       volume24h: Number.NaN,
       favorite: { kind: 'home', probability: Number.NaN, strength: 'strong' } as never,
     });
     expect(clean.asOf).toBe('');
-    expect(clean.fetchedAt).toBe('');
+    expect(clean.stale).toBe(true);
     expect(clean.liquidity).toBeUndefined();
     expect(clean.volume24h).toBeUndefined();
     expect(clean.outcomes).toEqual(base.outcomes);
     expect(clean.favorite?.kind).toBe('home');
+    // An unparseable `fetchedAt` is refused (malformed), never blanked into a signal no clock can place.
+    expect(() => sealMarketSignal({ ...base, fetchedAt: 'nope' })).not.toThrow();
+    expect(sealMarketSignal({ ...base, fetchedAt: 'nope' }).kind).toBe('malformed');
   });
 });

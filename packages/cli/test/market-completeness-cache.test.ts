@@ -107,6 +107,7 @@ describe('marketSignalsFor completeness through the production disk cache', () =
       { cfg: { competition: 'fifa.world' } } as never,
       [hit, miss],
       {},
+      new Date(now),
       () => partial,
     );
 

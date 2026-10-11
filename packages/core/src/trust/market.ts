@@ -12,18 +12,27 @@
  *   `favorite` — recomputed from the sealed outcomes. Trusted independently, a
  *     crafted entry rendered "slightly favor South Africa" beside "Mexico 60%":
  *     internally inconsistent output that still passed every reliability gate.
- *   `stale`    — recomputed against the clock. A file claiming `stale: false` on
- *     a six-year-old reading otherwise rendered with no caveat, because the
- *     display gate has no staleness term of its own.
+ *   `stale`    — recomputed from the sealed `asOf` against the clock the seal
+ *     is handed, and the input's flag is never read. A file claiming
+ *     `stale: false` on a six-year-old reading otherwise rendered with no
+ *     caveat; and a cache keeps a signal past the request that stamped it, so a
+ *     flag stamped by the writer's clock would outlive it under a reader whose
+ *     clock is earlier (a replay, a test's pin). An unusable `asOf` is stale.
  *
- * `stale` and `ambiguous` are accepted only as real booleans and otherwise fail
- * CLOSED, so a malformed value cannot coerce its way into looking trustworthy.
+ * `ambiguous` is accepted only as a real boolean and otherwise fails CLOSED, so
+ * a malformed value cannot coerce its way into looking trustworthy.
+ *
+ * `fetchedAt` places the signal in time, and a signal is evidence for the
+ * judging clock J (`options.now`, else the wall clock) only when its fetch clock
+ * F is readable and F <= J, with no allowance: absent, empty, unparseable or of
+ * the wrong type is `malformed`; F after J by any amount is `unresolved`;
+ * F <= J is valid, its `stale` derived from `asOf` against J.
  */
 import { KNOWN_MARKET_SOURCES } from '../markets/format';
 import { deriveFavorite, isStaleSignal } from '../markets/normalize';
 import type { MarketOutcome, MarketSignal } from '../markets/types';
 import { takeBounded } from './bounded';
-import { type ParseResult, ambiguous, malformed, valid } from './result';
+import { type ParseResult, ambiguous, malformed, unresolved, valid } from './result';
 import { canonicalTimestamp, humanLabel, member, opaqueId, probability, quantity } from './roles';
 
 /** Legs read from one signal. A 1X2 market has three. */
@@ -130,8 +139,26 @@ export function sealMarketSignal(
   if (sourceMarketId) out.sourceMarketId = sourceMarketId;
   out.asOf = canonicalTimestamp(s.asOf) ?? '';
   out.fetchedAt = canonicalTimestamp(s.fetchedAt) ?? '';
+  // The fetch clock F decides whether the signal is evidence for the judging
+  // clock J. Every leg was priced at most `FUTURE_SKEW_MS` after F (the
+  // provider's per-leg guard), so with F <= J its legs are within the uncached
+  // read's own bound at J; any allowance on F would compound with the leg's.
+  //   F absent, empty, unparseable, wrong type (canonicalized to '') -> malformed:
+  //     the bytes cannot place the signal in time (never a throw).
+  //   F > J by any amount -> unresolved: right under another clock, never a
+  //     negative.
+  //   F <= J -> valid, `stale` derived from `asOf` against J below.
+  // J is read once: the fetch check and the staleness below judge one instant.
+  const judgedAt = options.now ?? new Date();
+  const fetchedMs = Date.parse(out.fetchedAt);
+  if (out.fetchedAt === '' || !Number.isFinite(fetchedMs)) {
+    return malformed('signal carries no readable fetch time');
+  }
+  if (fetchedMs > judgedAt.getTime()) {
+    return unresolved('signal was fetched after the clock it is judged by');
+  }
   out.outcomes = outcomes;
-  // Fail closed: only an explicit `false` reads as "not stale/ambiguous".
+  // Fail closed: only an explicit `false` reads as "not ambiguous".
   const isAmbiguous = s.ambiguous !== false;
   // Recomputed, never read — keeps the headline consistent with the numbers.
   // Suppressed entirely when the signal does not map cleanly onto its fixture:
@@ -141,16 +168,16 @@ export function sealMarketSignal(
   if (favorite) out.favorite = favorite;
   if (liquidity !== undefined) out.liquidity = liquidity;
   if (volume24h !== undefined) out.volume24h = volume24h;
-  out.stale = s.stale !== false;
+  // Derived against the clock the seal is handed, for the same reason `favorite`
+  // is derived from the outcomes; the input's `stale` is never read. An
+  // unusable `asOf` parses to NaN and reads as stale.
+  out.stale = isStaleSignal(out, { now: judgedAt, maxAgeMs: options.maxAgeMs });
   // A signal we cannot ATTRIBUTE is not a signal we may show. `source` is
   // allow-listed, so an unknown provider becomes '' — and an empty attribution
   // slot beside real-looking percentages is precisely the confidently-wrong
   // display the Hard Constraints forbid ("attribute data providers"). It read
   // as RELIABLE before this, because no display gate had a source term.
   out.ambiguous = isAmbiguous || out.source === '';
-  // Derived against the clock, for the same reason `favorite` is derived from
-  // the outcomes. An unusable `asOf` parses to NaN and reads as stale.
-  out.stale = out.stale || isStaleSignal(out, { now: options.now, maxAgeMs: options.maxAgeMs });
   return valid(out);
 }
 
