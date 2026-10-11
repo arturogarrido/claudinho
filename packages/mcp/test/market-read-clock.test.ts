@@ -51,14 +51,19 @@ describe("the cached market read hands the provider the request's clock on every
  */
 describe("a cached signal is judged by the reading request's clock", () => {
   const T = new Date('2026-06-13T11:00:00.000Z');
-  const asOf = new Date(T.getTime() - 5 * 60_000); // five minutes before T: fresh at T
-  function pricing() {
+  const asOf = new Date(T.getTime() - 5 * 60_000); // the oldest leg: five minutes before T, fresh at T
+  // A provider as the real one behaves: it hands `buildMarketSignal` no `fetchedAt` (the builder stamps the clock
+  // it is handed), and it refuses a leg priced after its clock (the per-leg future guard): `newestLeg` is the latest
+  // leg's price time, and a read whose clock is more than a minute before it gets no answer for the match.
+  function pricing(newestLeg: Date = asOf) {
     let calls = 0;
     const provider: MarketProvider = {
       name: 'pricing',
       findSignal: async () => undefined,
       findSignals: async (ms, options) => {
         calls += 1;
+        const now = options?.now ?? new Date();
+        if (newestLeg.getTime() - now.getTime() > 60_000) return { results: new Map(), complete: false };
         return {
           results: new Map(
             ms.map((m) => [
@@ -68,7 +73,6 @@ describe("a cached signal is judged by the reading request's clock", () => {
                   match: m,
                   source: 'polymarket',
                   asOf: asOf.toISOString(),
-                  fetchedAt: asOf.toISOString(),
                   outcomes: [
                     { kind: 'home', teamCode: m.home.code, label: m.home.name, probability: 0.56 },
                     { kind: 'draw', label: 'Draw', probability: 0.25 },
@@ -87,6 +91,7 @@ describe("a cached signal is judged by the reading request's clock", () => {
     return { provider, calls: () => calls };
   }
   const fixture = (id: string) => ({ ...allFixtures().find((m) => m.status === 'SCHEDULED')!, id });
+  const later = new Date(T.getTime() + 30 * 60_000);
 
   it('the same request clock twice: fetched once, fresh both times', async () => {
     process.env.CLAUDINHO_MARKETS_SOURCE = 'polymarket';
@@ -99,15 +104,26 @@ describe("a cached signal is judged by the reading request's clock", () => {
     expect(second.signals.get(m.id)?.stale).toBe(false);
   });
 
-  it('written under a later clock (stale then), read under an earlier one (fresh now): fresh, not refetched', async () => {
+  it("written under a later clock, read under an earlier one: a signal fetched in the reading request's future is no hit (refetched, fresh by the earlier clock)", async () => {
     process.env.CLAUDINHO_MARKETS_SOURCE = 'polymarket';
     const { provider, calls } = pricing();
     const m = fixture('991204');
-    const later = new Date(T.getTime() + 30 * 60_000);
     const first = await cachedMarketSignals({}, [m], later, () => provider);
     expect(first.signals.get(m.id)?.stale).toBe(true);
     const second = await cachedMarketSignals({}, [m], T, () => provider);
-    expect(calls()).toBe(1);
+    expect(calls()).toBe(2);
     expect(second.signals.get(m.id)?.stale).toBe(false);
+  });
+
+  it('a leg priced after the earlier clock: the rewound read answers what an uncached read at that clock answers (incomplete, no signal)', async () => {
+    process.env.CLAUDINHO_MARKETS_SOURCE = 'polymarket';
+    const { provider, calls } = pricing(new Date(T.getTime() + 5 * 60_000));
+    const m = fixture('991205');
+    const first = await cachedMarketSignals({}, [m], later, () => provider);
+    expect(first.signals.has(m.id)).toBe(true);
+    const second = await cachedMarketSignals({}, [m], T, () => provider);
+    expect(calls()).toBe(2);
+    expect(second.signals.has(m.id)).toBe(false);
+    expect(second.complete).toBe(false);
   });
 });

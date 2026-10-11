@@ -5,6 +5,8 @@
  * A malformed flag cannot coerce freshness either way; an unusable `asOf` is stale.
  */
 import { describe, expect, it } from 'vitest';
+import { buildMarketSignal } from '../src/markets/normalize';
+import type { Match } from '../src/types';
 import { parseCachedMarketSignal } from '../src/trust/market';
 
 const NOW = new Date('2026-07-01T12:05:00.000Z');
@@ -40,5 +42,29 @@ describe("a signal's staleness is derived from its asOf against the clock the se
 
   it('a stored stale: false on a reading older than the window is stale', () => {
     expect(sealed({ ...base, stale: false }, new Date('2026-07-01T13:00:00.000Z')).stale).toBe(true);
+  });
+});
+
+/**
+ * A signal fetched after the clock it is judged by is no evidence for that request: every leg of it was priced at
+ * most a minute after its fetch clock (the provider's per-leg guard), and nothing in it says which. The seal refuses
+ * it as unresolved (never a definitive negative), so a cache hit read under an earlier clock is a miss and is fetched
+ * again. A signal's `fetchedAt` is the clock its builder was handed.
+ */
+describe('a signal fetched after the judging clock is refused, not served', () => {
+  it('fetched more than a minute after the clock: refused as unresolved', () => {
+    const r = parseCachedMarketSignal({ ...base, fetchedAt: new Date(NOW.getTime() + 61_000).toISOString() }, { now: NOW });
+    expect(r.kind).toBe('unresolved');
+  });
+
+  it('fetched within a minute after the clock: valid', () => {
+    const r = parseCachedMarketSignal({ ...base, fetchedAt: new Date(NOW.getTime() + 59_000).toISOString() }, { now: NOW });
+    expect(r.kind).toBe('valid');
+  });
+
+  it("the builder stamps fetchedAt with the clock it is handed", () => {
+    const match = { id: '760415', home: { code: 'MEX', name: 'Mexico' }, away: { code: 'ECU', name: 'Ecuador' } } as unknown as Match;
+    const s = buildMarketSignal({ match, source: 'polymarket', asOf: base.asOf, outcomes: base.outcomes as never, liquidity: 500_000, now: NOW });
+    expect(s.fetchedAt).toBe(NOW.toISOString());
   });
 });
