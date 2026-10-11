@@ -31,8 +31,9 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoTally
  * or the engine's own) stays, under our line: we never drop it.
  *
  * One host-state write per change: the pace is the module's, set synchronously, loosened when a run passes the gate
- * and tightened only after its band write landed; a clear erases the band only when no run wrote it since the clear
- * began. A current view writes its baseline before it raises the toasts computed against the previous one, so a
+ * and tightened only after its band write landed. Runs are numbered as they pass the gate, and a clear invalidates the
+ * runs it covers: a line or a tightened pace is written only by a run no clear has invalidated, and a clear erases only
+ * a line written by a run it covers. A current view writes its baseline before it raises the toasts computed against the previous one, so a
  * refused baseline write tells the change once, late, never twice. A refused context write leaves the previous
  * context, which ages out within its stated 30 seconds.
  */
@@ -66,12 +67,16 @@ let forcedPending = false
  * its answer was idle (the first-run object, nothing chosen; or a view whose `idle` is true, the edition over), which
  * is read once per five minutes instead of every fire. Kept in the module, not `$.state` (nothing draws it), and set
  * synchronously: loosened (`idle: false`) when a run passes the gate, tightened only after that run's band write
- * landed, back to `{ ranAt: 0, idle: false }` at a clear. `ranAt` is read only while `idle` is true. A reload starts
+ * landed and only by a run no clear has invalidated, back to `{ ranAt: 0, idle: false }` at a clear. `ranAt` is read only while `idle` is true. A reload starts
  * again from the initial value, and its first run is forced.
  */
 let pace = { ranAt: 0, idle: false }
-/** Bumped just before each band write a run makes, so a clear that began earlier never erases what it wrote. */
-let gen = 0
+/** The number the last run that passed the gate took (each run takes the next). */
+let runSeq = 0
+/** Runs numbered up to this one are invalidated by a clear: they write no line and tighten no pace. */
+let invalidUpTo = 0
+/** The number of the run whose band write last applied (0: none). */
+let lastWriter = 0
 /**
  * The pace (the forced first run, then every 15 seconds) is started once per module load, by whichever comes first of
  * a start or an attach of a band surface. A reload makes a fresh module and drops the previous one's timers.
@@ -94,15 +99,29 @@ const drawsBand = (surface: unknown): boolean => surface === 'terminal' || surfa
 const drawable = async ($: EngineInterface): Promise<boolean> => (await $.session.surfaces()).some(drawsBand)
 
 /**
- * The pace back to its initial value (synchronously, no clock read), so the next run the roster allows is never held
- * by an idle gap, and the band cleared unless a run wrote it since this clear began: the check is made when the write
- * is applied (`update` applies its function again on a version miss), so an answer that landed first, or during the
- * retry, is kept. By value would not do: an idle line's text repeats exactly.
+ * A clear covering every run numbered up to `upTo`: those runs are invalidated (they write no line and tighten no pace
+ * after it), the pace goes back to its initial value (synchronously, no clock read), so the next run the roster allows
+ * is never held by an idle gap, and the band is erased only when the line standing was written by a run it covers (or
+ * there is none): a line a newer run wrote is kept. The check is made when the write is applied (`update` applies its
+ * function again on a version miss), so a newer run's line that landed first, or during the retry, is kept. By value
+ * would not do: an idle line's text repeats exactly.
  */
-async function clear($: EngineInterface): Promise<void> {
+async function clear($: EngineInterface, upTo: number): Promise<void> {
+  invalidUpTo = Math.max(invalidUpTo, upTo)
   pace = { ranAt: 0, idle: false }
-  const captured = gen
-  await update($, band, (cur) => (gen === captured ? null : cur))
+  await update($, band, (cur) => (lastWriter <= upTo ? null : cur))
+}
+
+/**
+ * The band write of run `seq`: nothing when a clear has invalidated it (the function hands back what stands), else its
+ * value, the run recorded as the last writer in the same application.
+ */
+function bandWrite($: EngineInterface, seq: number, value: ClaudinhoBand): Promise<ClaudinhoBand> {
+  return update($, band, (cur) => {
+    if (seq <= invalidUpTo) return cur
+    lastWriter = Math.max(lastWriter, seq)
+    return value
+  })
 }
 
 /** Whether a run may go on: a band surface is attached; a roster read that rejects is no. */
@@ -354,10 +373,11 @@ function tick($: EngineInterface, option: ToastsOption, force = false): Promise<
 
 async function run($: EngineInterface, option: ToastsOption, force: boolean): Promise<void> {
   // (1) No surface that draws the band (none yet, the last one detached, or the roster cannot be read): no process,
-  // the pace reset, so the next run the roster allows is not held by an idle gap, and the band cleared, so a band
-  // surface attaching again never shows an old line; the baseline and the context are left.
+  // and a clear covering every run so far (this one has no number yet): the pace reset, so the next run the roster
+  // allows is not held by an idle gap, and the band cleared, so a band surface attaching again never shows an old line;
+  // the baseline and the context are left.
   if (!(await mayRun($))) {
-    await clear($)
+    await clear($, runSeq)
     return
   }
   // (2) On a non-idle line the timer is the only pace; the age check is the idle gap's alone. A run that passes the
@@ -366,11 +386,13 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   const now = await $.clock.now()
   if (!force && pace.idle && now - pace.ranAt < IDLE_MS) return
   pace = { ranAt: now, idle: false }
+  const seq = ++runSeq
   // (3) The PATH, bounded.
   const env = await runEnv($)
-  // (4) The roster again, the last await before the spawn: the surface may have left while the PATH was looked up.
+  // (4) The roster again, the last await before the spawn: the surface may have left while the PATH was looked up. A
+  // clear covering this run and every older one.
   if (!(await mayRun($))) {
-    await clear($)
+    await clear($, seq)
     return
   }
   // (5) The spawn.
@@ -387,10 +409,9 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     // No binary, a timeout, a refused spawn: a failed run.
   }
   if (!answer) {
-    // A failed run: nothing shown, the baseline and the context left, the pace left loosened (the next run at the next
-    // fire). Its band write counts as a run's: a clear that began earlier does not erase it.
-    gen += 1
-    await update($, band, () => null)
+    // A failed run: nothing shown (unless a clear has invalidated it: then it writes nothing), the baseline and the
+    // context left, the pace left loosened (the next run at the next fire); it tightens nothing.
+    await bandWrite($, seq, null)
     return
   }
   const view: View = answer
@@ -409,11 +430,10 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     typeof view.empty === 'boolean'
   const idle = firstRun || (isView && view.idle === true)
   const hidden = !isView || view.empty === true || view.line.trim() === ''
-  // The band written (a clear that began earlier does not erase it), then the pace tightened only once that write
-  // landed: a refused band write leaves the loosened pace, so the next fire runs again.
-  gen += 1
-  await update($, band, () => (hidden ? null : { text: view.line }))
-  pace = { ranAt: now, idle }
+  // The band written unless a clear has invalidated this run, then the pace tightened only once that write landed and
+  // only by a run still valid: a refused band write leaves the loosened pace, so the next fire runs again.
+  await bandWrite($, seq, hidden ? null : { text: view.line })
+  if (seq > invalidUpTo) pace = { ranAt: now, idle }
 
   // The two shapes that are no view are no current view either: each clears the context and keeps the baseline.
   if (isView && view.current === true) {
@@ -485,9 +505,11 @@ export const register: Register = (on, options) => {
     // The session is ending: nothing to do.
     if (e.reason === 'end') return next(e)
     // The client is already out of the roster when the detach is dispatched, so the roster is read before `next`: the
-    // last band surface gone (or a roster that cannot be read), the band cleared at once, so a quick re-attach never
-    // shows an old line, whatever a hook beneath does with its time. No run and no timer started.
-    if (!(await mayRun($))) await clear($)
+    // last band surface gone (or a roster that cannot be read), a clear covering every run numbered when the hook
+    // began, so a quick re-attach never shows an old line, whatever a hook beneath does with its time, and a run that
+    // began after it (a reconnect's) keeps its line. No run and no timer started.
+    const upTo = runSeq
+    if (!(await mayRun($))) await clear($, upTo)
     return next(e)
   })
 
