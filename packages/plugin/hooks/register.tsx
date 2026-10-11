@@ -27,6 +27,7 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoPace,
  * at most a second for it and uses the PATH without nvm's folders, and the first run that finds it answered keeps the
  * PATH with them. A band drawn beneath ours in the hook chain (a plugin registered after ours, or the engine's own)
  * stays, under our line: we never drop it.
+ * A run's answer is drawn only if no clear (a window leaving, or a run finding none) happened since the run began its spawn.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -50,6 +51,7 @@ const TOASTS_OPTIONS: readonly ToastsOption[] = ['pinned', 'all', 'off']
  * module, not `$.state`: the draw that learns it may not write state. A reload starts again from the default.
  */
 let columns = DEFAULT_COLUMNS
+let clears = 0
 /** At most one run in flight: the guard is taken before the first await. */
 let busy = false
 /** A forced run asked while a run was in flight: made as soon as that run ends (cleared when it starts). */
@@ -80,6 +82,7 @@ const drawable = async ($: EngineInterface): Promise<boolean> => (await $.sessio
  * held by an idle gap.
  */
 async function clear($: EngineInterface): Promise<void> {
+  clears += 1
   await update($, band, () => null)
   await update($, pace, () => ({ ranAt: 0, idle: false }))
 }
@@ -341,6 +344,7 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     return
   }
   // (5) The spawn.
+  const c = clears
   let answer: View | null = null
   try {
     const r = await $.process.run(['claudinho', 'ambient', '--json', '--columns', String(columns)], {
@@ -355,8 +359,8 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   }
   if (!answer) {
     // A failed run: nothing shown, the baseline and the context left, the next run at the next fire.
-    await update($, pace, () => ({ ranAt: now, idle: false }))
-    await update($, band, () => null)
+    if (clears === c) await update($, pace, () => ({ ranAt: now, idle: false }))
+    await update($, band, (cur) => (clears === c ? null : cur))
     return
   }
   const view: View = answer
@@ -375,8 +379,8 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     typeof view.empty === 'boolean'
   const idle = firstRun || (isView && view.idle === true)
   const hidden = !isView || view.empty === true || view.line.trim() === ''
-  await update($, pace, () => ({ ranAt: now, idle }))
-  await update($, band, () => (hidden ? null : { text: view.line }))
+  if (clears === c) await update($, pace, () => ({ ranAt: now, idle }))
+  await update($, band, (cur) => (clears === c ? (hidden ? null : { text: view.line }) : cur))
 
   // The two shapes that are no view are no current view either: each clears the context and keeps the baseline.
   if (isView && view.current === true) {
