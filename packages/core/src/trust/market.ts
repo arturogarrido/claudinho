@@ -22,11 +22,14 @@
  * `ambiguous` is accepted only as a real boolean and otherwise fails CLOSED, so
  * a malformed value cannot coerce its way into looking trustworthy.
  *
- * A signal fetched after the judging clock (beyond `FUTURE_SKEW_MS`) is no
- * evidence for that request: it is refused as `unresolved`, never a negative.
+ * `fetchedAt` places the signal in time, and a signal is evidence for the
+ * judging clock J (`options.now`, else the wall clock) only when its fetch clock
+ * F is readable and F <= J, with no allowance: absent, empty, unparseable or of
+ * the wrong type is `malformed`; F after J by any amount is `unresolved`;
+ * F <= J is valid, its `stale` derived from `asOf` against J.
  */
 import { KNOWN_MARKET_SOURCES } from '../markets/format';
-import { FUTURE_SKEW_MS, deriveFavorite, isStaleSignal } from '../markets/normalize';
+import { deriveFavorite, isStaleSignal } from '../markets/normalize';
 import type { MarketOutcome, MarketSignal } from '../markets/types';
 import { takeBounded } from './bounded';
 import { type ParseResult, ambiguous, malformed, unresolved, valid } from './result';
@@ -136,15 +139,23 @@ export function sealMarketSignal(
   if (sourceMarketId) out.sourceMarketId = sourceMarketId;
   out.asOf = canonicalTimestamp(s.asOf) ?? '';
   out.fetchedAt = canonicalTimestamp(s.fetchedAt) ?? '';
-  // A signal fetched after the clock it is judged by is no evidence for that
-  // request: each leg was priced at most `FUTURE_SKEW_MS` after its own fetch
-  // clock, and nothing in the signal says which. Unresolved, never a negative:
-  // the bytes may be right under another clock. An empty `fetchedAt` stays valid.
-  if (out.fetchedAt !== '') {
-    const judgedAt = (options.now ?? new Date()).getTime();
-    if (Date.parse(out.fetchedAt) - judgedAt > FUTURE_SKEW_MS) {
-      return unresolved('signal was fetched after the clock it is judged by');
-    }
+  // The fetch clock F decides whether the signal is evidence for the judging
+  // clock J. Every leg was priced at most `FUTURE_SKEW_MS` after F (the
+  // provider's per-leg guard), so with F <= J its legs are within the uncached
+  // read's own bound at J; any allowance on F would compound with the leg's.
+  //   F absent, empty, unparseable, wrong type (canonicalized to '') -> malformed:
+  //     the bytes cannot place the signal in time (never a throw).
+  //   F > J by any amount -> unresolved: right under another clock, never a
+  //     negative.
+  //   F <= J -> valid, `stale` derived from `asOf` against J below.
+  // J is read once: the fetch check and the staleness below judge one instant.
+  const judgedAt = options.now ?? new Date();
+  const fetchedMs = Date.parse(out.fetchedAt);
+  if (out.fetchedAt === '' || !Number.isFinite(fetchedMs)) {
+    return malformed('signal carries no readable fetch time');
+  }
+  if (fetchedMs > judgedAt.getTime()) {
+    return unresolved('signal was fetched after the clock it is judged by');
   }
   out.outcomes = outcomes;
   // Fail closed: only an explicit `false` reads as "not ambiguous".
@@ -160,7 +171,7 @@ export function sealMarketSignal(
   // Derived against the clock the seal is handed, for the same reason `favorite`
   // is derived from the outcomes; the input's `stale` is never read. An
   // unusable `asOf` parses to NaN and reads as stale.
-  out.stale = isStaleSignal(out, { now: options.now, maxAgeMs: options.maxAgeMs });
+  out.stale = isStaleSignal(out, { now: judgedAt, maxAgeMs: options.maxAgeMs });
   // A signal we cannot ATTRIBUTE is not a signal we may show. `source` is
   // allow-listed, so an unknown provider becomes '' — and an empty attribution
   // slot beside real-looking percentages is precisely the confidently-wrong
