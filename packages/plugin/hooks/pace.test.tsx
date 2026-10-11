@@ -83,6 +83,21 @@ describe('surfaces that draw no band', () => {
     expect(argvs).toHaveLength(0)
   })
 
+  test('a headless session starts no timer: the roster is asked once, at the start, and never at a fire', async ($, on) => {
+    const { clock, rosterReads } = await world($, on, [view(LINE)], { start: DESKTOP_START, surfaces: [] })
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(rosterReads()).toBe(1)
+  })
+
+  test('a phone attaching alone starts no timer: the roster is not asked again', async ($, on) => {
+    const { attach, clock, rosterReads } = await world($, on, [view(LINE)], { start: DESKTOP_START, surfaces: [] })
+    await attach('mobile', 'phone')
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(rosterReads()).toBe(1)
+  })
+
   test('a phone attaching alone (mobile raises no AbovePrompt) runs nothing', async ($, on) => {
     const { argvs, attach, clock } = await world($, on, [view(LINE)], { start: DESKTOP_START, surfaces: [] })
     await attach('mobile', 'phone')

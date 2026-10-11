@@ -66,6 +66,16 @@ describe('the PATH handed to the run', () => {
     expect(envs[0]).toEqual({ PATH: [...AFTER_NVM, '/usr/bin', '/bin'].join(':') })
   })
 
+  test("an empty segment of the host PATH (the current folder, to a shell) is dropped", async ($, on) => {
+    const { envs } = await world($, on, [view(LINE)], { env: { PATH: ':/usr/bin::/bin:', HOME } })
+    expect(envs[0]).toEqual({ PATH: [BARE_PATH, ...AFTER_NVM].join(':') })
+  })
+
+  test('an empty HOME is no HOME: no folder under it', async ($, on) => {
+    const { envs } = await world($, on, [view(LINE)], { env: { PATH: BARE_PATH, HOME: '' } })
+    expect(envs[0]).toEqual({ PATH: [BARE_PATH, '/opt/homebrew/bin', '/usr/local/bin'].join(':') })
+  })
+
   test('Windows: nothing is handed, as before', async ($, on) => {
     const { envs, argvs } = await world($, on, [view(LINE)], { env: { OS: 'Windows_NT', PATH: 'C:\\Windows\\system32;C:\\Windows', HOME } })
     expect(argvs).toHaveLength(1)

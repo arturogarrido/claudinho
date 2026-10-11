@@ -68,7 +68,11 @@ export const world = async (
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.attach', (_$, e) => ({ clientId: e.clientId }))
   on('session.detach', (_$, e) => ({ clientId: e.clientId }))
-  on('session.surfaces', () => ({ value: [...roster] }))
+  let surfaceReads = 0
+  on('session.surfaces', () => {
+    surfaceReads += 1
+    return { value: [...roster] }
+  })
   const envReads: string[] = []
   on('env.get', (_$, e) => {
     envReads.push(e.name)
@@ -120,7 +124,9 @@ export const world = async (
   }
   const mount = (props: Partial<typeof PROPS> = {}, surface: 'terminal' | 'desktop' = 'terminal') =>
     $.ui.mount({ plugin: 'claudinho', surface, component: 'AbovePrompt', props: { ...PROPS, ...props }, viewport: { columns: 100, rows: 30 } })
-  return { clock, argvs, stdins, envs, envReads, lists, mount, attach, detach }
+  /** How many times the plugin asked for the roster: what a timer ticking for nobody would show. */
+  const rosterReads = () => surfaceReads
+  return { clock, argvs, stdins, envs, envReads, lists, mount, attach, detach, rosterReads }
 }
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */
