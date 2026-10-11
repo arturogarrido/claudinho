@@ -204,3 +204,26 @@ describe('the PATH, once whole, is kept', () => {
     expect([...envReads].sort()).toEqual(['HOME', 'OS', 'PATH'])
   })
 })
+
+describe('an environment read that is refused is no answer: the PATH is used for that run and not kept', () => {
+  test('OS refused: nothing handed for that run (never a PATH joined for another system), and the next run reads it again', async ($, on) => {
+    const { clock, envs } = await world($, on, [view(LINE)], { refuseEnvOnce: ['OS'] })
+    expect(envs[0]).toBeUndefined()
+    await clock.advance(15_000)
+    expect(envs[1]).toEqual({ PATH: [BARE_PATH, ...AFTER_NVM].join(':') })
+  })
+
+  test("PATH refused: that run gets the global-bin folders alone, the next one the host's PATH first", async ($, on) => {
+    const { clock, envs } = await world($, on, [view(LINE)], { refuseEnvOnce: ['PATH'] })
+    expect(envs[0]).toEqual({ PATH: [...AFTER_NVM, '/usr/bin', '/bin'].join(':') })
+    await clock.advance(15_000)
+    expect(envs[1]).toEqual({ PATH: [BARE_PATH, ...AFTER_NVM].join(':') })
+  })
+
+  test('HOME refused: that run gets no folder under it, the next one does', async ($, on) => {
+    const { clock, envs } = await world($, on, [view(LINE)], { refuseEnvOnce: ['HOME'] })
+    expect(envs[0]).toEqual({ PATH: [BARE_PATH, '/opt/homebrew/bin', '/usr/local/bin'].join(':') })
+    await clock.advance(15_000)
+    expect(envs[1]).toEqual({ PATH: [BARE_PATH, ...AFTER_NVM].join(':') })
+  })
+})

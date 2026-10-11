@@ -181,3 +181,22 @@ describe('the toasts option', () => {
     expect(texts).toEqual([])
   })
 })
+
+describe('the baseline before the toast', () => {
+  test('a baseline write refused once: the change is toasted once, at the next current view, never twice', async ($, on) => {
+    const texts = toasted(on)
+    let writes = 0
+    on('state.set', (_$, e, next) => {
+      if (e.key === 'baseline') {
+        writes += 1
+        if (writes === 2) return { deny: 'state.set denied' }
+      }
+      return next(e)
+    })
+    const { clock } = await world($, on, [live([match('1', [1, 0])]), live([match('1', [2, 0])])])
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(writes).toBeGreaterThanOrEqual(3)
+    expect(texts).toEqual(["⚽ Arsenal 2–0 Chelsea (60')"])
+  })
+})

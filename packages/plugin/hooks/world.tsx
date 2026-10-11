@@ -55,6 +55,10 @@ export type WorldOptions = {
   beneath?: string
   /** The roster read rejects while `session.start` runs (a hook's `{ deny }`), then answers. */
   rosterDeniedAtStart?: boolean
+  /** The first `$.env.get` of each name listed is refused (`{ deny }`); later reads answer. */
+  refuseEnvOnce?: string[]
+  /** The engine's own `session.detach` answers only once the test releases it (a slow hook beneath ours). */
+  holdDetach?: boolean
 }
 
 /** An answer of the CLI the test holds: the run waits until the test releases it (`release()` in the world's order). */
@@ -82,7 +86,11 @@ export const world = async (
   const clock = mock.clock(on, { now: NOW })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.attach', (_$, e) => ({ clientId: e.clientId }))
-  on('session.detach', (_$, e) => ({ clientId: e.clientId }))
+  let releaseDetachHold: () => void = () => {}
+  on('session.detach', async (_$, e) => {
+    if (options.holdDetach) await new Promise<void>((resolve) => { releaseDetachHold = resolve })
+    return { clientId: e.clientId }
+  })
   let surfaceReads = 0
   on('session.surfaces', () => {
     surfaceReads += 1
@@ -91,8 +99,10 @@ export const world = async (
     return { value: roster() }
   })
   const envReads: string[] = []
+  const refusedEnv = new Set(options.refuseEnvOnce ?? [])
   on('env.get', (_$, e) => {
     envReads.push(e.name)
+    if (refusedEnv.delete(e.name)) return { deny: `env.get ${e.name} denied` }
     return { value: Object.hasOwn(env, e.name) ? env[e.name] : undefined }
   })
   const lists: string[] = []
@@ -161,6 +171,18 @@ export const world = async (
     clients.delete(clientId)
     await $.session.detach({ surface, clientId, reason: 'detach' })
   }
+  /** A client leaves, the detach not awaited (its dispatch held beneath ours with `holdDetach`): the pending dispatch. */
+  const detachStart = (clientId: string) => {
+    const surface = clients.get(clientId)
+    if (surface === undefined) throw new Error(`no client ${clientId}`)
+    clients.delete(clientId)
+    return $.session.detach({ surface, clientId, reason: 'detach' })
+  }
+  /** The held detach answers now. */
+  const releaseDetach = async () => {
+    releaseDetachHold()
+    await clock.advance(1)
+  }
   /** The CLI's held answers, released in the order the runs began; then the clock lets the run finish. */
   const release = async () => {
     const r = releases.shift()
@@ -181,7 +203,7 @@ export const world = async (
     $.ui.mount({ plugin: 'claudinho', surface, component: 'AbovePrompt', props: { ...PROPS, ...props }, viewport: { columns: 100, rows: 30 } })
   /** How many times the plugin asked for the roster: what a timer ticking for nobody would show. */
   const rosterReads = () => surfaceReads
-  return { clock, argvs, stdins, envs, envReads, lists, probes, mount, attach, detach, release, releaseListing, denyRoster, rosterReads }
+  return { clock, argvs, stdins, envs, envReads, lists, probes, mount, attach, detach, detachStart, releaseDetach, release, releaseListing, denyRoster, rosterReads }
 }
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */
