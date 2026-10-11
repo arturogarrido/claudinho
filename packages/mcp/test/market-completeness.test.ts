@@ -176,7 +176,7 @@ describe('cachedMarketSignals completeness through the production memory cache',
           };
         },
       };
-      const seeded = await cachedMarketSignals({}, [hit], () => complete);
+      const seeded = await cachedMarketSignals({}, [hit], new Date(stamp), () => complete);
       expect(seeded).toMatchObject({ complete: true });
       expect(seeded.signals.get(hit.id)).toBe(signal);
 
@@ -191,7 +191,7 @@ describe('cachedMarketSignals completeness through the production memory cache',
           return { results: new Map(), complete: false };
         },
       };
-      const mixed = await cachedMarketSignals({}, [hit, miss], () => partial);
+      const mixed = await cachedMarketSignals({}, [hit, miss], new Date(stamp), () => partial);
 
       expect(fetchedIds).toEqual([miss.id]);
       expect(mixed.signals.get(hit.id)).toBe(signal);

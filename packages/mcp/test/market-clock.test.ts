@@ -63,9 +63,13 @@ const marketProvider: MarketProvider = {
 const common = { competition: 'world-cup', tz: 'UTC', lang: 'en', flavor: 'off' as const, adapter: wc, marketProvider, now: before };
 
 describe("a market read is judged by the request's clock, the provider's staleness stamp included", () => {
-  it("get_today: the day's fixture carries its market line", async () => {
+  // get_today's text lists the fixtures; its market is the structured `marketSignals` (a line in the text only
+  // when the market read was not whole).
+  it("get_today: the day's fixture carries its signal, fresh by the request clock", async () => {
     const r = await toolGetToday({ ...common, date: day });
-    expect(r.text).toContain('56%');
+    const ms = (r.data as { marketSignals?: Record<string, { stale: boolean; outcomes: { probability: number }[] }> }).marketSignals;
+    expect(ms?.[fixture.id]?.stale).toBe(false);
+    expect(ms?.[fixture.id]?.outcomes[0]?.probability).toBe(0.56);
   });
 
   it('get_match: the match carries its market line', async () => {
