@@ -32,7 +32,8 @@ describe('the PATH handed to the run', () => {
   test('nvm versions are ordered by number, not by text: v24 before v9', async ($, on) => {
     const { envs } = await world($, on, [view(LINE)], { nvm: [dir('v9.0.0'), dir('v24.11.1'), dir('v22.17.0')] })
     const parts = (envs[0]?.PATH ?? '').split(':')
-    expect([parts.indexOf(`${NVM}/v24.11.1/bin`), parts.indexOf(`${NVM}/v22.17.0/bin`), parts.indexOf(`${NVM}/v9.0.0/bin`)]).toEqual([1, 2, 3])
+    const first = BARE_PATH.split(':').length // the host's own folders come first
+    expect([parts.indexOf(`${NVM}/v24.11.1/bin`), parts.indexOf(`${NVM}/v22.17.0/bin`), parts.indexOf(`${NVM}/v9.0.0/bin`)]).toEqual([first, first + 1, first + 2])
   })
 
   test("nvm's entries that are not a version folder are left out", async ($, on) => {
