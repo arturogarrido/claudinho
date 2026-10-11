@@ -678,3 +678,22 @@ describe('a line another module load wrote (a hot reload keeps the host state, n
     expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
   })
 })
+
+describe('a module load that starts with no band surface', () => {
+  test("clears a line a previous load left (a reload during a detach): a window attaching later shows no old line while its run is in flight", async ($, on) => {
+    // The host keeps the band across a reload; the kit loads the module once, so the band is answered as a previous
+    // load left it until this load's first write lands.
+    let written = false
+    on('state.get', (_$, e, next) => {
+      if (!written && e.key === 'band') return { value: { value: { text: LINE, seq: 3, load: 'a-previous-load' }, version: 0 } }
+      return next(e)
+    })
+    on('state.set', (_$, e, next) => {
+      if (e.key === 'band') written = true
+      return next(e)
+    })
+    const { attach, mount } = await world($, on, [held(view("⚽ ARS 3–1 CHE 80'"))], { start: DESKTOP_START, surfaces: [] })
+    await attach('desktop', 'app')
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+})
