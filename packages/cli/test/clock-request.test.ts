@@ -262,6 +262,16 @@ describe("the market gates take the adapter's read clock (no context clock)", ()
     expect(text()).not.toContain(SIGNOFF);
   });
 
+  it("next <team> with no fixture ahead: no tournament sign-off under the request's clock before the final", async () => {
+    // July 1: the group stage is over, so the team's last bundled fixture is behind the clock, and the knockout
+    // read serves nothing: the empty answer's path, before the final.
+    const july: ProviderAdapter = { ...wc, now: () => Date.parse('2026-07-01T12:00:00Z') };
+    await cmdNext(fixture.home.code, { ...wcCtx(), adapter: july });
+    expect(text()).toContain('World Cup');
+    expect(text()).not.toContain(fixture.away.name);
+    expect(text()).not.toContain(SIGNOFF);
+  });
+
   it("next <team>: no tournament sign-off under the request's clock before the final", async () => {
     await cmdNext(fixture.home.code, wcCtx());
     expect(text()).toContain(fixture.away.name);
