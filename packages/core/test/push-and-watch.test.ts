@@ -551,12 +551,11 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     expect(await until(() => pidReady(sb, 'gh-grandchild') && pidReady(sb, 'gh-child'), 8000), 'the probe and its helper started').toBe(true);
     const grandchild = pidIn(sb, 'gh-grandchild');
     const gh = pidIn(sb, 'gh-child');
-    // the deadline passes once both pids are written; the watchdog marks the call killed (killed.<pid> in the work
-    // directory), TERMs the tree (the helper dies, gh and the grandchild ignore it) and waits its tries on gh (100 x
-    // 20 ms) before its KILL: the TERM to the script lands inside that wait, counted from the marker, not from start
-    const marked = () => workDirs(sb).some((d) => readdirSync(join(sb.dir, d)).some((n) => n.startsWith('killed.')));
-    expect(await until(marked, 8000), 'the watchdog reached the deadline').toBe(true);
-    await new Promise((r) => setTimeout(r, 300));
+    // the deadline passes once both pids are written; the watchdog records the tree, TERMs it (the helper, `gh-child`,
+    // dies of it; gh and the grandchild ignore it) and waits its tries on gh (100 x 20 ms) before its KILL. The
+    // helper's death is the state that says the watchdog's TERM landed: the TERM to the script follows it at once,
+    // inside that wait, on any host (never a fixed delay from a marker written before the signal).
+    expect(await until(() => !pidAlive(gh), 8000), 'the watchdog TERMed the tree: the helper is dead of it').toBe(true);
     child.kill('SIGTERM');
     const r = await done;
     expect(r.status, `status ${r.status} signal ${r.signal}: ${r.out}`).toBe(143);

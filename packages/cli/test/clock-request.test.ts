@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   allFixtures,
+  buildMarketSignal,
   definitiveNone,
   EspnAdapter,
   FakeMarketProvider,
@@ -197,25 +198,28 @@ describe("the market gates take the adapter's read clock (no context clock)", ()
       return [];
     },
   };
-  const sig = (m: Match): MarketSignal => ({
-    matchId: m.id,
-    source: 'polymarket',
-    asOf: before.toISOString(),
-    fetchedAt: before.toISOString(),
-    outcomes: [
-      { kind: 'home', teamCode: m.home.code, label: m.home.name, probability: 0.56 },
-      { kind: 'draw', label: 'Draw', probability: 0.25 },
-      { kind: 'away', teamCode: m.away.code, label: m.away.name, probability: 0.19 },
-    ],
-    favorite: { kind: 'home', teamCode: m.home.code, probability: 0.56, strength: 'slight' },
-    stale: false,
-    ambiguous: false,
-  });
+  // Built the way a provider builds one (core's `buildMarketSignal`, the real provider's tail), priced at the
+  // request's clock and stamped stale or fresh by the clock the provider is HANDED (`options.now`): a market read
+  // that hands the provider no clock is stamped by the wall clock, months later, and is stale.
+  const sig = (m: Match, now: Date | undefined): MarketSignal =>
+    buildMarketSignal({
+      match: m,
+      source: 'polymarket',
+      asOf: before.toISOString(),
+      fetchedAt: before.toISOString(),
+      outcomes: [
+        { kind: 'home', teamCode: m.home.code, label: m.home.name, probability: 0.56 },
+        { kind: 'draw', label: 'Draw', probability: 0.25 },
+        { kind: 'away', teamCode: m.away.code, label: m.away.name, probability: 0.19 },
+      ],
+      liquidity: 250_000,
+      now,
+    });
   const markets: MarketProvider = {
     name: 'fixed',
-    findSignal: async (m) => (m.id === fixture.id ? sig(m) : undefined),
-    findSignals: async (ms) => ({
-      results: new Map(ms.map((m) => [m.id, m.id === fixture.id ? valid(sig(m)) : definitiveNone('no signal for this fixture')] as const)),
+    findSignal: async (m, options) => (m.id === fixture.id ? sig(m, options?.now) : undefined),
+    findSignals: async (ms, options) => ({
+      results: new Map(ms.map((m) => [m.id, m.id === fixture.id ? valid(sig(m, options?.now)) : definitiveNone('no signal for this fixture')] as const)),
       complete: true,
     }),
   };
@@ -226,14 +230,42 @@ describe("the market gates take the adapter's read clock (no context clock)", ()
     expect(text()).toContain('56%');
   });
 
-  it("markets next <team>: the fixture and its market by the adapter clock", async () => {
+  it("markets next <team>: the fixture and its market by the adapter clock, fresh by it", async () => {
     await cmdMarkets('next', fixture.home.code, wcCtx());
     expect(text()).toContain('56%');
+    expect(text()).not.toContain('stale');
   });
 
-  it("markets with no date: the adapter clock's day, and its fixture's signal", async () => {
+  it("markets with no date: the adapter clock's day, and its fixture's signal, fresh by it", async () => {
     await cmdMarkets(undefined, undefined, wcCtx());
     expect(text()).toContain('56%');
+    expect(text()).not.toContain('stale');
+  });
+
+  it("markets <id>: the record and its signal, fresh by the adapter clock", async () => {
+    await cmdMarkets(fixture.id, undefined, wcCtx());
+    expect(text()).toContain('56%');
+    expect(text()).not.toContain('stale');
+  });
+
+  // The command's closing line is a rendering of the same request: the World Cup's sign-off ("The 2026 World Cup
+  // is over") is said by the request's clock, never under a body the request's clock places in June.
+  const SIGNOFF = 'The 2026 World Cup is over';
+  it("today: no tournament sign-off under a day the request's clock places before the final", async () => {
+    await cmdToday(undefined, wcCtx());
+    expect(text()).toContain(fixture.home.name);
+    expect(text()).not.toContain(SIGNOFF);
+  });
+
+  it("live: no tournament sign-off under the request's clock before the final", async () => {
+    await cmdLive(wcCtx());
+    expect(text()).not.toContain(SIGNOFF);
+  });
+
+  it("next <team>: no tournament sign-off under the request's clock before the final", async () => {
+    await cmdNext(fixture.home.code, wcCtx());
+    expect(text()).toContain(fixture.away.name);
+    expect(text()).not.toContain(SIGNOFF);
   });
 
   it("match <id>: the record and its market line on the adapter clock", async () => {
