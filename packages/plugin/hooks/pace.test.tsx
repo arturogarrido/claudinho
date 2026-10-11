@@ -438,3 +438,81 @@ describe("a detach's clear applied in the instant after a reconnect's answer lan
     expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: COMPLETE })).toHaveLength(1)
   })
 })
+
+describe('a clear invalidates the runs it covers: they neither write nor tighten after it', () => {
+  test("a clear landing after an idle answer's band write and before its run went on: the next fire runs the CLI", async ($, on) => {
+    let holdAnswer = false
+    let landed = false
+    let releaseAnswer: () => void = () => {}
+    on('state.set', async (_$, e, next) => {
+      if (holdAnswer && e.key === 'band' && e.value !== null) {
+        holdAnswer = false
+        const r = await next(e)
+        landed = true
+        await new Promise<void>((resolve) => {
+          releaseAnswer = resolve
+        })
+        return r
+      }
+      return next(e)
+    })
+    const { argvs, attach, clock, denyRoster, detach, mount } = await world($, on, [view(COMPLETE, { idle: true })])
+    holdAnswer = true
+    await attach('desktop', 'app')
+    expect(landed).toBe(true)
+    expect(argvs).toHaveLength(2)
+    // The desktop window leaves while that run waits; its detach cannot read the roster, so it clears.
+    denyRoster(true)
+    await detach('app')
+    denyRoster(false)
+    releaseAnswer()
+    await clock.advance(1)
+    await clock.advance(15_000)
+    expect(argvs).toHaveLength(3)
+    expect(await (await mount()).findAll({ type: 'Text', text: COMPLETE })).toHaveLength(1)
+  })
+
+  test('a run that began before the last window left writes nothing after the detach: no line while the reconnect\'s run is in flight', async ($, on) => {
+    const OLD = "⚽ ARS 2–2 CHE 70'"
+    let holdClear = false
+    let releaseClear: () => void = () => {}
+    on('state.set', async (_$, e, next) => {
+      if (holdClear && e.key === 'band' && e.value === null) {
+        holdClear = false
+        await new Promise<void>((resolve) => {
+          releaseClear = resolve
+        })
+      }
+      return next(e)
+    })
+    const { argvs, attach, clock, detachStart, mount, release } = await world($, on, [view(LINE), held(view(OLD)), held(view('⚽ ARS 3–2 CHE 80\''))], { start: DESKTOP_START, surfaces: ['desktop'] })
+    await clock.advance(15_000)
+    expect(argvs).toHaveLength(2)
+    holdClear = true
+    const leaving = detachStart('desktop')
+    await clock.advance(1)
+    expect(holdClear).toBe(false)
+    await attach('desktop', 'app')
+    await release()
+    expect(argvs).toHaveLength(3)
+    releaseClear()
+    await leaving
+    await clock.advance(1)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+
+  test("a detach whose roster read is slow does not erase the line a reconnect's run wrote meanwhile", async ($, on) => {
+    const LINE2 = "⚽ ARS 3–1 CHE 80'"
+    const { argvs, attach, clock, detachStart, holdNextRosterRead, mount, releaseRosterRead } = await world($, on, [view(LINE), view(LINE2)], { start: DESKTOP_START, surfaces: ['desktop'] })
+    holdNextRosterRead()
+    const leaving = detachStart('desktop')
+    await clock.advance(1)
+    await attach('desktop', 'app')
+    expect(argvs).toHaveLength(2)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: LINE2 })).toHaveLength(1)
+    await releaseRosterRead()
+    await leaving
+    await clock.advance(1)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: LINE2 })).toHaveLength(1)
+  })
+})

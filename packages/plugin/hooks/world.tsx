@@ -94,7 +94,19 @@ export const world = async (
     return { clientId: e.clientId }
   })
   let surfaceReads = 0
-  on('session.surfaces', () => {
+  // A one-shot slow roster read: answers the roster as it stood when asked, once the test releases it.
+  let holdNext = false
+  let releaseHeldRead: () => void = () => {}
+  on('session.surfaces', async () => {
+    if (holdNext) {
+      holdNext = false
+      surfaceReads += 1
+      const asked = roster()
+      await new Promise<void>((resolve) => {
+        releaseHeldRead = resolve
+      })
+      return { value: asked }
+    }
     surfaceReads += 1
     // A refusal is `{ deny }`: a hook that throws is skipped, and the read would go on beneath it.
     if (rosterRejects || surfaceReads >= denyFrom) return { deny: 'session.surfaces denied' }
@@ -202,6 +214,15 @@ export const world = async (
     rosterRejects = deny
     if (!deny) denyFrom = Number.POSITIVE_INFINITY
   }
+  /** The next roster read answers the roster as it stood when asked, but only once `releaseRosterRead` is called. */
+  const holdNextRosterRead = () => {
+    holdNext = true
+  }
+  /** The held roster read answers now. */
+  const releaseRosterRead = async () => {
+    releaseHeldRead()
+    await clock.advance(1)
+  }
   /** Every roster read from the `n`th of the session on (counting as `rosterReads()` does) is refused. */
   const denyRosterFrom = (n: number) => {
     denyFrom = n
@@ -210,7 +231,7 @@ export const world = async (
     $.ui.mount({ plugin: 'claudinho', surface, component: 'AbovePrompt', props: { ...PROPS, ...props }, viewport: { columns: 100, rows: 30 } })
   /** How many times the plugin asked for the roster: what a timer ticking for nobody would show. */
   const rosterReads = () => surfaceReads
-  return { clock, argvs, stdins, envs, envReads, lists, probes, mount, attach, detach, detachStart, releaseDetach, release, releaseListing, denyRoster, denyRosterFrom, rosterReads }
+  return { clock, argvs, stdins, envs, envReads, lists, probes, mount, attach, detach, detachStart, releaseDetach, release, releaseListing, denyRoster, denyRosterFrom, holdNextRosterRead, releaseRosterRead, rosterReads }
 }
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */
