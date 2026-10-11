@@ -6,7 +6,10 @@
  * fallback object, a view from an older CLI) is no view: hidden, never current, the baseline kept.
  */
 
-/** The band's line as the CLI fitted it, or null when there is nothing to show (or the last run failed). */
+/**
+ * The band's line as the CLI fitted it, or null when there is nothing to show, the last run failed, or a run found no
+ * surface that draws the band (none attached, or the roster could not be read).
+ */
 export type ClaudinhoBand = { text: string } | null
 
 /**
