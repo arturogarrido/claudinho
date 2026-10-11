@@ -653,7 +653,8 @@ describe('a line another module load wrote (a hot reload keeps the host state, n
     })
     const { attach, detach, mount } = await world($, on, [view(LINE), held(view("⚽ ARS 3–1 CHE 80'"))], { start: DESKTOP_START, surfaces: ['desktop'] })
     expect(stamped).toBe(true)
-    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: LINE })).toHaveLength(1)
+    // A line another load wrote is never drawn (the render checks the load), even before any clear.
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: LINE })).toHaveLength(0)
     await detach('desktop')
     await attach('desktop', 'app')
     expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
@@ -671,7 +672,8 @@ describe('a line another module load wrote (a hot reload keeps the host state, n
     })
     const { clock, denyRoster, mount } = await world($, on, [view(LINE)])
     expect(stamped).toBe(true)
-    expect(await (await mount()).findAll({ type: 'Text', text: LINE })).toHaveLength(1)
+    // A line another load wrote is never drawn (the render checks the load), even before any clear.
+    expect(await (await mount()).findAll({ type: 'Text', text: LINE })).toHaveLength(0)
     denyRoster(true)
     await clock.advance(15_000)
     await clock.advance(15_000)
