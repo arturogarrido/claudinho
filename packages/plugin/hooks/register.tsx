@@ -25,8 +25,15 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoPace,
  * and Bun install global commands into, so a session started with a bare PATH still finds the CLI and its `node` (on
  * Windows nothing is handed). nvm's part is looked up once per load; while that lookup has not answered, each run waits
  * at most a second for it and uses the PATH without nvm's folders, and the first run that finds it answered keeps the
- * PATH with them. A band drawn beneath ours in the hook chain (a plugin registered after ours, or the engine's own)
- * stays, under our line: we never drop it.
+ * PATH with them. An environment read that is refused (`OS`, `PATH`, `HOME`) is no answer: that run's PATH is built
+ * without it (with `OS` refused, no PATH is handed at all) and never kept, so a read refused for good costs those reads
+ * at every run and the PATH is never kept. A band drawn beneath ours in the hook chain (a plugin registered after ours,
+ * or the engine's own) stays, under our line: we never drop it.
+ *
+ * A change made of two state writes puts the LOOSENING write first (what lets the next fire run or show: the pace
+ * `{ ranAt: 0, idle: false }`, a fresh band line) and the TIGHTENING write last (what holds the next fire back or
+ * removes a line: an idle pace, a cleared band, the baseline that says a change was already told), so a second write
+ * the engine refuses leaves a state the next fire repairs.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -76,12 +83,14 @@ const drawsBand = (surface: unknown): boolean => surface === 'terminal' || surfa
 const drawable = async ($: EngineInterface): Promise<boolean> => (await $.session.surfaces()).some(drawsBand)
 
 /**
- * The band cleared and the pace back to its initial value (no clock read), so the next run the roster allows is never
- * held by an idle gap.
+ * The pace back to its initial value (no clock read), so the next run the roster allows is never held by an idle gap,
+ * and the band cleared.
  */
 async function clear($: EngineInterface): Promise<void> {
-  await update($, band, () => null)
+  // Loosening first, tightening last: a refused pace write leaves the band as it was (the next fire clears again); a
+  // refused band write leaves a pace that no longer holds the next fire.
   await update($, pace, () => ({ ranAt: 0, idle: false }))
+  await update($, band, () => null)
 }
 
 /** Whether a run may go on: a band surface is attached; a roster read that rejects is no. */
@@ -93,13 +102,17 @@ async function mayRun($: EngineInterface): Promise<boolean> {
   }
 }
 
-/** An environment variable's value, or undefined when it is unset or its read rejected (an empty PATH or HOME adds nothing where it is used). */
-async function orUnset(get: () => Promise<string | undefined>): Promise<string | undefined> {
+/**
+ * An environment read in its three states: `{ value }` with the value when it is set, `{ value: undefined }` when it is
+ * unset (both answers; an empty PATH or HOME adds nothing where it is used), and null when the read was refused (no
+ * answer).
+ */
+async function readEnv(get: () => Promise<string | undefined>): Promise<{ value: string | undefined } | null> {
   try {
     const value = await get()
-    return typeof value === 'string' ? value : undefined
+    return { value: typeof value === 'string' ? value : undefined }
   } catch {
-    return undefined
+    return null
   }
 }
 
@@ -167,17 +180,23 @@ async function nvmBins($: EngineInterface, home: string): Promise<string[] | nul
 /**
  * The `env` a run is handed: none on Windows; else `PATH` = the host's PATH, then (under a HOME) nvm's version folders
  * and the user-level global-bin folders, then the system ones; each folder once, its first place kept, so the host's
- * order wins. `whole` is false while nvm's lookup has not answered (the PATH then has none of its folders). Never
- * rejects.
+ * order wins. `whole` is false while nvm's lookup has not answered (the PATH then has none of its folders) and when an
+ * environment read was refused: `OS` refused, no `env` for this run (never a `:`-joined PATH on a system that may not
+ * use `:`); `PATH` refused, the folders alone, as when unset; `HOME` refused, no folder under it. Never rejects.
  */
 async function computeRunEnv($: EngineInterface): Promise<{ env: { PATH: string } | undefined; whole: boolean }> {
-  if ((await orUnset(() => $.env.get('OS'))) === 'Windows_NT') return { env: undefined, whole: true }
+  const os = await readEnv(() => $.env.get('OS'))
+  if (os === null) return { env: undefined, whole: false }
+  if (os.value === 'Windows_NT') return { env: undefined, whole: true }
   let whole = true
   const folders: string[] = []
-  const host = await orUnset(() => $.env.get('PATH'))
-  if (host) folders.push(...host.split(':').filter((s) => s !== ''))
+  const host = await readEnv(() => $.env.get('PATH'))
+  if (host === null) whole = false
+  else if (host.value) folders.push(...host.value.split(':').filter((s) => s !== ''))
   // A folder under HOME only when HOME is an absolute path that holds no PATH separator.
-  const home = await orUnset(() => $.env.get('HOME'))
+  const homeRead = await readEnv(() => $.env.get('HOME'))
+  if (homeRead === null) whole = false
+  const home = homeRead?.value
   if (home?.startsWith('/') && !home.includes(':')) {
     const nvm = await nvmBins($, home)
     if (nvm) folders.push(...nvm)
@@ -354,7 +373,8 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     // No binary, a timeout, a refused spawn: a failed run.
   }
   if (!answer) {
-    // A failed run: nothing shown, the baseline and the context left, the next run at the next fire.
+    // A failed run: nothing shown, the baseline and the context left, the next run at the next fire. Loosening first
+    // (a pace that holds nothing), tightening last (the band cleared).
     await update($, pace, () => ({ ranAt: now, idle: false }))
     await update($, band, () => null)
     return
@@ -375,14 +395,18 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     typeof view.empty === 'boolean'
   const idle = firstRun || (isView && view.idle === true)
   const hidden = !isView || view.empty === true || view.line.trim() === ''
-  await update($, pace, () => ({ ranAt: now, idle }))
+  // The band first, the pace last: a refused band write leaves the pace not yet tightened, so the next fire runs again.
   await update($, band, () => (hidden ? null : { text: view.line }))
+  await update($, pace, () => ({ ranAt: now, idle }))
 
   // The two shapes that are no view are no current view either: each clears the context and keeps the baseline.
   if (isView && view.current === true) {
+    // The new baseline first, the toasts against the previous one last: a refused baseline write raises no toast now,
+    // and the next current view compares against the old baseline and tells the change once, late.
     const prev = await read($, baseline)
-    for (const text of toastsFor(view, prev, option)) $.ui.toast(text)
+    const texts = toastsFor(view, prev, option)
     await update($, baseline, () => baselineOf(view))
+    for (const text of texts) $.ui.toast(text)
     await update($, lastContext, () => ({
       context: typeof view.context === 'string' && view.context !== '' ? view.context : null,
       staleAfter: typeof view.staleAfter === 'string' ? view.staleAfter : null,
@@ -444,11 +468,11 @@ export const register: Register = (on, options) => {
   on('session.detach', async ($, e, next) => {
     // The session is ending: nothing to do.
     if (e.reason === 'end') return next(e)
-    // The client is already out of the roster here. The last band surface gone: the band cleared at once, so a quick
-    // re-attach never shows an old line. No run and no timer started.
-    const r = await next(e)
+    // The client is already out of the roster when the detach is dispatched, so the roster is read before `next`: the
+    // last band surface gone (or a roster that cannot be read), the band cleared at once, so a quick re-attach never
+    // shows an old line, whatever a hook beneath does with its time. No run and no timer started.
     if (!(await mayRun($))) await clear($)
-    return r
+    return next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
