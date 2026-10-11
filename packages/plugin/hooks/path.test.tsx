@@ -162,11 +162,27 @@ describe('a HOME that is no absolute folder adds nothing under it', () => {
 })
 
 describe('the nvm lookup after its deadline, and a refused probe', () => {
-  test('a listing that answers after the deadline starts no probe', async ($, on) => {
-    const { clock, probes, releaseListing } = await world($, on, [view(LINE)], { nvm: 'hold' })
+  test('a listing that answers after the deadline is used by the next run: its folder holding the CLI first', async ($, on) => {
+    const { clock, envs, lists, probes, releaseListing } = await world($, on, [view(LINE)], { nvm: 'hold', bins: [`${NVM}/v22.17.0/bin/claudinho`] })
     await clock.advance(1_100)
+    expect(envs[0]).toEqual({ PATH: [BARE_PATH, ...AFTER_NVM].join(':') })
     await releaseListing()
-    expect(probes).toEqual([])
+    await clock.advance(15_000)
+    expect(envs[1]).toEqual({ PATH: [BARE_PATH, `${NVM}/v22.17.0/bin`, ...AFTER_NVM].join(':') })
+    expect(lists).toEqual([NVM])
+    expect(probes).toEqual([`${NVM}/v22.17.0/bin/claudinho`])
+  })
+
+  test('a listing that never answers: every run waits at most a second for it, and asks it once', async ($, on) => {
+    const { argvs, clock, lists } = await world($, on, [view(LINE)], { nvm: 'hold' })
+    await clock.advance(1_100)
+    expect(argvs).toHaveLength(1)
+    // The second fire is at 15 s; its run waits until 16 s.
+    await clock.advance(14_800)
+    expect(argvs).toHaveLength(1)
+    await clock.advance(200)
+    expect(argvs).toHaveLength(2)
+    expect(lists).toEqual([NVM])
   })
 
   test('a probe that is refused counts as no CLI there: the folder whose probe found it stays first', async ($, on) => {

@@ -249,3 +249,58 @@ describe('nothing escapes a run', () => {
     expect(argvs.length).toBeGreaterThanOrEqual(1)
   })
 })
+
+describe('the roster read again just before the spawn', () => {
+  test('the roster refused between the first read and the spawn, after a shown line: no process, and the band cleared', async ($, on) => {
+    // The refusal lands while the run reads its pace: after the run's first roster read, before its second.
+    const at = { armed: false, fired: false, deny: (_deny: boolean) => {} }
+    on('state.get', (_$, e, next) => {
+      if (at.armed && e.key === 'pace') {
+        at.deny(true)
+        at.armed = false
+        at.fired = true
+      }
+      return next(e)
+    })
+    const { argvs, clock, denyRoster, mount } = await world($, on, [view(LINE)])
+    expect(await (await mount()).findAll({ type: 'Text', text: LINE })).toHaveLength(1)
+    at.deny = denyRoster
+    at.armed = true
+    await clock.advance(15_000)
+    expect(at.fired).toBe(true)
+    expect(argvs).toHaveLength(1)
+    expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+})
+
+describe('a cleared band comes back', () => {
+  test('an idle line cleared by a refused roster read is shown again at the next fire the roster answers (the idle gap does not hold it)', async ($, on) => {
+    const { argvs, clock, denyRoster, mount } = await world($, on, [view(COMPLETE, { idle: true })])
+    denyRoster(true)
+    await clock.advance(15_000)
+    expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
+    denyRoster(false)
+    await clock.advance(15_000)
+    expect(argvs).toHaveLength(2)
+    expect(await (await mount()).findAll({ type: 'Text', text: COMPLETE })).toHaveLength(1)
+  })
+})
+
+describe('a window leaving and coming back before the next fire', () => {
+  test('the last desktop client detached and attached again at once: no old line while its run is in flight', async ($, on) => {
+    const { attach, detach, mount } = await world($, on, [view(LINE), held(view('⚽ ARS 3–1 CHE 80\''))], { start: DESKTOP_START, surfaces: ['desktop'] })
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: LINE })).toHaveLength(1)
+    await detach('desktop')
+    await attach('desktop', 'app')
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+
+  test('one desktop client of two leaving: the line stays, and no run starts', async ($, on) => {
+    const { argvs, attach, detach, mount } = await world($, on, [view(LINE)], { start: DESKTOP_START, surfaces: ['desktop'] })
+    await attach('desktop', 'window2')
+    const before = argvs.length
+    await detach('window2')
+    expect(argvs.length - before).toBe(0)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: LINE })).toHaveLength(1)
+  })
+})
