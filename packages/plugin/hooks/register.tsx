@@ -29,7 +29,8 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoTally
  * PATH with them. An environment read that is refused (`OS`, `PATH`, `HOME`) is no answer: that run's PATH is built
  * without it (with `OS` refused, no PATH is handed at all) and never kept, so a read refused for good costs those reads
  * at every run and the PATH is never kept. A band drawn beneath ours in the hook chain (a plugin registered after ours,
- * or the engine's own) stays, under our line: we never drop it.
+ * or the engine's own) stays, under our line: we never drop it. Only a line this module load landed is drawn;
+ * a line another load left in the host's state is never drawn, even when a clear is refused.
  *
  * The pace is the module's, set synchronously, loosened when a run passes the gate
  * and tightened only after its band write landed. Runs are numbered as they pass the gate; a line's writer is
@@ -490,8 +491,9 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     // The start's own surface is not the question (the desktop app's is null, as `-p`'s): the roster is. No band
-    // surface: clear every run so far and any line another load left. A read that rejects is unknown: the pace starts,
-    // and each run asks again.
+    // surface: clear every run numbered when the hook began and any line another load left, keeping a run an attach
+    // started while the roster read was pending. A read that rejects is unknown: the pace starts, and each run asks again.
+    const upTo = runSeq
     let start: boolean
     try {
       start = await drawable($)
@@ -501,9 +503,10 @@ export const register: Register = (on, options) => {
     if (start) ensurePace($, option)
     else {
       try {
-        await clear($, runSeq)
+        await clear($, upTo)
       } catch {
-        // A refused clear must not stop next(e); the next run's step 1 clears again.
+        // A refused clear must not stop next(e). The previous load's line stays in the host's state, but the render
+        // never draws it (a different load); the first run of this load replaces it.
       }
     }
     return next(e)
@@ -535,7 +538,7 @@ export const register: Register = (on, options) => {
     const width = e.props.bodyColumns
     if (typeof width === 'number' && Number.isInteger(width) && width > 0) columns = width
     const shown = await read($, band)
-    if (e.props.hasSurvey || e.props.maxRows < 1 || shown === null) return next(e)
+    if (e.props.hasSurvey || e.props.maxRows < 1 || shown === null || shown.load !== LOAD) return next(e)
     const { Box, Text } = $.ui.resolve(e)
     // The CLI fitted the line to the width asked, its `+N` suffix reserved; the engine's cut is the backstop. A band
     // beneath ours in the hook chain (a plugin registered after ours, or the engine's own) stays, under our line.
