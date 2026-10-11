@@ -61,11 +61,11 @@ const drawsBand = (surface: unknown): boolean => surface === 'terminal' || surfa
 /** Whether a surface that draws the band is attached to the session now. */
 const drawable = async ($: EngineInterface): Promise<boolean> => (await $.session.surfaces()).some(drawsBand)
 
-/** An environment variable's value, or undefined when it is unset, empty, or its read rejected. */
+/** An environment variable's value, or undefined when it is unset or its read rejected (an empty PATH or HOME adds nothing where it is used). */
 async function orUnset(get: () => Promise<string | undefined>): Promise<string | undefined> {
   try {
     const value = await get()
-    return typeof value === 'string' && value !== '' ? value : undefined
+    return typeof value === 'string' ? value : undefined
   } catch {
     return undefined
   }
@@ -82,7 +82,7 @@ async function nvmBins($: EngineInterface, home: string): Promise<string[]> {
   } catch {
     return []
   }
-  const versions: Array<{ name: string; parts: number[] }> = []
+  const versions: Array<{ name: string; parts: [number, number, number] }> = []
   for (const entry of entries) {
     const m = entry.kind === 'dir' ? NVM_VERSION.exec(entry.name) : null
     if (m) versions.push({ name: entry.name, parts: [Number(m[1]), Number(m[2]), Number(m[3])] })
