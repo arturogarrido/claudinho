@@ -31,18 +31,21 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoTally
  * or the engine's own) stays, under our line: we never drop it.
  *
  * The pace is the module's, set synchronously, loosened when a run passes the gate
- * and tightened only after its band write landed. Runs are numbered as they pass the gate, and a clear invalidates the
- * runs it covers: a line or a tightened pace is written only by a run no clear has invalidated; a clear erases only a
- * line that landed from a run it covers; a run invalidated while its write was pending clears its own line once that
- * write lands. A current view writes its baseline before it raises the toasts computed against the previous one, so a
- * refused baseline write tells the change once, late, never twice. A refused context write leaves the previous
- * context, which ages out within its stated 30 seconds.
+ * and tightened only after its band write landed. Runs are numbered as they pass the gate; a line's writer is
+ * identified by its module load and its run number. A clear invalidates the runs it covers: a line or a tightened pace
+ * is written only by a run no clear has invalidated; a clear erases a line that landed from a run it covers, and every
+ * clear of this load covers a line another load wrote. A run invalidated while its write was pending clears its own
+ * line once that write lands. A current view writes its baseline before it raises the toasts computed against the
+ * previous one, so a refused baseline write tells the change once, late, never twice. A refused context write leaves
+ * the previous context, which ages out within its stated 30 seconds.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
 const baseline = atom({ plugin: 'claudinho', key: 'baseline' } as const, null as ClaudinhoBaseline)
 const lastContext = atom({ plugin: 'claudinho', key: 'context' } as const, null as ClaudinhoContext)
 
+/** The identity of this module load, carried by every line it lands in the host's state. */
+const LOAD = `${Date.now()}-${Math.random()}`
 const LIVE_MS = 15_000
 const IDLE_MS = 300_000
 const RUN_TIMEOUT_MS = 2_000
@@ -100,30 +103,33 @@ const drawable = async ($: EngineInterface): Promise<boolean> => (await $.sessio
 /**
  * A clear covering every run numbered up to `upTo`: those runs are invalidated, the pace goes back to its initial
  * value (synchronously, no clock read), so the next run the roster allows
- * is never held by an idle gap, and the band is erased only when the line standing was written by a run it covers (or
- * there is none): a line a newer run wrote is kept. The check is made when the write is applied (`update` applies its
- * function again on a version miss), so a newer run's line that landed first, or during the retry, is kept. By value
- * would not do: an idle line's text repeats exactly. A line from an older plugin with no numbered writer counts as 0.
+ * is never held by an idle gap, and the band is erased when the line standing was written by another load or a run it
+ * covers (or there is none): a line a newer run of this load wrote is kept. The check is made when the write is applied
+ * (`update` applies its function again on a version miss), so a newer run's line that landed first, or during the retry,
+ * is kept. By value would not do: an idle line's text repeats exactly. A line with no load is from another load; no
+ * numbered writer counts as 0.
  */
 async function clear($: EngineInterface, upTo: number): Promise<void> {
   invalidUpTo = Math.max(invalidUpTo, upTo)
   pace = { ranAt: 0, idle: false }
-  await update($, band, (cur) => (cur === null || (typeof cur.seq === 'number' ? cur.seq : 0) <= upTo ? null : cur))
+  await update($, band, (cur) =>
+    cur === null || cur.load !== LOAD || (typeof cur.seq === 'number' ? cur.seq : 0) <= upTo ? null : cur,
+  )
 }
 
 /**
  * The band write of run `seq`: nothing when a clear has invalidated it (the function hands back what stands), else its
- * value with its run number. A run invalidated while its write was pending clears only its own line after it lands.
- * A refusal of that second write is repaired by the next fire's clear.
+ * value with its module load and run number. A run invalidated while its write was pending clears only its own line
+ * after it lands. A refusal of that second write is repaired by the next fire's clear.
  */
 async function bandWrite(
   $: EngineInterface,
   seq: number,
-  value: Omit<NonNullable<ClaudinhoBand>, 'seq'> | null,
+  value: Omit<NonNullable<ClaudinhoBand>, 'seq' | 'load'> | null,
 ): Promise<void> {
-  await update($, band, (cur) => (seq <= invalidUpTo ? cur : value === null ? null : { ...value, seq }))
+  await update($, band, (cur) => (seq <= invalidUpTo ? cur : value === null ? null : { ...value, seq, load: LOAD }))
   if (seq <= invalidUpTo) {
-    await update($, band, (cur) => (cur !== null && cur.seq === seq ? null : cur))
+    await update($, band, (cur) => (cur !== null && cur.load === LOAD && cur.seq === seq ? null : cur))
   }
 }
 

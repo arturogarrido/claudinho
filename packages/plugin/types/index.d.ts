@@ -8,10 +8,11 @@
 
 /**
  * The band's line as the CLI fitted it, or null when there is nothing to show, the last run failed, or a run found no
- * surface that draws the band (none attached, or the roster could not be read). `seq` is the number of the run whose
- * write landed it.
+ * surface that draws the band (none attached, or the roster could not be read). The writer is identified by `load`,
+ * the module load that landed it, and `seq`, its run number. A line another load wrote is covered by every clear of
+ * this load.
  */
-export type ClaudinhoBand = { text: string; seq: number } | null
+export type ClaudinhoBand = { text: string; seq: number; load: string } | null
 
 /** One live match as the toasts remember it: its id and its two tallies (the words are the CLI's record's own `line`). */
 export type ClaudinhoTally = {
