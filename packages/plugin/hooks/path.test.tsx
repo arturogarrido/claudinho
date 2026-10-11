@@ -160,3 +160,21 @@ describe('a HOME that is no absolute folder adds nothing under it', () => {
     expect(envs[0]).toEqual({ PATH: [BARE_PATH, '/opt/homebrew/bin', '/usr/local/bin'].join(':') })
   })
 })
+
+describe('the nvm lookup after its deadline, and a refused probe', () => {
+  test('a listing that answers after the deadline starts no probe', async ($, on) => {
+    const { clock, probes, releaseListing } = await world($, on, [view(LINE)], { nvm: 'hold' })
+    await clock.advance(1_100)
+    await releaseListing()
+    expect(probes).toEqual([])
+  })
+
+  test('a probe that is refused counts as no CLI there: the folder whose probe found it stays first', async ($, on) => {
+    const { envs } = await world($, on, [view(LINE)], {
+      nvm: [dir('v24.11.1'), dir('v22.17.0')],
+      bins: [`${NVM}/v22.17.0/bin/claudinho`],
+      refusedProbes: [`${NVM}/v24.11.1/bin/claudinho`],
+    })
+    expect(envs[0]).toEqual({ PATH: [BARE_PATH, `${NVM}/v22.17.0/bin`, `${NVM}/v24.11.1/bin`, ...AFTER_NVM].join(':') })
+  })
+})

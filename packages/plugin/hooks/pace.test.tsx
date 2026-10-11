@@ -239,3 +239,13 @@ describe('a roster read that is refused', () => {
     expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
   })
 })
+
+describe('nothing escapes a run', () => {
+  test("a state write the engine refuses inside a run escapes no timer (the kit fails a file on an unhandled rejection)", async ($, on) => {
+    // A refusal is `{ deny }` (a hook that throws is skipped, and the write goes on beneath it).
+    on('state.set', () => ({ deny: 'state.set denied' }))
+    const { argvs, clock } = await world($, on, [view(LINE)])
+    await clock.advance(15_000)
+    expect(argvs.length).toBeGreaterThanOrEqual(1)
+  })
+})

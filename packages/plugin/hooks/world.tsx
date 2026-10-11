@@ -50,6 +50,8 @@ export type WorldOptions = {
   env?: Record<string, string>
   nvm?: Array<{ name: string; kind: 'file' | 'dir' | 'other' }> | Error | 'hold'
   bins?: string[] | 'hold'
+  /** The `$.fs.exists` probes that reject (a hook's `{ deny }`). */
+  refusedProbes?: string[]
   beneath?: string
   /** The roster read rejects while `session.start` runs (a hook's `{ deny }`), then answers. */
   rosterDeniedAtStart?: boolean
@@ -84,7 +86,8 @@ export const world = async (
   let surfaceReads = 0
   on('session.surfaces', () => {
     surfaceReads += 1
-    if (rosterRejects) throw new Error('session.surfaces denied')
+    // A refusal is `{ deny }`: a hook that throws is skipped, and the read would go on beneath it.
+    if (rosterRejects) return { deny: 'session.surfaces denied' }
     return { value: roster() }
   })
   const envReads: string[] = []
@@ -108,6 +111,7 @@ export const world = async (
   on('fs.exists', async (_$, e) => {
     probes.push(e.path)
     if (options.bins === 'hold') await new Promise(() => {})
+    if (options.refusedProbes?.includes(e.path)) return { deny: 'fs.exists denied' }
     return { value: Array.isArray(options.bins) && options.bins.includes(e.path) }
   })
   on('ui.render', { component: 'AbovePrompt' }, ($$, e) => {
