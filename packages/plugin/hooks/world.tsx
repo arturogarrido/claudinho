@@ -55,13 +55,6 @@ export type WorldOptions = {
   beneath?: string
   /** The roster read rejects while `session.start` runs (a hook's `{ deny }`), then answers. */
   rosterDeniedAtStart?: boolean
-  /** The start's first roster read is held (answering the roster as it stood when asked) until `releaseRosterRead`;
-   *  the world then does not wait for the start, which the test awaits as `startDone`. */
-  holdStartRoster?: boolean
-  /** The first `$.env.get` of each name listed is refused (`{ deny }`); later reads answer. */
-  refuseEnvOnce?: string[]
-  /** The engine's own `session.detach` answers only once the test releases it (a slow hook beneath ours). */
-  holdDetach?: boolean
 }
 
 /** An answer of the CLI the test holds: the run waits until the test releases it (`release()` in the world's order). */
@@ -80,8 +73,6 @@ export const world = async (
   const clients = new Map<string, Surface>((options.surfaces ?? (start.surface ? [start.surface] : [])).map((s) => [s, s]))
   const roster = (): Surface[] => [...new Set(clients.values())]
   let rosterRejects = false
-  // From this roster read on (counted from the session's first), every read is refused.
-  let denyFrom = Number.POSITIVE_INFINITY
   const env: Record<string, string> = options.env ?? { PATH: BARE_PATH, HOME }
   const nvm = options.nvm ?? new Error(`ENOENT: no such file or directory, scandir '${NVM}'`)
   let releaseNvm: () => void = () => {}
@@ -91,35 +82,17 @@ export const world = async (
   const clock = mock.clock(on, { now: NOW })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.attach', (_$, e) => ({ clientId: e.clientId }))
-  let releaseDetachHold: () => void = () => {}
-  on('session.detach', async (_$, e) => {
-    if (options.holdDetach) await new Promise<void>((resolve) => { releaseDetachHold = resolve })
-    return { clientId: e.clientId }
-  })
+  on('session.detach', (_$, e) => ({ clientId: e.clientId }))
   let surfaceReads = 0
-  // A one-shot slow roster read: answers the roster as it stood when asked, once the test releases it.
-  let holdNext = false
-  let releaseHeldRead: () => void = () => {}
-  on('session.surfaces', async () => {
-    if (holdNext) {
-      holdNext = false
-      surfaceReads += 1
-      const asked = roster()
-      await new Promise<void>((resolve) => {
-        releaseHeldRead = resolve
-      })
-      return { value: asked }
-    }
+  on('session.surfaces', () => {
     surfaceReads += 1
     // A refusal is `{ deny }`: a hook that throws is skipped, and the read would go on beneath it.
-    if (rosterRejects || surfaceReads >= denyFrom) return { deny: 'session.surfaces denied' }
+    if (rosterRejects) return { deny: 'session.surfaces denied' }
     return { value: roster() }
   })
   const envReads: string[] = []
-  const refusedEnv = new Set(options.refuseEnvOnce ?? [])
   on('env.get', (_$, e) => {
     envReads.push(e.name)
-    if (refusedEnv.delete(e.name)) return { deny: `env.get ${e.name} denied` }
     return { value: Object.hasOwn(env, e.name) ? env[e.name] : undefined }
   })
   const lists: string[] = []
@@ -172,9 +145,7 @@ export const world = async (
     await clock.advance(1)
   }
   rosterRejects = options.rosterDeniedAtStart === true
-  if (options.holdStartRoster) holdNext = true
-  const startDone = $.session.start({ cwd: START.cwd, ...start })
-  if (!options.holdStartRoster) await startDone
+  await $.session.start({ cwd: START.cwd, ...start })
   rosterRejects = false
   await clock.advance(1)
   /** A client attaches (the roster gains it), then the clock lets the run it starts begin. */
@@ -190,18 +161,6 @@ export const world = async (
     clients.delete(clientId)
     await $.session.detach({ surface, clientId, reason: 'detach' })
   }
-  /** A client leaves, the detach not awaited (its dispatch held beneath ours with `holdDetach`): the pending dispatch. */
-  const detachStart = (clientId: string) => {
-    const surface = clients.get(clientId)
-    if (surface === undefined) throw new Error(`no client ${clientId}`)
-    clients.delete(clientId)
-    return $.session.detach({ surface, clientId, reason: 'detach' })
-  }
-  /** The held detach answers now. */
-  const releaseDetach = async () => {
-    releaseDetachHold()
-    await clock.advance(1)
-  }
   /** The CLI's held answers, released in the order the runs began; then the clock lets the run finish. */
   const release = async () => {
     const r = releases.shift()
@@ -214,29 +173,15 @@ export const world = async (
     releaseNvm()
     await clock.advance(1)
   }
-  /** From now on, the roster read rejects (`true`) or answers (`false`, which also lifts `denyRosterFrom`). */
+  /** From now on, the roster read rejects (`true`) or answers (`false`). */
   const denyRoster = (deny: boolean) => {
     rosterRejects = deny
-    if (!deny) denyFrom = Number.POSITIVE_INFINITY
-  }
-  /** The next roster read answers the roster as it stood when asked, but only once `releaseRosterRead` is called. */
-  const holdNextRosterRead = () => {
-    holdNext = true
-  }
-  /** The held roster read answers now. */
-  const releaseRosterRead = async () => {
-    releaseHeldRead()
-    await clock.advance(1)
-  }
-  /** Every roster read from the `n`th of the session on (counting as `rosterReads()` does) is refused. */
-  const denyRosterFrom = (n: number) => {
-    denyFrom = n
   }
   const mount = (props: Partial<typeof PROPS> = {}, surface: 'terminal' | 'desktop' = 'terminal') =>
     $.ui.mount({ plugin: 'claudinho', surface, component: 'AbovePrompt', props: { ...PROPS, ...props }, viewport: { columns: 100, rows: 30 } })
   /** How many times the plugin asked for the roster: what a timer ticking for nobody would show. */
   const rosterReads = () => surfaceReads
-  return { clock, argvs, stdins, envs, envReads, lists, probes, mount, attach, detach, detachStart, releaseDetach, release, releaseListing, denyRoster, denyRosterFrom, holdNextRosterRead, releaseRosterRead, rosterReads, startDone }
+  return { clock, argvs, stdins, envs, envReads, lists, probes, mount, attach, detach, release, releaseListing, denyRoster, rosterReads }
 }
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */

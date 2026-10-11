@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoTally } from '../types'
+import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoPace, ClaudinhoTally } from '../types'
 
 /**
  * The claudinho plugin: the live score or the countdown above the prompt (the band), a toast when a score changes,
@@ -19,38 +19,21 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoTally
  * `AbovePrompt`, asked of the session's roster at every run, first and again as the last step before the spawn (the
  * desktop app's session starts with no surface and attaches after; a plugin loaded into an open desktop session hears
  * a start with no surface while the roster holds the desktop). A run that finds none attached (`claude -p`, the SDK, a
- * phone or an editor alone), or cannot read the roster, starts no process and clears the band. A start that finds none
- * attached clears the band, including a line an older load left, without starting the pace. A roster read refused at
+ * phone or an editor alone), or cannot read the roster, starts no process and clears the band. A roster read refused at
  * the start is unknown, so the pace starts and each run asks again: a read denied for good costs one read per 15
  * seconds and no process. Each run is handed a PATH: the host's own, then the folders npm, Homebrew, nvm, Volta, pnpm
  * and Bun install global commands into, so a session started with a bare PATH still finds the CLI and its `node` (on
  * Windows nothing is handed). nvm's part is looked up once per load; while that lookup has not answered, each run waits
  * at most a second for it and uses the PATH without nvm's folders, and the first run that finds it answered keeps the
- * PATH with them. An environment read that is refused (`OS`, `PATH`, `HOME`) is no answer: that run's PATH is built
- * without it (with `OS` refused, no PATH is handed at all) and never kept, so a read refused for good costs those reads
- * at every run and the PATH is never kept. A band drawn beneath ours in the hook chain (a plugin registered after ours,
- * or the engine's own) stays, under our line: we never drop it. Only a line this module load landed is drawn;
- * a line another load left in the host's state is never drawn, even when a clear is refused.
- *
- * The pace is the module's, set synchronously, loosened when a run passes the gate
- * and tightened only after its band write landed. Runs are numbered as they pass the gate; a line's writer is
- * identified by its module load and its run number. A clear invalidates the runs it covers: a line or a tightened pace
- * is written only by a run no clear has invalidated; a clear erases a line that landed from a run it covers, or a
- * provably older load's line. Loads are ordered by the stamp each takes when it loads (`loadAt`): a clear never
- * erases a newer load's line, and a different load with the same stamp is kept. A run invalidated while its write was
- * pending clears its own line once that write lands. A current view writes its baseline before it raises the toasts
- * computed against the previous one, so a refused baseline write tells the change once, late, never twice. A refused
- * context write leaves the previous context, which ages out within its stated 30 seconds.
+ * PATH with them. A band drawn beneath ours in the hook chain (a plugin registered after ours, or the engine's own)
+ * stays, under our line: we never drop it.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
+const pace = atom({ plugin: 'claudinho', key: 'pace' } as const, { ranAt: 0, idle: false } as ClaudinhoPace)
 const baseline = atom({ plugin: 'claudinho', key: 'baseline' } as const, null as ClaudinhoBaseline)
 const lastContext = atom({ plugin: 'claudinho', key: 'context' } as const, null as ClaudinhoContext)
 
-/** The stamp that orders this module load, carried by every line it lands in the host's state. */
-const LOAD_AT = Date.now()
-/** The identity of this module load, carried by every line it lands in the host's state. */
-const LOAD = `${LOAD_AT}-${Math.random()}`
 const LIVE_MS = 15_000
 const IDLE_MS = 300_000
 const RUN_TIMEOUT_MS = 2_000
@@ -71,19 +54,6 @@ let columns = DEFAULT_COLUMNS
 let busy = false
 /** A forced run asked while a run was in flight: made as soon as that run ends (cleared when it starts). */
 let forcedPending = false
-/**
- * The band's pace: when the last run that passed the gate started (the clock's milliseconds) and whether the CLI said
- * its answer was idle (the first-run object, nothing chosen; or a view whose `idle` is true, the edition over), which
- * is read once per five minutes instead of every fire. Kept in the module, not `$.state` (nothing draws it), and set
- * synchronously: loosened (`idle: false`) when a run passes the gate, tightened only after that run's band write
- * landed and only by a run no clear has invalidated, back to `{ ranAt: 0, idle: false }` at a clear. `ranAt` is read only while `idle` is true. A reload starts
- * again from the initial value, and its first run is forced.
- */
-let pace = { ranAt: 0, idle: false }
-/** The number the last run that passed the gate took (each run takes the next). */
-let runSeq = 0
-/** Runs numbered up to this one are invalidated by a clear: they write no line and tighten no pace. */
-let invalidUpTo = 0
 /**
  * The pace (the forced first run, then every 15 seconds) is started once per module load, by whichever comes first of
  * a start or an attach of a band surface. A reload makes a fresh module and drops the previous one's timers.
@@ -106,43 +76,12 @@ const drawsBand = (surface: unknown): boolean => surface === 'terminal' || surfa
 const drawable = async ($: EngineInterface): Promise<boolean> => (await $.session.surfaces()).some(drawsBand)
 
 /**
- * A clear covering every run numbered up to `upTo`: those runs are invalidated, the pace goes back to its initial
- * value (synchronously, no clock read), so the next run the roster allows is never held by an idle gap. The band is
- * erased when this load's line comes from a covered run, or when the line is provably older: its `loadAt` is below
- * this load's stamp, or is not a number (a value left by an earlier version). A newer run of this load, a newer load,
- * or a different load with the same stamp keeps its line. The check is made when the write is applied (`update`
- * applies its function again on a version miss), so a line that landed first, or during the retry, is judged then.
- * By value would not do: an idle line's text repeats exactly.
+ * The band cleared and the pace back to its initial value (no clock read), so the next run the roster allows is never
+ * held by an idle gap.
  */
-async function clear($: EngineInterface, upTo: number): Promise<void> {
-  invalidUpTo = Math.max(invalidUpTo, upTo)
-  pace = { ranAt: 0, idle: false }
-  await update($, band, (cur) =>
-    cur === null ||
-    (cur.load === LOAD && cur.seq <= upTo) ||
-    typeof cur.loadAt !== 'number' ||
-    cur.loadAt < LOAD_AT
-      ? null
-      : cur,
-  )
-}
-
-/**
- * The band write of run `seq`: nothing when a clear has invalidated it (the function hands back what stands), else its
- * value with its module load, load stamp and run number. A run invalidated while its write was pending clears only
- * its own line after it lands. A refusal of that second write is repaired by the next fire's clear.
- */
-async function bandWrite(
-  $: EngineInterface,
-  seq: number,
-  value: Omit<NonNullable<ClaudinhoBand>, 'seq' | 'load' | 'loadAt'> | null,
-): Promise<void> {
-  await update($, band, (cur) =>
-    seq <= invalidUpTo ? cur : value === null ? null : { ...value, seq, load: LOAD, loadAt: LOAD_AT },
-  )
-  if (seq <= invalidUpTo) {
-    await update($, band, (cur) => (cur !== null && cur.load === LOAD && cur.seq === seq ? null : cur))
-  }
+async function clear($: EngineInterface): Promise<void> {
+  await update($, band, () => null)
+  await update($, pace, () => ({ ranAt: 0, idle: false }))
 }
 
 /** Whether a run may go on: a band surface is attached; a roster read that rejects is no. */
@@ -154,17 +93,13 @@ async function mayRun($: EngineInterface): Promise<boolean> {
   }
 }
 
-/**
- * An environment read in its three states: `{ value }` with the value when it is set, `{ value: undefined }` when it is
- * unset (both answers; an empty PATH or HOME adds nothing where it is used), and null when the read was refused (no
- * answer).
- */
-async function readEnv(get: () => Promise<string | undefined>): Promise<{ value: string | undefined } | null> {
+/** An environment variable's value, or undefined when it is unset or its read rejected (an empty PATH or HOME adds nothing where it is used). */
+async function orUnset(get: () => Promise<string | undefined>): Promise<string | undefined> {
   try {
     const value = await get()
-    return { value: typeof value === 'string' ? value : undefined }
+    return typeof value === 'string' ? value : undefined
   } catch {
-    return null
+    return undefined
   }
 }
 
@@ -232,23 +167,17 @@ async function nvmBins($: EngineInterface, home: string): Promise<string[] | nul
 /**
  * The `env` a run is handed: none on Windows; else `PATH` = the host's PATH, then (under a HOME) nvm's version folders
  * and the user-level global-bin folders, then the system ones; each folder once, its first place kept, so the host's
- * order wins. `whole` is false while nvm's lookup has not answered (the PATH then has none of its folders) and when an
- * environment read was refused: `OS` refused, no `env` for this run (never a `:`-joined PATH on a system that may not
- * use `:`); `PATH` refused, the folders alone, as when unset; `HOME` refused, no folder under it. Never rejects.
+ * order wins. `whole` is false while nvm's lookup has not answered (the PATH then has none of its folders). Never
+ * rejects.
  */
 async function computeRunEnv($: EngineInterface): Promise<{ env: { PATH: string } | undefined; whole: boolean }> {
-  const os = await readEnv(() => $.env.get('OS'))
-  if (os === null) return { env: undefined, whole: false }
-  if (os.value === 'Windows_NT') return { env: undefined, whole: true }
+  if ((await orUnset(() => $.env.get('OS'))) === 'Windows_NT') return { env: undefined, whole: true }
   let whole = true
   const folders: string[] = []
-  const host = await readEnv(() => $.env.get('PATH'))
-  if (host === null) whole = false
-  else if (host.value) folders.push(...host.value.split(':').filter((s) => s !== ''))
+  const host = await orUnset(() => $.env.get('PATH'))
+  if (host) folders.push(...host.split(':').filter((s) => s !== ''))
   // A folder under HOME only when HOME is an absolute path that holds no PATH separator.
-  const homeRead = await readEnv(() => $.env.get('HOME'))
-  if (homeRead === null) whole = false
-  const home = homeRead?.value
+  const home = await orUnset(() => $.env.get('HOME'))
   if (home?.startsWith('/') && !home.includes(':')) {
     const nvm = await nvmBins($, home)
     if (nvm) folders.push(...nvm)
@@ -394,26 +323,21 @@ function tick($: EngineInterface, option: ToastsOption, force = false): Promise<
 
 async function run($: EngineInterface, option: ToastsOption, force: boolean): Promise<void> {
   // (1) No surface that draws the band (none yet, the last one detached, or the roster cannot be read): no process,
-  // and a clear covering every run so far (this one has no number yet): the pace reset, so the next run the roster
-  // allows is not held by an idle gap, and the band cleared, so a band surface attaching again never shows an old line;
-  // the baseline and the context are left.
+  // the band cleared, so a band surface attaching again never shows an old line, and the pace reset, so the next run
+  // the roster allows is not held by an idle gap; the baseline and the context are left.
   if (!(await mayRun($))) {
-    await clear($, runSeq)
+    await clear($)
     return
   }
-  // (2) On a non-idle line the timer is the only pace; the age check is the idle gap's alone. A run that passes the
-  // gate loosens the pace before its next await, so a run that ends early (a refused write, a failed spawn) leaves a
-  // pace that holds nothing.
+  // (2) On a non-idle line the timer is the only pace; the age check is the idle gap's alone.
   const now = await $.clock.now()
-  if (!force && pace.idle && now - pace.ranAt < IDLE_MS) return
-  pace = { ranAt: now, idle: false }
-  const seq = ++runSeq
+  const last = await read($, pace)
+  if (!force && last.idle && now - last.ranAt < IDLE_MS) return
   // (3) The PATH, bounded.
   const env = await runEnv($)
-  // (4) The roster again, the last await before the spawn: the surface may have left while the PATH was looked up. A
-  // clear covering this run and every older one.
+  // (4) The roster again, the last await before the spawn: the surface may have left while the PATH was looked up.
   if (!(await mayRun($))) {
-    await clear($, seq)
+    await clear($)
     return
   }
   // (5) The spawn.
@@ -430,9 +354,9 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     // No binary, a timeout, a refused spawn: a failed run.
   }
   if (!answer) {
-    // A failed run: nothing shown (unless a clear has invalidated it: then it writes nothing), the baseline and the
-    // context left, the pace left loosened (the next run at the next fire); it tightens nothing.
-    await bandWrite($, seq, null)
+    // A failed run: nothing shown, the baseline and the context left, the next run at the next fire.
+    await update($, pace, () => ({ ranAt: now, idle: false }))
+    await update($, band, () => null)
     return
   }
   const view: View = answer
@@ -451,19 +375,14 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     typeof view.empty === 'boolean'
   const idle = firstRun || (isView && view.idle === true)
   const hidden = !isView || view.empty === true || view.line.trim() === ''
-  // The band written unless a clear has invalidated this run, then the pace tightened only once that write landed and
-  // only by a run still valid: a refused band write leaves the loosened pace, so the next fire runs again.
-  await bandWrite($, seq, hidden ? null : { text: view.line })
-  if (seq > invalidUpTo) pace = { ranAt: now, idle }
+  await update($, pace, () => ({ ranAt: now, idle }))
+  await update($, band, () => (hidden ? null : { text: view.line }))
 
   // The two shapes that are no view are no current view either: each clears the context and keeps the baseline.
   if (isView && view.current === true) {
-    // The new baseline first, the toasts against the previous one last: a refused baseline write raises no toast now,
-    // and the next current view compares against the old baseline and tells the change once, late.
     const prev = await read($, baseline)
-    const texts = toastsFor(view, prev, option)
+    for (const text of toastsFor(view, prev, option)) $.ui.toast(text)
     await update($, baseline, () => baselineOf(view))
-    for (const text of texts) $.ui.toast(text)
     await update($, lastContext, () => ({
       context: typeof view.context === 'string' && view.context !== '' ? view.context : null,
       staleAfter: typeof view.staleAfter === 'string' ? view.staleAfter : null,
@@ -500,10 +419,8 @@ export const register: Register = (on, options) => {
     : 'pinned'
 
   on('session.start', async ($, e, next) => {
-    // The start's own surface is not the question (the desktop app's is null, as `-p`'s): the roster is. No band
-    // surface: clear every run numbered when the hook began and any line an older load left, keeping a run an attach
-    // started while the roster read was pending. A read that rejects is unknown: the pace starts, and each run asks again.
-    const upTo = runSeq
+    // The start's own surface is not the question (the desktop app's is null, as `-p`'s): the roster is. A read that
+    // rejects is unknown: the pace starts, and each run asks again.
     let start: boolean
     try {
       start = await drawable($)
@@ -511,14 +428,6 @@ export const register: Register = (on, options) => {
       start = true
     }
     if (start) ensurePace($, option)
-    else {
-      try {
-        await clear($, upTo)
-      } catch {
-        // A refused clear must not stop next(e). The previous load's line stays in the host's state, but the render
-        // never draws it (a different load); the first run of this load replaces it.
-      }
-    }
     return next(e)
   })
 
@@ -535,20 +444,18 @@ export const register: Register = (on, options) => {
   on('session.detach', async ($, e, next) => {
     // The session is ending: nothing to do.
     if (e.reason === 'end') return next(e)
-    // The client is already out of the roster when the detach is dispatched, so the roster is read before `next`: the
-    // last band surface gone (or a roster that cannot be read), a clear covering every run numbered when the hook
-    // began, so a quick re-attach never shows an old line, whatever a hook beneath does with its time, and a run that
-    // began after it (a reconnect's) keeps its line. No run and no timer started.
-    const upTo = runSeq
-    if (!(await mayRun($))) await clear($, upTo)
-    return next(e)
+    // The client is already out of the roster here. The last band surface gone: the band cleared at once, so a quick
+    // re-attach never shows an old line. No run and no timer started.
+    const r = await next(e)
+    if (!(await mayRun($))) await clear($)
+    return r
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const width = e.props.bodyColumns
     if (typeof width === 'number' && Number.isInteger(width) && width > 0) columns = width
     const shown = await read($, band)
-    if (e.props.hasSurvey || e.props.maxRows < 1 || shown === null || shown.load !== LOAD) return next(e)
+    if (e.props.hasSurvey || e.props.maxRows < 1 || shown === null) return next(e)
     const { Box, Text } = $.ui.resolve(e)
     // The CLI fitted the line to the width asked, its `+N` suffix reserved; the engine's cut is the backstop. A band
     // beneath ours in the hook chain (a plugin registered after ours, or the engine's own) stays, under our line.
