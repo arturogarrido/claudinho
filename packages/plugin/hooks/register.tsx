@@ -14,6 +14,14 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoPace,
  * a timeout, a cut or an answer that is not the object: silence, never a blocked turn. Every run is also what
  * triggers the CLI's refresher, so the band runs at the live pace on every line but the idle ones. Best effort
  * throughout: a toast says a score change this module observed between two current views, never every goal.
+ *
+ * It runs while a surface that draws the band is attached: the terminal or the desktop app, the two that raise
+ * `AbovePrompt`, asked of the session's roster at every run (the desktop app's session starts with no surface and
+ * attaches after; a plugin loaded into an open desktop session hears a start with no surface while the roster holds
+ * the desktop). With none attached (`claude -p`, the SDK, a phone or an editor alone) nothing runs. Each run is handed
+ * a PATH: the host's own, then the folders npm, Homebrew, nvm, Volta, pnpm and Bun install global commands into, so a
+ * session started with a bare PATH still finds the CLI and its `node` (on Windows nothing is handed). Another plugin's
+ * band is drawn under ours.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -39,6 +47,80 @@ const TOASTS_OPTIONS: readonly ToastsOption[] = ['pinned', 'all', 'off']
 let columns = DEFAULT_COLUMNS
 /** At most one run in flight: the guard is taken before the first await. */
 let busy = false
+/**
+ * The pace (the forced first run, then every 15 seconds) is started once per module load, by whichever comes first of
+ * a start or an attach of a band surface. A reload makes a fresh module and drops the previous one's timers.
+ */
+let paced = false
+/** The `env` every run is handed, computed once per module load on the first run (undefined: none, on Windows). */
+let runEnvOnce: Promise<{ PATH: string } | undefined> | null = null
+
+/** The two surfaces that raise `AbovePrompt`. */
+const drawsBand = (surface: unknown): boolean => surface === 'terminal' || surface === 'desktop'
+
+/** Whether a surface that draws the band is attached to the session now. */
+const drawable = async ($: EngineInterface): Promise<boolean> => (await $.session.surfaces()).some(drawsBand)
+
+/** An environment variable's value, or undefined when it is unset, empty, or its read rejected. */
+async function orUnset(get: () => Promise<string | undefined>): Promise<string | undefined> {
+  try {
+    const value = await get()
+    return typeof value === 'string' && value !== '' ? value : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const NVM_VERSION = /^v(\d+)\.(\d+)\.(\d+)$/
+
+/** nvm's version folders' `bin`, the newest version first (by number); none when the folder cannot be listed. */
+async function nvmBins($: EngineInterface, home: string): Promise<string[]> {
+  const root = `${home}/.nvm/versions/node`
+  let entries: Awaited<ReturnType<EngineInterface['fs']['list']>>
+  try {
+    entries = await $.fs.list(root)
+  } catch {
+    return []
+  }
+  const versions: Array<{ name: string; parts: number[] }> = []
+  for (const entry of entries) {
+    const m = entry.kind === 'dir' ? NVM_VERSION.exec(entry.name) : null
+    if (m) versions.push({ name: entry.name, parts: [Number(m[1]), Number(m[2]), Number(m[3])] })
+  }
+  versions.sort((a, b) => b.parts[0] - a.parts[0] || b.parts[1] - a.parts[1] || b.parts[2] - a.parts[2])
+  return versions.map((v) => `${root}/${v.name}/bin`)
+}
+
+/**
+ * The `env` a run is handed: none on Windows; else `PATH` = the host's PATH, then (under a HOME) nvm's version folders
+ * and the user-level global-bin folders, then the system ones; each folder once, its first place kept, so the host's
+ * order wins. Never rejects.
+ */
+async function computeRunEnv($: EngineInterface): Promise<{ PATH: string } | undefined> {
+  if ((await orUnset(() => $.env.get('OS'))) === 'Windows_NT') return undefined
+  const folders: string[] = []
+  const host = await orUnset(() => $.env.get('PATH'))
+  if (host) folders.push(...host.split(':').filter((s) => s !== ''))
+  const home = await orUnset(() => $.env.get('HOME'))
+  if (home) {
+    folders.push(...(await nvmBins($, home)))
+    folders.push(
+      `${home}/.volta/bin`,
+      `${home}/.local/share/pnpm`,
+      `${home}/Library/pnpm`,
+      `${home}/.bun/bin`,
+      `${home}/.npm-global/bin`,
+      `${home}/.local/bin`,
+    )
+  }
+  folders.push('/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin')
+  return { PATH: [...new Set(folders)].join(':') }
+}
+
+function runEnv($: EngineInterface): Promise<{ PATH: string } | undefined> {
+  runEnvOnce ??= computeRunEnv($)
+  return runEnvOnce
+}
 
 /**
  * What `claudinho ambient --json` prints, as far as this module reads it: a selected competition's VIEW (an object
@@ -145,15 +227,19 @@ function tick($: EngineInterface, option: ToastsOption, force = false): Promise<
 }
 
 async function run($: EngineInterface, option: ToastsOption, force: boolean): Promise<void> {
+  // No surface that draws the band (none yet, or the last one detached): nothing runs and nothing is written.
+  if (!(await drawable($))) return
   const now = await $.clock.now()
   // On a non-idle line the timer is the only pace; the age check is the idle gap's alone.
   const last = await read($, pace)
   if (!force && last.idle && now - last.ranAt < IDLE_MS) return
   let answer: View | null = null
+  const env = await runEnv($)
   try {
     const r = await $.process.run(['claudinho', 'ambient', '--json', '--columns', String(columns)], {
       timeoutMs: RUN_TIMEOUT_MS,
       stdin: '',
+      ...(env ? { env } : {}),
     })
     // A cut stdout is no answer: its first line may be part of an object.
     if (r.exitCode === 0 && r.isStdoutTruncated !== true) answer = parseView(r.stdout)
@@ -204,23 +290,42 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   }
 }
 
+/**
+ * Starts the pace once per module load: the first run right after the hook resolves (never inside it), then every 15
+ * seconds. Returns whether it started it now.
+ */
+function ensurePace($: EngineInterface, option: ToastsOption): boolean {
+  if (paced) return false
+  paced = true
+  $.clock.after(0, () => {
+    void tick($, option, true)
+  })
+  $.clock.every(LIVE_MS, () => {
+    void tick($, option)
+  })
+  return true
+}
+
 export const register: Register = (on, options) => {
   const option: ToastsOption = TOASTS_OPTIONS.includes(options.toasts as ToastsOption)
     ? (options.toasts as ToastsOption)
     : 'pinned'
 
-  on('session.start', ($, e, next) => {
-    // A headless session (`-p`, the SDK) draws no band: no timer, no process.
-    if (!e.isInteractive) return next(e)
+  on('session.start', async ($, e, next) => {
     columns = DEFAULT_COLUMNS
     busy = false
-    // The first run right after the start resolves (never inside it), then the pace.
-    $.clock.after(0, () => {
-      void tick($, option, true)
-    })
-    $.clock.every(LIVE_MS, () => {
-      void tick($, option)
-    })
+    // The start's own surface is not the question (the desktop app's is null, as `-p`'s): the roster is.
+    if (await drawable($)) ensurePace($, option)
+    return next(e)
+  })
+
+  on('session.attach', ($, e, next) => {
+    // A band surface attached: the pace if it is not running, and a run at once either way.
+    if (drawsBand(e.surface) && !ensurePace($, option)) {
+      $.clock.after(0, () => {
+        void tick($, option, true)
+      })
+    }
     return next(e)
   })
 
@@ -230,10 +335,12 @@ export const register: Register = (on, options) => {
     const shown = await read($, band)
     if (e.props.hasSurvey || e.props.maxRows < 1 || shown === null) return next(e)
     const { Box, Text } = $.ui.resolve(e)
-    // The CLI fitted the line to the width asked, its `+N` suffix reserved; the engine's cut is the backstop.
+    // The CLI fitted the line to the width asked, its `+N` suffix reserved; the engine's cut is the backstop. Another
+    // plugin's band, beneath ours, is drawn under our line.
     return (
-      <Box>
+      <Box flexDirection="column">
         <Text wrap="truncate-end">{shown.text}</Text>
+        {await next(e)}
       </Box>
     )
   })
