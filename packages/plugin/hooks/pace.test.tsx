@@ -619,3 +619,21 @@ describe('a clear judges the line that landed, not a write that was only asked',
     expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: PRE })).toHaveLength(0)
   })
 })
+
+describe('an invalidated run never writes its line, even for an instant', () => {
+  test('the run the detach invalidated, answering after the clear: no band write carries its line', async ($, on) => {
+    const OLD = "⚽ ARS 2–2 CHE 70'"
+    const written: unknown[] = []
+    on('state.set', (_$, e, next) => {
+      if (e.key === 'band') written.push(e.value === null ? null : (e.value as { text?: unknown }).text)
+      return next(e)
+    })
+    const { argvs, attach, clock, detach, release } = await world($, on, [view(LINE), held(view(OLD)), held(view("⚽ ARS 3–2 CHE 80'"))], { start: DESKTOP_START, surfaces: ['desktop'] })
+    await clock.advance(15_000)
+    await detach('desktop')
+    await attach('desktop', 'app')
+    await release()
+    expect(argvs).toHaveLength(3)
+    expect(written).not.toContain(OLD)
+  })
+})
