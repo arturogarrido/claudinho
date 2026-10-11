@@ -16,12 +16,15 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoPace,
  * throughout: a toast says a score change this module observed between two current views, never every goal.
  *
  * It runs while a surface that draws the band is attached: the terminal or the desktop app, the two that raise
- * `AbovePrompt`, asked of the session's roster at every run (the desktop app's session starts with no surface and
- * attaches after; a plugin loaded into an open desktop session hears a start with no surface while the roster holds
- * the desktop). With none attached (`claude -p`, the SDK, a phone or an editor alone) nothing runs. Each run is handed
- * a PATH: the host's own, then the folders npm, Homebrew, nvm, Volta, pnpm and Bun install global commands into, so a
- * session started with a bare PATH still finds the CLI and its `node` (on Windows nothing is handed). Another plugin's
- * band is drawn under ours.
+ * `AbovePrompt`, asked of the session's roster at every run, first and again as the last step before the spawn (the
+ * desktop app's session starts with no surface and attaches after; a plugin loaded into an open desktop session hears
+ * a start with no surface while the roster holds the desktop). A run that finds none attached (`claude -p`, the SDK, a
+ * phone or an editor alone), or cannot read the roster, starts no process and clears the band. A roster read refused at
+ * the start is unknown, so the pace starts and each run asks again: a read denied for good costs one read per 15
+ * seconds and no process. Each run is handed a PATH: the host's own, then the folders npm, Homebrew, nvm, Volta, pnpm
+ * and Bun install global commands into, so a session started with a bare PATH still finds the CLI and its `node` (on
+ * Windows nothing is handed); nvm's part is looked up once, within one second. A band drawn beneath ours in the hook
+ * chain (a plugin registered after ours, or the engine's own) stays, under our line: we never drop it.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -47,6 +50,8 @@ const TOASTS_OPTIONS: readonly ToastsOption[] = ['pinned', 'all', 'off']
 let columns = DEFAULT_COLUMNS
 /** At most one run in flight: the guard is taken before the first await. */
 let busy = false
+/** A forced run asked while a run was in flight: made as soon as that run ends (cleared when it starts). */
+let forcedPending = false
 /**
  * The pace (the forced first run, then every 15 seconds) is started once per module load, by whichever comes first of
  * a start or an attach of a band surface. A reload makes a fresh module and drops the previous one's timers.
@@ -58,8 +63,17 @@ let runEnvOnce: Promise<{ PATH: string } | undefined> | null = null
 /** The two surfaces that raise `AbovePrompt`. */
 const drawsBand = (surface: unknown): boolean => surface === 'terminal' || surface === 'desktop'
 
-/** Whether a surface that draws the band is attached to the session now. */
+/** Whether a surface that draws the band is attached to the session now (a read that rejects is the caller's to read). */
 const drawable = async ($: EngineInterface): Promise<boolean> => (await $.session.surfaces()).some(drawsBand)
+
+/** Whether a run may go on: a band surface is attached; a roster read that rejects is no. */
+async function mayRun($: EngineInterface): Promise<boolean> {
+  try {
+    return await drawable($)
+  } catch {
+    return false
+  }
+}
 
 /** An environment variable's value, or undefined when it is unset or its read rejected (an empty PATH or HOME adds nothing where it is used). */
 async function orUnset(get: () => Promise<string | undefined>): Promise<string | undefined> {
@@ -72,9 +86,19 @@ async function orUnset(get: () => Promise<string | undefined>): Promise<string |
 }
 
 const NVM_VERSION = /^v(\d+)\.(\d+)\.(\d+)$/
+/** The one deadline over nvm's whole lookup (the listing, the sort and the probes). */
+const NVM_DEADLINE_MS = 1_000
+/** The listing's entries read, before any per-entry work. */
+const NVM_ENTRIES_MAX = 256
+/** The version folders kept, the newest by number. */
+const NVM_VERSIONS_MAX = 8
 
-/** nvm's version folders' `bin`, the newest version first (by number); none when the folder cannot be listed. */
-async function nvmBins($: EngineInterface, home: string): Promise<string[]> {
+/**
+ * nvm's version folders' `bin`, of the first 256 entries the listing gives, at most the 8 newest by number: those whose
+ * `bin/claudinho` exists first, then the rest, each newest first; none when the folder cannot be listed, and none once
+ * `expired()` (nothing is probed after the deadline).
+ */
+async function nvmLookup($: EngineInterface, home: string, expired: () => boolean): Promise<string[]> {
   const root = `${home}/.nvm/versions/node`
   let entries: Awaited<ReturnType<EngineInterface['fs']['list']>>
   try {
@@ -82,13 +106,45 @@ async function nvmBins($: EngineInterface, home: string): Promise<string[]> {
   } catch {
     return []
   }
+  if (expired()) return []
   const versions: Array<{ name: string; parts: [number, number, number] }> = []
-  for (const entry of entries) {
+  for (const entry of entries.slice(0, NVM_ENTRIES_MAX)) {
     const m = entry.kind === 'dir' ? NVM_VERSION.exec(entry.name) : null
     if (m) versions.push({ name: entry.name, parts: [Number(m[1]), Number(m[2]), Number(m[3])] })
   }
   versions.sort((a, b) => b.parts[0] - a.parts[0] || b.parts[1] - a.parts[1] || b.parts[2] - a.parts[2])
-  return versions.map((v) => `${root}/${v.name}/bin`)
+  const bins = versions.slice(0, NVM_VERSIONS_MAX).map((v) => `${root}/${v.name}/bin`)
+  // A folder that holds the CLI first: the node beside it is the one it was installed with. A probe that rejects is
+  // "not there"; the probes run together.
+  const holds = await Promise.all(
+    bins.map((bin) =>
+      $.fs.exists(`${bin}/claudinho`).then(
+        (found) => found === true,
+        () => false,
+      ),
+    ),
+  )
+  return [...bins.filter((_, i) => holds[i]), ...bins.filter((_, i) => !holds[i])]
+}
+
+/** nvm's part of the PATH, bounded: past one second (or a deadline that cannot be kept), none for this module load. */
+async function nvmBins($: EngineInterface, home: string): Promise<string[]> {
+  let expired = false
+  const stop = new AbortController()
+  const deadline = $.clock.sleep(NVM_DEADLINE_MS, { signal: stop.signal }).then(
+    () => {
+      expired = true
+      return [] as string[]
+    },
+    () => {
+      expired = true
+      return [] as string[]
+    },
+  )
+  const lookup = nvmLookup($, home, () => expired)
+  const bins = await Promise.race([lookup, deadline])
+  if (!expired) stop.abort()
+  return bins
 }
 
 /**
@@ -101,8 +157,9 @@ async function computeRunEnv($: EngineInterface): Promise<{ PATH: string } | und
   const folders: string[] = []
   const host = await orUnset(() => $.env.get('PATH'))
   if (host) folders.push(...host.split(':').filter((s) => s !== ''))
+  // A folder under HOME only when HOME is an absolute path that holds no PATH separator.
   const home = await orUnset(() => $.env.get('HOME'))
-  if (home) {
+  if (home?.startsWith('/') && !home.includes(':')) {
     folders.push(...(await nvmBins($, home)))
     folders.push(
       `${home}/.volta/bin`,
@@ -217,24 +274,50 @@ function baselineOf(view: View): ClaudinhoBaseline {
   return { slug: slugOf(view), items }
 }
 
-/** One run of the CLI, bounded; at most one in flight; paced by the last line unless `force`. */
+/**
+ * One run of the CLI, bounded; at most one in flight; paced by the last line unless `force`. A forced run asked while
+ * one is in flight is kept (once) and made as soon as that run ends. No rejection escapes: a timer's callback calls it.
+ */
 function tick($: EngineInterface, option: ToastsOption, force = false): Promise<void> {
-  if (busy) return Promise.resolve()
+  if (busy) {
+    if (force) forcedPending = true
+    return Promise.resolve()
+  }
   busy = true
-  return run($, option, force).finally(() => {
-    busy = false
-  })
+  return run($, option, force)
+    .catch(() => {
+      // A run that failed in the engine's calls: nothing more to do until the next fire.
+    })
+    .finally(() => {
+      busy = false
+      if (forcedPending) {
+        forcedPending = false
+        void tick($, option, true)
+      }
+    })
 }
 
 async function run($: EngineInterface, option: ToastsOption, force: boolean): Promise<void> {
-  // No surface that draws the band (none yet, or the last one detached): nothing runs and nothing is written.
-  if (!(await drawable($))) return
+  // (1) No surface that draws the band (none yet, the last one detached, or the roster cannot be read): no process,
+  // and the band cleared, so a band surface attaching again never shows an old line; the pace, the baseline and the
+  // context are left.
+  if (!(await mayRun($))) {
+    await update($, band, () => null)
+    return
+  }
+  // (2) On a non-idle line the timer is the only pace; the age check is the idle gap's alone.
   const now = await $.clock.now()
-  // On a non-idle line the timer is the only pace; the age check is the idle gap's alone.
   const last = await read($, pace)
   if (!force && last.idle && now - last.ranAt < IDLE_MS) return
-  let answer: View | null = null
+  // (3) The PATH, bounded.
   const env = await runEnv($)
+  // (4) The roster again, the last await before the spawn: the surface may have left while the PATH was looked up.
+  if (!(await mayRun($))) {
+    await update($, band, () => null)
+    return
+  }
+  // (5) The spawn.
+  let answer: View | null = null
   try {
     const r = await $.process.run(['claudinho', 'ambient', '--json', '--columns', String(columns)], {
       timeoutMs: RUN_TIMEOUT_MS,
@@ -312,10 +395,15 @@ export const register: Register = (on, options) => {
     : 'pinned'
 
   on('session.start', async ($, e, next) => {
-    columns = DEFAULT_COLUMNS
-    busy = false
-    // The start's own surface is not the question (the desktop app's is null, as `-p`'s): the roster is.
-    if (await drawable($)) ensurePace($, option)
+    // The start's own surface is not the question (the desktop app's is null, as `-p`'s): the roster is. A read that
+    // rejects is unknown: the pace starts, and each run asks again.
+    let start: boolean
+    try {
+      start = await drawable($)
+    } catch {
+      start = true
+    }
+    if (start) ensurePace($, option)
     return next(e)
   })
 
@@ -335,8 +423,8 @@ export const register: Register = (on, options) => {
     const shown = await read($, band)
     if (e.props.hasSurvey || e.props.maxRows < 1 || shown === null) return next(e)
     const { Box, Text } = $.ui.resolve(e)
-    // The CLI fitted the line to the width asked, its `+N` suffix reserved; the engine's cut is the backstop. Another
-    // plugin's band, beneath ours, is drawn under our line.
+    // The CLI fitted the line to the width asked, its `+N` suffix reserved; the engine's cut is the backstop. A band
+    // beneath ours in the hook chain (a plugin registered after ours, or the engine's own) stays, under our line.
     return (
       <Box flexDirection="column">
         <Text wrap="truncate-end">{shown.text}</Text>

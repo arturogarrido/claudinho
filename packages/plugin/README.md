@@ -19,8 +19,7 @@ claudinho init plugin                # removes the statusline and hook `init cla
 
 `claudinho init plugin` removes exactly the `claudinho prompt` statusline and the `claudinho hook` prompt hook that
 `claudinho init claude` wrote to `~/.claude/settings.json` (an edited command or a wrapper stays, and it names it), so
-the plugin's band and context do not show twice. Then, at the prompt of a Claude Code session, in a terminal or in
-the desktop app's Code tab:
+the plugin's band and context do not show twice. Then, at the prompt of a Claude Code session in a terminal:
 
 ```
 /plugin install claudinho --marketplace arturogarrido/claudinho
@@ -28,6 +27,9 @@ the desktop app's Code tab:
 
 Answer `y` to add the marketplace, then choose a scope (the user scope first, with Enter), and set the `toasts`
 option if you want another value than the default. The plugin is active in that session from then on.
+
+Install from a terminal: the desktop app's Code tab refuses the `/plugin install` line. An install at the user scope
+made in a terminal then loads in the Code tab too.
 
 ## Where it runs
 
@@ -37,11 +39,14 @@ option if you want another value than the default. The plugin is active in that 
   alone), the plugin runs nothing: it never starts the CLI.
 - **Finding the CLI.** The plugin runs `claudinho` from the `PATH` Claude Code was started with. When that `PATH` does
   not hold the CLI's folder (an app can start Claude Code with a bare one), the plugin also looks in the folders the
-  usual installers put global commands in, in this order: nvm's (`~/.nvm/versions/node/<version>/bin`, the newest
-  version first), `~/.volta/bin`, `~/.local/share/pnpm`, `~/Library/pnpm`, `~/.bun/bin`, `~/.npm-global/bin`,
-  `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` and `/bin`. A CLI installed anywhere else leaves
-  the band empty. On Windows the plugin uses Claude Code's own `PATH` alone.
-- **Beside other plugins.** Another plugin's band above the prompt stays, drawn under ours.
+  usual installers put global commands in, in this order: nvm's (`~/.nvm/versions/node/<version>/bin`, the eight
+  newest versions), `~/.volta/bin`, `~/.local/share/pnpm`, `~/Library/pnpm`, `~/.bun/bin`, `~/.npm-global/bin`,
+  `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` and `/bin`. Among nvm's folders, those that hold
+  the CLI come first, then the others, each group newest first. The folders under `~` are used only when `HOME` is an
+  absolute path with no `:` in it. A CLI installed anywhere else leaves the band empty. On Windows the plugin uses
+  Claude Code's own `PATH` alone.
+- **Beside other plugins.** A band drawn beneath ours in the hook chain (a plugin registered after ours, or Claude
+  Code's own) stays, under our line: the plugin never drops it.
 
 ## What it does, and what it does not promise
 
