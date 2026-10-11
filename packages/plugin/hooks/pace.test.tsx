@@ -531,3 +531,91 @@ describe('a run the detach invalidated answers after its clear completed', () =>
     expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
   })
 })
+
+describe('a clear judges the line that landed, not a write that was only asked', () => {
+  test("a reconnect's band write refused once does not shield the pre-detach line from the slow detach's clear", async ($, on) => {
+    const LINE2 = "⚽ ARS 3–1 CHE 80'"
+    let refused = false
+    on('state.set', (_$, e, next) => {
+      const v = e.value as { text?: unknown } | null
+      if (!refused && e.key === 'band' && v !== null && v.text === LINE2) {
+        refused = true
+        return { deny: 'state.set denied' }
+      }
+      return next(e)
+    })
+    const { attach, clock, detachStart, holdNextRosterRead, mount, releaseRosterRead } = await world($, on, [view(LINE), view(LINE2)], { start: DESKTOP_START, surfaces: ['desktop'] })
+    holdNextRosterRead()
+    const leaving = detachStart('desktop')
+    await clock.advance(1)
+    await attach('desktop', 'app')
+    expect(refused).toBe(true)
+    await releaseRosterRead()
+    await leaving
+    await clock.advance(1)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: LINE })).toHaveLength(0)
+  })
+
+  test("a reconnect's band write still held does not shield the pre-detach line from the slow detach's clear, and lands after it", async ($, on) => {
+    const LINE2 = "⚽ ARS 3–1 CHE 80'"
+    let holding = false
+    let releaseWrite: () => void = () => {}
+    on('state.set', async (_$, e, next) => {
+      const v = e.value as { text?: unknown } | null
+      if (!holding && e.key === 'band' && v !== null && v.text === LINE2) {
+        holding = true
+        await new Promise<void>((resolve) => {
+          releaseWrite = resolve
+        })
+      }
+      return next(e)
+    })
+    const { attach, clock, detachStart, holdNextRosterRead, mount, releaseRosterRead } = await world($, on, [view(LINE), view(LINE2)], { start: DESKTOP_START, surfaces: ['desktop'] })
+    holdNextRosterRead()
+    const leaving = detachStart('desktop')
+    await clock.advance(1)
+    await attach('desktop', 'app')
+    expect(holding).toBe(true)
+    await releaseRosterRead()
+    await leaving
+    await clock.advance(1)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: LINE })).toHaveLength(0)
+    releaseWrite()
+    await clock.advance(1)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: LINE2 })).toHaveLength(1)
+  })
+
+  test("a run's band write submitted before a detach invalidated it, landing after (the clear's own write refused): its line is not left on show", async ($, on) => {
+    const PRE = "⚽ ARS 2–2 CHE 70'"
+    let holdingPre = false
+    let releasePre: () => void = () => {}
+    let refuseClear = false
+    on('state.set', async (_$, e, next) => {
+      const v = e.value as { text?: unknown } | null
+      if (!holdingPre && e.key === 'band' && v !== null && v.text === PRE) {
+        holdingPre = true
+        await new Promise<void>((resolve) => {
+          releasePre = resolve
+        })
+        return next(e)
+      }
+      if (refuseClear && e.key === 'band' && e.value === null) {
+        refuseClear = false
+        return { deny: 'state.set denied' }
+      }
+      return next(e)
+    })
+    const { argvs, attach, clock, detach, mount } = await world($, on, [view('⚽ —', { empty: true }), view(PRE), held(view("⚽ ARS 3–2 CHE 80'"))], { start: DESKTOP_START, surfaces: ['desktop'] })
+    await clock.advance(15_000)
+    expect(holdingPre).toBe(true)
+    refuseClear = true
+    await detach('desktop')
+    expect(refuseClear).toBe(false)
+    await attach('desktop', 'app')
+    releasePre()
+    await clock.advance(1)
+    await clock.advance(1)
+    expect(argvs).toHaveLength(3)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: PRE })).toHaveLength(0)
+  })
+})
