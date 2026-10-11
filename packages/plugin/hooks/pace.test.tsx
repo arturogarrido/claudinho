@@ -252,22 +252,13 @@ describe('nothing escapes a run', () => {
 
 describe('the roster read again just before the spawn', () => {
   test('the roster refused between the first read and the spawn, after a shown line: no process, and the band cleared', async ($, on) => {
-    // The refusal lands while the run reads its pace: after the run's first roster read, before its second.
-    const at = { armed: false, fired: false, deny: (_deny: boolean) => {} }
-    on('state.get', (_$, e, next) => {
-      if (at.armed && e.key === 'pace') {
-        at.deny(true)
-        at.armed = false
-        at.fired = true
-      }
-      return next(e)
-    })
-    const { argvs, clock, denyRoster, mount } = await world($, on, [view(LINE)])
+    const { argvs, clock, denyRosterFrom, mount, rosterReads } = await world($, on, [view(LINE)])
     expect(await (await mount()).findAll({ type: 'Text', text: LINE })).toHaveLength(1)
-    at.deny = denyRoster
-    at.armed = true
+    // The next run's first roster read answers; its second (just before the spawn) and every one after are refused.
+    const before = rosterReads()
+    denyRosterFrom(before + 2)
     await clock.advance(15_000)
-    expect(at.fired).toBe(true)
+    expect(rosterReads()).toBeGreaterThanOrEqual(before + 2)
     expect(argvs).toHaveLength(1)
     expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
   })
@@ -306,24 +297,15 @@ describe('a window leaving and coming back before the next fire', () => {
 })
 
 describe('a band cleared at the second roster read comes back', () => {
-  test('an idle line cleared between a forced run\'s two roster reads is shown again at the next fire the roster answers', async ($, on) => {
-    // The refusal lands while the attach's forced run reads its pace: after its first roster read, before its second.
-    const at = { armed: false, fired: false, deny: (_deny: boolean) => {} }
-    on('state.get', (_$, e, next) => {
-      if (at.armed && e.key === 'pace') {
-        at.deny(true)
-        at.armed = false
-        at.fired = true
-      }
-      return next(e)
-    })
-    const { argvs, attach, clock, denyRoster, mount } = await world($, on, [view(COMPLETE, { idle: true })])
+  test("an idle line cleared between a forced run's two roster reads is shown again at the next fire the roster answers", async ($, on) => {
+    const { argvs, attach, clock, denyRoster, denyRosterFrom, mount, rosterReads } = await world($, on, [view(COMPLETE, { idle: true })])
     expect(argvs).toHaveLength(1)
     expect(await (await mount()).findAll({ type: 'Text', text: COMPLETE })).toHaveLength(1)
-    at.deny = denyRoster
-    at.armed = true
+    // The attach's forced run: its first roster read answers, its second (just before the spawn) is refused.
+    const before = rosterReads()
+    denyRosterFrom(before + 2)
     await attach('desktop', 'app')
-    expect(at.fired).toBe(true)
+    expect(rosterReads()).toBeGreaterThanOrEqual(before + 2)
     expect(argvs).toHaveLength(1)
     expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
     denyRoster(false)
@@ -349,26 +331,6 @@ describe('a two-write change refused half-way leaves a state the next fire repai
     expect(argvs).toHaveLength(2)
     expect(await (await mount()).findAll({ type: 'Text', text: COMPLETE })).toHaveLength(1)
   })
-
-  test("a clear whose pace write is refused once leaves the idle line on show, not a blank band under the idle gap", async ($, on) => {
-    let armed = false
-    let refused = false
-    on('state.set', (_$, e, next) => {
-      if (armed && !refused && e.key === 'pace') {
-        refused = true
-        return { deny: 'state.set denied' }
-      }
-      return next(e)
-    })
-    const { clock, denyRoster, mount } = await world($, on, [view(COMPLETE, { idle: true })])
-    armed = true
-    denyRoster(true)
-    await clock.advance(15_000)
-    expect(refused).toBe(true)
-    denyRoster(false)
-    await clock.advance(15_000)
-    expect(await (await mount()).findAll({ type: 'Text', text: COMPLETE })).toHaveLength(1)
-  })
 })
 
 describe('a window coming back while a slower detach hook beneath ours runs', () => {
@@ -382,5 +344,52 @@ describe('a window coming back while a slower detach hook beneath ours runs', ()
     expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
     await releaseDetach()
     await leaving
+  })
+})
+
+describe('a forced run over an idle pace', () => {
+  test("an attach's forced run answering a live line over a recent idle pace, its band write refused once: the next fire runs the CLI", async ($, on) => {
+    let refused = false
+    on('state.set', (_$, e, next) => {
+      const v = e.value as { text?: unknown } | null
+      if (!refused && e.key === 'band' && v !== null && v.text === LINE) {
+        refused = true
+        return { deny: 'state.set denied' }
+      }
+      return next(e)
+    })
+    const { argvs, attach, clock, mount } = await world($, on, [view(COMPLETE, { idle: true }), view(LINE)])
+    await attach('desktop', 'app')
+    expect(refused).toBe(true)
+    expect(argvs).toHaveLength(2)
+    await clock.advance(15_000)
+    expect(argvs).toHaveLength(3)
+    expect(await (await mount()).findAll({ type: 'Text', text: LINE })).toHaveLength(1)
+  })
+
+  test("a detach's clear whose band write lands after a reconnect's fresh idle answer keeps that answer", async ($, on) => {
+    let hold = false
+    let release: () => void = () => {}
+    on('state.set', async (_$, e, next) => {
+      if (hold && e.key === 'band' && e.value === null) {
+        hold = false
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+      }
+      return next(e)
+    })
+    const { argvs, attach, clock, detachStart, mount } = await world($, on, [view(LINE), view(COMPLETE, { idle: true })], { start: DESKTOP_START, surfaces: ['desktop'] })
+    hold = true
+    const leaving = detachStart('desktop')
+    await clock.advance(1)
+    // The detach's clear reached its band write, which is held now.
+    expect(hold).toBe(false)
+    await attach('desktop', 'app')
+    expect(argvs).toHaveLength(2)
+    release()
+    await leaving
+    await clock.advance(1)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text', text: COMPLETE })).toHaveLength(1)
   })
 })

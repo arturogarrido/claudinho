@@ -77,6 +77,8 @@ export const world = async (
   const clients = new Map<string, Surface>((options.surfaces ?? (start.surface ? [start.surface] : [])).map((s) => [s, s]))
   const roster = (): Surface[] => [...new Set(clients.values())]
   let rosterRejects = false
+  // From this roster read on (counted from the session's first), every read is refused.
+  let denyFrom = Number.POSITIVE_INFINITY
   const env: Record<string, string> = options.env ?? { PATH: BARE_PATH, HOME }
   const nvm = options.nvm ?? new Error(`ENOENT: no such file or directory, scandir '${NVM}'`)
   let releaseNvm: () => void = () => {}
@@ -95,7 +97,7 @@ export const world = async (
   on('session.surfaces', () => {
     surfaceReads += 1
     // A refusal is `{ deny }`: a hook that throws is skipped, and the read would go on beneath it.
-    if (rosterRejects) return { deny: 'session.surfaces denied' }
+    if (rosterRejects || surfaceReads >= denyFrom) return { deny: 'session.surfaces denied' }
     return { value: roster() }
   })
   const envReads: string[] = []
@@ -195,15 +197,20 @@ export const world = async (
     releaseNvm()
     await clock.advance(1)
   }
-  /** From now on, the roster read rejects (`true`) or answers (`false`). */
+  /** From now on, the roster read rejects (`true`) or answers (`false`, which also lifts `denyRosterFrom`). */
   const denyRoster = (deny: boolean) => {
     rosterRejects = deny
+    if (!deny) denyFrom = Number.POSITIVE_INFINITY
+  }
+  /** Every roster read from the `n`th of the session on (counting as `rosterReads()` does) is refused. */
+  const denyRosterFrom = (n: number) => {
+    denyFrom = n
   }
   const mount = (props: Partial<typeof PROPS> = {}, surface: 'terminal' | 'desktop' = 'terminal') =>
     $.ui.mount({ plugin: 'claudinho', surface, component: 'AbovePrompt', props: { ...PROPS, ...props }, viewport: { columns: 100, rows: 30 } })
   /** How many times the plugin asked for the roster: what a timer ticking for nobody would show. */
   const rosterReads = () => surfaceReads
-  return { clock, argvs, stdins, envs, envReads, lists, probes, mount, attach, detach, detachStart, releaseDetach, release, releaseListing, denyRoster, rosterReads }
+  return { clock, argvs, stdins, envs, envReads, lists, probes, mount, attach, detach, detachStart, releaseDetach, release, releaseListing, denyRoster, denyRosterFrom, rosterReads }
 }
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */
