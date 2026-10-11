@@ -194,3 +194,13 @@ describe('the nvm lookup after its deadline, and a refused probe', () => {
     expect(envs[0]).toEqual({ PATH: [BARE_PATH, `${NVM}/v22.17.0/bin`, `${NVM}/v24.11.1/bin`, ...AFTER_NVM].join(':') })
   })
 })
+
+describe('the PATH, once whole, is kept', () => {
+  test('the environment is read once per load when the PATH is whole: three runs, one read of each name', async ($, on) => {
+    const { argvs, clock, envReads } = await world($, on, [view(LINE)], { nvm: [dir('v22.17.0')] })
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(argvs).toHaveLength(3)
+    expect([...envReads].sort()).toEqual(['HOME', 'OS', 'PATH'])
+  })
+})
