@@ -332,3 +332,30 @@ describe('a band cleared at the second roster read comes back', () => {
     expect(await (await mount()).findAll({ type: 'Text', text: COMPLETE })).toHaveLength(1)
   })
 })
+
+describe('a run in flight when the last window closes (a person closing and reopening the window)', () => {
+  const OLD = "⚽ ARS 2–2 CHE 70'"
+  const NEW = "⚽ ARS 3–2 CHE 80'"
+
+  test('the window reopened before that run answers: its answer is not drawn while the reopened window\'s run is in flight', async ($, on) => {
+    const { argvs, attach, clock, detach, mount, release } = await world($, on, [view(LINE), held(view(OLD)), held(view(NEW))], { start: DESKTOP_START, surfaces: ['desktop'] })
+    await clock.advance(15_000)
+    expect(argvs).toHaveLength(2)
+    await detach('desktop')
+    await attach('desktop', 'app')
+    await release()
+    expect(argvs).toHaveLength(3)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+
+  test('the window reopened after that run answered: its answer is not drawn while the reopened window\'s run is in flight', async ($, on) => {
+    const { argvs, attach, clock, detach, mount, release } = await world($, on, [view(LINE), held(view(OLD)), held(view(NEW))], { start: DESKTOP_START, surfaces: ['desktop'] })
+    await clock.advance(15_000)
+    expect(argvs).toHaveLength(2)
+    await detach('desktop')
+    await release()
+    await attach('desktop', 'app')
+    expect(argvs).toHaveLength(3)
+    expect(await (await mount({}, 'desktop')).findAll({ type: 'Text' })).toHaveLength(0)
+  })
+})
