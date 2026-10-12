@@ -347,11 +347,36 @@ describe('claudinho ambient --json', () => {
     expect(view().attribution).toBe('Live data: ESPN');
   });
 
-  it('a degraded snapshot attributes nothing (its last read failed: nothing shown was served by the provider), its source kept', () => {
+  // The attribution follows what the line shows, by the view's own split: a provider named and the line neither the
+  // sign-off (`idle`, the bundled clock) nor nothing known (`empty`). `degraded` does not decide: a degraded snapshot
+  // still shows a row or a countdown a provider read served.
+  it('a degraded snapshot whose line is nothing known attributes nothing (by `empty`), its source kept', () => {
     const at = NOW.toISOString();
     writeState({ updatedAt: at, live: [], degraded: true, source: 'espn', competition: 'eng.1', schedule: { updatedAt: at, attemptedAt: at, failures: 1, complete: false }, liveComplete: false } as never, NOW.getTime());
     cmdAmbient(ctx());
-    expect(view()).toMatchObject({ degraded: true, source: 'espn', attribution: null });
+    expect(view()).toMatchObject({ degraded: true, source: 'espn', empty: true, attribution: null });
+  });
+
+  it('a degraded snapshot still showing a row an earlier read served attributes it', () => {
+    const at = NOW.toISOString();
+    writeState({ updatedAt: at, live: [live('1', ARS, CHE, [2, 1])], degraded: true, source: 'espn', competition: 'eng.1', schedule: { updatedAt: at, attemptedAt: at, failures: 1, complete: false }, liveComplete: false } as never, NOW.getTime());
+    cmdAmbient(ctx());
+    expect(view()).toMatchObject({ line: "⚽ ARS 2–1 CHE 50'", degraded: true, attribution: 'Live data: ESPN' });
+  });
+
+  it('a degraded snapshot whose line counts down to a fixture discovery read attributes it', () => {
+    const at = NOW.toISOString();
+    const ahead: Match = { id: '9', stage: 'REGULAR', kickoff: new Date(NOW.getTime() + 3 * 3_600_000).toISOString(), venue: 'Vitality Stadium', home: BOU, away: BRE, status: 'SCHEDULED', updatedAt: at };
+    writeState({ updatedAt: at, live: [], degraded: true, source: 'espn', competition: 'eng.1', schedule: { fixtures: [ahead], updatedAt: at, attemptedAt: at, failures: 0, complete: true }, liveComplete: false } as never, NOW.getTime());
+    cmdAmbient(ctx());
+    expect(view()).toMatchObject({ line: 'BOU vs BRE in 3h0m', degraded: true, empty: false, idle: false, attribution: 'Live data: ESPN' });
+  });
+
+  it("the World Cup's sign-off (the bundled clock) attributes nothing, on a fresh snapshot that names the provider", () => {
+    const AUG = new Date('2026-08-01T12:00:00Z');
+    writeState({ updatedAt: AUG.toISOString(), live: [], degraded: false, source: 'espn', competition: 'fifa.world', liveComplete: true } as never, AUG.getTime());
+    cmdAmbient({ cfg: cfg({ competition: 'fifa.world' }), t: makeT('en'), now: AUG });
+    expect(view()).toMatchObject({ idle: true, degraded: false, source: 'espn', attribution: null });
   });
 
   it('a read that was not whole, not degraded, still attributes: every row it shows was served', () => {
