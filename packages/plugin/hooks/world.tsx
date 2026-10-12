@@ -90,6 +90,8 @@ export const world = async (
     registrations.push({ ...e })
     return { value: { command: e.name } }
   })
+  // The engine's own answer to a command the plugin does not answer (a built-in such as /cost, another plugin's).
+  on('command.run', (_$, e) => ({ text: `engine ran /${e.command}` }))
   on('session.surfaces', () => {
     surfaceReads += 1
     // A refusal is `{ deny }`: a hook that throws is skipped, and the read would go on beneath it.
@@ -130,11 +132,13 @@ export const world = async (
   const argvs: string[][] = []
   const stdins: Array<string | undefined> = []
   const envs: Array<Record<string, string> | undefined> = []
+  const timeouts: Array<number | undefined> = []
   const releases: Array<() => void> = []
   on('process.run', async (_$, e) => {
     argvs.push([...e.argv])
     stdins.push(e.init?.stdin)
     envs.push(e.init?.env ? { ...e.init.env } : undefined)
+    timeouts.push(e.init?.timeoutMs)
     const a = answers[Math.min(argvs.length - 1, answers.length - 1)]
     if (a instanceof Error) throw a
     if (typeof a === 'object' && 'held' in a) {
@@ -191,7 +195,7 @@ export const world = async (
     $.command.run({ command: 'claudinho', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
   /** How many times the plugin asked for the roster: what a timer ticking for nobody would show. */
   const rosterReads = () => surfaceReads
-  return { clock, argvs, stdins, envs, envReads, lists, probes, registrations, command, mount, attach, detach, release, releaseListing, denyRoster, rosterReads }
+  return { clock, argvs, stdins, envs, timeouts, envReads, lists, probes, registrations, command, mount, attach, detach, release, releaseListing, denyRoster, rosterReads }
 }
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */

@@ -5,8 +5,10 @@ import { BARE_PATH, COMPLETE, FIRST_RUN, HOME, held, view, world } from './world
  * `/claudinho`: the band's line now, from one `claudinho ambient --json` run, with the band's PATH and the band's
  * reading of the answer. Where the band would show nothing, one fixed sentence says so, chosen by the answer's fields,
  * never by its text or by a cause the plugin cannot see; the engine prints the plugin's name before it
- * (`claudinho: ...`), so no sentence names the plugin, a command, a version, a path or an error. The run is the
- * command's own: it writes none of the band's state.
+ * (`claudinho: ...`), so no sentence names the plugin, a command, a version, a path or an error. A reply made from a
+ * view carries the view's own disclaimer after a blank line (the plugin never spells it); one made from no view
+ * carries none, as the CLI's first-run and fallback objects carry none. The run is the command's own: it writes none
+ * of the band's state.
  */
 const LINE = "⚽ ARS 2–1 CHE 50'"
 const IDLE = 'The edition you follow is over.'
@@ -14,6 +16,10 @@ const FIRST = 'No competition followed yet.'
 const EMPTY = 'Nothing to show right now: no live match and no next fixture known.'
 const NO_VIEW = "Nothing to show: the CLI's answer is not one this plugin reads."
 const FAILED = 'The CLI gave no answer.'
+/** The disclaimer the CLI puts on every selected competition's view (the test world's `view()` carries it). */
+const D = 'Not affiliated with FIFA, any confederation, league or club, or Anthropic.'
+/** A reply made from a view: its text, a blank line (a paragraph in the Markdown the desktop row draws), the view's disclaimer. */
+const withD = (s: string) => `${s}\n\n${D}`
 /** The view a CLI older than `idle` and `empty` prints: a live list and neither field. */
 const OLDER_VIEW = JSON.stringify({ line: LINE, context: null, live: { items: [], total: 0, shown: 0, truncated: false, complete: true }, current: false, next: null, pick: null, competition: { slug: 'eng.1' }, degraded: false, source: 'espn', updatedAt: null, staleAfter: null })
 
@@ -65,7 +71,7 @@ describe('what it runs', () => {
     const { argvs, command } = await world($, on, [view(LINE), view(LINE)])
     const r = await command('next Arsenal --columns 5')
     expect(argvs[1]).toEqual(['claudinho', 'ambient', '--json'])
-    expect(r.text).toBe(LINE)
+    expect(r.text).toBe(withD(LINE))
   })
 
   test('a headless session: the band ran nothing, the command runs the CLI once and answers', async ($, on) => {
@@ -73,28 +79,28 @@ describe('what it runs', () => {
     expect(argvs).toHaveLength(0)
     const r = await command()
     expect(argvs).toHaveLength(1)
-    expect(r.text).toBe(LINE)
+    expect(r.text).toBe(withD(LINE))
   })
 })
 
 describe('what it answers, one cell per shape the CLI prints and per way the run fails', () => {
   for (const line of [LINE, 'ARS vs LEE in 7h13m', '⚽ ARS 0–0 CHE live · syncing…', '⚽ claudinho follow']) {
-    test(`a line the band shows is the reply, verbatim: ${line}`, async ($, on) => {
+    test(`a line the band shows is the reply, verbatim, then the view's disclaimer: ${line}`, async ($, on) => {
       const { command } = await world($, on, [view('ARS vs LEE in 7h13m'), view(line)])
-      expect((await command()).text).toBe(line)
+      expect((await command()).text).toBe(withD(line))
     })
   }
 
-  test('the line is the CLI\'s whole line, never cut to a width (no --columns): 150 columns arrive whole', async ($, on) => {
+  test('the line is never fitted to the window (no --columns): 150 columns arrive whole', async ($, on) => {
     const long = `⚽ ${'A'.repeat(146)}`
     const { command } = await world($, on, [view(LINE), view(long)])
-    expect((await command()).text).toBe(long)
+    expect((await command()).text).toBe(withD(long))
   })
 
   for (const [why, answer] of [['the complete line', view(COMPLETE, { idle: true })], ['an idle view whatever its text', view(LINE, { idle: true })]] as const) {
     test(`an idle view (the edition over): a fixed sentence, never the line and its command: ${why}`, async ($, on) => {
       const { command } = await world($, on, [view(LINE), answer])
-      expect((await command()).text).toBe(IDLE)
+      expect((await command()).text).toBe(withD(IDLE))
     })
   }
 
@@ -106,7 +112,7 @@ describe('what it answers, one cell per shape the CLI prints and per way the run
   for (const [why, answer] of [['a view that says empty', view('⚽ —', { empty: true })], ['a view that says empty whatever its text', view(LINE, { empty: true })], ['a view whose line is blank', view('   ')], ['an idle view that says empty', view(COMPLETE, { idle: true, empty: true })]] as const) {
     test(`nothing known: the empty sentence: ${why}`, async ($, on) => {
       const { command } = await world($, on, [view(LINE), answer])
-      expect((await command()).text).toBe(EMPTY)
+      expect((await command()).text).toBe(withD(EMPTY))
     })
   }
 
@@ -133,6 +139,59 @@ describe('what it answers, one cell per shape the CLI prints and per way the run
   }
 })
 
+describe('the disclaimer', () => {
+  for (const [why, over] of [['no disclaimer field (an older CLI)', { disclaimer: undefined }], ['a disclaimer that is no string', { disclaimer: 7 }], ['an empty disclaimer', { disclaimer: '' }]] as const) {
+    test(`a view with ${why}: the line alone, never a spelled copy`, async ($, on) => {
+      const { command } = await world($, on, [view(LINE), view(LINE, over)])
+      expect((await command()).text).toBe(LINE)
+    })
+  }
+
+  for (const [why, answer, sentence] of [['the first-run object', FIRST_RUN, FIRST], ["the CLI's fallback object", '{"line":"⚽ —","empty":true}', NO_VIEW], ['a failed run', new Error('timeout'), FAILED]] as const) {
+    test(`a reply made from no view carries none: ${why}`, async ($, on) => {
+      const { command } = await world($, on, [view(LINE), answer])
+      expect((await command()).text).toBe(sentence)
+    })
+  }
+})
+
+describe('what a view is: each clause decides alone', () => {
+  // Each fixture fails ONE clause of what makes an object a view the plugin reads, every other clause passing.
+  const base = { line: LINE, context: null, current: false, competition: { slug: 'eng.1' }, staleAfter: null, disclaimer: D }
+  const list = { items: [], total: 0, shown: 0, truncated: false, complete: true }
+  for (const [why, obj] of [
+    ['a live list and `idle`, no `empty`', { ...base, live: list, idle: false }],
+    ['a live list and `empty`, no `idle`', { ...base, live: list, empty: false }],
+    ['`idle` and `empty`, no live list', { ...base, idle: false, empty: false }],
+    ['`idle` and `empty`, a live object with no items array', { ...base, live: { total: 0 }, idle: false, empty: false }],
+  ] as const) {
+    test(`no view: ${why}: the command says so and the band shows nothing`, async ($, on) => {
+      const { command, mount } = await world($, on, [JSON.stringify(obj), JSON.stringify(obj)])
+      expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
+      expect((await command()).text).toBe(NO_VIEW)
+    })
+  }
+})
+
+describe('the other commands', () => {
+  for (const name of ['cost', 'claudinho-mode']) {
+    test(`/${name} is not the plugin's: it passes beneath, and no process runs`, async ($, on) => {
+      const { argvs } = await world($, on, [view(LINE)])
+      const r = await $.command.run({ command: name, args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+      expect(r.text).toBe(`engine ran /${name}`)
+      expect(argvs).toHaveLength(1) // the band's first run alone
+    })
+  }
+})
+
+describe('the bound', () => {
+  test("the command's run and the band's are each bounded at two seconds (the engine's own default is 30)", async ($, on) => {
+    const { timeouts, command } = await world($, on, [view(LINE), view(LINE)])
+    await command()
+    expect(timeouts).toEqual([2_000, 2_000])
+  })
+})
+
 describe('the command leaves the band alone', () => {
   test("a reply with another line does not change the band's line", async ($, on) => {
     const { command, mount } = await world($, on, [view(LINE), view('⚽ ARS 3–1 CHE 80\'')])
@@ -148,7 +207,7 @@ describe('the command leaves the band alone', () => {
 
   test('a command answered while the band shows nothing does not draw the band', async ($, on) => {
     const { command, mount } = await world($, on, [view('⚽ —', { empty: true }), view(LINE)])
-    expect((await command()).text).toBe(LINE)
+    expect((await command()).text).toBe(withD(LINE))
     expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
   })
 
@@ -188,7 +247,7 @@ describe('the command leaves the band alone', () => {
   test("a command while the band's run is in flight runs its own process and answers; the band's run then draws its line", async ($, on) => {
     const { argvs, command, mount, release } = await world($, on, [held(view(LINE)), view('ARS vs LEE in 7h13m')])
     expect(argvs).toHaveLength(1) // the band's run, held
-    expect((await command()).text).toBe('ARS vs LEE in 7h13m')
+    expect((await command()).text).toBe(withD('ARS vs LEE in 7h13m'))
     expect(argvs).toHaveLength(2)
     await release()
     expect((await (await mount()).findAll({ type: 'Text' })).map((t) => t.text)).toEqual([LINE])
@@ -196,8 +255,8 @@ describe('the command leaves the band alone', () => {
 
   test('two commands in a row: two runs, two replies', async ($, on) => {
     const { argvs, command } = await world($, on, [view(LINE), view(LINE), view('ARS vs LEE in 7h13m')])
-    expect((await command()).text).toBe(LINE)
-    expect((await command()).text).toBe('ARS vs LEE in 7h13m')
+    expect((await command()).text).toBe(withD(LINE))
+    expect((await command()).text).toBe(withD('ARS vs LEE in 7h13m'))
     expect(argvs).toHaveLength(3)
   })
 })
