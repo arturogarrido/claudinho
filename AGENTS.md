@@ -14,7 +14,7 @@ One line per section of this file: what it is for and when a task loads it. The 
 - **Validation scope**: the checks each kind of change needs, with the private-document boundary check; read before calling any change ready.
 - **Releasing**: the version bump, the publish workflow, the Registry record, the `.mcpb` bundle; read for a release.
 - **Commit attribution (all agents)**: the co-author trailer; read before the first commit.
-- **Reviewing PRs (all agents)**: a review's checkout and how its findings are written; read for a review.
+- **Reviewing PRs (all agents)**: a review's checkout, its threat model and how its findings are written; read for a review.
 - **Codex / GPT specifics**: notes for that agent family; read only when one of its agents runs.
 - **Conventions**: the engineering rules, one bullet each, a bullet whose narration moved ending with a `Narration:` line naming its file under `guides/conventions/`; read the bullets of every area a change touches.
 - **Rules and their enforcers**: each failure class, what refuses it and what that does not prove; read before calling a class closed.
@@ -235,9 +235,23 @@ coding client suggests a different trailer.
   check out or fast-forward the PR branch before reviewing.
 - Review-only tasks are read-only unless the user explicitly asks for fixes. Lead with findings,
   classify them P1/P2/P3, and include tight file/line references. If there are no findings, say
-  that plainly and list the checks run plus any residual risk.
+  that plainly and list the checks run plus any residual risk. A note (a finding outside the
+  review's threat model, next bullet) is reported under Notes, never as a P1, P2 or P3. A note is
+  not pending: it does not withhold a confirmation.
 - Do not treat a previous review, memory, or local branch name as current truth. Re-check the PR
   SHA, merge state, and CI status at the end of the review.
+- State the review's threat model in the PR description before the first round, and give it to every
+  reviewer. (This is the review's model, not the product's security model in `SECURITY.md`.) The default model: the programs a change runs beside (the coding client that loads the plugin
+  or the MCP server, the operating system, the user's shell) behave as they ship; they are not
+  adversaries. A finding that needs another program to refuse, hold or delay one of the change's calls to
+  its host, a reload or restart landing inside a window of milliseconds, or the system clock moving
+  backwards between two runs is a note, not a blocker, unless it is reproduced on the real host as it ships
+  (by a reviewer, the runner or the coordinator, who says how); then it is a finding. A finding a person reaches by using the product blocks as before: opening or closing a
+  window, a slow disk, a missing or old binary, a changed setting, the network. The model narrows what
+  blocks a review; it relaxes no rule in this file. The provider's data stays untrusted (the trust
+  boundary), our own processes racing each other stay in scope (the refresher's lock, the throttle note),
+  and a change may widen its model in its description. When fix rounds open a new case of the same kind
+  twice, stop and ask whether that kind is in scope before writing another fix.
 
 ## Codex / GPT specifics
 

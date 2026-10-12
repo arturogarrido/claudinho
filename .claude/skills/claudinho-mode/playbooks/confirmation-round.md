@@ -6,8 +6,9 @@ pending.
 ## Steps
 
 1. The inputs as files with a manifest of their hashes: the delta patch since the previous reviewed head
-   (`git diff <previous-head> <head>`), the full patch against the base, the PR body, and, for each reader, that
-   reader's own previous report (never another reader's).
+   (`git diff <previous-head> <head>`), the full patch against the base, the PR body (which states the review's
+   threat model), and, for each reader, that reader's own previous report (never another reader's) with the
+   disposition of each of its findings from the triage.
 2. A detached checkout at the head for the readers; the runner (`.claude/agents/claudinho-runner.md`) on the head in
    its own worktree, under one rule: when the head changed code, a test or executable configuration (commands,
    package contents, workflows, scripts), it installs, builds, runs the suite, `bash scripts/gate.sh` and its
@@ -18,7 +19,7 @@ pending.
    review is read by every reader.
 4. Each verdict read from its verdict line by name, its inputs matched against the manifest. A verdict is CONFIRMED
    only with nothing pending, P3 included; a deferral counts only as a tracked row the raising reader accepted in
-   writing.
+   writing; a note (outside the threat model, AGENTS.md "Reviewing PRs") is not pending.
 5. A new finding opens a fix list (`.claude/skills/claudinho-mode/playbooks/review-round.md`, steps 6 to 9) and
    another confirmation round; the round count is recorded.
 6. The gate below on the head (for prose alone, `git diff --check` and the private-document boundary check), and the
