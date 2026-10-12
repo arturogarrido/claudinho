@@ -60,8 +60,8 @@ made in a terminal then loads in the Code tab too.
   statusline prints, and the band shows it; after another competition's season the statusline says nothing is known,
   and the band shows nothing. It runs the CLI every 15 seconds (every five minutes on the sign-off line and while
   nothing is chosen), which is also what keeps the CLI's cache fresh. The CLI fits the line to the band's width and
-  keeps its `+N` count of other matches; the engine cuts anything wider. What the band shows and how often it reads
-  come from what the CLI says the line is, never from its text. With no terminal or desktop window attached
+  keeps its `+N` count of other matches (`+more` after a read that was not whole); the engine cuts anything wider.
+  What the band shows and how often it reads come from what the CLI says the line is, never from its text. With no terminal or desktop window attached
   (`claude -p`, the SDK, a phone or an editor alone) the band runs nothing; `/claudinho` still runs the CLI once when
   typed.
 - **The toasts** say a score change the plugin observed between two current views, as `⚽` and the hook's own line
@@ -81,7 +81,7 @@ made in a terminal then loads in the Code tab too.
 `/claudinho` answers the band's line now, as the command's output after the plugin's name
 (`claudinho: ⚽ ARS 2–1 CHE 50'`, `claudinho: ARS vs LEE in 7h13m`). The command asks the CLI for no width, so the
 CLI fits the line to its own ceiling, 200 display columns, never to the window: past it the CLI keeps its `+N` count
-of the other matches, or ends an over-wide segment with `…`. The transcript row wraps what it draws. Where the band
+of the other matches (`+more` after a read that was not whole), or ends an over-wide segment with `…`. The transcript row wraps what it draws. Where the band
 would show nothing, it answers one fixed sentence instead, chosen by what the CLI's answer says, never by a guess at
 the cause:
 
@@ -96,10 +96,12 @@ the cause:
 - `The edition you follow is over.` The CLI's view says it is idle: the edition you follow ended.
   Its line (the band's sign-off line) carries a command, so the reply says this instead.
 
-A reply made from the CLI's view (its line, the empty sentence or the edition sentence) ends with the CLI's
-non-affiliation sentence after a blank line, the one the view carries; the sentences said when there is no view (no
-answer, no competition followed, an answer that is no view) carry none. The reply carries no "Live data" line yet;
-the provider is named under "Data and disclaimer" below.
+A reply made from the CLI's view (its line, the empty sentence or the edition sentence) ends with the two sentences
+the view carries, each after a blank line: the provider's attribution (`Live data: ESPN`; none when the CLI's cache
+holds no read, or its last read failed), then the CLI's non-affiliation sentence. The sentences said when there is no
+view (no answer, no competition followed, an answer that is no view) carry neither. With CLI 0.11.2, older than the
+release that adds the attribution to `claudinho ambient --json`, the reply carries the non-affiliation sentence
+alone.
 
 It runs the CLI once each time it is typed (`claudinho ambient --json`), on any surface where the plugin loads,
 headless included (`claude -p "/claudinho"`), and finds the CLI as the band does (see "Finding the CLI" above). Its

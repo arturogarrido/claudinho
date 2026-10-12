@@ -35,8 +35,8 @@ export interface AmbientOpts extends PromptOpts {
   pin?: Pin;
 }
 
-/** The ambient view as the cache gives it: the command adds the selection, the disclaimer and the pick. */
-export type AmbientRead = Omit<AmbientView, 'competition' | 'disclaimer' | 'pick' | 'pickUnreadable'>;
+/** The ambient view as the cache gives it: the command adds the selection, the disclaimer, the attribution and the pick. */
+export type AmbientRead = Omit<AmbientView, 'competition' | 'disclaimer' | 'attribution' | 'pick' | 'pickUnreadable'>;
 
 /**
  * THE ambient reader of `claudinho ambient --json` (core's `AmbientView`, less

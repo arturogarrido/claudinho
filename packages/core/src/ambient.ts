@@ -141,4 +141,14 @@ export interface AmbientView {
   readonly staleAfter: string | null;
   /** The non-affiliation sentence, core's `DISCLAIMER`. */
   readonly disclaimer: string;
+  /**
+   * The provider's attribution sentence, in English as every ambient string:
+   * core's `live.data` copy with `liveSourceLabel(source)` (`Live data:
+   * ESPN`). Three states: no snapshot, `null` (nothing was read); a DEGRADED
+   * snapshot, `null`, its `source` kept (its last read failed: nothing shown
+   * was served by the provider); otherwise, `source` being a string, the
+   * sentence, a read that was not whole included (every row it shows was
+   * served).
+   */
+  readonly attribution: string | null;
 }

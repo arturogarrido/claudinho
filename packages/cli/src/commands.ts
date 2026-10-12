@@ -82,6 +82,7 @@ import {
   scoreline,
   t as i18n,
   joinSegments,
+  liveSourceLabel,
   stageLabelI18n,
   teamKind,
   withFlag,
@@ -1299,6 +1300,10 @@ export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): 
       updatedAt: read.updatedAt,
       staleAfter: read.staleAfter,
       disclaimer: DISCLAIMER,
+      // The provider's sentence, English as every ambient string (never the reader's language); none with no
+      // snapshot, and none on a degraded one, whose last read failed (nothing shown was served).
+      attribution:
+        read.source !== null && !read.degraded ? i18n('en', 'live.data', { source: liveSourceLabel(read.source) }) : null,
     };
     out(JSON.stringify(view));
     printed = true;
