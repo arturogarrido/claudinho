@@ -99,7 +99,8 @@ headless included (`claude -p "/claudinho"`), and finds the CLI as the band does
 run is its own: it reads nothing the band drew and changes none of it (no band line, pace, toast or prompt context),
 so it answers with the band collapsed or not drawn at all. It takes no arguments: text typed after it is ignored,
 though the transcript keeps it, as for any command. The model reads its reply, as it reads any command's output.
-It is not offered over Remote Control, and a `/claudinho` typed while Claude is working runs when the turn ends.
+It was not tried over Remote Control (a phone), and a `/claudinho` typed while Claude is working runs when the turn
+ends.
 
 ## The `toasts` option
 
