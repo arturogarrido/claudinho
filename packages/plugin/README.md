@@ -79,9 +79,11 @@ made in a terminal then loads in the Code tab too.
 ## The `/claudinho` command
 
 `/claudinho` answers the band's line now, as the command's output after the plugin's name
-(`claudinho: ⚽ ARS 2–1 CHE 50'`, `claudinho: ARS vs LEE in 7h13m`). It is the CLI's whole line, not fitted to a
-width: the transcript row wraps it. Where the band would show nothing, it answers one fixed sentence instead, chosen
-by what the CLI's answer says, never by a guess at the cause:
+(`claudinho: ⚽ ARS 2–1 CHE 50'`, `claudinho: ARS vs LEE in 7h13m`). The command asks the CLI for no width, so the
+CLI fits the line to its own ceiling, 200 display columns, never to the window: past it the CLI keeps its `+N` count
+of the other matches, or ends an over-wide segment with `…`. The transcript row wraps what it draws. Where the band
+would show nothing, it answers one fixed sentence instead, chosen by what the CLI's answer says, never by a guess at
+the cause:
 
 - `The CLI gave no answer.` The run gave nothing the plugin can read as an answer: it could not be started, it ran
   past two seconds, it exited with a non-zero status, its output was cut, or its first line is not a JSON object with a
@@ -93,6 +95,11 @@ by what the CLI's answer says, never by a guess at the cause:
   is blank.
 - `The edition you follow is over.` The CLI's view says it is idle: the edition you follow ended.
   Its line (the band's sign-off line) carries a command, so the reply says this instead.
+
+A reply made from the CLI's view (its line, the empty sentence or the edition sentence) ends with the CLI's
+non-affiliation sentence after a blank line, the one the view carries; the sentences said when there is no view (no
+answer, no competition followed, an answer that is no view) carry none. The reply carries no "Live data" line yet;
+the provider is named under "Data and disclaimer" below.
 
 It runs the CLI once each time it is typed (`claudinho ambient --json`), on any surface where the plugin loads,
 headless included (`claude -p "/claudinho"`), and finds the CLI as the band does (see "Finding the CLI" above). Its

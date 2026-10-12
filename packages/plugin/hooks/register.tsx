@@ -31,9 +31,12 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoPace,
  * A run's answer is drawn only if no clear (a window leaving, or a run finding none) happened since the run began its spawn.
  *
  * `/claudinho` is registered at every start, headless included, and answers by itself: one `claudinho ambient --json`
- * run (no `--columns`: the whole line, which the transcript row wraps) on the band's PATH, read by the band's own
- * reading of the answer (`readAnswer`), replied as the view's line or one fixed sentence chosen by what the answer
- * says. Its run is its own: whatever the roster says, it takes no part in the band's guard or pace, reads and writes no
+ * run on the band's PATH, read by the band's own reading of the answer (`readAnswer`), replied as the view's line or
+ * one fixed sentence chosen by what the answer says. With no `--columns` the CLI fits the line to its own ceiling,
+ * 200 display columns, never to the window: past it the CLI keeps its `+N` count of the other matches, or ends an
+ * over-wide segment with `…`; the transcript row wraps what it draws. A reply made from a view (its line, or the idle
+ * or empty sentence) ends with the view's own disclaimer after a blank line, relayed from its `disclaimer` field,
+ * never spelled here; a reply made from no view is its sentence alone. Its run is its own: whatever the roster says, it takes no part in the band's guard or pace, reads and writes no
  * `$.state` value, raises no toast and clears nothing; it shares only the kept PATH and nvm's lookup. Text typed after
  * the command is never read.
  */
@@ -239,6 +242,7 @@ type View = {
   current?: unknown
   competition?: { slug?: unknown } | null
   staleAfter?: unknown
+  disclaimer?: unknown
 }
 
 type Item = {
@@ -297,14 +301,18 @@ function readAnswer(r: RunResult | undefined): Reading {
   return { answered: true, view, firstRun, isView, idle, hidden }
 }
 
-/** The command's reply to a reading: the first that holds of a failed run, the first run, no view, nothing known, the edition over; else the line. */
+/**
+ * The command's reply to a reading: the first that holds of a failed run, the first run, no view (each its sentence
+ * alone), nothing known, the edition over; else the line. A reply made from a view ends with the view's disclaimer.
+ */
 function replyTo(reading: Reading): string {
   if (!reading.answered) return REPLY_FAILED
   if (reading.firstRun) return REPLY_FIRST_RUN
   if (!reading.isView) return REPLY_NO_VIEW
-  if (reading.hidden) return REPLY_EMPTY
-  if (reading.idle) return REPLY_IDLE
-  return reading.view.line
+  const text = reading.hidden ? REPLY_EMPTY : reading.idle ? REPLY_IDLE : reading.view.line
+  const disclaimer = reading.view.disclaimer
+  // The CLI's own sentence, relayed (core's one constant); a view without a usable one answers its text alone.
+  return typeof disclaimer === 'string' && disclaimer.trim() !== '' ? `${text}\n\n${disclaimer}` : text
 }
 
 /** A tally `{ home, away }` of two numbers, or undefined. */
@@ -524,8 +532,8 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'claudinho' }, async ($) => {
     // The command answers by itself (never `next`): one run on the band's PATH, the band's reading of the answer. No
-    // `--columns` (the whole line; the transcript row wraps), the text typed after it never read, none of the band's
-    // state touched. Neither call rejects out of here: `runEnv` never rejects, and the spawn's rejection is a failed run.
+    // `--columns` (the CLI's own 200-column ceiling, never the window's), the text typed after it never read, none of
+    // the band's state touched. Neither call rejects out of here: `runEnv` never rejects, and the spawn's rejection is a failed run.
     const env = await runEnv($)
     let result: RunResult | undefined
     try {
