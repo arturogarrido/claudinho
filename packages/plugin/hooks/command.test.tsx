@@ -6,8 +6,8 @@ import { BARE_PATH, COMPLETE, FIRST_RUN, HOME, held, view, world } from './world
  * reading of the answer. Where the band would show nothing, one fixed sentence says so, chosen by the answer's fields,
  * never by its text or by a cause the plugin cannot see; the engine prints the plugin's name before it
  * (`claudinho: ...`), so no sentence names the plugin, a command, a version, a path or an error. A reply made from a
- * view carries the view's own disclaimer after a blank line (the plugin never spells it); one made from no view
- * carries none, as the CLI's first-run and fallback objects carry none. The run is the command's own: it writes none
+ * view carries the view's own attribution and disclaimer, each after a blank line (the plugin never spells either);
+ * one made from no view carries neither, as the CLI's first-run and fallback objects carry neither. The run is the command's own: it writes none
  * of the band's state.
  */
 const LINE = "⚽ ARS 2–1 CHE 50'"
@@ -18,8 +18,13 @@ const NO_VIEW = "Nothing to show: the CLI's answer is not one this plugin reads.
 const FAILED = 'The CLI gave no answer.'
 /** The disclaimer the CLI puts on every selected competition's view (the test world's `view()` carries it). */
 const D = 'Not affiliated with FIFA, any confederation, league or club, or Anthropic.'
-/** A reply made from a view: its text, a blank line (a paragraph in the Markdown the desktop row draws), the view's disclaimer. */
-const withD = (s: string) => `${s}\n\n${D}`
+/** The provider's attribution the CLI puts beside the disclaimer on the same views (the test world's `view()` carries it). */
+const A = 'Live data: ESPN'
+/**
+ * A reply made from a view: its text, then the view's attribution, then its disclaimer, each a paragraph (a blank line
+ * between: a paragraph in the Markdown the desktop row draws).
+ */
+const withD = (s: string) => `${s}\n\n${A}\n\n${D}`
 /** The view a CLI older than `idle` and `empty` prints: a live list and neither field. */
 const OLDER_VIEW = JSON.stringify({ line: LINE, context: null, live: { items: [], total: 0, shown: 0, truncated: false, complete: true }, current: false, next: null, pick: null, competition: { slug: 'eng.1' }, degraded: false, source: 'espn', updatedAt: null, staleAfter: null })
 
@@ -85,7 +90,7 @@ describe('what it runs', () => {
 
 describe('what it answers, one cell per shape the CLI prints and per way the run fails', () => {
   for (const line of [LINE, 'ARS vs LEE in 7h13m', '⚽ ARS 0–0 CHE live · syncing…', '⚽ claudinho follow']) {
-    test(`a line the band shows is the reply, verbatim, then the view's disclaimer: ${line}`, async ($, on) => {
+    test(`a line the band shows is the reply, verbatim, then the view's attribution and disclaimer: ${line}`, async ($, on) => {
       const { command } = await world($, on, [view('ARS vs LEE in 7h13m'), view(line)])
       expect((await command()).text).toBe(withD(line))
     })
@@ -139,13 +144,31 @@ describe('what it answers, one cell per shape the CLI prints and per way the run
   }
 })
 
-describe('the disclaimer', () => {
+describe('the attribution and the disclaimer', () => {
   for (const [why, over] of [['no disclaimer field (an older CLI)', { disclaimer: undefined }], ['a disclaimer that is no string', { disclaimer: 7 }], ['an empty disclaimer', { disclaimer: '' }], ['a disclaimer of spaces', { disclaimer: '   ' }]] as const) {
-    test(`a view with ${why}: the line alone, never a spelled copy`, async ($, on) => {
+    test(`a view with ${why}: the line and the attribution, never a spelled copy`, async ($, on) => {
       const { command } = await world($, on, [view(LINE), view(LINE, over)])
-      expect((await command()).text).toBe(LINE)
+      expect((await command()).text).toBe(`${LINE}\n\n${A}`)
     })
   }
+
+  for (const [why, over] of [['no attribution field (an older CLI)', { attribution: undefined }], ['an attribution that is no string', { attribution: 7 }], ['an empty attribution', { attribution: '' }], ['an attribution of spaces', { attribution: '   ' }], ['no attribution: the view had no snapshot (null)', { attribution: null }]] as const) {
+    test(`a view with ${why}: the line and the disclaimer, never a spelled copy`, async ($, on) => {
+      const { command } = await world($, on, [view(LINE), view(LINE, over)])
+      expect((await command()).text).toBe(`${LINE}\n\n${D}`)
+    })
+  }
+
+  test('a view with neither: the line alone', async ($, on) => {
+    const { command } = await world($, on, [view(LINE), view(LINE, { attribution: undefined, disclaimer: undefined })])
+    expect((await command()).text).toBe(LINE)
+  })
+
+  test('an answer that is no view carries neither, whatever fields it holds', async ($, on) => {
+    const older = JSON.stringify({ ...JSON.parse(OLDER_VIEW), attribution: A, disclaimer: D })
+    const { command } = await world($, on, [view(LINE), older])
+    expect((await command()).text).toBe(NO_VIEW)
+  })
 
   for (const [why, answer, sentence] of [['the first-run object', FIRST_RUN, FIRST], ["the CLI's fallback object", '{"line":"⚽ —","empty":true}', NO_VIEW], ['a failed run', new Error('timeout'), FAILED]] as const) {
     test(`a reply made from no view carries none: ${why}`, async ($, on) => {

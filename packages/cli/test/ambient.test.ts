@@ -3,7 +3,8 @@
  * toasts). The SAME hot-path rules as `prompt` (cache-only, no network, no market, the refresher trigger) and the
  * same renderers: `line` is `renderPrompt`'s text, `context` the hook's block, `live` the sealed bounded reader's
  * list of core's `Match` records (with the two preference booleans), the selection through `selectionExtras`, the
- * snapshot's own deadline (`staleAfter`), the disclaimer from core's constant. Exit 0 always; one JSON object.
+ * snapshot's own deadline (`staleAfter`), the disclaimer from core's constant and the provider's attribution sentence
+ * (core's `live.data` copy, in English as every ambient string). Exit 0 always; one JSON object.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -101,8 +102,8 @@ describe('claudinho ambient --json', () => {
     expect(v.next).toBeNull();
     expect(v.pick).toBeNull();
     expect(v.competition).toEqual({ slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'saved' });
-    expect(v).toMatchObject({ current: true, degraded: false, source: 'espn', updatedAt: NOW.toISOString(), disclaimer: DISCLAIMER });
-    expect(Object.keys(v)).toEqual(['line', 'idle', 'empty', 'context', 'live', 'current', 'next', 'pick', 'competition', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer']);
+    expect(v).toMatchObject({ current: true, degraded: false, source: 'espn', updatedAt: NOW.toISOString(), disclaimer: DISCLAIMER, attribution: 'Live data: ESPN' });
+    expect(Object.keys(v)).toEqual(['line', 'idle', 'empty', 'context', 'live', 'current', 'next', 'pick', 'competition', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer', 'attribution']);
     expect(v).toMatchObject({ idle: false, empty: false });
     expect(items[0]?.line).toBe("Arsenal 2–1 Chelsea (50')"); // the hook's own line for the record
     expect(v.staleAfter).toBe(new Date(NOW.getTime() + DISPLAY_STALE_MS).toISOString());
@@ -337,6 +338,26 @@ describe('claudinho ambient --json', () => {
     expect(v.staleAfter).toBeNull();
     expect(v.updatedAt).toBeNull();
     expect(v.next).toBeNull();
-    expect(v).toMatchObject({ degraded: false, source: null, disclaimer: DISCLAIMER });
+    expect(v).toMatchObject({ degraded: false, source: null, disclaimer: DISCLAIMER, attribution: null }); // no provider read: none to attribute
+  });
+
+  it("the attribution is the provider's, in English whatever the reader's language (the ambient strings are English)", () => {
+    seed([live('1', ARS, CHE, [2, 1])]);
+    cmdAmbient({ cfg: cfg({ lang: 'es' }), t: makeT('es'), now: NOW });
+    expect(view().attribution).toBe('Live data: ESPN');
+  });
+
+  it('a degraded snapshot attributes nothing (its last read failed: nothing shown was served by the provider), its source kept', () => {
+    const at = NOW.toISOString();
+    writeState({ updatedAt: at, live: [], degraded: true, source: 'espn', competition: 'eng.1', schedule: { updatedAt: at, attemptedAt: at, failures: 1, complete: false }, liveComplete: false } as never, NOW.getTime());
+    cmdAmbient(ctx());
+    expect(view()).toMatchObject({ degraded: true, source: 'espn', attribution: null });
+  });
+
+  it('a read that was not whole, not degraded, still attributes: every row it shows was served', () => {
+    const at = NOW.toISOString();
+    writeState({ updatedAt: at, live: [live('1', ARS, CHE, [2, 1])], degraded: false, source: 'espn', competition: 'eng.1', liveComplete: false } as never, NOW.getTime());
+    cmdAmbient(ctx());
+    expect(view()).toMatchObject({ degraded: false, current: false, source: 'espn', attribution: 'Live data: ESPN' });
   });
 });

@@ -29,6 +29,7 @@ export const view = (line: string, over: Record<string, unknown> = {}) =>
     updatedAt: null,
     staleAfter: null,
     disclaimer: 'Not affiliated with FIFA, any confederation, league or club, or Anthropic.',
+    attribution: 'Live data: ESPN',
     ...over,
   })
 
