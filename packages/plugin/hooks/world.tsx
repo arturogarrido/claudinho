@@ -64,7 +64,7 @@ export const held = (stdout: string) => ({ held: stdout }) as const
 export const world = async (
   $: Parameters<Parameters<typeof test>[1]>[0],
   on: Parameters<Parameters<typeof test>[1]>[1],
-  answers: Array<string | Error | { stdout: string; truncated: true } | { held: string }>,
+  answers: Array<string | Error | { stdout: string; truncated: true } | { held: string } | { stdout: string; exitCode: number }>,
   options: WorldOptions = {},
 ) => {
   const start = options.start ?? { surface: START.surface, isInteractive: START.isInteractive }
@@ -84,6 +84,12 @@ export const world = async (
   on('session.attach', (_$, e) => ({ clientId: e.clientId }))
   on('session.detach', (_$, e) => ({ clientId: e.clientId }))
   let surfaceReads = 0
+  // The slash commands the plugin registers, as the engine receives them; the engine answers with the name.
+  const registrations: Array<Record<string, unknown>> = []
+  on('command.register', (_$, e) => {
+    registrations.push({ ...e })
+    return { value: { command: e.name } }
+  })
   on('session.surfaces', () => {
     surfaceReads += 1
     // A refusal is `{ deny }`: a hook that throws is skipped, and the read would go on beneath it.
@@ -135,6 +141,7 @@ export const world = async (
       await new Promise<void>((resolve) => releases.push(resolve))
       return ok(`${a.held}\n`)
     }
+    if (typeof a === 'object' && 'exitCode' in a) return { value: { ...ok(`${a.stdout}\n`).value, exitCode: a.exitCode } }
     if (typeof a === 'object') return { value: { ...ok(`${a.stdout}\n`).value, isStdoutTruncated: true } }
     return ok(`${a}\n`)
   })
@@ -179,9 +186,12 @@ export const world = async (
   }
   const mount = (props: Partial<typeof PROPS> = {}, surface: 'terminal' | 'desktop' = 'terminal') =>
     $.ui.mount({ plugin: 'claudinho', surface, component: 'AbovePrompt', props: { ...PROPS, ...props }, viewport: { columns: 100, rows: 30 } })
+  /** The person runs `/claudinho` (with `args` typed after it) at the composer, as the engine raises it; resolves to its reply. */
+  const command = (args = '') =>
+    $.command.run({ command: 'claudinho', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
   /** How many times the plugin asked for the roster: what a timer ticking for nobody would show. */
   const rosterReads = () => surfaceReads
-  return { clock, argvs, stdins, envs, envReads, lists, probes, mount, attach, detach, release, releaseListing, denyRoster, rosterReads }
+  return { clock, argvs, stdins, envs, envReads, lists, probes, registrations, command, mount, attach, detach, release, releaseListing, denyRoster, rosterReads }
 }
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */
