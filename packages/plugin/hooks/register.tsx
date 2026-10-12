@@ -5,17 +5,18 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoPace,
 
 /**
  * The claudinho plugin: the live score or the countdown above the prompt (the band), a toast when a score changes,
- * and the live score beside the prompt for the model.
+ * the live score beside the prompt for the model, and `/claudinho`, the band's line on demand.
  *
  * The CLI owns the data (its cache, its refresher, the network, the backoff) and the words: this module runs the one
- * binary, `claudinho ambient --json --columns <the band's columns>`, with an argument array, bounded, and reads the
- * fields of the one JSON object it prints, never its text: what the line IS (`idle`, `empty`, the first run's
- * `noCompetition`), whether its list is `current`, and the hook's own line on each record, said verbatim. No binary,
- * a timeout, a cut or an answer that is not the object: silence, never a blocked turn. Every run is also what
+ * binary, `claudinho ambient --json` (the band's runs add `--columns <the band's columns>`), with an argument array,
+ * bounded, and reads the fields of the one JSON object it prints, never its text: what the line IS (`idle`, `empty`,
+ * the first run's `noCompetition`), whether its list is `current`, and the hook's own line on each record, said
+ * verbatim. No binary, a timeout, a cut or an answer that is not the object: the band shows nothing (the command says
+ * so in one fixed sentence), never a blocked turn. Every run is also what
  * triggers the CLI's refresher, so the band runs at the live pace on every line but the idle ones. Best effort
  * throughout: a toast says a score change this module observed between two current views, never every goal.
  *
- * It runs while a surface that draws the band is attached: the terminal or the desktop app, the two that raise
+ * The band runs while a surface that draws it is attached: the terminal or the desktop app, the two that raise
  * `AbovePrompt`, asked of the session's roster at every run, first and again as the last step before the spawn (the
  * desktop app's session starts with no surface and attaches after; a plugin loaded into an open desktop session hears
  * a start with no surface while the roster holds the desktop). A run that finds none attached (`claude -p`, the SDK, a
@@ -28,6 +29,13 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoPace,
  * PATH with them. A band drawn beneath ours in the hook chain (a plugin registered after ours, or the engine's own)
  * stays, under our line: we never drop it.
  * A run's answer is drawn only if no clear (a window leaving, or a run finding none) happened since the run began its spawn.
+ *
+ * `/claudinho` is registered at every start, headless included, and answers by itself: one `claudinho ambient --json`
+ * run (no `--columns`: the whole line, which the transcript row wraps) on the band's PATH, read by the band's own
+ * reading of the answer (`readAnswer`), replied as the view's line or one fixed sentence chosen by what the answer
+ * says. Its run is its own: whatever the roster says, it takes no part in the band's guard or pace, reads and writes no
+ * `$.state` value, raises no toast and clears nothing; it shares only the kept PATH and nvm's lookup. Text typed after
+ * the command is never read.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -38,6 +46,14 @@ const lastContext = atom({ plugin: 'claudinho', key: 'context' } as const, null 
 const LIVE_MS = 15_000
 const IDLE_MS = 300_000
 const RUN_TIMEOUT_MS = 2_000
+/** The command's one line in the typeahead and `/help`: facts only. */
+const COMMAND_DESCRIPTION = 'The live score or the next fixture of the competition you follow, now'
+/** The command's replies where the band would show nothing, by what the CLI's answer says (never by a cause). */
+const REPLY_FAILED = 'The CLI gave no answer.'
+const REPLY_FIRST_RUN = 'No competition followed yet.'
+const REPLY_NO_VIEW = "Nothing to show: the CLI's answer is not one this plugin reads."
+const REPLY_EMPTY = 'Nothing to show right now: no live match and no next fixture known.'
+const REPLY_IDLE = 'The edition you follow is over.'
 /** The prompt context is attached only from a run younger than two periods. */
 const CONTEXT_MAX_AGE_MS = 2 * LIVE_MS
 /** The band's width before any draw. */
@@ -249,6 +265,48 @@ function parseView(stdout: string): View | null {
   return parsed as View
 }
 
+type RunResult = Awaited<ReturnType<EngineInterface['process']['run']>>
+
+/**
+ * What one run of the CLI said, read once for the band and the command alike: no answer (a run that rejected, a
+ * non-zero exit, a cut stdout, a first line that is not the object), or the object and what its line IS. That comes
+ * from the fields, never the text (which `--columns` may have cut): the first-run object (nothing chosen) is hidden and
+ * idle; an object that is no view the plugin reads is hidden and not idle; a view that says `empty`, or whose line is
+ * blank, is hidden; one that says `idle` is idle. A view the plugin reads has its `live` list AND says what its line
+ * is, `idle` and `empty` as two booleans: the fallback object, an older CLI's `{ line }`, and a view from a CLI older
+ * than those two fields (a live list and neither) are no view.
+ */
+type Reading =
+  | { answered: false }
+  | { answered: true; view: View; firstRun: boolean; isView: boolean; idle: boolean; hidden: boolean }
+
+/** The one reading of a run's result (undefined: the run rejected). */
+function readAnswer(r: RunResult | undefined): Reading {
+  // A cut stdout is no answer: its first line may be part of an object.
+  const view = r && r.exitCode === 0 && r.isStdoutTruncated !== true ? parseView(r.stdout) : null
+  if (!view) return { answered: false }
+  const firstRun = view.noCompetition === true
+  const isView =
+    !firstRun &&
+    isObject(view.live) &&
+    Array.isArray(view.live.items) &&
+    typeof view.idle === 'boolean' &&
+    typeof view.empty === 'boolean'
+  const idle = firstRun || (isView && view.idle === true)
+  const hidden = !isView || view.empty === true || view.line.trim() === ''
+  return { answered: true, view, firstRun, isView, idle, hidden }
+}
+
+/** The command's reply to a reading: the first that holds of a failed run, the first run, no view, nothing known, the edition over; else the line. */
+function replyTo(reading: Reading): string {
+  if (!reading.answered) return REPLY_FAILED
+  if (reading.firstRun) return REPLY_FIRST_RUN
+  if (!reading.isView) return REPLY_NO_VIEW
+  if (reading.hidden) return REPLY_EMPTY
+  if (reading.idle) return REPLY_IDLE
+  return reading.view.line
+}
+
 /** A tally `{ home, away }` of two numbers, or undefined. */
 function tally(v: unknown): { home: number; away: number } | undefined {
   if (!isObject(v) || typeof v.home !== 'number' || typeof v.away !== 'number') return undefined
@@ -345,40 +403,26 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   }
   // (5) The spawn.
   const c = clears
-  let answer: View | null = null
+  let result: RunResult | undefined
   try {
-    const r = await $.process.run(['claudinho', 'ambient', '--json', '--columns', String(columns)], {
+    result = await $.process.run(['claudinho', 'ambient', '--json', '--columns', String(columns)], {
       timeoutMs: RUN_TIMEOUT_MS,
       stdin: '',
       ...(env ? { env } : {}),
     })
-    // A cut stdout is no answer: its first line may be part of an object.
-    if (r.exitCode === 0 && r.isStdoutTruncated !== true) answer = parseView(r.stdout)
   } catch {
     // No binary, a timeout, a refused spawn: a failed run.
   }
-  if (!answer) {
+  const reading = readAnswer(result)
+  if (!reading.answered) {
     // A failed run: nothing shown, the baseline and the context left, the next run at the next fire.
     if (clears === c) await update($, pace, () => ({ ranAt: now, idle: false }))
     await update($, band, (cur) => (clears === c ? null : cur))
     return
   }
-  const view: View = answer
-  // What the line IS comes from the fields, never the text (which `--columns` may have cut): the first-run object
-  // (nothing chosen) is hidden and idle; an object that is no view the plugin reads is hidden and not idle, never
-  // current (the context cleared, the baseline kept, nothing toasted); a view that says `empty` is hidden; one that
-  // says `idle` is read slowly. A view the plugin reads has its `live` list AND says what its line is, `idle` and
-  // `empty` as two booleans: the fallback object, an older CLI's `{ line }`, and a view from a CLI older than those
-  // two fields (a live list and neither) are no view.
-  const firstRun = view.noCompetition === true
-  const isView =
-    !firstRun &&
-    isObject(view.live) &&
-    Array.isArray(view.live.items) &&
-    typeof view.idle === 'boolean' &&
-    typeof view.empty === 'boolean'
-  const idle = firstRun || (isView && view.idle === true)
-  const hidden = !isView || view.empty === true || view.line.trim() === ''
+  // The reading's facts (`readAnswer`): an object that is no view is hidden, never current (the context cleared, the
+  // baseline kept, nothing toasted); an idle answer is read slowly.
+  const { view, isView, idle, hidden } = reading
   if (clears === c) await update($, pace, () => ({ ranAt: now, idle }))
   await update($, band, (cur) => (clears === c ? (hidden ? null : { text: view.line }) : cur))
 
@@ -423,6 +467,13 @@ export const register: Register = (on, options) => {
     : 'pinned'
 
   on('session.start', async ($, e, next) => {
+    // `/claudinho` in every session, headless included: the person types it. A registration refused leaves the start
+    // as it was.
+    try {
+      await $.command.register({ name: 'claudinho', description: COMMAND_DESCRIPTION })
+    } catch {
+      // No command this session; the band goes on.
+    }
     // The start's own surface is not the question (the desktop app's is null, as `-p`'s): the roster is. A read that
     // rejects is unknown: the pace starts, and each run asks again.
     let start: boolean
@@ -469,6 +520,24 @@ export const register: Register = (on, options) => {
         {await next(e)}
       </Box>
     )
+  })
+
+  on('command.run', { command: 'claudinho' }, async ($) => {
+    // The command answers by itself (never `next`): one run on the band's PATH, the band's reading of the answer. No
+    // `--columns` (the whole line; the transcript row wraps), the text typed after it never read, none of the band's
+    // state touched. Neither call rejects out of here: `runEnv` never rejects, and the spawn's rejection is a failed run.
+    const env = await runEnv($)
+    let result: RunResult | undefined
+    try {
+      result = await $.process.run(['claudinho', 'ambient', '--json'], {
+        timeoutMs: RUN_TIMEOUT_MS,
+        stdin: '',
+        ...(env ? { env } : {}),
+      })
+    } catch {
+      // No binary, a timeout, a refused spawn: no answer.
+    }
+    return { text: replyTo(readAnswer(result)) }
   })
 
   on('prompt.submit', async ($, e, next) => {
