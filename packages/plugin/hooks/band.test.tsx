@@ -122,9 +122,37 @@ describe('the pace', () => {
     expect(argvs.length).toBe(3)
   })
 
-  test('a headless session starts no timer and runs no process', async ($, on) => {
-    const { argvs, clock } = await world($, on, [view("⚽ ARS 2–1 CHE 50'")], { isInteractive: false })
+  test('a headless session (no surface: claude -p, the SDK) runs no process', async ($, on) => {
+    const { argvs, clock } = await world($, on, [view("⚽ ARS 2–1 CHE 50'")], { start: { surface: null, isInteractive: false }, surfaces: [] })
     await clock.advance(15_000)
     expect(argvs).toHaveLength(0)
+  })
+})
+
+describe("another plugin's band beneath ours", () => {
+  test('alone, the band is exactly our one line', async ($, on) => {
+    const { mount } = await world($, on, [view("⚽ ARS 2–1 CHE 50'")])
+    expect((await (await mount()).findAll({ type: 'Text' })).map((t) => t.text)).toEqual(["⚽ ARS 2–1 CHE 50'"])
+  })
+
+  test('a band beneath ours is drawn too, under our line', async ($, on) => {
+    const { mount } = await world($, on, [view("⚽ ARS 2–1 CHE 50'")], { beneath: 'usage 42%' })
+    expect((await (await mount()).findAll({ type: 'Text' })).map((t) => t.text)).toEqual(["⚽ ARS 2–1 CHE 50'", 'usage 42%'])
+  })
+
+  test('our line and the band beneath are stacked as rows, not side by side', async ($, on) => {
+    const { mount } = await world($, on, [view("⚽ ARS 2–1 CHE 50'")], { beneath: 'usage 42%' })
+    const [outer] = await (await mount()).findAll({ type: 'Box' })
+    expect(outer?.props.flexDirection).toBe('column')
+  })
+
+  test('the band beneath is drawn on the desktop too', async ($, on) => {
+    const { mount } = await world($, on, [view("⚽ ARS 2–1 CHE 50'")], { start: { surface: null, isInteractive: false }, surfaces: ['desktop'], beneath: 'usage 42%' })
+    expect((await (await mount({}, 'desktop')).findAll({ type: 'Text' })).map((t) => t.text)).toEqual(["⚽ ARS 2–1 CHE 50'", 'usage 42%'])
+  })
+
+  test('with nothing of ours to show, the band beneath alone', async ($, on) => {
+    const { mount } = await world($, on, [view('⚽ —', { empty: true })], { beneath: 'usage 42%' })
+    expect((await (await mount()).findAll({ type: 'Text' })).map((t) => t.text)).toEqual(['usage 42%'])
   })
 })

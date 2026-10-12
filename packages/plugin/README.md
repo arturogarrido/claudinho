@@ -28,6 +28,27 @@ the plugin's band and context do not show twice. Then, at the prompt of a Claude
 Answer `y` to add the marketplace, then choose a scope (the user scope first, with Enter), and set the `toasts`
 option if you want another value than the default. The plugin is active in that session from then on.
 
+Install from a terminal: the desktop app's Code tab refuses the `/plugin install` line. An install at the user scope
+made in a terminal then loads in the Code tab too.
+
+## Where it runs
+
+- **In a terminal and in the desktop app's Code tab.** The band is drawn there, and the plugin runs the CLI while a
+  terminal or a desktop window is attached to the session.
+- **Nowhere else.** While no terminal or desktop window is attached (`claude -p`, the SDK, a phone or an editor
+  alone), the plugin runs nothing: it never starts the CLI.
+- **Finding the CLI.** The plugin runs `claudinho` from the `PATH` Claude Code was started with. When that `PATH` does
+  not hold the CLI's folder (an app can start Claude Code with a bare one), the plugin also looks in the folders the
+  usual installers put global commands in, in this order: nvm's (`~/.nvm/versions/node/<version>/bin`, the eight
+  newest versions), `~/.volta/bin`, `~/.local/share/pnpm`, `~/Library/pnpm`, `~/.bun/bin`, `~/.npm-global/bin`,
+  `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` and `/bin`. Among nvm's folders, those that hold
+  the CLI come first, then the others, each group newest first. Until nvm's folders have been read, each run waits at
+  most a second for them and otherwise runs without them. The folders under `~` are used only when `HOME` is an
+  absolute path with no `:` in it. A CLI installed anywhere else leaves the band empty. On Windows the plugin uses
+  Claude Code's own `PATH` alone.
+- **Beside other plugins.** A band drawn beneath ours in the hook chain (a plugin registered after ours, or Claude
+  Code's own) stays, under our line: the plugin never drops it.
+
 ## What it does, and what it does not promise
 
 - **The band** above the prompt shows the line `claudinho prompt` prints: the live score, or the countdown to the
@@ -37,7 +58,8 @@ option if you want another value than the default. The plugin is active in that 
   and the band shows nothing. It runs the CLI every 15 seconds (every five minutes on the sign-off line and while
   nothing is chosen), which is also what keeps the CLI's cache fresh. The CLI fits the line to the band's width and
   keeps its `+N` count of other matches; the engine cuts anything wider. What the band shows and how often it reads
-  come from what the CLI says the line is, never from its text. A headless session (`claude -p`, the SDK) runs nothing.
+  come from what the CLI says the line is, never from its text. With no terminal or desktop window attached
+  (`claude -p`, the SDK, a phone or an editor alone) it runs nothing.
 - **The toasts** say a score change the plugin observed between two current views, as `⚽` and the hook's own line
   for the match, the one `claudinho hook` prints (`⚽ Arsenal 2–1 Chelsea (67')`; on a nations competition with its
   flags and the roster's names, `⚽ 🇲🇽 Mexico 1–0 South Africa 🇿🇦 (67')`): one toast per match per change. Best

@@ -1,12 +1,16 @@
 import { mock, type test } from 'claude-code/testing'
 
-/** The world beneath the plugin, shared by the three test files (a helper module: a test file imported by another would run its tests again). */
+/** The world beneath the plugin, shared by the test files (a helper module: a test file imported by another would run its tests again). */
 export const START = { cwd: '/tmp/claudinho-test', surface: 'terminal', isInteractive: true } as const
 export const PROPS = { hasSurvey: false, isWorking: false, maxRows: 5, bodyColumns: 80 } as const
 const ok = (stdout: string) => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 /** The clock's start: the views the tests build are stamped 15:00Z with a 15:05Z deadline. */
 export const NOW = Date.parse('2026-10-10T15:00:00.000Z')
 export const COMPLETE = '⚽ World Cup 2026 is complete · claudinho follow --list'
+/** The host environment a test session starts with unless it says otherwise: a bare PATH, a home, no Windows. */
+export const HOME = '/Users/fan'
+export const BARE_PATH = '/usr/bin:/bin'
+export const NVM = `${HOME}/.nvm/versions/node`
 
 /** The view the CLI prints for a line, with nothing live: `idle` and `empty` SAY what the line is (the band never reads the text). */
 export const view = (line: string, over: Record<string, unknown> = {}) =>
@@ -28,39 +32,156 @@ export const view = (line: string, over: Record<string, unknown> = {}) =>
     ...over,
   })
 
+type Surface = 'terminal' | 'desktop' | 'mobile' | 'vscode'
+
+/**
+ * How the session starts, as measured on the engine (Oct 11, 2026): `start` is what `session.start` reports;
+ * `surfaces` is the roster `$.session.surfaces()` answers at that moment (by default the start's own surface, or none),
+ * each surface a client whose id is the surface's name; `attachFirst` attaches a client BEFORE `session.start` (a client
+ * attaches on its first ask to draw) and lets its run start; `env` is the host's environment as `$.env.get` reads it (a
+ * name absent from it is unset); `nvm` is what listing nvm's version folder answers (an Error: no such folder; `'hold'`:
+ * no answer until the test releases it, or ever); `bins` are the files `$.fs.exists` finds (`'hold'`: it never answers);
+ * `beneath` draws another plugin's band under ours.
+ */
+export type WorldOptions = {
+  start?: { surface: Surface | null; isInteractive: boolean }
+  surfaces?: Surface[]
+  attachFirst?: { surface: Surface; clientId: string }
+  env?: Record<string, string>
+  nvm?: Array<{ name: string; kind: 'file' | 'dir' | 'other' }> | Error | 'hold'
+  bins?: string[] | 'hold'
+  /** The `$.fs.exists` probes that reject (a hook's `{ deny }`). */
+  refusedProbes?: string[]
+  beneath?: string
+  /** The roster read rejects while `session.start` runs (a hook's `{ deny }`), then answers. */
+  rosterDeniedAtStart?: boolean
+}
+
+/** An answer of the CLI the test holds: the run waits until the test releases it (`release()` in the world's order). */
+export const held = (stdout: string) => ({ held: stdout }) as const
+
 /** The world beneath the plugin: a mock clock, the session started, the engine's own (empty) band, the CLI's answers in order. */
 export const world = async (
   $: Parameters<Parameters<typeof test>[1]>[0],
   on: Parameters<Parameters<typeof test>[1]>[1],
-  answers: Array<string | Error | { stdout: string; truncated: true }>,
-  start: { isInteractive: boolean } = START,
+  answers: Array<string | Error | { stdout: string; truncated: true } | { held: string }>,
+  options: WorldOptions = {},
 ) => {
+  const start = options.start ?? { surface: START.surface, isInteractive: START.isInteractive }
+  // The roster the engine holds, by client: the session's own surface at start (its id the surface's name), plus every
+  // client attached, less every detached. `$.session.surfaces()` answers each surface once, in the order attached.
+  const clients = new Map<string, Surface>((options.surfaces ?? (start.surface ? [start.surface] : [])).map((s) => [s, s]))
+  const roster = (): Surface[] => [...new Set(clients.values())]
+  let rosterRejects = false
+  const env: Record<string, string> = options.env ?? { PATH: BARE_PATH, HOME }
+  const nvm = options.nvm ?? new Error(`ENOENT: no such file or directory, scandir '${NVM}'`)
+  let releaseNvm: () => void = () => {}
+  const nvmHeld = nvm === 'hold' ? new Promise<void>((resolve) => { releaseNvm = resolve }) : null
   // The clock starts at a fixed instant, five minutes before the views' `staleAfter` (15:05Z): the context's deadline
   // is then a property of the test, never of the wall clock the kit might start from.
   const clock = mock.clock(on, { now: NOW })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('session.attach', (_$, e) => ({ clientId: e.clientId }))
+  on('session.detach', (_$, e) => ({ clientId: e.clientId }))
+  let surfaceReads = 0
+  on('session.surfaces', () => {
+    surfaceReads += 1
+    // A refusal is `{ deny }`: a hook that throws is skipped, and the read would go on beneath it.
+    if (rosterRejects) return { deny: 'session.surfaces denied' }
+    return { value: roster() }
+  })
+  const envReads: string[] = []
+  on('env.get', (_$, e) => {
+    envReads.push(e.name)
+    return { value: Object.hasOwn(env, e.name) ? env[e.name] : undefined }
+  })
+  const lists: string[] = []
+  on('fs.list', async (_$, e) => {
+    lists.push(e.path)
+    if (e.path !== NVM) throw new Error(`ENOENT: no such file or directory, scandir '${e.path}'`)
+    if (nvm instanceof Error) throw nvm
+    // A held listing answers only once released (never, if the test does not), as one version folder, v22.17.0.
+    if (nvm === 'hold') {
+      await nvmHeld
+      return { value: [{ name: 'v22.17.0', kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false }] }
+    }
+    return { value: nvm.map((d) => ({ ...d, size: 0, mtimeMs: 0, isLink: false })) }
+  })
+  const probes: string[] = []
+  on('fs.exists', async (_$, e) => {
+    probes.push(e.path)
+    if (options.bins === 'hold') await new Promise(() => {})
+    if (options.refusedProbes?.includes(e.path)) return { deny: 'fs.exists denied' }
+    return { value: Array.isArray(options.bins) && options.bins.includes(e.path) }
+  })
   on('ui.render', { component: 'AbovePrompt' }, ($$, e) => {
-    const { Box } = $$.ui.resolve(e)
-    return <Box />
+    const { Box, Text } = $$.ui.resolve(e)
+    return options.beneath === undefined ? <Box /> : <Box><Text>{options.beneath}</Text></Box>
   })
   // The hooks beneath the plugin are registered before the test first calls `$`: the prompt's bottom answers as
   // the engine does (the text and the context that arrived).
   on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }))
   const argvs: string[][] = []
   const stdins: Array<string | undefined> = []
-  on('process.run', (_$, e) => {
+  const envs: Array<Record<string, string> | undefined> = []
+  const releases: Array<() => void> = []
+  on('process.run', async (_$, e) => {
     argvs.push([...e.argv])
     stdins.push(e.init?.stdin)
+    envs.push(e.init?.env ? { ...e.init.env } : undefined)
     const a = answers[Math.min(argvs.length - 1, answers.length - 1)]
     if (a instanceof Error) throw a
+    if (typeof a === 'object' && 'held' in a) {
+      await new Promise<void>((resolve) => releases.push(resolve))
+      return ok(`${a.held}\n`)
+    }
     if (typeof a === 'object') return { value: { ...ok(`${a.stdout}\n`).value, isStdoutTruncated: true } }
     return ok(`${a}\n`)
   })
-  await $.session.start({ ...START, ...start })
+  if (options.attachFirst) {
+    clients.set(options.attachFirst.clientId, options.attachFirst.surface)
+    await $.session.attach(options.attachFirst)
+    // The attach's own run starts before the session's start arrives.
+    await clock.advance(1)
+  }
+  rosterRejects = options.rosterDeniedAtStart === true
+  await $.session.start({ cwd: START.cwd, ...start })
+  rosterRejects = false
   await clock.advance(1)
-  const mount = (props: Partial<typeof PROPS> = {}) =>
-    $.ui.mount({ plugin: 'claudinho', surface: 'terminal', component: 'AbovePrompt', props: { ...PROPS, ...props }, viewport: { columns: 100, rows: 30 } })
-  return { clock, argvs, stdins, mount }
+  /** A client attaches (the roster gains it), then the clock lets the run it starts begin. */
+  const attach = async (surface: Surface, clientId: string) => {
+    clients.set(clientId, surface)
+    await $.session.attach({ surface, clientId })
+    await clock.advance(1)
+  }
+  /** A client leaves by the id it attached under (a starting surface's id is its name); the roster loses it. */
+  const detach = async (clientId: string) => {
+    const surface = clients.get(clientId)
+    if (surface === undefined) throw new Error(`no client ${clientId}`)
+    clients.delete(clientId)
+    await $.session.detach({ surface, clientId, reason: 'detach' })
+  }
+  /** The CLI's held answers, released in the order the runs began; then the clock lets the run finish. */
+  const release = async () => {
+    const r = releases.shift()
+    if (!r) throw new Error('no held answer')
+    r()
+    await clock.advance(1)
+  }
+  /** nvm's held listing answers now. */
+  const releaseListing = async () => {
+    releaseNvm()
+    await clock.advance(1)
+  }
+  /** From now on, the roster read rejects (`true`) or answers (`false`). */
+  const denyRoster = (deny: boolean) => {
+    rosterRejects = deny
+  }
+  const mount = (props: Partial<typeof PROPS> = {}, surface: 'terminal' | 'desktop' = 'terminal') =>
+    $.ui.mount({ plugin: 'claudinho', surface, component: 'AbovePrompt', props: { ...PROPS, ...props }, viewport: { columns: 100, rows: 30 } })
+  /** How many times the plugin asked for the roster: what a timer ticking for nobody would show. */
+  const rosterReads = () => surfaceReads
+  return { clock, argvs, stdins, envs, envReads, lists, probes, mount, attach, detach, release, releaseListing, denyRoster, rosterReads }
 }
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */

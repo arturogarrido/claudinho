@@ -6,13 +6,17 @@
  * fallback object, a view from an older CLI) is no view: hidden, never current, the baseline kept.
  */
 
-/** The band's line as the CLI fitted it, or null when there is nothing to show (or the last run failed). */
+/**
+ * The band's line as the CLI fitted it, or null when there is nothing to show, the last run failed, or a run found no
+ * surface that draws the band (none attached, or the roster could not be read).
+ */
 export type ClaudinhoBand = { text: string } | null
 
 /**
  * The band's pace: when the last run started (the clock's milliseconds) and whether the CLI said its answer was idle
  * (the first-run object, nothing chosen; or a view whose `idle` is true, the edition over), which is read once per
- * five minutes instead of every fire.
+ * five minutes instead of every fire. `ranAt` is read only while `idle` is true; `{ ranAt: 0, idle: false }` is what a
+ * clear leaves (a run that found no surface that draws the band, or the last such surface detached).
  */
 export type ClaudinhoPace = { ranAt: number; idle: boolean }
 
