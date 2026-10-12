@@ -36,9 +36,9 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoPace,
  * 200 display columns, never to the window: past it the CLI keeps its `+N` count of the other matches, or ends an
  * over-wide segment with `…`; the transcript row wraps what it draws. A reply made from a view (its line, or the idle
  * or empty sentence) ends with the view's own disclaimer after a blank line, relayed from its `disclaimer` field,
- * never spelled here; a reply made from no view is its sentence alone. Its run is its own: whatever the roster says, it takes no part in the band's guard or pace, reads and writes no
- * `$.state` value, raises no toast and clears nothing; it shares only the kept PATH and nvm's lookup. Text typed after
- * the command is never read.
+ * never spelled here; a reply made from no view is its sentence alone. Its run is its own: whatever the roster says,
+ * it takes no part in the band's guard or pace, reads and writes no `$.state` value, raises no toast and clears
+ * nothing; it shares only the kept PATH and nvm's lookup. Text typed after the command is never read.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -533,7 +533,8 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'claudinho' }, async ($) => {
     // The command answers by itself (never `next`): one run on the band's PATH, the band's reading of the answer. No
     // `--columns` (the CLI's own 200-column ceiling, never the window's), the text typed after it never read, none of
-    // the band's state touched. Neither call rejects out of here: `runEnv` never rejects, and the spawn's rejection is a failed run.
+    // the band's state touched. Neither call rejects out of here: `runEnv` never rejects, and the spawn's rejection is
+    // a failed run.
     const env = await runEnv($)
     let result: RunResult | undefined
     try {

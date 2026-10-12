@@ -140,7 +140,7 @@ describe('what it answers, one cell per shape the CLI prints and per way the run
 })
 
 describe('the disclaimer', () => {
-  for (const [why, over] of [['no disclaimer field (an older CLI)', { disclaimer: undefined }], ['a disclaimer that is no string', { disclaimer: 7 }], ['an empty disclaimer', { disclaimer: '' }]] as const) {
+  for (const [why, over] of [['no disclaimer field (an older CLI)', { disclaimer: undefined }], ['a disclaimer that is no string', { disclaimer: 7 }], ['an empty disclaimer', { disclaimer: '' }], ['a disclaimer of spaces', { disclaimer: '   ' }]] as const) {
     test(`a view with ${why}: the line alone, never a spelled copy`, async ($, on) => {
       const { command } = await world($, on, [view(LINE), view(LINE, over)])
       expect((await command()).text).toBe(LINE)
