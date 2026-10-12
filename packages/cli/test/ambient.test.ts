@@ -372,6 +372,31 @@ describe('claudinho ambient --json', () => {
     expect(view()).toMatchObject({ line: 'BOU vs BRE in 3h0m', degraded: true, empty: false, idle: false, attribution: 'Live data: ESPN' });
   });
 
+  it('nothing known on a snapshot that is NOT degraded attributes nothing too (`empty` decides, whatever `degraded` says)', () => {
+    const at = NOW.toISOString();
+    writeState({ updatedAt: at, live: [], degraded: false, source: 'espn', competition: 'eng.1', schedule: { fixtures: [], updatedAt: at, attemptedAt: at, failures: 0, complete: true }, liveComplete: true } as never, NOW.getTime());
+    cmdAmbient(ctx());
+    expect(view()).toMatchObject({ line: '⚽ —', empty: true, degraded: false, source: 'espn', attribution: null });
+  });
+
+  it('a syncing line (a discovered fixture inside its window, no live row read) attributes it', () => {
+    const at = NOW.toISOString();
+    const kicked: Match = { id: '9', stage: 'REGULAR', kickoff: new Date(NOW.getTime() - 30 * 60_000).toISOString(), venue: 'Vitality Stadium', home: BOU, away: BRE, status: 'SCHEDULED', updatedAt: at };
+    writeState({ updatedAt: at, live: [], degraded: false, source: 'espn', competition: 'eng.1', schedule: { index: [{ id: kicked.id, kickoff: kicked.kickoff, on: true }], fixtures: [kicked], updatedAt: at, attemptedAt: at, failures: 0, complete: true }, liveComplete: false } as never, NOW.getTime());
+    cmdAmbient(ctx());
+    const v = view();
+    expect(v.line).toBe('⚽ BOU vs BRE live · syncing…');
+    expect(v).toMatchObject({ next: null, empty: false, idle: false, attribution: 'Live data: ESPN' });
+    expect((v.live as { total: number }).total).toBe(0);
+  });
+
+  it("the World Cup's sign-off on a DEGRADED snapshot attributes nothing either (`idle` decides, whatever `degraded` says)", () => {
+    const AUG = new Date('2026-08-01T12:00:00Z');
+    writeState({ updatedAt: AUG.toISOString(), live: [], degraded: true, source: 'espn', competition: 'fifa.world', liveComplete: false } as never, AUG.getTime());
+    cmdAmbient({ cfg: cfg({ competition: 'fifa.world' }), t: makeT('en'), now: AUG });
+    expect(view()).toMatchObject({ idle: true, degraded: true, source: 'espn', attribution: null });
+  });
+
   it("the World Cup's sign-off (the bundled clock) attributes nothing, on a fresh snapshot that names the provider", () => {
     const AUG = new Date('2026-08-01T12:00:00Z');
     writeState({ updatedAt: AUG.toISOString(), live: [], degraded: false, source: 'espn', competition: 'fifa.world', liveComplete: true } as never, AUG.getTime());

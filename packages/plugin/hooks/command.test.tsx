@@ -169,6 +169,11 @@ describe('the attribution and the disclaimer', () => {
     expect((await command()).text).toBe(`${LINE}\n\nLive data: Example\n\nExample disclaimer.`)
   })
 
+  test('an attribution in another wording is relayed verbatim too: the plugin reads no prefix', async ($, on) => {
+    const { command } = await world($, on, [view(LINE), view(LINE, { attribution: 'Data by Example' })])
+    expect((await command()).text).toBe(`${LINE}\n\nData by Example\n\n${D}`)
+  })
+
   test('an answer that is no view carries neither, whatever fields it holds', async ($, on) => {
     const older = JSON.stringify({ ...JSON.parse(OLDER_VIEW), attribution: A, disclaimer: D })
     const { command } = await world($, on, [view(LINE), older])
