@@ -11,6 +11,8 @@ verdict and finding becomes a row before anything goes back to the coder.
    tree nobody is editing.
 3. The inputs as files: the full patch against the base (`git diff <base>...<head>`), the PR body, and a manifest of
    their hashes; the first 12 hex of the manifest's digest name the inputs every verdict line must carry.
+   The PR body states the review's threat model (AGENTS.md "Reviewing PRs"), and every reader's prompt and the
+   runner's brief carry it.
 4. The runner on the head (`.claude/agents/claudinho-runner.md`), in its own worktree, under one rule: when the head
    changed code, a test or executable configuration (commands, package contents, workflows, scripts), it installs,
    builds, runs the suite, `bash scripts/gate.sh` and its mutation pass, and whatever the readers could not run; when
@@ -21,6 +23,8 @@ verdict and finding becomes a row before anything goes back to the coder.
    grep of the body or a summary; inputs that do not match the manifest void the verdict.
 6. The triage: one row per (reader, finding), each with a disposition: fix, not a defect (with the proof), or
    deferred (a tracked row the raising reader accepts in writing). A finding no one reproduced is reproduced first.
+   A finding outside the threat model is a note, not a row to fix, unless it was reproduced on the real host as it
+   ships.
 7. The fix list: a finding with two actions is two rows. A rule a fix introduces names its failure state, the set it
    is about, and the inputs it hands onward.
 8. The fix list checked against the standing rules (AGENTS.md "Conventions", "Rules and their enforcers", "Change
