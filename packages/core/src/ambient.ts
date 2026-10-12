@@ -144,11 +144,15 @@ export interface AmbientView {
   /**
    * The provider's attribution sentence, in English as every ambient string:
    * core's `live.data` copy with `liveSourceLabel(source)` (`Live data:
-   * ESPN`). Three states: no snapshot, `null` (nothing was read); a DEGRADED
-   * snapshot, `null`, its `source` kept (its last read failed: nothing shown
-   * was served by the provider); otherwise, `source` being a string, the
-   * sentence, a read that was not whole included (every row it shows was
-   * served).
+   * ESPN`), when the snapshot names a provider (`source` is a string) AND
+   * the line is neither the sign-off (`idle`) nor nothing known (`empty`);
+   * `null` otherwise: no snapshot, the sign-off (made from the bundled clock),
+   * nothing known. `degraded` does not decide: a degraded snapshot still shows
+   * a live row an earlier read served, or a countdown to a fixture discovery
+   * read; nor does a read that was not whole. A limit: on the bundled
+   * competition, a countdown made from the bundled skeleton (before its
+   * knockout pairings resolve) would be attributed too; unreachable while that
+   * edition is over.
    */
   readonly attribution: string | null;
 }

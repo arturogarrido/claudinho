@@ -97,8 +97,9 @@ the cause:
   Its line (the band's sign-off line) carries a command, so the reply says this instead.
 
 A reply made from the CLI's view (its line, the empty sentence or the edition sentence) ends with the two sentences
-the view carries, each after a blank line: the provider's attribution (`Live data: ESPN`; none when the CLI's cache
-holds no read, or its last read failed), then the CLI's non-affiliation sentence. The sentences said when there is no
+the view carries, each after a blank line: the provider's attribution (`Live data: ESPN`; none when the line is the
+sign-off or nothing is known, or the cache holds no read, so the edition and empty sentences carry none), then the
+CLI's non-affiliation sentence. The sentences said when there is no
 view (no answer, no competition followed, an answer that is no view) carry neither. With CLI 0.11.2, older than the
 release that adds the attribution to `claudinho ambient --json`, the reply carries the non-affiliation sentence
 alone.
