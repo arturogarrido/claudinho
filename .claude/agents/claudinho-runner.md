@@ -30,5 +30,6 @@ previous report.
 
   where the value is CONFIRMED (nothing pending, P3 included) or NOT CONFIRMED, and the 12 hex are the first twelve
   of the manifest digest you were given. Then the findings, numbered, each with its severity (P1, P2 or P3), the
-  file and line, and how to reproduce it; then the checks run, each with its result, a skipped check named as
-  skipped.
+  file and line, and how to reproduce it; then the notes (findings outside the review's threat model, AGENTS.md
+  "Reviewing PRs", unless you reproduced them on the real host as it ships: notes are not pending); then the checks
+  run, each with its result, a skipped check named as skipped.

@@ -235,16 +235,18 @@ coding client suggests a different trailer.
   check out or fast-forward the PR branch before reviewing.
 - Review-only tasks are read-only unless the user explicitly asks for fixes. Lead with findings,
   classify them P1/P2/P3, and include tight file/line references. If there are no findings, say
-  that plainly and list the checks run plus any residual risk.
+  that plainly and list the checks run plus any residual risk. A note (a finding outside the
+  review's threat model, next bullet) is reported under Notes, never as a P1, P2 or P3. A note is
+  not pending: it does not withhold a confirmation.
 - Do not treat a previous review, memory, or local branch name as current truth. Re-check the PR
   SHA, merge state, and CI status at the end of the review.
 - State the review's threat model in the PR description before the first round, and give it to every
-  reviewer. The default model: the programs a change runs beside (the coding client that loads the plugin
+  reviewer. (This is the review's model, not the product's security model in `SECURITY.md`.) The default model: the programs a change runs beside (the coding client that loads the plugin
   or the MCP server, the operating system, the user's shell) behave as they ship; they are not
   adversaries. A finding that needs another program to refuse, hold or delay one of the change's calls to
   its host, a reload or restart landing inside a window of milliseconds, or the system clock moving
-  backwards between two runs is a note, not a blocker, unless the reviewer reproduces it on the real host
-  as it ships. A finding a person reaches by using the product blocks as before: opening or closing a
+  backwards between two runs is a note, not a blocker, unless it is reproduced on the real host as it ships
+  (by a reviewer, the runner or the coordinator, who says how); then it is a finding. A finding a person reaches by using the product blocks as before: opening or closing a
   window, a slow disk, a missing or old binary, a changed setting, the network. The model narrows what
   blocks a review; it relaxes no rule in this file. The provider's data stays untrusted (the trust
   boundary), our own processes racing each other stay in scope (the refresher's lock, the throttle note),

@@ -21,10 +21,10 @@ verdict and finding becomes a row before anything goes back to the coder.
    code). The verifier (`.claude/agents/claudinho-verifier.md`) when a surface changed.
 5. Every verdict read from its verdict line by name (`- Verdict: <value> · inputs <12 hex>`), never from a tail, a
    grep of the body or a summary; inputs that do not match the manifest void the verdict.
-6. The triage: one row per (reader, finding), each with a disposition: fix, not a defect (with the proof), or
-   deferred (a tracked row the raising reader accepts in writing). A finding no one reproduced is reproduced first.
-   A finding outside the threat model is a note, not a row to fix, unless it was reproduced on the real host as it
-   ships.
+6. The triage: one row per (reader, finding), each with a disposition: fix, not a defect (with the proof),
+   deferred (a tracked row the raising reader accepts in writing), or noted (outside the threat model: not a row to
+   fix and not pending, AGENTS.md "Reviewing PRs"). A finding no one reproduced is reproduced first; a noted one is
+   reproduced only on the real host as it ships, and a reproduction there makes it a finding.
 7. The fix list: a finding with two actions is two rows. A rule a fix introduces names its failure state, the set it
    is about, and the inputs it hands onward.
 8. The fix list checked against the standing rules (AGENTS.md "Conventions", "Rules and their enforcers", "Change
