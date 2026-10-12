@@ -82,6 +82,7 @@ import {
   scoreline,
   t as i18n,
   joinSegments,
+  liveSourceLabel,
   stageLabelI18n,
   teamKind,
   withFlag,
@@ -1299,6 +1300,13 @@ export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): 
       updatedAt: read.updatedAt,
       staleAfter: read.staleAfter,
       disclaimer: DISCLAIMER,
+      // The provider's sentence, English as every ambient string (never the reader's language): when the snapshot
+      // names a provider and the line is neither the sign-off (`idle`) nor nothing known (`empty`); none otherwise.
+      // `degraded` does not decide: a degraded snapshot still shows what an earlier read or discovery served.
+      attribution:
+        read.source !== null && !read.idle && !read.empty
+          ? i18n('en', 'live.data', { source: liveSourceLabel(read.source) })
+          : null,
     };
     out(JSON.stringify(view));
     printed = true;

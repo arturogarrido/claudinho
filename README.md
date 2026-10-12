@@ -144,7 +144,9 @@ Restart Claude Code to activate.
 
 The plugin draws the live score or the countdown above the prompt (the band), raises a toast when a
 score changes, and puts the live-score block beside each prompt for the model while a match is on,
-all from the installed CLI (`claudinho ambient --json`), never a fetch of its own. Install the CLI
+all from the installed CLI (`claudinho ambient --json`), never a fetch of its own. `/claudinho` answers the
+band's line on demand, wherever the plugin loads (a collapsed band, the desktop app, `claude -p`), with the CLI's
+attribution and non-affiliation sentence under it, or one plain sentence when there is nothing to show. Install the CLI
 (0.11.2 or later: an older one's band shows nothing and nothing toasts) and follow a competition, then run `claudinho init plugin` first: it removes the statusline
 (`claudinho prompt`) and the live-score hook (`claudinho hook`) that `init claude` wrote to
 `~/.claude/settings.json`, keeps every other setting, and prints the install line and the MCP
@@ -176,8 +178,10 @@ The statusline and the hook as one JSON object on one line, for a program that d
 the `+N` count kept), `context` (the hook's block, or `null`), `live` (the live matches, each marked
 `picked` and `pinned`), `current` (whether that list is a current snapshot's, the read that filled
 it was whole: an empty list means nothing is on only when it is), `next` (the fixture the countdown names), `pick`, `competition`,
-`degraded`, `source`, `updatedAt`, `staleAfter` (when its live scores stop being shown) and
-`disclaimer` (the non-affiliation sentence). Beside `line` the view says what the line is, `idle` (the edition-complete line, however narrow it was fitted) and `empty` (nothing known), read before the fit so a program never reads a pace or a visibility off the text; and each live record carries `line`, the hook's own line for it with its flags and roster names, which a program says and never composes. Like the statusline it reads only the local cache,
+`degraded`, `source`, `updatedAt`, `staleAfter` (when its live scores stop being shown),
+`disclaimer` (the non-affiliation sentence) and `attribution` (the provider's sentence, `Live data: ESPN`, in English;
+`null` with no snapshot, on the sign-off line (`idle`) and when nothing is known (`empty`), whether or not the
+snapshot is `degraded`). Beside `line` the view says what the line is, `idle` (the edition-complete line, however narrow it was fitted) and `empty` (nothing known), read before the fit so a program never reads a pace or a visibility off the text; and each live record carries `line`, the hook's own line for it with its flags and roster names, which a program says and never composes. Like the statusline it reads only the local cache,
 never the network, and starts the refresher when the cache is stale. The command itself exits 0
 whatever the cache holds (with nothing chosen it prints the `noCompetition` object and the
 first-run line); any other `--columns` value is refused by the option parser, as a wrong option is
