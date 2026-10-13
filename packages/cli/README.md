@@ -45,7 +45,7 @@ claudinho live              # matches in play right now
 claudinho next [TEAM]       # a team's next fixture + countdown — TEAM is a name OR code (Mexico | MEX | "DR Congo", or a club: Arsenal | ARS); default $CLAUDINHO_TEAM, else your pinned team
 claudinho table [KEY]       # live cumulative standings (default: every table); KEY is a group letter, or A1, A-B, LEAGUE
 claudinho bracket [STAGE]   # knockout bracket (R32, R16, QF, SF, 3P, F); --tree for ASCII tree
-claudinho match <id>        # a single match's detail
+claudinho match <id>        # a single match's detail, with its goals and cards (--json: also the rows it prints)
 claudinho team <query>      # resolve a World Cup nation's name/code to its FIFA code, flag, and group (e.g. team "DR Congo")
 claudinho markets [target]  # prediction-market signals: today | <date> | <id> | next <TEAM>
                             #   (next prefers the team's IN-PLAY match while one is live)
@@ -73,6 +73,14 @@ the next has not started. A club shows by its name (or its code on the
 statusline: `ARS 2–1 CHE 50'`), with nothing where a nation's flag would be, and
 `next`/`match` say the stage it is in ("League", "Play-offs", or the provider's
 words for a phase Claudinho does not know).
+
+`match <id>` lists the goals and cards the provider sent for a match in play or
+finished, one row each: the minute (`90+3'` with added time), the kind (goal,
+own goal, penalty, yellow or red card), the side's code (with its flag for a
+nation) and the player when named; an own goal sits under the side it counted
+for. The list is what could be read, never a claim that it is every goal. Its
+`--json` adds `lines` (the rows the text prints), `attribution` and
+`disclaimer`.
 
 `claudinho follow <alias>` saves the competition every surface follows;
 `--team <name>` pins a team in it, resolved as `next <name>` resolves it. Pin a

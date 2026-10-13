@@ -40,10 +40,25 @@ function liveMatch(): Match {
     date: '2026-06-29T19:00Z',
     season: { slug: 'round-of-32' },
     status: { type: { name: 'STATUS_FULL_TIME', state: 'post', completed: true } },
-    events: [{ type: 'GOAL', minute: 45, teamCode: 'MEX', player: 'Raúl Jiménez' }],
     competitions: [
       {
         venue: { fullName: 'Estadio Azteca', address: { city: 'Mexico City', country: 'Mexico' } },
+        // The goal as ESPN sends it (competitions[0].details; measured Oct 13, 2026), so `events` is populated.
+        details: [
+          {
+            type: { id: '70', text: 'Goal' },
+            clock: { value: 2700, displayValue: "45'" },
+            team: { id: '203' },
+            scoreValue: 1,
+            scoringPlay: true,
+            yellowCard: false,
+            redCard: false,
+            penaltyKick: false,
+            ownGoal: false,
+            shootout: false,
+            athletesInvolved: [{ id: '1', displayName: 'Raúl Jiménez', team: { id: '203' } }],
+          },
+        ],
 
         competitors: [
           {

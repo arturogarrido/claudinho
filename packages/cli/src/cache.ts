@@ -317,9 +317,34 @@ export function writeState(state: CacheState, now: number = stampOrNow(state.upd
   }
   writeFileAtomic(
     cachePath(state.source, state.competition),
-    JSON.stringify({ ...state, version: CACHE_VERSION }),
+    JSON.stringify({ ...withoutEvents(state), version: CACHE_VERSION }),
   );
   return true;
+}
+
+/**
+ * The snapshot as written: every match of the live, the fixtures and the
+ * schedule slices WITHOUT its `events` key (a copy; the caller's state is not
+ * touched). No reader of the cache renders a timeline (the statusline, the
+ * hook and `ambient --json` seal with `events: false`), and a full timeline on
+ * every cached match could push the file past the reader's bound. Every other
+ * key, and the key order, is kept.
+ */
+function withoutEvents(state: CacheState): CacheState {
+  const strip = (list: Match[] | undefined): Match[] | undefined =>
+    Array.isArray(list) ? list.map(dropEvents) : list;
+  const out: CacheState = { ...state, live: strip(state.live) as Match[] };
+  if (state.fixtures !== undefined) out.fixtures = strip(state.fixtures);
+  if (state.schedule?.fixtures !== undefined) out.schedule = { ...state.schedule, fixtures: strip(state.schedule.fixtures) };
+  return out;
+}
+
+/** A match without its `events` key, the other keys in their order. */
+function dropEvents(m: Match): Match {
+  if (!m || typeof m !== 'object' || !('events' in m)) return m;
+  const copy = { ...m };
+  delete copy.events;
+  return copy;
 }
 
 /** A stamp as epoch ms when it is one this product writes, else the system clock. */

@@ -14,6 +14,9 @@ Any user-visible formatter change must land on **all three surfaces** before mer
 | MCP | `toolGet*` in `packages/mcp/src/tools.ts` + `packages/mcp/test/tools.test.ts` |
 | Share | `formatShare*` + `packages/mcp/test/share.test.ts` |
 
+One stated exception: the match timeline (core `timelineRows`) is CLI `match` (its text and `--json`'s `lines`) and MCP
+`get_match` only; a share card prints none.
+
 ## Knockout surfaces live-resolve — never read the skeleton (the #1 recurring bug)
 
 **Rule:** every team-facing surface must reach the live overlay (`getBracket` / `getNextFixtureForTeam` — on the bundled competition, the same `fetchWindow` the bracket uses; off it `next` reads discovery's schedule ahead and `bracket` makes no request), fail closed on outage, and attribute the provider only when the overlay served the chosen fixture.

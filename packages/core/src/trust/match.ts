@@ -210,6 +210,16 @@ function sealScorePair(raw: unknown): { home: number; away: number } | undefined
   return home !== undefined && away !== undefined ? { home, away } : undefined;
 }
 
+/** Added time a provider's clock may show past a minute (`90'+30'` at most). */
+export const MAX_ADDED_MINUTES = 30;
+const SIDES = new Set<string>(['home', 'away']);
+
+/**
+ * THE constructor of a `MatchEvent`, on the feed path (the candidates the ESPN
+ * detail grammar built) and the cache path alike. An event with no side, a
+ * side that is neither, an unreadable minute or an added time outside 1..30 is
+ * refused; the match stands. Keys in the order `MatchEvent` declares them.
+ */
 function sealEvent(raw: unknown): MatchEvent | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const e = raw as Record<string, unknown>;
@@ -217,10 +227,25 @@ function sealEvent(raw: unknown): MatchEvent | undefined {
   if (!type) return undefined;
   const minute = count(e.minute, MAX_MINUTE);
   if (minute === undefined) return undefined;
-  const out: MatchEvent = { type, minute, teamCode: humanLabel(e.teamCode, TEAM_CODE_COLUMNS) };
+  let added: number | undefined;
+  if (e.added !== undefined) {
+    added = count(e.added, MAX_ADDED_MINUTES);
+    if (added === undefined || added < 1) return undefined;
+  }
+  const side = member<MatchEvent['side']>(e.side, SIDES);
+  if (!side) return undefined;
+  const out = { type, minute } as MatchEvent;
+  if (added !== undefined) out.added = added;
+  out.side = side;
+  out.teamCode = humanLabel(e.teamCode, TEAM_CODE_COLUMNS);
   const player = humanLabel(e.player);
   if (player) out.player = player;
   return out;
+}
+
+/** Time order: the minute, then the added time (absent as 0). `Array.prototype.sort` is stable. */
+function byClock(a: MatchEvent, b: MatchEvent): number {
+  return a.minute - b.minute || (a.added ?? 0) - (b.added ?? 0);
 }
 
 /**
@@ -390,13 +415,17 @@ export function sealMatch(parts: MatchParts, opts: SealOptions = {}): ParseResul
 
   // SLICE BEFORE MAP: the record count is bounded by the caller, the events
   // inside ONE record were not, and a single match carrying 100k of them cost
-  // seconds on a surface with a 150ms budget.
+  // seconds on a surface with a 150ms budget. Only a match whose status holds a
+  // score has a timeline: a scheduled, postponed or cancelled one carries none,
+  // whatever the feed or the cache file held. Then time order, stably.
+  const timelined = status === 'LIVE' || status === 'HT' || status === 'FT';
   const events =
-    opts.events === false
+    opts.events === false || !timelined
       ? []
       : takeBounded<unknown>(parts.events, MAX_MATCH_EVENTS)
           .map(sealEvent)
-          .filter((e): e is MatchEvent => !!e);
+          .filter((e): e is MatchEvent => !!e)
+          .sort(byClock);
 
   // Assigned in the order `Match` DECLARES its fields, skipping the absent ones.
   // Key order is not cosmetic here: this object is serialized straight into

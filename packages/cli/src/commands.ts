@@ -85,6 +85,7 @@ import {
   liveSourceLabel,
   stageLabelI18n,
   teamKind,
+  timelineRows,
   withFlag,
   type Stage,
   type AmbientView,
@@ -358,7 +359,12 @@ function emitJson(data: unknown): void {
  * whose card names its competition in its title.
  */
 function modeOut(cfg: CliConfig, c: Painter): void {
-  out(c.dim(`  ${modeLine(cfg.selection, cfg.lang)}`));
+  out(modeRow(cfg, c));
+}
+
+/** The mode line as a row, for a renderer that builds its rows before printing them. */
+function modeRow(cfg: CliConfig, c: Painter): string {
+  return c.dim(`  ${modeLine(cfg.selection, cfg.lang)}`);
 }
 
 /** The structured twin of the mode line: `--json`'s `competition` key (core `selectionExtras`). */
@@ -1474,6 +1480,13 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
     : { signal: undefined, complete: true };
 
   if (cfg.json) {
+    // The rows the text prints, built by the same function with no colour: the
+    // answer's `lines` (the leading blank, the footer and the star nudge left
+    // out), its attribution line (null where the text prints none) and its
+    // disclaimer line, on every answer.
+    const plain = matchAnswerRows(found, id, market, cfg, t, painterFor({ ...cfg, color: false }));
+    const lines = [...plain.body];
+    while (lines.length && lines[lines.length - 1] === '') lines.pop();
     emitJson({
       degraded,
       match: match ?? null,
@@ -1485,22 +1498,48 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
       // The span a whole read searched for an id it did not hold (a plain field).
       ...(found.window ? { window: found.window } : {}),
       ...verdictExtras(found),
+      lines,
+      attribution: plain.attribution || null,
+      disclaimer: plain.disclaimer,
       ...competitionKey(cfg),
     });
     return;
   }
 
-  const c = painterFor(cfg);
+  const rows = matchAnswerRows(found, id, market, cfg, t, painterFor(cfg));
+  out();
+  for (const row of rows.body) out(row);
+  if (rows.attribution) out(rows.attribution);
+  out(rows.disclaimer);
+  if (match) maybeStarNudge(ctx);
+}
+
+/**
+ * The rows of a `match <id>` answer, painted by `c`: ONE renderer for the text
+ * (the colour painter) and `--json`'s `lines` (the plain one), so the two
+ * cannot differ. `body` is every row between the answer's leading blank row
+ * and its footer; `attribution` the provider's line (`''` where the text
+ * prints none: an answer with no match), `disclaimer` the localized line.
+ */
+function matchAnswerRows(
+  found: Awaited<ReturnType<typeof getMatchById>>,
+  id: string,
+  market: { signal: MarketSignal | undefined; complete: boolean },
+  cfg: CliConfig,
+  t: Translator,
+  c: Painter,
+): { body: string[]; attribution: string; disclaimer: string } {
+  const { match, degraded, source: liveSource } = found;
+  const body: string[] = [];
   // What qualifies the answer (a read that was not whole) is said before it.
   const qualifiers = verdictQualifiers(found, cfg.lang);
-  out();
   if (!match) {
     // No header on an empty answer: the mode line comes first.
-    modeOut(cfg, c);
-    for (const q of qualifiers) out(c.dim('  ' + q));
+    body.push(modeRow(cfg, c));
+    for (const q of qualifiers) body.push(c.dim('  ' + q));
     // An outage is never "no such match"; a verdict, then the span a whole
     // read searched (or "none read" for one that was not whole), then "no match found".
-    out(
+    body.push(
       c.dim(
         '  ' +
           (degraded
@@ -1511,22 +1550,21 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
               t('match.none', { id }))),
       ),
     );
-    out();
-    out(disclaimer(t, c));
-    return;
+    body.push('');
+    return { body, attribution: '', disclaimer: disclaimer(t, c) };
   }
-  for (const q of qualifiers) out(c.dim('  ' + q));
+  for (const q of qualifiers) body.push(c.dim('  ' + q));
   // The day's rule over the one record shown: on a read that was not whole, a
   // record the window did not hold is the bundle's row, its live state unconfirmed.
   const attribution = dayAttribution(found, [match], cfg.lang);
-  if (attribution.unserved) out(c.dim('  ' + attribution.unserved));
-  out(header(`${match.home.name} ${scoreline(match)} ${match.away.name}`, c));
-  modeOut(cfg, c);
+  if (attribution.unserved) body.push(c.dim('  ' + attribution.unserved));
+  body.push(header(`${match.home.name} ${scoreline(match)} ${match.away.name}`, c));
+  body.push(modeRow(cfg, c));
   // The stage and the location, joined with the empty ones dropped: an OTHER
   // with no words, or a record with no venue, leaves no dangling separator.
   const where = joinSegments([stageLabelI18n(cfg.lang, match), matchLocation(match)]);
-  if (where) out('  ' + c.dim(where));
-  out(
+  if (where) body.push('  ' + c.dim(where));
+  body.push(
     '  ' +
       c.dim(
         `${formatKickoff(match.kickoff, { tz: cfg.tz, locale: cfg.lang })}  ${statusToken(match, t, c)}`.trimEnd(),
@@ -1535,30 +1573,32 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
   // The flair slot's one rule (core `matchFlair`): a team's rally cry, green
   // as on a match line, else the match's own phrase.
   const flair = matchFlair(match, flairOpts(cfg));
-  if (flair.text) out('  ' + (flair.rally ? c.green(flair.text) : c.cyan(flair.text)));
-  if (match.events?.length) {
-    out();
-    for (const e of match.events) {
-      out(`  ${e.minute}'  ${e.type}  ${e.teamCode}${e.player ? ` — ${e.player}` : ''}`);
-    }
-  }
+  if (flair.text) body.push('  ' + (flair.rally ? c.green(flair.text) : c.cyan(flair.text)));
+  // The market block before the timeline, as MCP `get_match` orders them: the
+  // block ends with its attribution and caveat, and the timeline is the detail
+  // a cut may drop.
   if (market.signal) {
-    out();
-    for (const mline of marketBlock(market.signal, match)) out('  ' + c.dim(mline));
+    body.push('');
+    for (const mline of marketBlock(market.signal, match)) body.push('  ' + c.dim(mline));
   }
+  // The goals and cards the provider listed (core `timelineRows`, the rows MCP
+  // `get_match` prints too); none, no rows and no sentence.
+  const timeline = timelineRows(match, { lang: cfg.lang, flags: flagsEnabled() });
+  if (timeline.length) {
+    body.push('');
+    body.push(...timeline);
+  }
+  // A note, so after the body (an uncut CLI text keeps its notes there).
   if (!market.complete) {
-    out();
-    out(c.dim('  Market data unavailable or incomplete — this match could not be checked.'));
+    body.push('');
+    body.push(c.dim('  Market data unavailable or incomplete — this match could not be checked.'));
   }
-  out();
+  body.push('');
   // Live overlay failed → this is the static fixture with no live state. Say
   // so. Off the bundled competition there is no static fixture: it is the
   // provider's own earlier record, whose state could not be refreshed.
-  if (degraded) out(c.dim('  ' + t(found.earlierRecord ? 'feed.earlierRecord' : 'feed.degraded')));
-  const src = dataSource(liveSource, cfg.lang, c);
-  if (src) out(src);
-  out(disclaimer(t, c));
-  maybeStarNudge(ctx);
+  if (degraded) body.push(c.dim('  ' + t(found.earlierRecord ? 'feed.earlierRecord' : 'feed.degraded')));
+  return { body, attribution: dataSource(liveSource, cfg.lang, c), disclaimer: disclaimer(t, c) };
 }
 
 // Market copy is English-only in v1 (the approved legal copy bank); the base

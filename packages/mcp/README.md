@@ -48,7 +48,7 @@ Then just ask your agent naturally; it picks the right tool and answers with liv
 |---|---|
 | `get_today` | fixtures for a date (default: today), grouped in the caller's `tz`, live scores overlaid |
 | `get_live` | matches in play right now |
-| `get_match` | a single match by id; in a club competition, looked for from yesterday to 14 days ahead (`window` names the days searched when it is not there) |
+| `get_match` | a single match by id, with the provider's goals and cards it could read for a match in play or finished (`match.events`; never a claim that the list is every goal); in a club competition, looked for from yesterday to 14 days ahead (`window` names the days searched when it is not there) |
 | `get_standings` | live cumulative standings: every table, or one by its key (a group letter, or `A1`, `A-B`, `LEAGUE`) |
 | `get_bracket` | knockout bracket from the Round of 32 through the final, with an optional `stage` filter (`R32`, `R16`, `QF`, `SF`, `3P`, `F`); the Premier League and LALIGA, league seasons with no knockout tie of their own, answer `inapplicable`; the other competitions off the World Cup answer `unsupported` (not offered yet) |
 | `get_next_fixture` | a team's next match, by name or code. A nation (`Mexico`, `MEX`): live-resolves a confirmed knockout tie from the feed, group fixtures offline, fails back to the bundled schedule if the feed is down; a club (`Arsenal`, `ARS`): its next match within 14 days, `candidates` when several teams match, `horizon` when it has none in that span. With no `team`: the server's `CLAUDINHO_TEAM`, else the team the user pinned (`claudinho follow <alias> --team <name>`) when the request is for its competition |

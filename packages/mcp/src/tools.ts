@@ -91,6 +91,7 @@ import {
   type Stage,
   statesPartial,
   teamKind,
+  timelineRows,
   type VerdictSource,
   withFlag,
 } from '@claudinho/core';
@@ -886,8 +887,16 @@ async function matchAnswer(
   // The day's rule over the one record shown: on a read that was not whole, a
   // record the window did not hold is the bundle's row, its live state unconfirmed.
   const attribution = dayAttribution(found, [match], args.lang);
-  const base = matchLine(match, opts);
-  const text = marketSignal ? `${base}\n${marketBlock(marketSignal, match).join('\n')}` : base;
+  // The match line, then the market block (when a reliable signal), then the
+  // goals and cards (core `timelineRows`, the rows the CLI's `match` prints).
+  // The text is cut from its end: the market block's last lines are its
+  // attribution and its "informational only" caveat, so it comes before the
+  // timeline, the optional detail a cut may drop.
+  const text = [
+    matchLine(match, opts),
+    ...(marketSignal ? marketBlock(marketSignal, match) : []),
+    ...timelineRows(match, { lang: args.lang, flags: true }),
+  ].join('\n');
   // Degraded ⇒ the live overlay failed; this is the static fixture, no live
   // state. Off the bundled competition there is no static fixture: it is the
   // provider's own earlier record, whose state could not be refreshed.

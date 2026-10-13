@@ -87,11 +87,27 @@ export type Status =
 /** Match outcome from the home team's perspective. */
 export type Outcome = 'H' | 'D' | 'A';
 
-/** A discrete in-match event (provider-dependent; often absent on free tiers). */
+/**
+ * One of a match's goals or cards, as the provider listed it (ESPN's
+ * `competitions[0].details`, read by the grammar in `trust/espn.ts` and sealed
+ * by `sealEvent` in `trust/match.ts`, on the feed and the cache path alike).
+ * Key order is the serialized order.
+ */
 export interface MatchEvent {
+  /** The kind. `SUB` stays in the type; ESPN's scoreboard never produces one. */
   type: 'GOAL' | 'OWN_GOAL' | 'PEN' | 'YELLOW' | 'RED' | 'SUB';
+  /** The minute the provider's clock showed: `90` for `90'+3'`. */
   minute: number;
+  /** Added time past `minute` (`3` for `90'+3'`), 1 to 30; absent when none. */
+  added?: number;
+  /**
+   * The side the event belongs to: the side a goal COUNTED for (an own goal
+   * included), the side a card was shown to. The identity; `teamCode` is a label.
+   */
+  side: 'home' | 'away';
+  /** That side's code, a display label. */
   teamCode: string;
+  /** The player, when the provider names exactly one of the expected team. */
   player?: string;
 }
 
@@ -130,7 +146,13 @@ export interface Match {
   /** Live match minute when in progress. */
   minute?: number;
   status: Status;
-  /** Goals/cards when the provider supplies them. */
+  /**
+   * The provider's goals and cards that could be read, in time order (minute,
+   * then added time). Never a claim that the list is every goal: a detail the
+   * grammar cannot read is left out, and a live timeline lags its score by
+   * nature. None on a match with no score (scheduled, postponed, cancelled);
+   * the key is absent when none was read.
+   */
   events?: MatchEvent[];
   /**
    * Winner's team code when the provider marks one (e.g. ESPN `competitor.winner`
