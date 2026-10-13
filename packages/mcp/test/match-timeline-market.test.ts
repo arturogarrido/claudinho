@@ -48,7 +48,8 @@ describe('get_match: the market block before the timeline', () => {
     const cut = toContent(r).content[0]?.text ?? '';
     expect(count(cut, '(truncated)')).toBe(1);
     expect(count(cut, 'informational only')).toBe(1);
-    expect(cut).toMatch(/Source: Polymarket/);
+    // The synthetic provider's source, as the product labels it (a real signal says "Source: Polymarket").
+    expect(count(cut, 'Source: demo data')).toBe(1);
   });
   it('uncut: the first market row precedes the first timeline row', async () => {
     const r = await toolGetMatch({ id: '760415', adapter: adapter(live(cards(3, 'A Player'))), marketProvider: synth(), now: NOW } as never);
