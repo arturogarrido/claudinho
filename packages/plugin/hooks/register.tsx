@@ -51,10 +51,11 @@ import type {
  * The goal celebration: when a run's toasts include a GOAL (a regulation or shootout tally that rose, none that fell),
  * the band plays 6 frames over 3 seconds above its line (a ball crossing a row, a "GOAL" banner growing, then the
  * toast's own line), in at most min(3, maxRows - 2) rows, then goes back to its one line. Its record (`celebration`:
- * the last goal's toast line, when the run decided it, and its match's id) is written by the run and the clear alone:
- * in a run, a current view of another competition nulls it, then a correction of its match (a compared tally that
- * fell, by the record's id, whatever the `toasts` filter) nulls it, then the run's last goal replaces it under the
- * band's clear generation; the existing clear nulls it. Every null also stops the redraws. A record another module
+ * the last goal's toast line, when the run decided it, its match's id and that match's tallies the goal was decided
+ * on) is written by the run and the clear alone: in a run, a current view of another competition nulls it, then its
+ * match's score changing from the record's own in any later current view (a correction, or a later goal the plugin did
+ * not see as one; by the record's id, whatever the `toasts` filter) nulls it, then the run's last goal replaces it
+ * under the band's clear generation; the existing clear nulls it. Every null also stops the redraws. A record another module
  * load wrote is never played (its `at` is not this load's), so a reload drops a waiting or playing celebration (the
  * toast already said it); it stays in state until a goal or a clear replaces it. A played or expired record stays
  * until the next goal replaces it: the draw ignores it. The draw only reads it, and
@@ -470,8 +471,11 @@ function movement(m: Item, was: ClaudinhoTally): { rose: boolean; fell: boolean 
   }
 }
 
-/** One match whose compared tally changed: its id, its toast text, and whether a side of a compared tally rose or fell. */
-type ScoreChange = { id: string; text: string; rose: boolean; fell: boolean }
+/**
+ * One match whose compared tally changed: its id, its toast text, its tallies in this view (each when present), and
+ * whether a side of a compared tally rose or fell.
+ */
+type ScoreChange = { id: string; text: string; score?: Tally; shootout?: Tally; rose: boolean; fell: boolean }
 
 /**
  * The score changes of a CURRENT view against the last current view's baseline, under the option: one per match whose
@@ -488,7 +492,11 @@ function scoreChanges(view: View, prev: ClaudinhoBaseline, option: ToastsOption)
     const was = before.get(m.id)
     if (!was || typeof m.line !== 'string' || m.line === '') continue
     const { rose, fell } = movement(m, was)
-    if (rose || fell) changes.push({ id: m.id, text: `⚽ ${m.line}`, rose, fell })
+    const score = tally(m.score)
+    const shootout = tally(m.shootout)
+    if (rose || fell) {
+      changes.push({ id: m.id, text: `⚽ ${m.line}`, ...(score ? { score } : {}), ...(shootout ? { shootout } : {}), rose, fell })
+    }
   }
   return changes
 }
@@ -497,20 +505,26 @@ function scoreChanges(view: View, prev: ClaudinhoBaseline, option: ToastsOption)
 const toastsFor = (view: View, prev: ClaudinhoBaseline, option: ToastsOption): string[] =>
   scoreChanges(view, prev, option).map((c) => c.text)
 
-/** The goals among the toasts: a change whose compared tallies rose with none that fell (a correction is no goal). */
-const goalsFor = (view: View, prev: ClaudinhoBaseline, option: ToastsOption): Array<{ id: string; text: string }> =>
-  scoreChanges(view, prev, option)
-    .filter((c) => c.rose && !c.fell)
-    .map((c) => ({ id: c.id, text: c.text }))
+/**
+ * The goals among the toasts: a change whose compared tallies rose with none that fell (a correction is no goal), each
+ * with the match's id and its tallies in this view, the evidence its celebration keeps.
+ */
+const goalsFor = (view: View, prev: ClaudinhoBaseline, option: ToastsOption): ScoreChange[] =>
+  scoreChanges(view, prev, option).filter((c) => c.rose && !c.fell)
 
 /**
- * Whether a match's compared tally FELL in this view against the baseline (a correction), by the match's id, before
- * any `toasts` filter: a pin change never hides a correction. A match absent from either is no news.
+ * Whether this view says the celebrated goal's score is no longer the one it was decided on: the record's match
+ * present (by its id, before any `toasts` filter: a pin change never hides it) with a tally DIFFERENT from the
+ * record's own (lower: a correction; higher: a later goal), a tally compared only when both carry it. The baseline
+ * is not read, so a view in between without the match, or without its tally, hides nothing. Absent or equal: no news.
  */
-function fellFor(view: View, prev: NonNullable<ClaudinhoBaseline>, id: string): boolean {
-  const was = prev.items.find((t) => t.id === id)
-  const m = itemsOf(view).find((x) => x.id === id)
-  return !!(was && m && movement(m, was).fell)
+function differsFromRecord(view: View, rec: NonNullable<ClaudinhoCelebration>): boolean {
+  const m = itemsOf(view).find((x) => x.id === rec.id)
+  if (!m) return false
+  const score = tally(m.score)
+  const shootout = tally(m.shootout)
+  const differs = (a: Tally | undefined, b: Tally | undefined) => !!(a && b && (a.home !== b.home || a.away !== b.away))
+  return differs(score, rec.score) || differs(shootout, rec.shootout)
 }
 
 /** The baseline a CURRENT view leaves for the next one: its competition and each match's tallies. */
@@ -595,13 +609,14 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     const prev = await read($, baseline)
     for (const text of toastsFor(view, prev, option)) $.ui.toast(text)
     const goals = celebrateOn ? goalsFor(view, prev, option) : []
-    // What this view says of the celebration's match, against the baseline it replaces: another competition drops
-    // the record; a correction of its match drops it (playing or waiting). Each null stops the redraws too.
+    // What this view says of the celebration's match: another competition (against the baseline it replaces) drops
+    // the record; its match's score differing from the one the goal was decided on drops it (playing or waiting).
+    // Each null stops the redraws too; a goal this run decided is written after.
     const rec = await read($, celebration)
     if (rec !== null && prev !== null && prev.slug !== slugOf(view)) {
       stopTicker()
       await update($, celebration, () => null)
-    } else if (rec !== null && prev !== null && fellFor(view, prev, rec.id)) {
+    } else if (rec !== null && differsFromRecord(view, rec)) {
       stopTicker()
       await update($, celebration, (cur) => (cur !== null && cur.at === rec.at ? null : cur))
     }
@@ -614,7 +629,15 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
       let wrote = false
       await update($, celebration, (cur) => {
         wrote = clears === c
-        return wrote ? { text: goal.text, at, id: goal.id } : cur
+        return wrote
+          ? {
+              text: goal.text,
+              at,
+              id: goal.id,
+              ...(goal.score ? { score: goal.score } : {}),
+              ...(goal.shootout ? { shootout: goal.shootout } : {}),
+            }
+          : cur
       })
       if (wrote) {
         playingAt = at

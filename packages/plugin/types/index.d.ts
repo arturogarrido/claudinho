@@ -43,14 +43,22 @@ export type ClaudinhoContext = { context: string | null; staleAfter: string | nu
 
 /**
  * The goal celebration's record: the last goal's toast line (`⚽` and the CLI's record line), when the run that saw it
- * decided it (the clock's milliseconds) and the match's id. Its four writers, in a run's order: a current view of
- * another competition nulls it; a correction of its match (a compared tally that fell, by `id`, whatever the `toasts`
- * filter) nulls it; the run's last goal writes it (a run a clear superseded writes nothing; never under
+ * decided it (the clock's milliseconds), the match's id, and that match's regulation and shootout tallies in the view
+ * the goal was decided on (each when present: its own evidence). Its four writers, in a run's order: a current view of
+ * another competition nulls it; its match's score changing in any later current view (a tally both carry differing
+ * from the record's: a correction, or a later goal the plugin did not see as one; by `id`, whatever the `toasts`
+ * filter; an absent match or tally is no news) nulls it; the run's last goal writes it (a run a clear superseded writes nothing; never under
  * `celebrate: off`); and the band's clear nulls it. The draw's guard: a record another module load wrote (its `at` not
  * this load's) is never played; it stays in state until a goal or a clear replaces it. A played or expired record also
  * stays until the next goal replaces it (the draw ignores it). The draw reads it; its frames are not state.
  */
-export type ClaudinhoCelebration = { text: string; at: number; id: string } | null
+export type ClaudinhoCelebration = {
+  text: string
+  at: number
+  id: string
+  score?: { home: number; away: number }
+  shootout?: { home: number; away: number }
+} | null
 
 declare module 'claude-code' {
   interface PluginState {
