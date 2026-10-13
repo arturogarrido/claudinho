@@ -158,17 +158,24 @@ provider lists, each row as the CLI wrote it and wrapped to the pane's width (ne
 the provider's attribution and the CLI's non-affiliation sentence, dimmed. Claude Code scrolls it (the arrows with the
 pane focused; the wheel in the desktop app). It has no button. Close it with its close mark (or ctrl+x x).
 
-- **Which match.** The command's own `claudinho ambient --json` run decides: the first match of its live list (the
-  CLI lists your pinned team's match first), else its next fixture, in the competition that answer names. The pane stays on
-  that match and that competition (every read passes `--competition`), so following another competition later does
-  not move it. With nothing to show (no competition followed, the edition over, nothing live and no next fixture, no
-  answer) no pane opens. The command's reply is the bare `/claudinho` reply either way. Typed again while the pane is
-  open, it binds the same pane afresh.
-- **When it reads again.** While open, the pane runs `claudinho match <id> --json --competition <slug>` again when a
-  band run sees that match's score (or its shootout tally) change, when the match enters the band's live list
-  (kickoff) or leaves it (full time), at its kickoff time, and every two minutes while the last answer is in play
-  (live or half-time), failed, or had no match. Never two reads at once (a reason to read during one is kept and read
-  after it). After a final answer (full time, postponed, cancelled) it reads no more, and none once closed: a read
+- **Which match.** The command's own `claudinho ambient --json` run decides: the first match of its live list (the CLI
+  lists your pinned team's match first), else its next fixture, in the competition that answer names. The pane stays on
+  that match and that competition. Its reads name no competition, so the CLI resolves your own choice and the pane's
+  competition row says where that choice came from (your saved choice: the name alone). If you follow another
+  competition (or none) while it is open, the answer of that other competition is never shown: the read is made once
+  more with `--competition <the pane's competition>` (its row then says "from the command line", which is true of that
+  read), and every later read of that pane names it the same way. With nothing to show (no competition followed, the
+  edition over, nothing live and no next fixture, no answer) no pane opens. The command's reply is the bare `/claudinho`
+  reply either way. Typed again while the pane is open, it binds the same pane afresh.
+- **When it reads again.** While open, the pane runs `claudinho match <id> --json` again when a band run sees that
+  match's score (or its shootout tally) change, when the match enters the band's live list (kickoff) or leaves it
+  (full time), and on a clock: while the last answer is not in play and its kickoff is ahead, once at the kickoff and
+  not before (a degraded answer too); otherwise every two minutes: in play (live or half-time), after a read that
+  failed, with no match, or once the kickoff has passed (a match still marked scheduled after its kickoff is read
+  every two minutes until it starts, or until you close the pane, as a match stuck in play is). Never two reads at
+  once, `/claudinho match` included: typed while a read is running, it waits for that read (up to its five seconds,
+  so the reply can take that much longer), whose answer is then not shown, and a reason to read during either is kept
+  and read after. After a final answer (full time, postponed, cancelled) it reads no more, and none once closed: a read
   still running when you close it changes nothing.
 - **Three fixed sentences.** A read that fails (the CLI not found, a non-zero exit, past five seconds, a cut or
   unreadable answer) on opening shows `The CLI gave no answer.`; a later read that fails keeps the last rows under
@@ -177,7 +184,8 @@ pane focused; the wheel in the desktop app). It has no button. Close it with its
 - **Bounds.** At most 150 rows, each cut at 600 characters; the attribution and the sentence each at 1,000.
 - **What it costs.** Opening it is one `claudinho ambient --json` (the local cache) and one `claudinho match` read,
   which asks the provider five times on the path measured (six across the end of a month). In play that is about 2.5
-  requests a minute, plus five per goal the band sees; before kickoff and after a final answer, none. The CLI keeps its
+  requests a minute, plus five per goal the band sees; before kickoff and after a final answer, none. A read that has
+  to be made again for its competition (above) costs twice, once. The CLI keeps its
   own backoff: when the provider throttles it, the pane's reads ask nothing either. Market odds are read only for the
   World Cup.
 - **The CLI it needs.** The first CLI release after 0.11.2, whose `claudinho match <id> --json` carries its rows
