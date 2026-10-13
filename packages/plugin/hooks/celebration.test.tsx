@@ -336,6 +336,9 @@ describe('the redraws it asks for', () => {
     await seeGoal(w)
     await rows(w, { isWorking: true })
     const atHold = w.invalidates.length
+    await w.clock.advance(1_500)
+    await rows(w, { isWorking: true })
+    expect(w.invalidates.length).toBe(atHold) // held: no redraws asked
     expect((await rows(w))[1]).toBe('G')
     await w.clock.advance(2_000)
     expect(w.invalidates.length).toBeGreaterThan(atHold)
