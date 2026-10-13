@@ -4,7 +4,8 @@ import { FIRST_RUN, NOW, held, view, world } from './world'
 /**
  * The match pane (plugin 0.4.0): `/claudinho match` binds the match the person follows now (the first record of the
  * command's own `ambient --json` live list, else its `next`) with the view's competition, reads it with one
- * `claudinho match <id> --json --competition <slug>` run, opens the pane `match` (title "claudinho") and draws the
+ * `claudinho match <id> --json` run (naming the competition only once the binding is pinned: an answer of another
+ * competition, or of none, pins it), opens the pane `match` (title "claudinho") and draws the
  * CLI's `lines` verbatim, then a blank row, then the attribution and the disclaimer, dimmed. The command's reply is the
  * bare `/claudinho` reply to the same reading. While open, the pane re-reads its match on a score change a band run
  * observes, when the match enters or leaves a current view's live list, at kickoff, and every 2 minutes while the last
@@ -379,6 +380,26 @@ describe('the competition the pane is bound to', () => {
     await w.command('match')
     expect(w.matchRuns()).toHaveLength(1)
     expect(await texts(await w.mountPane())).toEqual([...ROWS, '', A, D])
+  })
+})
+
+describe('a read whose binding was replaced while it ran', () => {
+  test('an answer of another competition makes no pinned retry for a binding that is gone (a reopen meanwhile)', { timeoutMs: 20_000 }, async ($, on) => {
+    const laligaAnswer = answer({ lines: ['Barcelona 1–0 Real Madrid'], competition: { slug: 'esp.1', alias: 'laliga', name: 'LALIGA', chosenBy: 'saved' } })
+    const w = await world($, on, [live(2, 1), live(2, 1), live(3, 1), live(3, 1)], { matchAnswers: [answer(), held(laligaAnswer), answer({ lines: ['NEW'] })] })
+    await w.command('match')
+    await w.clock.advance(15_000) // a re-read, held; it will answer another competition
+    const reopened = w.command('match')
+    await w.clock.advance(1)
+    await w.release()
+    await reopened
+    await w.clock.advance(1)
+    expect(w.matchRuns()).toEqual([
+      ['claudinho', 'match', ID, '--json'],
+      ['claudinho', 'match', ID, '--json'],
+      ['claudinho', 'match', ID, '--json'],
+    ])
+    expect(await texts(await w.mountPane())).toEqual(['NEW', '', A, D])
   })
 })
 
