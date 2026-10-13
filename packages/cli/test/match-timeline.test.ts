@@ -146,7 +146,7 @@ describe('match <id>: the timeline in the text', () => {
   it('the rows after the kickoff line, before the attribution, aligned (English)', async () => {
     await cmdMatch(MATCH_ID, ctxFor(feed()));
     const rows = stdout().split('\n');
-    const first = rows.indexOf(ROWS_EN[0]);
+    const first = rows.indexOf(ROWS_EN[0]!);
     expect(first).toBeGreaterThan(0);
     expect(rows.slice(first, first + ROWS_EN.length)).toEqual(ROWS_EN);
     expect(rows.findIndex((r) => r.includes('FT'))).toBeLessThan(first);

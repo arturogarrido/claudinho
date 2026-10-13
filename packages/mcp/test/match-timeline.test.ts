@@ -66,7 +66,7 @@ describe('get_match: the timeline', () => {
     const head = rows.findIndex((l) => l.includes('Newcastle United 1–1 AFC Bournemouth'));
     expect(head).toBeGreaterThanOrEqual(0);
     const rowsWanted = ["  9'     Goal         BOU  Marcus Tavernier", "  37'    Goal         NEW  Harvey Barnes", "  90+4'  Yellow card  BOU  Adam Smith"];
-    const first = rows.indexOf(rowsWanted[0]);
+    const first = rows.indexOf(rowsWanted[0]!);
     expect(first).toBeGreaterThan(head);
     expect(rows.slice(first, first + 3)).toEqual(rowsWanted);
   });

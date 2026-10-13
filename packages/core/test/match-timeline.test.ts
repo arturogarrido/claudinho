@@ -279,7 +279,7 @@ describe('the recorded feed (eng.1, September 2026)', () => {
     expect(r.kind).toBe('valid');
     if (r.kind !== 'valid') return;
     const m = r.value;
-    expect(m.events?.length ?? 0).toBe(raw.competitions[0].details.length);
+    expect(m.events?.length ?? 0).toBe(raw.competitions[0]!.details.length);
     const goals = (side: 'home' | 'away') => (m.events ?? []).filter((e) => e.side === side && e.type !== 'YELLOW' && e.type !== 'RED').length;
     expect({ home: goals('home'), away: goals('away') }).toEqual(m.score);
   });
@@ -368,7 +368,9 @@ describe('timelineRows: one row per event, aligned', () => {
   ] as const)('%s: the five kind words', (lang, words) => {
     const kinds: MatchEvent['type'][] = ['GOAL', 'OWN_GOAL', 'PEN', 'YELLOW', 'RED'];
     const rows = timelineRows(base(kinds.map((type, i) => ({ type, minute: i, side: 'home', teamCode: 'NEW' }))), { lang, flags: true });
-    rows.forEach((row, i) => expect(row.split(/ {2,}/)[2]).toBe(words[i]));
+    rows.forEach((row, i) => {
+      expect(row.split(/ {2,}/)[2]).toBe(words[i]);
+    });
   });
   it('a nation side carries its flag on its outer side when flags are on, none when off', () => {
     const m = base([{ type: 'GOAL', minute: 9, side: 'home', teamCode: 'MEX' }, { type: 'GOAL', minute: 10, side: 'away', teamCode: 'RSA' }], { home: '🇲🇽', away: '🇿🇦' });
