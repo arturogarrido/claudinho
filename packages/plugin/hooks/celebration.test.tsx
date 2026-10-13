@@ -203,6 +203,19 @@ describe('around a turn', () => {
     expect((await rows(w))[1]).toBe('GOAL')
   })
 
+  test('a turn starting mid-celebration keeps the frames already drawn (the ticker draws every half-second), with no draw while held', async ($, on) => {
+    const w = await world($, on, [before, goal, goal, goal])
+    await seeGoal(w)
+    for (let i = 0; i < 3; i++) {
+      await rows(w) // the ticker's draws: 0, 0.5 s, 1 s
+      if (i < 2) await w.clock.advance(500)
+    }
+    await w.turnStart()
+    await w.clock.advance(20_000)
+    await w.turnEnd()
+    expect((await rows(w))[1]).toBe('GOA') // 1 s played before the turn: frame 2
+  })
+
   test('a celebration paused past 60 s never resumes, though some frames already showed', async ($, on) => {
     const w = await world($, on, [before, goal, goal, goal, goal, goal, goal])
     await seeGoal(w)
@@ -270,9 +283,10 @@ describe('room and the bands beside ours', () => {
 
   test('a failed run after the goal: the score line goes (never kept), the celebration rows still play', async ($, on) => {
     const w = await world($, on, [before, goal, new Error('timeout')])
+    await w.turnStart() // held: the celebration waits
     await seeGoal(w)
-    await rows(w)
     await w.clock.advance(15_000) // a failed run, inside the celebration's 60 s, before it was played
+    await w.turnEnd()
     const r = await rows(w)
     expect(r).not.toContain(bandLine(2, 0))
     expect(r).toContain('G')
@@ -300,6 +314,37 @@ describe('a window closing', () => {
 })
 
 describe('the redraws it asks for', () => {
+  test('the redraws start with the goal, with no draw needed', async ($, on) => {
+    const w = await world($, on, [before, goal, goal])
+    await seeGoal(w)
+    await w.clock.advance(600)
+    expect(w.invalidates.length).toBeGreaterThanOrEqual(1)
+  })
+
+  test('the redraws stop by themselves once the 3 s are played, with no draw needed', async ($, on) => {
+    const w = await world($, on, [before, goal, goal])
+    await seeGoal(w)
+    await w.clock.advance(6_000)
+    const played = w.invalidates.length
+    expect(played).toBeLessThanOrEqual(8)
+    await w.clock.advance(5_000)
+    expect(w.invalidates.length).toBe(played)
+  })
+
+  test('a turn starting mid-celebration stops the redraws; the turn ending starts them again', async ($, on) => {
+    const w = await world($, on, [before, goal, goal])
+    await seeGoal(w)
+    await w.clock.advance(1_000)
+    await w.turnStart()
+    const atHold = w.invalidates.length
+    await w.clock.advance(3_000)
+    expect(w.invalidates.length).toBe(atHold)
+    await w.turnEnd()
+    await w.clock.advance(600)
+    expect(w.invalidates.length).toBeGreaterThan(atHold)
+  })
+
+
   test('about one invalidate per half-second while playing, none once played, none while held', async ($, on) => {
     const w = await world($, on, [before, goal, goal])
     await w.turnStart()
