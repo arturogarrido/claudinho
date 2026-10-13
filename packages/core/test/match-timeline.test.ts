@@ -161,7 +161,7 @@ describe('the minute', () => {
   it("added time 30 is read", () => {
     expect(one({ clock: { value: 0, displayValue: "120'+30'" } })).toMatchObject({ minute: 120, added: 30 });
   });
-  it.each(["90'+0'", "90'+31'", "45+2'", " 9'", '9', "9'x", "1234'", "9′", ''])('%j is left out', (dv) => {
+  it.each(["90'+0'", "90'+31'", "45+2'", " 9'", '9', "9'x", "1234'", "9′", '', "90'+3'x", "90'+3'+1'", "999'", "90'+99'"])('%j is left out', (dv) => {
     leftOut(detail({ clock: { value: 0, displayValue: dv } }));
   });
   it('no clock, or no displayValue, is left out', () => {
@@ -381,6 +381,20 @@ describe('timelineRows: one row per event, aligned', () => {
     expect(on[1]).toContain('RSA 🇿🇦');
     const off = timelineRows(m, { lang: 'en', flags: false });
     expect(off.join('\n')).not.toMatch(/🇲🇽|🇿🇦/);
+  });
+  it('labels of different widths: the label column padded, the player column aligned, no trailing space', () => {
+    const m = base([
+      { type: 'GOAL', minute: 9, side: 'home', teamCode: 'O&M', player: 'P One' },
+      { type: 'GOAL', minute: 30, side: 'away', teamCode: 'RB', player: 'P Two' },
+      { type: 'YELLOW', minute: 31, side: 'away', teamCode: 'RB' },
+    ]);
+    m.home = { code: 'O&M', name: 'Oriente y Mar' };
+    m.away = { code: 'RB', name: 'Rio Branco' };
+    expect(timelineRows(m, { lang: 'en', flags: true })).toEqual([
+      "  9'   Goal         O&M  P One",
+      "  30'  Goal         RB   P Two",
+      "  31'  Yellow card  RB",
+    ]);
   });
   it('no events: no rows', () => {
     const m = base([]);

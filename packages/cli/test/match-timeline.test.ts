@@ -10,7 +10,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EspnAdapter, type Match, type ProviderAdapter } from '@claudinho/core';
+import { EspnAdapter, FakeMarketProvider, type Match, type MarketProvider, type MatchEvent, type ProviderAdapter } from '@claudinho/core';
+import { cmdToday } from '../src/commands';
 import { cachePath, readState, writeState, type CacheState } from '../src/cache';
 import { cmdMatch } from '../src/commands';
 import type { CliConfig } from '../src/config';
@@ -188,6 +189,91 @@ describe('match <id> --json: lines, attribution, disclaimer on every answer', ()
     const cup = () => feed({ competition: 'concacaf.champions', events: [], season: ENDED, standings: { name: 'Concacaf Champions Cup', season: { year: 2026 }, seasons: [{ year: 2016 }] } });
     const { j } = await both(cup, '999', {}, null, DISCLAIMER_EN);
     expect(j.betweenEditions).toBeDefined();
+  });
+});
+
+describe('match <id>: the timeline beside the other rows', () => {
+  it('a blank row before the first timeline row', async () => {
+    await cmdMatch(MATCH_ID, ctxFor(feed()));
+    const rows = stdout().split('\n');
+    expect(rows[rows.indexOf(ROWS_EN[0]!) - 1]).toBe('');
+  });
+  it('lines follow --tz (the kickoff row), and still equal the text', async () => {
+    const utc = await both(() => feed(), MATCH_ID, { tz: 'UTC' }, 'Live data: ESPN', DISCLAIMER_EN);
+    const tokyo = await both(() => feed(), MATCH_ID, { tz: 'Asia/Tokyo' }, 'Live data: ESPN', DISCLAIMER_EN);
+    expect(tokyo.j.lines).not.toEqual(utc.j.lines);
+  });
+  it('the none-read empty answer carries the three keys too', async () => {
+    const broken = { ...finished, id: '43', status: { type: { name: 'STATUS_NEW', state: 'limbo' } } };
+    const other = { ...finished, id: '44' };
+    const { j } = await both(() => feed({ events: [broken, other] }), MATCH_ID, {}, null, DISCLAIMER_EN);
+    expect(j.match).toBeNull();
+    expect(j.partial).toBeDefined();
+    expect((j.lines as string[]).join('\n')).toContain('was read');
+  });
+  it('today --json carries a finished match\'s events', async () => {
+    await cmdToday('2026-10-10', ctxFor(feed(), { json: true }));
+    const j = JSON.parse(stdout()) as { matches: Match[] };
+    expect(j.matches.find((m) => m.id === MATCH_ID)?.events?.length).toBe(DETAILS.length);
+  });
+});
+
+describe('match <id> on a nation competition: flags and the market block', () => {
+  const NOW_WC = new Date('2026-06-11T20:00:00Z');
+  const ev = (n: number): MatchEvent[] =>
+    Array.from({ length: n }, (_, i) => ({ type: 'YELLOW', minute: 10 + i, side: i % 2 ? 'away' : 'home', teamCode: i % 2 ? 'RSA' : 'MEX', player: 'A Player' }) as MatchEvent);
+  const opener: Match = {
+    id: '760415',
+    stage: 'GROUP',
+    group: 'A',
+    kickoff: '2026-06-11T19:00:00.000Z',
+    venue: 'Estadio Azteca',
+    home: { code: 'MEX', name: 'Mexico', flag: '\u{1F1F2}\u{1F1FD}', id: 'espn:203' },
+    away: { code: 'RSA', name: 'South Africa', flag: '\u{1F1FF}\u{1F1E6}', id: 'espn:467' },
+    score: { home: 1, away: 0 },
+    minute: 60,
+    status: 'LIVE',
+    events: ev(2),
+    updatedAt: NOW_WC.toISOString(),
+  };
+  const wc = (): ProviderAdapter => ({
+    name: 'espn',
+    competition: 'fifa.world',
+    capabilities: { push: false, latencyHintSec: 0 },
+    fetchByDate: async () => [opener],
+    fetchLive: async () => [opener],
+    fetchWindow: async () => [opener],
+  });
+  const wcCtx = (over: Partial<CliConfig>, marketProvider?: MarketProvider) => ({ ...ctxFor(wc(), { competition: 'fifa.world', ...over }), now: NOW_WC, marketProvider });
+  const FLAGS_ENV = process.env.CLAUDINHO_FLAGS;
+  afterEach(() => {
+    if (FLAGS_ENV === undefined) delete process.env.CLAUDINHO_FLAGS;
+    else process.env.CLAUDINHO_FLAGS = FLAGS_ENV;
+  });
+  it('CLAUDINHO_FLAGS=on: the side label carries the nation flag', async () => {
+    process.env.CLAUDINHO_FLAGS = 'on';
+    await cmdMatch('760415', wcCtx({}));
+    expect(stdout()).toMatch(/ {2}10' +Yellow card +\u{1F1F2}\u{1F1FD} MEX/u);
+  });
+  it('CLAUDINHO_FLAGS=off: no flag in the timeline rows', async () => {
+    process.env.CLAUDINHO_FLAGS = 'off';
+    await cmdMatch('760415', wcCtx({}));
+    const rows = stdout().split('\n').filter((r) => /^ {2}\d+' /.test(r));
+    expect(rows.length).toBe(2);
+    expect(rows.join('\n')).not.toMatch(/\u{1F1F2}\u{1F1FD}|\u{1F1FF}\u{1F1E6}/u);
+  });
+  it('a reliable market signal: its block before the first timeline row', async () => {
+    await cmdMatch('760415', wcCtx({ markets: true }, new FakeMarketProvider({ synthesize: true, now: NOW_WC })));
+    const t = stdout();
+    const market = t.indexOf('Prediction markets');
+    expect(market).toBeGreaterThan(0);
+    expect(t.search(/\n {2}\d+' +Yellow card/)).toBeGreaterThan(market);
+  });
+  it('the market-incomplete note stays after the timeline (an uncut text keeps its notes after the body)', async () => {
+    const dead = { name: 'dead', findSignal: async () => undefined, findSignals: async () => ({ results: new Map(), complete: false }) } as unknown as MarketProvider;
+    await cmdMatch('760415', wcCtx({ markets: true }, dead));
+    const t = stdout();
+    expect(t.indexOf('Market data unavailable')).toBeGreaterThan(t.search(/\n {2}\d+' +Yellow card/));
   });
 });
 
