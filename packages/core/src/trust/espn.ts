@@ -27,10 +27,18 @@
 import { competitionKind, seasonSlugOf, type TeamKind, teamKind } from '../kinds';
 import { isFinished } from '../normalize';
 import type { GroupStandings, StandingRow } from '../standings';
-import type { Match, Stage, Status, Team } from '../types';
+import type { Match, MatchEvent, Stage, Status, Team } from '../types';
 import { type BoundedList, takeBounded } from './bounded';
 import { definitiveNone, malformed, type ParseResult, valid } from './result';
-import { MAX_GOALS, MAX_MINUTE, STAGE_LABEL_COLUMNS, sealMatch, sealTeam } from './match';
+import {
+  MAX_ADDED_MINUTES,
+  MAX_GOALS,
+  MAX_MATCH_EVENTS,
+  MAX_MINUTE,
+  STAGE_LABEL_COLUMNS,
+  sealMatch,
+  sealTeam,
+} from './match';
 import { sealSeason } from './season';
 import {
   canonicalTimestamp,
@@ -38,6 +46,7 @@ import {
   ESPN_ID,
   flag as boolFlag,
   humanLabel,
+  isHumanLabel,
   member,
   opaqueId,
   providerTeamId,
@@ -218,6 +227,134 @@ function parseMinute(st: unknown): number | undefined {
     return n > 0 ? count(n, MAX_MINUTE) : undefined;
   }
   return undefined;
+}
+
+/**
+ * The six flags every ESPN detail carries (measured: 656 of 656). Each must be
+ * present and a boolean: an unreadable flag is not `false`, so a detail with
+ * one is left out rather than read as a plainer kind.
+ */
+const DETAIL_FLAGS = ['scoringPlay', 'yellowCard', 'redCard', 'penaltyKick', 'ownGoal', 'shootout'] as const;
+/** `clock.displayValue`: a minute (`9'`), or a minute and its added time (`90'+3'`). Matched whole. */
+const DETAIL_MINUTE = /^(\d{1,3})'$/;
+const DETAIL_MINUTE_ADDED = /^(\d{1,3})'\+(\d{1,2})'$/;
+
+/**
+ * A detail's kind, by its flags alone (`type.text` is never read): five of the
+ * 32 combinations of the five kind flags are a kind, and a shootout kick is
+ * none (the shootout tally is the score's). Anything else is left out.
+ */
+function detailKind(d: Record<string, unknown>): MatchEvent['type'] | undefined {
+  const f: Partial<Record<(typeof DETAIL_FLAGS)[number], boolean>> = {};
+  for (const name of DETAIL_FLAGS) {
+    const v = boolFlag(d[name]);
+    if (v === undefined) return undefined;
+    f[name] = v;
+  }
+  if (f.shootout) return undefined;
+  const { scoringPlay: s, yellowCard: y, redCard: r, penaltyKick: p, ownGoal: o } = f;
+  if (s && !y && !r) {
+    if (!p && !o) return 'GOAL';
+    if (o && !p) return 'OWN_GOAL';
+    if (p && !o) return 'PEN';
+    return undefined;
+  }
+  if (p || o || s) return undefined;
+  if (y && !r) return 'YELLOW';
+  if (r && !y) return 'RED';
+  return undefined;
+}
+
+/** The minute and added time of a detail's clock, by the two whole grammars, or nothing. */
+function detailMinute(clock: unknown): { minute: number; added?: number } | undefined {
+  if (!clock || typeof clock !== 'object') return undefined;
+  const dv = (clock as { displayValue?: unknown }).displayValue;
+  if (typeof dv !== 'string') return undefined;
+  const plain = DETAIL_MINUTE.exec(dv);
+  if (plain) {
+    const minute = count(Number(plain[1]), MAX_MINUTE);
+    return minute === undefined ? undefined : { minute };
+  }
+  const extra = DETAIL_MINUTE_ADDED.exec(dv);
+  if (!extra) return undefined;
+  const minute = count(Number(extra[1]), MAX_MINUTE);
+  const added = count(Number(extra[2]), MAX_ADDED_MINUTES);
+  if (minute === undefined || added === undefined || added < 1) return undefined;
+  return { minute, added };
+}
+
+/** The raw ESPN id of an object's `team`, in the provider's id grammar, or nothing. */
+function rawTeamId(holder: unknown): string | undefined {
+  if (!holder || typeof holder !== 'object') return undefined;
+  const team = (holder as { team?: unknown }).team;
+  if (!team || typeof team !== 'object') return undefined;
+  return opaqueId((team as { id?: unknown }).id, ESPN_ID);
+}
+
+/** The two sides of a fixture as the detail grammar compares them: raw ids and sealed codes. */
+interface DetailSides {
+  readonly homeId: string | undefined;
+  readonly awayId: string | undefined;
+  readonly homeCode: string;
+  readonly awayCode: string;
+}
+
+/**
+ * ESPN's `competitions[0].details` → candidate events, sealed afterwards by
+ * `sealEvent` (the one constructor, shared with the cache path). The first
+ * `MAX_MATCH_EVENTS` entries are taken BEFORE any per-entry work; each is read
+ * whole or left out, and a left-out detail never refuses its match or its
+ * siblings.
+ *
+ *   - the kind: the six flags (`detailKind`);
+ *   - the minute: `clock.displayValue`, `N'` (0 to 200) or `N'+M'` (M 1 to 30);
+ *   - the side: the detail's raw `team.id` equal to the home or the away
+ *     competitor's raw `team.id` (the side a goal COUNTED for, an own goal
+ *     included: measured, scoring details sum to each side's score in 91 of
+ *     91 matches); `teamCode` that side's sealed code;
+ *   - the player: only when `athletesInvolved` lists EXACTLY one athlete, a
+ *     human label, whose own raw `team.id` is the one the kind implies (the
+ *     credited side; the OTHER side for an own goal, 11 of 11 measured).
+ *     Otherwise the event stands with no player.
+ */
+function detailEvents(details: unknown, sides: DetailSides): unknown[] {
+  const out: unknown[] = [];
+  for (const raw of takeBounded<unknown>(details, MAX_MATCH_EVENTS)) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const d = raw as Record<string, unknown>;
+    const type = detailKind(d);
+    if (!type) continue;
+    const when = detailMinute(d.clock);
+    if (!when) continue;
+    const teamId = rawTeamId(d);
+    const side =
+      teamId === undefined
+        ? undefined
+        : teamId === sides.homeId
+          ? 'home'
+          : teamId === sides.awayId
+            ? 'away'
+            : undefined;
+    if (!side) continue;
+    const event: Record<string, unknown> = { type, minute: when.minute };
+    if (when.added !== undefined) event.added = when.added;
+    event.side = side;
+    event.teamCode = side === 'home' ? sides.homeCode : sides.awayCode;
+    const player = detailPlayer(d.athletesInvolved, type === 'OWN_GOAL' ? (side === 'home' ? sides.awayId : sides.homeId) : teamId);
+    if (player) event.player = player;
+    out.push(event);
+  }
+  return out;
+}
+
+/** The one athlete of the expected team, by a human-label name, or nothing. */
+function detailPlayer(athletes: unknown, expectedTeamId: string | undefined): string | undefined {
+  if (!Array.isArray(athletes) || athletes.length !== 1 || expectedTeamId === undefined) return undefined;
+  const a = athletes[0];
+  if (rawTeamId(a) !== expectedTeamId) return undefined;
+  const name = (a as { displayName?: unknown }).displayName;
+  if (!isHumanLabel(name)) return undefined;
+  return humanLabel(name) || undefined;
 }
 
 /** A season slug is read only up to this many UTF-16 units (the longest measured is 30). */
@@ -462,7 +599,14 @@ export function parseEspnEvent(raw: unknown, ctx: MapContext = {}): ParseResult<
       status,
       winnerCode,
       updatedAt: new Date().toISOString(),
-      events: ev.events,
+      // The goals and cards: ESPN's `details`, read by the detail grammar; the
+      // seal keeps them only on a status that holds a score.
+      events: detailEvents(comp?.details, {
+        homeId: rawTeamId(homeRaw),
+        awayId: rawTeamId(awayRaw),
+        homeCode: home.code,
+        awayCode: away.code,
+      }),
     },
     // The final reseal states the same kind the competitors were built with.
     { teamKind: kind },

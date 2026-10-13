@@ -8,6 +8,8 @@ export { resolveTz, formatKickoff, formatDate, formatTime, countdown, countdownP
 export type { FormatOpts } from './time';
 export { isValidTimeZone, isValidDate } from './validate';
 export { displayWidth, padVisible, truncateVisible, withFlag } from './text';
+export { timelineRows } from './timeline';
+export type { TimelineOptions } from './timeline';
 export {
   outcomeFromScore,
   isLive,
