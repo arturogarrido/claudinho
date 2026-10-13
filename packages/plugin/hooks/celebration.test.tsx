@@ -73,6 +73,7 @@ describe('a goal plays', () => {
       last = at
       await w.clock.advance(500)
     }
+    expect(last).toBe(38) // frame 5: the ball at the band's right edge (40 columns, the ball two wide)
   })
 
   test('a shootout tally that rises plays too', async ($, on) => {
@@ -353,6 +354,17 @@ describe('a window closing', () => {
     await w.detach('terminal')
     await w.attach('terminal', 't2')
     expect(await rows(w)).toEqual([bandLine(2, 0)])
+  })
+
+  test('the last window closing mid-celebration asks for no further redraw', async ($, on) => {
+    const w = await world($, on, [before, goal, goal])
+    await seeGoal(w)
+    await rows(w)
+    await w.clock.advance(400)
+    await w.detach('terminal')
+    const atClose = w.invalidates.length
+    await w.clock.advance(600)
+    expect(w.invalidates.length).toBe(atClose)
   })
 
   test('a run that a closing window superseded never starts a celebration', async ($, on) => {
