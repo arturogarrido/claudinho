@@ -331,6 +331,16 @@ describe('the redraws it asks for', () => {
     expect(w.invalidates.length).toBe(played)
   })
 
+  test('a hold seen only in the drawn isWorking (no turn event): when it lifts, the redraws start again', async ($, on) => {
+    const w = await world($, on, [before, goal, goal])
+    await seeGoal(w)
+    await rows(w, { isWorking: true })
+    const atHold = w.invalidates.length
+    expect((await rows(w))[1]).toBe('G')
+    await w.clock.advance(2_000)
+    expect(w.invalidates.length).toBeGreaterThan(atHold)
+  })
+
   test('a turn starting mid-celebration stops the redraws; the turn ending starts them again', async ($, on) => {
     const w = await world($, on, [before, goal, goal])
     await seeGoal(w)
