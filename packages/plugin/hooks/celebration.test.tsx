@@ -344,6 +344,27 @@ describe('a waiting celebration whose news changed', () => {
     await w.turnEnd()
     expect(await rows(w)).toEqual(["⚽ BAR 0–0 SEV 10'"])
   })
+
+  test('the followed competition changed mid-play: the celebration stops at once and asks for no more redraws', async ($, on) => {
+    const laliga = view('⚽ BAR 0–0 SEV 10\'', {
+      live: { items: [{ ...match('9', [0, 0]), home: { code: 'BAR', name: 'Barcelona', id: 'espn:83' }, away: { code: 'SEV', name: 'Sevilla', id: 'espn:243' }, line: "Barcelona 0–0 Sevilla (10')" }], total: 1, shown: 1, truncated: false, complete: true },
+      current: true,
+      competition: { slug: 'esp.1', alias: 'laliga', name: 'LALIGA', chosenBy: 'saved' },
+      updatedAt: '2026-10-10T15:00:00.000Z',
+      staleAfter: '2026-10-10T15:05:00.000Z',
+    })
+    const w = await world($, on, [before, goal, laliga, laliga])
+    await w.turnStart()
+    await seeGoal(w)
+    await w.clock.advance(13_800)
+    await w.turnEnd() // plays from 14 s
+    expect((await rows(w))[1]).toBe('G')
+    await w.clock.advance(1_200) // the run at 15 s: LALIGA
+    expect(await rows(w)).toEqual(["⚽ BAR 0–0 SEV 10'"])
+    const after = w.invalidates.length
+    await w.clock.advance(2_000)
+    expect(w.invalidates.length).toBe(after)
+  })
 })
 
 describe('a window closing', () => {

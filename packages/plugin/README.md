@@ -96,7 +96,7 @@ the line of the last; a goal during a celebration starts it again with the new l
   them.
 - **Room.** The celebration takes at most three rows above our line, and leaves one row for a band another plugin
   draws beneath ours: min(3, rows the band may take - 2). With two rows it shows the ball and the banner (the toast
-  line in the banner's row at the end), with one the banner alone; with none our line shows alone and the celebration
+  line in the banner's row at the end), with one the banner (the toast line in its place at the end); with none our line shows alone and the celebration
   waits for room, within its 60 seconds. Each row is cut at the band's width, never wrapped. A survey holding the band
   pauses it too.
 - **What drops it.** A waiting or playing celebration is dropped by a correction of that goal (its match's score or
