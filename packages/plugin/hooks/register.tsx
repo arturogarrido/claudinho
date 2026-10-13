@@ -51,10 +51,13 @@ import type {
  * The goal celebration: when a run's toasts include a GOAL (a regulation or shootout tally that rose, none that fell),
  * the band plays 6 frames over 3 seconds above its line (a ball crossing a row, a "GOAL" banner growing, then the
  * toast's own line), in at most min(3, maxRows - 2) rows, then goes back to its one line. Its record (`celebration`:
- * the last goal's toast line and when the run decided it) has one writer, the run, under the band's clear generation;
- * the existing clear and the first forced run of a module load null it, so a reload drops a waiting or playing
- * celebration (the toast already said it), and a record another load wrote is never played. A played or expired record
- * stays until the next goal replaces it: the draw ignores it. The draw only reads it, and
+ * the last goal's toast line, when the run decided it, and its match's id) is written by the run and the clear alone:
+ * in a run, a current view of another competition nulls it, then a correction of its match (a compared tally that
+ * fell, by the record's id, whatever the `toasts` filter) nulls it, then the run's last goal replaces it under the
+ * band's clear generation; the existing clear nulls it. Every null also stops the redraws. A record another module
+ * load wrote is never played (its `at` is not this load's), so a reload drops a waiting or playing celebration (the
+ * toast already said it); it stays in state until a goal or a clear replaces it. A played or expired record stays
+ * until the next goal replaces it: the draw ignores it. The draw only reads it, and
  * computes the frame from module values (how much of the 3 s has been on screen), redrawn by a 500 ms ticker that runs
  * only while there is something to play and no hold: a main-loop turn (`turn.start` to a `turn.complete` with no
  * `agentId`) or the drawn `isWorking` holds it, and it plays when the hold ends within 60 seconds of the goal. A
@@ -123,8 +126,6 @@ let nvmOnce: Promise<string[]> | null = null
 let nvmAnswer: string[] | null = null
 /** Whether the goal celebration plays (`celebrate` is anything but `off`), set at load. */
 let celebrateOn = true
-/** Whether this module load's first forced run has nulled an inherited celebration record yet. */
-let loadNulled = false
 /** A main-loop turn is running: set by `turn.start`, cleared by a `turn.complete` with no `agentId`. */
 let holdTurn = false
 /**
@@ -453,8 +454,24 @@ const slugOf = (view: View): string =>
 
 type Tally = { home: number; away: number }
 
-/** One match whose compared tally changed: its toast text, and whether a side of a compared tally rose or fell. */
-type ScoreChange = { text: string; rose: boolean; fell: boolean }
+/**
+ * How a match's tallies moved against its baseline entry: whether a side of a compared tally rose or fell (a tally
+ * compared only when both carry one).
+ */
+function movement(m: Item, was: ClaudinhoTally): { rose: boolean; fell: boolean } {
+  const pairs: Array<[Tally, Tally]> = []
+  const score = tally(m.score)
+  const shootout = tally(m.shootout)
+  if (score && was.score) pairs.push([score, was.score])
+  if (shootout && was.shootout) pairs.push([shootout, was.shootout])
+  return {
+    rose: pairs.some(([a, b]) => a.home > b.home || a.away > b.away),
+    fell: pairs.some(([a, b]) => a.home < b.home || a.away < b.away),
+  }
+}
+
+/** One match whose compared tally changed: its id, its toast text, and whether a side of a compared tally rose or fell. */
+type ScoreChange = { id: string; text: string; rose: boolean; fell: boolean }
 
 /**
  * The score changes of a CURRENT view against the last current view's baseline, under the option: one per match whose
@@ -470,14 +487,8 @@ function scoreChanges(view: View, prev: ClaudinhoBaseline, option: ToastsOption)
     if (option === 'pinned' && m.pinned !== true) continue
     const was = before.get(m.id)
     if (!was || typeof m.line !== 'string' || m.line === '') continue
-    const pairs: Array<[Tally, Tally]> = []
-    const score = tally(m.score)
-    const shootout = tally(m.shootout)
-    if (score && was.score) pairs.push([score, was.score])
-    if (shootout && was.shootout) pairs.push([shootout, was.shootout])
-    const rose = pairs.some(([a, b]) => a.home > b.home || a.away > b.away)
-    const fell = pairs.some(([a, b]) => a.home < b.home || a.away < b.away)
-    if (rose || fell) changes.push({ text: `⚽ ${m.line}`, rose, fell })
+    const { rose, fell } = movement(m, was)
+    if (rose || fell) changes.push({ id: m.id, text: `⚽ ${m.line}`, rose, fell })
   }
   return changes
 }
@@ -487,10 +498,20 @@ const toastsFor = (view: View, prev: ClaudinhoBaseline, option: ToastsOption): s
   scoreChanges(view, prev, option).map((c) => c.text)
 
 /** The goals among the toasts: a change whose compared tallies rose with none that fell (a correction is no goal). */
-const goalsFor = (view: View, prev: ClaudinhoBaseline, option: ToastsOption): string[] =>
+const goalsFor = (view: View, prev: ClaudinhoBaseline, option: ToastsOption): Array<{ id: string; text: string }> =>
   scoreChanges(view, prev, option)
     .filter((c) => c.rose && !c.fell)
-    .map((c) => c.text)
+    .map((c) => ({ id: c.id, text: c.text }))
+
+/**
+ * Whether a match's compared tally FELL in this view against the baseline (a correction), by the match's id, before
+ * any `toasts` filter: a pin change never hides a correction. A match absent from either is no news.
+ */
+function fellFor(view: View, prev: NonNullable<ClaudinhoBaseline>, id: string): boolean {
+  const was = prev.items.find((t) => t.id === id)
+  const m = itemsOf(view).find((x) => x.id === id)
+  return !!(was && m && movement(m, was).fell)
+}
 
 /** The baseline a CURRENT view leaves for the next one: its competition and each match's tallies. */
 function baselineOf(view: View): ClaudinhoBaseline {
@@ -526,12 +547,6 @@ function tick($: EngineInterface, option: ToastsOption, force = false): Promise<
 }
 
 async function run($: EngineInterface, option: ToastsOption, force: boolean): Promise<void> {
-  // (0) A module load's first forced run drops a celebration record a previous load left (a reload never shows it).
-  if (force && !loadNulled) {
-    loadNulled = true
-    stopTicker()
-    await update($, celebration, () => null)
-  }
   // (1) No surface that draws the band (none yet, the last one detached, or the roster cannot be read): no process,
   // the band cleared, so a band surface attaching again never shows an old line, and the pace reset, so the next run
   // the roster allows is not held by an idle gap; the baseline and the context are left.
@@ -580,16 +595,26 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     const prev = await read($, baseline)
     for (const text of toastsFor(view, prev, option)) $.ui.toast(text)
     const goals = celebrateOn ? goalsFor(view, prev, option) : []
+    // What this view says of the celebration's match, against the baseline it replaces: another competition drops
+    // the record; a correction of its match drops it (playing or waiting). Each null stops the redraws too.
+    const rec = await read($, celebration)
+    if (rec !== null && prev !== null && prev.slug !== slugOf(view)) {
+      stopTicker()
+      await update($, celebration, () => null)
+    } else if (rec !== null && prev !== null && fellFor(view, prev, rec.id)) {
+      stopTicker()
+      await update($, celebration, (cur) => (cur !== null && cur.at === rec.at ? null : cur))
+    }
     await update($, baseline, () => baselineOf(view))
     // The celebration of the run's LAST goal, decided now. The one clear-generation check is inside the write, the
     // latest point: a clear since the spawn (also while the clock is read) wins, and the run writes nothing.
-    const text = goals[goals.length - 1]
-    if (text !== undefined) {
+    const goal = goals[goals.length - 1]
+    if (goal !== undefined) {
       const at = await $.clock.now()
       let wrote = false
       await update($, celebration, (cur) => {
         wrote = clears === c
-        return wrote ? { text, at } : cur
+        return wrote ? { text: goal.text, at, id: goal.id } : cur
       })
       if (wrote) {
         playingAt = at
@@ -705,9 +730,10 @@ export const register: Register = (on, options) => {
     const shown = await read($, band)
     const rec = celebrateOn ? await read($, celebration) : null
     const now = rec === null ? 0 : await $.clock.now()
-    // (1) A survey holds the band, or there is no room: nothing of ours, as before; the celebration paused.
+    // (1) A survey holds the band, or there is no room: nothing of ours, as before; the celebration paused, no redraws.
     if (e.props.hasSurvey || e.props.maxRows < 1) {
       pausePlayback(now)
+      stopTicker()
       return next(e)
     }
     const { Box, Text } = $.ui.resolve(e)
@@ -730,20 +756,21 @@ export const register: Register = (on, options) => {
       if (rec !== null) stopTicker()
       return withLine([])
     }
-    // (3) Held (a main-loop turn, or the drawn isWorking) or no room for a row: our line alone; the celebration paused.
+    // (3) Held (a main-loop turn, or the drawn isWorking) or no room for a row: our line alone; the celebration paused,
+    // no redraws.
     const rows = Math.min(3, e.props.maxRows - 2)
     const heldNow = holdTurn || e.props.isWorking === true
     if (heldNow || rows <= 0) {
       pausePlayback(now)
-      if (heldNow) stopTicker()
+      stopTicker()
       return withLine([])
     }
     // (4) Playing: the frame from the time on screen, then our line (never an old one brought back), then the band
     // beneath.
     if (playFrom === null) playFrom = now
     lastPlayedAt = now
-    // A hold seen only in the drawn `isWorking` (no `turn.start`) stopped the redraws and no turn event restarts them:
-    // the playing draw does.
+    // A pause no event ends (a survey, no room, a hold seen only in the drawn `isWorking`) stopped the redraws: the
+    // playing draw starts them again.
     if (!ticker) startTicker($)
     const frame = Math.min(FRAMES - 1, Math.floor(playedAt(now) / FRAME_MS))
     return withLine(celebrationRows(frame, rows, rec.text, columns))

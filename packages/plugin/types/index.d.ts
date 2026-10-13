@@ -42,13 +42,15 @@ export type ClaudinhoBaseline = { slug: string; items: ClaudinhoTally[] } | null
 export type ClaudinhoContext = { context: string | null; staleAfter: string | null; ranAt: number } | null
 
 /**
- * The goal celebration's record: the last goal's toast line (`⚽` and the CLI's record line) and when the run that saw
- * it decided it (the clock's milliseconds). Written by that run alone (a run a clear superseded writes nothing), never
- * under `celebrate: off`; null before any goal, after the band's clear and at a module load's first forced run. A
- * played or expired record stays until the next goal replaces it (the band's draw ignores it). The draw reads it; its
- * frames are not state.
+ * The goal celebration's record: the last goal's toast line (`⚽` and the CLI's record line), when the run that saw it
+ * decided it (the clock's milliseconds) and the match's id. Its four writers, in a run's order: a current view of
+ * another competition nulls it; a correction of its match (a compared tally that fell, by `id`, whatever the `toasts`
+ * filter) nulls it; the run's last goal writes it (a run a clear superseded writes nothing; never under
+ * `celebrate: off`); and the band's clear nulls it. The draw's guard: a record another module load wrote (its `at` not
+ * this load's) is never played; it stays in state until a goal or a clear replaces it. A played or expired record also
+ * stays until the next goal replaces it (the draw ignores it). The draw reads it; its frames are not state.
  */
-export type ClaudinhoCelebration = { text: string; at: number } | null
+export type ClaudinhoCelebration = { text: string; at: number; id: string } | null
 
 declare module 'claude-code' {
   interface PluginState {

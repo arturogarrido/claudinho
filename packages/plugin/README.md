@@ -99,8 +99,12 @@ the line of the last; a goal during a celebration starts it again with the new l
   line in the banner's row at the end), with one the banner alone; with none our line shows alone and the celebration
   waits for room, within its 60 seconds. Each row is cut at the band's width, never wrapped. A survey holding the band
   pauses it too.
-- **A window closing** (the last terminal or desktop window leaving) drops a waiting or playing celebration, and a
-  reload of the plugin (which changing an option makes) drops it too: the toast already said it.
+- **What drops it.** A waiting or playing celebration is dropped by a correction of that goal (its match's score or
+  shootout tally falling in a later current view, whatever the `toasts` option, so the band never celebrates a goal
+  the score no longer holds), by a change of the competition you follow, by the last terminal or desktop window
+  closing, by a reload of the plugin (which changing an option makes), and by the 60 seconds above: the toast already
+  said it. A change of your pinned team does not drop it, and neither does another match's correction or the match
+  leaving the list.
 - **Redraws.** While it plays the plugin asks for a redraw twice a second, and for none while it waits or once it is
   played.
 
