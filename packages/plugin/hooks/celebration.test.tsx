@@ -308,6 +308,16 @@ describe('a waiting celebration whose news changed', () => {
     expect(await rows(w)).toEqual([bandLine(1, 0)])
   })
 
+  test('an away goal corrected away before it played: nothing plays above the corrected band', async ($, on) => {
+    const away = live([match('1', [1, 1])], bandLine(1, 1))
+    const w = await world($, on, [before, away, before, before])
+    await w.turnStart()
+    await seeGoal(w) // 1-1, held
+    await w.clock.advance(15_000) // 1-0: the away goal corrected away
+    await w.turnEnd()
+    expect(await rows(w)).toEqual([bandLine(1, 0)])
+  })
+
   test('the celebrated goal corrected away mid-play: the celebration stops at once and asks for no more redraws', async ($, on) => {
     const w = await world($, on, [before, goal, before, before])
     await w.turnStart()
@@ -345,6 +355,29 @@ describe('a waiting celebration whose news changed', () => {
     await w.clock.advance(15_000) // 45 s: back at 3-0 (a first observation after the gap: no goal decided)
     await w.turnEnd()
     expect(await rows(w)).toEqual([bandLine(3, 0)])
+  })
+
+  test('the celebrated match absent from every later view: the waiting celebration plays (the match leaving the list keeps it)', async ($, on) => {
+    const other = match('2', [0, 0], { home: { code: 'LIV', name: 'Liverpool', id: 'espn:364' }, line: "Liverpool 0–0 Chelsea (60')" })
+    const without = live([other], "⚽ LIV 0–0 CHE 60'")
+    const w = await world($, on, [before, goal, without, without, without])
+    await w.turnStart()
+    await seeGoal(w) // 2-0 at 15 s, held
+    await w.clock.advance(15_000) // 30 s: Arsenal absent
+    await w.clock.advance(15_000) // 45 s: still absent
+    await w.turnEnd()
+    expect((await rows(w))[1]).toBe('G')
+  })
+
+  test('a later view gaining a shootout tally the record lacks, at the same score: the waiting celebration plays', async ($, on) => {
+    const reg = (h: number) => live([match('1', [h, 1], { line: `Arsenal ${h}–1 Chelsea (90')` })], `⚽ ARS ${h}–1 CHE 90'`)
+    const pens = live([match('1', [1, 1], { shootout: { home: 0, away: 0 }, line: 'Arsenal 1–1 Chelsea (pens 0–0)' })], "⚽ ARS 1–1 CHE pens")
+    const w = await world($, on, [reg(0), reg(1), pens, pens])
+    await w.turnStart()
+    await seeGoal(w) // 1-1, held
+    await w.clock.advance(15_000) // to penalties: a shootout tally the record does not carry
+    await w.turnEnd()
+    expect((await rows(w))[1]).toBe('G')
   })
 
   test('the celebrated shootout tally missing from one view, then back lower: nothing plays', async ($, on) => {
