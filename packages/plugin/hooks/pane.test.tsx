@@ -461,7 +461,8 @@ describe('a read answering after its pane was rebound', () => {
     await w.clock.advance(1)
     await w.release() // the old read answers: the reopen's read starts, held
     await w.clock.advance(1)
-    expect(await texts(pane)).toEqual([...ROWS, '', A, D])
+    // The reopen's provisional value (the band's line) stands; the old read's answer never replaces it.
+    expect(await texts(pane)).toEqual([LINE, '', A, D])
     await w.release()
     await reopened
     expect(await texts(pane)).toEqual(['NEW', '', A, D])
