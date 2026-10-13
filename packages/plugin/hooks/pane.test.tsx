@@ -399,6 +399,23 @@ describe('one read at a time, the open included', () => {
   })
 })
 
+describe('a read answering after its pane was rebound', () => {
+  test('its answer is never drawn, not even for a moment before the new read answers', { timeoutMs: 20_000 }, async ($, on) => {
+    const w = await world($, on, [live(2, 1), live(2, 1), live(3, 1), live(3, 1)], { matchAnswers: [answer(), held(answer({ lines: ['OLD'] })), held(answer({ lines: ['NEW'] }))] })
+    await w.command('match')
+    const pane = await w.mountPane()
+    await w.clock.advance(15_000) // a re-read, held
+    const reopened = w.command('match')
+    await w.clock.advance(1)
+    await w.release() // the old read answers: the reopen's read starts, held
+    await w.clock.advance(1)
+    expect(await texts(pane)).toEqual([...ROWS, '', A, D])
+    await w.release()
+    await reopened
+    expect(await texts(pane)).toEqual(['NEW', '', A, D])
+  })
+})
+
 describe('kickoff, past and future', () => {
   test('a kickoff read still SCHEDULED while the band follows another competition: re-read every 2 minutes', { timeoutMs: 20_000 }, async ($, on) => {
     const kickoff = new Date(NOW + 10 * 60_000).toISOString()

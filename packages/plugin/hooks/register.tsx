@@ -791,7 +791,8 @@ async function armPane($: EngineInterface, b: Binding, v: NonNullable<ClaudinhoP
   const at = v.kickoff === null ? Number.NaN : Date.parse(v.kickoff)
   const now = await $.clock.now()
   if (bound !== b) return
-  if (!failed && !inPlay && Number.isFinite(at) && at > now) {
+  // A failed read carries no kickoff of its own (its kickoff is the last answer's), so a kickoff ahead decides alone.
+  if (!inPlay && Number.isFinite(at) && at > now) {
     stopPaneTimers()
     kickoffTimer = $.clock.after(Math.min(at - now, TIMER_MAX_MS), () => {
       kickoffTimer = null
