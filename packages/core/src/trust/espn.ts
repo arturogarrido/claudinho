@@ -31,7 +31,6 @@ import type { Match, MatchEvent, Stage, Status, Team } from '../types';
 import { type BoundedList, takeBounded } from './bounded';
 import { definitiveNone, malformed, type ParseResult, valid } from './result';
 import {
-  MAX_ADDED_MINUTES,
   MAX_GOALS,
   MAX_MATCH_EVENTS,
   MAX_MINUTE,
@@ -270,18 +269,14 @@ function detailMinute(clock: unknown): { minute: number; added?: number } | unde
   if (!clock || typeof clock !== 'object') return undefined;
   const dv = (clock as { displayValue?: unknown }).displayValue;
   if (typeof dv !== 'string') return undefined;
+  // The numbers as read (at most 999 and 99 by the grammars): the minute's
+  // bound (0 to 200) and the added time's (1 to 30) are `sealEvent`'s, the one
+  // constructor, shared with the cache path, which refuses the event outside them.
   const plain = DETAIL_MINUTE.exec(dv);
-  if (plain) {
-    const minute = count(Number(plain[1]), MAX_MINUTE);
-    return minute === undefined ? undefined : { minute };
-  }
+  if (plain) return { minute: Number(plain[1]) };
   const extra = DETAIL_MINUTE_ADDED.exec(dv);
   if (!extra) return undefined;
-  const minute = count(Number(extra[1]), MAX_MINUTE);
-  const added = count(Number(extra[2]), MAX_ADDED_MINUTES);
-  // Added time 0 is refused once, by `sealEvent` (the one constructor, shared with the cache path).
-  if (minute === undefined || added === undefined) return undefined;
-  return { minute, added };
+  return { minute: Number(extra[1]), added: Number(extra[2]) };
 }
 
 /** The raw ESPN id of an object's `team`, in the provider's id grammar, or nothing. */
@@ -308,7 +303,8 @@ interface DetailSides {
  * siblings.
  *
  *   - the kind: the six flags (`detailKind`);
- *   - the minute: `clock.displayValue`, `N'` (0 to 200) or `N'+M'` (M 1 to 30);
+ *   - the minute: `clock.displayValue`, `N'` or `N'+M'` (`sealEvent` bounds N
+ *     to 0..200 and M to 1..30);
  *   - the side: the detail's raw `team.id` equal to the home or the away
  *     competitor's raw `team.id` (the side a goal COUNTED for, an own goal
  *     included: measured, scoring details sum to each side's score in 91 of

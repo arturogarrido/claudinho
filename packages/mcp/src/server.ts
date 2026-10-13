@@ -124,7 +124,7 @@ const langArg = z
   .string()
   .optional()
   .describe(
-    "Locale for dates, list titles, match status and stage words, the empty and outage sentences, provider attribution, and commentary: en, es, pt, fr (the market copy, a few notes and the disclaimer stay English; other locales fall back to en)",
+    "Locale for dates, list titles, match status and stage words, a match timeline's kind words (Goal, Yellow card…), the empty and outage sentences, provider attribution, and commentary: en, es, pt, fr (the market copy, a few notes and the disclaimer stay English; other locales fall back to en)",
   );
 
 // Shared optional args every competition-answering tool accepts (all but get_team).
@@ -149,6 +149,21 @@ const teamRef = z
   .partial()
   .passthrough();
 const scorePair = z.object({ home: z.number(), away: z.number() }).partial().passthrough();
+// One of a match's goals or cards as the provider listed it (core `MatchEvent`):
+// `side` is the side it counted for or was shown to, `teamCode` that side's
+// label, `added` the added time past `minute`. DECLARED: an agent is told the
+// timeline's shape (the list is what could be read, never every goal).
+const matchEventOut = z
+  .object({
+    type: z.string(),
+    minute: z.number(),
+    added: z.number(),
+    side: z.string(),
+    teamCode: z.string(),
+    player: z.string(),
+  })
+  .partial()
+  .passthrough();
 const matchOut = z
   .object({
     id: z.string(),
@@ -165,6 +180,9 @@ const matchOut = z
     shootout: scorePair.optional(),
     status: z.string().optional(),
     minute: z.number().nullable().optional(),
+    // The goals and cards that could be read, in time order; absent when none
+    // (a match with no score has none).
+    events: z.array(matchEventOut).optional(),
     winnerCode: z.string().optional(),
   })
   .passthrough();
@@ -851,7 +869,7 @@ export function buildServer(): McpServer {
     {
       title: 'Match detail',
       description:
-        "One match by its id, with live score/minute overlaid when it's in play. Off the World Cup the id is looked for from yesterday to 14 days ahead: window names the provider days searched when it was not there (not found in that span, not \"no such match\"), and degraded with a match means its state could not be refreshed. Optional prediction-market enrichment carries marketComplete; false means the read was incomplete, not that no signal exists. Get the id from get_today or get_live; to find a team's match without an id, use get_next_fixture. tz/lang/flavor affect formatting.",
+        "One match by its id, with live score/minute overlaid when it's in play, and, for a match in play or finished, the provider's goals and cards it could read (minute, kind, side, the player when named; match.events in data), never a claim that the list is every goal. Off the World Cup the id is looked for from yesterday to 14 days ahead: window names the provider days searched when it was not there (not found in that span, not \"no such match\"), and degraded with a match means its state could not be refreshed. Optional prediction-market enrichment carries marketComplete; false means the read was incomplete, not that no signal exists. Get the id from get_today or get_live; to find a team's match without an id, use get_next_fixture. tz/lang/flavor affect formatting.",
       inputSchema: { id: z.string().describe('Match id'), ...commonArgs },
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: matchDetailOut,

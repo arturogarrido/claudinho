@@ -1574,6 +1574,13 @@ function matchAnswerRows(
   // as on a match line, else the match's own phrase.
   const flair = matchFlair(match, flairOpts(cfg));
   if (flair.text) body.push('  ' + (flair.rally ? c.green(flair.text) : c.cyan(flair.text)));
+  // The market block before the timeline, as MCP `get_match` orders them: the
+  // block ends with its attribution and caveat, and the timeline is the detail
+  // a cut may drop.
+  if (market.signal) {
+    body.push('');
+    for (const mline of marketBlock(market.signal, match)) body.push('  ' + c.dim(mline));
+  }
   // The goals and cards the provider listed (core `timelineRows`, the rows MCP
   // `get_match` prints too); none, no rows and no sentence.
   const timeline = timelineRows(match, { lang: cfg.lang, flags: flagsEnabled() });
@@ -1581,10 +1588,7 @@ function matchAnswerRows(
     body.push('');
     body.push(...timeline);
   }
-  if (market.signal) {
-    body.push('');
-    for (const mline of marketBlock(market.signal, match)) body.push('  ' + c.dim(mline));
-  }
+  // A note, so after the body (an uncut CLI text keeps its notes there).
   if (!market.complete) {
     body.push('');
     body.push(c.dim('  Market data unavailable or incomplete — this match could not be checked.'));
