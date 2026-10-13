@@ -63,13 +63,13 @@ const texts = async (pane: Mounted) => (await pane.findAll({ type: 'Text' })).ma
 const SURFACES = ['terminal', 'desktop'] as const
 
 describe('opening it', () => {
-  test('/claudinho match on a live match: ambient, then match <id> --json --competition <slug>; the pane opens; the reply is the bare reply', async ($, on) => {
+  test('/claudinho match on a live match: ambient, then match <id> --json (the CLI resolves the person\'s own choice); the pane opens; the reply is the bare reply', async ($, on) => {
     const w = await world($, on, [live(2, 1)], { matchAnswers: [answer()] })
     const r = await w.command('match')
     expect(r.text).toBe(withD(LINE))
     expect(w.argvs.slice(1)).toEqual([
       ['claudinho', 'ambient', '--json'],
-      ['claudinho', 'match', ID, '--json', '--competition', 'eng.1'],
+      ['claudinho', 'match', ID, '--json'],
     ])
     expect(w.opens).toEqual([{ id: 'match', title: 'claudinho' }])
   })
@@ -86,7 +86,7 @@ describe('opening it', () => {
   test('nothing live: the next fixture is bound', async ($, on) => {
     const w = await world($, on, [upcoming()], { matchAnswers: [scheduled(new Date(NOW + 10 * 60_000).toISOString())] })
     await w.command('match')
-    expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json', '--competition', 'eng.1']])
+    expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json']])
     expect(w.opens).toHaveLength(1)
   })
 
@@ -280,7 +280,7 @@ describe('re-reading it while open', () => {
     expect(w.matchRuns()).toHaveLength(1)
     await w.clock.advance(3_000)
     expect(w.matchRuns()).toHaveLength(2)
-    expect(w.matchRuns()[1]).toEqual(['claudinho', 'match', ID, '--json', '--competition', 'eng.1'])
+    expect(w.matchRuns()[1]).toEqual(['claudinho', 'match', ID, '--json'])
   })
 
   test('in play: a re-read every 2 minutes with no other trigger', { timeoutMs: 20_000 }, async ($, on) => {
@@ -346,6 +346,133 @@ describe('re-reading it while open', () => {
     await w.release()
     await w.clock.advance(1)
     expect(w.matchRuns()).toHaveLength(3)
+  })
+})
+
+describe('the competition the pane is bound to', () => {
+  const laligaAnswer = answer({ lines: ['Barcelona 1–0 Real Madrid'], competition: { slug: 'esp.1', alias: 'laliga', name: 'LALIGA', chosenBy: 'saved' } })
+  test('an answer of another competition (the person followed another since) is never drawn: one re-run pinned with --competition', async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [laligaAnswer, answer()] })
+    await w.command('match')
+    expect(w.matchRuns()).toEqual([
+      ['claudinho', 'match', ID, '--json'],
+      ['claudinho', 'match', ID, '--json', '--competition', 'eng.1'],
+    ])
+    expect(await texts(await w.mountPane())).toEqual([...ROWS, '', A, D])
+  })
+  test('once pinned, every later read passes --competition directly: one spawn per read', { timeoutMs: 20_000 }, async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [laligaAnswer, answer(), answer()] })
+    await w.command('match')
+    await w.clock.advance(121_000)
+    expect(w.matchRuns()).toHaveLength(3)
+    expect(w.matchRuns()[2]).toEqual(['claudinho', 'match', ID, '--json', '--competition', 'eng.1'])
+  })
+  test('nothing chosen now (the CLI\'s first-run object, exit 1) is a mismatch too: one re-run pinned', async ($, on) => {
+    const none = { stdout: JSON.stringify({ competition: null, noCompetition: true }), exitCode: 1 }
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [none, answer()] })
+    await w.command('match')
+    expect(w.matchRuns()[1]).toEqual(['claudinho', 'match', ID, '--json', '--competition', 'eng.1'])
+    expect(await texts(await w.mountPane())).toEqual([...ROWS, '', A, D])
+  })
+  test('an answer naming no competition is no mismatch: drawn as it is, no second run', async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [answer({ competition: undefined })] })
+    await w.command('match')
+    expect(w.matchRuns()).toHaveLength(1)
+    expect(await texts(await w.mountPane())).toEqual([...ROWS, '', A, D])
+  })
+})
+
+describe('one read at a time, the open included', () => {
+  test('a reopen while a re-read is in flight waits for it: never two match runs at once; the reopen\'s answer drawn', { timeoutMs: 20_000 }, async ($, on) => {
+    const w = await world($, on, [live(2, 1), live(2, 1), live(3, 1), live(3, 1)], { matchAnswers: [answer(), held(answer({ lines: ['OLD'] })), answer({ lines: ['NEW'] })] })
+    await w.command('match')
+    await w.clock.advance(15_000) // a re-read, held
+    const reopened = w.command('match')
+    await w.clock.advance(1)
+    expect(w.matchRuns()).toHaveLength(2) // the reopen waits
+    await w.release()
+    await reopened
+    expect(w.matchRuns()).toHaveLength(3)
+    await w.clock.advance(1)
+    expect(w.matchRuns()).toHaveLength(3) // no kept re-read fired beside it
+    expect(await texts(await w.mountPane())).toEqual(['NEW', '', A, D])
+  })
+})
+
+describe('kickoff, past and future', () => {
+  test('a kickoff read still SCHEDULED while the band follows another competition: re-read every 2 minutes', { timeoutMs: 20_000 }, async ($, on) => {
+    const kickoff = new Date(NOW + 10 * 60_000).toISOString()
+    const laliga = view('BAR vs RMA in 2d', { current: true, staleAfter: STALE_AFTER, competition: { slug: 'esp.1', alias: 'laliga', name: 'LALIGA', chosenBy: 'saved' } })
+    const w = await world($, on, [upcoming(kickoff), upcoming(kickoff), laliga], { matchAnswers: [scheduled(kickoff), scheduled(kickoff), answer()] })
+    await w.command('match')
+    await w.clock.advance(10 * 60_000 + 1_000) // the kickoff read: still SCHEDULED
+    expect(w.matchRuns()).toHaveLength(2)
+    await w.clock.advance(120_000)
+    expect(w.matchRuns()).toHaveLength(3)
+  })
+  test('opened on a SCHEDULED match whose kickoff has passed: re-read every 2 minutes', { timeoutMs: 20_000 }, async ($, on) => {
+    const past = new Date(NOW - 60_000).toISOString()
+    const w = await world($, on, [upcoming(past)], { matchAnswers: [scheduled(past), answer()] })
+    await w.command('match')
+    await w.clock.advance(121_000)
+    expect(w.matchRuns()).toHaveLength(2)
+  })
+  test('a degraded SCHEDULED answer with a kickoff tomorrow: no read before kickoff', { timeoutMs: 20_000 }, async ($, on) => {
+    const tomorrow = new Date(NOW + 24 * 3600_000).toISOString()
+    const degraded = answer({ degraded: true, lines: ['Arsenal vs Chelsea'] }, { status: 'SCHEDULED', kickoff: tomorrow, score: undefined })
+    const w = await world($, on, [upcoming(tomorrow)], { matchAnswers: [degraded] })
+    await w.command('match')
+    await w.clock.advance(5 * 60_000)
+    expect(w.matchRuns()).toHaveLength(1)
+  })
+  test('after a failed first read, a SCHEDULED answer with a future kickoff stops the 2-minute re-read', { timeoutMs: 20_000 }, async ($, on) => {
+    const kickoff = new Date(NOW + 60 * 60_000).toISOString()
+    const w = await world($, on, [upcoming(kickoff)], { matchAnswers: [new Error('timeout'), scheduled(kickoff)] })
+    await w.command('match')
+    await w.clock.advance(121_000) // the failed read's re-read: SCHEDULED, kickoff ahead
+    expect(w.matchRuns()).toHaveLength(2)
+    await w.clock.advance(240_000)
+    expect(w.matchRuns()).toHaveLength(2)
+  })
+})
+
+describe('the rules the first mutation pass left unpinned', () => {
+  test('a failed re-read after a failed first read: "The CLI gave no answer." alone, no refresh-failed row', { timeoutMs: 20_000 }, async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [new Error('timeout'), new Error('timeout')] })
+    await w.command('match')
+    await w.clock.advance(121_000)
+    expect(w.matchRuns()).toHaveLength(2)
+    expect(await texts(await w.mountPane())).toEqual([FAILED])
+  })
+  test('a blank line of the CLI is drawn as a Text holding one space (an empty Text draws no row)', async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [answer()] })
+    await w.command('match')
+    const els = await (await w.mountPane()).findAll({ type: 'Text' })
+    expect(els[ROWS.indexOf('')]?.text).toBe(' ')
+  })
+  test('a line cut at 600 never ends in half a surrogate pair', async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [answer({ lines: [`${'x'.repeat(599)}\u{1F600}tail`] })] })
+    await w.command('match')
+    expect((await texts(await w.mountPane()))[0]).toBe('x'.repeat(599))
+  })
+  test('an answer with no match (the window sentence): re-read every 2 minutes', { timeoutMs: 20_000 }, async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [answer({ match: null, lines: ['  Premier League', '  Not found between 2026-10-12 and 2026-10-27.'] })] })
+    await w.command('match')
+    await w.clock.advance(121_000)
+    expect(w.matchRuns()).toHaveLength(2)
+  })
+  test('a tally that disappears from the bound record is not news', async ($, on) => {
+    const noScore = view(LINE, { current: true, staleAfter: STALE_AFTER, live: { items: [{ id: ID, line: 'Arsenal v Chelsea' }], total: 1, shown: 1, truncated: false, complete: true } })
+    const w = await world($, on, [live(2, 1), live(2, 1), noScore], { matchAnswers: [answer()] })
+    await w.command('match')
+    await w.clock.advance(15_000)
+    expect(w.matchRuns()).toHaveLength(1)
+  })
+  test('a status the plugin does not know keeps the 2-minute re-read', { timeoutMs: 20_000 }, async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [answer({}, { status: 'ABANDONED' })] })
+    await w.command('match')
+    await w.clock.advance(121_000)
+    expect(w.matchRuns()).toHaveLength(2)
   })
 })
 
