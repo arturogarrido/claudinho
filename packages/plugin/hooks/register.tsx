@@ -55,23 +55,24 @@ import type {
  *
  * The match pane: `/claudinho match` binds, from the command's own reading, a view's competition (its slug) and the
  * first record of its live list (the CLI lists the pick first), else its `next`; nothing to bind, no read and no pane.
- * It then runs `claudinho match <id> --json` once (5 s, the whole stdout ONE JSON value), writes the pane's value under
- * a new generation (`paneGen`), and opens the pane `match` inside the hook (an asked open, placed at any width); the
- * reply is the bare one. A match run names no competition, so the CLI resolves the person's own choice (its mode row
- * says where it came from); an answer of another competition, or the first-run object (nothing chosen now), is never
- * used: the binding is pinned for good and the read is made once more with `--competition <slug>`. The pane draws the
- * CLI's `lines` verbatim (at most 150, each cut at 600 characters, each wrapped), a blank row, then the `attribution`
- * and the `disclaimer` dimmed (each at 1,000), or one fixed sentence: a first read that failed, or an answer with no
- * `lines` (a CLI before them). While open it re-reads the bound match: on a band run's CURRENT view of the bound
- * competition that shows its score or shootout tally changed from the band's previous observation (seeded by the open's
- * reading; consumed once), or lists it newly (kickoff) or no more (full time); at its kickoff alone while the last
- * answer is not in play and its kickoff is ahead (degraded or not); every 2 minutes otherwise: in play (`LIVE`, `HT`),
- * failed, no match, a kickoff passed or unreadable. One read in flight at most, the open's included (it waits for the
- * read in flight, whose answer its new binding fences off; a trigger during either is kept once); a read writes only
- * under its generation; a failed re-read keeps the rows under a fixed row; none after a final answer (`FT`,
- * `POSTPONED`, `CANCELLED`) or once closed. The close (`ui.close` for `match`) moves the generation on and drops the
- * value, the binding and the timers. The binding and the timers are this module load's: after a reload the pane stays
- * drawn from its value and is re-read again from the next `/claudinho match`.
+ * It writes the pane's value under a new generation (`paneGen`), first a provisional one (the view's line and footer),
+ * and opens the pane `match` at once inside the hook (an open is the person's only within about 15 s of the command,
+ * measured); then it runs `claudinho match <id> --json` once (5 s, the whole stdout ONE JSON value), whose answer
+ * replaces the provisional value; the reply is the bare one. A match run names no competition, so the CLI resolves the
+ * person's own choice (its mode row says where it came from); an answer of another competition, or the first-run object
+ * (nothing chosen now), is never used: the binding is pinned for good and the read is made once more with
+ * `--competition <slug>`. The pane draws the CLI's `lines` verbatim (at most 150, each cut at 600 characters, each
+ * wrapped), a blank row, then the `attribution` and the `disclaimer` dimmed (each at 1,000), or one fixed sentence: a
+ * first read that failed, or an answer with no `lines` (a CLI before them). While open it re-reads the bound match: on
+ * a band run's CURRENT view of the bound competition that shows its score or shootout tally changed from the band's
+ * previous observation (seeded by the open's reading; consumed once), or lists it newly (kickoff) or no more (full
+ * time); at its kickoff alone while the last answer is not in play and its kickoff is ahead (degraded or not); every 2
+ * minutes otherwise: in play (`LIVE`, `HT`), failed, no match, a kickoff passed or unreadable. One read in flight at
+ * most, the open's included (it waits for the read in flight, whose answer its new binding fences off; a trigger during
+ * either is kept once); a read writes only under its generation; a failed re-read keeps the rows under a fixed row;
+ * none after a final answer (`FT`, `POSTPONED`, `CANCELLED`) or once closed. The close (`ui.close` for `match`) moves
+ * the generation on and drops the value, the binding and the timers. The binding and the timers are this module load's:
+ * after a reload the pane stays drawn from its value and is re-read again from the next `/claudinho match`.
  *
  * The goal celebration: when a run's toasts include a GOAL (a regulation or shootout tally that rose, none that fell),
  * the band plays 6 frames over 3 seconds above its line (a ball crossing a row, a "GOAL" banner growing, then the
@@ -857,8 +858,9 @@ function reread($: EngineInterface): void {
 }
 
 /**
- * `/claudinho match`: binds the match of the command's reading, reads it once, writes the pane's value under a new
- * generation, opens the pane (inside the command's hook: an asked open, placed at any width), then arms the re-reads.
+ * `/claudinho match`: binds the match of the command's reading under a new generation, writes the provisional value
+ * (the view's line and footer) and opens the pane at once (inside the command's hook: an asked open, placed at any
+ * width), then waits its turn, reads the match once, replaces the value with the answer and arms the re-reads.
  * Nothing to bind: no read, no pane. Never rejects.
  */
 async function openPane($: EngineInterface, reading: Reading, env: { PATH: string } | undefined): Promise<void> {
@@ -879,11 +881,45 @@ async function openPane($: EngineInterface, reading: Reading, env: { PATH: strin
     ...(target.score ? { score: target.score } : {}),
     ...(target.shootout ? { shootout: target.shootout } : {}),
   }
-  // The open counts as a read in flight from before it waits for the read already in flight (whose answer, its binding
-  // replaced, writes nothing) until its own re-reads are armed: a trigger meanwhile is kept, made after.
+  // The open counts as a read in flight from now until its own re-reads are armed: the read already in flight (whose
+  // answer, its binding replaced, writes nothing) ending meanwhile fires no kept re-read beside the open's own.
   paneReads += 1
   try {
-    // An open a later open superseded while it waited makes no run.
+    // The pane opens at once, inside the command's hook (an open is the person's only within about 15 s of the
+    // command, measured), showing the band's line and the view's footer until the CLI's rows land.
+    const view = reading.answered ? reading.view : null
+    const attribution = view === null ? null : relayed(view.attribution)
+    const disclaimer = view === null ? null : relayed(view.disclaimer)
+    const provisional: NonNullable<ClaudinhoPane> = {
+      gen,
+      slug: b.slug,
+      id: b.id,
+      kind: 'rows',
+      lines: view === null ? [] : [cut(view.line, PANE_LINE_CHARS)],
+      ...(attribution !== null ? { attribution: cut(attribution, PANE_FOOTER_CHARS) } : {}),
+      ...(disclaimer !== null ? { disclaimer: cut(disclaimer, PANE_FOOTER_CHARS) } : {}),
+      refreshFailed: false,
+      status: null,
+      kickoff: null,
+      final: false,
+    }
+    let shown = false
+    await update($, pane, (cur) => {
+      shown = bound === b
+      return shown ? provisional : cur
+    })
+    if (!shown || bound !== b) return
+    try {
+      await $.ui.open({ id: PANE_ID, title: PANE_TITLE })
+    } catch {
+      // The open was refused: nothing shows it, so nothing reads it.
+      if (bound === b) {
+        bound = null
+        stopPaneTimers()
+      }
+      return
+    }
+    // Then its turn and its read; an open a later open superseded while it waited makes no run.
     const answer = await inTurn(async () => (bound === b ? runMatch($, b, env) : null))
     if (answer === null || bound !== b) return
     const v: NonNullable<ClaudinhoPane> = { gen, slug: b.slug, id: b.id, refreshFailed: false, ...answer }
@@ -894,16 +930,6 @@ async function openPane($: EngineInterface, reading: Reading, env: { PATH: strin
     })
     if (!wrote || bound !== b) return
     b.final = v.final
-    try {
-      await $.ui.open({ id: PANE_ID, title: PANE_TITLE })
-    } catch {
-      // The open was refused: nothing shows it, so nothing re-reads it.
-      if (bound === b) {
-        bound = null
-        stopPaneTimers()
-      }
-      return
-    }
     await armPane($, b, v)
   } finally {
     paneReadEnded($)

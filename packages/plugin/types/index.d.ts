@@ -78,8 +78,10 @@ export type ClaudinhoPaneGen = number
  * answer), the CLI's rows (at most 150, each cut at 600 characters) and its `attribution` and `disclaimer` (each a
  * non-empty string cut at 1,000 characters, else absent), whether the last re-read failed (the rows kept from the read
  * before it), and the fields the re-reads decide by: the answered match's `status` and `kickoff` (null with no match),
- * and whether that status is final (`FT`, `POSTPONED`, `CANCELLED`). Its writers: the open (a new generation), a
- * re-read only while its generation is the binding's (a failed one keeps the rows and sets `refreshFailed`), and the
+ * and whether that status is final (`FT`, `POSTPONED`, `CANCELLED`). Its writers: the open, twice under its new
+ * generation (first a provisional value before its read, `rows` holding the view's line and its footer, with no status
+ * or kickoff; then its read's answer, while its binding is still the module's), a re-read only while its generation is
+ * the binding's (a failed one keeps the rows and sets `refreshFailed`), and the
  * `ui.close` hook, which nulls it. Null before the first open and after a close.
  */
 export type ClaudinhoPane = {

@@ -158,6 +158,11 @@ provider lists, each row as the CLI wrote it and wrapped to the pane's width (ne
 the provider's attribution and the CLI's non-affiliation sentence, dimmed. Claude Code scrolls it (the arrows with the
 pane focused; the wheel in the desktop app). It has no button. Close it with its close mark (or ctrl+x x).
 
+It opens at once, showing the band's line (with the same attribution and sentence under it) until the CLI's rows
+land, which can take a few seconds on a slow network; a first read that fails then says `The CLI gave no answer.`
+(Claude Code places a pane the person asked for only within about 15 seconds of the command, so the pane does not
+wait for the read to open.)
+
 - **Which match.** The command's own `claudinho ambient --json` run decides: the first match of its live list (the CLI
   lists your pinned team's match first), else its next fixture, in the competition that answer names. The pane stays on
   that match and that competition. Its reads name no competition, so the CLI resolves your own choice and the pane's
@@ -168,15 +173,15 @@ pane focused; the wheel in the desktop app). It has no button. Close it with its
   edition over, nothing live and no next fixture, no answer) no pane opens. The command's reply is the bare `/claudinho`
   reply either way. Typed again while the pane is open, it binds the same pane afresh.
 - **When it reads again.** While open, the pane runs `claudinho match <id> --json` again when a band run sees that
-  match's score (or its shootout tally) change, when the match enters the band's live list (kickoff) or leaves it
-  (full time), and on a clock: while the last answer is not in play and its kickoff is ahead, once at the kickoff and
-  not before (a degraded answer too); otherwise every two minutes: in play (live or half-time), after a read that
-  failed, with no match, or once the kickoff has passed (a match still marked scheduled after its kickoff is read
-  every two minutes until it starts, or until you close the pane, as a match stuck in play is). Never two reads at
-  once, `/claudinho match` included: typed while a read is running, it waits for that read (up to its five seconds,
-  so the reply can take that much longer), whose answer is then not shown, and a reason to read during either is kept
-  and read after. After a final answer (full time, postponed, cancelled) it reads no more, and none once closed: a read
-  still running when you close it changes nothing.
+  match's score (or its shootout tally) change, when the match enters the band's live list (kickoff) or leaves it (full
+  time), and on a clock: while the last answer is not in play and its kickoff is ahead, once at the kickoff and not
+  before (a degraded answer too); otherwise every two minutes: in play (live or half-time), after a read that failed,
+  with no match, or once the kickoff has passed (a match still marked scheduled after its kickoff is read every two
+  minutes until it starts, or until you close the pane, as a match stuck in play is). Never two reads at once,
+  `/claudinho match` included: typed while a read is running, the pane shows the band's line at once and its own read
+  waits for that one (up to its five seconds, so the reply can take that much longer), whose answer is then not shown,
+  and a reason to read during either is kept and read after. After a final answer (full time, postponed, cancelled) it
+  reads no more, and none once closed: a read still running when you close it changes nothing.
 - **Three fixed sentences.** A read that fails (the CLI not found, a non-zero exit, past five seconds, a cut or
   unreadable answer) on opening shows `The CLI gave no answer.`; a later read that fails keeps the last rows under
   `Could not refresh: showing the last reading.` until a read answers; a CLI that answers without the rows shows
