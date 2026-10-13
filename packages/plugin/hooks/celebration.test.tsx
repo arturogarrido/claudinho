@@ -303,6 +303,20 @@ describe('a waiting celebration whose news changed', () => {
     expect(await rows(w)).toEqual([bandLine(1, 0)])
   })
 
+  test('the celebrated goal corrected away mid-play: the celebration stops at once and asks for no more redraws', async ($, on) => {
+    const w = await world($, on, [before, goal, before, before])
+    await w.turnStart()
+    await seeGoal(w) // 2-0, held
+    await w.clock.advance(13_800)
+    await w.turnEnd() // plays from 14 s
+    expect((await rows(w))[1]).toBe('G')
+    await w.clock.advance(1_200) // the run at 15 s: 1-0, the goal corrected away
+    expect(await rows(w)).toEqual([bandLine(1, 0)])
+    const after = w.invalidates.length
+    await w.clock.advance(2_000)
+    expect(w.invalidates.length).toBe(after)
+  })
+
   test("another match's correction leaves the waiting celebration", async ($, on) => {
     const other = (b: number) => match('2', [b, 0], { home: { code: 'LIV', name: 'Liverpool', id: 'espn:364' }, line: `Liverpool ${b}–0 Chelsea (60')` })
     const v = (a: number, b: number) => live([match('1', [a, 0]), other(b)], bandLine(a, 0))
