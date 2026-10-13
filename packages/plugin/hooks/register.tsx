@@ -51,9 +51,9 @@ import type {
  * The goal celebration: when a run's toasts include a GOAL (a regulation or shootout tally that rose, none that fell),
  * the band plays 6 frames over 3 seconds above its line (a ball crossing a row, a "GOAL" banner growing, then the
  * toast's own line), in at most min(3, maxRows - 2) rows, then goes back to its one line. Its record (`celebration`:
- * the last goal's toast line, when the run decided it, its match's id and that match's tallies the goal was decided
- * on) is written by the run and the clear alone: in a run, a current view of another competition nulls it, then its
- * match's score changing from the record's own in any later current view (a correction, or a later goal the plugin did
+ * the last goal's toast line, when the run decided it, its competition, its match's id and that match's tallies the
+ * goal was decided on) is written by the run and the clear alone: in a run, any answer naming another competition, or
+ * none, current or not (a view, or the first-run object), nulls it, then its match's score changing from the record's own in any later current view (a correction, or a later goal the plugin did
  * not see as one; by the record's id, whatever the `toasts` filter) nulls it, then the run's last goal replaces it
  * under the band's clear generation; the existing clear nulls it. Every null also stops the redraws. A record another module
  * load wrote is never played (its `at` is not this load's), so a reload drops a waiting or playing celebration (the
@@ -600,23 +600,31 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   }
   // The reading's facts (`readAnswer`): an object that is no view is hidden, never current (the context cleared, the
   // baseline kept, nothing toasted); an idle answer is read slowly.
-  const { view, isView, idle, hidden } = reading
+  const { view, firstRun, isView, idle, hidden } = reading
   if (clears === c) await update($, pace, () => ({ ranAt: now, idle }))
   await update($, band, (cur) => (clears === c ? (hidden ? null : { text: view.line }) : cur))
+
+  // The celebration's competition, first: a view (current or not) or the first-run object naming another competition
+  // than the record's, or none (the first run's is ''), drops it and stops the redraws. The fallback object names no
+  // competition and leaves it (the 60 s bound ends it); a failed run returned above.
+  if (isView || firstRun) {
+    const rec = await read($, celebration)
+    if (rec !== null && slugOf(view) !== rec.slug) {
+      stopTicker()
+      await update($, celebration, (cur) => (cur !== null && cur.at === rec.at ? null : cur))
+    }
+  }
 
   // The two shapes that are no view are no current view either: each clears the context and keeps the baseline.
   if (isView && view.current === true) {
     const prev = await read($, baseline)
     for (const text of toastsFor(view, prev, option)) $.ui.toast(text)
     const goals = celebrateOn ? goalsFor(view, prev, option) : []
-    // What this view says of the celebration's match: another competition (against the baseline it replaces) drops
-    // the record; its match's score differing from the one the goal was decided on drops it (playing or waiting).
-    // Each null stops the redraws too; a goal this run decided is written after.
+    // What this view says of the celebration's match (its competition was asked above): its score differing from the
+    // one the goal was decided on drops it (playing or waiting). The null stops the redraws too; a goal this run
+    // decided is written after.
     const rec = await read($, celebration)
-    if (rec !== null && prev !== null && prev.slug !== slugOf(view)) {
-      stopTicker()
-      await update($, celebration, () => null)
-    } else if (rec !== null && differsFromRecord(view, rec)) {
+    if (rec !== null && differsFromRecord(view, rec)) {
       stopTicker()
       await update($, celebration, (cur) => (cur !== null && cur.at === rec.at ? null : cur))
     }
@@ -633,6 +641,7 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
           ? {
               text: goal.text,
               at,
+              slug: slugOf(view),
               id: goal.id,
               ...(goal.score ? { score: goal.score } : {}),
               ...(goal.shootout ? { shootout: goal.shootout } : {}),

@@ -43,9 +43,11 @@ export type ClaudinhoContext = { context: string | null; staleAfter: string | nu
 
 /**
  * The goal celebration's record: the last goal's toast line (`⚽` and the CLI's record line), when the run that saw it
- * decided it (the clock's milliseconds), the match's id, and that match's regulation and shootout tallies in the view
- * the goal was decided on (each when present: its own evidence). Its four writers, in a run's order: a current view of
- * another competition nulls it; its match's score changing in any later current view (a tally both carry differing
+ * decided it (the clock's milliseconds), the competition of the view it was decided in (its `competition.slug`, `''`
+ * when it states none), the match's id, and that match's regulation and shootout tallies in the view the goal was
+ * decided on (each when present: its own evidence). Its four writers, in a run's order: any answer naming another
+ * competition, or none, current or not (a view, or the first-run object; the fallback object names none and leaves
+ * it), nulls it; its match's score changing in any later current view (a tally both carry differing
  * from the record's: a correction, or a later goal the plugin did not see as one; by `id`, whatever the `toasts`
  * filter; an absent match or tally is no news) nulls it; the run's last goal writes it (a run a clear superseded writes nothing; never under
  * `celebrate: off`); and the band's clear nulls it. The draw's guard: a record another module load wrote (its `at` not
@@ -55,6 +57,7 @@ export type ClaudinhoContext = { context: string | null; staleAfter: string | nu
 export type ClaudinhoCelebration = {
   text: string
   at: number
+  slug: string
   id: string
   score?: { home: number; away: number }
   shootout?: { home: number; away: number }

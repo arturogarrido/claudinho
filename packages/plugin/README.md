@@ -101,7 +101,7 @@ the line of the last; a goal during a celebration starts it again with the new l
   pauses it too.
 - **What drops it.** A waiting or playing celebration is dropped by its match's score changing in any later current
   view (a correction, or a later goal the plugin did not see as one; the score or the shootout tally, whatever the
-  `toasts` option and whatever views came between, so the band never celebrates a score it no longer shows), by a change of the competition you follow, by the last terminal or desktop window
+  `toasts` option and whatever views came between, so the band never celebrates a score it no longer shows), by a change of the competition you follow (any answer naming another competition, or none, current or not), by the last terminal or desktop window
   closing, by a reload of the plugin (which changing an option makes), and by the 60 seconds above: the toast already
   said it. A change of your pinned team does not drop it, and neither does another match's correction or the match
   leaving the list.
