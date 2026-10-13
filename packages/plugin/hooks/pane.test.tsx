@@ -262,6 +262,15 @@ describe('re-reading it while open', () => {
     expect(w.matchRuns()).toHaveLength(2)
   })
 
+  test('the match entering the live list with no score yet is news: one re-read', async ($, on) => {
+    const kickoff = new Date(NOW + 60 * 60_000).toISOString()
+    const listedNoScore = view(LINE, { current: true, staleAfter: STALE_AFTER, live: { items: [{ id: ID, line: 'Arsenal vs Chelsea' }], total: 1, shown: 1, truncated: false, complete: true } })
+    const w = await world($, on, [upcoming(kickoff), upcoming(kickoff), listedNoScore], { matchAnswers: [scheduled(kickoff), answer()] })
+    await w.command('match')
+    await w.clock.advance(15_000)
+    expect(w.matchRuns()).toHaveLength(2)
+  })
+
   test('a scheduled match: no re-read before its kickoff, one at it (whatever the band follows)', { timeoutMs: 20_000 }, async ($, on) => {
     const kickoff = new Date(NOW + 10 * 60_000).toISOString()
     const laliga = view('BAR vs RMA in 2d', { current: true, staleAfter: STALE_AFTER, competition: { slug: 'esp.1', alias: 'laliga', name: 'LALIGA', chosenBy: 'saved' } })

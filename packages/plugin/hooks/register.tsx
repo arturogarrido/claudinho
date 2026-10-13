@@ -775,7 +775,8 @@ function reread($: EngineInterface): void {
   void (async () => {
     const env = await runEnv($)
     const answer = await runMatch($, b, env)
-    if (bound !== b) return
+    // The one check is inside the write, the latest point: a close or a reopen since this read began (the binding
+    // replaced, the generation moved on) writes nothing.
     let written: NonNullable<ClaudinhoPane> | null = null
     await update($, pane, (cur) => {
       if (bound !== b || cur === null || cur.gen !== b.gen) return cur
