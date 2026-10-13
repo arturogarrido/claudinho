@@ -293,6 +293,44 @@ describe('room and the bands beside ours', () => {
   })
 })
 
+describe('a waiting celebration whose news changed', () => {
+  test('the celebrated goal corrected away before it played: nothing plays above the corrected band', async ($, on) => {
+    const w = await world($, on, [before, goal, before, before])
+    await w.turnStart()
+    await seeGoal(w) // 2-0, held
+    await w.clock.advance(15_000) // 1-0: the goal corrected away
+    await w.turnEnd()
+    expect(await rows(w)).toEqual([bandLine(1, 0)])
+  })
+
+  test("another match's correction leaves the waiting celebration", async ($, on) => {
+    const other = (b: number) => match('2', [b, 0], { home: { code: 'LIV', name: 'Liverpool', id: 'espn:364' }, line: `Liverpool ${b}–0 Chelsea (60')` })
+    const v = (a: number, b: number) => live([match('1', [a, 0]), other(b)], bandLine(a, 0))
+    const w = await world($, on, [v(1, 1), v(2, 1), v(2, 0), v(2, 0)])
+    await w.turnStart()
+    await seeGoal(w) // match 1 scores
+    await w.clock.advance(15_000) // match 2 corrected
+    await w.turnEnd()
+    expect((await rows(w))[1]).toBe('G')
+  })
+
+  test('the followed competition changed before it played: nothing plays above the new competition\'s band', async ($, on) => {
+    const laliga = view('⚽ BAR 0–0 SEV 10\'', {
+      live: { items: [{ ...match('9', [0, 0]), home: { code: 'BAR', name: 'Barcelona', id: 'espn:83' }, away: { code: 'SEV', name: 'Sevilla', id: 'espn:243' }, line: "Barcelona 0–0 Sevilla (10')" }], total: 1, shown: 1, truncated: false, complete: true },
+      current: true,
+      competition: { slug: 'esp.1', alias: 'laliga', name: 'LALIGA', chosenBy: 'saved' },
+      updatedAt: '2026-10-10T15:00:00.000Z',
+      staleAfter: '2026-10-10T15:05:00.000Z',
+    })
+    const w = await world($, on, [before, goal, laliga, laliga])
+    await w.turnStart()
+    await seeGoal(w) // an Arsenal goal, held
+    await w.clock.advance(15_000) // the next run: LALIGA
+    await w.turnEnd()
+    expect(await rows(w)).toEqual(["⚽ BAR 0–0 SEV 10'"])
+  })
+})
+
 describe('a window closing', () => {
   test('the last window closing during a celebration clears it: reopened, no celebration', async ($, on) => {
     const w = await world($, on, [before, goal, goal, goal])
@@ -343,6 +381,21 @@ describe('the redraws it asks for', () => {
     await w.clock.advance(2_000)
     expect(w.invalidates.length).toBeGreaterThan(atHold)
   })
+
+  for (const [why, props] of [['a survey', { hasSurvey: true }], ['no room', { maxRows: 2 }]] as const) {
+    test(`no redraws asked while ${why} pauses it; asked again once it can play`, async ($, on) => {
+      const w = await world($, on, [before, goal, goal])
+      await seeGoal(w)
+      await rows(w, props)
+      const atPause = w.invalidates.length
+      await w.clock.advance(2_000)
+      await rows(w, props)
+      expect(w.invalidates.length).toBe(atPause)
+      expect((await rows(w))[1]).toBe('G')
+      await w.clock.advance(600)
+      expect(w.invalidates.length).toBeGreaterThan(atPause)
+    })
+  }
 
   test('a turn starting mid-celebration stops the redraws; the turn ending starts them again', async ($, on) => {
     const w = await world($, on, [before, goal, goal])
