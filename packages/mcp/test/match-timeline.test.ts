@@ -84,4 +84,9 @@ describe('get_match: the timeline', () => {
     ]);
     expect(() => z.object(OUTPUT_SCHEMAS.get_match).strict().parse(r.data)).not.toThrow();
   });
+  it('the output schema declares events: an event of the wrong shape is refused', () => {
+    const schema = z.object(OUTPUT_SCHEMAS.get_match);
+    expect(() => schema.parse({ match: { id: '1', events: [{ type: 'GOAL', minute: 9, side: 'home', teamCode: 'NEW' }] } })).not.toThrow();
+    expect(() => schema.parse({ match: { id: '1', events: [{ type: 5, minute: 'nine' }] } })).toThrow();
+  });
 });
