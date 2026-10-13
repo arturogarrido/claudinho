@@ -1,7 +1,14 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoPace, ClaudinhoTally } from '../types'
+import type {
+  ClaudinhoBand,
+  ClaudinhoBaseline,
+  ClaudinhoCelebration,
+  ClaudinhoContext,
+  ClaudinhoPace,
+  ClaudinhoTally,
+} from '../types'
 
 /**
  * The claudinho plugin: the live score or the countdown above the prompt (the band), a toast when a score changes,
@@ -40,12 +47,25 @@ import type { ClaudinhoBand, ClaudinhoBaseline, ClaudinhoContext, ClaudinhoPace,
  * from no view is its sentence alone. Its run is its own: whatever the roster says,
  * it takes no part in the band's guard or pace, reads and writes no `$.state` value, raises no toast and clears
  * nothing; it shares only the kept PATH and nvm's lookup. Text typed after the command is never read.
+ *
+ * The goal celebration: when a run's toasts include a GOAL (a regulation or shootout tally that rose, none that fell),
+ * the band plays 6 frames over 3 seconds above its line (a ball crossing a row, a "GOAL" banner growing, then the
+ * toast's own line), in at most min(3, maxRows - 2) rows, then goes back to its one line. Its record (`celebration`:
+ * the last goal's toast line and when the run decided it) has one writer, the run, under the band's clear generation;
+ * the existing clear, the first forced run of a module load and a run finding it spent or older than 60 seconds null
+ * it, so a reload drops a waiting or playing celebration (the toast already said it). The draw only reads it, and
+ * computes the frame from module values (how much of the 3 s has been on screen), redrawn by a 500 ms ticker that runs
+ * only while there is something to play and no hold: a main-loop turn (`turn.start` to a `turn.complete` with no
+ * `agentId`) or the drawn `isWorking` holds it, and it plays when the hold ends within 60 seconds of the goal. A
+ * paused celebration never resumes after 60 seconds; a stretch on screen finishes its 3 seconds. `celebrate: off` plays
+ * nothing.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
 const pace = atom({ plugin: 'claudinho', key: 'pace' } as const, { ranAt: 0, idle: false } as ClaudinhoPace)
 const baseline = atom({ plugin: 'claudinho', key: 'baseline' } as const, null as ClaudinhoBaseline)
 const lastContext = atom({ plugin: 'claudinho', key: 'context' } as const, null as ClaudinhoContext)
+const celebration = atom({ plugin: 'claudinho', key: 'celebration' } as const, null as ClaudinhoCelebration)
 
 const LIVE_MS = 15_000
 const IDLE_MS = 300_000
@@ -62,6 +82,16 @@ const REPLY_IDLE = 'The edition you follow is over.'
 const CONTEXT_MAX_AGE_MS = 2 * LIVE_MS
 /** The band's width before any draw. */
 const DEFAULT_COLUMNS = 80
+/** A celebration frame's length; six frames are its whole length, after which it is spent. */
+const FRAME_MS = 500
+const FRAMES = 6
+const PLAY_MS = FRAMES * FRAME_MS
+/** A celebration not on screen this long after its goal is dropped (the toast already said it). */
+const CELEBRATION_MAX_AGE_MS = 60_000
+/** The banner, the plugin's one composed word: `G`, `GO`, `GOA`, `GOAL`, `GOAL!`, `GOAL!` frame by frame. */
+const BANNER = 'GOAL!'
+/** The ball's display width (an emoji takes two columns). */
+const BALL_COLUMNS = 2
 
 type ToastsOption = 'pinned' | 'all' | 'off'
 const TOASTS_OPTIONS: readonly ToastsOption[] = ['pinned', 'all', 'off']
@@ -90,6 +120,23 @@ let runEnvKept: { env: { PATH: string } | undefined } | null = null
 let nvmOnce: Promise<string[]> | null = null
 /** nvm's lookup's answer once it has settled. */
 let nvmAnswer: string[] | null = null
+/** Whether the goal celebration plays (`celebrate` is anything but `off`), set at load. */
+let celebrateOn = true
+/** Whether this module load's first forced run has nulled an inherited celebration record yet. */
+let loadNulled = false
+/** A main-loop turn is running: set by `turn.start`, cleared by a `turn.complete` with no `agentId`. */
+let holdTurn = false
+/**
+ * The celebration's playback, kept in the module (a draw may not write state): the record's `at` these values belong
+ * to, how much of its 3 s was on screen before the current stretch, when the current stretch began (null while
+ * paused), and the last draw that played it. A new record resets them; a pause folds the stretch into `playedMs`.
+ */
+let playingAt: number | null = null
+let playedMs = 0
+let playFrom: number | null = null
+let lastPlayedAt = 0
+/** The redraw ticker, running only while a celebration is playable and not held. */
+let ticker: Timer | null = null
 
 /** The two surfaces that raise `AbovePrompt`. */
 const drawsBand = (surface: unknown): boolean => surface === 'terminal' || surface === 'desktop'
@@ -103,8 +150,74 @@ const drawable = async ($: EngineInterface): Promise<boolean> => (await $.sessio
  */
 async function clear($: EngineInterface): Promise<void> {
   clears += 1
+  stopTicker()
   await update($, band, () => null)
   await update($, pace, () => ({ ranAt: 0, idle: false }))
+  await update($, celebration, () => null)
+}
+
+/** How much of the record's 3 s has been on screen at `now` (the stretch in progress included). */
+const playedAt = (now: number): number => playedMs + (playFrom === null ? 0 : Math.max(0, now - playFrom))
+
+/**
+ * Whether a record has anything left to play at `now`: set, its 3 s not all on screen, and either within 60 s of its
+ * goal or in a stretch on screen (which finishes its 3 s). A paused one never resumes after 60 s.
+ */
+const playable = (rec: ClaudinhoCelebration, now: number): boolean =>
+  rec !== null &&
+  rec.at === playingAt &&
+  playedAt(now) < PLAY_MS &&
+  (now - rec.at <= CELEBRATION_MAX_AGE_MS || playFrom !== null)
+
+/** The playback paused at `at`: the stretch on screen folded into `playedMs`. */
+function pausePlayback(at: number): void {
+  if (playFrom === null) return
+  playedMs += Math.max(0, at - playFrom)
+  playFrom = null
+}
+
+function stopTicker(): void {
+  ticker?.cancel()
+  ticker = null
+}
+
+/**
+ * The redraw ticker: every 500 ms a redraw, then stopped once the record has nothing left to play (spent, expired or
+ * gone). No state write per frame.
+ */
+function startTicker($: EngineInterface): void {
+  if (ticker) return
+  ticker = $.clock.every(FRAME_MS, () => {
+    $.ui.invalidate('ui.render')
+    void (async () => {
+      const rec = await read($, celebration)
+      if (!playable(rec, await $.clock.now())) stopTicker()
+    })().catch(() => {
+      // The engine's calls failed: the ticker runs on to its next period.
+    })
+  })
+}
+
+/** After a hold ends: the ticker again when the record is still playable. Never rejects. */
+async function resumeTicker($: EngineInterface): Promise<void> {
+  if (holdTurn) return
+  const rec = await read($, celebration)
+  if (!holdTurn && playable(rec, await $.clock.now())) startTicker($)
+}
+
+/** The ball row of a frame: the ball stepping right across `cols` columns, never past them. */
+function ballRow(frame: number, cols: number): string {
+  const room = Math.max(0, cols - BALL_COLUMNS)
+  return `${' '.repeat(Math.floor((frame * room) / (FRAMES - 1)))}⚽`
+}
+
+/** The celebration's rows for a frame in `rows` rows (1 to 3): the frame table. */
+function celebrationRows(frame: number, rows: number, text: string, cols: number): string[] {
+  const last = frame === FRAMES - 1
+  const banner = BANNER.slice(0, Math.min(frame + 1, BANNER.length))
+  if (rows >= 3) return last ? [ballRow(frame, cols), banner, text] : [ballRow(frame, cols), banner]
+  if (rows === 2) return [ballRow(frame, cols), last ? text : banner]
+  return [last ? text : banner]
 }
 
 /** Whether a run may go on: a band surface is attached; a roster read that rejects is no. */
@@ -337,31 +450,46 @@ function itemsOf(view: View): Item[] {
 const slugOf = (view: View): string =>
   isObject(view.competition) && typeof view.competition.slug === 'string' ? view.competition.slug : ''
 
-/** Two tallies differ. */
-const changed = (a: { home: number; away: number }, b: { home: number; away: number }) => a.home !== b.home || a.away !== b.away
+type Tally = { home: number; away: number }
+
+/** One match whose compared tally changed: its toast text, and whether a side of a compared tally rose or fell. */
+type ScoreChange = { text: string; rose: boolean; fell: boolean }
 
 /**
- * The toasts of a CURRENT view against the last current view's baseline, under the option: ONE toast per match whose
+ * The score changes of a CURRENT view against the last current view's baseline, under the option: one per match whose
  * id was there and whose regulation score or shootout tally changed (a tally compared only when both carry one), its
  * text `⚽` and the record's own line, verbatim (a record with no line says nothing). A new id is the first
  * observation (silent); a competition change rebases with nothing to compare.
  */
-function toastsFor(view: View, prev: ClaudinhoBaseline, option: ToastsOption): string[] {
+function scoreChanges(view: View, prev: ClaudinhoBaseline, option: ToastsOption): ScoreChange[] {
   if (option === 'off' || !prev || prev.slug !== slugOf(view)) return []
   const before = new Map(prev.items.map((t) => [t.id, t]))
-  const texts: string[] = []
+  const changes: ScoreChange[] = []
   for (const m of itemsOf(view)) {
     if (option === 'pinned' && m.pinned !== true) continue
     const was = before.get(m.id)
     if (!was || typeof m.line !== 'string' || m.line === '') continue
+    const pairs: Array<[Tally, Tally]> = []
     const score = tally(m.score)
     const shootout = tally(m.shootout)
-    const regulation = !!(score && was.score && changed(score, was.score))
-    const penalties = !!(shootout && was.shootout && changed(shootout, was.shootout))
-    if (regulation || penalties) texts.push(`⚽ ${m.line}`)
+    if (score && was.score) pairs.push([score, was.score])
+    if (shootout && was.shootout) pairs.push([shootout, was.shootout])
+    const rose = pairs.some(([a, b]) => a.home > b.home || a.away > b.away)
+    const fell = pairs.some(([a, b]) => a.home < b.home || a.away < b.away)
+    if (rose || fell) changes.push({ text: `⚽ ${m.line}`, rose, fell })
   }
-  return texts
+  return changes
 }
+
+/** The toasts: every score change, a correction included. */
+const toastsFor = (view: View, prev: ClaudinhoBaseline, option: ToastsOption): string[] =>
+  scoreChanges(view, prev, option).map((c) => c.text)
+
+/** The goals among the toasts: a change whose compared tallies rose with none that fell (a correction is no goal). */
+const goalsFor = (view: View, prev: ClaudinhoBaseline, option: ToastsOption): string[] =>
+  scoreChanges(view, prev, option)
+    .filter((c) => c.rose && !c.fell)
+    .map((c) => c.text)
 
 /** The baseline a CURRENT view leaves for the next one: its competition and each match's tallies. */
 function baselineOf(view: View): ClaudinhoBaseline {
@@ -397,6 +525,12 @@ function tick($: EngineInterface, option: ToastsOption, force = false): Promise<
 }
 
 async function run($: EngineInterface, option: ToastsOption, force: boolean): Promise<void> {
+  // (0) A module load's first forced run drops a celebration record a previous load left (a reload never shows it).
+  if (force && !loadNulled) {
+    loadNulled = true
+    stopTicker()
+    await update($, celebration, () => null)
+  }
   // (1) No surface that draws the band (none yet, the last one detached, or the roster cannot be read): no process,
   // the band cleared, so a band surface attaching again never shows an old line, and the pace reset, so the next run
   // the roster allows is not held by an idle gap; the baseline and the context are left.
@@ -406,6 +540,12 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   }
   // (2) On a non-idle line the timer is the only pace; the age check is the idle gap's alone.
   const now = await $.clock.now()
+  // A celebration with nothing left to play (spent, or older than 60 s and not on screen) is dropped.
+  const prior = await read($, celebration)
+  if (prior !== null && !playable(prior, now)) {
+    stopTicker()
+    await update($, celebration, (cur) => (cur !== null && cur.at === prior.at ? null : cur))
+  }
   const last = await read($, pace)
   if (!force && last.idle && now - last.ranAt < IDLE_MS) return
   // (3) The PATH, bounded.
@@ -444,7 +584,22 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   if (isView && view.current === true) {
     const prev = await read($, baseline)
     for (const text of toastsFor(view, prev, option)) $.ui.toast(text)
+    const goals = celebrateOn && clears === c ? goalsFor(view, prev, option) : []
     await update($, baseline, () => baselineOf(view))
+    // The celebration of the run's LAST goal, decided now, unless a clear happened since the spawn.
+    const text = goals[goals.length - 1]
+    if (text !== undefined) {
+      const at = await $.clock.now()
+      await update($, celebration, (cur) => (clears === c ? { text, at } : cur))
+      if (clears === c) {
+        playingAt = at
+        playedMs = 0
+        playFrom = holdTurn ? null : at
+        lastPlayedAt = at
+        if (holdTurn) stopTicker()
+        else startTicker($)
+      }
+    }
     await update($, lastContext, () => ({
       context: typeof view.context === 'string' && view.context !== '' ? view.context : null,
       staleAfter: typeof view.staleAfter === 'string' ? view.staleAfter : null,
@@ -479,6 +634,8 @@ export const register: Register = (on, options) => {
   const option: ToastsOption = TOASTS_OPTIONS.includes(options.toasts as ToastsOption)
     ? (options.toasts as ToastsOption)
     : 'pinned'
+  // Only the string `off` turns the celebration off.
+  celebrateOn = options.celebrate !== 'off'
 
   on('session.start', async ($, e, next) => {
     // `/claudinho` in every session, headless included: the person types it. A registration refused leaves the start
@@ -520,20 +677,74 @@ export const register: Register = (on, options) => {
     return r
   })
 
+  on('turn.start', (_$, e, next) => {
+    // A main-loop turn holds the celebration: paused at its last frame drawn, no redraws asked.
+    holdTurn = true
+    pausePlayback(Math.max(lastPlayedAt, playFrom ?? 0))
+    stopTicker()
+    return next(e)
+  })
+
+  on('turn.complete', ($, e, next) => {
+    // Only the main loop's turn ends the hold (a subagent's turn ends with its `agentId`); the ticker again after the
+    // hook returns, when there is still something to play.
+    if (e.agentId === undefined) {
+      holdTurn = false
+      $.clock.after(0, () => {
+        void resumeTicker($).catch(() => {
+          // The engine's calls failed: the next draw starts the ticker.
+        })
+      })
+    }
+    return next(e)
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const width = e.props.bodyColumns
     if (typeof width === 'number' && Number.isInteger(width) && width > 0) columns = width
     const shown = await read($, band)
-    if (e.props.hasSurvey || e.props.maxRows < 1 || shown === null) return next(e)
+    const rec = celebrateOn ? await read($, celebration) : null
+    const now = rec === null ? 0 : await $.clock.now()
+    // (1) A survey holds the band, or there is no room: nothing of ours, as before; the celebration paused.
+    if (e.props.hasSurvey || e.props.maxRows < 1) {
+      pausePlayback(now)
+      return next(e)
+    }
     const { Box, Text } = $.ui.resolve(e)
     // The CLI fitted the line to the width asked, its `+N` suffix reserved; the engine's cut is the backstop. A band
     // beneath ours in the hook chain (a plugin registered after ours, or the engine's own) stays, under our line.
-    return (
-      <Box flexDirection="column">
-        <Text wrap="truncate-end">{shown.text}</Text>
-        {await next(e)}
-      </Box>
-    )
+    const withLine = async (rows: string[]) =>
+      rows.length === 0 && shown === null ? next(e) : (
+        <Box flexDirection="column">
+          {rows.map((row, i) => (
+            <Text key={`row-${i}`} wrap="truncate-end">
+              {row}
+            </Text>
+          ))}
+          {shown === null ? null : <Text wrap="truncate-end">{shown.text}</Text>}
+          {await next(e)}
+        </Box>
+      )
+    // (2) Nothing to play (no record, spent, or older than 60 s and not on screen): the band as before.
+    if (rec === null || !playable(rec, now)) {
+      if (rec !== null) stopTicker()
+      return withLine([])
+    }
+    // (3) Held (a main-loop turn, or the drawn isWorking) or no room for a row: our line alone; the celebration paused.
+    const rows = Math.min(3, e.props.maxRows - 2)
+    const heldNow = holdTurn || e.props.isWorking === true
+    if (heldNow || rows <= 0) {
+      pausePlayback(now)
+      if (heldNow) stopTicker()
+      return withLine([])
+    }
+    // (4) Playing: the frame from the time on screen, then our line (never an old one brought back), then the band
+    // beneath.
+    if (playFrom === null) playFrom = now
+    lastPlayedAt = now
+    if (!ticker) startTicker($)
+    const frame = Math.min(FRAMES - 1, Math.floor(playedAt(now) / FRAME_MS))
+    return withLine(celebrationRows(frame, rows, rec.text, columns))
   })
 
   on('command.run', { command: 'claudinho' }, async ($) => {

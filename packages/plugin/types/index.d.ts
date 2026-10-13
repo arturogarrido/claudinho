@@ -41,6 +41,14 @@ export type ClaudinhoBaseline = { slug: string; items: ClaudinhoTally[] } | null
  */
 export type ClaudinhoContext = { context: string | null; staleAfter: string | null; ranAt: number } | null
 
+/**
+ * The goal celebration's record: the last goal's toast line (`⚽` and the CLI's record line) and when the run that saw
+ * it decided it (the clock's milliseconds). Written by that run alone (a run a clear superseded writes nothing); null
+ * before any goal, after the band's clear, at a module load's first forced run, under `celebrate: off`, and once a run
+ * finds it played or older than 60 seconds. The band's draw reads it; its frames are not state.
+ */
+export type ClaudinhoCelebration = { text: string; at: number } | null
+
 declare module 'claude-code' {
   interface PluginState {
     claudinho: {
@@ -48,6 +56,7 @@ declare module 'claude-code' {
       pace: ClaudinhoPace
       baseline: ClaudinhoBaseline
       context: ClaudinhoContext
+      celebration: ClaudinhoCelebration
     }
   }
 }
