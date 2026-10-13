@@ -750,7 +750,8 @@ function otherCompetition(r: RunResult | undefined, slug: string): boolean {
  */
 async function runMatch($: EngineInterface, b: Binding, env: { PATH: string } | undefined): Promise<MatchRead> {
   let result = await spawnMatch($, b, env)
-  if (!b.pinned && otherCompetition(result, b.slug)) {
+  // Only for a binding still current: a pane closed or reopened while this read ran makes no second run.
+  if (!b.pinned && bound === b && otherCompetition(result, b.slug)) {
     b.pinned = true
     result = await spawnMatch($, b, env)
   }
