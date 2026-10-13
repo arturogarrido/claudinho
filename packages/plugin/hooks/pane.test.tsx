@@ -141,6 +141,37 @@ describe('opening it', () => {
   })
 })
 
+describe('opening before the read (an open is placed only within about 15 s of the command, measured)', () => {
+  test('the pane opens before the match read answers, showing the band\'s line with the view\'s footer; then the rows', { timeoutMs: 20_000 }, async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [held(answer())] })
+    const opening = w.command('match')
+    await w.clock.advance(1)
+    expect(w.opens).toEqual([{ id: 'match', title: 'claudinho' }])
+    const pane = await w.mountPane()
+    expect(await texts(pane)).toEqual([LINE, '', A, D])
+    await w.release()
+    const r = await opening
+    expect(r.text).toBe(withD(LINE))
+    expect(await texts(pane)).toEqual([...ROWS, '', A, D])
+  })
+  test('a reopen opens at once too, before the read in flight settles', { timeoutMs: 20_000 }, async ($, on) => {
+    const w = await world($, on, [live(2, 1), live(2, 1), live(3, 1), live(3, 1)], { matchAnswers: [answer(), held(answer({ lines: ['OLD'] })), answer({ lines: ['NEW'] })] })
+    await w.command('match')
+    await w.clock.advance(15_000) // a re-read, held
+    const reopened = w.command('match')
+    await w.clock.advance(1)
+    expect(w.opens).toHaveLength(2)
+    await w.release()
+    await reopened
+    expect(await texts(await w.mountPane())).toEqual(['NEW', '', A, D])
+  })
+  test('the first read failing replaces the band\'s line with "The CLI gave no answer."', async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [new Error('timeout')] })
+    await w.command('match')
+    expect(await texts(await w.mountPane())).toEqual([FAILED])
+  })
+})
+
 describe('what it draws', () => {
   for (const surface of SURFACES) {
     test(`${surface}: the CLI's lines verbatim, a blank row, the attribution and the disclaimer dimmed; each line wraps; no button`, async ($, on) => {
