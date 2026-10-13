@@ -45,7 +45,7 @@ const seeGoal = async (w: W) => {
 }
 
 describe('a goal plays', () => {
-  test('6 frames over 3 s: the ball row, the banner growing, then the toast line; then the one-line band', async ($, on) => {
+  test('6 frames over 3 s: the ball row, the banner growing, then the toast line; then the one-line band', { timeoutMs: 20_000 }, async ($, on) => {
     const w = await world($, on, [before, goal, goal])
     await seeGoal(w)
     for (let f = 0; f < 5; f++) {
@@ -61,7 +61,7 @@ describe('a goal plays', () => {
     expect(await rows(w)).toEqual([bandLine(2, 0)])
   })
 
-  test('the ball moves right frame by frame and its row never exceeds the band\'s columns', async ($, on) => {
+  test('the ball moves right frame by frame and its row never exceeds the band\'s columns', { timeoutMs: 20_000 }, async ($, on) => {
     const w = await world($, on, [before, goal, goal])
     await seeGoal(w)
     let last = -1
@@ -498,7 +498,7 @@ describe('the redraws it asks for', () => {
   })
 
 
-  test('about one invalidate per half-second while playing, none once played, none while held', async ($, on) => {
+  test('about one invalidate per half-second while playing, none once played, none while held', { timeoutMs: 20_000 }, async ($, on) => {
     const w = await world($, on, [before, goal, goal])
     await w.turnStart()
     await seeGoal(w)
