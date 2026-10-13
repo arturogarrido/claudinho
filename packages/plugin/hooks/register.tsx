@@ -742,6 +742,9 @@ export const register: Register = (on, options) => {
     // beneath.
     if (playFrom === null) playFrom = now
     lastPlayedAt = now
+    // A hold seen only in the drawn `isWorking` (no `turn.start`) stopped the redraws and no turn event restarts them:
+    // the playing draw does.
+    if (!ticker) startTicker($)
     const frame = Math.min(FRAMES - 1, Math.floor(playedAt(now) / FRAME_MS))
     return withLine(celebrationRows(frame, rows, rec.text, columns))
   })
