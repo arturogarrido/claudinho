@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { held, view, world } from './world'
+import { FIRST_RUN, held, view, world } from './world'
 
 /**
  * The goal celebration: when the toasts' diff decides a GOAL (a tally that rose, none that fell, between two current
@@ -369,6 +369,27 @@ describe('a waiting celebration whose news changed', () => {
     expect((await rows(w))[1]).toBe('G')
   })
 
+  test('the celebrated match listed second, after a match at another score: the waiting celebration plays', async ($, on) => {
+    const other = match('2', [1, 0], { home: { code: 'LIV', name: 'Liverpool', id: 'espn:364' }, line: "Liverpool 1–0 Chelsea (60')" })
+    const v = (a: number) => live([other, match('1', [a, 0])], bandLine(a, 0))
+    const w = await world($, on, [v(1), v(2), v(2), v(2)])
+    await w.turnStart()
+    await seeGoal(w) // match 1 scores
+    await w.clock.advance(15_000) // nothing changes
+    await w.turnEnd()
+    expect((await rows(w))[1]).toBe('G')
+  })
+
+  test('the celebrated goal corrected in a view where its match is no longer pinned (toasts: pinned): nothing plays', async ($, on) => {
+    const corrected = live([match('1', [1, 0], { pinned: false, picked: false })], bandLine(1, 0))
+    const w = await world($, on, [before, goal, corrected, corrected])
+    await w.turnStart()
+    await seeGoal(w)
+    await w.clock.advance(15_000) // corrected, the match no longer pinned: the toasts filter hides it, the record goes
+    await w.turnEnd()
+    expect(await rows(w)).toEqual([bandLine(1, 0)])
+  })
+
   test('the followed competition changed before it played: nothing plays above the new competition\'s band', async ($, on) => {
     const laliga = view('⚽ BAR 0–0 SEV 10\'', {
       live: { items: [{ ...match('9', [0, 0]), home: { code: 'BAR', name: 'Barcelona', id: 'espn:83' }, away: { code: 'SEV', name: 'Sevilla', id: 'espn:243' }, line: "Barcelona 0–0 Sevilla (10')" }], total: 1, shown: 1, truncated: false, complete: true },
@@ -404,6 +425,61 @@ describe('a waiting celebration whose news changed', () => {
     const after = w.invalidates.length
     await w.clock.advance(2_000)
     expect(w.invalidates.length).toBe(after)
+  })
+  /** The CLI's first view of a competition it has no cache for yet (measured: `ambient --json` after `follow laliga`). */
+  const laligaFirst = view('⚽ —', {
+    empty: true,
+    current: false,
+    competition: { slug: 'esp.1', alias: 'laliga', name: 'LALIGA', chosenBy: 'saved' },
+    attribution: null,
+  })
+  const noCelebration = (drawn: string[]) => drawn.filter((r) => BANNER.includes(r) || r === TOAST || r.trim() === '⚽')
+
+  test('the followed competition changed, its first view not current: a held celebration does not play', async ($, on) => {
+    const w = await world($, on, [before, goal, laligaFirst, laligaFirst])
+    await w.turnStart()
+    await seeGoal(w) // an Arsenal goal, held
+    await w.clock.advance(15_000) // the next run: LALIGA, not current
+    await w.turnEnd()
+    expect(noCelebration(await rows(w))).toEqual([])
+    await w.clock.advance(3_000)
+    expect(noCelebration(await rows(w))).toEqual([])
+  })
+
+  test('the followed competition changed, its first view not current: a celebration waiting for room does not play', async ($, on) => {
+    const w = await world($, on, [before, goal, laligaFirst, laligaFirst])
+    await seeGoal(w)
+    await rows(w, { maxRows: 2 }) // no room: it waits
+    await w.clock.advance(15_000) // the next run: LALIGA, not current
+    expect(noCelebration(await rows(w))).toEqual([])
+  })
+
+  test('no competition followed any more (the first-run answer): a held celebration does not play', async ($, on) => {
+    const w = await world($, on, [before, goal, FIRST_RUN, FIRST_RUN])
+    await w.turnStart()
+    await seeGoal(w)
+    await w.clock.advance(15_000) // the next run: no competition chosen
+    await w.turnEnd()
+    expect(noCelebration(await rows(w))).toEqual([])
+  })
+
+  test('a view of the same competition that is not current keeps a held celebration', async ($, on) => {
+    const stale = view(bandLine(2, 0), { live: { items: [match('1', [2, 0])], total: 1, shown: 1, truncated: false, complete: true }, current: false })
+    const w = await world($, on, [before, goal, stale, stale])
+    await w.turnStart()
+    await seeGoal(w)
+    await w.clock.advance(15_000) // not current, the same competition
+    await w.turnEnd()
+    expect((await rows(w))[1]).toBe('G')
+  })
+
+  test('an answer that is no view (the fallback object) keeps a held celebration: it names no competition', async ($, on) => {
+    const w = await world($, on, [before, goal, JSON.stringify({ line: '⚽ —' }), JSON.stringify({ line: '⚽ —' })])
+    await w.turnStart()
+    await seeGoal(w)
+    await w.clock.advance(15_000)
+    await w.turnEnd()
+    expect((await rows(w))[1]).toBe('G')
   })
 })
 
@@ -469,7 +545,7 @@ describe('the redraws it asks for', () => {
     expect(w.invalidates.length).toBeGreaterThan(atHold)
   })
 
-  for (const [why, props] of [['a survey', { hasSurvey: true }], ['no room', { maxRows: 2 }]] as const) {
+  for (const [why, props] of [['a survey', { hasSurvey: true }], ['a band with no row', { maxRows: 0 }], ['no room', { maxRows: 2 }]] as const) {
     test(`no redraws asked while ${why} pauses it; asked again once it can play`, async ($, on) => {
       const w = await world($, on, [before, goal, goal])
       await seeGoal(w)
