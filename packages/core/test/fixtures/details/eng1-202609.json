@@ -1,0 +1,1139 @@
+{
+ "source": "ESPN site API, soccer/eng.1/scoreboard?dates=202609&limit=100, fetched 2026-10-13: four whole events covering every detail kind measured (an own goal, a penalty, a red card, added time, a detail with no athlete, a 0-0), each then slimmed to the keys the parser reads",
+ "events": [
+  {
+   "id": "401879286",
+   "date": "2026-09-05T11:30Z",
+   "season": {
+    "year": 2026,
+    "type": 14308,
+    "slug": "2026-27-english-premier-league"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+7'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "competitions": [
+    {
+     "venue": {
+      "id": "152",
+      "fullName": "St. James' Park",
+      "address": {
+       "city": "Newcastle-upon-Tyne",
+       "country": "England"
+      }
+     },
+     "competitors": [
+      {
+       "id": "361",
+       "homeAway": "home",
+       "score": "2",
+       "winner": false,
+       "team": {
+        "id": "361",
+        "abbreviation": "NEW",
+        "displayName": "Newcastle United"
+       }
+      },
+      {
+       "id": "349",
+       "homeAway": "away",
+       "score": "2",
+       "winner": false,
+       "team": {
+        "id": "349",
+        "abbreviation": "BOU",
+        "displayName": "AFC Bournemouth"
+       }
+      }
+     ],
+     "details": [
+      {
+       "type": {
+        "id": "70",
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 507.0,
+        "displayValue": "9'"
+       },
+       "team": {
+        "id": "349"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "redCard": false,
+       "yellowCard": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "243364",
+         "displayName": "Marcus Tavernier",
+         "team": {
+          "id": "349"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 1675.0,
+        "displayValue": "28'"
+       },
+       "team": {
+        "id": "361"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "296622",
+         "displayName": "Anthony Elanga",
+         "team": {
+          "id": "361"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "97",
+        "text": "Own Goal"
+       },
+       "clock": {
+        "value": 2074.0,
+        "displayValue": "35'"
+       },
+       "team": {
+        "id": "349"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "redCard": false,
+       "yellowCard": false,
+       "penaltyKick": false,
+       "ownGoal": true,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "303444",
+         "displayName": "Malick Thiaw",
+         "team": {
+          "id": "361"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "70",
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 2176.0,
+        "displayValue": "37'"
+       },
+       "team": {
+        "id": "361"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "redCard": false,
+       "yellowCard": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "243386",
+         "displayName": "Harvey Barnes",
+         "team": {
+          "id": "361"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 3381.0,
+        "displayValue": "57'"
+       },
+       "team": {
+        "id": "361"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "224077",
+         "displayName": "Yoane Wissa",
+         "team": {
+          "id": "361"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 3925.0,
+        "displayValue": "66'"
+       },
+       "team": {
+        "id": "349"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "245916",
+         "displayName": "Justin Kluivert",
+         "team": {
+          "id": "349"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 4240.0,
+        "displayValue": "71'"
+       },
+       "team": {
+        "id": "361"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 5211.0,
+        "displayValue": "87'"
+       },
+       "team": {
+        "id": "349"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "305684",
+         "displayName": "Adrien Truffert",
+         "team": {
+          "id": "349"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "70",
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 5258.0,
+        "displayValue": "88'"
+       },
+       "team": {
+        "id": "361"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "redCard": false,
+       "yellowCard": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "286090",
+         "displayName": "Jacob Ramsey",
+         "team": {
+          "id": "361"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 5400.0,
+        "displayValue": "90'+4'"
+       },
+       "team": {
+        "id": "349"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "122268",
+         "displayName": "Adam Smith",
+         "team": {
+          "id": "349"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401879311",
+   "date": "2026-09-05T14:00Z",
+   "season": {
+    "year": 2026,
+    "type": 14308,
+    "slug": "2026-27-english-premier-league"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+7'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "competitions": [
+    {
+     "venue": {
+      "id": "9658",
+      "fullName": "Gtech Community Stadium",
+      "address": {
+       "city": "Brentford",
+       "country": "England"
+      }
+     },
+     "competitors": [
+      {
+       "id": "337",
+       "homeAway": "home",
+       "score": "1",
+       "winner": false,
+       "team": {
+        "id": "337",
+        "abbreviation": "BRE",
+        "displayName": "Brentford"
+       }
+      },
+      {
+       "id": "366",
+       "homeAway": "away",
+       "score": "1",
+       "winner": false,
+       "team": {
+        "id": "366",
+        "abbreviation": "SUN",
+        "displayName": "Sunderland"
+       }
+      }
+     ],
+     "details": [
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 807.0,
+        "displayValue": "14'"
+       },
+       "team": {
+        "id": "366"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "340240",
+         "displayName": "Noah Sadiki",
+         "team": {
+          "id": "366"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 1800.0,
+        "displayValue": "30'"
+       },
+       "team": {
+        "id": "337"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "228547",
+         "displayName": "Mamadou Sangare",
+         "team": {
+          "id": "337"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "173",
+        "text": "Goal - Volley"
+       },
+       "clock": {
+        "value": 3410.0,
+        "displayValue": "57'"
+       },
+       "team": {
+        "id": "337"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "redCard": false,
+       "yellowCard": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "225564",
+         "displayName": "Vitaly Janelt",
+         "team": {
+          "id": "337"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 3698.0,
+        "displayValue": "62'"
+       },
+       "team": {
+        "id": "337"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "225564",
+         "displayName": "Vitaly Janelt",
+         "team": {
+          "id": "337"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 4095.0,
+        "displayValue": "69'"
+       },
+       "team": {
+        "id": "337"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "342029",
+         "displayName": "Yehor Yarmoliuk",
+         "team": {
+          "id": "337"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "98",
+        "text": "Penalty - Scored"
+       },
+       "clock": {
+        "value": 4871.0,
+        "displayValue": "82'"
+       },
+       "team": {
+        "id": "366"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "redCard": false,
+       "yellowCard": false,
+       "penaltyKick": true,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "288340",
+         "displayName": "Enzo Le Fée",
+         "team": {
+          "id": "366"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 5267.0,
+        "displayValue": "88'"
+       },
+       "team": {
+        "id": "366"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "149981",
+         "displayName": "Granit Xhaka",
+         "team": {
+          "id": "366"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401879281",
+   "date": "2026-09-12T14:00Z",
+   "season": {
+    "year": 2026,
+    "type": 14308,
+    "slug": "2026-27-english-premier-league"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+6'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "competitions": [
+    {
+     "venue": {
+      "id": "135",
+      "fullName": "Selhurst Park",
+      "address": {
+       "city": "London",
+       "country": "England"
+      }
+     },
+     "competitors": [
+      {
+       "id": "384",
+       "homeAway": "home",
+       "score": "2",
+       "winner": false,
+       "team": {
+        "id": "384",
+        "abbreviation": "CRY",
+        "displayName": "Crystal Palace"
+       }
+      },
+      {
+       "id": "373",
+       "homeAway": "away",
+       "score": "3",
+       "winner": true,
+       "team": {
+        "id": "373",
+        "abbreviation": "IPS",
+        "displayName": "Ipswich Town"
+       }
+      }
+     ],
+     "details": [
+      {
+       "type": {
+        "id": "70",
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 794.0,
+        "displayValue": "14'"
+       },
+       "team": {
+        "id": "384"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "redCard": false,
+       "yellowCard": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "332648",
+         "displayName": "Anan Khalaili",
+         "team": {
+          "id": "384"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "137",
+        "text": "Goal - Header"
+       },
+       "clock": {
+        "value": 1349.0,
+        "displayValue": "23'"
+       },
+       "team": {
+        "id": "373"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "redCard": false,
+       "yellowCard": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "322654",
+         "displayName": "Emersonn",
+         "team": {
+          "id": "373"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "93",
+        "text": "Red Card"
+       },
+       "clock": {
+        "value": 2031.0,
+        "displayValue": "34'"
+       },
+       "team": {
+        "id": "384"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": true,
+       "yellowCard": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "231718",
+         "displayName": "Axel Disasi",
+         "team": {
+          "id": "384"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 2566.0,
+        "displayValue": "43'"
+       },
+       "team": {
+        "id": "373"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "269343",
+         "displayName": "Jack Clarke",
+         "team": {
+          "id": "373"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "137",
+        "text": "Goal - Header"
+       },
+       "clock": {
+        "value": 2675.0,
+        "displayValue": "45'"
+       },
+       "team": {
+        "id": "373"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "redCard": false,
+       "yellowCard": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "283086",
+         "displayName": "Leif Davis",
+         "team": {
+          "id": "373"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 3466.0,
+        "displayValue": "58'"
+       },
+       "team": {
+        "id": "373"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "318680",
+         "displayName": "Fatawu Issahaku",
+         "team": {
+          "id": "373"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 4142.0,
+        "displayValue": "70'"
+       },
+       "team": {
+        "id": "373"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "222300",
+         "displayName": "Sasa Lukic",
+         "team": {
+          "id": "373"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "70",
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 4491.0,
+        "displayValue": "75'"
+       },
+       "team": {
+        "id": "384"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "redCard": false,
+       "yellowCard": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "252747",
+         "displayName": "Jørgen Strand Larsen",
+         "team": {
+          "id": "384"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "70",
+        "text": "Goal"
+       },
+       "clock": {
+        "value": 5347.0,
+        "displayValue": "90'"
+       },
+       "team": {
+        "id": "373"
+       },
+       "scoreValue": 1,
+       "scoringPlay": true,
+       "redCard": false,
+       "yellowCard": false,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "261598",
+         "displayName": "Zian Flemming",
+         "team": {
+          "id": "373"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 5400.0,
+        "displayValue": "90'+4'"
+       },
+       "team": {
+        "id": "384"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "272585",
+         "displayName": "Chris Richards",
+         "team": {
+          "id": "384"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401878780",
+   "date": "2026-09-05T14:00Z",
+   "season": {
+    "year": 2026,
+    "type": 14308,
+    "slug": "2026-27-english-premier-league"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+6'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "competitions": [
+    {
+     "venue": {
+      "id": "131",
+      "fullName": "The City Ground",
+      "address": {
+       "city": "Nottingham",
+       "country": "England"
+      }
+     },
+     "competitors": [
+      {
+       "id": "393",
+       "homeAway": "home",
+       "score": "0",
+       "winner": false,
+       "team": {
+        "id": "393",
+        "abbreviation": "NFO",
+        "displayName": "Nottingham Forest"
+       }
+      },
+      {
+       "id": "367",
+       "homeAway": "away",
+       "score": "0",
+       "winner": false,
+       "team": {
+        "id": "367",
+        "abbreviation": "TOT",
+        "displayName": "Tottenham Hotspur"
+       }
+      }
+     ],
+     "details": [
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 2700.0,
+        "displayValue": "45'+1'"
+       },
+       "team": {
+        "id": "367"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "290076",
+         "displayName": "Destiny Udogie",
+         "team": {
+          "id": "367"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 3101.0,
+        "displayValue": "52'"
+       },
+       "team": {
+        "id": "393"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "238990",
+         "displayName": "Nikola Milenkovic",
+         "team": {
+          "id": "393"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 4652.0,
+        "displayValue": "78'"
+       },
+       "team": {
+        "id": "393"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "298518",
+         "displayName": "James McAtee",
+         "team": {
+          "id": "393"
+         }
+        }
+       ]
+      },
+      {
+       "type": {
+        "id": "94",
+        "text": "Yellow Card"
+       },
+       "clock": {
+        "value": 5022.0,
+        "displayValue": "84'"
+       },
+       "team": {
+        "id": "367"
+       },
+       "scoreValue": 0,
+       "scoringPlay": false,
+       "redCard": false,
+       "yellowCard": true,
+       "penaltyKick": false,
+       "ownGoal": false,
+       "shootout": false,
+       "athletesInvolved": [
+        {
+         "id": "346820",
+         "displayName": "Mateus Fernandes",
+         "team": {
+          "id": "367"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
