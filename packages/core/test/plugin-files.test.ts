@@ -36,6 +36,16 @@ describe('the plugin folder', () => {
     expect(toasts?.default).toBe('pinned');
     expect(String(toasts?.description)).toMatch(/no pin|without a pin|nothing/i);
   });
+
+  it('the celebrate option: on or off, on by default, beside toasts', () => {
+    const m = json('packages/plugin/.claude-plugin/plugin.json') as { userConfig?: Record<string, { type?: unknown; options?: unknown; default?: unknown; description?: unknown }> };
+    const celebrate = m.userConfig?.celebrate;
+    expect(celebrate, 'userConfig.celebrate').toBeDefined();
+    expect(celebrate?.type).toBe('string');
+    expect(celebrate?.options).toEqual(['on', 'off']);
+    expect(celebrate?.default).toBe('on');
+    expect(String(celebrate?.description).trim()).not.toBe('');
+  });
 });
 
 describe('the marketplace file', () => {

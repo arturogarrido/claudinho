@@ -1,8 +1,8 @@
 # Claudinho for Claude Code ⚽
 
 Live football in Claude Code for the competition you follow: the score or the countdown above the prompt,
-`/claudinho` for the same line on demand, a toast when a score changes, and the live score beside your prompt for the
-model. The plugin reads everything from the installed `claudinho` CLI (`claudinho ambient --json`, the CLI's local
+`/claudinho` for the same line on demand, a toast when a score changes, a short celebration in the band on a goal, and
+the live score beside your prompt for the model. The plugin reads everything from the installed `claudinho` CLI (`claudinho ambient --json`, the CLI's local
 cache) and never fetches anything itself.
 
 ## Install
@@ -10,7 +10,7 @@ cache) and never fetches anything itself.
 The plugin runs the `claudinho` command, so install the CLI and choose a competition first. It needs
 `@claudinho/cli` 0.11.2 or later, the first whose `claudinho ambient --json` says what its line is (`idle`,
 `empty`), carries the hook's own line on each live record, and marks its fallback object `empty`; with an older CLI
-the band shows nothing and nothing toasts.
+the band shows nothing, nothing toasts and nothing celebrates.
 
 ```bash
 npm i -g @claudinho/cli              # 0.11.2 or later
@@ -27,7 +27,7 @@ the plugin's band and context do not show twice. Then, at the prompt of a Claude
 ```
 
 Answer `y` to add the marketplace, then choose a scope (the user scope first, with Enter), and set the `toasts`
-option if you want another value than the default. The plugin is active in that session from then on.
+and `celebrate` options if you want other values than the defaults. The plugin is active in that session from then on.
 
 Install from a terminal: the desktop app's Code tab refuses the `/plugin install` line. An install at the user scope
 made in a terminal then loads in the Code tab too.
@@ -72,9 +72,41 @@ made in a terminal then loads in the Code tab too.
   current view after it: late, never lost while the match stays in the list (a match gone from the next current
   view and back is observed afresh). The first view of a match says nothing, and neither does a change of
   competition.
+- **The goal celebration**: on a goal the toasts announce, the band plays a short celebration above its line, about
+  three seconds (see "The goal celebration" below).
 - **The context**: while a match is live, each prompt you submit carries the hook's live-score block beside it, for
   the model, from the plugin's last run (never a run on submit), and only while that run is recent and its scores are
   inside their display window.
+
+## The goal celebration
+
+When a run's toasts include a goal (a regulation score or a shootout tally that rose, with none that fell, between two
+current views, under the `toasts` option), the band plays six frames over about three seconds above its line: a ball
+`⚽` stepping across the band's width, a banner growing `G`, `GO`, `GOA`, `GOAL`, `GOAL!`, then the goal's toast line
+(`⚽ Arsenal 2–1 Chelsea (67')`), and then the band is its one line again. "GOAL!" is the plugin's one word of its own
+(English, like every ambient string); every other word is the CLI's. Where a toast is not raised (a view that is not
+current, the first view of a match, a change of competition, `toasts: off`, a match not pinned under `toasts: pinned`)
+nothing plays. A correction (2–1 back to 1–1) still toasts and plays nothing. Two goals seen in one run play once, with
+the line of the last; a goal during a celebration starts it again with the new line.
+
+- **While Claude is working** the band stays its one line and the celebration waits. It plays when the turn ends, if
+  that is within 60 seconds of when the plugin saw the goal, and is dropped otherwise (the toast already said it). A
+  turn that starts mid-celebration stops it at its frame; the rest plays when the turn ends, within the 60 seconds. A
+  celebration already playing when the 60 seconds pass finishes its three seconds; a paused one does not resume after
+  them.
+- **Room.** The celebration takes at most three rows above our line, and leaves one row for a band another plugin
+  draws beneath ours: min(3, rows the band may take - 2). With two rows it shows the ball and the banner (the toast
+  line in the banner's row at the end), with one the banner (the toast line in its place at the end); with none our line shows alone and the celebration
+  waits for room, within its 60 seconds. Each row is cut at the band's width, never wrapped. A survey holding the band
+  pauses it too.
+- **What drops it.** A waiting or playing celebration is dropped by its match's score changing in any later current
+  view (a correction, or a later goal the plugin did not see as one; the score or the shootout tally, whatever the
+  `toasts` option and whatever views came between, so the band never celebrates a score it no longer shows), by a change of the competition you follow (any answer naming another competition, or none, current or not), by the last terminal or desktop window
+  closing, by a reload of the plugin (which changing an option makes), and by the 60 seconds above: the toast already
+  said it. A change of your pinned team does not drop it, and neither does another match's correction or the match
+  leaving the list.
+- **Redraws.** While it plays the plugin asks for a redraw twice a second, and for none while it waits or once it is
+  played.
 
 ## The `/claudinho` command
 
@@ -116,6 +148,11 @@ ends.
 
 `pinned` (the default) toasts your pinned team's match (`claudinho follow <alias> --team <name>`); with no pin saved
 it toasts nothing. `all` toasts every live match of the competition you follow; `off` none. Change it in `/config`.
+
+## The `celebrate` option
+
+`on` (the default) plays the goal celebration; `off` plays nothing and drops a waiting celebration. The toasts are the
+same either way. Change it in `/config`.
 
 ## Data and disclaimer
 

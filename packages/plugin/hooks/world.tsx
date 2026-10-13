@@ -91,6 +91,15 @@ export const world = async (
     registrations.push({ ...e })
     return { value: { command: e.name } }
   })
+  // A model turn's two edges, as the engine answers them beneath every plugin.
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+  // Each redraw the plugin asks for, recorded (the engine folds them; a test counts the asks).
+  const invalidates: string[] = []
+  on('ui.invalidate', (_$, e) => {
+    invalidates.push(String((e as { event?: unknown }).event ?? ''))
+    return { value: undefined }
+  })
   // The engine's own answer to a command the plugin does not answer (a built-in such as /cost, another plugin's).
   on('command.run', (_$, e) => ({ text: `engine ran /${e.command}` }))
   on('session.surfaces', () => {
@@ -194,9 +203,13 @@ export const world = async (
   /** The person runs `/claudinho` (with `args` typed after it) at the composer, as the engine raises it; resolves to its reply. */
   const command = (args = '') =>
     $.command.run({ command: 'claudinho', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  /** A main-loop model turn starts (Enter at the prompt), or ends (`agentId` set: a subagent's turn ends instead). */
+  const turnStart = (turnId = 't1') => $.turn.start({ text: 'hi', turnId })
+  const turnEnd = (turnId = 't1', agentId?: string) =>
+    $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId, reason: 'answer', ...(agentId ? { agentId } : {}) } as Parameters<typeof $.turn.complete>[0])
   /** How many times the plugin asked for the roster: what a timer ticking for nobody would show. */
   const rosterReads = () => surfaceReads
-  return { clock, argvs, stdins, envs, timeouts, envReads, lists, probes, registrations, command, mount, attach, detach, release, releaseListing, denyRoster, rosterReads }
+  return { clock, argvs, stdins, envs, timeouts, invalidates, turnStart, turnEnd, envReads, lists, probes, registrations, command, mount, attach, detach, release, releaseListing, denyRoster, rosterReads }
 }
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */
