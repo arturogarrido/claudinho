@@ -309,13 +309,14 @@ describe('re-reading it while open', () => {
     })
   }
 
-  test('a failed re-read keeps the last rows under the refresh-failed row; the next good read clears it', async ($, on) => {
+  test('a failed re-read keeps the last rows under the refresh-failed row; the next good read clears it', { timeoutMs: 20_000 }, async ($, on) => {
     const w = await world($, on, [live(2, 1)], { matchAnswers: [answer(), new Error('timeout'), answer({ lines: ['Arsenal 3–1 Chelsea'] })] })
     await w.command('match')
+    const pane = await w.mountPane()
     await w.clock.advance(121_000)
-    expect(await texts(await w.mountPane())).toEqual([REFRESH_FAILED, ...ROWS, '', A, D])
+    expect(await texts(pane)).toEqual([REFRESH_FAILED, ...ROWS, '', A, D])
     await w.clock.advance(120_000) // a failed read keeps the 2-minute re-read
-    expect(await texts(await w.mountPane())).toEqual(['Arsenal 3–1 Chelsea', '', A, D])
+    expect(await texts(pane)).toEqual(['Arsenal 3–1 Chelsea', '', A, D])
   })
 
   test('a failed first read keeps the 2-minute re-read', { timeoutMs: 20_000 }, async ($, on) => {
@@ -340,25 +341,21 @@ describe('re-reading it while open', () => {
 })
 
 describe('closing and reopening it', () => {
-  test('closed: no re-read from the band or the timer', { timeoutMs: 20_000 }, async ($, on) => {
-    const w = await world($, on, [live(2, 1), live(2, 1), live(3, 1)], { matchAnswers: [answer()] })
-    await w.command('match')
-    await w.closePane()
-    await w.clock.advance(15_000)
-    await w.clock.advance(240_000)
-    expect(w.matchRuns()).toHaveLength(1)
-  })
-
-  test('a read in flight when the pane closes writes nothing into the pane reopened after it', { timeoutMs: 20_000 }, async ($, on) => {
+  // The kit (Claude Code 2.1.296) cannot raise the person's close: the test's `$` carries no `ui.close`, and a test's
+  // hook may not call it (the host rule: a module calls only what its own source calls). "Closed: no re-read from the
+  // band or the timer" is therefore checked on the real engine by the runner (ctrl+x x on the open pane, then a score
+  // change and two minutes: no `match` run), as #176's reload rule was. The late answer is reached here through a
+  // reopen, which bumps the same generation the close bumps.
+  test('a read in flight when the pane is reopened writes nothing into the reopened pane', { timeoutMs: 20_000 }, async ($, on) => {
     const w = await world($, on, [live(2, 1), live(2, 1), live(3, 1), live(3, 1)], {
       matchAnswers: [answer(), held(answer({ lines: ['OLD'] })), answer({ lines: ['NEW'] })],
     })
     await w.command('match')
     await w.clock.advance(15_000) // a re-read, held
-    await w.closePane()
     await w.command('match') // reopen: its own read
+    const pane = await w.mountPane()
     await w.release() // the old read answers late
-    expect(await texts(await w.mountPane())).toEqual(['NEW', '', A, D])
+    expect(await texts(pane)).toEqual(['NEW', '', A, D])
   })
 
   test('/claudinho match while open rebinds the same pane: a new ambient read, one pane id', async ($, on) => {

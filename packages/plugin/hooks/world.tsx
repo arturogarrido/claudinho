@@ -244,11 +244,9 @@ export const world = async (
       props: { title: 'claudinho', isFocused: false, bodyColumns: surface === 'terminal' ? 71 : 65, placement: 'dock', scroll: { offset: 0, bodyRows: surface === 'terminal' ? 34 : 55 }, view: {} },
       viewport: { columns: surface === 'terminal' ? 88 : 106, rows: 40, isFullscreen: true },
     } as Parameters<typeof $.ui.mount>[0])
-  /** The person closes the match pane (its close mark). */
-  const closePane = () => $.ui.close({ id: 'match' })
   /** The `match` runs so far (their argv). */
   const matchRuns = () => argvs.filter((a) => a[1] === 'match')
-  return { clock, argvs, stdins, envs, timeouts, invalidates, turnStart, turnEnd, envReads, lists, probes, registrations, command, mount, attach, detach, release, releaseListing, denyRoster, rosterReads, opens, closes, mountPane, closePane, matchRuns }
+  return { clock, argvs, stdins, envs, timeouts, invalidates, turnStart, turnEnd, envReads, lists, probes, registrations, command, mount, attach, detach, release, releaseListing, denyRoster, rosterReads, opens, closes, mountPane, matchRuns }
 }
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */
