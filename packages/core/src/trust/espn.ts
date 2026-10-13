@@ -279,7 +279,8 @@ function detailMinute(clock: unknown): { minute: number; added?: number } | unde
   if (!extra) return undefined;
   const minute = count(Number(extra[1]), MAX_MINUTE);
   const added = count(Number(extra[2]), MAX_ADDED_MINUTES);
-  if (minute === undefined || added === undefined || added < 1) return undefined;
+  // Added time 0 is refused once, by `sealEvent` (the one constructor, shared with the cache path).
+  if (minute === undefined || added === undefined) return undefined;
   return { minute, added };
 }
 
