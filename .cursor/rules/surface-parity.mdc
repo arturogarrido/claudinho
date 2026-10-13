@@ -15,7 +15,8 @@ Any user-visible formatter change must land on **all three surfaces** before mer
 | Share | `formatShare*` + `packages/mcp/test/share.test.ts` |
 
 One stated exception: the match timeline (core `timelineRows`) is CLI `match` (its text and `--json`'s `lines`) and MCP
-`get_match` only; a share card prints none.
+`get_match` only (the plugin's match pane draws those `lines` as given, so it shows the same rows); a share card prints
+none.
 
 ## Knockout surfaces live-resolve — never read the skeleton (the #1 recurring bug)
 
@@ -29,9 +30,9 @@ One stated exception: the match timeline (core `timelineRows`) is CLI `match` (i
 | MCP `get_share_snippet{bracket,next}` | `toolGetShareSnippet` | same |
 | **statusline** | `renderPrompt` + `runRefresh` | hot path, NO network — indirect: refresher caches `getKnockoutFixtures` → `CacheState.fixtures`; `renderPrompt` merges them, **failing closed to `⚽ —`** when the cache lacks the pairing; unresolved placeholders dropped in syncing (never 🏳️). Empty successful fetch uses a **short TTL** (~60s); provider errors keep prior cache. **`cmdPrompt` and `cmdHook`** both spawn fixtures refresh in knockout phase. |
 | **`ambient --json`** | `cmdAmbient` → `ambientView` | the statusline's cache through the same reader: its `line` and `next` come from the resolved pairings and fail closed the same way (`⚽ —`, `next: null`); hot path, NO network, the same refresher trigger as `cmdPrompt`. |
-| **Claude Code plugin's band, `/claudinho` and the match pane** | `packages/plugin/hooks/register.tsx` (`ui.render` on `AbovePrompt`; `command.run` on `claudinho`; `ui.render` on `Pane`, `requestId` `match`) | the band renders `ambient --json`'s `line`; `/claudinho` relays its `line`, then its `attribution` and `disclaimer` from a view; `/claudinho match` binds the view's first live record (else its `next`) and its competition, and the pane draws `match <id> --json --competition <slug>`'s `lines` verbatim, then its `attribution` and `disclaimer`; all read no skeleton (no cache, no bundle: the CLI's objects only), so they fail closed where `ambient --json` and `match --json` do; its coverage is the kit (`packages/plugin/hooks/*.test.tsx`, `claude plugin test`), not the two coverage tests. |
+| **Claude Code plugin's band, `/claudinho` and the match pane** | `packages/plugin/hooks/register.tsx` (`ui.render` on `AbovePrompt`; `command.run` on `claudinho`; `ui.render` on `Pane`, `requestId` `match`) | the band renders `ambient --json`'s `line`; `/claudinho` relays its `line`, then its `attribution` and `disclaimer` from a view; `/claudinho match` binds the view's first live record (else its `next`) and its competition, and the pane draws `match <id> --json`'s `lines` verbatim (the run names no competition, so the CLI's mode row says where the person's choice came from; once an answer names another competition, or none, the binding is pinned and every read passes `--competition <slug>`), then its `attribution` and `disclaimer`; all read no skeleton (no cache, no bundle: the CLI's objects only), so they fail closed where `ambient --json` and `match --json` do; its coverage is the kit (`packages/plugin/hooks/*.test.tsx`, `claude plugin test`), not the two coverage tests. |
 
-**Adding a team-facing surface? Add it to BOTH coverage tests and this table.**
+**Adding a team-facing surface? Add it to BOTH coverage tests and this table** (the plugin excepted: it reads no skeleton, and its coverage is its kit, as its row says).
 
 ## Format opts invariant
 

@@ -64,9 +64,10 @@ export type ClaudinhoCelebration = {
 } | null
 
 /**
- * The match pane's generation: a number that only grows, never null, read by the pane's writers to tell an answer
- * from before a close or a reopen. Its two writers: `/claudinho match` binding a match (+1) and the `ui.close` hook for
- * the pane `match` (+1).
+ * The match pane's generation: a number that only grows, never null, which a new binding takes its own value from
+ * (a reload starts the module's values over; this number does not). Its two writers: `/claudinho match` binding a
+ * match (+1) and the `ui.close` hook for the pane `match` (+1). What fences an answer from before a close or a reopen
+ * is the module's binding and the pane value's own `gen`, both checked inside the write.
  */
 export type ClaudinhoPaneGen = number
 
