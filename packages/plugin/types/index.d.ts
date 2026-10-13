@@ -43,9 +43,10 @@ export type ClaudinhoContext = { context: string | null; staleAfter: string | nu
 
 /**
  * The goal celebration's record: the last goal's toast line (`⚽` and the CLI's record line) and when the run that saw
- * it decided it (the clock's milliseconds). Written by that run alone (a run a clear superseded writes nothing); null
- * before any goal, after the band's clear, at a module load's first forced run, under `celebrate: off`, and once a run
- * finds it played or older than 60 seconds. The band's draw reads it; its frames are not state.
+ * it decided it (the clock's milliseconds). Written by that run alone (a run a clear superseded writes nothing), never
+ * under `celebrate: off`; null before any goal, after the band's clear and at a module load's first forced run. A
+ * played or expired record stays until the next goal replaces it (the band's draw ignores it). The draw reads it; its
+ * frames are not state.
  */
 export type ClaudinhoCelebration = { text: string; at: number } | null
 

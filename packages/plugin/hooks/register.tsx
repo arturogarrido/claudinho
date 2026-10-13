@@ -52,8 +52,9 @@ import type {
  * the band plays 6 frames over 3 seconds above its line (a ball crossing a row, a "GOAL" banner growing, then the
  * toast's own line), in at most min(3, maxRows - 2) rows, then goes back to its one line. Its record (`celebration`:
  * the last goal's toast line and when the run decided it) has one writer, the run, under the band's clear generation;
- * the existing clear, the first forced run of a module load and a run finding it spent or older than 60 seconds null
- * it, so a reload drops a waiting or playing celebration (the toast already said it). The draw only reads it, and
+ * the existing clear and the first forced run of a module load null it, so a reload drops a waiting or playing
+ * celebration (the toast already said it), and a record another load wrote is never played. A played or expired record
+ * stays until the next goal replaces it: the draw ignores it. The draw only reads it, and
  * computes the frame from module values (how much of the 3 s has been on screen), redrawn by a 500 ms ticker that runs
  * only while there is something to play and no hold: a main-loop turn (`turn.start` to a `turn.complete` with no
  * `agentId`) or the drawn `isWorking` holds it, and it plays when the hold ends within 60 seconds of the goal. A
@@ -540,12 +541,6 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   }
   // (2) On a non-idle line the timer is the only pace; the age check is the idle gap's alone.
   const now = await $.clock.now()
-  // A celebration with nothing left to play (spent, or older than 60 s and not on screen) is dropped.
-  const prior = await read($, celebration)
-  if (prior !== null && !playable(prior, now)) {
-    stopTicker()
-    await update($, celebration, (cur) => (cur !== null && cur.at === prior.at ? null : cur))
-  }
   const last = await read($, pace)
   if (!force && last.idle && now - last.ranAt < IDLE_MS) return
   // (3) The PATH, bounded.
@@ -584,14 +579,19 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   if (isView && view.current === true) {
     const prev = await read($, baseline)
     for (const text of toastsFor(view, prev, option)) $.ui.toast(text)
-    const goals = celebrateOn && clears === c ? goalsFor(view, prev, option) : []
+    const goals = celebrateOn ? goalsFor(view, prev, option) : []
     await update($, baseline, () => baselineOf(view))
-    // The celebration of the run's LAST goal, decided now, unless a clear happened since the spawn.
+    // The celebration of the run's LAST goal, decided now. The one clear-generation check is inside the write, the
+    // latest point: a clear since the spawn (also while the clock is read) wins, and the run writes nothing.
     const text = goals[goals.length - 1]
     if (text !== undefined) {
       const at = await $.clock.now()
-      await update($, celebration, (cur) => (clears === c ? { text, at } : cur))
-      if (clears === c) {
+      let wrote = false
+      await update($, celebration, (cur) => {
+        wrote = clears === c
+        return wrote ? { text, at } : cur
+      })
+      if (wrote) {
         playingAt = at
         playedMs = 0
         playFrom = holdTurn ? null : at
@@ -692,7 +692,7 @@ export const register: Register = (on, options) => {
       holdTurn = false
       $.clock.after(0, () => {
         void resumeTicker($).catch(() => {
-          // The engine's calls failed: the next draw starts the ticker.
+          // The engine's calls failed: no redraws are asked until the next goal or the next turn's end.
         })
       })
     }
@@ -742,7 +742,6 @@ export const register: Register = (on, options) => {
     // beneath.
     if (playFrom === null) playFrom = now
     lastPlayedAt = now
-    if (!ticker) startTicker($)
     const frame = Math.min(FRAMES - 1, Math.floor(playedAt(now) / FRAME_MS))
     return withLine(celebrationRows(frame, rows, rec.text, columns))
   })
