@@ -3,7 +3,8 @@
  * by the CLI's `match` (text and `--json`'s `lines`) and MCP `get_match`'s text.
  *
  * One row per event, in the events' order (time order, sealed): two spaces,
- * then aligned columns (the minute, `9'` or `90+3'`; the localized kind word;
+ * then aligned columns (the minute, `9'` or `90+3'`; the kind's marker, one
+ * space and the localized kind word, the word padded;
  * the side's label, a club's code or a nation's flag and code), then two
  * spaces and the player when the provider named one. Widths are display
  * columns (`displayWidth`), so a flag pads like the terminal draws it. No
@@ -30,14 +31,40 @@ export interface TimelineOptions {
   readonly flags: boolean;
 }
 
-/** The match's events as aligned text rows; `[]` when it has none. */
-export function timelineRows(match: Match, opts: TimelineOptions): string[] {
+/**
+ * The marker printed before each kind word, one per kind: the ball for a goal,
+ * an own goal and a penalty, the card's colour for a card. Written as escapes.
+ */
+const KIND_MARKS: Readonly<Record<MatchEvent['type'], string>> = Object.freeze({
+  GOAL: '\u26BD',
+  OWN_GOAL: '\u26BD',
+  PEN: '\u26BD',
+  YELLOW: '\u{1F7E8}',
+  RED: '\u{1F7E5}',
+  SUB: '\u{1F504}',
+});
+
+/** One part of a timeline row: its text, and `strong` on the player. */
+export interface TimelinePart {
+  readonly text: string;
+  readonly style?: 'strong';
+}
+
+/**
+ * The match's events as rows of parts; `[]` when it has none. Each row is
+ * the aligned columns as one plain part (two spaces, the minute, the marker,
+ * one space and the localized kind word, the side's label), then, when the
+ * provider named a player, two spaces and the player as one `strong` part.
+ * Joined, a row is its {@link timelineRows} line.
+ */
+export function timelineParts(match: Match, opts: TimelineOptions): TimelinePart[][] {
   const events = match.events ?? [];
   if (events.length === 0) return [];
   const cells = events.map((e) => {
     const team = e.side === 'home' ? match.home : match.away;
     return {
       minute: e.added !== undefined ? `${e.minute}+${e.added}'` : `${e.minute}'`,
+      mark: KIND_MARKS[e.type],
       kind: t(opts.lang, KIND_KEYS[e.type]),
       label: withFlag(team.code, opts.flags ? team.flag : undefined, e.side),
       player: e.player,
@@ -47,9 +74,16 @@ export function timelineRows(match: Match, opts: TimelineOptions): string[] {
   const minuteW = widest((c) => c.minute);
   const kindW = widest((c) => c.kind);
   const labelW = widest((c) => c.label);
-  return cells.map((c) =>
-    `  ${padVisible(c.minute, minuteW)}  ${padVisible(c.kind, kindW)}  ${padVisible(c.label, labelW)}${c.player ? `  ${c.player}` : ''}`.trimEnd(),
-  );
+  return cells.map((c) => {
+    const columns = `  ${padVisible(c.minute, minuteW)}  ${c.mark} ${padVisible(c.kind, kindW)}  ${padVisible(c.label, labelW)}`;
+    if (!c.player) return [{ text: columns.trimEnd() }];
+    return [{ text: `${columns}  ` }, { text: c.player, style: 'strong' as const }];
+  });
+}
+
+/** The match's events as aligned text rows ({@link timelineParts} joined); `[]` when it has none. */
+export function timelineRows(match: Match, opts: TimelineOptions): string[] {
+  return timelineParts(match, opts).map((row) => row.map((p) => p.text).join(''));
 }
 
 /** The kinds that score: an own goal for the side it credited (its `side`), a penalty as a goal. */

@@ -53,19 +53,37 @@ export function painterFor(cfg: CliConfig): Painter {
   return paint(cfg.color);
 }
 
-/** A short status token, colored and localized. */
+/** A short status token, colored and localized ({@link statusWord}, painted by the status). */
 export function statusToken(m: Match, t: Translator, c: Painter): string {
+  const word = statusWord(m, t);
   switch (m.status) {
     case 'LIVE':
-      return c.green(`${m.minute ? `${m.minute}'` : t('status.live')}`);
+      return c.green(word);
     case 'HT':
-      return c.yellow(t('status.ht'));
+      return c.yellow(word);
     case 'FT':
-      return c.gray(t('status.ft'));
+      return c.gray(word);
     case 'POSTPONED':
-      return c.red(t('status.postponed'));
     case 'CANCELLED':
-      return c.red(t('status.cancelled'));
+      return c.red(word);
+    default:
+      return '';
+  }
+}
+
+/** The short status token's words, localized and unpainted: the minute in play (else "live"), HT, FT, postponed, cancelled; `''` for a match not started. */
+export function statusWord(m: Match, t: Translator): string {
+  switch (m.status) {
+    case 'LIVE':
+      return m.minute ? `${m.minute}'` : t('status.live');
+    case 'HT':
+      return t('status.ht');
+    case 'FT':
+      return t('status.ft');
+    case 'POSTPONED':
+      return t('status.postponed');
+    case 'CANCELLED':
+      return t('status.cancelled');
     default:
       return '';
   }
