@@ -149,8 +149,11 @@ seen in one run play once, for the last match listed; a goal during a celebratio
   not see as one; the score or the shootout tally, whatever the `toasts` option and whatever views came between, so
   the band never celebrates a score it no longer shows), by a change of the competition you follow (any answer naming
   another competition, or none, current or not), by the last terminal or desktop window closing, by a reload of the
-  plugin (which changing an option makes), and by the 60 seconds above: the toast already said it. A change of your
-  pinned team does not drop it, and neither does another match's correction or the match leaving the list.
+  plugin (which changing an option makes), and by the 60 seconds above: the toast already said it. A full-time
+  celebration lasts only while each later current view lists its match as finished with the same result: a view that
+  gives another result at the same score (a corrected winner, a shootout appearing), lists the match as live again,
+  or no longer lists it drops it, and only it (a goal celebration queued before it keeps the rules above). A change of your pinned team does
+  not drop a celebration, and neither does another match's correction or a goal's match leaving the list.
 - **Redraws.** While it plays the plugin asks for a redraw twice a second, and for none while it waits or once it is
   played.
 
@@ -198,10 +201,10 @@ It runs the CLI once each time it is typed (`claudinho ambient --json`), on any 
 headless included (`claude -p "/claudinho"`), and finds the CLI as the band does (see "Finding the CLI" above). Its
 run is its own: it reads nothing the band drew and changes none of it (no band line, pace, toast or prompt context),
 so it answers with the band collapsed or not drawn at all. It reads one word typed after it: `match` (spaces around
-it aside) opens the match pane (below), and answers in one line when the pane opened with the CLI's rows on a
-terminal or a desktop window (`⚽ ARS 2–1 CHE 50' · match pane open`: the pane carries the attribution and the
-non-affiliation sentence); otherwise (no window to draw it, nothing to bind, a first read that failed) it answers the
-same reply as `/claudinho`. Any other text is ignored, though the transcript keeps it, as for any command. The model reads its reply, as it reads any command's output.
+it aside) opens the match pane (below), and answers in one line only when the pane opened on a terminal or a desktop
+window with the CLI's rows and holds both the attribution and the non-affiliation sentence
+(`⚽ ARS 2–1 CHE 50' · match pane open`: the pane carries the two); otherwise (no window to draw it, nothing to bind,
+a first read that failed, an answer missing either sentence) it answers the same reply as `/claudinho`, with both. Any other text is ignored, though the transcript keeps it, as for any command. The model reads its reply, as it reads any command's output.
 It was not tried over Remote Control (a phone), and a `/claudinho` typed while Claude is working runs when the turn
 ends.
 
@@ -229,8 +232,8 @@ wait for the read to open.)
   more with `--competition <the pane's competition>` (its row then says "from the command line", which is true of that
   read), and every later read of that pane names it the same way. With nothing to show (no competition followed, the
   edition over, nothing live and no next fixture, no answer) no pane opens. The command's reply is the line and
-  ` · match pane open` when the pane opened with the CLI's rows on a terminal or desktop window, and the bare
-  `/claudinho` reply otherwise. Typed again while the pane is open, it binds the same pane afresh.
+  ` · match pane open` only when the pane opened on a terminal or desktop window with the CLI's rows and holds both
+  the attribution and the non-affiliation sentence, and the bare `/claudinho` reply, with both, otherwise. Typed again while the pane is open, it binds the same pane afresh.
 - **When it reads again.** While open, the pane runs `claudinho match <id> --json` again when a band run sees that
   match's score (or its shootout tally) change, when the match enters the band's live list (kickoff) or leaves it (full
   time), and on a clock: while the last answer is not in play and its kickoff is ahead, once at the kickoff and not

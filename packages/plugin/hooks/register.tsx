@@ -108,8 +108,9 @@ import type {
  * written by the run and the clear alone: in a run, any answer naming another competition, or none, current or not (a
  * view, or the first-run object), nulls it, then its match's score changing from the record's own in any later
  * current view, live or finished (a correction, or a later goal the plugin did not see as one; by the record's id,
- * whatever the `toasts` filter), or a finished record saying another result than a full-time play's at the same score
- * (a `winnerCode` changed, a shootout appearing), nulls it, both plays with it, then the run's last match with a play replaces it under
+ * whatever the `toasts` filter) nulls it, both plays with it; a full-time play (its own, or queued) is kept only while
+ * each later current view lists its match in `finished` with the same result (listed live again, listed nowhere, or
+ * another result drops that play: the record when it is its own, the queue when it follows a goal); then the run's last match with a play replaces it under
  * the band's clear generation; the existing clear nulls it. Every null also stops the redraws. A record another module
  * load wrote is never played (its `at` is not this load's), so a reload drops a waiting or playing celebration (the
  * toast already said it); it stays in state until a goal or a clear replaces it. A played or expired record stays
@@ -863,12 +864,22 @@ function differsFromRecord(view: View, rec: NonNullable<ClaudinhoCelebration>): 
   const score = tally(m.score)
   const shootout = tally(m.shootout)
   const differs = (a: Tally | undefined, b: Tally | undefined) => !!(a && b && (a.home !== b.home || a.away !== b.away))
-  if (differs(score, rec.score) || differs(shootout, rec.shootout)) return true
-  // A full-time play (the record's own, or queued) was decided on its result: a finished record of the match that
-  // now says another result, or none, at the same score (a `winnerCode` changed, a shootout appearing) drops it.
+  return differs(score, rec.score) || differs(shootout, rec.shootout)
+}
+
+/**
+ * Whether a record's full-time play (its own, or queued) still stands in this CURRENT view: the view lists the match
+ * in `finished` (and not in `live`) with names, saying the same result text the play was decided on. A view that lists
+ * it live again, or nowhere, or finished with another result or none (a `winnerCode` changed, a shootout appearing),
+ * does not. A record with no full-time play: true.
+ */
+function fullTimeStands(view: View, rec: NonNullable<ClaudinhoCelebration>): boolean {
   const fulltime = playsOf(rec).find((p): p is Extract<ClaudinhoPlay, { kind: 'fulltime' }> => p.kind === 'fulltime')
+  if (fulltime === undefined) return true
+  if (itemsOf(view).some((x) => x.id === rec.id)) return false
+  const finished = finishedOf(view).find((x) => x.id === rec.id)
   const names = finished ? namesOf(finished) : null
-  return fulltime !== undefined && finished !== undefined && names !== null && resultText(finished, names) !== fulltime.result
+  return finished !== undefined && names !== null && resultText(finished, names) === fulltime.result
 }
 
 /**
@@ -1377,9 +1388,17 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     // one the goal was decided on drops it (playing or waiting). The null stops the redraws too; a goal this run
     // decided is written after.
     const rec = await read($, celebration)
-    if (rec !== null && differsFromRecord(view, rec)) {
+    if (rec !== null && (differsFromRecord(view, rec) || (rec.kind === 'fulltime' && !fullTimeStands(view, rec)))) {
       stopTicker()
       await update($, celebration, (cur) => (cur !== null && cur.at === rec.at ? null : cur))
+    } else if (rec !== null && !fullTimeStands(view, rec)) {
+      // A full-time play queued behind a goal, no longer standing: the queue alone is dropped; the goal play stays
+      // under its own rules (a stretch on screen past the goal ends there).
+      await update($, celebration, (cur) => {
+        if (cur === null || cur.at !== rec.at) return cur
+        const { queue: _dropped, ...kept } = cur
+        return kept
+      })
     }
     await update($, baseline, () => baselineOf(view))
     // The celebration of the run's LAST match with a play, decided now: its first play, and full time's queued behind
