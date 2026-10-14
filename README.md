@@ -144,7 +144,9 @@ Restart Claude Code to activate.
 
 The plugin draws the live score or the countdown above the prompt (the band), raises a toast when a
 score changes, and puts the live-score block beside each prompt for the model while a match is on,
-all from the installed CLI (`claudinho ambient --json`), never a fetch of its own. `/claudinho` answers the
+all from the installed CLI (`claudinho ambient --json`), never a fetch of its own. `/claudinho match` opens a pane
+with the match you follow now as `claudinho match <id>` prints it (the score, the goals and cards, the status), which
+re-reads it while it is in play (that run reads the provider, as the command does). `/claudinho` answers the
 band's line on demand, wherever the plugin loads (a collapsed band, the desktop app, `claude -p`), with the CLI's
 attribution and non-affiliation sentence under it, or one plain sentence when there is nothing to show. Install the CLI
 (0.11.2 or later: an older one's band shows nothing and nothing toasts) and follow a competition, then run `claudinho init plugin` first: it removes the statusline

@@ -1,7 +1,7 @@
 /**
  * The contract of the claudinho plugin: what it keeps in the session (`$.state`), each value under
  * `PluginState.claudinho`. Everything is read from `claudinho ambient --json`, the installed CLI's view of its
- * local cache; the plugin never fetches. A view is readable when it carries its `live` list and says what its line
+ * local cache, and the match pane's rows from `claudinho match <id> --json`; the plugin never fetches (the CLI does). A view is readable when it carries its `live` list and says what its line
  * is, `idle` and `empty` as two booleans (`@claudinho/cli` 0.11.2 or later); anything else (the first-run object, the
  * fallback object, a view from an older CLI) is no view: hidden, never current, the baseline kept.
  */
@@ -63,6 +63,41 @@ export type ClaudinhoCelebration = {
   shootout?: { home: number; away: number }
 } | null
 
+/**
+ * The match pane's generation: a number that only grows, never null, which a new binding takes its own value from
+ * (a reload starts the module's values over; this number does not). Its two writers: `/claudinho match` binding a
+ * match (+1) and the `ui.close` hook for the pane `match` (+1). What fences an answer from before a close or a reopen
+ * is the module's binding and the pane value's own `gen`, both checked inside the write.
+ */
+export type ClaudinhoPaneGen = number
+
+/**
+ * The match pane's value (`/claudinho match`), read by the pane's draw alone: the generation it was written under, the
+ * competition (`slug`) and match `id` it is bound to, what the last `claudinho match <id> --json` read said (`rows`:
+ * one JSON value whose `lines` is an array of strings; `noView`: one JSON value without such `lines`; `failed`: no
+ * answer), the CLI's rows (at most 150, each cut at 600 characters) and its `attribution` and `disclaimer` (each a
+ * non-empty string cut at 1,000 characters, else absent), whether the last re-read failed (the rows kept from the read
+ * before it), and the fields the re-reads decide by: the answered match's `status` and `kickoff` (null with no match),
+ * and whether that status is final (`FT`, `POSTPONED`, `CANCELLED`). Its writers: the open, twice under its new
+ * generation (first a provisional value before its read, `rows` holding the view's line and its footer, with no status
+ * or kickoff; then its read's answer, while its binding is still the module's), a re-read only while its generation is
+ * the binding's (a failed one keeps the rows and sets `refreshFailed`), and the
+ * `ui.close` hook, which nulls it. Null before the first open and after a close.
+ */
+export type ClaudinhoPane = {
+  gen: number
+  slug: string
+  id: string
+  kind: 'rows' | 'noView' | 'failed'
+  lines: string[]
+  attribution?: string
+  disclaimer?: string
+  refreshFailed: boolean
+  status: string | null
+  kickoff: string | null
+  final: boolean
+} | null
+
 declare module 'claude-code' {
   interface PluginState {
     claudinho: {
@@ -71,6 +106,8 @@ declare module 'claude-code' {
       baseline: ClaudinhoBaseline
       context: ClaudinhoContext
       celebration: ClaudinhoCelebration
+      paneGen: ClaudinhoPaneGen
+      pane: ClaudinhoPane
     }
   }
 }

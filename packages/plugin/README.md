@@ -1,9 +1,11 @@
 # Claudinho for Claude Code ⚽
 
 Live football in Claude Code for the competition you follow: the score or the countdown above the prompt,
-`/claudinho` for the same line on demand, a toast when a score changes, a short celebration in the band on a goal, and
-the live score beside your prompt for the model. The plugin reads everything from the installed `claudinho` CLI (`claudinho ambient --json`, the CLI's local
-cache) and never fetches anything itself.
+`/claudinho` for the same line on demand, a toast when a score changes, a short celebration in the band on a goal,
+the live score beside your prompt for the model, and `/claudinho match`, a pane with the match you follow and its
+goals and cards. The plugin reads everything from the installed `claudinho` CLI (`claudinho ambient --json`, the CLI's
+local cache; for the pane, `claudinho match <id> --json`, which the CLI reads from the provider) and never fetches
+anything itself.
 
 ## Install
 
@@ -36,9 +38,12 @@ made in a terminal then loads in the Code tab too.
 
 - **In a terminal and in the desktop app's Code tab.** The band is drawn there, and the plugin runs the CLI for the
   band while a terminal or a desktop window is attached to the session.
+- **The match pane** (`/claudinho match`) opens in a terminal at any width (beside the transcript in the fullscreen
+  layout from 110 columns, above the prompt otherwise) and in the desktop app's Code tab (a side panel).
 - **Nowhere else, for the band.** While no terminal or desktop window is attached (`claude -p`, the SDK, a phone or an
   editor alone), the band runs nothing: it starts no process there. `/claudinho` is the exception: typed on any
-  surface where the plugin loads, headless included, it runs the CLI once.
+  surface where the plugin loads, headless included, it runs the CLI once (and `/claudinho match` its match read too;
+  with no window nothing draws the pane).
 - **Finding the CLI.** The plugin runs `claudinho` from the `PATH` Claude Code was started with. When that `PATH` does
   not hold the CLI's folder (an app can start Claude Code with a bare one), the plugin also looks in the folders the
   usual installers put global commands in, in this order: nvm's (`~/.nvm/versions/node/<version>/bin`, the eight
@@ -139,10 +144,61 @@ alone.
 It runs the CLI once each time it is typed (`claudinho ambient --json`), on any surface where the plugin loads,
 headless included (`claude -p "/claudinho"`), and finds the CLI as the band does (see "Finding the CLI" above). Its
 run is its own: it reads nothing the band drew and changes none of it (no band line, pace, toast or prompt context),
-so it answers with the band collapsed or not drawn at all. It takes no arguments: text typed after it is ignored,
-though the transcript keeps it, as for any command. The model reads its reply, as it reads any command's output.
+so it answers with the band collapsed or not drawn at all. It reads one word typed after it: `match` (spaces around
+it aside) opens the match pane (below) and answers the same reply; any other text is ignored, though the transcript
+keeps it, as for any command. The model reads its reply, as it reads any command's output.
 It was not tried over Remote Control (a phone), and a `/claudinho` typed while Claude is working runs when the turn
 ends.
+
+## The match pane
+
+`/claudinho match` opens a pane titled "claudinho" that shows the match you follow now as `claudinho match <id>`
+prints it: the score, the competition, the stage and venue, the kickoff and status, and the goals and cards the
+provider lists, each row as the CLI wrote it and wrapped to the pane's width (never cut sideways), then a blank row,
+the provider's attribution and the CLI's non-affiliation sentence, dimmed. Claude Code scrolls it (the arrows with the
+pane focused; the wheel in the desktop app). It has no button. Close it with its close mark (or ctrl+x x).
+
+It opens at once, showing the band's line (with the same attribution and sentence under it) until the CLI's rows
+land, which can take a few seconds on a slow network; a first read that fails then says `The CLI gave no answer.`
+(Claude Code places a pane the person asked for only within about 15 seconds of the command, so the pane does not
+wait for the read to open.)
+
+- **Which match.** The command's own `claudinho ambient --json` run decides: the first match of its live list (the CLI
+  lists your pinned team's match first), else its next fixture, in the competition that answer names. The pane stays on
+  that match and that competition. Its reads name no competition, so the CLI resolves your own choice and the pane's
+  competition row says where that choice came from (your saved choice: the name alone). If you follow another
+  competition (or none) while it is open, the answer of that other competition is never shown: the read is made once
+  more with `--competition <the pane's competition>` (its row then says "from the command line", which is true of that
+  read), and every later read of that pane names it the same way. With nothing to show (no competition followed, the
+  edition over, nothing live and no next fixture, no answer) no pane opens. The command's reply is the bare `/claudinho`
+  reply either way. Typed again while the pane is open, it binds the same pane afresh.
+- **When it reads again.** While open, the pane runs `claudinho match <id> --json` again when a band run sees that
+  match's score (or its shootout tally) change, when the match enters the band's live list (kickoff) or leaves it (full
+  time), and on a clock: while the last answer is not in play and its kickoff is ahead, once at the kickoff and not
+  before (a degraded answer too); otherwise every two minutes: in play (live or half-time), after a read that failed,
+  with no match, or once the kickoff has passed (a match still marked scheduled after its kickoff is read every two
+  minutes until it starts, or until you close the pane, as a match stuck in play is). Never two reads at once,
+  `/claudinho match` included: typed while a read is running, the pane shows the band's line at once and its own read
+  waits for that one (up to its five seconds, so the reply can take that much longer), whose answer is then not shown,
+  and a reason to read during either is kept and read after. After a final answer (full time, postponed, cancelled) it
+  reads no more, and none once closed: a read still running when you close it changes nothing.
+- **Three fixed sentences.** A read that fails (the CLI not found, a non-zero exit, past five seconds, a cut or
+  unreadable answer) on opening shows `The CLI gave no answer.`; a later read that fails keeps the last rows under
+  `Could not refresh: showing the last reading.` until a read answers; a CLI that answers without the rows shows
+  `Nothing to show: the CLI's answer is not one this plugin reads.`
+- **Bounds.** At most 150 rows, each cut at 600 characters; the attribution and the sentence each at 1,000.
+- **What it costs.** Opening it is one `claudinho ambient --json` (the local cache) and one `claudinho match` read,
+  which asks the provider five times on the path measured (six across the end of a month). In play that is about 2.5
+  requests a minute, plus five per goal the band sees; before kickoff and after a final answer, none. A read that has
+  to be made again for its competition (above) costs twice, once. The CLI keeps its
+  own backoff: when the provider throttles it, the pane's reads ask nothing either. Market odds are read only for the
+  World Cup.
+- **The CLI it needs.** The first CLI release after 0.11.2, whose `claudinho match <id> --json` carries its rows
+  (`lines`), its `attribution` and its `disclaimer`. With an older CLI the pane says `Nothing to show: the CLI's answer
+  is not one this plugin reads.`
+- **Not covered.** A pane opened without the command, hotkeys, a timeline on the band, the toasts or `/claudinho`'s
+  reply. After the plugin reloads (changing an option reloads it), an open pane stays as it was drawn and reads again
+  from the next `/claudinho match`.
 
 ## The `toasts` option
 

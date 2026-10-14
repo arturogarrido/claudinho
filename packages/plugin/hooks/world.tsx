@@ -56,7 +56,15 @@ export type WorldOptions = {
   beneath?: string
   /** The roster read rejects while `session.start` runs (a hook's `{ deny }`), then answers. */
   rosterDeniedAtStart?: boolean
+  /**
+   * The CLI's answers to `claudinho match ...` runs, in order (the last repeats), apart from the `ambient` answers;
+   * absent: a `match` run takes the next `ambient` answer as before.
+   */
+  matchAnswers?: Answer[]
 }
+
+/** One answer of the CLI as a test scripts it. */
+export type Answer = string | Error | { stdout: string; truncated: true } | { held: string } | { stdout: string; exitCode: number }
 
 /** An answer of the CLI the test holds: the run waits until the test releases it (`release()` in the world's order). */
 export const held = (stdout: string) => ({ held: stdout }) as const
@@ -65,7 +73,7 @@ export const held = (stdout: string) => ({ held: stdout }) as const
 export const world = async (
   $: Parameters<Parameters<typeof test>[1]>[0],
   on: Parameters<Parameters<typeof test>[1]>[1],
-  answers: Array<string | Error | { stdout: string; truncated: true } | { held: string } | { stdout: string; exitCode: number }>,
+  answers: Answer[],
   options: WorldOptions = {},
 ) => {
   const start = options.start ?? { surface: START.surface, isInteractive: START.isInteractive }
@@ -132,6 +140,18 @@ export const world = async (
     if (options.refusedProbes?.includes(e.path)) return { deny: 'fs.exists denied' }
     return { value: Array.isArray(options.bins) && options.bins.includes(e.path) }
   })
+  // The engine's pane record, beneath the plugin: every open answered placed (an open the person's command made is
+  // placed at any width, measured), every close recorded.
+  const opens: Array<Record<string, unknown>> = []
+  const closes: Array<Record<string, unknown>> = []
+  on('ui.open', (_$, e) => {
+    opens.push({ ...e })
+    return { value: { isPlaced: true } }
+  })
+  on('ui.close', (_$, e) => {
+    closes.push({ ...e })
+    return { value: undefined }
+  })
   on('ui.render', { component: 'AbovePrompt' }, ($$, e) => {
     const { Box, Text } = $$.ui.resolve(e)
     return options.beneath === undefined ? <Box /> : <Box><Text>{options.beneath}</Text></Box>
@@ -144,12 +164,17 @@ export const world = async (
   const envs: Array<Record<string, string> | undefined> = []
   const timeouts: Array<number | undefined> = []
   const releases: Array<() => void> = []
+  let ambientRuns = 0
+  let matchRunCount = 0
   on('process.run', async (_$, e) => {
     argvs.push([...e.argv])
     stdins.push(e.init?.stdin)
     envs.push(e.init?.env ? { ...e.init.env } : undefined)
     timeouts.push(e.init?.timeoutMs)
-    const a = answers[Math.min(argvs.length - 1, answers.length - 1)]
+    const isMatch = options.matchAnswers !== undefined && e.argv[1] === 'match'
+    const queue = isMatch ? (options.matchAnswers as Answer[]) : answers
+    const n = isMatch ? matchRunCount++ : ambientRuns++
+    const a = queue[Math.min(n, queue.length - 1)]
     if (a instanceof Error) throw a
     if (typeof a === 'object' && 'held' in a) {
       await new Promise<void>((resolve) => releases.push(resolve))
@@ -209,7 +234,19 @@ export const world = async (
     $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId, reason: 'answer', ...(agentId ? { agentId } : {}) } as Parameters<typeof $.turn.complete>[0])
   /** How many times the plugin asked for the roster: what a timer ticking for nobody would show. */
   const rosterReads = () => surfaceReads
-  return { clock, argvs, stdins, envs, timeouts, invalidates, turnStart, turnEnd, envReads, lists, probes, registrations, command, mount, attach, detach, release, releaseListing, denyRoster, rosterReads }
+  /** The match pane drawn on a surface, at the measured sizes (terminal dock 71 x 34; Desktop dock 65 x 55). */
+  const mountPane = (surface: 'terminal' | 'desktop' = 'terminal') =>
+    $.ui.mount({
+      plugin: 'claudinho',
+      surface,
+      component: 'Pane',
+      requestId: 'match',
+      props: { title: 'claudinho', isFocused: false, bodyColumns: surface === 'terminal' ? 71 : 65, placement: 'dock', scroll: { offset: 0, bodyRows: surface === 'terminal' ? 34 : 55 }, view: {} },
+      viewport: { columns: surface === 'terminal' ? 88 : 106, rows: 40, isFullscreen: true },
+    } as Parameters<typeof $.ui.mount>[0])
+  /** The `match` runs so far (their argv). */
+  const matchRuns = () => argvs.filter((a) => a[1] === 'match')
+  return { clock, argvs, stdins, envs, timeouts, invalidates, turnStart, turnEnd, envReads, lists, probes, registrations, command, mount, attach, detach, release, releaseListing, denyRoster, rosterReads, opens, closes, mountPane, matchRuns }
 }
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */
