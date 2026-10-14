@@ -428,7 +428,8 @@ describe('a live read says whether it was whole (the refresher needs it; no surf
 
   it('a failed read is degraded and not whole', async () => {
     const f = feed([inPlay], { fail: () => json({}, 500) });
-    expect(await getLiveRead(adapterOn(f, now), now)).toEqual({ matches: [], degraded: true, complete: false });
+    // The goal moments (4a-i): a failed read also says it returned no finished record, and that nothing was cut.
+    expect(await getLiveRead(adapterOn(f, now), now)).toEqual({ matches: [], degraded: true, complete: false, finished: [], finishedTruncated: false });
   });
 
   it('an adapter that says nothing about its answer: absent is not true', async () => {
