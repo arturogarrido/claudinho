@@ -218,22 +218,24 @@ const SIDES = new Set<string>(['home', 'away']);
  * THE constructor of a `MatchEvent`, on the feed path (the candidates the ESPN
  * detail grammar built) and the cache path alike. An event with no side, a
  * side that is neither, an unreadable minute or an added time outside 1..30 is
- * refused; the match stands. Keys in the order `MatchEvent` declares them.
+ * refused (`null`); the match stands. Keys in the order `MatchEvent` declares
+ * them. Exported for the one other reader of an event, the ambient view, which
+ * re-seals the `lastGoal` the refresher stored on a cached live record.
  */
-function sealEvent(raw: unknown): MatchEvent | undefined {
-  if (!raw || typeof raw !== 'object') return undefined;
+export function sealEvent(raw: unknown): MatchEvent | null {
+  if (!raw || typeof raw !== 'object') return null;
   const e = raw as Record<string, unknown>;
   const type = member<MatchEvent['type']>(e.type, EVENT_TYPES);
-  if (!type) return undefined;
+  if (!type) return null;
   const minute = count(e.minute, MAX_MINUTE);
-  if (minute === undefined) return undefined;
+  if (minute === undefined) return null;
   let added: number | undefined;
   if (e.added !== undefined) {
     added = count(e.added, MAX_ADDED_MINUTES);
-    if (added === undefined || added < 1) return undefined;
+    if (added === undefined || added < 1) return null;
   }
   const side = member<MatchEvent['side']>(e.side, SIDES);
-  if (!side) return undefined;
+  if (!side) return null;
   const out = { type, minute } as MatchEvent;
   if (added !== undefined) out.added = added;
   out.side = side;

@@ -103,7 +103,7 @@ describe('claudinho ambient --json', () => {
     expect(v.pick).toBeNull();
     expect(v.competition).toEqual({ slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'saved' });
     expect(v).toMatchObject({ current: true, degraded: false, source: 'espn', updatedAt: NOW.toISOString(), disclaimer: DISCLAIMER, attribution: 'Live data: ESPN' });
-    expect(Object.keys(v)).toEqual(['line', 'idle', 'empty', 'context', 'live', 'current', 'next', 'pick', 'competition', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer', 'attribution']);
+    expect(Object.keys(v)).toEqual(['line', 'lineParts', 'idle', 'empty', 'context', 'live', 'finished', 'current', 'next', 'pick', 'competition', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer', 'attribution']);
     expect(v).toMatchObject({ idle: false, empty: false });
     expect(items[0]?.line).toBe("Arsenal 2–1 Chelsea (50')"); // the hook's own line for the record
     expect(v.staleAfter).toBe(new Date(NOW.getTime() + DISPLAY_STALE_MS).toISOString());

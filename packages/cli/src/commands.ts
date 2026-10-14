@@ -1291,10 +1291,12 @@ export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): 
     const pick = preference.pick;
     const view: AmbientView = {
       line: read.line,
+      lineParts: read.lineParts,
       idle: read.idle,
       empty: read.empty,
       context: read.context,
       live: read.live,
+      finished: read.finished,
       current: read.current,
       next: read.next,
       pick: pick === undefined ? null : 'code' in pick ? { code: pick.code } : pick.team,

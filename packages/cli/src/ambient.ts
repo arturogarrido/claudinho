@@ -5,17 +5,18 @@
  * (`statusline.ts`, `hook.ts`), so neither renderer imports the other. The hot
  * path's rules: pure, no network, no market, no file read.
  */
-import type { AmbientMatch, AmbientView, Pin } from '@claudinho/core';
-import { isPinnedSide } from '@claudinho/core';
-import { type CacheState, stampAgeMs } from './cache';
-import { hookLine, renderHook } from './hook';
+import type { AmbientFinishedMatch, AmbientMatch, AmbientView, Match, MatchEvent, Pin, TeamKind } from '@claudinho/core';
+import { isPinnedSide, parseCachedMatch, parsedValue, sealEvent, takeBounded } from '@claudinho/core';
+import { type CacheState, stampAgeMs, validStamp } from './cache';
+import { hookLine, hookNames, renderHook } from './hook';
+import { FINISHED_TTL_MS, MAX_PLAY } from './play';
 import {
   countdownFixture,
   countdownSchedule,
   DISPLAY_STALE_MS,
   defaultTeamKind,
   isPicked,
-  liveMatchesFromCache,
+  liveRecordsFromCache,
   liveWhole,
   NOTHING_KNOWN_LINE,
   pickAmbientMatch,
@@ -38,6 +39,69 @@ export interface AmbientOpts extends PromptOpts {
 /** The ambient view as the cache gives it: the command adds the selection, the disclaimer, the attribution and the pick. */
 export type AmbientRead = Omit<AmbientView, 'competition' | 'disclaimer' | 'attribution' | 'pick' | 'pickUnreadable'>;
 
+/** The side of a record the saved pin names (core's `isPinnedSide`, home first), or `null`. */
+function pinnedSideOf(m: Match, pin: Pin | undefined): 'home' | 'away' | null {
+  if (pin === undefined) return null;
+  if (isPinnedSide(m.home, pin)) return 'home';
+  return isPinnedSide(m.away, pin) ? 'away' : null;
+}
+
+/** The kinds a `lastGoal` may be: a goal, an own goal, a penalty (never a card or a substitution). */
+const SCORING = new Set<MatchEvent['type']>(['GOAL', 'OWN_GOAL', 'PEN']);
+
+/**
+ * A record's stored `lastGoal` as the view carries it: re-sealed by core's one
+ * event constructor (`sealEvent`), and only a scoring event (`GOAL`,
+ * `OWN_GOAL`, `PEN`) whose `teamCode` is the code of the record's side its
+ * `side` names (an own goal's credited side), a side whose regulation score is
+ * at least 1; anything else is `null`.
+ */
+function lastGoalOf(m: Match, raw: unknown): MatchEvent | null {
+  if (raw === undefined || raw === null) return null;
+  const e = sealEvent(raw);
+  if (!e || !SCORING.has(e.type)) return null;
+  if (e.teamCode !== (e.side === 'home' ? m.home.code : m.away.code)) return null;
+  // The side it credited has scored: the score it sits beside never contradicts it.
+  return (m.score?.[e.side] ?? 0) >= 1 ? e : null;
+}
+
+/**
+ * The snapshot's finished records (its record of play's `finished`, see
+ * `play.ts`), as the ambient view lists them: only from a snapshot whose live
+ * read was whole, each entry for `FINISHED_TTL_MS` from its own stamp by the
+ * reader's clock, whatever the snapshot's display window (after the last match
+ * ends the refresher stops polling, so the snapshot ages past that window
+ * while its entries are still inside their own ten minutes); a stamp in the
+ * future is not believed. Bounded before any per-entry work; each record
+ * sealed by the live records' constructor (`events: false`, the competition's
+ * kind), status `FT` with a score; never one the live list holds, never one id
+ * twice. A malformed slice or entry lists nothing for it, and never throws.
+ */
+function finishedFromCache(
+  state: CacheState | undefined,
+  nowMs: number,
+  kind: TeamKind,
+  live: ReadonlySet<string>,
+): Match[] {
+  if (state?.liveComplete !== true) return [];
+  const play = state.play as unknown;
+  if (!play || typeof play !== 'object' || Array.isArray(play)) return [];
+  const out: Match[] = [];
+  const ids = new Set<string>();
+  for (const raw of takeBounded<unknown>((play as { finished?: unknown }).finished, MAX_PLAY)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const { match, at } = raw as { match?: unknown; at?: unknown };
+    if (!validStamp(at)) continue;
+    const atMs = Date.parse(at);
+    if (atMs > nowMs || nowMs - atMs >= FINISHED_TTL_MS) continue;
+    const sealed = parsedValue(parseCachedMatch(match, { events: false, teamKind: kind }));
+    if (sealed?.status !== 'FT' || !sealed.score || live.has(sealed.id) || ids.has(sealed.id)) continue;
+    ids.add(sealed.id);
+    out.push(sealed);
+  }
+  return out;
+}
+
 /**
  * THE ambient reader of `claudinho ambient --json` (core's `AmbientView`, less
  * what the command knows): the line `prompt` prints and the block `hook`
@@ -47,9 +111,13 @@ export type AmbientRead = Omit<AmbientView, 'competition' | 'disclaimer' | 'attr
  * (`liveMatchesFromCache`: the display window, the examine cap, no `events`),
  * ordered by the one preference (`pickAmbientMatch`), each record marked
  * `picked` (the preference's side) and `pinned` (the saved pin's, by core's
- * `isPinnedSide`) and carrying the hook's own line for it (`hookLine`, the
- * formatter `claudinho hook` prints with), with the reader's own `total`/`shown`/`truncated`/
- * `complete`; whether that list is `current` (a believed snapshot's inside
+ * `isPinnedSide`, with `pinnedSide` naming which) and carrying the hook's own
+ * names and line for it (`hookNames`, `hookLine`, the formatter `claudinho
+ * hook` prints with) and its stored `lastGoal` re-sealed (core's `sealEvent`),
+ * with the reader's own `total`/`shown`/`truncated`/`complete`; the line's
+ * parts as the fitter placed them (`lineParts`); the record of play's
+ * finished matches, from a snapshot whose live read was whole, each for its
+ * own ten minutes (`finished`); whether that list is `current` (a believed snapshot's inside
  * its display window, not degraded, its read whole as the snapshot states,
  * the line not syncing: the one rule, `syncingWindow`);
  * the fixture the countdown names; the snapshot's own facts and the deadline
@@ -68,12 +136,22 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
   // roster names on the bundled competition.
   const hookOpts = { flags: opts.flags ?? true, pin: defaultCompetition };
 
-  const list = liveMatchesFromCache(state, nowMs, kind);
+  const { list, sources } = liveRecordsFromCache(state, nowMs, kind);
+  // Each sealed record's stored `lastGoal`, re-sealed by core's one event
+  // constructor and kept only as a scoring event of its own side (one object
+  // per listed record, at most the list's cap); any other value is null.
+  const lastGoals = new Map<Match, AmbientMatch['lastGoal']>();
+  list.items.forEach((m, i) => {
+    lastGoals.set(m, lastGoalOf(m, (sources[i] as { lastGoal?: unknown } | undefined)?.lastGoal));
+  });
   const items: AmbientMatch[] = pickAmbientMatch(list.items, opts.pick).map((m) => ({
     ...m,
     picked: isPicked(m, opts.pick),
     pinned: pin !== undefined && (isPinnedSide(m.home, pin) || isPinnedSide(m.away, pin)),
+    pinnedSide: pinnedSideOf(m, pin),
+    names: hookNames(m, defaultCompetition),
     line: hookLine(m, hookOpts),
+    lastGoal: lastGoals.get(m) ?? null,
   }));
   // ONE render of the line: what it is is read before the width's cut (a
   // narrow band cuts the text, never what the view says of it).
@@ -88,6 +166,13 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
   const age = stampAgeMs(state?.updatedAt, nowMs);
   const stamp = state && Number.isFinite(age) ? Date.parse(state.updatedAt) : undefined;
   const staleAt = stamp === undefined ? undefined : new Date(stamp + DISPLAY_STALE_MS);
+  // The finished records, each for its own ten minutes (not the display window).
+  const finished: AmbientFinishedMatch[] = finishedFromCache(
+    state,
+    nowMs,
+    kind,
+    new Set(list.items.map((m) => m.id)),
+  ).map((m) => ({ ...m, pinnedSide: pinnedSideOf(m, pin), names: hookNames(m, defaultCompetition), line: hookLine(m, hookOpts) }));
   // The list is current when the reader's window holds the snapshot, the
   // snapshot is not degraded (as the line's own rule has it: a degraded
   // snapshot means the fetch failed, not that the feed said nothing; a live
@@ -102,10 +187,12 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
       undefined;
   return {
     line: prompt.line,
+    lineParts: prompt.parts,
     idle: prompt.unfitted === TOURNAMENT_COMPLETE_LINE,
     empty: prompt.unfitted === NOTHING_KNOWN_LINE,
     context: context === '' ? null : context,
     live: { items, total: list.total, shown: list.shown, truncated: list.truncated, complete: list.complete },
+    finished,
     current:
       stamp !== undefined && age < DISPLAY_STALE_MS && state?.degraded !== true && state?.liveComplete === true && !syncing,
     next: countdownFixture(nowMs, schedule, opts.pick) ?? null,
