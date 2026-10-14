@@ -298,7 +298,7 @@ describe('match <id> on a nation competition: flags and the market block', () =>
   it('CLAUDINHO_FLAGS=off: no flag in the timeline rows', async () => {
     process.env.CLAUDINHO_FLAGS = 'off';
     await cmdMatch('760415', wcCtx({}));
-    const rows = stdout().split('\n').filter((r) => /^ {2}\d+' /.test(r));
+    const rows = stdout().split('\n').filter((r) => /^ {2}\d+' {2,}/.test(r));
     expect(rows.length).toBe(2);
     expect(rows.join('\n')).not.toMatch(/\u{1F1F2}\u{1F1FD}|\u{1F1FF}\u{1F1E6}/u);
   });
