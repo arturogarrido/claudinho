@@ -304,7 +304,8 @@ matches the refresher saw in play and then read at full time, each for 10 minute
 the snapshot's last live read was whole, each with its `line` ending `(FT)`), and on each record `pinnedSide` (`home`, `away` or `null`:
 the side of the team saved with `follow --team`, never `CLAUDINHO_TEAM`'s), `names` (the two names the hook's line
 uses) and, on a live record, `lastGoal` (the last goal, only when the provider's listed goals, penalties and own goals, each
-counted once for the side it counted for, add up to the score: otherwise `null`). It reads only the local cache, never
+counted once for the side it counted for, add up to the score, none of them listed twice and the credited side
+having scored: otherwise `null`). It reads only the local cache, never
 the network; the command itself exits 0 whatever the cache holds, and any other `--columns` value is
 refused by the option parser, as a wrong option is for every command.
 
