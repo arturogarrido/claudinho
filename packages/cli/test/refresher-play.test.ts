@@ -279,6 +279,19 @@ describe('the bundled competition\'s publisher carries play too', () => {
     const file = raw(WC);
     for (const e of (file.play as { finished: Array<{ match: Record<string, unknown> }> }).finished) expect('events' in e.match).toBe(false);
   });
+
+  it('the seen ids reach the live read on this lane too: the seen match, the 65th finished record of the window, still reaches play.finished', async () => {
+    // Round 2 (the stand-in): `getLiveRead(adapter, now, [])` on this lane alone survived the suite.
+    events = [wc('in', [2, 1])];
+    await refresh(DURING, WC);
+    expect(seenIds(WC)).toEqual(['760431']);
+    // 64 other finished records come first in the window (same day, earlier); the seen match is the 65th.
+    const earlier = Date.parse('2026-06-17T01:00:00.000Z');
+    const others: Ev[] = Array.from({ length: 64 }, (_, i) => ({ id: String(9100 + i), at: earlier, state: 'post', score: [1, 1], slug: 'group-stage' }));
+    events = [...others, wc('post', [2, 1])];
+    await refresh(DURING + 60_000, WC);
+    expect(finishedIds(WC)).toEqual(['760431']);
+  });
 });
 
 describe('a read that is not whole, and the finished list\'s cap, never decide that a seen match is gone', () => {

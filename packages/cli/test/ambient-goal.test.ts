@@ -294,6 +294,22 @@ describe('ambient --json: lastGoal is re-sealed from the snapshot', () => {
     expect(items.map((m) => m.id)).toEqual(cases.map((_, i) => String(i + 1)));
     for (const [i, [label, g, kept]] of cases.entries()) expect(items[i], label).toHaveProperty('lastGoal', kept ? g : null);
   });
+
+  it('a lastGoal whose credited side has not scored is null: the score it sits beside never contradicts it', () => {
+    // Round 2 (Astra): a cached goal for a side with no goal survived beside its record.
+    const goal = (side: 'home' | 'away', type = 'GOAL') => ({ type, minute: 55, side, teamCode: side === 'home' ? 'ARS' : 'CHE', player: 'Someone' });
+    const cases: Array<[string, Match, unknown, boolean]> = [
+      ['a home goal at 0-0', live('1', ARS, CHE, [0, 0]), goal('home'), false],
+      ['a home goal at 0-1', live('2', ARS, CHE, [0, 1]), goal('home'), false],
+      ['an away penalty at 1-0', live('3', ARS, CHE, [1, 0]), goal('away', 'PEN'), false],
+      ['an own goal credited to away at 2-0', live('4', ARS, CHE, [2, 0]), goal('away', 'OWN_GOAL'), false],
+      ['a home goal at 1-0', live('5', ARS, CHE, [1, 0]), goal('home'), true],
+      ['an own goal credited to away at 0-1', live('6', ARS, CHE, [0, 1]), goal('away', 'OWN_GOAL'), true],
+    ];
+    seed(cases.map(([, m, g]) => ({ ...m, lastGoal: g })));
+    const items = liveItems(ambient());
+    for (const [i, [label, , g, kept]] of cases.entries()) expect(items[i], label).toHaveProperty('lastGoal', kept ? g : null);
+  });
 });
 
 describe('ambient --json: lineParts', () => {
