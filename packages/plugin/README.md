@@ -204,7 +204,8 @@ so it answers with the band collapsed or not drawn at all. It reads one word typ
 it aside) opens the match pane (below), and answers in one line only when the pane opened on a terminal or a desktop
 window with the CLI's rows and holds both the attribution and the non-affiliation sentence
 (`⚽ ARS 2–1 CHE 50' · match pane open`: the pane carries the two); otherwise (no window to draw it, nothing to bind,
-a first read that failed, an answer missing either sentence) it answers the same reply as `/claudinho`, with both. Any other text is ignored, though the transcript keeps it, as for any command. The model reads its reply, as it reads any command's output.
+a first read that failed, an answer missing either sentence) it answers the bare reply, as `/claudinho` gives it
+(its footer as described above: the attribution and the non-affiliation sentence when the view carries them). Any other text is ignored, though the transcript keeps it, as for any command. The model reads its reply, as it reads any command's output.
 It was not tried over Remote Control (a phone), and a `/claudinho` typed while Claude is working runs when the turn
 ends.
 
@@ -233,7 +234,8 @@ wait for the read to open.)
   read), and every later read of that pane names it the same way. With nothing to show (no competition followed, the
   edition over, nothing live and no next fixture, no answer) no pane opens. The command's reply is the line and
   ` · match pane open` only when the pane opened on a terminal or desktop window with the CLI's rows and holds both
-  the attribution and the non-affiliation sentence, and the bare `/claudinho` reply, with both, otherwise. Typed again while the pane is open, it binds the same pane afresh.
+  the attribution and the non-affiliation sentence, and otherwise the bare `/claudinho` reply as `/claudinho` gives it
+  (with the attribution and the non-affiliation sentence when the view carries them). Typed again while the pane is open, it binds the same pane afresh.
 - **When it reads again.** While open, the pane runs `claudinho match <id> --json` again when a band run sees that
   match's score (or its shootout tally) change, when the match enters the band's live list (kickoff) or leaves it (full
   time), and on a clock: while the last answer is not in play and its kickoff is ahead, once at the kickoff and not

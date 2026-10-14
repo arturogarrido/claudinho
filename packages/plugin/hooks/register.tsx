@@ -869,14 +869,13 @@ function differsFromRecord(view: View, rec: NonNullable<ClaudinhoCelebration>): 
 
 /**
  * Whether a record's full-time play (its own, or queued) still stands in this CURRENT view: the view lists the match
- * in `finished` (and not in `live`) with names, saying the same result text the play was decided on. A view that lists
- * it live again, or nowhere, or finished with another result or none (a `winnerCode` changed, a shootout appearing),
- * does not. A record with no full-time play: true.
+ * in `finished` with names, saying the same result text the play was decided on. A view that lists it live again (the
+ * CLI then lists no finished record for it), or nowhere, or finished with another result or none (a `winnerCode`
+ * changed, a shootout appearing), does not. A record with no full-time play: true.
  */
 function fullTimeStands(view: View, rec: NonNullable<ClaudinhoCelebration>): boolean {
   const fulltime = playsOf(rec).find((p): p is Extract<ClaudinhoPlay, { kind: 'fulltime' }> => p.kind === 'fulltime')
   if (fulltime === undefined) return true
-  if (itemsOf(view).some((x) => x.id === rec.id)) return false
   const finished = finishedOf(view).find((x) => x.id === rec.id)
   const names = finished ? namesOf(finished) : null
   return finished !== undefined && names !== null && resultText(finished, names) === fulltime.result
