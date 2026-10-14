@@ -79,6 +79,8 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 /** What the provider holds and how it answers. Tests change it between cycles. */
 let events: Ev[] = [];
 let failing: (dates: string) => Response | undefined = () => undefined;
+/** Raw records served beside the events, for one request (a record the parser refuses). */
+let extra: (dates: string) => unknown[] = () => [];
 let onRequest: ((dates: string) => void) | undefined;
 let asked: string[] = [];
 const months = () => asked.filter((d) => d.length === 6);
@@ -105,6 +107,7 @@ beforeEach(() => {
   process.env.XDG_CACHE_HOME = dir;
   events = [];
   failing = () => undefined;
+  extra = () => [];
   onRequest = undefined;
   asked = [];
   vi.stubGlobal('fetch', async (input: unknown) => {
@@ -115,7 +118,7 @@ beforeEach(() => {
     if (failure) return failure;
     if (dates.includes('-')) return json({ code: 400, message: 'Failed to get events endpoint.' }, 400);
     const inBucket = (e: Ev) => (dates.length === 8 ? easternDay(e.at) === dates : easternDay(e.at).startsWith(dates));
-    return json({ leagues: [{ season: { year: 2026, displayName: '2026-27 Liga MX' } }], events: events.filter(inBucket).map(event) });
+    return json({ leagues: [{ season: { year: 2026, displayName: '2026-27 Liga MX' } }], events: [...events.filter(inBucket).map(event), ...extra(dates)] });
   });
 });
 afterEach(() => {
@@ -275,5 +278,70 @@ describe('the bundled competition\'s publisher carries play too', () => {
     expect(play(WC)?.finished[0]?.match.score).toEqual({ home: 2, away: 1 });
     const file = raw(WC);
     for (const e of (file.play as { finished: Array<{ match: Record<string, unknown> }> }).finished) expect('events' in e.match).toBe(false);
+  });
+});
+
+describe('a read that is not whole, and the finished list\'s cap, never decide that a seen match is gone', () => {
+  /** `n` other matches that finished earlier today, listed in the window BEFORE anything else this day holds. */
+  const others = (n: number): Ev[] => Array.from({ length: n }, (_, i) => ({ id: String(9000 + i), at: NOW - 3 * HOUR, state: 'post', score: [1, 1] }));
+
+  it('(a) in play, then a read that is not whole but not degraded (a refused record, the match absent), then full time: it reaches play.finished', async () => {
+    await firstCycleInPlay();
+    // Cycle 2: the match's own record is not served; a readable sibling and a record the parser refuses are.
+    events = [{ id: '5', at: NOW + 3 * HOUR }];
+    extra = (d) => (d === easternDay(NOW) ? [{ id: 'not an id', date: iso(NOW), status: { type: { name: 42 } } }] : []);
+    asked = [];
+    await refresh(NOW + 20_000);
+    expect(days(), 'cycle 2 read live').toHaveLength(3);
+    expect(state()).toMatchObject({ degraded: false, liveComplete: false, live: [] });
+    expect(seenIds(), 'a partial read keeps what was seen').toEqual(['1']);
+    expect(finishedIds()).toEqual([]);
+    // Cycle 3: whole, the match served finished.
+    extra = () => [];
+    events = [{ id: '1', at: KICKOFF, state: 'post', score: [3, 2] }, { id: '5', at: NOW + 3 * HOUR }];
+    asked = [];
+    const T3 = NOW + 40_000;
+    await refresh(T3);
+    expect(days(), 'cycle 3 read live').toHaveLength(3);
+    expect(state()).toMatchObject({ degraded: false, liveComplete: true });
+    expect(seenIds()).toEqual([]);
+    expect(finishedIds()).toEqual(['1']);
+    atCycle(play()?.finished[0]?.at, T3);
+    expect(play()?.finished[0]?.match.score).toEqual({ home: 3, away: 2 });
+  });
+
+  it('(b) the seen ids reach the live read: the seen match, the 65th finished record of the window, still reaches play.finished', async () => {
+    await firstCycleInPlay();
+    // 64 other finished records come first in the window; the seen match is the 65th, past the cap of 64.
+    events = [...others(64), { id: '1', at: KICKOFF, state: 'post', score: [2, 2] }];
+    asked = [];
+    await refresh(NOW + 20_000);
+    expect(days(), 'cycle 2 read live').toHaveLength(3);
+    expect(state()).toMatchObject({ degraded: false, liveComplete: true, live: [] });
+    expect(seenIds()).toEqual([]);
+    expect(finishedIds()).toEqual(['1']);
+    expect(play()?.finished[0]?.match.score).toEqual({ home: 2, away: 2 });
+  });
+
+  it('(c) the cut reaches advancePlay: with more than 64 other finished records and the seen match absent, seen keeps it', async () => {
+    await firstCycleInPlay();
+    events = others(65);
+    asked = [];
+    await refresh(NOW + 20_000);
+    expect(days(), 'cycle 2 read live').toHaveLength(3);
+    expect(state()).toMatchObject({ degraded: false, liveComplete: true, live: [] });
+    expect(seenIds(), 'a cut finished list decides nothing').toEqual(['1']);
+    expect(finishedIds()).toEqual([]);
+  });
+
+  it('(c, control) with the list NOT cut and the seen match absent, the whole read drops it with nothing said', async () => {
+    await firstCycleInPlay();
+    events = others(3);
+    asked = [];
+    await refresh(NOW + 20_000);
+    expect(days(), 'cycle 2 read live').toHaveLength(3);
+    expect(state()).toMatchObject({ degraded: false, liveComplete: true, live: [] });
+    expect(seenIds()).toEqual([]);
+    expect(finishedIds()).toEqual([]);
   });
 });

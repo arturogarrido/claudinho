@@ -113,6 +113,25 @@ describe('the snapshot with play and lastGoal stays under the reader\'s bound', 
     for (const m of read.live) expect(m.lastGoal ?? null).toBeNull();
   });
 
+  it('a snapshot just under the bound without the new fields: they are dropped down to the pre-PR shape (play absent or empty, no lastGoal), the live and fixtures slices intact', () => {
+    // Without play and without lastGoal the snapshot is within 2 kB of the bound; 64 seen ids (about 3 kB) alone put it
+    // over, so emptying play.finished and dropping lastGoal is not enough: play must go too.
+    const unpadded = base(lives(64, false, undefined));
+    const padded = padTo(unpadded, MAX_STATE_BYTES - 1_500);
+    expect(bytesOf(padded)).toBeLessThanOrEqual(MAX_STATE_BYTES);
+    expect(bytesOf({ ...padded, play: { seen: seen(64), finished: [] } }), 'over with the seen ids alone').toBeGreaterThan(MAX_STATE_BYTES);
+    const state = { ...padded, live: lives(64, false, 'Bukayo Saka'), play: { seen: seen(64), finished: finished(64, false) } };
+    expect(writeState(state as never, NOW)).toBe(true);
+    expect(fileBytes()).toBeLessThanOrEqual(MAX_STATE_BYTES);
+    const read = readState('espn', 'eng.1') as unknown as { live: Array<Record<string, unknown>>; fixtures?: Array<Record<string, unknown>>; play?: { seen?: unknown[]; finished?: unknown[] } };
+    expect(read, 'the file still reads').toBeDefined();
+    if (read.play !== undefined) expect({ seen: read.play.seen ?? [], finished: read.play.finished ?? [] }).toEqual({ seen: [], finished: [] });
+    for (const m of read.live) expect('lastGoal' in m, String(m.id)).toBe(false);
+    // The slices it always held, as given (the pre-PR shape).
+    expect(read.live).toEqual(unpadded.live);
+    expect(read.fixtures).toEqual((padded as { fixtures: unknown[] }).fixtures);
+  });
+
   it('the writer strips `events` from play.finished, as from every other slice', () => {
     const events = [{ type: 'GOAL', minute: 59, side: 'away', teamCode: 'AWY', player: 'Bukayo Saka' }];
     const ft = { ...record(1, 'FT', false), events };

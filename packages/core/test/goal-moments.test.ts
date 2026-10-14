@@ -61,6 +61,24 @@ describe('provenLastGoal: the scorer is proven, or absent', () => {
   it('more scoring events than the score (a disallowed goal still listed) proves nothing either', () => {
     expect(provenLastGoal(match('1', 'LIVE', [0, 1], [ev('GOAL', 5, 'away'), ev('GOAL', 9, 'away')]))).toBeNull();
   });
+
+  it('two identical scoring events (type, minute, added, side, player) make the proof ambiguous: null, even when the counts equal the score', () => {
+    // The same goal listed twice beside a lagging timeline would count as two: the counts equal the score, the proof does not hold.
+    const twice = ev('GOAL', 24, 'away', 'Bradley Barcola');
+    expect(provenLastGoal(match('1', 'LIVE', [0, 2], [twice, { ...twice }]))).toBeNull();
+    // The pair need not be the last event, nor adjacent.
+    const pen = { ...ev('PEN', 45, 'home', 'Mohamed Salah'), added: 2 };
+    expect(provenLastGoal(match('1', 'LIVE', [2, 1], [pen, ev('GOAL', 60, 'away', 'Virgil van Dijk'), { ...pen }]))).toBeNull();
+    expect(provenLastGoal(match('1', 'LIVE', [2, 1], [{ ...pen }, pen, ev('GOAL', 88, 'away', 'Virgil van Dijk')]))).toBeNull();
+  });
+
+  it('distinct scoring events at the same minute (different players) still prove', () => {
+    const m = match('1', 'LIVE', [0, 2], [ev('GOAL', 24, 'away', 'Ronald Araújo'), ev('GOAL', 24, 'away', 'Bradley Barcola')]);
+    expect(provenLastGoal(m)).toEqual(ev('GOAL', 24, 'away', 'Bradley Barcola'));
+    // The same minute and player, but one in added time: distinct too.
+    const added = { ...ev('GOAL', 45, 'home', 'Mohamed Salah'), added: 1 };
+    expect(provenLastGoal(match('1', 'LIVE', [2, 0], [ev('GOAL', 45, 'home', 'Mohamed Salah'), added]))).toEqual(added);
+  });
 });
 
 describe('sealEvent is the one event constructor, exported for the ambient reader', () => {

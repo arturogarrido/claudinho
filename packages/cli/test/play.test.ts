@@ -72,6 +72,22 @@ describe('advancePlay on a whole read', () => {
     const seen = advancePlay(EMPTY, whole([rec('1', 'LIVE')]), T0);
     expect(ids(advancePlay(seen, whole([], [rec('2', 'FT')], true), at(60_000)))).toEqual({ seen: ['1'], finished: [] });
   });
+
+  it('a finished entry is kept, record and time, when a whole read\'s finished list is truncated without it', () => {
+    let s = advancePlay(EMPTY, whole([rec('1', 'LIVE')]), T0);
+    s = advancePlay(s, whole([], [rec('1', 'FT', [3, 6])]), at(60_000));
+    s = advancePlay(s, whole([], [rec('2', 'FT')], true), at(120_000));
+    expect(ids(s)).toEqual({ seen: [], finished: ['1'] });
+    expect(s.finished[0]?.at).toBe(at(60_000).toISOString());
+    expect(s.finished[0]?.match.score).toEqual({ home: 3, away: 6 });
+  });
+
+  it('a finished entry is dropped when a whole, untruncated read holds it neither in play nor finished', () => {
+    let s = advancePlay(EMPTY, whole([rec('1', 'LIVE')]), T0);
+    s = advancePlay(s, whole([], [rec('1', 'FT', [3, 6])]), at(60_000));
+    expect(ids(advancePlay(s, whole([], [rec('2', 'FT')]), at(120_000)))).toEqual({ seen: [], finished: [] });
+    expect(ids(advancePlay(s, whole([]), at(120_000)))).toEqual({ seen: [], finished: [] });
+  });
 });
 
 describe('advancePlay on a read that is not whole (failed, degraded, partial)', () => {

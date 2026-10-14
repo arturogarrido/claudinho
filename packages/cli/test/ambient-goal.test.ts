@@ -156,9 +156,29 @@ describe('ambient --json: finished', () => {
     }
   });
 
-  it('hidden on a snapshot that is not fresh (past the display window)', () => {
-    seed([], { ageMs: DISPLAY_STALE_MS + 1_000, play: { seen: [], finished: [done(ft('9', BOU, BRE, [1, 3]))] } });
-    expect(finishedOf(ambient())).toEqual([]);
+  it('listed for its own 10 minutes by the reader\'s clock, even from a snapshot older than the display window', () => {
+    // The snapshot is stamped at the full-time read and the entry with it; after the last match ends the refresher
+    // stops polling, so the snapshot ages past `DISPLAY_STALE_MS` while the entry is still inside its own 10 minutes.
+    expect(DISPLAY_STALE_MS).toBe(5 * MIN);
+    for (const [label, agoMs, listed] of [
+      ['+6 minutes', 6 * MIN, true],
+      ['+9 minutes', 9 * MIN, true],
+      ['+10 minutes and 1 ms', 10 * MIN + 1, false],
+    ] as const) {
+      seed([], { ageMs: agoMs, play: { seen: [], finished: [done(ft('9', BOU, BRE, [1, 3]), agoMs)] } });
+      const v = ambient();
+      expect(finishedOf(v).map((m) => m.id), label).toEqual(listed ? ['9'] : []);
+      if (listed) expect(finishedOf(v)[0]?.line, label).toBe('Bournemouth 1–3 Brentford (FT)');
+    }
+  });
+
+  it('from a snapshot past the display window, an entry past its own 10 minutes is still hidden, and so is every entry when liveComplete is not true', () => {
+    seed([], { ageMs: 6 * MIN, play: { seen: [], finished: [done(ft('8', ARS, CHE, [0, 0]), 11 * MIN), done(ft('9', BOU, BRE, [1, 3]), 6 * MIN)] } });
+    expect(finishedOf(ambient()).map((m) => m.id)).toEqual(['9']);
+    for (const liveComplete of [false, undefined, 'yes']) {
+      seed([], { ageMs: 6 * MIN, liveComplete, play: { seen: [], finished: [done(ft('9', BOU, BRE, [1, 3]), 6 * MIN)] } });
+      expect(finishedOf(ambient()), `liveComplete ${String(liveComplete)}`).toEqual([]);
+    }
   });
 
   it('an entry lasts 10 minutes from its own time, by the reader\'s clock; one stamped in the future is not believed', () => {
@@ -256,6 +276,23 @@ describe('ambient --json: lastGoal is re-sealed from the snapshot', () => {
       const want = i < 2 ? g : null;
       expect(items[i], label).toHaveProperty('lastGoal', want);
     }
+  });
+
+  it("only a scoring event of the record's own side is a lastGoal: a card or a substitution is null, a code that is not its side's is null", () => {
+    // ARS (home) v CHE (away) on every record.
+    const cases: Array<[string, unknown, boolean]> = [
+      ['a yellow card', { type: 'YELLOW', minute: 50, side: 'home', teamCode: 'ARS', player: 'Bukayo Saka' }, false],
+      ['a red card', { type: 'RED', minute: 50, side: 'away', teamCode: 'CHE', player: 'Cole Palmer' }, false],
+      ['a substitution', { type: 'SUB', minute: 50, side: 'home', teamCode: 'ARS' }, false],
+      ['a goal for home under the away code', { type: 'GOAL', minute: 50, side: 'home', teamCode: 'CHE', player: 'Bukayo Saka' }, false],
+      ['a goal for away under another code', { type: 'GOAL', minute: 50, side: 'away', teamCode: 'BOU', player: 'Cole Palmer' }, false],
+      ['an own goal credited to away, the away code', { type: 'OWN_GOAL', minute: 63, side: 'away', teamCode: 'CHE', player: 'William Saliba' }, true],
+      ['a penalty for home, the home code', { type: 'PEN', minute: 70, side: 'home', teamCode: 'ARS', player: 'Bukayo Saka' }, true],
+    ];
+    seed(cases.map(([, g], i) => ({ ...live(String(i + 1), ARS, CHE, [2, 1]), lastGoal: g })));
+    const items = liveItems(ambient());
+    expect(items.map((m) => m.id)).toEqual(cases.map((_, i) => String(i + 1)));
+    for (const [i, [label, g, kept]] of cases.entries()) expect(items[i], label).toHaveProperty('lastGoal', kept ? g : null);
   });
 });
 
