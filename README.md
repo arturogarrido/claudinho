@@ -143,7 +143,8 @@ Restart Claude Code to activate.
 #### Claude Code plugin
 
 The plugin draws the live score or the countdown above the prompt (the band), raises a toast when a
-score changes, and puts the live-score block beside each prompt for the model while a match is on,
+score changes, and puts the live-score block beside each prompt for the model while a match is on
+(unless its `context` option is `off`),
 all from the installed CLI (`claudinho ambient --json`), never a fetch of its own. `/claudinho match` opens a pane
 with the match you follow now as `claudinho match <id>` prints it (the score, the goals and cards, the status), which
 re-reads it while it is in play (that run reads the provider, as the command does). `/claudinho` answers the
@@ -169,7 +170,8 @@ or a read that was not whole), a goal across such a gap or a failed run is said 
 view after it (late, never lost while the match stays in the list: one gone from the next current
 view and back is observed afresh), and the first view of a match says nothing. On a goal a toast
 announces, the band plays a short celebration above its line (a ball, "GOAL!", the goal's line, about three seconds),
-waiting while Claude is working. The `celebrate` option (in `/config`) is `on` by default, or `off`. At the end of an
+waiting while Claude is working. The `celebrate` option (in `/config`) is `on` by default, or `off`.
+The `context` option (in `/config`) is `on` by default, or `off`, which sends nothing with your prompts. At the end of an
 edition the band shows the World Cup's sign-off line, the one end-of-edition line the statusline
 prints; after another competition's season the statusline says nothing is known, and the band shows
 nothing. More in the plugin's

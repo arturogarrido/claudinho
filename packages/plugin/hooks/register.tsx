@@ -13,8 +13,8 @@ import type {
 
 /**
  * The claudinho plugin: the live score or the countdown above the prompt (the band), a toast when a score changes,
- * the live score beside the prompt for the model, `/claudinho`, the band's line on demand, and the match pane
- * (`/claudinho match`).
+ * the live score beside the prompt for the model (none under `context: off`), `/claudinho`, the band's line on demand,
+ * and the match pane (`/claudinho match`).
  *
  * The CLI owns the data (its cache, its refresher, the network, the backoff) and the words: the plugin never fetches.
  * This module runs the one binary, `claudinho ambient --json` (the band's runs add `--columns <the band's columns>`;
@@ -176,6 +176,8 @@ let nvmOnce: Promise<string[]> | null = null
 let nvmAnswer: string[] | null = null
 /** Whether the goal celebration plays (`celebrate` is anything but `off`), set at load. */
 let celebrateOn = true
+/** Whether a prompt carries the live score (`context` is anything but `off`), set at load. */
+let contextOn = true
 /** A main-loop turn is running: set by `turn.start`, cleared by a `turn.complete` with no `agentId`. */
 let holdTurn = false
 /**
@@ -1105,6 +1107,8 @@ export const register: Register = (on, options) => {
     : 'pinned'
   // Only the string `off` turns the celebration off.
   celebrateOn = options.celebrate !== 'off'
+  // Only the string `off` turns the prompt context off.
+  contextOn = options.context !== 'off'
 
   on('session.start', async ($, e, next) => {
     // `/claudinho` in every session, headless included: the person types it. A registration refused leaves the start
@@ -1295,7 +1299,8 @@ export const register: Register = (on, options) => {
 
   on('prompt.submit', async ($, e, next) => {
     // The last current view's context, while that view is inside its own deadline and its run is recent. Never a
-    // subprocess here: the timer's last run is the only source.
+    // subprocess here: the timer's last run is the only source. Under `context: off`, nothing beside the prompt.
+    if (!contextOn) return next(e)
     const record = await read($, lastContext)
     if (record?.context) {
       const now = await $.clock.now()

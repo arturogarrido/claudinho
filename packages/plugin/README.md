@@ -28,8 +28,9 @@ the plugin's band and context do not show twice. Then, at the prompt of a Claude
 /plugin install claudinho --marketplace arturogarrido/claudinho
 ```
 
-Answer `y` to add the marketplace, then choose a scope (the user scope first, with Enter), and set the `toasts`
-and `celebrate` options if you want other values than the defaults. The plugin is active in that session from then on.
+Answer `y` to add the marketplace, then choose a scope (the user scope first, with Enter), and set the `toasts`,
+`celebrate` and `context` options if you want other values than the defaults. The plugin is active in that session
+from then on.
 
 Install from a terminal: the desktop app's Code tab refuses the `/plugin install` line. An install at the user scope
 made in a terminal then loads in the Code tab too.
@@ -81,7 +82,7 @@ made in a terminal then loads in the Code tab too.
   three seconds (see "The goal celebration" below).
 - **The context**: while a match is live, each prompt you submit carries the hook's live-score block beside it, for
   the model, from the plugin's last run (never a run on submit), and only while that run is recent and its scores are
-  inside their display window.
+  inside their display window. The `context` option turns it off.
 
 ## The goal celebration
 
@@ -209,6 +210,12 @@ it toasts nothing. `all` toasts every live match of the competition you follow; 
 
 `on` (the default) plays the goal celebration; `off` plays nothing and drops a waiting celebration. The toasts are the
 same either way. Change it in `/config`.
+
+## The `context` option
+
+`on` (the default) puts the live score beside each prompt you send while a match is live, for Claude to read; `off`
+sends nothing with your prompts. The band, the toasts and the celebration are the same either way. Change it in
+`/config`.
 
 ## Data and disclaimer
 
