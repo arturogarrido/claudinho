@@ -48,6 +48,24 @@ describe('the plugin folder', () => {
   });
 });
 
+describe('the context option', () => {
+  it('on or off, on by default, and its description says what reaches the model', () => {
+    const m = json('packages/plugin/.claude-plugin/plugin.json') as { userConfig?: Record<string, { type?: unknown; options?: unknown; default?: unknown; description?: unknown }> };
+    const context = m.userConfig?.context;
+    expect(context, 'userConfig.context').toBeDefined();
+    expect(context?.type).toBe('string');
+    expect(context?.options).toEqual(['on', 'off']);
+    expect(context?.default).toBe('on');
+    expect(String(context?.description)).toMatch(/prompt/i);
+    expect(String(context?.description)).toMatch(/Claude|model/);
+  });
+
+  it('the plugin README names it beside the other two', () => {
+    const readme = readFileSync(join(ROOT, 'packages/plugin/README.md'), 'utf8');
+    expect(readme).toMatch(/`context`/);
+  });
+});
+
 describe('the marketplace file', () => {
   it('lists the plugin from the repository, by its folder', () => {
     const m = json('.claude-plugin/marketplace.json') as { name?: unknown; owner?: { name?: unknown }; plugins?: Array<{ name?: unknown; source?: unknown }> };

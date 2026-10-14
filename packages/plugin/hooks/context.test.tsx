@@ -67,3 +67,31 @@ describe('what a prompt carries', () => {
     expect(r.context).toEqual(['later'])
   })
 })
+
+describe('the context option', () => {
+  test('off: nothing is attached, even from a current view inside its window', { options: { context: 'off' } }, async ($, on) => {
+    await world($, on, [current()])
+    const r = await submit($)
+    expect(r.text).toBe('what changed?')
+    expect(r.context ?? []).toEqual([])
+  })
+
+  test('on: the context is attached, as by default', { options: { context: 'on' } }, async ($, on) => {
+    await world($, on, [current()])
+    const r = await submit($)
+    expect(r.context).toEqual([CONTEXT])
+  })
+
+  test('only the string off turns it off: another value attaches as on does', { options: { context: 'yes' } }, async ($, on) => {
+    await world($, on, [current()])
+    const r = await submit($)
+    expect(r.context).toEqual([CONTEXT])
+  })
+
+  test('off changes nothing else: the band keeps running the CLI at its pace', { options: { context: 'off' } }, async ($, on) => {
+    const { argvs, clock } = await world($, on, [current(), current()])
+    const runs = argvs.length
+    await clock.advance(15_000)
+    expect(argvs.length).toBeGreaterThan(runs)
+  })
+})
