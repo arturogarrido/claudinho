@@ -39,7 +39,8 @@ const adapter = (m: Match): ProviderAdapter => ({
 });
 const synth = () => new FakeMarketProvider({ synthesize: true, now: NOW });
 const count = (text: string, needle: string) => text.split(needle).length - 1;
-const firstTimelineRow = (text: string) => text.search(/\n {2}\d+'\s+(Yellow card|Goal)/);
+/** The first timeline row, with or without its marker (so the order cases keep their meaning on either side). */
+const firstTimelineRow = (text: string) => text.search(/\n {2}\d+'\s+(?:(?:\u{26BD}|\u{1F7E8}|\u{1F7E5}) )?(Yellow card|Goal)/u);
 
 describe('get_match: the market block before the timeline', () => {
   it('a timeline long enough to be cut keeps the market attribution and its caveat whole', async () => {
@@ -62,7 +63,7 @@ describe('get_match: the market block before the timeline', () => {
     expect(r.text).not.toContain('Prediction markets');
     const rows = r.text.split('\n');
     const head = rows.findIndex((l) => l.includes('Mexico 1–0 South Africa'));
-    expect(rows[head + 1]).toMatch(/^ {2}\d+'\s+Yellow card/);
+    expect(rows[head + 1]).toMatch(/^ {2}\d+'\s+\u{1F7E8} Yellow card/u);
   });
   it('a signal and no timeline: the market block as before', async () => {
     const r = await toolGetMatch({ id: '760415', adapter: adapter(live()), marketProvider: synth(), now: NOW } as never);
@@ -71,6 +72,6 @@ describe('get_match: the market block before the timeline', () => {
   });
   it('a nation side carries its flag in the timeline rows (MCP prints flags)', async () => {
     const r = await toolGetMatch({ id: '760415', adapter: adapter(live(cards(2, 'A Player'))), marketProvider: new FakeMarketProvider(), now: NOW } as never);
-    expect(r.text).toMatch(/ {2}0' +Yellow card +\u{1F1F2}\u{1F1FD} MEX/u);
+    expect(r.text).toMatch(/ {2}0' +\u{1F7E8} Yellow card +\u{1F1F2}\u{1F1FD} MEX/u);
   });
 });
