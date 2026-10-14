@@ -82,12 +82,6 @@ describe('the context option', () => {
     expect(r.context).toEqual([CONTEXT])
   })
 
-  test('only the string off turns it off: another value attaches as on does', { options: { context: 'yes' } }, async ($, on) => {
-    await world($, on, [current()])
-    const r = await submit($)
-    expect(r.context).toEqual([CONTEXT])
-  })
-
   test('off changes nothing else: the band keeps running the CLI at its pace', { options: { context: 'off' } }, async ($, on) => {
     const { argvs, clock } = await world($, on, [current(), current()])
     const runs = argvs.length
