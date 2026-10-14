@@ -1,6 +1,6 @@
 ---
 description: Where untrusted input becomes a domain type, and the rules that hold there
-globs: packages/core/src/trust/**,packages/core/src/adapters/**,packages/core/src/markets/**,packages/cli/src/statusline.ts,packages/cli/src/marketCache.ts,packages/cli/src/scheduleSlice.ts
+globs: packages/core/src/trust/**,packages/core/src/adapters/**,packages/core/src/markets/**,packages/cli/src/statusline.ts,packages/cli/src/marketCache.ts,packages/cli/src/scheduleSlice.ts,packages/cli/src/play.ts,packages/cli/src/ambient.ts
 alwaysApply: false
 ---
 

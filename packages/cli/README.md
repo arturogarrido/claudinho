@@ -300,11 +300,11 @@ is on only when this is true), `next`, `pick`, `competition`, `degraded`, `sourc
 `Live data: ESPN`, in English; `null` with no snapshot, on the sign-off line (`idle`) and when nothing is known
 (`empty`), whether or not the snapshot is `degraded`). Beside `line` the view says what the line is, `idle` (the edition-complete line, however narrow it was fitted) and `empty` (nothing known), read before the fit so a program never reads a pace or a visibility off the text; and each live record carries `line`, the hook's own line for it with its flags and roster names, which a program says and never composes. For the goal moments the view also carries `lineParts` (the
 same `line` in parts, the score of each shown match marked `strong`; their texts joined equal `line`), `finished` (the
-matches the refresher saw in play and then read at full time, for 10 minutes, listed only from a fresh snapshot whose
-live read was whole, each with its `line` ending `(FT)`), and on each record `pinnedSide` (`home`, `away` or `null`:
+matches the refresher saw in play and then read at full time, each for 10 minutes from that read, listed only while
+the snapshot's last live read was whole, each with its `line` ending `(FT)`), and on each record `pinnedSide` (`home`, `away` or `null`:
 the side of the team saved with `follow --team`, never `CLAUDINHO_TEAM`'s), `names` (the two names the hook's line
-uses) and, on a live record, `lastGoal` (the last goal, only when the provider's goals and cards add up to the score:
-otherwise `null`). It reads only the local cache, never
+uses) and, on a live record, `lastGoal` (the last goal, only when the provider's listed goals, penalties and own goals, each
+counted once for the side it counted for, add up to the score: otherwise `null`). It reads only the local cache, never
 the network; the command itself exits 0 whatever the cache holds, and any other `--columns` value is
 refused by the option parser, as a wrong option is for every command.
 
