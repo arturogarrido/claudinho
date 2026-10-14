@@ -279,6 +279,17 @@ describe('full time for the pinned side', () => {
     expect(hasMascot(r)).toBe(false)
   })
 
+  test('a held full-time play is kept when the next views give the same result: it plays when the turn ends', { options: { toasts: 'all' } }, async ($, on) => {
+    // Round 2 (the stand-in): with the result comparison removed, any later view of the finished record dropped the play.
+    const won = momentView([], [finishedRecord([1, 1], { winnerCode: 'LIV' })], { line: FT_LINE })
+    const w = await world($, on, [momentView([liveRecord([1, 1], { minute: 90 })]), won, won, won])
+    await w.turnStart()
+    await next(w) // full time, Liverpool win (by winnerCode): held
+    await next(w) // the same result
+    await w.turnEnd()
+    expect(hasMascot(await rows(w))).toBe(true)
+  })
+
   test('a queued `Draw` play is dropped when a later finished record adds a shootout the pinned side lost', { options: { toasts: 'all' } }, async ($, on) => {
     const drew = momentView([], [finishedRecord([1, 1])], { line: FT_LINE })
     const lost = momentView([], [finishedRecord([1, 1], { shootout: { home: 4, away: 3 } })], { line: FT_LINE })
