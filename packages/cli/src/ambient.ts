@@ -53,13 +53,16 @@ const SCORING = new Set<MatchEvent['type']>(['GOAL', 'OWN_GOAL', 'PEN']);
  * A record's stored `lastGoal` as the view carries it: re-sealed by core's one
  * event constructor (`sealEvent`), and only a scoring event (`GOAL`,
  * `OWN_GOAL`, `PEN`) whose `teamCode` is the code of the record's side its
- * `side` names (an own goal's credited side); anything else is `null`.
+ * `side` names (an own goal's credited side), a side whose regulation score is
+ * at least 1; anything else is `null`.
  */
 function lastGoalOf(m: Match, raw: unknown): MatchEvent | null {
   if (raw === undefined || raw === null) return null;
   const e = sealEvent(raw);
   if (!e || !SCORING.has(e.type)) return null;
-  return e.teamCode === (e.side === 'home' ? m.home.code : m.away.code) ? e : null;
+  if (e.teamCode !== (e.side === 'home' ? m.home.code : m.away.code)) return null;
+  // The side it credited has scored: the score it sits beside never contradicts it.
+  return (m.score?.[e.side] ?? 0) >= 1 ? e : null;
 }
 
 /**

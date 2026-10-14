@@ -88,7 +88,8 @@ export type AmbientMatch = Match & {
    * scoring events counted per side equal the score: core's
    * `provenLastGoal`), stored on the cached record and re-sealed by the
    * reader with core's `sealEvent` and kept only as a goal, an own goal or a
-   * penalty whose `teamCode` is the code of the side its `side` names; `null`
+   * penalty whose `teamCode` is the code of the side its `side` names, a side
+   * that has scored (its regulation score at least 1); `null`
    * when nothing is proven or the stored value is anything else.
    */
   readonly lastGoal: MatchEvent | null;
