@@ -596,6 +596,19 @@ describe('the reply when the pane opened (0.5.0)', () => {
     })
   }
 
+  test('an outage answer with no attribution (`degraded`, no match, `attribution: null`): the bare reply, with the view\'s attribution and disclaimer', async ($, on) => {
+    const outage = answer({ degraded: true, match: null, attribution: null, lines: ['  Premier League', "  Couldn't reach the data provider."] })
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [outage] })
+    const r = await w.command('match')
+    expect(r.text).toBe(withD(LINE))
+  })
+
+  test('an answer with no disclaimer: the bare reply', async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [answer({ disclaimer: null })] })
+    const r = await w.command('match')
+    expect(r.text).toBe(withD(LINE))
+  })
+
   test('the first read failed: the bare reply, with its attribution and disclaimer', async ($, on) => {
     const w = await world($, on, [live(2, 1)], { matchAnswers: [new Error('timeout')] })
     const r = await w.command('match')
@@ -654,6 +667,28 @@ describe('the CLI\'s styled rows (0.5.0: `rows` beside `lines`)', () => {
     await w.command('match')
     expect((await exactly(await w.mountPane(), '“Araújo rises highest.”')).some((t) => t.props.dimColor === true && t.props.italic === true)).toBe(true)
   })
+
+  test('rows whose parts do not join to the line at the same index: the plain lines, nothing styled', async ($, on) => {
+    const swapped = [...JOINED]
+    ;[swapped[0], swapped[1]] = [swapped[1] as string, swapped[0] as string]
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [answer({ rows: STYLED, lines: swapped })] })
+    await w.command('match')
+    const pane = await w.mountPane()
+    expect(await texts(pane)).toEqual([...swapped, '', A, D])
+    const els = await pane.findAll({ type: 'Text' })
+    expect(els.filter((t) => t.props.bold === true || t.props.italic === true || t.props.color !== undefined)).toEqual([])
+  })
+
+  for (const [label, rows] of [['fewer rows than lines', STYLED.slice(0, -1)], ['more rows than lines', [...STYLED, { role: 'extra', parts: [{ text: 'extra', style: 'strong' }] }]]] as const) {
+    test(`${label}: the plain lines, nothing styled`, async ($, on) => {
+      const w = await world($, on, [live(2, 1)], { matchAnswers: [answer({ rows, lines: JOINED })] })
+      await w.command('match')
+      const pane = await w.mountPane()
+      expect(await texts(pane)).toEqual([...JOINED, '', A, D])
+      const els = await pane.findAll({ type: 'Text' })
+      expect(els.filter((t) => t.props.bold === true || t.props.italic === true || t.props.color !== undefined)).toEqual([])
+    })
+  }
 
   test('a plain part carries no style', async ($, on) => {
     const w = await world($, on, [live(2, 1)], { matchAnswers: [styled()] })

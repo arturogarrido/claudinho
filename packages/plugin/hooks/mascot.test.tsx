@@ -248,6 +248,50 @@ describe('full time for the pinned side', () => {
     expect(await rows(w)).toEqual([FT_LINE])
   })
 
+  test('the finished record carries no `pinned` key (the CLI\'s shape): a win of `pinnedSide` plays under pinned', async ($, on) => {
+    const fin = finishedRecord([3, 6])
+    expect(Object.hasOwn(fin, 'pinned')).toBe(false)
+    const ft = momentView([], [fin], { line: FT_LINE })
+    const w = await world($, on, [live36, ft, ft])
+    await next(w)
+    const r = await rows(w)
+    expect(hasMascot(r)).toBe(true)
+    expect(r.some((x) => x.includes('Full time · Liverpool win'))).toBe(true)
+  })
+
+  test('a finished record with `pinnedSide: null` and no `pinned` key: nothing plays under pinned', async ($, on) => {
+    const ft = momentView([], [finishedRecord([3, 6], { pinnedSide: null })], { line: FT_LINE })
+    const w = await world($, on, [live36, ft, ft])
+    await next(w)
+    expect(await rows(w)).toEqual([FT_LINE])
+  })
+
+  test('a queued full-time play is dropped when a later finished record gives another result at the same score (a winnerCode changed)', { options: { toasts: 'all' } }, async ($, on) => {
+    const won = momentView([], [finishedRecord([1, 1], { winnerCode: 'LIV' })], { line: FT_LINE })
+    const changed = momentView([], [finishedRecord([1, 1], { winnerCode: 'LAS' })], { line: FT_LINE })
+    const w = await world($, on, [momentView([liveRecord([1, 1], { minute: 90 })]), won, changed, changed])
+    await w.turnStart()
+    await next(w) // full time, Liverpool win (by winnerCode): held
+    await next(w) // the same 1-1, the winnerCode now LASK's
+    await w.turnEnd()
+    const r = await rows(w)
+    expect(r.some((x) => x.includes('Full time'))).toBe(false)
+    expect(hasMascot(r)).toBe(false)
+  })
+
+  test('a queued `Draw` play is dropped when a later finished record adds a shootout the pinned side lost', { options: { toasts: 'all' } }, async ($, on) => {
+    const drew = momentView([], [finishedRecord([1, 1])], { line: FT_LINE })
+    const lost = momentView([], [finishedRecord([1, 1], { shootout: { home: 4, away: 3 } })], { line: FT_LINE })
+    const w = await world($, on, [momentView([liveRecord([1, 1], { minute: 90 })]), drew, lost, lost])
+    await w.turnStart()
+    await next(w) // full time, a draw: held
+    await next(w) // a shootout appears, LASK Linz win it
+    await w.turnEnd()
+    const r = await rows(w)
+    expect(r.some((x) => x.includes('Full time'))).toBe(false)
+    expect(hasMascot(r)).toBe(false)
+  })
+
   test('a loss: the toast says the result, nothing plays', async ($, on) => {
     const toasts = toastTexts(on)
     const lost = momentView([], [finishedRecord([2, 1])], { line: FT_LINE })

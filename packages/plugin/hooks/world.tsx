@@ -319,10 +319,13 @@ export const liveRecord = (score: [number, number], over: Record<string, unknown
     ...over,
   }
 }
-/** One finished record of the moments' match (status FT, its line ending `(FT)`, no `lastGoal`). */
+/**
+ * One finished record of the moments' match as the CLI prints it (status FT, its line ending `(FT)`, no `lastGoal`):
+ * it carries `pinnedSide` and NO `pinned` key (the merged CLI's shape), so the plugin reads the pin from `pinnedSide`.
+ */
 export const finishedRecord = (score: [number, number] | null, over: Record<string, unknown> = {}) => {
   const shootout = over.shootout as { home: number; away: number } | undefined
-  const { score: _drop, ...rest } = liveRecord(score ?? [0, 0], { minute: 90 })
+  const { score: _drop, pinned: _pinned, ...rest } = liveRecord(score ?? [0, 0], { minute: 90 })
   return {
     ...rest,
     ...(score === null ? {} : { score: { home: score[0], away: score[1] } }),

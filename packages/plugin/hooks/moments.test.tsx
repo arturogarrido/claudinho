@@ -245,7 +245,26 @@ describe('full time', () => {
   test('toasts pinned: a match that is not pinned says no full time', async ($, on) => {
     const texts = toastTexts(on)
     const unpinned = { pinned: false, picked: false, pinnedSide: null }
-    const w = await world($, on, [momentView([liveRecord([3, 6], { ...unpinned, minute: 90 })]), momentView([], [finishedRecord([3, 6], unpinned)])])
+    const w = await world($, on, [momentView([liveRecord([3, 6], { ...unpinned, minute: 90 })]), momentView([], [finishedRecord([3, 6], { pinnedSide: null })])])
+    await next(w)
+    expect(texts).toEqual([])
+  })
+
+  test('the finished record carries no `pinned` key (the CLI\'s shape): `pinnedSide` names the pin, and under pinned the toast is said', async ($, on) => {
+    const texts = toastTexts(on)
+    const fin = finishedRecord([3, 6])
+    expect(Object.hasOwn(fin, 'pinned')).toBe(false)
+    expect(fin.pinnedSide).toBe('away')
+    const w = await world($, on, [momentView([liveRecord([3, 6], { minute: 90 })]), momentView([], [fin])])
+    await next(w)
+    expect(texts).toEqual(['Full time · LASK Linz 3–6 Liverpool · Liverpool win'])
+  })
+
+  test('a finished record with `pinnedSide: null` and no `pinned` key: nothing under pinned', async ($, on) => {
+    const texts = toastTexts(on)
+    const fin = finishedRecord([3, 6], { pinnedSide: null })
+    expect(Object.hasOwn(fin, 'pinned')).toBe(false)
+    const w = await world($, on, [momentView([liveRecord([3, 6], { minute: 90 })]), momentView([], [fin])])
     await next(w)
     expect(texts).toEqual([])
   })
@@ -253,7 +272,7 @@ describe('full time', () => {
   test('toasts all: any match says its full time', { options: { toasts: 'all' } }, async ($, on) => {
     const texts = toastTexts(on)
     const unpinned = { pinned: false, picked: false, pinnedSide: null }
-    const w = await world($, on, [momentView([liveRecord([3, 6], { ...unpinned, minute: 90 })]), momentView([], [finishedRecord([3, 6], unpinned)])])
+    const w = await world($, on, [momentView([liveRecord([3, 6], { ...unpinned, minute: 90 })]), momentView([], [finishedRecord([3, 6], { pinnedSide: null })])])
     await next(w)
     expect(texts).toEqual(['Full time · LASK Linz 3–6 Liverpool · Liverpool win'])
   })
