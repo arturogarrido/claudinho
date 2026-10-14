@@ -26,6 +26,7 @@ import type { BracketResult, BracketView } from './bracket/types';
 
 import { bracketCapability, bundleApplies, teamKind } from './competition';
 import { resolveClub, rosterFor } from './teams';
+import { takeBounded } from './trust/bounded';
 import { agreedSeason } from './trust/season';
 import { isTeam, sealTeam } from './trust/match';
 import { humanLabel } from './trust/roles';
@@ -1284,9 +1285,14 @@ export async function getLiveMatches(
   // The surfaces get the read's VERDICT (`partial`, stated when the response
   // said it was not whole), not the refresher's boolean, which is also false
   // for an adapter that said nothing and for a failed read.
-  const { complete: _complete, ...result } = await getLiveRead(adapter, now);
+  // Nor the finished records the refresher's record of play reads: what every
+  // surface gets is the in-play list, unchanged.
+  const { complete: _complete, finished: _finished, finishedTruncated: _truncated, ...result } = await getLiveRead(adapter, now);
   return result;
 }
+
+/** The finished records a live read returns, at most (the refresher's record of play keeps as many). */
+export const MAX_LIVE_FINISHED = 64;
 
 /** A live read with the answer's own account of itself: what the refresher decides from. */
 export interface LiveReadResult extends LiveResult {
@@ -1296,17 +1302,48 @@ export interface LiveReadResult extends LiveResult {
    * whole and holds no match in play does not prove none is.
    */
   complete: boolean;
+  /**
+   * The window's records with status `FT` that hold a score, as the adapter
+   * sealed them, asked of the whole window before the in-play filter: the ids
+   * the caller passed as `seen` first, in the window's order, then the others,
+   * at most {@link MAX_LIVE_FINISHED}. `[]` for a failed read. The evidence of
+   * full time for a match the refresher saw in play; never on
+   * {@link getLiveMatches}' result.
+   */
+  finished: Match[];
+  /**
+   * The cap left finished records out: an id the caller saw that is absent
+   * from `finished` may then be one of them, so its absence decides nothing.
+   */
+  finishedTruncated: boolean;
+}
+
+/**
+ * The window's finished records that hold a score, the `seen` ids first (each
+ * group in the window's order), at most {@link MAX_LIVE_FINISHED}. Chosen
+ * ids-first so the cap never drops a match the caller saw in play.
+ */
+function finishedOf(records: readonly Match[], seen: readonly string[]): { finished: Match[]; truncated: boolean } {
+  const wanted = new Set(takeBounded<string>(seen, MAX_LIVE_FINISHED));
+  const done = records.filter((m) => m.status === 'FT' && m.score !== undefined);
+  const first = done.filter((m) => wanted.has(m.id));
+  const rest = done.filter((m) => !wanted.has(m.id));
+  const all = [...first, ...rest];
+  return { finished: all.slice(0, MAX_LIVE_FINISHED), truncated: all.length > MAX_LIVE_FINISHED };
 }
 
 /**
  * {@link getLiveMatches}, keeping the window's `complete` verdict (read from
- * the window's result BEFORE the in-play filter makes a new array). For the
- * cold-path refresher, which keeps polling after a match was seen in play
- * until a WHOLE read holds none.
+ * the window's result BEFORE the in-play filter makes a new array), and the
+ * window's finished records (`finished`, chosen ids-first by `seen`, the ids
+ * the refresher's record of play holds as seen in play). For the cold-path
+ * refresher, which keeps polling after a match was seen in play until a WHOLE
+ * read holds none.
  */
 export async function getLiveRead(
   adapter: ProviderAdapter,
   now: Date = new Date(),
+  seen: readonly string[] = [],
 ): Promise<LiveReadResult> {
   try {
     const day = now.toISOString().slice(0, 10);
@@ -1328,6 +1365,8 @@ export async function getLiveRead(
     // the window means the competition is not between editions. The previous
     // final (finished) neither blocks it nor is shown: the filter keeps none.
     const between = betweenEditionsOf(adapter, meta, fetched, providerDayOf(adapter, now));
+    // Asked of the whole window too, before the in-play filter.
+    const done = finishedOf(fetched, seen);
     return {
       matches,
       degraded: false,
@@ -1340,8 +1379,10 @@ export async function getLiveRead(
       // adapter that said nothing, and for a failed read alike.
       ...partialOfRead(meta),
       complete: meta?.complete === true,
+      finished: done.finished,
+      finishedTruncated: done.truncated,
     };
   } catch {
-    return { matches: [], degraded: true, complete: false };
+    return { matches: [], degraded: true, complete: false, finished: [], finishedTruncated: false };
   }
 }

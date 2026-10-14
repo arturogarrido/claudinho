@@ -17,15 +17,47 @@
  */
 import type { CompetitionKey } from './competition';
 import type { BoundedList } from './trust/bounded';
-import type { Match } from './types';
+import type { Match, MatchEvent } from './types';
 import type { Pin } from './userConfig';
+
+/**
+ * One part of the band's line (`lineParts`): a run of its text, `strong` for a
+ * score token the fit kept whole. The parts' texts joined are the line.
+ */
+export interface AmbientLinePart {
+  readonly text: string;
+  readonly style?: 'strong';
+}
+
+/** The two names the hook's line prints for a record (a nation's roster name on the bundled competition). */
+export interface AmbientNames {
+  readonly home: string;
+  readonly away: string;
+}
+
+/**
+ * A finished match as the ambient view lists it (`finished`): the sealed
+ * record (status `FT`, its final score), as a live one is serialized, with:
+ */
+export type AmbientFinishedMatch = Match & {
+  /**
+   * The side of the SAVED pin (`claudinho follow <alias> --team`, by core's
+   * `isPinnedSide`), or `null`: never `CLAUDINHO_TEAM`, which only orders.
+   */
+  readonly pinnedSide: 'home' | 'away' | null;
+  /** The names the hook's line prints for it. */
+  readonly names: AmbientNames;
+  /** The hook's own line for it, `(FT)` in the minute's place. */
+  readonly line: string;
+};
 
 /**
  * A live match as the ambient view lists it: the sealed record, as the other
  * `--json` twins serialize a `Match` (`status`, the `score` object, `shootout`
  * after a shootout, `Team.id` where the cache holds it, a nation's generated
  * `flag`, no `flag` key on a club), with no `events` key (the ambient reader
- * never seals a timeline), and two booleans about the reader's own team:
+ * never seals a timeline), and what it says about the reader's own team, the
+ * names and the last goal:
  */
 export type AmbientMatch = Match & {
   /**
@@ -39,6 +71,10 @@ export type AmbientMatch = Match & {
    * World Cup's nations); whatever `CLAUDINHO_TEAM` prefers.
    */
   readonly pinned: boolean;
+  /** Which side is the SAVED pin's (by core's `isPinnedSide`), or `null`: never `CLAUDINHO_TEAM`'s. */
+  readonly pinnedSide: 'home' | 'away' | null;
+  /** The names the hook's line prints for it (a nation's roster name on the bundled competition). */
+  readonly names: AmbientNames;
   /**
    * The hook's own line for this record, as `claudinho hook` prints it (the
    * names, pinned to the World Cup's roster on the bundle, each with its flag
@@ -47,6 +83,14 @@ export type AmbientMatch = Match & {
    * never composes one.
    */
   readonly line: string;
+  /**
+   * The goal that made the record's score, PROVEN by the refresher (its
+   * scoring events counted per side equal the score: core's
+   * `provenLastGoal`), stored on the cached record and re-sealed by the
+   * reader with core's `sealEvent`; `null` when nothing is proven or the
+   * stored value does not seal.
+   */
+  readonly lastGoal: MatchEvent | null;
 };
 
 /** The ambient view of a selected competition, its keys in this order. */
@@ -59,6 +103,14 @@ export interface AmbientView {
    * the line is the width's cut, never wider than asked.
    */
   readonly line: string;
+  /**
+   * The line as parts, built by the fitter as it places each shown score
+   * token: their texts joined are `line` exactly, a score token the fit kept
+   * whole is `strong`, one it cut is not. One plain part, the line itself, on
+   * the countdown, the syncing line, nothing known and the sign-off, and
+   * whenever the parts would not join to the line.
+   */
+  readonly lineParts: readonly AmbientLinePart[];
   /**
    * The line is the one long-lived line, the edition's sign-off (the World
    * Cup's, once every bundled window has closed): nothing changes until the
@@ -91,6 +143,16 @@ export interface AmbientView {
    * listed, best effort, as the line shows it, and is never current.
    */
   readonly live: BoundedList<AmbientMatch>;
+  /**
+   * The matches the refresher SAW in play that a whole read then returned
+   * finished (the snapshot's record of play), each for 10 minutes from the
+   * read that first saw it finished, judged by the reader's clock (a stamp in
+   * the future is not believed); never one the live list holds. Listed only
+   * from a snapshot inside its display window whose live read was whole
+   * (`liveComplete: true`); otherwise `[]`, which then says nothing. At most
+   * 64. Absence from it never means a match is over.
+   */
+  readonly finished: readonly AmbientFinishedMatch[];
   /**
    * The live list is a believed snapshot's inside its display window (its
    * stamp's age, by the reader's own rule, is finite and short of the window),

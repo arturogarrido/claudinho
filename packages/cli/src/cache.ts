@@ -6,9 +6,10 @@
  */
 import { closeSync, mkdirSync, openSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
-import { BUNDLE_COMPETITION, lookAtEntry, type Match, type ScheduleEntry, type SeasonInfo } from '@claudinho/core';
+import { BUNDLE_COMPETITION, lookAtEntry, type Match, type MatchEvent, type ScheduleEntry, type SeasonInfo } from '@claudinho/core';
 import { randomBytes } from 'node:crypto';
 import { cacheDir, lookAtSmallFile, readSmallFile, writeFileAtomic } from './paths';
+import type { PlayState } from './play';
 
 export { cacheDir } from './paths';
 
@@ -44,12 +45,21 @@ export const MAX_STATE_BYTES = 1024 * 1024;
 /** Far above any real live/knockout snapshot, but finite before traversal. */
 const MAX_STATE_RECORDS = 1024;
 
+/**
+ * A live record as the snapshot stores it: the match, with no `events` (see
+ * `withoutEvents`), and `lastGoal`, the goal that made its score as the
+ * refresher PROVED it from the read's timeline (core's `provenLastGoal`), or
+ * `null`. Input when read back: the ambient reader re-seals it with core's
+ * `sealEvent`, and no other reader reads it.
+ */
+export type CachedLiveMatch = Match & { lastGoal?: MatchEvent | null };
+
 /** The cached snapshot. `live` holds in-progress matches at `updatedAt`. */
 export interface CacheState {
   /** Schema version (see {@link CACHE_VERSION}); stamped by writeState. */
   version?: number;
   updatedAt: string; // ISO 8601
-  live: Match[];
+  live: CachedLiveMatch[];
   /**
    * Whether the read that last filled `live` was WHOLE (the provider's answer
    * read entire: core's `LiveReadResult.complete`): the one fact the live
@@ -116,6 +126,16 @@ export interface CacheState {
    * (`sealFixtures`).
    */
   schedule?: ScheduleSlice;
+  /**
+   * The refresher's record of play (`play.ts`, which holds every rule about
+   * it): the matches it saw in play, and those a later whole read returned
+   * finished. Advanced by both publishers under the lock on every live read
+   * and carried on every publish. Input when read back: the refresher believes
+   * it through `advancePlay`, the ambient reader through its own bounds; the
+   * statusline, the hook and `prompt` never read it. Absent on a snapshot
+   * written before it.
+   */
+  play?: PlayState;
 }
 
 /** The stored schedule slice. Every field is input when read back: see `scheduleView`. */
@@ -315,32 +335,76 @@ export function writeState(state: CacheState, now: number = stampOrNow(state.upd
     const until = envelopeDeadline(replaced, now);
     if (until !== undefined && !writeBackoffNote(state.source, state.competition, until, now)) return false;
   }
-  writeFileAtomic(
-    cachePath(state.source, state.competition),
-    JSON.stringify({ ...withoutEvents(state), version: CACHE_VERSION }),
-  );
+  writeFileAtomic(cachePath(state.source, state.competition), boundedSnapshot(withoutEvents(state)));
   return true;
 }
 
 /**
+ * The snapshot serialized, version-stamped, and BOUNDED: the reader refuses a
+ * file over `MAX_STATE_BYTES` (the statusline's hot-path bound), and the record
+ * of play and each live record's `lastGoal` are what a snapshot gained for the
+ * goal moments. When the whole would be over the bound, `play.finished` is
+ * emptied first (a full-time toast missed), then every live record's
+ * `lastGoal` is dropped (a scorer not named); then it is written as it is
+ * (over the bound only when the slices it always held are). The serialization
+ * is done anyway; it is repeated only for a snapshot over the bound.
+ */
+function boundedSnapshot(state: CacheState): string {
+  const serialize = (s: CacheState) => JSON.stringify({ ...s, version: CACHE_VERSION });
+  let text = serialize(state);
+  if (Buffer.byteLength(text, 'utf8') <= MAX_STATE_BYTES) return text;
+  let next = state;
+  const play = state.play as unknown;
+  if (play && typeof play === 'object' && !Array.isArray(play) && Array.isArray((play as PlayState).finished)) {
+    next = { ...next, play: { ...(play as PlayState), finished: [] } };
+    text = serialize(next);
+    if (Buffer.byteLength(text, 'utf8') <= MAX_STATE_BYTES) return text;
+  }
+  if (Array.isArray(next.live)) {
+    next = { ...next, live: next.live.map(dropLastGoal) };
+    text = serialize(next);
+  }
+  return text;
+}
+
+/** A live record without its `lastGoal` key, the other keys in their order. */
+function dropLastGoal(m: CachedLiveMatch): CachedLiveMatch {
+  if (!m || typeof m !== 'object' || !('lastGoal' in m)) return m;
+  const copy = { ...m };
+  delete copy.lastGoal;
+  return copy;
+}
+
+/**
  * The snapshot as written: every match of the live, the fixtures and the
- * schedule slices WITHOUT its `events` key (a copy; the caller's state is not
- * touched). No reader of the cache renders a timeline (the statusline, the
- * hook and `ambient --json` seal with `events: false`), and a full timeline on
- * every cached match could push the file past the reader's bound. Every other
- * key, and the key order, is kept.
+ * schedule slices, and of the record of play's finished entries, WITHOUT its
+ * `events` key (a copy; the caller's state is not touched). No reader of the
+ * cache renders a timeline (the statusline, the hook and `ambient --json` seal
+ * with `events: false`), and a full timeline on every cached match could push
+ * the file past the reader's bound. Every other key, and the key order, is
+ * kept.
  */
 function withoutEvents(state: CacheState): CacheState {
-  const strip = (list: Match[] | undefined): Match[] | undefined =>
+  const strip = <M extends Match>(list: M[] | undefined): M[] | undefined =>
     Array.isArray(list) ? list.map(dropEvents) : list;
-  const out: CacheState = { ...state, live: strip(state.live) as Match[] };
+  const out: CacheState = { ...state, live: strip(state.live) as CachedLiveMatch[] };
   if (state.fixtures !== undefined) out.fixtures = strip(state.fixtures);
   if (state.schedule?.fixtures !== undefined) out.schedule = { ...state.schedule, fixtures: strip(state.schedule.fixtures) };
+  const play = state.play as unknown;
+  if (play && typeof play === 'object' && !Array.isArray(play) && Array.isArray((play as PlayState).finished)) {
+    const p = play as PlayState;
+    out.play = {
+      ...p,
+      finished: p.finished.map((e) =>
+        e && typeof e === 'object' && !Array.isArray(e) ? { ...e, match: dropEvents(e.match) } : e,
+      ),
+    };
+  }
   return out;
 }
 
 /** A match without its `events` key, the other keys in their order. */
-function dropEvents(m: Match): Match {
+function dropEvents<M extends Match>(m: M): M {
   if (!m || typeof m !== 'object' || !('events' in m)) return m;
   const copy = { ...m };
   delete copy.events;

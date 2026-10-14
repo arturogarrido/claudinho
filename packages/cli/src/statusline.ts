@@ -9,6 +9,7 @@
  */
 import {
   allFixtures,
+  type AmbientLinePart,
   byKickoff,
   countdown,
   fixturesInLiveWindow,
@@ -228,19 +229,77 @@ function teamTok(t: { code: string; flag?: string }, flags: boolean): string {
   return flags && t.flag ? t.flag : t.code;
 }
 
-/** One match as a segment (no leading icon), e.g. "🇪🇸 1–1 🇮🇶 87'", or a club's "ARS 2–1 CHE 50'". */
-function matchSegment(m: Match, compact: boolean, flags: boolean): string {
+/**
+ * One match as a segment (no leading icon), e.g. "🇪🇸 1–1 🇮🇶 87'", or a
+ * club's "ARS 2–1 CHE 50'", with where its score token is in it (`score`, the
+ * code-unit offset of `scoreline(m)`), which the band's parts style.
+ */
+function matchSegment(m: Match, compact: boolean, flags: boolean): Segment {
   const minute = m.status === 'HT' ? 'HT' : m.minute ? `${m.minute}'` : 'LIVE';
-  if (!flags) {
-    // Codes only — a flagless terminal would render the flag as boxed letters,
-    // so the code already carries that info without the noise. Compact and
-    // non-compact converge here (the code is the whole token).
-    return `${m.home.code} ${scoreline(m)} ${m.away.code} ${minute}`;
+  // Codes only when flags are off: a flagless terminal would render the flag
+  // as boxed letters, so the code already carries that info without the
+  // noise. Compact and non-compact converge there (the code is the whole
+  // token). A side with no flag (a club) renders its code in either layout.
+  const home = !flags ? m.home.code : compact ? teamTok(m.home, true) : withFlag(m.home.code, m.home.flag, 'home');
+  const away = !flags ? m.away.code : compact ? teamTok(m.away, true) : withFlag(m.away.code, m.away.flag, 'away');
+  const score = scoreline(m);
+  return { text: `${home} ${score} ${away} ${minute}`, score: [home.length + 1, home.length + 1 + score.length] };
+}
+
+/** A range of a line's text, in UTF-16 code units: `[start, end)`. */
+type Range = readonly [number, number];
+
+/** A live segment's text and its score token's range in it. */
+interface Segment {
+  readonly text: string;
+  readonly score: Range;
+}
+
+/** A line as the renderer chose it, with the ranges of its score tokens (`strong` in the band's parts). */
+interface Rendered {
+  readonly text: string;
+  readonly strong: readonly Range[];
+}
+
+/** A line with no score token in it: the countdown, the syncing line, nothing known, the sign-off. */
+const plain = (text: string): Rendered => ({ text, strong: [] });
+
+/** How many leading code units two strings share. */
+function sharedPrefix(a: string, b: string): number {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a.charCodeAt(i) === b.charCodeAt(i)) i++;
+  return i;
+}
+
+/**
+ * The ranges that survive a cut of `from` into `to`: a cut keeps a prefix of
+ * the text (then its ellipsis), so a range survives whole when it ends inside
+ * the prefix the two share; a token the cut went through is not kept.
+ */
+function keptRanges(from: string, to: string, ranges: readonly Range[]): Range[] {
+  if (from === to) return [...ranges];
+  const kept = sharedPrefix(from, to);
+  return ranges.filter(([, end]) => end <= kept);
+}
+
+/**
+ * The band's parts of a line: its text split at the score ranges, those
+ * `strong`, the rest plain, no empty part. Their texts joined must be the
+ * line; when they would not be (a range out of order or outside the text),
+ * the line is one plain part.
+ */
+function partsOf(line: string, strong: readonly Range[]): AmbientLinePart[] {
+  const parts: AmbientLinePart[] = [];
+  let at = 0;
+  for (const [start, end] of strong) {
+    if (start < at || end <= start || end > line.length) return [{ text: line }];
+    if (start > at) parts.push({ text: line.slice(at, start) });
+    parts.push({ text: line.slice(start, end), style: 'strong' });
+    at = end;
   }
-  // A side with no flag (a club) renders its code in either layout.
-  const home = compact ? teamTok(m.home, true) : withFlag(m.home.code, m.home.flag, 'home');
-  const away = compact ? teamTok(m.away, true) : withFlag(m.away.code, m.away.flag, 'away');
-  return `${home} ${scoreline(m)} ${away} ${minute}`;
+  if (at < line.length || parts.length === 0) parts.push({ text: line.slice(at) });
+  return parts.map((p) => p.text).join('') === line ? parts : [{ text: line }];
 }
 
 /**
@@ -328,10 +387,24 @@ export function liveMatchesFromCache(
   /** The competition's written team kind (see `sealFixtures`), stated by every caller. */
   kind: TeamKind,
 ): BoundedList<Match> {
+  return liveRecordsFromCache(state, nowMs, kind).list;
+}
+
+/**
+ * {@link liveMatchesFromCache}, with the cached record each sealed match was
+ * made from (`sources[i]` for `list.items[i]`), for the one reader that reads a
+ * field the seal does not carry: the ambient view's `lastGoal`, which it
+ * re-seals itself. The list is the same list, by the same rules.
+ */
+export function liveRecordsFromCache(
+  state: CacheState | undefined,
+  nowMs: number,
+  kind: TeamKind,
+): { list: BoundedList<Match>; sources: readonly object[] } {
   const fresh = state && ageMs(state, nowMs) < DISPLAY_STALE_MS;
   const rawLive = fresh ? state?.live : [];
   if (!Array.isArray(rawLive)) {
-    return { items: [], total: 0, shown: 0, truncated: false, complete: false };
+    return { list: { items: [], total: 0, shown: 0, truncated: false, complete: false }, sources: [] };
   }
   const liveArr = rawLive;
 
@@ -348,6 +421,7 @@ export function liveMatchesFromCache(
   // Bounding the CANDIDATES examined keeps the work bounded; bounding the
   // RESULTS keeps a real match from being crowded out by junk.
   const out: Match[] = [];
+  const sources: object[] = [];
   let inspected = 0;
   let readable = true;
   for (let i = 0; i < liveArr.length; i++) {
@@ -365,20 +439,25 @@ export function liveMatchesFromCache(
       continue;
     }
     const sealed = parsedValue(parseCachedMatch(m, { events: false, teamKind: kind }));
-    if (sealed) out.push(sealed);
-    else readable = false;
+    if (sealed) {
+      out.push(sealed);
+      sources.push(raw);
+    } else readable = false;
   }
   const exhausted = inspected === liveArr.length;
   const complete = exhausted && readable;
 
   return {
-    items: out,
-    total: out.length,
-    shown: out.length,
-    truncated: !exhausted,
-    // False when we stopped early or a record was unreadable. In either case an
-    // empty list must not render as the authoritative "nothing is on".
-    complete,
+    list: {
+      items: out,
+      total: out.length,
+      shown: out.length,
+      truncated: !exhausted,
+      // False when we stopped early or a record was unreadable. In either case an
+      // empty list must not render as the authoritative "nothing is on".
+      complete,
+    },
+    sources,
   };
 }
 
@@ -410,12 +489,19 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
  * that string fitted to the width (`renderPrompt`'s answer). `ambient --json`
  * says what the line is from the first and prints the second.
  */
-export function promptLine(state: CacheState | undefined, opts: PromptOpts = {}): { line: string; unfitted: string } {
-  const unfitted = renderPromptLine(state, opts);
-  return { line: truncateVisible(unfitted, lineColumns(opts)), unfitted };
+export function promptLine(
+  state: CacheState | undefined,
+  opts: PromptOpts = {},
+): { line: string; unfitted: string; parts: AmbientLinePart[] } {
+  const rendered = renderPromptLine(state, opts);
+  const unfitted = rendered.text;
+  const line = truncateVisible(unfitted, lineColumns(opts));
+  // The band's parts, from the score ranges the fitter placed, through the
+  // final cut as through every other: a token it went through is not strong.
+  return { line, unfitted, parts: partsOf(line, keptRanges(unfitted, line, rendered.strong)) };
 }
 
-function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}): string {
+function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}): Rendered {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
   const defaultCompetition = opts.defaultCompetition ?? true;
@@ -479,7 +565,7 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
         ? `${teamTok(first.home, flags)} vs ${teamTok(first.away, flags)} `
         : '';
     const more = win.length - 1;
-    return fitWithMarker(`⚽ ${matchup}live · syncing…`, more > 0 ? ` +${more}` : '', width);
+    return plain(fitWithMarker(`⚽ ${matchup}live · syncing…`, more > 0 ? ` +${more}` : '', width));
   }
 
   // Nothing (relevant) live → next-fixture countdown over the merged schedule
@@ -487,7 +573,7 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // fails closed to "⚽ —", never "🏳️ vs 🏳️"), the picked team's next first.
   const next = countdownFixture(nowMs, schedule, pick);
   if (next) {
-    return `${teamTok(next.home, flags)} vs ${teamTok(next.away, flags)} in ${countdown(next.kickoff, now)}`;
+    return plain(`${teamTok(next.home, flags)} vs ${teamTok(next.away, flags)} in ${countdown(next.kickoff, now)}`);
   }
 
   // Tournament provably over (every bundled fixture's window has closed) → sign
@@ -504,10 +590,10 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // answer says nothing about that feed — signing off there would be a permanent
   // wrong line on a live competition. Falls back to "⚽ —".
   if (defaultCompetition && isTournamentWindowOver(nowMs, schedule)) {
-    return TOURNAMENT_COMPLETE_LINE;
+    return plain(TOURNAMENT_COMPLETE_LINE);
   }
 
-  return NOTHING_KNOWN_LINE;
+  return plain(NOTHING_KNOWN_LINE);
 }
 
 /** The width a line is fitted to: the caller's `columns`, never above the ceiling. */
@@ -535,15 +621,29 @@ function fitWithMarker(body: string, marker: string, width: number): string {
  * The live line fitted to `width`: whole segments are kept while they fit
  * beside the marker, and the ones that do not are COUNTED in it (`+N`), as the
  * ones past `max` are; an incomplete scan keeps its nonnumeric `+more`. Only a
- * single segment wider than the width is cut, its marker reserved.
+ * single segment wider than the width is cut, its marker reserved. The score
+ * token of each segment placed is a range of the result (`strong`), unless
+ * the cut went through it.
  */
-function fitLiveLine(segments: readonly string[], overflow: number, complete: boolean, width: number): string {
+function fitLiveLine(segments: readonly Segment[], overflow: number, complete: boolean, width: number): Rendered {
   const markerFor = (dropped: number): string =>
     !complete ? ' +more' : overflow + dropped > 0 ? ` +${overflow + dropped}` : '';
-  const bodyOf = (kept: number): string => '⚽ ' + segments.slice(0, kept).join(' · ');
+  const bodyOf = (kept: number): string => '⚽ ' + segments.slice(0, kept).map((g) => g.text).join(' · ');
   let kept = segments.length;
   while (kept > 1 && displayWidth(bodyOf(kept)) + displayWidth(markerFor(segments.length - kept)) > width) kept--;
-  return fitWithMarker(bodyOf(kept), markerFor(segments.length - kept), width);
+  const body = bodyOf(kept);
+  const text = fitWithMarker(body, markerFor(segments.length - kept), width);
+  // Each placed segment's score range in the body: '⚽ ', then the segments
+  // joined by ' · '.
+  const ranges: Range[] = [];
+  let offset = '⚽ '.length;
+  for (const g of segments.slice(0, kept)) {
+    ranges.push([offset + g.score[0], offset + g.score[1]]);
+    offset += g.text.length + ' · '.length;
+  }
+  // The fit keeps a prefix of the body, then the marker: a range survives when
+  // it ends inside what was kept of the body (a body dropped whole keeps none).
+  return { text, strong: keptRanges(body, text, ranges).filter(([, end]) => end <= text.length) };
 }
 
 /**

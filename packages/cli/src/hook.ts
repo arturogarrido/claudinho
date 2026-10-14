@@ -90,16 +90,26 @@ function rosterPinned(t: Team, pin: boolean): Team {
 }
 
 /**
- * THE hook's line for one live match, as `claudinho hook` prints it and
+ * The two names the hook's line prints for a record (pinned to the bundled
+ * roster on the bundled competition, `pin`): `ambient --json` carries them on
+ * each record (`names`), so a program names a team as the line does.
+ */
+export function hookNames(m: Match, pin: boolean): { home: string; away: string } {
+  return { home: rosterPinned(m.home, pin).name, away: rosterPinned(m.away, pin).name };
+}
+
+/**
+ * THE hook's line for one match, as `claudinho hook` prints it and
  * `ambient --json` carries it on each record (`line`): the two names (pinned to
  * the bundled roster on the bundled competition, `pin`), each with its flag when
  * `flags` is on and the side has one, the scoreline with a shootout's tally, and
- * the minute token (`67'`, `half-time`, else `live`). One formatter: a program
- * says this line, never composes one.
+ * the minute token (`67'`, `half-time`, else `live`; `FT` for a finished record,
+ * which only `ambient --json`'s `finished` list carries: the hook lists none).
+ * One formatter: a program says this line, never composes one.
  */
 export function hookLine(m: Match, opts: { flags: boolean; pin: boolean }): string {
   const { flags, pin } = opts;
-  const minute = m.status === 'HT' ? 'half-time' : m.minute ? `${m.minute}'` : 'live';
+  const minute = m.status === 'FT' ? 'FT' : m.status === 'HT' ? 'half-time' : m.minute ? `${m.minute}'` : 'live';
   const h = rosterPinned(m.home, pin);
   const a = rosterPinned(m.away, pin);
   const home = flags ? withFlag(h.name, h.flag, 'home') : h.name;

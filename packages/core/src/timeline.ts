@@ -51,3 +51,32 @@ export function timelineRows(match: Match, opts: TimelineOptions): string[] {
     `  ${padVisible(c.minute, minuteW)}  ${padVisible(c.kind, kindW)}  ${padVisible(c.label, labelW)}${c.player ? `  ${c.player}` : ''}`.trimEnd(),
   );
 }
+
+/** The kinds that score: an own goal for the side it credited (its `side`), a penalty as a goal. */
+const SCORING = new Set<MatchEvent['type']>(['GOAL', 'OWN_GOAL', 'PEN']);
+
+/**
+ * The goal that made the record's score, PROVEN, or `null`. The record's
+ * scoring events, counted per side in their order (an own goal for the side
+ * it credited, which is the event's `side`), must equal its regulation score:
+ * then the timeline is whole and its last scoring event is the goal that made
+ * this score. Anything else proves nothing (a timeline that lags the score, a
+ * disallowed goal still listed, no score, no scoring event): the first scorer
+ * is never named for a second goal. The ambient view's `lastGoal`, written by
+ * the refresher on each live record it publishes.
+ */
+export function provenLastGoal(match: Match): MatchEvent | null {
+  const score = match.score;
+  if (!score) return null;
+  let home = 0;
+  let away = 0;
+  let last: MatchEvent | null = null;
+  for (const e of match.events ?? []) {
+    if (!SCORING.has(e.type)) continue;
+    if (e.side === 'home') home++;
+    else if (e.side === 'away') away++;
+    else continue;
+    last = e;
+  }
+  return last !== null && home === score.home && away === score.away ? last : null;
+}

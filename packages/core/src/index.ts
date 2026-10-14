@@ -8,7 +8,7 @@ export { resolveTz, formatKickoff, formatDate, formatTime, countdown, countdownP
 export type { FormatOpts } from './time';
 export { isValidTimeZone, isValidDate } from './validate';
 export { displayWidth, padVisible, truncateVisible, withFlag } from './text';
-export { timelineRows } from './timeline';
+export { provenLastGoal, timelineRows } from './timeline';
 export type { TimelineOptions } from './timeline';
 export {
   outcomeFromScore,
@@ -90,6 +90,7 @@ export {
   getMatchesForDate,
   getLiveMatches,
   getLiveRead,
+  MAX_LIVE_FINISHED,
   getScheduleAhead,
   scheduleSpan,
   SCHEDULE_AHEAD_DAYS,
@@ -174,7 +175,7 @@ export type {
 // The one non-affiliation sentence, imported by every surface.
 export { DISCLAIMER, FAN_PROJECT, disclaimerLine } from './disclaimer';
 // What `claudinho ambient --json` prints (a type only: the CLI builds it from its cache).
-export type { AmbientMatch, AmbientView } from './ambient';
+export type { AmbientFinishedMatch, AmbientLinePart, AmbientMatch, AmbientNames, AmbientView } from './ambient';
 
 // Shareable terminal snippets (pure text artifacts; composes Match + the market
 // copy bank). The non-affiliation disclaimer is non-optional in every snippet.
@@ -274,8 +275,10 @@ export {
   productFlag,
   selectOne,
   sealMarketSignal,
+  sealEvent,
   sealMatch,
   sealSeason,
+  takeBounded,
   unresolved,
   valid,
   type ScheduleEntry,

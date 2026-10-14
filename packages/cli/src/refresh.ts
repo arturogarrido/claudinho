@@ -15,18 +15,22 @@ import {
   getScheduleAhead,
   isKnockoutStage,
   isKnownSource,
+  type LiveReadResult,
   makeAdapter,
+  provenLastGoal,
   sealSeason,
   teamKind,
   type Match,
   type ProviderAdapter,
   type SeasonInfo,
+  type TeamKind,
 } from '@claudinho/core';
 import {
   admitAttempt,
   ageMs,
   attemptDue,
   backoffInEffect,
+  type CachedLiveMatch,
   type CacheState,
   ensureBackoffVisible,
   fixturesAgeMs,
@@ -51,6 +55,7 @@ import {
   type ScheduleView,
   scheduleView,
 } from './scheduleSlice';
+import { advancePlay, NO_READ, type PlayState } from './play';
 import { inLiveWindow, LIVE_TTL_MS, sealFixtures } from './statusline';
 
 /** Don't re-fetch if the cache is younger than this (anti-stampede). */
@@ -135,6 +140,36 @@ export function inKnockoutPhase(nowMs: number, competition: string): boolean {
  * owed would be skipped as already answered).
  */
 const NEVER = new Date(0).toISOString();
+
+/**
+ * The record of play a cycle carries, from the snapshot it read under the lock:
+ * believed and expired by the writer's clock (`advancePlay` with no read), so
+ * every publish of the cycle carries it, a cycle that reads nothing live
+ * included.
+ */
+function carriedPlay(base: CacheState | undefined, now: Date, kind: TeamKind): PlayState {
+  return advancePlay(base?.play, NO_READ, now, kind);
+}
+
+/**
+ * A live read's in-play records as the snapshot stores them: each with
+ * `lastGoal`, the goal that made its score as the read's timeline PROVES it
+ * (core's `provenLastGoal`), or `null`. The writer then strips every `events`
+ * key; the proof is made here, while the read still has them.
+ */
+function liveWithLastGoal(matches: readonly Match[]): CachedLiveMatch[] {
+  return matches.map((m) => ({ ...m, lastGoal: provenLastGoal(m) }));
+}
+
+/**
+ * The record of play after a live read (core's `getLiveRead`, asked with the
+ * record's seen ids): advanced only by a read that succeeded, was not degraded
+ * and said it was whole; any other leaves it as carried.
+ */
+function playAfterRead(play: PlayState, r: LiveReadResult, at: Date, kind: TeamKind): PlayState {
+  const whole = !r.degraded && r.complete === true;
+  return advancePlay(play, { whole, matches: r.matches, finished: r.finished ?? [], finishedTruncated: r.finishedTruncated === true }, at, kind);
+}
 
 /**
  * The live-fetch adapter for a VALIDATED source and the refresh's competition.
@@ -241,6 +276,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
                 degraded: true, // no live provider served this scope — never claim otherwise
                 source,
                 competition,
+                play: { seen: [], finished: [] }, // nothing was read, and no snapshot to carry one from
               },
               idle,
             );
@@ -304,6 +340,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
           source,
           competition,
           ...(until !== undefined ? { backoffUntil: new Date(until).toISOString() } : {}),
+          play: { seen: [], finished: [] }, // nothing was read, and no snapshot to carry one from
         },
         idle,
         nowMs,
@@ -380,12 +417,16 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
 
     // Carry the slice we're NOT refreshing this cycle so a fixtures-only refresh
     // doesn't drop live (and vice-versa).
-    let live: Match[] = base?.live ?? [];
+    let live: CachedLiveMatch[] = base?.live ?? [];
     // Carried with the slice it describes (as read back); with no snapshot,
     // an empty slice nothing read is not whole.
     let liveComplete: boolean | undefined = base ? base.liveComplete : false;
     let degraded = base?.degraded ?? false;
     let updatedAt = base?.updatedAt ?? now.toISOString();
+    // The record of play, carried (expired by this cycle's clock) unless a
+    // live read advances it.
+    const kind = teamKind(competition);
+    let play = carriedPlay(base, now, kind);
     let fixtures = base?.fixtures;
     let fixturesUpdatedAt = base?.fixturesUpdatedAt;
     let fixturesAttemptedAt = base?.fixturesAttemptedAt;
@@ -413,10 +454,13 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
       // Its `complete` is stored with the slice: an empty list from a read that
       // was not whole does not say nothing is on.
       try {
-        const r = await getLiveRead(adapter, now);
-        live = r.matches;
+        // Asked with the ids seen in play, so the cap on the finished records
+        // never drops one of them.
+        const r = await getLiveRead(adapter, now, play.seen.map((e) => e.id));
+        live = liveWithLastGoal(r.matches);
         liveComplete = r.complete === true;
         degraded = r.degraded;
+        play = playAfterRead(play, r, now, kind);
         // The stored season describes the response that last refreshed `live`.
         // A response that ANSWERED replaces it with whatever it stated — and if
         // it stated no readable season, with nothing: fresh live data must not
@@ -534,6 +578,7 @@ export async function runRefresh(opts: RefreshOpts): Promise<void> {
           ...(season ? { season } : {}),
           // Stored with the slice it describes, and only while that slice exists.
           ...(fixtures && fixturesSeason ? { fixturesSeason } : {}),
+          play,
         },
         token,
         // The cycle's clock, not the carried live stamp: the throttle a
@@ -768,10 +813,15 @@ async function refreshOffBundle(c: {
     // The live slice, carried unless this cycle reads it, with what it says
     // of the read that filled it (as read back; with no snapshot, an empty
     // slice nothing read is not whole).
-    let live: Match[] = base?.live ?? [];
+    let live: CachedLiveMatch[] = base?.live ?? [];
     let liveComplete: boolean | undefined = base ? base.liveComplete : false;
     let degraded = base?.degraded ?? false;
     let updatedAt = base?.updatedAt ?? NEVER;
+    // The record of play, carried (expired by this cycle's clock) on every
+    // publish, the attempt's before discovery included, unless a live read
+    // advances it.
+    const kind = teamKind(competition);
+    let play = carriedPlay(base, now, kind);
     let season: SeasonInfo | undefined = sealSeason(base?.season);
     // The schedule slice AS IT IS BELIEVED (`scheduleView`): what is carried
     // and written back is what was read through the rules, never the raw file.
@@ -806,6 +856,7 @@ async function refreshOffBundle(c: {
         ...(inPlayUntil !== undefined ? { inPlayUntil: new Date(inPlayUntil).toISOString() } : {}),
         ...(probe ? { probe: true } : {}),
       },
+      play,
     });
 
     if (needDiscovery) {
@@ -863,10 +914,13 @@ async function refreshOffBundle(c: {
         // cycle that first waited for discovery.
         const liveAt = clock();
         try {
-          const r = await getLiveRead(adapter, now);
-          live = r.matches;
+          // Asked with the ids seen in play (the cap never drops one of them).
+          const r = await getLiveRead(adapter, now, play.seen.map((e) => e.id));
+          live = liveWithLastGoal(r.matches);
           liveComplete = r.complete === true;
           degraded = r.degraded;
+          // Advanced at the moment the read was admitted, the live stamp's time.
+          play = playAfterRead(play, r, new Date(liveAt), kind);
           if (!r.degraded) season = r.season;
           // An observation never lowers the continuation; only a read that
           // succeeded, was WHOLE and holds no match in play ends it.
