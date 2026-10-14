@@ -391,6 +391,42 @@ describe('full time for the pinned side', () => {
     expect(await rows(w)).toEqual([FT_LINE])
   })
 
+  test('a full-time play queued behind a goal is dropped when the match is listed nowhere, the goal still plays', { timeoutMs: 20_000 }, async ($, on) => {
+    // Round 3 (the stand-in): the queue-only drop had no case.
+    const gone = momentView([], [], { line: FT_LINE })
+    const w = await world($, on, [momentView([liveRecord([3, 5], { minute: 90 })]), ft36, gone, gone])
+    await w.turnStart()
+    await next(w) // the goal and full time, held
+    await w.clock.advance(13_800)
+    await w.turnEnd() // the goal plays from 14 s
+    expect((await rows(w)).some((x) => x.includes('GOAL! Liverpool'))).toBe(true)
+    await w.clock.advance(1_200) // the run at 15 s: the match listed nowhere
+    let fullTime = false
+    for (let t = 0; t < 8_000; t += 500) {
+      if ((await rows(w)).some((x) => x.includes('Full time'))) fullTime = true
+      await w.clock.advance(500)
+    }
+    expect(fullTime).toBe(false)
+    expect(await rows(w)).toEqual([FT_LINE])
+  })
+
+  test('a full-time play queued behind a goal is dropped when the match is listed live again', { timeoutMs: 20_000 }, async ($, on) => {
+    const again = momentView([liveRecord([3, 6], { minute: 90 })])
+    const w = await world($, on, [momentView([liveRecord([3, 5], { minute: 90 })]), ft36, again, again])
+    await w.turnStart()
+    await next(w)
+    await w.clock.advance(13_800)
+    await w.turnEnd()
+    expect((await rows(w)).some((x) => x.includes('GOAL! Liverpool'))).toBe(true)
+    await w.clock.advance(1_200)
+    let fullTime = false
+    for (let t = 0; t < 8_000; t += 500) {
+      if ((await rows(w)).some((x) => x.includes('Full time'))) fullTime = true
+      await w.clock.advance(500)
+    }
+    expect(fullTime).toBe(false)
+  })
+
   test('celebrate off: the full-time toast, nothing plays', { options: { celebrate: 'off' } }, async ($, on) => {
     const toasts = toastTexts(on)
     const w = await world($, on, [live36, ft36, ft36])
