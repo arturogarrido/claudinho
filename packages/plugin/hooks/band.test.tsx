@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { COMPLETE, FIRST_RUN, view, world } from './world'
+import { COMPLETE, FIRST_RUN, drawnRows, view, world } from './world'
 
 /**
  * The band: `claudinho ambient --json --columns <the band's columns>` every 15 s, the object's `line` shown as the
@@ -154,5 +154,46 @@ describe("another plugin's band beneath ours", () => {
   test('with nothing of ours to show, the band beneath alone', async ($, on) => {
     const { mount } = await world($, on, [view('⚽ —', { empty: true })], { beneath: 'usage 42%' })
     expect((await (await mount()).findAll({ type: 'Text' })).map((t) => t.text)).toEqual(['usage 42%'])
+  })
+})
+
+describe('the score in bold (plugin 0.5.0: the CLI\'s `lineParts`)', () => {
+  const LINE = "⚽ LAS 0–1 LIV 23'"
+  const PARTS = [{ text: '⚽ LAS ' }, { text: '0–1', style: 'strong' }, { text: " LIV 23'" }]
+
+  test('the parts drawn: the `strong` part a bold Text, the row reading the line whole', async ($, on) => {
+    const { mount } = await world($, on, [view(LINE, { lineParts: PARTS })])
+    const m = await mount()
+    expect(await drawnRows(m)).toEqual([LINE])
+    const bold = (await m.findAll({ type: 'Text' })).filter((t) => t.props.bold === true)
+    expect(bold.map((t) => t.text)).toEqual(['0–1'])
+  })
+
+  test('two matches, two strong parts: each score bold, nothing else', async ($, on) => {
+    const line = "⚽ LAS 0–1 LIV 23' +1"
+    const parts = [{ text: '⚽ LAS ' }, { text: '0–1', style: 'strong' }, { text: " LIV 23' +1" }]
+    const { mount } = await world($, on, [view(line, { lineParts: parts })])
+    const m = await mount()
+    expect(await drawnRows(m)).toEqual([line])
+    expect((await m.findAll({ type: 'Text' })).filter((t) => t.props.bold === true).map((t) => t.text)).toEqual(['0–1'])
+  })
+
+  test('parts whose texts do not join to the line: the plain line, nothing bold', async ($, on) => {
+    const { mount } = await world($, on, [view(LINE, { lineParts: [{ text: '⚽ LAS ' }, { text: '9–9', style: 'strong' }, { text: " LIV 23'" }] })])
+    const m = await mount()
+    expect((await m.findAll({ type: 'Text' })).map((t) => t.text)).toEqual([LINE])
+    expect((await m.findAll({ type: 'Text' })).filter((t) => t.props.bold === true)).toEqual([])
+  })
+
+  test('no parts (an older CLI): the plain line, nothing bold', async ($, on) => {
+    const { mount } = await world($, on, [view(LINE)])
+    const m = await mount()
+    expect((await m.findAll({ type: 'Text' })).map((t) => t.text)).toEqual([LINE])
+    expect((await m.findAll({ type: 'Text' })).filter((t) => t.props.bold === true)).toEqual([])
+  })
+
+  test('the parts with a band beneath ours: our row first, the one beneath under it', async ($, on) => {
+    const { mount } = await world($, on, [view(LINE, { lineParts: PARTS })], { beneath: 'usage 42%' })
+    expect(await drawnRows(await mount())).toEqual([LINE, 'usage 42%'])
   })
 })
