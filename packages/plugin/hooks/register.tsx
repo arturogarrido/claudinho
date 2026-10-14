@@ -1,13 +1,17 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, Timer } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren, Timer } from 'claude-code'
 
 import type {
   ClaudinhoBand,
   ClaudinhoBaseline,
   ClaudinhoCelebration,
   ClaudinhoContext,
+  ClaudinhoGoal,
   ClaudinhoPace,
   ClaudinhoPane,
+  ClaudinhoPanePart,
+  ClaudinhoPaneRow,
+  ClaudinhoPlay,
   ClaudinhoTally,
 } from '../types'
 
@@ -25,6 +29,17 @@ import type {
  * so in one fixed sentence), never a blocked turn. Every run is also what
  * triggers the CLI's refresher, so the band runs at the live pace on every line but the idle ones. Best effort
  * throughout: a toast says a score change this module observed between two current views, never every goal.
+ * The band draws the CLI's `lineParts` (CLI 0.12.0), each `strong` part bold, only when their texts join to the line;
+ * else the plain line.
+ *
+ * The toasts (`momentsFor`), per match between two current views, under `toasts`: a record that carries `names` (CLI
+ * 0.12.0) says what happened, from the CLI's fields alone: `⚽ GOAL! <team>` for one side up by exactly 1 (the scorer
+ * and the goal's minute only when `lastGoal` is a new identity on that side, a proven own goal `⚽ Own goal · <team>`,
+ * else the record's clock minute), `Goal for <team>` for the side opposite `pinnedSide`, `Goals` for more than one,
+ * `Score updated` for a tally that fell, `Penalties` for a shootout tally that rose (in that order of precedence), each
+ * with the scoreline from `names`; and full time, a record of the last current view's live list now in `finished`
+ * (the goal toast first when its tally rose in the same read, then `Full time ·` the scoreline and the result). A
+ * record without `names` (CLI 0.11.2) toasts today's `⚽` and its own `line`, and no full time is said for it.
  *
  * The band runs while a surface that draws it is attached: the terminal or the desktop app, the two that raise
  * `AbovePrompt`, asked of the session's roster at every run, first and again as the last step before the spawn (the
@@ -58,10 +73,14 @@ import type {
  * It writes the pane's value under a new generation (`paneGen`), first a provisional one (the view's line and footer),
  * and opens the pane `match` at once inside the hook (an open is the person's only within about 15 s of the command,
  * measured); then it runs `claudinho match <id> --json` once (5 s, the whole stdout ONE JSON value), whose answer
- * replaces the provisional value; the reply is the bare one. A match run names no competition, so the CLI resolves the
+ * replaces the provisional value; the reply is the view's line and ` · match pane open` when the pane opened with the
+ * CLI's rows on a surface that draws it (the pane carries the attribution and the disclaimer), else the bare one
+ * (headless, nothing to bind, a first read that failed). A match run names no competition, so the CLI resolves the
  * person's own choice (its mode row says where it came from); an answer of another competition, or the first-run object
  * (nothing chosen now), is never used: the binding is pinned for good and the read is made once more with
- * `--competition <slug>`. The pane draws the CLI's `lines` verbatim (at most 150, each cut at 600 characters, each
+ * `--competition <slug>`. The pane draws the CLI's `rows` by their parts' styles when they join to its `lines` (CLI
+ * 0.12.0: strong bold, dim dimmed, accent and flair the theme's `success`, quote dimmed italic), else its `lines`
+ * verbatim (at most 150, each cut at 600 characters, each
  * wrapped), a blank row, then the `attribution` and the `disclaimer` dimmed (each at 1,000), or one fixed sentence: a
  * first read that failed, or an answer with no `lines` (a CLI before them). While open it re-reads the bound match: on
  * a band run's CURRENT view of the bound competition that shows its score or shootout tally changed from the band's
@@ -74,21 +93,29 @@ import type {
  * the generation on and drops the value, the binding and the timers. The binding and the timers are this module load's:
  * after a reload the pane stays drawn from its value and is re-read again from the next `/claudinho match`.
  *
- * The goal celebration: when a run's toasts include a GOAL (a regulation or shootout tally that rose, none that fell),
- * the band plays 6 frames over 3 seconds above its line (a ball crossing a row, a "GOAL" banner growing, then the
- * toast's own line), in at most min(3, maxRows - 2) rows, then goes back to its one line. Its record (`celebration`:
- * the last goal's toast line, when the run decided it, its competition, its match's id and that match's tallies the
- * goal was decided on) is written by the run and the clear alone: in a run, any answer naming another competition, or
- * none, current or not (a view, or the first-run object), nulls it, then its match's score changing from the record's own in any later current view (a correction, or a later goal the plugin did
- * not see as one; by the record's id, whatever the `toasts` filter) nulls it, then the run's last goal replaces it
- * under the band's clear generation; the existing clear nulls it. Every null also stops the redraws. A record another module
+ * The goal celebration: when a run's toasts include a goal, the band plays it above its line in at most
+ * min(3, maxRows - 2) rows, then goes back to its one line. For a record without `names` (CLI 0.11.2), any goal (a
+ * regulation or shootout tally that rose, none that fell): 6 frames over 3 seconds, a ball crossing a row, a "GOAL"
+ * banner growing, then the toast's own line. For a record with `names`, a single-goal toast for the pinned side (with
+ * no `pinnedSide`, any): 3 seconds of Anthropic's Claude mascot as three rows of text art (the theme's `claude`
+ * colour, its legs alternating) beside the ball crossing the top row, `GOAL!` (bold, the theme's `success`) and the
+ * team on the middle row, the scorer and minute (or the minute) on the bottom row; two rows: the words alone; one:
+ * `GOAL! <team> <minute>`; none: it waits. `Goal for`, `Goals`, `Penalties` and `Score updated` play nothing. Full
+ * time for the pinned side's win or draw: the mascot beside `Full time · <result>` for 5 seconds, queued behind the
+ * goal of the same read (the record's `queue`, played as one stretch). Its record (`celebration`: the first play, its
+ * queue, when the run decided it, its competition, its match's id and that match's tallies it was decided on) is
+ * written by the run and the clear alone: in a run, any answer naming another competition, or none, current or not (a
+ * view, or the first-run object), nulls it, then its match's score changing from the record's own in any later
+ * current view, live or finished (a correction, or a later goal the plugin did not see as one; by the record's id,
+ * whatever the `toasts` filter) nulls it, both plays with it, then the run's last match with a play replaces it under
+ * the band's clear generation; the existing clear nulls it. Every null also stops the redraws. A record another module
  * load wrote is never played (its `at` is not this load's), so a reload drops a waiting or playing celebration (the
  * toast already said it); it stays in state until a goal or a clear replaces it. A played or expired record stays
- * until the next goal replaces it: the draw ignores it. The draw only reads it, and
- * computes the frame from module values (how much of the 3 s has been on screen), redrawn by a 500 ms ticker that runs
- * only while there is something to play and no hold: a main-loop turn (`turn.start` to a `turn.complete` with no
- * `agentId`) or the drawn `isWorking` holds it, and it plays when the hold ends within 60 seconds of the goal. A
- * paused celebration never resumes after 60 seconds; a stretch on screen finishes its 3 seconds. `celebrate: off` plays
+ * until the next goal replaces it: the draw ignores it. The draw only reads it, and computes the play and its frame
+ * from module values (how much of its plays has been on screen), redrawn by a 500 ms ticker that runs only while there
+ * is something to play and no hold: a main-loop turn (`turn.start` to a `turn.complete` with no `agentId`) or the
+ * drawn `isWorking` holds it, and it plays when the hold ends within 60 seconds of the goal. A paused celebration
+ * never resumes after 60 seconds; a stretch on screen finishes its plays. `celebrate: off` plays
  * nothing.
  */
 
@@ -125,6 +152,32 @@ const CELEBRATION_MAX_AGE_MS = 60_000
 const BANNER = 'GOAL!'
 /** The ball's display width (an emoji takes two columns). */
 const BALL_COLUMNS = 2
+/** Full time's play, for the pinned side's win or draw: 5 s on screen. */
+const FULLTIME_MS = 5_000
+/**
+ * Anthropic's Claude mascot, as three rows of text art (its head, its body, its legs in two steps), drawn in the
+ * theme's `claude` colour in the goal and full-time celebrations only. It stands left of the celebration's three rows.
+ */
+const MASCOT_HEAD = ' ▐▛███▜▌'
+const MASCOT_BODY = '▝▜█████▛▘'
+const MASCOT_LEGS = ['  ▘▘ ▝▝', '  ▝▝ ▘▘'] as const
+/** The mascot's widest row, and the column between it and the celebration's text. */
+const MASCOT_COLUMNS = 9
+const MASCOT_GAP = 1
+/** The theme keys the moments are drawn in: the mascot's, and the goal word's (the pane's accent and flair too). */
+const MASCOT_COLOR = 'claude'
+const GOAL_COLOR = 'success'
+/** The band's `lineParts` read, at most. */
+const LINE_PARTS_MAX = 64
+/** A pane row's parts kept, at most. */
+const PANE_ROW_PARTS_MAX = 64
+/** The kinds of goal a `lastGoal` names, and the minutes it is believed for. */
+const GOAL_TYPES: readonly string[] = ['GOAL', 'OWN_GOAL', 'PEN']
+const MINUTE_MAX = 200
+/** The reply's note when `/claudinho match` opened the pane on a surface that draws it. */
+const PANE_OPEN_NOTE = ' · match pane open'
+/** The pane's part styles the plugin draws; another is a plain part. */
+const PANE_STYLES: readonly string[] = ['strong', 'dim', 'accent', 'quote', 'flair']
 /** The match pane: its one id, its title, the word typed after the command that opens it. */
 const PANE_ID = 'match'
 const PANE_TITLE = 'claudinho'
@@ -235,14 +288,27 @@ async function clear($: EngineInterface): Promise<void> {
 /** How much of the record's 3 s has been on screen at `now` (the stretch in progress included). */
 const playedAt = (now: number): number => playedMs + (playFrom === null ? 0 : Math.max(0, now - playFrom))
 
+/** A play's length on screen: full time's 5 s, a goal's 3 s. */
+const playLength = (p: ClaudinhoPlay): number => (p.kind === 'fulltime' ? FULLTIME_MS : PLAY_MS)
+
+/** A record's plays in order: its own, then its queue (at most one more). */
+const playsOf = (rec: NonNullable<ClaudinhoCelebration>): ClaudinhoPlay[] => [
+  rec,
+  ...(Array.isArray(rec.queue) ? rec.queue.slice(0, 1) : []),
+]
+
+/** A record's whole length on screen: its plays one after the other. */
+const recordLength = (rec: NonNullable<ClaudinhoCelebration>): number =>
+  playsOf(rec).reduce((sum, p) => sum + playLength(p), 0)
+
 /**
- * Whether a record has anything left to play at `now`: set, its 3 s not all on screen, and either within 60 s of its
- * goal or in a stretch on screen (which finishes its 3 s). A paused one never resumes after 60 s.
+ * Whether a record has anything left to play at `now`: set, its plays not all on screen, and either within 60 s of its
+ * goal or in a stretch on screen (which finishes its plays). A paused one never resumes after 60 s.
  */
 const playable = (rec: ClaudinhoCelebration, now: number): boolean =>
   rec !== null &&
   rec.at === playingAt &&
-  playedAt(now) < PLAY_MS &&
+  playedAt(now) < recordLength(rec) &&
   (now - rec.at <= CELEBRATION_MAX_AGE_MS || playFrom !== null)
 
 /** The playback paused at `at`: the stretch on screen folded into `playedMs`. */
@@ -435,6 +501,10 @@ type View = {
   staleAfter?: unknown
   disclaimer?: unknown
   attribution?: unknown
+  /** CLI 0.12.0: the line's parts, the score tokens `strong`. */
+  lineParts?: unknown
+  /** CLI 0.12.0: the records that finished in the last ten minutes. */
+  finished?: unknown
 }
 
 type Item = {
@@ -443,6 +513,14 @@ type Item = {
   score?: unknown
   shootout?: unknown
   pinned?: unknown
+  minute?: unknown
+  home?: unknown
+  away?: unknown
+  winnerCode?: unknown
+  /** CLI 0.12.0: the names the hook's line uses, the saved pin's side, the last goal it proved. */
+  names?: unknown
+  pinnedSide?: unknown
+  lastGoal?: unknown
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -493,6 +571,10 @@ function readAnswer(r: RunResult | undefined): Reading {
   return { answered: true, view, firstRun, isView, idle, hidden }
 }
 
+/** The reply's body for a view: nothing known, the edition over, else its line. */
+const viewReply = (view: View, r: { hidden: boolean; idle: boolean }): string =>
+  r.hidden ? REPLY_EMPTY : r.idle ? REPLY_IDLE : view.line
+
 /** A sentence the CLI states for the plugin to relay, when it is usable: a string with something besides spaces. */
 const relayed = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v : null)
 
@@ -505,7 +587,7 @@ function replyTo(reading: Reading): string {
   if (!reading.answered) return REPLY_FAILED
   if (reading.firstRun) return REPLY_FIRST_RUN
   if (!reading.isView) return REPLY_NO_VIEW
-  const text = reading.hidden ? REPLY_EMPTY : reading.idle ? REPLY_IDLE : reading.view.line
+  const text = viewReply(reading.view, reading)
   // The CLI's own sentences, relayed (core's copy and core's one constant), never spelled here.
   const footer = [relayed(reading.view.attribution), relayed(reading.view.disclaimer)].filter((s) => s !== null)
   return [text, ...footer].join('\n\n')
@@ -545,55 +627,221 @@ function movement(m: Item, was: ClaudinhoTally): { rose: boolean; fell: boolean 
   }
 }
 
-/**
- * One match whose compared tally changed: its id, its toast text, its tallies in this view (each when present), and
- * whether a side of a compared tally rose or fell.
- */
-type ScoreChange = { id: string; text: string; score?: Tally; shootout?: Tally; rose: boolean; fell: boolean }
+type Side = 'home' | 'away'
+type Names = { home: string; away: string }
 
 /**
- * The score changes of a CURRENT view against the last current view's baseline, under the option: one per match whose
- * id was there and whose regulation score or shootout tally changed (a tally compared only when both carry one), its
- * text `⚽` and the record's own line, verbatim (a record with no line says nothing). A new id is the first
- * observation (silent); a competition change rebases with nothing to compare.
+ * A record's `names` (CLI 0.12.0: the names the hook's line uses), or null: a record without them is an older CLI's,
+ * whose toast is its own `line` and for which neither `names` nor `lastGoal` is read.
  */
-function scoreChanges(view: View, prev: ClaudinhoBaseline, option: ToastsOption): ScoreChange[] {
-  if (option === 'off' || !prev || prev.slug !== slugOf(view)) return []
-  const before = new Map(prev.items.map((t) => [t.id, t]))
-  const changes: ScoreChange[] = []
-  for (const m of itemsOf(view)) {
-    if (option === 'pinned' && m.pinned !== true) continue
-    const was = before.get(m.id)
-    if (!was || typeof m.line !== 'string' || m.line === '') continue
-    const { rose, fell } = movement(m, was)
-    const score = tally(m.score)
-    const shootout = tally(m.shootout)
-    if (rose || fell) {
-      changes.push({ id: m.id, text: `⚽ ${m.line}`, ...(score ? { score } : {}), ...(shootout ? { shootout } : {}), rose, fell })
-    }
-  }
-  return changes
+function namesOf(m: Item): Names | null {
+  const n = m.names
+  if (!isObject(n) || typeof n.home !== 'string' || typeof n.away !== 'string') return null
+  if (n.home.trim() === '' || n.away.trim() === '') return null
+  return { home: n.home, away: n.away }
 }
 
-/** The toasts: every score change, a correction included. */
-const toastsFor = (view: View, prev: ClaudinhoBaseline, option: ToastsOption): string[] =>
-  scoreChanges(view, prev, option).map((c) => c.text)
+/** The side the CLI says the saved pin is on, or null (no pin, or not a side). */
+const pinnedSideOf = (m: Item): Side | null => (m.pinnedSide === 'home' || m.pinnedSide === 'away' ? m.pinnedSide : null)
+
+const isMinute = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= MINUTE_MAX
+
+/** A record's `lastGoal` as the CLI proved it, or null for anything else (a player that is no name is left out). */
+function lastGoalOf(v: unknown): ClaudinhoGoal | null {
+  if (!isObject(v) || typeof v.type !== 'string' || !GOAL_TYPES.includes(v.type)) return null
+  if ((v.side !== 'home' && v.side !== 'away') || !isMinute(v.minute)) return null
+  if (v.added !== undefined && !(isMinute(v.added) && v.added > 0)) return null
+  const player = typeof v.player === 'string' && v.player.trim() !== '' ? v.player : undefined
+  return {
+    type: v.type as ClaudinhoGoal['type'],
+    minute: v.minute,
+    ...(v.added !== undefined ? { added: v.added as number } : {}),
+    side: v.side,
+    ...(player !== undefined ? { player } : {}),
+  }
+}
+
+/** Whether two `lastGoal` identities are the same goal: every field equal. */
+const sameGoal = (a: ClaudinhoGoal, b: ClaudinhoGoal): boolean =>
+  a.type === b.type && a.minute === b.minute && a.added === b.added && a.side === b.side && a.player === b.player
+
+/** A goal's minute as a toast writes it: `22'`, `90+3'`. */
+const goalMinute = (g: ClaudinhoGoal): string => (g.added ? `${g.minute}+${g.added}'` : `${g.minute}'`)
+
+/** The record's clock minute, `60'`, or '' when it states none. */
+const clockMinute = (m: Item): string => (isMinute(m.minute) ? `${m.minute}'` : '')
+
+/** Words joined by one space, the empty ones left out. */
+const words = (...ws: string[]): string => ws.filter((w) => w !== '').join(' ')
+
+/** The scoreline a moment's toast writes: the names, the tally (a shootout tally after each side), or `vs`. */
+function scoreline(names: Names, score: Tally | undefined, shootout: Tally | undefined): string {
+  if (!score) return `${names.home} vs ${names.away}`
+  const h = shootout ? `${score.home}(${shootout.home})` : `${score.home}`
+  const a = shootout ? `${score.away}(${shootout.away})` : `${score.away}`
+  return `${names.home} ${h}–${a} ${names.away}`
+}
+
+/** One moment of one record: its toast text, and the celebration's play when it has one. */
+type Moment = { text: string; play: ClaudinhoPlay | null }
 
 /**
- * The goals among the toasts: a change whose compared tallies rose with none that fell (a correction is no goal), each
- * with the match's id and its tallies in this view, the evidence its celebration keeps.
+ * The moment of a record that carries `names`, against its baseline entry, the first that holds: a compared tally that
+ * fell (`Score updated`), a shootout tally that rose (`Penalties`; one that appears where the baseline had none counts
+ * from 0), one regulation side up by exactly 1 (the goal), any other rise (`Goals`); none: null. A regulation tally is
+ * compared only when both carry one. The goal names the side that rose; its scorer, the goal's minute and the own-goal
+ * word only when `goal` (the record's `lastGoal`) is a new identity against the baseline's and on that side; otherwise
+ * the record's clock minute. Against the pinned side it reads `Goal for` and plays nothing; else `⚽ GOAL!` (`⚽ Own
+ * goal ·` for a proven own goal) and its play.
  */
-const goalsFor = (view: View, prev: ClaudinhoBaseline, option: ToastsOption): ScoreChange[] =>
-  scoreChanges(view, prev, option).filter((c) => c.rose && !c.fell)
+function scoreMoment(m: Item, names: Names, was: ClaudinhoTally, goal: ClaudinhoGoal | null): Moment | null {
+  const score = tally(m.score)
+  const shootout = tally(m.shootout)
+  const line = scoreline(names, score, shootout)
+  const regulation: [Tally, Tally] | null = score && was.score ? [score, was.score] : null
+  const shootWas = was.shootout ?? (shootout ? { home: 0, away: 0 } : undefined)
+  const shoot: [Tally, Tally] | null = shootout && shootWas ? [shootout, shootWas] : null
+  const pairs = [regulation, shoot].filter((p): p is [Tally, Tally] => p !== null)
+  if (pairs.some(([a, b]) => a.home < b.home || a.away < b.away)) return { text: `Score updated\n${line}`, play: null }
+  if (shoot && (shoot[0].home > shoot[1].home || shoot[0].away > shoot[1].away)) {
+    return { text: `Penalties · ${line}`, play: null }
+  }
+  if (!regulation) return null
+  const dh = regulation[0].home - regulation[1].home
+  const da = regulation[0].away - regulation[1].away
+  if (dh + da === 0) return null
+  if (dh + da > 1) return { text: `Goals · ${line}`, play: null }
+  const side: Side = dh === 1 ? 'home' : 'away'
+  const team = names[side]
+  const proven = goal !== null && goal.side === side && !(was.lastGoal && sameGoal(goal, was.lastGoal))
+  const own = proven && goal.type === 'OWN_GOAL'
+  const player = proven && !own ? (goal.player ?? '') : ''
+  const minute = proven ? goalMinute(goal) : clockMinute(m)
+  const pinned = pinnedSideOf(m)
+  if (pinned !== null && pinned !== side) {
+    const tail = own ? ` · ${words('own goal', minute)}` : player ? ` · ${words(player, minute)}` : minute ? ` ${minute}` : ''
+    return { text: `Goal for ${team}${tail}\n${line}`, play: null }
+  }
+  const head = own ? `⚽ Own goal · ${words(team, minute)}` : player ? `⚽ GOAL! ${team} · ${words(player, minute)}` : `⚽ GOAL! ${words(team, minute)}`
+  const detail = own ? words('own goal', minute) : player ? words(player, minute) : minute
+  return { text: `${head}\n${line}`, play: { kind: 'goal', team, minute, detail } }
+}
+
+/** A side's code, when the record states one. */
+const codeOf = (t: unknown): string | null => (isObject(t) && typeof t.code === 'string' && t.code !== '' ? t.code : null)
+
+/**
+ * The result of a finished record: a `winnerCode` first (the side whose code it is; a code that names neither side, or
+ * both, establishes nothing), else the shootout (level: nothing), else the score (level: a draw); no score: nothing.
+ * `winner` null is a draw.
+ */
+function resultOf(f: Item): { winner: Side | null } | null {
+  if (typeof f.winnerCode === 'string' && f.winnerCode !== '') {
+    const home = codeOf(f.home) === f.winnerCode
+    const away = codeOf(f.away) === f.winnerCode
+    return home !== away ? { winner: home ? 'home' : 'away' } : null
+  }
+  const shootout = tally(f.shootout)
+  if (shootout) return shootout.home === shootout.away ? null : { winner: shootout.home > shootout.away ? 'home' : 'away' }
+  const score = tally(f.score)
+  if (!score) return null
+  return { winner: score.home === score.away ? null : score.home > score.away ? 'home' : 'away' }
+}
+
+/**
+ * The full-time moment of a finished record that carries `names`: `Full time ·` the scoreline, then the result
+ * (`<team> win`, `Draw`) when it can be established; the play for the pinned side's win or draw.
+ */
+function fullTimeMoment(f: Item, names: Names): Moment {
+  const line = scoreline(names, tally(f.score), tally(f.shootout))
+  const result = resultOf(f)
+  if (result === null) return { text: `Full time · ${line}`, play: null }
+  const said = result.winner === null ? 'Draw' : `${names[result.winner]} win`
+  const pinned = pinnedSideOf(f)
+  const plays = pinned !== null && (result.winner === null || result.winner === pinned)
+  return { text: `Full time · ${line}\n${said}`, play: plays ? { kind: 'fulltime', result: said } : null }
+}
+
+/**
+ * One match's moments in a run: its id, its toasts in order, the plays its celebration would hold in order, and its
+ * tallies in this view (each when present), the evidence a celebration keeps.
+ */
+type MatchMoments = { id: string; texts: string[]; plays: ClaudinhoPlay[]; score?: Tally; shootout?: Tally }
+
+/** The view's finished records (CLI 0.12.0) that carry an id; none from an older CLI. */
+function finishedOf(view: View): Item[] {
+  const items = Array.isArray(view.finished) ? view.finished : []
+  return items.filter((m): m is Item => isObject(m) && typeof m.id === 'string')
+}
+
+const evidence = (m: Item): { score?: Tally; shootout?: Tally } => {
+  const score = tally(m.score)
+  const shootout = tally(m.shootout)
+  return { ...(score ? { score } : {}), ...(shootout ? { shootout } : {}) }
+}
+
+/**
+ * The moments of a CURRENT view against the last current view's baseline, under the option (off: none; pinned: a record
+ * with `pinned: true`; all: every match), one entry per match whose id the baseline holds, live records first, in the
+ * view's order; a new id is the first observation (silent); a competition change rebases with nothing to compare.
+ * - A live record without `names` (CLI 0.11.2): today's toast, `⚽` and its own `line`, when a compared tally changed
+ *   (both carrying it); the banner play when one rose and none fell.
+ * - A live record with `names`: its one moment (`scoreMoment`).
+ * - A finished record with `names` whose id the baseline holds as live (it left `live` for `finished` between the two
+ *   views): the goal moment when its tally rose in the same read (no `lastGoal` read: the clock minute), then full
+ *   time. A finished record without `names`, or one also listed live, says nothing.
+ */
+function momentsFor(view: View, prev: ClaudinhoBaseline, option: ToastsOption): MatchMoments[] {
+  if (option === 'off' || !prev || prev.slug !== slugOf(view)) return []
+  const before = new Map(prev.items.map((t) => [t.id, t]))
+  const out: MatchMoments[] = []
+  const live = itemsOf(view)
+  for (const m of live) {
+    if (option === 'pinned' && m.pinned !== true) continue
+    const was = before.get(m.id)
+    if (!was) continue
+    const names = namesOf(m)
+    if (names === null) {
+      if (typeof m.line !== 'string' || m.line === '') continue
+      const { rose, fell } = movement(m, was)
+      if (!rose && !fell) continue
+      const text = `⚽ ${m.line}`
+      out.push({ id: m.id, texts: [text], plays: rose && !fell ? [{ kind: 'banner', text }] : [], ...evidence(m) })
+      continue
+    }
+    const moment = scoreMoment(m, names, was, lastGoalOf(m.lastGoal))
+    if (moment === null) continue
+    out.push({ id: m.id, texts: [moment.text], plays: moment.play ? [moment.play] : [], ...evidence(m) })
+  }
+  const liveIds = new Set(live.map((m) => m.id))
+  for (const f of finishedOf(view)) {
+    if (option === 'pinned' && f.pinned !== true) continue
+    const was = before.get(f.id)
+    if (!was || liveIds.has(f.id)) continue
+    const names = namesOf(f)
+    if (names === null) continue
+    const goal = scoreMoment(f, names, was, null)
+    const ft = fullTimeMoment(f, names)
+    const moments = [goal, ft].filter((x): x is Moment => x !== null)
+    out.push({
+      id: f.id,
+      texts: moments.map((x) => x.text),
+      plays: moments.map((x) => x.play).filter((p): p is ClaudinhoPlay => p !== null),
+      ...evidence(f),
+    })
+  }
+  return out
+}
 
 /**
  * Whether this view says the celebrated goal's score is no longer the one it was decided on: the record's match
- * present (by its id, before any `toasts` filter: a pin change never hides it) with a tally DIFFERENT from the
- * record's own (lower: a correction; higher: a later goal), a tally compared only when both carry it. The baseline
- * is not read, so a view in between without the match, or without its tally, hides nothing. Absent or equal: no news.
+ * present (by its id, in the live list or else the finished list, before any `toasts` filter: a pin change never
+ * hides it) with a tally DIFFERENT from the record's own (lower: a correction; higher: a later goal), a tally compared
+ * only when both carry it. The baseline is not read, so a view in between without the match, or without its tally,
+ * hides nothing. Absent or equal: no news.
  */
 function differsFromRecord(view: View, rec: NonNullable<ClaudinhoCelebration>): boolean {
-  const m = itemsOf(view).find((x) => x.id === rec.id)
+  const m = itemsOf(view).find((x) => x.id === rec.id) ?? finishedOf(view).find((x) => x.id === rec.id)
   if (!m) return false
   const score = tally(m.score)
   const shootout = tally(m.shootout)
@@ -601,14 +849,31 @@ function differsFromRecord(view: View, rec: NonNullable<ClaudinhoCelebration>): 
   return differs(score, rec.score) || differs(shootout, rec.shootout)
 }
 
-/** The baseline a CURRENT view leaves for the next one: its competition and each match's tallies. */
+/**
+ * The baseline a CURRENT view leaves for the next one: its competition and each live match's tallies, with its
+ * `lastGoal` identity when the record carries `names` and a `lastGoal`.
+ */
 function baselineOf(view: View): ClaudinhoBaseline {
   const items: ClaudinhoTally[] = itemsOf(view).map((m) => {
-    const score = tally(m.score)
-    const shootout = tally(m.shootout)
-    return { id: m.id, ...(score ? { score } : {}), ...(shootout ? { shootout } : {}) }
+    const goal = namesOf(m) === null ? null : lastGoalOf(m.lastGoal)
+    return { id: m.id, ...evidence(m), ...(goal ? { lastGoal: goal } : {}) }
   })
   return { slug: slugOf(view), items }
+}
+
+/**
+ * The band's `lineParts` (CLI 0.12.0) when their texts join to the line exactly: each a text and, kept, the style
+ * `strong` (another style is a plain part); at most 64. Anything else: none, and the band draws the plain line.
+ */
+function linePartsOf(view: View): Array<{ text: string; style?: 'strong' }> | null {
+  const raw = view.lineParts
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > LINE_PARTS_MAX) return null
+  const parts: Array<{ text: string; style?: 'strong' }> = []
+  for (const p of raw) {
+    if (!isObject(p) || typeof p.text !== 'string') return null
+    parts.push(p.style === 'strong' ? { text: p.text, style: 'strong' } : { text: p.text })
+  }
+  return parts.map((p) => p.text).join('') === view.line ? parts : null
 }
 
 /**
@@ -664,6 +929,15 @@ function cut(s: string, max: number): string {
   return last >= 0xd800 && last <= 0xdbff ? c.slice(0, -1) : c
 }
 
+/** The Text props a pane part's style draws: strong bold, dim dimmed, accent and flair the goal colour, quote dimmed italic. */
+function partStyle(style: ClaudinhoPanePart['style']): { bold?: true; dimColor?: true; italic?: true; color?: string } {
+  if (style === 'strong') return { bold: true }
+  if (style === 'dim') return { dimColor: true }
+  if (style === 'accent' || style === 'flair') return { color: GOAL_COLOR }
+  if (style === 'quote') return { dimColor: true, italic: true }
+  return {}
+}
+
 /** One `match` read as the pane keeps it: the kind, the rows and footer, and the fields the re-reads decide by. */
 type MatchRead = Omit<NonNullable<ClaudinhoPane>, 'gen' | 'slug' | 'id' | 'refreshFailed'>
 
@@ -692,15 +966,54 @@ function readMatch(r: RunResult | undefined): MatchRead {
   }
   const attribution = relayed(isObject(value) ? value.attribution : undefined)
   const disclaimer = relayed(isObject(value) ? value.disclaimer : undefined)
+  const rows = paneRowsOf(isObject(value) ? value.rows : undefined, lines as string[])
   return {
     kind: 'rows',
     lines: (lines as string[]).slice(0, PANE_LINES_MAX).map((l) => cut(l, PANE_LINE_CHARS)),
+    ...(rows !== null ? { rows } : {}),
     ...(attribution !== null ? { attribution: cut(attribution, PANE_FOOTER_CHARS) } : {}),
     ...(disclaimer !== null ? { disclaimer: cut(disclaimer, PANE_FOOTER_CHARS) } : {}),
     status,
     kickoff,
     final,
   }
+}
+
+/**
+ * The CLI's styled `rows` (CLI 0.12.0) when every row is `{ parts: [{ text, style? }] }` and the rows' parts join to
+ * `lines`, index by index: at most 150 rows, each row's parts cut at 600 characters together and at 64 parts, a style
+ * the plugin does not draw a plain part. Anything else: none, and the pane draws `lines` as before.
+ */
+function paneRowsOf(raw: unknown, lines: string[]): ClaudinhoPaneRow[] | null {
+  if (!Array.isArray(raw) || raw.length !== lines.length) return null
+  const rows: ClaudinhoPaneRow[] = []
+  for (const [i, r] of raw.entries()) {
+    if (!isObject(r) || !Array.isArray(r.parts)) return null
+    const parts: ClaudinhoPanePart[] = []
+    for (const p of r.parts) {
+      if (!isObject(p) || typeof p.text !== 'string') return null
+      parts.push(
+        typeof p.style === 'string' && PANE_STYLES.includes(p.style)
+          ? { text: p.text, style: p.style as ClaudinhoPanePart['style'] }
+          : { text: p.text },
+      )
+    }
+    if (parts.map((p) => p.text).join('') !== lines[i]) return null
+    rows.push(parts)
+  }
+  return rows.slice(0, PANE_LINES_MAX).map((parts) => {
+    const kept: ClaudinhoPanePart[] = []
+    let room = PANE_LINE_CHARS
+    for (const p of parts) {
+      if (room <= 0 || kept.length >= PANE_ROW_PARTS_MAX) break
+      if (p.text === '') continue
+      const text = cut(p.text, room)
+      room -= text.length
+      if (text !== '') kept.push({ ...p, text })
+      if (text.length < p.text.length) break
+    }
+    return kept
+  })
 }
 
 /** One `match` run on the band's PATH, bounded, naming the competition once pinned; a rejection is undefined. */
@@ -863,11 +1176,12 @@ function reread($: EngineInterface): void {
  * `/claudinho match`: binds the match of the command's reading under a new generation, writes the provisional value
  * (the view's line and footer) and opens the pane at once (inside the command's hook: an asked open, placed at any
  * width), then waits its turn, reads the match once, replaces the value with the answer and arms the re-reads.
- * Nothing to bind: no read, no pane. Never rejects.
+ * Nothing to bind: no read, no pane. Resolves whether the pane opened and its first read's answer (CLI rows, with
+ * their footer) was written to it; never rejects.
  */
-async function openPane($: EngineInterface, reading: Reading, env: { PATH: string } | undefined): Promise<void> {
+async function openPane($: EngineInterface, reading: Reading, env: { PATH: string } | undefined): Promise<boolean> {
   const target = bindingOf(reading)
-  if (target === null) return
+  if (target === null) return false
   let gen = 0
   await update($, paneGen, (g) => {
     gen = (typeof g === 'number' && Number.isFinite(g) ? g : 0) + 1
@@ -910,7 +1224,7 @@ async function openPane($: EngineInterface, reading: Reading, env: { PATH: strin
       shown = bound === b
       return shown ? provisional : cur
     })
-    if (!shown || bound !== b) return
+    if (!shown || bound !== b) return false
     try {
       await $.ui.open({ id: PANE_ID, title: PANE_TITLE })
     } catch {
@@ -919,20 +1233,21 @@ async function openPane($: EngineInterface, reading: Reading, env: { PATH: strin
         bound = null
         stopPaneTimers()
       }
-      return
+      return false
     }
     // Then its turn and its read; an open a later open superseded while it waited makes no run.
     const answer = await inTurn(async () => (bound === b ? runMatch($, b, env) : null))
-    if (answer === null || bound !== b) return
+    if (answer === null || bound !== b) return false
     const v: NonNullable<ClaudinhoPane> = { gen, slug: b.slug, id: b.id, refreshFailed: false, ...answer }
     let wrote = false
     await update($, pane, (cur) => {
       wrote = bound === b
       return wrote ? v : cur
     })
-    if (!wrote || bound !== b) return
+    if (!wrote || bound !== b) return false
     b.final = v.final
     await armPane($, b, v)
+    return v.kind === 'rows'
   } finally {
     paneReadEnded($)
   }
@@ -1013,7 +1328,10 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   // baseline kept, nothing toasted); an idle answer is read slowly.
   const { view, firstRun, isView, idle, hidden } = reading
   if (clears === c) await update($, pace, () => ({ ranAt: now, idle }))
-  await update($, band, (cur) => (clears === c ? (hidden ? null : { text: view.line }) : cur))
+  const parts = hidden ? null : linePartsOf(view)
+  await update($, band, (cur) =>
+    clears === c ? (hidden ? null : { text: view.line, ...(parts !== null ? { parts } : {}) }) : cur,
+  )
 
   // The celebration's competition, first: a view (current or not) or the first-run object naming another competition
   // than the record's, or none (the first run's is ''), drops it and stops the redraws. The fallback object names no
@@ -1029,8 +1347,9 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   // The two shapes that are no view are no current view either: each clears the context and keeps the baseline.
   if (isView && view.current === true) {
     const prev = await read($, baseline)
-    for (const text of toastsFor(view, prev, option)) $.ui.toast(text)
-    const goals = celebrateOn ? goalsFor(view, prev, option) : []
+    const moments = momentsFor(view, prev, option)
+    for (const m of moments) for (const text of m.texts) $.ui.toast(text)
+    const played = celebrateOn ? moments.filter((m) => m.plays.length > 0) : []
     // What this view says of the celebration's match (its competition was asked above): its score differing from the
     // one the goal was decided on drops it (playing or waiting). The null stops the redraws too; a goal this run
     // decided is written after.
@@ -1040,22 +1359,25 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
       await update($, celebration, (cur) => (cur !== null && cur.at === rec.at ? null : cur))
     }
     await update($, baseline, () => baselineOf(view))
-    // The celebration of the run's LAST goal, decided now. The one clear-generation check is inside the write, the
-    // latest point: a clear since the spawn (also while the clock is read) wins, and the run writes nothing.
-    const goal = goals[goals.length - 1]
-    if (goal !== undefined) {
+    // The celebration of the run's LAST match with a play, decided now: its first play, and full time's queued behind
+    // a goal from the same read. The one clear-generation check is inside the write, the latest point: a clear since
+    // the spawn (also while the clock is read) wins, and the run writes nothing.
+    const goal = played[played.length - 1]
+    const [first, ...queue] = goal?.plays ?? []
+    if (goal !== undefined && first !== undefined) {
       const at = await $.clock.now()
       let wrote = false
       await update($, celebration, (cur) => {
         wrote = clears === c
         return wrote
           ? {
-              text: goal.text,
+              ...first,
               at,
               slug: slugOf(view),
               id: goal.id,
               ...(goal.score ? { score: goal.score } : {}),
               ...(goal.shootout ? { shootout: goal.shootout } : {}),
+              ...(queue.length > 0 ? { queue: queue.slice(0, 1) } : {}),
             }
           : cur
       })
@@ -1185,17 +1507,30 @@ export const register: Register = (on, options) => {
       return next(e)
     }
     const { Box, Text } = $.ui.resolve(e)
-    // The CLI fitted the line to the width asked, its `+N` suffix reserved; the engine's cut is the backstop. A band
-    // beneath ours in the hook chain (a plugin registered after ours, or the engine's own) stays, under our line.
-    const withLine = async (rows: string[]) =>
-      rows.length === 0 && shown === null ? next(e) : (
+    // The CLI fitted the line to the width asked, its `+N` suffix reserved; the engine's cut is the backstop. Its
+    // `lineParts`, kept only when they join to the line, draw each `strong` part bold. A band beneath ours in the hook
+    // chain (a plugin registered after ours, or the engine's own) stays, under our line.
+    const lineRow =
+      shown === null ? null : Array.isArray(shown.parts) ? (
+        <Text wrap="truncate-end">
+          {shown.parts.map((p, i) =>
+            p.style === 'strong' ? (
+              <Text key={`part-${i}`} bold>
+                {p.text}
+              </Text>
+            ) : (
+              <Text key={`part-${i}`}>{p.text}</Text>
+            ),
+          )}
+        </Text>
+      ) : (
+        <Text wrap="truncate-end">{shown.text}</Text>
+      )
+    const withLine = async (above: RenderChildren[]) =>
+      above.length === 0 && shown === null ? next(e) : (
         <Box flexDirection="column">
-          {rows.map((row, i) => (
-            <Text key={`row-${i}`} wrap="truncate-end">
-              {row}
-            </Text>
-          ))}
-          {shown === null ? null : <Text wrap="truncate-end">{shown.text}</Text>}
+          {above}
+          {lineRow}
           {await next(e)}
         </Box>
       )
@@ -1213,15 +1548,95 @@ export const register: Register = (on, options) => {
       stopTicker()
       return withLine([])
     }
-    // (4) Playing: the frame from the time on screen, then our line (never an old one brought back), then the band
-    // beneath.
+    // (4) Playing: the play on screen and its frame from the time on screen, then our line (never an old one brought
+    // back), then the band beneath.
     if (playFrom === null) playFrom = now
     lastPlayedAt = now
     // A pause no event ends (a survey, no room, a hold seen only in the drawn `isWorking`) stopped the redraws: the
     // playing draw starts them again.
     if (!ticker) startTicker($)
-    const frame = Math.min(FRAMES - 1, Math.floor(playedAt(now) / FRAME_MS))
-    return withLine(celebrationRows(frame, rows, rec.text, columns))
+    let t = playedAt(now)
+    let play: ClaudinhoPlay = rec
+    for (const p of playsOf(rec)) {
+      play = p
+      if (t < playLength(p)) break
+      t -= playLength(p)
+    }
+    const step = Math.floor(t / FRAME_MS)
+    const frame = Math.min(FRAMES - 1, step)
+    if (play.kind === 'goal' || play.kind === 'fulltime') {
+      // The goal moments (a record that carries `names`): the mascot in three rows, else the words alone.
+      const goalWord = (
+        <Text key="goal-word" bold color={GOAL_COLOR}>
+          GOAL!
+        </Text>
+      )
+      let middle: RenderChildren
+      let top: string
+      let bottom: string
+      if (play.kind === 'goal') {
+        if (rows === 1) {
+          return withLine([
+            <Text key="row-0" wrap="truncate-end">
+              {goalWord}
+              {` ${words(play.team, play.minute)}`}
+            </Text>,
+          ])
+        }
+        middle = (
+          <Text key="row-1" wrap="truncate-end">
+            {goalWord}
+            {` ${play.team}`}
+          </Text>
+        )
+        if (rows === 2) {
+          return withLine(
+            play.detail === ''
+              ? [middle]
+              : [
+                  middle,
+                  <Text key="row-2" wrap="truncate-end">
+                    {play.detail}
+                  </Text>,
+                ],
+          )
+        }
+        top = ballRow(frame, Math.max(0, columns - MASCOT_COLUMNS - MASCOT_GAP))
+        bottom = play.detail === '' ? ' ' : play.detail
+      } else {
+        middle = (
+          <Text key="row-1" wrap="truncate-end">
+            {`Full time · ${play.result}`}
+          </Text>
+        )
+        if (rows < 3) return withLine([middle])
+        top = ' '
+        bottom = ' '
+      }
+      return withLine([
+        <Box key="mascot">
+          <Box flexDirection="column">
+            <Text color={MASCOT_COLOR}>{MASCOT_HEAD}</Text>
+            <Text color={MASCOT_COLOR}>{MASCOT_BODY}</Text>
+            <Text color={MASCOT_COLOR}>{MASCOT_LEGS[step % 2]}</Text>
+          </Box>
+          <Box flexDirection="column" paddingLeft={MASCOT_GAP}>
+            <Text wrap="truncate-end">{top}</Text>
+            {middle}
+            <Text wrap="truncate-end">{bottom}</Text>
+          </Box>
+        </Box>,
+      ])
+    }
+    // A record whose match carries no `names` (CLI 0.11.2): today's banner frames.
+    const text = play.kind === 'banner' ? play.text : ''
+    return withLine(
+      celebrationRows(frame, rows, text, columns).map((row, i) => (
+        <Text key={`row-${i}`} wrap="truncate-end">
+          {row}
+        </Text>
+      )),
+    )
   })
 
   on('command.run', { command: 'claudinho' }, async ($, e) => {
@@ -1242,11 +1657,17 @@ export const register: Register = (on, options) => {
     }
     const reading = readAnswer(result)
     if (typeof e.args === 'string' && e.args.trim() === PANE_WORD) {
-      // The pane: the match of this same reading, read and opened inside the hook. The reply is the bare one either way.
+      // The pane: the match of this same reading, read and opened inside the hook. A pane that opened with the CLI's
+      // rows, on a surface that draws it now, carries the attribution and the disclaimer: the reply is the line and a
+      // short note. Otherwise (headless, nothing to bind, a first read that failed) the bare reply.
+      let opened = false
       try {
-        await openPane($, reading, env)
+        opened = await openPane($, reading, env)
       } catch {
         // The engine's calls failed: no pane this time; the reply stands.
+      }
+      if (opened && reading.answered && reading.isView && (await mayRun($))) {
+        return { text: `${viewReply(reading.view, reading)}${PANE_OPEN_NOTE}` }
       }
     }
     return { text: replyTo(reading) }
@@ -1268,12 +1689,17 @@ export const register: Register = (on, options) => {
     const v = await read($, pane)
     if (v === null) return next(e)
     const { Box, Text } = $.ui.resolve(e)
-    const rows: Array<{ text: string; dim?: boolean }> = []
+    const rows: Array<{ text: string; dim?: boolean; parts?: ClaudinhoPaneRow }> = []
     if (v.refreshFailed) rows.push({ text: PANE_REFRESH_FAILED })
     if (v.kind === 'failed') rows.push({ text: PANE_FAILED })
     else if (v.kind === 'noView') rows.push({ text: PANE_NO_VIEW })
     else {
-      for (const line of v.lines) rows.push({ text: line === '' ? ' ' : line })
+      // The CLI's styled rows when it printed them (CLI 0.12.0), else its `lines` as before.
+      if (Array.isArray(v.rows)) {
+        for (const parts of v.rows) rows.push(parts.length === 0 ? { text: ' ' } : { text: '', parts })
+      } else {
+        for (const line of v.lines) rows.push({ text: line === '' ? ' ' : line })
+      }
       const footer = [v.attribution, v.disclaimer].filter((s): s is string => typeof s === 'string')
       if (footer.length > 0) {
         rows.push({ text: ' ' })
@@ -1283,7 +1709,15 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         {rows.map((row, i) =>
-          row.dim ? (
+          row.parts ? (
+            <Text key={`row-${i}`} wrap="wrap">
+              {row.parts.map((p, j) => (
+                <Text key={`part-${j}`} {...partStyle(p.style)}>
+                  {p.text}
+                </Text>
+              ))}
+            </Text>
+          ) : row.dim ? (
             <Text key={`row-${i}`} dimColor wrap="wrap">
               {row.text}
             </Text>
