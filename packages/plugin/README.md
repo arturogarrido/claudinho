@@ -121,7 +121,7 @@ minutes after the whistle (closed, idle, or offline then) hears nothing about it
 
 ## The goal celebration
 
-When a run's toasts include a goal for your pinned team (with no pinned side, under `toasts: all`, any goal), the band
+When a run's toasts include a goal for your pinned team (or any goal under `all` of a match with no pinned side), the band
 plays about three seconds above its line: Anthropic's Claude mascot drawn as three rows of text art at the left, in
 your theme's Claude colour, its legs stepping; a ball `⚽` crossing the top row; `GOAL!` (bold, in your theme's
 success colour) and the team on the middle row; the scorer and the minute (`Ronald Araújo 22'`, `own goal 63'`, or

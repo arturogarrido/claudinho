@@ -8,7 +8,7 @@
     {
       "name": "claudinho",
       "source": "./packages/plugin",
-      "description": "Live football in Claude Code for the competition you follow: the score or the countdown above the prompt (the same line on demand with /claudinho), a toast when a score changes, a short celebration in the band on a goal, the live score beside your prompt for the model, and a match pane with its goals and cards (/claudinho match), from the installed claudinho CLI. Live data: ESPN. Not affiliated with FIFA, any confederation, league or club, or Anthropic."
+      "description": "Live football in Claude Code for the competition you follow: the score or the countdown above the prompt (the same line on demand with /claudinho), a toast that says what happened (a goal and its scorer, full time and the result), a goal celebration with the Claude mascot, the live score beside your prompt for the model, and a match pane with its goals and cards (/claudinho match), from the installed claudinho CLI. Live data: ESPN. Not affiliated with FIFA, any confederation, league or club, or Anthropic."
     }
   ]
 }

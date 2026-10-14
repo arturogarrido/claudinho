@@ -74,7 +74,8 @@ import type {
  * and opens the pane `match` at once inside the hook (an open is the person's only within about 15 s of the command,
  * measured); then it runs `claudinho match <id> --json` once (5 s, the whole stdout ONE JSON value), whose answer
  * replaces the provisional value; the reply is the view's line and ` · match pane open` when the pane opened with the
- * CLI's rows on a surface that draws it (the pane carries the attribution and the disclaimer), else the bare one
+ * CLI's rows and both its attribution and its disclaimer on a surface that draws it (the pane carries them), else the
+ * bare one
  * (headless, nothing to bind, a first read that failed). A match run names no competition, so the CLI resolves the
  * person's own choice (its mode row says where it came from); an answer of another competition, or the first-run object
  * (nothing chosen now), is never used: the binding is pinned for good and the read is made once more with
@@ -107,7 +108,8 @@ import type {
  * written by the run and the clear alone: in a run, any answer naming another competition, or none, current or not (a
  * view, or the first-run object), nulls it, then its match's score changing from the record's own in any later
  * current view, live or finished (a correction, or a later goal the plugin did not see as one; by the record's id,
- * whatever the `toasts` filter) nulls it, both plays with it, then the run's last match with a play replaces it under
+ * whatever the `toasts` filter), or a finished record saying another result than a full-time play's at the same score
+ * (a `winnerCode` changed, a shootout appearing), nulls it, both plays with it, then the run's last match with a play replaces it under
  * the band's clear generation; the existing clear nulls it. Every null also stops the redraws. A record another module
  * load wrote is never played (its `at` is not this load's), so a reload drops a waiting or playing celebration (the
  * toast already said it); it stays in state until a goal or a clear replaces it. A played or expired record stays
@@ -671,12 +673,6 @@ const goalMinute = (g: ClaudinhoGoal): string => (g.added ? `${g.minute}+${g.add
 /** The record's clock minute, `60'`, or '' when it states none. */
 const clockMinute = (m: Item): string => (isMinute(m.minute) ? `${m.minute}'` : '')
 
-/**
- * A toast's text on one line: a toast draws no line break (Claude Code 2.1.299 draws one as a replacement character),
- * so any run of line breaks a text could carry (none the CLI's sealed labels hold) becomes one space.
- */
-const oneLine = (text: string): string => text.replace(/[\r\n]+/g, ' ')
-
 /** Words joined by one space, the empty ones left out. */
 const words = (...ws: string[]): string => ws.filter((w) => w !== '').join(' ')
 
@@ -754,6 +750,19 @@ function resultOf(f: Item): { winner: Side | null } | null {
   return { winner: score.home === score.away ? null : score.home > score.away ? 'home' : 'away' }
 }
 
+/** The result a finished record says (`<team> win`, `Draw`), or null when it cannot be established. */
+function resultText(f: Item, names: Names): string | null {
+  const result = resultOf(f)
+  if (result === null) return null
+  return result.winner === null ? 'Draw' : `${names[result.winner]} win`
+}
+
+/**
+ * Whether a finished record is the pin's: the CLI names its side (`pinnedSide`, the shape it prints on a finished
+ * record, which carries no `pinned` key), or marks it `pinned`.
+ */
+const finishedPinned = (f: Item): boolean => f.pinned === true || pinnedSideOf(f) !== null
+
 /**
  * The full-time moment of a finished record that carries `names`: `Full time ·` the scoreline, then the result
  * (`<team> win`, `Draw`) when it can be established; the play for the pinned side's win or draw.
@@ -761,8 +770,8 @@ function resultOf(f: Item): { winner: Side | null } | null {
 function fullTimeMoment(f: Item, names: Names): Moment {
   const line = scoreline(names, tally(f.score), tally(f.shootout))
   const result = resultOf(f)
-  if (result === null) return { text: `Full time · ${line}`, play: null }
-  const said = result.winner === null ? 'Draw' : `${names[result.winner]} win`
+  const said = resultText(f, names)
+  if (result === null || said === null) return { text: `Full time · ${line}`, play: null }
   const pinned = pinnedSideOf(f)
   const plays = pinned !== null && (result.winner === null || result.winner === pinned)
   return { text: `Full time · ${line} · ${said}`, play: plays ? { kind: 'fulltime', result: said } : null }
@@ -821,7 +830,7 @@ function momentsFor(view: View, prev: ClaudinhoBaseline, option: ToastsOption): 
   }
   const liveIds = new Set(live.map((m) => m.id))
   for (const f of finishedOf(view)) {
-    if (option === 'pinned' && f.pinned !== true) continue
+    if (option === 'pinned' && !finishedPinned(f)) continue
     const was = before.get(f.id)
     if (!was || liveIds.has(f.id)) continue
     const names = namesOf(f)
@@ -847,12 +856,19 @@ function momentsFor(view: View, prev: ClaudinhoBaseline, option: ToastsOption): 
  * hides nothing. Absent or equal: no news.
  */
 function differsFromRecord(view: View, rec: NonNullable<ClaudinhoCelebration>): boolean {
-  const m = itemsOf(view).find((x) => x.id === rec.id) ?? finishedOf(view).find((x) => x.id === rec.id)
+  const live = itemsOf(view).find((x) => x.id === rec.id)
+  const finished = live ? undefined : finishedOf(view).find((x) => x.id === rec.id)
+  const m = live ?? finished
   if (!m) return false
   const score = tally(m.score)
   const shootout = tally(m.shootout)
   const differs = (a: Tally | undefined, b: Tally | undefined) => !!(a && b && (a.home !== b.home || a.away !== b.away))
-  return differs(score, rec.score) || differs(shootout, rec.shootout)
+  if (differs(score, rec.score) || differs(shootout, rec.shootout)) return true
+  // A full-time play (the record's own, or queued) was decided on its result: a finished record of the match that
+  // now says another result, or none, at the same score (a `winnerCode` changed, a shootout appearing) drops it.
+  const fulltime = playsOf(rec).find((p): p is Extract<ClaudinhoPlay, { kind: 'fulltime' }> => p.kind === 'fulltime')
+  const names = finished ? namesOf(finished) : null
+  return fulltime !== undefined && finished !== undefined && names !== null && resultText(finished, names) !== fulltime.result
 }
 
 /**
@@ -1183,7 +1199,7 @@ function reread($: EngineInterface): void {
  * (the view's line and footer) and opens the pane at once (inside the command's hook: an asked open, placed at any
  * width), then waits its turn, reads the match once, replaces the value with the answer and arms the re-reads.
  * Nothing to bind: no read, no pane. Resolves whether the pane opened and its first read's answer (CLI rows, with
- * their footer) was written to it; never rejects.
+ * both an attribution and a disclaimer) was written to it; never rejects.
  */
 async function openPane($: EngineInterface, reading: Reading, env: { PATH: string } | undefined): Promise<boolean> {
   const target = bindingOf(reading)
@@ -1253,7 +1269,8 @@ async function openPane($: EngineInterface, reading: Reading, env: { PATH: strin
     if (!wrote || bound !== b) return false
     b.final = v.final
     await armPane($, b, v)
-    return v.kind === 'rows'
+    // The short reply leaves the footer to the pane: only when the pane holds both sentences.
+    return v.kind === 'rows' && typeof v.attribution === 'string' && typeof v.disclaimer === 'string'
   } finally {
     paneReadEnded($)
   }
@@ -1354,7 +1371,7 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   if (isView && view.current === true) {
     const prev = await read($, baseline)
     const moments = momentsFor(view, prev, option)
-    for (const m of moments) for (const text of m.texts) $.ui.toast(oneLine(text))
+    for (const m of moments) for (const text of m.texts) $.ui.toast(text)
     const played = celebrateOn ? moments.filter((m) => m.plays.length > 0) : []
     // What this view says of the celebration's match (its competition was asked above): its score differing from the
     // one the goal was decided on drops it (playing or waiting). The null stops the redraws too; a goal this run

@@ -87,8 +87,9 @@ export type ClaudinhoPlay =
  * order: any answer naming another competition, or none, current or not (a view, or the first-run object; the fallback
  * object names none and leaves it), nulls it; its match's score changing in any later current view (by `id`, in the
  * live list or the finished list, whatever the `toasts` filter: a tally both carry differing from the record's, a
- * correction or a later goal the plugin did not see as one; an absent match or tally is no news) nulls it, both plays
- * with it; the run's last match with a play writes it (a run a clear superseded writes nothing; never under `celebrate:
+ * correction or a later goal the plugin did not see as one; an absent match or tally is no news), or its match's
+ * finished record saying another result than a full-time play's `result` (or none) at the same score, nulls it, both
+ * plays with it; the run's last match with a play writes it (a run a clear superseded writes nothing; never under `celebrate:
  * off`); and the band's clear nulls it. The draw's guard: a record another module load wrote (its `at` not this
  * load's) is never played; it stays in state until a goal or a clear replaces it. A played or expired record also
  * stays until the next one replaces it (the draw ignores it). The draw reads it; its frames are not state.

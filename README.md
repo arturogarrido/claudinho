@@ -142,8 +142,8 @@ Restart Claude Code to activate.
 
 #### Claude Code plugin
 
-The plugin draws the live score or the countdown above the prompt (the band), raises a toast when a
-score changes, and puts the live-score block beside each prompt for the model while a match is on
+The plugin draws the live score or the countdown above the prompt (the band), raises a toast that
+says what happened (a goal and its scorer, a goal against, a correction, full time and the result), and puts the live-score block beside each prompt for the model while a match is on
 (unless its `context` option is `off`),
 all from the installed CLI (`claudinho ambient --json`), never a fetch of its own. `/claudinho match` opens a pane
 with the match you follow now as `claudinho match <id>` prints it (the score, the goals and cards, the status), which
@@ -163,14 +163,16 @@ prompt of a Claude Code session in a terminal:
 
 Answer `y` to add the marketplace, then choose a scope. The `toasts` option (in `/config`) is
 `pinned` by default (your pinned team's match, `claudinho follow <alias> --team <name>`; with no pin
-saved, no toast), `all` or `off`. A toast is the hook's own line for the match (with its flags and
-the roster's names on a nations competition), one per match per change, and best effort, never every
-goal: a change is never said as it happens from a view the CLI could not vouch for (stale, degraded,
+saved, no toast), `all` or `off`. A toast is one line, the news then the score, written from the names
+and fields the CLI gives (`⚽ GOAL! Liverpool · Ronald Araújo 22'` and the score; `Goal for` the other side; `Full
+time` and the result), one per match per change, and best effort, never every goal: a change is never said as it happens from a view the CLI could not vouch for (stale, degraded,
 or a read that was not whole), a goal across such a gap or a failed run is said at the first current
 view after it (late, never lost while the match stays in the list: one gone from the next current
-view and back is observed afresh), and the first view of a match says nothing. On a goal a toast
-announces, the band plays a short celebration above its line (a ball, "GOAL!", the goal's line, about three seconds),
-waiting while Claude is working. The `celebrate` option (in `/config`) is `on` by default, or `off`.
+view and back is observed afresh), and the first view of a match says nothing; full time is said only by a current view in the minutes after the
+whistle. On your pinned team's goal (or any goal under `all` of a match with no pinned side) the band plays a short
+celebration above its line: Anthropic's Claude mascot as text art beside the ball, "GOAL!", the team and the scorer,
+about three seconds; at full time, on your team's win or a draw, the mascot plays once beside the result. Both wait
+while Claude is working. With CLI 0.11.2 the toasts are the hook's own line and the celebration a ball and "GOAL!". The `celebrate` option (in `/config`) is `on` by default, or `off`.
 The `context` option (in `/config`) is `on` by default, or `off`, which sends nothing with your prompts. At the end of an
 edition the band shows the World Cup's sign-off line, the one end-of-edition line the statusline
 prints; after another competition's season the statusline says nothing is known, and the band shows
