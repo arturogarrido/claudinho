@@ -87,8 +87,9 @@ export type AmbientMatch = Match & {
    * The goal that made the record's score, PROVEN by the refresher (its
    * scoring events counted per side equal the score: core's
    * `provenLastGoal`), stored on the cached record and re-sealed by the
-   * reader with core's `sealEvent`; `null` when nothing is proven or the
-   * stored value does not seal.
+   * reader with core's `sealEvent` and kept only as a goal, an own goal or a
+   * penalty whose `teamCode` is the code of the side its `side` names; `null`
+   * when nothing is proven or the stored value is anything else.
    */
   readonly lastGoal: MatchEvent | null;
 };
@@ -147,8 +148,10 @@ export interface AmbientView {
    * The matches the refresher SAW in play that a whole read then returned
    * finished (the snapshot's record of play), each for 10 minutes from the
    * read that first saw it finished, judged by the reader's clock (a stamp in
-   * the future is not believed); never one the live list holds. Listed only
-   * from a snapshot inside its display window whose live read was whole
+   * the future is not believed), whatever the snapshot's display window (the
+   * refresher stops polling once the last match ends, so the snapshot ages
+   * past it while an entry is still inside its own 10 minutes); never one the
+   * live list holds. Listed only from a snapshot whose live read was whole
    * (`liveComplete: true`); otherwise `[]`, which then says nothing. At most
    * 64. Absence from it never means a match is over.
    */

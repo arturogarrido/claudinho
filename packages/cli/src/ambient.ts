@@ -5,7 +5,7 @@
  * (`statusline.ts`, `hook.ts`), so neither renderer imports the other. The hot
  * path's rules: pure, no network, no market, no file read.
  */
-import type { AmbientFinishedMatch, AmbientMatch, AmbientView, Match, Pin, TeamKind } from '@claudinho/core';
+import type { AmbientFinishedMatch, AmbientMatch, AmbientView, Match, MatchEvent, Pin, TeamKind } from '@claudinho/core';
 import { isPinnedSide, parseCachedMatch, parsedValue, sealEvent, takeBounded } from '@claudinho/core';
 import { type CacheState, stampAgeMs, validStamp } from './cache';
 import { hookLine, hookNames, renderHook } from './hook';
@@ -46,24 +46,41 @@ function pinnedSideOf(m: Match, pin: Pin | undefined): 'home' | 'away' | null {
   return isPinnedSide(m.away, pin) ? 'away' : null;
 }
 
+/** The kinds a `lastGoal` may be: a goal, an own goal, a penalty (never a card or a substitution). */
+const SCORING = new Set<MatchEvent['type']>(['GOAL', 'OWN_GOAL', 'PEN']);
+
+/**
+ * A record's stored `lastGoal` as the view carries it: re-sealed by core's one
+ * event constructor (`sealEvent`), and only a scoring event (`GOAL`,
+ * `OWN_GOAL`, `PEN`) whose `teamCode` is the code of the record's side its
+ * `side` names (an own goal's credited side); anything else is `null`.
+ */
+function lastGoalOf(m: Match, raw: unknown): MatchEvent | null {
+  if (raw === undefined || raw === null) return null;
+  const e = sealEvent(raw);
+  if (!e || !SCORING.has(e.type)) return null;
+  return e.teamCode === (e.side === 'home' ? m.home.code : m.away.code) ? e : null;
+}
+
 /**
  * The snapshot's finished records (its record of play's `finished`, see
- * `play.ts`), as the ambient view lists them: only from a snapshot inside its
- * display window (`fresh`) whose live read was whole; bounded before any
- * per-entry work; each entry for `FINISHED_TTL_MS` from its own stamp by the
- * reader's clock (a stamp in the future is not believed); each record sealed
- * by the live records' constructor (`events: false`, the competition's kind),
- * status `FT` with a score; never one the live list holds, never one id twice.
- * A malformed slice or entry lists nothing for it, and never throws.
+ * `play.ts`), as the ambient view lists them: only from a snapshot whose live
+ * read was whole, each entry for `FINISHED_TTL_MS` from its own stamp by the
+ * reader's clock, whatever the snapshot's display window (after the last match
+ * ends the refresher stops polling, so the snapshot ages past that window
+ * while its entries are still inside their own ten minutes); a stamp in the
+ * future is not believed. Bounded before any per-entry work; each record
+ * sealed by the live records' constructor (`events: false`, the competition's
+ * kind), status `FT` with a score; never one the live list holds, never one id
+ * twice. A malformed slice or entry lists nothing for it, and never throws.
  */
 function finishedFromCache(
   state: CacheState | undefined,
-  fresh: boolean,
   nowMs: number,
   kind: TeamKind,
   live: ReadonlySet<string>,
 ): Match[] {
-  if (!fresh || state?.liveComplete !== true) return [];
+  if (state?.liveComplete !== true) return [];
   const play = state.play as unknown;
   if (!play || typeof play !== 'object' || Array.isArray(play)) return [];
   const out: Match[] = [];
@@ -96,8 +113,8 @@ function finishedFromCache(
  * hook` prints with) and its stored `lastGoal` re-sealed (core's `sealEvent`),
  * with the reader's own `total`/`shown`/`truncated`/`complete`; the line's
  * parts as the fitter placed them (`lineParts`); the record of play's
- * finished matches, from a fresh snapshot whose live read was whole
- * (`finished`); whether that list is `current` (a believed snapshot's inside
+ * finished matches, from a snapshot whose live read was whole, each for its
+ * own ten minutes (`finished`); whether that list is `current` (a believed snapshot's inside
  * its display window, not degraded, its read whole as the snapshot states,
  * the line not syncing: the one rule, `syncingWindow`);
  * the fixture the countdown names; the snapshot's own facts and the deadline
@@ -118,12 +135,11 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
 
   const { list, sources } = liveRecordsFromCache(state, nowMs, kind);
   // Each sealed record's stored `lastGoal`, re-sealed by core's one event
-  // constructor (one object per listed record, at most the list's cap); any
-  // other value is null.
+  // constructor and kept only as a scoring event of its own side (one object
+  // per listed record, at most the list's cap); any other value is null.
   const lastGoals = new Map<Match, AmbientMatch['lastGoal']>();
   list.items.forEach((m, i) => {
-    const raw = (sources[i] as { lastGoal?: unknown } | undefined)?.lastGoal;
-    lastGoals.set(m, raw === undefined || raw === null ? null : sealEvent(raw));
+    lastGoals.set(m, lastGoalOf(m, (sources[i] as { lastGoal?: unknown } | undefined)?.lastGoal));
   });
   const items: AmbientMatch[] = pickAmbientMatch(list.items, opts.pick).map((m) => ({
     ...m,
@@ -147,10 +163,9 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
   const age = stampAgeMs(state?.updatedAt, nowMs);
   const stamp = state && Number.isFinite(age) ? Date.parse(state.updatedAt) : undefined;
   const staleAt = stamp === undefined ? undefined : new Date(stamp + DISPLAY_STALE_MS);
-  // The finished records, by the live list's own freshness rule (its window).
+  // The finished records, each for its own ten minutes (not the display window).
   const finished: AmbientFinishedMatch[] = finishedFromCache(
     state,
-    stamp !== undefined && age < DISPLAY_STALE_MS,
     nowMs,
     kind,
     new Set(list.items.map((m) => m.id)),

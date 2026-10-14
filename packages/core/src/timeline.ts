@@ -62,8 +62,11 @@ const SCORING = new Set<MatchEvent['type']>(['GOAL', 'OWN_GOAL', 'PEN']);
  * then the timeline is whole and its last scoring event is the goal that made
  * this score. Anything else proves nothing (a timeline that lags the score, a
  * disallowed goal still listed, no score, no scoring event): the first scorer
- * is never named for a second goal. The ambient view's `lastGoal`, written by
- * the refresher on each live record it publishes.
+ * is never named for a second goal. Two scoring events identical in type,
+ * minute, added time, side and player prove nothing either: the same goal
+ * listed twice beside a timeline that lags would count as two. The ambient
+ * view's `lastGoal`, written by the refresher on each live record it
+ * publishes.
  */
 export function provenLastGoal(match: Match): MatchEvent | null {
   const score = match.score;
@@ -71,8 +74,12 @@ export function provenLastGoal(match: Match): MatchEvent | null {
   let home = 0;
   let away = 0;
   let last: MatchEvent | null = null;
+  const identities = new Set<string>();
   for (const e of match.events ?? []) {
     if (!SCORING.has(e.type)) continue;
+    const identity = JSON.stringify([e.type, e.minute, e.added ?? 0, e.side, e.player ?? null]);
+    if (identities.has(identity)) return null;
+    identities.add(identity);
     if (e.side === 'home') home++;
     else if (e.side === 'away') away++;
     else continue;

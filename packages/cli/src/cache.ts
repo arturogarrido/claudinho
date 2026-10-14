@@ -345,9 +345,12 @@ export function writeState(state: CacheState, now: number = stampOrNow(state.upd
  * of play and each live record's `lastGoal` are what a snapshot gained for the
  * goal moments. When the whole would be over the bound, `play.finished` is
  * emptied first (a full-time toast missed), then every live record's
- * `lastGoal` is dropped (a scorer not named); then it is written as it is
- * (over the bound only when the slices it always held are). The serialization
- * is done anyway; it is repeated only for a snapshot over the bound.
+ * `lastGoal` is dropped (a scorer not named), then `play` itself (the seen
+ * ids: a full time not detected), so the file is never larger than the
+ * snapshot without those fields; then it is written as it is (over the bound
+ * only when the slices it always held are, which are never touched). The
+ * serialization is done anyway; it is repeated only for a snapshot over the
+ * bound.
  */
 function boundedSnapshot(state: CacheState): string {
   const serialize = (s: CacheState) => JSON.stringify({ ...s, version: CACHE_VERSION });
@@ -363,6 +366,11 @@ function boundedSnapshot(state: CacheState): string {
   if (Array.isArray(next.live)) {
     next = { ...next, live: next.live.map(dropLastGoal) };
     text = serialize(next);
+    if (Buffer.byteLength(text, 'utf8') <= MAX_STATE_BYTES) return text;
+  }
+  if ('play' in next) {
+    const { play: _play, ...withoutPlay } = next;
+    text = serialize(withoutPlay);
   }
   return text;
 }
