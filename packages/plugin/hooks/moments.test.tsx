@@ -31,7 +31,7 @@ describe('a goal for the pinned side', () => {
     const texts = toastTexts(on)
     const w = await world($, on, [momentView([liveRecord([0, 0])]), momentView([liveRecord([0, 1], { lastGoal: ARAUJO })])])
     await next(w)
-    expect(texts).toEqual(["⚽ GOAL! Liverpool · Ronald Araújo 22'\nLASK Linz 0–1 Liverpool"])
+    expect(texts).toEqual(["⚽ GOAL! Liverpool · Ronald Araújo 22' · LASK Linz 0–1 Liverpool"])
   })
 
   test("added time reads 90+3'", async ($, on) => {
@@ -39,21 +39,21 @@ describe('a goal for the pinned side', () => {
     const late = { ...ARAUJO, minute: 90, added: 3 }
     const w = await world($, on, [momentView([liveRecord([1, 1], { minute: 90 })]), momentView([liveRecord([1, 2], { minute: 90, lastGoal: late })])])
     await next(w)
-    expect(texts).toEqual(["⚽ GOAL! Liverpool · Ronald Araújo 90+3'\nLASK Linz 1–2 Liverpool"])
+    expect(texts).toEqual(["⚽ GOAL! Liverpool · Ronald Araújo 90+3' · LASK Linz 1–2 Liverpool"])
   })
 
   test("lastGoal null: the team and the record's clock minute, no player", async ($, on) => {
     const texts = toastTexts(on)
     const w = await world($, on, [momentView([liveRecord([0, 0], { minute: 60 })]), momentView([liveRecord([0, 1], { minute: 60 })])])
     await next(w)
-    expect(texts).toEqual(["⚽ GOAL! Liverpool 60'\nLASK Linz 0–1 Liverpool"])
+    expect(texts).toEqual(["⚽ GOAL! Liverpool 60' · LASK Linz 0–1 Liverpool"])
   })
 
   test("lastGoal the same identity as the previous view's: not this goal's, so the clock minute, no player", async ($, on) => {
     const texts = toastTexts(on)
     const w = await world($, on, [momentView([liveRecord([0, 1], { minute: 60, lastGoal: ARAUJO })]), momentView([liveRecord([0, 2], { minute: 60, lastGoal: ARAUJO })])])
     await next(w)
-    expect(texts).toEqual(["⚽ GOAL! Liverpool 60'\nLASK Linz 0–2 Liverpool"])
+    expect(texts).toEqual(["⚽ GOAL! Liverpool 60' · LASK Linz 0–2 Liverpool"])
   })
 
   test("lastGoal on the other side than the one that rose: the clock minute, no player", async ($, on) => {
@@ -61,7 +61,7 @@ describe('a goal for the pinned side', () => {
     const other = { type: 'GOAL', minute: 58, side: 'home', teamCode: 'LAS', player: 'Robert Ljubicic' }
     const w = await world($, on, [momentView([liveRecord([1, 0], { minute: 60 })]), momentView([liveRecord([1, 1], { minute: 60, lastGoal: other })])])
     await next(w)
-    expect(texts).toEqual(["⚽ GOAL! Liverpool 60'\nLASK Linz 1–1 Liverpool"])
+    expect(texts).toEqual(["⚽ GOAL! Liverpool 60' · LASK Linz 1–1 Liverpool"])
   })
 
   test('an own goal proven: its own headline, the credited team, no player', async ($, on) => {
@@ -69,7 +69,7 @@ describe('a goal for the pinned side', () => {
     const og = { type: 'OWN_GOAL', minute: 63, side: 'away', teamCode: 'LIV', player: 'Philipp Ziereis' }
     const w = await world($, on, [momentView([liveRecord([1, 1], { minute: 64 })]), momentView([liveRecord([1, 2], { minute: 64, lastGoal: og })])])
     await next(w)
-    expect(texts).toEqual(["⚽ Own goal · Liverpool 63'\nLASK Linz 1–2 Liverpool"])
+    expect(texts).toEqual(["⚽ Own goal · Liverpool 63' · LASK Linz 1–2 Liverpool"])
   })
 })
 
@@ -80,7 +80,7 @@ describe('a goal against', () => {
     const after = momentView([liveRecord([1, 1], { minute: 64, lastGoal: ljubicic })])
     const w = await world($, on, [momentView([liveRecord([0, 1], { minute: 64 })]), after, after])
     await next(w)
-    expect(texts).toEqual(["Goal for LASK Linz · Robert Ljubicic 63'\nLASK Linz 1–1 Liverpool"])
+    expect(texts).toEqual(["Goal for LASK Linz · Robert Ljubicic 63' · LASK Linz 1–1 Liverpool"])
     expect(await band(w)).toEqual([momentLine([1, 1])])
   })
 
@@ -88,7 +88,7 @@ describe('a goal against', () => {
     const texts = toastTexts(on)
     const w = await world($, on, [momentView([liveRecord([0, 1], { minute: 60 })]), momentView([liveRecord([1, 1], { minute: 60 })])])
     await next(w)
-    expect(texts).toEqual(["Goal for LASK Linz 60'\nLASK Linz 1–1 Liverpool"])
+    expect(texts).toEqual(["Goal for LASK Linz 60' · LASK Linz 1–1 Liverpool"])
   })
 
   test('under all, a match with no pinnedSide: nothing is against, every goal reads GOAL!', { options: { toasts: 'all' } }, async ($, on) => {
@@ -97,7 +97,7 @@ describe('a goal against', () => {
     const unpinned = { pinned: false, picked: false, pinnedSide: null }
     const w = await world($, on, [momentView([liveRecord([0, 1], { ...unpinned, minute: 64 })]), momentView([liveRecord([1, 1], { ...unpinned, minute: 64, lastGoal: ljubicic })])])
     await next(w)
-    expect(texts).toEqual(["⚽ GOAL! LASK Linz · Robert Ljubicic 63'\nLASK Linz 1–1 Liverpool"])
+    expect(texts).toEqual(["⚽ GOAL! LASK Linz · Robert Ljubicic 63' · LASK Linz 1–1 Liverpool"])
   })
 })
 
@@ -121,7 +121,7 @@ describe('more than one goal, a correction, penalties', () => {
     const after = momentView([liveRecord([0, 0])])
     const w = await world($, on, [momentView([liveRecord([0, 1], { lastGoal: ARAUJO })]), after, after])
     await next(w)
-    expect(texts).toEqual(['Score updated\nLASK Linz 0–0 Liverpool'])
+    expect(texts).toEqual(['Score updated · LASK Linz 0–0 Liverpool'])
     expect(await band(w)).toEqual([momentLine([0, 0])])
   })
 
@@ -148,14 +148,14 @@ describe('which bullet fires when several match one change', () => {
     const texts = toastTexts(on)
     const w = await world($, on, [momentView([liveRecord([2, 1], { minute: 120, shootout: { home: 2, away: 2 } })]), momentView([liveRecord([1, 1], { minute: 120, shootout: { home: 3, away: 2 } })])])
     await next(w)
-    expect(texts).toEqual(['Score updated\nLASK Linz 1(3)–1(2) Liverpool'])
+    expect(texts).toEqual(['Score updated · LASK Linz 1(3)–1(2) Liverpool'])
   })
 
   test('one side down and the other up by 1: `Score updated`, never a goal', async ($, on) => {
     const texts = toastTexts(on)
     const w = await world($, on, [momentView([liveRecord([1, 0])]), momentView([liveRecord([0, 1], { lastGoal: ARAUJO })])])
     await next(w)
-    expect(texts).toEqual(['Score updated\nLASK Linz 0–1 Liverpool'])
+    expect(texts).toEqual(['Score updated · LASK Linz 0–1 Liverpool'])
   })
 
   test('a shootout tally that rose beside a regulation tally that rose by 1: `Penalties`', async ($, on) => {
@@ -171,21 +171,21 @@ describe('full time', () => {
     const texts = toastTexts(on)
     const w = await world($, on, [momentView([liveRecord([3, 6], { minute: 90 })]), momentView([], [finishedRecord([3, 6])])])
     await next(w)
-    expect(texts).toEqual(['Full time · LASK Linz 3–6 Liverpool\nLiverpool win'])
+    expect(texts).toEqual(['Full time · LASK Linz 3–6 Liverpool · Liverpool win'])
   })
 
   test('the home side winning', async ($, on) => {
     const texts = toastTexts(on)
     const w = await world($, on, [momentView([liveRecord([2, 1], { minute: 90 })]), momentView([], [finishedRecord([2, 1])])])
     await next(w)
-    expect(texts).toEqual(['Full time · LASK Linz 2–1 Liverpool\nLASK Linz win'])
+    expect(texts).toEqual(['Full time · LASK Linz 2–1 Liverpool · LASK Linz win'])
   })
 
   test('level with no shootout and no winnerCode: `Draw`', async ($, on) => {
     const texts = toastTexts(on)
     const w = await world($, on, [momentView([liveRecord([2, 2], { minute: 90 })]), momentView([], [finishedRecord([2, 2])])])
     await next(w)
-    expect(texts).toEqual(['Full time · LASK Linz 2–2 Liverpool\nDraw'])
+    expect(texts).toEqual(['Full time · LASK Linz 2–2 Liverpool · Draw'])
   })
 
   test('a shootout decides a level score', async ($, on) => {
@@ -195,14 +195,14 @@ describe('full time', () => {
       momentView([], [finishedRecord([1, 1], { shootout: { home: 4, away: 3 } })]),
     ])
     await next(w)
-    expect(texts).toEqual(['Full time · LASK Linz 1(4)–1(3) Liverpool\nLASK Linz win'])
+    expect(texts).toEqual(['Full time · LASK Linz 1(4)–1(3) Liverpool · LASK Linz win'])
   })
 
   test('a winnerCode comes first, over the score (an aggregate tie): the team whose code it is', async ($, on) => {
     const texts = toastTexts(on)
     const w = await world($, on, [momentView([liveRecord([2, 1], { minute: 90 })]), momentView([], [finishedRecord([2, 1], { winnerCode: 'LIV' })])])
     await next(w)
-    expect(texts).toEqual(['Full time · LASK Linz 2–1 Liverpool\nLiverpool win'])
+    expect(texts).toEqual(['Full time · LASK Linz 2–1 Liverpool · Liverpool win'])
   })
 
   test('a result that cannot be established (no score): `Full time ·` the two names, no result line', async ($, on) => {
@@ -216,7 +216,7 @@ describe('full time', () => {
     const texts = toastTexts(on)
     const w = await world($, on, [momentView([liveRecord([3, 5], { minute: 90 })]), momentView([], [finishedRecord([3, 6])])])
     await next(w)
-    expect(texts).toEqual(["⚽ GOAL! Liverpool 90'\nLASK Linz 3–6 Liverpool", 'Full time · LASK Linz 3–6 Liverpool\nLiverpool win'])
+    expect(texts).toEqual(["⚽ GOAL! Liverpool 90' · LASK Linz 3–6 Liverpool", 'Full time · LASK Linz 3–6 Liverpool · Liverpool win'])
   })
 
   test('a finished record that was never in the last current view\'s live list: nothing', async ($, on) => {
@@ -232,7 +232,7 @@ describe('full time', () => {
     await next(w)
     expect(texts).toEqual([])
     await next(w)
-    expect(texts).toEqual(['Full time · LASK Linz 3–6 Liverpool\nLiverpool win'])
+    expect(texts).toEqual(['Full time · LASK Linz 3–6 Liverpool · Liverpool win'])
   })
 
   test('toasts off: no full-time toast', { options: { toasts: 'off' } }, async ($, on) => {
@@ -255,7 +255,7 @@ describe('full time', () => {
     const unpinned = { pinned: false, picked: false, pinnedSide: null }
     const w = await world($, on, [momentView([liveRecord([3, 6], { ...unpinned, minute: 90 })]), momentView([], [finishedRecord([3, 6], unpinned)])])
     await next(w)
-    expect(texts).toEqual(['Full time · LASK Linz 3–6 Liverpool\nLiverpool win'])
+    expect(texts).toEqual(['Full time · LASK Linz 3–6 Liverpool · Liverpool win'])
   })
 })
 
@@ -281,6 +281,26 @@ describe('the toasts option governs every moment', () => {
     const w = await world($, on, [momentView([liveRecord([0, 1], unpinned)]), momentView([liveRecord([0, 0], unpinned)])])
     await next(w)
     expect(texts).toEqual([])
+  })
+})
+
+describe('a toast is one line (a toast draws no line break: measured on Claude Code 2.1.299)', () => {
+  test('no toast text holds a line break, across a goal, an own goal, a goal against, a correction, penalties and full time', async ($, on) => {
+    const texts = toastTexts(on)
+    const og = { type: 'OWN_GOAL', minute: 63, side: 'away', teamCode: 'LIV', player: 'Philipp Ziereis' }
+    const ljubicic = { type: 'GOAL', minute: 70, side: 'home', teamCode: 'LAS', player: 'Robert Ljubicic' }
+    const w = await world($, on, [
+      momentView([liveRecord([0, 0])]),
+      momentView([liveRecord([0, 1], { lastGoal: ARAUJO })]), // a goal
+      momentView([liveRecord([0, 2], { minute: 64, lastGoal: og })]), // an own goal
+      momentView([liveRecord([1, 2], { minute: 71, lastGoal: ljubicic })]), // a goal against
+      momentView([liveRecord([1, 1], { minute: 72 })]), // a correction
+      momentView([liveRecord([1, 1], { minute: 120, shootout: { home: 0, away: 1 } })]), // penalties
+      momentView([], [finishedRecord([1, 1], { shootout: { home: 0, away: 1 } })]), // full time
+    ])
+    for (let i = 0; i < 6; i++) await next(w)
+    expect(texts).toHaveLength(6)
+    expect(texts.filter((t) => /[\n\r]/.test(t))).toEqual([])
   })
 })
 

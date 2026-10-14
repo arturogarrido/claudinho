@@ -195,7 +195,7 @@ describe('what plays nothing', () => {
     const toasts = toastTexts(on)
     const w = await world($, on, [before, goal, goal])
     await next(w)
-    expect(toasts).toEqual(["⚽ GOAL! Liverpool · Ronald Araújo 22'\nLASK Linz 0–1 Liverpool"])
+    expect(toasts).toEqual(["⚽ GOAL! Liverpool · Ronald Araújo 22' · LASK Linz 0–1 Liverpool"])
     expect(await rows(w)).toEqual([LINE])
   })
 })
@@ -253,7 +253,7 @@ describe('full time for the pinned side', () => {
     const lost = momentView([], [finishedRecord([2, 1])], { line: FT_LINE })
     const w = await world($, on, [momentView([liveRecord([2, 1], { minute: 90 })]), lost, lost])
     await next(w)
-    expect(toasts).toEqual(['Full time · LASK Linz 2–1 Liverpool\nLASK Linz win'])
+    expect(toasts).toEqual(['Full time · LASK Linz 2–1 Liverpool · LASK Linz win'])
     expect(await rows(w)).toEqual([FT_LINE])
   })
 
@@ -262,7 +262,7 @@ describe('full time for the pinned side', () => {
     const lost = momentView([], [finishedRecord([1, 1], { shootout: { home: 4, away: 3 } })], { line: FT_LINE })
     const w = await world($, on, [momentView([liveRecord([1, 1], { minute: 120, shootout: { home: 4, away: 3 } })]), lost, lost])
     await next(w)
-    expect(toasts).toEqual(['Full time · LASK Linz 1(4)–1(3) Liverpool\nLASK Linz win'])
+    expect(toasts).toEqual(['Full time · LASK Linz 1(4)–1(3) Liverpool · LASK Linz win'])
     expect(await rows(w)).toEqual([FT_LINE])
   })
 
@@ -312,7 +312,7 @@ describe('full time for the pinned side', () => {
     const toasts = toastTexts(on)
     const w = await world($, on, [live36, ft36, ft36])
     await next(w)
-    expect(toasts).toEqual(['Full time · LASK Linz 3–6 Liverpool\nLiverpool win'])
+    expect(toasts).toEqual(['Full time · LASK Linz 3–6 Liverpool · Liverpool win'])
     expect(await rows(w)).toEqual([FT_LINE])
   })
 
