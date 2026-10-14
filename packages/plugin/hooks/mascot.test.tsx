@@ -290,6 +290,34 @@ describe('full time for the pinned side', () => {
     expect(hasMascot(await rows(w))).toBe(true)
   })
 
+  test('a held full-time play is dropped when the match is listed live again (the provider corrected full time)', { options: { toasts: 'all' } }, async ($, on) => {
+    // Round 2 (Sol, Astra): a full-time play is kept only while each later current view still lists the match finished
+    // with the same result.
+    const won = momentView([], [finishedRecord([0, 1], { winnerCode: 'LIV' })], { line: FT_LINE })
+    const again = momentView([liveRecord([0, 1], { minute: 90 })])
+    const w = await world($, on, [momentView([liveRecord([0, 1], { minute: 90 })]), won, again, again])
+    await w.turnStart()
+    await next(w) // full time, Liverpool win: held
+    await next(w) // the same 0-1, listed live again
+    await w.turnEnd()
+    const r = await rows(w)
+    expect(r.some((x) => x.includes('Full time'))).toBe(false)
+    expect(hasMascot(r)).toBe(false)
+  })
+
+  test('a held full-time play is dropped when a current view no longer lists the match at all', { options: { toasts: 'all' } }, async ($, on) => {
+    const won = momentView([], [finishedRecord([0, 1], { winnerCode: 'LIV' })], { line: FT_LINE })
+    const gone = momentView([], [], { line: FT_LINE })
+    const w = await world($, on, [momentView([liveRecord([0, 1], { minute: 90 })]), won, gone, gone])
+    await w.turnStart()
+    await next(w)
+    await next(w)
+    await w.turnEnd()
+    const r = await rows(w)
+    expect(r.some((x) => x.includes('Full time'))).toBe(false)
+    expect(hasMascot(r)).toBe(false)
+  })
+
   test('a queued `Draw` play is dropped when a later finished record adds a shootout the pinned side lost', { options: { toasts: 'all' } }, async ($, on) => {
     const drew = momentView([], [finishedRecord([1, 1])], { line: FT_LINE })
     const lost = momentView([], [finishedRecord([1, 1], { shootout: { home: 4, away: 3 } })], { line: FT_LINE })
