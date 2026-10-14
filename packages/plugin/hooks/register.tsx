@@ -671,6 +671,12 @@ const goalMinute = (g: ClaudinhoGoal): string => (g.added ? `${g.minute}+${g.add
 /** The record's clock minute, `60'`, or '' when it states none. */
 const clockMinute = (m: Item): string => (isMinute(m.minute) ? `${m.minute}'` : '')
 
+/**
+ * A toast's text on one line: a toast draws no line break (Claude Code 2.1.299 draws one as a replacement character),
+ * so any run of line breaks a text could carry (none the CLI's sealed labels hold) becomes one space.
+ */
+const oneLine = (text: string): string => text.replace(/[\r\n]+/g, ' ')
+
 /** Words joined by one space, the empty ones left out. */
 const words = (...ws: string[]): string => ws.filter((w) => w !== '').join(' ')
 
@@ -702,7 +708,7 @@ function scoreMoment(m: Item, names: Names, was: ClaudinhoTally, goal: Claudinho
   const shootWas = was.shootout ?? (shootout ? { home: 0, away: 0 } : undefined)
   const shoot: [Tally, Tally] | null = shootout && shootWas ? [shootout, shootWas] : null
   const pairs = [regulation, shoot].filter((p): p is [Tally, Tally] => p !== null)
-  if (pairs.some(([a, b]) => a.home < b.home || a.away < b.away)) return { text: `Score updated\n${line}`, play: null }
+  if (pairs.some(([a, b]) => a.home < b.home || a.away < b.away)) return { text: `Score updated · ${line}`, play: null }
   if (shoot && (shoot[0].home > shoot[1].home || shoot[0].away > shoot[1].away)) {
     return { text: `Penalties · ${line}`, play: null }
   }
@@ -720,11 +726,11 @@ function scoreMoment(m: Item, names: Names, was: ClaudinhoTally, goal: Claudinho
   const pinned = pinnedSideOf(m)
   if (pinned !== null && pinned !== side) {
     const tail = own ? ` · ${words('own goal', minute)}` : player ? ` · ${words(player, minute)}` : minute ? ` ${minute}` : ''
-    return { text: `Goal for ${team}${tail}\n${line}`, play: null }
+    return { text: `Goal for ${team}${tail} · ${line}`, play: null }
   }
   const head = own ? `⚽ Own goal · ${words(team, minute)}` : player ? `⚽ GOAL! ${team} · ${words(player, minute)}` : `⚽ GOAL! ${words(team, minute)}`
   const detail = own ? words('own goal', minute) : player ? words(player, minute) : minute
-  return { text: `${head}\n${line}`, play: { kind: 'goal', team, minute, detail } }
+  return { text: `${head} · ${line}`, play: { kind: 'goal', team, minute, detail } }
 }
 
 /** A side's code, when the record states one. */
@@ -759,7 +765,7 @@ function fullTimeMoment(f: Item, names: Names): Moment {
   const said = result.winner === null ? 'Draw' : `${names[result.winner]} win`
   const pinned = pinnedSideOf(f)
   const plays = pinned !== null && (result.winner === null || result.winner === pinned)
-  return { text: `Full time · ${line}\n${said}`, play: plays ? { kind: 'fulltime', result: said } : null }
+  return { text: `Full time · ${line} · ${said}`, play: plays ? { kind: 'fulltime', result: said } : null }
 }
 
 /**
@@ -1348,7 +1354,7 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   if (isView && view.current === true) {
     const prev = await read($, baseline)
     const moments = momentsFor(view, prev, option)
-    for (const m of moments) for (const text of m.texts) $.ui.toast(text)
+    for (const m of moments) for (const text of m.texts) $.ui.toast(oneLine(text))
     const played = celebrateOn ? moments.filter((m) => m.plays.length > 0) : []
     // What this view says of the celebration's match (its competition was asked above): its score differing from the
     // one the goal was decided on drops it (playing or waiting). The null stops the redraws too; a goal this run

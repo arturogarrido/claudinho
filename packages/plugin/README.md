@@ -90,25 +90,27 @@ made in a terminal then loads in the Code tab too.
 
 ## The toasts
 
-Each toast is two lines, the news and the score, written from the names and fields the CLI gives (an example where
-you pinned Liverpool, away at LASK Linz):
+Each toast is one line, the news, ` · `, then the score, written from the names and fields the CLI gives (an example
+where you pinned Liverpool, away at LASK Linz):
 
-- **A goal**: one side's score up by exactly one. `⚽ GOAL! Liverpool · Ronald Araújo 22'`, then
-  `LASK Linz 0–1 Liverpool`. The scorer and the goal's minute (`90+3'` in added time) are named only when the CLI
-  proves them: its last goal for the match is a new one since the previous view, on the side that scored. Otherwise
-  the team and the match clock's minute: `⚽ GOAL! Liverpool 60'`. A proven own goal reads `⚽ Own goal · Liverpool 63'`,
-  the team it counted for, no player.
-- **A goal against**: the same for the side opposite your pinned team, `Goal for LASK Linz · Robert Ljubicic 63'`
-  (no ball, and nothing plays). With no pinned side (`toasts: all`, a match that is not your team's) every goal
-  reads `GOAL!`.
-- **More than one goal** between two views (both sides scored, or one by two or more): `Goals · LASK Linz 1–2
-  Liverpool`, one line, no player.
-- **A correction** (a score that went down): `Score updated`, then the score.
+- **A goal**: one side's score up by exactly one.
+  `⚽ GOAL! Liverpool · Ronald Araújo 22' · LASK Linz 0–1 Liverpool`. The scorer and the goal's minute (`90+3'` in
+  added time) are named only when the CLI proves them: its last goal for the match is a new one since the previous
+  view, on the side that scored. Otherwise the team and the match clock's minute:
+  `⚽ GOAL! Liverpool 60' · LASK Linz 0–1 Liverpool`. A proven own goal reads
+  `⚽ Own goal · Liverpool 63' · LASK Linz 1–2 Liverpool`, the team it counted for, no player.
+- **A goal against**: the same for the side opposite your pinned team,
+  `Goal for LASK Linz · Robert Ljubicic 63' · LASK Linz 1–1 Liverpool` (no ball, and nothing plays). With no pinned
+  side (`toasts: all`, a match that is not your team's) every goal reads `GOAL!`.
+- **More than one goal** between two views (both sides scored, or one by two or more):
+  `Goals · LASK Linz 1–2 Liverpool`, no player.
+- **A correction** (a score that went down): `Score updated · LASK Linz 0–0 Liverpool`.
 - **Penalties**: a shootout tally that went up, `Penalties · LASK Linz 1(3)–1(4) Liverpool`.
 - **Full time**: a match that left the live list for the CLI's list of finished matches between two current views,
-  `Full time · LASK Linz 3–6 Liverpool`, then the result: `Liverpool win`, or `Draw`; the CLI's marked winner first,
-  else the shootout, else the score. A result that cannot be established (no score) leaves the second line out. A
-  goal seen in the same read is said first, with the clock's minute, then full time.
+  `Full time · LASK Linz 3–6 Liverpool · Liverpool win` (or `· Draw`); the result is the CLI's marked winner first,
+  else the shootout, else the score. A result that cannot be established (no score) is left out:
+  `Full time · LASK Linz vs Liverpool`. A goal seen in the same read is said first, with the clock's minute, then
+  full time.
 
 When one change could be read two ways, the first that holds is said: `Score updated`, then `Penalties`, then the
 goal, then `Goals`. Every toast follows the `toasts` option (below).
