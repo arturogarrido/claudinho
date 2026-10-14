@@ -18,6 +18,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { type Capabilities, capabilitiesOf, SUPPORTED } from '../src';
 
 const README = fileURLToPath(new URL('../../../README.md', import.meta.url));
+const CLI_README = fileURLToPath(new URL('../../cli/README.md', import.meta.url));
 const SCRIPT = fileURLToPath(new URL('../../../scripts/gen-readme-matrix.mjs', import.meta.url));
 const START = '<!-- competitions:start -->';
 const END = '<!-- competitions:end -->';
@@ -47,6 +48,12 @@ describe('the README matrix', () => {
     expect(committed).toContain('premier-league');
     expect(committed).toContain('world-cup');
     expect(committed).toMatch(/scores.*next.*standings.*bracket.*markets/i);
+  });
+
+  it('the CLI README, the npm page, carries the same block, and the generator names both files', async () => {
+    const { renderMatrix, READMES } = (await import(SCRIPT)) as Generator & { READMES: readonly string[] };
+    expect(blockOf(readFileSync(CLI_README, 'utf8'))).toBe(renderMatrix(SUPPORTED, capabilitiesOf).trim());
+    expect([...READMES]).toEqual(['README.md', 'packages/cli/README.md']);
   });
 
   it('the guard reads the README under either line ending: a CRLF copy and an LF copy of the committed README both pass it', async () => {
