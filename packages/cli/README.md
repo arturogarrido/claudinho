@@ -20,10 +20,24 @@ npx @claudinho/cli follow champions-league
 npx @claudinho/cli today --lang es --tz America/Mexico_City
 ```
 
-<!-- DEMO: CAPTURE TONIGHT. Verbatim `claudinho today` with the Champions League followed, on
-     Oct 14, 2026 after the day's games. Never hand-edit. -->
+<!-- DEMO: verbatim `claudinho --tz UTC today` with the Champions League followed, on Oct 14, 2026
+     after the day's games, colour off. Never hand-edit. -->
 ```text
-CAPTURE TONIGHT: claudinho today, the Champions League on Oct 14
+Today's matches · 2026-10-14
+  Champions League
+
+  Feyenoord Rotterdam    3–2  Como                  FT   the scoreboard has spoken!
+  LASK Linz              3–6  Liverpool             FT   You'll never walk alone!
+  AS Roma                3–4  Real Madrid           FT   Daje Roma!
+  Aston Villa            6–0  Fenerbahce            FT   UTV!
+  Bodo/Glimt             1–0  Borussia Dortmund     FT   Echte Liebe!
+  Manchester City        2–4  Paris Saint-Germain   FT   Blue Moon!
+  Real Betis             3–2  FC Porto              FT   ¡Viva er Betis manque pierda!
+  Shakhtar Donetsk       3–1  AEK Athens            FT   off to the tunnel!
+  Slovan Bratislava      0–3  VfB Stuttgart         FT   the referee calls time!
+
+Live data: ESPN
+Not affiliated with FIFA, any confederation, league or club, or Anthropic.
 ```
 
 ## Competitions
@@ -173,14 +187,22 @@ claudinho share                   # today's matches
 claudinho share live              # the matches in play
 claudinho share next              # your pinned team's next match (or next <TEAM>)
 claudinho share table             # the standings (or table <KEY> for one table)
-claudinho share 760415            # one match by id
+claudinho share 401915407         # one match by id
 claudinho share next --copy       # also copy it to the clipboard
 ```
 
-<!-- DEMO CARD: CAPTURE TONIGHT. Verbatim `claudinho share <id>` of a Champions League match from
-     Oct 14, 2026, with the Champions League followed. Never hand-edit. -->
+<!-- DEMO CARD: verbatim `claudinho --tz UTC share 401915407` (a Champions League match from Oct 14,
+     2026), with the Champions League followed. Never hand-edit. -->
 ```text
-CAPTURE TONIGHT: claudinho share <id>, a Champions League match card
+Match pulse · Champions League
+
+Manchester City 2–4 Paris Saint-Germain · FT
+Etihad Stadium, Manchester, England
+League phase
+
+Live data: ESPN
+#VibingLaVidaLoca · Independent fan project · Not affiliated with FIFA, any confederation, league or club, or Anthropic.
+Try it: npx @claudinho/cli --competition champions-league match 401915407
 ```
 
 A card has no color codes, so it pastes cleanly anywhere, and always carries the non-affiliation

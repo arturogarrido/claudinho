@@ -7,7 +7,7 @@ Desktop, Windsurf, Zed, VS Code and any MCP client that runs a local (stdio) ser
 signup, no account.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/arturogarrido/claudinho/main/.github/assets/mcp-aha.gif" alt="CAPTURE TONIGHT: Cursor CLI asked mid-task how a Champions League match is going; it calls the Claudinho MCP server and answers with the live score" width="760">
+  <img src="https://raw.githubusercontent.com/arturogarrido/claudinho/main/.github/assets/mcp-aha.gif" alt="Cursor CLI asked mid-task how Manchester City are doing against Paris Saint-Germain; it calls the Claudinho MCP server and answers with the live score from the 24th minute" width="760">
 </p>
 
 ## Install

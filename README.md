@@ -10,7 +10,7 @@ Liga MX, Serie A, the Bundesliga, the Libertadores and the rest are in [the tabl
 No API key, no signup, no account.
 
 <p align="center">
-  <img src=".github/assets/hero.png" alt="CAPTURE TONIGHT: claudinho live during the Champions League's 19:00 UTC kickoffs" width="800">
+  <img src=".github/assets/hero.png" alt="claudinho live during the Champions League on Oct 14, 2026: seven matches in play around the 27th minute, each with its score, minute and a line of commentary or a rally cry" width="800">
 </p>
 <!-- HERO: a real capture, `claudinho live` with the Champions League followed, during the
      Oct 14, 2026 19:00 UTC batch. Not a recording: the command's real output at that moment,
@@ -79,10 +79,10 @@ command with `--competition` (`claudinho --competition champions-league next Ars
 `CLAUDINHO_COMPETITION` for a shell. Details: the
 [CLI README](https://github.com/arturogarrido/claudinho/tree/main/packages/cli#choosing-a-competition).
 
-<!-- TABLE: CAPTURE after the Oct 14-15 matchday: `claudinho table` with the Champions League
-     followed, the top of the 36-club league phase, rendered to a PNG. -->
+<!-- TABLE: a real capture, `claudinho table` with the Champions League followed, on Oct 14, 2026,
+     the top of the 36-club league phase, rendered to a PNG. -->
 <p align="center">
-  <img src=".github/assets/table.png" alt="CAPTURE: the top of the Champions League league-phase table from claudinho table" width="640">
+  <img src=".github/assets/table.png" alt="The top of the Champions League league-phase table from claudinho table, on Oct 14, 2026" width="640">
 </p>
 
 ## Install
@@ -98,10 +98,28 @@ claudinho table
 claudinho match <id>           # one match, with its goals and cards
 ```
 
-<!-- DEMO: CAPTURE TONIGHT. Verbatim `claudinho match <id>` of a finished Champions League match
-     from Oct 14, 2026 (the score, the stage and venue, the goals and cards). Never hand-edit. -->
+<!-- DEMO: verbatim `claudinho --tz UTC match 401915415` (a finished Champions League match, Oct 14,
+     2026), the Champions League followed with Liverpool pinned, colour off. Never hand-edit. -->
 ```text
-CAPTURE TONIGHT: claudinho match <id>, a finished match with its goals and cards
+LASK Linz 3–6 Liverpool
+  Champions League
+  League phase · Raiffeisen Arena (Linz), Linz, Austria
+  FT · Kickoff Wed 16:45
+  You'll never walk alone!
+
+  22'  ⚽ Goal         LIV  Ronald Araújo
+  24'  ⚽ Goal         LIV  Bradley Barcola
+  37'  ⚽ Goal         LIV  Bradley Barcola
+  51'  ⚽ Goal         LIV  Jeremie Frimpong
+  63'  ⚽ Goal         LAS  Robert Ljubicic
+  66'  ⚽ Goal         LIV  Bradley Barcola
+  72'  ⚽ Goal         LIV  Lewis Koumas
+  74'  ⚽ Goal         LAS  Florian Flecker
+  77'  ⚽ Goal         LAS  Florian Flecker
+  80'  🟨 Yellow card  LAS  Daniel Elfadli
+
+Live data: ESPN
+Not affiliated with FIFA, any confederation, league or club, or Anthropic.
 ```
 
 All commands, options and `--json` output: the [CLI README](https://github.com/arturogarrido/claudinho/tree/main/packages/cli#readme).
@@ -163,7 +181,7 @@ claudinho init cursor
 ```
 
 <p align="center">
-  <img src=".github/assets/cursor-cli-statusline.png" alt="CAPTURE TONIGHT: a live Champions League score in the Cursor CLI statusline, under the prompt" width="640">
+  <img src=".github/assets/cursor-cli-statusline.png" alt="Live Champions League scores in the Cursor CLI statusline, under the prompt, on Oct 14, 2026" width="640">
 </p>
 
 Restart your agent session to see it. `export CLAUDINHO_CURSOR_META=auto` adds a second line with the
@@ -192,7 +210,7 @@ Everything else, Cursor included (`~/.cursor/mcp.json`), takes this config:
 Then ask mid-task. If you have not run `claudinho follow`, name the competition in your question.
 
 <p align="center">
-  <img src=".github/assets/mcp-aha.gif" alt="CAPTURE TONIGHT: Cursor CLI asked mid-task how a Champions League match is going; it calls the Claudinho MCP server and answers with the live score" width="760">
+  <img src=".github/assets/mcp-aha.gif" alt="Cursor CLI asked mid-task how Manchester City are doing against Paris Saint-Germain; it calls the Claudinho MCP server and answers with the live score from the 24th minute" width="760">
 </p>
 
 Every tool, prompt and field: the [MCP README](https://github.com/arturogarrido/claudinho/tree/main/packages/mcp#readme).
