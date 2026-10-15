@@ -11,7 +11,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { parseCachedMatch, timelineRows } from '../src/index';
+import { parseCachedMatch, t, timelineParts, timelineRows } from '../src/index';
 import { parseEspnEvent } from '../src/trust/espn';
 import type { Match, MatchEvent } from '../src/types';
 
@@ -19,6 +19,12 @@ const HOME = { id: '361', abbreviation: 'NEW', displayName: 'Newcastle United' }
 const AWAY = { id: '349', abbreviation: 'BOU', displayName: 'AFC Bournemouth' };
 const FLAGS = { scoringPlay: false, yellowCard: false, redCard: false, penaltyKick: false, ownGoal: false, shootout: false };
 type Detail = Record<string, unknown>;
+/** The markers, written as escapes: a goal, an own goal and a penalty (the ball), a yellow card, a red card. */
+const BALL = '\u26BD';
+const YELLOW = '\u{1F7E8}';
+const RED = '\u{1F7E5}';
+/** The marker per kind, in the order GOAL, OWN_GOAL, PEN, YELLOW, RED. */
+const MARKS = [BALL, BALL, BALL, YELLOW, RED] as const;
 
 /** One detail as ESPN sends it: all six flags false, a minute, the credited side, one athlete of that side. */
 const detail = (over: Detail = {}): Detail => ({
@@ -348,28 +354,28 @@ describe('timelineRows: one row per event, aligned', () => {
     { type: 'YELLOW', minute: 71, side: 'home', teamCode: 'NEW' },
     { type: 'YELLOW', minute: 90, added: 4, side: 'away', teamCode: 'BOU', player: 'Adam Smith' },
   ];
-  it('English: the minute, the kind and the side padded to the widest; the player after; no trailing space', () => {
+  it('English: the minute, the marker and the kind padded to the widest, the side; the player after; no trailing space', () => {
     expect(timelineRows(base(EVS), { lang: 'en', flags: true })).toEqual([
-      "  9'     Goal         BOU  Marcus Tavernier",
-      "  28'    Yellow card  NEW  Anthony Elanga",
-      "  35'    Own goal     BOU  Malick Thiaw",
-      "  71'    Yellow card  NEW",
-      "  90+4'  Yellow card  BOU  Adam Smith",
+      "  9'     ⚽ Goal         BOU  Marcus Tavernier",
+      "  28'    🟨 Yellow card  NEW  Anthony Elanga",
+      "  35'    ⚽ Own goal     BOU  Malick Thiaw",
+      "  71'    🟨 Yellow card  NEW",
+      "  90+4'  🟨 Yellow card  BOU  Adam Smith",
     ]);
   });
   it('Spanish kind words', () => {
-    expect(timelineRows(base(EVS), { lang: 'es', flags: true })[2]).toBe("  35'    Gol en contra     BOU  Malick Thiaw");
+    expect(timelineRows(base(EVS), { lang: 'es', flags: true })[2]).toBe("  35'    ⚽ Gol en contra     BOU  Malick Thiaw");
   });
   it.each([
     ['en', ['Goal', 'Own goal', 'Penalty', 'Yellow card', 'Red card']],
     ['es', ['Gol', 'Gol en contra', 'Penal', 'Tarjeta amarilla', 'Tarjeta roja']],
     ['pt', ['Gol', 'Gol contra', 'Pênalti', 'Cartão amarelo', 'Cartão vermelho']],
     ['fr', ['But', 'But contre son camp', 'Penalty', 'Carton jaune', 'Carton rouge']],
-  ] as const)('%s: the five kind words', (lang, words) => {
+  ] as const)('%s: the five kind words, each behind its marker and one space', (lang, words) => {
     const kinds: MatchEvent['type'][] = ['GOAL', 'OWN_GOAL', 'PEN', 'YELLOW', 'RED'];
     const rows = timelineRows(base(kinds.map((type, i) => ({ type, minute: i, side: 'home', teamCode: 'NEW' }))), { lang, flags: true });
     rows.forEach((row, i) => {
-      expect(row.split(/ {2,}/)[2]).toBe(words[i]);
+      expect(row.split(/ {2,}/)[2]).toBe(`${MARKS[i]} ${words[i]}`);
     });
   });
   it('a nation side carries its flag on its outer side when flags are on, none when off', () => {
@@ -391,14 +397,82 @@ describe('timelineRows: one row per event, aligned', () => {
     m.home = { code: 'O&M', name: 'Oriente y Mar' };
     m.away = { code: 'RB', name: 'Rio Branco' };
     expect(timelineRows(m, { lang: 'en', flags: true })).toEqual([
-      "  9'   Goal         O&M  P One",
-      "  30'  Goal         RB   P Two",
-      "  31'  Yellow card  RB",
+      "  9'   ⚽ Goal         O&M  P One",
+      "  30'  ⚽ Goal         RB   P Two",
+      "  31'  🟨 Yellow card  RB",
     ]);
   });
   it('no events: no rows', () => {
     const m = base([]);
     delete m.events;
     expect(timelineRows(m, { lang: 'en', flags: true })).toEqual([]);
+  });
+
+  describe('timelineParts: the same rows as parts, the player strong', () => {
+    type Part = { text: string; style?: string };
+    const joined = (parts: readonly Part[]) => parts.map((p) => p.text).join('');
+    it.each([
+      ['en', true],
+      ['es', true],
+      ['pt', false],
+      ['fr', false],
+    ] as const)('%s (flags %s): one entry per row, and each joined equals timelineRows at its index', (lang, flags) => {
+      const m = base(EVS, { home: '\u{1F1F2}\u{1F1FD}', away: '\u{1F1FF}\u{1F1E6}' });
+      const parts = timelineParts(m, { lang, flags });
+      const rows = timelineRows(m, { lang, flags });
+      expect(parts.length).toBe(EVS.length);
+      expect(parts.map(joined)).toEqual(rows);
+    });
+    it('the player is one part, strong, with its exact text; nothing else is strong', () => {
+      const parts = timelineParts(base(EVS), { lang: 'en', flags: true });
+      parts.forEach((row, i) => {
+        const strong = row.filter((p) => p.style === 'strong');
+        const player = EVS[i]!.player;
+        if (player === undefined) expect(strong).toEqual([]);
+        else expect(strong).toEqual([{ text: player, style: 'strong' }]);
+      });
+    });
+    it("every part's style is absent or strong", () => {
+      for (const row of timelineParts(base(EVS), { lang: 'es', flags: true })) {
+        for (const p of row) expect(p.style === undefined || p.style === 'strong').toBe(true);
+      }
+    });
+    it.each([
+      ['GOAL', BALL, 'Goal'],
+      ['OWN_GOAL', BALL, 'Own goal'],
+      ['PEN', BALL, 'Penalty'],
+      ['YELLOW', YELLOW, 'Yellow card'],
+      ['RED', RED, 'Red card'],
+    ] as const)('%s: its marker, one space, then the kind word', (type, mark, word) => {
+      const [row] = timelineParts(base([{ type, minute: 12, side: 'home', teamCode: 'NEW', player: 'P' }]), { lang: 'en', flags: true });
+      expect(joined(row!)).toBe(`  12'  ${mark} ${word}  NEW  P`);
+    });
+    it('an own goal carries the ball, not a card', () => {
+      const [row] = timelineParts(base([{ type: 'OWN_GOAL', minute: 35, side: 'away', teamCode: 'BOU', player: 'Malick Thiaw' }]), { lang: 'en', flags: true });
+      const text = joined(row!);
+      expect(text).toContain(`${BALL} Own goal`);
+      expect(text).not.toMatch(/\u{1F7E8}|\u{1F7E5}/u);
+    });
+    it('a row with no player: no strong part and no trailing space', () => {
+      const [row] = timelineParts(base([{ type: 'YELLOW', minute: 71, side: 'home', teamCode: 'NEW' }]), { lang: 'en', flags: true });
+      expect(row!.some((p) => p.style === 'strong')).toBe(false);
+      expect(joined(row!)).toBe(`  71'  ${YELLOW} Yellow card  NEW`);
+    });
+    it('no events: no entries', () => {
+      const m = base([]);
+      delete m.events;
+      expect(timelineParts(m, { lang: 'en', flags: true })).toEqual([]);
+    });
+  });
+});
+
+describe('the kickoff word (match.kickoff), in the four languages', () => {
+  it.each([
+    ['en', 'Kickoff'],
+    ['es', 'Inicio'],
+    ['pt', 'In\u00edcio'],
+    ['fr', "Coup d’envoi"],
+  ] as const)('%s: %s', (lang, word) => {
+    expect(t(lang, 'match.kickoff')).toBe(word);
   });
 });

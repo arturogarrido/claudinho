@@ -60,19 +60,19 @@ const adapter = (): ProviderAdapter => {
 };
 
 describe('get_match: the timeline', () => {
-  it('the text prints the rows after the match line', async () => {
+  it('the text prints the rows after the match line, each with its marker before the kind word', async () => {
     const r = await toolGetMatch({ id: '401879286', adapter: adapter(), now: NOW, competition: 'eng.1' });
     const rows = r.text.split('\n');
     const head = rows.findIndex((l) => l.includes('Newcastle United 1–1 AFC Bournemouth'));
     expect(head).toBeGreaterThanOrEqual(0);
-    const rowsWanted = ["  9'     Goal         BOU  Marcus Tavernier", "  37'    Goal         NEW  Harvey Barnes", "  90+4'  Yellow card  BOU  Adam Smith"];
+    const rowsWanted = ["  9'     ⚽ Goal         BOU  Marcus Tavernier", "  37'    ⚽ Goal         NEW  Harvey Barnes", "  90+4'  🟨 Yellow card  BOU  Adam Smith"];
     const first = rows.indexOf(rowsWanted[0]!);
     expect(first).toBeGreaterThan(head);
     expect(rows.slice(first, first + 3)).toEqual(rowsWanted);
   });
   it('Spanish kind words in the text', async () => {
     const r = await toolGetMatch({ id: '401879286', adapter: adapter(), now: NOW, competition: 'eng.1', lang: 'es' });
-    expect(r.text).toContain("  90+4'  Tarjeta amarilla  BOU  Adam Smith");
+    expect(r.text).toContain("  90+4'  🟨 Tarjeta amarilla  BOU  Adam Smith");
   });
   it('data.match.events carries the sealed events with their side; the schema holds', async () => {
     const r = await toolGetMatch({ id: '401879286', adapter: adapter(), now: NOW, competition: 'eng.1' });

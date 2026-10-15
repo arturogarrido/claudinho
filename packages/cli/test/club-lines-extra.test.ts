@@ -102,7 +102,7 @@ describe('`match`: the stage and the location, joined with the empty ones droppe
     // The mode line (0.11 · 2.5a), then straight to the kickoff line: no
     // empty indented line, no separator.
     expect(all[header + 1]).toBe('  Champions League');
-    expect(all[header + 2]).toMatch(/^ {2}Sat 11:30/);
+    expect(all[header + 2]).toMatch(/^ {2}Kickoff Sat 11:30/);
     expect(all.some((l) => /^\s+$/.test(l))).toBe(false);
     expect(writes.join('')).not.toContain('·');
   });

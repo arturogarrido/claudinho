@@ -79,8 +79,11 @@ finished, one row each: the minute (`90+3'` with added time), the kind (goal,
 own goal, penalty, yellow or red card), the side's code (with its flag for a
 nation) and the player when named; an own goal sits under the side it counted
 for. The list is what could be read, never a claim that it is every goal. Its
-`--json` adds `lines` (the rows the text prints), `attribution` and
-`disclaimer`.
+`--json` adds `lines` (the rows the text prints), `rows` (the same rows as
+styled parts, each with its role: the title with the score `strong`, the status row, the events with the player
+`strong`, for a program that draws them), `attribution` and `disclaimer`. In each event row a marker stands
+before the kind, after the minute: `⚽` for a goal, an own goal or a penalty, `🟨` for a yellow card, `🟥` for a red
+card (`  22'  ⚽ Goal  LIV  Ronald Araújo`).
 
 `claudinho follow <alias>` saves the competition every surface follows;
 `--team <name>` pins a team in it, resolved as `next <name>` resolves it. Pin a

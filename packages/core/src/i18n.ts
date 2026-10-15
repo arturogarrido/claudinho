@@ -91,6 +91,7 @@ const EN = {
   'feed.earlierRecord': "Live state could not be refreshed — showing the provider's earlier record.",
   'next.none': 'No upcoming fixture found for {team}.',
   'match.none': 'No match found with id {id}.',
+  'match.kickoff': 'Kickoff',
   // The MCP text's own sentences for these states (the CLI says `live.degraded`
   // there): they keep the team or the id the answer is about.
   'next.unreachable': "Couldn't reach the data provider — no upcoming fixture confirmed for {team}.",
@@ -199,6 +200,7 @@ const ES: Dict = {
   'feed.earlierRecord': 'No se pudo actualizar el estado en vivo — se muestra el registro anterior del proveedor.',
   'next.none': 'No se encontró próximo partido para {team}.',
   'match.none': 'No se encontró partido con id {id}.',
+  'match.kickoff': 'Inicio',
   'next.unreachable': 'No se pudo contactar al proveedor de datos — ningún próximo partido confirmado para {team}.',
   'match.unreachable': 'No se pudo contactar al proveedor de datos — no se pudo consultar el partido {id}.',
   'team.ambiguous': '"{query}" es ambiguo. ¿Quisiste decir:',
@@ -297,6 +299,7 @@ const PT: Dict = {
   'feed.earlierRecord': 'Não foi possível atualizar o estado ao vivo — mostrando o registro anterior do provedor.',
   'next.none': 'Nenhum próximo jogo encontrado para {team}.',
   'match.none': 'Nenhum jogo encontrado com id {id}.',
+  'match.kickoff': 'Início',
   'next.unreachable': 'Não foi possível contatar o provedor de dados — nenhum próximo jogo confirmado para {team}.',
   'match.unreachable': 'Não foi possível contatar o provedor de dados — o jogo {id} não pôde ser consultado.',
   'team.ambiguous': '"{query}" é ambíguo. Você quis dizer:',
@@ -395,6 +398,7 @@ const FR: Dict = {
   'feed.earlierRecord': 'L’état en direct n’a pas pu être actualisé — affichage de l’enregistrement précédent du fournisseur.',
   'next.none': 'Aucun prochain match trouvé pour {team}.',
   'match.none': 'Aucun match trouvé avec id {id}.',
+  'match.kickoff': 'Coup d’envoi',
   'next.unreachable': 'Impossible de joindre le fournisseur de données — aucun prochain match confirmé pour {team}.',
   'match.unreachable': 'Impossible de joindre le fournisseur de données — le match {id} n’a pas pu être consulté.',
   'team.ambiguous': '"{query}" est ambigu. Vouliez-vous dire :',
