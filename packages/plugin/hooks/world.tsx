@@ -251,3 +251,111 @@ export const world = async (
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */
 export const FIRST_RUN = JSON.stringify({ competition: null, noCompetition: true, line: '⚽ claudinho follow' })
+
+/**
+ * The rows a mounted drawing lays out, read from the element tree as plain data (never from a surface's paint): a
+ * `Text` is one row holding all its strings in order (nested `Text` parts included); a `Box` drawn as a column stacks
+ * its children's rows; any other `Box` (a row, the engine's default) sets its children side by side, row i of each
+ * joined with nothing between (so a mascot column beside a text column reads as one row per line). A `Box` drawn
+ * `display: 'none'` lays out nothing. The first `Box` found is the drawing's root.
+ */
+type Described = { type?: unknown; props?: Record<string, unknown>; children?: unknown[] }
+const textOf = (n: unknown): string =>
+  typeof n === 'string' ? n : n !== null && typeof n === 'object' && Array.isArray((n as Described).children) ? ((n as Described).children as unknown[]).map(textOf).join('') : ''
+const rowsOf = (n: unknown): string[] => {
+  if (typeof n === 'string') return [n]
+  if (n === null || typeof n !== 'object') return []
+  const d = n as Described
+  if (d.type === 'Text') return [textOf(d)]
+  if (d.type === 'Box') {
+    if (d.props?.display === 'none') return []
+    const kids = (d.children ?? []).map(rowsOf)
+    if (d.props?.flexDirection === 'column') return kids.flat()
+    const height = Math.max(0, ...kids.map((k) => k.length))
+    return Array.from({ length: height }, (_, i) => kids.map((k) => k[i] ?? '').join(''))
+  }
+  return [textOf(d)]
+}
+type Drawing = { findAll: (q: { type?: string }) => Promise<Array<{ type: string; props: Record<string, unknown>; children: unknown[]; text: string }>> }
+export const drawnRows = async (m: Drawing): Promise<string[]> => {
+  const [root] = await m.findAll({ type: 'Box' })
+  if (root) return rowsOf(root)
+  return (await m.findAll({ type: 'Text' })).slice(0, 1).map((t) => t.text)
+}
+
+/**
+ * The goal moments' match (plugin 0.5.0, CLI 0.12.0's view): LASK Linz at home to Liverpool, the person's pin
+ * Liverpool (`pinnedSide: 'away'`). Each record carries what the CLI now gives: `names`, `pinnedSide`, `lastGoal`
+ * (live records), and the hook's own `line` (a finished record's ends `(FT)`).
+ */
+export const LASK = { code: 'LAS', name: 'LASK Linz', id: 'espn:1886' } as const
+export const LIV = { code: 'LIV', name: 'Liverpool', id: 'espn:364' } as const
+export const NAMES = { home: 'LASK Linz', away: 'Liverpool' } as const
+export const MOMENT_ID = '702001'
+/** A scoreline as the moments write it: the names, the tally, a shootout tally in parentheses after each side. */
+const tally = (score: [number, number], shootout?: [number, number]) =>
+  shootout ? `${score[0]}(${shootout[0]})–${score[1]}(${shootout[1]})` : `${score[0]}–${score[1]}`
+/** One live record of the moments' match at `score` (the clock at 23' unless `minute` says otherwise). */
+export const liveRecord = (score: [number, number], over: Record<string, unknown> = {}) => {
+  const minute = (over.minute as number | undefined) ?? 23
+  const shootout = over.shootout as { home: number; away: number } | undefined
+  return {
+    id: MOMENT_ID,
+    stage: 'LEAGUE',
+    kickoff: '2026-10-10T14:37:00.000Z',
+    venue: 'Raiffeisen Arena',
+    home: { ...LASK },
+    away: { ...LIV },
+    score: { home: score[0], away: score[1] },
+    minute,
+    status: 'LIVE',
+    updatedAt: '2026-10-10T15:00:00.000Z',
+    picked: true,
+    pinned: true,
+    pinnedSide: 'away',
+    names: { ...NAMES },
+    lastGoal: null,
+    line: `LASK Linz ${tally(score, shootout ? [shootout.home, shootout.away] : undefined)} Liverpool (${minute}')`,
+    ...over,
+  }
+}
+/**
+ * One finished record of the moments' match as the CLI prints it (status FT, its line ending `(FT)`, no `lastGoal`):
+ * it carries `pinnedSide` and NO `pinned` key (the merged CLI's shape), so the plugin reads the pin from `pinnedSide`.
+ */
+export const finishedRecord = (score: [number, number] | null, over: Record<string, unknown> = {}) => {
+  const shootout = over.shootout as { home: number; away: number } | undefined
+  const { score: _drop, pinned: _pinned, ...rest } = liveRecord(score ?? [0, 0], { minute: 90 })
+  return {
+    ...rest,
+    ...(score === null ? {} : { score: { home: score[0], away: score[1] } }),
+    lastGoal: undefined,
+    status: 'FT',
+    line: score === null ? 'LASK Linz vs Liverpool (FT)' : `LASK Linz ${tally(score, shootout ? [shootout.home, shootout.away] : undefined)} Liverpool (FT)`,
+    ...over,
+  }
+}
+/** The band's line for the moments' match. */
+export const momentLine = (score: [number, number]) => `⚽ LAS ${score[0]}–${score[1]} LIV 23'`
+/** A CURRENT view of the moments' competition with `items` live and `finished` beside them (the new CLI's field). */
+export const momentView = (items: Array<Record<string, unknown>>, finished: Array<Record<string, unknown>> = [], over: Record<string, unknown> = {}) =>
+  view((over.line as string | undefined) ?? momentLine(items[0] ? [((items[0].score as { home: number }) ?? { home: 0 }).home, ((items[0].score as { away: number }) ?? { away: 0 }).away] : [0, 0]), {
+    live: { items, total: items.length, shown: items.length, truncated: false, complete: true },
+    finished,
+    current: true,
+    updatedAt: '2026-10-10T15:00:00.000Z',
+    staleAfter: '2026-10-10T15:05:00.000Z',
+    competition: { slug: 'uefa.europa', alias: 'europa-league', name: 'UEFA Europa League', chosenBy: 'saved' },
+    ...over,
+  })
+/** Ronald Araújo's goal for Liverpool at 22', proven by the CLI (`lastGoal`). */
+export const ARAUJO = { type: 'GOAL', minute: 22, side: 'away', teamCode: 'LIV', player: 'Ronald Araújo' } as const
+/** The toasts the plugin raised, as the engine's bottom receives them. */
+export const toastTexts = (on: Parameters<Parameters<typeof test>[1]>[1]) => {
+  const texts: string[] = []
+  on('ui.toast', (_$, e) => {
+    texts.push(e.text)
+    return { value: undefined }
+  })
+  return texts
+}

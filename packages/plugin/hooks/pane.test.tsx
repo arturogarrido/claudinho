@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { FIRST_RUN, NOW, held, view, world } from './world'
+import { FIRST_RUN, NOW, drawnRows, held, view, world } from './world'
 
 /**
  * The match pane (plugin 0.4.0): `/claudinho match` binds the match the person follows now (the first record of the
@@ -17,6 +17,8 @@ const D = 'Not affiliated with FIFA, any confederation, league or club, or Anthr
 const A = 'Live data: ESPN'
 const withD = (s: string) => `${s}\n\n${A}\n\n${D}`
 const FAILED = 'The CLI gave no answer.'
+/** The reply to `/claudinho match` when the pane opened on a surface that draws it (0.5.0): the line, then a short note; the pane carries the attribution and the disclaimer. */
+const OPENED = `${LINE} · match pane open`
 const NO_VIEW = "Nothing to show: the CLI's answer is not one this plugin reads."
 const REFRESH_FAILED = 'Could not refresh: showing the last reading.'
 const ID = '401879286'
@@ -64,10 +66,10 @@ const texts = async (pane: Mounted) => (await pane.findAll({ type: 'Text' })).ma
 const SURFACES = ['terminal', 'desktop'] as const
 
 describe('opening it', () => {
-  test('/claudinho match on a live match: ambient, then match <id> --json (the CLI resolves the person\'s own choice); the pane opens; the reply is the bare reply', async ($, on) => {
+  test('/claudinho match on a live match: ambient, then match <id> --json (the CLI resolves the person\'s own choice); the pane opens; the reply is the line and `match pane open` (0.5.0)', async ($, on) => {
     const w = await world($, on, [live(2, 1)], { matchAnswers: [answer()] })
     const r = await w.command('match')
-    expect(r.text).toBe(withD(LINE))
+    expect(r.text).toBe(OPENED)
     expect(w.argvs.slice(1)).toEqual([
       ['claudinho', 'ambient', '--json'],
       ['claudinho', 'match', ID, '--json'],
@@ -151,7 +153,7 @@ describe('opening before the read (an open is placed only within about 15 s of t
     expect(await texts(pane)).toEqual([LINE, '', A, D])
     await w.release()
     const r = await opening
-    expect(r.text).toBe(withD(LINE))
+    expect(r.text).toBe(OPENED)
     expect(await texts(pane)).toEqual([...ROWS, '', A, D])
   })
   test('a reopen opens at once too, before the read in flight settles', { timeoutMs: 20_000 }, async ($, on) => {
@@ -580,5 +582,132 @@ describe('the rest unchanged', () => {
     await w.command('match')
     const band = await w.mount()
     expect((await band.findAll({ type: 'Text' })).map((t) => t.text)).toContain(LINE)
+  })
+})
+
+describe('the reply when the pane opened (0.5.0)', () => {
+  for (const surface of SURFACES) {
+    test(`${surface}: a pane opened and drawn: the line and \`match pane open\`, no attribution, no disclaimer`, async ($, on) => {
+      const w = await world($, on, [live(2, 1)], surface === 'desktop' ? { matchAnswers: [answer()], start: { surface: null, isInteractive: false }, surfaces: ['desktop'] } : { matchAnswers: [answer()] })
+      const r = await w.command('match')
+      expect(r.text).toBe(OPENED)
+      expect(r.text).not.toContain(A)
+      expect(r.text).not.toContain(D)
+    })
+  }
+
+  test('an outage answer with no attribution (`degraded`, no match, `attribution: null`): the bare reply, with the view\'s attribution and disclaimer', async ($, on) => {
+    const outage = answer({ degraded: true, match: null, attribution: null, lines: ['  Premier League', "  Couldn't reach the data provider."] })
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [outage] })
+    const r = await w.command('match')
+    expect(r.text).toBe(withD(LINE))
+  })
+
+  test('an answer with no disclaimer: the bare reply', async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [answer({ disclaimer: null })] })
+    const r = await w.command('match')
+    expect(r.text).toBe(withD(LINE))
+  })
+
+  test('the first read failed: the bare reply, with its attribution and disclaimer', async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [new Error('timeout')] })
+    const r = await w.command('match')
+    expect(r.text).toBe(withD(LINE))
+  })
+})
+
+describe('the CLI\'s styled rows (0.5.0: `rows` beside `lines`)', () => {
+  /** The rows of a match the CLI styles: the score strong, the pinned side accent, the stage dim, the commentary a quote, a rally cry flair, the scorer strong. */
+  const STYLED = [
+    { role: 'title', parts: [{ text: 'LASK Linz ' }, { text: '0–1', style: 'strong' }, { text: ' ' }, { text: 'Liverpool', style: 'accent' }] },
+    { role: 'mode', parts: [{ text: '  UEFA Europa League', style: 'dim' }] },
+    { role: 'commentary', parts: [{ text: '  ' }, { text: '“Araújo rises highest.”', style: 'quote' }] },
+    { role: 'flair', parts: [{ text: '  ' }, { text: 'You\'ll never walk alone', style: 'flair' }] },
+    { role: 'status', parts: [{ text: "  Live 23'" }] },
+    { role: 'event', parts: [{ text: "  22'  ⚽ Goal  LIV  " }, { text: 'Ronald Araújo', style: 'strong' }] },
+  ]
+  const JOINED = STYLED.map((r) => r.parts.map((p) => p.text).join(''))
+  const styled = () => answer({ rows: STYLED, lines: JOINED })
+  /** The Text elements whose shown text is exactly `text`. */
+  const exactly = async (pane: Mounted, text: string) => (await pane.findAll({ type: 'Text' })).filter((t) => t.text === text)
+
+  for (const surface of SURFACES) {
+    test(`${surface}: the rows read as the lines, then the footer as today`, async ($, on) => {
+      const w = await world($, on, [live(2, 1)], { matchAnswers: [styled()] })
+      await w.command('match')
+      const rows = (await drawnRows(await w.mountPane(surface))).map((r) => (r.trim() === '' ? '' : r))
+      expect(rows).toEqual([...JOINED, '', A, D])
+    })
+  }
+
+  test('strong: bold', async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [styled()] })
+    await w.command('match')
+    const pane = await w.mountPane()
+    expect((await exactly(pane, '0–1')).some((t) => t.props.bold === true)).toBe(true)
+    expect((await exactly(pane, 'Ronald Araújo')).some((t) => t.props.bold === true)).toBe(true)
+  })
+
+  test('dim: dimColor', async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [styled()] })
+    await w.command('match')
+    expect((await exactly(await w.mountPane(), '  UEFA Europa League')).some((t) => t.props.dimColor === true)).toBe(true)
+  })
+
+  test("accent and flair: the theme's `success` colour", async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [styled()] })
+    await w.command('match')
+    const pane = await w.mountPane()
+    expect((await exactly(pane, 'Liverpool')).some((t) => t.props.color === 'success')).toBe(true)
+    expect((await exactly(pane, 'You\'ll never walk alone')).some((t) => t.props.color === 'success')).toBe(true)
+  })
+
+  test('quote: dimColor and italic', async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [styled()] })
+    await w.command('match')
+    expect((await exactly(await w.mountPane(), '“Araújo rises highest.”')).some((t) => t.props.dimColor === true && t.props.italic === true)).toBe(true)
+  })
+
+  test('rows whose parts do not join to the line at the same index: the plain lines, nothing styled', async ($, on) => {
+    const swapped = [...JOINED]
+    ;[swapped[0], swapped[1]] = [swapped[1] as string, swapped[0] as string]
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [answer({ rows: STYLED, lines: swapped })] })
+    await w.command('match')
+    const pane = await w.mountPane()
+    expect(await texts(pane)).toEqual([...swapped, '', A, D])
+    const els = await pane.findAll({ type: 'Text' })
+    expect(els.filter((t) => t.props.bold === true || t.props.italic === true || t.props.color !== undefined)).toEqual([])
+  })
+
+  for (const [label, rows] of [['fewer rows than lines', STYLED.slice(0, -1)], ['more rows than lines', [...STYLED, { role: 'extra', parts: [{ text: 'extra', style: 'strong' }] }]]] as const) {
+    test(`${label}: the plain lines, nothing styled`, async ($, on) => {
+      const w = await world($, on, [live(2, 1)], { matchAnswers: [answer({ rows, lines: JOINED })] })
+      await w.command('match')
+      const pane = await w.mountPane()
+      expect(await texts(pane)).toEqual([...JOINED, '', A, D])
+      const els = await pane.findAll({ type: 'Text' })
+      expect(els.filter((t) => t.props.bold === true || t.props.italic === true || t.props.color !== undefined)).toEqual([])
+    })
+  }
+
+  test('a plain part carries no style', async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [styled()] })
+    await w.command('match')
+    const plain = await exactly(await w.mountPane(), "  Live 23'")
+    expect(plain.length).toBeGreaterThan(0)
+    for (const t of plain) {
+      expect(t.props.bold).not.toBe(true)
+      expect(t.props.color).toBeUndefined()
+    }
+  })
+
+  test('the footer stays dimmed after the rows', async ($, on) => {
+    const w = await world($, on, [live(2, 1)], { matchAnswers: [styled()] })
+    await w.command('match')
+    const els = await (await w.mountPane()).findAll({ type: 'Text' })
+    expect(els.at(-1)?.text).toBe(D)
+    expect(els.at(-1)?.props.dimColor).toBe(true)
+    expect(els.at(-2)?.text).toBe(A)
+    expect(els.at(-2)?.props.dimColor).toBe(true)
   })
 })

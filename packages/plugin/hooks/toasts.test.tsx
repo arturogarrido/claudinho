@@ -6,6 +6,8 @@ import { view, world } from './world'
  * own line for it (which each record carries); the first observation of an id, a disappearance and a competition
  * change rebase the baseline silently; a view that is not current and a failed run leave it; `toasts` picks the
  * pinned matches (the default), all, or none.
+ * These records carry no `names` (the view of CLI 0.11.2): the plugin keeps today's behaviour for them. The goal
+ * moments of 0.5.0 (CLI 0.12.0's `names`, `pinnedSide`, `lastGoal`, `finished`) are pinned in moments.test.tsx.
  */
 const match = (id: string, score: [number, number], over: Record<string, unknown> = {}) => ({
   id,

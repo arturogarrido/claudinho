@@ -8,6 +8,8 @@ import { FIRST_RUN, held, view, world } from './world'
  * main-loop turn runs (`turn.start` to `turn.complete`, or the drawn `isWorking`), played when the turn ends within 60 s
  * of the goal; a paused celebration never resumes after 60 s; a stretch on screen finishes its 3 s. A survey or no room
  * yields as today. `celebrate: off` plays nothing. The band beneath ours is always kept under our line.
+ * These records carry no `names` (the view of CLI 0.11.2): the plugin keeps today's behaviour for them. The goal
+ * moments of 0.5.0 (CLI 0.12.0's `names`, `pinnedSide`, `lastGoal`, `finished`) are pinned in mascot.test.tsx.
  */
 const match = (id: string, score: [number, number], over: Record<string, unknown> = {}) => ({
   id,
