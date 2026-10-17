@@ -100,7 +100,7 @@ describe('the PATH handed to the run', () => {
 
   test('the argument vector and the empty stdin are unchanged', async ($, on) => {
     const { argvs, stdins } = await world($, on, [view(LINE)], { nvm: [dir('v22.17.0')] })
-    expect(argvs).toEqual([['claudinho', 'ambient', '--json', '--columns', '80']])
+    expect(argvs).toEqual([['claudinho', 'ambient', '--json', '--columns', '80', '--lang', 'en']])
     expect(stdins).toEqual([''])
   })
 

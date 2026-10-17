@@ -439,9 +439,9 @@ describe('the hook and the live line read none of it (the countdown reads only t
 });
 
 describe('ambient --json: the key order', () => {
-  it('line, lineParts, idle, empty, context, live, finished, current, next, pick, competition, degraded, source, updatedAt, staleAfter, disclaimer, attribution', () => {
+  it('line, lineParts, idle, empty, context, live, finished, current, next, pick, competition, lang, words, degraded, source, updatedAt, staleAfter, disclaimer, attribution', () => {
     seed([live('1', ARS, CHE, [2, 1])]);
-    expect(Object.keys(ambient())).toEqual(['line', 'lineParts', 'idle', 'empty', 'context', 'live', 'finished', 'current', 'next', 'pick', 'competition', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer', 'attribution']);
+    expect(Object.keys(ambient())).toEqual(['line', 'lineParts', 'idle', 'empty', 'context', 'live', 'finished', 'current', 'next', 'pick', 'competition', 'lang', 'words', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer', 'attribution']);
   });
 });
 

@@ -71,8 +71,8 @@ describe('opening it', () => {
     const r = await w.command('match')
     expect(r.text).toBe(OPENED)
     expect(w.argvs.slice(1)).toEqual([
-      ['claudinho', 'ambient', '--json'],
-      ['claudinho', 'match', ID, '--json'],
+      ['claudinho', 'ambient', '--json', '--lang', 'en'],
+      ['claudinho', 'match', ID, '--json', '--lang', 'en'],
     ])
     expect(w.opens).toEqual([{ id: 'match', title: 'claudinho' }])
   })
@@ -89,7 +89,7 @@ describe('opening it', () => {
   test('nothing live: the next fixture is bound', async ($, on) => {
     const w = await world($, on, [upcoming()], { matchAnswers: [scheduled(new Date(NOW + 10 * 60_000).toISOString())] })
     await w.command('match')
-    expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json']])
+    expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json', '--lang', 'en']])
     expect(w.opens).toHaveLength(1)
   })
 
@@ -314,7 +314,7 @@ describe('re-reading it while open', () => {
     expect(w.matchRuns()).toHaveLength(1)
     await w.clock.advance(3_000)
     expect(w.matchRuns()).toHaveLength(2)
-    expect(w.matchRuns()[1]).toEqual(['claudinho', 'match', ID, '--json'])
+    expect(w.matchRuns()[1]).toEqual(['claudinho', 'match', ID, '--json', '--lang', 'en'])
   })
 
   test('in play: a re-read every 2 minutes with no other trigger', { timeoutMs: 20_000 }, async ($, on) => {
@@ -389,8 +389,8 @@ describe('the competition the pane is bound to', () => {
     const w = await world($, on, [live(2, 1)], { matchAnswers: [laligaAnswer, answer()] })
     await w.command('match')
     expect(w.matchRuns()).toEqual([
-      ['claudinho', 'match', ID, '--json'],
-      ['claudinho', 'match', ID, '--json', '--competition', 'eng.1'],
+      ['claudinho', 'match', ID, '--json', '--lang', 'en'],
+      ['claudinho', 'match', ID, '--json', '--competition', 'eng.1', '--lang', 'en'],
     ])
     expect(await texts(await w.mountPane())).toEqual([...ROWS, '', A, D])
   })
@@ -399,13 +399,13 @@ describe('the competition the pane is bound to', () => {
     await w.command('match')
     await w.clock.advance(121_000)
     expect(w.matchRuns()).toHaveLength(3)
-    expect(w.matchRuns()[2]).toEqual(['claudinho', 'match', ID, '--json', '--competition', 'eng.1'])
+    expect(w.matchRuns()[2]).toEqual(['claudinho', 'match', ID, '--json', '--competition', 'eng.1', '--lang', 'en'])
   })
   test('nothing chosen now (the CLI\'s first-run object, exit 1) is a mismatch too: one re-run pinned', async ($, on) => {
     const none = { stdout: JSON.stringify({ competition: null, noCompetition: true }), exitCode: 1 }
     const w = await world($, on, [live(2, 1)], { matchAnswers: [none, answer()] })
     await w.command('match')
-    expect(w.matchRuns()[1]).toEqual(['claudinho', 'match', ID, '--json', '--competition', 'eng.1'])
+    expect(w.matchRuns()[1]).toEqual(['claudinho', 'match', ID, '--json', '--competition', 'eng.1', '--lang', 'en'])
     expect(await texts(await w.mountPane())).toEqual([...ROWS, '', A, D])
   })
   test('an answer naming no competition is no mismatch: drawn as it is, no second run', async ($, on) => {
@@ -428,9 +428,9 @@ describe('a read whose binding was replaced while it ran', () => {
     await reopened
     await w.clock.advance(1)
     expect(w.matchRuns()).toEqual([
-      ['claudinho', 'match', ID, '--json'],
-      ['claudinho', 'match', ID, '--json'],
-      ['claudinho', 'match', ID, '--json'],
+      ['claudinho', 'match', ID, '--json', '--lang', 'en'],
+      ['claudinho', 'match', ID, '--json', '--lang', 'en'],
+      ['claudinho', 'match', ID, '--json', '--lang', 'en'],
     ])
     expect(await texts(await w.mountPane())).toEqual(['NEW', '', A, D])
   })

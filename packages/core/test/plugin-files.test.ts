@@ -37,9 +37,24 @@ describe('the plugin folder', () => {
     expect(String(toasts?.description)).toMatch(/no pin|without a pin|nothing/i);
   });
 
-  it('the manifest is the pane layout\'s release, 0.5.1', () => {
+  it('the manifest is the reader\'s-language release, 0.6.0', () => {
     const m = json('packages/plugin/.claude-plugin/plugin.json');
-    expect(m.version).toBe('0.5.1');
+    expect(m.version).toBe('0.6.0');
+  });
+
+  it('the language option: auto, en, es, pt or fr, auto by default, beside the other three', () => {
+    const m = json('packages/plugin/.claude-plugin/plugin.json') as { userConfig?: Record<string, { type?: unknown; options?: unknown; default?: unknown; description?: unknown }> };
+    const language = m.userConfig?.language;
+    expect(language, 'userConfig.language').toBeDefined();
+    expect(language?.type).toBe('string');
+    expect(language?.options).toEqual(['auto', 'en', 'es', 'pt', 'fr']);
+    expect(language?.default).toBe('auto');
+    expect(String(language?.description).trim()).not.toBe('');
+  });
+
+  it('the plugin README names the language option and that the moments follow it', () => {
+    const readme = readFileSync(join(ROOT, 'packages/plugin/README.md'), 'utf8');
+    expect(readme).toMatch(/`language`/);
   });
 
   it('the celebrate option: on or off, on by default, beside toasts', () => {
