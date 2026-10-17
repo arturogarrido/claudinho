@@ -81,6 +81,8 @@ case "$1" in
     n=$(( $(cat "$STATE/ls-remote-calls" 2>/dev/null || echo 0) + 1 )); echo $n > "$STATE/ls-remote-calls"
     [ -e "$STATE/ls-remote-decoy" ] && printf '%s\\trefs/heads/archive/%s\\n' "${LOCAL}" "$3"
     if [ -e "$STATE/ls-remote-absent-first" ] && [ "$n" -le 1 ]; then printf '%s\\trefs/tags/%s\\n' "${LOCAL}" "$3"; exit 0; fi
+    # with $STATE/remote-sha-after-first, every call after the FIRST answers that SHA (the remote moved meanwhile)
+    if [ -e "$STATE/remote-sha-after-first" ] && [ "$n" -gt 1 ]; then printf '%s\\t%s\\n' "$(cat "$STATE/remote-sha-after-first")" "$3"; exit 0; fi
     sha=$([ -e "$STATE/remote-sha" ] && cat "$STATE/remote-sha" || echo ${OTHER}); printf '%s\\t%s\\n' "$sha" "$3"; exit 0 ;;
   push) [ -e "$STATE/push-fails" ] && { echo "error: failed to push some refs" >&2; exit 1; }; [ -e "$STATE/remote-sha" ] || echo ${LOCAL} > "$STATE/remote-sha"; exit 0 ;;
 esac
@@ -277,6 +279,15 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     expect(r.out).toMatch(/already at/);
     expect(pushed(sb)).toBe(false);
     expect(r.out).not.toMatch(/pull request/i);
+  });
+
+  it('`main` at its remote at the first read, moved by the second (a merge meanwhile), is refused at the push: never pushed', () => {
+    const sb = sandbox();
+    seed(sb, { 'remote-sha': LOCAL, 'remote-sha-after-first': OTHER, 'runs.1.tsv': '' });
+    const r = runBranch(sb, 'main', []);
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/pull request/i);
+    expect(pushed(sb)).toBe(false);
   });
 
   it('`Main` (any case) behind its remote is refused like main: on a case-insensitive disk it names main\'s commit', () => {
