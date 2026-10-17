@@ -239,6 +239,27 @@ describe("ambient --json: the line's tokens in lang", () => {
   }
 });
 
+/** Round 1 of #186, L5: at exactly kickoff the ambient line says the bare word for now (core's `countdown.now`), never a translated "in" before it; `claudinho prompt` keeps its English `in now`. */
+const NOW_WORD: Record<Lang, string> = { en: 'now', es: 'ahora', pt: 'agora', fr: 'maintenant' };
+const seedAtKickoff = () =>
+  writeState(
+    { updatedAt: at, live: [], degraded: false, source: 'espn', competition: 'eng.1', schedule: { fixtures: [{ ...ahead, kickoff: NOW.toISOString() }], updatedAt: at, attemptedAt: at, failures: 0, complete: true }, liveComplete: true } as never,
+    NOW.getTime(),
+  );
+describe('ambient --json at exactly kickoff (round 1, L5)', () => {
+  for (const lang of LANGS) {
+    it(`${lang}: the ambient line is \`BOU vs BRE ${NOW_WORD[lang]}\`, one plain part; \`claudinho prompt\` reads \`in now\``, () => {
+      seedAtKickoff();
+      const v = ambient(lang);
+      expect(v.line).toBe(`BOU vs BRE ${NOW_WORD[lang]}`);
+      expect(v.lineParts).toEqual([{ text: v.line }]);
+      writes = [];
+      cmdPrompt(ctx(lang));
+      expect(writes.join('').trim()).toBe('BOU vs BRE in now');
+    });
+  }
+});
+
 describe('what stays English in every language', () => {
   for (const lang of ['es', 'pt', 'fr'] as const) {
     it(`${lang}: \`context\`, \`attribution\`, \`disclaimer\` and each record's line are the English ones`, () => {

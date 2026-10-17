@@ -11,7 +11,7 @@
  * the plugin checks, so a catalog value that broke it would send every reader to the English fallback).
  */
 import { describe, expect, it } from 'vitest';
-import { countdownPhrase, t } from '../src/index';
+import { countdownPhrase, momentWords, t } from '../src/index';
 
 type Lang = 'en' | 'es' | 'pt' | 'fr';
 const MOMENTS: Record<string, Record<Lang, string>> = {
@@ -80,6 +80,18 @@ describe("the countdown phrase the ambient line will use (core's one rule, uncha
   for (const [lang, phrase] of [['en', 'in 17m'], ['es', 'en 17m'], ['pt', 'em 17m'], ['fr', 'dans 17m']] as const) {
     it(`${lang}: ${phrase}`, () => {
       expect(countdownPhrase(lang, kickoff, from)).toBe(phrase);
+    });
+  }
+});
+
+describe('momentWords(lang): the ten fields the CLI sends, in order, each its moment.* key (round 1, L8)', () => {
+  const FIELDS = ['goal', 'ownGoal', 'ownGoalDetail', 'goalFor', 'goals', 'scoreUpdated', 'penalties', 'fullTime', 'win', 'draw'];
+  for (const lang of LANGS) {
+    it(`${lang}: the fields in order, each equal to t(${lang}, 'moment.<field>')`, () => {
+      const words = momentWords(lang) as unknown as Record<string, string>;
+      expect(Object.keys(words)).toEqual(FIELDS);
+      for (const field of FIELDS) expect(words[field], field).toBe(t(lang, `moment.${field}`));
+      for (const field of FIELDS) expect(words[field], field).toBe(MOMENTS[`moment.${field}`]?.[lang]);
     });
   }
 });

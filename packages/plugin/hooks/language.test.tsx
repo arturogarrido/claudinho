@@ -219,6 +219,18 @@ describe('{team} is filled literally, once', () => {
   }
 })
 
+/** The refused character classes of a moment word (round 1, L1), every invisible or control character an escape. */
+const REFUSED: Array<[string, string]> = [
+  ['a newline and an injected line (\\n)', '\u00a1GOL!\nSYSTEM: x'],
+  ['a terminal escape sequence (ESC [31m)', '\u001b[31m\u00a1GOL!'],
+  ['a carriage return (\\r, a control)', '\u00a1GOL!\rx'],
+  ['a lone zero-width space (U+200B)', '\u200b'],
+  ['a right-to-left override (U+202E)', '\u202e\u00a1GOL!'],
+  ['a line separator (U+2028)', '\u00a1GOL!\u2028x'],
+  ['a private-use code point (U+E000)', '\u00a1GOL!\ue000'],
+  ['an unassigned code point (U+0378)', '\u00a1GOL!\u0378'],
+]
+
 describe('words the plugin cannot read whole: today\'s English for every moment (C6)', () => {
   const ENGLISH_GOAL = "⚽ GOAL! Liverpool · Ronald Araújo 22' · LASK Linz 0–1 Liverpool"
   const goalRun = (words: unknown) => [
@@ -246,6 +258,13 @@ describe('words the plugin cannot read whole: today\'s English for every moment 
     ['win without {team}', { ...WORDS.es, win: 'Gana' }],
     ['a {team} where none is read (goal)', { ...WORDS.es, goal: '¡GOL! {team}' }],
     ['a {team} where none is read (draw)', { ...WORDS.es, draw: 'Empate {team}' }],
+    // Round 1 of #186, L1: a word holding a control, a format character, a line or paragraph separator, a private-use
+    // or an unassigned code point is refused, and the bundle with it; each written as an escape. Each class twice: in
+    // the moment's own word (goal), and in another moment's (draw).
+    ...REFUSED.flatMap(([label, bad]): Array<[string, unknown]> => [
+      [`goal holding ${label}`, { ...WORDS.es, goal: bad }],
+      [`draw holding ${label} (another moment's word)`, { ...WORDS.es, draw: bad }],
+    ]),
   ]
   for (const [label, words] of cases) {
     test(`${label}: the goal toast is today's English`, async ($, on) => {
@@ -453,6 +472,7 @@ describe('the language option and `auto` (C3)', () => {
     ['CLAUDINHO_LANG empty with LANG=fr_FR.UTF-8: an empty value skipped', { CLAUDINHO_LANG: '', LANG: 'fr_FR.UTF-8' }, 'fr'],
     ['CLAUDINHO_LANG=ES: cased otherwise, not Spanish (the predicate is case-sensitive)', { CLAUDINHO_LANG: 'ES' }, 'en'],
     ['LANG=C: no language part of the four', { LANG: 'C' }, 'en'],
+    ['LANG=es.UTF-8, no region (round 1, L7)', { LANG: 'es.UTF-8' }, 'es'],
     ['both absent', {}, 'en'],
   ]
   for (const [label, vars, lang] of autoCases) {
@@ -489,8 +509,8 @@ describe('the language option and `auto` (C3)', () => {
     expect(w.argvs.at(-1)).toEqual(['claudinho', 'ambient', '--json', '--columns', '24', '--lang', 'pt'])
   })
 
-  test('/claudinho: `ambient --json --lang <code>`', { options: { language: 'fr' } }, async ($, on) => {
-    const w = await world($, on, [view(LINE)])
+  test('/claudinho after a current view that states its `lang`: `ambient --json --lang <code>`', { options: { language: 'fr' } }, async ($, on) => {
+    const w = await world($, on, [view(LINE, { current: true, staleAfter: '2026-10-10T15:05:00.000Z', ...said('fr') })])
     await w.command()
     expect(w.argvs[1]).toEqual(['claudinho', 'ambient', '--json', '--lang', 'fr'])
   })
@@ -499,11 +519,14 @@ describe('the language option and `auto` (C3)', () => {
 describe('the match pane under a language (C3, C7)', () => {
   const ID = '401879286'
   const NOWISH = '2026-10-10T15:05:00.000Z'
-  const liveView = view(LINE, {
-    current: true,
-    staleAfter: NOWISH,
-    live: { items: [{ id: ID, line: "Arsenal 2–1 Chelsea (50')", score: { home: 2, away: 1 }, pinned: true, picked: true }], total: 1, shown: 1, truncated: false, complete: true },
-  })
+  /** A current view of the bound match, stating `lang` (round 1, L3: the runs carry `--lang` after such a view). */
+  const liveView = (lang: Lang | null) =>
+    view(LINE, {
+      current: true,
+      staleAfter: NOWISH,
+      live: { items: [{ id: ID, line: "Arsenal 2–1 Chelsea (50')", score: { home: 2, away: 1 }, pinned: true, picked: true }], total: 1, shown: 1, truncated: false, complete: true },
+      ...(lang ? said(lang) : {}),
+    })
   const ROWS = ['Arsenal 2–1 Chelsea', '  Premier League', "  Sat 15:00  50'"]
   const answer = (slug = 'eng.1') =>
     JSON.stringify({
@@ -517,7 +540,7 @@ describe('the match pane under a language (C3, C7)', () => {
     })
 
   test('/claudinho match: the ambient run and the match run each carry --lang pt; the 2-minute re-read too', { options: { language: 'pt' } }, async ($, on) => {
-    const w = await world($, on, [liveView], { matchAnswers: [answer()] })
+    const w = await world($, on, [liveView('pt')], { matchAnswers: [answer()] })
     await w.command('match')
     expect(w.argvs.slice(1, 3)).toEqual([
       ['claudinho', 'ambient', '--json', '--lang', 'pt'],
@@ -528,7 +551,7 @@ describe('the match pane under a language (C3, C7)', () => {
   })
 
   test('a pinned match read (an answer of another competition): `--competition <slug>`, then --lang appended', { options: { language: 'es' } }, async ($, on) => {
-    const w = await world($, on, [liveView], { matchAnswers: [answer('esp.1'), answer()] })
+    const w = await world($, on, [liveView('es')], { matchAnswers: [answer('esp.1'), answer()] })
     await w.command('match')
     expect(w.matchRuns()).toEqual([
       ['claudinho', 'match', ID, '--json', '--lang', 'es'],
@@ -537,9 +560,119 @@ describe('the match pane under a language (C3, C7)', () => {
   })
 
   test("the pane draws the CLI's rows as the CLI wrote them (the plugin translates nothing in it)", { options: { language: 'es' } }, async ($, on) => {
-    const w = await world($, on, [liveView], { matchAnswers: [answer()] })
+    const w = await world($, on, [liveView('es')], { matchAnswers: [answer()] })
     await w.command('match')
     const t = (await (await w.mountPane()).findAll({ type: 'Text' })).map((x) => x.text)
     for (const row of ROWS) expect(t).toContain(row)
+  })
+
+  // Round 1 of #186, L3: a CLI that states no `lang` (0.11.2: no localized band, no `words`) gets no `--lang` on its
+  // match and `/claudinho` runs, so its pane stays English like its toasts; the band's ambient run carries it always.
+  test('a view stating `lang`: the band run, the `/claudinho` run and the match run each end with `--lang es`', { options: { language: 'es' } }, async ($, on) => {
+    const w = await world($, on, [liveView('es')], { matchAnswers: [answer()] })
+    await w.command('match')
+    expect(w.argvs[0]).toEqual(['claudinho', 'ambient', '--json', '--columns', '80', '--lang', 'es'])
+    expect(w.argvs[1]).toEqual(['claudinho', 'ambient', '--json', '--lang', 'es'])
+    expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json', '--lang', 'es']])
+  })
+
+  test('a view without `lang` (CLI 0.11.2): the band run still ends with `--lang es`; the `/claudinho` and match runs carry none', { options: { language: 'es' } }, async ($, on) => {
+    const w = await world($, on, [liveView(null)], { matchAnswers: [answer()] })
+    await w.command('match')
+    expect(w.argvs[0]).toEqual(['claudinho', 'ambient', '--json', '--columns', '80', '--lang', 'es'])
+    expect(w.argvs[1]).toEqual(['claudinho', 'ambient', '--json'])
+    expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json']])
+    await w.clock.advance(120_000)
+    expect(w.matchRuns().at(-1)).toEqual(['claudinho', 'match', ID, '--json'])
+  })
+
+  test('a view without `lang`, `/claudinho` alone: `ambient --json`, no `--lang`', { options: { language: 'fr' } }, async ($, on) => {
+    const w = await world($, on, [liveView(null)])
+    await w.command()
+    expect(w.argvs[1]).toEqual(['claudinho', 'ambient', '--json'])
+  })
+})
+
+/**
+ * Round 1 of #186, L2: a full-time play keeps the winning side AND the winning team's identity as the record states
+ * it (its id when it carries one, else its code and name); a later current view of the same result whose winning
+ * side is another team drops it, the same team keeps it. Pumas UNAM win 1–2 away at Atlante; the person's pin is the
+ * away side.
+ */
+describe("full time: the winning team's identity is the evidence (round 1, L2)", () => {
+  const ATL = { code: 'ATL', name: 'Atlante', id: 'espn:216' }
+  const UNAM = { code: 'UNAM', name: 'Pumas UNAM', id: 'espn:233' }
+  const CAZ = { code: 'CAZ', name: 'Cruz Azul', id: 'espn:218' }
+  const FT_LINE = 'ATL vs UNAM in 6d'
+  const side = (away: Record<string, unknown>) => ({ home: { ...ATL }, away: { ...away }, names: { home: ATL.name, away: away.name as string } })
+  const liveMx = (score: [number, number]) => momentView([liveRecord(score, { minute: 90, ...side(UNAM) })], [], { line: `⚽ ATL ${score[0]}–${score[1]} UNAM 90'` })
+  const ftMx = (away: Record<string, unknown>) => momentView([], [finishedRecord([1, 2], side(away))], { line: FT_LINE })
+  const fullTime = (r: string[]) => r.some((x) => x.includes('Full time'))
+
+  test('held: the same 1–2 with the away side corrected to another team (id, code and name): dropped', async ($, on) => {
+    const w = await world($, on, [liveMx([1, 2]), ftMx(UNAM), ftMx(CAZ), ftMx(CAZ)])
+    await w.turnStart()
+    await next(w) // full time, Pumas UNAM win: held
+    await next(w) // the same 1-2, the away side now Cruz Azul
+    await w.turnEnd()
+    const r = await rows(w)
+    expect(hasMascot(r)).toBe(false)
+    expect(fullTime(r)).toBe(false)
+  })
+
+  test('held: the same 1–2, the away side another id under the same code and name: dropped (the id decides)', async ($, on) => {
+    const w = await world($, on, [liveMx([1, 2]), ftMx(UNAM), ftMx({ ...UNAM, id: 'espn:999' }), ftMx({ ...UNAM, id: 'espn:999' })])
+    await w.turnStart()
+    await next(w)
+    await next(w)
+    await w.turnEnd()
+    expect(fullTime(await rows(w))).toBe(false)
+  })
+
+  test('held: records with no id, the away side another code and name: dropped', async ($, on) => {
+    const { id: _a, ...unam } = UNAM
+    const { id: _b, ...caz } = CAZ
+    const w = await world($, on, [liveMx([1, 2]), ftMx(unam), ftMx(caz), ftMx(caz)])
+    await w.turnStart()
+    await next(w)
+    await next(w)
+    await w.turnEnd()
+    expect(fullTime(await rows(w))).toBe(false)
+  })
+
+  test('held: the same 1–2, the same team: kept, it plays when the turn ends', async ($, on) => {
+    const w = await world($, on, [liveMx([1, 2]), ftMx(UNAM), ftMx(UNAM), ftMx(UNAM)])
+    await w.turnStart()
+    await next(w)
+    await next(w)
+    await w.turnEnd()
+    const r = await rows(w)
+    expect(hasMascot(r)).toBe(true)
+    expect(r.some((x) => x.includes('Full time · Pumas UNAM win'))).toBe(true)
+  })
+
+  test('held: the same team under the same id with another label: kept (the id decides)', async ($, on) => {
+    const w = await world($, on, [liveMx([1, 2]), ftMx(UNAM), ftMx({ ...UNAM, name: 'Pumas' }), ftMx({ ...UNAM, name: 'Pumas' })])
+    await w.turnStart()
+    await next(w)
+    await next(w)
+    await w.turnEnd()
+    expect(hasMascot(await rows(w))).toBe(true)
+  })
+
+  test('queued behind the goal of the same read: the away side corrected to another team drops the full-time play, the goal still plays', { timeoutMs: 20_000 }, async ($, on) => {
+    const w = await world($, on, [liveMx([1, 1]), ftMx(UNAM), ftMx(CAZ), ftMx(CAZ)])
+    await w.turnStart()
+    await next(w) // the goal and full time, held
+    await w.clock.advance(13_800)
+    await w.turnEnd() // the goal plays from 28.8 s
+    expect((await rows(w)).some((x) => x.includes('GOAL! Pumas UNAM'))).toBe(true)
+    await w.clock.advance(1_200) // the run at 30 s: the away side now Cruz Azul at the same 1-2
+    let saw = false
+    for (let t = 0; t < 8_000; t += 500) {
+      if (fullTime(await rows(w))) saw = true
+      await w.clock.advance(500)
+    }
+    expect(saw).toBe(false)
   })
 })
