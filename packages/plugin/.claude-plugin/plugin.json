@@ -1,6 +1,6 @@
 {
   "name": "claudinho",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Live football in Claude Code for the competition you follow: the score or the countdown above the prompt (the same line on demand with /claudinho), a toast that says what happened (a goal and its scorer, full time and the result), a goal celebration with the Claude mascot, the live score beside your prompt for the model, all from the installed claudinho CLI's local cache, and a match pane with the match you follow, its goals and cards (/claudinho match, read by the CLI). Live data: ESPN. Not affiliated with FIFA, any confederation, league or club, or Anthropic.",
   "types": "./types/index.d.ts",
   "author": {
@@ -27,6 +27,13 @@
       "options": ["on", "off"],
       "default": "on",
       "description": "While a match is live, each prompt you send carries the live score for Claude to read; off sends nothing with your prompts."
+    },
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "options": ["auto", "en", "es", "pt", "fr"],
+      "default": "auto",
+      "description": "The language of the band, the toasts, the goal celebration and the match pane: en, es, pt or fr; auto follows CLAUDINHO_LANG, then LANG (es_MX.UTF-8 is es), else English. The terminal statusline and the live score for Claude stay English."
     }
   }
 }

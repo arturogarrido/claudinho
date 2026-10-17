@@ -36,8 +36,11 @@ export interface AmbientOpts extends PromptOpts {
   pin?: Pin;
 }
 
-/** The ambient view as the cache gives it: the command adds the selection, the disclaimer, the attribution and the pick. */
-export type AmbientRead = Omit<AmbientView, 'competition' | 'disclaimer' | 'attribution' | 'pick' | 'pickUnreadable'>;
+/**
+ * The ambient view as the cache gives it: the command adds the selection, the language and its words, the
+ * disclaimer, the attribution and the pick.
+ */
+export type AmbientRead = Omit<AmbientView, 'competition' | 'lang' | 'words' | 'disclaimer' | 'attribution' | 'pick' | 'pickUnreadable'>;
 
 /** The side of a record the saved pin names (core's `isPinnedSide`, home first), or `null`. */
 function pinnedSideOf(m: Match, pin: Pin | undefined): 'home' | 'away' | null {
@@ -134,7 +137,9 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
   const defaultCompetition = opts.defaultCompetition ?? true;
   const kind = opts.teamKind ?? defaultTeamKind(opts.defaultCompetition);
   const pin = opts.pin ?? (opts.pick && 'team' in opts.pick ? opts.pick.team : undefined);
-  const read = { ...opts, now };
+  // The language is the line's alone (`promptLine`): the hook's block stays English.
+  const { lang, ...rest } = opts;
+  const read = { ...rest, now };
   // The hook's own options for each record's line: the same flags, and its
   // roster names on the bundled competition.
   const hookOpts = { flags: opts.flags ?? true, pin: defaultCompetition };
@@ -161,7 +166,7 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
   // The record of play's ids, read once (`playRecordIds`: its bounds, no
   // seal) for the line's countdown and for `next`.
   const played = playRecordIds(state?.play, nowMs);
-  const prompt = promptLine(state, read, played);
+  const prompt = promptLine(state, { ...read, lang }, played);
   const context = renderHook(state, read);
   const { cachedFixtures, schedule } = countdownSchedule(state, defaultCompetition, kind);
   // The snapshot's stamp by the reader's own rule (`stampAgeMs`, as

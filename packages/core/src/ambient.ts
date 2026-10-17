@@ -16,6 +16,7 @@
  *   - a selected competition: an {@link AmbientView}.
  */
 import type { CompetitionKey } from './competition';
+import type { Lang, MomentWords } from './i18n';
 import type { BoundedList } from './trust/bounded';
 import type { Match, MatchEvent } from './types';
 import type { Pin } from './userConfig';
@@ -102,7 +103,11 @@ export interface AmbientView {
    * the same options), fitted to `--columns N` when given: whole matches are
    * kept while they fit and the rest counted in the `+N` (or `+more`) suffix,
    * which is never cut while the width holds it; below the suffix's own width
-   * the line is the width's cut, never wider than asked.
+   * the line is the width's cut, never wider than asked. Its own tokens are in
+   * `lang` (the countdown, the syncing phrase, the live segment's half-time
+   * and live words); the overflow marker (`+N`, `+more`), the World Cup's
+   * sign-off and nothing known (`⚽ —`) are English in every language, so
+   * `idle` and `empty` say what they say in every language.
    */
   readonly line: string;
   /**
@@ -192,6 +197,19 @@ export interface AmbientView {
   readonly pickUnreadable?: true;
   /** The selection, as every `--json` answer carries it (core `selectionExtras`). */
   readonly competition: CompetitionKey;
+  /**
+   * The CLI's resolved language (`--lang`, `CLAUDINHO_LANG`, `LANG`'s language
+   * part, each only when it is one of the four, else `en`), the language of
+   * `line`, `lineParts` and `words`. `context`, `attribution`, `disclaimer`
+   * and each record's `line` stay English in every language.
+   */
+  readonly lang: Lang;
+  /**
+   * The plugin's moment words in `lang` (core's `moment.*` keys, `momentWords`):
+   * `goalFor` and `win` templates holding `{team}` once, for the plugin to
+   * fill with a record's own `names`.
+   */
+  readonly words: MomentWords;
   /** The snapshot says its last refresh failed (`false` with no snapshot). */
   readonly degraded: boolean;
   /** The provider the snapshot was read from, whatever its stamp; `null` with no snapshot. */

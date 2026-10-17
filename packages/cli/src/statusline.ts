@@ -13,6 +13,7 @@ import {
   byKickoff,
   countdown,
   COUNTDOWN_NOW,
+  countdownPhrase,
   fixturesInLiveWindow,
   hasLiveWindow,
   isLive,
@@ -32,6 +33,7 @@ import {
   type Match,
   type Pin,
   type TeamKind,
+  t as i18n,
 } from '@claudinho/core';
 import { ageMs, type CacheState } from './cache';
 import { playRecordIds } from './play';
@@ -248,6 +250,16 @@ export interface PromptOpts {
    * (or not a positive number): that ceiling, as `prompt` has always had it.
    */
   columns?: number;
+  /**
+   * The language of the line's own tokens, passed by `ambient --json` alone
+   * (the CLI's resolved `lang`, never read from the environment here): the
+   * countdown is core's `countdownPhrase`, the syncing phrase core's
+   * `ambient.syncing`, the live segment's `HT` and `LIVE` core's `status.ht`
+   * and `status.live`. The overflow marker (`+N`, `+more`), the sign-off and
+   * nothing known stay English in every language. Absent: today's English
+   * literals, as `prompt`, `hook` and `vibe` print them.
+   */
+  lang?: string;
 }
 
 /**
@@ -272,8 +284,11 @@ function teamTok(t: { code: string; flag?: string }, flags: boolean): string {
  * club's "ARS 2–1 CHE 50'", with where its score token is in it (`score`, the
  * code-unit offset of `scoreline(m)`), which the band's parts style.
  */
-function matchSegment(m: Match, compact: boolean, flags: boolean): Segment {
-  const minute = m.status === 'HT' ? 'HT' : m.minute ? `${m.minute}'` : 'LIVE';
+function matchSegment(m: Match, compact: boolean, flags: boolean, lang?: string): Segment {
+  // The status tokens in `lang` when the caller passed one (`ambient --json`), else the English literals.
+  const ht = lang === undefined ? 'HT' : i18n(lang, 'status.ht');
+  const live = lang === undefined ? 'LIVE' : i18n(lang, 'status.live');
+  const minute = m.status === 'HT' ? ht : m.minute ? `${m.minute}'` : live;
   // Codes only when flags are off: a flagless terminal would render the flag
   // as boxed letters, so the code already carries that info without the
   // noise. Compact and non-compact converge there (the code is the whole
@@ -593,7 +608,7 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}, 
     // whole line afterwards cut the marker off the end, turning a truncated
     // list back into one that looks complete. Reserve its room and append it;
     // a segment that does not fit beside it is counted in it.
-    return fitLiveLine(shown.map((m) => matchSegment(m, compact, flags)), overflow, liveList.complete, width);
+    return fitLiveLine(shown.map((m) => matchSegment(m, compact, flags, opts.lang)), overflow, liveList.complete, width);
   }
 
   // Cold/stale cache during a live window: say "live · syncing" (see
@@ -610,7 +625,8 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}, 
         ? `${teamTok(first.home, flags)} vs ${teamTok(first.away, flags)} `
         : '';
     const more = win.length - 1;
-    return plain(fitWithMarker(`⚽ ${matchup}live · syncing…`, more > 0 ? ` +${more}` : '', width));
+    const syncing = opts.lang === undefined ? 'live · syncing…' : i18n(opts.lang, 'ambient.syncing');
+    return plain(fitWithMarker(`⚽ ${matchup}${syncing}`, more > 0 ? ` +${more}` : '', width));
   }
 
   // Nothing (relevant) live → next-fixture countdown over the merged schedule
@@ -625,8 +641,11 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}, 
   // reader: its bounds, no seal), unless the caller already read them.
   const next = countdownFixture(nowMs, schedule, pick, played ?? playRecordIds(state?.play, nowMs));
   if (next) {
-    const left = countdown(next.kickoff, now);
     const matchup = `${teamTok(next.home, flags)} vs ${teamTok(next.away, flags)}`;
+    // In `lang` (`ambient --json`), core's one countdown phrase: the language's bare word for a kickoff at or before
+    // the clock (`ahora`), else its `in`-phrase (`en 17m`). With none (`prompt`, `hook`, `vibe`), the English literals.
+    if (opts.lang !== undefined) return plain(`${matchup} ${countdownPhrase(opts.lang, next.kickoff, now)}`);
+    const left = countdown(next.kickoff, now);
     return plain(left === COUNTDOWN_NOW ? `${matchup} ${COUNTDOWN_NOW}` : `${matchup} in ${left}`);
   }
 

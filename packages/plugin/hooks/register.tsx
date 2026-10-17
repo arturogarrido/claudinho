@@ -22,8 +22,9 @@ import type {
  *
  * The CLI owns the data (its cache, its refresher, the network, the backoff) and the words: the plugin never fetches.
  * This module runs the one binary, `claudinho ambient --json` (the band's runs add `--columns <the band's columns>`;
- * the pane runs `claudinho match <id> --json`, whose read of the provider is the CLI's), with an argument array,
- * bounded, and reads the fields of the one JSON object it prints, never its text: what the line IS (`idle`, `empty`,
+ * the pane runs `claudinho match <id> --json`, whose read of the provider is the CLI's; every run ends with
+ * `--lang <code>`, the `language` option's, `auto` resolved from the host's environment as the CLI resolves it), with
+ * an argument array, bounded, and reads the fields of the one JSON object it prints, never its text: what the line IS (`idle`, `empty`,
  * the first run's `noCompetition`), whether its list is `current`, and the hook's own line on each record, said
  * verbatim. No binary, a timeout, a cut or an answer that is not the object: the band shows nothing (the command says
  * so in one fixed sentence), never a blocked turn. Every run is also what
@@ -33,13 +34,15 @@ import type {
  * else the plain line.
  *
  * The toasts (`momentsFor`), per match between two current views, under `toasts`: a record that carries `names` (CLI
- * 0.12.0) says what happened, from the CLI's fields alone: `⚽ GOAL! <team>` for one side up by exactly 1 (the scorer
- * and the goal's minute only when `lastGoal` is a new identity on that side, a proven own goal `⚽ Own goal · <team>`,
- * else the record's clock minute), `Goal for <team>` for the side opposite `pinnedSide`, `Goals` for more than one,
- * `Score updated` for a tally that fell, `Penalties` for a shootout tally that rose (in that order of precedence), each
- * with the scoreline from `names`; and full time, a record of the last current view's live list now in `finished`
- * (the goal toast first when its tally rose in the same read, then `Full time ·` the scoreline and the result). A
- * record without `names` (CLI 0.11.2) toasts today's `⚽` and its own `line`, and no full time is said for it.
+ * 0.12.0) says what happened, from the CLI's fields alone, in the view's `words` (read whole, else today's English
+ * words for every moment together; the English ones are written here): `⚽ GOAL! <team>` for one side up by exactly 1
+ * (the scorer and the goal's minute only when `lastGoal` is a new identity on that side, a proven own goal
+ * `⚽ Own goal · <team>`, else the record's clock minute), `Goal for <team>` for the side opposite `pinnedSide`, `Goals` for more
+ * than one, `Score updated` for a tally that fell, `Penalties` for a shootout tally that rose (in that order of
+ * precedence), each with the scoreline from `names`; and full time, a record of the last current view's live list now
+ * in `finished` (the goal toast first when its tally rose in the same read, then `Full time ·` the scoreline and the
+ * result). A record without `names` (CLI 0.11.2) toasts today's `⚽` and its own `line`, and no full time is said for
+ * it.
  *
  * The band runs while a surface that draws it is attached: the terminal or the desktop app, the two that raise
  * `AbovePrompt`, asked of the session's roster at every run, first and again as the last step before the spawn (the
@@ -100,30 +103,31 @@ import type {
  * after a reload the pane stays drawn from its value and is re-read again from the next `/claudinho match`.
  *
  * The goal celebration: when a run's toasts include a goal, the band plays it above its line in at most
- * min(3, maxRows - 2) rows, then goes back to its one line. For a record without `names` (CLI 0.11.2), any goal (a
- * regulation or shootout tally that rose, none that fell): 6 frames over 3 seconds, a ball crossing a row, a "GOAL"
- * banner growing, then the toast's own line. For a record with `names`, a single-goal toast for the pinned side (with
- * no `pinnedSide`, any): 3 seconds of Anthropic's Claude mascot as three rows of text art (the theme's `claude`
- * colour, its legs alternating) beside the ball crossing the top row, `GOAL!` (bold, the theme's `success`) and the
- * team on the middle row, the scorer and minute (or the minute) on the bottom row; two rows: the words alone; one:
- * `GOAL! <team> <minute>`; none: it waits. `Goal for`, `Goals`, `Penalties` and `Score updated` play nothing. Full
- * time for the pinned side's win or draw: the mascot beside `Full time · <result>` for 5 seconds, queued behind the
- * goal of the same read (the record's `queue`, played as one stretch). Its record (`celebration`: the first play, its
- * queue, when the run decided it, its competition, its match's id and that match's tallies it was decided on) is
- * written by the run and the clear alone: in a run, any answer naming another competition, or none, current or not (a
- * view, or the first-run object), nulls it, then its match's score changing from the record's own in any later
- * current view, live or finished (a correction, or a later goal the plugin did not see as one; by the record's id,
- * whatever the `toasts` filter) nulls it, both plays with it; a full-time play (its own, or queued) is kept only while
- * each later current view lists its match in `finished` with the same result (listed live again, listed nowhere, or
- * another result drops that play: the record when it is its own, the queue when it follows a goal); then the run's last match with a play replaces it under
- * the band's clear generation; the existing clear nulls it. Every null also stops the redraws. A record another module
- * load wrote is never played (its `at` is not this load's), so a reload drops a waiting or playing celebration (the
- * toast already said it); it stays in state until a goal or a clear replaces it. A played or expired record stays
- * until the next goal replaces it: the draw ignores it. The draw only reads it, and computes the play and its frame
- * from module values (how much of its plays has been on screen), redrawn by a 500 ms ticker that runs only while there
- * is something to play and no hold: a main-loop turn (`turn.start` to a `turn.complete` with no `agentId`) or the
- * drawn `isWorking` holds it, and it plays when the hold ends within 60 seconds of the goal. A paused celebration
- * never resumes after 60 seconds; a stretch on screen finishes its plays. `celebrate: off` plays
+ * min(3, maxRows - 2) rows, then goes back to its one line. For a record without `names` (CLI 0.11.2), any goal (a regulation or
+ * shootout tally that rose, none that fell): 6 frames over 3 seconds, a ball crossing a row, a "GOAL" banner growing,
+ * then the toast's own line. For a record with `names`, a single-goal toast for the pinned side (with no `pinnedSide`,
+ * any): 3 seconds of Anthropic's Claude mascot as three rows of text art (the theme's `claude` colour, its legs
+ * alternating) beside the ball crossing the top row, `GOAL!` (the goal word the toast was built with, whole on every
+ * frame; bold, the theme's `success`) and the team on the middle row, the scorer and minute (or the minute) on the
+ * bottom row; two rows: the words alone; one: `GOAL! <team> <minute>`; none: it waits. `Goal for`, `Goals`, `Penalties`
+ * and `Score updated` play nothing. Full time for the pinned side's win or draw: the mascot beside
+ * `Full time · <result>` (in the words it was built with) for 5 seconds, queued behind the goal of the same read (the record's
+ * `queue`, played as one stretch). Its record (`celebration`: the first play, its queue, when the run decided it, its
+ * competition, its match's id and that match's tallies it was decided on) is written by the run and the clear alone: in
+ * a run, any answer naming another competition, or none, current or not (a view, or the first-run object), nulls it,
+ * then its match's score changing from the record's own in any later current view, live or finished (a correction, or a
+ * later goal the plugin did not see as one; by the record's id, whatever the `toasts` filter) nulls it, both plays with
+ * it; a full-time play (its own, or queued) is kept only while each later current view lists its match in `finished`
+ * with the same result, its evidence (`outcome`), never its words (listed live again, listed nowhere, or another result
+ * drops that play: the record when it is its own, the queue when it follows a goal); then the run's last match with a
+ * play replaces it under the band's clear generation; the existing clear nulls it. Every null also stops the redraws. A
+ * record another module load wrote is never played (its `at` is not this load's), so a reload drops a waiting or
+ * playing celebration (the toast already said it); it stays in state until a goal or a clear replaces it. A played or
+ * expired record stays until the next goal replaces it: the draw ignores it. The draw only reads it, and computes the
+ * play and its frame from module values (how much of its plays has been on screen), redrawn by a 500 ms ticker that
+ * runs only while there is something to play and no hold: a main-loop turn (`turn.start` to a `turn.complete` with no
+ * `agentId`) or the drawn `isWorking` holds it, and it plays when the hold ends within 60 seconds of the goal. A paused
+ * celebration never resumes after 60 seconds; a stretch on screen finishes its plays. `celebrate: off` plays
  * nothing.
  */
 
@@ -156,7 +160,7 @@ const FRAMES = 6
 const PLAY_MS = FRAMES * FRAME_MS
 /** A celebration not on screen this long after its goal is dropped (the toast already said it). */
 const CELEBRATION_MAX_AGE_MS = 60_000
-/** The banner, the plugin's one composed word: `G`, `GO`, `GOA`, `GOAL`, `GOAL!`, `GOAL!` frame by frame. */
+/** The legacy banner (CLI 0.11.2), English: `G`, `GO`, `GOA`, `GOAL`, `GOAL!`, `GOAL!` frame by frame. */
 const BANNER = 'GOAL!'
 /** The ball's display width (an emoji takes two columns). */
 const BALL_COLUMNS = 2
@@ -211,6 +215,44 @@ const FINAL_STATUSES: readonly string[] = ['FT', 'POSTPONED', 'CANCELLED']
 type ToastsOption = 'pinned' | 'all' | 'off'
 const TOASTS_OPTIONS: readonly ToastsOption[] = ['pinned', 'all', 'off']
 
+/** The four languages the CLI speaks; the option's `auto` (or any other value) resolves to one of them. */
+type Lang = 'en' | 'es' | 'pt' | 'fr'
+const LANGS: readonly Lang[] = ['en', 'es', 'pt', 'fr']
+
+/**
+ * The moment words (CLI 0.12.0: the view's `words`), in this order; `goalFor` and `win` hold `{team}` once, the
+ * others none. `ENGLISH_WORDS` are today's words, used for every moment together when a view's cannot be read whole.
+ */
+type Words = {
+  goal: string
+  ownGoal: string
+  ownGoalDetail: string
+  goalFor: string
+  goals: string
+  scoreUpdated: string
+  penalties: string
+  fullTime: string
+  win: string
+  draw: string
+}
+const WORD_KEYS = ['goal', 'ownGoal', 'ownGoalDetail', 'goalFor', 'goals', 'scoreUpdated', 'penalties', 'fullTime', 'win', 'draw'] as const
+const TEAM_WORDS: readonly string[] = ['goalFor', 'win']
+const TEAM_SLOT = '{team}'
+/** A word's length, at most (UTF-16 units). */
+const WORD_MAX = 40
+const ENGLISH_WORDS: Words = {
+  goal: 'GOAL!',
+  ownGoal: 'Own goal',
+  ownGoalDetail: 'own goal',
+  goalFor: 'Goal for {team}',
+  goals: 'Goals',
+  scoreUpdated: 'Score updated',
+  penalties: 'Penalties',
+  fullTime: 'Full time',
+  win: '{team} win',
+  draw: 'Draw',
+}
+
 /**
  * The band's width as last drawn (`bodyColumns`), which the next run asks the CLI to fit the line to. Kept in the
  * module, not `$.state`: the draw that learns it may not write state. A reload starts again from the default.
@@ -235,6 +277,10 @@ let runEnvKept: { env: { PATH: string } | undefined } | null = null
 let nvmOnce: Promise<string[]> | null = null
 /** nvm's lookup's answer once it has settled. */
 let nvmAnswer: string[] | null = null
+/** The `language` option as set (`auto` for anything but the four codes), at load. */
+let languageOption: Lang | 'auto' = 'auto'
+/** The language every run is handed, kept for the rest of the module load once both reads answered (or not needed). */
+let langKept: Lang | null = null
 /** Whether the goal celebration plays (`celebrate` is anything but `off`), set at load. */
 let celebrateOn = true
 /** Whether a prompt carries the live score (`context` is anything but `off`), set at load. */
@@ -489,6 +535,39 @@ async function runEnv($: EngineInterface): Promise<{ PATH: string } | undefined>
   return env
 }
 
+const isLang = (v: unknown): v is Lang => typeof v === 'string' && LANGS.includes(v as Lang)
+
+/**
+ * The language every CLI run is handed (`--lang <code>`): the option when it is one of the four codes; under `auto`,
+ * the CLI's own rule (`pickLang`) on the host's environment: `CLAUDINHO_LANG`, then `LANG`'s language part
+ * (`es_MX.UTF-8` gives `es`), each only when it is one of the four (case-sensitive; an empty value skipped), else
+ * `en`. The host's environment is read here because the spawn's is the PATH alone. Kept for the module load once both
+ * reads answered; a read that rejected is unset for this run and asked again on the next. Never rejects.
+ */
+async function runLang($: EngineInterface): Promise<Lang> {
+  if (languageOption !== 'auto') return languageOption
+  if (langKept) return langKept
+  let whole = true
+  // Each name spelled at its call (the engine lists the variables a module reads).
+  const got = async (read: () => Promise<string | undefined>): Promise<string | undefined> => {
+    try {
+      const value = await read()
+      return typeof value === 'string' ? value : undefined
+    } catch {
+      whole = false
+      return undefined
+    }
+  }
+  const own = await got(() => $.env.get('CLAUDINHO_LANG'))
+  const locale = await got(() => $.env.get('LANG'))
+  const lang = [own, locale?.split('.')[0]?.split('_')[0]].find(isLang) ?? 'en'
+  if (whole) langKept = lang
+  return lang
+}
+
+/** The argument every CLI run ends with: the language, one of the four codes. */
+const langArgs = (lang: Lang): string[] => ['--lang', lang]
+
 /**
  * What `claudinho ambient --json` prints, as far as this module reads it: a selected competition's VIEW (an object
  * with a `live` object holding an `items` array that says what its line is, `idle` and `empty` as two booleans), or
@@ -513,6 +592,8 @@ type View = {
   lineParts?: unknown
   /** CLI 0.12.0: the records that finished in the last ten minutes. */
   finished?: unknown
+  /** CLI 0.12.0: the moment words in the view's language (read whole, else the English ones). */
+  words?: unknown
 }
 
 type Item = {
@@ -693,16 +774,45 @@ function scoreline(names: Names, score: Tally | undefined, shootout: Tally | und
 /** One moment of one record: its toast text, and the celebration's play when it has one. */
 type Moment = { text: string; play: ClaudinhoPlay | null }
 
+/** How many times `{team}` is in a word. */
+const teamSlots = (w: string): number => w.split(TEAM_SLOT).length - 1
+
 /**
- * The moment of a record that carries `names`, against its baseline entry, the first that holds: a compared tally that
- * fell (`Score updated`), a shootout tally that rose (`Penalties`; one that appears where the baseline had none counts
- * from 0), one regulation side up by exactly 1 (the goal), any other rise (`Goals`); none: null. A regulation tally is
- * compared only when both carry one. The goal names the side that rose; its scorer, the goal's minute and the own-goal
- * word only when `goal` (the record's `lastGoal`) is a new identity against the baseline's and on that side; otherwise
- * the record's clock minute. Against the pinned side it reads `Goal for` and plays nothing; else `⚽ GOAL!` (`⚽ Own
- * goal ·` for a proven own goal) and its play.
+ * The view's moment words (CLI 0.12.0), read whole: an object holding the ten, each a string of at most 40 characters,
+ * `goalFor` and `win` holding `{team}` exactly once and the others none. Anything else (no `words`, an older CLI's
+ * view, one field missing, of another type, too long, or a `{team}` out of place): today's English words, for every
+ * moment together.
  */
-function scoreMoment(m: Item, names: Names, was: ClaudinhoTally, goal: ClaudinhoGoal | null): Moment | null {
+function wordsOf(view: View): Words {
+  const raw = view.words
+  if (!isObject(raw)) return ENGLISH_WORDS
+  const out: Partial<Words> = {}
+  for (const key of WORD_KEYS) {
+    const w = raw[key]
+    if (typeof w !== 'string' || w.length > WORD_MAX) return ENGLISH_WORDS
+    if (teamSlots(w) !== (TEAM_WORDS.includes(key) ? 1 : 0)) return ENGLISH_WORDS
+    out[key] = w
+  }
+  return out as Words
+}
+
+/**
+ * A word's `{team}` replaced by the name, literally: no replacement pattern is read in the name (`$&` stays `$&`). The
+ * words read (`wordsOf`) hold it exactly once, so it is replaced once.
+ */
+const fillTeam = (template: string, team: string): string => template.split(TEAM_SLOT).join(team)
+
+/**
+ * The moment of a record that carries `names`, against its baseline entry, in the view's words (`w`; English: the
+ * words below), the first that holds: a compared tally that fell (`Score updated`), a shootout tally that rose
+ * (`Penalties`; one that appears where the baseline had none counts from 0), one regulation side up by exactly 1 (the
+ * goal), any other rise (`Goals`); none: null. A regulation tally is compared only when both carry one. The goal names
+ * the side that rose; its scorer, the goal's minute and the own-goal detail only when `goal` (the record's `lastGoal`)
+ * is a new identity against the baseline's and on that side; otherwise the record's clock minute. Against the pinned
+ * side it reads `Goal for <team>` and plays nothing; else `⚽ GOAL!` (`⚽ Own goal ·` for a proven own goal) and its
+ * play, which keeps the goal word and the detail it was built with.
+ */
+function scoreMoment(m: Item, names: Names, was: ClaudinhoTally, goal: ClaudinhoGoal | null, w: Words): Moment | null {
   const score = tally(m.score)
   const shootout = tally(m.shootout)
   const line = scoreline(names, score, shootout)
@@ -710,15 +820,15 @@ function scoreMoment(m: Item, names: Names, was: ClaudinhoTally, goal: Claudinho
   const shootWas = was.shootout ?? (shootout ? { home: 0, away: 0 } : undefined)
   const shoot: [Tally, Tally] | null = shootout && shootWas ? [shootout, shootWas] : null
   const pairs = [regulation, shoot].filter((p): p is [Tally, Tally] => p !== null)
-  if (pairs.some(([a, b]) => a.home < b.home || a.away < b.away)) return { text: `Score updated · ${line}`, play: null }
+  if (pairs.some(([a, b]) => a.home < b.home || a.away < b.away)) return { text: `${w.scoreUpdated} · ${line}`, play: null }
   if (shoot && (shoot[0].home > shoot[1].home || shoot[0].away > shoot[1].away)) {
-    return { text: `Penalties · ${line}`, play: null }
+    return { text: `${w.penalties} · ${line}`, play: null }
   }
   if (!regulation) return null
   const dh = regulation[0].home - regulation[1].home
   const da = regulation[0].away - regulation[1].away
   if (dh + da === 0) return null
-  if (dh + da > 1) return { text: `Goals · ${line}`, play: null }
+  if (dh + da > 1) return { text: `${w.goals} · ${line}`, play: null }
   const side: Side = dh === 1 ? 'home' : 'away'
   const team = names[side]
   const proven = goal !== null && goal.side === side && !(was.lastGoal && sameGoal(goal, was.lastGoal))
@@ -727,12 +837,16 @@ function scoreMoment(m: Item, names: Names, was: ClaudinhoTally, goal: Claudinho
   const minute = proven ? goalMinute(goal) : clockMinute(m)
   const pinned = pinnedSideOf(m)
   if (pinned !== null && pinned !== side) {
-    const tail = own ? ` · ${words('own goal', minute)}` : player ? ` · ${words(player, minute)}` : minute ? ` ${minute}` : ''
-    return { text: `Goal for ${team}${tail} · ${line}`, play: null }
+    const tail = own ? ` · ${words(w.ownGoalDetail, minute)}` : player ? ` · ${words(player, minute)}` : minute ? ` ${minute}` : ''
+    return { text: `${fillTeam(w.goalFor, team)}${tail} · ${line}`, play: null }
   }
-  const head = own ? `⚽ Own goal · ${words(team, minute)}` : player ? `⚽ GOAL! ${team} · ${words(player, minute)}` : `⚽ GOAL! ${words(team, minute)}`
-  const detail = own ? words('own goal', minute) : player ? words(player, minute) : minute
-  return { text: `${head} · ${line}`, play: { kind: 'goal', team, minute, detail } }
+  const head = own
+    ? `⚽ ${w.ownGoal} · ${words(team, minute)}`
+    : player
+      ? `⚽ ${w.goal} ${team} · ${words(player, minute)}`
+      : `⚽ ${w.goal} ${words(team, minute)}`
+  const detail = own ? words(w.ownGoalDetail, minute) : player ? words(player, minute) : minute
+  return { text: `${head} · ${line}`, play: { kind: 'goal', word: w.goal, team, minute, detail } }
 }
 
 /** A side's code, when the record states one. */
@@ -756,12 +870,6 @@ function resultOf(f: Item): { winner: Side | null } | null {
   return { winner: score.home === score.away ? null : score.home > score.away ? 'home' : 'away' }
 }
 
-/** The result a finished record says (`<team> win`, `Draw`), or null when it cannot be established. */
-function resultText(f: Item, names: Names): string | null {
-  const result = resultOf(f)
-  if (result === null) return null
-  return result.winner === null ? 'Draw' : `${names[result.winner]} win`
-}
 
 /**
  * Whether a finished record is the pin's: the CLI names its side (`pinnedSide`, the shape it prints on a finished
@@ -770,17 +878,22 @@ function resultText(f: Item, names: Names): string | null {
 const finishedPinned = (f: Item): boolean => f.pinned === true || pinnedSideOf(f) !== null
 
 /**
- * The full-time moment of a finished record that carries `names`: `Full time ·` the scoreline, then the result
- * (`<team> win`, `Draw`) when it can be established; the play for the pinned side's win or draw.
+ * The full-time moment of a finished record that carries `names`, in the view's words (`w`): `Full time ·` the
+ * scoreline, then the result (`<team> win`, `Draw`) when it can be established (`resultOf`); the play for the pinned
+ * side's win or draw, which keeps the result as evidence (`outcome`, the winning side or a draw) apart from the words
+ * it draws (`heading`, `result`).
  */
-function fullTimeMoment(f: Item, names: Names): Moment {
+function fullTimeMoment(f: Item, names: Names, w: Words): Moment {
   const line = scoreline(names, tally(f.score), tally(f.shootout))
-  const result = resultOf(f)
-  const said = resultText(f, names)
-  if (result === null || said === null) return { text: `Full time · ${line}`, play: null }
+  const outcome = resultOf(f)
+  if (outcome === null) return { text: `${w.fullTime} · ${line}`, play: null }
+  const said = outcome.winner === null ? w.draw : fillTeam(w.win, names[outcome.winner])
   const pinned = pinnedSideOf(f)
-  const plays = pinned !== null && (result.winner === null || result.winner === pinned)
-  return { text: `Full time · ${line} · ${said}`, play: plays ? { kind: 'fulltime', result: said } : null }
+  const plays = pinned !== null && (outcome.winner === null || outcome.winner === pinned)
+  return {
+    text: `${w.fullTime} · ${line} · ${said}`,
+    play: plays ? { kind: 'fulltime', outcome: { winner: outcome.winner }, heading: w.fullTime, result: said } : null,
+  }
 }
 
 /**
@@ -814,6 +927,7 @@ const evidence = (m: Item): { score?: Tally; shootout?: Tally } => {
  */
 function momentsFor(view: View, prev: ClaudinhoBaseline, option: ToastsOption): MatchMoments[] {
   if (option === 'off' || !prev || prev.slug !== slugOf(view)) return []
+  const w = wordsOf(view)
   const before = new Map(prev.items.map((t) => [t.id, t]))
   const out: MatchMoments[] = []
   const live = itemsOf(view)
@@ -830,7 +944,7 @@ function momentsFor(view: View, prev: ClaudinhoBaseline, option: ToastsOption): 
       out.push({ id: m.id, texts: [text], plays: rose && !fell ? [{ kind: 'banner', text }] : [], ...evidence(m) })
       continue
     }
-    const moment = scoreMoment(m, names, was, lastGoalOf(m.lastGoal))
+    const moment = scoreMoment(m, names, was, lastGoalOf(m.lastGoal), w)
     if (moment === null) continue
     out.push({ id: m.id, texts: [moment.text], plays: moment.play ? [moment.play] : [], ...evidence(m) })
   }
@@ -841,8 +955,8 @@ function momentsFor(view: View, prev: ClaudinhoBaseline, option: ToastsOption): 
     if (!was || liveIds.has(f.id)) continue
     const names = namesOf(f)
     if (names === null) continue
-    const goal = scoreMoment(f, names, was, null)
-    const ft = fullTimeMoment(f, names)
+    const goal = scoreMoment(f, names, was, null, w)
+    const ft = fullTimeMoment(f, names, w)
     const moments = [goal, ft].filter((x): x is Moment => x !== null)
     out.push({
       id: f.id,
@@ -874,16 +988,20 @@ function differsFromRecord(view: View, rec: NonNullable<ClaudinhoCelebration>): 
 
 /**
  * Whether a record's full-time play (its own, or queued) still stands in this CURRENT view: the view lists the match
- * in `finished` with names, saying the same result text the play was decided on. A view that lists it live again (the
- * CLI then lists no finished record for it), or nowhere, or finished with another result or none (a `winnerCode`
- * changed, a shootout appearing), does not. A record with no full-time play: true.
+ * in `finished` with names, with the same result the play was decided on (its evidence, `outcome`: the winning side or
+ * a draw, compared alone, never the words: a later view in another language, or with the English fallback, says the
+ * same result). A view that lists it live again (the CLI then lists no finished record for it), or nowhere, or
+ * finished with another result or none (a `winnerCode` changed, a shootout appearing), does not. A record with no
+ * full-time play: true.
  */
 function fullTimeStands(view: View, rec: NonNullable<ClaudinhoCelebration>): boolean {
   const fulltime = playsOf(rec).find((p): p is Extract<ClaudinhoPlay, { kind: 'fulltime' }> => p.kind === 'fulltime')
   if (fulltime === undefined) return true
   const finished = finishedOf(view).find((x) => x.id === rec.id)
-  const names = finished ? namesOf(finished) : null
-  return finished !== undefined && names !== null && resultText(finished, names) === fulltime.result
+  if (finished === undefined || namesOf(finished) === null) return false
+  const outcome = resultOf(finished)
+  // A record another module load wrote (plugin 0.5.0's carried no `outcome`) is never played; it stands for nothing.
+  return outcome !== null && isObject(fulltime.outcome) && outcome.winner === fulltime.outcome.winner
 }
 
 /**
@@ -1191,14 +1309,16 @@ function paneRowsOf(raw: unknown, lines: string[]): { rows: ClaudinhoPaneRow[]; 
   return { rows: bounded, roles: roles.slice(0, PANE_LINES_MAX) }
 }
 
-/** One `match` run on the band's PATH, bounded, naming the competition once pinned; a rejection is undefined. */
+/** One `match` run on the band's PATH, bounded, naming the competition once pinned, its language last; a rejection is undefined. */
 async function spawnMatch(
   $: EngineInterface,
   b: Binding,
   env: { PATH: string } | undefined,
 ): Promise<RunResult | undefined> {
+  const lang = await runLang($)
   try {
-    return await $.process.run(['claudinho', 'match', b.id, '--json', ...(b.pinned ? ['--competition', b.slug] : [])], {
+    const competition = b.pinned ? ['--competition', b.slug] : []
+    return await $.process.run(['claudinho', 'match', b.id, '--json', ...competition, ...langArgs(lang)], {
       timeoutMs: MATCH_TIMEOUT_MS,
       stdin: '',
       ...(env ? { env } : {}),
@@ -1474,8 +1594,9 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   const now = await $.clock.now()
   const last = await read($, pace)
   if (!force && last.idle && now - last.ranAt < IDLE_MS) return
-  // (3) The PATH, bounded.
+  // (3) The PATH, bounded, and the language every run is handed.
   const env = await runEnv($)
+  const lang = await runLang($)
   // (4) The roster again, the last await before the spawn: the surface may have left while the PATH was looked up.
   if (!(await mayRun($))) {
     await clear($)
@@ -1485,7 +1606,7 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   const c = clears
   let result: RunResult | undefined
   try {
-    result = await $.process.run(['claudinho', 'ambient', '--json', '--columns', String(columns)], {
+    result = await $.process.run(['claudinho', 'ambient', '--json', '--columns', String(columns), ...langArgs(lang)], {
       timeoutMs: RUN_TIMEOUT_MS,
       stdin: '',
       ...(env ? { env } : {}),
@@ -1615,6 +1736,8 @@ export const register: Register = (on, options) => {
   celebrateOn = options.celebrate !== 'off'
   // Only the string `off` turns the prompt context off.
   contextOn = options.context !== 'off'
+  // One of the four codes is that language; anything else (`auto`, unset, unknown) is auto.
+  languageOption = isLang(options.language) ? options.language : 'auto'
 
   on('session.start', async ($, e, next) => {
     // `/claudinho` in every session, headless included: the person types it. A registration refused leaves the start
@@ -1750,11 +1873,13 @@ export const register: Register = (on, options) => {
     const frame = Math.min(FRAMES - 1, step)
     if (play.kind === 'goal' || play.kind === 'fulltime') {
       // The goal moments (a record that carries `names`): the mascot in three rows, else the words alone.
-      const goalWord = (
-        <Text key="goal-word" bold color={GOAL_COLOR}>
-          GOAL!
-        </Text>
-      )
+      // The goal word the play was built with, whole on every frame (no character reveal).
+      const goalWord =
+        play.kind === 'goal' ? (
+          <Text key="goal-word" bold color={GOAL_COLOR}>
+            {play.word}
+          </Text>
+        ) : null
       let middle: RenderChildren
       let top: string
       let bottom: string
@@ -1790,7 +1915,7 @@ export const register: Register = (on, options) => {
       } else {
         middle = (
           <Text key="row-1" wrap="truncate-end">
-            {`Full time · ${play.result}`}
+            {`${play.heading} · ${play.result}`}
           </Text>
         )
         if (rows < 3) return withLine([middle])
@@ -1829,9 +1954,10 @@ export const register: Register = (on, options) => {
     // typed after it is read for one word alone: `match` opens the pane; anything else is ignored. Neither call
     // rejects out of here: `runEnv` never rejects, and the spawn's rejection is a failed run.
     const env = await runEnv($)
+    const lang = await runLang($)
     let result: RunResult | undefined
     try {
-      result = await $.process.run(['claudinho', 'ambient', '--json'], {
+      result = await $.process.run(['claudinho', 'ambient', '--json', ...langArgs(lang)], {
         timeoutMs: RUN_TIMEOUT_MS,
         stdin: '',
         ...(env ? { env } : {}),

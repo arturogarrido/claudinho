@@ -64,18 +64,20 @@ export type ClaudinhoContext = { context: string | null; staleAfter: string | nu
 
 /**
  * One play of the goal celebration, by its kind, each with its own length on screen:
- * - `banner` (3 s): a view whose record carries no `names` (CLI 0.11.2), today's frames: a ball crossing a row, a
- *   "GOAL" banner growing, then `text`, the goal's toast line (`⚽` and the CLI's record line);
+ * - `banner` (3 s): a view whose record carries no `names` (CLI 0.11.2), today's frames: a ball crossing a row, an
+ *   English "GOAL" banner growing, then `text`, the goal's toast line (`⚽` and the CLI's record line);
  * - `goal` (3 s): a goal toast for the pinned side (with no `pinnedSide`, any goal toast): the mascot, the ball crossing
- *   the top row, `GOAL!` and `team` on the middle row, `detail` on the bottom row (the scorer and the goal's minute,
- *   `own goal` and the minute, or the record's clock minute alone); `minute` is the one-row form's minute;
- * - `fulltime` (5 s): full time for the pinned side on a win or a draw: the mascot beside `Full time · <result>`,
- *   `result` being `<team> win` or `Draw`.
+ *   the top row, `word` (the view's goal word the toast was built with: `GOAL!`, `¡GOL!`; whole on every frame) and
+ *   `team` on the middle row, `detail` on the bottom row (the scorer and the goal's minute, the own-goal detail and the
+ *   minute, or the record's clock minute alone, as built); `minute` is the one-row form's minute;
+ * - `fulltime` (5 s): full time for the pinned side on a win or a draw: the mascot beside `<heading> · <result>`, the
+ *   words it was built with (`Full time`, and `<team> win` or `Draw`, filled); `outcome` is the result as evidence (the
+ *   winning side, or `null` for a draw), the one thing a later view is compared with.
  */
 export type ClaudinhoPlay =
   | { kind: 'banner'; text: string }
-  | { kind: 'goal'; team: string; minute: string; detail: string }
-  | { kind: 'fulltime'; result: string }
+  | { kind: 'goal'; word: string; team: string; minute: string; detail: string }
+  | { kind: 'fulltime'; outcome: { winner: 'home' | 'away' | null }; heading: string; result: string }
 
 /**
  * The goal celebration's record: its first play (its `kind` and that kind's fields) and `queue`, the plays after it
@@ -89,7 +91,8 @@ export type ClaudinhoPlay =
  * live list or the finished list, whatever the `toasts` filter: a tally both carry differing from the record's, a
  * correction or a later goal the plugin did not see as one; an absent match or tally is no news) nulls it, both
  * plays with it; a full-time play is kept only while each later current view lists its match in `finished` with the
- * same `result` text: a current view listing it live again, listing it nowhere, or giving another result (or none)
+ * same result (its `outcome`, never its words): a current view listing it live again, listing it nowhere, or giving
+ * another result (or none)
  * drops that play (the record when the play is its own, its `queue` when it follows a goal, the goal play then kept
  * under the rules above); the run's last match with a play writes it (a run a clear superseded writes nothing; never under `celebrate:
  * off`); and the band's clear nulls it. The draw's guard: a record another module load wrote (its `at` not this
