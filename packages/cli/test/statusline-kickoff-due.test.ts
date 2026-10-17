@@ -8,7 +8,7 @@
  *
  * The rule (the countdown's fixture, `countdownFixture`, which the line and the ambient view's `next` both use): a
  * DUE fixture is a candidate beside the upcoming ones: resolved, its kickoff passed by at most 30 minutes
- * (kickoff < now <= kickoff + 30 min), its status exactly SCHEDULED, and not in the snapshot's record of play (an id
+ * (kickoff <= now <= kickoff + 30 min), its status exactly SCHEDULED, and not in the snapshot's record of play (an id
  * in `play.seen` or `play.finished` was seen in play). Candidates are ordered by kickoff, then by the pick's
  * preference. A fixture whose kickoff has passed (or is exactly now) reads "<home> vs <away> now", never "in now".
  * A live match and the syncing line keep priority as before.
