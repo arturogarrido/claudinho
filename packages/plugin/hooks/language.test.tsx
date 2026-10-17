@@ -239,6 +239,8 @@ describe('words the plugin cannot read whole: today\'s English for every moment 
     ['a field of the wrong type (goals a number)', { ...WORDS.es, goals: 5 }],
     ['a field of the wrong type (fullTime null)', { ...WORDS.es, fullTime: null }],
     ['a 41-character value', { ...WORDS.es, scoreUpdated: 'x'.repeat(41) }],
+    ['an empty value', { ...WORDS.es, goal: '' }],
+    ['a value of spaces alone', { ...WORDS.es, draw: '   ' }],
     ['goalFor without {team}', { ...WORDS.es, goalFor: 'Gol de' }],
     ['goalFor with two {team}', { ...WORDS.es, goalFor: '{team} gol de {team}' }],
     ['win without {team}', { ...WORDS.es, win: 'Gana' }],

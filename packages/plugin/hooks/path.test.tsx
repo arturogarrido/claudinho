@@ -201,6 +201,7 @@ describe('the PATH, once whole, is kept', () => {
     await clock.advance(15_000)
     await clock.advance(15_000)
     expect(argvs).toHaveLength(3)
-    expect([...envReads].sort()).toEqual(['HOME', 'OS', 'PATH'])
+    // The language (0.6.0): `auto` reads CLAUDINHO_LANG and LANG once per load as well.
+    expect([...envReads].sort()).toEqual(['CLAUDINHO_LANG', 'HOME', 'LANG', 'OS', 'PATH'])
   })
 })
