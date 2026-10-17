@@ -128,9 +128,9 @@ export type ClaudinhoPaneGen = number
  * answer), the CLI's `lines` (at most 150, each cut at 600 characters), its styled `rows` when it printed them (CLI
  * 0.12.0: each row the parts of the line at its index, kept only when every row's parts join to that line; at most 150
  * rows of at most 64 parts, each row cut at 600 characters; a style the plugin does not draw is a plain part), beside
- * them each row's `roles` (the CLI's `rows[i].role` at the same index when it is 1 to 32 lowercase letters, else null;
- * written with `rows` alone, so a value from a plugin load before them has none and the pane draws it as before) and
- * its `attribution` and `disclaimer` (each a
+ * them each row's `roles` (the one fact of the CLI's `rows[i].role` the drawing uses: `'event'` when that role is
+ * exactly `'event'`, else null; written with `rows` alone, as long as `rows`, so a value from a plugin load before
+ * them has none and the pane draws it as before) and its `attribution` and `disclaimer` (each a
  * non-empty string cut at 1,000 characters, else absent), whether the last re-read failed (the rows kept from the read
  * before it), and the fields the re-reads decide by: the answered match's `status` and `kickoff` (null with no match),
  * and whether that status is final (`FT`, `POSTPONED`, `CANCELLED`). Its writers: the open, twice under its new
@@ -146,7 +146,7 @@ export type ClaudinhoPane = {
   kind: 'rows' | 'noView' | 'failed'
   lines: string[]
   rows?: ClaudinhoPaneRow[]
-  roles?: Array<string | null>
+  roles?: Array<'event' | null>
   attribution?: string
   disclaimer?: string
   refreshFailed: boolean
