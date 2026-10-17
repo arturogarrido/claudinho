@@ -310,3 +310,186 @@ describe('the commands: `prompt` and `ambient --json` off the bundle', () => {
     expect(v.lineParts).toEqual([{ text: 'BET vs BAR now' }]);
   });
 });
+
+/**
+ * Round 1 of #183 (option A), F1: a fixture whose kickoff is at or before the request's clock is a candidate ONLY as
+ * a due fixture, with every due check; an upcoming candidate's kickoff is strictly after the clock. Exactly at
+ * kickoff, a record discovery read LIVE or HT, or one the record of play holds, is not due: the next fixture's
+ * countdown. (A minute later those cases already hold; at the instant itself the upcoming test admitted them.)
+ */
+describe('exactly at kickoff, a fixture is a candidate only as a due one (off the bundle)', () => {
+  const at = KICK;
+
+  for (const status of ['LIVE', 'HT'] as const) {
+    it(`discovery's record ${status} at exactly its kickoff (nothing in the live list): next week's countdown`, () => {
+      const s = snapshot(at, [betBar(status), barRma()]);
+      expect(line(s, at)).toBe('BAR vs RMA in 8d3h');
+      expect(view(s, at).next?.id).toBe('402');
+    });
+  }
+
+  it('its id in `play.seen` at exactly its kickoff: next week\'s countdown', () => {
+    const s = snapshot(at, [betBar(), barRma()], { play: { seen: [{ id: '401', at: iso(at) }], finished: [] } });
+    expect(line(s, at)).toBe('BAR vs RMA in 8d3h');
+    expect(view(s, at).next?.id).toBe('402');
+  });
+
+  it('its id in `play.finished` at exactly its kickoff: next week\'s countdown', () => {
+    const done = club('401', KICK, BET, BAR, 'FT', { updatedAt: iso(at) });
+    const s = snapshot(at, [betBar(), barRma()], { play: { seen: [], finished: [{ match: done, at: iso(at) }] } });
+    expect(line(s, at)).toBe('BAR vs RMA in 8d3h');
+    expect(view(s, at).next?.id).toBe('402');
+  });
+
+  it('the control: SCHEDULED, nothing in the record of play, at exactly its kickoff: "now"', () => {
+    const s = snapshot(at, [betBar(), barRma()]);
+    expect(line(s, at)).toBe('BET vs BAR now');
+    expect(view(s, at).next?.id).toBe('401');
+  });
+});
+
+/**
+ * Round 1 of #183, F5b: off the bundle the schedule slice drops a postponed, cancelled or finished record before the
+ * due rule sees it, so the "never due" cases above pass whatever the due rule checks. On the bundled competition a
+ * cached knockout record (`CacheState.fixtures`, the refresher's resolved overlay) reaches the due rule with its own
+ * status, so only the due rule's status check decides there. And F1 over the same overlay: exactly at kickoff.
+ */
+describe('on the bundled competition, a cached knockout record\'s own status decides', () => {
+  // The bundled R32 760486 kicks off 2026-06-28T19:00Z as a placeholder; the refresher's cached overlay resolves it
+  // (Germany v Paraguay). A second cached resolved tie (760491, 2026-07-01T01:00Z: Mexico v Ecuador) is the next.
+  const KO = Date.parse('2026-06-28T19:00:00.000Z');
+  const ko = (id: string, kickoff: number, home: [string, string, string], away: [string, string, string], status: Match['status'], at: number): Match =>
+    ({
+      id,
+      stage: 'R32',
+      kickoff: iso(kickoff),
+      venue: 'X',
+      home: { code: home[0], name: home[1], flag: home[2] },
+      away: { code: away[0], name: away[1], flag: away[2] },
+      status,
+      ...(status === 'FT' || status === 'LIVE' || status === 'HT' ? { score: { home: 2, away: 1 } } : {}),
+      ...(status === 'LIVE' ? { minute: 1 } : {}),
+      updatedAt: iso(at - MIN),
+    }) as Match;
+  const wc = (status: Match['status'], at: number): CacheState =>
+    ({
+      updatedAt: iso(at - 20_000),
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'fifa.world',
+      liveComplete: true,
+      fixtures: [
+        ko('760486', KO, ['GER', 'Germany', '🇩🇪'], ['PAR', 'Paraguay', '🇵🇾'], status, at),
+        ko('760491', Date.parse('2026-07-01T01:00:00.000Z'), ['MEX', 'Mexico', '🇲🇽'], ['ECU', 'Ecuador', '🇪🇨'], 'SCHEDULED', at),
+      ],
+      fixturesUpdatedAt: iso(at - 5 * MIN),
+    }) as CacheState;
+
+  describe('a minute after its kickoff', () => {
+    const at = KO + MIN;
+    for (const status of ['POSTPONED', 'CANCELLED', 'FT'] as const) {
+      it(`a cached knockout record ${status}: not due, the next resolved tie's countdown`, () => {
+        expect(renderPrompt(wc(status, at), { now: new Date(at) })).toBe('🇲🇽 vs 🇪🇨 in 2d5h');
+        expect(ambientView(wc(status, at), { now: new Date(at) }).next?.id).toBe('760491');
+      });
+    }
+
+    it('the control: the same record SCHEDULED is due, "now"', () => {
+      expect(renderPrompt(wc('SCHEDULED', at), { now: new Date(at) })).toBe('🇩🇪 vs 🇵🇾 now');
+      expect(ambientView(wc('SCHEDULED', at), { now: new Date(at) }).next?.id).toBe('760486');
+    });
+  });
+
+  describe('exactly at its kickoff (F1)', () => {
+    const at = KO;
+    for (const status of ['LIVE', 'HT', 'FT'] as const) {
+      it(`a cached knockout record ${status}: not due, the next resolved tie's countdown`, () => {
+        expect(renderPrompt(wc(status, at), { now: new Date(at) })).toBe('🇲🇽 vs 🇪🇨 in 2d6h');
+        expect(ambientView(wc(status, at), { now: new Date(at) }).next?.id).toBe('760491');
+      });
+    }
+
+    it('the control: the same record SCHEDULED is due, "now"', () => {
+      expect(renderPrompt(wc('SCHEDULED', at), { now: new Date(at) })).toBe('🇩🇪 vs 🇵🇾 now');
+      expect(ambientView(wc('SCHEDULED', at), { now: new Date(at) }).next?.id).toBe('760486');
+    });
+  });
+});
+
+/**
+ * Round 1 of #183, F6 (the bounds; the count of reads is ambient-play-read.test.ts): the ids of the record of play
+ * are read by the record's own bounds, whatever reader reads them: each list bounded at its first 64 entries before
+ * any per-entry work, a `seen` entry believed for 6 hours from its own stamp and a `finished` one for 10 minutes
+ * (expired AT the bound, as `play.ts` has it), a stamp ahead of the clock not believed. An entry outside them
+ * excludes nothing: the fixture is due. One inside them, at the edge, still excludes it.
+ */
+describe('the record of play\'s bounds decide which ids exclude a due fixture', () => {
+  const at = KICK + MIN;
+  const others = (n: number) => Array.from({ length: n }, (_, i) => ({ id: String(5000 + i), at: iso(at - 30_000) }));
+  const done = (id: string) => club(id, KICK - 2 * HOUR, SEV, VAL, 'FT', { updatedAt: iso(at - 2 * MIN) });
+  const doneOthers = (n: number) => Array.from({ length: n }, (_, i) => ({ match: done(String(6000 + i)), at: iso(at - 2 * MIN) }));
+  const today = (stamp: number) => ({ match: club('401', KICK, BET, BAR, 'FT', { updatedAt: iso(stamp) }), at: iso(stamp) });
+  const withPlay = (play: CacheState['play']) => snapshot(at, [betBar(), barRma()], { play });
+  const due = (s: CacheState) => {
+    expect(line(s, at)).toBe('BET vs BAR now');
+    expect(view(s, at).next?.id).toBe('401');
+  };
+  const notDue = (s: CacheState) => {
+    expect(line(s, at)).toBe('BAR vs RMA in 8d3h');
+    expect(view(s, at).next?.id).toBe('402');
+  };
+
+  it('its id as the 65th `seen` entry (past the bound): due', () => {
+    due(withPlay({ seen: [...others(64), { id: '401', at: iso(at - 30_000) }], finished: [] }));
+  });
+
+  it('its id as the 64th `seen` entry (inside the bound): not due', () => {
+    notDue(withPlay({ seen: [...others(63), { id: '401', at: iso(at - 30_000) }], finished: [] }));
+  });
+
+  it('its record as the 65th `finished` entry (past the bound): due', () => {
+    due(withPlay({ seen: [], finished: [...doneOthers(64), today(at - 2 * MIN)] }));
+  });
+
+  it('its record as the 64th `finished` entry (inside the bound): not due', () => {
+    notDue(withPlay({ seen: [], finished: [...doneOthers(63), today(at - 2 * MIN)] }));
+  });
+
+  it('a `seen` entry 7 hours old: due', () => {
+    due(withPlay({ seen: [{ id: '401', at: iso(at - 7 * HOUR) }], finished: [] }));
+  });
+
+  it('a `seen` entry exactly 6 hours old (expired at the bound): due', () => {
+    due(withPlay({ seen: [{ id: '401', at: iso(at - 6 * HOUR) }], finished: [] }));
+  });
+
+  it('a `seen` entry 5 h 59 min old: not due', () => {
+    notDue(withPlay({ seen: [{ id: '401', at: iso(at - 6 * HOUR + MIN) }], finished: [] }));
+  });
+
+  it('a `finished` entry 11 minutes old: due', () => {
+    due(withPlay({ seen: [], finished: [today(at - 11 * MIN)] }));
+  });
+
+  it('a `finished` entry exactly 10 minutes old (expired at the bound): due', () => {
+    due(withPlay({ seen: [], finished: [today(at - 10 * MIN)] }));
+  });
+
+  it('a `finished` entry 9 minutes old: not due', () => {
+    notDue(withPlay({ seen: [], finished: [today(at - 9 * MIN)] }));
+  });
+
+  it('a `seen` entry stamped ahead of the clock (not believed): due', () => {
+    due(withPlay({ seen: [{ id: '401', at: iso(at + 2 * MIN) }], finished: [] }));
+  });
+
+  it('a `finished` entry stamped ahead of the clock (not believed): due', () => {
+    due(withPlay({ seen: [], finished: [today(at + 2 * MIN)] }));
+  });
+
+  it('a fresh `seen` id and a fresh `finished` id: not due', () => {
+    notDue(withPlay({ seen: [{ id: '401', at: iso(at - 30_000) }], finished: [] }));
+    notDue(withPlay({ seen: [], finished: [today(at - 30_000)] }));
+  });
+});
