@@ -227,6 +227,7 @@ const REFUSED: Array<[string, string]> = [
   ['a lone zero-width space (U+200B)', '\u200b'],
   ['a right-to-left override (U+202E)', '\u202e\u00a1GOL!'],
   ['a line separator (U+2028)', '\u00a1GOL!\u2028x'],
+  ['a paragraph separator (U+2029, round 2, M4)', '\u00a1GOL!\u2029x'],
   ['a private-use code point (U+E000)', '\u00a1GOL!\ue000'],
   ['an unassigned code point (U+0378)', '\u00a1GOL!\u0378'],
 ]
@@ -576,20 +577,73 @@ describe('the match pane under a language (C3, C7)', () => {
     expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json', '--lang', 'es']])
   })
 
-  test('a view without `lang` (CLI 0.11.2): the band run still ends with `--lang es`; the `/claudinho` and match runs carry none', { options: { language: 'es' } }, async ($, on) => {
+  test('a view without `lang` (CLI 0.11.2): the band run and the `/claudinho` run end with `--lang es` (round 2, M1); the match runs carry none', { options: { language: 'es' } }, async ($, on) => {
     const w = await world($, on, [liveView(null)], { matchAnswers: [answer()] })
     await w.command('match')
     expect(w.argvs[0]).toEqual(['claudinho', 'ambient', '--json', '--columns', '80', '--lang', 'es'])
-    expect(w.argvs[1]).toEqual(['claudinho', 'ambient', '--json'])
+    expect(w.argvs[1]).toEqual(['claudinho', 'ambient', '--json', '--lang', 'es'])
     expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json']])
     await w.clock.advance(120_000)
     expect(w.matchRuns().at(-1)).toEqual(['claudinho', 'match', ID, '--json'])
   })
 
-  test('a view without `lang`, `/claudinho` alone: `ambient --json`, no `--lang`', { options: { language: 'fr' } }, async ($, on) => {
+  test('a view without `lang`, `/claudinho` alone: `ambient --json --lang fr` all the same (round 2, M1)', { options: { language: 'fr' } }, async ($, on) => {
     const w = await world($, on, [liveView(null)])
     await w.command()
-    expect(w.argvs[1]).toEqual(['claudinho', 'ambient', '--json'])
+    expect(w.argvs[1]).toEqual(['claudinho', 'ambient', '--json', '--lang', 'fr'])
+  })
+
+  // Round 2 of #186, M1: every ambient run carries `--lang` (the band's and the `/claudinho` reply's own reading);
+  // ANY selected view stating a supported `lang`, current or not, from the band or from a command's own reading,
+  // marks the CLI as localizing, and only then do the match runs carry it.
+  const staleView = (lang: Lang | null) =>
+    view(LINE, {
+      current: false,
+      live: { items: [{ id: ID, line: "Arsenal 2–1 Chelsea (50')", score: { home: 2, away: 1 }, pinned: true, picked: true }], total: 1, shown: 1, truncated: false, complete: true },
+      ...(lang ? said(lang) : {}),
+    })
+  const HEADLESS = { start: { surface: null, isInteractive: false }, surfaces: [] } as const
+
+  test('a view that is NOT current, stating `lang`: `/claudinho` carries `--lang es`, and `/claudinho match`\'s match run too', { options: { language: 'es' } }, async ($, on) => {
+    const w = await world($, on, [staleView('es')], { matchAnswers: [answer()] })
+    await w.command()
+    expect(w.argvs[1]).toEqual(['claudinho', 'ambient', '--json', '--lang', 'es'])
+    await w.command('match')
+    expect(w.argvs[2]).toEqual(['claudinho', 'ambient', '--json', '--lang', 'es'])
+    expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json', '--lang', 'es']])
+  })
+
+  test('a non-current view stating `lang`, `/claudinho match` first: its own reading marks the CLI, its match run carries `--lang es`', { options: { language: 'es' } }, async ($, on) => {
+    const w = await world($, on, [staleView('es')], { matchAnswers: [answer()] })
+    await w.command('match')
+    expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json', '--lang', 'es']])
+  })
+
+  test('headless (no band surface, no band run): `/claudinho` carries `--lang pt`', { options: { language: 'pt' } }, async ($, on) => {
+    const w = await world($, on, [staleView('pt')], HEADLESS)
+    expect(w.argvs).toHaveLength(0)
+    await w.command()
+    expect(w.argvs).toEqual([['claudinho', 'ambient', '--json', '--lang', 'pt']])
+  })
+
+  test('headless: `/claudinho match` after a reading that states `lang`: its match run carries `--lang pt`', { options: { language: 'pt' } }, async ($, on) => {
+    const w = await world($, on, [staleView('pt')], { ...HEADLESS, matchAnswers: [answer()] })
+    await w.command('match')
+    expect(w.argvs[0]).toEqual(['claudinho', 'ambient', '--json', '--lang', 'pt'])
+    expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json', '--lang', 'pt']])
+  })
+
+  test('headless, a reading without `lang` (CLI 0.11.2): the `/claudinho match` reading carries `--lang pt`, its match run none', { options: { language: 'pt' } }, async ($, on) => {
+    const w = await world($, on, [staleView(null)], { ...HEADLESS, matchAnswers: [answer()] })
+    await w.command('match')
+    expect(w.argvs[0]).toEqual(['claudinho', 'ambient', '--json', '--lang', 'pt'])
+    expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json']])
+  })
+
+  test('a view stating a `lang` that is not one of the four marks nothing: the match run carries none', { options: { language: 'es' } }, async ($, on) => {
+    const w = await world($, on, [view(LINE, { current: false, live: { items: [{ id: ID, line: 'x', score: { home: 2, away: 1 }, pinned: true, picked: true }], total: 1, shown: 1, truncated: false, complete: true }, lang: 'de', words: WORDS.es })], { matchAnswers: [answer()] })
+    await w.command('match')
+    expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json']])
   })
 })
 
@@ -638,6 +692,39 @@ describe("full time: the winning team's identity is the evidence (round 1, L2)",
     await next(w)
     await w.turnEnd()
     expect(fullTime(await rows(w))).toBe(false)
+  })
+
+  // Round 2 of #186, M5: with no id, the code AND the name are the identity: either half changing drops the play.
+  test('held: records with no id, the away side keeps its code and changes its name: dropped', async ($, on) => {
+    const { id: _a, ...unam } = UNAM
+    const renamed = { ...unam, name: 'Club Universidad' }
+    const w = await world($, on, [liveMx([1, 2]), ftMx(unam), ftMx(renamed), ftMx(renamed)])
+    await w.turnStart()
+    await next(w)
+    await next(w)
+    await w.turnEnd()
+    expect(fullTime(await rows(w))).toBe(false)
+  })
+
+  test('held: records with no id, the away side keeps its name and changes its code: dropped', async ($, on) => {
+    const { id: _a, ...unam } = UNAM
+    const recoded = { ...unam, code: 'PUM' }
+    const w = await world($, on, [liveMx([1, 2]), ftMx(unam), ftMx(recoded), ftMx(recoded)])
+    await w.turnStart()
+    await next(w)
+    await next(w)
+    await w.turnEnd()
+    expect(fullTime(await rows(w))).toBe(false)
+  })
+
+  test('held: records with no id, the same code and name: kept', async ($, on) => {
+    const { id: _a, ...unam } = UNAM
+    const w = await world($, on, [liveMx([1, 2]), ftMx(unam), ftMx(unam), ftMx(unam)])
+    await w.turnStart()
+    await next(w)
+    await next(w)
+    await w.turnEnd()
+    expect(hasMascot(await rows(w))).toBe(true)
   })
 
   test('held: the same 1–2, the same team: kept, it plays when the turn ends', async ($, on) => {

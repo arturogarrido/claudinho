@@ -52,7 +52,7 @@ describe('what it runs', () => {
     expect(argvs).toHaveLength(1) // the band's first run
     await command()
     expect(argvs).toHaveLength(2)
-    expect(argvs[1]).toEqual(['claudinho', 'ambient', '--json'])
+    expect(argvs[1]).toEqual(['claudinho', 'ambient', '--json', '--lang', 'en'])
     expect(stdins[1]).toBe('')
   })
 
@@ -75,7 +75,7 @@ describe('what it runs', () => {
   test('text typed after the command is ignored: the same run, the same reply', async ($, on) => {
     const { argvs, command } = await world($, on, [view(LINE), view(LINE)])
     const r = await command('next Arsenal --columns 5')
-    expect(argvs[1]).toEqual(['claudinho', 'ambient', '--json'])
+    expect(argvs[1]).toEqual(['claudinho', 'ambient', '--json', '--lang', 'en'])
     expect(r.text).toBe(withD(LINE))
   })
 

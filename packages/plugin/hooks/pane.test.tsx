@@ -71,7 +71,7 @@ describe('opening it', () => {
     const r = await w.command('match')
     expect(r.text).toBe(OPENED)
     expect(w.argvs.slice(1)).toEqual([
-      ['claudinho', 'ambient', '--json'],
+      ['claudinho', 'ambient', '--json', '--lang', 'en'],
       ['claudinho', 'match', ID, '--json'],
     ])
     expect(w.opens).toEqual([{ id: 'match', title: 'claudinho' }])

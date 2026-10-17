@@ -12,7 +12,9 @@
  *   - `claudinho prompt`, `claudinho hook`, `context`, `attribution`, `disclaimer` and each record's `line` stay
  *     English in every language.
  *
- * The kickoff's bare `now` (`ahora`) arrives with the kickoff fix this item is rebased on; nothing here needs it.
+ * At or after kickoff the ambient countdown is core's bare word for now (`now` / `ahora` / `agora` / `maintenant`),
+ * never a translated "in" before it; `claudinho prompt` keeps #183's English `now` (here and in
+ * statusline-kickoff-due.test.ts, which seeds the due fixture).
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
