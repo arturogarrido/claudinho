@@ -239,7 +239,7 @@ describe("ambient --json: the line's tokens in lang", () => {
   }
 });
 
-/** Round 1 of #186, L5: at exactly kickoff the ambient line says the bare word for now (core's `countdown.now`), never a translated "in" before it; `claudinho prompt` keeps its English `in now`. */
+/** Round 1 of #186, L5: at exactly kickoff the ambient line says the bare word for now (core's `countdown.now`), never a translated "in" before it; `claudinho prompt` keeps its English, which since #183 reads `now` (no "in"). */
 const NOW_WORD: Record<Lang, string> = { en: 'now', es: 'ahora', pt: 'agora', fr: 'maintenant' };
 const seedAtKickoff = () =>
   writeState(
@@ -248,14 +248,14 @@ const seedAtKickoff = () =>
   );
 describe('ambient --json at exactly kickoff (round 1, L5)', () => {
   for (const lang of LANGS) {
-    it(`${lang}: the ambient line is \`BOU vs BRE ${NOW_WORD[lang]}\`, one plain part; \`claudinho prompt\` reads \`in now\``, () => {
+    it(`${lang}: the ambient line is \`BOU vs BRE ${NOW_WORD[lang]}\`, one plain part; \`claudinho prompt\` reads the English \`now\``, () => {
       seedAtKickoff();
       const v = ambient(lang);
       expect(v.line).toBe(`BOU vs BRE ${NOW_WORD[lang]}`);
       expect(v.lineParts).toEqual([{ text: v.line }]);
       writes = [];
       cmdPrompt(ctx(lang));
-      expect(writes.join('').trim()).toBe('BOU vs BRE in now');
+      expect(writes.join('').trim()).toBe('BOU vs BRE now');
     });
   }
 });
