@@ -6,7 +6,7 @@
  * The corpus is loaded by a computed path: it lives outside this package's `rootDir`, which a static import would
  * pull into `tsc`'s program.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -50,5 +50,25 @@ describe('the width corpus', () => {
     expect(has(/[぀-ヿ一-鿿가-힣]/u)).toBe(true);
     expect(has(/​/u)).toBe(true);
     for (const marker of ['⚽', '\u{1F7E8}', '\u{1F7E5}', '\u{1F504}']) expect(texts).toContain(marker);
+  });
+
+  it("the plugin's copy of the rule is core's, line for line (its four patterns and `clusterWidth`, byte for byte)", () => {
+    // A copy whose range text Unicode normalization rewrote (U+F900 became U+8C48) passed every sampled width; the
+    // lines themselves are compared, semicolons aside (the plugin's style has none).
+    const block = (src: string): string[] => {
+      const start = src.indexOf('const WIDE_CLUSTER =');
+      const fn = src.indexOf('function clusterWidth(', start);
+      const end = src.indexOf('\n}', fn);
+      expect(start).toBeGreaterThan(-1);
+      expect(fn).toBeGreaterThan(start);
+      return src
+        .slice(start, end + 2)
+        .split('\n')
+        .map((l) => l.replace(/;$/, '').trimEnd())
+        .filter((l) => l.trim() !== '' && !/^\s*(\/\*\*|\*|\/\/)/.test(l));
+    };
+    const core = block(readFileSync(join(ROOT, 'packages/core/src/text.ts'), 'utf8'));
+    const plugin = block(readFileSync(join(ROOT, 'packages/plugin/hooks/register.tsx'), 'utf8'));
+    expect(plugin).toEqual(core);
   });
 });

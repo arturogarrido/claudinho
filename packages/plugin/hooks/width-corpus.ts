@@ -2,12 +2,71 @@
  * The width corpus: strings with the display width core's `displayWidth` (packages/core/src/text.ts) gives each, the
  * rule the CLI aligns its rows with. Two suites read it, so the plugin's copy of the rule cannot drift from core's:
  * core's vitest test (packages/core/test/width-corpus.test.ts) asserts core's `displayWidth` equals every `width`, and
- * the plugin's kit test (hooks/pane-width.test.tsx) asserts the pane measures every `text` the same. A data module, not
+ * the plugin's kit test (hooks/pane-layout.test.tsx) asserts the pane measures every `text` the same. A data module, not
  * JSON: the kit loads only files named like code. Every invisible or non-ASCII character is written as an escape.
  */
 export type WidthCase = { readonly what: string; readonly text: string; readonly width: number }
 
 export const WIDTH_CORPUS: readonly WidthCase[] = [
+  // The code point just outside each range edge: a range widened by a bad copy shows only there.
+  { what: 'just outside a wide range, U+10FF', text: '\u{10FF}', width: 1 },
+  { what: 'just outside a wide range, U+2E7F', text: '\u{2E7F}', width: 1 },
+  { what: 'just outside a wide range, U+3040', text: '\u{3040}', width: 1 },
+  { what: 'just outside a wide range, U+4DFF', text: '\u{4DFF}', width: 1 },
+  { what: 'just outside a wide range, U+A95F', text: '\u{A95F}', width: 1 },
+  { what: 'just outside a wide range, U+ABFF', text: '\u{ABFF}', width: 1 },
+  { what: 'just outside a wide range, U+F8FF', text: '\u{F8FF}', width: 1 },
+  { what: 'just outside a wide range, U+FE0F', text: '\u{FE0F}', width: 0 },
+  { what: 'just outside a wide range, U+FE2F', text: '\u{FE2F}', width: 0 },
+  // (U+FEFF, just past U+FE6F's neighbour range, is left out: a format character JavaScript's trim removes, never a name.)
+  { what: 'just outside a wide range, U+FFDF', text: '\u{FFDF}', width: 1 },
+  { what: 'just outside a wide range, U+1FFFF', text: '\u{1FFFF}', width: 1 },
+  { what: 'just outside a wide range, U+2FFFF', text: '\u{2FFFF}', width: 1 },
+  { what: 'just outside a wide range, U+4DC0', text: '\u{4DC0}', width: 1 },
+  { what: 'just outside a wide range, U+A4D0', text: '\u{A4D0}', width: 1 },
+  { what: 'just outside a wide range, U+A980', text: '\u{A980}', width: 0 },
+  { what: 'just outside a wide range, U+D7A4', text: '\u{D7A4}', width: 1 },
+  { what: 'just outside a wide range, U+FB00', text: '\u{FB00}', width: 1 },
+  { what: 'just outside a wide range, U+FE1A', text: '\u{FE1A}', width: 1 },
+  { what: 'just outside a wide range, U+FE70', text: '\u{FE70}', width: 1 },
+  { what: 'just outside a wide range, U+FF61', text: '\u{FF61}', width: 1 },
+  { what: 'just outside a wide range, U+FFE7', text: '\u{FFE7}', width: 1 },
+  { what: 'just outside a wide range, U+2FFFE', text: '\u{2FFFE}', width: 1 },
+  { what: 'just outside a wide range, U+3FFFE', text: '\u{3FFFE}', width: 1 },
+  // Every edge of core's East Asian wide ranges (and the code point just past two of them), as escapes: a copy of
+  // the rule whose range text was rewritten by Unicode normalization (U+F900 became U+8C48) passed every sample above.
+  { what: 'the wide ranges\' edge U+1100', text: '\u{1100}', width: 2 },
+  { what: 'the wide ranges\' edge U+115F', text: '\u{115F}', width: 2 },
+  { what: 'the wide ranges\' edge U+1160', text: '\u{1160}', width: 1 },
+  { what: 'the wide ranges\' edge U+2E80', text: '\u{2E80}', width: 2 },
+  { what: 'the wide ranges\' edge U+303E', text: '\u{303E}', width: 2 },
+  { what: 'the wide ranges\' edge U+303F', text: '\u{303F}', width: 1 },
+  { what: 'the wide ranges\' edge U+3041', text: '\u{3041}', width: 2 },
+  { what: 'the wide ranges\' edge U+33FF', text: '\u{33FF}', width: 2 },
+  { what: 'the wide ranges\' edge U+3400', text: '\u{3400}', width: 2 },
+  { what: 'the wide ranges\' edge U+4DBF', text: '\u{4DBF}', width: 2 },
+  { what: 'the wide ranges\' edge U+4E00', text: '\u{4E00}', width: 2 },
+  { what: 'the wide ranges\' edge U+9FFF', text: '\u{9FFF}', width: 2 },
+  { what: 'the wide ranges\' edge U+A000', text: '\u{A000}', width: 2 },
+  { what: 'the wide ranges\' edge U+A4CF', text: '\u{A4CF}', width: 2 },
+  { what: 'the wide ranges\' edge U+A960', text: '\u{A960}', width: 2 },
+  { what: 'the wide ranges\' edge U+A97F', text: '\u{A97F}', width: 2 },
+  { what: 'the wide ranges\' edge U+AC00', text: '\u{AC00}', width: 2 },
+  { what: 'the wide ranges\' edge U+D7A3', text: '\u{D7A3}', width: 2 },
+  { what: 'the wide ranges\' edge U+F900', text: '\u{F900}', width: 2 },
+  { what: 'the wide ranges\' edge U+FAFF', text: '\u{FAFF}', width: 2 },
+  { what: 'the wide ranges\' edge U+FE10', text: '\u{FE10}', width: 2 },
+  { what: 'the wide ranges\' edge U+FE19', text: '\u{FE19}', width: 2 },
+  { what: 'the wide ranges\' edge U+FE30', text: '\u{FE30}', width: 2 },
+  { what: 'the wide ranges\' edge U+FE6F', text: '\u{FE6F}', width: 2 },
+  { what: 'the wide ranges\' edge U+FF00', text: '\u{FF00}', width: 2 },
+  { what: 'the wide ranges\' edge U+FF60', text: '\u{FF60}', width: 2 },
+  { what: 'the wide ranges\' edge U+FFE0', text: '\u{FFE0}', width: 2 },
+  { what: 'the wide ranges\' edge U+FFE6', text: '\u{FFE6}', width: 2 },
+  { what: 'the wide ranges\' edge U+20000', text: '\u{20000}', width: 2 },
+  { what: 'the wide ranges\' edge U+2FFFD', text: '\u{2FFFD}', width: 2 },
+  { what: 'the wide ranges\' edge U+30000', text: '\u{30000}', width: 2 },
+  { what: 'the wide ranges\' edge U+3FFFD', text: '\u{3FFFD}', width: 2 },
   { what: 'plain ASCII', text: 'Arsenal', width: 7 },
   { what: 'the goal marker', text: '⚽', width: 2 },
   { what: 'the yellow card marker', text: '\u{1F7E8}', width: 2 },
