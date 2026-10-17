@@ -171,9 +171,10 @@ export const KICKOFF_DUE_MS = 30 * 60_000;
 /**
  * A DUE fixture: its kickoff passed by at most {@link KICKOFF_DUE_MS} (kickoff
  * <= now <= kickoff + the bound), its status exactly SCHEDULED, and not one the
- * snapshot's record of play saw in play (`played`: an id seen in play is never
- * due, whatever the schedule's stale status says). An unreadable kickoff is
- * never due.
+ * snapshot's record of play holds (`played`: seen in play, or finished in the
+ * record's last 10 minutes, whatever the schedule's stale status says; an id
+ * the record no longer holds can be due again). An unreadable kickoff is never
+ * due.
  */
 function isDue(m: Match, nowMs: number, played: ReadonlySet<string>): boolean {
   if (m.status !== 'SCHEDULED' || played.has(m.id)) return false;

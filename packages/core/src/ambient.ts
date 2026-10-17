@@ -173,8 +173,8 @@ export interface AmbientView {
    * The fixture the statusline's countdown names (its resolved pairing; the
    * preference's first), whether or not a match is in play now; `null` when
    * there is none to count down to. A fixture ahead, or a DUE one (still
-   * scheduled, its kickoff passed by at most 30 minutes, not seen in play:
-   * the line reads "now"); never one in play.
+   * scheduled, its kickoff passed by at most 30 minutes, not held by the
+   * snapshot's record of play: the line reads "now"); never one in play.
    */
   readonly next: Match | null;
   /**
