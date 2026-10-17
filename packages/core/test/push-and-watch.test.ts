@@ -267,6 +267,9 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     expect(r.status).toBe(1);
     expect(r.out).toMatch(/main/);
     expect(r.out).toMatch(/pull request/i);
+    // the advice for each direction, not only the reason
+    expect(r.out).toMatch(/Ahead: push a branch and open a pull request/);
+    expect(r.out).toMatch(/Behind: git pull, then run again/);
     expect(pushed(sb)).toBe(false);
     expect(ghCalls(sb).some((c) => /^gh run /.test(c))).toBe(false);
   });
@@ -285,6 +288,15 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     const sb = sandbox();
     seed(sb, { 'remote-sha': LOCAL, 'remote-sha-after-first': OTHER, 'runs.1.tsv': '' });
     const r = runBranch(sb, 'main', []);
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/pull request/i);
+    expect(pushed(sb)).toBe(false);
+  });
+
+  it('`Main` at its remote at the first read, moved by the second, is refused at the push too (any case at step 4)', () => {
+    const sb = sandbox();
+    seed(sb, { 'remote-sha': LOCAL, 'remote-sha-after-first': OTHER, 'runs.1.tsv': '' });
+    const r = runBranch(sb, 'Main', []);
     expect(r.status).toBe(1);
     expect(r.out).toMatch(/pull request/i);
     expect(pushed(sb)).toBe(false);
