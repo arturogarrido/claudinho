@@ -14,7 +14,10 @@
 #   scripts/push-and-watch.sh <branch> [--timeout <min>] [--allow-no-run]
 #
 # In order, each refusal exiting nonzero before the next step:
-#   1. the repository: HOST/OWNER/NAME read from `git remote get-url origin`
+#   1. the name: a branch argument of exactly `main` is refused before any
+#      git or gh call (main takes pull requests only, under its ruleset;
+#      nothing is pushed); a name that only starts with `main` is not;
+#   2. the repository: HOST/OWNER/NAME read from `git remote get-url origin`
 #      (`https://HOST/OWNER/NAME[.git][/]`, `http://...`,
 #      `ssh://[user@]HOST[:port]/OWNER/NAME[.git]` or
 #      `[user@]HOST:OWNER/NAME[.git]`; anything else refuses); every push URL
@@ -26,15 +29,15 @@
 #      answer the same OWNER/NAME, so gh reads the repository pushed to; every
 #      later gh call is bound to it (`gh run ... -R HOST/OWNER/NAME`, `gh api
 #      --hostname HOST`);
-#   2. the branch: the argument must be a branch name (`git check-ref-format
+#   3. the branch: the argument must be a branch name (`git check-ref-format
 #      --branch` prints it back unchanged) and a local branch (`git show-ref
 #      --verify refs/heads/<branch>`); the local SHA is `git rev-parse --verify
 #      refs/heads/<branch>`, never HEAD;
-#   3. before the push: the CI workflow's runs for the branch (`gh run list -R
+#   4. before the push: the CI workflow's runs for the branch (`gh run list -R
 #      HOST/OWNER/NAME --workflow ci.yml`); a gh failure refuses, and so does a
 #      run not yet completed for ANOTHER SHA (the push would cancel it: wait for
 #      it, or cancel it yourself);
-#   4. the push: the remote SHA is the first field of the one line of `git
+#   5. the push: the remote SHA is the first field of the one line of `git
 #      ls-remote origin refs/heads/<branch>` whose ref is exactly
 #      `refs/heads/<branch>` (ls-remote matches a pattern by its tail, so a tag or
 #      a deeper branch ending in that name is listed too, and ignored; no such
@@ -44,7 +47,7 @@
 #      refs/heads/<branch>:refs/heads/<branch>` (both ends named; a failed push
 #      exits at once) and `git ls-remote` read back the same way, which must
 #      equal the local SHA;
-#   5. the watch: the run list asked every PUSH_WATCH_POLL_SECONDS until the
+#   6. the watch: the run list asked every PUSH_WATCH_POLL_SECONDS until the
 #      deadline; the first (newest) line for the full local SHA is the run; a
 #      completed run is read at once; a run still pending at the deadline exits
 #      nonzero naming it; no run for the SHA exits nonzero naming the SHA and the
@@ -52,7 +55,7 @@
 #      repos/OWNER/NAME/pulls?state=open&head=OWNER:<branch>`), except with
 #      --allow-no-run when there is none (CI runs on pull requests and on main):
 #      then it prints `pushed; CI not verified (no pull request)` and exits 0;
-#   6. the jobs (`gh run view -R HOST/OWNER/NAME <id>`): a table of the SHA read
+#   7. the jobs (`gh run view -R HOST/OWNER/NAME <id>`): a table of the SHA read
 #      back and every job with its conclusion, start, completion and duration.
 #      An empty job list, a job with no conclusion, or any job not named
 #      `(non-gating)` whose conclusion is not `success` exits nonzero.
@@ -143,6 +146,13 @@ if [ -n "${PUSH_WATCH_TIMEOUT_SECONDS:-}" ]; then
   is_count "$TIMEOUT" || usage_error "PUSH_WATCH_TIMEOUT_SECONDS: not a number of seconds: '$TIMEOUT'"
 else
   TIMEOUT=$((TIMEOUT_MIN * 60))
+fi
+
+# The name: main takes pull requests only (its ruleset), so a push of it is
+# refused here, before any git or gh call.
+if [ "$BRANCH" = "main" ]; then
+  echo "push-and-watch: refusing branch 'main': main takes pull requests only (its ruleset); push a branch and open a pull request. Nothing was pushed." >&2
+  exit 1
 fi
 
 # Every process this script starts is one of three, each held in a global
