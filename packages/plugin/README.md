@@ -292,8 +292,9 @@ sends nothing with your prompts. The band, the toasts and the celebration are th
 `LANG`'s language part (`es_MX.UTF-8` is Spanish), each only when it is one of `en`, `es`, `pt` or `fr`, else
 English; `en`, `es`, `pt` or `fr` sets it whatever the environment says. The band, the toasts, the goal celebration and
 the match pane follow it (`⚽ ¡GOL! Liverpool · Ronald Araújo 22' · LASK Linz 0–1 Liverpool`, `BOU vs BRE en 17m`):
-the plugin hands every CLI run `--lang` with that code, and names, scores and minutes are never translated. The
-terminal statusline (`claudinho prompt`), the hook and the live score beside your prompt for Claude stay English, as
+the plugin hands the band's CLI runs `--lang` with that code (the match pane's and `/claudinho`'s too, once the
+CLI's view says it speaks that language: a CLI 0.11.2 keeps them English, like its toasts), and names, scores and
+minutes are never translated. The terminal statusline (`claudinho prompt`), the hook and the live score beside your prompt for Claude stay English, as
 do the band's `+more`, the World Cup's sign-off and the countdown's units. A CLI that sends no words (0.11.2) gives
 today's English toasts. Change it in `/config`; an open match pane keeps its rows in the language it was read in until
 `/claudinho match` opens it again.

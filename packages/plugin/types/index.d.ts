@@ -72,12 +72,22 @@ export type ClaudinhoContext = { context: string | null; staleAfter: string | nu
  *   minute, or the record's clock minute alone, as built); `minute` is the one-row form's minute;
  * - `fulltime` (5 s): full time for the pinned side on a win or a draw: the mascot beside `<heading> · <result>`, the
  *   words it was built with (`Full time`, and `<team> win` or `Draw`, filled); `outcome` is the result as evidence (the
- *   winning side, or `null` for a draw), the one thing a later view is compared with.
+ *   winning side and team, each `null` for a draw: `ClaudinhoOutcome`), the one thing a later view is compared with.
  */
 export type ClaudinhoPlay =
   | { kind: 'banner'; text: string }
   | { kind: 'goal'; word: string; team: string; minute: string; detail: string }
-  | { kind: 'fulltime'; outcome: { winner: 'home' | 'away' | null }; heading: string; result: string }
+  | { kind: 'fulltime'; outcome: ClaudinhoOutcome; heading: string; result: string }
+
+/**
+ * A full-time play's evidence: the winning side (`null` for a draw) and the winning team's identity as the finished
+ * record states it, its `id` when it carries one, else its `code` and `name` (each `null` when the record states
+ * none); `null` for a draw. A later current view keeps the play only with the same side and the same identity.
+ */
+export type ClaudinhoOutcome = {
+  winner: 'home' | 'away' | null
+  team: { id: string } | { code: string | null; name: string | null } | null
+}
 
 /**
  * The goal celebration's record: its first play (its `kind` and that kind's fields) and `queue`, the plays after it

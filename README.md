@@ -182,11 +182,11 @@ nothing. More in the plugin's
 #### For a program: `claudinho ambient --json`
 
 The statusline and the hook as one JSON object on one line, for a program that draws them itself:
-`line` (what `claudinho prompt` prints; `--columns N`, N a positive integer, fits it to N columns,
-the `+N` count kept), `context` (the hook's block, or `null`), `live` (the live matches, each marked
+`line` (the band's line, what `claudinho prompt` prints but in the CLI's language, while `prompt` itself stays
+English; `--columns N`, N a positive integer, fits it to N columns, the `+N` count kept), `context` (the hook's block, or `null`), `live` (the live matches, each marked
 `picked` and `pinned`), `current` (whether that list is a current snapshot's, the read that filled
 it was whole: an empty list means nothing is on only when it is), `next` (the fixture the countdown names), `pick`, `competition`,
-`degraded`, `source`, `updatedAt`, `staleAfter` (when its live scores stop being shown),
+`lang` (the CLI's resolved language), `words` (the plugin's moment words in it), `degraded`, `source`, `updatedAt`, `staleAfter` (when its live scores stop being shown),
 `disclaimer` (the non-affiliation sentence) and `attribution` (the provider's sentence, `Live data: ESPN`, in English;
 `null` with no snapshot, on the sign-off line (`idle`) and when nothing is known (`empty`), whether or not the
 snapshot is `degraded`). Beside `line` the view says what the line is, `idle` (the edition-complete line, however narrow it was fitted) and `empty` (nothing known), read before the fit so a program never reads a pace or a visibility off the text; and each live record carries `line`, the hook's own line for it with its flags and roster names, which a program says and never composes. For the goal moments it also carries `lineParts` (the line in parts, each shown score `strong`), `finished` (the matches seen in play and then read at full time, each for 10 minutes), and on each record `pinnedSide`, `names` and, on a live record, `lastGoal` (only when the provider's goals add up to the score). The CLI's README has the details. Like the statusline it reads only the local cache,

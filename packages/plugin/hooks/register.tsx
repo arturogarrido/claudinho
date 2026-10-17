@@ -7,6 +7,7 @@ import type {
   ClaudinhoCelebration,
   ClaudinhoContext,
   ClaudinhoGoal,
+  ClaudinhoOutcome,
   ClaudinhoPace,
   ClaudinhoPane,
   ClaudinhoPanePart,
@@ -22,27 +23,27 @@ import type {
  *
  * The CLI owns the data (its cache, its refresher, the network, the backoff) and the words: the plugin never fetches.
  * This module runs the one binary, `claudinho ambient --json` (the band's runs add `--columns <the band's columns>`;
- * the pane runs `claudinho match <id> --json`, whose read of the provider is the CLI's; every run ends with
- * `--lang <code>`, the `language` option's, `auto` resolved from the host's environment as the CLI resolves it), with
- * an argument array, bounded, and reads the fields of the one JSON object it prints, never its text: what the line IS (`idle`, `empty`,
+ * the pane runs `claudinho match <id> --json`, whose read of the provider is the CLI's; the band's runs end with
+ * `--lang <code>`, the `language` option's, `auto` resolved from the host's environment as the CLI resolves it, and the
+ * match runs and the `/claudinho` run too once the band's last current view stated a `lang`), with an argument array,
+ * bounded, and reads the fields of the one JSON object it prints, never its text: what the line IS (`idle`, `empty`,
  * the first run's `noCompetition`), whether its list is `current`, and the hook's own line on each record, said
  * verbatim. No binary, a timeout, a cut or an answer that is not the object: the band shows nothing (the command says
- * so in one fixed sentence), never a blocked turn. Every run is also what
- * triggers the CLI's refresher, so the band runs at the live pace on every line but the idle ones. Best effort
- * throughout: a toast says a score change this module observed between two current views, never every goal.
- * The band draws the CLI's `lineParts` (CLI 0.12.0), each `strong` part bold, only when their texts join to the line;
- * else the plain line.
+ * so in one fixed sentence), never a blocked turn. Every run is also what triggers the CLI's refresher, so the band
+ * runs at the live pace on every line but the idle ones. Best effort throughout: a toast says a score change this
+ * module observed between two current views, never every goal. The band draws the CLI's `lineParts` (CLI 0.12.0), each
+ * `strong` part bold, only when their texts join to the line; else the plain line.
  *
  * The toasts (`momentsFor`), per match between two current views, under `toasts`: a record that carries `names` (CLI
  * 0.12.0) says what happened, from the CLI's fields alone, in the view's `words` (read whole, else today's English
  * words for every moment together; the English ones are written here): `⚽ GOAL! <team>` for one side up by exactly 1
  * (the scorer and the goal's minute only when `lastGoal` is a new identity on that side, a proven own goal
- * `⚽ Own goal · <team>`, else the record's clock minute), `Goal for <team>` for the side opposite `pinnedSide`, `Goals` for more
- * than one, `Score updated` for a tally that fell, `Penalties` for a shootout tally that rose (in that order of
- * precedence), each with the scoreline from `names`; and full time, a record of the last current view's live list now
- * in `finished` (the goal toast first when its tally rose in the same read, then `Full time ·` the scoreline and the
- * result). A record without `names` (CLI 0.11.2) toasts today's `⚽` and its own `line`, and no full time is said for
- * it.
+ * `⚽ Own goal · <team>`, else the record's clock minute), `Goal for <team>` for the side opposite `pinnedSide`, `Goals`
+ * for more than one, `Score updated` for a tally that fell, `Penalties` for a shootout tally that rose (in that order
+ * of precedence), each with the scoreline from `names`; and full time, a record of the last current view's live list
+ * now in `finished` (the goal toast first when its tally rose in the same read, then `Full time ·` the scoreline and
+ * the result). A record without `names` (CLI 0.11.2) toasts today's `⚽` and its own `line`, and no full time is said
+ * for it.
  *
  * The band runs while a surface that draws it is attached: the terminal or the desktop app, the two that raise
  * `AbovePrompt`, asked of the session's roster at every run, first and again as the last step before the spawn (the
@@ -103,32 +104,32 @@ import type {
  * after a reload the pane stays drawn from its value and is re-read again from the next `/claudinho match`.
  *
  * The goal celebration: when a run's toasts include a goal, the band plays it above its line in at most
- * min(3, maxRows - 2) rows, then goes back to its one line. For a record without `names` (CLI 0.11.2), any goal (a regulation or
- * shootout tally that rose, none that fell): 6 frames over 3 seconds, a ball crossing a row, a "GOAL" banner growing,
- * then the toast's own line. For a record with `names`, a single-goal toast for the pinned side (with no `pinnedSide`,
- * any): 3 seconds of Anthropic's Claude mascot as three rows of text art (the theme's `claude` colour, its legs
- * alternating) beside the ball crossing the top row, `GOAL!` (the goal word the toast was built with, whole on every
- * frame; bold, the theme's `success`) and the team on the middle row, the scorer and minute (or the minute) on the
- * bottom row; two rows: the words alone; one: `GOAL! <team> <minute>`; none: it waits. `Goal for`, `Goals`, `Penalties`
- * and `Score updated` play nothing. Full time for the pinned side's win or draw: the mascot beside
- * `Full time · <result>` (in the words it was built with) for 5 seconds, queued behind the goal of the same read (the record's
- * `queue`, played as one stretch). Its record (`celebration`: the first play, its queue, when the run decided it, its
- * competition, its match's id and that match's tallies it was decided on) is written by the run and the clear alone: in
- * a run, any answer naming another competition, or none, current or not (a view, or the first-run object), nulls it,
- * then its match's score changing from the record's own in any later current view, live or finished (a correction, or a
- * later goal the plugin did not see as one; by the record's id, whatever the `toasts` filter) nulls it, both plays with
- * it; a full-time play (its own, or queued) is kept only while each later current view lists its match in `finished`
- * with the same result, its evidence (`outcome`), never its words (listed live again, listed nowhere, or another result
- * drops that play: the record when it is its own, the queue when it follows a goal); then the run's last match with a
- * play replaces it under the band's clear generation; the existing clear nulls it. Every null also stops the redraws. A
- * record another module load wrote is never played (its `at` is not this load's), so a reload drops a waiting or
- * playing celebration (the toast already said it); it stays in state until a goal or a clear replaces it. A played or
- * expired record stays until the next goal replaces it: the draw ignores it. The draw only reads it, and computes the
- * play and its frame from module values (how much of its plays has been on screen), redrawn by a 500 ms ticker that
- * runs only while there is something to play and no hold: a main-loop turn (`turn.start` to a `turn.complete` with no
- * `agentId`) or the drawn `isWorking` holds it, and it plays when the hold ends within 60 seconds of the goal. A paused
- * celebration never resumes after 60 seconds; a stretch on screen finishes its plays. `celebrate: off` plays
- * nothing.
+ * min(3, maxRows - 2) rows, then goes back to its one line. For a record without `names` (CLI 0.11.2), any goal (a
+ * regulation or shootout tally that rose, none that fell): 6 frames over 3 seconds, a ball crossing a row, a "GOAL"
+ * banner growing, then the toast's own line. For a record with `names`, a single-goal toast for the pinned side (with
+ * no `pinnedSide`, any): 3 seconds of Anthropic's Claude mascot as three rows of text art (the theme's `claude` colour,
+ * its legs alternating) beside the ball crossing the top row, `GOAL!` (the goal word the toast was built with, whole on
+ * every frame; bold, the theme's `success`) and the team on the middle row, the scorer and minute (or the minute) on
+ * the bottom row; two rows: the words alone; one: `GOAL! <team> <minute>`; none: it waits. `Goal for`, `Goals`,
+ * `Penalties` and `Score updated` play nothing. Full time for the pinned side's win or draw: the mascot beside
+ * `Full time · <result>` (in the words it was built with) for 5 seconds, queued behind the goal of the same read (the
+ * record's `queue`, played as one stretch). Its record (`celebration`: the first play, its queue, when the run decided
+ * it, its competition, its match's id and that match's tallies it was decided on) is written by the run and the clear
+ * alone: in a run, any answer naming another competition, or none, current or not (a view, or the first-run object),
+ * nulls it, then its match's score changing from the record's own in any later current view, live or finished (a
+ * correction, or a later goal the plugin did not see as one; by the record's id, whatever the `toasts` filter) nulls
+ * it, both plays with it; a full-time play (its own, or queued) is kept only while each later current view lists its
+ * match in `finished` with the same result, its evidence (`outcome`), never its words (listed live again, listed
+ * nowhere, or another result drops that play: the record when it is its own, the queue when it follows a goal); then
+ * the run's last match with a play replaces it under the band's clear generation; the existing clear nulls it. Every
+ * null also stops the redraws. A record another module load wrote is never played (its `at` is not this load's), so a
+ * reload drops a waiting or playing celebration (the toast already said it); it stays in state until a goal or a clear
+ * replaces it. A played or expired record stays until the next goal replaces it: the draw ignores it. The draw only
+ * reads it, and computes the play and its frame from module values (how much of its plays has been on screen), redrawn
+ * by a 500 ms ticker that runs only while there is something to play and no hold: a main-loop turn (`turn.start` to a
+ * `turn.complete` with no `agentId`) or the drawn `isWorking` holds it, and it plays when the hold ends within 60
+ * seconds of the goal. A paused celebration never resumes after 60 seconds; a stretch on screen finishes its plays.
+ * `celebrate: off` plays nothing.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -240,6 +241,11 @@ const TEAM_WORDS: readonly string[] = ['goalFor', 'win']
 const TEAM_SLOT = '{team}'
 /** A word's length, at most (UTF-16 units). */
 const WORD_MAX = 40
+/**
+ * What no word may hold: a control (newline, carriage return, escape), a format character (zero-width, joiners,
+ * direction marks), a line or paragraph separator, a private-use or an unassigned code point.
+ */
+const REFUSED_IN_WORD = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cn}]/u
 const ENGLISH_WORDS: Words = {
   goal: 'GOAL!',
   ownGoal: 'Own goal',
@@ -279,8 +285,14 @@ let nvmOnce: Promise<string[]> | null = null
 let nvmAnswer: string[] | null = null
 /** The `language` option as set (`auto` for anything but the four codes), at load. */
 let languageOption: Lang | 'auto' = 'auto'
-/** The language every run is handed, kept for the rest of the module load once both reads answered (or not needed). */
+/** The language a run is handed, kept for the rest of the module load once both reads answered (or not needed). */
 let langKept: Lang | null = null
+/**
+ * Whether the band's last CURRENT view stated a `lang` (a CLI that localizes the band and the moments, 0.12.0): only
+ * then do the match runs and the `/claudinho` run carry `--lang`, so a CLI that does not (0.11.2) keeps its pane and
+ * its reply English like its toasts. False before the first current view; the band's own run carries `--lang` always.
+ */
+let cliLocalizes = false
 /** Whether the goal celebration plays (`celebrate` is anything but `off`), set at load. */
 let celebrateOn = true
 /** Whether a prompt carries the live score (`context` is anything but `off`), set at load. */
@@ -538,8 +550,8 @@ async function runEnv($: EngineInterface): Promise<{ PATH: string } | undefined>
 const isLang = (v: unknown): v is Lang => typeof v === 'string' && LANGS.includes(v as Lang)
 
 /**
- * The language every CLI run is handed (`--lang <code>`): the option when it is one of the four codes; under `auto`,
- * the CLI's own rule (`pickLang`) on the host's environment: `CLAUDINHO_LANG`, then `LANG`'s language part
+ * The language a CLI run is handed (`--lang <code>`; see `cliLocalizes` for which runs): the option when it is one
+ * of the four codes; under `auto`, the CLI's own rule (`pickLang`) on the host's environment: `CLAUDINHO_LANG`, then `LANG`'s language part
  * (`es_MX.UTF-8` gives `es`), each only when it is one of the four (case-sensitive; an empty value skipped), else
  * `en`. The host's environment is read here because the spawn's is the PATH alone. Kept for the module load once both
  * reads answered; a read that rejected is unset for this run and asked again on the next. Never rejects.
@@ -565,8 +577,11 @@ async function runLang($: EngineInterface): Promise<Lang> {
   return lang
 }
 
-/** The argument every CLI run ends with: the language, one of the four codes. */
+/** The argument a CLI run ends with: the language, one of the four codes. */
 const langArgs = (lang: Lang): string[] => ['--lang', lang]
+
+/** The argument the match runs and the `/claudinho` run end with: the language once the CLI says it localizes, else none. */
+const replyLangArgs = async ($: EngineInterface): Promise<string[]> => (cliLocalizes ? langArgs(await runLang($)) : [])
 
 /**
  * What `claudinho ambient --json` prints, as far as this module reads it: a selected competition's VIEW (an object
@@ -594,6 +609,8 @@ type View = {
   finished?: unknown
   /** CLI 0.12.0: the moment words in the view's language (read whole, else the English ones). */
   words?: unknown
+  /** CLI 0.12.0: the CLI's resolved language; a current view stating it says the CLI localizes. */
+  lang?: unknown
 }
 
 type Item = {
@@ -779,9 +796,10 @@ const teamSlots = (w: string): number => w.split(TEAM_SLOT).length - 1
 
 /**
  * The view's moment words (CLI 0.12.0), read whole: an object holding the ten, each a string of at most 40 characters
- * with something besides spaces, `goalFor` and `win` holding `{team}` exactly once and the others none. Anything else
- * (no `words`, an older CLI's view, one field missing, of another type, empty or spaces alone, too long, or a `{team}`
- * out of place): today's English words, for every moment together.
+ * with something besides spaces and none of the refused classes (`REFUSED_IN_WORD`), `goalFor` and `win` holding
+ * `{team}` exactly once and the others none. Anything else (no `words`, an older CLI's view, one field missing, of
+ * another type, empty or spaces alone, too long, holding a control, a format character, a separator, a private-use or
+ * an unassigned code point, or a `{team}` out of place): today's English words, for every moment together.
  */
 function wordsOf(view: View): Words {
   const raw = view.words
@@ -789,7 +807,7 @@ function wordsOf(view: View): Words {
   const out: Partial<Words> = {}
   for (const key of WORD_KEYS) {
     const w = raw[key]
-    if (typeof w !== 'string' || w.trim() === '' || w.length > WORD_MAX) return ENGLISH_WORDS
+    if (typeof w !== 'string' || w.trim() === '' || w.length > WORD_MAX || REFUSED_IN_WORD.test(w)) return ENGLISH_WORDS
     if (teamSlots(w) !== (TEAM_WORDS.includes(key) ? 1 : 0)) return ENGLISH_WORDS
     out[key] = w
   }
@@ -877,11 +895,28 @@ function resultOf(f: Item): { winner: Side | null } | null {
  */
 const finishedPinned = (f: Item): boolean => f.pinned === true || pinnedSideOf(f) !== null
 
+/** The full-time evidence's team identity: a side's `id` when it carries one, else its code and name. */
+type TeamIdentity = ClaudinhoOutcome['team']
+
+/** The identity of a record's side as the record states it: its `id` when it carries one, else its code and name. */
+function identityOf(t: unknown): NonNullable<TeamIdentity> {
+  if (isObject(t) && typeof t.id === 'string' && t.id !== '') return { id: t.id }
+  return { code: codeOf(t), name: isObject(t) && typeof t.name === 'string' ? t.name : null }
+}
+
+/** Whether two identities are one team: both a draw's none, the same id, or (neither with an id) the same code and name. */
+function sameIdentity(a: unknown, b: TeamIdentity): boolean {
+  if (a === null || b === null) return a === b
+  if (!isObject(a)) return false
+  if ('id' in b) return a.id === b.id
+  return a.id === undefined && a.code === b.code && a.name === b.name
+}
+
 /**
  * The full-time moment of a finished record that carries `names`, in the view's words (`w`): `Full time ·` the
  * scoreline, then the result (`<team> win`, `Draw`) when it can be established (`resultOf`); the play for the pinned
- * side's win or draw, which keeps the result as evidence (`outcome`, the winning side or a draw) apart from the words
- * it draws (`heading`, `result`).
+ * side's win or draw, which keeps the result as evidence (`outcome`: the winning side, and the winning team's identity
+ * as the record states it, none for a draw) apart from the words it draws (`heading`, `result`).
  */
 function fullTimeMoment(f: Item, names: Names, w: Words): Moment {
   const line = scoreline(names, tally(f.score), tally(f.shootout))
@@ -892,7 +927,14 @@ function fullTimeMoment(f: Item, names: Names, w: Words): Moment {
   const plays = pinned !== null && (outcome.winner === null || outcome.winner === pinned)
   return {
     text: `${w.fullTime} · ${line} · ${said}`,
-    play: plays ? { kind: 'fulltime', outcome: { winner: outcome.winner }, heading: w.fullTime, result: said } : null,
+    play: plays
+      ? {
+          kind: 'fulltime',
+          outcome: { winner: outcome.winner, team: outcome.winner === null ? null : identityOf(f[outcome.winner]) },
+          heading: w.fullTime,
+          result: said,
+        }
+      : null,
   }
 }
 
@@ -988,11 +1030,12 @@ function differsFromRecord(view: View, rec: NonNullable<ClaudinhoCelebration>): 
 
 /**
  * Whether a record's full-time play (its own, or queued) still stands in this CURRENT view: the view lists the match
- * in `finished` with names, with the same result the play was decided on (its evidence, `outcome`: the winning side or
- * a draw, compared alone, never the words: a later view in another language, or with the English fallback, says the
- * same result). A view that lists it live again (the CLI then lists no finished record for it), or nowhere, or
- * finished with another result or none (a `winnerCode` changed, a shootout appearing), does not. A record with no
- * full-time play: true.
+ * in `finished` with names, with the same result the play was decided on (its evidence, `outcome`: the winning side and
+ * the winning team's identity, or a draw, compared alone, never the words: a later view in another language, or with
+ * the English fallback, says the same result). A view that lists it live again (the CLI then lists no finished record
+ * for it), or nowhere, or finished with another result or none (a `winnerCode` changed, a shootout appearing), or with
+ * another team on the winning side at the same score (another id; with no id, another code or name), does not. A
+ * record with no full-time play: true.
  */
 function fullTimeStands(view: View, rec: NonNullable<ClaudinhoCelebration>): boolean {
   const fulltime = playsOf(rec).find((p): p is Extract<ClaudinhoPlay, { kind: 'fulltime' }> => p.kind === 'fulltime')
@@ -1001,7 +1044,9 @@ function fullTimeStands(view: View, rec: NonNullable<ClaudinhoCelebration>): boo
   if (finished === undefined || namesOf(finished) === null) return false
   const outcome = resultOf(finished)
   // A record another module load wrote (plugin 0.5.0's carried no `outcome`) is never played; it stands for nothing.
-  return outcome !== null && isObject(fulltime.outcome) && outcome.winner === fulltime.outcome.winner
+  if (outcome === null || !isObject(fulltime.outcome) || outcome.winner !== fulltime.outcome.winner) return false
+  const team = outcome.winner === null ? null : identityOf(finished[outcome.winner])
+  return sameIdentity(fulltime.outcome.team, team)
 }
 
 /**
@@ -1315,10 +1360,10 @@ async function spawnMatch(
   b: Binding,
   env: { PATH: string } | undefined,
 ): Promise<RunResult | undefined> {
-  const lang = await runLang($)
+  const lang = await replyLangArgs($)
   try {
     const competition = b.pinned ? ['--competition', b.slug] : []
-    return await $.process.run(['claudinho', 'match', b.id, '--json', ...competition, ...langArgs(lang)], {
+    return await $.process.run(['claudinho', 'match', b.id, '--json', ...competition, ...lang], {
       timeoutMs: MATCH_TIMEOUT_MS,
       stdin: '',
       ...(env ? { env } : {}),
@@ -1594,7 +1639,7 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
   const now = await $.clock.now()
   const last = await read($, pace)
   if (!force && last.idle && now - last.ranAt < IDLE_MS) return
-  // (3) The PATH, bounded, and the language every run is handed.
+  // (3) The PATH, bounded, and the language the band's run is always handed.
   const env = await runEnv($)
   const lang = await runLang($)
   // (4) The roster again, the last await before the spawn: the surface may have left while the PATH was looked up.
@@ -1643,6 +1688,8 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
 
   // The two shapes that are no view are no current view either: each clears the context and keeps the baseline.
   if (isView && view.current === true) {
+    // Whether this CLI localizes (it states its `lang`): what the match and `/claudinho` runs are handed from now on.
+    cliLocalizes = isLang(view.lang)
     const prev = await read($, baseline)
     const moments = momentsFor(view, prev, option)
     for (const m of moments) for (const text of m.texts) $.ui.toast(text)
@@ -1954,10 +2001,10 @@ export const register: Register = (on, options) => {
     // typed after it is read for one word alone: `match` opens the pane; anything else is ignored. Neither call
     // rejects out of here: `runEnv` never rejects, and the spawn's rejection is a failed run.
     const env = await runEnv($)
-    const lang = await runLang($)
+    const lang = await replyLangArgs($)
     let result: RunResult | undefined
     try {
-      result = await $.process.run(['claudinho', 'ambient', '--json', ...langArgs(lang)], {
+      result = await $.process.run(['claudinho', 'ambient', '--json', ...lang], {
         timeoutMs: RUN_TIMEOUT_MS,
         stdin: '',
         ...(env ? { env } : {}),
