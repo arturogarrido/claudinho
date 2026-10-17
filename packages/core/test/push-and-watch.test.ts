@@ -258,6 +258,26 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     expect(ghCalls(sb).some((c) => /^gh run /.test(c))).toBe(false);
   });
 
+  it('`main` as the branch is refused before anything: main takes pull requests only (its ruleset), never a push', () => {
+    const sb = sandbox();
+    const r = runBranch(sb, 'main', []);
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/main/);
+    expect(r.out).toMatch(/pull request/i);
+    expect(pushed(sb)).toBe(false);
+    expect(ghCalls(sb)).toEqual([]);
+  });
+
+  it('a branch whose name only starts with main (main-fix) is not refused for its name', () => {
+    // No such local branch here, so the run ends at that refusal, never at the name's.
+    const sb = sandbox();
+    seed(sb, { 'no-branch': '' });
+    const r = runBranch(sb, 'main-fix', []);
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/no local branch/i);
+    expect(r.out).not.toMatch(/pull request/i);
+  });
+
   it('a name that is no local branch (show-ref fails) is refused before any push', () => {
     const sb = sandbox();
     seed(sb, { 'no-branch': '' });
