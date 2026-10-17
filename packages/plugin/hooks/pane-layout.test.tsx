@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
+import { WIDTH_CORPUS } from './width-corpus'
 import { NOW, drawnRows, view, world } from './world'
 
 /**
@@ -96,9 +97,25 @@ const CARD = ev("  45'    🟨 Yellow card  BET")
 
 // ---- widths and the layout model ----
 
-/** A code point's display columns: the markers (⚽ and the U+1F300 block on) two, joiners and selectors none. */
-const cpWidth = (cp: number) => (cp === 0xfe0f || cp === 0x200d || (cp >= 0x300 && cp <= 0x36f) ? 0 : cp === 0x26bd || cp >= 0x1f300 ? 2 : 1)
-const width = (s: string) => [...s].reduce((n, c) => n + cpWidth(c.codePointAt(0) as number), 0)
+/**
+ * The model's display width: core's `displayWidth` (packages/core/src/text.ts), copied for the model's own use and
+ * checked against the shared corpus below (grapheme clusters; an emoji cluster, both flag encodings and a keycap 2; an
+ * East Asian wide or fullwidth base 2; a combining mark, a format or a control base 0; else 1).
+ */
+const SEGMENTER = new Intl.Segmenter()
+const WIDE_CLUSTER = /^(?:\p{Regional_Indicator}|\p{Extended_Pictographic})/u
+const WIDE_BASE = /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏ꥠ-꥿가-힣豈-﫿︐-︙︰-﹯＀-｠￠-￦\u{20000}-\u{2FFFD}\u{30000}-\u{3FFFD}]/u
+const KEYCAP = /⃣/u
+const ZERO_WIDTH_BASE = /[\p{Mn}\p{Me}\p{Cf}\p{Cc}]/u
+const clusterWidth = (segment: string) => {
+  if (WIDE_CLUSTER.test(segment) || KEYCAP.test(segment)) return 2
+  const first = segment.codePointAt(0)
+  if (first === undefined) return 0
+  const base = String.fromCodePoint(first)
+  if (ZERO_WIDTH_BASE.test(base)) return 0
+  return WIDE_BASE.test(base) ? 2 : 1
+}
+const width = (s: string) => [...SEGMENTER.segment(s)].reduce((n, { segment }) => n + clusterWidth(segment), 0)
 const leading = (s: string) => s.length - s.trimStart().length
 
 /** Greedy word wrap at `w` columns: a break drops the spaces it falls on; a word wider than `w` is cut. */
@@ -434,6 +451,131 @@ describe('R9: no usable width, nothing is split', () => {
     test(`${label}: today's rows`, async ($, on) => {
       const pane = await open($, on, answer(EN), 'terminal', w)
       expect(await trimmedRows(pane)).toEqual([...joined(EN), '', A, D])
+    })
+  }
+})
+
+// ---- review round 1 of #184 ----
+
+/** The Brentford goal's columns: 30 wide, so a player of width k makes a named row of 30 + k. */
+const GOAL_COLUMNS = "  44'    ⚽ Goal         BRE  "
+const TITLE = EN_HEAD[0] as Row
+const BLANK: Row = { role: 'blank', parts: [] }
+/** The text of every drawn row, its words in order (no word lost, whatever the layout). */
+const words = (rows: string[]) => rows.join(' ').split(/\s+/).filter((x) => x !== '')
+
+describe('F1/F2: the pane measures as core does (the shared width corpus)', () => {
+  test("the layout model's width is core's on every corpus string", async () => {
+    for (const c of WIDTH_CORPUS) expect({ what: c.what, width: width(c.text) }).toEqual({ what: c.what, width: c.width })
+  })
+  for (const c of WIDTH_CORPUS) {
+    test(`${c.what}: a named row ${30 + c.width} wide in a pane ${30 + c.width} wide is one row`, async ($, on) => {
+      const row = ev(GOAL_COLUMNS, c.text)
+      const pane = await open($, on, answer([TITLE, BLANK, row]), 'terminal', 30 + c.width)
+      expect(await trimmedRows(pane)).toEqual([...joined([TITLE, BLANK, row]), '', A, D])
+    })
+    test(`${c.what}: the same row in a pane ${29 + c.width} wide is split, the player its own row`, async ($, on) => {
+      const row = ev(GOAL_COLUMNS, c.text)
+      const rows = await trimmedRows(await open($, on, answer([TITLE, BLANK, row]), 'terminal', 29 + c.width))
+      expect(rows).toContain("  44'    ⚽ Goal         BRE")
+      expect(rows.some((r) => r.trim() === c.text)).toBe(true)
+    })
+  }
+
+  /** A nation's named row with England's tag-sequence flag in its label column: core measures it 34 wide. */
+  const ENG_ROW = ev("  44'  ⚽ Goal  \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F} ENG  ", 'Harry Kane')
+  test('a flag-carrying named row measures 34 by core', async () => {
+    expect(width(joined([ENG_ROW])[0] as string)).toBe(34)
+  })
+  test('a flag-carrying named row in a pane exactly as wide (34): one row', async ($, on) => {
+    const pane = await open($, on, answer([TITLE, BLANK, ENG_ROW]), 'terminal', 34)
+    expect(await trimmedRows(pane)).toEqual([...joined([TITLE, BLANK, ENG_ROW]), '', A, D])
+  })
+  test('a flag-carrying named row in a pane one column narrower (33): split, the player under the label at 10', async ($, on) => {
+    const lines = await paint(await open($, on, answer([TITLE, BLANK, ENG_ROW]), 'terminal', 33), 33)
+    expect(holdsRun(lines, ["  44'  ⚽ Goal  \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F} ENG", `${' '.repeat(10)}Harry Kane`])).toBe(true)
+  })
+
+  /** A CJK player (katakana, 14 columns): the named row is 44 wide. */
+  const CJK_ROW = ev(GOAL_COLUMNS, 'ソン・フンミン')
+  test('a CJK player at 38: the row is split, the player under the label at 12', async ($, on) => {
+    const lines = await paint(await open($, on, answer([TITLE, BLANK, CJK_ROW]), 'terminal', NARROW), NARROW)
+    expect(holdsRun(lines, ["  44'    ⚽ Goal         BRE", `${' '.repeat(12)}ソン・フンミン`])).toBe(true)
+  })
+  test('a CJK player at 38: the whole pane paints as designed', async ($, on) => {
+    const rows = [TITLE, BLANK, CJK_ROW]
+    expect(await paint(await open($, on, answer(rows), 'terminal', NARROW), NARROW)).toEqual(designed(rows, NARROW))
+  })
+
+  /** A CJK venue: core measures the row 47 wide. */
+  const CJK_VENUE: Row = { role: 'meta', parts: [{ text: '  ' }, { text: 'League · 埼玉スタジアム2002, さいたま市, 日本', style: 'dim' }] }
+  test('a CJK venue at 38: its continuation keeps the 2-column indent', async ($, on) => {
+    expect(width(joined([CJK_VENUE])[0] as string)).toBe(47)
+    const lines = await paint(await open($, on, answer([TITLE, CJK_VENUE]), 'terminal', NARROW), NARROW)
+    expect(holdsRun(lines, ['  League · 埼玉スタジアム2002,', '  さいたま市, 日本'])).toBe(true)
+  })
+  test('a CJK venue at 38: the whole pane paints as designed', async ($, on) => {
+    const rows = [TITLE, CJK_VENUE]
+    expect(await paint(await open($, on, answer(rows), 'terminal', NARROW), NARROW)).toEqual(designed(rows, NARROW))
+  })
+})
+
+describe('F3: a named event row needs all three: the role event, more than one part, the last part strong', () => {
+  /** Beside a named row too wide for 38, so the split is on whatever the case row is. */
+  const KEANE = EN_EVENTS[1] as Row
+  const cases: Array<[string, Row]> = [
+    ['a status row whose last part is strong (two parts)', { role: 'status', parts: [{ text: "  45+8'  🟥 Red card     BRE  " }, { text: 'Yehor Yarmoliuk', style: 'strong' }] }],
+    ['an event row of one strong part', { role: 'event', parts: [{ text: "  45+8'  🟥 Red card     BRE  Yehor Yarmoliuk", style: 'strong' }] }],
+    ['an event row of two parts whose last is not strong', { role: 'event', parts: [{ text: "  45+8'  🟥 Red card     BRE  " }, { text: 'Yehor Yarmoliuk' }] }],
+  ]
+  for (const [label, row] of cases) {
+    test(`${label}: not split at 38; it continues under its indent as any long row`, async ($, on) => {
+      const rows = [TITLE, BLANK, KEANE, row]
+      const pane = await open($, on, answer(rows), 'terminal', NARROW)
+      expect(await paint(pane, NARROW)).toEqual(designed(rows, NARROW))
+      expect((await trimmedRows(pane)).some((r) => r.trim() === 'Yehor Yarmoliuk')).toBe(false)
+    })
+  }
+})
+
+describe("F4: an event row is one whose role is exactly 'event'", () => {
+  for (const role of ['EVENT', 'event ', ' event', 'Event']) {
+    test(`a role ${JSON.stringify(role)} with a strong player last: not a named row, not split at 38`, async ($, on) => {
+      const KEANE = EN_EVENTS[1] as Row
+      const row: Row = { role, parts: [{ text: "  45+8'  🟥 Red card     BRE  " }, { text: 'Yehor Yarmoliuk', style: 'strong' }] }
+      const rows = [TITLE, BLANK, KEANE, row]
+      const pane = await open($, on, answer(rows), 'terminal', NARROW)
+      expect(await paint(pane, NARROW)).toEqual(designed(rows, NARROW))
+      expect((await trimmedRows(pane)).some((r) => r.trim() === 'Yehor Yarmoliuk')).toBe(false)
+    })
+    test(`a role ${JSON.stringify(role)} alone too wide for 38 does not turn the split on for the event rows`, async ($, on) => {
+      const row: Row = { role, parts: [{ text: "  45+8'  🟥 Red card     BRE  " }, { text: 'Yehor Yarmoliuk', style: 'strong' }] }
+      const rows = [TITLE, BLANK, RODRI, row]
+      const pane = await open($, on, answer(rows), 'terminal', NARROW)
+      expect(await trimmedRows(pane)).toContain(joined([RODRI])[0] as string)
+      expect(await paint(pane, NARROW)).toEqual(designed(rows, NARROW))
+    })
+  }
+})
+
+describe('F5: a pane at or below the label column', () => {
+  /** A note row starting with 10 spaces, wider than either width (a row indent of w or more). */
+  const DEEP: Row = { role: 'note', parts: [{ text: '          Not found between 2026-10-12 and 2026-10-27.' }] }
+  for (const w of [12, 8]) {
+    test(`bodyColumns ${w}: no Box indents by ${w} columns or more`, async ($, on) => {
+      const pane = await open($, on, answer([...EN, DEEP]), 'terminal', w)
+      for (const b of await pane.findAll({ type: 'Box' })) {
+        const pl = b.props.paddingLeft
+        if (pl !== undefined) expect(typeof pl === 'number' && pl < w).toBe(true)
+        const ml = b.props.marginLeft
+        if (ml !== undefined) expect(typeof ml === 'number' && ml < w).toBe(true)
+      }
+    })
+    test(`bodyColumns ${w}: every row is still drawn, no word lost, the players their own rows`, async ($, on) => {
+      const rows = [...EN, DEEP]
+      const drawn = await trimmedRows(await open($, on, answer(rows), 'terminal', w))
+      expect(words(drawn)).toEqual(words([...joined(rows), A, D]))
+      for (const r of EN_EVENTS) expect(drawn.some((x) => x.trim() === r.parts.at(-1)?.text)).toBe(true)
     })
   }
 })
