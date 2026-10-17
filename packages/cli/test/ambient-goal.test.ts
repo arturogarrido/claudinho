@@ -405,7 +405,7 @@ describe('ambient --json: lineParts', () => {
   });
 });
 
-describe('the statusline, the hook and prompt read none of it', () => {
+describe('the hook and the live line read none of it (the countdown reads only the record of play\'s ids)', () => {
   it('the prompt line, the hook block and `claudinho prompt` and `claudinho hook` are byte-identical with and without play and lastGoal', () => {
     const plain = [live('1', ARS, CHE, [2, 1]), live('2', BOU, BRE, [0, 0])];
     const withGoal = [
