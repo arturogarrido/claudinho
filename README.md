@@ -133,7 +133,7 @@ toast says what happened (`⚽ GOAL! Liverpool · Ronald Araújo 22' · LASK Lin
 Claude mascot celebrates in the band for a few seconds. `/claudinho match` opens a pane with the goals and cards.
 
 <p align="center">
-  <img src=".github/assets/plugin.gif" alt="CAPTURE: Claude Code with the plugin on a real match: the score above the prompt, a goal's toast, the mascot and GOAL!, then the quiet line again" width="800">
+  <img src=".github/assets/plugin.gif" alt="Claude Code with the plugin during Real Betis v Barcelona on Oct 17, 2026: beside a coding answer, a toast and the mascot say GOAL! Barcelona, Rodri 41', the band shows the score in bold, and the match pane lists the goals and cards" width="800">
 </p>
 <p align="center">
   <img src=".github/assets/pane.png" alt="The match pane as a side panel in the Claude desktop app: LASK Linz 0–4 Liverpool, the four goals and their scorers" width="800">
