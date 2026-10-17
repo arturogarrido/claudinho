@@ -187,7 +187,7 @@ function isDue(m: Match, nowMs: number, played: ReadonlySet<string>): boolean {
  * request's clock (and, by core's `isUpcoming`, not postponed or cancelled). A
  * kickoff at or before the clock is a candidate only as a due one
  * ({@link isDue}), with every due check: exactly at kickoff, a record LIVE, HT
- * or FT, or one the record of play saw, is not "now".
+ * or FT, or one the record of play holds, is not "now".
  */
 function isAhead(m: Match, nowMs: number): boolean {
   return Date.parse(m.kickoff) > nowMs && isUpcoming(m, new Date(nowMs));
@@ -617,7 +617,7 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}, 
   // (resolved knockout pairings show; unresolved 🏳️ slots are skipped, so this
   // fails closed to "⚽ —", never "🏳️ vs 🏳️"), the picked team's next first.
   // A DUE fixture (a kickoff passed by at most `KICKOFF_DUE_MS` that the feed
-  // still lists as SCHEDULED and the record of play never saw in play) is a
+  // still lists as SCHEDULED and the record of play does not hold) is a
   // candidate beside the upcoming ones: the feed lags the whistle, and the line
   // must not jump to next week's match meanwhile. A kickoff at or before the
   // request's clock reads "<home> vs <away> now" (core's `countdown` decides).
@@ -814,7 +814,7 @@ export function countdownFixture(
   nowMs: number,
   schedule: Match[] | undefined,
   pick: AmbientPick,
-  /** The ids the snapshot's record of play saw in play (`play.ts`'s `playRecordIds`, read once per render). */
+  /** The ids the snapshot's record of play holds now: seen in play, or finished in its last 10 minutes (`play.ts`'s `playRecordIds`, read once per render). */
   played: ReadonlySet<string>,
 ): Match | undefined {
   return pickAmbientMatch(countdownCandidates(nowMs, schedule, played), pick)[0];
