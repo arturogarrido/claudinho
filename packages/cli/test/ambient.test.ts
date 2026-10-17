@@ -386,7 +386,8 @@ describe('claudinho ambient --json', () => {
     cmdAmbient(ctx());
     const v = view();
     expect(v.line).toBe('⚽ BOU vs BRE live · syncing…');
-    expect(v).toMatchObject({ next: null, empty: false, idle: false, attribution: 'Live data: ESPN' });
+    // `next` is the fixture the line names: kicked off 30 minutes ago, still SCHEDULED, so still due.
+    expect(v).toMatchObject({ next: { id: '9' }, empty: false, idle: false, attribution: 'Live data: ESPN' });
     expect((v.live as { total: number }).total).toBe(0);
   });
 

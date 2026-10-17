@@ -101,8 +101,9 @@ export function fixturesByGroup(group: string, fixtures: Match[] = SCHEDULE): Ma
 /**
  * Eligible to be "the next match": the kickoff is still ahead AND the match is
  * still going to be played. ONE predicate for every selector (`next`, the
- * statusline countdown, the knockout-fixture cache, the market fixture, the
- * refresher cadence) — a cancelled or postponed fixture keeps its kickoff, so
+ * knockout-fixture cache, the market fixture, the refresher cadence; the
+ * statusline countdown asks it for a kickoff strictly ahead and also names a
+ * DUE fixture, the CLI's `isDue`) — a cancelled or postponed fixture keeps its kickoff, so
  * a time-only check advertised it as the next game (audit A07). Finished is
  * deliberately NOT a clause: under a real clock a finished match never has a
  * future kickoff, and excluding it only changed seeded-clock replays of an

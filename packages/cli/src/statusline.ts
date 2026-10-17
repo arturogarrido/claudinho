@@ -12,6 +12,7 @@ import {
   type AmbientLinePart,
   byKickoff,
   countdown,
+  COUNTDOWN_NOW,
   fixturesInLiveWindow,
   hasLiveWindow,
   isLive,
@@ -33,6 +34,7 @@ import {
   type TeamKind,
 } from '@claudinho/core';
 import { ageMs, type CacheState } from './cache';
+import { playRecordIds } from './play';
 import { scheduleGateOpen, scheduleView } from './scheduleSlice';
 
 // The live-window constant lives in core (shared with the market-relevance
@@ -158,14 +160,50 @@ function isMatchShaped(m: unknown): m is Match {
 }
 
 /**
- * The upcoming RESOLVED fixtures, soonest first. Skips unresolved knockout
- * placeholders so the countdown fails closed to "⚽ —" rather than leaking
- * "🏳️ vs 🏳️" once the group stage ends and every static fixture is a placeholder.
+ * How long after its kickoff a fixture the feed still lists as SCHEDULED stays
+ * the countdown's (inclusive): a kickoff the feed has not marked live yet. The
+ * provider's status lags the whistle by minutes (measured Oct 17, 2026: about
+ * five), and in that gap the countdown must not jump to the next match. Past
+ * this, a fixture still SCHEDULED is not due: the line moves on.
  */
-function upcomingResolved(now: number, fixtures: Match[] = allFixtures()): Match[] {
+export const KICKOFF_DUE_MS = 30 * 60_000;
+
+/**
+ * A DUE fixture: its kickoff passed by at most {@link KICKOFF_DUE_MS} (kickoff
+ * <= now <= kickoff + the bound), its status exactly SCHEDULED, and not one the
+ * snapshot's record of play holds (`played`: seen in play, or finished in the
+ * record's last 10 minutes, whatever the schedule's stale status says; an id
+ * the record no longer holds can be due again). An unreadable kickoff is never
+ * due.
+ */
+function isDue(m: Match, nowMs: number, played: ReadonlySet<string>): boolean {
+  if (m.status !== 'SCHEDULED' || played.has(m.id)) return false;
+  const k = Date.parse(m.kickoff);
+  return k <= nowMs && nowMs <= k + KICKOFF_DUE_MS;
+}
+
+/**
+ * An UPCOMING fixture, as the countdown has it: its kickoff strictly after the
+ * request's clock (and, by core's `isUpcoming`, not postponed or cancelled). A
+ * kickoff at or before the clock is a candidate only as a due one
+ * ({@link isDue}), with every due check: exactly at kickoff, a record LIVE, HT
+ * or FT, or one the record of play holds, is not "now".
+ */
+function isAhead(m: Match, nowMs: number): boolean {
+  return Date.parse(m.kickoff) > nowMs && isUpcoming(m, new Date(nowMs));
+}
+
+/**
+ * The countdown's RESOLVED candidates, earliest kickoff first: the upcoming
+ * fixtures ({@link isAhead}) and the due ones ({@link isDue}) together. Skips
+ * unresolved knockout placeholders so the countdown fails closed to "⚽ —"
+ * rather than leaking "🏳️ vs 🏳️" once the group stage ends and every static
+ * fixture is a placeholder.
+ */
+function countdownCandidates(nowMs: number, fixtures: Match[] = allFixtures(), played: ReadonlySet<string>): Match[] {
   return [...fixtures]
     .sort(byKickoff)
-    .filter((m) => isUpcoming(m, new Date(now)) && isResolvedFixture(m));
+    .filter((m) => isResolvedFixture(m) && (isAhead(m, nowMs) || isDue(m, nowMs, played)));
 }
 
 export interface PromptOpts {
@@ -492,8 +530,15 @@ export function renderPrompt(state: CacheState | undefined, opts: PromptOpts = {
 export function promptLine(
   state: CacheState | undefined,
   opts: PromptOpts = {},
+  /**
+   * The ids the snapshot's record of play holds, read ONCE by a caller that
+   * renders more than the line (`ambientView`, which hands the same set to
+   * `countdownFixture`). Absent: the line reads them itself, and only at its
+   * countdown (a live or syncing line reads none).
+   */
+  played?: ReadonlySet<string>,
 ): { line: string; unfitted: string; parts: AmbientLinePart[] } {
-  const rendered = renderPromptLine(state, opts);
+  const rendered = renderPromptLine(state, opts, played);
   const unfitted = rendered.text;
   const line = truncateVisible(unfitted, lineColumns(opts));
   // The band's parts, from the score ranges the fitter placed, through the
@@ -501,7 +546,7 @@ export function promptLine(
   return { line, unfitted, parts: partsOf(line, keptRanges(unfitted, line, rendered.strong)) };
 }
 
-function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}): Rendered {
+function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}, played?: ReadonlySet<string>): Rendered {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
   const defaultCompetition = opts.defaultCompetition ?? true;
@@ -571,9 +616,18 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}):
   // Nothing (relevant) live → next-fixture countdown over the merged schedule
   // (resolved knockout pairings show; unresolved 🏳️ slots are skipped, so this
   // fails closed to "⚽ —", never "🏳️ vs 🏳️"), the picked team's next first.
-  const next = countdownFixture(nowMs, schedule, pick);
+  // A DUE fixture (a kickoff passed by at most `KICKOFF_DUE_MS` that the feed
+  // still lists as SCHEDULED and the record of play does not hold) is a
+  // candidate beside the upcoming ones: the feed lags the whistle, and the line
+  // must not jump to next week's match meanwhile. A kickoff at or before the
+  // request's clock reads "<home> vs <away> now" (core's `countdown` decides).
+  // The record of play's ids are read here, once, and only here (the cheap
+  // reader: its bounds, no seal), unless the caller already read them.
+  const next = countdownFixture(nowMs, schedule, pick, played ?? playRecordIds(state?.play, nowMs));
   if (next) {
-    return plain(`${teamTok(next.home, flags)} vs ${teamTok(next.away, flags)} in ${countdown(next.kickoff, now)}`);
+    const left = countdown(next.kickoff, now);
+    const matchup = `${teamTok(next.home, flags)} vs ${teamTok(next.away, flags)}`;
+    return plain(left === COUNTDOWN_NOW ? `${matchup} ${COUNTDOWN_NOW}` : `${matchup} in ${left}`);
   }
 
   // Tournament provably over (every bundled fixture's window has closed) → sign
@@ -747,10 +801,21 @@ export function syncingWindow(
 }
 
 /**
- * The fixture the countdown names: the soonest upcoming RESOLVED one (an
- * unresolved placeholder slot is skipped, so the line fails closed to "⚽ —",
- * never a placeholder pairing), the picked team's next first.
+ * The fixture the countdown names, THE rule the statusline line and `claudinho
+ * ambient --json`'s `next` both use: among the RESOLVED upcoming fixtures (a
+ * kickoff strictly after the clock) and the DUE ones (a kickoff passed by at
+ * most {@link KICKOFF_DUE_MS}, inclusive, still SCHEDULED, its id not in the
+ * record of play, `played`), earliest kickoff first, the picked team's first
+ * (an unresolved placeholder slot is skipped, so the line fails closed to
+ * "⚽ —", never a placeholder pairing). A kickoff at or before the clock is a
+ * candidate only as a due one, on the bundled competition as off it.
  */
-export function countdownFixture(nowMs: number, schedule: Match[] | undefined, pick: AmbientPick): Match | undefined {
-  return pickAmbientMatch(upcomingResolved(nowMs, schedule), pick)[0];
+export function countdownFixture(
+  nowMs: number,
+  schedule: Match[] | undefined,
+  pick: AmbientPick,
+  /** The ids the snapshot's record of play holds now: seen in play, or finished in its last 10 minutes (`play.ts`'s `playRecordIds`, read once per render). */
+  played: ReadonlySet<string>,
+): Match | undefined {
+  return pickAmbientMatch(countdownCandidates(nowMs, schedule, played), pick)[0];
 }

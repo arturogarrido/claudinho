@@ -131,8 +131,10 @@ export interface CacheState {
    * it): the matches it saw in play, and those a later whole read returned
    * finished. Advanced by both publishers under the lock on every live read
    * and carried on every publish. Input when read back: the refresher believes
-   * it through `advancePlay`, the ambient reader through its own bounds; the
-   * statusline, the hook and `prompt` never read it. Absent on a snapshot
+   * it through `advancePlay`, the ambient reader's `finished` list through its
+   * own bounds, and the countdown (`prompt`'s line and the ambient view's
+   * `next`) only its ids, once per render, through `playRecordIds` (the
+   * record's bounds, no seal); the hook never reads it. Absent on a snapshot
    * written before it.
    */
   play?: PlayState;

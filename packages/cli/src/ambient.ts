@@ -9,7 +9,7 @@ import type { AmbientFinishedMatch, AmbientMatch, AmbientView, Match, MatchEvent
 import { isPinnedSide, parseCachedMatch, parsedValue, sealEvent, takeBounded } from '@claudinho/core';
 import { type CacheState, stampAgeMs, validStamp } from './cache';
 import { hookLine, hookNames, renderHook } from './hook';
-import { FINISHED_TTL_MS, MAX_PLAY } from './play';
+import { FINISHED_TTL_MS, MAX_PLAY, playRecordIds } from './play';
 import {
   countdownFixture,
   countdownSchedule,
@@ -120,7 +120,10 @@ function finishedFromCache(
  * own ten minutes (`finished`); whether that list is `current` (a believed snapshot's inside
  * its display window, not degraded, its read whole as the snapshot states,
  * the line not syncing: the one rule, `syncingWindow`);
- * the fixture the countdown names; the snapshot's own facts and the deadline
+ * the fixture the countdown names (`countdownFixture`, the line's own rule:
+ * an upcoming fixture or a DUE one, a kickoff the feed has not marked live
+ * yet, the record of play's ids read ONCE, without a seal, and handed to the
+ * line and to `next` alike), so `next` is the fixture a countdown line names; the snapshot's own facts and the deadline
  * of its live scores, its stamp judged by the reader's own rule
  * (`stampAgeMs`). Pure and total like `renderPrompt`: no network, no market,
  * no file read, and a malformed snapshot never throws.
@@ -155,7 +158,10 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
   }));
   // ONE render of the line: what it is is read before the width's cut (a
   // narrow band cuts the text, never what the view says of it).
-  const prompt = promptLine(state, read);
+  // The record of play's ids, read once (`playRecordIds`: its bounds, no
+  // seal) for the line's countdown and for `next`.
+  const played = playRecordIds(state?.play, nowMs);
+  const prompt = promptLine(state, read, played);
   const context = renderHook(state, read);
   const { cachedFixtures, schedule } = countdownSchedule(state, defaultCompetition, kind);
   // The snapshot's stamp by the reader's own rule (`stampAgeMs`, as
@@ -195,7 +201,7 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
     finished,
     current:
       stamp !== undefined && age < DISPLAY_STALE_MS && state?.degraded !== true && state?.liveComplete === true && !syncing,
-    next: countdownFixture(nowMs, schedule, opts.pick) ?? null,
+    next: countdownFixture(nowMs, schedule, opts.pick, played) ?? null,
     degraded: state?.degraded === true,
     source: typeof state?.source === 'string' ? state.source : null,
     updatedAt: stamp === undefined ? null : new Date(stamp).toISOString(),
