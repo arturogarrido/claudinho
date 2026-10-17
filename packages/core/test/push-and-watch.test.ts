@@ -258,14 +258,33 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     expect(ghCalls(sb).some((c) => /^gh run /.test(c))).toBe(false);
   });
 
-  it('`main` as the branch is refused before anything: main takes pull requests only (its ruleset), never a push', () => {
+  it('`main` behind its remote is refused at the push, exit 1: main takes pull requests only (its ruleset), nothing pushed', () => {
+    // the default remote SHA is OTHER: a push would be needed
     const sb = sandbox();
     const r = runBranch(sb, 'main', []);
-    expect(r.status).not.toBe(0);
+    expect(r.status).toBe(1);
     expect(r.out).toMatch(/main/);
     expect(r.out).toMatch(/pull request/i);
     expect(pushed(sb)).toBe(false);
-    expect(ghCalls(sb)).toEqual([]);
+    expect(ghCalls(sb).some((c) => /^gh run /.test(c))).toBe(false);
+  });
+
+  it('`main` already at its remote is watched as before: no push, the job table, exit 0', () => {
+    const sb = sandbox();
+    seed(sb, { 'remote-sha': LOCAL, 'runs.1.tsv': RUN('21', LOCAL, 'completed', 'success', 'push'), 'jobs-21.tsv': JOBS_OK });
+    const r = runBranch(sb, 'main', []);
+    expect(r.status).toBe(0);
+    expect(r.out).toMatch(/already at/);
+    expect(pushed(sb)).toBe(false);
+    expect(r.out).not.toMatch(/pull request/i);
+  });
+
+  it('`Main` (any case) behind its remote is refused like main: on a case-insensitive disk it names main\'s commit', () => {
+    const sb = sandbox();
+    const r = runBranch(sb, 'Main', []);
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/pull request/i);
+    expect(pushed(sb)).toBe(false);
   });
 
   it('a branch whose name only starts with main (main-fix) is not refused for its name', () => {
