@@ -68,6 +68,37 @@ function believedAt(at: unknown, now: number, ttl: number): at is string {
 }
 
 /**
+ * The ids the record of play holds, as the hot path asks them (the countdown's
+ * due rule, `statusline.ts`): every `seen` id and every `finished` entry's
+ * `match.id`, each entry checked by the record's own bounds and nothing more:
+ * each list bounded at its first {@link MAX_PLAY} entries before any per-entry
+ * work (`takeBounded`), an id of the grammar, a stamp believed at `now` (a
+ * `seen` one for {@link SEEN_TTL_MS}, a `finished` one for
+ * {@link FINISHED_TTL_MS}, both expired AT the bound; a stamp ahead of the
+ * clock is not believed). A finished record is NOT sealed: only its id and
+ * its stamp are read (the ambient view seals each once, for its own
+ * `finished` list). A value that is not a record holds no id. Never throws.
+ */
+export function playRecordIds(play: unknown, now: number): ReadonlySet<string> {
+  const ids = new Set<string>();
+  if (!play || typeof play !== 'object' || Array.isArray(play)) return ids;
+  const p = play as { seen?: unknown; finished?: unknown };
+  for (const raw of takeBounded<unknown>(p.seen, MAX_PLAY)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const { id, at } = raw as { id?: unknown; at?: unknown };
+    if (typeof id === 'string' && ID.test(id) && believedAt(at, now, SEEN_TTL_MS)) ids.add(id);
+  }
+  for (const raw of takeBounded<unknown>(p.finished, MAX_PLAY)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const { match, at } = raw as { match?: unknown; at?: unknown };
+    if (!match || typeof match !== 'object' || !believedAt(at, now, FINISHED_TTL_MS)) continue;
+    const id = (match as { id?: unknown }).id;
+    if (typeof id === 'string' && ID.test(id)) ids.add(id);
+  }
+  return ids;
+}
+
+/**
  * The previous state as it is believed at `now`: bounded before any per-entry
  * work, each entry checked (an id of the grammar, a believed stamp; a finished
  * record sealed by core's cache constructor, status `FT` with a score), the
