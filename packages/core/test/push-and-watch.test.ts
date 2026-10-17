@@ -81,6 +81,8 @@ case "$1" in
     n=$(( $(cat "$STATE/ls-remote-calls" 2>/dev/null || echo 0) + 1 )); echo $n > "$STATE/ls-remote-calls"
     [ -e "$STATE/ls-remote-decoy" ] && printf '%s\\trefs/heads/archive/%s\\n' "${LOCAL}" "$3"
     if [ -e "$STATE/ls-remote-absent-first" ] && [ "$n" -le 1 ]; then printf '%s\\trefs/tags/%s\\n' "${LOCAL}" "$3"; exit 0; fi
+    # with $STATE/remote-sha-after-first, every call after the FIRST answers that SHA (the remote moved meanwhile)
+    if [ -e "$STATE/remote-sha-after-first" ] && [ "$n" -gt 1 ]; then printf '%s\\t%s\\n' "$(cat "$STATE/remote-sha-after-first")" "$3"; exit 0; fi
     sha=$([ -e "$STATE/remote-sha" ] && cat "$STATE/remote-sha" || echo ${OTHER}); printf '%s\\t%s\\n' "$sha" "$3"; exit 0 ;;
   push) [ -e "$STATE/push-fails" ] && { echo "error: failed to push some refs" >&2; exit 1; }; [ -e "$STATE/remote-sha" ] || echo ${LOCAL} > "$STATE/remote-sha"; exit 0 ;;
 esac
@@ -256,6 +258,66 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     expect(r.out).toMatch(/branch/i);
     expect(pushed(sb)).toBe(false);
     expect(ghCalls(sb).some((c) => /^gh run /.test(c))).toBe(false);
+  });
+
+  it('`main` behind its remote is refused at the push, exit 1: main takes pull requests only (its ruleset), nothing pushed', () => {
+    // the default remote SHA is OTHER: a push would be needed
+    const sb = sandbox();
+    const r = runBranch(sb, 'main', []);
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/main/);
+    expect(r.out).toMatch(/pull request/i);
+    // the advice for each direction, not only the reason
+    expect(r.out).toMatch(/Ahead: push a branch and open a pull request/);
+    expect(r.out).toMatch(/Behind: git pull, then run again/);
+    expect(pushed(sb)).toBe(false);
+    expect(ghCalls(sb).some((c) => /^gh run /.test(c))).toBe(false);
+  });
+
+  it('`main` already at its remote is watched as before: no push, the job table, exit 0', () => {
+    const sb = sandbox();
+    seed(sb, { 'remote-sha': LOCAL, 'runs.1.tsv': RUN('21', LOCAL, 'completed', 'success', 'push'), 'jobs-21.tsv': JOBS_OK });
+    const r = runBranch(sb, 'main', []);
+    expect(r.status).toBe(0);
+    expect(r.out).toMatch(/already at/);
+    expect(pushed(sb)).toBe(false);
+    expect(r.out).not.toMatch(/pull request/i);
+  });
+
+  it('`main` at its remote at the first read, moved by the second (a merge meanwhile), is refused at the push: never pushed', () => {
+    const sb = sandbox();
+    seed(sb, { 'remote-sha': LOCAL, 'remote-sha-after-first': OTHER, 'runs.1.tsv': '' });
+    const r = runBranch(sb, 'main', []);
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/pull request/i);
+    expect(pushed(sb)).toBe(false);
+  });
+
+  it('`Main` at its remote at the first read, moved by the second, is refused at the push too (any case at step 4)', () => {
+    const sb = sandbox();
+    seed(sb, { 'remote-sha': LOCAL, 'remote-sha-after-first': OTHER, 'runs.1.tsv': '' });
+    const r = runBranch(sb, 'Main', []);
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/pull request/i);
+    expect(pushed(sb)).toBe(false);
+  });
+
+  it('`Main` (any case) behind its remote is refused like main: on a case-insensitive disk it names main\'s commit', () => {
+    const sb = sandbox();
+    const r = runBranch(sb, 'Main', []);
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/pull request/i);
+    expect(pushed(sb)).toBe(false);
+  });
+
+  it('a branch whose name only starts with main (main-fix) is not refused for its name', () => {
+    // No such local branch here, so the run ends at that refusal, never at the name's.
+    const sb = sandbox();
+    seed(sb, { 'no-branch': '' });
+    const r = runBranch(sb, 'main-fix', []);
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/no local branch/i);
+    expect(r.out).not.toMatch(/pull request/i);
   });
 
   it('a name that is no local branch (show-ref fails) is refused before any push', () => {
