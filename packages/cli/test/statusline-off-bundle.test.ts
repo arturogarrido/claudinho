@@ -209,7 +209,8 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
   });
 
   it('a FRESH, healthy live slice with nothing in play is trusted: the countdown, not "syncing"', () => {
-    const state = snapshot(sched([nations('1', NOW - 30 * MIN), nations('2', NOW + 26 * HOUR)]), {}, 5000);
+    // 45 minutes after its kickoff: inside the gate's window, past the 30 minutes a SCHEDULED fixture stays due.
+    const state = snapshot(sched([nations('1', NOW - 45 * MIN), nations('2', NOW + 26 * HOUR)]), {}, 5000);
     expect(line(state)).toBe('🇪🇸 vs 🇫🇷 in 1d2h');
   });
 });

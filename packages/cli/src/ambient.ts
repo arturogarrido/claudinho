@@ -20,6 +20,7 @@ import {
   liveWhole,
   NOTHING_KNOWN_LINE,
   pickAmbientMatch,
+  playedIds,
   promptLine,
   type PromptOpts,
   syncingWindow,
@@ -120,7 +121,10 @@ function finishedFromCache(
  * own ten minutes (`finished`); whether that list is `current` (a believed snapshot's inside
  * its display window, not degraded, its read whole as the snapshot states,
  * the line not syncing: the one rule, `syncingWindow`);
- * the fixture the countdown names; the snapshot's own facts and the deadline
+ * the fixture the countdown names (`countdownFixture`, the line's own rule:
+ * an upcoming fixture or a DUE one, a kickoff the feed has not marked live
+ * yet, the record of play threaded in), so `next` is the fixture a countdown
+ * line names; the snapshot's own facts and the deadline
  * of its live scores, its stamp judged by the reader's own rule
  * (`stampAgeMs`). Pure and total like `renderPrompt`: no network, no market,
  * no file read, and a malformed snapshot never throws.
@@ -195,7 +199,7 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
     finished,
     current:
       stamp !== undefined && age < DISPLAY_STALE_MS && state?.degraded !== true && state?.liveComplete === true && !syncing,
-    next: countdownFixture(nowMs, schedule, opts.pick) ?? null,
+    next: countdownFixture(nowMs, schedule, opts.pick, playedIds(state, nowMs, kind)) ?? null,
     degraded: state?.degraded === true,
     source: typeof state?.source === 'string' ? state.source : null,
     updatedAt: stamp === undefined ? null : new Date(stamp).toISOString(),
