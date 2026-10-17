@@ -46,7 +46,9 @@
 #      a deeper branch ending in that name is listed too, and ignored; no such
 #      line: the branch is absent remotely); when it already equals the local
 #      SHA nothing is pushed and the run is only watched (re-running the script
-#      after a timeout does this, `main` included); else `git push origin
+#      after a timeout does this, `main` included); else a branch that is
+#      `main` in any case refuses, nothing pushed (origin can have moved
+#      since step 3's read: main is never pushed); else `git push origin
 #      refs/heads/<branch>:refs/heads/<branch>` (both ends named; a failed push
 #      exits at once) and `git ls-remote` read back the same way, which must
 #      equal the local SHA;
@@ -473,17 +475,22 @@ read_remote_sha() {
   remote_sha=$(remote_sha_of "$remote_line")
 }
 
+# is_main / refuse_main: main takes pull requests only (its ruleset), in any
+# case (a case-insensitive disk resolves Main to main's commit); one message
+# for both places that refuse to push it (steps 3 and 4).
+is_main() { case "$BRANCH" in [Mm][Aa][Ii][Nn]) return 0 ;; esac; return 1; }
+refuse_main() {
+  refuse "branch '$BRANCH' is main: main takes pull requests only (its ruleset); push a branch and open a pull request. Nothing was pushed."
+}
+
 # 3. Before the push. main takes pull requests only (its ruleset): in any
 # case (a case-insensitive disk resolves Main to main's commit) it is refused
 # here when a push would be needed, before any run is listed; when origin is
 # already at the local SHA it is watched like any branch (step 4).
-case "$BRANCH" in
-  [Mm][Aa][Ii][Nn])
-    read_remote_sha "; nothing pushed"
-    if [ "$remote_sha" != "$local_sha" ]; then
-      refuse "branch '$BRANCH' is main: main takes pull requests only (its ruleset); push a branch and open a pull request. Nothing was pushed."
-    fi ;;
-esac
+if is_main; then
+  read_remote_sha "; nothing pushed"
+  [ "$remote_sha" = "$local_sha" ] || refuse_main
+fi
 # A run not yet completed for another SHA would be cancelled by the push.
 list_runs
 rc=$?
@@ -500,6 +507,9 @@ read_remote_sha "; nothing pushed"
 if [ -n "$remote_sha" ] && [ "$remote_sha" = "$local_sha" ]; then
   echo "remote      origin/$BRANCH already at $local_sha: no push, watching only"
 else
+  # main admitted at step 3 is never pushed here either: origin can have
+  # moved (a merge) between the two reads.
+  is_main && refuse_main
   git push origin "refs/heads/$BRANCH:refs/heads/$BRANCH"
   rc=$?
   if [ $rc -ne 0 ]; then
