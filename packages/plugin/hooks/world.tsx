@@ -234,16 +234,25 @@ export const world = async (
     $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId, reason: 'answer', ...(agentId ? { agentId } : {}) } as Parameters<typeof $.turn.complete>[0])
   /** How many times the plugin asked for the roster: what a timer ticking for nobody would show. */
   const rosterReads = () => surfaceReads
-  /** The match pane drawn on a surface, at the measured sizes (terminal dock 71 x 34; Desktop dock 65 x 55). */
-  const mountPane = (surface: 'terminal' | 'desktop' = 'terminal') =>
-    $.ui.mount({
+  /**
+   * The match pane drawn on a surface, at the measured sizes (terminal dock 71 x 34; Desktop dock 65 x 55). `width`
+   * draws it at another `bodyColumns` (a narrow dock: about 38 in a 110-column terminal); `{ absent: true }` draws it
+   * with no `bodyColumns` prop at all; `{ value }` hands the prop that value as it is (not a positive integer).
+   */
+  const mountPane = (surface: 'terminal' | 'desktop' = 'terminal', width?: number | { absent: true } | { value: unknown }) => {
+    const props: Record<string, unknown> = { title: 'claudinho', isFocused: false, bodyColumns: surface === 'terminal' ? 71 : 65, placement: 'dock', scroll: { offset: 0, bodyRows: surface === 'terminal' ? 34 : 55 }, view: {} }
+    if (typeof width === 'number') props.bodyColumns = width
+    else if (width && 'absent' in width) delete props.bodyColumns
+    else if (width && 'value' in width) props.bodyColumns = width.value
+    return $.ui.mount({
       plugin: 'claudinho',
       surface,
       component: 'Pane',
       requestId: 'match',
-      props: { title: 'claudinho', isFocused: false, bodyColumns: surface === 'terminal' ? 71 : 65, placement: 'dock', scroll: { offset: 0, bodyRows: surface === 'terminal' ? 34 : 55 }, view: {} },
+      props,
       viewport: { columns: surface === 'terminal' ? 88 : 106, rows: 40, isFullscreen: true },
     } as Parameters<typeof $.ui.mount>[0])
+  }
   /** The `match` runs so far (their argv). */
   const matchRuns = () => argvs.filter((a) => a[1] === 'match')
   return { clock, argvs, stdins, envs, timeouts, invalidates, turnStart, turnEnd, envReads, lists, probes, registrations, command, mount, attach, detach, release, releaseListing, denyRoster, rosterReads, opens, closes, mountPane, matchRuns }

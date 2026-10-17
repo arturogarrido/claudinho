@@ -80,7 +80,12 @@ import type {
  * person's own choice (its mode row says where it came from); an answer of another competition, or the first-run object
  * (nothing chosen now), is never used: the binding is pinned for good and the read is made once more with
  * `--competition <slug>`. The pane draws the CLI's `rows` by their parts' styles when they join to its `lines` (CLI
- * 0.12.0: strong bold, dim dimmed, accent and flair the theme's `success`, quote dimmed italic), else its `lines`
+ * 0.12.0: strong bold, dim dimmed, accent and flair the theme's `success`, quote dimmed italic), laid out at the
+ * pane's width (`bodyColumns`, a positive integer; plugin 0.5.1) by each row's role: when any named event row (role
+ * `event`, its last part `strong`: the player) is wider than the pane, every named event row is drawn as two rows,
+ * the event, then the player, bold, under the event label's column; any other row wider than the pane continues
+ * under its own first non-space character (display widths: an emoji in emoji presentation 2, a joiner, a selector
+ * or a combining mark 0, else 1); with no usable width, or a value written before the roles, the rows as before; else its `lines`
  * verbatim (at most 150, each cut at 600 characters, each
  * wrapped), a blank row, then the `attribution` and the `disclaimer` dimmed (each at 1,000), or one fixed sentence: a
  * first read that failed, or an answer with no `lines` (a CLI before them). While open it re-reads the bound match: on
@@ -181,6 +186,8 @@ const MINUTE_MAX = 200
 const PANE_OPEN_NOTE = ' · match pane open'
 /** The pane's part styles the plugin draws; another is a plain part. */
 const PANE_STYLES: readonly string[] = ['strong', 'dim', 'accent', 'quote', 'flair']
+/** A pane row's role kept (the CLI's `rows[i].role`); another is none. */
+const PANE_ROLE = /^[a-z]{1,32}$/
 /** The match pane: its one id, its title, the word typed after the command that opens it. */
 const PANE_ID = 'match'
 const PANE_TITLE = 'claudinho'
@@ -970,6 +977,109 @@ function partStyle(style: ClaudinhoPanePart['style']): { bold?: true; dimColor?:
   return {}
 }
 
+/** A code point a terminal draws in no column of its own: a combining mark (variation selectors among them), a joiner. */
+const ZERO_COLUMNS = /^[\p{M}\u200D]$/u
+/** A regional indicator: one column (a flag, a pair, two), though it carries Emoji_Presentation. */
+const REGIONAL_INDICATOR = /^\p{Regional_Indicator}$/u
+/** A code point drawn two columns wide on its own: an emoji in emoji presentation (`⚽`, `🟨`, `🟥`). */
+const TWO_COLUMNS = /^\p{Emoji_Presentation}$/u
+/** A code point drawn two columns wide when U+FE0F (emoji presentation) follows it (`⚠️`). */
+const PICTOGRAPHIC = /^\p{Extended_Pictographic}$/u
+/** A named event row's first part through its marker emoji and the one space after it. */
+const THROUGH_MARKER = /^[\s\S]*?\p{Extended_Pictographic}[\p{M}\u200D]* /u
+
+/**
+ * A text's display width, the columns the pane's layout counts it as: a code point with Emoji_Presentation (`⚽`,
+ * `🟨`) 2, but a regional indicator 1, so a flag (a pair) 2; an Extended_Pictographic code point immediately followed
+ * by U+FE0F 2 (`⚠️`), without it 1 (a text-presentation symbol: `©`, `®`, `™`, `↔`, `☺`); a combining mark, a
+ * zero-width joiner or a variation selector 0; every other code point 1 (an East Asian wide character too: the CLI's
+ * rows hold none the layout depends on). A measure for laying out the CLI's rows, not a terminal's own.
+ */
+function displayWidth(s: string): number {
+  const cps = [...s]
+  let n = 0
+  for (const [i, c] of cps.entries()) {
+    if (ZERO_COLUMNS.test(c)) continue
+    n += REGIONAL_INDICATOR.test(c) ? 1 : TWO_COLUMNS.test(c) || (PICTOGRAPHIC.test(c) && cps[i + 1] === '\uFE0F') ? 2 : 1
+  }
+  return n
+}
+
+/** The spaces (U+0020) a text starts with. */
+function leadingSpaces(s: string): number {
+  let n = 0
+  while (n < s.length && s[n] === ' ') n += 1
+  return n
+}
+
+/** A row's parts without its first `n` columns of leading spaces (a part left empty dropped). */
+function withoutLeading(parts: ClaudinhoPaneRow, n: number): ClaudinhoPaneRow {
+  const out: ClaudinhoPaneRow = []
+  let left = n
+  for (const p of parts) {
+    const drop = Math.min(left, leadingSpaces(p.text))
+    left -= drop
+    const text = p.text.slice(drop)
+    if (text !== '') out.push({ ...p, text })
+  }
+  return out
+}
+
+/** A row's parts with its trailing spaces trimmed (a part left empty dropped), styles kept. */
+function withoutTrailing(parts: ClaudinhoPaneRow): ClaudinhoPaneRow {
+  const out = [...parts]
+  while (out.length > 0) {
+    const last = out[out.length - 1] as ClaudinhoPanePart
+    const text = last.text.trimEnd()
+    if (text !== '') {
+      out[out.length - 1] = { ...last, text }
+      break
+    }
+    out.pop()
+  }
+  return out
+}
+
+/** A row the pane draws: a fixed sentence (`text`, dimmed for the footer) or the CLI's parts, at an indent. */
+type PaneDrawnRow = { text: string; dim?: boolean; parts?: ClaudinhoPaneRow; indent?: number }
+
+/**
+ * The CLI's rows laid out at the pane's width `w` (its `bodyColumns`, a positive integer). A named event row (role
+ * `event`, more than one part, the last `strong`: the player) is split in two when ANY named event row of the answer
+ * is wider than `w`, and only then: the row without its player, trailing spaces trimmed, then the player on a row of
+ * its own, indented to the event label's column (the display width of the first part through its marker emoji and
+ * the one space after it; with no marker followed by a space, the row's leading spaces). Every other row (an event row
+ * with no player included), and the first half of a split row, is drawn as before when it fits; wider than `w`, its
+ * text after its N leading spaces wraps at an N-column indent, so its continuation lines start under its own first
+ * non-space character. An indent of `w` columns or more is no indent. A row with no parts is a blank row.
+ */
+function paneLayout(rows: ClaudinhoPaneRow[], roles: Array<string | null>, w: number): PaneDrawnRow[] {
+  const textOf = (parts: ClaudinhoPaneRow) => parts.map((p) => p.text).join('')
+  const named = rows.map((parts, i) => roles[i] === 'event' && parts.length > 1 && parts[parts.length - 1]?.style === 'strong')
+  const split = rows.some((parts, i) => named[i] && displayWidth(textOf(parts)) > w)
+  const fitted = (parts: ClaudinhoPaneRow): PaneDrawnRow => {
+    if (parts.length === 0) return { text: ' ' }
+    const text = textOf(parts)
+    const n = leadingSpaces(text)
+    if (displayWidth(text) <= w || n === 0 || n >= w) return { text: '', parts }
+    return { text: '', parts: withoutLeading(parts, n), indent: n }
+  }
+  const out: PaneDrawnRow[] = []
+  for (const [i, parts] of rows.entries()) {
+    if (!(split && named[i])) {
+      out.push(fitted(parts))
+      continue
+    }
+    const first = parts[0] as ClaudinhoPanePart
+    const player = parts[parts.length - 1] as ClaudinhoPanePart
+    out.push(fitted(withoutTrailing(parts.slice(0, -1))))
+    const marked = first.text.match(THROUGH_MARKER)
+    const column = marked ? displayWidth(marked[0]) : leadingSpaces(first.text)
+    out.push(column > 0 && column < w ? { text: '', parts: [player], indent: column } : { text: '', parts: [player] })
+  }
+  return out
+}
+
 /** One `match` read as the pane keeps it: the kind, the rows and footer, and the fields the re-reads decide by. */
 type MatchRead = Omit<NonNullable<ClaudinhoPane>, 'gen' | 'slug' | 'id' | 'refreshFailed'>
 
@@ -998,11 +1108,11 @@ function readMatch(r: RunResult | undefined): MatchRead {
   }
   const attribution = relayed(isObject(value) ? value.attribution : undefined)
   const disclaimer = relayed(isObject(value) ? value.disclaimer : undefined)
-  const rows = paneRowsOf(isObject(value) ? value.rows : undefined, lines as string[])
+  const styled = paneRowsOf(isObject(value) ? value.rows : undefined, lines as string[])
   return {
     kind: 'rows',
     lines: (lines as string[]).slice(0, PANE_LINES_MAX).map((l) => cut(l, PANE_LINE_CHARS)),
-    ...(rows !== null ? { rows } : {}),
+    ...(styled !== null ? styled : {}),
     ...(attribution !== null ? { attribution: cut(attribution, PANE_FOOTER_CHARS) } : {}),
     ...(disclaimer !== null ? { disclaimer: cut(disclaimer, PANE_FOOTER_CHARS) } : {}),
     status,
@@ -1014,11 +1124,14 @@ function readMatch(r: RunResult | undefined): MatchRead {
 /**
  * The CLI's styled `rows` (CLI 0.12.0) when every row is `{ parts: [{ text, style? }] }` and the rows' parts join to
  * `lines`, index by index: at most 150 rows, each row's parts cut at 600 characters together and at 64 parts, a style
- * the plugin does not draw a plain part. Anything else: none, and the pane draws `lines` as before.
+ * the plugin does not draw a plain part; and beside them each row's `role` (index by index: kept when it is 1 to 32
+ * lowercase letters, else null; a row with none is still read). Anything else: none, and the pane draws `lines` as
+ * before.
  */
-function paneRowsOf(raw: unknown, lines: string[]): ClaudinhoPaneRow[] | null {
+function paneRowsOf(raw: unknown, lines: string[]): { rows: ClaudinhoPaneRow[]; roles: Array<string | null> } | null {
   if (!Array.isArray(raw) || raw.length !== lines.length) return null
   const rows: ClaudinhoPaneRow[] = []
+  const roles: Array<string | null> = []
   for (const [i, r] of raw.entries()) {
     if (!isObject(r) || !Array.isArray(r.parts)) return null
     const parts: ClaudinhoPanePart[] = []
@@ -1032,8 +1145,9 @@ function paneRowsOf(raw: unknown, lines: string[]): ClaudinhoPaneRow[] | null {
     }
     if (parts.map((p) => p.text).join('') !== lines[i]) return null
     rows.push(parts)
+    roles.push(typeof r.role === 'string' && PANE_ROLE.test(r.role) ? r.role : null)
   }
-  return rows.slice(0, PANE_LINES_MAX).map((parts) => {
+  const bounded = rows.slice(0, PANE_LINES_MAX).map((parts) => {
     const kept: ClaudinhoPanePart[] = []
     let room = PANE_LINE_CHARS
     for (const p of parts) {
@@ -1046,6 +1160,7 @@ function paneRowsOf(raw: unknown, lines: string[]): ClaudinhoPaneRow[] | null {
     }
     return kept
   })
+  return { rows: bounded, roles: roles.slice(0, PANE_LINES_MAX) }
 }
 
 /** One `match` run on the band's PATH, bounded, naming the competition once pinned; a rejection is undefined. */
@@ -1725,19 +1840,27 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e, next) => {
-    // The pane draws its value alone: the CLI's rows verbatim, each wrapped (never cut sideways), then a blank row and
-    // the footer dimmed; or one fixed sentence. Its size is the engine's (the body scrolls); no Button.
+    // The pane draws its value alone: the CLI's rows, each wrapped (never cut sideways), laid out at the pane's own
+    // width when the engine gives one (`bodyColumns`, a positive integer) and the value carries the rows' roles
+    // (`paneLayout`: a narrow dock splits the named event rows and indents the continuation of a long row), else
+    // verbatim; then a blank row and the footer dimmed; or one fixed sentence. Its size is the engine's (the body
+    // scrolls); no Button.
     const v = await read($, pane)
     if (v === null) return next(e)
     const { Box, Text } = $.ui.resolve(e)
-    const rows: Array<{ text: string; dim?: boolean; parts?: ClaudinhoPaneRow }> = []
+    const width = e.props.bodyColumns
+    const rows: PaneDrawnRow[] = []
     if (v.refreshFailed) rows.push({ text: PANE_REFRESH_FAILED })
     if (v.kind === 'failed') rows.push({ text: PANE_FAILED })
     else if (v.kind === 'noView') rows.push({ text: PANE_NO_VIEW })
     else {
       // The CLI's styled rows when it printed them (CLI 0.12.0), else its `lines` as before.
       if (Array.isArray(v.rows)) {
-        for (const parts of v.rows) rows.push(parts.length === 0 ? { text: ' ' } : { text: '', parts })
+        if (typeof width === 'number' && Number.isInteger(width) && width > 0 && Array.isArray(v.roles) && v.roles.length === v.rows.length) {
+          rows.push(...paneLayout(v.rows, v.roles, width))
+        } else {
+          for (const parts of v.rows) rows.push(parts.length === 0 ? { text: ' ' } : { text: '', parts })
+        }
       } else {
         for (const line of v.lines) rows.push({ text: line === '' ? ' ' : line })
       }
@@ -1747,25 +1870,33 @@ export const register: Register = (on, options) => {
         for (const s of footer) rows.push({ text: s, dim: true })
       }
     }
+    const drawn = (row: PaneDrawnRow, key: string) =>
+      row.parts ? (
+        <Text key={key} wrap="wrap">
+          {row.parts.map((p, j) => (
+            <Text key={`part-${j}`} {...partStyle(p.style)}>
+              {p.text}
+            </Text>
+          ))}
+        </Text>
+      ) : row.dim ? (
+        <Text key={key} dimColor wrap="wrap">
+          {row.text}
+        </Text>
+      ) : (
+        <Text key={key} wrap="wrap">
+          {row.text}
+        </Text>
+      )
     return (
       <Box flexDirection="column">
         {rows.map((row, i) =>
-          row.parts ? (
-            <Text key={`row-${i}`} wrap="wrap">
-              {row.parts.map((p, j) => (
-                <Text key={`part-${j}`} {...partStyle(p.style)}>
-                  {p.text}
-                </Text>
-              ))}
-            </Text>
-          ) : row.dim ? (
-            <Text key={`row-${i}`} dimColor wrap="wrap">
-              {row.text}
-            </Text>
+          row.indent ? (
+            <Box key={`row-${i}`} paddingLeft={row.indent}>
+              {drawn(row, 'text')}
+            </Box>
           ) : (
-            <Text key={`row-${i}`} wrap="wrap">
-              {row.text}
-            </Text>
+            drawn(row, `row-${i}`)
           ),
         )}
       </Box>
