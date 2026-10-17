@@ -63,8 +63,8 @@ describe('the width corpus', () => {
       expect(fn).toBeGreaterThan(start);
       return src
         .slice(start, end + 2)
-        .split('\n')
-        .map((l) => l.replace(/;$/, '').trimEnd())
+        .split(/\r?\n/)
+        .map((l) => l.trimEnd().replace(/;$/, ''))
         .filter((l) => l.trim() !== '' && !/^\s*(\/\*\*|\*|\/\/)/.test(l));
     };
     const core = block(readFileSync(join(ROOT, 'packages/core/src/text.ts'), 'utf8'));
