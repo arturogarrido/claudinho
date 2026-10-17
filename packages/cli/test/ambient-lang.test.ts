@@ -18,7 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Match } from '@claudinho/core';
 import { DISCLAIMER, displayWidth } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -285,7 +285,8 @@ describe('what stays English in every language', () => {
  */
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..');
 const DIST = join(ROOT, 'packages', 'cli', 'dist', 'index.js');
-const PRELOAD = join(ROOT, 'scripts', 'spawn-count.mjs');
+// A URL, not a path: Node on Windows refuses a bare `D:\\…` path for `--import` (ERR_UNSUPPORTED_ESM_URL_SCHEME).
+const PRELOAD = pathToFileURL(join(ROOT, 'scripts', 'spawn-count.mjs')).href;
 describe.skipIf(!existsSync(DIST))('ambient --json: `lang` as the CLI resolves it', () => {
   let home: string;
   beforeEach(() => {
