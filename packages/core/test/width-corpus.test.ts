@@ -47,7 +47,7 @@ describe('the width corpus', () => {
     expect(has(/\u{200D}/u)).toBe(true);
     expect(has(/\u{20E3}/u)).toBe(true);
     expect(has(/\p{Mn}/u)).toBe(true);
-    expect(has(/[぀-ヿ一-鿿가-힣]/u)).toBe(true);
+    expect(has(/[\u{3040}-ヿ一-鿿가-힣]/u)).toBe(true);
     expect(has(/\u{200B}/u)).toBe(true);
     for (const marker of ['⚽', '\u{1F7E8}', '\u{1F7E5}', '\u{1F504}']) expect(texts).toContain(marker);
   });

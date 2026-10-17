@@ -216,7 +216,8 @@ prints it: the score, the competition, the stage and venue, the kickoff and stat
 provider lists, each row as the CLI wrote it (never cut sideways), then a blank row, the provider's attribution and
 the CLI's non-affiliation sentence, dimmed. In a pane too narrow for a goal or card row with its player, every such row
 puts the player on the next line, under the event (`Goal`, `Yellow card`); any other row too wide for the pane
-continues under its own first character, never at the left edge. Widths are measured as the CLI measures them. The rows keep the CLI's styles: the score
+continues under its own first character (an indented row keeps its indent). Widths are measured as the CLI measures
+them. The rows keep the CLI's styles: the score
 and each scorer bold, your pinned team and a rally cry in your theme's success colour, the competition, stage and
 venue dimmed, the commentary dimmed and in italics. The plugin draws the styles only when the CLI's styled rows spell
 its plain rows exactly; with a CLI that prints no styled rows, the plain rows as before. Claude Code scrolls it (the arrows with the
