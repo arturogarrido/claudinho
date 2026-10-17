@@ -480,7 +480,7 @@ read_remote_sha() {
 # for both places that refuse to push it (steps 3 and 4).
 is_main() { case "$BRANCH" in [Mm][Aa][Ii][Nn]) return 0 ;; esac; return 1; }
 refuse_main() {
-  refuse "branch '$BRANCH' is main: main takes pull requests only (its ruleset); push a branch and open a pull request. Nothing was pushed."
+  refuse "branch '$BRANCH' is main: main takes pull requests only (its ruleset), and local main differs from origin's. Ahead: push a branch and open a pull request. Behind: git pull, then run again to watch main's CI. Nothing was pushed."
 }
 
 # 3. Before the push. main takes pull requests only (its ruleset): in any
