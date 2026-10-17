@@ -84,8 +84,8 @@ import type {
  * pane's width (`bodyColumns`, a positive integer; plugin 0.5.1) by each row's role: when any named event row (role
  * `event`, its last part `strong`: the player) is wider than the pane, every named event row is drawn as two rows,
  * the event, then the player, bold, under the event label's column; any other row wider than the pane continues
- * under its own first non-space character (display widths: an emoji 2, a joiner, a selector or a combining mark 0,
- * else 1); with no usable width, or a value written before the roles, the rows as before; else its `lines`
+ * under its own first non-space character (display widths: an emoji in emoji presentation 2, a joiner, a selector
+ * or a combining mark 0, else 1); with no usable width, or a value written before the roles, the rows as before; else its `lines`
  * verbatim (at most 150, each cut at 600 characters, each
  * wrapped), a blank row, then the `attribution` and the `disclaimer` dimmed (each at 1,000), or one fixed sentence: a
  * first read that failed, or an answer with no `lines` (a CLI before them). While open it re-reads the bound match: on
@@ -979,20 +979,29 @@ function partStyle(style: ClaudinhoPanePart['style']): { bold?: true; dimColor?:
 
 /** A code point a terminal draws in no column of its own: a combining mark (variation selectors among them), a joiner. */
 const ZERO_COLUMNS = /^[\p{M}\u200D]$/u
-/** A code point drawn two columns wide: an emoji (`⚽`, `🟨` and every Extended_Pictographic code point). */
-const TWO_COLUMNS = /^\p{Extended_Pictographic}$/u
+/** A regional indicator: one column (a flag, a pair, two), though it carries Emoji_Presentation. */
+const REGIONAL_INDICATOR = /^\p{Regional_Indicator}$/u
+/** A code point drawn two columns wide on its own: an emoji in emoji presentation (`⚽`, `🟨`, `🟥`). */
+const TWO_COLUMNS = /^\p{Emoji_Presentation}$/u
+/** A code point drawn two columns wide when U+FE0F (emoji presentation) follows it (`⚠️`). */
+const PICTOGRAPHIC = /^\p{Extended_Pictographic}$/u
 /** A named event row's first part through its marker emoji and the one space after it. */
 const THROUGH_MARKER = /^[\s\S]*?\p{Extended_Pictographic}[\p{M}\u200D]* /u
 
 /**
- * A text's display width, the columns the pane's layout counts it as: an emoji (an Extended_Pictographic code point,
- * `⚽` among them) 2; a regional indicator 1, so a flag (a pair) 2; a combining mark, a zero-width joiner or a
- * variation selector 0; every other code point 1 (an East Asian wide character too: the CLI's rows hold none the
- * layout depends on). A measure for laying out the CLI's rows, not a terminal's own.
+ * A text's display width, the columns the pane's layout counts it as: a code point with Emoji_Presentation (`⚽`,
+ * `🟨`) 2, but a regional indicator 1, so a flag (a pair) 2; an Extended_Pictographic code point immediately followed
+ * by U+FE0F 2 (`⚠️`), without it 1 (a text-presentation symbol: `©`, `®`, `™`, `↔`, `☺`); a combining mark, a
+ * zero-width joiner or a variation selector 0; every other code point 1 (an East Asian wide character too: the CLI's
+ * rows hold none the layout depends on). A measure for laying out the CLI's rows, not a terminal's own.
  */
 function displayWidth(s: string): number {
+  const cps = [...s]
   let n = 0
-  for (const c of s) n += ZERO_COLUMNS.test(c) ? 0 : TWO_COLUMNS.test(c) ? 2 : 1
+  for (const [i, c] of cps.entries()) {
+    if (ZERO_COLUMNS.test(c)) continue
+    n += REGIONAL_INDICATOR.test(c) ? 1 : TWO_COLUMNS.test(c) || (PICTOGRAPHIC.test(c) && cps[i + 1] === '\uFE0F') ? 2 : 1
+  }
   return n
 }
 
