@@ -778,10 +778,10 @@ type Moment = { text: string; play: ClaudinhoPlay | null }
 const teamSlots = (w: string): number => w.split(TEAM_SLOT).length - 1
 
 /**
- * The view's moment words (CLI 0.12.0), read whole: an object holding the ten, each a string of at most 40 characters,
- * `goalFor` and `win` holding `{team}` exactly once and the others none. Anything else (no `words`, an older CLI's
- * view, one field missing, of another type, too long, or a `{team}` out of place): today's English words, for every
- * moment together.
+ * The view's moment words (CLI 0.12.0), read whole: an object holding the ten, each a string of at most 40 characters
+ * with something besides spaces, `goalFor` and `win` holding `{team}` exactly once and the others none. Anything else
+ * (no `words`, an older CLI's view, one field missing, of another type, empty or spaces alone, too long, or a `{team}`
+ * out of place): today's English words, for every moment together.
  */
 function wordsOf(view: View): Words {
   const raw = view.words
@@ -789,7 +789,7 @@ function wordsOf(view: View): Words {
   const out: Partial<Words> = {}
   for (const key of WORD_KEYS) {
     const w = raw[key]
-    if (typeof w !== 'string' || w.length > WORD_MAX) return ENGLISH_WORDS
+    if (typeof w !== 'string' || w.trim() === '' || w.length > WORD_MAX) return ENGLISH_WORDS
     if (teamSlots(w) !== (TEAM_WORDS.includes(key) ? 1 : 0)) return ENGLISH_WORDS
     out[key] = w
   }
