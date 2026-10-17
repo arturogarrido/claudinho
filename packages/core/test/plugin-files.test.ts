@@ -37,9 +37,9 @@ describe('the plugin folder', () => {
     expect(String(toasts?.description)).toMatch(/no pin|without a pin|nothing/i);
   });
 
-  it('the manifest is the goal moments\' release, 0.5.0', () => {
+  it('the manifest is the pane layout\'s release, 0.5.1', () => {
     const m = json('packages/plugin/.claude-plugin/plugin.json');
-    expect(m.version).toBe('0.5.0');
+    expect(m.version).toBe('0.5.1');
   });
 
   it('the celebrate option: on or off, on by default, beside toasts', () => {
