@@ -12,7 +12,7 @@ One line per section of this file: what it is for and when a task loads it. The 
 - **Layout**: where each package and table lives; read before opening a file you have not opened.
 - **Commands**: the commands, the canary, the README matrix generator; read before running one.
 - **Validation scope**: the checks each kind of change needs, with the private-document boundary check; read before calling any change ready.
-- **Releasing**: the version bump, the publish workflow, the Registry record, the `.mcpb` bundle; read for a release.
+- **Releasing**: the version bump, the publish workflow, the Registry record, the maintainer's machine updated, the `.mcpb` bundle; read for a release.
 - **Commit attribution (all agents)**: the co-author trailer; read before the first commit.
 - **Reviewing PRs (all agents)**: a review's checkout, its threat model and how its findings are written; read for a review.
 - **Codex / GPT specifics**: notes for that agent family; read only when one of its agents runs.
@@ -162,6 +162,18 @@ To cut a release:
    tag==version), then `pnpm -r publish --provenance` ships all three via OIDC (versions already on
    npm are skipped) and auto-creates the GitHub Release (`gh release create --generate-notes`);
    a second job, `mcp-registry`, then publishes the tag's record to the official MCP Registry.
+4. Once both jobs are green, update the maintainer's own machine and read each version back. Nothing
+   updates it alone: an npm global install never updates itself, and Claude Code leaves plugin
+   auto-update off by default for a third-party marketplace such as this one.
+   - The CLI: `npm i -g @claudinho/cli@latest`, then `claudinho --version` prints the new version.
+   - The plugin: `claude plugin marketplace update claudinho` (refreshes the marketplace's listing
+     only), then `claude plugin update claudinho@claudinho`, then `claude plugin list` shows the
+     version in `packages/plugin/.claude-plugin/plugin.json` on the tag. The plugin's version is its
+     own, not the npm version; a session already open keeps the old one until `/reload-plugins` or
+     the next session.
+   - The MCP server needs nothing when it runs as `npx -y @claudinho/mcp`: npx asks the registry for
+     the newest version of a bare package name at each start of the server. A global or
+     project-local install of `@claudinho/mcp` is used as installed instead, and is updated like the CLI.
 
 **The MCP Registry record publishes automatically on every tag.** The `mcp-registry` job in
 `publish.yml` runs after the npm publish succeeded, waits until npm serves the version (`npm view`
