@@ -114,7 +114,8 @@ claudinho share next --copy                      # a card for the group chat, on
 `next` finds a club by its name or code among the competition's clubs (its table, and its fixtures
 from yesterday to 14 days ahead) and answers its next match within 14 days. When several clubs match a name it
 lists them and does not guess. `match <id>` looks from yesterday to 14 days ahead. When the match is not there it names the days it
-searched, or, when the provider's answer was not whole, says no match with that id was read. Between two seasons, `today`, `live`, `next` and
+searched, or, when the provider's answer was not whole, says no match with that id was read; when
+the provider cannot be reached, it says so. Between two seasons, `today`, `live`, `next` and
 `match` say "Between editions". `bracket` says "This competition has no bracket." on the Premier
 League and LALIGA, and "Not available for this competition yet." on every other competition but the
 World Cup. A club shows by its name (by its code
@@ -179,8 +180,9 @@ not used either.
 - `competition`: with `follow` alone, what this command follows (`--competition`, else
   `CLAUDINHO_COMPETITION`, else the saved choice). After a write or `off`, what the next command
   follows: while `CLAUDINHO_COMPETITION` is set, that is the environment's choice, not the one just
-  saved. With nothing chosen it is `null`, beside `noCompetition: true`; with a refused value it is
-  `null`, beside `refused`.
+  saved. With nothing chosen it is `null`, beside `noCompetition: true`; when the value that decides
+  it is refused, it is `null`, beside `refused` (a refused value that does not decide it is only in
+  `refused`).
 - `override`: `flag` or `env` when that competition does not come from the saved choice.
 - `sources`: the `--competition`, `CLAUDINHO_COMPETITION` and `CLAUDINHO_TEAM` values this command
   ran under, each competition as its resolved slug (`laliga` is `esp.1`).
