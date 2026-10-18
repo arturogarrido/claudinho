@@ -15,7 +15,7 @@ Live football in Claude Code, for the competition you follow:
   <img src="https://raw.githubusercontent.com/arturogarrido/claudinho/main/.github/assets/plugin.gif" alt="Claude Code with the plugin during Real Betis v Barcelona on Oct 17, 2026: beside a coding answer, a toast and the mascot say GOAL! Barcelona, Rodri 41', the band shows the score in bold, and the match pane lists the goals and cards" width="800">
 </p>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/arturogarrido/claudinho/main/.github/assets/pane.png" alt="The match pane as a side panel in the Claude desktop app: LASK Linz 0–4 Liverpool, the four goals and their scorers" width="800">
+  <img src="https://raw.githubusercontent.com/arturogarrido/claudinho/main/.github/assets/pane.png" alt="The match pane in Claude Code: Brentford 1–2 Liverpool, its goals and cards with each player" width="640">
 </p>
 
 The plugin reads everything from the `claudinho` CLI installed on your machine and never fetches anything itself.
