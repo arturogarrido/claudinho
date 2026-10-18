@@ -37,7 +37,8 @@ maintainer's: never a tag or a publish by an agent.
     `pnpm -F @claudinho/mcp build:mcpb`, audited at its root, published by the maintainer.
 11. The maintainer's machine on the new version: AGENTS.md "Releasing" step 4, as written there (the CLI with the
     installer that owns the `claudinho` that runs, the plugin with its read-back on `main`'s version and a reload,
-    the MCP server), each version read back with the command it names. None of it updates by default.
+    the MCP server's installed copies if any), each installed version read back with the command step 4 names. None
+    of it updates by default.
 
 ## Gate
 

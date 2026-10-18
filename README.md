@@ -179,7 +179,8 @@ installed CLI and never fetches anything itself. Options, the desktop app and th
 [plugin README](https://github.com/arturogarrido/claudinho/tree/main/packages/plugin#readme).
 To get new versions on their own, turn on auto-update for the `claudinho` marketplace once
 (`/plugin`, the **Marketplaces** tab, **Enable auto-update**); Claude Code leaves it off by default
-for this marketplace.
+for this marketplace. A new version then loads in the next session you start, or after
+`/reload-plugins`.
 To remove it: `claude plugin uninstall claudinho@claudinho`.
 
 **The CLI it needs.** Everything above needs `@claudinho/cli` 0.12.0 or later. With 0.11.2 the
