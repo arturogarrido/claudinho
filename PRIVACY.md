@@ -1,12 +1,13 @@
 # Privacy Policy
 
-**Effective date:** 2026-07-09
+**Effective date:** 2026-10-17
 
 Claudinho is an independent, open-source project: a CLI, a Claude Code / Cursor
-statusline, a score-aware hook, and an MCP server (Claude Desktop Extension) that shows
-live football scores in your terminal and coding agent. This policy explains what data
-Claudinho does and does not handle. It applies to the `@claudinho/cli`, `@claudinho/mcp`,
-and `@claudinho/core` packages and the Claude Desktop Extension (`.mcpb`) bundle.
+statusline, a score-aware hook, an MCP server (Claude Desktop Extension), and a Claude Code
+plugin that show live football scores in your terminal and coding agent. This policy explains
+what data Claudinho does and does not handle. It applies to the `@claudinho/cli`,
+`@claudinho/mcp`, and `@claudinho/core` packages, the Claude Desktop Extension (`.mcpb`)
+bundle, and the Claude Code plugin (`packages/plugin` in the repository).
 
 ## Short version
 
@@ -66,9 +67,33 @@ The behavior differs by component:
   anywhere, and `claudinho follow off` deletes it.
 - The **MCP server** keeps its cache **in memory only**: a short-lived in-process cache for
   the life of the running server. It reads one file, the config file above, and writes none.
+- The **Claude Code plugin** writes no file; see [The Claude Code plugin](#the-claude-code-plugin).
 
 (Claude Code's own settings and hook configuration live separately under `~/.claude/`; that is
 editor configuration, not a Claudinho data store; see below.)
+
+## The Claude Code plugin
+
+The Claude Code plugin shows the score above your prompt in Claude Code. It makes **no network
+request** and **writes no file**:
+
+- It runs the `claudinho` CLI installed on your machine (`claudinho ambient --json` for the
+  band, the toasts and `/claudinho`; `claudinho match <id> --json` for the match pane) and reads
+  the JSON the CLI prints. The CLI makes the requests to ESPN and keeps the cache described above:
+  a run can start the CLI's background refresh, as the statusline does.
+- To find the CLI and choose its language, it reads the `PATH`, `HOME`, `OS`, `CLAUDINHO_LANG`
+  and `LANG` environment variables and lists the Node versions nvm installed
+  (`~/.nvm/versions/node`). Apart from the CLI's answer, that is all it reads from your machine.
+- With the `context` option on (the default), while a match is live, it adds a short note with
+  the live scores beside each prompt you send to Claude: public match data from the CLI's last
+  reading, nothing about you. Claude Code sends that note to the model with your prompt. With
+  `context` off, or with no match live, nothing is added. The plugin neither reads nor keeps the
+  prompts you send; of what you type, it reads only the text after `/claudinho`, for the word
+  `match`.
+- Between runs it keeps its last readings in the state Claude Code holds for the session, and
+  writes no file of its own. Its options (`toasts`, `celebrate`, `context`, `language`) are kept
+  by Claude Code in its own settings (`~/.claude/settings.json` for a user-scope install), where
+  `/config` changes them.
 
 ## Configuration changes (`init`)
 

@@ -6,6 +6,9 @@
   "author": {
     "name": "Arturo Garrido"
   },
+  "homepage": "https://github.com/arturogarrido/claudinho/tree/main/packages/plugin",
+  "repository": "https://github.com/arturogarrido/claudinho",
+  "license": "MIT",
   "userConfig": {
     "toasts": {
       "type": "string",

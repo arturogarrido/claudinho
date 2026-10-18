@@ -6,7 +6,8 @@ Live football in Claude Code, for the competition you follow:
 - **Toasts** that say what happened: a goal and its scorer, a goal against, a correction, full time and the result.
 - **The celebration**: Anthropic's Claude mascot and "GOAL!" in the band, for about three seconds, when your team
   scores, and once more when it wins or draws at full time. Under `toasts: all` it also plays on any goal in a
-  match that is not your team's.
+  match that is not your team's. The mascot is Anthropic's: it is the one exception to this project's rule against
+  logos and marks, and it is removed if Anthropic asks.
 - **The match pane**: `/claudinho match` opens the match with its goals and cards beside the transcript.
 - **The context**: while a match is live, the score goes beside the prompts you send, so Claude knows it.
 - **`/claudinho`**: the band's line on demand.
@@ -232,6 +233,7 @@ and changes nothing the band shows. A `/claudinho` typed while Claude is working
 ## Data and disclaimer
 
 Live data: ESPN, read by the CLI, which keeps it in a local cache. The plugin's football data is the
-CLI's answer alone.
+CLI's answer alone. The plugin itself makes no network request and writes no file. Full policy:
+[PRIVACY.md](https://github.com/arturogarrido/claudinho/blob/main/PRIVACY.md).
 
 Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic.
