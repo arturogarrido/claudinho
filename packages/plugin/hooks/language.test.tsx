@@ -786,6 +786,21 @@ describe("full time: the winning team's identity is the evidence (round 1, L2)",
     expect(fullTime(r)).toBe(false)
   })
 
+  // Round 4 of #186: an empty name is no name (as an empty code is no code), so a side with an empty name, no code and
+  // no id states no identity either.
+  test('held: the away side states only an empty name, no code and no id, in either reading, `names.away` changed: dropped', async ($, on) => {
+    const ft = (awayName: string) =>
+      momentView([], [{ ...finishedRecord([1, 2], side({ name: '' })), names: { home: ATL.name, away: awayName } }], { line: FT_LINE })
+    const w = await world($, on, [liveMx([1, 2]), ft('Pumas UNAM'), ft('Cruz Azul'), ft('Cruz Azul')])
+    await w.turnStart()
+    await next(w)
+    await next(w)
+    await w.turnEnd()
+    const r = await rows(w)
+    expect(hasMascot(r)).toBe(false)
+    expect(fullTime(r)).toBe(false)
+  })
+
   test('held: the same 1–2, the same team: kept, it plays when the turn ends', async ($, on) => {
     const w = await world($, on, [liveMx([1, 2]), ftMx(UNAM), ftMx(UNAM), ftMx(UNAM)])
     await w.turnStart()
