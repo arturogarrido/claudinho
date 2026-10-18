@@ -99,10 +99,11 @@ export type AmbientMatch = Match & {
 /** The ambient view of a selected competition, its keys in this order. */
 export interface AmbientView {
   /**
-   * The statusline's line, as `claudinho prompt` prints it (the same reader,
-   * the same options), fitted to `--columns N` when given: whole matches are
-   * kept while they fit and the rest counted in the `+N` (or `+more`) suffix,
-   * which is never cut while the width holds it; below the suffix's own width
+   * The statusline's line rendered in `lang` (the same reader and the same
+   * options as `claudinho prompt`, which prints it in English), fitted to
+   * `--columns N` when given: whole matches are kept while they fit and
+   * the rest counted in the `+N` (or `+more`) suffix, which is never cut
+   * while the width holds it; below the suffix's own width
    * the line is the width's cut, never wider than asked. Its own tokens are in
    * `lang` (the countdown, the syncing phrase, the live segment's half-time
    * and live words); the overflow marker (`+N`, `+more`), the World Cup's

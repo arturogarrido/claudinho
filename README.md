@@ -161,7 +161,8 @@ prompt of a Claude Code session in a terminal:
 /plugin install claudinho --marketplace arturogarrido/claudinho
 ```
 
-Answer `y` to add the marketplace, then choose a scope. The `toasts` option (in `/config`) is
+Answer `y` to add the marketplace, then choose a scope. Its options (in `/config`) are `toasts`, `celebrate`,
+`context` and `language`. The `toasts` option is
 `pinned` by default (your pinned team's match, `claudinho follow <alias> --team <name>`; with no pin
 saved, no toast), `all` or `off`. A toast is one line, the news then the score, written from the names
 and fields the CLI gives (`⚽ GOAL! Liverpool · Ronald Araújo 22'` and the score; `Goal for` the other side; `Full
@@ -173,7 +174,10 @@ whistle. On your pinned team's goal (or any goal under `all` of a match with no 
 celebration above its line: Anthropic's Claude mascot as text art beside the ball, "GOAL!", the team and the scorer,
 about three seconds; at full time, on your team's win or a draw, the mascot plays once beside the result. Both wait
 while Claude is working. With CLI 0.11.2 the toasts are the hook's own line and the celebration a ball and "GOAL!". The `celebrate` option (in `/config`) is `on` by default, or `off`.
-The `context` option (in `/config`) is `on` by default, or `off`, which sends nothing with your prompts. At the end of an
+The `context` option (in `/config`) is `on` by default, or `off`, which sends nothing with your prompts. The toasts,
+the celebration, the band and the pane follow the `language` option (`auto` by default: `CLAUDINHO_LANG`, then
+`LANG`; or `en`, `es`, `pt`, `fr`), so a Spanish session reads `⚽ ¡GOL! Pumas UNAM · Juninho 42'`
+and the score; the statusline, the hook and the context for Claude stay English. At the end of an
 edition the band shows the World Cup's sign-off line, the one end-of-edition line the statusline
 prints; after another competition's season the statusline says nothing is known, and the band shows
 nothing. More in the plugin's

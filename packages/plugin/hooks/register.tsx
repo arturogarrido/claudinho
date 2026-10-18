@@ -23,9 +23,9 @@ import type {
  *
  * The CLI owns the data (its cache, its refresher, the network, the backoff) and the words: the plugin never fetches.
  * This module runs the one binary, `claudinho ambient --json` (the band's runs add `--columns <the band's columns>`;
- * the pane runs `claudinho match <id> --json`, whose read of the provider is the CLI's; the band's runs end with
+ * the pane runs `claudinho match <id> --json`, whose read of the provider is the CLI's; every ambient run ends with
  * `--lang <code>`, the `language` option's, `auto` resolved from the host's environment as the CLI resolves it, and the
- * match runs and the `/claudinho` run too once the band's last current view stated a `lang`), with an argument array,
+ * match runs too once any view said the CLI localizes, `cliLocalizes`), with an argument array,
  * bounded, and reads the fields of the one JSON object it prints, never its text: what the line IS (`idle`, `empty`,
  * the first run's `noCompetition`), whether its list is `current`, and the hook's own line on each record, said
  * verbatim. No binary, a timeout, a cut or an answer that is not the object: the band shows nothing (the command says
@@ -288,9 +288,11 @@ let languageOption: Lang | 'auto' = 'auto'
 /** The language a run is handed, kept for the rest of the module load once both reads answered (or not needed). */
 let langKept: Lang | null = null
 /**
- * Whether the band's last CURRENT view stated a `lang` (a CLI that localizes the band and the moments, 0.12.0): only
- * then do the match runs and the `/claudinho` run carry `--lang`, so a CLI that does not (0.11.2) keeps its pane and
- * its reply English like its toasts. False before the first current view; the band's own run carries `--lang` always.
+ * Whether the CLI localizes (0.12.0): set for the rest of the module load by any view that states a `lang` among the
+ * four codes, current or not, read by the band's run or by `/claudinho`'s own run (`markLocalizes`); a view stating no
+ * such value marks nothing. Only once it is set do the match runs carry `--lang`, so a CLI that does not localize
+ * (0.11.2) keeps its pane English like its toasts. Every ambient run (the band's and `/claudinho`'s) carries `--lang`
+ * always.
  */
 let cliLocalizes = false
 /** Whether the goal celebration plays (`celebrate` is anything but `off`), set at load. */
@@ -580,8 +582,13 @@ async function runLang($: EngineInterface): Promise<Lang> {
 /** The argument a CLI run ends with: the language, one of the four codes. */
 const langArgs = (lang: Lang): string[] => ['--lang', lang]
 
-/** The argument the match runs and the `/claudinho` run end with: the language once the CLI says it localizes, else none. */
-const replyLangArgs = async ($: EngineInterface): Promise<string[]> => (cliLocalizes ? langArgs(await runLang($)) : [])
+/** The argument the match runs end with: the language once a view said the CLI localizes, else none. */
+const matchLangArgs = async ($: EngineInterface): Promise<string[]> => (cliLocalizes ? langArgs(await runLang($)) : [])
+
+/** A reading that is a view stating a `lang` among the four codes marks the CLI as localizing; anything else marks nothing. */
+function markLocalizes(reading: Reading): void {
+  if (reading.answered && reading.isView && isLang(reading.view.lang)) cliLocalizes = true
+}
 
 /**
  * What `claudinho ambient --json` prints, as far as this module reads it: a selected competition's VIEW (an object
@@ -609,7 +616,7 @@ type View = {
   finished?: unknown
   /** CLI 0.12.0: the moment words in the view's language (read whole, else the English ones). */
   words?: unknown
-  /** CLI 0.12.0: the CLI's resolved language; a current view stating it says the CLI localizes. */
+  /** CLI 0.12.0: the CLI's resolved language; a view stating one of the four codes says the CLI localizes. */
   lang?: unknown
 }
 
@@ -1360,7 +1367,7 @@ async function spawnMatch(
   b: Binding,
   env: { PATH: string } | undefined,
 ): Promise<RunResult | undefined> {
-  const lang = await replyLangArgs($)
+  const lang = await matchLangArgs($)
   try {
     const competition = b.pinned ? ['--competition', b.slug] : []
     return await $.process.run(['claudinho', 'match', b.id, '--json', ...competition, ...lang], {
@@ -1660,6 +1667,7 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
     // No binary, a timeout, a refused spawn: a failed run.
   }
   const reading = readAnswer(result)
+  markLocalizes(reading)
   if (!reading.answered) {
     // A failed run: nothing shown, the baseline and the context left, the next run at the next fire.
     if (clears === c) await update($, pace, () => ({ ranAt: now, idle: false }))
@@ -1688,8 +1696,6 @@ async function run($: EngineInterface, option: ToastsOption, force: boolean): Pr
 
   // The two shapes that are no view are no current view either: each clears the context and keeps the baseline.
   if (isView && view.current === true) {
-    // Whether this CLI localizes (it states its `lang`): what the match and `/claudinho` runs are handed from now on.
-    cliLocalizes = isLang(view.lang)
     const prev = await read($, baseline)
     const moments = momentsFor(view, prev, option)
     for (const m of moments) for (const text of m.texts) $.ui.toast(text)
@@ -2001,10 +2007,10 @@ export const register: Register = (on, options) => {
     // typed after it is read for one word alone: `match` opens the pane; anything else is ignored. Neither call
     // rejects out of here: `runEnv` never rejects, and the spawn's rejection is a failed run.
     const env = await runEnv($)
-    const lang = await replyLangArgs($)
+    const lang = await runLang($)
     let result: RunResult | undefined
     try {
-      result = await $.process.run(['claudinho', 'ambient', '--json', ...lang], {
+      result = await $.process.run(['claudinho', 'ambient', '--json', ...langArgs(lang)], {
         timeoutMs: RUN_TIMEOUT_MS,
         stdin: '',
         ...(env ? { env } : {}),
@@ -2013,6 +2019,8 @@ export const register: Register = (on, options) => {
       // No binary, a timeout, a refused spawn: no answer.
     }
     const reading = readAnswer(result)
+    // A view stating its `lang` marks the CLI as localizing before any match run (headless too: no band run there).
+    markLocalizes(reading)
     if (typeof e.args === 'string' && e.args.trim() === PANE_WORD) {
       // The pane: the match of this same reading, read and opened inside the hook. A pane that opened with the CLI's
       // rows, on a surface that draws it now, carries the attribution and the disclaimer: the reply is the line and a
