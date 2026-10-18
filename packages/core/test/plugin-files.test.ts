@@ -101,32 +101,71 @@ describe('the plugin directory listing', () => {
     expect(privacy).toMatch(/It applies to (?:[^.]|\.(?=\S))*the Claude Code plugin/);
   });
 
+  /** The hooks module's source, and `$`'s member access whatever the spacing or optional chaining (`$ ?. fs`). */
+  const hooksSource = () => readFileSync(join(ROOT, 'packages/plugin/hooks/register.tsx'), 'utf8');
+  const DOT = String.raw`\s*\??\.\s*`;
+  const OPEN = String.raw`\s*(?:\?\.)?\s*\(`;
+
   /**
-   * What PRIVACY.md says the plugin does: no network request, no file written, only the installed `claudinho` CLI
-   * run. A vocabulary check over the one module the manifest runs, in which the host is always `$`: an alias of `$`
-   * or of one of its members is outside it. The validator's `calls:` line is the full inventory, but it fails on none.
+   * What PRIVACY.md says the plugin does: no network request, no file written, no conversation read, only the
+   * installed `claudinho` CLI run. A vocabulary check over the one module the manifest runs, in which the host is
+   * always `$`: every member of `$` it names is one the policy accounts for; `$` is never indexed or assigned; the
+   * module imports nothing but types and the host's three state helpers; every run is `claudinho ambient` or
+   * `claudinho match`; the filesystem is read twice, nvm's version folder listed and `<version>/bin/claudinho` probed;
+   * the prompt handler reads no field of the prompt but its `context` list. A use of the host this grammar cannot see
+   * (a name built at run time, `$` handed to code outside the module) is outside it. The validator's `calls:` line is
+   * the full inventory, but it fails on none.
    */
   it('the hooks module calls no host capability beyond the ones PRIVACY.md states, and runs only claudinho', () => {
-    const src = readFileSync(join(ROOT, 'packages/plugin/hooks/register.tsx'), 'utf8');
-    const ANY_MEMBER = new Set(['clock', 'command', 'session', 'state', 'ui']);
-    const MEMBERS = new Set(['env.get', 'fs.exists', 'fs.list', 'process.run']);
-    const calls = [...src.matchAll(/\$\.([A-Za-z_]+)(?:\.([A-Za-z_]+))?/g)].map((m) => [m[1] ?? '', m[2] ?? ''] as const);
-    expect(calls.length).toBeGreaterThan(0);
-    const outside = calls.filter(([ns, member]) => !ANY_MEMBER.has(ns) && !MEMBERS.has(`${ns}.${member}`));
-    expect(outside.map(([ns, member]) => `$.${ns}.${member}`)).toEqual([]);
-    expect(src).not.toMatch(/\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|from ['"]node:/);
-    const runs = [...src.matchAll(/\$\.process\.run\(\s*\[\s*(['"][^'"]*['"])/g)].map((m) => m[1]);
-    expect(runs.length).toBe((src.match(/\$\.process\.run\(/g) ?? []).length);
-    expect(new Set(runs)).toEqual(new Set(["'claudinho'"]));
+    const src = hooksSource();
+    // `$.state` is named in comments alone: the state goes through the host's `read` and `update`.
+    const MEMBERS = new Set([
+      'clock.after', 'clock.every', 'clock.now', 'clock.sleep', 'command.register', 'env.get', 'fs.exists', 'fs.list',
+      'process.run', 'session.surfaces', 'state.', 'state.get', 'state.set', 'ui.invalidate', 'ui.open', 'ui.resolve',
+      'ui.toast',
+    ]);
+    const named = [...src.matchAll(new RegExp(String.raw`\$${DOT}([A-Za-z_]+)(?:${DOT}([A-Za-z_]+))?`, 'g'))];
+    expect(named.length).toBeGreaterThan(0);
+    expect(named.map((m) => `${m[1] ?? ''}.${m[2] ?? ''}`).filter((c) => !MEMBERS.has(c))).toEqual([]);
+    expect(src).not.toMatch(new RegExp(String.raw`\$(?:${DOT}[A-Za-z_]+)*\s*\[`));
+    expect(src).not.toMatch(/[=:]\s*\$\s*(?=[;,)}\n]|$)/m);
+    expect(src).not.toMatch(/\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\brequire\s*\(|\bimport\s*\(|\bglobalThis\b/);
+    expect(src).not.toMatch(/(?<![.\w$])process\??\.[A-Za-z_]/);
+    const imports = [...src.matchAll(/^import\s+(type\s+)?\{([^}]*)\}\s+from\s+'([^']+)'/gm)];
+    expect(imports.length).toBe((src.match(/^\s*import\b/gm) ?? []).length);
+    expect(imports.filter((m) => m[3] !== 'claude-code' && m[3] !== '../types').map((m) => m[3])).toEqual([]);
+    const values = imports.filter((m) => !m[1]).flatMap((m) => (m[2] ?? '').split(',').map((v) => v.trim()));
+    expect(values.filter((v) => v !== '').sort()).toEqual(['atom', 'read', 'update']);
+    const argv = String.raw`\s*\[\s*(['"][^'"]*['"])\s*,\s*(['"][^'"]*['"])`;
+    const runs = [...src.matchAll(new RegExp(String.raw`\$${DOT}process${DOT}run${OPEN}${argv}`, 'g'))];
+    expect(runs.length).toBe((src.match(new RegExp(String.raw`\$${DOT}process${DOT}run\b`, 'g')) ?? []).length);
+    expect(new Set(runs.map((m) => m[1]))).toEqual(new Set(["'claudinho'"]));
+    expect(new Set(runs.map((m) => m[2]))).toEqual(new Set(["'ambient'", "'match'"]));
+    const fsCalls = (member: string) => (src.match(new RegExp(String.raw`\$${DOT}fs${DOT}${member}\b`, 'g')) ?? []).length;
+    expect([fsCalls('list'), fsCalls('exists')]).toEqual([1, 1]);
+    expect(src).toMatch(new RegExp(String.raw`\$${DOT}fs${DOT}list${OPEN}\s*root\s*\)`));
+    expect(src.match(/\broot\s*=/g) ?? []).toHaveLength(1);
+    expect(src).toContain(`const root = \`\${home}/.nvm/versions/node\``);
+    expect(src).toMatch(new RegExp(String.raw`\$${DOT}fs${DOT}exists${OPEN}\s*\`\$\{bin\}/claudinho\`\s*\)`));
+    expect(src).toContain(`.map((v) => \`\${root}/\${v.name}/bin\`)`);
+    const submit = src.indexOf("on('prompt.submit'");
+    expect(submit).toBeGreaterThan(-1);
+    const handler = src.slice(submit, src.indexOf('\n  })', submit));
+    expect([...handler.matchAll(/\be\s*\??\.\s*([A-Za-z_]+)/g)].map((m) => m[1])).toEqual(['context']);
+    expect(handler).not.toMatch(/\be\s*\[|=\s*e\b/);
   });
 
   it('every environment variable the hooks module reads is named in PRIVACY.md', () => {
-    const src = readFileSync(join(ROOT, 'packages/plugin/hooks/register.tsx'), 'utf8');
+    const src = hooksSource();
     const privacy = readFileSync(join(ROOT, 'PRIVACY.md'), 'utf8');
-    const names = [...src.matchAll(/\$\.env\.get\(\s*['"]([A-Z_]+)['"]\s*\)/g)].map((m) => m[1]);
-    expect(names.length).toBe((src.match(/\$\.env\.get\(/g) ?? []).length);
+    // The plugin's own section: a name the policy gives another component (`CLAUDINHO_MARKETS`) is not its account.
+    const from = privacy.indexOf('## The Claude Code plugin');
+    expect(from).toBeGreaterThan(-1);
+    const section = privacy.slice(from, privacy.indexOf('\n## ', from + 1));
+    const names = [...src.matchAll(new RegExp(String.raw`\$${DOT}env${DOT}get${OPEN}\s*['"]([A-Z_]+)['"]\s*\)`, 'g'))];
+    expect(names.length).toBe((src.match(new RegExp(String.raw`\$${DOT}env${DOT}get\b`, 'g')) ?? []).length);
     expect(names.length).toBeGreaterThan(0);
-    expect(names.filter((n) => !privacy.includes(`\`${n}\``))).toEqual([]);
+    expect(names.map((m) => m[1]).filter((n) => !section.includes(`\`${n}\``))).toEqual([]);
   });
 });
 
