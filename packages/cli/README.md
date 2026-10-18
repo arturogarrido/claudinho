@@ -112,9 +112,9 @@ claudinho share next --copy                      # a card for the group chat, on
 ### In a club competition
 
 `next` finds a club by its name or code among the competition's clubs (its table, and its fixtures
-of the next 14 days) and answers its next match within 14 days. When several clubs match a name it
-lists them and does not guess. `match <id>` looks from yesterday to 14 days ahead, and says which
-days it searched when the match is not there. Between two seasons, `today`, `live`, `next` and
+from yesterday to 14 days ahead) and answers its next match within 14 days. When several clubs match a name it
+lists them and does not guess. `match <id>` looks from yesterday to 14 days ahead. When the match is not there it names the days it
+searched, or, when the provider's answer was not whole, says no match with that id was read. Between two seasons, `today`, `live`, `next` and
 `match` say "Between editions". `bracket` says "This competition has no bracket." on the Premier
 League and LALIGA, and "Not available for this competition yet." on every other competition but the
 World Cup. A club shows by its name (by its code
@@ -176,12 +176,14 @@ not used either.
 **`claudinho follow`** shows the choice and where it came from; `claudinho follow off` forgets it
 (it deletes `config.json`). `follow --json` prints the same facts as its text:
 
-- `competition`: with `follow` alone, what this command follows; after a write or `off`, what the
-  next command follows. While `CLAUDINHO_COMPETITION` is set, that is the environment's choice, not
-  the one just saved. With nothing chosen it is `null`, beside `noCompetition: true`.
+- `competition`: with `follow` alone, what this command follows (`--competition`, else
+  `CLAUDINHO_COMPETITION`, else the saved choice). After a write or `off`, what the next command
+  follows: while `CLAUDINHO_COMPETITION` is set, that is the environment's choice, not the one just
+  saved. With nothing chosen it is `null`, beside `noCompetition: true`; with a refused value it is
+  `null`, beside `refused`.
 - `override`: `flag` or `env` when that competition does not come from the saved choice.
 - `sources`: the `--competition`, `CLAUDINHO_COMPETITION` and `CLAUDINHO_TEAM` values this command
-  ran under.
+  ran under, each competition as its resolved slug (`laliga` is `esp.1`).
 - `refused`: each refused value under `flag`, `env` or `team` (a `CLAUDINHO_TEAM` with nothing
   readable is `"team": ""`).
 - `saved`: the file as read, or as written; `null` when there is none, with `reason` saying why.
@@ -283,9 +285,10 @@ Want an image? A screenshot of the card works, or a tool such as
 ## Prediction-market odds (World Cup)
 
 For World Cup matches, `claudinho markets` shows a "who's favored" line: the percentages Polymarket's
-public market data implies, for a date, a match, or a team's current match (the one in play) or,
-with none, its next. A short version appears under `today`, `match` and on share cards when a
-reliable market exists. **Informational only, not betting
+public market data implies, for a date, a match, or a team's current match (one that has kicked off and is not over, within
+about three hours of its kickoff) or, with none, its next. A short version appears under `today`,
+`match` and on the share cards for a date, a match or a team's next match, when a reliable market
+exists. **Informational only, not betting
 advice:** no trading, no links. A match with no clean market, and a finished match, shows nothing.
 With `--json`, `markets` carries `complete`, and `today` and `match` carry `marketComplete`. `false`
 means the optional market read did not finish, and the text says so: it is not "no market".
@@ -310,14 +313,14 @@ The statusline is English in every language.
 - `CLAUDINHO_TEAM=ARS`: that team's match first, the others counted (`+N`). Give a code; on the World Cup a nation's name works too. A pinned team does the same when this is not set.
 - `CLAUDINHO_MAX=2`: show at most this many live matches when your team is not in play (default and maximum: 8); the rest are counted.
 - `CLAUDINHO_COMPACT=0`: show 3-letter codes beside the flags.
-- `CLAUDINHO_FLAGS=off`: no flag emoji: 3-letter codes on the statusline, plain names in `today`, `live`, `next`, `match`, `table`, `bracket`, `team` and the hook (automatic in Warp, which cannot draw them). Share cards keep their flags. `CLAUDINHO_FLAGS=on` keeps the flags.
+- `CLAUDINHO_FLAGS=off`: no flag emoji: 3-letter codes on the statusline and in `bracket`, plain names in `today`, `live`, `next`, `match`, `table`, `team` and the hook (automatic in Warp, which cannot draw them). Share cards keep their flags. `CLAUDINHO_FLAGS=on` keeps the flags.
 
 The same `claudinho prompt` works in tmux (`set -g status-right '#(claudinho prompt)'`) and as a
 Starship custom command.
 
 Running a local build (a checkout, no global `claudinho`)? `init-statusline`, `init-hook` and
 `init-cursor-statusline` take `--command`. From the checkout's root, after a build:
-`node packages/cli/dist/index.js init-cursor-statusline --command "node $PWD/packages/cli/dist/index.js prompt"`.
+`node packages/cli/dist/index.js init-cursor-statusline --command "node \"$PWD/packages/cli/dist/index.js\" prompt"`.
 
 ### Score-aware Claude: the hook
 

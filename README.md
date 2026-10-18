@@ -200,7 +200,7 @@ it. To remove both: `claudinho init plugin`. It removes them when their commands
 `claudinho prompt` and `claudinho hook`, and keeps every other setting. Running a local build
 instead of the global command? `init-statusline`, `init-hook` and `init-cursor-statusline` take
 `--command`. From the checkout's root, after a build:
-`node packages/cli/dist/index.js init-cursor-statusline --command "node $PWD/packages/cli/dist/index.js prompt"`.
+`node packages/cli/dist/index.js init-cursor-statusline --command "node \"$PWD/packages/cli/dist/index.js\" prompt"`.
 
 ### Cursor CLI
 
@@ -292,8 +292,8 @@ from it says `Live data: ESPN`), market odds from Polymarket's public data. Rate
 plugin's celebration, Anthropic's Claude mascot). A flag is a nation's, so a club shows by its name.
 
 **Flags show as boxed letters (`CH`, `BA`)?** Some terminals (Warp, some Windows terminals) cannot
-draw flag emoji. Claudinho detects Warp and drops the flags: the statusline shows 3-letter codes
-(`MEX`), and `today`, `live`, `next`, `match`, `table`, `bracket`, `team` and the hook show plain
+draw flag emoji. Claudinho detects Warp and drops the flags: the statusline and `bracket` show
+3-letter codes (`MEX`), and `today`, `live`, `next`, `match`, `table`, `team` and the hook show plain
 team names. Share cards keep their flags. Force it anywhere with `CLAUDINHO_FLAGS=off`, or keep the
 flags with `CLAUDINHO_FLAGS=on`.
 
