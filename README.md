@@ -32,11 +32,13 @@ Your league instead? `follow premier-league`, `follow liga-mx`, `follow laliga`:
 
 ## Pick your setup
 
-Each row is independent. Start with the first and add what you want.
+Start with the first row and add what you want. Every row but the MCP server needs the `claudinho`
+command from the first row. The plugin replaces the Claude Code statusline and the prompt hook: use
+the plugin or those two rows, not both.
 
 | You want | What it changes | Command |
 |---|---|---|
-| Scores in the terminal | installs the `claudinho` command; it keeps your choice in `~/.config/claudinho/` and a cache in `~/.cache/claudinho/` | `npm i -g @claudinho/cli` |
+| Scores in the terminal | installs the `claudinho` command; it keeps your choice and a cache on your machine ([where](https://github.com/arturogarrido/claudinho/tree/main/packages/cli#where-it-is-saved)) | `npm i -g @claudinho/cli` |
 | The live score under your Claude Code prompt | Claude Code's statusline | `claudinho init-statusline` |
 | The live score above your Claude Code prompt, a toast and a celebration on a goal, and a match pane | installs a Claude Code plugin | [Claude Code plugin](#claude-code-plugin) |
 | Claude Code to know the live score when you ask it something | adds a prompt hook (the plugin does this too) | `claudinho init-hook` |
@@ -50,8 +52,10 @@ Off-match, the prompt hook adds nothing to what the model reads.
 ## Competitions
 
 Nothing is followed until you choose one. `claudinho follow <alias>` saves your choice, and the
-commands, the statusline, the plugin and the MCP server follow it. Only `claudinho team` and the MCP
-tool `get_team` do not: they always read the World Cup's nations. `claudinho follow --list` lists
+commands, the statusline, the plugin and the MCP server follow it. Three things stay the World
+Cup's whatever you follow: `claudinho team` and the MCP tool `get_team` read its nations, and the MCP
+resource `fixtures://{date}` is its bundled schedule. `claudinho team` is refused when
+`--competition` or `CLAUDINHO_COMPETITION` chooses another competition. `claudinho follow --list` lists
 every alias with what it offers, `claudinho follow` shows your choice, and `claudinho follow off`
 forgets it.
 
@@ -130,9 +134,10 @@ Not affiliated with FIFA, any confederation, league or club, or Anthropic.
 This is a capture from Oct 14, 2026. Off the World Cup, `match <id>` finds a match from yesterday
 to 14 days ahead, so run it with a current id (`claudinho today --json` lists each match's `id`).
 
-All commands, options and `--json` output: the [CLI README](https://github.com/arturogarrido/claudinho/tree/main/packages/cli#readme).
+The commands, their options and their `--json` output: the [CLI README](https://github.com/arturogarrido/claudinho/tree/main/packages/cli#readme).
 To remove it: `claudinho follow off` (it deletes the saved choice), then `npm rm -g @claudinho/cli`,
-then delete the cache folder `~/.cache/claudinho/`.
+then delete the cache folder (the CLI README says
+[where it is](https://github.com/arturogarrido/claudinho/tree/main/packages/cli#where-it-is-saved)).
 
 ### Claude Code plugin
 
@@ -142,7 +147,7 @@ toast says what happened (`⚽ GOAL! Liverpool · Ronald Araújo 22' · LASK Lin
 Claude mascot celebrates in the band for a few seconds. With the `toasts` option set to `all`, it also celebrates any
 goal in a match that is not your team's. `/claudinho match` opens a pane with the goals and cards.
 The band, the toasts, the celebration and the pane speak English, Spanish, Portuguese or French (the plugin's
-`language` option).
+`language` option). A few fixed words stay English; the plugin README lists them.
 
 <p align="center">
   <img src=".github/assets/plugin.gif" alt="Claude Code with the plugin during Real Betis v Barcelona on Oct 17, 2026: beside a coding answer, a toast and the mascot say GOAL! Barcelona, Rodri 41', the band shows the score in bold, and the match pane lists the goals and cards" width="800">
@@ -154,11 +159,12 @@ The band, the toasts, the celebration and the pane speak English, Spanish, Portu
 ```bash
 npm i -g @claudinho/cli
 claudinho follow champions-league --team Arsenal   # the toasts and the mascot are for your pinned team by default
-claudinho init plugin          # only if you ran `init claude`, `init-statusline` or `init-hook` before
+claudinho init plugin          # only if Claudinho's statusline or hook is in Claude Code's settings
 ```
 
-`claudinho init plugin` removes the `claudinho prompt` statusline and the `claudinho hook` prompt
-hook, whichever of those commands wrote them, so the score does not show twice.
+`claudinho init plugin` removes, from Claude Code's settings, the statusline whose command is
+`claudinho prompt` and the prompt hook whose command is `claudinho hook` (the commands `init claude`,
+`init-statusline` and `init-hook` write by default), so the score does not show twice.
 
 Then, in Claude Code in a terminal:
 
@@ -167,8 +173,9 @@ Then, in Claude Code in a terminal:
 ```
 
 While a match is live, the plugin also puts the live score beside each prompt you send, so Claude
-knows it. Off-match it adds nothing, and the plugin's `context` option turns it off. The plugin reads everything from the installed CLI and never
-fetches anything itself. Options, the desktop app and the details: the
+knows it (from its last reading, when that reading is current and recent). Off-match it adds
+nothing, and the plugin's `context` option turns it off. The plugin reads everything from the
+installed CLI and never fetches anything itself. Options, the desktop app and the details: the
 [plugin README](https://github.com/arturogarrido/claudinho/tree/main/packages/plugin#readme).
 To remove it: `claude plugin uninstall claudinho@claudinho`.
 
@@ -189,10 +196,11 @@ claudinho init-hook            # optional: Claude knows the live score during a 
 
 Or both at once, plus the MCP line to run: `claudinho init claude`. Each command backs up
 `~/.claude/settings.json` first (to `settings.json.claudinho.bak`, once). Restart Claude Code to see
-it. To remove both: `claudinho init plugin` (it removes exactly those two entries and keeps every
-other setting). Running a local build instead of the global command? `init-statusline`, `init-hook` and
-`init-cursor-statusline` take `--command`, as in
-`claudinho init-cursor-statusline --command "node ./packages/cli/dist/index.js prompt"`.
+it. To remove both: `claudinho init plugin`. It removes them when their commands are still
+`claudinho prompt` and `claudinho hook`, and keeps every other setting. Running a local build
+instead of the global command? `init-statusline`, `init-hook` and `init-cursor-statusline` take
+`--command`. From the checkout's root, after a build:
+`node packages/cli/dist/index.js init-cursor-statusline --command "node $PWD/packages/cli/dist/index.js prompt"`.
 
 ### Cursor CLI
 
@@ -218,14 +226,16 @@ yet, so the score-aware hook is Claude Code only.
 
 The MCP server gives your agent ten read-only tools, among them today's matches, live scores, a
 team's next match, standings, one match with its goals and cards, and a shareable card. It works in
-Claude Code, Cursor, Codex, Claude Desktop, Windsurf, Zed, VS Code, and any MCP client.
+Claude Code, Cursor, Codex, Claude Desktop, Windsurf, Zed, VS Code, and any MCP client that runs a
+local (stdio) server.
 
 ```bash
 claude mcp add claudinho -- npx -y @claudinho/mcp     # Claude Code
 codex mcp add claudinho -- npx -y @claudinho/mcp      # Codex CLI
 ```
 
-Everything else, Cursor included (`~/.cursor/mcp.json`), takes this config:
+Most other clients, Cursor included (`~/.cursor/mcp.json`), take this config. Some (VS Code, Zed)
+put the same `command` and `args` under a key of their own: see your client's MCP docs.
 
 ```json
 { "mcpServers": { "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] } } }
@@ -237,30 +247,35 @@ Then ask mid-task. If you have not run `claudinho follow`, name the competition 
   <img src=".github/assets/mcp-aha.gif" alt="Cursor CLI asked mid-task how Manchester City are doing against Paris Saint-Germain; it calls the Claudinho MCP server and answers with the live score from the 24th minute" width="760">
 </p>
 
-Every tool, prompt and field: the [MCP README](https://github.com/arturogarrido/claudinho/tree/main/packages/mcp#readme).
+The tools, the prompts and their fields: the [MCP README](https://github.com/arturogarrido/claudinho/tree/main/packages/mcp#readme).
 
 ## What it does
 
 - **Scores, fixtures, standings**: `today`, `live`, `next`, `table`, `match <id>` with its goals and
   cards, and `bracket` for the World Cup. Kickoff times and days are in your timezone (`--tz`).
 - **Four languages**: English, Spanish, Portuguese and French (`--lang`), with a line of
-  commentary per match (`¡GOOOOL!`) and a team's own rally cry when it has one (Mexico's "¿Y si sí?",
-  Pumas' "¡Goya!", Arsenal's "COYG!"). `--flavor off` turns it off.
+  commentary on each match line (`¡GOOOOL!`) and a team's own rally cry when it has one (Mexico's
+  "¿Y si sí?", Pumas' "¡Goya!", Arsenal's "COYG!"). A postponed or cancelled match gets neither.
+  `--flavor off` turns it off.
 - **Clubs and nations**: a nation shows with its flag, a club by its name. No crests, kits or photos.
 - **Shareable cards**: `claudinho share next --copy` puts a plain-text card for the group chat on
   your clipboard.
 - **Prediction-market odds**: for World Cup matches, a "who's favored" line from Polymarket's public
-  data, shown only when a reliable market exists. **Informational only, not betting advice.**
-  `--no-markets` turns it off.
-- **Honest about gaps**: when the data provider sends something Claudinho cannot read, the answer
-  says its data may be incomplete, instead of showing less as if it were all.
+  data, shown under `today`, `match` and on share cards only when a reliable market exists.
+  **Informational only, not betting advice.** `--no-markets` hides it there; `claudinho markets`
+  asks for the odds on purpose.
+- **Honest about gaps**: when the data provider sends something Claudinho cannot read, the commands
+  and MCP tools that read it, and their share cards, say their data may be incomplete, instead of
+  showing less as if it were all. The statusline and the hook do not.
 
 ## What stays on your machine
 
 No accounts, no telemetry, no analytics, no Claudinho server. Claudinho asks two public services for
 data, ESPN for scores and standings and Polymarket for World Cup market odds, with nothing about you
-attached. It keeps your choice in `~/.config/claudinho/` and a small cache in `~/.cache/claudinho/`.
-The `init` commands change only the settings file they name, after a backup. Full policy:
+attached. The CLI keeps your choice and a small cache on your machine
+([where](https://github.com/arturogarrido/claudinho/tree/main/packages/cli#where-it-is-saved)); the
+MCP server writes nothing to disk. The `init` commands change only the settings file they name,
+after a one-time backup. Full policy:
 [PRIVACY.md](PRIVACY.md).
 
 ## FAQ
@@ -270,16 +285,17 @@ The `init` commands change only the settings file they name, after a backup. Ful
 **Does it work offline?** The World Cup's schedule ships with the package, so its fixtures work
 offline. Every other competition's schedule, and every live score, comes from the network.
 
-**Where does the data come from?** Scores and standings from ESPN's public scoreboard (every answer
-says `Live data: ESPN`), market odds from Polymarket's public data. Rate limits are respected.
+**Where does the data come from?** Scores and standings from ESPN's public scoreboard (an answer
+from it says `Live data: ESPN`), market odds from Polymarket's public data. Rate limits are respected.
 
-**Why no crests, kits or player photos?** Claudinho shows facts and emoji flags only. A flag is a
-nation's, so a club shows by its name.
+**Why no crests, kits or player photos?** Claudinho shows facts and emoji flags only (and, in the
+plugin's celebration, Anthropic's Claude mascot). A flag is a nation's, so a club shows by its name.
 
 **Flags show as boxed letters (`CH`, `BA`)?** Some terminals (Warp, some Windows terminals) cannot
 draw flag emoji. Claudinho detects Warp and drops the flags: the statusline shows 3-letter codes
-(`MEX`), and `today`, `live`, `table`, `next` and the hook show plain team names. Force it anywhere
-with `CLAUDINHO_FLAGS=off`, or keep the flags with `CLAUDINHO_FLAGS=on`.
+(`MEX`), and `today`, `live`, `next`, `match`, `table`, `bracket`, `team` and the hook show plain
+team names. Share cards keep their flags. Force it anywhere with `CLAUDINHO_FLAGS=off`, or keep the
+flags with `CLAUDINHO_FLAGS=on`.
 
 ## Around the web
 

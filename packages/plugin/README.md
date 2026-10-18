@@ -8,7 +8,7 @@ Live football in Claude Code, for the competition you follow:
   scores, and once more when it wins or draws at full time. Under `toasts: all` it also plays on any goal in a
   match that is not your team's.
 - **The match pane**: `/claudinho match` opens the match with its goals and cards beside the transcript.
-- **The context**: while a match is live, the score goes beside each prompt you send, so Claude knows it.
+- **The context**: while a match is live, the score goes beside the prompts you send, so Claude knows it.
 - **`/claudinho`**: the band's line on demand.
 
 <p align="center">
@@ -28,7 +28,7 @@ You need the CLI (Node.js 20 or later) and a competition to follow. Everything o
 ```bash
 npm i -g @claudinho/cli
 claudinho follow premier-league --team Arsenal   # the toasts and the celebration are for your pinned team by default
-claudinho init plugin          # only if you ran `init claude`, `init-statusline` or `init-hook` before (see below)
+claudinho init plugin          # only if Claudinho's statusline or hook is in Claude Code's settings (see below)
 ```
 
 Then, at the prompt of Claude Code **in a terminal**:
@@ -41,11 +41,11 @@ Answer `y` to add the marketplace, then choose a scope (the user scope is the fi
 The plugin is active in that session from then on. Installed at the user scope from a terminal, it
 also loads in the desktop app's Code tab, which cannot run `/plugin install` itself.
 
-`claudinho init plugin` removes the `claudinho prompt` statusline and the `claudinho hook` prompt
-hook from `~/.claude/settings.json`, whether `init claude`, `init-statusline` or `init-hook` wrote
-them, so the score does not show twice. It removes exactly those two entries and keeps every other
-setting. A command you edited (a wrapper, an `npx` form) stays, and
-`init plugin` names it.
+`claudinho init plugin` removes, from `~/.claude/settings.json`, the statusline whose command is
+`claudinho prompt` and the prompt hook whose command is `claudinho hook` (the commands `init claude`,
+`init-statusline` and `init-hook` write by default), so the score does not show twice. It keeps every
+other setting. Any other command stays (a wrapper, an `npx` form, a `--command` one), and
+`init plugin` names it when it mentions `claudinho`.
 
 **To remove the plugin:** `claude plugin uninstall claudinho@claudinho`.
 
@@ -68,9 +68,10 @@ An open match pane stays as it was drawn and stops reading: run `/claudinho matc
 **The band** shows the line `claudinho prompt` prints, in the plugin's language: the live score
 (`⚽ ARS 2–1 CHE 50'`, the score in bold), or the countdown to the next match (`⚽ ARS vs LEE in 7h13m`). From
 kickoff until the data provider marks the match live, for up to 30 minutes, the countdown reads the
-language's word for now (`⚽ BET vs BAR now`; `ahora`, `agora`, `maintenant`) and keeps that match. With several matches live it shows them side by side, or, with a team
-pinned, your team's match and a count of the others (`+2`). It shows nothing when no competition is followed or
-nothing is known. At the end of the World Cup it shows its sign-off line.
+language's word for now (`⚽ BET vs BAR now`; `ahora`, `agora`, `maintenant`) and keeps that match.
+With several matches live it shows them side by side (up to eight, and a count of the rest), or,
+while your pinned team is playing, its match and a count of the others (`+2`). It shows nothing
+when no competition is followed or nothing is known. At the end of the World Cup it shows its sign-off line.
 
 **A toast** is one line: what happened, then the score. Examples with Liverpool pinned, away at LASK Linz:
 
@@ -105,7 +106,8 @@ minutes while the match is in play. Close it with its close mark (or ctrl+x x). 
 `claudinho: ⚽ LAS 0–4 LIV 62' · match pane open`, when the pane opened.
 
 **The context**: while a match is live, each prompt you send carries the live score for Claude,
-from the plugin's last reading. Off-match it adds nothing. The `context` option turns it off.
+from the plugin's last reading, when that reading is current and less than 30 seconds old.
+Off-match it adds nothing. The `context` option turns it off.
 
 **`/claudinho`** prints the band's line now, with the data provider's name and the non-affiliation
 sentence under it, or one plain sentence when there is nothing to show.
@@ -227,7 +229,7 @@ and changes nothing the band shows. A `/claudinho` typed while Claude is working
 
 ## Data and disclaimer
 
-Live data: ESPN, read by the CLI, which keeps it in a local cache. The plugin reads the CLI's answer
-and nothing else.
+Live data: ESPN, read by the CLI, which keeps it in a local cache. The plugin's football data is the
+CLI's answer alone.
 
 Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic.

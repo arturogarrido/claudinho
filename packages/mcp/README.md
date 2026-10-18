@@ -26,7 +26,8 @@ codex mcp add claudinho -- npx -y @claudinho/mcp
 
 **Cursor, Claude Desktop, Windsurf, Zed, VS Code**: add this to the client's MCP config (for
 Cursor, `~/.cursor/mcp.json` or a project's `.cursor/mcp.json`; for Claude Desktop, Settings →
-Developer → Edit Config, then restart):
+Developer → Edit Config, then restart). Some clients (VS Code, Zed) put the same `command` and
+`args` under a key of their own: see your client's MCP docs.
 ```json
 { "mcpServers": { "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] } } }
 ```
@@ -50,7 +51,7 @@ npx @claudinho/cli follow champions-league --team Arsenal
 > "What matches are on today?" · "Show me the live scores" · "When's our next game?" ·
 > "Make me a shareable card for today"
 
-Without a competition, the tools answer with a sentence saying how to choose one.
+Without a competition, the tools that answer for one say how to choose it.
 
 ## Tools
 
@@ -78,18 +79,20 @@ Prompts: `my_team` (your team's next match and its standing, in the competition 
 
 ## Prediction-market odds (World Cup)
 
-For World Cup matches, `get_today` and `get_match` add a short "who's favored" line when a reliable
-Polymarket market exists, and `get_market_signal` reads one on its own. **Informational only, not
-betting advice:** market-implied percentages with Polymarket's attribution, never links or trade
-calls. Finished matches never show one. Turn it off with `CLAUDINHO_MARKETS=off` in the server's
-`env`.
+For World Cup matches, `get_today`, `get_match` and a `get_share_snippet` card for a match, a
+team's next match or a date add a short "who's favored" line when a reliable Polymarket market
+exists, and `get_market_signal` reads one on its own. **Informational only, not betting advice:**
+market-implied percentages with Polymarket's attribution, never links or trade calls. Finished
+matches never show one. `CLAUDINHO_MARKETS=off` in the server's `env` turns the short line off;
+`get_market_signal` still answers.
 
 ## Commentary
 
-Each match line in a tool's text ends with a short line of commentary in the reader's language
+A match line in a tool's text ends with a short line of commentary in the reader's language
 (`— ¡GOOOOL!`), or a team's own rally cry when it has one (Mexico's `¿Y si sí?`, Pumas' `¡Goya!`,
-Arsenal's `COYG!`). It never appears in the structured data. Turn it down with
-`CLAUDINHO_FLAVOR=subtle` or `off` in the server's `env`, or per call with `flavor`.
+Arsenal's `COYG!`). A postponed or cancelled match gets neither. The commentary never appears in
+the structured data. Turn it down with `CLAUDINHO_FLAVOR=subtle` or `off` in the server's `env`, or
+per call with `flavor`.
 
 ## Details for agent builders
 
@@ -115,13 +118,15 @@ exists. In particular, a missing next match does not mean a team is out.
 an empty answer carrying `horizon` or `window` is about that span. Several teams matching one name
 come back as `candidates`. Between two seasons, `get_today`, `get_live`, `get_next_fixture` and
 `get_match` carry `betweenEditions`. `get_bracket` answers `inapplicable` for a league season with no
-knockout tie, and `unsupported` for a competition it does not cover yet. A club has no `flag`. A
-match's `stage` is `REGULAR` for a league's season, `LEAGUE` for a cup's league phase, `PO` for
-play-offs, or `OTHER` with the provider's own words in `stageLabel`.
+knockout tie (the Premier League, LALIGA), and `unsupported` for every other competition but the
+World Cup. A club has no `flag`. A match's `stage` is `REGULAR` for a league's season, `LEAGUE` for
+a cup's league phase, `PO` for play-offs, or `OTHER` with the provider's own words in `stageLabel`.
 
-**Markets.** `get_today`, `get_match` and `get_share_snippet` carry `marketComplete`, and
-`get_market_signal` carries `complete`. `false` means the optional market read did not finish, which
-is not the same as "no signal"; the text, and a share card, say so too. `CLAUDINHO_MARKETS_SOURCE=fake` gives a clearly labelled, network-free preview.
+**Markets.** `get_today`, `get_match` and a `get_share_snippet` card for a match, a team's next
+match, a date or live matches carry `marketComplete` (a table or bracket card does not), and
+`get_market_signal` carries `complete`. `false` means the
+optional market read did not finish, which is not the same as "no signal"; the text, and a share
+card, say so too. `CLAUDINHO_MARKETS_SOURCE=fake` gives a clearly labelled, network-free preview.
 
 **The process.** Stdout carries only the MCP protocol; diagnostics go to stderr.
 `CLAUDINHO_DEBUG=1` in the server's `env` prints the data provider's failures there.
@@ -129,7 +134,7 @@ is not the same as "no signal"; the text, and a share card, say so too. `CLAUDIN
 ## How it works
 
 The World Cup's 104 fixtures ship with the package. Every other competition's schedule, and every
-live score, comes from ESPN's public scoreboard (attributed in every answer). World Cup market odds
+live score, comes from ESPN's public scoreboard (an answer from it names ESPN). World Cup market odds
 come from Polymarket's public data. The server keeps its cache in memory only.
 
 ## Privacy
