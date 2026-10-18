@@ -384,8 +384,8 @@ describe('ambient --json: lineParts', () => {
     const ahead: Match = { id: '9', stage: 'REGULAR', kickoff: new Date(NOW.getTime() + 3 * 3_600_000).toISOString(), venue: 'Vitality Stadium', home: BOU, away: BRE, status: 'SCHEDULED', updatedAt: at };
     writeState({ updatedAt: at, live: [], degraded: false, source: 'espn', competition: 'eng.1', schedule: { fixtures: [ahead], updatedAt: at, attemptedAt: at, failures: 0, complete: true }, liveComplete: true } as never, NOW.getTime());
     let v = ambient();
-    expect(v.line).toBe('BOU vs BRE in 3h0m');
-    expect(v.lineParts).toEqual([{ text: 'BOU vs BRE in 3h0m' }]);
+    expect(v.line).toBe('⚽ BOU vs BRE in 3h0m');
+    expect(v.lineParts).toEqual([{ text: '⚽ BOU vs BRE in 3h0m' }]);
     const kicked: Match = { ...ahead, kickoff: new Date(NOW.getTime() - 30 * MIN).toISOString() };
     writeState({ updatedAt: at, live: [], degraded: false, source: 'espn', competition: 'eng.1', schedule: { index: [{ id: kicked.id, kickoff: kicked.kickoff, on: true }], fixtures: [kicked], updatedAt: at, attemptedAt: at, failures: 0, complete: true }, liveComplete: false } as never, NOW.getTime());
     v = ambient();

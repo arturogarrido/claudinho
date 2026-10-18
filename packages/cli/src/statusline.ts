@@ -636,7 +636,7 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}, 
   // still lists as SCHEDULED and the record of play does not hold) is a
   // candidate beside the upcoming ones: the feed lags the whistle, and the line
   // must not jump to next week's match meanwhile. A kickoff at or before the
-  // request's clock reads "<home> vs <away> now" (core's `countdown` decides).
+  // request's clock reads "⚽ <home> vs <away> now" (core's `countdown` decides).
   // The record of play's ids are read here, once, and only here (the cheap
   // reader: its bounds, no seal), unless the caller already read them.
   const next = countdownFixture(nowMs, schedule, pick, played ?? playRecordIds(state?.play, nowMs));
@@ -644,9 +644,9 @@ function renderPromptLine(state: CacheState | undefined, opts: PromptOpts = {}, 
     const matchup = `${teamTok(next.home, flags)} vs ${teamTok(next.away, flags)}`;
     // In `lang` (`ambient --json`), core's one countdown phrase: the language's bare word for a kickoff at or before
     // the clock (`ahora`), else its `in`-phrase (`en 17m`). With none (`prompt`, `hook`, `vibe`), the English literals.
-    if (opts.lang !== undefined) return plain(`${matchup} ${countdownPhrase(opts.lang, next.kickoff, now)}`);
+    if (opts.lang !== undefined) return plain(`⚽ ${matchup} ${countdownPhrase(opts.lang, next.kickoff, now)}`);
     const left = countdown(next.kickoff, now);
-    return plain(left === COUNTDOWN_NOW ? `${matchup} ${COUNTDOWN_NOW}` : `${matchup} in ${left}`);
+    return plain(left === COUNTDOWN_NOW ? `⚽ ${matchup} ${COUNTDOWN_NOW}` : `⚽ ${matchup} in ${left}`);
   }
 
   // Tournament provably over (every bundled fixture's window has closed) → sign

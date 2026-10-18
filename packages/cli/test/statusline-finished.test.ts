@@ -53,11 +53,11 @@ describe('a finished record is not counted down to', () => {
 
   it('beside a fixture still to be played: the countdown is to that one', () => {
     // The flags are generated from the nation (Germany, Italy), never read from the file.
-    expect(line(snapshot([finishedAhead, next]))).toBe('\u{1F1E9}\u{1F1EA} vs \u{1F1EE}\u{1F1F9} in 3h0m');
+    expect(line(snapshot([finishedAhead, next]))).toBe('⚽ \u{1F1E9}\u{1F1EA} vs \u{1F1EE}\u{1F1F9} in 3h0m');
   });
 
   it('with a pick: never that team’s finished record; the next fixture of anyone’s (a preference, 0.11 2.5b)', () => {
-    expect(line(snapshot([finishedAhead, next]), { pick: { code: 'ESP' } })).toBe('\u{1F1E9}\u{1F1EA} vs \u{1F1EE}\u{1F1F9} in 3h0m');
+    expect(line(snapshot([finishedAhead, next]), { pick: { code: 'ESP' } })).toBe('⚽ \u{1F1E9}\u{1F1EA} vs \u{1F1EE}\u{1F1F9} in 3h0m');
     expect(line(snapshot([finishedAhead]), { pick: { code: 'ESP' } })).toBe('⚽ —');
   });
 });

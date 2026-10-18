@@ -173,7 +173,7 @@ redraws are as above.
 ## The `/claudinho` command
 
 `/claudinho` answers the band's line now, as the command's output after the plugin's name
-(`claudinho: ⚽ ARS 2–1 CHE 50'`, `claudinho: ARS vs LEE in 7h13m`). The command asks the CLI for no width, so the
+(`claudinho: ⚽ ARS 2–1 CHE 50'`, `claudinho: ⚽ ARS vs LEE in 7h13m`). The command asks the CLI for no width, so the
 CLI fits the line to its own ceiling, 200 display columns, never to the window: past it the CLI keeps its `+N` count
 of the other matches (`+more` after a read that was not whole), or ends an over-wide segment with `…`. The transcript row wraps what it draws. Where the band
 would show nothing, it answers one fixed sentence instead, chosen by what the CLI's answer says, never by a guess at
@@ -291,7 +291,7 @@ sends nothing with your prompts. The band, the toasts and the celebration are th
 `auto` (the default) speaks the language your environment asks for, as the CLI reads it: `CLAUDINHO_LANG`, then
 `LANG`'s language part (`es_MX.UTF-8` is Spanish), each only when it is one of `en`, `es`, `pt` or `fr`, else
 English; `en`, `es`, `pt` or `fr` sets it whatever the environment says. The band, the toasts, the goal celebration and
-the match pane follow it (`⚽ ¡GOL! Liverpool · Ronald Araújo 22' · LASK Linz 0–1 Liverpool`, `BOU vs BRE en 17m`):
+the match pane follow it (`⚽ ¡GOL! Liverpool · Ronald Araújo 22' · LASK Linz 0–1 Liverpool`, `⚽ BOU vs BRE en 17m`):
 the plugin hands the band's and `/claudinho`'s CLI runs `--lang` with that code (the match pane's too, once a view of
 the CLI says it speaks that language: a CLI 0.11.2 keeps the pane English, like its toasts), and names, scores and
 minutes are never translated. The terminal statusline (`claudinho prompt`), the hook and the live score beside your prompt for Claude stay English, as

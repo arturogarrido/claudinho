@@ -273,8 +273,8 @@ describe('one pick function for the ambient surfaces', () => {
     };
     const state: CacheState = { updatedAt: iso(NOW.getTime() - 3_600_000), live: [], degraded: false, source: 'espn', competition: 'eng.1', schedule };
     // Without a pick the earliest counts down; with the pin, the pinned fixture.
-    expect(renderPrompt(state, { defaultCompetition: false, teamKind: 'club', now: NOW })).toMatch(/BRE vs LIV in/);
-    expect(renderPrompt(state, { defaultCompetition: false, teamKind: 'club', now: NOW, pick: { team: ARSENAL } })).toMatch(/AFC vs CHE in/);
+    expect(renderPrompt(state, { defaultCompetition: false, teamKind: 'club', now: NOW })).toMatch(/^⚽ BRE vs LIV in /);
+    expect(renderPrompt(state, { defaultCompetition: false, teamKind: 'club', now: NOW, pick: { team: ARSENAL } })).toMatch(/^⚽ AFC vs CHE in /);
     // Syncing: two fixtures in their live window, the live slice stale; the pinned matchup names the line, the other counted.
     const inWindow = (id: string, home: Match['home'], away: Match['away']): Match => m({ id, kickoff: iso(NOW.getTime() - 20 * 60_000), home, away });
     // Ids are the provider's grammar (digits): a record with another id is not a cached match.

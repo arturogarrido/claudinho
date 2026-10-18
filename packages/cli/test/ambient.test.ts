@@ -369,7 +369,7 @@ describe('claudinho ambient --json', () => {
     const ahead: Match = { id: '9', stage: 'REGULAR', kickoff: new Date(NOW.getTime() + 3 * 3_600_000).toISOString(), venue: 'Vitality Stadium', home: BOU, away: BRE, status: 'SCHEDULED', updatedAt: at };
     writeState({ updatedAt: at, live: [], degraded: true, source: 'espn', competition: 'eng.1', schedule: { fixtures: [ahead], updatedAt: at, attemptedAt: at, failures: 0, complete: true }, liveComplete: false } as never, NOW.getTime());
     cmdAmbient(ctx());
-    expect(view()).toMatchObject({ line: 'BOU vs BRE in 3h0m', degraded: true, empty: false, idle: false, attribution: 'Live data: ESPN' });
+    expect(view()).toMatchObject({ line: '⚽ BOU vs BRE in 3h0m', degraded: true, empty: false, idle: false, attribution: 'Live data: ESPN' });
   });
 
   it('nothing known on a snapshot that is NOT degraded attributes nothing too (`empty` decides, whatever `degraded` says)', () => {
