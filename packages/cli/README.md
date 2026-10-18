@@ -287,8 +287,9 @@ Want an image? A screenshot of the card works, or a tool such as
 ## Prediction-market odds (World Cup)
 
 For World Cup matches, `claudinho markets` shows a "who's favored" line: the percentages Polymarket's
-public market data implies, for a date, a match, or a team's current match (one that has kicked off and is not over, within
-about three and a half hours of its kickoff) or, with none, its next. A short version appears under `today`,
+public market data implies, for a date, a match, or a team's current match (one whose kickoff time
+passed less than about three and a half hours ago and that the feed has not marked finished) or,
+with none, its next. A short version appears under `today`,
 `match` and on the share cards for a date, a match or a team's next match, when a reliable market
 exists. **Informational only, not betting
 advice:** no trading, no links. A match with no clean market, and a finished match, shows nothing.
