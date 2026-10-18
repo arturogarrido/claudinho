@@ -2,7 +2,7 @@
  * The README's capability matrix, GENERATED from the supported table.
  *
  * The supported competitions are ONE table in core (`SUPPORTED`); the matrix
- * the root README shows is rendered from it, between two markers, so the
+ * the root README and the CLI's README show is rendered from it, between two markers, so the
  * public list cannot drift from the data. `packages/core/test/readme-matrix.test.ts`
  * fails when the committed block differs from what this renders.
  *
@@ -13,7 +13,7 @@
  * row, so the matrix, `list_competitions` and the commands read ONE rule, and
  * a row added to the table renders with no change here. Run as a script, it
  * loads core's BUILT package (the table and the rule travel with it), renders
- * it, and rewrites the block between the markers in `README.md`.
+ * it, and rewrites the block between the markers in each of `READMES`.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -21,6 +21,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const START = '<!-- competitions:start -->';
 export const END = '<!-- competitions:end -->';
+
+/** The READMEs that carry the block: the root one, and the CLI's, which is the npm page a search opens. */
+export const READMES = Object.freeze(['README.md', 'packages/cli/README.md']);
 
 /** How a capability reads in the matrix. */
 const CELL = Object.freeze({ offered: 'yes', 'not-offered-yet': 'not yet', 'not-applicable': 'n/a' });
@@ -79,9 +82,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(2);
   }
   const core = await import(pathToFileURL(dist).href);
-  const path = resolve(root, 'README.md');
-  const before = readFileSync(path, 'utf8');
-  const after = withMatrix(before, renderMatrix(core.SUPPORTED, core.capabilitiesOf));
-  if (after !== before) writeFileSync(path, after);
-  console.log(after === before ? 'README.md: the matrix is current.' : 'README.md: the matrix was rewritten.');
+  const block = renderMatrix(core.SUPPORTED, core.capabilitiesOf);
+  for (const rel of READMES) {
+    const path = resolve(root, rel);
+    const before = readFileSync(path, 'utf8');
+    const after = withMatrix(before, block);
+    if (after !== before) writeFileSync(path, after);
+    console.log(after === before ? `${rel}: the matrix is current.` : `${rel}: the matrix was rewritten.`);
+  }
 }

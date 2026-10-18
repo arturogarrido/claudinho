@@ -1,149 +1,154 @@
 # @claudinho/mcp ⚽
 
-**An MCP server with live football scores, fixtures, standings and paste-ready match cards for
-the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and
-12 more.** Ask your agent in Claude Code, Cursor, Codex, Claude Desktop, Windsurf, Zed, VS Code,
-or any MCP client (stdio). No API key, no signup. The World Cup's 104 fixtures ship bundled; the
-other competitions' schedules are read from the feed, and live scores (and the optional,
-read-only Polymarket signals for the World Cup) hit the network. It ran the 2026 World Cup from
-the opener to the final.
+**An MCP server that lets your coding agent answer football questions: live scores, fixtures,
+standings and paste-ready match cards for the competition you follow: the World Cup, the Premier
+League, LALIGA, the Champions League and 12 more.** It works in Claude Code, Cursor, Codex, Claude
+Desktop, Windsurf, Zed, VS Code and any MCP client that runs a local (stdio) server. No API key, no
+signup, no account.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/arturogarrido/claudinho/main/.github/assets/mcp-aha.gif" alt="An AI coding agent mid-task during the 2026 World Cup: asked 'did Germany get through?', it calls the Claudinho MCP server and answers with the result: 🇩🇪 Germany 1(3)–1(4) Paraguay 🇵🇾, FT (Paraguay won the shootout)" width="760">
+  <img src="https://raw.githubusercontent.com/arturogarrido/claudinho/main/.github/assets/mcp-aha.gif" alt="Cursor CLI asked mid-task how Manchester City are doing against Paris Saint-Germain; it calls the Claudinho MCP server and answers with the live score from the 24th minute" width="760">
 </p>
 
-> ⭐ Added via `npx` or your MCP config? **[Star the repo](https://github.com/arturogarrido/claudinho)**: a fan project runs on stars.
-
 ## Install
+
+The server runs with `npx`, so it needs Node.js 20 or later.
 
 **Claude Code**
 ```bash
 claude mcp add claudinho -- npx -y @claudinho/mcp
 ```
 
-**Cursor**: add to `~/.cursor/mcp.json` (global) or a project `.cursor/mcp.json`:
-```json
-{ "mcpServers": { "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] } } }
-```
-> Bonus: `claudinho init-cursor-statusline` (from `@claudinho/cli`) also puts the live score
-> in your Cursor CLI statusline, or run `claudinho init cursor` to do both at once.
-
 **Codex CLI**
 ```bash
 codex mcp add claudinho -- npx -y @claudinho/mcp
 ```
 
-**Claude Desktop / Windsurf / Zed / VS Code**: standard stdio config (same JSON as Cursor):
-Claude Desktop: Settings → Developer → Edit Config, then restart. Codex config file:
-`~/.codex/config.toml` (`[mcp_servers.claudinho]`, `command = "npx"`, `args = ["-y", "@claudinho/mcp"]`).
+**Cursor, Claude Desktop, Windsurf, Zed, VS Code**: add this to the client's MCP config (for
+Cursor, `~/.cursor/mcp.json` or a project's `.cursor/mcp.json`; for Claude Desktop, Settings →
+Developer → Edit Config, then restart). Some clients (VS Code, Zed) put the same `command` and
+`args` under a key of their own: see your client's MCP docs.
+```json
+{ "mcpServers": { "claudinho": { "command": "npx", "args": ["-y", "@claudinho/mcp"] } } }
+```
 
-Then just ask your agent naturally; it picks the right tool and answers with live data:
+Using Cursor CLI too? `claudinho init cursor` (from `@claudinho/cli`) puts the live score in its
+statusline and prints this config for you to paste.
 
-> "What matches are on today?" · "Show me the live scores" · "What's Arsenal's next game?"
-> "Show the Premier League table" · "Show the World Cup bracket" · "Make me a shareable card for today"
+## Ask your first question
+
+The server answers for one competition at a time. Either name it in your question:
+
+> "What Champions League matches are on today?" · "Show me the Premier League table" ·
+> "When does Arsenal play next in the Champions League?"
+
+or choose it once with the CLI, and then just ask:
+
+```bash
+npx @claudinho/cli follow champions-league --team Arsenal
+```
+
+> "What matches are on today?" · "Show me the live scores" · "When's our next game?" ·
+> "Make me a shareable card for today"
+
+Without a competition, the tools that answer for one say how to choose it.
 
 ## Tools
 
+Every tool is read-only, and two of them never touch the network.
+
 | Tool | What it does |
 |---|---|
-| `get_today` | fixtures for a date (default: today), grouped in the caller's `tz`, live scores overlaid |
-| `get_live` | matches in play right now |
-| `get_match` | a single match by id, with the provider's goals and cards it could read for a match in play or finished (`match.events`; never a claim that the list is every goal); in a club competition, looked for from yesterday to 14 days ahead (`window` names the days searched when it is not there) |
-| `get_standings` | live cumulative standings: every table, or one by its key (a group letter, or `A1`, `A-B`, `LEAGUE`) |
-| `get_bracket` | knockout bracket from the Round of 32 through the final, with an optional `stage` filter (`R32`, `R16`, `QF`, `SF`, `3P`, `F`); the Premier League and LALIGA, league seasons with no knockout tie of their own, answer `inapplicable`; the other competitions off the World Cup answer `unsupported` (not offered yet) |
-| `get_next_fixture` | a team's next match, by name or code. A nation (`Mexico`, `MEX`): live-resolves a confirmed knockout tie from the feed, group fixtures offline, fails back to the bundled schedule if the feed is down; a club (`Arsenal`, `ARS`): its next match within 14 days, `candidates` when several teams match, `horizon` when it has none in that span. With no `team`: the server's `CLAUDINHO_TEAM`, else the team the user pinned (`claudinho follow <alias> --team <name>`) when the request is for its competition |
-| `get_market_signal` | read-only prediction-market signal for a match, a team's current-or-next fixture (in-play preferred while live), or a date; informational only |
-| `get_share_snippet` | a copy-pasteable plain-text card for a match, a team's next fixture, a group's standings table (`group`), the knockout bracket (`bracket: true`, optional `knockoutStage`), a date, or live; hand the returned snippet to the user as-is |
-| `get_team` | the World Cup roster: resolve a nation name or code to its FIFA 3-letter code, flag, and group; fuzzy (`Mexico`, `mex`, `DR Congo`, `Türkiye`); handy for the code `get_market_signal` needs. It knows no clubs. Offline (no network) |
-| `list_competitions` | the supported competitions: each one's alias (what `competition` takes), name, teams (nations or clubs), kind, and what it offers (scores, next, standings, bracket, markets: `offered`, `not-offered-yet`, `not-applicable`), plus `current`, the competition the request is for. Offline (no network) |
+| `get_today` | the fixtures for a date (default: today) in the caller's timezone, with live scores |
+| `get_live` | the matches in play right now |
+| `get_match` | one match by id, with the goals and cards the provider sent for a match in play or finished |
+| `get_next_fixture` | a team's next match, by name or code (`Arsenal`, `ARS`, `Mexico`, `MEX`); with no `team`, the server's `CLAUDINHO_TEAM`, else the team the user pinned (`claudinho follow <alias> --team <name>`) when the request is for its competition |
+| `get_standings` | the standings: every table, or one by its key (a group letter, or `A1`, `A-B`, `LEAGUE`) |
+| `get_bracket` | the knockout bracket, World Cup only, from the Round of 32 to the final; an optional `stage` (`R32`, `R16`, `QF`, `SF`, `3P`, `F`) keeps one round |
+| `get_share_snippet` | a plain-text card for a match, a team's next match, a table, the bracket (`bracket: true`, with an optional `knockoutStage`), a date or live; hand it to the user as it is |
+| `get_market_signal` | World Cup prediction-market odds for a match (`matchId`), a team's current or next match (`team`, a 3-letter code such as `MEX`), or a date; informational only |
+| `get_team` | a World Cup nation's name or code to its FIFA code, flag and group (offline) |
+| `list_competitions` | the supported competitions, the alias each takes and what each offers, and the one in effect (offline) |
 
-Most tools are **read-only** (`readOnlyHint`) and accept optional `tz`, `lang`
-(`en`/`es`/`pt`/`fr`), `flavor` (`off`/`subtle`/`full`), and `competition`: an alias
-such as `premier-league` (from `list_competitions`) or an ESPN slug such as `eng.1`
-(without it: the server's `CLAUDINHO_COMPETITION`, else the user's saved choice, the one
-`claudinho follow <alias>` saves; an unknown value is a tool error listing the aliases).
-With none of the three, every competition-answering tool answers, before it reads
-anything, `noCompetition: true` and `competition: null` beside its empty shape, and a
-sentence saying what to do (pass `competition`, or the user runs `claudinho follow
-<alias>`); `list_competitions` answers `current: null`, and `get_team` answers as ever. Every competition-answering tool's text
-starts with the competition it is for (`Premier League · from the request`; a share
-card says it in its title instead) and its structured content carries it as
-`competition`. `get_team` (the World Cup's roster, whatever the competition) and
-`list_competitions` are read-only **and** offline. Every response carries
-human-readable text **and** structured content, validated against each tool's
-declared `outputSchema`. When the provider's knockout answer was not whole,
-`get_next_fixture`, `get_bracket` and the next/bracket share cards say so before
-what was read and carry `partial` (`omitted`: the count of provider records left
-out, when known); no fixture is then not "eliminated". `get_today`, `get_live`,
-`get_match`, `get_market_signal` and their share cards carry `partial` for their own
-reads too: an empty answer then means nothing was read, not that nothing exists, and a
-World Cup day counts the fixtures shown from the bundled schedule without their live
-state. In a club competition whose
-edition has ended (and the next has not started), `get_today`, `get_live`,
-`get_next_fixture` and `get_match` say so and carry `betweenEditions`. A club has no
-`flag` (a nation's is generated from its name), and nothing is printed in its place; a
-match's `stage` is the written one (`REGULAR` for a league's season, `LEAGUE` for a cup's
-league phase, `PO` for play-offs), or `OTHER` with the provider's own words in `stageLabel`.
+Every tool but `get_team` takes an optional `competition` (an alias such as `champions-league`), and
+most take `tz`, `lang` (`en`, `es`, `pt`, `fr`) and `flavor` (`off`, `subtle`, `full`).
 
-Resources: `standings://{group}` (its text starts with the competition it is for, like a tool's), `fixtures://{date}` (the bundled World Cup schedule, named first, whatever the competition). Prompts: `tournament_today`,
-and `my_team` (the competition you follow: give it a club's or a nation's code or name, or
-none for your team (the server's `CLAUDINHO_TEAM`, else the one pinned with `claudinho follow --team`);
-it asks for the next fixture with its date and state and the team's standing, and on the World Cup
-for the prediction-market read of that fixture).
+Resources: `standings://{group}`, and `fixtures://{date}` (the bundled World Cup schedule).
+Prompts: `my_team` (your team's next match and its standing, in the competition you follow) and
+`tournament_today`.
 
-## Market signals
+## Prediction-market odds (World Cup)
 
-Market signals are pre-match and in-play reads: finished matches never show one.
-`get_today` / `get_match` include a short market line when a reliable market exists
-(slugs are auto-derived per fixture; matching fails closed). Their structured output
-includes `marketComplete`; the dedicated market tool uses `complete`. A false verdict
-means the optional read was unavailable or incomplete and is never described as "no signal."
-Share cards carry the same verdict and warning. **Read-only and
-informational only, not betting advice:** market-implied percentages with Polymarket
-attribution, never links or trade calls. Disable with `CLAUDINHO_MARKETS=off`; set
-`CLAUDINHO_MARKETS_SOURCE=fake` in the server `env` for a network-free, clearly
-labeled synthetic preview.
+For World Cup matches, `get_today`, `get_match` and a `get_share_snippet` card for a match, a
+team's next match or a date add a short "who's favored" line when a reliable Polymarket market
+exists, and `get_market_signal` reads one on its own. **Informational only, not betting advice:**
+market-implied percentages with Polymarket's attribution, never links or trade calls. Finished
+matches never show one. `CLAUDINHO_MARKETS=off` in the server's `env` turns the short line off;
+`get_market_signal` still answers.
 
-## Commentary flair
+## Commentary
 
-Match lines in the text end with a short, localized exclamation for the match's
-moment (`— ¡GOOOOL!`): a few hundred lines in four languages, no real person named
-or impersonated, none repeated within one list while the bank lasts, never in the
-structured JSON. A team's own rally cry takes its place when one side has one
-(Mexico's `¿Y si sí?`, Pumas' `¡Goya!`, Arsenal's `COYG!`): when both do, the team
-saved with `claudinho follow --team` for that competition, else the home side's
-(the server's `CLAUDINHO_TEAM` is the team-taking tools' default query, not the
-cry's tiebreak). A row with a cry takes no line from the bank, a postponed or
-cancelled match prints neither, and the `fixtures://` resource prints a phrase,
-never a cry (it states no team kind). Control with `CLAUDINHO_FLAVOR`
-(`off`|`subtle`|`full`, default `full`; `subtle` is goals, full time, draws and
-the cries) in the server `env`, or per call via the `flavor` argument.
+A match line in a tool's text ends with a short line of commentary in the reader's language
+(`— ¡GOOOOL!`), or a team's own rally cry when it has one (Mexico's `¿Y si sí?`, Pumas' `¡Goya!`,
+Arsenal's `COYG!`). A postponed or cancelled match gets neither. The commentary never appears in
+the structured data. Turn it down with `CLAUDINHO_FLAVOR=subtle` or `off` in the server's `env`, or
+per call with `flavor`.
+
+## Details for agent builders
+
+**Choosing the competition.** A request's competition is its `competition` argument, else the
+server's `CLAUDINHO_COMPETITION`, else the choice `claudinho follow <alias>` saved. An unknown value
+is a tool error that lists the aliases. With none of the three, every competition-answering tool
+answers `noCompetition: true` and `competition: null` beside its empty shape, with a sentence saying
+what to do; `list_competitions` answers `current: null`.
+
+**What every answer carries.** Human-readable text and structured content, validated against each
+tool's declared `outputSchema`. The text starts with the competition it is for (a share card says it
+in its title), and the structured content carries it as `competition`. Two tools differ:
+`get_team` reads the World Cup's nations whatever the competition and carries no `competition`, and
+`list_competitions` names the one in effect last in its text and as `current` in its data.
+
+**Answers that are not whole.** When the provider sent records that could not be read,
+`get_today`, `get_live`, `get_match`, `get_next_fixture`, `get_bracket`, `get_market_signal` and
+`get_share_snippet` say so before what they show and carry `partial` (with `omitted`, the count of
+records left out, when it is known). An empty answer then means nothing was read, not that nothing
+exists. In particular, a missing next match does not mean a team is out.
+
+**Club competitions.** `get_next_fixture` and `get_match` search from yesterday to 14 days ahead:
+an empty answer carrying `horizon` or `window` is about that span. Several teams matching one name
+come back as `candidates`. Between two seasons, `get_today`, `get_live`, `get_next_fixture` and
+`get_match` carry `betweenEditions`. `get_bracket` answers `inapplicable` for a league season with no
+knockout tie (the Premier League, LALIGA), and `unsupported` for every other competition but the
+World Cup. A club has no `flag`. A match's `stage` is `REGULAR` for a league's season, `LEAGUE` for
+a cup's league phase, `PO` for play-offs, or `OTHER` with the provider's own words in `stageLabel`.
+
+**Markets.** `get_today`, `get_match` and a `get_share_snippet` card for a match, a team's next
+match, a date or live matches carry `marketComplete` (a table or bracket card does not), and
+`get_market_signal` carries `complete`. `false` means the
+optional market read did not finish, which is not the same as "no signal"; the text, and a share
+card, say so too. `CLAUDINHO_MARKETS_SOURCE=fake` gives a clearly labelled, network-free preview.
+
+**The process.** Stdout carries only the MCP protocol; diagnostics go to stderr.
+`CLAUDINHO_DEBUG=1` in the server's `env` prints the data provider's failures there.
 
 ## How it works
 
-The World Cup's 104 fixtures ship bundled in the package; the other competitions'
-schedules are read from the feed, and live state always hits the network: live scores
-from **ESPN's** public scoreboard (swappable provider, attributed in output), market
-signals from Polymarket. Stdout carries only the MCP protocol;
-diagnostics go to stderr.
+The World Cup's 104 fixtures ship with the package. Every other competition's schedule, and every
+live score, comes from ESPN's public scoreboard (an answer from it names ESPN). World Cup market odds
+come from Polymarket's public data. The server keeps its cache in memory only.
 
-## Privacy Policy
+## Privacy
 
-No personal data collected: no accounts, no telemetry, no analytics, no tracking, and no
-Claudinho server. To show live scores, Claudinho makes read-only requests to public services
-(ESPN; Polymarket for informational-only market signals) with no account or personal data
-attached, though those services still receive standard request metadata (such as your IP
-address) like any HTTP call. The MCP server keeps its cache **in memory only** and writes
-nothing to disk. Full policy: [PRIVACY.md](https://github.com/arturogarrido/claudinho/blob/main/PRIVACY.md).
+No accounts, no telemetry, no analytics, no tracking, and no Claudinho server. The server asks ESPN
+(and Polymarket, for World Cup odds) for public data with nothing about you attached; those services
+still see standard request metadata, such as your IP address, like any web request. It writes
+nothing to disk. Full policy:
+[PRIVACY.md](https://github.com/arturogarrido/claudinho/blob/main/PRIVACY.md).
 
 ## License
 
-MIT © 2026 Arturo Garrido · [source & issues](https://github.com/arturogarrido/claudinho)
+MIT © 2026 Arturo Garrido · [source and issues](https://github.com/arturogarrido/claudinho)
 
-> **Not affiliated with FIFA, any confederation, league or club, or Anthropic. Nor endorsed by or connected to any of them.** An independent,
-> open-source fan project showing factual match data with emoji flags only: no logos, crests,
-> kits, broadcast footage, or player likenesses.
-
----
+Independent fan project. Not affiliated with FIFA, any confederation, league or club, or Anthropic.
 
 _Built while watching the games._ **#VibingLaVidaLoca** ⚽

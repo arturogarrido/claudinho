@@ -83,8 +83,8 @@ The supported competitions are ONE table, `SUPPORTED` in
    standings (the parsers' tests, and the canary's), so its shape is checked, not
    assumed.
 3. **The README matrix**: `pnpm -r build && pnpm gen:readme-matrix` rewrites the
-   capability table in the root README from the table; a test fails when the
-   committed block differs.
+   capability table in the root README and the CLI's README from the table; a test
+   fails when a committed block differs.
 
 ## Comparing MCP tool contracts
 
