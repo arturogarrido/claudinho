@@ -161,7 +161,8 @@ until `/claudinho match` opens it again.
 The band runs `claudinho ambient --json` every 15 seconds (every five minutes on the World Cup's
 sign-off line and while no competition is followed), which also keeps the CLI's local cache fresh.
 That command answers from the cache and never waits on the network; when the cache is due for a
-refresh it starts the CLI's background refresh, as the statusline does. The CLI fits the line to the band's width and marks
+refresh it starts the CLI's background refresh, as the statusline does. While no competition is
+followed it reads no cache and starts nothing: its line is `⚽ claudinho follow`. The CLI fits the line to the band's width and marks
 each score in it; the band draws the marks only when they spell the line exactly. A band another plugin draws
 beneath ours stays, under our line.
 
