@@ -5,7 +5,8 @@ Live football in Claude Code, for the competition you follow:
 - **The band**: the live score, or the countdown to the next match, above your prompt, the score in bold.
 - **Toasts** that say what happened: a goal and its scorer, a goal against, a correction, full time and the result.
 - **The celebration**: Anthropic's Claude mascot and "GOAL!" in the band, for about three seconds, when your team
-  scores, and once more when it wins or draws at full time.
+  scores, and once more when it wins or draws at full time. Under `toasts: all` it also plays on any goal in a
+  match that is not your team's.
 - **The match pane**: `/claudinho match` opens the match with its goals and cards beside the transcript.
 - **The context**: while a match is live, the score goes beside each prompt you send, so Claude knows it.
 - **`/claudinho`**: the band's line on demand.
@@ -21,12 +22,13 @@ The plugin reads everything from the `claudinho` CLI installed on your machine a
 
 ## Install
 
-You need the CLI, `@claudinho/cli` 0.12.0 or later, and a competition to follow:
+You need the CLI (Node.js 20 or later) and a competition to follow. Everything on this page needs
+`@claudinho/cli` 0.12.0 or later; [With CLI 0.11.2](#with-cli-0112) says what an older CLI gives.
 
 ```bash
 npm i -g @claudinho/cli
 claudinho follow premier-league --team Arsenal   # the toasts and the celebration are for your pinned team by default
-claudinho init plugin          # only if you ran `claudinho init claude` before (see below)
+claudinho init plugin          # only if you ran `init claude`, `init-statusline` or `init-hook` before (see below)
 ```
 
 Then, at the prompt of Claude Code **in a terminal**:
@@ -39,9 +41,10 @@ Answer `y` to add the marketplace, then choose a scope (the user scope is the fi
 The plugin is active in that session from then on. Installed at the user scope from a terminal, it
 also loads in the desktop app's Code tab, which cannot run `/plugin install` itself.
 
-`claudinho init plugin` removes the statusline and the prompt hook that `claudinho init claude`
-wrote to `~/.claude/settings.json`, so the score does not show twice. It removes exactly those two
-entries and keeps every other setting. A command you edited (a wrapper, an `npx` form) stays, and
+`claudinho init plugin` removes the `claudinho prompt` statusline and the `claudinho hook` prompt
+hook from `~/.claude/settings.json`, whether `init claude`, `init-statusline` or `init-hook` wrote
+them, so the score does not show twice. It removes exactly those two entries and keeps every other
+setting. A command you edited (a wrapper, an `npx` form) stays, and
 `init plugin` names it.
 
 **To remove the plugin:** `claude plugin uninstall claudinho@claudinho`.
@@ -53,18 +56,19 @@ Change them in `/config`.
 | Option | Values | Default |
 |---|---|---|
 | `toasts` | `pinned`: your pinned team's match; `all`: every live match of the competition you follow; `off`: none | `pinned` (with no team pinned, no toasts) |
-| `celebrate` | `on` or `off`; the toasts are the same either way | `on` |
+| `celebrate` | `on`: the celebration plays on your team's goal and on its win or draw, and under `toasts: all` on any goal in a match that is not your team's; `off`: it never plays. The toasts are the same either way | `on` |
 | `context` | `on`: while a match is live, the score goes beside each prompt you send, for Claude; `off`: nothing goes with your prompts | `on` |
 | `language` | `auto`: the language your environment asks for (below); `en`, `es`, `pt` or `fr`: that language, whatever the environment says | `auto` |
 
 Changing an option reloads the plugin. The band and every later toast follow the new value at once.
+An open match pane stays as it was drawn and stops reading: run `/claudinho match` again to update it.
 
 ## What you see
 
 **The band** shows the line `claudinho prompt` prints, in the plugin's language: the live score
 (`⚽ ARS 2–1 CHE 50'`, the score in bold), or the countdown to the next match (`⚽ ARS vs LEE in 7h13m`). From
-kickoff until the data provider marks the match live, for up to 30 minutes, the countdown reads `now`
-(`⚽ BET vs BAR now`) and keeps that match. With several matches live it shows them side by side, or, with a team
+kickoff until the data provider marks the match live, for up to 30 minutes, the countdown reads the
+language's word for now (`⚽ BET vs BAR now`; `ahora`, `agora`, `maintenant`) and keeps that match. With several matches live it shows them side by side, or, with a team
 pinned, your team's match and a count of the others (`+2`). It shows nothing when no competition is followed or
 nothing is known. At the end of the World Cup it shows its sign-off line.
 
@@ -85,10 +89,11 @@ The scorer is named only when the CLI proves it: its listed goals add up to the 
 side that scored. Toasts are best effort, not a promise of every goal: a goal the plugin could not confirm when it
 happened is said late, at the first reliable reading after it.
 
-**The celebration** plays on your team's goal: the mascot on the left in your theme's Claude colour, its legs
+**The celebration** plays on your team's goal (under `toasts: all`, on any goal in a match that is not your
+team's): the mascot on the left in your theme's Claude colour, its legs
 stepping, the ball crossing the top row, `GOAL! Liverpool` with `GOAL!` bold and in your theme's success colour, and
 the scorer's row under it. After about three seconds the band is one line again. At full time, on your team's win or
-a draw, the mascot plays once more for five seconds beside `Full time · Liverpool win`. A goal against, a
+draw (your team's match only), the mascot plays once more for five seconds beside `Full time · Liverpool win`. A goal against, a
 correction, penalties and a loss play nothing. While Claude is working the celebration waits, and plays when the turn
 ends (within a minute; after that the toast has already said it).
 
@@ -116,11 +121,12 @@ sentence under it, or one plain sentence when there is nothing to show.
 
 ## With CLI 0.11.2
 
-The CLI 0.11.2 sends no names, pinned side or proven scorer, so with it the plugin keeps its earlier toasts and
-celebration: a toast is `⚽` and the match's line (`⚽ Arsenal 2–1 Chelsea (67')`) for any score change, a ball and a
-growing "GOAL!" play on a goal, the band's score is not bold, no full time is said, and the match pane says
-`Nothing to show: the CLI's answer is not one this plugin reads.` The toasts, the band and the pane stay English,
-whatever the `language` option says. Update the CLI to see the rest.
+Everything on this page needs `@claudinho/cli` 0.12.0 or later. With 0.11.2 the plugin works in
+part: a toast is `⚽` and the hook's own English line for any score change
+(`⚽ Arsenal 2–1 Chelsea (67')`), the celebration is a ball and a growing "GOAL!", the band's line is
+plain and English, the match pane says `Nothing to show: the CLI's answer is not one this plugin reads.`,
+and no full time is said. The `language` option changes none of it. With a CLI older than 0.11.2 the
+band shows nothing and nothing toasts. Update the CLI to see the rest.
 
 ## Details
 
@@ -203,7 +209,9 @@ and changes nothing the band shows. A `/claudinho` typed while Claude is working
 - **When it reads.** It opens at once with the band's line and fills in when the CLI answers (a few
   seconds on a slow network). It reads again when the band sees the score change, at kickoff, at full
   time, and every two minutes while the match is in play. Before kickoff it waits for the kickoff.
-  After a final result it stops. It never runs two reads at once.
+  After a final result it stops. It never runs two reads at once. After the plugin reloads (changing
+  an option reloads it) the pane stays as it was drawn and reads again only from the next
+  `/claudinho match`.
 - **The styles.** The CLI sends each row as styled parts beside its plain text; the pane draws the styles only when
   the parts spell the plain rows exactly, else the plain rows.
 - **Long rows.** The pane never cuts a row sideways. When a goal or card row with its player is wider than the pane,

@@ -12,6 +12,8 @@ signup, no account.
 
 ## Install
 
+The server runs with `npx`, so it needs Node.js 20 or later.
+
 **Claude Code**
 ```bash
 claude mcp add claudinho -- npx -y @claudinho/mcp
@@ -59,11 +61,11 @@ Every tool is read-only, and two of them never touch the network.
 | `get_today` | the fixtures for a date (default: today) in the caller's timezone, with live scores |
 | `get_live` | the matches in play right now |
 | `get_match` | one match by id, with the goals and cards the provider sent for a match in play or finished |
-| `get_next_fixture` | a team's next match, by name or code (`Arsenal`, `ARS`, `Mexico`, `MEX`); with no team, the user's pinned team |
+| `get_next_fixture` | a team's next match, by name or code (`Arsenal`, `ARS`, `Mexico`, `MEX`); with no `team`, the server's `CLAUDINHO_TEAM`, else the team the user pinned (`claudinho follow <alias> --team <name>`) when the request is for its competition |
 | `get_standings` | the standings: every table, or one by its key (a group letter, or `A1`, `A-B`, `LEAGUE`) |
-| `get_bracket` | the World Cup's knockout bracket, from the Round of 32 to the final |
-| `get_share_snippet` | a plain-text card for a match, a team's next match, a table, the bracket, a date or live; hand it to the user as it is |
-| `get_market_signal` | World Cup prediction-market odds for a match, a team's current or next match, or a date; informational only |
+| `get_bracket` | the knockout bracket, World Cup only, from the Round of 32 to the final; an optional `stage` (`R32`, `R16`, `QF`, `SF`, `3P`, `F`) keeps one round |
+| `get_share_snippet` | a plain-text card for a match, a team's next match, a table, the bracket (`bracket: true`, with an optional `knockoutStage`), a date or live; hand it to the user as it is |
+| `get_market_signal` | World Cup prediction-market odds for a match (`matchId`), a team's current or next match (`team`, a 3-letter code such as `MEX`), or a date; informational only |
 | `get_team` | a World Cup nation's name or code to its FIFA code, flag and group (offline) |
 | `list_competitions` | the supported competitions, the alias each takes and what each offers, and the one in effect (offline) |
 
@@ -99,7 +101,9 @@ what to do; `list_competitions` answers `current: null`.
 
 **What every answer carries.** Human-readable text and structured content, validated against each
 tool's declared `outputSchema`. The text starts with the competition it is for (a share card says it
-in its title), and the structured content carries it as `competition`.
+in its title), and the structured content carries it as `competition`. Two tools differ:
+`get_team` reads the World Cup's nations whatever the competition and carries no `competition`, and
+`list_competitions` names the one in effect last in its text and as `current` in its data.
 
 **Answers that are not whole.** When the provider sent records that could not be read,
 `get_today`, `get_live`, `get_match`, `get_next_fixture`, `get_bracket`, `get_market_signal` and
@@ -115,11 +119,12 @@ knockout tie, and `unsupported` for a competition it does not cover yet. A club 
 match's `stage` is `REGULAR` for a league's season, `LEAGUE` for a cup's league phase, `PO` for
 play-offs, or `OTHER` with the provider's own words in `stageLabel`.
 
-**Markets.** `get_today` and `get_match` carry `marketComplete`, and `get_market_signal` carries
-`complete`. `false` means the optional market read did not finish, which is not the same as "no
-signal". `CLAUDINHO_MARKETS_SOURCE=fake` gives a clearly labelled, network-free preview.
+**Markets.** `get_today`, `get_match` and `get_share_snippet` carry `marketComplete`, and
+`get_market_signal` carries `complete`. `false` means the optional market read did not finish, which
+is not the same as "no signal"; the text, and a share card, say so too. `CLAUDINHO_MARKETS_SOURCE=fake` gives a clearly labelled, network-free preview.
 
 **The process.** Stdout carries only the MCP protocol; diagnostics go to stderr.
+`CLAUDINHO_DEBUG=1` in the server's `env` prints the data provider's failures there.
 
 ## How it works
 

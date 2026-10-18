@@ -24,6 +24,8 @@ npx @claudinho/cli today                     # today's matches, in your timezone
 npx @claudinho/cli live                      # the matches in play right now
 ```
 
+Claudinho needs Node.js 20 or later.
+
 Your league instead? `follow premier-league`, `follow liga-mx`, `follow laliga`: every alias is in
 [Competitions](#competitions). Add `--lang es` (or `pt`, `fr`) for Spanish, and pin your team with
 `follow champions-league --team Arsenal`.
@@ -34,21 +36,24 @@ Each row is independent. Start with the first and add what you want.
 
 | You want | What it changes | Command |
 |---|---|---|
-| Scores in the terminal | nothing outside Claudinho's own config folder | `npm i -g @claudinho/cli` |
+| Scores in the terminal | installs the `claudinho` command; it keeps your choice in `~/.config/claudinho/` and a cache in `~/.cache/claudinho/` | `npm i -g @claudinho/cli` |
 | The live score under your Claude Code prompt | Claude Code's statusline | `claudinho init-statusline` |
 | The live score above your Claude Code prompt, a toast and a celebration on a goal, and a match pane | installs a Claude Code plugin | [Claude Code plugin](#claude-code-plugin) |
 | Claude Code to know the live score when you ask it something | adds a prompt hook (the plugin does this too) | `claudinho init-hook` |
 | The live score in Cursor's terminal agent (Cursor CLI) | Cursor CLI's statusline | `claudinho init cursor` |
 | To ask your agent about football | adds an MCP server (a set of tools your agent can call) | [MCP server](#mcp-server-any-agent) |
 
-The statusline and the plugin read a local cache and never wait on the network. Off-match, the
-prompt hook adds nothing to what the model reads.
+The statusline and the plugin's band read a local cache and never wait on the network. The
+plugin's match pane is different: it runs `claudinho match <id>`, which asks the data provider.
+Off-match, the prompt hook adds nothing to what the model reads.
 
 ## Competitions
 
-Nothing is followed until you choose one. `claudinho follow <alias>` saves your choice, and every
-command, the statusline, the plugin and the MCP server follow it. `claudinho follow --list` prints
-this table, `claudinho follow` shows your choice, and `claudinho follow off` forgets it.
+Nothing is followed until you choose one. `claudinho follow <alias>` saves your choice, and the
+commands, the statusline, the plugin and the MCP server follow it. Only `claudinho team` and the MCP
+tool `get_team` do not: they always read the World Cup's nations. `claudinho follow --list` lists
+every alias with what it offers, `claudinho follow` shows your choice, and `claudinho follow off`
+forgets it.
 
 <!-- competitions:start -->
 | Alias | Competition | Teams | Scores | Next | Standings | Bracket | Markets |
@@ -122,15 +127,20 @@ Live data: ESPN
 Not affiliated with FIFA, any confederation, league or club, or Anthropic.
 ```
 
+This is a capture from Oct 14, 2026. Off the World Cup, `match <id>` finds a match from yesterday
+to 14 days ahead, so run it with a current id (`claudinho today --json` lists each match's `id`).
+
 All commands, options and `--json` output: the [CLI README](https://github.com/arturogarrido/claudinho/tree/main/packages/cli#readme).
-To remove it: `claudinho follow off`, then `npm rm -g @claudinho/cli`.
+To remove it: `claudinho follow off` (it deletes the saved choice), then `npm rm -g @claudinho/cli`,
+then delete the cache folder `~/.cache/claudinho/`.
 
 ### Claude Code plugin
 
 The plugin shows the live score (or the countdown to the next match) above your prompt, with the score in bold. A
 toast says what happened (`⚽ GOAL! Liverpool · Ronald Araújo 22' · LASK Linz 0–1 Liverpool`, or
 `Full time · LASK Linz 3–6 Liverpool · Liverpool win`). When your team scores, and when it wins or draws, Anthropic's
-Claude mascot celebrates in the band for a few seconds. `/claudinho match` opens a pane with the goals and cards.
+Claude mascot celebrates in the band for a few seconds. With the `toasts` option set to `all`, it also celebrates any
+goal in a match that is not your team's. `/claudinho match` opens a pane with the goals and cards.
 The band, the toasts, the celebration and the pane speak English, Spanish, Portuguese or French (the plugin's
 `language` option).
 
@@ -144,8 +154,11 @@ The band, the toasts, the celebration and the pane speak English, Spanish, Portu
 ```bash
 npm i -g @claudinho/cli
 claudinho follow champions-league --team Arsenal   # the toasts and the mascot are for your pinned team by default
-claudinho init plugin          # only if you ran `init claude` before: removes its statusline and hook
+claudinho init plugin          # only if you ran `init claude`, `init-statusline` or `init-hook` before
 ```
+
+`claudinho init plugin` removes the `claudinho prompt` statusline and the `claudinho hook` prompt
+hook, whichever of those commands wrote them, so the score does not show twice.
 
 Then, in Claude Code in a terminal:
 
@@ -159,6 +172,13 @@ fetches anything itself. Options, the desktop app and the details: the
 [plugin README](https://github.com/arturogarrido/claudinho/tree/main/packages/plugin#readme).
 To remove it: `claude plugin uninstall claudinho@claudinho`.
 
+**The CLI it needs.** Everything above needs `@claudinho/cli` 0.12.0 or later. With 0.11.2 the
+plugin works in part: a toast is `⚽` and the hook's own English line for any score change, the
+celebration is a ball and a growing "GOAL!", the band's line is plain and English, the match pane
+says `Nothing to show: the CLI's answer is not one this plugin reads.`, and no full time is said. The
+`language` option changes none of it. With a CLI older than 0.11.2 the band shows nothing and
+nothing toasts.
+
 ### Claude Code without the plugin
 
 ```bash
@@ -170,7 +190,9 @@ claudinho init-hook            # optional: Claude knows the live score during a 
 Or both at once, plus the MCP line to run: `claudinho init claude`. Each command backs up
 `~/.claude/settings.json` first (to `settings.json.claudinho.bak`, once). Restart Claude Code to see
 it. To remove both: `claudinho init plugin` (it removes exactly those two entries and keeps every
-other setting).
+other setting). Running a local build instead of the global command? `init-statusline`, `init-hook` and
+`init-cursor-statusline` take `--command`, as in
+`claudinho init-cursor-statusline --command "node ./packages/cli/dist/index.js prompt"`.
 
 ### Cursor CLI
 
@@ -255,8 +277,9 @@ says `Live data: ESPN`), market odds from Polymarket's public data. Rate limits 
 nation's, so a club shows by its name.
 
 **Flags show as boxed letters (`CH`, `BA`)?** Some terminals (Warp, some Windows terminals) cannot
-draw flag emoji. Claudinho detects Warp and shows 3-letter codes instead. Force it anywhere with
-`CLAUDINHO_FLAGS=off`.
+draw flag emoji. Claudinho detects Warp and drops the flags: the statusline shows 3-letter codes
+(`MEX`), and `today`, `live`, `table`, `next` and the hook show plain team names. Force it anywhere
+with `CLAUDINHO_FLAGS=off`, or keep the flags with `CLAUDINHO_FLAGS=on`.
 
 ## Around the web
 
