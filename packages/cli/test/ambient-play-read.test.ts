@@ -117,7 +117,7 @@ describe('one record-of-play read per render', () => {
   it('one ambient render at the countdown calls into play.ts exactly once (the ids handed to the line and to `next`)', () => {
     const s = state();
     const v = ambientView(s, opts);
-    expect(v.line).toBe('BET vs BAR now'); // the render did reach the countdown, where the ids are asked
+    expect(v.line).toBe('⚽ BET vs BAR now'); // the render did reach the countdown, where the ids are asked
     expect(v.next?.id).toBe('401');
     expect(playCalls(s)).toBe(1);
   });
@@ -138,7 +138,7 @@ describe('one record-of-play read per render', () => {
 
   it('one `prompt` render at the countdown calls into play.ts exactly once', () => {
     const s = state();
-    expect(renderPrompt(s, opts)).toBe('BET vs BAR now');
+    expect(renderPrompt(s, opts)).toBe('⚽ BET vs BAR now');
     expect(playCalls(s)).toBe(1);
   });
 
@@ -157,7 +157,7 @@ describe('one record-of-play read per render', () => {
 
   it('a `prompt` render at the countdown seals no finished record', () => {
     const s = state();
-    expect(renderPrompt(s, opts)).toBe('BET vs BAR now');
+    expect(renderPrompt(s, opts)).toBe('⚽ BET vs BAR now');
     expect(finishedSeals(s)).toBe(0);
   });
 
@@ -166,7 +166,7 @@ describe('one record-of-play read per render', () => {
     const s = state({
       schedule: { ...schedule, fixtures: [club('901', KICK), club('802', KICK, 'SCHEDULED', RMA, BET), fixtures[1] as Match] },
     });
-    expect(renderPrompt(s, opts)).toBe('BAR vs RMA in 7d23h');
+    expect(renderPrompt(s, opts)).toBe('⚽ BAR vs RMA in 7d23h');
     expect(ambientView(s, opts).next?.id).toBe('402');
   });
 });

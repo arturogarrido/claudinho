@@ -169,10 +169,10 @@ describe('ambient --json: lang and words on a selected view', () => {
 
 describe("ambient --json: the line's tokens in lang", () => {
   for (const lang of LANGS) {
-    it(`${lang}: the countdown is core's phrase, \`BOU vs BRE ${IN[lang]} 17m\`, one plain part`, () => {
+    it(`${lang}: the countdown is core's phrase, \`⚽ BOU vs BRE ${IN[lang]} 17m\`, one plain part`, () => {
       seedCountdown();
       const v = ambient(lang);
-      expect(v.line).toBe(`BOU vs BRE ${IN[lang]} 17m`);
+      expect(v.line).toBe(`⚽ BOU vs BRE ${IN[lang]} 17m`);
       expect(v.lineParts).toEqual([{ text: v.line }]);
       expect(v).toMatchObject({ idle: false, empty: false });
     });
@@ -250,14 +250,14 @@ const seedAtKickoff = () =>
   );
 describe('ambient --json at exactly kickoff (round 1, L5)', () => {
   for (const lang of LANGS) {
-    it(`${lang}: the ambient line is \`BOU vs BRE ${NOW_WORD[lang]}\`, one plain part; \`claudinho prompt\` reads the English \`now\``, () => {
+    it(`${lang}: the ambient line is \`⚽ BOU vs BRE ${NOW_WORD[lang]}\`, one plain part; \`claudinho prompt\` reads the English \`now\``, () => {
       seedAtKickoff();
       const v = ambient(lang);
-      expect(v.line).toBe(`BOU vs BRE ${NOW_WORD[lang]}`);
+      expect(v.line).toBe(`⚽ BOU vs BRE ${NOW_WORD[lang]}`);
       expect(v.lineParts).toEqual([{ text: v.line }]);
       writes = [];
       cmdPrompt(ctx(lang));
-      expect(writes.join('').trim()).toBe('BOU vs BRE now');
+      expect(writes.join('').trim()).toBe('⚽ BOU vs BRE now');
     });
   }
 });
@@ -289,7 +289,7 @@ describe('what stays English in every language', () => {
       seedCountdown();
       const countdown = surfaces(lang);
       expect(countdown).toEqual(surfaces('en'));
-      expect(countdown.prompt.trim()).toBe('BOU vs BRE in 17m');
+      expect(countdown.prompt.trim()).toBe('⚽ BOU vs BRE in 17m');
       seedSyncing();
       expect(surfaces(lang).prompt.trim()).toBe('⚽ BOU vs BRE live · syncing…');
       seedLive([live('1', ARS, CHE, [2, 1], { status: 'HT', minute: undefined }), live('2', BOU, BRE, [0, 0], { minute: undefined })]);

@@ -10,7 +10,7 @@
  * DUE fixture is a candidate beside the upcoming ones: resolved, its kickoff passed by at most 30 minutes
  * (kickoff <= now <= kickoff + 30 min), its status exactly SCHEDULED, and not in the snapshot's record of play (an id
  * in `play.seen` or `play.finished` was seen in play). Candidates are ordered by kickoff, then by the pick's
- * preference. A fixture whose kickoff has passed (or is exactly now) reads "<home> vs <away> now", never "in now".
+ * preference. A fixture whose kickoff has passed (or is exactly now) reads "⚽ <home> vs <away> now", never "in now".
  * A live match and the syncing line keep priority as before.
  *
  * Every kickoff here is one every wall clock has already passed (the scenario is dated two weeks before the
@@ -113,7 +113,7 @@ describe('a kickoff the feed has not yet marked live (off the bundle, LALIGA, Ba
   const state = () => snapshot(at, [betBar(), barRma()]);
 
   it('a minute after kickoff, nothing live: the line names today\'s match "now", not next week\'s countdown', () => {
-    expect(line(state(), at)).toBe('BET vs BAR now');
+    expect(line(state(), at)).toBe('⚽ BET vs BAR now');
   });
 
   it('the ambient view\'s `next` is today\'s match, the one the line names (the pane binds it)', () => {
@@ -122,38 +122,38 @@ describe('a kickoff the feed has not yet marked live (off the bundle, LALIGA, Ba
 
   it('the ambient view\'s `line` and `lineParts` say "now"', () => {
     const v = view(state(), at);
-    expect(v.line).toBe('BET vs BAR now');
-    expect(v.lineParts).toEqual([{ text: 'BET vs BAR now' }]);
+    expect(v.line).toBe('⚽ BET vs BAR now');
+    expect(v.lineParts).toEqual([{ text: '⚽ BET vs BAR now' }]);
     expect(v).toMatchObject({ empty: false, idle: false });
   });
 
   it('exactly at kickoff: "now", never "in now"', () => {
     const s = snapshot(KICK, [betBar(), barRma()]);
-    expect(line(s, KICK)).toBe('BET vs BAR now');
+    expect(line(s, KICK)).toBe('⚽ BET vs BAR now');
     expect(view(s, KICK).next?.id).toBe('401');
   });
 
   it('29 minutes after kickoff: still due', () => {
     const t = KICK + 29 * MIN;
-    expect(line(snapshot(t, [betBar(), barRma()]), t)).toBe('BET vs BAR now');
+    expect(line(snapshot(t, [betBar(), barRma()]), t)).toBe('⚽ BET vs BAR now');
   });
 
   it('exactly 30 minutes after kickoff: still due (the bound is inclusive)', () => {
     const t = KICK + 30 * MIN;
-    expect(line(snapshot(t, [betBar(), barRma()]), t)).toBe('BET vs BAR now');
+    expect(line(snapshot(t, [betBar(), barRma()]), t)).toBe('⚽ BET vs BAR now');
   });
 
   it('31 minutes after kickoff, the feed still saying SCHEDULED: no longer due, next week\'s countdown', () => {
     const t = KICK + 31 * MIN;
     const s = snapshot(t, [betBar(), barRma()]);
-    expect(line(s, t)).toBe('BAR vs RMA in 8d2h');
+    expect(line(s, t)).toBe('⚽ BAR vs RMA in 8d2h');
     expect(view(s, t).next?.id).toBe('402');
   });
 
   it('a fixture 10 minutes ahead still reads "in 10m"', () => {
     const t = KICK - 10 * MIN;
     const s = snapshot(t, [betBar(), barRma()]);
-    expect(line(s, t)).toBe('BET vs BAR in 10m');
+    expect(line(s, t)).toBe('⚽ BET vs BAR in 10m');
     expect(view(s, t).next?.id).toBe('401');
   });
 });
@@ -163,7 +163,7 @@ describe('a fixture whose status is not SCHEDULED is never due', () => {
   for (const status of ['POSTPONED', 'CANCELLED', 'FT', 'LIVE', 'HT'] as const) {
     it(`${status} a minute after kickoff (and nothing in the live list): next week's countdown`, () => {
       const s = snapshot(at, [betBar(status), barRma()]);
-      expect(line(s, at)).toBe('BAR vs RMA in 8d3h');
+      expect(line(s, at)).toBe('⚽ BAR vs RMA in 8d3h');
       expect(view(s, at).next?.id).toBe('402');
     });
   }
@@ -174,21 +174,21 @@ describe('a fixture the record of play saw in play is never due', () => {
 
   it('its id in `play.seen`: next week\'s countdown', () => {
     const s = snapshot(at, [betBar(), barRma()], { play: { seen: [{ id: '401', at: iso(at - 30_000) }], finished: [] } });
-    expect(line(s, at)).toBe('BAR vs RMA in 8d3h');
+    expect(line(s, at)).toBe('⚽ BAR vs RMA in 8d3h');
     expect(view(s, at).next?.id).toBe('402');
   });
 
   it('its id in `play.finished`: next week\'s countdown', () => {
     const done = club('401', KICK, BET, BAR, 'FT', { updatedAt: iso(at - 30_000) });
     const s = snapshot(at, [betBar(), barRma()], { play: { seen: [], finished: [{ match: done, at: iso(at - 30_000) }] } });
-    expect(line(s, at)).toBe('BAR vs RMA in 8d3h');
+    expect(line(s, at)).toBe('⚽ BAR vs RMA in 8d3h');
     expect(view(s, at).next?.id).toBe('402');
   });
 
   it('a malformed record of play is no record: the fixture is due, and nothing throws', () => {
     for (const play of ['x', 42, [], { seen: 'x' }, { finished: 'x' }, { seen: [null, 3, { id: 7 }], finished: [null, 3, { match: null }] }]) {
       const s = snapshot(at, [betBar(), barRma()], { play: play as never });
-      expect(line(s, at), JSON.stringify(play)).toBe('BET vs BAR now');
+      expect(line(s, at), JSON.stringify(play)).toBe('⚽ BET vs BAR now');
       expect(view(s, at).next?.id, JSON.stringify(play)).toBe('401');
     }
   });
@@ -215,27 +215,27 @@ describe('the order: kickoff first, then the pick\'s preference', () => {
 
   it('the picked team\'s due fixture before another team\'s upcoming one', () => {
     const s = snapshot(at, [betBar(), sevVal(), barRma()]);
-    expect(line(s, at)).toBe('BET vs BAR now');
+    expect(line(s, at)).toBe('⚽ BET vs BAR now');
     expect(view(s, at).next?.id).toBe('401');
   });
 
   it('with no pick, the soonest kickoff wins: the due fixture before one 15 minutes ahead', () => {
     const s = snapshot(at, [sevVal(), betBar(), barRma()]);
-    expect(line(s, at, NO_PICK)).toBe('BET vs BAR now');
+    expect(line(s, at, NO_PICK)).toBe('⚽ BET vs BAR now');
     expect(view(s, at, NO_PICK).next?.id).toBe('401');
   });
 
   it('with no pick, two due fixtures: the earlier kickoff', () => {
     const atmGir = club('404', KICK - 10 * MIN, ATM, GIR);
     const s = snapshot(at, [betBar(), atmGir, barRma()]);
-    expect(line(s, at, NO_PICK)).toBe('ATM vs GIR now');
+    expect(line(s, at, NO_PICK)).toBe('⚽ ATM vs GIR now');
     expect(view(s, at, NO_PICK).next?.id).toBe('404');
   });
 
   it('the pick still decides: the picked team\'s upcoming fixture before another team\'s due one', () => {
     const s = snapshot(at, [betBar(), barRma()]);
     const pickRma: AmbientPick = { team: { id: RMA.id, code: RMA.code, name: RMA.name } };
-    expect(line(s, at, pickRma)).toBe('BAR vs RMA in 8d3h');
+    expect(line(s, at, pickRma)).toBe('⚽ BAR vs RMA in 8d3h');
     expect(view(s, at, pickRma).next?.id).toBe('402');
   });
 });
@@ -256,13 +256,13 @@ describe('on the bundled competition (the World Cup): the same rule over its sch
   });
 
   it('a minute after the opener\'s kickoff, a fresh whole snapshot with nothing live: the opener "now"', () => {
-    expect(renderPrompt(wc(), { now: new Date(at) })).toBe('🇲🇽 vs 🇿🇦 now');
+    expect(renderPrompt(wc(), { now: new Date(at) })).toBe('⚽ 🇲🇽 vs 🇿🇦 now');
     expect(ambientView(wc(), { now: new Date(at) }).next?.id).toBe('760415');
   });
 
   it('the opener\'s id in `play.seen`: the next bundled fixture\'s countdown', () => {
     const s = wc({ play: { seen: [{ id: '760415', at: iso(at - 30_000) }], finished: [] } });
-    expect(renderPrompt(s, { now: new Date(at) })).toBe('🇰🇷 vs 🇨🇿 in 6h59m');
+    expect(renderPrompt(s, { now: new Date(at) })).toBe('⚽ 🇰🇷 vs 🇨🇿 in 6h59m');
     expect(ambientView(s, { now: new Date(at) }).next?.id).toBe('760414');
   });
 });
@@ -297,17 +297,17 @@ describe('the commands: `prompt` and `ambient --json` off the bundle', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('`claudinho prompt` a minute after kickoff prints "BET vs BAR now"', () => {
+  it('`claudinho prompt` a minute after kickoff prints "⚽ BET vs BAR now"', () => {
     cmdPrompt({ cfg: cfg(), t: makeT('en'), now: at }, { cursor: undefined });
-    expect(writes.join('').trim()).toBe('BET vs BAR now');
+    expect(writes.join('').trim()).toBe('⚽ BET vs BAR now');
   });
 
   it('`claudinho ambient --json` a minute after kickoff: `next` is today\'s match, the line says "now"', () => {
     cmdAmbient({ cfg: cfg(), t: makeT('en'), now: at });
     const v = JSON.parse(writes.join('')) as { line: string; next: { id: string } | null; lineParts: unknown };
     expect(v.next?.id).toBe('401');
-    expect(v.line).toBe('BET vs BAR now');
-    expect(v.lineParts).toEqual([{ text: 'BET vs BAR now' }]);
+    expect(v.line).toBe('⚽ BET vs BAR now');
+    expect(v.lineParts).toEqual([{ text: '⚽ BET vs BAR now' }]);
   });
 });
 
@@ -323,27 +323,27 @@ describe('exactly at kickoff, a fixture is a candidate only as a due one (off th
   for (const status of ['LIVE', 'HT'] as const) {
     it(`discovery's record ${status} at exactly its kickoff (nothing in the live list): next week's countdown`, () => {
       const s = snapshot(at, [betBar(status), barRma()]);
-      expect(line(s, at)).toBe('BAR vs RMA in 8d3h');
+      expect(line(s, at)).toBe('⚽ BAR vs RMA in 8d3h');
       expect(view(s, at).next?.id).toBe('402');
     });
   }
 
   it('its id in `play.seen` at exactly its kickoff: next week\'s countdown', () => {
     const s = snapshot(at, [betBar(), barRma()], { play: { seen: [{ id: '401', at: iso(at) }], finished: [] } });
-    expect(line(s, at)).toBe('BAR vs RMA in 8d3h');
+    expect(line(s, at)).toBe('⚽ BAR vs RMA in 8d3h');
     expect(view(s, at).next?.id).toBe('402');
   });
 
   it('its id in `play.finished` at exactly its kickoff: next week\'s countdown', () => {
     const done = club('401', KICK, BET, BAR, 'FT', { updatedAt: iso(at) });
     const s = snapshot(at, [betBar(), barRma()], { play: { seen: [], finished: [{ match: done, at: iso(at) }] } });
-    expect(line(s, at)).toBe('BAR vs RMA in 8d3h');
+    expect(line(s, at)).toBe('⚽ BAR vs RMA in 8d3h');
     expect(view(s, at).next?.id).toBe('402');
   });
 
   it('the control: SCHEDULED, nothing in the record of play, at exactly its kickoff: "now"', () => {
     const s = snapshot(at, [betBar(), barRma()]);
-    expect(line(s, at)).toBe('BET vs BAR now');
+    expect(line(s, at)).toBe('⚽ BET vs BAR now');
     expect(view(s, at).next?.id).toBe('401');
   });
 });
@@ -390,13 +390,13 @@ describe('on the bundled competition, a cached knockout record\'s own status dec
     const at = KO + MIN;
     for (const status of ['POSTPONED', 'CANCELLED', 'FT'] as const) {
       it(`a cached knockout record ${status}: not due, the next resolved tie's countdown`, () => {
-        expect(renderPrompt(wc(status, at), { now: new Date(at) })).toBe('🇲🇽 vs 🇪🇨 in 2d5h');
+        expect(renderPrompt(wc(status, at), { now: new Date(at) })).toBe('⚽ 🇲🇽 vs 🇪🇨 in 2d5h');
         expect(ambientView(wc(status, at), { now: new Date(at) }).next?.id).toBe('760491');
       });
     }
 
     it('the control: the same record SCHEDULED is due, "now"', () => {
-      expect(renderPrompt(wc('SCHEDULED', at), { now: new Date(at) })).toBe('🇩🇪 vs 🇵🇾 now');
+      expect(renderPrompt(wc('SCHEDULED', at), { now: new Date(at) })).toBe('⚽ 🇩🇪 vs 🇵🇾 now');
       expect(ambientView(wc('SCHEDULED', at), { now: new Date(at) }).next?.id).toBe('760486');
     });
   });
@@ -405,13 +405,13 @@ describe('on the bundled competition, a cached knockout record\'s own status dec
     const at = KO;
     for (const status of ['LIVE', 'HT', 'FT'] as const) {
       it(`a cached knockout record ${status}: not due, the next resolved tie's countdown`, () => {
-        expect(renderPrompt(wc(status, at), { now: new Date(at) })).toBe('🇲🇽 vs 🇪🇨 in 2d6h');
+        expect(renderPrompt(wc(status, at), { now: new Date(at) })).toBe('⚽ 🇲🇽 vs 🇪🇨 in 2d6h');
         expect(ambientView(wc(status, at), { now: new Date(at) }).next?.id).toBe('760491');
       });
     }
 
     it('the control: the same record SCHEDULED is due, "now"', () => {
-      expect(renderPrompt(wc('SCHEDULED', at), { now: new Date(at) })).toBe('🇩🇪 vs 🇵🇾 now');
+      expect(renderPrompt(wc('SCHEDULED', at), { now: new Date(at) })).toBe('⚽ 🇩🇪 vs 🇵🇾 now');
       expect(ambientView(wc('SCHEDULED', at), { now: new Date(at) }).next?.id).toBe('760486');
     });
   });
@@ -432,11 +432,11 @@ describe('the record of play\'s bounds decide which ids exclude a due fixture', 
   const today = (stamp: number) => ({ match: club('401', KICK, BET, BAR, 'FT', { updatedAt: iso(stamp) }), at: iso(stamp) });
   const withPlay = (play: CacheState['play']) => snapshot(at, [betBar(), barRma()], { play });
   const due = (s: CacheState) => {
-    expect(line(s, at)).toBe('BET vs BAR now');
+    expect(line(s, at)).toBe('⚽ BET vs BAR now');
     expect(view(s, at).next?.id).toBe('401');
   };
   const notDue = (s: CacheState) => {
-    expect(line(s, at)).toBe('BAR vs RMA in 8d3h');
+    expect(line(s, at)).toBe('⚽ BAR vs RMA in 8d3h');
     expect(view(s, at).next?.id).toBe('402');
   };
 
@@ -531,18 +531,18 @@ describe('the due fixture in the reader\'s language (ambient --json; prompt stay
   });
 
   for (const lang of ['en', 'es', 'pt', 'fr'] as const) {
-    it(`${lang}: the ambient line is \`BET vs BAR ${NOW_WORD[lang]}\`, one plain part, and \`next\` is today's match`, () => {
+    it(`${lang}: the ambient line is \`⚽ BET vs BAR ${NOW_WORD[lang]}\`, one plain part, and \`next\` is today's match`, () => {
       cmdAmbient({ cfg: cfg(lang), t: makeT(lang), now: at });
       const v = JSON.parse(writes.join('')) as { line: string; lineParts: unknown; next: { id: string } | null; lang: string };
-      expect(v.line).toBe(`BET vs BAR ${NOW_WORD[lang]}`);
-      expect(v.lineParts).toEqual([{ text: `BET vs BAR ${NOW_WORD[lang]}` }]);
+      expect(v.line).toBe(`⚽ BET vs BAR ${NOW_WORD[lang]}`);
+      expect(v.lineParts).toEqual([{ text: `⚽ BET vs BAR ${NOW_WORD[lang]}` }]);
       expect(v.next?.id).toBe('401');
       expect(v.lang).toBe(lang);
     });
 
-    it(`${lang}: \`claudinho prompt\` reads the English \`BET vs BAR now\``, () => {
+    it(`${lang}: \`claudinho prompt\` reads the English \`⚽ BET vs BAR now\``, () => {
       cmdPrompt({ cfg: cfg(lang), t: makeT(lang), now: at }, { cursor: undefined });
-      expect(writes.join('').trim()).toBe('BET vs BAR now');
+      expect(writes.join('').trim()).toBe('⚽ BET vs BAR now');
     });
   }
 });

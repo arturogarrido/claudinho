@@ -148,12 +148,12 @@ describe('renderPrompt — next fixture (static, no cache)', () => {
 
   it('shows the soonest upcoming fixture overall', () => {
     const line = renderPrompt(undefined, { now: PRE });
-    expect(line.startsWith('🇲🇽 vs 🇿🇦 in ')).toBe(true); // Mexico v South Africa opener
+    expect(line.startsWith('⚽ 🇲🇽 vs 🇿🇦 in ')).toBe(true); // Mexico v South Africa opener
   });
 
   it('shows a specific team next fixture when configured', () => {
     const line = renderPrompt(undefined, { now: PRE, pick: { code: 'BRA' } });
-    expect(line.startsWith('🇧🇷 vs 🇲🇦 in ')).toBe(true); // Brazil v Morocco
+    expect(line.startsWith('⚽ 🇧🇷 vs 🇲🇦 in ')).toBe(true); // Brazil v Morocco
   });
 });
 
@@ -185,13 +185,13 @@ describe('renderPrompt — knockout next fixture from cached resolved fixtures',
 
   it('no team → soonest RESOLVED knockout countdown (not a 🏳️ placeholder)', () => {
     const line = renderPrompt(withFixtures([MEX_ECU, GER_PAR]), { now: KO_NOW });
-    expect(line.startsWith('🇩🇪 vs 🇵🇾 in ')).toBe(true); // Germany (Jun 29) is soonest
+    expect(line.startsWith('⚽ 🇩🇪 vs 🇵🇾 in ')).toBe(true); // Germany (Jun 29) is soonest
     expect(line).not.toContain('🏳️');
   });
 
   it('team filter → that team’s resolved knockout countdown', () => {
     const line = renderPrompt(withFixtures([MEX_ECU, GER_PAR]), { now: KO_NOW, pick: { code: 'MEX' } });
-    expect(line.startsWith('🇲🇽 vs 🇪🇨 in ')).toBe(true);
+    expect(line.startsWith('⚽ 🇲🇽 vs 🇪🇨 in ')).toBe(true);
   });
 
   it('FAILS CLOSED with no cached fixtures: "⚽ —", never "🏳️ vs 🏳️" (the leak fix)', () => {
@@ -282,7 +282,7 @@ describe('renderPrompt — flags off (codes instead of emoji)', () => {
   it('uses codes in the countdown fallback too', () => {
     const PRE = new Date('2026-06-01T00:00:00Z');
     const line = renderPrompt(undefined, { now: PRE, flags: false });
-    expect(line.startsWith('MEX vs RSA in ')).toBe(true);
+    expect(line.startsWith('⚽ MEX vs RSA in ')).toBe(true);
     expect(line).not.toMatch(/\uD83C[\uDDE6-\uDDFF]/); // no regional-indicator flag
   });
 

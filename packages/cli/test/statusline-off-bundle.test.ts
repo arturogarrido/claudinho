@@ -64,24 +64,24 @@ describe('nothing known', () => {
 describe('a fixture days or minutes away', () => {
   it('nations: a countdown from the schedule slice', () => {
     const state = snapshot(sched([nations('1', NOW + 52 * HOUR)]));
-    expect(line(state)).toBe('🇪🇸 vs 🇫🇷 in 2d4h');
+    expect(line(state)).toBe('⚽ 🇪🇸 vs 🇫🇷 in 2d4h');
   });
 
   it('the earliest one that is still to be played; a postponed one is skipped', () => {
     const state = snapshot(sched([nations('0', NOW + HOUR, 'POSTPONED'), nations('1', NOW + 3 * HOUR), fixture('2', NOW + 5 * HOUR, ['GER', 'Germany'], ['ITA', 'Italy'])]));
-    expect(line(state)).toBe('🇪🇸 vs 🇫🇷 in 3h0m');
+    expect(line(state)).toBe('⚽ 🇪🇸 vs 🇫🇷 in 3h0m');
   });
 
   it('clubs: a countdown by their codes (0.11 · 2.2: a club has no flag, and is a resolved side)', () => {
-    expect(line(snapshot(sched([clubs('1', NOW + 52 * HOUR)])), { teamKind: 'club' })).toBe('ARS vs LEE in 2d4h');
+    expect(line(snapshot(sched([clubs('1', NOW + 52 * HOUR)])), { teamKind: 'club' })).toBe('⚽ ARS vs LEE in 2d4h');
     // Compact or not, flags on or off: the countdown token of a flagless side is its code.
     const state = snapshot(sched([clubs('1', NOW + 52 * HOUR)]));
-    expect(renderPrompt(state, { defaultCompetition: false, teamKind: 'club', now: new Date(NOW), compact: false })).toBe('ARS vs LEE in 2d4h');
-    expect(renderPrompt(state, { defaultCompetition: false, teamKind: 'club', now: new Date(NOW), flags: false })).toBe('ARS vs LEE in 2d4h');
+    expect(renderPrompt(state, { defaultCompetition: false, teamKind: 'club', now: new Date(NOW), compact: false })).toBe('⚽ ARS vs LEE in 2d4h');
+    expect(renderPrompt(state, { defaultCompetition: false, teamKind: 'club', now: new Date(NOW), flags: false })).toBe('⚽ ARS vs LEE in 2d4h');
   });
 
   it('a nation competition\'s rows read as clubs would lose their flags: the kind is the caller\'s to state', () => {
-    expect(line(snapshot(sched([nations('1', NOW + 52 * HOUR)])), { teamKind: 'club' })).toBe('ESP vs FRA in 2d4h');
+    expect(line(snapshot(sched([nations('1', NOW + 52 * HOUR)])), { teamKind: 'club' })).toBe('⚽ ESP vs FRA in 2d4h');
   });
 
   it('the knockout slice is the bundle’s: off the bundle it is not read for a countdown', () => {
@@ -91,8 +91,8 @@ describe('a fixture days or minutes away', () => {
 
   it('with a pick, that team’s next fixture first; a pick with none counts down to anyone’s (a preference, 0.11 2.5b)', () => {
     const state = snapshot(sched([nations('1', NOW + 3 * HOUR), fixture('2', NOW + 5 * HOUR, ['GER', 'Germany'], ['ITA', 'Italy'])]));
-    expect(line(state, { pick: { code: 'ITA' } })).toBe('🇩🇪 vs 🇮🇹 in 5h0m');
-    expect(line(state, { pick: { code: 'POR' } })).toBe('🇪🇸 vs 🇫🇷 in 3h0m');
+    expect(line(state, { pick: { code: 'ITA' } })).toBe('⚽ 🇩🇪 vs 🇮🇹 in 5h0m');
+    expect(line(state, { pick: { code: 'POR' } })).toBe('⚽ 🇪🇸 vs 🇫🇷 in 3h0m');
   });
 });
 
@@ -182,7 +182,7 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
     // Found in review: the display record said full time and the line still read "live · syncing…".
     const over = { ...nations('1', NOW - 120 * MIN, 'FT'), score: { home: 2, away: 1 } } as Match;
     expect(line(snapshot(sched([over])))).toBe('⚽ —');
-    expect(line(snapshot(sched([over, nations('2', NOW + 26 * HOUR)])))).toBe('🇪🇸 vs 🇫🇷 in 1d2h');
+    expect(line(snapshot(sched([over, nations('2', NOW + 26 * HOUR)])))).toBe('⚽ 🇪🇸 vs 🇫🇷 in 1d2h');
   });
 
   it('with a pick: syncing names the picked team’s fixture first, and a match on is syncing whoever is picked (a preference, 0.11 2.5b)', () => {
@@ -194,7 +194,7 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
 
   it('NOT outside the gate', () => {
     expect(line(snapshot(sched([nations('1', NOW - 150 * MIN)])))).toBe('⚽ —');
-    expect(line(snapshot(sched([nations('1', NOW + MIN)])))).toBe('🇪🇸 vs 🇫🇷 in 1m');
+    expect(line(snapshot(sched([nations('1', NOW + MIN)])))).toBe('⚽ 🇪🇸 vs 🇫🇷 in 1m');
   });
 
   it('NOT for a probe: a probe is a question, not a reason to say a match is on', () => {
@@ -211,7 +211,7 @@ describe('the gate is open and live data is missing, stale or failed: "live · s
   it('a FRESH, healthy live slice with nothing in play is trusted: the countdown, not "syncing"', () => {
     // 45 minutes after its kickoff: inside the gate's window, past the 30 minutes a SCHEDULED fixture stays due.
     const state = snapshot(sched([nations('1', NOW - 45 * MIN), nations('2', NOW + 26 * HOUR)]), {}, 5000);
-    expect(line(state)).toBe('🇪🇸 vs 🇫🇷 in 1d2h');
+    expect(line(state)).toBe('⚽ 🇪🇸 vs 🇫🇷 in 1d2h');
   });
 });
 
@@ -224,7 +224,7 @@ describe('in play, and just finished', () => {
 
   it('finished, nothing else in a window: the next countdown, or `⚽ —`', () => {
     const over = sched([nations('1', NOW - 150 * MIN, 'FT'), nations('2', NOW + 26 * HOUR)]);
-    expect(line(snapshot(over, {}, 5000))).toBe('🇪🇸 vs 🇫🇷 in 1d2h');
+    expect(line(snapshot(over, {}, 5000))).toBe('⚽ 🇪🇸 vs 🇫🇷 in 1d2h');
     expect(line(snapshot(sched([nations('1', NOW - 150 * MIN, 'FT')]), {}, 5000))).toBe('⚽ —');
   });
 });
