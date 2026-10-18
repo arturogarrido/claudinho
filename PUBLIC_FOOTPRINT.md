@@ -4,7 +4,7 @@ A dated record of where Claudinho has been published, listed, discussed, reviewe
 presented. This exists both as project history and as a source of verified links for future
 posts, talks, release notes, and retrospectives.
 
-**Last reviewed:** August 19, 2026
+**Last reviewed:** October 18, 2026
 
 ## How to read this record
 
@@ -32,21 +32,22 @@ Footprint searches use the exact repository, package, and registry identifiers
 | npm CLI | Current | [@claudinho/cli](https://www.npmjs.com/package/@claudinho/cli) | Human-facing CLI, statusline, hook, and setup commands. |
 | npm MCP | Current | [@claudinho/mcp](https://www.npmjs.com/package/@claudinho/mcp) | Read-only stdio MCP server. |
 | npm core | Current | [@claudinho/core](https://www.npmjs.com/package/@claudinho/core) | Shared domain model and provider adapters. |
-| Official MCP Registry | Current | [io.github.arturogarrido/claudinho](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.arturogarrido/claudinho&version=latest) | Machine-readable latest-version record. Version 0.9.4 was active and marked latest when reviewed. |
+| Official MCP Registry | Current | [io.github.arturogarrido/claudinho](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.arturogarrido/claudinho&version=latest) | Machine-readable latest-version record. Version 0.12.0 was active and marked latest when reviewed. |
+| Claude Code plugin | Current | [packages/plugin](https://github.com/arturogarrido/claudinho/tree/main/packages/plugin) | Installed from the repository's own marketplace file (`/plugin install claudinho --marketplace arturogarrido/claudinho`). Version 0.6.0 when reviewed. |
 
 ## Registries and directories
 
 | Place | Status | Link | Notes |
 | --- | --- | --- | --- |
-| Smithery | Current | [Claudinho on Smithery](https://smithery.ai/servers/arturogarrido/claudinho) | Maintainer-published MCP bundle and listing. |
-| Glama | Current | [mcp-claudinho](https://glama.ai/mcp/servers/arturogarrido/claudinho) | A-rated listing. Generated tool metadata has occasionally lagged releases. |
-| MCP.so | Current | [Claudinho on MCP.so](https://mcp.so/servers/claudinho) | Maintainer-submitted listing. The overview is live; dynamic tool detection was incomplete when reviewed. |
-| cursor.directory | Current | [Claudinho plugin](https://cursor.directory/plugins/claudinho) | Cursor plugin and MCP listing, submitted June 18. |
-| PulseMCP | Current, automated | [arturogarrido/claudinho](https://www.pulsemcp.com/servers/arturogarrido-claudinho) | Registry-derived listing, released June 6. Traffic and rank shown there are third-party estimates. |
-| Claude Marketplaces | Current, automated | [Claudinho MCP server](https://claudemarketplaces.com/mcp/arturogarrido/claudinho) | Registry-derived page. Its generated tool count may be stale. |
-| Enterprise DNA Directories | Current, automated | [arturogarrido/claudinho](https://enterprisedna.co/directories/mcp/arturogarrido-claudinho/) | Derived from the awesome-mcp-servers index; its star snapshot is historical. |
-| Developers Locker Room | Current | [MCP directory index](https://devlocker.dev/mcp-servers) | Contains two records for the same project (`claudinho` and `claudinho-arturogarridoclaudinho`); count them as one appearance. No stable per-project detail URL was found. |
-| Lulu | Current, automated | [Inbound listing report and response](https://github.com/arturogarrido/claudinho/issues/101) | As of August 10, Lulu had indexed duplicate entries from PulseMCP and Smithery. Free factual indexing was accepted; the ads SDK proposal was declined and deduplication was requested. |
+| Smithery | Current | [Claudinho on Smithery](https://smithery.ai/servers/arturogarrido/claudinho) | Maintainer-published MCP bundle and listing. It still serves the 0.11.1 bundle: on October 17 Smithery refused updates to existing listings ("Updating servers has been removed"), and its support was contacted. |
+| Glama | Current | [mcp-claudinho](https://glama.ai/mcp/servers/arturogarrido/claudinho) | A-rated listing. Generated tool metadata has occasionally lagged releases: it showed nine tools from 0.10.0 until it picked up 0.12.0 and its ten tools on October 18. |
+| MCP.so | Current | [Claudinho on MCP.so](https://mcp.so/servers/claudinho) | Maintainer-submitted listing, updated by the maintainer for 0.12.0 on October 18. |
+| cursor.directory | Current | [Claudinho plugin](https://cursor.directory/plugins/claudinho) | Cursor plugin and MCP listing, submitted June 18 and updated by the maintainer for 0.12.0 on October 18. |
+| PulseMCP | Current, automated | [arturogarrido/claudinho](https://www.pulsemcp.com/servers/arturogarrido-claudinho) | Registry-derived listing, released June 6. Its description still names the 2026 World Cup; PulseMCP has paused new submissions and edits since September 3. Traffic and rank shown there are third-party estimates. |
+| Claude Marketplaces | Current, automated | [Claudinho MCP server](https://claudemarketplaces.com/mcp/arturogarrido/claudinho) | Registry-derived page. Its generated summary still describes the World Cup release and seven tools; the README mirror beneath it is current. |
+| Enterprise DNA Directories | Current, automated | [arturogarrido/claudinho](https://enterprisedna.co/directories/mcp/arturogarrido-claudinho/) | Derived from the awesome-mcp-servers index; its text and star snapshot are from June. |
+| Developers Locker Room | Current | [MCP directory index](https://devlocker.dev/mcp-servers) | Contains two records for the same project (`claudinho` and `claudinho-arturogarridoclaudinho`); count them as one appearance. Both still describe the World Cup release. No stable per-project detail URL was found. |
+| Lulu | Current, automated | [Inbound listing report and response](https://github.com/arturogarrido/claudinho/issues/101) | As of October 18, Lulu listed three entries, copied from PulseMCP, Glama and Smithery. Free factual indexing was accepted; the ads SDK proposal was declined and deduplication was requested on August 10. |
 
 ## Automated mirrors and scans
 
@@ -56,19 +57,18 @@ the source.
 
 | Place | Status | Link | Notes |
 | --- | --- | --- | --- |
-| MCPHQ | Current, automated + probe | [Claudinho MCP Server](https://mcphq.ai/mcp/arturogarrido-claudinho) | Nightly activity and registry verification. Generated setup and environment-variable advice may be stale. |
-| MCP.Pub | Current, automated profile | [Claudinho](https://mcp.pub/servers/claudinho/) | README-derived profile with a generated 7.0/10 score described by the site as an editorial verdict. |
-| MCP Market | Current, automated | [Claudinho](https://mcpmarket.com/server/claudinho) | README-derived profile. Its star and tool counts lagged the repository when reviewed. |
+| MCPHQ | Current, automated + probe | [Claudinho MCP Server](https://mcphq.ai/mcp/arturogarrido-claudinho) | Nightly activity and registry verification. Generated setup and environment-variable advice may be stale. Its last verification shown was September 30, with 0.10.1 as the latest release. |
+| MCP.Pub | Current, automated profile | [Claudinho](https://mcp.pub/servers/claudinho/) | README-derived profile with a generated 7.0/10 score described by the site as an editorial verdict. Its profile still describes the World Cup release. |
+| MCP Market | Current, claimed | [Claudinho](https://mcpmarket.com/server/claudinho) | README-derived profile, claimed and edited by the maintainer for 0.12.0 on October 18. |
 | Claudeers | Current, automated | [claudinho](https://claudeers.com/claudinho) | Unclaimed README mirror. Its suggested `git clone` installation does not match the canonical `npx` path. |
-| Manifold | Current, automated scan | [Registry security manifest](https://manifest.manifold.security/mcp-servers/mcp-registry/arturogarrido/claudinho) | Registry-derived scan marked version 0.9.4 `Clean` on August 16. This is a point-in-time scanner result, not a security guarantee. |
+| Manifold | Current, automated scan | [Registry security manifest](https://manifest.manifold.security/mcp-servers/mcp-registry/arturogarrido/claudinho) | Registry-derived scan marked version 0.11.2 `Clean`, with ten tools, on October 16. This is a point-in-time scanner result, not a security guarantee. |
 | npm.io | Current, automated | [CLI mirror](https://npm.io/package/@claudinho/cli) / [MCP mirror](https://npm.io/package/@claudinho/mcp) | Generic npm metadata and README mirrors. Use npm or the repository for canonical installation details. |
 
 ## Curated repositories
 
 | Repository | Status | Link | Notes |
 | --- | --- | --- | --- |
-| awesome-claude-code | Current | [Status Lines section](https://github.com/hesreallyhim/awesome-claude-code#status-lines) / [submission #2027](https://github.com/hesreallyhim/awesome-claude-code/issues/2027) | Claudinho appears under Status Lines even though the validated submission issue remained open when reviewed. |
-| awesome-mcp-servers | Current | [Sports section](https://github.com/punkpeye/awesome-mcp-servers#-sports) / [merged PR #7774](https://github.com/punkpeye/awesome-mcp-servers/pull/7774) | Accepted under Sports on June 15 and verified in [`main` at `6c929cdf`](https://github.com/punkpeye/awesome-mcp-servers/blob/6c929cdf022f57cf954ab1b504cc266c0908373b/README.md#L3344) on August 18. |
+| awesome-mcp-servers | Current | [Sports section](https://github.com/punkpeye/awesome-mcp-servers#-sports) / [merged PR #7774](https://github.com/punkpeye/awesome-mcp-servers/pull/7774) | Accepted under Sports on June 15 and verified in [`main` at `f00a852f`](https://github.com/punkpeye/awesome-mcp-servers/blob/f00a852f6e44db766312c7ad0de5e98803aefc9d/README.md#L4266) on October 18. A one-line update of its description for the multi-competition release is open as [PR #16837](https://github.com/punkpeye/awesome-mcp-servers/pull/16837). |
 
 ## Independent coverage and organic shares
 
@@ -86,7 +86,7 @@ These were published by people other than the maintainer.
 | --- | --- | --- | --- |
 | Cursor Community | June 18, 2026 | [Built for Cursor thread](https://forum.cursor.com/t/claudinho-live-world-cup-scores-in-your-cursor-cli-statusline-a-read-only-mcp-server/163557) | Maintainer-authored integration post with substantive community replies. |
 | Hacker News | June 12, 2026 | [Show HN: A Claude Code statusline that shows live World Cup scores](https://news.ycombinator.com/item?id=48499159) | Maintainer-authored Show HN; 6 points and 1 comment. |
-| Product Hunt | June 14, 2026 | [Claudinho](https://www.producthunt.com/products/claudinho) | Maintainer launch; 6 votes. |
+| Product Hunt | June 14, 2026 | [Claudinho](https://www.producthunt.com/products/claudinho) | Maintainer launch; 6 votes. The page text was updated, and a maker comment about 0.12.0 added, on October 18. |
 
 ## Maintainer build-in-public posts
 
@@ -125,9 +125,10 @@ counted as coverage.
 
 | Place | Submitted | Link | Outcome at last review |
 | --- | --- | --- | --- |
-| Cline MCP Marketplace | June 11, 2026 | [Submission #1773](https://github.com/cline/mcp-marketplace/issues/1773) | Still open with no comments. |
-| Cursor Marketplace | June 18, 2026 | [Marketplace](https://cursor.com/marketplace) | No public Claudinho listing found as of August 18. The repository's plugin manifest remains usable independently of Marketplace acceptance. |
-| mcp.directory | July 2, 2026 | [Directory](https://mcp.directory/) | No public Claudinho listing found as of August 18. |
+| Cline MCP Marketplace | June 11, 2026 | [Submission #1773](https://github.com/cline/mcp-marketplace/issues/1773) | Still open with no comments as of October 18. |
+| Cursor Marketplace | June 18, 2026 | [Marketplace](https://cursor.com/marketplace) | No public Claudinho listing found as of October 18. The repository's plugin manifest remains usable independently of Marketplace acceptance. |
+| mcp.directory | July 2, 2026 | [Directory](https://mcp.directory/) | No public Claudinho listing found as of October 18. |
+| Terminal Trove | About June 13, 2026 | [Terminal Trove](https://terminaltrove.com/) | No Claudinho page found as of October 18. |
 
 ## Historical or delisted pages
 
@@ -135,6 +136,7 @@ counted as coverage.
 | --- | --- | --- | --- |
 | MCP Servers France | Historical, automated | [Former detail URL](https://www.mcp-servers.fr/server/server%20implementations-arturogarrido-claudinho) | The old page now resolves to generic site chrome with no Claudinho content. While live, its version and connection metadata were incorrect. |
 | PitchHut | Historical, automated | [Former project URL](https://www.pitchhut.com/project/claudinho) | The June preview page is now a `Project not found` response. |
+| awesome-claude-code | Historical | [submission #2027](https://github.com/hesreallyhim/awesome-claude-code/issues/2027) / [removal PR #2804](https://github.com/hesreallyhim/awesome-claude-code/pull/2804) | Listed under Status Lines from June. Removed on September 10, 2026, in the list's PR #2804 ("Backfilling"), with no reason given. The submission issue remains open. |
 
 ## Links still to recover
 

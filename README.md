@@ -306,8 +306,7 @@ Listed in the
 [Smithery](https://smithery.ai/servers/arturogarrido/claudinho),
 [Glama](https://glama.ai/mcp/servers/arturogarrido/claudinho),
 [MCP.so](https://mcp.so/servers/claudinho),
-[cursor.directory](https://cursor.directory/plugins/claudinho),
-[awesome-claude-code](https://github.com/hesreallyhim/awesome-claude-code#status-lines) and
+[cursor.directory](https://cursor.directory/plugins/claudinho) and
 [awesome-mcp-servers](https://github.com/punkpeye/awesome-mcp-servers#-sports).
 The full record: [PUBLIC_FOOTPRINT.md](PUBLIC_FOOTPRINT.md).
 
