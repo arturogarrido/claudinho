@@ -6,8 +6,10 @@ import { ARAUJO, BARE_PATH, HOME, drawnRows, finishedRecord, liveRecord, momentL
  * - the option `language`: `auto` (the default), `en`, `es`, `pt`, `fr`; any other value is `auto`. `auto` is the
  *   CLI's `pickLang` predicate on the HOST's environment: `CLAUDINHO_LANG`, then `LANG`'s language part
  *   (`es_MX.UTF-8` gives `es`), each tried only when it is one of the four (case-sensitive; an empty value
- *   skipped), else `en`. The plugin passes `--lang <code>` (one of the four) appended to every CLI run: the band's
- *   `ambient --json --columns N`, the `/claudinho` reply's `ambient --json`, and `match <id> --json`;
+ *   skipped), else `en`. The plugin appends `--lang <code>` (one of the four) to every ambient run (the band's
+ *   `ambient --json --columns N` and the `/claudinho` reply's `ambient --json`), and to the match runs (`match <id>
+ *   --json`: the pane's re-reads and the pinned `--competition <slug>` run included) once any view, current or not,
+ *   has stated a `lang` among the four codes (a CLI 0.11.2 states none: its match runs carry no `--lang`);
  * - the moments are composed from the view's `words` (CLI 0.12.0: the ten words, templates), in the grammar the
  *   plugin ships (every branch), `{team}` filled by one LITERAL replacement with the record's `names`; English with
  *   the English words is byte-identical to today's on every branch;
@@ -458,7 +460,10 @@ describe('the celebrations in the view\'s language (C5)', () => {
   })
 })
 
-/** The language every CLI run is handed (C3): `--lang <code>` appended, once. */
+/**
+ * The language every ambient run is handed (C3): `--lang <code>` appended, once. The match runs carry it once any
+ * view, current or not, has stated a `lang` among the four codes.
+ */
 const BAND_ARGV = (lang: Lang) => ['claudinho', 'ambient', '--json', '--columns', '80', '--lang', lang]
 const LINE = "⚽ ARS 2–1 CHE 50'"
 const host = (vars: Record<string, string>) => ({ env: { PATH: BARE_PATH, HOME, ...vars } })
@@ -520,7 +525,10 @@ describe('the language option and `auto` (C3)', () => {
 describe('the match pane under a language (C3, C7)', () => {
   const ID = '401879286'
   const NOWISH = '2026-10-10T15:05:00.000Z'
-  /** A current view of the bound match, stating `lang` (round 1, L3: the runs carry `--lang` after such a view). */
+  /**
+   * A current view of the bound match, stating `lang` or not: the ambient runs carry `--lang` either way; the match
+   * runs carry it once a view (this one or any other, current or not) has stated a `lang` among the four codes.
+   */
   const liveView = (lang: Lang | null) =>
     view(LINE, {
       current: true,
@@ -567,8 +575,8 @@ describe('the match pane under a language (C3, C7)', () => {
     for (const row of ROWS) expect(t).toContain(row)
   })
 
-  // Round 1 of #186, L3: a CLI that states no `lang` (0.11.2: no localized band, no `words`) gets no `--lang` on its
-  // match and `/claudinho` runs, so its pane stays English like its toasts; the band's ambient run carries it always.
+  // Every ambient run (the band's and `/claudinho`'s) carries `--lang`; a CLI whose views state no `lang` (0.11.2: no
+  // localized band, no `words`) gets none on its match runs, so its pane stays English like its toasts (round 2, M1).
   test('a view stating `lang`: the band run, the `/claudinho` run and the match run each end with `--lang es`', { options: { language: 'es' } }, async ($, on) => {
     const w = await world($, on, [liveView('es')], { matchAnswers: [answer()] })
     await w.command('match')
@@ -638,6 +646,16 @@ describe('the match pane under a language (C3, C7)', () => {
     await w.command('match')
     expect(w.argvs[0]).toEqual(['claudinho', 'ambient', '--json', '--lang', 'pt'])
     expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json']])
+  })
+
+  // Round 3 of #186, N4: the band's own reading marks the CLI too. A pane opened under a reading that stated no `lang`
+  // (a CLI 0.11.2), then a band view that states one (the CLI upgraded while the pane is open): the re-read carries it.
+  test('a pane opened under readings without `lang`, then a band view stating `lang: es`: the 2-minute re-read ends with `--lang es`', { options: { language: 'es' } }, async ($, on) => {
+    const w = await world($, on, [liveView(null), liveView(null), liveView('es')], { matchAnswers: [answer()] })
+    await w.command('match')
+    expect(w.matchRuns()).toEqual([['claudinho', 'match', ID, '--json']])
+    await w.clock.advance(120_000)
+    expect(w.matchRuns().at(-1)).toEqual(['claudinho', 'match', ID, '--json', '--lang', 'es'])
   })
 
   test('a view stating a `lang` that is not one of the four marks nothing: the match run carries none', { options: { language: 'es' } }, async ($, on) => {
@@ -725,6 +743,47 @@ describe("full time: the winning team's identity is the evidence (round 1, L2)",
     await next(w)
     await w.turnEnd()
     expect(hasMascot(await rows(w))).toBe(true)
+  })
+
+  // Round 3 of #186, N1: a side with no team object states no identity (no id, no code, no name), and a missing
+  // identity is no evidence: it never validates a held full-time play, whatever `names` says.
+  /** A finished 1–2 whose away side carries NO team object; `names.away` as given. */
+  const ftNoAway = (awayName: string) => {
+    const { away: _drop, ...rec } = finishedRecord([1, 2], side(UNAM))
+    return momentView([], [{ ...rec, names: { home: ATL.name, away: awayName } }], { line: FT_LINE })
+  }
+
+  test('held: the away side carries no team object in either reading, `names.away` changed to another club: dropped', async ($, on) => {
+    const w = await world($, on, [liveMx([1, 2]), ftNoAway('Pumas UNAM'), ftNoAway('Cruz Azul'), ftNoAway('Cruz Azul')])
+    await w.turnStart()
+    await next(w) // full time, "Pumas UNAM win", no away object: held
+    await next(w) // the same 1-2, still no away object, the name now Cruz Azul
+    await w.turnEnd()
+    const r = await rows(w)
+    expect(hasMascot(r)).toBe(false)
+    expect(fullTime(r)).toBe(false)
+  })
+
+  test('held: the away side carries no team object in either reading, `names` unchanged: dropped (missing evidence never validates)', async ($, on) => {
+    const w = await world($, on, [liveMx([1, 2]), ftNoAway('Pumas UNAM'), ftNoAway('Pumas UNAM'), ftNoAway('Pumas UNAM')])
+    await w.turnStart()
+    await next(w)
+    await next(w)
+    await w.turnEnd()
+    const r = await rows(w)
+    expect(hasMascot(r)).toBe(false)
+    expect(fullTime(r)).toBe(false)
+  })
+
+  test('held: the away side present in the first reading, no team object in the next: dropped', async ($, on) => {
+    const w = await world($, on, [liveMx([1, 2]), ftMx(UNAM), ftNoAway('Pumas UNAM'), ftNoAway('Pumas UNAM')])
+    await w.turnStart()
+    await next(w)
+    await next(w)
+    await w.turnEnd()
+    const r = await rows(w)
+    expect(hasMascot(r)).toBe(false)
+    expect(fullTime(r)).toBe(false)
   })
 
   test('held: the same 1–2, the same team: kept, it plays when the turn ends', async ($, on) => {
