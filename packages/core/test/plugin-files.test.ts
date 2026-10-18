@@ -106,15 +106,25 @@ describe('the plugin directory listing', () => {
   const DOT = String.raw`\s*\??\.\s*`;
   const OPEN = String.raw`\s*(?:\?\.)?\s*\(`;
 
+  /** The text of the hook registered for `event`, from `on('<event>'` to its closing line. */
+  const handlerOf = (src: string, event: string): string => {
+    const from = src.indexOf(`on('${event}'`);
+    expect(from, event).toBeGreaterThan(-1);
+    return src.slice(from, src.indexOf('\n  })', from));
+  };
+
   /**
    * What PRIVACY.md says the plugin does: no network request, no file written, no conversation read, only the
    * installed `claudinho` CLI run. A vocabulary check over the one module the manifest runs, in which the host is
-   * always `$`: every member of `$` it names is one the policy accounts for; `$` is never indexed or assigned; the
-   * module imports nothing but types and the host's three state helpers; every run is `claudinho ambient` or
-   * `claudinho match`; the filesystem is read twice, nvm's version folder listed and `<version>/bin/claudinho` probed;
-   * the prompt handler reads no field of the prompt but its `context` list. A use of the host this grammar cannot see
-   * (a name built at run time, `$` handed to code outside the module) is outside it. The validator's `calls:` line is
-   * the full inventory, but it fails on none.
+   * always `$` (every hook's first parameter, every binding typed `EngineInterface`): every member of `$` it names is
+   * one the policy accounts for; `$` is never indexed or assigned; the module imports nothing but types and the host's
+   * three state helpers; every run is `claudinho ambient` or `claudinho match`; the filesystem is read twice, nvm's
+   * version folder listed and `<version>/bin/claudinho` probed; the prompt handler uses its event only to pass it on
+   * and to add the note, written from the CLI's `context` unchanged; the command handler reads the typed text only
+   * to compare it with `match`. It is a tripwire over the shapes the module has, not a proof: a use of the host or of
+   * an event this grammar does not name (a name built at run time, `$` handed to code outside the module, another
+   * syntax for the same access) is outside it. The validator's `calls:` line is the full inventory, but it fails on
+   * none.
    */
   it('the hooks module calls no host capability beyond the ones PRIVACY.md states, and runs only claudinho', () => {
     const src = hooksSource();
@@ -127,7 +137,14 @@ describe('the plugin directory listing', () => {
     const named = [...src.matchAll(new RegExp(String.raw`\$${DOT}([A-Za-z_]+)(?:${DOT}([A-Za-z_]+))?`, 'g'))];
     expect(named.length).toBeGreaterThan(0);
     expect(named.map((m) => `${m[1] ?? ''}.${m[2] ?? ''}`).filter((c) => !MEMBERS.has(c))).toEqual([]);
-    expect(src).not.toMatch(new RegExp(String.raw`\$(?:${DOT}[A-Za-z_]+)*\s*\[`));
+    expect(src).not.toMatch(new RegExp(String.raw`\$(?:${DOT}[A-Za-z_]+)*\s*(?:\?\.)?\s*\[`));
+    const hooks = [...src.matchAll(/\bon\(\s*'[^']+'\s*,\s*(?:\{[^}]*\}\s*,\s*)?(?:async\s*)?\(\s*([A-Za-z_$][\w$]*)/g)];
+    expect(hooks.length).toBe((src.match(/\bon\(\s*'/g) ?? []).length);
+    expect(hooks.map((m) => m[1]).filter((n) => n !== '$' && n !== '_$')).toEqual([]);
+    const typed = [...src.matchAll(/([A-Za-z_$][\w$]*)\s*\??\s*:\s*EngineInterface\b/g)].map((m) => m[1]);
+    expect(typed.length).toBeGreaterThan(0);
+    expect(typed.filter((n) => n !== '$')).toEqual([]);
+    expect(src).not.toMatch(/\bas\s+EngineInterface\b|<EngineInterface>/);
     expect(src).not.toMatch(/[=:]\s*\$\s*(?=[;,)}\n]|$)/m);
     expect(src).not.toMatch(/\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\brequire\s*\(|\bimport\s*\(|\bglobalThis\b/);
     expect(src).not.toMatch(/(?<![.\w$])process\??\.[A-Za-z_]/);
@@ -148,11 +165,26 @@ describe('the plugin directory listing', () => {
     expect(src).toContain(`const root = \`\${home}/.nvm/versions/node\``);
     expect(src).toMatch(new RegExp(String.raw`\$${DOT}fs${DOT}exists${OPEN}\s*\`\$\{bin\}/claudinho\`\s*\)`));
     expect(src).toContain(`.map((v) => \`\${root}/\${v.name}/bin\`)`);
-    const submit = src.indexOf("on('prompt.submit'");
-    expect(submit).toBeGreaterThan(-1);
-    const handler = src.slice(submit, src.indexOf('\n  })', submit));
-    expect([...handler.matchAll(/\be\s*\??\.\s*([A-Za-z_]+)/g)].map((m) => m[1])).toEqual(['context']);
-    expect(handler).not.toMatch(/\be\s*\[|=\s*e\b/);
+    // The prompt's event: passed on, spread into the next one, its `context` list extended by the note; nothing else.
+    const submit = handlerOf(src, 'prompt.submit');
+    expect(submit).toContain('return next({ ...e, context: [...(e.context ?? []), record.context] })');
+    const submitRest = submit
+      .replace('async ($, e, next) =>', '')
+      .replace('return next({ ...e, context: [...(e.context ?? []), record.context] })', '')
+      .split('next(e)')
+      .join('');
+    expect(submitRest).not.toMatch(/\be\b/);
+    // The note is the CLI's `context`, stored unchanged from a current view and cleared otherwise.
+    expect(src.match(/update\(\s*\$\s*,\s*lastContext\b/g) ?? []).toHaveLength(2);
+    expect(src).toContain("context: typeof view.context === 'string' && view.context !== '' ? view.context : null,");
+    expect(src).toContain('await update($, lastContext, () => null)');
+    // The typed text: compared with `match`, nothing else.
+    const command = handlerOf(src, 'command.run');
+    const commandRest = command
+      .replace('async ($, e) =>', '')
+      .replace("typeof e.args === 'string' && e.args.trim() === PANE_WORD", '');
+    expect(commandRest).not.toMatch(/\be\b/);
+    expect(src).toContain("const PANE_WORD = 'match'");
   });
 
   it('every environment variable the hooks module reads is named in PRIVACY.md', () => {
