@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date:** 2026-10-17
+**Effective date:** 2026-10-18
 
 Claudinho is an independent, open-source project: a CLI, a Claude Code / Cursor
 statusline, a score-aware hook, an MCP server (Claude Desktop Extension), and a Claude Code
@@ -79,21 +79,28 @@ request** and **writes no file**:
 
 - It runs the `claudinho` CLI installed on your machine (`claudinho ambient --json` for the
   band, the toasts and `/claudinho`; `claudinho match <id> --json` for the match pane) and reads
-  the JSON the CLI prints. The CLI makes the requests to ESPN and keeps the cache described above:
-  a run can start the CLI's background refresh, as the statusline does.
-- To find the CLI and choose its language, it reads the `PATH`, `HOME`, `OS`, `CLAUDINHO_LANG`
-  and `LANG` environment variables and lists the Node versions nvm installed
-  (`~/.nvm/versions/node`). Apart from the CLI's answer, that is all it reads from your machine.
+  the JSON the CLI prints. The CLI makes the requests described above (ESPN, and Polymarket for
+  a World Cup match's market signal in the match pane) and keeps the cache described above: a
+  run can start the CLI's background refresh, as the statusline does.
+- To find the CLI, it reads the `OS` environment variable. On Windows it then runs the CLI from
+  Claude Code's own `PATH`. Elsewhere it reads the `PATH` and `HOME` variables, lists the Node
+  versions nvm installed (`~/.nvm/versions/node`), checks whether each holds `bin/claudinho`,
+  and runs the CLI with a `PATH` that adds the folders where the usual installers put global
+  commands (listed under "Finding the CLI" in the
+  [plugin README](packages/plugin/README.md#finding-the-cli)). With the `language` option on
+  `auto`, it reads `CLAUDINHO_LANG` and `LANG` to choose its language. Apart from the CLI's
+  answer, that is all it reads from your machine.
 - With the `context` option on (the default), while a match is live, it adds a short note with
-  the live scores beside each prompt you send to Claude: public match data from the CLI's last
-  reading, nothing about you. Claude Code sends that note to the model with your prompt. With
-  `context` off, or with no match live, nothing is added. The plugin neither reads nor keeps the
-  prompts you send; of what you type, it reads only the text after `/claudinho`, for the word
-  `match`.
-- Between runs it keeps its last readings in the state Claude Code holds for the session, and
-  writes no file of its own. Its options (`toasts`, `celebrate`, `context`, `language`) are kept
-  by Claude Code in its own settings (`~/.claude/settings.json` for a user-scope install), where
-  `/config` changes them.
+  the live scores beside each prompt you send to Claude, from its last reading of the CLI when
+  that reading is current and less than 30 seconds old: public match data alone, your team's
+  match listed first. Claude Code sends that note to the model with your prompt. With `context`
+  off, or when its last reading showed no match live, nothing is added. The plugin neither reads
+  nor keeps the prompts you send; of what you type, it reads only the text after `/claudinho`,
+  for the word `match`.
+- Between runs it keeps its last readings (public match data) in the state Claude Code holds for
+  the session, and writes no file of its own. Its options (`toasts`, `celebrate`, `context`,
+  `language`) are kept by Claude Code in its own settings (`~/.claude/settings.json` for a
+  user-scope install), where `/config` changes them.
 
 ## Configuration changes (`init`)
 
@@ -111,9 +118,13 @@ contents anywhere.
 Claudinho does not sell or share your data, and does not transmit any **user-supplied** data.
 Its only third-party disclosures are the provider request parameters and the transport
 metadata (such as IP address and HTTP headers) described above, inherent to any HTTP request.
-It retains nothing on any server (there is no server). The only data it retains is
-local and on your own device: the cache and the config file described above and, if you ran a
-setup command, the one-time settings backup, all under your control and deletable at any time.
+Beside those, the hook and the plugin's `context` option add a short note of public live scores
+beside your prompts, which Claude Code sends to the model with them; the note carries public
+match data alone, your team's match listed first. It retains nothing on any server (there is
+no server). The only data it retains is local and on your own device: the cache and the config
+file described above, the plugin's last readings in the state Claude Code holds for the session
+and, if you ran a setup command, the one-time settings backup, all under your control and
+deletable at any time.
 
 ## Children's privacy
 
