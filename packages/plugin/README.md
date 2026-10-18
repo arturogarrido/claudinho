@@ -48,6 +48,12 @@ also loads in the desktop app's Code tab, which cannot run `/plugin install` its
 other setting. Any other command stays (a wrapper, an `npx` form, a `--command` one), and
 `init plugin` names it when it mentions `claudinho`.
 
+**To get new versions on their own:** Claude Code leaves auto-update off by default for this
+marketplace. Turn it on once: run `/plugin` in a terminal, open the **Marketplaces** tab, select
+`claudinho` and choose **Enable auto-update**. A new version then installs in the background after a
+session starts; the session you are in keeps the version it loaded until you run `/reload-plugins`,
+and the next session you start loads the new one.
+
 **To remove the plugin:** `claude plugin uninstall claudinho@claudinho`.
 
 ## Options

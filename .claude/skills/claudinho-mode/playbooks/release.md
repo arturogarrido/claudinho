@@ -35,7 +35,10 @@ maintainer's: never a tag or a publish by an agent.
    the GitHub Release and the Registry record checked afterwards.
 10. The `.mcpb`/Smithery decision for an MCP-affecting release: the bundle is a snapshot; rebuilt with
     `pnpm -F @claudinho/mcp build:mcpb`, audited at its root, published by the maintainer.
-11. The post-release chore: `npm i -g @claudinho/cli@latest`.
+11. The maintainer's machine on the new version: AGENTS.md "Releasing" step 4, as written there (the CLI with the
+    installer that owns the `claudinho` that runs, the plugin with its read-back on `main`'s version and a reload,
+    the MCP server's installed copies if any), each installed version read back with the command step 4 names. None
+    of it updates by default.
 
 ## Gate
 
@@ -60,7 +63,8 @@ head's CI per job; every later push is this line.
 ## Evidence
 
 - The gate's log directory, the `pnpm release:qa` output with its counts, the `tools/list` comparison, the publish
-  run's per-job result, the npm, Release and Registry checks, the held SHA and the merge commit.
+  run's per-job result, the npm, Release and Registry checks, the held SHA and the merge commit, and the CLI and
+  plugin versions read back on the maintainer's machine.
 - The release commit ends with `Co-Authored-By: <Agent> (<Model>) <agent-no-reply-email>`, the model actually in use.
 - Kept privately, by role: the release log entry in the private procedure.
 

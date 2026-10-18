@@ -177,6 +177,10 @@ knows it (from its last reading, when that reading is current and recent). Off-m
 nothing, and the plugin's `context` option turns it off. The plugin reads everything from the
 installed CLI and never fetches anything itself. Options, the desktop app and the details: the
 [plugin README](https://github.com/arturogarrido/claudinho/tree/main/packages/plugin#readme).
+To get new versions on their own, turn on auto-update for the `claudinho` marketplace once
+(`/plugin`, the **Marketplaces** tab, **Enable auto-update**); Claude Code leaves it off by default
+for this marketplace. A new version then installs after a session starts, and loads in the next
+session you start or after `/reload-plugins`.
 To remove it: `claude plugin uninstall claudinho@claudinho`.
 
 **The CLI it needs.** Everything above needs `@claudinho/cli` 0.12.0 or later. With 0.11.2 the
