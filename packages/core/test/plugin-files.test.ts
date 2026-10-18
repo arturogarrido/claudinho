@@ -89,7 +89,7 @@ describe('the context option', () => {
 describe('the plugin directory listing', () => {
   it("the manifest carries the repository's MIT license and links the repository and the plugin's folder", () => {
     const m = json('packages/plugin/.claude-plugin/plugin.json');
-    expect(readFileSync(join(ROOT, 'LICENSE'), 'utf8')).toMatch(/^MIT License\n/);
+    expect(readFileSync(join(ROOT, 'LICENSE'), 'utf8')).toMatch(/^MIT License\r?\n/);
     expect(m.license).toBe('MIT');
     expect(m.repository).toBe('https://github.com/arturogarrido/claudinho');
     expect(m.homepage).toBe('https://github.com/arturogarrido/claudinho/tree/main/packages/plugin');
