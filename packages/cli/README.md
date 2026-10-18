@@ -237,6 +237,9 @@ claudinho init-statusline --print  # just print the snippet
 
 The statusline reads a local cache and never waits on the network. A background process refreshes
 the cache. When several matches are live it shows them all: `⚽ ARS 2–1 CHE 67' · LIV 0–0 MNC 12'`.
+With nothing in play it counts down to the next match: `⚽ ARS vs LEE in 2d4h`. From kickoff until the data provider
+marks the match live, for up to 30 minutes, it reads `⚽ BET vs BAR now` instead of moving on to the next fixture.
+The statusline is English in every language.
 
 - `CLAUDINHO_TEAM=ARS`: that team's match first, the others counted (`+N`). A pinned team does the same when this is not set.
 - `CLAUDINHO_MAX=2`: show at most this many live matches (default and maximum: 8); the rest are counted.
@@ -283,7 +286,7 @@ local cache, never the network, and exits 0 whatever the cache holds.
 
 | Field | What it holds |
 |---|---|
-| `line` | what `claudinho prompt` prints, fitted to `--columns N` with its `+N` count kept |
+| `line` | the line `claudinho prompt` prints, but in the CLI's language (`--lang`; `prompt` itself stays English), fitted to `--columns N` with its `+N` count kept. Its `+more`, the World Cup's sign-off and `⚽ —` stay English, and the countdown's units (`2d4h`, `17m`) are the same in every language |
 | `lineParts` | the same line in parts, each shown score marked `strong`; their texts joined equal `line` |
 | `idle` | `true` on the end-of-edition line, however narrow the fit |
 | `empty` | `true` when nothing is known |
@@ -291,8 +294,9 @@ local cache, never the network, and exits 0 whatever the cache holds.
 | `live` | the live matches, each with `picked`, `pinned`, `pinnedSide` (`home`, `away` or `null`: your saved team's side, never `CLAUDINHO_TEAM`'s), `names` (the two names the hook's line uses), `lastGoal` (the last goal, only when the provider's goals add up to the score, none listed twice, the credited side having scored; else `null`) and `line` (the hook's own line for it) |
 | `finished` | the matches the refresher saw in play and then read at full time, each for 10 minutes from that read, while the snapshot's last live read was whole; each with `pinnedSide`, `names` and a `line` ending `(FT)` |
 | `current` | whether `live` is a current, whole read: an empty list means nothing is on only when this is `true` |
-| `next` | the fixture the countdown names |
+| `next` | the fixture the countdown names (a kickoff that passed less than 30 minutes ago, still listed as scheduled, included) |
 | `pick`, `competition` | the team preferred and the competition followed |
+| `lang`, `words` | the CLI's resolved language, and the words of the plugin's goal and full-time moments in it |
 | `degraded`, `source`, `updatedAt`, `staleAfter` | where the data came from, when, and when its live scores stop being shown |
 | `disclaimer`, `attribution` | the non-affiliation sentence, and the provider's (`Live data: ESPN`; `null` with no snapshot, on the end-of-edition line and when nothing is known) |
 

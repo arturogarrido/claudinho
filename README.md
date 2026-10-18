@@ -131,6 +131,8 @@ The plugin shows the live score (or the countdown to the next match) above your 
 toast says what happened (`⚽ GOAL! Liverpool · Ronald Araújo 22' · LASK Linz 0–1 Liverpool`, or
 `Full time · LASK Linz 3–6 Liverpool · Liverpool win`). When your team scores, and when it wins or draws, Anthropic's
 Claude mascot celebrates in the band for a few seconds. `/claudinho match` opens a pane with the goals and cards.
+The band, the toasts, the celebration and the pane speak English, Spanish, Portuguese or French (the plugin's
+`language` option).
 
 <p align="center">
   <img src=".github/assets/plugin.gif" alt="Claude Code with the plugin during Real Betis v Barcelona on Oct 17, 2026: beside a coding answer, a toast and the mascot say GOAL! Barcelona, Rodri 41', the band shows the score in bold, and the match pane lists the goals and cards" width="800">

@@ -55,13 +55,18 @@ Change them in `/config`.
 | `toasts` | `pinned`: your pinned team's match; `all`: every live match of the competition you follow; `off`: none | `pinned` (with no team pinned, no toasts) |
 | `celebrate` | `on` or `off`; the toasts are the same either way | `on` |
 | `context` | `on`: while a match is live, the score goes beside each prompt you send, for Claude; `off`: nothing goes with your prompts | `on` |
+| `language` | `auto`: the language your environment asks for (below); `en`, `es`, `pt` or `fr`: that language, whatever the environment says | `auto` |
+
+Changing an option reloads the plugin. The band and every later toast follow the new value at once.
 
 ## What you see
 
-**The band** shows the line `claudinho prompt` prints: the live score (`⚽ ARS 2–1 CHE 50'`, the score in bold), or
-the countdown to the next match (`ARS vs LEE in 7h13m`). With several matches live it shows them side by side, or,
-with a team pinned, your team's match and a count of the others (`+2`). It shows nothing when no competition is
-followed or nothing is known. At the end of the World Cup it shows its sign-off line.
+**The band** shows the line `claudinho prompt` prints, in the plugin's language: the live score
+(`⚽ ARS 2–1 CHE 50'`, the score in bold), or the countdown to the next match (`⚽ ARS vs LEE in 7h13m`). From
+kickoff until the data provider marks the match live, for up to 30 minutes, the countdown reads `now`
+(`⚽ BET vs BAR now`) and keeps that match. With several matches live it shows them side by side, or, with a team
+pinned, your team's match and a count of the others (`+2`). It shows nothing when no competition is followed or
+nothing is known. At the end of the World Cup it shows its sign-off line.
 
 **A toast** is one line: what happened, then the score. Examples with Liverpool pinned, away at LASK Linz:
 
@@ -89,7 +94,8 @@ ends (within a minute; after that the toast has already said it).
 
 **The match pane** opens with `/claudinho match` and shows the match you follow now: the score in bold, your team in
 the success colour, the competition, stage and venue dimmed, the status and the kickoff, and the goals and cards, each
-marked (`⚽`, `🟨`, `🟥`) with the scorer in bold. It updates when the band sees the score change, and every two
+marked (`⚽`, `🟨`, `🟥`) with the scorer in bold. In a narrow pane the player of each goal or card goes on the next
+line, under the event. It updates when the band sees the score change, and every two
 minutes while the match is in play. Close it with its close mark (or ctrl+x x). The command answers in one line,
 `claudinho: ⚽ LAS 0–4 LIV 62' · match pane open`, when the pane opened.
 
@@ -113,7 +119,8 @@ sentence under it, or one plain sentence when there is nothing to show.
 The CLI 0.11.2 sends no names, pinned side or proven scorer, so with it the plugin keeps its earlier toasts and
 celebration: a toast is `⚽` and the match's line (`⚽ Arsenal 2–1 Chelsea (67')`) for any score change, a ball and a
 growing "GOAL!" play on a goal, the band's score is not bold, no full time is said, and the match pane says
-`Nothing to show: the CLI's answer is not one this plugin reads.` Update the CLI to see the rest.
+`Nothing to show: the CLI's answer is not one this plugin reads.` The toasts, the band and the pane stay English,
+whatever the `language` option says. Update the CLI to see the rest.
 
 ## Details
 
@@ -126,6 +133,20 @@ installers put global commands: nvm's recent Node versions, `~/.volta/bin`, `~/.
 `/usr/local/bin`, `/usr/bin` and `/bin`. A CLI installed anywhere else leaves the band empty, and
 `/claudinho` answers `The CLI gave no answer.` On Windows the plugin uses Claude Code's own `PATH`
 only.
+
+### The language
+
+`auto` speaks the language your environment asks for, as the CLI reads it: `CLAUDINHO_LANG`, then the language part
+of `LANG` (`es_MX.UTF-8` is Spanish), each only when it is `en`, `es`, `pt` or `fr`, else English. The band, the
+toasts, the celebration and the match pane follow the option. A Spanish session reads
+`⚽ ¡GOL! Liverpool · Ronald Araújo 22' · LASK Linz 0–1 Liverpool` and `⚽ BOU vs BRE en 17m`. The words come from the
+CLI: the plugin passes `--lang` with the chosen code to the CLI runs of the band and of `/claudinho`, and to the match
+pane's runs once the CLI has said it speaks that language. Names, scores and minutes are never translated.
+
+Some things stay English in every language: the terminal statusline (`claudinho prompt`), the hook, the live score
+beside your prompt for Claude, the band's `+more`, the World Cup's sign-off line and `⚽ —`. The countdown's units
+(`2d4h`, `17m`) are the same in every language. An open match pane keeps its rows in the language it read them in
+until `/claudinho match` opens it again.
 
 ### How the band reads
 
@@ -175,15 +196,20 @@ and changes nothing the band shows. A `/claudinho` typed while Claude is working
 ### The match pane, in full
 
 - **Which match.** The first live match (your pinned team's comes first), else the next fixture, in
-  the competition you follow when you open it. The pane stays on that match. If you follow another
-  competition while it is open, the pane keeps reading its own with `--competition`, so its row then
-  says "from the command line".
+  the competition you follow when you open it. A match whose kickoff passed less than 30 minutes ago and that the data
+  provider still lists as scheduled counts as the next fixture, so the pane opens on today's match. The pane stays on
+  that match. If you follow another competition while it is open, the pane keeps reading its own with
+  `--competition`, so its row then says "from the command line".
 - **When it reads.** It opens at once with the band's line and fills in when the CLI answers (a few
   seconds on a slow network). It reads again when the band sees the score change, at kickoff, at full
   time, and every two minutes while the match is in play. Before kickoff it waits for the kickoff.
   After a final result it stops. It never runs two reads at once.
 - **The styles.** The CLI sends each row as styled parts beside its plain text; the pane draws the styles only when
   the parts spell the plain rows exactly, else the plain rows.
+- **Long rows.** The pane never cuts a row sideways. When a goal or card row with its player is wider than the pane,
+  every such row of the match puts the player on the next line, under the event (`Goal`, `Yellow card`), so the
+  timeline reads as one column. Any other row too wide for the pane continues under its own first character (an
+  indented row keeps its indent). The pane measures widths as the CLI does.
 - **When a read fails.** On opening: `The CLI gave no answer.` Later: the last rows stay, under
   `Could not refresh: showing the last reading.`
 - **What it costs.** Each read is one `claudinho match <id>`, which asks the data provider about five
