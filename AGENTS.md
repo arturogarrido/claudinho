@@ -158,11 +158,11 @@ To cut a release:
 2. `pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint` (CI re-runs these). **For any
    user-facing change, also run `pnpm release:qa`** and eyeball every surface against the live feed
    before tagging (see "Release readiness").
-3. Commit and merge it to `main` (the release PR), then `git tag vX.Y.Z && git push origin vX.Y.Z` on
-   that commit. The workflow gates (build/test/lint + tag==version), then `pnpm -r publish --provenance`
-   ships all three via OIDC (versions already on npm are skipped) and auto-creates the GitHub Release
-   (`gh release create --generate-notes`); a second job, `mcp-registry`, then publishes the tag's record
-   to the official MCP Registry.
+3. Commit and merge it to `main` (the release PR), then tag the merge commit on `main`:
+   `git tag vX.Y.Z <merge sha> && git push origin vX.Y.Z`. The workflow gates (build/test/lint +
+   tag==version), then `pnpm -r publish --provenance` ships all three via OIDC (versions already on npm
+   are skipped) and auto-creates the GitHub Release (`gh release create --generate-notes`); a second
+   job, `mcp-registry`, then publishes the tag's record to the official MCP Registry.
 4. Once both jobs are green, update the maintainer's own machine and read each version back. None of
    it updates by default: an npm global install never updates itself, and Claude Code leaves plugin
    auto-update off by default for a third-party marketplace such as this one.
