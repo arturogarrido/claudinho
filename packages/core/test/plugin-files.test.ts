@@ -86,6 +86,50 @@ describe('the context option', () => {
   });
 });
 
+describe('the plugin directory listing', () => {
+  it("the manifest carries the repository's MIT license and links the repository and the plugin's folder", () => {
+    const m = json('packages/plugin/.claude-plugin/plugin.json');
+    expect(readFileSync(join(ROOT, 'LICENSE'), 'utf8')).toMatch(/^MIT License\n/);
+    expect(m.license).toBe('MIT');
+    expect(m.repository).toBe('https://github.com/arturogarrido/claudinho');
+    expect(m.homepage).toBe('https://github.com/arturogarrido/claudinho/tree/main/packages/plugin');
+  });
+
+  it("the privacy policy's scope names the plugin", () => {
+    const privacy = readFileSync(join(ROOT, 'PRIVACY.md'), 'utf8').replace(/\s+/g, ' ');
+    // The scope sentence, to its full stop: a period inside it (`.mcpb`) is followed by no space.
+    expect(privacy).toMatch(/It applies to (?:[^.]|\.(?=\S))*the Claude Code plugin/);
+  });
+
+  /**
+   * What PRIVACY.md says the plugin does: no network request, no file written, only the installed `claudinho` CLI
+   * run. A vocabulary check over the one module the manifest runs, in which the host is always `$`: an alias of `$`
+   * or of one of its members is outside it. The validator's `calls:` line is the full inventory, but it fails on none.
+   */
+  it('the hooks module calls no host capability beyond the ones PRIVACY.md states, and runs only claudinho', () => {
+    const src = readFileSync(join(ROOT, 'packages/plugin/hooks/register.tsx'), 'utf8');
+    const ANY_MEMBER = new Set(['clock', 'command', 'session', 'state', 'ui']);
+    const MEMBERS = new Set(['env.get', 'fs.exists', 'fs.list', 'process.run']);
+    const calls = [...src.matchAll(/\$\.([A-Za-z_]+)(?:\.([A-Za-z_]+))?/g)].map((m) => [m[1] ?? '', m[2] ?? ''] as const);
+    expect(calls.length).toBeGreaterThan(0);
+    const outside = calls.filter(([ns, member]) => !ANY_MEMBER.has(ns) && !MEMBERS.has(`${ns}.${member}`));
+    expect(outside.map(([ns, member]) => `$.${ns}.${member}`)).toEqual([]);
+    expect(src).not.toMatch(/\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|from ['"]node:/);
+    const runs = [...src.matchAll(/\$\.process\.run\(\s*\[\s*(['"][^'"]*['"])/g)].map((m) => m[1]);
+    expect(runs.length).toBe((src.match(/\$\.process\.run\(/g) ?? []).length);
+    expect(new Set(runs)).toEqual(new Set(["'claudinho'"]));
+  });
+
+  it('every environment variable the hooks module reads is named in PRIVACY.md', () => {
+    const src = readFileSync(join(ROOT, 'packages/plugin/hooks/register.tsx'), 'utf8');
+    const privacy = readFileSync(join(ROOT, 'PRIVACY.md'), 'utf8');
+    const names = [...src.matchAll(/\$\.env\.get\(\s*['"]([A-Z_]+)['"]\s*\)/g)].map((m) => m[1]);
+    expect(names.length).toBe((src.match(/\$\.env\.get\(/g) ?? []).length);
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.filter((n) => !privacy.includes(`\`${n}\``))).toEqual([]);
+  });
+});
+
 describe('the marketplace file', () => {
   it('lists the plugin from the repository, by its folder', () => {
     const m = json('.claude-plugin/marketplace.json') as { name?: unknown; owner?: { name?: unknown }; plugins?: Array<{ name?: unknown; source?: unknown }> };
