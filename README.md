@@ -175,8 +175,8 @@ celebration above its line: Anthropic's Claude mascot as text art beside the bal
 about three seconds; at full time, on your team's win or a draw, the mascot plays once beside the result. Both wait
 while Claude is working. With CLI 0.11.2 the toasts are the hook's own line and the celebration a ball and "GOAL!". The `celebrate` option (in `/config`) is `on` by default, or `off`.
 The `context` option (in `/config`) is `on` by default, or `off`, which sends nothing with your prompts. The toasts,
-the celebration, the band and the pane follow the `language` option (`auto` by default: `CLAUDINHO_LANG`, then
-`LANG`; or `en`, `es`, `pt`, `fr`), so a Spanish session reads `⚽ ¡GOL! Pumas UNAM · Juninho 42'`
+the celebration, the band and, with a CLI that localizes it (0.12.0), the pane follow the `language` option (`auto`
+by default: `CLAUDINHO_LANG`, then `LANG`; or `en`, `es`, `pt`, `fr`; with an older CLI the pane stays English), so a Spanish session reads `⚽ ¡GOL! Pumas UNAM · Juninho 42'`
 and the score; the statusline, the hook and the context for Claude stay English. At the end of an
 edition the band shows the World Cup's sign-off line, the one end-of-edition line the statusline
 prints; after another competition's season the statusline says nothing is known, and the band shows
@@ -187,7 +187,8 @@ nothing. More in the plugin's
 
 The statusline and the hook as one JSON object on one line, for a program that draws them itself:
 `line` (the band's line, what `claudinho prompt` prints but in the CLI's language, while `prompt` itself stays
-English; `--columns N`, N a positive integer, fits it to N columns, the `+N` count kept), `context` (the hook's block, or `null`), `live` (the live matches, each marked
+English; its `+more`, the World Cup's sign-off and `⚽ —` stay English, and the countdown's units, `2d4h` or `17m`,
+are the same in every language; `--columns N`, N a positive integer, fits it to N columns, the `+N` count kept), `context` (the hook's block, or `null`), `live` (the live matches, each marked
 `picked` and `pinned`), `current` (whether that list is a current snapshot's, the read that filled
 it was whole: an empty list means nothing is on only when it is), `next` (the fixture the countdown names), `pick`, `competition`,
 `lang` (the CLI's resolved language), `words` (the plugin's moment words in it), `degraded`, `source`, `updatedAt`, `staleAfter` (when its live scores stop being shown),

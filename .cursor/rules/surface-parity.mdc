@@ -18,7 +18,8 @@ aside):
 One stated exception: the match timeline (core `timelineRows`) is CLI `match` (its text and `--json`'s `lines`) and MCP
 `get_match` only (the plugin's match pane draws `match --json`'s `rows`, with `lines` for an older CLI, so it shows the same rows); a share card prints
 none. A second: the `ambient --json` line and the plugin's moments (its toasts and celebration, from `words`) follow the
-CLI's language (`lang`), while the statusline, the hook and MCP stay English.
+CLI's language (`lang`), while the statusline and the hook stay English; MCP is unchanged by this exception (it
+localizes by its own `lang` argument, as before).
 
 ## Knockout surfaces live-resolve — never read the skeleton (the #1 recurring bug)
 

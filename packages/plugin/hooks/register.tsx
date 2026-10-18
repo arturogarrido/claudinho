@@ -905,16 +905,28 @@ const finishedPinned = (f: Item): boolean => f.pinned === true || pinnedSideOf(f
 /** The full-time evidence's team identity: a side's `id` when it carries one, else its code and name. */
 type TeamIdentity = ClaudinhoOutcome['team']
 
-/** The identity of a record's side as the record states it: its `id` when it carries one, else its code and name. */
+/**
+ * The identity of a record's side as the record states it: its `id` when it carries one, else its code and name (each
+ * `null` when the record states none; a side with no team object states neither).
+ */
 function identityOf(t: unknown): NonNullable<TeamIdentity> {
   if (isObject(t) && typeof t.id === 'string' && t.id !== '') return { id: t.id }
-  return { code: codeOf(t), name: isObject(t) && typeof t.name === 'string' ? t.name : null }
+  return { code: codeOf(t), name: isObject(t) && typeof t.name === 'string' && t.name !== '' ? t.name : null }
 }
 
-/** Whether two identities are one team: both a draw's none, the same id, or (neither with an id) the same code and name. */
+/** Whether an identity states nothing: no id, and neither a code nor a name (a side with no team object). */
+const missingIdentity = (t: Record<string, unknown>): boolean =>
+  t.id === undefined && (t.code === null || t.code === undefined) && (t.name === null || t.name === undefined)
+
+/**
+ * Whether two identities are one team: both a draw's none, the same id when both carry one, or (neither with an id)
+ * the same code AND the same name. A missing identity (`missingIdentity`) on either side is no evidence: never the
+ * same team, so a held full-time play whose winning side states none is dropped (fail closed), even against another
+ * missing one.
+ */
 function sameIdentity(a: unknown, b: TeamIdentity): boolean {
   if (a === null || b === null) return a === b
-  if (!isObject(a)) return false
+  if (!isObject(a) || missingIdentity(a) || missingIdentity(b)) return false
   if ('id' in b) return a.id === b.id
   return a.id === undefined && a.code === b.code && a.name === b.name
 }
@@ -1041,8 +1053,9 @@ function differsFromRecord(view: View, rec: NonNullable<ClaudinhoCelebration>): 
  * the winning team's identity, or a draw, compared alone, never the words: a later view in another language, or with
  * the English fallback, says the same result). A view that lists it live again (the CLI then lists no finished record
  * for it), or nowhere, or finished with another result or none (a `winnerCode` changed, a shootout appearing), or with
- * another team on the winning side at the same score (another id; with no id, another code or name), does not. A
- * record with no full-time play: true.
+ * another team on the winning side at the same score (another id; with no id, another code or name), or with a
+ * winning side that states no identity in either reading (no id, code or name: no evidence), does not. A record with
+ * no full-time play: true.
  */
 function fullTimeStands(view: View, rec: NonNullable<ClaudinhoCelebration>): boolean {
   const fulltime = playsOf(rec).find((p): p is Extract<ClaudinhoPlay, { kind: 'fulltime' }> => p.kind === 'fulltime')

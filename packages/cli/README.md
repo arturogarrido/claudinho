@@ -296,7 +296,8 @@ repository: see the [Claude Code plugin](https://github.com/arturogarrido/claudi
 
 `claudinho ambient --json [--columns N]` prints the statusline and the hook as one JSON object on
 one line, for a program that draws them itself: `line` (the band's line: what `claudinho prompt` prints, but in the
-CLI's language, while `prompt` itself stays English; fitted to N columns with the `+N` count kept; N a positive
+CLI's language, while `prompt` itself stays English; its `+more`, the World Cup's sign-off and `⚽ —` stay English,
+and the countdown's units, `2d4h` or `17m`, are the same in every language; fitted to N columns with the `+N` count kept; N a positive
 integer), `context` (the hook's block, or `null`),
 `live` (the live matches, each marked `picked` and `pinned`), `current` (an empty list means nothing
 is on only when this is true), `next`, `pick`, `competition`, `lang` (the CLI's resolved language), `words` (the
