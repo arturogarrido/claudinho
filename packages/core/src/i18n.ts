@@ -80,6 +80,23 @@ const EN = {
   'next.in': 'in {countdown}',
   // A kickoff that has passed, where the countdown would say "in" (core `countdownPhrase`).
   'countdown.now': 'now',
+  // The ambient line's syncing phrase (`claudinho ambient --json` alone; the
+  // statusline's own `prompt` stays English).
+  'ambient.syncing': 'live · syncing…',
+  // The plugin's moment words, sent by `claudinho ambient --json` as `words`
+  // (`{team}` a template the plugin fills with the record's own names). Each
+  // at most 40 characters; `{team}` once in `moment.goalFor` and `moment.win`
+  // and nowhere else, or the plugin falls back to its English words.
+  'moment.goal': 'GOAL!',
+  'moment.ownGoal': 'Own goal',
+  'moment.ownGoalDetail': 'own goal',
+  'moment.goalFor': 'Goal for {team}',
+  'moment.goals': 'Goals',
+  'moment.scoreUpdated': 'Score updated',
+  'moment.penalties': 'Penalties',
+  'moment.fullTime': 'Full time',
+  'moment.win': '{team} win',
+  'moment.draw': 'Draw',
   // A title that introduces the lines below it (the MCP text).
   heading: '{title}:',
   // A list's empty state and the outage lines: the CLI's sentences, the MCP
@@ -192,6 +209,17 @@ const ES: Dict = {
   'next.label': 'Próximo partido de {team}',
   'next.in': 'en {countdown}',
   'countdown.now': 'ahora',
+  'ambient.syncing': 'en vivo · sincronizando…',
+  'moment.goal': '¡GOL!',
+  'moment.ownGoal': 'Gol en contra',
+  'moment.ownGoalDetail': 'gol en contra',
+  'moment.goalFor': 'Gol de {team}',
+  'moment.goals': 'Goles',
+  'moment.scoreUpdated': 'Marcador corregido',
+  'moment.penalties': 'Penales',
+  'moment.fullTime': 'Final',
+  'moment.win': 'Gana {team}',
+  'moment.draw': 'Empate',
   heading: '{title}:',
   'today.none': 'No hay partidos para esta fecha.',
   'live.none': 'No hay partidos en juego ahora mismo.',
@@ -291,6 +319,17 @@ const PT: Dict = {
   'next.label': 'Próximo jogo de {team}',
   'next.in': 'em {countdown}',
   'countdown.now': 'agora',
+  'ambient.syncing': 'ao vivo · sincronizando…',
+  'moment.goal': 'GOL!',
+  'moment.ownGoal': 'Gol contra',
+  'moment.ownGoalDetail': 'gol contra',
+  'moment.goalFor': 'Gol · {team}',
+  'moment.goals': 'Gols',
+  'moment.scoreUpdated': 'Placar corrigido',
+  'moment.penalties': 'Pênaltis',
+  'moment.fullTime': 'Fim de jogo',
+  'moment.win': '{team} vence',
+  'moment.draw': 'Empate',
   heading: '{title}:',
   'today.none': 'Nenhum jogo para esta data.',
   'live.none': 'Nenhum jogo em andamento agora.',
@@ -390,6 +429,17 @@ const FR: Dict = {
   'next.label': 'Prochain match de {team}',
   'next.in': 'dans {countdown}',
   'countdown.now': 'maintenant',
+  'ambient.syncing': 'en direct · synchronisation…',
+  'moment.goal': 'BUT !',
+  'moment.ownGoal': 'But contre son camp',
+  'moment.ownGoalDetail': 'contre son camp',
+  'moment.goalFor': 'But pour {team}',
+  'moment.goals': 'Buts',
+  'moment.scoreUpdated': 'Score corrigé',
+  'moment.penalties': 'Tirs au but',
+  'moment.fullTime': 'Fin du match',
+  'moment.win': '{team} gagne',
+  'moment.draw': 'Match nul',
   heading: '{title} :',
   'today.none': 'Aucun match prévu pour cette date.',
   'live.none': "Aucun match en cours pour l'instant.",
@@ -439,6 +489,42 @@ export function t(lang: string | undefined, key: string, vars?: Record<string, s
   return s.replace(/\{(\w+)\}/g, (whole, name: string) =>
     Object.hasOwn(vars, name) ? (vars[name] as string) : whole,
   );
+}
+
+/**
+ * The ten words of the plugin's moments, as `claudinho ambient --json` sends
+ * them (`words`), in this order: core's `moment.*` keys in one language.
+ * `goalFor` and `win` are templates holding `{team}` once, which the plugin
+ * fills with the record's own names; names, scores and minutes are never
+ * translated.
+ */
+export interface MomentWords {
+  readonly goal: string;
+  readonly ownGoal: string;
+  readonly ownGoalDetail: string;
+  readonly goalFor: string;
+  readonly goals: string;
+  readonly scoreUpdated: string;
+  readonly penalties: string;
+  readonly fullTime: string;
+  readonly win: string;
+  readonly draw: string;
+}
+
+/** The moment words in `lang` (an unsupported one is English), the templates left unfilled. */
+export function momentWords(lang: string | undefined): MomentWords {
+  return {
+    goal: t(lang, 'moment.goal'),
+    ownGoal: t(lang, 'moment.ownGoal'),
+    ownGoalDetail: t(lang, 'moment.ownGoalDetail'),
+    goalFor: t(lang, 'moment.goalFor'),
+    goals: t(lang, 'moment.goals'),
+    scoreUpdated: t(lang, 'moment.scoreUpdated'),
+    penalties: t(lang, 'moment.penalties'),
+    fullTime: t(lang, 'moment.fullTime'),
+    win: t(lang, 'moment.win'),
+    draw: t(lang, 'moment.draw'),
+  };
 }
 
 const STAGE_KEYS: Readonly<Record<string, string>> = Object.freeze({

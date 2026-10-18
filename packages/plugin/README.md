@@ -33,7 +33,7 @@ the plugin's band and context do not show twice. Then, at the prompt of a Claude
 ```
 
 Answer `y` to add the marketplace, then choose a scope (the user scope first, with Enter), and set the `toasts`,
-`celebrate` and `context` options if you want other values than the defaults. The plugin is active in that session
+`celebrate`, `context` and `language` options if you want other values than the defaults. The plugin is active in that session
 from then on.
 
 Install from a terminal: the desktop app's Code tab refuses the `/plugin install` line. An install at the user scope
@@ -132,7 +132,8 @@ a correction and a loss play nothing. Where a toast is not raised (a view that i
 match, a change of competition, `toasts: off`, a match not pinned under `toasts: pinned`) nothing plays. Two goals
 seen in one run play once, for the last match listed; a goal during a celebration starts it again.
 
-"GOAL!" and the mascot are the plugin's own (English, like every ambient string); every other word is the CLI's.
+The mascot is the plugin's own; the words are the CLI's, in the language the `language` option chooses (below), or
+the plugin's own English ones when the CLI sends none.
 
 - **While Claude is working** the band stays its one line and the celebration waits. It plays when the turn ends, if
   that is within 60 seconds of when the plugin saw the goal, and is dropped otherwise (the toast already said it). A
@@ -284,6 +285,19 @@ same either way. Change it in `/config`.
 `on` (the default) puts the live score beside each prompt you send while a match is live, for Claude to read; `off`
 sends nothing with your prompts. The band, the toasts and the celebration are the same either way. Change it in
 `/config`.
+
+## The `language` option
+
+`auto` (the default) speaks the language your environment asks for, as the CLI reads it: `CLAUDINHO_LANG`, then
+`LANG`'s language part (`es_MX.UTF-8` is Spanish), each only when it is one of `en`, `es`, `pt` or `fr`, else
+English; `en`, `es`, `pt` or `fr` sets it whatever the environment says. The band, the toasts, the goal celebration and
+the match pane follow it (`⚽ ¡GOL! Liverpool · Ronald Araújo 22' · LASK Linz 0–1 Liverpool`, `BOU vs BRE en 17m`):
+the plugin hands the band's and `/claudinho`'s CLI runs `--lang` with that code (the match pane's too, once a view of
+the CLI says it speaks that language: a CLI 0.11.2 keeps the pane English, like its toasts), and names, scores and
+minutes are never translated. The terminal statusline (`claudinho prompt`), the hook and the live score beside your prompt for Claude stay English, as
+do the band's `+more`, the World Cup's sign-off and the countdown's units. A CLI that sends no words (0.11.2) gives
+today's English toasts. Change it in `/config`; an open match pane keeps its rows in the language it was read in until
+`/claudinho match` opens it again.
 
 ## Data and disclaimer
 

@@ -81,6 +81,8 @@ import {
   resolveTz,
   scoreline,
   t as i18n,
+  momentWords,
+  normalizeLang,
   isPinnedSide,
   joinSegments,
   liveSourceLabel,
@@ -1275,6 +1277,7 @@ export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): 
     }
     const { compact, max } = promptLineEnv();
     const preference = ambientPreference(cfg);
+    const lang = normalizeLang(cfg.lang);
     // Only trust a snapshot fetched for this invocation's source + competition.
     const state = readCurrentState(cfg.source, cfg.competition);
     const read = ambientView(state, {
@@ -1288,6 +1291,8 @@ export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): 
       teamKind: teamKind(cfg.competition),
       now,
       columns: opts.columns,
+      // The line's own tokens in the CLI's resolved language (the statusline module reads no environment).
+      lang,
     });
     const pick = preference.pick;
     const view: AmbientView = {
@@ -1304,6 +1309,9 @@ export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): 
       ...(preference.unreadable ? { pickUnreadable: true as const } : {}),
       // A selected competition: core's key is present (see `selectionExtras`).
       ...(selectionExtras(cfg.selection) as { competition: CompetitionKey }),
+      // The language of the line and of the plugin's moment words (core's `moment.*` keys, templates).
+      lang,
+      words: momentWords(lang),
       degraded: read.degraded,
       source: read.source,
       updatedAt: read.updatedAt,

@@ -10,7 +10,7 @@ import { COMPLETE, FIRST_RUN, drawnRows, view, world } from './world'
 describe('what the band runs', () => {
   test("the CLI once at the start, ambient --json fitted to the band's columns, with an empty stdin", async ($, on) => {
     const { argvs, stdins } = await world($, on, [view("⚽ ARS 2–1 CHE 50'")])
-    expect(argvs).toEqual([['claudinho', 'ambient', '--json', '--columns', '80']])
+    expect(argvs).toEqual([['claudinho', 'ambient', '--json', '--columns', '80', '--lang', 'en']])
     expect(stdins).toEqual([''])
   })
 
@@ -18,7 +18,7 @@ describe('what the band runs', () => {
     const { argvs, clock, mount } = await world($, on, [view("⚽ ARS 2–1 CHE 50'")])
     await mount({ bodyColumns: 24 })
     await clock.advance(15_000)
-    expect(argvs.at(-1)).toEqual(['claudinho', 'ambient', '--json', '--columns', '24'])
+    expect(argvs.at(-1)).toEqual(['claudinho', 'ambient', '--json', '--columns', '24', '--lang', 'en'])
   })
 })
 

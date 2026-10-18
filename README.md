@@ -161,7 +161,8 @@ prompt of a Claude Code session in a terminal:
 /plugin install claudinho --marketplace arturogarrido/claudinho
 ```
 
-Answer `y` to add the marketplace, then choose a scope. The `toasts` option (in `/config`) is
+Answer `y` to add the marketplace, then choose a scope. Its options (in `/config`) are `toasts`, `celebrate`,
+`context` and `language`. The `toasts` option is
 `pinned` by default (your pinned team's match, `claudinho follow <alias> --team <name>`; with no pin
 saved, no toast), `all` or `off`. A toast is one line, the news then the score, written from the names
 and fields the CLI gives (`⚽ GOAL! Liverpool · Ronald Araújo 22'` and the score; `Goal for` the other side; `Full
@@ -173,7 +174,10 @@ whistle. On your pinned team's goal (or any goal under `all` of a match with no 
 celebration above its line: Anthropic's Claude mascot as text art beside the ball, "GOAL!", the team and the scorer,
 about three seconds; at full time, on your team's win or a draw, the mascot plays once beside the result. Both wait
 while Claude is working. With CLI 0.11.2 the toasts are the hook's own line and the celebration a ball and "GOAL!". The `celebrate` option (in `/config`) is `on` by default, or `off`.
-The `context` option (in `/config`) is `on` by default, or `off`, which sends nothing with your prompts. At the end of an
+The `context` option (in `/config`) is `on` by default, or `off`, which sends nothing with your prompts. The toasts,
+the celebration, the band and, with a CLI that localizes it (0.12.0), the pane follow the `language` option (`auto`
+by default: `CLAUDINHO_LANG`, then `LANG`; or `en`, `es`, `pt`, `fr`; with an older CLI the pane stays English), so a Spanish session reads `⚽ ¡GOL! Pumas UNAM · Juninho 42'`
+and the score; the statusline, the hook and the context for Claude stay English. At the end of an
 edition the band shows the World Cup's sign-off line, the one end-of-edition line the statusline
 prints; after another competition's season the statusline says nothing is known, and the band shows
 nothing. More in the plugin's
@@ -182,11 +186,12 @@ nothing. More in the plugin's
 #### For a program: `claudinho ambient --json`
 
 The statusline and the hook as one JSON object on one line, for a program that draws them itself:
-`line` (what `claudinho prompt` prints; `--columns N`, N a positive integer, fits it to N columns,
-the `+N` count kept), `context` (the hook's block, or `null`), `live` (the live matches, each marked
+`line` (the band's line, what `claudinho prompt` prints but in the CLI's language, while `prompt` itself stays
+English; its `+more`, the World Cup's sign-off and `⚽ —` stay English, and the countdown's units, `2d4h` or `17m`,
+are the same in every language; `--columns N`, N a positive integer, fits it to N columns, the `+N` count kept), `context` (the hook's block, or `null`), `live` (the live matches, each marked
 `picked` and `pinned`), `current` (whether that list is a current snapshot's, the read that filled
 it was whole: an empty list means nothing is on only when it is), `next` (the fixture the countdown names), `pick`, `competition`,
-`degraded`, `source`, `updatedAt`, `staleAfter` (when its live scores stop being shown),
+`lang` (the CLI's resolved language), `words` (the plugin's moment words in it), `degraded`, `source`, `updatedAt`, `staleAfter` (when its live scores stop being shown),
 `disclaimer` (the non-affiliation sentence) and `attribution` (the provider's sentence, `Live data: ESPN`, in English;
 `null` with no snapshot, on the sign-off line (`idle`) and when nothing is known (`empty`), whether or not the
 snapshot is `degraded`). Beside `line` the view says what the line is, `idle` (the edition-complete line, however narrow it was fitted) and `empty` (nothing known), read before the fit so a program never reads a pace or a visibility off the text; and each live record carries `line`, the hook's own line for it with its flags and roster names, which a program says and never composes. For the goal moments it also carries `lineParts` (the line in parts, each shown score `strong`), `finished` (the matches seen in play and then read at full time, each for 10 minutes), and on each record `pinnedSide`, `names` and, on a live record, `lastGoal` (only when the provider's goals add up to the score). The CLI's README has the details. Like the statusline it reads only the local cache,

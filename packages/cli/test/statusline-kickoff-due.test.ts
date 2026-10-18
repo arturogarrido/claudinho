@@ -493,3 +493,56 @@ describe('the record of play\'s bounds decide which ids exclude a due fixture', 
     notDue(withPlay({ seen: [], finished: [today(at - 30_000)] }));
   });
 });
+
+/**
+ * Round 2 of #186, M3 (part 2 of the reader's language): the due fixture, a minute after kickoff, still SCHEDULED,
+ * nothing live, a fresh whole snapshot: `ambient --json` in each language names it with core's bare word for now
+ * (`countdownPhrase`), and its `next` is that fixture; `claudinho prompt` reads the English `now` in every language.
+ */
+describe('the due fixture in the reader\'s language (ambient --json; prompt stays English)', () => {
+  const at = new Date(KICK + MIN);
+  const NOW_WORD = { en: 'now', es: 'ahora', pt: 'agora', fr: 'maintenant' } as const;
+  let dir: string;
+  let writes: string[] = [];
+  const outSpy = vi.spyOn(process.stdout, 'write');
+  const env = { cache: process.env.XDG_CACHE_HOME, team: process.env.CLAUDINHO_TEAM, flags: process.env.CLAUDINHO_FLAGS };
+  const cfg = (lang: keyof typeof NOW_WORD): CliConfig =>
+    described({ lang, tz: undefined, json: true, color: false, source: 'espn', competition: 'esp.1', flavor: 'off', markets: true, pin: PIN });
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'claudinho-kickoff-due-lang-'));
+    process.env.XDG_CACHE_HOME = dir;
+    delete process.env.CLAUDINHO_TEAM;
+    process.env.CLAUDINHO_FLAGS = '0';
+    writes = [];
+    outSpy.mockImplementation((c: unknown) => {
+      writes.push(String(c));
+      return true;
+    });
+    writeState(snapshot(at.getTime(), [betBar(), barRma()]), at.getTime());
+  });
+  afterEach(() => {
+    outSpy.mockReset();
+    for (const [k, v] of [['XDG_CACHE_HOME', env.cache], ['CLAUDINHO_TEAM', env.team], ['CLAUDINHO_FLAGS', env.flags]] as const) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  for (const lang of ['en', 'es', 'pt', 'fr'] as const) {
+    it(`${lang}: the ambient line is \`BET vs BAR ${NOW_WORD[lang]}\`, one plain part, and \`next\` is today's match`, () => {
+      cmdAmbient({ cfg: cfg(lang), t: makeT(lang), now: at });
+      const v = JSON.parse(writes.join('')) as { line: string; lineParts: unknown; next: { id: string } | null; lang: string };
+      expect(v.line).toBe(`BET vs BAR ${NOW_WORD[lang]}`);
+      expect(v.lineParts).toEqual([{ text: `BET vs BAR ${NOW_WORD[lang]}` }]);
+      expect(v.next?.id).toBe('401');
+      expect(v.lang).toBe(lang);
+    });
+
+    it(`${lang}: \`claudinho prompt\` reads the English \`BET vs BAR now\``, () => {
+      cmdPrompt({ cfg: cfg(lang), t: makeT(lang), now: at }, { cursor: undefined });
+      expect(writes.join('').trim()).toBe('BET vs BAR now');
+    });
+  }
+});
