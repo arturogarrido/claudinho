@@ -947,7 +947,7 @@ export interface KnockoutFixturesResult {
 /**
  * The RESOLVED upcoming knockout fixtures from the live overlay — the data the
  * hot-path statusline can't fetch itself but needs to show a real next-match
- * countdown (e.g. "🇲🇽 vs 🇪🇨 in 2d") instead of a 🏳️ placeholder. The cold-path
+ * countdown (e.g. "⚽ 🇲🇽 vs 🇪🇨 in 2d") instead of a 🏳️ placeholder. The cold-path
  * refresher calls this and caches the result; the statusline reads the cache.
  *
  * Returns only fixtures where BOTH sides are resolved (neither is the 🏳️ placeholder) and kickoff
