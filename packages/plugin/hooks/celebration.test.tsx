@@ -560,6 +560,24 @@ describe('the redraws it asks for', () => {
     expect(w.invalidates).toEqual([])
   })
 
+  test('a turn ending after its celebration played whole asks for no redraw', async ($, on) => {
+    const w = await world($, on, [before, goal, goal])
+    await seeGoal(w) // 2-0 at 15 s, playing
+    await rows(w)
+    for (let f = 0; f < 8; f++) {
+      await w.clock.advance(500)
+      await rows(w)
+    }
+    await w.clock.advance(2_000)
+    await rows(w, { hasSurvey: true }) // the draw that folds the play past its 3 s: played whole
+    const atEnd = w.invalidates.length
+    await w.turnStart()
+    await w.clock.advance(1_000)
+    await w.turnEnd()
+    await w.clock.advance(1_200)
+    expect(w.invalidates.length).toBe(atEnd)
+  })
+
   test('a turn ending after its held celebration expired (over 60 s) asks for no redraw', async ($, on) => {
     const w = await world($, on, [before, goal, goal, goal, goal, goal, goal])
     await w.turnStart()
