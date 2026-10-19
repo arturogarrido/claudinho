@@ -453,6 +453,39 @@ describe('one read at a time, the open included', () => {
   })
 })
 
+describe('two reopens queued behind a held read', () => {
+  test('the first reopen, superseded while it waited, makes no match run: the second one\'s answer drawn', { timeoutMs: 20_000 }, async ($, on) => {
+    const w = await world($, on, [live(2, 1), live(2, 1), live(3, 1), live(3, 1)], { matchAnswers: [answer(), held(answer({ lines: ['OLD'] })), answer({ lines: ['NEW'] })] })
+    await w.command('match')
+    await w.clock.advance(15_000) // a re-read, held
+    const first = w.command('match')
+    await w.clock.advance(1)
+    const second = w.command('match')
+    await w.clock.advance(1)
+    expect(w.matchRuns()).toHaveLength(2) // both reopens wait
+    await w.release()
+    await first
+    await second
+    await w.clock.advance(1)
+    expect(w.matchRuns()).toHaveLength(3) // the second reopen's read alone
+    expect(await texts(await w.mountPane())).toEqual(['NEW', '', A, D])
+  })
+})
+
+describe('a final answer from a re-read', () => {
+  test('ends the reads: the band seeing the match leave its list afterwards makes no match run', { timeoutMs: 20_000 }, async ($, on) => {
+    // The world's run, the command's, then the band's eight runs to 120 s: the match live at 2–1 in each; then gone.
+    const ambient = [...Array.from({ length: 10 }, () => live(2, 1)), nothingLive()]
+    const w = await world($, on, ambient, { matchAnswers: [answer(), finished()] })
+    await w.command('match')
+    await w.clock.advance(121_000) // the 2-minute re-read answers FT
+    expect(w.matchRuns()).toHaveLength(2)
+    await w.clock.advance(15_000) // the band's run: the match has left the list
+    await w.clock.advance(15_000)
+    expect(w.matchRuns()).toHaveLength(2)
+  })
+})
+
 describe('a read answering after its pane was rebound', () => {
   test('its answer is never drawn, not even for a moment before the new read answers', { timeoutMs: 20_000 }, async ($, on) => {
     const w = await world($, on, [live(2, 1), live(2, 1), live(3, 1), live(3, 1)], { matchAnswers: [answer(), held(answer({ lines: ['OLD'] })), held(answer({ lines: ['NEW'] }))] })
