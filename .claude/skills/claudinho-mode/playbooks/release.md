@@ -44,12 +44,13 @@ maintainer's: never a tag or a publish by an agent.
    command runs only when the one before it succeeded. When the chain stops before `git tag` (the fetch or `gh`
    failed, the PR is not merged, or `main` does not hold its merge commit), nothing is tagged: check that
    `gh pr view <n> --json state` says `MERGED`, then run the block again. When `git tag` or the push fails, stop:
-   this step never deletes or moves a tag; look at any existing tag of that name, local or on `origin`, first.
-   `publish.yml` gates on build, typecheck, test, lint and tag == version, not on the tag being on `main`, so a tag
-   on the branch's head would still publish, with a GitHub Release on a commit `main` does not contain. Then watch
-   the publish workflow on the tag (`.github/workflows/publish.yml`): its two jobs, `publish` and `mcp-registry`,
-   the run found with `gh run list --workflow publish.yml` and read per job with `gh run view <id> --json jobs`; the
-   npm versions, the GitHub Release and the Registry record checked afterwards.
+   this step never deletes or moves a tag on `origin`; read the tags as AGENTS.md "Releasing" gives it under "When
+   the tag step stops at `git tag` or the push" (three reads, then one case of five), and do only what its case
+   says. `publish.yml` gates on build, typecheck, test, lint and tag == version, not on the tag being on `main`, so
+   a tag on the branch's head would still publish, with a GitHub Release on a commit `main` does not contain. Then
+   watch the publish workflow on the tag (`.github/workflows/publish.yml`): its two jobs, `publish` and
+   `mcp-registry`, the run found with `gh run list --workflow publish.yml` and read per job with
+   `gh run view <id> --json jobs`; the npm versions, the GitHub Release and the Registry record checked afterwards.
 10. The `.mcpb`/Smithery decision for an MCP-affecting release: the bundle is a snapshot; rebuilt with
     `pnpm -F @claudinho/mcp build:mcpb`, audited at its root, published by the maintainer.
 11. The maintainer's machine on the new version: AGENTS.md "Releasing" step 4, as written there (the CLI with the
