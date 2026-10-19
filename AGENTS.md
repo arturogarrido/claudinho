@@ -174,11 +174,16 @@ To cut a release:
    `remote.origin.fetch` holds (a `--single-branch` clone's does not name `main`). Each command runs
    only when the one before it succeeded. When the chain stops before `git tag` (the fetch or `gh`
    failed, the PR is not merged, or `main` does not hold its merge commit), nothing is tagged: check
-   that `gh pr view <n> --json state` says `MERGED`, then run the block again. The workflow gates
-   (build, typecheck, test, lint and tag == version; it does not check that the tag is on `main`, so
-   a tag on the branch's commit still publishes, with a GitHub Release on a commit `main` does not
-   contain), then `pnpm -r publish --provenance` ships all three
-   via OIDC (versions already on npm are skipped) and auto-creates the GitHub Release
+   that `gh pr view <n> --json state` says `MERGED`, then run the block again. When `git tag` itself
+   stops, a local tag of that name exists, and `git rev-parse vX.Y.Z^{commit}` prints its commit:
+   when that is the PR's merge commit (an earlier run's push failed), `git push origin vX.Y.Z`; when
+   it is not, the tag is on the wrong commit: `git tag -d vX.Y.Z`, then run the block again. When
+   `origin` refuses the push because it already holds a tag of that name, the version is already
+   tagged there: `git ls-remote origin refs/tags/vX.Y.Z` names its commit, read before anything else
+   is done. The workflow gates (build, typecheck, test, lint and tag == version; it does not check
+   that the tag is on `main`, so a tag on the branch's commit still publishes, with a GitHub Release
+   on a commit `main` does not contain), then `pnpm -r publish --provenance` ships all three via
+   OIDC (versions already on npm are skipped) and auto-creates the GitHub Release
    (`gh release create --generate-notes`); a second job, `mcp-registry`, then publishes the tag's
    record to the official MCP Registry.
 4. Once both jobs are green, update the maintainer's own machine and read each version back. None of
