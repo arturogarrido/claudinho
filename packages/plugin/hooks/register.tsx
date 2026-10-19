@@ -493,8 +493,9 @@ async function nvmLookup($: EngineInterface, home: string): Promise<string[]> {
   }
   versions.sort((a, b) => b.parts[0] - a.parts[0] || b.parts[1] - a.parts[1] || b.parts[2] - a.parts[2])
   const bins = versions.slice(0, NVM_VERSIONS_MAX).map((v) => `${root}/${v.name}/bin`)
-  // A folder that holds the CLI first: the node beside it is the one the CLI runs on. A probe that rejects is
-  // "not there"; the probes run together.
+  // Of nvm's folders, those that hold the CLI come first, so the node beside the CLI leads nvm's part of the PATH (a
+  // node in an earlier folder of the host's PATH still comes before it). A probe that rejects is "not there"; the
+  // probes run together.
   const holds = await Promise.all(bins.map((bin) => holdsCli($, bin)))
   return [...bins.filter((_, i) => holds[i]), ...bins.filter((_, i) => !holds[i])]
 }
