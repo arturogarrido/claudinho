@@ -164,15 +164,20 @@ To cut a release:
    commit. With `<n>` the release PR:
 
    ```bash
-   git fetch origin main
-   sha=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)
-   git merge-base --is-ancestor "$sha" origin/main && git tag vX.Y.Z "$sha" && git push origin vX.Y.Z
+   git fetch origin +refs/heads/main:refs/remotes/origin/main &&
+     sha=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid) &&
+     git merge-base --is-ancestor "$sha" origin/main &&
+     git tag vX.Y.Z "$sha" && git push origin vX.Y.Z
    ```
 
-   The ancestor check fails, and nothing is tagged, when the PR is not merged or `origin/main` does
-   not hold its merge commit yet. The workflow gates (build/test/lint + tag==version; it does not
-   check that the tag is on `main`, so a tag on the branch's commit still publishes, with a GitHub
-   Release on a commit `main` does not contain), then `pnpm -r publish --provenance` ships all three
+   The fetch names its refspec, so it refreshes `origin/main` whatever the clone's
+   `remote.origin.fetch` holds (a `--single-branch` clone's does not name `main`). Each command runs
+   only when the one before it succeeded. When the chain stops before `git tag` (the fetch or `gh`
+   failed, the PR is not merged, or `main` does not hold its merge commit), nothing is tagged: check
+   that `gh pr view <n> --json state` says `MERGED`, then run the block again. The workflow gates
+   (build, typecheck, test, lint and tag == version; it does not check that the tag is on `main`, so
+   a tag on the branch's commit still publishes, with a GitHub Release on a commit `main` does not
+   contain), then `pnpm -r publish --provenance` ships all three
    via OIDC (versions already on npm are skipped) and auto-creates the GitHub Release
    (`gh release create --generate-notes`); a second job, `mcp-registry`, then publishes the tag's
    record to the official MCP Registry.

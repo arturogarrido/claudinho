@@ -3,8 +3,9 @@ name: Publish
 # Publishes @claudinho/{core,cli,mcp} to npm with provenance, then creates the
 # matching GitHub Release (so the repo's "Latest release" tracks npm).
 #
-# Trigger: push a version tag — `git tag v0.2.0 && git push origin v0.2.0`
-#          (or run manually from the Actions tab via "Run workflow").
+# Trigger: push a version tag on the release PR's merge commit on main, never on
+#          the release branch's own commit (AGENTS.md "Releasing" step 3 gives the
+#          commands), or run manually from the Actions tab via "Run workflow".
 #
 # Auth: npm trusted publishing (OIDC) — NO token. The `id-token: write`
 #   permission below lets npm mint a short-lived, workflow-scoped credential, so
