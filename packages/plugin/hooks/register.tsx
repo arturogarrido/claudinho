@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, RenderChildren, Timer } from 'claude-code'
+import type { EngineInterface, FsEntry, ProcessRunResult, Register, RenderChildren, Timer } from 'claude-code'
 
 import type {
   ClaudinhoBand,
@@ -21,7 +21,8 @@ import type {
  * the live score beside the prompt for the model (none under `context: off`), `/claudinho`, the band's line on demand,
  * and the match pane (`/claudinho match`).
  *
- * The CLI owns the data (its cache, its refresher, the network, the backoff) and the words: the plugin never fetches.
+ * The CLI owns the data (its cache, its refresher, the network, the backoff) and the words: the plugin itself makes no
+ * network request.
  * This module runs the one binary, `claudinho ambient --json` (the band's runs add `--columns <the band's columns>`;
  * the pane runs `claudinho match <id> --json`, whose read of the provider is the CLI's; every ambient run ends with
  * `--lang <code>`, the `language` option's, `auto` resolved from the host's environment as the CLI resolves it, and the
@@ -52,7 +53,7 @@ import type {
  * phone or an editor alone), or cannot read the roster, starts no process and clears the band. A roster read refused at
  * the start is unknown, so the pace starts and each run asks again: a read denied for good costs one read per 15
  * seconds and no process. Each run is handed a PATH: the host's own, then the folders npm, Homebrew, nvm, Volta, pnpm
- * and Bun install global commands into, so a session started with a bare PATH still finds the CLI and its `node` (on
+ * and Bun put global commands in, so a session started with a bare PATH still finds the CLI and its `node` (on
  * Windows nothing is handed). nvm's part is looked up once per load; while that lookup has not answered, each run waits
  * at most a second for it and uses the PATH without nvm's folders, and the first run that finds it answered keeps the
  * PATH with them. A band drawn beneath ours in the hook chain (a plugin registered after ours, or the engine's own)
@@ -339,7 +340,10 @@ let kickoffTimer: Timer | null = null
 const drawsBand = (surface: unknown): boolean => surface === 'terminal' || surface === 'desktop'
 
 /** Whether a surface that draws the band is attached to the session now (a read that rejects is the caller's to read). */
-const drawable = async ($: EngineInterface): Promise<boolean> => (await $.session.surfaces()).some(drawsBand)
+async function drawable($: EngineInterface): Promise<boolean> {
+  const surfaces = await $.session.surfaces()
+  return surfaces.some(drawsBand)
+}
 
 /**
  * The band cleared and the pace back to its initial value (no clock read), so the next run the roster allows is never
@@ -399,20 +403,31 @@ function startTicker($: EngineInterface): void {
   if (ticker) return
   ticker = $.clock.every(FRAME_MS, () => {
     $.ui.invalidate('ui.render')
-    void (async () => {
-      const rec = await read($, celebration)
-      if (!playable(rec, await $.clock.now())) stopTicker()
-    })().catch(() => {
-      // The engine's calls failed: the ticker runs on to its next period.
-    })
+    void frameCheck($)
   })
+}
+
+/** A frame's check: the ticker stopped once the record has nothing left to play. Never rejects. */
+async function frameCheck($: EngineInterface): Promise<void> {
+  try {
+    const rec = await read($, celebration)
+    const now = await $.clock.now()
+    if (!playable(rec, now)) stopTicker()
+  } catch {
+    // The engine's calls failed: the ticker runs on to its next period.
+  }
 }
 
 /** After a hold ends: the ticker again when the record is still playable. Never rejects. */
 async function resumeTicker($: EngineInterface): Promise<void> {
   if (holdTurn) return
-  const rec = await read($, celebration)
-  if (!holdTurn && playable(rec, await $.clock.now())) startTicker($)
+  try {
+    const rec = await read($, celebration)
+    const now = await $.clock.now()
+    if (!holdTurn && playable(rec, now)) startTicker($)
+  } catch {
+    // The engine's calls failed: no redraws are asked until the next goal or the next turn's end.
+  }
 }
 
 /** The ball row of a frame: the ball stepping right across `cols` columns, never past them. */
@@ -464,7 +479,7 @@ const NVM_VERSIONS_MAX = 8
  */
 async function nvmLookup($: EngineInterface, home: string): Promise<string[]> {
   const root = `${home}/.nvm/versions/node`
-  let entries: Awaited<ReturnType<EngineInterface['fs']['list']>>
+  let entries: FsEntry[]
   try {
     entries = await $.fs.list(root)
   } catch {
@@ -472,22 +487,42 @@ async function nvmLookup($: EngineInterface, home: string): Promise<string[]> {
   }
   const versions: Array<{ name: string; parts: [number, number, number] }> = []
   for (const entry of entries.slice(0, NVM_ENTRIES_MAX)) {
-    const m = entry.kind === 'dir' ? NVM_VERSION.exec(entry.name) : null
+    const m = entry.kind === 'dir' ? entry.name.match(NVM_VERSION) : null
     if (m) versions.push({ name: entry.name, parts: [Number(m[1]), Number(m[2]), Number(m[3])] })
   }
   versions.sort((a, b) => b.parts[0] - a.parts[0] || b.parts[1] - a.parts[1] || b.parts[2] - a.parts[2])
   const bins = versions.slice(0, NVM_VERSIONS_MAX).map((v) => `${root}/${v.name}/bin`)
   // A folder that holds the CLI first: the node beside it is the one it was installed with. A probe that rejects is
   // "not there"; the probes run together.
-  const holds = await Promise.all(
-    bins.map((bin) =>
-      $.fs.exists(`${bin}/claudinho`).then(
-        (found) => found === true,
-        () => false,
-      ),
-    ),
-  )
+  const holds = await Promise.all(bins.map((bin) => holdsCli($, bin)))
   return [...bins.filter((_, i) => holds[i]), ...bins.filter((_, i) => !holds[i])]
+}
+
+/** Whether `<bin>/claudinho` exists; a probe that rejects is "not there". Never rejects. */
+async function holdsCli($: EngineInterface, bin: string): Promise<boolean> {
+  try {
+    const found = await $.fs.exists(`${bin}/claudinho`)
+    return found === true
+  } catch {
+    return false
+  }
+}
+
+/** nvm's lookup, its answer kept for the module load once it has settled. Never rejects. */
+async function nvmLookupKept($: EngineInterface, home: string): Promise<string[]> {
+  const bins = await nvmLookup($, home)
+  nvmAnswer = bins
+  return bins
+}
+
+/** Null once the wait for nvm's lookup is over, or at once when the wait cannot be kept. Never rejects. */
+async function nvmWait($: EngineInterface, signal: AbortSignal): Promise<null> {
+  try {
+    await $.clock.sleep(NVM_WAIT_MS, { signal })
+  } catch {
+    // The wait was cut or refused: no wait.
+  }
+  return null
 }
 
 /**
@@ -496,15 +531,9 @@ async function nvmLookup($: EngineInterface, home: string): Promise<string[]> {
  */
 async function nvmBins($: EngineInterface, home: string): Promise<string[] | null> {
   if (nvmAnswer) return nvmAnswer
-  nvmOnce ??= nvmLookup($, home).then((bins) => {
-    nvmAnswer = bins
-    return bins
-  })
+  nvmOnce ??= nvmLookupKept($, home)
   const stop = new AbortController()
-  const waited = $.clock.sleep(NVM_WAIT_MS, { signal: stop.signal }).then(
-    () => null,
-    () => null,
-  )
+  const waited = nvmWait($, stop.signal)
   const bins = await Promise.race([nvmOnce, waited])
   if (bins) stop.abort()
   return bins
@@ -583,7 +612,11 @@ async function runLang($: EngineInterface): Promise<Lang> {
 const langArgs = (lang: Lang): string[] => ['--lang', lang]
 
 /** The argument the match runs end with: the language once a view said the CLI localizes, else none. */
-const matchLangArgs = async ($: EngineInterface): Promise<string[]> => (cliLocalizes ? langArgs(await runLang($)) : [])
+async function matchLangArgs($: EngineInterface): Promise<string[]> {
+  if (!cliLocalizes) return []
+  const lang = await runLang($)
+  return langArgs(lang)
+}
 
 /** A reading that is a view stating a `lang` among the four codes marks the CLI as localizing; anything else marks nothing. */
 function markLocalizes(reading: Reading): void {
@@ -652,7 +685,7 @@ function parseView(stdout: string): View | null {
   return parsed as View
 }
 
-type RunResult = Awaited<ReturnType<EngineInterface['process']['run']>>
+type RunResult = ProcessRunResult
 
 /**
  * What one run of the CLI said, read once for the band and the command alike: no answer (a run that rejected, a
@@ -790,9 +823,9 @@ const words = (...ws: string[]): string => ws.filter((w) => w !== '').join(' ')
 /** The scoreline a moment's toast writes: the names, the tally (a shootout tally after each side), or `vs`. */
 function scoreline(names: Names, score: Tally | undefined, shootout: Tally | undefined): string {
   if (!score) return `${names.home} vs ${names.away}`
-  const h = shootout ? `${score.home}(${shootout.home})` : `${score.home}`
-  const a = shootout ? `${score.away}(${shootout.away})` : `${score.away}`
-  return `${names.home} ${h}–${a} ${names.away}`
+  const homeTally = shootout ? `${score.home}(${shootout.home})` : `${score.home}`
+  const awayTally = shootout ? `${score.away}(${shootout.away})` : `${score.away}`
+  return `${names.home} ${homeTally}–${awayTally} ${names.away}`
 }
 
 /** One moment of one record: its toast text, and the celebration's play when it has one. */
@@ -1436,12 +1469,12 @@ async function runMatch($: EngineInterface, b: Binding, env: { PATH: string } | 
 
 /** `fn` run after every read queued before it has settled; the queue's tail moves to it. */
 function inTurn<T>(fn: () => Promise<T>): Promise<T> {
-  const run = readTail.then(fn)
-  readTail = run.then(
+  const queued = readTail.then(fn)
+  readTail = queued.then(
     () => undefined,
     () => undefined,
   )
-  return run
+  return queued
 }
 
 function stopPaneTimers(): void {
@@ -1506,30 +1539,42 @@ function reread($: EngineInterface): void {
     return
   }
   paneReads += 1
-  void inTurn(async () => {
-    const env = await runEnv($)
-    const answer = await runMatch($, b, env)
-    // The one check is inside the write, the latest point: a close or a reopen since this read began (the binding
-    // replaced, the generation moved on) writes nothing.
-    let written: NonNullable<ClaudinhoPane> | null = null
-    await update($, pane, (cur) => {
-      if (bound !== b || cur === null || cur.gen !== b.gen) return cur
-      written =
-        answer.kind === 'failed'
-          ? { ...cur, refreshFailed: cur.kind !== 'failed' }
-          : { gen: b.gen, slug: b.slug, id: b.id, refreshFailed: false, ...answer }
-      return written
+  void rereadInTurn($, b)
+}
+
+/** The re-read in its turn, then the read ended. Never rejects. */
+async function rereadInTurn($: EngineInterface, b: Binding): Promise<void> {
+  try {
+    await inTurn(async () => {
+      await rereadOnce($, b)
     })
-    const wrote = written as NonNullable<ClaudinhoPane> | null
-    if (wrote !== null) {
-      b.final = wrote.final && !wrote.refreshFailed && wrote.kind !== 'failed'
-      await armPane($, b, wrote)
-    }
+  } catch {
+    // The engine's calls failed: the next trigger reads again.
+  } finally {
+    paneReadEnded($)
+  }
+}
+
+/** One re-read of `b`'s match and its write. */
+async function rereadOnce($: EngineInterface, b: Binding): Promise<void> {
+  const env = await runEnv($)
+  const answer = await runMatch($, b, env)
+  // The one check is inside the write, the latest point: a close or a reopen since this read began (the binding
+  // replaced, the generation moved on) writes nothing.
+  let written: NonNullable<ClaudinhoPane> | null = null
+  await update($, pane, (cur) => {
+    if (bound !== b || cur === null || cur.gen !== b.gen) return cur
+    written =
+      answer.kind === 'failed'
+        ? { ...cur, refreshFailed: cur.kind !== 'failed' }
+        : { gen: b.gen, slug: b.slug, id: b.id, refreshFailed: false, ...answer }
+    return written
   })
-    .catch(() => {
-      // The engine's calls failed: the next trigger reads again.
-    })
-    .finally(() => paneReadEnded($))
+  const wrote = written as NonNullable<ClaudinhoPane> | null
+  if (wrote !== null) {
+    b.final = wrote.final && !wrote.refreshFailed && wrote.kind !== 'failed'
+    await armPane($, b, wrote)
+  }
 }
 
 /**
@@ -1596,7 +1641,10 @@ async function openPane($: EngineInterface, reading: Reading, env: { PATH: strin
       return false
     }
     // Then its turn and its read; an open a later open superseded while it waited makes no run.
-    const answer = await inTurn(async () => (bound === b ? runMatch($, b, env) : null))
+    const answer = await inTurn(async () => {
+      if (bound !== b) return null
+      return await runMatch($, b, env)
+    })
     if (answer === null || bound !== b) return false
     const v: NonNullable<ClaudinhoPane> = { gen, slug: b.slug, id: b.id, refreshFailed: false, ...answer }
     let wrote = false
@@ -1628,26 +1676,27 @@ async function closePane($: EngineInterface): Promise<void> {
  * One run of the CLI, bounded; at most one in flight; paced by the last line unless `force`. A forced run asked while
  * one is in flight is kept (once) and made as soon as that run ends. No rejection escapes: a timer's callback calls it.
  */
-function tick($: EngineInterface, option: ToastsOption, force = false): Promise<void> {
+async function tick($: EngineInterface, option: ToastsOption, force: boolean): Promise<void> {
   if (busy) {
     if (force) forcedPending = true
-    return Promise.resolve()
+    return
   }
   busy = true
-  return run($, option, force)
-    .catch(() => {
-      // A run that failed in the engine's calls: nothing more to do until the next fire.
-    })
-    .finally(() => {
-      busy = false
-      if (forcedPending) {
-        forcedPending = false
-        void tick($, option, true)
-      }
-    })
+  try {
+    await bandRun($, option, force)
+  } catch {
+    // A run that failed in the engine's calls: nothing more to do until the next fire.
+  } finally {
+    busy = false
+    if (forcedPending) {
+      forcedPending = false
+      void tick($, option, true)
+    }
+  }
 }
 
-async function run($: EngineInterface, option: ToastsOption, force: boolean): Promise<void> {
+/** One band run of the CLI and what follows from its answer: the band, the toasts, the celebration, the context. */
+async function bandRun($: EngineInterface, option: ToastsOption, force: boolean): Promise<void> {
   // (1) No surface that draws the band (none yet, the last one detached, or the roster cannot be read): no process,
   // the band cleared, so a band surface attaching again never shows an old line, and the pace reset, so the next run
   // the roster allows is not held by an idle gap; the baseline and the context are left.
@@ -1789,7 +1838,7 @@ function ensurePace($: EngineInterface, option: ToastsOption): boolean {
     void tick($, option, true)
   })
   $.clock.every(LIVE_MS, () => {
-    void tick($, option)
+    void tick($, option, false)
   })
   return true
 }
@@ -1859,9 +1908,7 @@ export const register: Register = (on, options) => {
     if (e.agentId === undefined) {
       holdTurn = false
       $.clock.after(0, () => {
-        void resumeTicker($).catch(() => {
-          // The engine's calls failed: no redraws are asked until the next goal or the next turn's end.
-        })
+        void resumeTicker($)
       })
     }
     return next(e)
