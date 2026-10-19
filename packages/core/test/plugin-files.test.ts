@@ -3,6 +3,7 @@
  * not a workspace package and ships through no registry), listed by the root marketplace file. What the plugin
  * validator does not pin: the option's own words, the module the manifest runs, the install line in the README.
  */
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +16,29 @@ describe('the plugin folder', () => {
   it('ships no package.json (not a workspace package, not published) and no node_modules', () => {
     expect(existsSync(join(ROOT, 'packages/plugin/package.json'))).toBe(false);
     expect(existsSync(join(ROOT, 'packages/plugin/node_modules'))).toBe(false);
+  });
+
+  // Claude Code copies a plugin's whole folder when it installs it, and Anthropic's directory lists that folder: the
+  // folder holds what runs or is read, and the kit (its tests and their helpers) lives in packages/plugin-tests, run
+  // against this folder by scripts/plugin-test.sh.
+  it('holds only what installs: the manifest, the icon, the hooks module, its contract and the README', () => {
+    const tracked = (dir: string) =>
+      execFileSync('git', ['ls-files', '-z', '--', dir], { cwd: ROOT, encoding: 'utf8' })
+        .split('\0')
+        .filter(Boolean)
+        .map((f) => f.slice(dir.length + 1))
+        .sort();
+    expect(tracked('packages/plugin')).toEqual([
+      '.claude-plugin/icon.png',
+      '.claude-plugin/plugin.json',
+      'README.md',
+      'hooks/hooks.json',
+      'hooks/register.tsx',
+      'types/index.d.ts',
+    ]);
+    const kit = tracked('packages/plugin-tests');
+    expect(kit.filter((f) => /\.test\.tsx?$/.test(f)).length).toBeGreaterThan(0);
+    expect(kit.filter((f) => existsSync(join(ROOT, 'packages/plugin', f)))).toEqual([]);
   });
 
   it('the manifest names the plugin and nothing it does not ship; the types contract sits where the validator finds it', () => {

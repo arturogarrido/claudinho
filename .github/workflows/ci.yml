@@ -177,7 +177,8 @@ jobs:
         run: pnpm audit || true
 
   # The Claude Code plugin (packages/plugin, no package.json and no dependencies): its manifest, the root marketplace
-  # file and its hooks module validated, and its tests run by the engine's own kit, under the pinned Claude Code CLI.
+  # file and its hooks module validated, and its tests (packages/plugin-tests, kept out of the folder that installs)
+  # run against it by the engine's own kit through scripts/plugin-test.sh, under the pinned Claude Code CLI.
   # The job's name carries no version, so a pin bump leaves the ruleset's required check as it is.
   plugin:
     name: plugin (validate · test)
@@ -192,4 +193,4 @@ jobs:
       - run: |
           claude plugin validate .
           claude plugin validate packages/plugin
-          claude plugin test packages/plugin
+          bash scripts/plugin-test.sh
