@@ -262,8 +262,8 @@ Four arguments are not fixed text. Each comes from one place:
 
 None of them comes from your prompts, your files or the conversation. The plugin passes the arguments as a list, with
 no shell, and writes nothing to the program's input. A band or `/claudinho` run may take 2 seconds, a pane run 5;
-Claude Code stops a run that takes longer. Off Windows, the plugin hands the run one variable, `PATH`, which starts
-with Claude Code's own `PATH` and may add folders from [Finding the CLI](#finding-the-cli). Every other variable of
+Claude Code stops a run that takes longer. Off Windows, the plugin hands the run one variable, `PATH`, made of the
+folders in Claude Code's own `PATH` and folders from [Finding the CLI](#finding-the-cli). Every other variable of
 Claude Code's environment reaches the run as it is. On Windows the plugin hands nothing, and the run gets Claude
 Code's environment as it is.
 
