@@ -110,7 +110,28 @@ describe('the PATH handed to the run', () => {
   })
 })
 
+/**
+ * A plugin beside ours that refuses every `$.clock.sleep`: the sleep rejects, as the engine's does when its signal aborts
+ * (the kit's clock drops an aborted wait instead, so only a refusal makes it reject here).
+ */
+const REFUSED_SLEEP = {
+  plugins: [
+    {
+      name: 'refuse-sleep',
+      register(on: Parameters<Parameters<typeof test>[1]>[1]) {
+        on('clock.sleep', () => ({ deny: 'clock.sleep refused' }))
+      },
+    },
+  ],
+}
+
 describe('the nvm lookup is bounded', () => {
+  test('a wait that rejects (refused, or aborted on the engine): the first run goes on at once, with no nvm folder', REFUSED_SLEEP, async ($, on) => {
+    const { argvs, envs } = await world($, on, [view(LINE)], { nvm: 'hold' })
+    expect(argvs).toHaveLength(1)
+    expect(envs[0]).toEqual({ PATH: [BARE_PATH, ...AFTER_NVM].join(':') })
+  })
+
   test('a listing that never answers: the first run goes on after a second, with no nvm folder', async ($, on) => {
     const { argvs, clock, envs } = await world($, on, [view(LINE)], { nvm: 'hold' })
     await clock.advance(900)
