@@ -167,21 +167,24 @@ To cut a release:
    git fetch origin +refs/heads/main:refs/remotes/origin/main &&
      sha=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid) &&
      git merge-base --is-ancestor "$sha" origin/main &&
-     git tag vX.Y.Z "$sha" && git push origin vX.Y.Z
+     git tag vX.Y.Z "$sha" && git push origin refs/tags/vX.Y.Z:refs/tags/vX.Y.Z
    ```
 
    The fetch names its refspec, so it refreshes `origin/main` whatever the clone's
-   `remote.origin.fetch` holds (a `--single-branch` clone's does not name `main`). Each command runs
-   only when the one before it succeeded. When the chain stops before `git tag` (the fetch or `gh`
-   failed, the PR is not merged, or `main` does not hold its merge commit), nothing is tagged: check
-   that `gh pr view <n> --json state` says `MERGED`, then run the block again. When `git tag` or the
-   push fails, stop: this step never deletes or moves a tag; look at any existing tag of that name,
-   local or on `origin`, first. The workflow gates (build, typecheck, test, lint and tag == version;
-   it does not check that the tag is on `main`, so a tag on the branch's commit still publishes,
-   with a GitHub Release on a commit `main` does not contain), then `pnpm -r publish --provenance`
-   ships all three via OIDC (versions already on npm are skipped) and auto-creates the GitHub
-   Release (`gh release create --generate-notes`); a second job, `mcp-registry`, then publishes the
-   tag's record to the official MCP Registry.
+   `remote.origin.fetch` holds (a `--single-branch` clone's does not name `main`). The push names
+   both sides of its refspec, so a `remote.origin.push` mapping in the clone's config cannot send
+   the tag to another name or force it there, as it can a bare `git push origin vX.Y.Z`. Each
+   command runs only when the one before it succeeded. When the chain stops before `git tag` (the
+   fetch or `gh` failed, the PR is not merged, or `main` does not hold its merge commit), nothing is
+   tagged: check that `gh pr view <n> --json state` says `MERGED`, then run the block again. When
+   `git tag` or the push fails, stop: this step never deletes or moves a tag on `origin`; read the
+   tags as "When the tag step stops at `git tag` or the push" below says, and do only what its case
+   says. The workflow gates (build, typecheck, test, lint and tag == version; it does not check that
+   the tag is on `main`, so a tag on the branch's commit still publishes, with a GitHub Release on a
+   commit `main` does not contain), then `pnpm -r publish --provenance` ships all three via OIDC
+   (versions already on npm are skipped) and auto-creates the GitHub Release
+   (`gh release create --generate-notes`); a second job, `mcp-registry`, then publishes the tag's
+   record to the official MCP Registry.
 4. Once both jobs are green, update the maintainer's own machine and read each version back. None of
    it updates by default: an npm global install never updates itself, and Claude Code leaves plugin
    auto-update off by default for a third-party marketplace such as this one.
@@ -200,6 +203,55 @@ To cut a release:
      one (`npm ls -g @claudinho/mcp`) is used as installed instead, the project's first: update every
      copy the two list (`npm i @claudinho/mcp@latest` in that project, `npm i -g @claudinho/mcp@latest`),
      read each back with the same `npm ls`, then restart the server.
+
+**When the tag step stops at `git tag` or the push.** A failed `git tag` does not prove a tag
+exists: it can fail without making one. Read three things first, in the clone the block ran in,
+with `<n>` the release PR (the `^{}` is quoted: zsh with `EXTENDED_GLOB` set reads an unquoted one
+as a glob and runs nothing):
+
+```bash
+gh pr view <n> --json mergeCommit --jq .mergeCommit.oid
+git ls-remote origin refs/tags/vX.Y.Z 'refs/tags/vX.Y.Z^{}'
+git show-ref --verify -d refs/tags/vX.Y.Z
+```
+
+The first prints the merge commit. The second reads the tag on `origin` and the third the local
+one. Only a line whose name is exactly `refs/tags/vX.Y.Z` or `refs/tags/vX.Y.Z^{}` counts:
+`git ls-remote` matches a name by its end, so a branch named `refs/heads/refs/tags/vX.Y.Z` prints
+too, and it is not the tag. Counted that way, both print alike: no line when there is no such tag
+(the third then fails with `not a valid ref`), one line for a lightweight tag (the object it
+names), and two for an annotated one, whose target is the line ending `^{}` (the other names the
+tag object: this repository's annotated `v0.1.0` prints `328ad4e` for the object and `748dfd6` for
+its commit). A tag is "on the merge commit" when that line names it, and "elsewhere" when it names
+anything else. When `gh` or `git ls-remote` fails, nothing is decided: read again once it answers.
+Then the tag on `origin` decides first:
+
+- **`origin` has the tag on the merge commit:** the release is tagged, and the step ends here;
+  nothing is pushed or run again. The publish workflow runs on that tag (step 4 waits for its two
+  jobs). A local tag elsewhere would stop a later `git tag`: `git tag -d vX.Y.Z` removes it.
+- **`origin` has the tag elsewhere** (an earlier bare `git tag` was pushed): stop; the step ends
+  here. Moving a pushed tag is the maintainer's decision, never an agent's: the tag is public, and
+  the workflow may already have published from it (its gates do not check the tag's commit).
+  Deleting the local tag does not get past it. In a clone that fetches tags (git's default) and
+  holds the tag's commit (the release worktree holds the release branch's head), the block's fetch
+  brings the tag back and `git tag` stops; in any other clone `git tag` succeeds and the push is
+  rejected because the tag already exists on `origin`. What the maintainer reads before deciding:
+  the publish run on the tag (`gh run list --workflow publish.yml --branch vX.Y.Z`), whether npm has
+  the version, for each of the three packages (`npm view @claudinho/core@X.Y.Z version`, and the
+  same for `cli` and `mcp`: each prints the version, or fails with `E404`; the workflow publishes
+  them one at a time, so one can be on npm while another is not), and the GitHub Release
+  (`gh release view vX.Y.Z`).
+- **`origin` has no tag, and the local tag is on the merge commit** (the push failed):
+  `git push origin refs/tags/vX.Y.Z:refs/tags/vX.Y.Z`.
+- **`origin` has no tag, and the local tag is elsewhere:** `git tag -d vX.Y.Z`, then run the block
+  again.
+- **Neither has the tag:** `git tag` failed without making one, and printed why: a signing setting
+  (`tag.gpgSign`) whose signer failed or whose message was left empty, or a ref lock (`cannot lock
+  ref`: another git process, or a stale lock file). Fix that cause, then run the block again.
+
+After each of the last three actions, read the three again: an action that worked lands in the
+first case. Each of those actions is taken once: when the reads land in the same case again after
+it, stop and hand them to the maintainer.
 
 **The MCP Registry record publishes automatically on every tag.** The `mcp-registry` job in
 `publish.yml` runs after the npm publish succeeded, waits until npm serves the version (`npm view`
