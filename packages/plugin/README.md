@@ -263,7 +263,9 @@ Four arguments are not fixed text. Each comes from one place:
 None of them comes from your prompts, your files or the conversation. The plugin passes the arguments as a list, with
 no shell, and writes nothing to the program's input. A band or `/claudinho` run may take 2 seconds, a pane run 5;
 Claude Code stops a run that takes longer. The plugin finds `claudinho` on Claude Code's `PATH` and in the folders
-under [Finding the CLI](#finding-the-cli). Off Windows, the run gets Claude Code's environment with that `PATH`.
+under [Finding the CLI](#finding-the-cli). Off Windows, the plugin hands the run that `PATH` and no other variable;
+the run keeps every other variable of Claude Code's environment as it is (on Windows, the whole environment as it
+is).
 
 Why a program: the CLI owns the football data. It reads ESPN, keeps the local cache and respects the provider's
 limits. The plugin itself makes no network request. What leaves your machine is the CLI's own requests to ESPN (and
@@ -279,15 +281,18 @@ session.
   entries) and checks up to eight of the newest version folders for `bin/claudinho`, once per plugin load. That
   finds a CLI nvm installed when Claude Code started with a bare `PATH`. It reads no file's contents and writes no
   file.
-- **The session:** which windows are attached, so it runs nothing without one.
+- **The session:** which windows are attached. Without one the band runs nothing; `/claudinho` still runs the CLI
+  when you type it.
 
 ### Your prompts and your commands
 
 - **Each prompt you send** (the `prompt.submit` hook): with `context: on`, when the plugin's last reading is current,
-  less than 30 seconds old and shows a live match, the hook adds the CLI's short note beside your prompt: the line
-  `[Claudinho — live football scores right now]` and one line per live match (at most 12, then a line saying more
-  are not shown). Claude Code sends that note to the model with your prompt. The hook does not read your prompt's text, change it, keep it or send it
-  anywhere, and it starts no program. With `context: off` it adds nothing.
+  still inside the CLI's own deadline for it, less than 30 seconds old and shows a live match, the hook adds the
+  CLI's short note beside your prompt, as the CLI wrote it: the line `[Claudinho — live football scores right now]`
+  and one line per live match, the team you picked first (at most 12, then a line when more are not shown; the CLI
+  cuts a longer note at about 4,096 characters and says so). Claude Code sends that note to the model with your
+  prompt. The hook does not read your prompt's text, change it, keep it or send it anywhere, and it starts no
+  program. With `context: off` it adds nothing.
 - **`/claudinho`** (the `command.run` hook): the hook answers the command the plugin registers, `/claudinho`, and no
   other. It reads the text you typed after `/claudinho` for the word `match` alone. It runs the CLI as listed above,
   answers with text (the band's line, or a sentence when there is nothing to show), and opens the pane for `match`.

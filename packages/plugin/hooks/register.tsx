@@ -423,8 +423,9 @@ async function resumeTicker($: EngineInterface): Promise<void> {
   if (holdTurn) return
   try {
     const rec = await read($, celebration)
+    if (holdTurn) return
     const now = await $.clock.now()
-    if (!holdTurn && playable(rec, now)) startTicker($)
+    if (playable(rec, now)) startTicker($)
   } catch {
     // The engine's calls failed: no redraws are asked until the next goal or the next turn's end.
   }
@@ -584,7 +585,7 @@ const isLang = (v: unknown): v is Lang => typeof v === 'string' && LANGS.include
  * The language a CLI run is handed (`--lang <code>`; see `cliLocalizes` for which runs): the option when it is one
  * of the four codes; under `auto`, the CLI's own rule (`pickLang`) on the host's environment: `CLAUDINHO_LANG`, then `LANG`'s language part
  * (`es_MX.UTF-8` gives `es`), each only when it is one of the four (case-sensitive; an empty value skipped), else
- * `en`. The host's environment is read here because the spawn's is the PATH alone. Kept for the module load once both
+ * `en`. The host's environment is read here so every run names its language (`--lang`). Kept for the module load once both
  * reads answered; a read that rejected is unset for this run and asked again on the next. Never rejects.
  */
 async function runLang($: EngineInterface): Promise<Lang> {
