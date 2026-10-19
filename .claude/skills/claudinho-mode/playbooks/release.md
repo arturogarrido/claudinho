@@ -37,18 +37,19 @@ maintainer's: never a tag or a publish by an agent.
    git fetch origin +refs/heads/main:refs/remotes/origin/main &&
      sha=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid) &&
      git merge-base --is-ancestor "$sha" origin/main &&
-     git tag vX.Y.Z "$sha" && git push origin vX.Y.Z
+     git tag vX.Y.Z "$sha" && git push origin refs/tags/vX.Y.Z:refs/tags/vX.Y.Z
    ```
 
-   The fetch names its refspec, so it refreshes `origin/main` whatever the clone's `remote.origin.fetch` holds. Each
-   command runs only when the one before it succeeded. When the chain stops before `git tag` (the fetch or `gh`
-   failed, the PR is not merged, or `main` does not hold its merge commit), nothing is tagged: check that
-   `gh pr view <n> --json state` says `MERGED`, then run the block again. When `git tag` or the push fails, stop:
-   this step never deletes or moves a tag on `origin`; read the tags as AGENTS.md "Releasing" gives it under "When
-   the tag step stops at `git tag` or the push" (three reads, then one case of five), and do only what its case
-   says. `publish.yml` gates on build, typecheck, test, lint and tag == version, not on the tag being on `main`, so
-   a tag on the branch's head would still publish, with a GitHub Release on a commit `main` does not contain. Then
-   watch the publish workflow on the tag (`.github/workflows/publish.yml`): its two jobs, `publish` and
+   The fetch names its refspec, so it refreshes `origin/main` whatever the clone's `remote.origin.fetch` holds. The
+   push names both sides of its refspec, so a `remote.origin.push` mapping cannot send the tag to another name or
+   force it there. Each command runs only when the one before it succeeded. When the chain stops before `git tag`
+   (the fetch or `gh` failed, the PR is not merged, or `main` does not hold its merge commit), nothing is tagged:
+   check that `gh pr view <n> --json state` says `MERGED`, then run the block again. When `git tag` or the push
+   fails, stop: this step never deletes or moves a tag on `origin`; read the tags as AGENTS.md "Releasing" gives it
+   under "When the tag step stops at `git tag` or the push" (three reads, then one case of five), and do only what
+   its case says. `publish.yml` gates on build, typecheck, test, lint and tag == version, not on the tag being on
+   `main`, so a tag on the branch's head would still publish, with a GitHub Release on a commit `main` does not
+   contain. Then watch the publish workflow on the tag (`.github/workflows/publish.yml`): its two jobs, `publish` and
    `mcp-registry`, the run found with `gh run list --workflow publish.yml` and read per job with
    `gh run view <id> --json jobs`; the npm versions, the GitHub Release and the Registry record checked afterwards.
 10. The `.mcpb`/Smithery decision for an MCP-affecting release: the bundle is a snapshot; rebuilt with
