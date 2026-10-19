@@ -236,6 +236,70 @@ and changes nothing the band shows. A `/claudinho` typed while Claude is working
   kickoff and after full time, none. When the provider asks the CLI to slow down, the pane's reads
   wait too.
 
+## What the plugin runs, reads and sends
+
+Everything the plugin's code (`hooks/register.tsx`) does beyond drawing the band, the toasts and the pane is listed
+here.
+
+### The program it runs
+
+The plugin runs one program, `claudinho`: the CLI you installed. It runs it in these forms and no other:
+
+| When | The command |
+|---|---|
+| The band, every 15 seconds while a terminal or desktop window is attached (less often on an idle line, see [How the band reads](#how-the-band-reads)) | `claudinho ambient --json --columns <N> --lang <xx>` |
+| `/claudinho` and `/claudinho match`, when you type them | `claudinho ambient --json --lang <xx>` |
+| The match pane, after `/claudinho match` | `claudinho match <id> --json`, then `--competition <slug>` and `--lang <xx>` when they apply |
+
+Four arguments are not fixed text. Each comes from one place:
+
+- `<N>`: the band's width in columns, as Claude Code reports it (80 until it does).
+- `<xx>`: `en`, `es`, `pt` or `fr`. The `language` option decides it; under `auto`, `CLAUDINHO_LANG` or `LANG` does
+  (see [The language](#the-language)). The pane's runs add it once the CLI has said it speaks that language.
+- `<id>`: the id of the match the CLI's own last answer listed (the live match or the next fixture).
+- `<slug>`: the competition the CLI's own answer named when the pane opened. The pane adds it once a run made
+  without it answers for another competition or for none (you followed another one after opening the pane).
+
+None of them comes from your prompts, your files or the conversation. The plugin passes the arguments as a list, with
+no shell, and writes nothing to the program's input. A band or `/claudinho` run may take 2 seconds, a pane run 5;
+Claude Code stops a run that takes longer. Off Windows, the plugin hands the run one variable, `PATH`, made of the
+folders in Claude Code's own `PATH` and folders from [Finding the CLI](#finding-the-cli). Every other variable of
+Claude Code's environment reaches the run as it is. On Windows the plugin hands nothing, and the run gets Claude
+Code's environment as it is.
+
+Why a program: the CLI owns the football data. It reads ESPN, keeps the local cache and respects the provider's
+limits. The plugin itself makes no network request. What leaves your machine is the CLI's own requests to ESPN (and
+to Polymarket for a World Cup match's market signal in the pane), as [PRIVACY.md](https://github.com/arturogarrido/claudinho/blob/main/PRIVACY.md)
+describes. Those requests carry football parameters, such as a competition and dates, never anything from your
+session.
+
+### What it reads on your machine
+
+- **Environment variables:** `OS`. Off Windows, also `PATH` and `HOME`. Under `language: auto`, also
+  `CLAUDINHO_LANG` and `LANG`.
+- **Folders:** off Windows, with `HOME` set to an absolute path, it lists `~/.nvm/versions/node` (its first 256
+  entries) and checks up to eight of the newest version folders for `bin/claudinho`, once per plugin load. That
+  finds a CLI nvm installed when Claude Code started with a bare `PATH`. It reads no file's contents and writes no
+  file.
+- **The session:** which windows are attached. Without one the band runs nothing; `/claudinho` still runs the CLI
+  when you type it.
+
+### Your prompts and your commands
+
+- **Each prompt you send** (the `prompt.submit` hook): with `context: on`, when the plugin's last reading is current,
+  still inside the CLI's own deadline for it, less than 30 seconds old and shows a live match, the hook adds the
+  CLI's short note beside your prompt, as the CLI wrote it: the line `[Claudinho — live football scores right now]`
+  and one line per live match, the team you picked first (at most 12, then a line when more are not shown; the CLI
+  cuts a longer note at about 4,096 characters and says so). Claude Code sends that note to the model with your
+  prompt. The hook does not read your prompt's text, change it, keep it or send it anywhere, and it starts no
+  program. With `context: off` it adds nothing.
+- **`/claudinho`** (the `command.run` hook): the hook answers the command the plugin registers, `/claudinho`, and no
+  other. It reads the text you typed after `/claudinho` for the word `match` alone. It runs the CLI as listed above,
+  answers with text (the band's line, or a sentence when there is nothing to show), and opens the pane for `match`.
+- **Its other hooks** (a session starting, a window attaching or leaving, a turn starting or ending, the band and the
+  pane drawing, the pane closing) pace the band's runs, hold the celebration while Claude works, and draw what the
+  CLI answered. They read and send nothing beyond what this section lists.
+
 ## Data and disclaimer
 
 Live data: ESPN, read by the CLI, which keeps it in a local cache. The plugin's football data is the
