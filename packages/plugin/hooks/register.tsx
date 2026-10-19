@@ -1200,8 +1200,9 @@ const THROUGH_MARKER = /^[\s\S]*?\p{Extended_Pictographic}[\p{M}\u200D]* /u
  * The pane's display width is core's `displayWidth` (packages/core/src/text.ts, with its `clusterWidth`,
  * `WIDE_CLUSTER`, `WIDE_BASE`, `KEYCAP` and `ZERO_WIDTH_BASE`), copied verbatim: the CLI aligns its rows by that rule,
  * so the pane must measure them the same, and the plugin cannot import core (it is not a workspace package and ships
- * through no registry). The shared width corpus (hooks/width-corpus.ts), read by core's vitest test and by the kit,
- * keeps the two copies equal: a change to one rule fails one of the two suites until the other follows.
+ * through no registry). The shared width corpus (packages/plugin-tests/hooks/width-corpus.ts), read by core's vitest
+ * test and by the kit, keeps the two copies equal: a change to one rule fails one of the two suites until the other
+ * follows.
  */
 const segmenter = new Intl.Segmenter()
 

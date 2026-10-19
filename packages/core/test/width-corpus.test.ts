@@ -1,5 +1,5 @@
 /**
- * The width corpus the plugin's pane is measured against (packages/plugin/hooks/width-corpus.ts): every string's
+ * The width corpus the plugin's pane is measured against (packages/plugin-tests/hooks/width-corpus.ts): every string's
  * listed width is core's `displayWidth`, the rule the CLI aligns its rows with. The plugin's kit test asserts the pane
  * measures the same strings the same, so a drift of either copy of the rule is a red test on one side.
  *
@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { displayWidth } from '../src/text';
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..');
-const CORPUS_PATH = join(ROOT, 'packages/plugin/hooks/width-corpus.ts');
+const CORPUS_PATH = join(ROOT, 'packages/plugin-tests/hooks/width-corpus.ts');
 
 type WidthCase = { what: string; text: string; width: number };
 const load = async (): Promise<WidthCase[]> => {
