@@ -262,10 +262,10 @@ Four arguments are not fixed text. Each comes from one place:
 
 None of them comes from your prompts, your files or the conversation. The plugin passes the arguments as a list, with
 no shell, and writes nothing to the program's input. A band or `/claudinho` run may take 2 seconds, a pane run 5;
-Claude Code stops a run that takes longer. The plugin finds `claudinho` on Claude Code's `PATH` and in the folders
-under [Finding the CLI](#finding-the-cli). Off Windows, the plugin hands the run that `PATH` and no other variable;
-the run keeps every other variable of Claude Code's environment as it is (on Windows, the whole environment as it
-is).
+Claude Code stops a run that takes longer. Off Windows, the plugin hands the run one variable, `PATH`: Claude Code's
+own `PATH`, then the folders under [Finding the CLI](#finding-the-cli), each once. Every other variable of Claude
+Code's environment reaches the run as it is. On Windows the plugin hands nothing, and the run gets Claude Code's
+environment as it is.
 
 Why a program: the CLI owns the football data. It reads ESPN, keeps the local cache and respects the provider's
 limits. The plugin itself makes no network request. What leaves your machine is the CLI's own requests to ESPN (and
