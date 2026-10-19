@@ -43,16 +43,13 @@ maintainer's: never a tag or a publish by an agent.
    The fetch names its refspec, so it refreshes `origin/main` whatever the clone's `remote.origin.fetch` holds. Each
    command runs only when the one before it succeeded. When the chain stops before `git tag` (the fetch or `gh`
    failed, the PR is not merged, or `main` does not hold its merge commit), nothing is tagged: check that
-   `gh pr view <n> --json state` says `MERGED`, then run the block again. When `git tag` itself stops, a local tag
-   of that name exists, and `git rev-parse vX.Y.Z^{commit}` prints its commit: when that is the PR's merge commit
-   (an earlier run's push failed), `git push origin vX.Y.Z`; when it is not, the tag is on the wrong commit:
-   `git tag -d vX.Y.Z`, then run the block again. When `origin` refuses the push because it already holds a tag of
-   that name, the version is already tagged there: `git ls-remote origin refs/tags/vX.Y.Z` names its commit, read
-   before anything else is done. `publish.yml` gates on build, typecheck, test, lint and tag == version, not on the
-   tag being on `main`, so a tag on the branch's head would still publish, with a GitHub Release on a commit `main`
-   does not contain. Then watch the publish workflow on the tag (`.github/workflows/publish.yml`): its two jobs,
-   `publish` and `mcp-registry`, the run found with `gh run list --workflow publish.yml` and read per job with
-   `gh run view <id> --json jobs`; the npm versions, the GitHub Release and the Registry record checked afterwards.
+   `gh pr view <n> --json state` says `MERGED`, then run the block again. When `git tag` or the push fails, stop:
+   this step never deletes or moves a tag; look at any existing tag of that name, local or on `origin`, first.
+   `publish.yml` gates on build, typecheck, test, lint and tag == version, not on the tag being on `main`, so a tag
+   on the branch's head would still publish, with a GitHub Release on a commit `main` does not contain. Then watch
+   the publish workflow on the tag (`.github/workflows/publish.yml`): its two jobs, `publish` and `mcp-registry`,
+   the run found with `gh run list --workflow publish.yml` and read per job with `gh run view <id> --json jobs`; the
+   npm versions, the GitHub Release and the Registry record checked afterwards.
 10. The `.mcpb`/Smithery decision for an MCP-affecting release: the bundle is a snapshot; rebuilt with
     `pnpm -F @claudinho/mcp build:mcpb`, audited at its root, published by the maintainer.
 11. The maintainer's machine on the new version: AGENTS.md "Releasing" step 4, as written there (the CLI with the
