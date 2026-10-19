@@ -29,10 +29,21 @@ maintainer's: never a tag or a publish by an agent.
    with the confirmed SHA held.
 8. The merge is the maintainer's: `gh pr view <n> --json headRefOid` read against the held SHA (a different head
    goes back to the confirmation round), then `gh pr merge <n> --squash --match-head-commit <held sha>`.
-9. The tag is the maintainer's (`git tag vX.Y.Z` on the release commit, pushed by them). Then watch the publish
-   workflow on the tag (`.github/workflows/publish.yml`): its two jobs, `publish` and `mcp-registry`, the run found
-   with `gh run list --workflow publish.yml` and read per job with `gh run view <id> --json jobs`; the npm versions,
-   the GitHub Release and the Registry record checked afterwards.
+9. The tag is the maintainer's, on the commit step 8's squash made on `main`, never on the release branch's head
+   (a bare `git tag vX.Y.Z` tags `HEAD`, the branch's commit in this worktree; the squash commit is absent here
+   until a fetch), pushed by them, as AGENTS.md "Releasing" step 3 gives it:
+
+   ```bash
+   git fetch origin main
+   sha=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)
+   git merge-base --is-ancestor "$sha" origin/main && git tag vX.Y.Z "$sha" && git push origin vX.Y.Z
+   ```
+
+   `publish.yml` checks only that the tag equals the version, so a tag on the branch's head would still publish,
+   with a GitHub Release on a commit `main` does not contain. Then watch the publish workflow on the tag
+   (`.github/workflows/publish.yml`): its two jobs, `publish` and `mcp-registry`, the run found with
+   `gh run list --workflow publish.yml` and read per job with `gh run view <id> --json jobs`; the npm versions, the
+   GitHub Release and the Registry record checked afterwards.
 10. The `.mcpb`/Smithery decision for an MCP-affecting release: the bundle is a snapshot; rebuilt with
     `pnpm -F @claudinho/mcp build:mcpb`, audited at its root, published by the maintainer.
 11. The maintainer's machine on the new version: AGENTS.md "Releasing" step 4, as written there (the CLI with the
@@ -75,6 +86,6 @@ numbered "What I need from you": per item the context, the options, the recommen
 
 ## Ask
 
-- Merge the release PR at the confirmed head and push the tag on the release commit.
+- Merge the release PR at the confirmed head, then push the tag on the merge commit `main` carries (step 9).
 - The `.mcpb`/Smithery re-publish, for an MCP-affecting release.
 - Anything `pnpm release:qa` showed that the maintainer should eyeball before the tag.

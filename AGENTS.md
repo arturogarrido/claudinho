@@ -158,10 +158,24 @@ To cut a release:
 2. `pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint` (CI re-runs these). **For any
    user-facing change, also run `pnpm release:qa`** and eyeball every surface against the live feed
    before tagging (see "Release readiness").
-3. Commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. The workflow gates (build/test/lint +
-   tag==version), then `pnpm -r publish --provenance` ships all three via OIDC (versions already on
-   npm are skipped) and auto-creates the GitHub Release (`gh release create --generate-notes`);
-   a second job, `mcp-registry`, then publishes the tag's record to the official MCP Registry.
+3. Commit, open the release PR and squash-merge it. Then tag the commit the merge made on `main`,
+   never the release branch's own commit: the squash is a NEW commit, absent from a local clone until
+   a fetch, and a bare `git tag vX.Y.Z` tags `HEAD`, which in the release worktree is the branch's
+   commit. With `<n>` the release PR:
+
+   ```bash
+   git fetch origin main
+   sha=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)
+   git merge-base --is-ancestor "$sha" origin/main && git tag vX.Y.Z "$sha" && git push origin vX.Y.Z
+   ```
+
+   The ancestor check fails, and nothing is tagged, when the PR is not merged or `origin/main` does
+   not hold its merge commit yet. The workflow gates (build/test/lint + tag==version; it does not
+   check that the tag is on `main`, so a tag on the branch's commit still publishes, with a GitHub
+   Release on a commit `main` does not contain), then `pnpm -r publish --provenance` ships all three
+   via OIDC (versions already on npm are skipped) and auto-creates the GitHub Release
+   (`gh release create --generate-notes`); a second job, `mcp-registry`, then publishes the tag's
+   record to the official MCP Registry.
 4. Once both jobs are green, update the maintainer's own machine and read each version back. None of
    it updates by default: an npm global install never updates itself, and Claude Code leaves plugin
    auto-update off by default for a third-party marketplace such as this one.
