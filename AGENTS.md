@@ -212,16 +212,19 @@ as a glob and runs nothing):
 ```bash
 gh pr view <n> --json mergeCommit --jq .mergeCommit.oid
 git ls-remote origin refs/tags/vX.Y.Z 'refs/tags/vX.Y.Z^{}'
-git show-ref -d refs/tags/vX.Y.Z
+git show-ref --verify -d refs/tags/vX.Y.Z
 ```
 
 The first prints the merge commit. The second reads the tag on `origin` and the third the local
-one, and both print the same way: nothing when there is no such tag, one line for a lightweight
-tag (the object it names), and two for an annotated one, whose target is the line ending `^{}`
-(the other names the tag object: this repository's annotated `v0.1.0` prints `328ad4e` for the
-object and `748dfd6` for its commit). A tag is "on the merge commit" when that line names it, and
-"elsewhere" when it names anything else. When `gh` or `git ls-remote` fails, nothing is decided:
-read again once it answers. Then the tag on `origin` decides first:
+one. Only a line whose name is exactly `refs/tags/vX.Y.Z` or `refs/tags/vX.Y.Z^{}` counts:
+`git ls-remote` matches a name by its end, so a branch named `refs/heads/refs/tags/vX.Y.Z` prints
+too, and it is not the tag. Counted that way, both print alike: no line when there is no such tag
+(the third then fails with `not a valid ref`), one line for a lightweight tag (the object it
+names), and two for an annotated one, whose target is the line ending `^{}` (the other names the
+tag object: this repository's annotated `v0.1.0` prints `328ad4e` for the object and `748dfd6` for
+its commit). A tag is "on the merge commit" when that line names it, and "elsewhere" when it names
+anything else. When `gh` or `git ls-remote` fails, nothing is decided: read again once it answers.
+Then the tag on `origin` decides first:
 
 - **`origin` has the tag on the merge commit:** the release is tagged, and the step ends here;
   nothing is pushed or run again. The publish workflow runs on that tag (step 4 waits for its two
@@ -229,14 +232,15 @@ read again once it answers. Then the tag on `origin` decides first:
 - **`origin` has the tag elsewhere** (an earlier bare `git tag` was pushed): stop; the step ends
   here. Moving a pushed tag is the maintainer's decision, never an agent's: the tag is public, and
   the workflow may already have published from it (its gates do not check the tag's commit).
-  Deleting the local tag does not get past it: the push is rejected because the tag already exists
-  on `origin`, and in a clone that fetches tags (git's default) and holds the tag's commit (the
-  release worktree holds the release branch's head), the block's fetch brings the tag back first
-  and `git tag` stops. What the maintainer reads before deciding: the publish run on the tag
-  (`gh run list --workflow publish.yml --branch vX.Y.Z`), whether npm has the version, for each of
-  the three packages (`npm view @claudinho/core@X.Y.Z version`, and the same for `cli` and `mcp`:
-  each prints the version, or fails with `E404`; the workflow publishes them one at a time, so one
-  can be on npm while another is not), and the GitHub Release (`gh release view vX.Y.Z`).
+  Deleting the local tag does not get past it. In a clone that fetches tags (git's default) and
+  holds the tag's commit (the release worktree holds the release branch's head), the block's fetch
+  brings the tag back and `git tag` stops; in any other clone `git tag` succeeds and the push is
+  rejected because the tag already exists on `origin`. What the maintainer reads before deciding:
+  the publish run on the tag (`gh run list --workflow publish.yml --branch vX.Y.Z`), whether npm has
+  the version, for each of the three packages (`npm view @claudinho/core@X.Y.Z version`, and the
+  same for `cli` and `mcp`: each prints the version, or fails with `E404`; the workflow publishes
+  them one at a time, so one can be on npm while another is not), and the GitHub Release
+  (`gh release view vX.Y.Z`).
 - **`origin` has no tag, and the local tag is on the merge commit** (the push failed):
   `git push origin refs/tags/vX.Y.Z:refs/tags/vX.Y.Z`.
 - **`origin` has no tag, and the local tag is elsewhere:** `git tag -d vX.Y.Z`, then run the block
