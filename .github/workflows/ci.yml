@@ -178,8 +178,9 @@ jobs:
 
   # The Claude Code plugin (packages/plugin, no package.json and no dependencies): its manifest, the root marketplace
   # file and its hooks module validated, and its tests run by the engine's own kit, under the pinned Claude Code CLI.
+  # The job's name carries no version, so a pin bump leaves the ruleset's required check as it is.
   plugin:
-    name: plugin (validate · test, Claude Code 2.1.296)
+    name: plugin (validate · test)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -187,7 +188,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
-      - run: npm install -g @anthropic-ai/claude-code@2.1.296
+      - run: npm install -g @anthropic-ai/claude-code@2.1.303
       - run: |
           claude plugin validate .
           claude plugin validate packages/plugin

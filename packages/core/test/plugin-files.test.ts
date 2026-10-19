@@ -17,10 +17,12 @@ describe('the plugin folder', () => {
     expect(existsSync(join(ROOT, 'packages/plugin/node_modules'))).toBe(false);
   });
 
-  it('the manifest names the plugin, its types contract and nothing it does not ship', () => {
+  it('the manifest names the plugin and nothing it does not ship; the types contract sits where the validator finds it', () => {
     const m = json('packages/plugin/.claude-plugin/plugin.json');
     expect(m.name).toBe('claudinho');
-    expect(m.types).toBe('./types/index.d.ts');
+    // No `types` key: the plugin directory reports it as an unknown field, and the validator (Claude Code 2.1.300 on)
+    // finds the contract at types/index.d.ts by itself and holds every `$.state` key to it.
+    expect(Object.hasOwn(m, 'types')).toBe(false);
     expect(existsSync(join(ROOT, 'packages/plugin/types/index.d.ts'))).toBe(true);
     const hooks = json('packages/plugin/hooks/hooks.json');
     expect(hooks.modules).toEqual(['./register.tsx']);
