@@ -1,8 +1,6 @@
-<p align="center">
-  <img src=".github/assets/logo.png" alt="The Claudinho logo: a yellow C around a football, above the word claudinho" width="140">
-</p>
-
-<h1 align="center">Claudinho ⚽</h1>
+<h1 align="center">
+  <img src=".github/assets/logo.png" alt="Claudinho" width="140">
+</h1>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@claudinho/cli"><img src="https://img.shields.io/npm/v/@claudinho/cli?label=%40claudinho%2Fcli&color=cb3837" alt="npm: @claudinho/cli"></a>
