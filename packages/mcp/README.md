@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/arturogarrido/claudinho/main/.github/assets/logo.png" alt="The Claudinho logo: a yellow C around a football, above the word claudinho" width="120">
+</p>
+
 # @claudinho/mcp ⚽
 
 **An MCP server that lets your coding agent answer football questions: live scores, fixtures,

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/arturogarrido/claudinho/main/.github/assets/logo.png" alt="The Claudinho logo: a yellow C around a football, above the word claudinho" width="120">
+</p>
+
 # @claudinho/core ⚽
 
 **The engine behind Claudinho: the domain model, the provider adapters (ESPN), live scores

@@ -1,9 +1,15 @@
-# Claudinho ⚽
+<p align="center">
+  <img src=".github/assets/logo.png" alt="The Claudinho logo: a yellow C around a football, above the word claudinho" width="140">
+</p>
 
-[![npm: @claudinho/cli](https://img.shields.io/npm/v/@claudinho/cli?label=%40claudinho%2Fcli&color=cb3837)](https://www.npmjs.com/package/@claudinho/cli)
-[![npm downloads](https://img.shields.io/npm/dm/@claudinho/cli?label=downloads&color=cb3837)](https://www.npmjs.com/package/@claudinho/cli)
-[![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![CI](https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml/badge.svg)](https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml)
+<h1 align="center">Claudinho ⚽</h1>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@claudinho/cli"><img src="https://img.shields.io/npm/v/@claudinho/cli?label=%40claudinho%2Fcli&color=cb3837" alt="npm: @claudinho/cli"></a>
+  <a href="https://www.npmjs.com/package/@claudinho/cli"><img src="https://img.shields.io/npm/dm/@claudinho/cli?label=downloads&color=cb3837" alt="npm downloads"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license: MIT"></a>
+  <a href="https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml"><img src="https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
 
 **Live football scores, fixtures and standings in your terminal and beside your coding agent, for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 12 more.**
 Liga MX, Serie A, the Bundesliga, the Libertadores and the rest are in [the table below](#competitions).
