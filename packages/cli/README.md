@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/arturogarrido/claudinho/main/.github/assets/logo.png" alt="The Claudinho logo: a yellow C around a football, above the word claudinho" width="120">
+</p>
+
 # @claudinho/cli ⚽
 
 **Live football scores, fixtures and standings in your terminal, for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 12 more.**
