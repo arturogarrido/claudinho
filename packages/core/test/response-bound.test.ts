@@ -345,3 +345,64 @@ describe('an error body is released unread (F4)', () => {
     expect(await settles(s)).toBe('closed');
   });
 });
+
+/**
+ * A request's own timer is cleared when it settles. Polymarket used to take a
+ * timeout signal; it now owns a timer (so a failed request can be aborted),
+ * and a timer left pending holds the event loop: a CLI run would wait out the
+ * provider's timeout before it could exit. Counted with fake timers, no clock.
+ */
+describe('a settled request leaves no timer behind', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  const fixture: Match = {
+    id: '760415',
+    stage: 'GROUP',
+    group: 'A',
+    kickoff: '2026-06-11T19:00Z',
+    venue: 'Estadio Banorte',
+    home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+    away: { code: 'RSA', name: 'South Africa', flag: '🇿🇦' },
+    status: 'SCHEDULED',
+    updatedAt: '2026-06-01T00:00Z',
+  };
+
+  for (const [label, answer] of [
+    ['a read body', () => json([])],
+    ['a 404', () => json({}, 404)],
+    ['a 500', () => json({}, 500)],
+  ] as const) {
+    it(`Polymarket: ${label}`, async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      let asked = 0;
+      const provider = new PolymarketProvider({
+        fetchImpl: (async () => {
+          asked += 1;
+          return answer();
+        }) as FetchImpl,
+        now: new Date('2026-06-11T15:00:00Z'),
+      });
+      await provider.findSignal(fixture);
+      expect(asked).toBeGreaterThan(0);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it(`ESPN: ${label}`, async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      let asked = 0;
+      const adapter = new EspnAdapter({
+        enrichGroups: false,
+        fetchImpl: (async () => {
+          asked += 1;
+          return answer();
+        }) as FetchImpl,
+      });
+      await adapter.fetchByDate('2026-09-15').catch(() => undefined);
+      expect(asked).toBeGreaterThan(0);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  }
+});
