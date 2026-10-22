@@ -53,8 +53,12 @@ Requests are anonymous GETs, with no account and no credentials. They do carry t
 lookup needs: the requested date, and the competition slug (from `--competition`,
 `CLAUDINHO_COMPETITION`, an MCP tool's `competition` argument, or the saved choice in
 `config.json`, which selects the ESPN competition path; an alias resolves to its slug offline, and a value that is neither an alias
-nor a lower-case dotted slug (letters, digits and underscores) is refused before any request). They use `redirect: 'error'` (no redirect following), an
-abort-signal timeout, and a declared-content-length cap before parsing. As with any HTTP
+nor a lower-case dotted slug (letters, digits and underscores) is refused before any request). They use `redirect: 'error'` (no redirect following) and an
+abort-signal timeout. A successful response's body is read by one bounded reader
+(`readJsonBounded`, `packages/core/src/adapters/http.ts`), which refuses a declared length over
+the 5 MiB cap without reading it, otherwise counts the bytes it receives and cancels the stream
+at the cap, and parses only a body that stayed under it. An error response's body is not read:
+it is cancelled unread. As with any HTTP
 request the provider also receives normal transport metadata such as your IP address and
 headers; see [PRIVACY.md](PRIVACY.md).
 
@@ -176,13 +180,24 @@ Each property names the negative control that should make it fail. A property te
 been made to fail is pinning nothing, so every one of them was verified to go red with its rule
 reverted.
 
-**Subprocesses.** Two, both with a fixed argument array and never `shell: true`, so no shell
-interpolation is possible. (1) The statusline spawns a detached background refresher via
-`spawn(process.execPath, [...])`. (2) `share --copy` runs a platform clipboard helper
-(`pbcopy`, `clip`, `wl-copy`, `xclip` or `xsel`) resolved through `PATH`, with the snippet
-passed on stdin rather than as an argument. `PATH`-resolved execution is worth knowing about:
-on a machine whose `PATH` an attacker already controls, that name could resolve to their
-binary, though such an attacker can generally run code anyway.
+**Subprocesses.** Three kinds, each started from an argument array; Claudinho writes no shell
+command line. (1) The statusline spawns a detached background refresher via
+`spawn(process.execPath, [entry, '_refresh', '--source', source])` (`packages/cli/src/refresh.ts`),
+never with `shell: true`. (2) `share --copy` runs a platform clipboard helper (`pbcopy`, `clip`,
+`wl-copy`, `xclip` or `xsel`) through `spawnSync` with a fixed argument array, never with
+`shell: true`, resolved through `PATH`, with the snippet passed on stdin rather than as an
+argument. (3) The Claude Code plugin (`packages/plugin/hooks/register.tsx`) runs the installed
+CLI through Claude Code's process API (`$.process.run`) at three sites: `claudinho ambient --json`
+for the band and for the `/claudinho` command, and `claudinho match <id> --json` for the match
+pane. Each run is handed an argument array of fixed words and values taken from the CLI's own
+`ambient --json` answer (a match id, a competition slug) or chosen by the plugin (a column count,
+a language code), empty stdin, and a timeout (2 seconds for `ambient`, 5 for `match`). Unless the host's `OS` variable is
+`Windows_NT`, the plugin hands each run a `PATH` it composes: the host's `PATH`, then, under an
+absolute `HOME`, nvm's version folders and the user-level global-bin folders (Volta, pnpm, Bun,
+npm, `~/.local/bin`), then the system folders; when it is, the plugin hands none, and the host's
+environment applies. `PATH`-resolved execution is worth knowing about: on a machine whose `PATH` or home
+folder an attacker already controls, `claudinho` or a clipboard helper's name could resolve to
+their binary, though such an attacker can generally run code anyway.
 
 ### Things genuinely worth reporting
 
@@ -198,8 +213,9 @@ binary, though such an attacker can generally run code anyway.
 
 ### Known, accepted limitations
 
-- A response body sent **without** a `content-length` header bypasses the size cap (documented
-  at `MAX_RESPONSE_BYTES`); a streaming cap is deferred.
+- The response cap bounds bytes, not parsing time: a body under the 5 MiB cap
+  (`MAX_RESPONSE_BYTES`) is parsed whole once received, and the request's timeout bounds the wait
+  for the body, not the synchronous parse that follows.
 - Claudinho trusts its data providers for factual accuracy. It fails closed rather than
   displaying invented data, but a compromised upstream feed could still show wrong scores.
 - Sanitizing is defence in depth, not a proof. It constrains what reaches output; it cannot
