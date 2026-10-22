@@ -7,7 +7,7 @@
  * declare an outputSchema), and calls the offline `get_team` tool end-to-end.
  * No network. Exits non-zero on any mismatch.
  *
- *   pnpm -F @claudinho/mcp smoke:stdio   (CI runs it on Node 22/24 and the Node-20 floor)
+ *   pnpm -F @claudinho/mcp smoke:stdio   (CI runs it in the build matrix and in the engines-floor job, `runtime-node<N>`)
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
