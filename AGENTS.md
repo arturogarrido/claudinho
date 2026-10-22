@@ -56,7 +56,7 @@ Claudinho surfaces live football for the competition you follow (the World Cup, 
 
 ## Stack
 
-- TypeScript, Node ≥ 20, ES modules
+- TypeScript, Node ≥ 22 (the published packages' floor; building needs tsup 9's range, `^22.18.0 || ^24.11.0 || >=26.0.0`, the root `package.json`'s engines), ES modules
 - pnpm workspaces (monorepo) · tsup (build) · vitest (test) · Biome (lint-only; formatter disabled)
 - MCP: `@modelcontextprotocol/sdk`
 - Gateway (_planned_, not yet built): Cloudflare Workers + KV + D1 (`services/gateway`)
@@ -106,7 +106,7 @@ bundled schema. Hand-edit `biome.json` when necessary; `biome migrate` reformats
   step, `--commit <message-file>` committing only when every step is ok, or, with
   `--allow-offline-audit`, when the audit alone was skipped offline (the commit line says so and
   the exit stays nonzero)); it does not run `pnpm release:qa`, does not fetch the live feed, and
-  does not replace CI's Node 20, Windows and macOS jobs, which `scripts/push-and-watch.sh`
+  does not replace CI's Node 22 floor, Windows and macOS jobs, which `scripts/push-and-watch.sh`
   enforces on the pushed SHA.
   Build first because CLI/MCP checks use core's generated output. Run the relevant CI smoke and
   packaging checks; MCP contract changes also require the
@@ -444,6 +444,7 @@ leave a row behind.
 | CI read on the wrong SHA | `scripts/push-and-watch.sh` | a push while a run is pending; CI read for the pushed SHA, per job | a `gh` call the script does not wrap | PR A |
 | A gate step's exit lost in a pipe | `scripts/gate.sh` | one verdict per step from the command's own status | a command run outside it | #125, PR A |
 | A feature-map line the product does not print | `verify-cli.test.ts` (core) | an offline line whose marker the built binary does not print | the recorded-feed lines | PR B |
+| The engines floor not tested at the floor | `engines-floor.test.ts` (core) | the published packages stating different floors, or a floor not of the form `>=N`; a floor job not named for it, or one whose setup-node steps are not exactly two, Node `N` to build and the floor itself, `N.0.0`, to run | a source-text guard over the shapes the workflows use today: a line naming `actions/setup-node` it did not read a step from, or a version that is not a plain number, is refused; a setup reached without that name, and what the job's commands do with the Node, are outside it | PR #206 (round 1: the pin had no test) |
 | A now-relative rendering reading the wall clock while the request carries a clock | `countdown-clock.test.ts` (mcp), `market-clock.test.ts` (mcp), `market-read-clock.test.ts` (cli, mcp), `market-stale-derived.test.ts` (core), `clock-request.test.ts` (cli), `club-lines-extra.test.ts` (cli); the typecheck step on `clock-required.typecheck.ts` (core) and `fmt-opts-clock.typecheck.ts` (mcp) | a countdown, a lookup span, a default date, a market's relevance, its provider's staleness stamp or a cached signal's staleness, or the World Cup's sign-off that differs from the request's clock; a cached signal fetched after the request's clock served instead of fetched again (a kickoff every wall clock has passed, a request clock before it); a renderer or core's market relevance gate called without a clock compiling | the sites the test files reach (CLI `next`, `today`, `live`, `match`, `markets`, `share`, `follow --team`; MCP `get_today`, `get_live`, `get_match`, `get_next_fixture`, `get_market_signal`, `get_share_snippet` by id and by date); a renderer added without the type; the market caches' TTLs (the wall clock: when an entry expires, across requests) | 0.11.2 (the bump commit, CI red on `main`); the hardening PR (round 1: the market provider's stamp, the sign-off) |
 | A sentence in an agent-facing prompt or skill stating a tool behavior the tool does not keep | none | (the first `correct` pass designs its enforcer or records that none can exist) | seven in one prompt, found one per round | #159 |
 

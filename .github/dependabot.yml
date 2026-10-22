@@ -25,7 +25,7 @@ updates:
       prod-dependencies:
         dependency-type: production
         update-types: [minor, patch]
-    # @types/node tracks the Node version we support (engines floor: Node 20),
+    # @types/node tracks the Node version we support (engines floor: Node 22),
     # not the newest Node major. Skip major-version PRs (e.g. 22 -> 25): a newer
     # major types APIs that may not exist on our floor. Minor/patch still flow.
     #

@@ -21,6 +21,8 @@ League, LALIGA, the Champions League and 12 more. This package powers
 npm i @claudinho/core
 ```
 
+It needs Node.js 22 or later.
+
 ## What's inside
 
 - **Domain model**: `Match` (incl. `venue`/`city`/`country`), `Team` (a display `code`, a `name`, a `flag` generated from a nation's name, absent for a club, and the provider's stable `id` such as `espn:359` when the team came from a live feed), `Stage` (the tournament rounds, `REGULAR` for a league's season, `LEAGUE` for a cup's league phase, `PO` for play-offs, `OTHER` with the provider's own words in `stageLabel`), `Status`, `PunditPick`, `LedgerRow`

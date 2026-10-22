@@ -26,9 +26,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # pnpm 11 (our pinned packageManager) requires Node >= 22.13, so the
-        # toolchain runs on 22/24. The published packages still target Node >= 20
-        # — that floor is verified by the `runtime-node20` job below.
+        # pnpm 11 (our pinned packageManager) requires Node >= 22.13 and tsup 9
+        # >= 22.18, so the toolchain runs on 22/24. The published packages target
+        # Node >= 22 — that floor is verified by the `runtime-node22` job below.
         node: [22, 24]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -57,8 +57,8 @@ jobs:
       - name: Pack contents guard
         run: node scripts/check-pack.mjs
 
-  runtime-node20:
-    name: runtime smoke (Node 20 engines floor)
+  runtime-node22:
+    name: runtime smoke (Node 22 engines floor)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -71,13 +71,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
-      # ...then run the built artifacts under Node 20 to confirm the shipped
-      # code actually works on the version we advertise (engines.node >= 20).
+      # ...then run the built artifacts under Node 22.0.0, the lowest version
+      # we advertise (engines.node >= 22), to confirm the shipped code works there.
       # Uses offline-only commands (bundled schedule, no network).
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 20
-      - name: Exercise the built CLI on Node 20
+          node-version: 22.0.0
+      - name: Exercise the built CLI on Node 22.0.0
         # Nothing is followed on a fresh runner (0.11: no default competition),
         # so the competition is chosen per command, by its alias.
         run: |
@@ -85,12 +85,12 @@ jobs:
           node packages/cli/dist/index.js --competition world-cup next MEX
           node packages/cli/dist/index.js --competition world-cup table A
           node packages/cli/dist/index.js vibe
-          echo "Node 20 runtime OK"
+          echo "Node 22.0.0 runtime OK"
       # The engines floor applies to the MCP server and the statusline too —
       # plain `node` invocations (pnpm itself needs >= 22.13, so no pnpm here).
-      - name: MCP server stdio smoke on Node 20
+      - name: MCP server stdio smoke on Node 22.0.0
         run: node packages/mcp/scripts/stdio-smoke.mjs
-      - name: Statusline smoke on Node 20 (seeded cache, offline)
+      - name: Statusline smoke on Node 22.0.0 (seeded cache, offline)
         run: node scripts/smoke-statusline.mjs
 
   os-matrix:
