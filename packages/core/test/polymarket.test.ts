@@ -848,3 +848,83 @@ describe('PolymarketProvider — the binary shape is checked before mapping', ()
     expect(encoded?.favorite).toMatchObject({ kind: 'home', teamCode: 'MEX' });
   });
 });
+
+/**
+ * Every provider string market selection reads is checked against a bound before any whole-string work (security
+ * review, Oct 21, 2026, F7's deferred P3): a moneyline market's slug and group title (256 UTF-16 units, read by
+ * selection on every moneyline market), a selected leg's description (16,384, read on the three legs alone), and an
+ * outcome entry (64). A field over its bound makes the event `malformed`, never a cached "no market". The live
+ * World Cup markets measured Oct 22, 2026 (100 events, 482 markets) carry at most a 46-unit slug, a 41-unit title,
+ * a 1,232-unit description and a 3-unit label. Observed by the result's kind and by which strings the string
+ * methods ran over, never by timing.
+ */
+describe('PolymarketProvider — provider strings are bounded before selection reads them', () => {
+  const kindOf = async (ev: unknown) =>
+    (await derived(fetchFor(SLUG, ev)).findSignals([match()])).results.get('760415')?.kind;
+  const legs = (home: Record<string, unknown>, extra: unknown[] = []) => [
+    market('mex', 'Mexico', 0.685, home),
+    market('draw', 'Draw (regular time)', 0.205),
+    market('rsa', 'South Africa', 0.105),
+    ...extra,
+  ];
+  /** `mkt`, `n` dashes, then the outcome token: `6 + n` units, the token readable only from the slug's end. */
+  const dashed = (n: number) => `mkt${'-'.repeat(n)}mex`;
+
+  it('a slug of about two million dashes is refused as malformed, and no string method runs over it', async () => {
+    const slug = dashed(2_000_000);
+    const methods = ['split', 'toLowerCase', 'trim', 'lastIndexOf'] as const;
+    const spies = methods.map((m) => vi.spyOn(String.prototype, m));
+    try {
+      expect(await kindOf(event({}, legs({ slug })))).toBe('malformed');
+      for (const [i, spy] of spies.entries()) {
+        const longest = Math.max(0, ...spy.mock.contexts.map((t) => String(t).length));
+        expect(longest, methods[i]).toBeLessThan(1_000_000);
+      }
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
+  it('a slug at its bound still resolves by its last token; one unit over is malformed', async () => {
+    expect(dashed(250)).toHaveLength(256);
+    expect(await kindOf(event({}, legs({ slug: dashed(250), groupItemTitle: 'not the team' })))).toBe('valid');
+    expect(await kindOf(event({}, legs({ slug: dashed(251) })))).toBe('malformed');
+  });
+
+  it('an oversized slug on a moneyline market selection does not pick is refused too: selection reads every one', async () => {
+    const fourth = market('xyz', 'Other', 0.1, { slug: `mkt${'-'.repeat(251)}xyz` });
+    expect(await kindOf(event({}, legs({}, [fourth])))).toBe('malformed');
+  });
+
+  it('a group title at its bound still resolves; one unit over is malformed', async () => {
+    const title = (n: number) => `Mexico${' '.repeat(n - 6)}`;
+    expect(await kindOf(event({}, legs({ slug: 'mkt-zzz', groupItemTitle: title(256) })))).toBe('valid');
+    expect(await kindOf(event({}, legs({ groupItemTitle: title(257) })))).toBe('malformed');
+  });
+
+  it("a leg's description at its bound still resolves; one unit over is malformed; an unselected market's is not read", async () => {
+    const text = (n: number) => `Resolves Yes if Mexico wins in regular time.${' '.repeat(n - 44)}`;
+    expect(text(16_384)).toHaveLength(16_384);
+    expect(await kindOf(event({}, legs({ description: text(16_384) })))).toBe('valid');
+    expect(await kindOf(event({}, legs({ description: text(16_385) })))).toBe('malformed');
+    const fourth = market('xyz', 'Other', 0.1, { description: text(20_000) });
+    expect(await kindOf(event({}, legs({}, [fourth])))).toBe('valid');
+  });
+
+  it('an outcome entry at its bound still resolves; one unit over is malformed', async () => {
+    const pad = (s: string, n: number) => s + ' '.repeat(n - s.length);
+    const at = { outcomes: ['Yes', pad('No', 64)], outcomePrices: ['0.685', pad('0.315', 64)] };
+    expect(await kindOf(event({}, legs(at)))).toBe('valid');
+    expect(await kindOf(event({}, legs({ outcomes: ['Yes', pad('No', 65)], outcomePrices: ['0.685', '0.315'] })))).toBe('malformed');
+    expect(await kindOf(event({}, legs({ outcomes: ['Yes', 'No'], outcomePrices: ['0.685', pad('0.315', 65)] })))).toBe('malformed');
+  });
+
+  it('the valid event resolves to the same signal as before', async () => {
+    const sig = await derived(fetchFor(SLUG, event())).findSignal(match());
+    expect(sig?.outcomes.map((o) => [o.kind, o.teamCode])).toEqual([
+      ['home', 'MEX'],
+      ['draw', undefined],
+      ['away', 'RSA'],
+    ]);
+  });
+});

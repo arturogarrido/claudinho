@@ -39,7 +39,7 @@ Footprint searches use the exact repository, package, and registry identifiers
 
 | Place | Status | Link | Notes |
 | --- | --- | --- | --- |
-| Smithery | Current | [Claudinho on Smithery](https://smithery.ai/servers/arturogarrido/claudinho) | Maintainer-published MCP bundle and listing. It still serves the 0.11.1 bundle: on October 17 Smithery refused updates to existing listings ("Updating servers has been removed"), and its support was contacted. |
+| Smithery | Current, no longer published to | [Claudinho on Smithery](https://smithery.ai/servers/arturogarrido/claudinho) | Maintainer-published MCP bundle (`.mcpb`) and listing. It still serves the 0.11.1 bundle: on October 17 Smithery refused updates to existing listings ("Updating servers has been removed"), and it ends its accounts, API and CLI on October 31, 2026. Claudinho retired the bundle in 0.13.0 (as of October 22). A bundle installed from Smithery stays at the version it was installed with and gets no newer one: switch to `npx -y @claudinho/mcp` or the Claude Code plugin. |
 | Glama | Current | [mcp-claudinho](https://glama.ai/mcp/servers/arturogarrido/claudinho) | A-rated listing. Generated tool metadata has occasionally lagged releases: it showed nine tools from 0.10.0 until it picked up 0.12.0 and its ten tools on October 18. |
 | MCP.so | Current | [Claudinho on MCP.so](https://mcp.so/servers/claudinho) | Maintainer-submitted listing, updated by the maintainer for 0.12.0 on October 18. |
 | cursor.directory | Current | [Claudinho plugin](https://cursor.directory/plugins/claudinho) | Cursor plugin and MCP listing, submitted June 18 and updated by the maintainer for 0.12.0 on October 18. |

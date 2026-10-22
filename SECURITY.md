@@ -22,7 +22,9 @@ branches; fixes ship in a new release rather than as backports.
 |---|---|
 | `@claudinho/cli`, `@claudinho/mcp`, `@claudinho/core` | latest release only |
 
-They run on Node.js 22 or later.
+They run on Node.js 22 or later (`engines.node` is `>=22`). That is a compatibility floor, not a security
+level: run a patched release of the Node 22 or 24 line, because a Node security fix reaches Claudinho only
+through the Node you run it on. Claudinho does not check the Node version at run time.
 
 ## What Claudinho actually does
 
@@ -218,11 +220,13 @@ their binary, though such an attacker can generally run code anyway.
 
 - The response cap bounds bytes, not parsing time: a body under the 5 MiB cap
   (`MAX_RESPONSE_BYTES`) is parsed whole once received, and the request's timeout bounds the wait
-  for the body, not the synchronous parse and market selection that follow. A market's two
-  outcome arrays are checked for two entries, and an encoded one for its length, before any work
-  on their entries; the other strings market selection reads (a market's slug, title and
-  description, an outcome's label) are read whole, so their cost grows with the body, up to the
-  cap.
+  for the body, not the synchronous parse and market selection that follow. Market selection
+  bounds what it reads before any work on it: a market's two outcome arrays are checked for two
+  entries, an encoded one for its length and each entry for its length; a moneyline market's slug
+  and title, and a selected leg's description, are checked against a bound before any split, case
+  fold or regular expression runs over them, and a field over its bound refuses the event as
+  malformed. What is left grows with the body, up to the cap: the JSON parse itself and one pass
+  over the bounded market list.
 - Claudinho trusts its data providers for factual accuracy. It fails closed rather than
   displaying invented data, but a compromised upstream feed could still show wrong scores.
 - Sanitizing is defence in depth, not a proof. It constrains what reaches output; it cannot

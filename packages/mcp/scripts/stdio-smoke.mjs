@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Real-stdio smoke test for the built MCP server — the transport every install
- * channel actually uses (Registry/Smithery/Cursor launch `node dist/index.js`
+ * channel actually uses (Registry/Cursor/Claude Code launch `node dist/index.js`
  * over stdio) but vitest never exercises (it imports handlers in-process).
  * Spawns the dist, performs the MCP handshake, lists tools (every one must
  * declare an outputSchema), and calls the offline `get_team` tool end-to-end.

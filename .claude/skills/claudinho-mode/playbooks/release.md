@@ -11,9 +11,8 @@ maintainer's: never a tag or a publish by an agent.
 1. The batch: what is on main since the last tag, which of it is user-facing and which MCP-affecting (a tool's shape
    or description). A hotfix is live data correctness only (AGENTS.md "Release cadence").
 2. The version bump on the release branch, in the three `package.json` files (`packages/cli/package.json`,
-   `packages/mcp/package.json`, `packages/core/package.json`), `packages/mcp/mcpb/manifest.json` and
-   `packages/mcp/server.json` (AGENTS.md "Releasing"); the guards `manifest.test.ts` and `server.test.ts` fail on a
-   drift.
+   `packages/mcp/package.json`, `packages/core/package.json`) and `packages/mcp/server.json` (AGENTS.md
+   "Releasing"); the guard `server.test.ts` fails on a drift.
 3. Run the gate below and read it step by step.
 4. `pnpm release:qa` after the build, read whole: every surface, both timezones, the four locales, the club pass, the
    tripwires. A SKIP is not a pass; a feed outage is reported as one.
@@ -47,14 +46,13 @@ maintainer's: never a tag or a publish by an agent.
    check that `gh pr view <n> --json state` says `MERGED`, then run the block again. When `git tag` or the push
    fails, stop: this step never deletes or moves a tag on `origin`; read the tags as AGENTS.md "Releasing" gives it
    under "When the tag step stops at `git tag` or the push" (three reads, then one case of five), and do only what
-   its case says. `publish.yml` first fails on a commit `main` does not contain (a tag on the branch's head, or a
-   manual run on any such commit, publishes nothing), then gates on build, typecheck, test, lint and tag == version.
+   its case says. `publish.yml` runs on a `v*` tag push alone; it first fails on a commit `main` does not contain (a
+   tag on the branch's head publishes nothing), then gates on build, typecheck, test, lint and a `refs/tags/v*` ref
+   whose version every package carries. A failed run is retried on the same tag with `gh run rerun <id> --failed`.
    Then watch the publish workflow on the tag (`.github/workflows/publish.yml`): its two jobs, `publish` and
    `mcp-registry`, the run found with `gh run list --workflow publish.yml` and read per job with
    `gh run view <id> --json jobs`; the npm versions, the GitHub Release and the Registry record checked afterwards.
-10. The `.mcpb`/Smithery decision for an MCP-affecting release: the bundle is a snapshot; rebuilt with
-    `pnpm -F @claudinho/mcp build:mcpb`, audited at its root, published by the maintainer.
-11. The maintainer's machine on the new version: AGENTS.md "Releasing" step 4, as written there (the CLI with the
+10. The maintainer's machine on the new version: AGENTS.md "Releasing" step 4, as written there (the CLI with the
     installer that owns the `claudinho` that runs, the plugin with its read-back on `main`'s version and a reload,
     the MCP server's installed copies if any), each installed version read back with the command step 4 names. None
     of it updates by default.
@@ -89,11 +87,10 @@ head's CI per job; every later push is this line.
 
 ## Reply
 
-A status ends Running, Blocked on you (the tag, the publish, the `.mcpb` decision) or Done. The run ends with a
+A status ends Running, Blocked on you (the tag, the publish) or Done. The run ends with a
 numbered "What I need from you": per item the context, the options, the recommendation and the default.
 
 ## Ask
 
 - Merge the release PR at the confirmed head, then push the tag on the merge commit `main` carries (step 9).
-- The `.mcpb`/Smithery re-publish, for an MCP-affecting release.
 - Anything `pnpm release:qa` showed that the maintainer should eyeball before the tag.

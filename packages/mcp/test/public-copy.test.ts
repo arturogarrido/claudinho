@@ -5,11 +5,8 @@
  * text; the footer is core's one disclaimer; the INSTRUCTIONS carry the "next is
  * not now" rule; the `my_team` prompt is the followed competition's (the tools
  * called with no competition argument, the market read only on the World Cup)
- * and relays the fixture's date and state; and the Smithery manifest's tool blurbs are the
- * tools' full descriptions, so the caveats the manifest guard requires stay.
+ * and relays the fixture's date and state.
  */
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { DISCLAIMER as CORE_DISCLAIMER } from '@claudinho/core';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -18,9 +15,6 @@ import { DISCLAIMER } from '../src/format';
 import { buildServer, INSTRUCTIONS } from '../src/server';
 
 const VOICE_EXAMPLE = '— ¡GOOOOL!';
-const manifest = JSON.parse(readFileSync(fileURLToPath(new URL('../mcpb/manifest.json', import.meta.url)), 'utf8')) as {
-  tools: { name: string; description: string }[];
-};
 
 async function withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
   const [clientT, serverT] = InMemoryTransport.createLinkedPair();
@@ -88,17 +82,6 @@ describe("the server's copy", () => {
         expect(text).toMatch(/do not call get_market_signal/);
         expect(text).toMatch(/matchId/);
         noEmDash('my_team', text);
-      }
-    });
-  });
-
-  it("the Smithery manifest's tool blurbs are the tools' full descriptions", async () => {
-    await withClient(async (client) => {
-      const { tools } = await client.listTools();
-      const byName = new Map(tools.map((t) => [t.name, t.description ?? '']));
-      for (const entry of manifest.tools) {
-        expect(byName.has(entry.name), entry.name).toBe(true);
-        expect(entry.description, entry.name).toBe(byName.get(entry.name));
       }
     });
   });

@@ -1,13 +1,14 @@
 # Privacy Policy
 
-**Effective date:** 2026-10-18
+**Effective date:** 2026-10-22
 
 Claudinho is an independent, open-source project: a CLI, a Claude Code / Cursor
-statusline, a score-aware hook, an MCP server (Claude Desktop Extension), and a Claude Code
-plugin that show live football scores in your terminal and coding agent. This policy explains
-what data Claudinho does and does not handle. It applies to the `@claudinho/cli`,
-`@claudinho/mcp`, and `@claudinho/core` packages, the Claude Desktop Extension (`.mcpb`)
-bundle, and the Claude Code plugin (`packages/plugin` in the repository).
+statusline, a score-aware hook, an MCP server, and a Claude Code plugin that show live
+football scores in your terminal and coding agent. This policy explains what data Claudinho
+does and does not handle. It applies to the `@claudinho/cli`, `@claudinho/mcp`, and
+`@claudinho/core` packages, the Claude Code plugin (`packages/plugin` in the repository), and
+copies of the retired Claude Desktop Extension (`.mcpb`) bundle that are still installed: that
+bundle was published only to Smithery, last at 0.11.1, and is no longer built.
 
 ## Short version
 

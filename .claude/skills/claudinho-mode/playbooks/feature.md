@@ -82,6 +82,5 @@ context, the options, the recommendation and the default taken without an answer
 ## Ask
 
 - The acceptance criteria, when the plan gate changed them.
-- Merge the PR at the confirmed head; whether the change is MCP-affecting enough to call for the `.mcpb` decision at
-  the next release.
+- Merge the PR at the confirmed head.
 - Batch it onto the next release (the default, AGENTS.md "Release cadence") or release now.

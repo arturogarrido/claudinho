@@ -65,6 +65,22 @@ const DEFAULT_TIMEOUT_MS = 8000;
 /** Markets read from one event. A real 1X2 has three. */
 const MAX_EVENT_MARKETS = 256;
 
+/**
+ * The provider strings market selection reads, bounded in UTF-16 units (`.length`) before any whole-string work
+ * (a split, a case fold, a trim, a regular expression): a body under the 5 MiB cap could otherwise hand selection a
+ * multi-megabyte slug to split. Each bound is far above the live World Cup markets measured on Oct 22, 2026 (100
+ * events, 482 markets): a slug of at most 46 units, a group title of 41, a description of 1,232, an outcome label
+ * of 3. A field over its bound makes the event malformed, never a cached "no market".
+ */
+const MAX_MARKET_SLUG_CHARS = 256;
+const MAX_MARKET_TITLE_CHARS = 256;
+const MAX_MARKET_DESCRIPTION_CHARS = 16_384;
+/** One entry of a binary pair: a label (`Yes`) or a price (`0.685`). */
+const MAX_BINARY_ENTRY_CHARS = 64;
+
+/** A string over `max` units; anything else (absent, another type) is left to the reader that already handles it. */
+const overBound = (v: unknown, max: number): boolean => typeof v === 'string' && v.length > max;
+
 const DEFAULT_DEADLINE_MS = 15_000;
 const WC_SERIES_SLUG = 'soccer-fifwc';
 const WC_SPORT = 'fifwc';
@@ -451,6 +467,15 @@ export class PolymarketProvider implements MarketProvider {
     const moneyline = marketList.filter(
       (m) => m?.sportsMarketType === 'moneyline',
     );
+    // BOUNDED BEFORE SELECTION. `pickMarket` and `pickDraw` read the slug and the group title of every moneyline
+    // market, so each is checked here, before either is split, case-folded or trimmed.
+    if (
+      moneyline.some(
+        (m) => overBound(m.slug, MAX_MARKET_SLUG_CHARS) || overBound(m.groupItemTitle, MAX_MARKET_TITLE_CHARS),
+      )
+    ) {
+      return malformed('a moneyline market slug or title exceeds its bound');
+    }
     // Each selector answers none / exactly one / ambiguous. Collapsing the last
     // two into `undefined` is what let a payload carrying TWO legs for the same
     // team be recorded as the definitive fact "this fixture has no market" —
@@ -517,6 +542,10 @@ export class PolymarketProvider implements MarketProvider {
       }
       if (market.closed === true || market.active === false) {
         return definitiveNone('an outcome leg is closed or inactive');
+      }
+      // Read on the three legs alone, so bounded here, before the regular expression runs over it.
+      if (overBound(market.description, MAX_MARKET_DESCRIPTION_CHARS)) {
+        return malformed('market description exceeds its bound');
       }
       // Regular-time (90') resolution only — reject extra-time/advance markets.
       if (market.description && NON_REGULAR_TIME.test(market.description)) {
@@ -706,9 +735,13 @@ function deriveEventSlugs(match: Match): string[] {
   return [...new Set(slugs)];
 }
 
-/** Last dash-segment of a market slug — the outcome token (`mex`/`draw`/`rsa`). */
+/**
+ * Last dash-segment of a market slug — the outcome token (`mex`/`draw`/`rsa`). Read from the last `-` alone, never
+ * by splitting the whole slug; the slug's length is bounded before selection calls this.
+ */
 function slugToken(m: GammaMarket): string {
-  return (m.slug ?? '').toLowerCase().split('-').pop() ?? '';
+  const slug = m.slug ?? '';
+  return slug.slice(slug.lastIndexOf('-') + 1).toLowerCase();
 }
 
 /** Is this the draw market? (slug token `draw`, or a "Draw (...)" group title.) */
@@ -812,13 +845,19 @@ const MAX_ENCODED_BINARY_CHARS = 256;
 /**
  * A binary market's pair: an array, or a JSON-encoded string array, of EXACTLY
  * two entries, its length checked before any entry is read; anything else is
- * undefined. An encoded string over `MAX_ENCODED_BINARY_CHARS` is refused unparsed.
+ * undefined. An encoded string over `MAX_ENCODED_BINARY_CHARS` is refused unparsed,
+ * and a pair with an entry over `MAX_BINARY_ENTRY_CHARS` is refused before any
+ * entry is trimmed or case-folded.
  */
 function binaryPair(v: unknown): string[] | undefined {
   // NOT `String(x)`: JSON can hold `{"toString": null}`, and coercing that
   // throws out of a function whose whole contract is that it never does.
   const asText = (x: unknown) => (typeof x === 'string' || typeof x === 'number' ? String(x) : '');
-  if (Array.isArray(v)) return v.length === 2 ? v.map(asText) : undefined;
+  if (Array.isArray(v)) {
+    if (v.length !== 2) return undefined;
+    const pair = v.map(asText);
+    return pair.some((e) => e.length > MAX_BINARY_ENTRY_CHARS) ? undefined : pair;
+  }
   if (typeof v === 'string' && v.length <= MAX_ENCODED_BINARY_CHARS) {
     let parsed: unknown;
     try {

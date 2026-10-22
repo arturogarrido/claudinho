@@ -48,7 +48,7 @@ jobs:
       - run: pnpm lint # Biome (real linter, replaces the former no-op)
 
       # The MCP server over REAL stdio — the transport every install channel
-      # (Registry npx, Smithery, Cursor plugin) actually launches, which the
+      # (Registry npx, Cursor plugin, Claude Code) actually launches, which the
       # vitest suite never exercises (it imports handlers in-process).
       - name: MCP server stdio smoke
         run: pnpm -F @claudinho/mcp smoke:stdio

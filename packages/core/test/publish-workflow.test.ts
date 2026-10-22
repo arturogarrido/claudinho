@@ -234,25 +234,68 @@ describe.skipIf(process.platform === 'win32')('the wait step, run offline under 
 });
 
 /**
- * The publish job publishes only a commit `main` contains, on a tag push and a
- * manual run alike: its first step after the checkout fetches `main` and fails
- * unless `git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main`
- * holds, so a tag on the release branch's own commit (or a manual run on any
- * commit main does not contain) stops before anything is installed with the
- * credential in the job. The rule is ancestry, not a ref's name: a manual run
- * from a branch whose commit main contains passes. The step is run here offline
- * against a repository made for the case, in checkouts made as actions/checkout
- * makes them: on a tag push the tag's commit alone, depth 1; on a manual run
- * from a branch the branch's commit alone, as a local branch of the same name.
+ * The publish workflow runs on a `v*` tag push alone (0.13.0: the manual
+ * trigger is gone; a failed run is re-run on its own tag). The publish job
+ * publishes only a commit `main` contains: its first step after the checkout
+ * fetches `main` and fails unless
+ * `git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main` holds,
+ * so a tag on the release branch's own commit stops before anything is
+ * installed with the credential in the job. The rule is ancestry, not a ref's
+ * name, and it still refuses a run on a branch ref, which no trigger starts
+ * since 0.13.0. Then the tag step refuses any ref that is not `refs/tags/v*`
+ * and any tag that is not every package's version, on every run. Both steps
+ * are run here offline, the ancestry step against a repository made for the
+ * case, in checkouts made as actions/checkout makes them: on a tag push the
+ * tag's commit alone, depth 1; on a branch the branch's commit alone, as a
+ * local branch of the same name.
+ *
+ * The trigger and the `if:` checks are source-text guards (a tripwire, not a
+ * parser): the `on:` block must read, comments and blank lines aside, exactly
+ * `push:` then `tags: ["v*"]`, so any trigger written in any form fails the
+ * test rather than passing it; a condition on the ref is looked for as
+ * `startsWith(github.ref` and `github.ref ==`, the spellings a YAML author
+ * reaches for, not every way to write one.
  */
 const publishJob = yml.slice(yml.indexOf('\n  publish:\n'), yml.indexOf('\n  mcp-registry:'));
 const ON_MAIN = '- name: Verify the commit is on main';
+const TAG_STEP = '- name: Verify tag matches all package versions';
+/** A step's own text in the publish job: its `- name:` line up to the next step's (or the job's end). */
+function publishStep(name: string): string {
+  const at = publishJob.indexOf(name);
+  if (at < 0) return '';
+  const next = publishJob.indexOf('\n      - ', at + name.length);
+  return next < 0 ? publishJob.slice(at) : publishJob.slice(at, next);
+}
+const tagStep = publishStep(TAG_STEP);
 const onMain = (() => {
   const at = publishJob.indexOf(ON_MAIN);
   if (at < 0) return '';
   const next = publishJob.indexOf('\n      - ', at + ON_MAIN.length);
   return next < 0 ? publishJob.slice(at) : publishJob.slice(at, next);
 })();
+
+describe('publish.yml, the trigger', () => {
+  it('runs on a `v*` tag push alone: no manual trigger, no other event', () => {
+    const at = yml.search(/^on:\s*$/m);
+    expect(at, 'an `on:` block').toBeGreaterThanOrEqual(0);
+    const rest = yml.slice(at).split('\n').slice(1);
+    const end = rest.findIndex((l) => /^\S/.test(l));
+    const body = rest
+      .slice(0, end < 0 ? rest.length : end)
+      .map((l) => l.replace(/\s+#.*$/, '').replace(/\s+$/, ''))
+      .filter((l) => l.trim() && !/^\s*#/.test(l));
+    expect(body).toEqual(['  push:', '    tags: ["v*"]']);
+    expect(yml).not.toMatch(/workflow_dispatch/);
+  });
+
+  it('no step or job is conditioned on the ref: the tag step refuses every other ref itself', () => {
+    expect(yml).not.toMatch(/startsWith\(\s*github\.ref\b/);
+    expect(yml).not.toMatch(/github\.ref\s*==/);
+    expect(tagStep, 'the tag step').not.toBe('');
+    expect(tagStep).not.toMatch(/^\s*if:/m);
+    expect(publishJob.indexOf(TAG_STEP)).toBeLessThan(publishJob.indexOf('pnpm -r publish'));
+  });
+});
 
 describe('publish.yml, the publish job', () => {
   it('checks the commit is on main first after the checkout, on every trigger, before the install and the publish', () => {
@@ -313,7 +356,8 @@ describe.skipIf(process.platform === 'win32')('the ancestry step, run offline ag
   const cTag = git(origin, 'rev-parse', 'v1.0.0');
   git(origin, 'tag', 'v0.9.0', b);
   git(origin, 'tag', 'v1.0.1', r);
-  // Branches a manual run can start from: one at r, and one at r NAMED like the remote-tracking ref.
+  // Branch refs (no trigger starts a run on one since 0.13.0; the step refuses them anyway): one at r, and one at r
+  // NAMED like the remote-tracking ref.
   git(origin, 'branch', 'feature', r);
   git(origin, 'branch', 'origin/main', r);
   // The step's PATH holds git alone (the script calls nothing else); bash is spawned by its host path.
@@ -332,7 +376,7 @@ describe.skipIf(process.platform === 'win32')('the ancestry step, run offline ag
     return runIn(work, githubSha, `refs/tags/${tag}`);
   }
 
-  /** A manual run from a branch, as actions/checkout makes it: the branch's commit alone, then a local branch of its name. */
+  /** A run on a branch ref, as actions/checkout makes it: the branch's commit alone, then a local branch of its name. */
   function runOnBranch(branch: string) {
     const work = mkdtempSync(join(root, 'work-'));
     git(work, 'init', '-q');
@@ -383,20 +427,20 @@ describe.skipIf(process.platform === 'win32')('the ancestry step, run offline ag
     expect(out).not.toContain('is on main\n');
   });
 
-  it("a manual run from main passes on main's tip", () => {
+  it("a run on main's branch ref passes on main's tip (the rule is ancestry, not the ref)", () => {
     const { status, out, shallow } = runOnBranch('main');
     expect(shallow).toBe(c);
     expect(status, out).toBe(0);
     expect(out).toContain(`${c} is on main`);
   });
 
-  it('a manual run from a branch whose commit main does not contain fails', () => {
+  it('a run on a branch whose commit main does not contain fails', () => {
     const { status, out } = runOnBranch('feature');
     expect(status, out).toBe(1);
     expect(out).toMatch(new RegExp(`::error::${r} \\(refs/heads/feature\\) is not on main`));
   });
 
-  it('a manual run from a branch NAMED origin/main, at a commit main does not contain, fails', () => {
+  it('a run on a branch NAMED origin/main, at a commit main does not contain, fails', () => {
     const { status, out } = runOnBranch('origin/main');
     expect(status, out).toBe(1);
     expect(out).toMatch(new RegExp(`::error::${r} \\(refs/heads/origin/main\\) is not on main`));
@@ -406,5 +450,62 @@ describe.skipIf(process.platform === 'win32')('the ancestry step, run offline ag
     const { status, out } = runOnMain('v1.0.0', c, `file://${join(root, 'nowhere')}`);
     expect(status, out).not.toBe(0);
     expect(out).not.toContain(`${c} is on main`);
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('the tag step, run offline against three package files', () => {
+  const VERSION = '1.2.3';
+  /** A checkout holding the three published packages at `versions`, and the step's script run in it on `ref`. */
+  function runTag(ref: string, versions: Record<'core' | 'cli' | 'mcp', string> = { core: VERSION, cli: VERSION, mcp: VERSION }) {
+    const work = mkdtempSync(join(tmpdir(), 'tag-step-'));
+    for (const [pkg, version] of Object.entries(versions)) {
+      mkdirSync(join(work, 'packages', pkg), { recursive: true });
+      writeFileSync(join(work, 'packages', pkg, 'package.json'), JSON.stringify({ name: `@claudinho/${pkg}`, version }));
+    }
+    // The step's PATH holds node alone (the script calls nothing else); bash is spawned by its host path.
+    const tools = join(work, 'tools');
+    mkdirSync(tools);
+    symlinkSync(hostTool('node'), join(tools, 'node'));
+    const name = ref.replace(/^refs\/(tags|heads)\//, '');
+    const r = spawnSync(hostTool('bash'), ['-e', '-c', runBlock(tagStep, 'the tag step')], {
+      cwd: work,
+      env: { PATH: tools, HOME: work, GITHUB_REF: ref, GITHUB_REF_NAME: name },
+      encoding: 'utf8',
+      timeout: 20000,
+    });
+    return { status: r.status, out: `${r.stdout}${r.stderr}` };
+  }
+
+  it('is the run block alone, and parses', () => {
+    const script = runBlock(tagStep, 'the tag step');
+    expect(script).not.toMatch(/- name:|- uses:|pnpm -r/);
+    expect(spawnSync('bash', ['-n', '-c', script], { encoding: 'utf8' }).status, script).toBe(0);
+  });
+
+  it('passes on a version tag every package carries', () => {
+    const { status, out } = runTag(`refs/tags/v${VERSION}`);
+    expect(status, out).toBe(0);
+    expect(out).toContain(`all package versions match ${VERSION}`);
+  });
+
+  it('fails on a version tag one package does not carry', () => {
+    const { status, out } = runTag(`refs/tags/v${VERSION}`, { core: VERSION, cli: '1.2.2', mcp: VERSION });
+    expect(status, out).toBe(1);
+    expect(out).toMatch(/::error::packages\/cli version 1\.2\.2 != tag v1\.2\.3/);
+  });
+
+  it('fails on a branch NAMED like the version tag, whose name the version comparison would pass', () => {
+    const { status, out } = runTag(`refs/heads/v${VERSION}`);
+    expect(status, out).toBe(1);
+    expect(out).toContain(`::error::refs/heads/v${VERSION} is not a version tag`);
+    expect(out).not.toContain('all package versions match');
+  });
+
+  it('fails on a branch ref and on a tag that is not a version tag', () => {
+    for (const ref of ['refs/heads/main', 'refs/tags/release-1.2.3']) {
+      const { status, out } = runTag(ref);
+      expect(status, `${ref}: ${out}`).toBe(1);
+      expect(out).toContain(`::error::${ref} is not a version tag`);
+    }
   });
 });

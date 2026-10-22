@@ -28,7 +28,8 @@ npx @claudinho/cli today                     # today's matches, in your timezone
 npx @claudinho/cli live                      # the matches in play right now
 ```
 
-Claudinho needs Node.js 22 or later.
+Claudinho needs Node.js 22 or later. That is the oldest line it runs on, not a security level: run a patched
+release of the Node 22 or 24 line.
 
 Your league instead? `follow premier-league`, `follow liga-mx`, `follow laliga`: every alias is in
 [Competitions](#competitions). Add `--lang es` (or `pt`, `fr`) for Spanish, and pin your team with
@@ -311,12 +312,16 @@ Coverage: [LinuxLinks](https://www.linuxlinks.com/claudinho-follow-world-cup-ter
 [SuperIsland's Live Football extension](https://github.com/shobhit99/SuperIsland/tree/main/Extensions/live-football).
 Listed in the
 [Official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.arturogarrido/claudinho&version=latest),
-[Smithery](https://smithery.ai/servers/arturogarrido/claudinho),
 [Glama](https://glama.ai/mcp/servers/arturogarrido/claudinho),
 [MCP.so](https://mcp.so/servers/claudinho),
 [cursor.directory](https://cursor.directory/plugins/claudinho) and
 [awesome-mcp-servers](https://github.com/punkpeye/awesome-mcp-servers#-sports).
 The full record: [PUBLIC_FOOTPRINT.md](PUBLIC_FOOTPRINT.md).
+
+Smithery stopped accepting updates on October 17, 2026 and ends its accounts, API and CLI on October 31, so
+Claudinho no longer publishes a Claude Desktop bundle (`.mcpb`) there. A bundle installed from Smithery stays at the
+version it was installed with (0.11.1 or older) and gets no newer one: switch to `npx -y @claudinho/mcp` or the
+Claude Code plugin.
 
 ## Why star?
 

@@ -21,7 +21,8 @@ League, LALIGA, the Champions League and 12 more. This package powers
 npm i @claudinho/core
 ```
 
-It needs Node.js 22 or later.
+It needs Node.js 22 or later. That is the oldest line it runs on, not a security level: run a patched release of
+the Node 22 or 24 line.
 
 ## What's inside
 

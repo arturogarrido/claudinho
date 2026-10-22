@@ -136,9 +136,9 @@ const commonArgs = {
 };
 
 // ---- Output schemas (structured tool output) --------------------------------
-// Declared per tool so clients know each tool's return shape (and the .mcpb
-// manifest carries it). Deliberately PERMISSIVE: `.passthrough()` on objects so
-// no field is stripped and forward-compatible additions never break validation;
+// Declared per tool so clients know each tool's return shape. Deliberately
+// PERMISSIVE: `.passthrough()` on objects so no field is stripped and
+// forward-compatible additions never break validation;
 // every branch-specific key is optional. Domain types live in @claudinho/core as
 // TS interfaces, so these are hand-mirrored (kept loose on purpose).
 // `id` is the provider's stable team id (`espn:359`), present on a team read

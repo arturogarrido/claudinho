@@ -27,9 +27,6 @@ describe('the disclaimer constant', () => {
     expect(DISCLAIMER).toBe(SENTENCE);
     expect(FAN_PROJECT).toBe('Independent fan project');
     expect(disclaimerLine()).toBe(SENTENCE);
-    expect(disclaimerLine('Smithery')).toBe(
-      'Not affiliated with FIFA, any confederation, league or club, or Anthropic, nor with Smithery.',
-    );
     expect(disclaimerLine('Cursor')).toBe(
       'Not affiliated with FIFA, any confederation, league or club, or Anthropic, nor with Cursor.',
     );
@@ -59,10 +56,7 @@ describe('the static copies carry the constant', () => {
     }
   });
 
-  it("the Smithery manifest's two descriptions end with its host composition, the Cursor plugin's with its own", () => {
-    const manifest = json('packages/mcp/mcpb/manifest.json');
-    expect(String(manifest.description)).toMatch(new RegExp(`${escapeRe(disclaimerLine('Smithery'))}$`));
-    expect(String(manifest.long_description)).toMatch(new RegExp(`${escapeRe(disclaimerLine('Smithery'))}$`));
+  it("the Cursor plugin's description ends with its host composition", () => {
     const plugin = json('.cursor-plugin/plugin.json');
     expect(String(plugin.description)).toMatch(new RegExp(`${escapeRe(disclaimerLine('Cursor'))}$`));
   });
@@ -102,8 +96,6 @@ describe('the static copies carry the constant', () => {
       ['packages/mcp/package.json', json('packages/mcp/package.json').description],
       ['packages/core/package.json', json('packages/core/package.json').description],
       ['packages/mcp/server.json', json('packages/mcp/server.json').description],
-      ['manifest description', json('packages/mcp/mcpb/manifest.json').description],
-      ['manifest long_description', json('packages/mcp/mcpb/manifest.json').long_description],
       ['.cursor-plugin/plugin.json', json('.cursor-plugin/plugin.json').description],
       ['packages/plugin/.claude-plugin/plugin.json', json('packages/plugin/.claude-plugin/plugin.json').description],
       ['.claude-plugin/marketplace.json', ((json('.claude-plugin/marketplace.json') as { plugins?: Array<{ description?: unknown }> }).plugins ?? [])[0]?.description],
