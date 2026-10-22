@@ -295,7 +295,8 @@ describe.skipIf(process.platform === 'win32')('the ancestry step, run offline ag
   // v1.0.0 is annotated, as this repository's v0.1.0 is: the checkout holds the tag object too.
   git(origin, 'tag', '-a', '-m', 'v1.0.0', 'v1.0.0', c);
   const cTag = git(origin, 'rev-parse', 'v1.0.0');
-  for (const [tag, sha] of [['v0.9.0', b], ['v1.0.1', r]]) git(origin, 'tag', tag, sha);
+  git(origin, 'tag', 'v0.9.0', b);
+  git(origin, 'tag', 'v1.0.1', r);
   // The step's PATH holds git alone (the script calls nothing else); bash is spawned by its host path.
   const tools = join(root, 'tools');
   mkdirSync(tools);
