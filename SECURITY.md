@@ -57,8 +57,8 @@ nor a lower-case dotted slug (letters, digits and underscores) is refused before
 abort-signal timeout. A successful response's body is read by one bounded reader
 (`readJsonBounded`, `packages/core/src/adapters/http.ts`), which refuses a declared length over
 the 5 MiB cap without reading it, otherwise counts the bytes it receives and cancels the stream
-at the cap, and parses only a body that stayed under it. An error response's body is not read:
-it is cancelled unread. As with any HTTP
+at the cap, and parses only a body that stayed under it. A request that ends without its body
+read (an error status, or a body refused or unreadable) is aborted. As with any HTTP
 request the provider also receives normal transport metadata such as your IP address and
 headers; see [PRIVACY.md](PRIVACY.md).
 
@@ -191,12 +191,13 @@ CLI through Claude Code's process API (`$.process.run`) at three sites: `claudin
 for the band and for the `/claudinho` command, and `claudinho match <id> --json` for the match
 pane. Each run is handed an argument array of fixed words and values taken from the CLI's own
 `ambient --json` answer (a match id, a competition slug) or chosen by the plugin (a column count,
-a language code), empty stdin, and a timeout (2 seconds for `ambient`, 5 for `match`). Unless the host's `OS` variable is
-`Windows_NT`, the plugin hands each run a `PATH` it composes: the host's `PATH`, then, under an
-absolute `HOME`, nvm's version folders and the user-level global-bin folders (Volta, pnpm, Bun,
-npm, `~/.local/bin`), then the system folders; when it is, the plugin hands none, and the host's
-environment applies. `PATH`-resolved execution is worth knowing about: on a machine whose `PATH` or home
-folder an attacker already controls, `claudinho` or a clipboard helper's name could resolve to
+a language code), empty stdin, and a timeout (2 seconds for `ambient`, 5 for `match`). Unless
+the host's `OS` variable is `Windows_NT`, the plugin hands each run a `PATH` it composes: the
+host's `PATH`, then folders under `HOME` it may add (nvm's version folders, and the user-level
+global-bin folders of Volta, pnpm, Bun, npm and `~/.local/bin`), then `/opt/homebrew/bin`,
+`/usr/local/bin`, `/usr/bin` and `/bin`; when it is, the plugin hands none, and the host's
+environment applies. `PATH`-resolved execution is worth knowing about: on a machine whose `PATH`, home folder or
+one of the folders above an attacker already controls, `claudinho` or a clipboard helper's name could resolve to
 their binary, though such an attacker can generally run code anyway.
 
 ### Things genuinely worth reporting
@@ -215,7 +216,11 @@ their binary, though such an attacker can generally run code anyway.
 
 - The response cap bounds bytes, not parsing time: a body under the 5 MiB cap
   (`MAX_RESPONSE_BYTES`) is parsed whole once received, and the request's timeout bounds the wait
-  for the body, not the synchronous parse that follows.
+  for the body, not the synchronous parse and market selection that follow. A market's two
+  outcome arrays are checked for two entries, and an encoded one for its length, before any work
+  on their entries; the other strings market selection reads (a market's slug, title and
+  description, an outcome's label) are read whole, so their cost grows with the body, up to the
+  cap.
 - Claudinho trusts its data providers for factual accuracy. It fails closed rather than
   displaying invented data, but a compromised upstream feed could still show wrong scores.
 - Sanitizing is defence in depth, not a proof. It constrains what reaches output; it cannot
