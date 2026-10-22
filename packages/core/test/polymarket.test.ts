@@ -802,6 +802,18 @@ describe('PolymarketProvider — the binary shape is checked before mapping', ()
     expect(labels.reads.n).toBe(0);
   });
 
+  it('an encoded three-entry pair is refused, though its yes and no legs complement', async () => {
+    const ev = event({}, [
+      market('mex', 'Mexico', 0.685, {
+        outcomes: JSON.stringify(['Yes', 'No', 'Maybe']),
+        outcomePrices: JSON.stringify(['0.685', '0.315', '0']),
+      }),
+      market('draw', 'Draw (regular time)', 0.205),
+      market('rsa', 'South Africa', 0.105),
+    ]);
+    expect(await derived(fetchFor(SLUG, ev)).findSignal(match())).toBeUndefined();
+  });
+
   it('an encoded array longer than its bound is never parsed', async () => {
     const long = JSON.stringify(Array.from({ length: 60 }, () => '0.5'));
     expect(long.length).toBeGreaterThan(256);
