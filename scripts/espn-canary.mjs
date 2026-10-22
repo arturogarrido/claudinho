@@ -652,19 +652,27 @@ export async function runCanary({
     const recording = async (input, init) => {
       const entry = { url: String(input), status: undefined, copy: undefined, unread: undefined };
       seen.push(entry);
-      const res = await fetchImpl(input, init);
+      // The adapter ends a request that fails by aborting its signal, and a
+      // real fetch's body follows the signal it was given. The canary reads an
+      // error body itself, after the adapter is done, so its request follows
+      // the adapter's signal only until an error's headers have arrived (a
+      // timeout before them still ends it); an OK body keeps following it,
+      // since the adapter reads its branch of that body under it.
+      const own = new AbortController();
+      const follow = () => own.abort(init?.signal?.reason);
+      if (init?.signal?.aborted) follow();
+      else init?.signal?.addEventListener('abort', follow, { once: true });
+      const res = await fetchImpl(input, { ...init, signal: own.signal });
       // Known from the headers. Whatever happens to the body cannot take it back.
       entry.status = res.status;
       if (!res.ok) {
-        // The adapter releases an error body it is handed (it never reads
-        // one), so the canary hands it none: a body-less response carrying the
-        // status and the REAL headers (`retry-after` still reads), while the
-        // canary keeps the response itself for its own deadline-bounded read
-        // of the provider's message. No clone either: a clone's two branches
-        // only finish cancelling TOGETHER, and a branch nobody reads would hold
-        // the other one's cancel forever.
+        init?.signal?.removeEventListener('abort', follow);
+        // The adapter does not read an error body, so no copy is made: a
+        // clone's two branches only finish cancelling TOGETHER, and a branch
+        // nobody reads would hold the other one's cancel forever. The body is
+        // read from the response itself, after the adapter is done with it.
         entry.unread = res;
-        return { ok: res.ok, status: res.status, statusText: res.statusText, headers: res.headers, body: null };
+        return res;
       }
       if (typeof res.clone === 'function') {
         // The adapter reads its branch to the end or cancels it at the same
