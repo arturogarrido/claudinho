@@ -874,6 +874,10 @@ export class EspnAdapter implements ProviderAdapter {
         e instanceof ProviderError
           ? e
           : new ProviderError(String((e as Error)?.message ?? e), 'http');
+      // A failed request is ended: a response whose body cannot be cancelled
+      // (a 205 hands over `body: null`) must not keep its transfer running.
+      // Aborting a fetch that already settled does nothing.
+      controller.abort();
       this.lastError = pe;
       // Opt-in diagnostics: live incidents were previously undiagnosable (every
       // failure collapsed to a bare `degraded` boolean). stderr only — stdout

@@ -284,46 +284,64 @@ export class PolymarketProvider implements MarketProvider {
     // for an unknown slug, which is the `definitiveNone` below.
     const url = `${base}/events/slug/${encodeURIComponent(slug)}`;
     const doFetch = this.opts.fetchImpl ?? fetch;
-    const res = await doFetch(url, {
-      signal: AbortSignal.timeout(timeoutMs ?? this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-      // Gamma never legitimately redirects; following one would sidestep the
-      // host allow-list (it only validates the base URL), so reject redirects.
-      redirect: 'error',
-      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
-    });
-    // No such event. A real answer about this slug, and cacheable as one.
-    // An error body is never read: release it, so a server that keeps writing
-    // does not hold the connection until the timeout (F4).
-    if (res.status === 404) {
-      discardBody(res);
-      return definitiveNone('slug returns 404');
-    }
-    if (!res.ok) {
-      discardBody(res);
-      throw new Error(`Polymarket request failed: ${res.status} ${res.statusText}`);
-    }
-    // Bounded on the bytes actually consumed, declared or not (audit A11):
-    // the same reader the ESPN adapter uses.
-    let data: unknown;
+    // Our own controller, not a timeout signal: a request that ends in
+    // failure is aborted, so a response whose body cannot be cancelled (a 205
+    // hands over `body: null`) does not keep its transfer running.
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      timeoutMs ?? this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    );
     try {
-      data = await readJsonBounded(res, MAX_RESPONSE_BYTES);
-    } catch (e) {
-      if (e instanceof ResponseTooLargeError) {
-        throw new Error(`Polymarket response too large: ${e.bytes} bytes`);
+      const res = await doFetch(url, {
+        signal: controller.signal,
+        // Gamma never legitimately redirects; following one would sidestep the
+        // host allow-list (it only validates the base URL), so reject redirects.
+        redirect: 'error',
+        headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+      });
+      // No such event. A real answer about this slug, and cacheable as one.
+      // An error body is never read: release it, so a server that keeps writing
+      // does not hold the connection until the timeout (F4), and end the request.
+      if (res.status === 404) {
+        discardBody(res);
+        controller.abort();
+        return definitiveNone('slug returns 404');
       }
+      if (!res.ok) {
+        discardBody(res);
+        throw new Error(`Polymarket request failed: ${res.status} ${res.statusText}`);
+      }
+      // Bounded on the bytes actually consumed, declared or not (audit A11):
+      // the same reader the ESPN adapter uses.
+      let data: unknown;
+      try {
+        data = await readJsonBounded(res, MAX_RESPONSE_BYTES);
+      } catch (e) {
+        if (e instanceof ResponseTooLargeError) {
+          throw new Error(`Polymarket response too large: ${e.bytes} bytes`);
+        }
+        throw e;
+      }
+      // One slug, one event. More than one is an answer we cannot resolve, and
+      // taking `[0]` was picking whichever the API happened to order first.
+      if (Array.isArray(data) && data.length > 1) {
+        return ambiguous('slug returned more than one event');
+      }
+      // An empty array is Gamma's real "no such slug" — a fact, not a shape
+      // problem. Anything else that isn't an object is a body we cannot read.
+      if (Array.isArray(data) && data.length === 0) return definitiveNone('slug returns no event');
+      const event = Array.isArray(data) ? data[0] : data;
+      if (!event || typeof event !== 'object') return malformed('event body is not an object');
+      return valid(event as GammaEvent);
+    } catch (e) {
+      // Every throw ends the request (a non-2xx, a body that could not be read,
+      // one over the cap); aborting a fetch that already settled does nothing.
+      controller.abort();
       throw e;
+    } finally {
+      clearTimeout(timer);
     }
-    // One slug, one event. More than one is an answer we cannot resolve, and
-    // taking `[0]` was picking whichever the API happened to order first.
-    if (Array.isArray(data) && data.length > 1) {
-      return ambiguous('slug returned more than one event');
-    }
-    // An empty array is Gamma's real "no such slug" — a fact, not a shape
-    // problem. Anything else that isn't an object is a body we cannot read.
-    if (Array.isArray(data) && data.length === 0) return definitiveNone('slug returns no event');
-    const event = Array.isArray(data) ? data[0] : data;
-    if (!event || typeof event !== 'object') return malformed('event body is not an object');
-    return valid(event as GammaEvent);
   }
 
   private toSignal(
@@ -408,9 +426,9 @@ export class PolymarketProvider implements MarketProvider {
     if (!Array.isArray(event.markets)) {
       return malformed('event markets is not an array');
     }
-    // BOUNDED BEFORE THE FILTER. The 5MB body cap only covers responses that
-    // declare a length, and production Gamma omits it — so this array was the
-    // one untrusted collection still traversed whole. A real event has 3 legs.
+    // BOUNDED BEFORE THE FILTER. A body under the 5MB cap can still hold a huge
+    // `markets` array, so the list is cut before it is traversed. A real event
+    // has 3 legs.
     // If the list was CUT, "we found no legs" is a statement about our cap, not
     // about the event — and it was being cached as the provider's answer, so a
     // fixture whose legs sat past the cap was negative-cached for the whole TTL.
