@@ -20,7 +20,11 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const yml = readFileSync(fileURLToPath(new URL('../../../.github/workflows/publish.yml', import.meta.url)), 'utf8');
+// Line endings made LF at the read: a Windows checkout gives the workflow CRLF, and every anchor below is a whole line.
+const yml = readFileSync(fileURLToPath(new URL('../../../.github/workflows/publish.yml', import.meta.url)), 'utf8').replace(
+  /\r\n/g,
+  '\n',
+);
 const job = yml.slice(yml.indexOf('mcp-registry:'));
 const WAIT = '- name: Wait for npm to serve the version';
 
@@ -232,15 +236,16 @@ describe.skipIf(process.platform === 'win32')('the wait step, run offline under 
 /**
  * The publish job publishes only a commit `main` contains, on a tag push and a
  * manual run alike: its first step after the checkout fetches `main` and fails
- * unless `git merge-base --is-ancestor "$GITHUB_SHA" origin/main` holds, so a
- * tag on the release branch's own commit (or a run started from a branch) stops
- * before anything is installed with the credential in the job. The step is run
- * here offline against a repository made for the case, in a checkout made as
- * actions/checkout makes one on a tag push: the tag's commit alone, depth 1.
+ * unless `git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main`
+ * holds, so a tag on the release branch's own commit (or a manual run on any
+ * commit main does not contain) stops before anything is installed with the
+ * credential in the job. The rule is ancestry, not a ref's name: a manual run
+ * from a branch whose commit main contains passes. The step is run here offline
+ * against a repository made for the case, in checkouts made as actions/checkout
+ * makes them: on a tag push the tag's commit alone, depth 1; on a manual run
+ * from a branch the branch's commit alone, as a local branch of the same name.
  */
-// Line endings made LF first: a Windows checkout gives the workflow CRLF, and the job's anchors are whole lines.
-const lf = yml.replace(/\r\n/g, '\n');
-const publishJob = lf.slice(lf.indexOf('\n  publish:\n'), lf.indexOf('\n  mcp-registry:'));
+const publishJob = yml.slice(yml.indexOf('\n  publish:\n'), yml.indexOf('\n  mcp-registry:'));
 const ON_MAIN = '- name: Verify the commit is on main';
 const onMain = (() => {
   const at = publishJob.indexOf(ON_MAIN);
@@ -252,11 +257,18 @@ const onMain = (() => {
 describe('publish.yml, the publish job', () => {
   it('checks the commit is on main first after the checkout, on every trigger, before the install and the publish', () => {
     expect(onMain, 'the ancestry step').not.toBe('');
-    // Neither skipped (an `if:`) nor let through on failure (`continue-on-error`): either one publishes an off-main commit.
+    // Not skipped (an `if:` on the step), and its failure not let through: a `continue-on-error`, or a later step
+    // run on failure (`always()`, `failure()`, `cancelled()` in an `if:`), would publish an off-main commit. A
+    // tripwire on those spellings, not every way to write one.
     expect(onMain).not.toMatch(/^\s*if:/m);
-    expect(onMain).not.toMatch(/^\s*continue-on-error:/m);
+    expect(publishJob).not.toMatch(/^\s*continue-on-error:/m);
+    for (const l of publishJob.split('\n').filter((l) => /^\s*if:/.test(l))) {
+      expect(l).not.toMatch(/\b(always|failure|cancelled)\(\)/);
+    }
     expect(onMain).toMatch(/git fetch [^\n]*\+refs\/heads\/main:refs\/remotes\/origin\/main/);
-    expect(onMain).toMatch(/git merge-base --is-ancestor "\$GITHUB_SHA" origin\/main/);
+    // The ref in full: the shorthand `origin/main` resolves to a local branch of that name first.
+    expect(onMain).toMatch(/git merge-base --is-ancestor "\$GITHUB_SHA" refs\/remotes\/origin\/main;/);
+    expect(onMain).not.toMatch(/[\s"]origin\/main\b/);
     const steps = publishJob.split('\n').filter((l) => /^ {6}- (uses|name|run):/.test(l));
     expect(steps[0]).toMatch(/actions\/checkout@/);
     expect(steps[1]).toContain(ON_MAIN);
@@ -301,6 +313,9 @@ describe.skipIf(process.platform === 'win32')('the ancestry step, run offline ag
   const cTag = git(origin, 'rev-parse', 'v1.0.0');
   git(origin, 'tag', 'v0.9.0', b);
   git(origin, 'tag', 'v1.0.1', r);
+  // Branches a manual run can start from: one at r, and one at r NAMED like the remote-tracking ref.
+  git(origin, 'branch', 'feature', r);
+  git(origin, 'branch', 'origin/main', r);
   // The step's PATH holds git alone (the script calls nothing else); bash is spawned by its host path.
   const tools = join(root, 'tools');
   mkdirSync(tools);
@@ -314,10 +329,24 @@ describe.skipIf(process.platform === 'win32')('the ancestry step, run offline ag
     git(work, 'fetch', '-q', '--depth=1', '--no-tags', 'origin', `+refs/tags/${tag}:refs/tags/${tag}`);
     git(work, 'checkout', '-q', '--detach', sha);
     git(work, 'remote', 'set-url', 'origin', url);
+    return runIn(work, githubSha, `refs/tags/${tag}`);
+  }
+
+  /** A manual run from a branch, as actions/checkout makes it: the branch's commit alone, then a local branch of its name. */
+  function runOnBranch(branch: string) {
+    const work = mkdtempSync(join(root, 'work-'));
+    git(work, 'init', '-q');
+    git(work, 'remote', 'add', 'origin', `file://${origin}`);
+    git(work, 'fetch', '-q', '--depth=1', '--no-tags', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`);
+    git(work, 'checkout', '-q', '-B', branch, `refs/remotes/origin/${branch}`);
+    return runIn(work, git(work, 'rev-parse', 'HEAD'), `refs/heads/${branch}`);
+  }
+
+  function runIn(work: string, githubSha: string, githubRef: string) {
     const shallow = readFileSync(join(work, '.git', 'shallow'), 'utf8').trim();
     const r = spawnSync(hostTool('bash'), ['-e', '-c', runBlock(onMain, 'the ancestry step')], {
       cwd: work,
-      env: { ...gitEnv, PATH: tools, GITHUB_SHA: githubSha, GITHUB_REF: `refs/tags/${tag}` },
+      env: { ...gitEnv, PATH: tools, GITHUB_SHA: githubSha, GITHUB_REF: githubRef },
       encoding: 'utf8',
       timeout: 20000,
     });
@@ -352,6 +381,25 @@ describe.skipIf(process.platform === 'win32')('the ancestry step, run offline ag
     expect(status, out).toBe(1);
     expect(out).toMatch(new RegExp(`::error::${r} \\(refs/tags/v1\\.0\\.1\\) is not on main`));
     expect(out).not.toContain('is on main\n');
+  });
+
+  it("a manual run from main passes on main's tip", () => {
+    const { status, out, shallow } = runOnBranch('main');
+    expect(shallow).toBe(c);
+    expect(status, out).toBe(0);
+    expect(out).toContain(`${c} is on main`);
+  });
+
+  it('a manual run from a branch whose commit main does not contain fails', () => {
+    const { status, out } = runOnBranch('feature');
+    expect(status, out).toBe(1);
+    expect(out).toMatch(new RegExp(`::error::${r} \\(refs/heads/feature\\) is not on main`));
+  });
+
+  it('a manual run from a branch NAMED origin/main, at a commit main does not contain, fails', () => {
+    const { status, out } = runOnBranch('origin/main');
+    expect(status, out).toBe(1);
+    expect(out).toMatch(new RegExp(`::error::${r} \\(refs/heads/origin/main\\) is not on main`));
   });
 
   it('fails when main cannot be fetched: no answer is not a pass', () => {

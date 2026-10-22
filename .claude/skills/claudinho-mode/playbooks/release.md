@@ -36,7 +36,7 @@ maintainer's: never a tag or a publish by an agent.
    ```bash
    git fetch origin +refs/heads/main:refs/remotes/origin/main &&
      sha=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid) &&
-     git merge-base --is-ancestor "$sha" origin/main &&
+     git merge-base --is-ancestor "$sha" refs/remotes/origin/main &&
      git tag vX.Y.Z "$sha" && git push origin refs/tags/vX.Y.Z:refs/tags/vX.Y.Z
    ```
 
@@ -47,9 +47,9 @@ maintainer's: never a tag or a publish by an agent.
    check that `gh pr view <n> --json state` says `MERGED`, then run the block again. When `git tag` or the push
    fails, stop: this step never deletes or moves a tag on `origin`; read the tags as AGENTS.md "Releasing" gives it
    under "When the tag step stops at `git tag` or the push" (three reads, then one case of five), and do only what
-   its case says. `publish.yml` first fails on a commit `main` does not contain (a tag on the branch's head publishes
-   nothing), then gates on build, typecheck, test, lint and tag == version. Then watch the publish workflow on the
-   tag (`.github/workflows/publish.yml`): its two jobs, `publish` and
+   its case says. `publish.yml` first fails on a commit `main` does not contain (a tag on the branch's head, or a
+   manual run on any such commit, publishes nothing), then gates on build, typecheck, test, lint and tag == version.
+   Then watch the publish workflow on the tag (`.github/workflows/publish.yml`): its two jobs, `publish` and
    `mcp-registry`, the run found with `gh run list --workflow publish.yml` and read per job with
    `gh run view <id> --json jobs`; the npm versions, the GitHub Release and the Registry record checked afterwards.
 10. The `.mcpb`/Smithery decision for an MCP-affecting release: the bundle is a snapshot; rebuilt with

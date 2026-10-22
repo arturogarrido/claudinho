@@ -37,15 +37,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Publish only a commit `main` contains, on a tag push and a manual run
-      # alike: a tag on the release branch's own commit (or a run started from a
-      # branch) fails here, before anything is installed with the credential in
-      # the job. The checkout is shallow (the commit alone), so the fetch walks
-      # main back until it meets this commit; a commit main does not contain is
-      # never met, and the check fails.
+      # alike: a tag on the release branch's own commit (or a manual run on any
+      # commit main does not contain) fails here, before anything is installed
+      # with the credential in the job. The checkout is shallow (the commit
+      # alone), so the fetch walks main back until it meets this commit; a commit
+      # main does not contain is never met, and the check fails. The ref is named
+      # in full: a manual run from a branch NAMED `origin/main` checks out a
+      # local `refs/heads/origin/main`, which the shorthand would resolve to.
       - name: Verify the commit is on main
         run: |
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+          if git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
             echo "$GITHUB_SHA is on main"
           else
             echo "::error::$GITHUB_SHA ($GITHUB_REF) is not on main; tag the release PR's merge commit (AGENTS.md \"Releasing\" step 3)"

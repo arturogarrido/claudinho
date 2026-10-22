@@ -168,7 +168,7 @@ To cut a release:
    ```bash
    git fetch origin +refs/heads/main:refs/remotes/origin/main &&
      sha=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid) &&
-     git merge-base --is-ancestor "$sha" origin/main &&
+     git merge-base --is-ancestor "$sha" refs/remotes/origin/main &&
      git tag vX.Y.Z "$sha" && git push origin refs/tags/vX.Y.Z:refs/tags/vX.Y.Z
    ```
 
@@ -182,8 +182,8 @@ To cut a release:
    `git tag` or the push fails, stop: this step never deletes or moves a tag on `origin`; read the
    tags as "When the tag step stops at `git tag` or the push" below says, and do only what its case
    says. The workflow first fails on a commit `main` does not contain (a tag on the branch's commit,
-   or a manual run from a branch, publishes nothing), then gates (build, typecheck, test, lint and
-   tag == version), then `pnpm -r publish --provenance` ships all three via OIDC
+   or a manual run on any such commit, publishes nothing), then gates (build, typecheck, test, lint
+   and tag == version), then `pnpm -r publish --provenance` ships all three via OIDC
    (versions already on npm are skipped) and auto-creates the GitHub Release
    (`gh release create --generate-notes`); a second job, `mcp-registry`, then publishes the tag's
    record to the official MCP Registry.
