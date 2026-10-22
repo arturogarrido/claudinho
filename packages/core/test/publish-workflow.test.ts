@@ -252,7 +252,9 @@ const onMain = (() => {
 describe('publish.yml, the publish job', () => {
   it('checks the commit is on main first after the checkout, on every trigger, before the install and the publish', () => {
     expect(onMain, 'the ancestry step').not.toBe('');
+    // Neither skipped (an `if:`) nor let through on failure (`continue-on-error`): either one publishes an off-main commit.
     expect(onMain).not.toMatch(/^\s*if:/m);
+    expect(onMain).not.toMatch(/^\s*continue-on-error:/m);
     expect(onMain).toMatch(/git fetch [^\n]*\+refs\/heads\/main:refs\/remotes\/origin\/main/);
     expect(onMain).toMatch(/git merge-base --is-ancestor "\$GITHUB_SHA" origin\/main/);
     const steps = publishJob.split('\n').filter((l) => /^ {6}- (uses|name|run):/.test(l));

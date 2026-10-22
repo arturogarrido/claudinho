@@ -233,7 +233,7 @@ Then the tag on `origin` decides first:
   jobs). A local tag elsewhere would stop a later `git tag`: `git tag -d vX.Y.Z` removes it.
 - **`origin` has the tag elsewhere** (an earlier bare `git tag` was pushed): stop; the step ends
   here. Moving a pushed tag is the maintainer's decision, never an agent's: the tag is public, and
-  the workflow may already have published from it (it checks only that the tag's commit is on `main`, not that it is the merge commit).
+  the workflow may already have published from it (a commit on `main` passes its check).
   Deleting the local tag does not get past it. In a clone that fetches tags (git's default) and
   holds the tag's commit (the release worktree holds the release branch's head), the block's fetch
   brings the tag back and `git tag` stops; in any other clone `git tag` succeeds and the push is
