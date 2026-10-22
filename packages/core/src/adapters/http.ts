@@ -7,8 +7,9 @@
  * Now the bytes actually consumed from the stream are counted, the read stops
  * and cancels at the cap, and parsing happens only after the whole body has
  * passed the bound. Test doubles without a body stream (`{ ok, json }`) still
- * work: they carry no bytes to bound. It also owns releasing a body nobody
- * reads (`discardBody`): a refused size here, an error status at the adapters.
+ * work: they carry no bytes to bound. A body refused by its declared size is
+ * released unread here (`discardBody`); the adapters end a failed request by
+ * aborting it.
  */
 
 export class ResponseTooLargeError extends Error {
@@ -33,14 +34,13 @@ function isStream(v: unknown): v is ReadableStream<Uint8Array> {
 }
 
 /**
- * Release a body nobody will read (security review F4): an error response, or
- * one refused unread, must not keep its connection open while the provider
- * keeps writing. NOT awaited: the stream's cancel algorithm starts at the call,
+ * Release a body nobody will read (security review F4): one refused unread
+ * must not keep its connection open while the provider keeps writing. NOT awaited: the stream's cancel algorithm starts at the call,
  * and nothing the caller does depends on its settling; a tee'd body's cancel
  * promise settles only once both branches cancel, so awaiting it can hang.
  * Its rejection is swallowed, so the release never throws into the caller.
  */
-export function discardBody(res: Response): void {
+function discardBody(res: Response): void {
   const body = (res as unknown as ResponseLike).body;
   if (isStream(body)) body.cancel().catch(() => {});
 }

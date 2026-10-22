@@ -20,7 +20,7 @@ import {
 } from '../trust/espn';
 import { agreedSeason, parseEspnSeason } from '../trust/season';
 import type { Match, SeasonInfo } from '../types';
-import { discardBody, readJsonBounded, ResponseTooLargeError } from './http';
+import { readJsonBounded, ResponseTooLargeError } from './http';
 import { attachFetchMeta, fetchMeta } from './meta';
 import type { FetchWindowOptions, ProviderAdapter, ProviderCapabilities } from './types';
 
@@ -852,9 +852,9 @@ export class EspnAdapter implements ProviderAdapter {
           pe.retryAfterMs = retryAfterMs(res.headers?.get?.('retry-after'), receiptMs);
           this.arm(receiptMs + pe.retryAfterMs, pe);
         }
-        // Nobody reads an error body: release it, so a provider that answers an
-        // error and keeps writing does not hold the connection (F4).
-        discardBody(res);
+        // Nobody reads an error body: the throw ends the request (the catch
+        // below aborts it), so a provider that answers an error and keeps
+        // writing does not hold the connection (F4).
         throw pe;
       }
       // Bounded on the bytes actually consumed, declared or not (audit A11).
@@ -874,9 +874,9 @@ export class EspnAdapter implements ProviderAdapter {
         e instanceof ProviderError
           ? e
           : new ProviderError(String((e as Error)?.message ?? e), 'http');
-      // A failed request is ended: a response whose body cannot be cancelled
-      // (a 205 hands over `body: null`) must not keep its transfer running.
-      // Aborting a fetch that already settled does nothing.
+      // A failed request is ended, its body unread: an error status, a body
+      // refused or unreadable, and a response whose body cannot be cancelled at
+      // all (a 205 hands over `body: null`). Aborting a settled fetch does nothing.
       controller.abort();
       this.lastError = pe;
       // Opt-in diagnostics: live incidents were previously undiagnosable (every

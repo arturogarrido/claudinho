@@ -24,7 +24,7 @@
  * gate it should fail.
  */
 import { MAX_RESPONSE_BYTES } from '../adapters/espn';
-import { discardBody, readJsonBounded, ResponseTooLargeError } from '../adapters/http';
+import { readJsonBounded, ResponseTooLargeError } from '../adapters/http';
 
 import { shiftUtcDate } from '../time';
 import type { Match } from '../types';
@@ -301,15 +301,14 @@ export class PolymarketProvider implements MarketProvider {
         headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
       });
       // No such event. A real answer about this slug, and cacheable as one.
-      // An error body is never read: release it, so a server that keeps writing
-      // does not hold the connection until the timeout (F4), and end the request.
+      // An error body is never read: the request is ended here (and by the
+      // catch below on a throw), so a server that keeps writing does not hold
+      // the connection until the timeout (F4).
       if (res.status === 404) {
-        discardBody(res);
         controller.abort();
         return definitiveNone('slug returns 404');
       }
       if (!res.ok) {
-        discardBody(res);
         throw new Error(`Polymarket request failed: ${res.status} ${res.statusText}`);
       }
       // Bounded on the bytes actually consumed, declared or not (audit A11):
