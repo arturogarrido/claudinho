@@ -67,16 +67,22 @@ const MAX_EVENT_MARKETS = 256;
 
 /**
  * The provider strings market selection reads, bounded in UTF-16 units (`.length`) before any whole-string work
- * (a split, a case fold, a trim, a regular expression): a body under the 5 MiB cap could otherwise hand selection a
- * multi-megabyte slug to split. Each bound is far above the live World Cup markets measured on Oct 22, 2026 (100
- * events, 482 markets): a slug of at most 46 units, a group title of 41, a description of 1,232, an outcome label
- * of 3. A field over its bound makes the event malformed, never a cached "no market".
+ * (a split, a case fold, a trim, a regular expression, a number or date conversion): a body under the 5 MiB cap
+ * could otherwise hand selection a multi-megabyte slug to split. Each bound is far above the live World Cup series
+ * as measured on Oct 22, 2026 (the larger of two reads, the wider covering 831 events and 36,243 markets): a slug of
+ * at most 46 units, a group title of 47, a market or event id of 7, a description of 1,232, an outcome entry of 3.
+ * A field over its bound makes the event malformed, never a cached "no market". Timestamps are bounded in
+ * `canonicalTimestamp`, the one constructor every path calls.
  */
 const MAX_MARKET_SLUG_CHARS = 256;
 const MAX_MARKET_TITLE_CHARS = 256;
+/** A market's id, and the event's. */
+const MAX_MARKET_ID_CHARS = 256;
 const MAX_MARKET_DESCRIPTION_CHARS = 16_384;
 /** One entry of a binary pair: a label (`Yes`) or a price (`0.685`). */
 const MAX_BINARY_ENTRY_CHARS = 64;
+/** A liquidity string (`120000.5`). */
+const MAX_NUMERIC_CHARS = 64;
 
 /** A string over `max` units; anything else (absent, another type) is left to the reader that already handles it. */
 const overBound = (v: unknown, max: number): boolean => typeof v === 'string' && v.length > max;
@@ -399,6 +405,11 @@ export class PolymarketProvider implements MarketProvider {
     // `soccer-fifwc` and 90/90 active sports events, so this rejects nothing
     // real (it is absent only on non-sports events, which the exact-slug
     // comparison already excludes).
+    // The event's id reaches `safeMarketId`'s grammar when the signal is built: bounded here, with every other
+    // provider string this function reads.
+    if (overBound(event.id, MAX_MARKET_ID_CHARS)) {
+      return malformed('event id exceeds its bound');
+    }
     if (typeof event.slug !== 'string') {
       return malformed('event states no slug');
     }
@@ -468,13 +479,17 @@ export class PolymarketProvider implements MarketProvider {
       (m) => m?.sportsMarketType === 'moneyline',
     );
     // BOUNDED BEFORE SELECTION. `pickMarket` and `pickDraw` read the slug and the group title of every moneyline
-    // market, so each is checked here, before either is split, case-folded or trimmed.
+    // market, and the leg check below its id, so each is checked here, before any is split, case-folded, trimmed
+    // or hashed.
     if (
       moneyline.some(
-        (m) => overBound(m.slug, MAX_MARKET_SLUG_CHARS) || overBound(m.groupItemTitle, MAX_MARKET_TITLE_CHARS),
+        (m) =>
+          overBound(m.slug, MAX_MARKET_SLUG_CHARS) ||
+          overBound(m.groupItemTitle, MAX_MARKET_TITLE_CHARS) ||
+          overBound(m.id, MAX_MARKET_ID_CHARS),
       )
     ) {
-      return malformed('a moneyline market slug or title exceeds its bound');
+      return malformed('a moneyline market slug, title or id exceeds its bound');
     }
     // Each selector answers none / exactly one / ambiguous. Collapsing the last
     // two into `undefined` is what let a payload carrying TWO legs for the same
@@ -543,9 +558,13 @@ export class PolymarketProvider implements MarketProvider {
       if (market.closed === true || market.active === false) {
         return definitiveNone('an outcome leg is closed or inactive');
       }
-      // Read on the three legs alone, so bounded here, before the regular expression runs over it.
-      if (overBound(market.description, MAX_MARKET_DESCRIPTION_CHARS)) {
-        return malformed('market description exceeds its bound');
+      // Read on the three legs alone, so checked here, before the regular expression runs over it: a string, and
+      // within its bound. Any other present value would be coerced to a string of any length by `test`.
+      if (
+        (market.description != null && typeof market.description !== 'string') ||
+        overBound(market.description, MAX_MARKET_DESCRIPTION_CHARS)
+      ) {
+        return malformed('market description is not a string within its bound');
       }
       // Regular-time (90') resolution only — reject extra-time/advance markets.
       if (market.description && NON_REGULAR_TIME.test(market.description)) {
@@ -846,18 +865,19 @@ const MAX_ENCODED_BINARY_CHARS = 256;
  * A binary market's pair: an array, or a JSON-encoded string array, of EXACTLY
  * two entries, its length checked before any entry is read; anything else is
  * undefined. An encoded string over `MAX_ENCODED_BINARY_CHARS` is refused unparsed,
- * and a pair with an entry over `MAX_BINARY_ENTRY_CHARS` is refused before any
- * entry is trimmed or case-folded.
+ * and a pair, in either form, with an entry over `MAX_BINARY_ENTRY_CHARS` is
+ * refused before any entry is trimmed or case-folded.
  */
 function binaryPair(v: unknown): string[] | undefined {
   // NOT `String(x)`: JSON can hold `{"toString": null}`, and coercing that
   // throws out of a function whose whole contract is that it never does.
   const asText = (x: unknown) => (typeof x === 'string' || typeof x === 'number' ? String(x) : '');
-  if (Array.isArray(v)) {
-    if (v.length !== 2) return undefined;
-    const pair = v.map(asText);
+  const pairOf = (a: unknown[]) => {
+    if (a.length !== 2) return undefined;
+    const pair = a.map(asText);
     return pair.some((e) => e.length > MAX_BINARY_ENTRY_CHARS) ? undefined : pair;
-  }
+  };
+  if (Array.isArray(v)) return pairOf(v);
   if (typeof v === 'string' && v.length <= MAX_ENCODED_BINARY_CHARS) {
     let parsed: unknown;
     try {
@@ -865,7 +885,7 @@ function binaryPair(v: unknown): string[] | undefined {
     } catch {
       return undefined;
     }
-    return Array.isArray(parsed) && parsed.length === 2 ? parsed.map(asText) : undefined;
+    return Array.isArray(parsed) ? pairOf(parsed) : undefined;
   }
   return undefined;
 }
@@ -878,7 +898,8 @@ function numberish(v: unknown): number | undefined {
   // path had not, which is the same one-path-of-a-class miss as the rest of
   // this round.
   if (typeof v === 'number') return Number.isFinite(v) && v >= 0 ? v : undefined;
-  if (typeof v === 'string') {
+  // A string over its bound is unreadable before `Number` reads it whole.
+  if (typeof v === 'string' && v.length <= MAX_NUMERIC_CHARS) {
     const n = Number(v);
     return Number.isFinite(n) && n >= 0 ? n : undefined;
   }

@@ -8,7 +8,9 @@ football scores in your terminal and coding agent. This policy explains what dat
 does and does not handle. It applies to the `@claudinho/cli`, `@claudinho/mcp`, and
 `@claudinho/core` packages, the Claude Code plugin (`packages/plugin` in the repository), and
 copies of the retired Claude Desktop Extension (`.mcpb`) bundle that are still installed: that
-bundle was published only to Smithery, last at 0.11.1, and is no longer built.
+bundle was published only to Smithery, last at 0.11.1, and is no longer built. A bundle installed
+from Smithery stays at the version it was installed with and gets no newer one: switch to
+`npx -y @claudinho/mcp` or the Claude Code plugin.
 
 ## Short version
 

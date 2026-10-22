@@ -854,8 +854,8 @@ describe('PolymarketProvider — the binary shape is checked before mapping', ()
  * review, Oct 21, 2026, F7's deferred P3): a moneyline market's slug and group title (256 UTF-16 units, read by
  * selection on every moneyline market), a selected leg's description (16,384, read on the three legs alone), and an
  * outcome entry (64). A field over its bound makes the event `malformed`, never a cached "no market". The live
- * World Cup markets measured Oct 22, 2026 (100 events, 482 markets) carry at most a 46-unit slug, a 41-unit title,
- * a 1,232-unit description and a 3-unit label. Observed by the result's kind and by which strings the string
+ * World Cup series measured Oct 22, 2026 (831 events, 36,243 markets, two reads) carries at most a 46-unit slug, a
+ * 47-unit title, a 1,232-unit description and a 3-unit outcome entry. Observed by the result's kind and by which strings the string
  * methods ran over, never by timing.
  */
 describe('PolymarketProvider — provider strings are bounded before selection reads them', () => {
@@ -911,12 +911,61 @@ describe('PolymarketProvider — provider strings are bounded before selection r
     expect(await kindOf(event({}, legs({}, [fourth])))).toBe('valid');
   });
 
-  it('an outcome entry at its bound still resolves; one unit over is malformed', async () => {
+  it('an outcome entry at its bound still resolves; one unit over is malformed, as an array and as an encoded pair', async () => {
     const pad = (s: string, n: number) => s + ' '.repeat(n - s.length);
-    const at = { outcomes: ['Yes', pad('No', 64)], outcomePrices: ['0.685', pad('0.315', 64)] };
-    expect(await kindOf(event({}, legs(at)))).toBe('valid');
-    expect(await kindOf(event({}, legs({ outcomes: ['Yes', pad('No', 65)], outcomePrices: ['0.685', '0.315'] })))).toBe('malformed');
-    expect(await kindOf(event({}, legs({ outcomes: ['Yes', 'No'], outcomePrices: ['0.685', pad('0.315', 65)] })))).toBe('malformed');
+    for (const form of [(p: string[]) => p, (p: string[]) => JSON.stringify(p)]) {
+      const at = { outcomes: form(['Yes', pad('No', 64)]), outcomePrices: form(['0.685', pad('0.315', 64)]) };
+      expect(await kindOf(event({}, legs(at))), String(at.outcomes).slice(0, 12)).toBe('valid');
+      const label = { outcomes: form(['Yes', pad('No', 65)]), outcomePrices: form(['0.685', '0.315']) };
+      expect(await kindOf(event({}, legs(label))), typeof label.outcomes).toBe('malformed');
+      const price = { outcomes: form(['Yes', 'No']), outcomePrices: form(['0.685', pad('0.315', 65)]) };
+      expect(await kindOf(event({}, legs(price))), typeof price.outcomes).toBe('malformed');
+    }
+  });
+
+  it("a leg's description that is not a string is malformed before the regular expression reads it, never a cached negative", async () => {
+    const test = vi.spyOn(RegExp.prototype, 'test');
+    try {
+      for (const description of [[`${' '.repeat(2_000_000)}penalt`], { text: 'extra time' }, 7]) {
+        test.mockClear();
+        expect(await kindOf(event({}, legs({ description }))), typeof description).toBe('malformed');
+        const longest = Math.max(0, ...test.mock.calls.map(([s]) => String(s).length));
+        expect(longest, 'no regular expression ran over the coerced description').toBeLessThan(1_000_000);
+      }
+    } finally {
+      test.mockRestore();
+    }
+  });
+
+  it('a timestamp over its bound is not an instant: the event start, the event and the market update', async () => {
+    const long = `2026-06-11T19:00:00.${'0'.repeat(2_000_000)}Z`;
+    const parse = vi.spyOn(Date, 'parse');
+    try {
+      expect(await kindOf(event({ startTime: long }))).toBe('malformed');
+      expect(await kindOf(event({}, legs({ updatedAt: long })))).toBe('malformed');
+      // The event's own stamp is optional (a leg's is required), so an unreadable one is ignored, never parsed whole.
+      expect(await kindOf(event({ updatedAt: long }))).toBe('valid');
+      expect(parse.mock.calls.every(([s]) => String(s).length < 1_000_000), 'Date.parse never ran over it').toBe(true);
+    } finally {
+      parse.mockRestore();
+    }
+  });
+
+  it('a liquidity string over its bound is unreadable, so the event is malformed; at the bound it reads', async () => {
+    const pad = (n: number) => `${' '.repeat(n - 6)}120000`;
+    expect(await kindOf(event({}, legs({ liquidityNum: pad(64) })))).toBe('valid');
+    expect(await kindOf(event({}, legs({ liquidityNum: pad(65) })))).toBe('malformed');
+    expect(await kindOf(event({}, legs({ liquidityNum: undefined, liquidity: pad(65) })))).toBe('malformed');
+  });
+
+  it('a market id over its bound is malformed, with the slug and the title: every string selection reads', async () => {
+    expect(await kindOf(event({}, legs({ id: '7'.repeat(256) })))).toBe('valid');
+    expect(await kindOf(event({}, legs({ id: '7'.repeat(257) })))).toBe('malformed');
+  });
+
+  it("the event's id over its bound is malformed before its grammar reads it; at the bound the derived slug stands in", async () => {
+    expect(await kindOf(event({ id: '7'.repeat(256) }))).toBe('valid');
+    expect(await kindOf(event({ id: '7'.repeat(257) }))).toBe('malformed');
   });
 
   it('the valid event resolves to the same signal as before', async () => {

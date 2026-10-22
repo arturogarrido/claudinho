@@ -253,8 +253,12 @@ describe.skipIf(process.platform === 'win32')('the wait step, run offline under 
  * parser): the `on:` block must read, comments and blank lines aside, exactly
  * `push:` then `tags: ["v*"]`, so any trigger written in any form fails the
  * test rather than passing it; a condition on the ref is looked for as
- * `startsWith(github.ref` and `github.ref ==`, the spellings a YAML author
- * reaches for, not every way to write one.
+ * `startsWith(github.ref` and `github.ref ==` anywhere, and as any
+ * `github.<...>ref` (`ref_type`, `ref_name`, `event.ref`, `base_ref`,
+ * `head_ref`) on an `if:` line, a step's first key (`- if:`) included: the
+ * spellings a YAML author reaches for, not every way to write one (a condition
+ * on an environment variable, or an `if:` whose expression continues on the
+ * next line, is outside it).
  */
 const publishJob = yml.slice(yml.indexOf('\n  publish:\n'), yml.indexOf('\n  mcp-registry:'));
 const ON_MAIN = '- name: Verify the commit is on main';
@@ -291,6 +295,7 @@ describe('publish.yml, the trigger', () => {
   it('no step or job is conditioned on the ref: the tag step refuses every other ref itself', () => {
     expect(yml).not.toMatch(/startsWith\(\s*github\.ref\b/);
     expect(yml).not.toMatch(/github\.ref\s*==/);
+    for (const l of yml.split('\n').filter((l) => /^\s*(-\s*)?if:/.test(l))) expect(l).not.toMatch(/github\.[\w.]*ref/);
     expect(tagStep, 'the tag step').not.toBe('');
     expect(tagStep).not.toMatch(/^\s*if:/m);
     expect(publishJob.indexOf(TAG_STEP)).toBeLessThan(publishJob.indexOf('pnpm -r publish'));

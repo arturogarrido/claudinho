@@ -85,4 +85,20 @@ describe("the server's copy", () => {
       }
     });
   });
+
+  it('get_live does not read an outage as "nothing in play", and get_today scopes "none read" by the schedule (0.11 2.1d)', async () => {
+    // Found in review: "an empty list means nothing is in play unless partial says the read was not whole" forgot the
+    // failed read (`degraded`, no `partial`). "None read" holds where no bundled schedule was merged, which is not
+    // "elsewhere than the World Cup" (its slug answering for another edition merges none either).
+    await withClient(async (client) => {
+      const { tools } = await client.listTools();
+      const live = tools.find((t) => t.name === 'get_live')?.description ?? '';
+      expect(live).toMatch(/partial/);
+      expect(live).toMatch(/degraded/);
+      expect(live).not.toMatch(/nothing is in play unless partial says/);
+      const today = tools.find((t) => t.name === 'get_today')?.description ?? '';
+      expect(today).toMatch(/no bundled schedule/);
+      expect(today).not.toMatch(/elsewhere/);
+    });
+  });
 });
