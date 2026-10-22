@@ -27,7 +27,7 @@
 #   diff-check        git diff --check <base>
 # It does not run `pnpm release:qa` and asks no live feed (its one network
 # request is the audit's, to the npm registry), and it does not replace CI's
-# Node 20, Windows and macOS jobs: the push watch (scripts/push-and-watch.sh)
+# Node 22 floor, Windows and macOS jobs: the push watch (scripts/push-and-watch.sh)
 # reads those on the pushed SHA.
 #
 # The audit step asks the registry. When it fails and its log carries a

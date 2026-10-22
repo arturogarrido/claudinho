@@ -16,7 +16,7 @@ signup, no account.
 
 ## Install
 
-The server runs with `npx`, so it needs Node.js 20 or later.
+The server runs with `npx`, so it needs Node.js 22 or later.
 
 **Claude Code**
 ```bash

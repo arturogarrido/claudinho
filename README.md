@@ -28,7 +28,7 @@ npx @claudinho/cli today                     # today's matches, in your timezone
 npx @claudinho/cli live                      # the matches in play right now
 ```
 
-Claudinho needs Node.js 20 or later.
+Claudinho needs Node.js 22 or later.
 
 Your league instead? `follow premier-league`, `follow liga-mx`, `follow laliga`: every alias is in
 [Competitions](#competitions). Add `--lang es` (or `pt`, `fr`) for Spanish, and pin your team with

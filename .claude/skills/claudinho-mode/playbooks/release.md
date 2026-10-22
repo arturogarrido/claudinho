@@ -66,7 +66,7 @@ bash scripts/gate.sh
 ```
 
 Every step's verdict read on the bumped tree; the gate does not run `pnpm release:qa` (step 4) and does not replace
-CI's Node 20, Windows and macOS jobs (the push watch).
+CI's Node 22 floor, Windows and macOS jobs (the push watch).
 
 ## Push
 

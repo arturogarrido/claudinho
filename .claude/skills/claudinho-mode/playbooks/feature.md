@@ -47,7 +47,7 @@ bash scripts/gate.sh
 ```
 
 Read every step's verdict line; a FAIL carries its log's tail, `audit SKIP (offline)` is not a pass. The gate runs
-neither `pnpm release:qa` nor CI's Node 20, Windows and macOS jobs: the first is step 8, the second the push watch.
+neither `pnpm release:qa` nor CI's Node 22 floor, Windows and macOS jobs: the first is step 8, the second the push watch.
 
 ## Push
 

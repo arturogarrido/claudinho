@@ -56,7 +56,7 @@ Claudinho surfaces live football for the competition you follow (the World Cup, 
 
 ## Stack
 
-- TypeScript, Node ≥ 20, ES modules
+- TypeScript, Node ≥ 22 (the published packages' floor; building needs tsup 9's range, `^22.18.0 || ^24.11.0 || >=26.0.0`, the root `package.json`'s engines), ES modules
 - pnpm workspaces (monorepo) · tsup (build) · vitest (test) · Biome (lint-only; formatter disabled)
 - MCP: `@modelcontextprotocol/sdk`
 - Gateway (_planned_, not yet built): Cloudflare Workers + KV + D1 (`services/gateway`)
@@ -106,7 +106,7 @@ bundled schema. Hand-edit `biome.json` when necessary; `biome migrate` reformats
   step, `--commit <message-file>` committing only when every step is ok, or, with
   `--allow-offline-audit`, when the audit alone was skipped offline (the commit line says so and
   the exit stays nonzero)); it does not run `pnpm release:qa`, does not fetch the live feed, and
-  does not replace CI's Node 20, Windows and macOS jobs, which `scripts/push-and-watch.sh`
+  does not replace CI's Node 22 floor, Windows and macOS jobs, which `scripts/push-and-watch.sh`
   enforces on the pushed SHA.
   Build first because CLI/MCP checks use core's generated output. Run the relevant CI smoke and
   packaging checks; MCP contract changes also require the

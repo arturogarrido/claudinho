@@ -560,12 +560,12 @@ export function workflowSteps(yaml: string): Step[] {
 
 /** The excluded commands, each by its WHOLE text: a command added inside one of these blocks matches none. */
 const INSTALL = 'pnpm install --frozen-lockfile';
-const NODE20_CLI_BLOCK = [
+const NODE22_CLI_BLOCK = [
   'node --version',
   'node packages/cli/dist/index.js --competition world-cup next MEX',
   'node packages/cli/dist/index.js --competition world-cup table A',
   'node packages/cli/dist/index.js vibe',
-  'echo "Node 20 runtime OK"',
+  'echo "Node 22.0.0 runtime OK"',
 ].join('\n');
 const OS_MATRIX_CLI_BLOCK = [
   'node packages/cli/dist/index.js --competition world-cup next MEX',
@@ -582,8 +582,8 @@ const EXCLUDED: Array<{ match: (s: Step) => boolean; reason: string }> = [
   { match: (s) => s.kind === 'run' && s.job === 'plugin' && s.text === PLUGIN_INSTALL, reason: 'the plugin job installs the pinned Claude Code CLI, which the gate does not have' },
   { match: (s) => s.kind === 'run' && s.job === 'plugin' && s.text === PLUGIN_CHECKS, reason: "the plugin job's validate and test run under that CLI; the gate cannot run them" },
   { match: (s) => s.kind === 'run' && s.text === INSTALL, reason: 'the install: already installed locally' },
-  { match: (s) => s.kind === 'run' && s.job === 'runtime-node20' && s.text === NODE20_CLI_BLOCK, reason: 'the Node-20 job runs the BUILT local CLI on the engines floor: a Node-version check the gate cannot make' },
-  { match: (s) => s.kind === 'run' && s.job === 'runtime-node20' && s.text === STDIO_SMOKE_FILE, reason: 'the same stdio smoke file under Node 20; the gate runs it through the package script under the developer Node' },
+  { match: (s) => s.kind === 'run' && s.job === 'runtime-node22' && s.text === NODE22_CLI_BLOCK, reason: 'the Node-22 floor job runs the BUILT local CLI on the engines floor: a Node-version check the gate cannot make' },
+  { match: (s) => s.kind === 'run' && s.job === 'runtime-node22' && s.text === STDIO_SMOKE_FILE, reason: 'the same stdio smoke file under Node 22.0.0; the gate runs it through the package script under the developer Node' },
   { match: (s) => s.kind === 'run' && s.job === 'os-matrix' && s.text === OS_MATRIX_CLI_BLOCK, reason: 'the offline CLI smoke on the Windows and macOS runners' },
   { match: (s) => s.kind === 'run' && s.job === 'os-matrix' && s.text === STDIO_SMOKE_FILE, reason: 'the same stdio smoke file on the Windows and macOS runners' },
   { match: (s) => s.kind === 'run' && s.text === AUDIT_ALL, reason: 'non-blocking by its own `|| true`' },
@@ -617,7 +617,7 @@ describe.skipIf(process.platform === 'win32')('the tripwire: every gating step o
 
   it('reads every job, both run forms and the uses steps', () => {
     const steps = workflowSteps(yaml);
-    expect(new Set(steps.map((s) => s.job))).toEqual(new Set(['build-test', 'runtime-node20', 'os-matrix', 'coverage', 'audit', 'plugin']));
+    expect(new Set(steps.map((s) => s.job))).toEqual(new Set(['build-test', 'runtime-node22', 'os-matrix', 'coverage', 'audit', 'plugin']));
     expect(steps.some((s) => s.text.includes('\n')), 'a run: | block was read whole').toBe(true);
     expect(steps.find((s) => s.text.startsWith('pnpm lint'))?.text, 'the trailing comment is stripped').toBe('pnpm lint');
     expect(steps.some((s) => s.kind === 'uses')).toBe(true);
@@ -696,12 +696,12 @@ describe.skipIf(process.platform === 'win32')('the tripwire: every gating step o
     expect(() => workflowSteps(withJob('extra-shallow', '      - run: |\n        node --version\n        pnpm run extra-check\n'))).toThrow(/extra-shallow/);
   });
 
-  it('a command added inside the Node-20 CLI block is unclassified: an exclusion matches the whole block, never a substring', () => {
-    const marker = '          echo "Node 20 runtime OK"\n';
+  it('a command added inside the Node-22 floor CLI block is unclassified: an exclusion matches the whole block, never a substring', () => {
+    const marker = '          echo "Node 22.0.0 runtime OK"\n';
     expect(yaml).toContain(marker);
     const edited = yaml.replace(marker, `${marker}          pnpm run extra-check\n`);
     const { unclassified } = classify(workflowSteps(edited), gateList());
-    expect(unclassified.map((s) => `${s.job}: ${s.text.split('\n').pop()}`)).toEqual(['runtime-node20: pnpm run extra-check']);
+    expect(unclassified.map((s) => `${s.job}: ${s.text.split('\n').pop()}`)).toEqual(['runtime-node22: pnpm run extra-check']);
   });
 
   it('a command added inside the os-matrix CLI block is unclassified too', () => {

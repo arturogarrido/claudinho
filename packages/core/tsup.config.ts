@@ -14,7 +14,7 @@ export default defineConfig({
   clean: true,
   // No sourcemap in the published package (smaller tarball; sources on GitHub).
   sourcemap: false,
-  target: 'node20',
+  target: 'node22',
   // The static schedule JSON is inlined into the bundle so it ships with the package.
   loader: { '.json': 'json' },
   define: { 'process.env.CLAUDINHO_VERSION': JSON.stringify(version) },

@@ -22,6 +22,8 @@ branches; fixes ship in a new release rather than as backports.
 |---|---|
 | `@claudinho/cli`, `@claudinho/mcp`, `@claudinho/core` | latest release only |
 
+They run on Node.js 22 or later.
+
 ## What Claudinho actually does
 
 Most of what people expect to be risky here isn't present, so this section is offered to save

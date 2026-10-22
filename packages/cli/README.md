@@ -11,7 +11,7 @@ No API key, no signup, no account.
 
 ## Install
 
-It needs Node.js 20 or later.
+It needs Node.js 22 or later.
 
 ```bash
 npm i -g @claudinho/cli
