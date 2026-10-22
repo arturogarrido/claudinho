@@ -101,19 +101,23 @@ describe('publish.yml, the mcp-registry job', () => {
  * others run to the two-second deadline, about ten seconds for the file.
  */
 function stepScript(): string {
-  const at = wait.indexOf('run: |');
-  expect(at, 'the wait step has a run block').toBeGreaterThan(0);
-  const lines = wait.slice(at + 'run: |'.length).split('\n').slice(1);
+  return runBlock(wait, 'the wait step')
+    .replace('DEADLINE=$((SECONDS + 480))', 'DEADLINE=$((SECONDS + 2))')
+    .replace(/\bsleep 20\b/g, 'sleep 0.2');
+}
+
+/** A step's `run: |` block, de-indented: its lines up to the first non-blank one indented less than its first. */
+function runBlock(step: string, what: string): string {
+  const at = step.indexOf('run: |');
+  expect(at, `${what} has a run block`).toBeGreaterThan(0);
+  const lines = step.slice(at + 'run: |'.length).split('\n').slice(1);
   const indent = /^(\s*)\S/.exec(lines.find((l) => l.trim()) ?? '')?.[1] ?? '';
   const block: string[] = [];
   for (const l of lines) {
     if (l.trim() && !l.startsWith(indent)) break;
     block.push(l.slice(indent.length));
   }
-  return block
-    .join('\n')
-    .replace('DEADLINE=$((SECONDS + 480))', 'DEADLINE=$((SECONDS + 2))')
-    .replace(/\bsleep 20\b/g, 'sleep 0.2');
+  return block.join('\n');
 }
 
 /** Where the host keeps a tool, so the step's PATH can hold that tool and nothing else. */
@@ -222,5 +226,132 @@ describe.skipIf(process.platform === 'win32')('the wait step, run offline under 
     expect(status, out).toBe(1);
     expect(notYet(out).length).toBeGreaterThanOrEqual(1);
     for (const l of notYet(out)) expect(l).toMatch(/\(exit 127\); retrying/);
+  });
+});
+
+/**
+ * The publish job publishes only a commit `main` contains, on a tag push and a
+ * manual run alike: its first step after the checkout fetches `main` and fails
+ * unless `git merge-base --is-ancestor "$GITHUB_SHA" origin/main` holds, so a
+ * tag on the release branch's own commit (or a run started from a branch) stops
+ * before anything is installed with the credential in the job. The step is run
+ * here offline against a repository made for the case, in a checkout made as
+ * actions/checkout makes one on a tag push: the tag's commit alone, depth 1.
+ */
+const publishJob = yml.slice(yml.indexOf('\n  publish:\n'), yml.indexOf('\n  mcp-registry:'));
+const ON_MAIN = '- name: Verify the commit is on main';
+const onMain = (() => {
+  const at = publishJob.indexOf(ON_MAIN);
+  if (at < 0) return '';
+  const next = publishJob.indexOf('\n      - ', at + ON_MAIN.length);
+  return next < 0 ? publishJob.slice(at) : publishJob.slice(at, next);
+})();
+
+describe('publish.yml, the publish job', () => {
+  it('checks the commit is on main first after the checkout, on every trigger, before the install and the publish', () => {
+    expect(onMain, 'the ancestry step').not.toBe('');
+    expect(onMain).not.toMatch(/^\s*if:/m);
+    expect(onMain).toMatch(/git fetch [^\n]*\+refs\/heads\/main:refs\/remotes\/origin\/main/);
+    expect(onMain).toMatch(/git merge-base --is-ancestor "\$GITHUB_SHA" origin\/main/);
+    const steps = publishJob.split('\n').filter((l) => /^ {6}- (uses|name|run):/.test(l));
+    expect(steps[0]).toMatch(/actions\/checkout@/);
+    expect(steps[1]).toContain(ON_MAIN);
+    const at = publishJob.indexOf(ON_MAIN);
+    for (const later of ['pnpm install', 'Verify tag matches all package versions', 'pnpm -r publish']) {
+      expect(publishJob.indexOf(later), later).toBeGreaterThan(at);
+    }
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('the ancestry step, run offline against a local origin', () => {
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync('git', args, { cwd, env: gitEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const root = mkdtempSync(join(tmpdir(), 'on-main-'));
+  const gitEnv = {
+    ...process.env,
+    HOME: root,
+    GIT_CONFIG_GLOBAL: join(root, 'gitconfig'),
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_AUTHOR_NAME: 't',
+    GIT_AUTHOR_EMAIL: 't@example.invalid',
+    GIT_COMMITTER_NAME: 't',
+    GIT_COMMITTER_EMAIL: 't@example.invalid',
+  };
+  writeFileSync(gitEnv.GIT_CONFIG_GLOBAL, '');
+  // origin: main is a -> b -> c; the release branch's own commit r sits on b.
+  const origin = join(root, 'origin');
+  mkdirSync(origin);
+  git(origin, 'init', '-q', '-b', 'main');
+  const commit = (msg: string) => {
+    git(origin, 'commit', '-q', '--allow-empty', '-m', msg);
+    return git(origin, 'rev-parse', 'HEAD');
+  };
+  commit('a');
+  const b = commit('b');
+  git(origin, 'checkout', '-q', '-b', 'release');
+  const r = commit('r');
+  git(origin, 'checkout', '-q', 'main');
+  const c = commit('c');
+  // v1.0.0 is annotated, as this repository's v0.1.0 is: the checkout holds the tag object too.
+  git(origin, 'tag', '-a', '-m', 'v1.0.0', 'v1.0.0', c);
+  const cTag = git(origin, 'rev-parse', 'v1.0.0');
+  for (const [tag, sha] of [['v0.9.0', b], ['v1.0.1', r]]) git(origin, 'tag', tag, sha);
+  // The step's PATH holds git alone (the script calls nothing else); bash is spawned by its host path.
+  const tools = join(root, 'tools');
+  mkdirSync(tools);
+  symlinkSync(hostTool('git'), join(tools, 'git'));
+
+  /** A checkout of one tag as actions/checkout makes it (depth 1, no other refs), then the step's script in it. */
+  function runOnMain(tag: string, sha: string, url = `file://${origin}`, githubSha = sha) {
+    const work = mkdtempSync(join(root, 'work-'));
+    git(work, 'init', '-q');
+    git(work, 'remote', 'add', 'origin', `file://${origin}`);
+    git(work, 'fetch', '-q', '--depth=1', '--no-tags', 'origin', `+refs/tags/${tag}:refs/tags/${tag}`);
+    git(work, 'checkout', '-q', '--detach', sha);
+    git(work, 'remote', 'set-url', 'origin', url);
+    const shallow = readFileSync(join(work, '.git', 'shallow'), 'utf8').trim();
+    const r = spawnSync(hostTool('bash'), ['-e', '-c', runBlock(onMain, 'the ancestry step')], {
+      cwd: work,
+      env: { ...gitEnv, PATH: tools, GITHUB_SHA: githubSha, GITHUB_REF: `refs/tags/${tag}` },
+      encoding: 'utf8',
+      timeout: 20000,
+    });
+    return { status: r.status, out: `${r.stdout}${r.stderr}`, shallow };
+  }
+
+  it('is the run block alone, and parses', () => {
+    const script = runBlock(onMain, 'the ancestry step');
+    expect(script).not.toMatch(/- name:|- uses:|pnpm/);
+    expect(spawnSync('bash', ['-n', '-c', script], { encoding: 'utf8' }).status, script).toBe(0);
+  });
+
+  it("passes on main's tip, an annotated tag, whether GITHUB_SHA names the commit or the tag object", () => {
+    expect(cTag, 'v1.0.0 is a tag object').not.toBe(c);
+    for (const githubSha of [c, cTag]) {
+      const { status, out, shallow } = runOnMain('v1.0.0', c, `file://${origin}`, githubSha);
+      expect(shallow, 'the checkout is the commit alone').toBe(c);
+      expect(status, out).toBe(0);
+      expect(out).toContain(`${githubSha} is on main`);
+    }
+  });
+
+  it('passes on a commit main contains below its tip (main moved on after the tag), from a depth-1 checkout', () => {
+    const { status, out, shallow } = runOnMain('v0.9.0', b);
+    expect(shallow).toBe(b);
+    expect(status, out).toBe(0);
+    expect(out).toContain(`${b} is on main`);
+  });
+
+  it("fails on the release branch's own commit, whose parent main contains", () => {
+    const { status, out } = runOnMain('v1.0.1', r);
+    expect(status, out).toBe(1);
+    expect(out).toMatch(new RegExp(`::error::${r} \\(refs/tags/v1\\.0\\.1\\) is not on main`));
+    expect(out).not.toContain('is on main\n');
+  });
+
+  it('fails when main cannot be fetched: no answer is not a pass', () => {
+    const { status, out } = runOnMain('v1.0.0', c, `file://${join(root, 'nowhere')}`);
+    expect(status, out).not.toBe(0);
+    expect(out).not.toContain(`${c} is on main`);
   });
 });

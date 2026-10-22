@@ -181,9 +181,9 @@ To cut a release:
    tagged: check that `gh pr view <n> --json state` says `MERGED`, then run the block again. When
    `git tag` or the push fails, stop: this step never deletes or moves a tag on `origin`; read the
    tags as "When the tag step stops at `git tag` or the push" below says, and do only what its case
-   says. The workflow gates (build, typecheck, test, lint and tag == version; it does not check that
-   the tag is on `main`, so a tag on the branch's commit still publishes, with a GitHub Release on a
-   commit `main` does not contain), then `pnpm -r publish --provenance` ships all three via OIDC
+   says. The workflow first fails on a commit `main` does not contain (a tag on the branch's commit,
+   or a manual run from a branch, publishes nothing), then gates (build, typecheck, test, lint and
+   tag == version), then `pnpm -r publish --provenance` ships all three via OIDC
    (versions already on npm are skipped) and auto-creates the GitHub Release
    (`gh release create --generate-notes`); a second job, `mcp-registry`, then publishes the tag's
    record to the official MCP Registry.
@@ -233,7 +233,7 @@ Then the tag on `origin` decides first:
   jobs). A local tag elsewhere would stop a later `git tag`: `git tag -d vX.Y.Z` removes it.
 - **`origin` has the tag elsewhere** (an earlier bare `git tag` was pushed): stop; the step ends
   here. Moving a pushed tag is the maintainer's decision, never an agent's: the tag is public, and
-  the workflow may already have published from it (its gates do not check the tag's commit).
+  the workflow may already have published from it (it checks only that the tag's commit is on `main`, not that it is the merge commit).
   Deleting the local tag does not get past it. In a clone that fetches tags (git's default) and
   holds the tag's commit (the release worktree holds the release branch's head), the block's fetch
   brings the tag back and `git tag` stops; in any other clone `git tag` succeeds and the push is
