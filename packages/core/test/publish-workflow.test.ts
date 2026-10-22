@@ -238,7 +238,9 @@ describe.skipIf(process.platform === 'win32')('the wait step, run offline under 
  * here offline against a repository made for the case, in a checkout made as
  * actions/checkout makes one on a tag push: the tag's commit alone, depth 1.
  */
-const publishJob = yml.slice(yml.indexOf('\n  publish:\n'), yml.indexOf('\n  mcp-registry:'));
+// Line endings made LF first: a Windows checkout gives the workflow CRLF, and the job's anchors are whole lines.
+const lf = yml.replace(/\r\n/g, '\n');
+const publishJob = lf.slice(lf.indexOf('\n  publish:\n'), lf.indexOf('\n  mcp-registry:'));
 const ON_MAIN = '- name: Verify the commit is on main';
 const onMain = (() => {
   const at = publishJob.indexOf(ON_MAIN);
