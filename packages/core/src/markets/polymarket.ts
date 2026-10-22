@@ -335,7 +335,8 @@ export class PolymarketProvider implements MarketProvider {
       return valid(event as GammaEvent);
     } catch (e) {
       // Every throw ends the request (a non-2xx, a body that could not be read,
-      // one over the cap); aborting a fetch that already settled does nothing.
+      // one over the cap): the abort reaches a response that has already
+      // arrived and ends its transfer.
       controller.abort();
       throw e;
     } finally {
