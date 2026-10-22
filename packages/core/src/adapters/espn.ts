@@ -852,6 +852,9 @@ export class EspnAdapter implements ProviderAdapter {
           pe.retryAfterMs = retryAfterMs(res.headers?.get?.('retry-after'), receiptMs);
           this.arm(receiptMs + pe.retryAfterMs, pe);
         }
+        // Nobody reads an error body: the throw ends the request (the catch
+        // below aborts it), so a provider that answers an error and keeps
+        // writing does not hold the connection (F4).
         throw pe;
       }
       // Bounded on the bytes actually consumed, declared or not (audit A11).
@@ -871,6 +874,12 @@ export class EspnAdapter implements ProviderAdapter {
         e instanceof ProviderError
           ? e
           : new ProviderError(String((e as Error)?.message ?? e), 'http');
+      // A failed request is ended, its body unread: an error status, a body
+      // refused or unreadable, and a response whose body cannot be cancelled at
+      // all (a 205 hands over `body: null`). The abort reaches a response that
+      // has already arrived and ends its transfer; a body read to its end is
+      // past its reach, and nothing else of the request remains.
+      controller.abort();
       this.lastError = pe;
       // Opt-in diagnostics: live incidents were previously undiagnosable (every
       // failure collapsed to a bare `degraded` boolean). stderr only — stdout

@@ -284,40 +284,64 @@ export class PolymarketProvider implements MarketProvider {
     // for an unknown slug, which is the `definitiveNone` below.
     const url = `${base}/events/slug/${encodeURIComponent(slug)}`;
     const doFetch = this.opts.fetchImpl ?? fetch;
-    const res = await doFetch(url, {
-      signal: AbortSignal.timeout(timeoutMs ?? this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-      // Gamma never legitimately redirects; following one would sidestep the
-      // host allow-list (it only validates the base URL), so reject redirects.
-      redirect: 'error',
-      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
-    });
-    // No such event. A real answer about this slug, and cacheable as one.
-    if (res.status === 404) return definitiveNone('slug returns 404');
-    if (!res.ok) {
-      throw new Error(`Polymarket request failed: ${res.status} ${res.statusText}`);
-    }
-    // Bounded on the bytes actually consumed, declared or not (audit A11):
-    // the same reader the ESPN adapter uses.
-    let data: unknown;
+    // Our own controller, not a timeout signal: a request that ends in
+    // failure is aborted, so a response whose body cannot be cancelled (a 205
+    // hands over `body: null`) does not keep its transfer running.
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      timeoutMs ?? this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    );
     try {
-      data = await readJsonBounded(res, MAX_RESPONSE_BYTES);
-    } catch (e) {
-      if (e instanceof ResponseTooLargeError) {
-        throw new Error(`Polymarket response too large: ${e.bytes} bytes`);
+      const res = await doFetch(url, {
+        signal: controller.signal,
+        // Gamma never legitimately redirects; following one would sidestep the
+        // host allow-list (it only validates the base URL), so reject redirects.
+        redirect: 'error',
+        headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+      });
+      // No such event. A real answer about this slug, and cacheable as one.
+      // An error body is never read: the request is ended here (and by the
+      // catch below on a throw), so a server that keeps writing does not hold
+      // the connection until the timeout (F4).
+      if (res.status === 404) {
+        controller.abort();
+        return definitiveNone('slug returns 404');
       }
+      if (!res.ok) {
+        throw new Error(`Polymarket request failed: ${res.status} ${res.statusText}`);
+      }
+      // Bounded on the bytes actually consumed, declared or not (audit A11):
+      // the same reader the ESPN adapter uses.
+      let data: unknown;
+      try {
+        data = await readJsonBounded(res, MAX_RESPONSE_BYTES);
+      } catch (e) {
+        if (e instanceof ResponseTooLargeError) {
+          throw new Error(`Polymarket response too large: ${e.bytes} bytes`);
+        }
+        throw e;
+      }
+      // One slug, one event. More than one is an answer we cannot resolve, and
+      // taking `[0]` was picking whichever the API happened to order first.
+      if (Array.isArray(data) && data.length > 1) {
+        return ambiguous('slug returned more than one event');
+      }
+      // An empty array is Gamma's real "no such slug" — a fact, not a shape
+      // problem. Anything else that isn't an object is a body we cannot read.
+      if (Array.isArray(data) && data.length === 0) return definitiveNone('slug returns no event');
+      const event = Array.isArray(data) ? data[0] : data;
+      if (!event || typeof event !== 'object') return malformed('event body is not an object');
+      return valid(event as GammaEvent);
+    } catch (e) {
+      // Every throw ends the request (a non-2xx, a body that could not be read,
+      // one over the cap): the abort reaches a response that has already
+      // arrived and ends its transfer.
+      controller.abort();
       throw e;
+    } finally {
+      clearTimeout(timer);
     }
-    // One slug, one event. More than one is an answer we cannot resolve, and
-    // taking `[0]` was picking whichever the API happened to order first.
-    if (Array.isArray(data) && data.length > 1) {
-      return ambiguous('slug returned more than one event');
-    }
-    // An empty array is Gamma's real "no such slug" — a fact, not a shape
-    // problem. Anything else that isn't an object is a body we cannot read.
-    if (Array.isArray(data) && data.length === 0) return definitiveNone('slug returns no event');
-    const event = Array.isArray(data) ? data[0] : data;
-    if (!event || typeof event !== 'object') return malformed('event body is not an object');
-    return valid(event as GammaEvent);
   }
 
   private toSignal(
@@ -402,9 +426,9 @@ export class PolymarketProvider implements MarketProvider {
     if (!Array.isArray(event.markets)) {
       return malformed('event markets is not an array');
     }
-    // BOUNDED BEFORE THE FILTER. The 5MB body cap only covers responses that
-    // declare a length, and production Gamma omits it — so this array was the
-    // one untrusted collection still traversed whole. A real event has 3 legs.
+    // BOUNDED BEFORE THE FILTER. A body under the 5MB cap can still hold a huge
+    // `markets` array, so the list is cut before it is traversed. A real event
+    // has 3 legs.
     // If the list was CUT, "we found no legs" is a statement about our cap, not
     // about the event — and it was being cached as the provider's answer, so a
     // fixture whose legs sat past the cap was negative-cached for the whole TTL.
@@ -753,14 +777,17 @@ function assertAllowedHost(base: string): void {
  * Returns undefined for a market that isn't a clean priced Yes/No.
  */
 function yesPrice(market: GammaMarket): number | undefined {
-  const labels = parseJsonArray(market.outcomes).map((l) => l.trim().toLowerCase());
-  // `Number('')` is 0, and `parseJsonArray` renders anything unreadable (null,
-  // an object) as ''. So a malformed price silently became a valid-looking 0%
+  // The SHAPE first: exactly two entries, checked before any element is read,
+  // so an oversized array costs nothing (F7).
+  const rawLabels = binaryPair(market.outcomes);
+  const raw = binaryPair(market.outcomePrices);
+  if (rawLabels === undefined || raw === undefined) return undefined;
+  const labels = rawLabels.map((l) => l.trim().toLowerCase());
+  // `Number('')` is 0, and `binaryPair` renders an unreadable entry (null, an
+  // object) as ''. So a malformed price silently became a valid-looking 0%
   // rather than being refused. Require a real numeric literal.
-  const raw = parseJsonArray(market.outcomePrices);
   if (raw.some((v) => v.trim() === '' || !Number.isFinite(Number(v)))) return undefined;
   const prices = raw.map((v) => Number(v));
-  if (labels.length !== 2 || prices.length !== 2) return undefined;
   // The WHOLE binary shape, not just the slot we want. Validating only the
   // 'Yes' leg accepted `["Yes","Maybe"]` — which is not a Yes/No market, so its
   // "Yes" price is not the probability of the outcome we are labelling — and
@@ -779,21 +806,29 @@ function yesPrice(market: GammaMarket): number | undefined {
   return (yes as number) > 0 ? (yes as number) : undefined;
 }
 
-/** Parse a value that may be an array or a JSON-encoded string array. */
-function parseJsonArray(v: unknown): string[] {
+/** A real encoded pair is about 20 units (`["0.685","0.315"]`); a longer string is not parsed. */
+const MAX_ENCODED_BINARY_CHARS = 256;
+
+/**
+ * A binary market's pair: an array, or a JSON-encoded string array, of EXACTLY
+ * two entries, its length checked before any entry is read; anything else is
+ * undefined. An encoded string over `MAX_ENCODED_BINARY_CHARS` is refused unparsed.
+ */
+function binaryPair(v: unknown): string[] | undefined {
   // NOT `String(x)`: JSON can hold `{"toString": null}`, and coercing that
   // throws out of a function whose whole contract is that it never does.
   const asText = (x: unknown) => (typeof x === 'string' || typeof x === 'number' ? String(x) : '');
-  if (Array.isArray(v)) return v.map(asText);
-  if (typeof v === 'string') {
+  if (Array.isArray(v)) return v.length === 2 ? v.map(asText) : undefined;
+  if (typeof v === 'string' && v.length <= MAX_ENCODED_BINARY_CHARS) {
+    let parsed: unknown;
     try {
-      const parsed: unknown = JSON.parse(v);
-      return Array.isArray(parsed) ? parsed.map(asText) : [];
+      parsed = JSON.parse(v);
     } catch {
-      return [];
+      return undefined;
     }
+    return Array.isArray(parsed) && parsed.length === 2 ? parsed.map(asText) : undefined;
   }
-  return [];
+  return undefined;
 }
 
 /** Coerce a number or numeric string to a finite number, else undefined. */

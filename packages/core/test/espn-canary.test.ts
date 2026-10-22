@@ -16,6 +16,8 @@
  * No network here: every case injects a fetch.
  */
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
@@ -323,6 +325,54 @@ describe('the provider refuses a request form', () => {
     expect(row?.detail).toContain('400');
     expect(row?.detail).toContain('Failed to get events endpoint.');
     expect(row?.url).toMatch(/dates=20261010/);
+  });
+
+  it('through a real fetch, the message survives the adapter ending its request', async () => {
+    // The adapter aborts a request that fails (an error status included), and
+    // a real fetch's body follows that signal; the doubles above ignore it.
+    // A loopback server answers what the handler says, so the canary reads the
+    // error body from a real stream after the adapter has thrown.
+    const server = createServer((req, res) => {
+      void Promise.resolve(DAY_REJECTED(`https://site.api.espn.com${req.url ?? '/'}`)).then(async (answer) => {
+        const body = await answer.text();
+        res.writeHead(answer.status, { 'content-type': 'application/json' });
+        res.end(body);
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const fetchImpl = ((input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(String(input));
+        return fetch(`http://127.0.0.1:${port}${url.pathname}${url.search}`, init);
+      }) as typeof fetch;
+      const r = await runCanary({ core, competitions: ['eng.1'], fetchImpl, now: NOW, pauseMs: 0 });
+      const row = r.rows.find((x) => x.request === 'day');
+      expect(row?.verdict).toBe('rejected');
+      expect(row?.detail).toContain('HTTP 400: Failed to get events endpoint.');
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("the request follows the adapter's signal for an OK body, and lets go of it once an error's headers arrive", async () => {
+    // What the canary hands the fetch, per URL: the adapter aborts a request
+    // that fails, so a read it could not parse must end the canary's request
+    // too (else a stalled OK body outlives the adapter's timeout), while an
+    // error's request is the canary's own once its headers are in.
+    const signals = new Map<string, AbortSignal>();
+    const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.signal) signals.set(url, init.signal);
+      if (/dates=20261010(&|$)/.test(url)) return REFUSED();
+      if (/dates=20261011(&|$)/.test(url)) return new Response('{not json', { status: 200 });
+      return healthy(url);
+    }) as typeof fetch;
+    await runCanary({ core, competitions: ['eng.1'], fetchImpl, now: NOW, pauseMs: 0 });
+    const of = (re: RegExp) => [...signals].find(([url]) => re.test(url))?.[1];
+    expect(of(/dates=20261011(&|$)/)?.aborted).toBe(true);
+    expect(of(/dates=20261010(&|$)/)?.aborted).toBe(false);
   });
 
   it('the form refused on Oct 2 2026 (a date range) is no longer asked, so refusing it turns nothing red', async () => {

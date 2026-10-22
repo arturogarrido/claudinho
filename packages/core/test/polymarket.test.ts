@@ -754,3 +754,97 @@ describe('PolymarketProvider — ambiguity at the live boundary', () => {
     expect(await derived(fetchFor(SLUG, bad)).findSignal(match())).toBeUndefined();
   });
 });
+
+/**
+ * A binary market's shape is checked on the RAW value, before any work on its
+ * elements (security review, Oct 21, 2026, F7). The two-entry check ran after
+ * both arrays were mapped and every encoded string was parsed whole, so a
+ * market endpoint serving a two-million-entry array (still under the 5 MiB
+ * body cap) cost a full pass over it for a leg that was refused anyway.
+ * Observed by counting element reads and parse calls, never by timing.
+ */
+describe('PolymarketProvider — the binary shape is checked before mapping', () => {
+  /** An array of `n` copies of `fill`, counting reads of its elements. */
+  function counted(n: number, fill: string) {
+    const reads = { n: 0 };
+    const target = Array.from({ length: n }, () => fill);
+    const proxy = new Proxy(target, {
+      get(t, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) reads.n += 1;
+        return Reflect.get(t, key, receiver);
+      },
+    });
+    return { proxy, reads };
+  }
+
+  it('an outcomes array of 1,000 entries is refused without reading one of them', async () => {
+    const labels = counted(1000, 'Yes');
+    const prices = counted(1000, '0.5');
+    const ev = event({}, [
+      market('mex', 'Mexico', 0.685, { outcomes: labels.proxy, outcomePrices: prices.proxy }),
+      market('draw', 'Draw (regular time)', 0.205),
+      market('rsa', 'South Africa', 0.105),
+    ]);
+    expect(Array.isArray(labels.proxy)).toBe(true);
+    expect(await derived(fetchFor(SLUG, ev)).findSignal(match())).toBeUndefined();
+    expect(labels.reads.n).toBe(0);
+    expect(prices.reads.n).toBe(0);
+  });
+
+  it('a three-entry array is refused before its elements are read', async () => {
+    const labels = counted(3, 'Yes');
+    const ev = event({}, [
+      market('mex', 'Mexico', 0.685, { outcomes: labels.proxy }),
+      market('draw', 'Draw (regular time)', 0.205),
+      market('rsa', 'South Africa', 0.105),
+    ]);
+    expect(await derived(fetchFor(SLUG, ev)).findSignal(match())).toBeUndefined();
+    expect(labels.reads.n).toBe(0);
+  });
+
+  it('an encoded three-entry pair is refused, though its yes and no legs complement', async () => {
+    const ev = event({}, [
+      market('mex', 'Mexico', 0.685, {
+        outcomes: JSON.stringify(['Yes', 'No', 'Maybe']),
+        outcomePrices: JSON.stringify(['0.685', '0.315', '0']),
+      }),
+      market('draw', 'Draw (regular time)', 0.205),
+      market('rsa', 'South Africa', 0.105),
+    ]);
+    expect(await derived(fetchFor(SLUG, ev)).findSignal(match())).toBeUndefined();
+  });
+
+  it('an encoded array longer than its bound is never parsed', async () => {
+    const long = JSON.stringify(Array.from({ length: 60 }, () => '0.5'));
+    expect(long.length).toBeGreaterThan(256);
+    const ev = event({}, [
+      market('mex', 'Mexico', 0.685, { outcomePrices: long }),
+      market('draw', 'Draw (regular time)', 0.205),
+      market('rsa', 'South Africa', 0.105),
+    ]);
+    const parse = vi.spyOn(JSON, 'parse');
+    try {
+      expect(await derived(fetchFor(SLUG, ev)).findSignal(match())).toBeUndefined();
+      expect(parse.mock.calls.some(([s]) => s === long)).toBe(false);
+    } finally {
+      parse.mockRestore();
+    }
+  });
+
+  it('a valid binary market still yields its odds, encoded or as arrays', async () => {
+    const encoded = await derived(fetchFor(SLUG, event())).findSignal(match());
+    const arrays = await derived(
+      fetchFor(
+        SLUG,
+        event({}, [
+          market('mex', 'Mexico', 0.685, { outcomes: ['Yes', 'No'], outcomePrices: ['0.685', '0.315'] }),
+          market('draw', 'Draw (regular time)', 0.205, { outcomes: ['Yes', 'No'], outcomePrices: [0.205, 0.795] }),
+          market('rsa', 'South Africa', 0.105, { outcomes: ['Yes', 'No'], outcomePrices: ['0.105', '0.895'] }),
+        ]),
+      ),
+    ).findSignal(match());
+    expect(encoded?.outcomes.map((o) => o.kind)).toEqual(['home', 'draw', 'away']);
+    expect(arrays?.outcomes).toEqual(encoded?.outcomes);
+    expect(encoded?.favorite).toMatchObject({ kind: 'home', teamCode: 'MEX' });
+  });
+});

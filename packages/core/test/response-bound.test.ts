@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { createServer } from 'node:http';
+import { type AddressInfo, createServer as createNetServer, type Socket } from 'node:net';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EspnAdapter, MAX_RESPONSE_BYTES } from '../src/adapters/espn';
 import { readJsonBounded, ResponseTooLargeError } from '../src/adapters/http';
 import { PolymarketProvider } from '../src/markets/polymarket';
@@ -109,4 +111,298 @@ describe('the adapters use the bounded reader (the audit repro)', () => {
     expect(huge).toBe(false);
     parse.mockRestore();
   });
+});
+
+/**
+ * An error body is released unread (security review, Oct 21, 2026, F4). A
+ * non-OK response threw with its body still open: ESPN's abort timer is
+ * cleared in `finally`, so nothing ever closed it, and Polymarket's stayed
+ * open until its timeout. A provider (or a valid-certificate interposer) that
+ * answers an error and keeps writing held the socket and the bandwidth past
+ * the request the caller believed ended.
+ *
+ * A real server on the loopback interface, a real `fetch`: the server answers
+ * the status, then writes 1 KiB every 5 ms, forever. The consequence observed
+ * is the server's own: every response it opened closes BEFORE it has written
+ * 200 more chunks after the call returned. Each response the adapter received
+ * is held by the test, so a collected (unreferenced) body cannot close it on
+ * the red side by chance; the timeouts are a minute, so no timer can either.
+ */
+interface Endless {
+  url: string;
+  requests: number;
+  writes: number;
+  closed: Promise<void>[];
+  onWrite?: () => void;
+  stop(): Promise<void>;
+}
+
+async function endlessServer(status: number, headers: Record<string, string> = {}): Promise<Endless> {
+  const state = { requests: 0, writes: 0, closed: [] as Promise<void>[] } as Endless;
+  const server = createServer((_req, res) => {
+    state.requests += 1;
+    res.writeHead(status, { 'content-type': 'application/json', ...headers });
+    res.write('{"message":"');
+    const timer = setInterval(() => {
+      state.writes += 1;
+      res.write('x'.repeat(1024));
+      state.onWrite?.();
+    }, 5);
+    state.closed.push(
+      new Promise<void>((resolve) =>
+        res.on('close', () => {
+          clearInterval(timer);
+          resolve();
+        }),
+      ),
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  state.url = `http://127.0.0.1:${port}/`;
+  state.stop = () => {
+    server.closeAllConnections();
+    return new Promise<void>((resolve) => server.close(() => resolve()));
+  };
+  return state;
+}
+
+/**
+ * The same server written in raw HTTP, for a response `node:http` will not
+ * send: a 205 with a body. `fetch` hands such a response over with
+ * `body: null`, so there is no stream to cancel, while its transfer runs on.
+ * `framing: 'chunked'` writes chunked frames; `{ length }` declares a
+ * Content-Length and writes raw bytes toward it.
+ */
+async function rawEndlessServer(statusLine: string, framing: 'chunked' | { length: number }): Promise<Endless> {
+  const state = { requests: 0, writes: 0, closed: [] as Promise<void>[] } as Endless;
+  const sockets = new Set<Socket>();
+  const server = createNetServer((socket) => {
+    sockets.add(socket);
+    socket.on('error', () => {});
+    let timer: ReturnType<typeof setInterval> | undefined;
+    state.closed.push(
+      new Promise<void>((resolve) =>
+        socket.on('close', () => {
+          clearInterval(timer);
+          sockets.delete(socket);
+          resolve();
+        }),
+      ),
+    );
+    socket.once('data', () => {
+      state.requests += 1;
+      const declared = framing === 'chunked' ? 'Transfer-Encoding: chunked' : `Content-Length: ${framing.length}`;
+      socket.write(`HTTP/1.1 ${statusLine}\r\nContent-Type: application/json\r\n${declared}\r\n\r\n`);
+      const chunk = 'x'.repeat(1024);
+      timer = setInterval(() => {
+        state.writes += 1;
+        socket.write(framing === 'chunked' ? `400\r\n${chunk}\r\n` : chunk);
+        state.onWrite?.();
+      }, 5);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  state.url = `http://127.0.0.1:${port}/`;
+  state.stop = () => {
+    for (const socket of sockets) socket.destroy();
+    return new Promise<void>((resolve) => server.close(() => resolve()));
+  };
+  return state;
+}
+
+/** 'closed' once every response the server opened has closed; 'open' once it wrote `more` chunks first. */
+function settles(s: Endless, more = 200): Promise<'closed' | 'open'> {
+  const start = s.writes;
+  const open = new Promise<'open'>((resolve) => {
+    s.onWrite = () => {
+      if (s.writes - start >= more) resolve('open');
+    };
+  });
+  const closed = Promise.all(s.closed).then(() => 'closed' as const);
+  return Promise.race([closed, open]);
+}
+
+/** The real `fetch`, aimed at the local server whatever URL the caller built; every response held. */
+function toServer(s: Endless, held: Response[]): FetchImpl {
+  return (async (_url: string | URL | Request, init?: RequestInit) => {
+    const res = await fetch(s.url, init);
+    held.push(res);
+    return res;
+  }) as FetchImpl;
+}
+
+describe('an error body is released unread (F4)', () => {
+  const servers: Endless[] = [];
+  afterEach(async () => {
+    await Promise.all(servers.splice(0).map((s) => s.stop()));
+  });
+  const serve = async (status: number, headers?: Record<string, string>) => {
+    const s = await endlessServer(status, headers);
+    servers.push(s);
+    return s;
+  };
+
+  it('ESPN: a 500 with an unending body is closed when the call fails', async () => {
+    const s = await serve(500);
+    const held: Response[] = [];
+    const adapter = new EspnAdapter({ enrichGroups: false, timeoutMs: 60_000, fetchImpl: toServer(s, held) });
+    await expect(adapter.fetchByDate('2026-09-15')).rejects.toMatchObject({ kind: 'http', status: 500 });
+    expect(s.requests).toBeGreaterThan(0);
+    expect(held.length).toBe(s.requests);
+    expect(await settles(s)).toBe('closed');
+  });
+
+  it('ESPN: a 429 with an unending body is closed, and the throttle is armed as before', async () => {
+    const s = await serve(429, { 'retry-after': '30' });
+    const held: Response[] = [];
+    const T = Date.UTC(2026, 9, 21, 12);
+    const adapter = new EspnAdapter({
+      enrichGroups: false,
+      timeoutMs: 60_000,
+      now: () => T,
+      fetchImpl: toServer(s, held),
+    });
+    await expect(adapter.fetchByDate('2026-09-15')).rejects.toMatchObject({
+      throttled: true,
+      status: 429,
+      retryAfterMs: 30_000,
+    });
+    expect(await settles(s)).toBe('closed');
+    // The cooldown holds under the injected clock: the next call asks nothing.
+    const asked = s.requests;
+    await expect(adapter.fetchByDate('2026-09-16')).rejects.toMatchObject({ throttled: true, status: 429 });
+    expect(s.requests).toBe(asked);
+  });
+
+  // Round 1 of the review: a 205 arrives with `body: null`, so cancelling a
+  // stream reaches nothing; the failed call must end the request itself.
+  const serveRaw = async (statusLine: string, framing: 'chunked' | { length: number }) => {
+    const s = await rawEndlessServer(statusLine, framing);
+    servers.push(s);
+    return s;
+  };
+
+  it('ESPN: a 205 whose body never ends (no stream to cancel) is closed when the read fails', async () => {
+    const s = await serveRaw('205 Reset Content', 'chunked');
+    const held: Response[] = [];
+    const adapter = new EspnAdapter({ enrichGroups: false, timeoutMs: 60_000, fetchImpl: toServer(s, held) });
+    await expect(adapter.fetchByDate('2026-09-15')).rejects.toMatchObject({ kind: 'parse' });
+    expect(held.length).toBe(s.requests);
+    expect(held.every((r) => r.body === null)).toBe(true);
+    expect(await settles(s)).toBe('closed');
+  });
+
+  it('ESPN: a 205 declaring a length over the cap is closed when it is refused', async () => {
+    const s = await serveRaw('205 Reset Content', { length: MAX_RESPONSE_BYTES + 1 });
+    const held: Response[] = [];
+    const adapter = new EspnAdapter({ enrichGroups: false, timeoutMs: 60_000, fetchImpl: toServer(s, held) });
+    await expect(adapter.fetchByDate('2026-09-15')).rejects.toMatchObject({ kind: 'parse' });
+    expect(adapter.lastError?.message).toMatch(/too large/);
+    expect(await settles(s)).toBe('closed');
+  });
+
+  const fixture: Match = {
+    id: '760415',
+    stage: 'GROUP',
+    group: 'A',
+    kickoff: '2026-06-11T19:00Z',
+    venue: 'Estadio Banorte',
+    home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+    away: { code: 'RSA', name: 'South Africa', flag: '🇿🇦' },
+    status: 'SCHEDULED',
+    updatedAt: '2026-06-01T00:00Z',
+  };
+
+  for (const status of [404, 500]) {
+    it(`Polymarket: a ${status} with an unending body is closed when the lookup answers`, async () => {
+      const s = await serve(status);
+      const held: Response[] = [];
+      const provider = new PolymarketProvider({
+        fetchImpl: toServer(s, held),
+        now: new Date('2026-06-11T15:00:00Z'),
+      });
+      await expect(
+        provider.findSignal(fixture, { deadlineMs: 60_000, timeoutMs: 60_000 }),
+      ).resolves.toBeUndefined();
+      expect(s.requests).toBeGreaterThan(0);
+      expect(held.length).toBe(s.requests);
+      expect(await settles(s)).toBe('closed');
+    });
+  }
+
+  it('Polymarket: a 205 whose body never ends (no stream to cancel) is closed when the lookup answers', async () => {
+    const s = await serveRaw('205 Reset Content', 'chunked');
+    const held: Response[] = [];
+    const provider = new PolymarketProvider({
+      fetchImpl: toServer(s, held),
+      now: new Date('2026-06-11T15:00:00Z'),
+    });
+    await expect(provider.findSignal(fixture, { deadlineMs: 60_000, timeoutMs: 60_000 })).resolves.toBeUndefined();
+    expect(s.requests).toBeGreaterThan(0);
+    expect(held.every((r) => r.body === null)).toBe(true);
+    expect(await settles(s)).toBe('closed');
+  });
+});
+
+/**
+ * A request's own timer is cleared when it settles. Polymarket used to take a
+ * timeout signal; it now owns a timer (so a failed request can be aborted),
+ * and a timer left pending holds the event loop: a CLI run would wait out the
+ * provider's timeout before it could exit. Counted with fake timers, no clock.
+ */
+describe('a settled request leaves no timer behind', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  const fixture: Match = {
+    id: '760415',
+    stage: 'GROUP',
+    group: 'A',
+    kickoff: '2026-06-11T19:00Z',
+    venue: 'Estadio Banorte',
+    home: { code: 'MEX', name: 'Mexico', flag: '🇲🇽' },
+    away: { code: 'RSA', name: 'South Africa', flag: '🇿🇦' },
+    status: 'SCHEDULED',
+    updatedAt: '2026-06-01T00:00Z',
+  };
+
+  for (const [label, answer] of [
+    ['a read body', () => json([])],
+    ['a 404', () => json({}, 404)],
+    ['a 500', () => json({}, 500)],
+  ] as const) {
+    it(`Polymarket: ${label}`, async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      let asked = 0;
+      const provider = new PolymarketProvider({
+        fetchImpl: (async () => {
+          asked += 1;
+          return answer();
+        }) as FetchImpl,
+        now: new Date('2026-06-11T15:00:00Z'),
+      });
+      await provider.findSignal(fixture);
+      expect(asked).toBeGreaterThan(0);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it(`ESPN: ${label}`, async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      let asked = 0;
+      const adapter = new EspnAdapter({
+        enrichGroups: false,
+        fetchImpl: (async () => {
+          asked += 1;
+          return answer();
+        }) as FetchImpl,
+      });
+      await adapter.fetchByDate('2026-09-15').catch(() => undefined);
+      expect(asked).toBeGreaterThan(0);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  }
 });
