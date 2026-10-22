@@ -36,6 +36,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ matrix.node }}
+          check-latest: true # the newest patch of the line, not the runner's cached one
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
@@ -68,6 +69,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
+          check-latest: true # the newest patch of the line, not the runner's cached one
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
@@ -112,6 +114,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
+          check-latest: true # the newest patch of the line, not the runner's cached one
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
@@ -141,6 +144,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
+          check-latest: true # the newest patch of the line, not the runner's cached one
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
@@ -164,6 +168,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
+          check-latest: true # the newest patch of the line, not the runner's cached one
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
@@ -189,6 +194,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
+          check-latest: true # the newest patch of the line, not the runner's cached one
       - run: npm install -g @anthropic-ai/claude-code@2.1.303
       - run: |
           claude plugin validate .
