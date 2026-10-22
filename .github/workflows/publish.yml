@@ -58,6 +58,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
+          check-latest: true # the newest patch of the line, not the runner's cached one
           cache: pnpm
           registry-url: https://registry.npmjs.org # target the public registry (OIDC supplies auth)
 
