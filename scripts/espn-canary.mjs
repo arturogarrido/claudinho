@@ -656,12 +656,17 @@ export async function runCanary({
       // Known from the headers. Whatever happens to the body cannot take it back.
       entry.status = res.status;
       if (!res.ok) {
-        // The adapter does not read an error body, so no copy is made: a
-        // clone's two branches only finish cancelling TOGETHER, and a branch
-        // nobody reads would hold the other one's cancel forever. The body is
-        // read from the response itself, after the adapter is done with it.
+        // The adapter releases an error body it is handed (it never reads
+        // one), so the canary hands it none: a body-less response carrying the
+        // status and the REAL headers (`retry-after` still reads), while the
+        // canary keeps the response itself for its own deadline-bounded read
+        // of the provider's message. No clone either: a clone's two branches
+        // only finish cancelling TOGETHER, and a branch nobody reads would hold
+        // the other one's cancel forever.
         entry.unread = res;
-      } else if (typeof res.clone === 'function') {
+        return { ok: res.ok, status: res.status, statusText: res.statusText, headers: res.headers, body: null };
+      }
+      if (typeof res.clone === 'function') {
         // The adapter reads its branch to the end or cancels it at the same
         // limit, so the two finish together.
         entry.copy = readCopy(core, res.clone(), core.MAX_RESPONSE_BYTES);

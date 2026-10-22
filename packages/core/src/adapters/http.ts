@@ -7,7 +7,8 @@
  * Now the bytes actually consumed from the stream are counted, the read stops
  * and cancels at the cap, and parsing happens only after the whole body has
  * passed the bound. Test doubles without a body stream (`{ ok, json }`) still
- * work: they carry no bytes to bound.
+ * work: they carry no bytes to bound. It also owns releasing a body nobody
+ * reads (`discardBody`): a refused size here, an error status at the adapters.
  */
 
 export class ResponseTooLargeError extends Error {
@@ -31,6 +32,19 @@ function isStream(v: unknown): v is ReadableStream<Uint8Array> {
   return typeof (v as ReadableStream | undefined)?.getReader === 'function';
 }
 
+/**
+ * Release a body nobody will read (security review F4): an error response, or
+ * one refused unread, must not keep its connection open while the provider
+ * keeps writing. NOT awaited: the stream's cancel algorithm starts at the call,
+ * and nothing the caller does depends on its settling; a tee'd body's cancel
+ * promise settles only once both branches cancel, so awaiting it can hang.
+ * Its rejection is swallowed, so the release never throws into the caller.
+ */
+export function discardBody(res: Response): void {
+  const body = (res as unknown as ResponseLike).body;
+  if (isStream(body)) body.cancel().catch(() => {});
+}
+
 /** Parse a JSON body of at most `maxBytes`, counting what is actually read. */
 export async function readJsonBounded(res: Response, maxBytes: number): Promise<unknown> {
   const r = res as unknown as ResponseLike;
@@ -38,7 +52,7 @@ export async function readJsonBounded(res: Response, maxBytes: number): Promise<
   if (Number.isFinite(declared) && declared > maxBytes) {
     // Refused unread — and released, so the connection is not left holding an
     // undrained body (review P3 on #128).
-    if (isStream(r.body)) await r.body.cancel().catch(() => {});
+    discardBody(res);
     throw new ResponseTooLargeError(declared, maxBytes);
   }
   if (isStream(r.body)) {

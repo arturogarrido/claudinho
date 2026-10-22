@@ -24,7 +24,7 @@
  * gate it should fail.
  */
 import { MAX_RESPONSE_BYTES } from '../adapters/espn';
-import { readJsonBounded, ResponseTooLargeError } from '../adapters/http';
+import { discardBody, readJsonBounded, ResponseTooLargeError } from '../adapters/http';
 
 import { shiftUtcDate } from '../time';
 import type { Match } from '../types';
@@ -292,8 +292,14 @@ export class PolymarketProvider implements MarketProvider {
       headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
     });
     // No such event. A real answer about this slug, and cacheable as one.
-    if (res.status === 404) return definitiveNone('slug returns 404');
+    // An error body is never read: release it, so a server that keeps writing
+    // does not hold the connection until the timeout (F4).
+    if (res.status === 404) {
+      discardBody(res);
+      return definitiveNone('slug returns 404');
+    }
     if (!res.ok) {
+      discardBody(res);
       throw new Error(`Polymarket request failed: ${res.status} ${res.statusText}`);
     }
     // Bounded on the bytes actually consumed, declared or not (audit A11):
@@ -753,14 +759,17 @@ function assertAllowedHost(base: string): void {
  * Returns undefined for a market that isn't a clean priced Yes/No.
  */
 function yesPrice(market: GammaMarket): number | undefined {
-  const labels = parseJsonArray(market.outcomes).map((l) => l.trim().toLowerCase());
-  // `Number('')` is 0, and `parseJsonArray` renders anything unreadable (null,
-  // an object) as ''. So a malformed price silently became a valid-looking 0%
+  // The SHAPE first: exactly two entries, checked before any element is read,
+  // so an oversized array costs nothing (F7).
+  const rawLabels = binaryPair(market.outcomes);
+  const raw = binaryPair(market.outcomePrices);
+  if (rawLabels === undefined || raw === undefined) return undefined;
+  const labels = rawLabels.map((l) => l.trim().toLowerCase());
+  // `Number('')` is 0, and `binaryPair` renders an unreadable entry (null, an
+  // object) as ''. So a malformed price silently became a valid-looking 0%
   // rather than being refused. Require a real numeric literal.
-  const raw = parseJsonArray(market.outcomePrices);
   if (raw.some((v) => v.trim() === '' || !Number.isFinite(Number(v)))) return undefined;
   const prices = raw.map((v) => Number(v));
-  if (labels.length !== 2 || prices.length !== 2) return undefined;
   // The WHOLE binary shape, not just the slot we want. Validating only the
   // 'Yes' leg accepted `["Yes","Maybe"]` — which is not a Yes/No market, so its
   // "Yes" price is not the probability of the outcome we are labelling — and
@@ -779,21 +788,29 @@ function yesPrice(market: GammaMarket): number | undefined {
   return (yes as number) > 0 ? (yes as number) : undefined;
 }
 
-/** Parse a value that may be an array or a JSON-encoded string array. */
-function parseJsonArray(v: unknown): string[] {
+/** A real encoded pair is about 20 units (`["0.685","0.315"]`); a longer string is not parsed. */
+const MAX_ENCODED_BINARY_CHARS = 256;
+
+/**
+ * A binary market's pair: an array, or a JSON-encoded string array, of EXACTLY
+ * two entries, its length checked before any entry is read; anything else is
+ * undefined. An encoded string over `MAX_ENCODED_BINARY_CHARS` is refused unparsed.
+ */
+function binaryPair(v: unknown): string[] | undefined {
   // NOT `String(x)`: JSON can hold `{"toString": null}`, and coercing that
   // throws out of a function whose whole contract is that it never does.
   const asText = (x: unknown) => (typeof x === 'string' || typeof x === 'number' ? String(x) : '');
-  if (Array.isArray(v)) return v.map(asText);
-  if (typeof v === 'string') {
+  if (Array.isArray(v)) return v.length === 2 ? v.map(asText) : undefined;
+  if (typeof v === 'string' && v.length <= MAX_ENCODED_BINARY_CHARS) {
+    let parsed: unknown;
     try {
-      const parsed: unknown = JSON.parse(v);
-      return Array.isArray(parsed) ? parsed.map(asText) : [];
+      parsed = JSON.parse(v);
     } catch {
-      return [];
+      return undefined;
     }
+    return Array.isArray(parsed) && parsed.length === 2 ? parsed.map(asText) : undefined;
   }
-  return [];
+  return undefined;
 }
 
 /** Coerce a number or numeric string to a finite number, else undefined. */

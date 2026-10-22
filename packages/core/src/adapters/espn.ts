@@ -20,7 +20,7 @@ import {
 } from '../trust/espn';
 import { agreedSeason, parseEspnSeason } from '../trust/season';
 import type { Match, SeasonInfo } from '../types';
-import { readJsonBounded, ResponseTooLargeError } from './http';
+import { discardBody, readJsonBounded, ResponseTooLargeError } from './http';
 import { attachFetchMeta, fetchMeta } from './meta';
 import type { FetchWindowOptions, ProviderAdapter, ProviderCapabilities } from './types';
 
@@ -852,6 +852,9 @@ export class EspnAdapter implements ProviderAdapter {
           pe.retryAfterMs = retryAfterMs(res.headers?.get?.('retry-after'), receiptMs);
           this.arm(receiptMs + pe.retryAfterMs, pe);
         }
+        // Nobody reads an error body: release it, so a provider that answers an
+        // error and keeps writing does not hold the connection (F4).
+        discardBody(res);
         throw pe;
       }
       // Bounded on the bytes actually consumed, declared or not (audit A11).
