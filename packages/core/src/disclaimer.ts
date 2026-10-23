@@ -15,7 +15,7 @@ export const FAN_PROJECT = 'Independent fan project';
 
 /**
  * The disclaimer, with `, nor with <host>` before its final period when a host
- * is given (a listing's own host: "Smithery", "Cursor").
+ * is given (a listing's own host, such as "Cursor").
  */
 export function disclaimerLine(host?: string): string {
   if (!host) return DISCLAIMER;

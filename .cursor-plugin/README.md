@@ -16,6 +16,9 @@ package is [`@claudinho/mcp`](https://www.npmjs.com/package/@claudinho/mcp).
 | 10 read-only tools (see below) | **Hook** / score-aware prompt injection (Cursor `beforeSubmitPrompt` unreliable) |
 | Resources + prompts | Betting links or trade calls |
 
+The server runs with `npx`, so it needs Node.js 22 or later. That is the oldest line it runs on, not a
+security level: run a patched release of the Node 22 or 24 line.
+
 ## MCP tools (10)
 
 - `get_today`: fixtures for a date (default today), live overlay
@@ -46,7 +49,7 @@ Or run the server directly:
 npx -y @claudinho/mcp
 ```
 
-Tests: `packages/mcp/test/cursor-plugin.test.ts`, `packages/mcp/test/manifest.test.ts`.
+Tests: `packages/mcp/test/cursor-plugin.test.ts`.
 
 ## Statusline (optional companion)
 

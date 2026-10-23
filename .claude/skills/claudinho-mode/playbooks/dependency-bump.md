@@ -42,13 +42,11 @@ A Dependabot PR, an advisory, or a hand-made bump. The title is not the change: 
 8. The watch, per job: `bash scripts/push-and-watch.sh <branch>` on a checkout of the branch (it pushes nothing when
    the remote already has the head, and reads CI per job on it), or `gh run view <run-id> --json jobs` for the CI run
    whose head SHA is the PR's. Never `gh run list --commit <sha>`: it lists runs, not jobs.
-9. The `.mcpb` bundle embeds its runtime dependencies: an advisory whose patch is not in the embedded set calls for
-   a rebuild and an audit at the bundle root (AGENTS.md "Releasing").
-10. Before any merge is recommended: the review rounds on the head
-    (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
-    `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`) and the review ledger's merge check passing,
-    with the confirmed SHA held.
-11. The merge stays the maintainer's: Dependabot PRs are merged by the maintainer, who reads
+9. Before any merge is recommended: the review rounds on the head
+   (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
+   `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`) and the review ledger's merge check passing,
+   with the confirmed SHA held.
+10. The merge stays the maintainer's: Dependabot PRs are merged by the maintainer, who reads
     `gh pr view <n> --json headRefOid` against the held SHA (a different head, after a Dependabot rebase, goes back
     to the confirmation round) and merges with `gh pr merge <n> --squash --match-head-commit <held sha>`. After a
     merge, the merged tree compared with the gated one and CI read per job on the merge commit.
@@ -90,4 +88,4 @@ context, the options, the recommendation and the default.
 ## Ask
 
 - Merge each PR at its confirmed head, and in which order; after the first, the rebase of the second.
-- Whether the bump rides the next release, and whether the `.mcpb` bundle needs a rebuild.
+- Whether the bump rides the next release.

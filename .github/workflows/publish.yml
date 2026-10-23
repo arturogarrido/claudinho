@@ -5,7 +5,9 @@ name: Publish
 #
 # Trigger: push a version tag on the release PR's merge commit on main, never on
 #          the release branch's own commit (AGENTS.md "Releasing" step 3 gives the
-#          commands), or run manually from the Actions tab via "Run workflow".
+#          commands). There is no manual trigger: a failed run is retried with
+#          "Re-run failed jobs" (`gh run rerun <id> --failed`) on the same tag, and
+#          every publishing step skips what is already published.
 #
 # Auth: npm trusted publishing (OIDC) — NO token. The `id-token: write`
 #   permission below lets npm mint a short-lived, workflow-scoped credential, so
@@ -21,7 +23,6 @@ name: Publish
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
 
 permissions:
   contents: write # create the GitHub Release for the tag (the "Latest" marker)
@@ -36,14 +37,14 @@ jobs:
       # action tag must not be able to execute here. Dependabot updates SHA pins.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # Publish only a commit `main` contains, on a tag push and a manual run
-      # alike: a tag on the release branch's own commit (or a manual run on any
-      # commit main does not contain) fails here, before anything is installed
-      # with the credential in the job. The checkout is shallow (the commit
-      # alone), so the fetch walks main back until it meets this commit; a commit
-      # main does not contain is never met, and the check fails. The ref is named
-      # in full: a manual run from a branch NAMED `origin/main` checks out a
-      # local `refs/heads/origin/main`, which the shorthand would resolve to.
+      # Publish only a commit `main` contains: a tag on the release branch's own
+      # commit fails here, before anything is installed with the credential in
+      # the job. The checkout is shallow (the commit alone), so the fetch walks
+      # main back until it meets this commit; a commit main does not contain is
+      # never met, and the check fails. The ref is named in full: a run on a
+      # branch NAMED `origin/main` (no trigger starts one; the check does not
+      # rely on that) checks out a local `refs/heads/origin/main`, which the
+      # shorthand would resolve to.
       - name: Verify the commit is on main
         run: |
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
@@ -71,16 +72,22 @@ jobs:
       - run: pnpm -r test
       - run: pnpm lint
 
-      # On a tag push, refuse to publish unless the tag matches EVERY published
-      # package version (the workflow publishes all three). The .mcpb manifest and
-      # MCP Registry server.json are checked against mcp/package.json by vitest.
+      # On every run: refuse any ref that is not a `v*` tag (a branch NAMED
+      # v1.2.3 would pass the version comparison below), then refuse to publish
+      # unless the tag matches EVERY published package version (the workflow
+      # publishes all three). The version is read from GITHUB_REF itself, the
+      # ref just checked. MCP Registry server.json is checked against
+      # mcp/package.json by vitest.
       - name: Verify tag matches all package versions
-        if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          TAG=${GITHUB_REF_NAME#v}
+          case "$GITHUB_REF" in
+            refs/tags/v*) ;;
+            *) echo "::error::$GITHUB_REF is not a version tag (refs/tags/v*); this workflow publishes from a version tag alone"; exit 1 ;;
+          esac
+          TAG=${GITHUB_REF#refs/tags/v}
           for pkg in core cli mcp; do
             PKG=$(node -p "require('./packages/$pkg/package.json').version")
-            [ "$PKG" = "$TAG" ] || { echo "::error::packages/$pkg version $PKG != tag $GITHUB_REF_NAME"; exit 1; }
+            [ "$PKG" = "$TAG" ] || { echo "::error::packages/$pkg version $PKG != tag v$TAG"; exit 1; }
           done
           echo "all package versions match $TAG"
 
@@ -95,7 +102,6 @@ jobs:
       # v0.5.0). Idempotent — skips if the release already exists (re-runs);
       # --generate-notes lists the merged PRs since the previous release.
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -123,7 +129,6 @@ jobs:
   # must never lag npm. `isLatest` flips by semver, so ordering is safe.
   mcp-registry:
     needs: publish
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     # The npm wait (an 8-min deadline, about 8m40s at most) and the publisher's retries (~4 min) in sequence.
     timeout-minutes: 20

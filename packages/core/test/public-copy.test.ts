@@ -36,8 +36,6 @@ const FRAMING = `the World Cup, the Premier League, LALIGA, the Champions League
 const FRAMED = [
   { rel: 'packages/cli/package.json', text: () => String(json('packages/cli/package.json').description) },
   { rel: 'packages/mcp/package.json', text: () => String(json('packages/mcp/package.json').description) },
-  { rel: 'packages/mcp/mcpb/manifest.json (description)', text: () => String(json('packages/mcp/mcpb/manifest.json').description) },
-  { rel: 'packages/mcp/mcpb/manifest.json (long_description)', text: () => String(json('packages/mcp/mcpb/manifest.json').long_description) },
   { rel: '.cursor-plugin/plugin.json', text: () => String(json('.cursor-plugin/plugin.json').description) },
   { rel: 'README.md', text: () => collapsed(read('README.md')) },
   { rel: 'packages/cli/README.md', text: () => collapsed(read('packages/cli/README.md')) },
@@ -79,7 +77,7 @@ describe('the framing', () => {
 
 describe('the keywords', () => {
   const ALIASES = SUPPORTED.map((row) => row.alias).filter((a) => a !== 'world-cup');
-  for (const rel of ['packages/cli/package.json', 'packages/mcp/package.json', 'packages/core/package.json', 'packages/mcp/mcpb/manifest.json', '.cursor-plugin/plugin.json']) {
+  for (const rel of ['packages/cli/package.json', 'packages/mcp/package.json', 'packages/core/package.json', '.cursor-plugin/plugin.json']) {
     it(`${rel} carries every competition's alias, keeps world-cup, and has no bare year`, () => {
       const keywords = json(rel).keywords as string[];
       expect(Array.isArray(keywords)).toBe(true);
@@ -124,9 +122,6 @@ describe('no em-dash in authored prose', () => {
       String(json('packages/mcp/package.json').description),
       String(json('packages/core/package.json').description),
       String(json('packages/mcp/server.json').description),
-      String(json('packages/mcp/mcpb/manifest.json').description),
-      String(json('packages/mcp/mcpb/manifest.json').long_description),
-      ...((json('packages/mcp/mcpb/manifest.json').tools as { description: string }[]) ?? []).map((t) => t.description),
       String(json('.cursor-plugin/plugin.json').description),
     ];
     for (const s of strings) expect(s, s.slice(0, 60)).not.toMatch(/—/);

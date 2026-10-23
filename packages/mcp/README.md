@@ -16,7 +16,8 @@ signup, no account.
 
 ## Install
 
-The server runs with `npx`, so it needs Node.js 22 or later.
+The server runs with `npx`, so it needs Node.js 22 or later. That is the oldest line it runs on, not a security
+level: run a patched release of the Node 22 or 24 line.
 
 **Claude Code**
 ```bash

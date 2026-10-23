@@ -268,6 +268,8 @@ export const DERIVED_SLUG = /^fifwc-[a-z]{2,3}-[a-z]{2,3}-\d{4}-\d{2}-\d{2}$/;
 /** ISO-8601 with an EXPLICIT offset — an offsetless instant means four things in four zones. */
 const ISO_INSTANT =
   /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)$/;
+/** The longest instant {@link canonicalTimestamp} reads, in UTF-16 units. */
+const MAX_INSTANT_CHARS = 64;
 /** Exactly what {@link canonicalTimestamp} may emit. */
 const ISO_CANONICAL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -291,7 +293,9 @@ function calendarValid(iso: string): boolean {
  * against a grammar and the calendar is checked for real.
  */
 export function canonicalTimestamp(value: unknown): string | undefined {
-  if (typeof value !== 'string' || !ISO_INSTANT.test(value)) return undefined;
+  // Bounded before the grammar or `Date.parse` reads it: `\.\d+` admits any number of fraction digits, and a
+  // provider's stamp is untrusted. The longest either provider sent (Gamma's, Oct 22, 2026) is 27 units.
+  if (typeof value !== 'string' || value.length > MAX_INSTANT_CHARS || !ISO_INSTANT.test(value)) return undefined;
   if (!calendarValid(value)) return undefined;
   const t = Date.parse(value);
   if (!Number.isFinite(t)) return undefined;

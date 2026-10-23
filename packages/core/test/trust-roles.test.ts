@@ -8,7 +8,7 @@
  * Every block states the negative control that must make it red. A property
  * test nobody has made fail is pinning nothing.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { allTeams, nationToFlag } from '../src/index';
 import {
   bounded,
@@ -77,6 +77,22 @@ describe('property: every string has a ROLE, and prose satisfies none of them', 
     }
     expect(canonicalTimestamp('2026-06-11T19:00Z')).toBe('2026-06-11T19:00:00.000Z');
     expect(canonicalTimestamp('2024-02-29T00:00:00Z')).toBe('2024-02-29T00:00:00.000Z');
+  });
+
+  it('refuses an instant over 64 UTF-16 units before its grammar or Date.parse reads it', () => {
+    // `\.\d+` admits any number of fraction digits; the longest stamp either provider sent (Gamma's, Oct 22, 2026)
+    // is 27 units.
+    const at = `2026-06-16T21:55:55.${'1'.repeat(43)}Z`;
+    expect(at).toHaveLength(64);
+    expect(canonicalTimestamp(at)).toBe('2026-06-16T21:55:55.111Z');
+    expect(canonicalTimestamp(`2026-06-16T21:55:55.${'1'.repeat(44)}Z`)).toBeUndefined();
+    const parse = vi.spyOn(Date, 'parse');
+    try {
+      expect(canonicalTimestamp(`2026-06-16T21:55:55.${'0'.repeat(2_000_000)}Z`)).toBeUndefined();
+      expect(parse).not.toHaveBeenCalled();
+    } finally {
+      parse.mockRestore();
+    }
   });
 
   it('refuses a value of the wrong runtime type or range in every scalar role', () => {

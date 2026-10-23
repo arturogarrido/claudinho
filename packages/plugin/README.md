@@ -27,8 +27,9 @@ The plugin reads everything from the `claudinho` CLI installed on your machine a
 
 ## Install
 
-You need the CLI (Node.js 22 or later) and a competition to follow. Everything on this page needs
-`@claudinho/cli` 0.12.0 or later; [With CLI 0.11.2](#with-cli-0112) says what an older CLI gives.
+You need the CLI (Node.js 22 or later) and a competition to follow. Node.js 22 is the oldest line it
+runs on, not a security level: run a patched release of the Node 22 or 24 line. Everything on this page
+needs `@claudinho/cli` 0.12.0 or later; [With CLI 0.11.2](#with-cli-0112) says what an older CLI gives.
 
 ```bash
 npm i -g @claudinho/cli
