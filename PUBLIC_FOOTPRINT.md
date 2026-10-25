@@ -105,7 +105,7 @@ links the repository and the retrospective post.
 - [First community contributor story](https://www.linkedin.com/posts/arturogarrido_something-magical-and-unexpected-happened-share-7476168070646886401-6uiH/)
 - [World Cup closing reflection](https://www.linkedin.com/posts/arturogarrido_vibinglavidaloca-ugcPost-7484840507261624321-6ees/)
 - [One-month retrospective, with the 60-second project video](https://www.linkedin.com/posts/arturogarrido_buildinpublic-vibinglavidaloca-ugcPost-7495689713660534784-Bp0B/) (August 19, 2026; featured on the profile and linked from the Claudinho project entry)
-- [After the World Cup: follow any competition](https://www.linkedin.com/posts/arturogarrido_vibinglavidaloca-share-7518204795950706689-2cU0/) (October 20, 2026; the 0.12.0 release, with the plugin's band, goal celebration and match pane)
+- [Claudinho 0.12.0: the competition you choose, and a Claude Code mod](https://www.linkedin.com/posts/arturogarrido_vibinglavidaloca-share-7518204795950706689-2cU0/) (October 20, 2026; the 0.12.0 release: the competition you choose, and Claudinho as a Claude Code mod)
 
 ### X
 
