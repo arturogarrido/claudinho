@@ -4,7 +4,7 @@ A dated record of where Claudinho has been published, listed, discussed, reviewe
 presented. This exists both as project history and as a source of verified links for future
 posts, talks, release notes, and retrospectives.
 
-**Last reviewed:** October 23, 2026
+**Last reviewed:** October 25, 2026
 
 ## How to read this record
 
@@ -49,6 +49,7 @@ Footprint searches use the exact repository, package, and registry identifiers
 | Developers Locker Room | Current | [MCP directory index](https://devlocker.dev/mcp-servers) | Contains two records for the same project (`claudinho` and `claudinho-arturogarridoclaudinho`); count them as one appearance. Both still describe the World Cup release. No stable per-project detail URL was found. |
 | Lulu | Current, automated | [Inbound listing report and response](https://github.com/arturogarrido/claudinho/issues/101) | As of October 18, Lulu listed three entries, copied from PulseMCP, Glama and Smithery. Free factual indexing was accepted; the ads SDK proposal was declined and deduplication was requested on August 10. |
 | claude-mods.com | Current | [claudinho](https://claude-mods.com/claudinho/) | Claude Code mods index built by a daily GitHub scan with a human check. It listed the plugin on its own (updated October 19), with a current description: "Live football scores or the next kickoff above the prompt, goal toasts and a match pane." |
+| Awesome Claude Code Mods | Current | [claudinho](https://mods.aidojo.si/mods/arturogarrido--claudinho--claudinho/) | Claude Code mods catalogue built from a seeds list and a nightly scan of each repository. Listed through the merged seed [PR #381](https://github.com/karanb192/awesome-claude-code-mods/pull/381) on October 24; the page carries the project description, the ESPN attribution and the non-affiliation disclaimer, plus badges the catalogue generates. |
 
 ## Automated mirrors and scans
 
@@ -104,6 +105,7 @@ links the repository and the retrospective post.
 - [First community contributor story](https://www.linkedin.com/posts/arturogarrido_something-magical-and-unexpected-happened-share-7476168070646886401-6uiH/)
 - [World Cup closing reflection](https://www.linkedin.com/posts/arturogarrido_vibinglavidaloca-ugcPost-7484840507261624321-6ees/)
 - [One-month retrospective, with the 60-second project video](https://www.linkedin.com/posts/arturogarrido_buildinpublic-vibinglavidaloca-ugcPost-7495689713660534784-Bp0B/) (August 19, 2026; featured on the profile and linked from the Claudinho project entry)
+- [Claudinho 0.12.0: the competition you choose, and a Claude Code mod](https://www.linkedin.com/posts/arturogarrido_vibinglavidaloca-share-7518204795950706689-2cU0/) (October 20, 2026)
 
 ### X
 
@@ -112,6 +114,7 @@ links the repository and the retrospective post.
 - [Quarterfinal bracket](https://x.com/arturogarrido/status/2075118756054155616)
 - [World Cup closing post](https://x.com/arturogarrido/status/2079073946822189068)
 - [One-month retrospective, published as an X Article](https://x.com/arturogarrido/status/2090328034771607790) (August 19, 2026; carries the same video plus a wide cover card)
+- [Pumas in Claude Code, in Spanish](https://x.com/arturogarrido/status/2114134012566585419) (October 24, 2026, before Pumas v Tigres; a capture of the plugin's band, goal celebration and match pane; [the reply](https://x.com/arturogarrido/status/2114134118254756006) carries the repository link and the disclaimer)
 
 ## Events and presentations
 
@@ -126,8 +129,9 @@ counted as coverage.
 
 | Place | Submitted | Link | Outcome at last review |
 | --- | --- | --- | --- |
-| Cline MCP Marketplace | June 11, 2026 | [Submission #1773](https://github.com/cline/mcp-marketplace/issues/1773) | Still open with no comments as of October 18. |
-| Cursor Marketplace | June 18, 2026 | [Marketplace](https://cursor.com/marketplace) | No public Claudinho listing found as of October 18. The repository's plugin manifest remains usable independently of Marketplace acceptance. |
+| Cline MCP Marketplace | June 11, 2026 | [Submission #1773](https://github.com/cline/mcp-marketplace/issues/1773) | Closed by the maintainer on October 18 with no response from Cline since June; Claudinho is listed in the official MCP Registry. |
+| Cursor Marketplace | June 18, 2026; again October 23 | [Marketplace](https://cursor.com/marketplace) | The June submission never produced a listing. The maintainer applied again on October 23 through the publishing form, after the plugin manifest gained a display name; Cursor confirmed receipt. `cursor.com/marketplace/claudinho` still showed "Not Found" on October 25. The repository's plugin manifest remains usable independently of Marketplace acceptance. |
+| claudemods.ai | October 23, 2026 | [Claude Mods](https://claudemods.ai/) | Submitted through the site's form; no Claudinho page as of October 25 (`/plugins/claudinho` returns 404). |
 | mcp.directory | July 2, 2026 | [Directory](https://mcp.directory/) | No public Claudinho listing found as of October 18. |
 | Terminal Trove | About June 13, 2026 | [Terminal Trove](https://terminaltrove.com/) | No Claudinho page found as of October 18. |
 
