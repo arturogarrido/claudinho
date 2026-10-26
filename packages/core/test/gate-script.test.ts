@@ -575,7 +575,7 @@ const STDIO_SMOKE_FILE = 'node packages/mcp/scripts/stdio-smoke.mjs';
 const AUDIT_ALL = 'pnpm audit || true';
 
 /** The plugin job's two steps: the pinned Claude Code CLI, and its own validate and test, which the gate cannot run. */
-export const PLUGIN_INSTALL = 'npm install -g @anthropic-ai/claude-code@2.1.303';
+export const PLUGIN_INSTALL = 'npm install -g @anthropic-ai/claude-code@2.1.310';
 export const PLUGIN_CHECKS = 'claude plugin validate .\nclaude plugin validate packages/plugin\nbash scripts/plugin-test.sh';
 /** The exclusions, each with its reason; every other gating command must be a gate step. */
 const EXCLUDED: Array<{ match: (s: Step) => boolean; reason: string }> = [
