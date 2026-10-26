@@ -870,6 +870,42 @@ describe('PolymarketProvider — provider strings are bounded before selection r
   /** `mkt`, `n` dashes, then the outcome token: `6 + n` units, the token readable only from the slug's end. */
   const dashed = (n: number) => `mkt${'-'.repeat(n)}mex`;
 
+  for (const location of ['selected', 'unselected'] as const) {
+    it(`a non-string slug in the ${location} moneyline market is refused before array scanning or copying`, async () => {
+      // JSON can carry an array where the unchecked provider type says string.
+      // lastIndexOf + slice also exist on arrays: calling them before checking
+      // the type copies the entire array before toLowerCase finally rejects it.
+      const slug = Array.from({ length: 1000 }, () => 0);
+      const markets = location === 'selected'
+        ? legs({ slug })
+        : legs({}, [market('xyz', 'Other', 0.1, { slug })]);
+      const body = JSON.stringify(event({}, markets));
+      const fetchImpl = (async (url: string | URL) =>
+        requestedSlug(url) === SLUG
+          ? new Response(body, { headers: { 'content-type': 'application/json' } })
+          : new Response('{}', { status: 404 })) as typeof fetch;
+      const spies = [vi.spyOn(Array.prototype, 'lastIndexOf'), vi.spyOn(Array.prototype, 'slice')];
+      let result: BatchResolution<MarketSignal>;
+      let largeArrayCalls: number[];
+      try {
+        result = await derived(fetchImpl).findSignals([match()]);
+        largeArrayCalls = spies.map((spy) =>
+          spy.mock.contexts.filter((value) => Array.isArray(value) && value.length >= slug.length).length,
+        );
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+      }
+      expect(result.results.get('760415')?.kind).toBe('malformed');
+      expect(largeArrayCalls, 'no provider array is scanned or copied as a slug').toEqual([0, 0]);
+    });
+  }
+
+  it('an absent or null market slug still resolves through the group title', async () => {
+    for (const slug of [undefined, null]) {
+      expect(await kindOf(event({}, legs({ slug })))).toBe('valid');
+    }
+  });
+
   it('a slug of about two million dashes is refused as malformed, and no string method runs over it', async () => {
     const slug = dashed(2_000_000);
     const methods = ['split', 'toLowerCase', 'trim', 'lastIndexOf'] as const;
