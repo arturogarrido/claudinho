@@ -906,6 +906,43 @@ describe('PolymarketProvider — provider strings are bounded before selection r
     }
   });
 
+  it('two legs carrying the same non-string id are refused, not read as two markets', async () => {
+    // The same-market check puts each leg's id in a Set, which compares an
+    // array or object by reference: two parsed copies of `[1]` are two
+    // entries, so the check passed what the string `'1'` refuses. `fetchFor`
+    // hands the object back unserialized, so the body goes through JSON here,
+    // as a response does: each leg then holds its own parsed copy.
+    const twoLegs = (id: unknown) =>
+      JSON.parse(
+        JSON.stringify(
+          event({}, [
+            market('mex', 'Mexico', 0.685, { id }),
+            market('draw', 'Draw (regular time)', 0.205, { id }),
+            market('rsa', 'South Africa', 0.105),
+          ]),
+        ),
+      );
+    expect(await kindOf(twoLegs('1'))).toBe('ambiguous');
+    expect(await kindOf(twoLegs([1]))).toBe('malformed');
+    expect(await kindOf(twoLegs({ n: 1 }))).toBe('malformed');
+  });
+
+  it('a non-string market id is refused as malformed, on a selected or an unselected market', async () => {
+    for (const id of [[1], { n: 1 }, 5, false]) {
+      expect(await kindOf(event({}, legs({ id }))), `selected id ${JSON.stringify(id)}`).toBe('malformed');
+      expect(
+        await kindOf(event({}, legs({}, [market('xyz', 'Other', 0.1, { id })]))),
+        `unselected id ${JSON.stringify(id)}`,
+      ).toBe('malformed');
+    }
+  });
+
+  it('an absent or null market id still resolves, its legs told apart by their slugs', async () => {
+    for (const id of [undefined, null]) {
+      expect(await kindOf(event({}, legs({ id })))).toBe('valid');
+    }
+  });
+
   it('a slug of about two million dashes is refused as malformed, and no string method runs over it', async () => {
     const slug = dashed(2_000_000);
     const methods = ['split', 'toLowerCase', 'trim', 'lastIndexOf'] as const;
