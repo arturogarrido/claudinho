@@ -226,9 +226,10 @@ their binary, though such an attacker can generally run code anyway.
   slug, title and id; a selected leg's description, which, when present and not `null`, must also
   be a string; each entry of a market's two outcome arrays, in either form, after the arrays are
   checked for two entries and an encoded one for its length; a liquidity string. A field over its
-  bound, or a slug or description present as another type, refuses the event as malformed. Every timestamp goes through one constructor that
-  refuses an instant over 64 characters before reading it. What is left grows with the body, up to
-  the cap: the JSON parse itself, and one pass over the bounded market list.
+  bound, or a moneyline market's slug or a selected leg's description that is present, not `null`
+  and not a string, refuses the event as malformed. Every timestamp goes through one constructor
+  that refuses an instant over 64 characters before reading it. What is left grows with the body,
+  up to the cap: the JSON parse itself, and one pass over the bounded market list.
 - Claudinho trusts its data providers for factual accuracy. It fails closed rather than
   displaying invented data, but a compromised upstream feed could still show wrong scores.
 - Sanitizing is defence in depth, not a proof. It constrains what reaches output; it cannot
