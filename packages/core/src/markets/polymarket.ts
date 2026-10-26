@@ -481,17 +481,20 @@ export class PolymarketProvider implements MarketProvider {
     // BOUNDED BEFORE SELECTION. `pickMarket` and `pickDraw` read the slug and the group title of every moneyline
     // market, and the leg check below its id, so each is checked here, before any is split, case-folded, trimmed
     // or hashed. Reject a present non-string slug too: arrays have lastIndexOf and slice, so selection would
-    // scan and copy an unchecked JSON array before toLowerCase eventually refused it.
+    // scan and copy an unchecked JSON array before toLowerCase eventually refused it. The same-market check below
+    // puts the id in a Set, which compares an array or an object by reference, so a present non-string id is
+    // refused here too.
     if (
       moneyline.some(
         (m) =>
           (m.slug != null && typeof m.slug !== 'string') ||
+          (m.id != null && typeof m.id !== 'string') ||
           overBound(m.slug, MAX_MARKET_SLUG_CHARS) ||
           overBound(m.groupItemTitle, MAX_MARKET_TITLE_CHARS) ||
           overBound(m.id, MAX_MARKET_ID_CHARS),
       )
     ) {
-      return malformed('a moneyline market slug has an invalid type, or slug, title or id exceeds its bound');
+      return malformed('a moneyline market slug or id has an invalid type, or slug, title or id exceeds its bound');
     }
     // Each selector answers none / exactly one / ambiguous. Collapsing the last
     // two into `undefined` is what let a payload carrying TWO legs for the same
