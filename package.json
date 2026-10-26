@@ -6,7 +6,7 @@
   "type": "module",
   "license": "MIT",
   "author": "Arturo Garrido",
-  "packageManager": "pnpm@11.28.6",
+  "packageManager": "pnpm@11.28.8",
   "engines": {
     "node": "^22.18.0 || ^24.11.0 || >=26.0.0"
   },
