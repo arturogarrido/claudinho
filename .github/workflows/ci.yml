@@ -195,7 +195,7 @@ jobs:
         with:
           node-version: 22
           check-latest: true # the newest patch of the line, not the runner's cached one
-      - run: npm install -g @anthropic-ai/claude-code@2.1.303
+      - run: npm install -g @anthropic-ai/claude-code@2.1.310
       - run: |
           claude plugin validate .
           claude plugin validate packages/plugin

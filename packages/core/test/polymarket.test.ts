@@ -870,6 +870,79 @@ describe('PolymarketProvider — provider strings are bounded before selection r
   /** `mkt`, `n` dashes, then the outcome token: `6 + n` units, the token readable only from the slug's end. */
   const dashed = (n: number) => `mkt${'-'.repeat(n)}mex`;
 
+  for (const location of ['selected', 'unselected'] as const) {
+    it(`a non-string slug in the ${location} moneyline market is refused before array scanning or copying`, async () => {
+      // JSON can carry an array where the unchecked provider type says string.
+      // lastIndexOf + slice also exist on arrays: calling them before checking
+      // the type copies the entire array before toLowerCase finally rejects it.
+      const slug = Array.from({ length: 1000 }, () => 0);
+      const markets = location === 'selected'
+        ? legs({ slug })
+        : legs({}, [market('xyz', 'Other', 0.1, { slug })]);
+      const body = JSON.stringify(event({}, markets));
+      const fetchImpl = (async (url: string | URL) =>
+        requestedSlug(url) === SLUG
+          ? new Response(body, { headers: { 'content-type': 'application/json' } })
+          : new Response('{}', { status: 404 })) as typeof fetch;
+      const spies = [vi.spyOn(Array.prototype, 'lastIndexOf'), vi.spyOn(Array.prototype, 'slice')];
+      let result: BatchResolution<MarketSignal>;
+      let largeArrayCalls: number[];
+      try {
+        result = await derived(fetchImpl).findSignals([match()]);
+        largeArrayCalls = spies.map((spy) =>
+          spy.mock.contexts.filter((value) => Array.isArray(value) && value.length >= slug.length).length,
+        );
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+      }
+      expect(result.results.get('760415')?.kind).toBe('malformed');
+      expect(largeArrayCalls, 'no provider array is scanned or copied as a slug').toEqual([0, 0]);
+    });
+  }
+
+  it('an absent or null market slug still resolves through the group title', async () => {
+    for (const slug of [undefined, null]) {
+      expect(await kindOf(event({}, legs({ slug })))).toBe('valid');
+    }
+  });
+
+  it('two legs carrying the same non-string id are refused, not read as two markets', async () => {
+    // The same-market check puts each leg's id in a Set, which compares an
+    // array or object by reference: two parsed copies of `[1]` are two
+    // entries, so the check passed what the string `'1'` refuses. `fetchFor`
+    // hands the object back unserialized, so the body goes through JSON here,
+    // as a response does: each leg then holds its own parsed copy.
+    const twoLegs = (id: unknown) =>
+      JSON.parse(
+        JSON.stringify(
+          event({}, [
+            market('mex', 'Mexico', 0.685, { id }),
+            market('draw', 'Draw (regular time)', 0.205, { id }),
+            market('rsa', 'South Africa', 0.105),
+          ]),
+        ),
+      );
+    expect(await kindOf(twoLegs('1'))).toBe('ambiguous');
+    expect(await kindOf(twoLegs([1]))).toBe('malformed');
+    expect(await kindOf(twoLegs({ n: 1 }))).toBe('malformed');
+  });
+
+  it('a non-string market id is refused as malformed, on a selected or an unselected market', async () => {
+    for (const id of [[1], { n: 1 }, 5, false]) {
+      expect(await kindOf(event({}, legs({ id }))), `selected id ${JSON.stringify(id)}`).toBe('malformed');
+      expect(
+        await kindOf(event({}, legs({}, [market('xyz', 'Other', 0.1, { id })]))),
+        `unselected id ${JSON.stringify(id)}`,
+      ).toBe('malformed');
+    }
+  });
+
+  it('an absent or null market id still resolves, its legs told apart by their slugs', async () => {
+    for (const id of [undefined, null]) {
+      expect(await kindOf(event({}, legs({ id })))).toBe('valid');
+    }
+  });
+
   it('a slug of about two million dashes is refused as malformed, and no string method runs over it', async () => {
     const slug = dashed(2_000_000);
     const methods = ['split', 'toLowerCase', 'trim', 'lastIndexOf'] as const;
