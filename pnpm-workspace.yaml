@@ -8,11 +8,13 @@ packages:
 #   request leak). vitest 4 otherwise reuses the older vite 5 / esbuild 0.21.
 #
 # NO override for the @modelcontextprotocol/sdk HTTP stack (hono,
-# @hono/node-server, fast-uri via ajv, body-parser via express), deliberately.
+# @hono/node-server, fast-uri via ajv, body-parser and qs via express),
+# deliberately.
 # `pnpm audit --prod` gates on versions, not reachability, and their advisories
-# are HTTP-server features our stdio server can't reach: hono, @hono/node-server
-# and body-parser are never LOADED at all (the built dist imports exactly
-# sdk/server/mcp.js, sdk/server/stdio.js and zod). fast-uri IS loaded, via ajv —
+# are HTTP-server features our stdio server can't reach: hono, @hono/node-server,
+# body-parser and express (with its qs) are never LOADED at all (the built
+# dist imports exactly sdk/server/mcp.js, sdk/server/stdio.js and zod).
+# fast-uri IS loaded, via ajv —
 # but only ever called on a constant meta-schema URI, because ajv.compile() is
 # not reached on the stdio path and no attacker-controlled URI reaches it.
 #
@@ -26,6 +28,8 @@ packages:
 # but a floor alone does NOT refresh transitives under pnpm: verified that
 # floor-bump + plain `install --lockfile-only` still yields hono 4.12.25 /
 # fast-uri 3.1.2. Refreshing them requires an explicit `pnpm update`.
+# A transitive one is refreshed by name, alone: `pnpm update -r --depth Infinity
+# qs` (GHSA-6pq8-jhm2-2vcw, Oct 2026) moved only qs, its two copies made one.
 overrides:
   vite: "^6.4.2"
   esbuild: ">=0.28.1"
