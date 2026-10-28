@@ -22,6 +22,7 @@ import {
   groups,
   humanLabel,
   isHumanLabel,
+  isLang,
   isValidDate,
   isValidTimeZone,
   TABLE_KEY_ARG,
@@ -124,7 +125,7 @@ const langArg = z
   .string()
   .optional()
   .describe(
-    "Locale for dates, list titles, match status and stage words, a match timeline's kind words (Goal, Yellow card…), the empty and outage sentences, provider attribution, and commentary: en, es, pt, fr (the market copy, a few notes and the disclaimer stay English; other locales fall back to en)",
+    "Locale for dates, list titles, match status and stage words, a match timeline's kind words (Goal, Yellow card…), the empty and outage sentences, provider attribution, and commentary: en, es, pt or fr (no other value is supported). Without it, or when it is empty, the server's CLAUDINHO_LANG when that is exactly one of the four, else en. The market copy, a few notes and the disclaimer stay English",
   );
 
 // Shared optional args every competition-answering tool accepts (all but get_team).
@@ -827,6 +828,31 @@ export function toContent(r: Omit<ToolResult, 'footer'> & { footer?: string }) {
   return { content, structuredContent: data as Record<string, unknown> };
 }
 
+/**
+ * THE SERVER'S EDGE for the language a request answers in: the call's `lang`
+ * when it names one (any non-empty string, passed on as it is, so the tools
+ * read a call's own `lang` exactly as they did before this edge), else the
+ * server's `CLAUDINHO_LANG` when it is exactly one of the four (core's
+ * `isLang`, the CLI's predicate too: `ES`, `es-MX` and ` es` change nothing),
+ * else none, which is English. The MCP Registry record has listed the
+ * variable since 0.4.2, and until this edge nothing read it. `LANG` is never
+ * read: the shell's locale is not the server's language.
+ */
+export function requestLang(arg: string | undefined, env: string | undefined): string | undefined {
+  if (typeof arg === 'string' && arg !== '') return arg;
+  return isLang(env) ? env : undefined;
+}
+
+/**
+ * A handler's args with the request's language resolved ({@link requestLang}),
+ * applied by every tool that takes `lang` as it hands its args to the tool
+ * function. The variable is read HERE, at each call, never when the module
+ * loads: the server's environment is the one the call meets.
+ */
+function withRequestLang<A extends { lang?: string }>(args: A): A {
+  return { ...args, lang: requestLang(args.lang, process.env.CLAUDINHO_LANG) };
+}
+
 export function buildServer(): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
@@ -848,7 +874,7 @@ export function buildServer(): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: todayOut,
     },
-    async (args) => toContent(await toolGetToday(args)),
+    async (args) => toContent(await toolGetToday(withRequestLang(args))),
   );
 
   server.registerTool(
@@ -861,7 +887,7 @@ export function buildServer(): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: liveOut,
     },
-    async (args) => toContent(await toolGetLive(args)),
+    async (args) => toContent(await toolGetLive(withRequestLang(args))),
   );
 
   server.registerTool(
@@ -874,7 +900,7 @@ export function buildServer(): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: matchDetailOut,
     },
-    async (args) => toContent(await toolGetMatch(args)),
+    async (args) => toContent(await toolGetMatch(withRequestLang(args))),
   );
 
   server.registerTool(
@@ -890,7 +916,7 @@ export function buildServer(): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: standingsOut,
     },
-    async (args) => toContent(await toolGetStandings(args)),
+    async (args) => toContent(await toolGetStandings(withRequestLang(args))),
   );
 
   server.registerTool(
@@ -909,7 +935,7 @@ export function buildServer(): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: bracketOut,
     },
-    async (args) => toContent(await toolGetBracket(args)),
+    async (args) => toContent(await toolGetBracket(withRequestLang(args))),
   );
 
   server.registerTool(
@@ -928,7 +954,7 @@ export function buildServer(): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: nextOut,
     },
-    async (args) => toContent(await toolGetNextFixture(args)),
+    async (args) => toContent(await toolGetNextFixture(withRequestLang(args))),
   );
 
   server.registerTool(
@@ -953,7 +979,7 @@ export function buildServer(): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: marketOut,
     },
-    async (args) => toContent(await toolGetMarketSignal(args)),
+    async (args) => toContent(await toolGetMarketSignal(withRequestLang(args))),
   );
 
   server.registerTool(
@@ -991,7 +1017,7 @@ export function buildServer(): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: shareOut,
     },
-    async (args) => toContent(await toolGetShareSnippet(args)),
+    async (args) => toContent(await toolGetShareSnippet(withRequestLang(args))),
   );
 
   server.registerTool(
@@ -1022,7 +1048,7 @@ export function buildServer(): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
       outputSchema: listCompetitionsOut,
     },
-    async (args) => toContent(toolListCompetitions(args)),
+    async (args) => toContent(toolListCompetitions(withRequestLang(args))),
   );
 
   // ---- Resources ----

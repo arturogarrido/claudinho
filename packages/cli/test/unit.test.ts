@@ -36,6 +36,16 @@ describe('resolveConfig', () => {
     expect(resolveConfig({}).lang).toBe('en');
   });
 
+  // The warning's own rule, through resolveConfig (PR #215 round 1: with the predicate removed from this line the
+  // whole suite stayed green; the command test injects the field and never reaches it).
+  it('flags an explicit --lang it cannot honor, by core isLang: exact and case-sensitive', () => {
+    for (const lang of ['de', 'ES', 'es-MX', ' es']) expect(resolveConfig({ lang }).langRequestedUnsupported, lang).toBe(lang);
+    for (const lang of ['en', 'es', 'pt', 'fr']) expect(resolveConfig({ lang }).langRequestedUnsupported, lang).toBeUndefined();
+    expect(resolveConfig({}).langRequestedUnsupported).toBeUndefined();
+    process.env.CLAUDINHO_LANG = 'de';
+    expect(resolveConfig({}).langRequestedUnsupported, 'the variable is not the flag').toBeUndefined();
+  });
+
   it('derives lang from POSIX LANG', () => {
     process.env.LANG = 'fr_FR.UTF-8';
     expect(resolveConfig({}).lang).toBe('fr');

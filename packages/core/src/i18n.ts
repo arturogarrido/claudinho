@@ -3,6 +3,20 @@ import type { Match } from './types';
 /** Supported UI locales — same set as CLI/MCP `lang`. */
 export type Lang = 'en' | 'es' | 'pt' | 'fr';
 
+/** The four languages, in this order: the set {@link isLang} accepts. */
+export const LANGS = Object.freeze(['en', 'es', 'pt', 'fr'] as const) satisfies readonly Lang[];
+
+/**
+ * Is this exactly one of the four languages? The ONE predicate the CLI's
+ * `--lang` and `CLAUDINHO_LANG` and the MCP server's `CLAUDINHO_LANG` ask, so
+ * the variable means the same thing to both: case-sensitive, nothing trimmed
+ * or cut (`ES`, `es-MX` and ` es` are not languages here). A tool's `lang`
+ * argument is read leniently instead, by {@link normalizeLang}.
+ */
+export function isLang(value: unknown): value is Lang {
+  return typeof value === 'string' && (LANGS as readonly string[]).includes(value);
+}
+
 const EN = {
   'bracket.title': 'Knockout bracket',
   'bracket.stageTitle': 'Knockout · {stage}',

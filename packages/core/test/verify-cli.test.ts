@@ -68,9 +68,9 @@ const CITED_LEADS = [
 ];
 const VERSION = JSON.parse(readFileSync(join(ROOT, 'packages/cli/package.json'), 'utf8')).version as string;
 const SLOW = 90_000;
-const SCENARIO_KEYS = ['CLAUDINHO_COMPETITION', 'CLAUDINHO_TEAM', 'CLAUDINHO_SOURCE', 'CLAUDINHO_MARKETS_SOURCE', 'LANG', 'TZ'];
+const SCENARIO_KEYS = ['CLAUDINHO_COMPETITION', 'CLAUDINHO_TEAM', 'CLAUDINHO_SOURCE', 'CLAUDINHO_MARKETS_SOURCE', 'CLAUDINHO_LANG', 'LANG', 'TZ'];
 
-type Phase = { exit: number | null; timedOut?: boolean; survivorPossible?: boolean; survivorReason?: string; stdout: string; stderr: string };
+type Phase = { exit: number | null; timedOut?: boolean; survivorPossible?: boolean; survivorReason?: string; stdout: string; stderr: string; argv?: string[] };
 type Fetch = { url: string; mode: string; outcome: string; phase?: string };
 type Check = { name: string; ok: boolean; detail?: string };
 type Result = {
@@ -491,6 +491,44 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(unknown.res?.ok).toBe(false);
     expect(unknown.res?.error ?? '').not.toBe('');
     expect(unknown.r.status).toBe(1);
+  });
+
+  it("mcp: --env CLAUDINHO_LANG reaches the server (a call with no lang answers in it); the controller's own never does", { timeout: SLOW }, () => {
+    const call = ['list_competitions', '{"competition":"premier-league"}'];
+    const textOf = (run: Run) => (run.res?.content ?? []).map((c) => c.text ?? '').join('\n');
+    const es = verify(['mcp', '--json', '--out', out(), '--env', 'CLAUDINHO_LANG=es', ...call]);
+    expect(es.r.status, String(es.res?.error)).toBe(0);
+    expect(es.res?.env ?? []).toContain('CLAUDINHO_LANG');
+    expect(textOf(es)).toContain('Current: Premier League · desde la solicitud');
+    const own = verify(['mcp', '--json', '--out', out(), ...call], { env: { CLAUDINHO_LANG: 'pt' } });
+    expect(own.r.status, String(own.res?.error)).toBe(0);
+    expect(own.res?.env ?? []).not.toContain('CLAUDINHO_LANG');
+    expect(textOf(own)).toContain('Current: Premier League · from the request');
+  });
+
+  // What the skill says of a scenario's CLAUDINHO_LANG, measured (PR #215 round 1: the skill had said every CLI
+  // child keeps English): the main command and its `--json` twin are given `--lang en` and stay English; the
+  // bootstrap `follow` and `ambient --json`, given no `--lang`, read the variable as the CLI does.
+  it('run: a scenario CLAUDINHO_LANG leaves the main command and its twin English (they get --lang en); the bootstrap follow reads it', { timeout: SLOW }, () => {
+    const { r, res } = verify(['run', '--json', '--out', out(), '--offline', '--follow', 'world-cup', '--env', 'CLAUDINHO_LANG=es', '--twin', '--', 'today', '2026-06-11']);
+    expect(r.status, String(res?.error)).toBe(0);
+    expect(res?.phases?.follow?.stdout ?? '').toContain('Siguiendo: World Cup');
+    expect(res?.phases?.main?.stdout ?? '').toContain('Matches · 2026-06-11');
+    expect(res?.phases?.main?.stdout ?? '').not.toContain('Partidos');
+    expect(JSON.parse(res?.phases?.twin?.stdout ?? '{}')).toMatchObject({ date: '2026-06-11' });
+    expect(res?.phases?.twin?.stdout ?? '').not.toContain('Partidos');
+    // `today --json` carries no localized word, so the twin's flag is read from its argv (round 2: the twin built
+    // from the argv without `--lang en` kept the case green).
+    const flag = (argv?: string[]) => (argv ?? []).join(' ');
+    expect(flag(res?.phases?.main?.argv)).toContain('--lang en');
+    expect(flag(res?.phases?.twin?.argv)).toContain('--lang en');
+    expect(flag(res?.phases?.follow?.argv)).not.toContain('--lang');
+  });
+
+  it('ambient: a scenario CLAUDINHO_LANG reaches ambient --json, given no --lang: the view says es', { timeout: SLOW }, () => {
+    const { r, res } = verify(['ambient', '--json', '--out', out(), '--seed', 'none', '--follow', 'world-cup', '--env', 'CLAUDINHO_LANG=es']);
+    expect(r.status, String(res?.error)).toBe(0);
+    expect(JSON.parse(res?.phases?.main?.stdout ?? '{}')).toMatchObject({ lang: 'es' });
   });
 
   it('mcp: a stray stdout line from an otherwise valid server is ok false; a silent server ends at the deadline, reaped, the partial evidence kept', { timeout: SLOW }, async () => {

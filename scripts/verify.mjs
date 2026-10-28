@@ -62,7 +62,7 @@ const SPAWN_COUNT = join(HERE, 'spawn-count.mjs');
 const WINDOWS = process.platform === 'win32';
 
 /** The keys a scenario may set with `--env`; every other key (the harness's own included) is refused. */
-const SCENARIO_KEYS = ['CLAUDINHO_COMPETITION', 'CLAUDINHO_TEAM', 'CLAUDINHO_SOURCE', 'CLAUDINHO_MARKETS_SOURCE', 'LANG', 'TZ'];
+const SCENARIO_KEYS = ['CLAUDINHO_COMPETITION', 'CLAUDINHO_TEAM', 'CLAUDINHO_SOURCE', 'CLAUDINHO_MARKETS_SOURCE', 'CLAUDINHO_LANG', 'LANG', 'TZ'];
 /** The CLI commands `run` never starts: they write the operator's settings, or are the product's own internals. */
 const REFUSED_COMMANDS = new Set(['init', 'init-statusline', 'init-hook', 'init-cursor-statusline', 'claude', 'cursor', 'star', '_refresh']);
 /** The CLI's global options that take a value, skipped when looking for the subcommand in a child argv. */

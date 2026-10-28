@@ -2,7 +2,7 @@
 export type * from './types';
 
 export { flagEmoji, nationToFlag, nationToRegion } from './flags';
-export { t, normalizeLang, stageLabelI18n, momentWords } from './i18n';
+export { t, normalizeLang, isLang, LANGS, stageLabelI18n, momentWords } from './i18n';
 export type { MomentWords } from './i18n';
 export type { Lang } from './i18n';
 export { resolveTz, formatKickoff, formatDate, formatTime, countdown, countdownPhrase, COUNTDOWN_NOW, localDate } from './time';
