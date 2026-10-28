@@ -18,7 +18,7 @@
       },
       "environmentVariables": [
         {
-          "description": "Locale for dates, attribution, and commentary: en, es, pt, or fr (optional; default en)",
+          "description": "The language of a tool's answer when the call names no lang: en, es, pt or fr (optional; default en; a call's lang wins)",
           "isRequired": false,
           "format": "string",
           "name": "CLAUDINHO_LANG"

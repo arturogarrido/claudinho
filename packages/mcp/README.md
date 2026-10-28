@@ -77,6 +77,8 @@ Every tool is read-only, and two of them never touch the network.
 
 Every tool but `get_team` takes an optional `competition` (an alias such as `champions-league`), and
 most take `tz`, `lang` (`en`, `es`, `pt`, `fr`) and `flavor` (`off`, `subtle`, `full`).
+Without `lang`, a tool answers in the server's `CLAUDINHO_LANG` when it is `en`, `es`, `pt` or `fr`,
+else in English; a call's `lang` wins. The resources answer in English.
 
 Resources: `standings://{group}`, and `fixtures://{date}` (the bundled World Cup schedule).
 Prompts: `my_team` (your team's next match and its standing, in the competition you follow) and

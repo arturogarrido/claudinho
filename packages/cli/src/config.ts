@@ -4,6 +4,7 @@ import {
   type CompetitionSelection,
   configPath,
   type FlavorLevel,
+  isLang,
   type Pin,
   pinUnder,
   readUserConfig,
@@ -75,8 +76,6 @@ export interface RawGlobalOpts {
   markets?: boolean;
 }
 
-const SUPPORTED_LANGS = ['en', 'es', 'pt', 'fr'] as const;
-
 function pickLang(explicit?: string): string {
   const candidates = [
     explicit,
@@ -84,9 +83,8 @@ function pickLang(explicit?: string): string {
     process.env.LANG?.split('.')[0]?.split('_')[0],
   ];
   for (const c of candidates) {
-    if (c && SUPPORTED_LANGS.includes(c as (typeof SUPPORTED_LANGS)[number])) {
-      return c;
-    }
+    // Core's one predicate: the MCP server's `CLAUDINHO_LANG` asks it too.
+    if (isLang(c)) return c;
   }
   return 'en';
 }
@@ -97,10 +95,6 @@ function pickColor(explicit?: boolean): boolean {
   if (process.env.NO_COLOR) return false;
   if (!process.stdout.isTTY) return false;
   return true;
-}
-
-function isSupportedLang(s: string): boolean {
-  return SUPPORTED_LANGS.includes(s as (typeof SUPPORTED_LANGS)[number]);
 }
 
 /** Prediction-market signals default on; off via --no-markets or CLAUDINHO_MARKETS=off. */
@@ -138,7 +132,7 @@ export function edgeSelection(opts: { competition?: string }, saved: UserConfigR
 export function resolveConfig(opts: RawGlobalOpts, saved = readSavedChoice()): CliConfig {
   // Flag an explicit --lang we can't honor, so the command can warn (mirrors tz).
   const langRequestedUnsupported =
-    opts.lang && !isSupportedLang(opts.lang) ? opts.lang : undefined;
+    opts.lang && !isLang(opts.lang) ? opts.lang : undefined;
   // The ONE place the CLI decides the competition (see `edgeSelection`).
   const selection = edgeSelection(opts, saved.read);
   // The pin belongs to its competition (core `pinUnder`, MCP's rule too): it
