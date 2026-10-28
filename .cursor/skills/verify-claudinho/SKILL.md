@@ -33,14 +33,17 @@ unset (a report: the children never see them). The feed is not asked.
 
 Every child the control CLI starts (the bootstrap `follow`, the main command, the `--json` twin, the capture, the MCP
 server, the hook) runs with an environment BUILT FROM SCRATCH: a temporary HOME, absolute temporary
-`XDG_CONFIG_HOME` and `XDG_CACHE_HOME`, `TZ=UTC`, `--lang en` unless the scenario passes `--lang`, `CLAUDINHO_NO_STAR=1`,
-colour off except under `capture`, the mode's preload loaded in the child through `NODE_OPTIONS`, every spawn the
-product asks for recorded and never started, every fetch attempt recorded. The mode is `--offline` (the default:
-every fetch fails at once with a network error, so the surface renders its degraded path), `--replay <corpus>` (a
-recorded feed; an unrecorded URL fails the run) or `--live` (the provider, for a person on purpose; never an agent
-mid-task). `--env KEY=VALUE` sets only a scenario key (`CLAUDINHO_COMPETITION`, `CLAUDINHO_TEAM`, `CLAUDINHO_SOURCE`,
-`CLAUDINHO_MARKETS_SOURCE`, `CLAUDINHO_LANG`, `LANG`, `TZ`); every other key is refused. `CLAUDINHO_LANG` is the MCP
-server's language for a call with no `lang`; a CLI child is still given `--lang en`, which wins over it.
+`XDG_CONFIG_HOME` and `XDG_CACHE_HOME`, `TZ=UTC`, `CLAUDINHO_NO_STAR=1`, colour off except under `capture`, the mode's
+preload loaded in the child through `NODE_OPTIONS`, every spawn the product asks for recorded and never started,
+every fetch attempt recorded. The main command and its `--json` twin (`run`, `replay`, `capture`) are also given
+`--lang en` unless the scenario passes `--lang`; the bootstrap `follow` and `prompt`, `hook` and `ambient` are given
+none. The mode is `--offline` (the default: every fetch fails at once with a network error, so the surface renders
+its degraded path), `--replay <corpus>` (a recorded feed; an unrecorded URL fails the run) or `--live` (the provider,
+for a person on purpose; never an agent mid-task). `--env KEY=VALUE` sets only a scenario key (`CLAUDINHO_COMPETITION`,
+`CLAUDINHO_TEAM`, `CLAUDINHO_SOURCE`, `CLAUDINHO_MARKETS_SOURCE`, `CLAUDINHO_LANG`, `LANG`, `TZ`); every other key is
+refused. A scenario's `CLAUDINHO_LANG` reaches every child, which reads it as the product does: the MCP server for a
+call with no `lang`, when it is exactly `en`, `es`, `pt` or `fr`; the main command and its twin keep their
+`--lang en`; `follow` and `ambient --json`, given no `--lang`, take it as the CLI does.
 
 ```
 node scripts/verify.mjs run --offline --follow premier-league --twin --json -- today 2026-10-07

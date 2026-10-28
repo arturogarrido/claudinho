@@ -125,7 +125,7 @@ const langArg = z
   .string()
   .optional()
   .describe(
-    "Locale for dates, list titles, match status and stage words, a match timeline's kind words (Goal, Yellow card…), the empty and outage sentences, provider attribution, and commentary: en, es, pt, fr. Without it, the server's CLAUDINHO_LANG when that is one of the four, else en (the market copy, a few notes and the disclaimer stay English; other locales fall back to en)",
+    "Locale for dates, list titles, match status and stage words, a match timeline's kind words (Goal, Yellow card…), the empty and outage sentences, provider attribution, and commentary: en, es, pt or fr (no other value is supported). Without it, or when it is empty, the server's CLAUDINHO_LANG when that is exactly one of the four, else en. The market copy, a few notes and the disclaimer stay English",
   );
 
 // Shared optional args every competition-answering tool accepts (all but get_team).

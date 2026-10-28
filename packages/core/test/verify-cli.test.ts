@@ -506,6 +506,25 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(textOf(own)).toContain('Current: Premier League · from the request');
   });
 
+  // What the skill says of a scenario's CLAUDINHO_LANG, measured (PR #215 round 1: the skill had said every CLI
+  // child keeps English): the main command and its `--json` twin are given `--lang en` and stay English; the
+  // bootstrap `follow` and `ambient --json`, given no `--lang`, read the variable as the CLI does.
+  it('run: a scenario CLAUDINHO_LANG leaves the main command and its twin English (they get --lang en); the bootstrap follow reads it', { timeout: SLOW }, () => {
+    const { r, res } = verify(['run', '--json', '--out', out(), '--offline', '--follow', 'world-cup', '--env', 'CLAUDINHO_LANG=es', '--twin', '--', 'today', '2026-06-11']);
+    expect(r.status, String(res?.error)).toBe(0);
+    expect(res?.phases?.follow?.stdout ?? '').toContain('Siguiendo: World Cup');
+    expect(res?.phases?.main?.stdout ?? '').toContain('Matches · 2026-06-11');
+    expect(res?.phases?.main?.stdout ?? '').not.toContain('Partidos');
+    expect(JSON.parse(res?.phases?.twin?.stdout ?? '{}')).toMatchObject({ date: '2026-06-11' });
+    expect(res?.phases?.twin?.stdout ?? '').not.toContain('Partidos');
+  });
+
+  it('ambient: a scenario CLAUDINHO_LANG reaches ambient --json, given no --lang: the view says es', { timeout: SLOW }, () => {
+    const { r, res } = verify(['ambient', '--json', '--out', out(), '--seed', 'none', '--follow', 'world-cup', '--env', 'CLAUDINHO_LANG=es']);
+    expect(r.status, String(res?.error)).toBe(0);
+    expect(JSON.parse(res?.phases?.main?.stdout ?? '{}')).toMatchObject({ lang: 'es' });
+  });
+
   it('mcp: a stray stdout line from an otherwise valid server is ok false; a silent server ends at the deadline, reaped, the partial evidence kept', { timeout: SLOW }, async () => {
     const chatty = fakeRoot('process.exit(0);\n', fakeServer({ boot: 'boot' }));
     const c = verify(['mcp', '--json', '--out', out(), '--list'], { env: { VERIFY_ROOT: chatty } });

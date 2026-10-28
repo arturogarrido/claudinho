@@ -18,7 +18,7 @@
       },
       "environmentVariables": [
         {
-          "description": "The language of a tool's answer when the call names no lang: en, es, pt or fr (optional; default en; a call's lang wins)",
+          "description": "The language a tool call with no lang (or an empty one) answers in: exactly en, es, pt or fr, else English (optional; get_team, the resources, the market copy and the disclaimer are English)",
           "isRequired": false,
           "format": "string",
           "name": "CLAUDINHO_LANG"
