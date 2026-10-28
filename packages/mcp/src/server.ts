@@ -830,8 +830,8 @@ export function toContent(r: Omit<ToolResult, 'footer'> & { footer?: string }) {
 
 /**
  * THE SERVER'S EDGE for the language a request answers in: the call's `lang`
- * when it names one (any non-empty string, kept as it is: an unsupported one
- * still falls back to English through core's `t`, as it always did), else the
+ * when it names one (any non-empty string, passed on as it is, so the tools
+ * read a call's own `lang` exactly as they did before this edge), else the
  * server's `CLAUDINHO_LANG` when it is exactly one of the four (core's
  * `isLang`, the CLI's predicate too: `ES`, `es-MX` and ` es` change nothing),
  * else none, which is English. The MCP Registry record has listed the

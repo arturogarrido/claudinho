@@ -70,7 +70,7 @@ const VERSION = JSON.parse(readFileSync(join(ROOT, 'packages/cli/package.json'),
 const SLOW = 90_000;
 const SCENARIO_KEYS = ['CLAUDINHO_COMPETITION', 'CLAUDINHO_TEAM', 'CLAUDINHO_SOURCE', 'CLAUDINHO_MARKETS_SOURCE', 'CLAUDINHO_LANG', 'LANG', 'TZ'];
 
-type Phase = { exit: number | null; timedOut?: boolean; survivorPossible?: boolean; survivorReason?: string; stdout: string; stderr: string };
+type Phase = { exit: number | null; timedOut?: boolean; survivorPossible?: boolean; survivorReason?: string; stdout: string; stderr: string; argv?: string[] };
 type Fetch = { url: string; mode: string; outcome: string; phase?: string };
 type Check = { name: string; ok: boolean; detail?: string };
 type Result = {
@@ -517,6 +517,12 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(res?.phases?.main?.stdout ?? '').not.toContain('Partidos');
     expect(JSON.parse(res?.phases?.twin?.stdout ?? '{}')).toMatchObject({ date: '2026-06-11' });
     expect(res?.phases?.twin?.stdout ?? '').not.toContain('Partidos');
+    // `today --json` carries no localized word, so the twin's flag is read from its argv (round 2: the twin built
+    // from the argv without `--lang en` kept the case green).
+    const flag = (argv?: string[]) => (argv ?? []).join(' ');
+    expect(flag(res?.phases?.main?.argv)).toContain('--lang en');
+    expect(flag(res?.phases?.twin?.argv)).toContain('--lang en');
+    expect(flag(res?.phases?.follow?.argv)).not.toContain('--lang');
   });
 
   it('ambient: a scenario CLAUDINHO_LANG reaches ambient --json, given no --lang: the view says es', { timeout: SLOW }, () => {

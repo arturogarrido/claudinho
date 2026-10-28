@@ -19,7 +19,8 @@ One stated exception: the match timeline (core `timelineRows`) is CLI `match` (i
 `get_match` only (the plugin's match pane draws `match --json`'s `rows`, with `lines` for an older CLI, so it shows the same rows); a share card prints
 none. A second: the `ambient --json` line and the plugin's moments (its toasts and celebration, from `words`) follow the
 CLI's language (`lang`), while the statusline and the hook stay English; MCP is unchanged by this exception (it
-localizes by its own `lang` argument, which the server's `CLAUDINHO_LANG` fills for a call that passes none).
+localizes by its own `lang` argument, which the server's `CLAUDINHO_LANG` fills, when it is exactly `en`, `es`, `pt` or
+`fr`, for a call that passes none or an empty one).
 
 ## Knockout surfaces live-resolve — never read the skeleton (the #1 recurring bug)
 
