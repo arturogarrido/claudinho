@@ -39,7 +39,8 @@ product asks for recorded and never started, every fetch attempt recorded. The m
 every fetch fails at once with a network error, so the surface renders its degraded path), `--replay <corpus>` (a
 recorded feed; an unrecorded URL fails the run) or `--live` (the provider, for a person on purpose; never an agent
 mid-task). `--env KEY=VALUE` sets only a scenario key (`CLAUDINHO_COMPETITION`, `CLAUDINHO_TEAM`, `CLAUDINHO_SOURCE`,
-`CLAUDINHO_MARKETS_SOURCE`, `LANG`, `TZ`); every other key is refused.
+`CLAUDINHO_MARKETS_SOURCE`, `CLAUDINHO_LANG`, `LANG`, `TZ`); every other key is refused. `CLAUDINHO_LANG` is the MCP
+server's language for a call with no `lang`; a CLI child is still given `--lang en`, which wins over it.
 
 ```
 node scripts/verify.mjs run --offline --follow premier-league --twin --json -- today 2026-10-07

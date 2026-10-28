@@ -68,7 +68,7 @@ const CITED_LEADS = [
 ];
 const VERSION = JSON.parse(readFileSync(join(ROOT, 'packages/cli/package.json'), 'utf8')).version as string;
 const SLOW = 90_000;
-const SCENARIO_KEYS = ['CLAUDINHO_COMPETITION', 'CLAUDINHO_TEAM', 'CLAUDINHO_SOURCE', 'CLAUDINHO_MARKETS_SOURCE', 'LANG', 'TZ'];
+const SCENARIO_KEYS = ['CLAUDINHO_COMPETITION', 'CLAUDINHO_TEAM', 'CLAUDINHO_SOURCE', 'CLAUDINHO_MARKETS_SOURCE', 'CLAUDINHO_LANG', 'LANG', 'TZ'];
 
 type Phase = { exit: number | null; timedOut?: boolean; survivorPossible?: boolean; survivorReason?: string; stdout: string; stderr: string };
 type Fetch = { url: string; mode: string; outcome: string; phase?: string };
@@ -491,6 +491,19 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     expect(unknown.res?.ok).toBe(false);
     expect(unknown.res?.error ?? '').not.toBe('');
     expect(unknown.r.status).toBe(1);
+  });
+
+  it("mcp: --env CLAUDINHO_LANG reaches the server (a call with no lang answers in it); the controller's own never does", { timeout: SLOW }, () => {
+    const call = ['list_competitions', '{"competition":"premier-league"}'];
+    const textOf = (run: Run) => (run.res?.content ?? []).map((c) => c.text ?? '').join('\n');
+    const es = verify(['mcp', '--json', '--out', out(), '--env', 'CLAUDINHO_LANG=es', ...call]);
+    expect(es.r.status, String(es.res?.error)).toBe(0);
+    expect(es.res?.env ?? []).toContain('CLAUDINHO_LANG');
+    expect(textOf(es)).toContain('Current: Premier League · desde la solicitud');
+    const own = verify(['mcp', '--json', '--out', out(), ...call], { env: { CLAUDINHO_LANG: 'pt' } });
+    expect(own.r.status, String(own.res?.error)).toBe(0);
+    expect(own.res?.env ?? []).not.toContain('CLAUDINHO_LANG');
+    expect(textOf(own)).toContain('Current: Premier League · from the request');
   });
 
   it('mcp: a stray stdout line from an otherwise valid server is ok false; a silent server ends at the deadline, reaped, the partial evidence kept', { timeout: SLOW }, async () => {
