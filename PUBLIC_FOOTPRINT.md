@@ -49,7 +49,7 @@ Footprint searches use the exact repository, package, and registry identifiers
 | Developers Locker Room | Current | [MCP directory index](https://devlocker.dev/mcp-servers) | Contains two records for the same project (`claudinho` and `claudinho-arturogarridoclaudinho`); count them as one appearance. Both still describe the World Cup release. No stable per-project detail URL was found. |
 | Lulu | Current, automated | [Inbound listing report and response](https://github.com/arturogarrido/claudinho/issues/101) | As of October 18, Lulu listed three entries, copied from PulseMCP, Glama and Smithery. Free factual indexing was accepted; the ads SDK proposal was declined and deduplication was requested on August 10. |
 | claude-mods.com | Current | [claudinho](https://claude-mods.com/claudinho/) | Claude Code mods index built by a daily GitHub scan with a human check. It listed the plugin on its own (updated October 19), with a current description: "Live football scores or the next kickoff above the prompt, goal toasts and a match pane." |
-| Awesome Claude Code Mods | Current | [claudinho](https://mods.aidojo.si/mods/arturogarrido--claudinho--claudinho/) | Claude Code mods catalogue built from a seeds list and a nightly scan of each repository. Listed through the merged seed [PR #381](https://github.com/karanb192/awesome-claude-code-mods/pull/381) on October 24; the page carries the project description, the ESPN attribution and the non-affiliation disclaimer, plus badges the catalogue generates. |
+| Awesome Claude Code Mods | Current | [claudinho](https://mods.aidojo.si/mods/arturogarrido--claudinho--claudinho/) | Claude Code mods catalogue built from a seeds list and a nightly scan of each repository. Listed through the merged seed [PR #381](https://github.com/karanb192/awesome-claude-code-mods/pull/381) on October 24; a Featured nomination is open as [issue #416](https://github.com/karanb192/awesome-claude-code-mods/issues/416) (October 27; the maintainer selects Featured entries); the page carries the project description, the ESPN attribution and the non-affiliation disclaimer, plus badges the catalogue generates. |
 
 ## Automated mirrors and scans
 
@@ -106,6 +106,7 @@ links the repository and the retrospective post.
 - [World Cup closing reflection](https://www.linkedin.com/posts/arturogarrido_vibinglavidaloca-ugcPost-7484840507261624321-6ees/)
 - [One-month retrospective, with the 60-second project video](https://www.linkedin.com/posts/arturogarrido_buildinpublic-vibinglavidaloca-ugcPost-7495689713660534784-Bp0B/) (August 19, 2026; featured on the profile and linked from the Claudinho project entry)
 - [Claudinho 0.12.0: the competition you choose, and a Claude Code mod](https://www.linkedin.com/posts/arturogarrido_vibinglavidaloca-share-7518204795950706689-2cU0/) (October 20, 2026)
+- [Claudinho in Spanish: Pumas in Claude Code](https://www.linkedin.com/posts/arturogarrido_en-junio-constru%C3%AD-claudinho-para-seguir-share-7521039862997680128-JtPf/) (October 27, 2026; a capture of the plugin's goal toast, celebration and match pane on Pumas v Tigres)
 
 ### X
 
