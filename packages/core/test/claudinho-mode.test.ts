@@ -1,9 +1,11 @@
 /**
  * The `claudinho-mode` router skill and its playbooks (PR C): the router loads at the start of a task and names a
  * playbook per task kind; a playbook QUOTES the commands as they are run (the gate line, the push line) and never
- * the paraphrase `gate.sh` exists to replace; every path a playbook or the router names exists; the Cursor mirror of
- * the router is byte-equal; AGENTS.md opens with an index naming every section; the three Cursor glob rules point at
- * a guide file that exists. Structure and existence only: the prose is the readers'.
+ * the paraphrase `gate.sh` exists to replace; a playbook that makes no pull request (an audit, public copy) quotes
+ * neither line and still carries the reply shape; every path a playbook or the router names exists; the Cursor mirror
+ * of the router is byte-equal; AGENTS.md opens with an index naming every section, and its "Reviewing PRs" section and
+ * the two round playbooks name the review tiers and the cap on rounds; the three Cursor glob rules point at a guide
+ * file that exists. Structure and existence only: the prose is the readers'.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -14,7 +16,11 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SKILL = join(ROOT, '.claude/skills/claudinho-mode/SKILL.md');
 const MIRROR = join(ROOT, '.cursor/skills/claudinho-mode/SKILL.md');
 const PLAYBOOKS = join(ROOT, '.claude/skills/claudinho-mode/playbooks');
+// The playbooks that make or review a pull request: each quotes the gate and push lines.
 const KINDS = ['bug-fix', 'feature', 'review-round', 'confirmation-round', 'docs-only', 'dependency-bump', 'release'];
+// The playbooks that make no pull request (a read-only audit, public copy): no gate line, no push line.
+const NO_PR_KINDS = ['audit', 'copy'];
+const ALL_KINDS = [...KINDS, ...NO_PR_KINDS];
 const GATE_LINE = 'bash scripts/gate.sh';
 const PUSH_LINE = 'bash scripts/push-and-watch.sh';
 const PARAPHRASE = /build, typecheck, test, lint, pack guard/i;
@@ -43,19 +49,19 @@ describe('the claudinho-mode router', () => {
     expect(fm.description ?? '').toMatch(/Use at the start of any task/);
   });
 
-  it('names the seven playbooks, each existing, and a fallback row', () => {
+  it('names every playbook, the PR-making ones and the no-PR ones, each existing, and a fallback row', () => {
     const text = read(SKILL);
-    for (const kind of KINDS) {
+    for (const kind of ALL_KINDS) {
       expect(text, `the router names ${kind}`).toContain(`playbooks/${kind}.md`);
       expect(existsSync(join(PLAYBOOKS, `${kind}.md`)), `${kind}.md exists`).toBe(true);
     }
     expect(text).toMatch(/fallback/i);
-    const extra = existsSync(PLAYBOOKS) ? readdirSync(PLAYBOOKS).filter((f) => !KINDS.includes(f.replace(/\.md$/, ''))) : [];
+    const extra = existsSync(PLAYBOOKS) ? readdirSync(PLAYBOOKS).filter((f) => !ALL_KINDS.includes(f.replace(/\.md$/, ''))) : [];
     expect(extra, 'no playbook the router does not name').toEqual([]);
   });
 
   it('every path the router and the playbooks name exists', () => {
-    const texts = [read(SKILL), ...KINDS.map((k) => read(join(PLAYBOOKS, `${k}.md`)))];
+    const texts = [read(SKILL), ...ALL_KINDS.map((k) => read(join(PLAYBOOKS, `${k}.md`)))];
     for (const text of texts) for (const p of namedPaths(text)) expect(existsSync(join(ROOT, p)), p).toBe(true);
   });
 });
@@ -77,6 +83,17 @@ describe('the playbooks', () => {
       expect(text).not.toMatch(/\bdocs\/[\w.-]+/);
     });
   }
+  for (const kind of NO_PR_KINDS) {
+    it(`${kind}: makes no pull request, carries the reply shape and names no private path`, () => {
+      const path = join(PLAYBOOKS, `${kind}.md`);
+      expect(existsSync(path), `${kind}.md exists`).toBe(true);
+      const text = read(path);
+      expect(text).toContain('What I need from you');
+      expect(text).toMatch(/Blocked on you/);
+      expect(text).not.toMatch(/\bdocs\/[\w.-]+/);
+    });
+  }
+
   it('the PR-making playbooks create the branch, the worktree and the pull request their later steps use', () => {
     for (const kind of ['bug-fix', 'feature', 'docs-only', 'dependency-bump', 'release']) {
       const text = read(join(PLAYBOOKS, `${kind}.md`));
@@ -161,6 +178,26 @@ describe('AGENTS.md opens with an index', () => {
     const index = text.slice(text.indexOf('## Index'), text.indexOf('## ', text.indexOf('## Index') + 3));
     for (const h of headings.slice(1)) expect(index, `the index names "${h}"`).toContain(h);
   });
+});
+
+describe('review effort follows risk', () => {
+  // The tiers and the cap live in AGENTS.md "Reviewing PRs"; the two round playbooks say which tiers run them. A
+  // regression that drops either sends every PR back to the full loop with no stop.
+  it('AGENTS.md "Reviewing PRs" names the three tiers and a cap of 3 rounds', () => {
+    const text = read(join(ROOT, 'AGENTS.md'));
+    const start = text.indexOf('## Reviewing PRs');
+    expect(start, 'the section exists').toBeGreaterThanOrEqual(0);
+    const section = text.slice(start, text.indexOf('\n## ', start + 3));
+    for (const tier of ['T0', 'T1', 'T2']) expect(section, `names ${tier}`).toMatch(new RegExp(`\\b${tier}\\b`));
+    expect(section, 'a cap of 3 rounds').toMatch(/\b(3|three) rounds\b/i);
+  });
+
+  for (const kind of ['review-round', 'confirmation-round']) {
+    it(`${kind}.md names the tiers that run it`, () => {
+      const text = read(join(PLAYBOOKS, `${kind}.md`));
+      for (const tier of ['T0', 'T1', 'T2']) expect(text, `names ${tier}`).toMatch(new RegExp(`\\b${tier}\\b`));
+    });
+  }
 });
 
 describe('the Cursor glob rules point at a guide', () => {
