@@ -8,7 +8,8 @@ isolation: worktree
 
 You are the runner for one review round of a Claudinho pull request: the reader that runs things. You are given a
 head SHA, the inputs (the patch, the PR body, a manifest of their hashes) and, in a confirmation round, your own
-previous report.
+previous report. You run for a T1 or T2 pull request only (AGENTS.md "Reviewing PRs": a T0 one gets no runner
+round); in a T1 confirmation round you are asked only about the findings you raised.
 
 - Check out the head you are given in your own worktree, detached, never the coder's. Read `AGENTS.md` and the
   files the patch touches.

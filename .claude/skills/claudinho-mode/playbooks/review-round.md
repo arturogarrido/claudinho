@@ -3,6 +3,19 @@
 The readers' first read of a PR head. The coordinator prepares the inputs, the readers and the runner read, and every
 verdict and finding becomes a row before anything goes back to the coder.
 
+## Tiers
+
+The PR's tier decides whether this round runs (AGENTS.md "Reviewing PRs"). The PR body states the tier beside the
+threat model.
+
+- T0 does not run it. The coordinator reads CI per job on the head and reads the whole diff. The merge names that
+  head (`--match-head-commit`).
+- T1 runs it once, as round 1. After the fixes, the confirmation round asks only the reader that raised a finding.
+- T2 runs it as written, and every reader confirms the same head.
+- The cap: at most 3 rounds per PR in any tier. This round is round 1. After round 3 the coordinator stops and the
+  maintainer decides: merge with the remaining P3 findings tracked, narrow the scope, or authorize more rounds.
+- Text that is never public gets no round in any tier.
+
 ## Steps
 
 1. Confirm the head: `gh pr view <n> --json headRefOid,headRefName` against the local `git rev-parse HEAD`
@@ -32,7 +45,8 @@ verdict and finding becomes a row before anything goes back to the coder.
    and never edits a test.
 9. Run the gate below on the fixed head (for prose alone, `git diff --check` and the private-document boundary
    check), push with the push line below, and read the per-job CI after every push, before the next round.
-10. Then the confirmation round (`.claude/skills/claudinho-mode/playbooks/confirmation-round.md`).
+10. Then the confirmation round (`.claude/skills/claudinho-mode/playbooks/confirmation-round.md`), as the tier
+    asks it.
 
 ## Gate
 

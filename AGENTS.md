@@ -13,8 +13,8 @@ One line per section of this file: what it is for and when a task loads it. The 
 - **Commands**: the commands, the canary, the README matrix generator; read before running one.
 - **Validation scope**: the checks each kind of change needs, with the private-document boundary check; read before calling any change ready.
 - **Releasing**: the version bump, the publish workflow, the Registry record, the maintainer's machine updated; read for a release.
-- **Commit attribution (all agents)**: the co-author trailer; read before the first commit.
-- **Reviewing PRs (all agents)**: a review's checkout, its threat model and how its findings are written; read for a review.
+- **Commit attribution (all agents)**: the co-author trailer and its one spelling; read before the first commit.
+- **Reviewing PRs (all agents)**: a review's checkout, its threat model, its tier (T0, T1, T2), the cap of three rounds and how its findings are written; read for a review and before opening a PR.
 - **Codex / GPT specifics**: notes for that agent family; read only when one of its agents runs.
 - **Conventions**: the engineering rules, one bullet each, a bullet whose narration moved ending with a `Narration:` line naming its file under `guides/conventions/`; read the bullets of every area a change touches.
 - **Rules and their enforcers**: each failure class, what refuses it and what that does not prove; read before calling a class closed.
@@ -44,7 +44,8 @@ One line per section of this file: what it is for and when a task loads it. The 
 - Preserve the user's selected model and effort. Both are set and checked in the coding client; a
   model recommendation in these guides does not change that setting or prove a model performs
   better on this project.
-- Use an independent reviewer for the cases required under "Pre-PR self-review". Give each reviewer
+- Use an independent reviewer for the cases required under "Pre-PR self-review" (T2) and for the
+  reader rounds a PR's tier requires under "Reviewing PRs". Give each reviewer
   a bounded scope and reconcile their evidence. Other delegation follows the user's instructions
   and the coding client's rules.
 - Report the outcome, checks actually run, and unresolved limitations concisely. For reviews, lead
@@ -310,7 +311,7 @@ Use the model **actually in use**, not a hardcoded one. Examples, one per agent 
 uses Anthropic's no-reply address; Cursor and Codex follow the same pattern with their own):
 
 ```
-Co-Authored-By: Claude Code (<actual Claude model>) <noreply@anthropic.com>
+Co-Authored-By: Claude Code (<model's short name>) <noreply@anthropic.com>
 Co-Authored-By: Cursor (Composer 2.5) <...>
 Co-Authored-By: Codex (<actual GPT model>) <noreply@openai.com>
 ```
@@ -318,6 +319,19 @@ Co-Authored-By: Codex (<actual GPT model>) <noreply@openai.com>
 Read the model from the current session; never infer it from an example, an older commit, or a
 global default that the session may override. Use this `<Agent> (<Model>)` form even when the
 coding client suggests a different trailer.
+
+**One spelling.** `git log` holds several spellings of this trailer from before this rule; the form
+below is the one.
+
+- The key is `Co-Authored-By`, with that capitalization.
+- The model is its short display name, with no vendor prefix: `Claude Code (Opus 5.5)`, never
+  `Claude Code (Claude Opus 5.5)` and never `Claude Opus 5.5` alone.
+- Each agent adds one trailer line. A branch with commits by two agents carries two lines in the
+  PR body.
+
+```
+Co-Authored-By: Claude Code (Opus 5.5) <noreply@anthropic.com>
+```
 
 ## Reviewing PRs (all agents)
 
@@ -343,6 +357,29 @@ coding client suggests a different trailer.
   boundary), our own processes racing each other stay in scope (the refresher's lock, the throttle note),
   and a change may widen its model in its description. When fix rounds open a new case of the same kind
   twice, stop and ask whether that kind is in scope before writing another fix.
+- **Review follows risk: every PR has a tier.** The PR description states the tier beside the threat
+  model. A PR that spans tiers takes the highest. The maintainer may raise or lower a tier.
+- **T0**: prose and agent instructions only ("Validation scope", first bullet); a dependency bump whose
+  lockfile delta moves no shipped (runtime) dependency; a CI-action pin; text that is never public. The
+  coordinator reads CI per job on the head and reads the whole diff. There is no reader round and no
+  runner round. Prose that states a legal, privacy or security claim (`SECURITY.md`, `PRIVACY.md`, the
+  disclaimer, "Hard constraints") is T1, not T0.
+- **T1**: product behaviour (code, tests, executable configuration, package contents) outside the T2
+  areas, and a runtime dependency bump. The readers and the runner read it in one round. After the
+  fixes, only the reader that raised a finding confirms its fix.
+- **T2**: the trust boundary (`packages/core/src/trust/`, the provider adapters); the cache, the lock and
+  the refresher; the release pipeline (`.github/workflows/publish.yml`, the tag step); a change to the
+  MCP tool contract (`tools/list`); anything touching money, legal or a new external API (the
+  independent pass "Pre-PR self-review" requires). It gets the full loop: every reader confirms the
+  same head.
+- **The cap: at most 3 rounds per PR, in any tier.** The first read is round 1. After round 3 the
+  coordinator stops. The maintainer then decides: merge with the remaining P3 findings tracked, narrow
+  the scope, or authorize more rounds.
+- **A delta that is not a round.** In T0 and T1, the coordinator confirms a delta that changes prose
+  alone or the PR body alone. In T2, the reader that raised the finding confirms that delta alone. Text
+  that is never public gets no reader round in any tier.
+- **The merge names a held SHA in every tier** (`--match-head-commit`). In T0 it is the head the
+  coordinator read with CI green per job. In T1 and T2 it is the head the confirmations name.
 
 ## Codex / GPT specifics
 
@@ -458,10 +495,10 @@ leave a row behind.
 
 ## Pre-PR self-review (run before declaring a change "done")
 
-This is the lens an external reviewer uses — apply it yourself first. For changes
-touching money/legal/external APIs, also run an **independent adversarial pass**
-(e.g. a reviewer subagent with fresh eyes on the diff) and self-classify any
-findings **P1/P2/P3**. Apply each item to the behavior and contracts affected by the change;
+This is the lens an external reviewer uses — apply it yourself first. For a **T2** change
+("Reviewing PRs": money, legal, a new external API and the other T2 areas), also run an
+**independent adversarial pass** (e.g. a reviewer subagent with fresh eyes on the diff) and
+self-classify any findings **P1/P2/P3**. Apply each item to the behavior and contracts affected by the change;
 use "Validation scope" for the required checks.
 
 1. **Verify external contracts against ground truth.** For any new API/integration,

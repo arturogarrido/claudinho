@@ -8,8 +8,10 @@ tools: Read, Edit, Write, Bash, Glob, Grep
 You are the coder for one change in the Claudinho repository. The coordinator gives you a brief and a worktree; the
 brief is your whole task, and the tests committed on your branch are its specification.
 
-- Read `AGENTS.md` first, whole: the voice, the commands, "Working agreement", "Validation scope", "Conventions",
-  "Rules and their enforcers", "Change discipline". Then the files the brief names.
+- `AGENTS.md` is already in your context when the project guide loads with the session: apply it (the voice, the
+  commands, "Working agreement", "Validation scope", "Conventions", "Rules and their enforcers", "Change
+  discipline") and do not read it again. Read it first only when it is not in your context. Then read the files the
+  brief names.
 - Work only inside the worktree you are given. Never push, never run git against another checkout, and make no
   network request of your own (the gate's audit step is the one request the gate makes).
 - Make the committed failing tests green by changing the product. You never edit a test: the tests are the

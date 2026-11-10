@@ -11,7 +11,8 @@ list with the playbook's steps, in the playbook's order, before the first edit; 
 current until the reply. A playbook orders the rules of AGENTS.md and quotes the commands as they are run (the gate
 line, the push line); AGENTS.md stays the canonical guide, and where a playbook or a guide disagrees with it AGENTS.md
 wins. Every playbook ends with the same reply shape: a status ends Running, Blocked on you or Done, and a run ends with
-a numbered "What I need from you". The playbooks live once, under `.claude/skills/claudinho-mode/playbooks/`; this
+a numbered "What I need from you". A pull request's review follows its tier (T0, T1 or T2, at most 3 rounds:
+AGENTS.md "Reviewing PRs"), stated in its description beside the threat model. The playbooks live once, under `.claude/skills/claudinho-mode/playbooks/`; this
 file is mirrored byte-equal at `.cursor/skills/claudinho-mode/SKILL.md`, and both name a playbook and a guide by its
 repository-root path.
 
@@ -24,6 +25,10 @@ repository-root path.
 | Prose and agent instructions only | `.claude/skills/claudinho-mode/playbooks/docs-only.md` | "Validation scope" (its private-document boundary check), "Hard constraints", "Don't"; the guide whose text the change edits |
 | A dependency bump, a Dependabot PR or an advisory | `.claude/skills/claudinho-mode/playbooks/dependency-bump.md` | "Validation scope", "Commands"; `guides/conventions/trust-boundary.md` for a provider or parsing dependency |
 | A release: the version bump, the gate, the tag's watch | `.claude/skills/claudinho-mode/playbooks/release.md` | "Releasing", "Release readiness", "Release cadence"; `guides/conventions/bundle-and-bracket.md` (the bundle and the bracket tripwires) |
+| Triage of an outside contributor's or a bot's PR (a Dependabot PR: the dependency row) | `.claude/skills/claudinho-mode/playbooks/review-round.md` | "Reviewing PRs" (its tier first), "Pre-PR self-review", "Hard constraints"; the guide of every area the patch touches |
+| A read-only audit or investigation of the project (not a PR review) | `.claude/skills/claudinho-mode/playbooks/audit.md` | "Working agreement", "Rules and their enforcers"; the guide of every area the question reads |
+| Public copy and growth work: a post, a reply, a listing, a README pitch | `.claude/skills/claudinho-mode/playbooks/copy.md` | "What this is", "Hard constraints", "Don't" |
+| A change to gitignored private files only | none: no branch, no pull request, no reader round; the reply shape still applies | "Don't" (a private path is never cited from a tracked file) |
 | The fallback: work no kind above matches | `.claude/skills/claudinho-mode/playbooks/feature.md` | every AGENTS.md section and every guide under `guides/conventions/` the diff touches |
 
 The guides hold the narration behind the AGENTS.md "Conventions" bullets and what the Cursor glob rules stated that no
