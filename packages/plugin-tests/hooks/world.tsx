@@ -12,7 +12,11 @@ export const HOME = '/Users/fan'
 export const BARE_PATH = '/usr/bin:/bin'
 export const NVM = `${HOME}/.nvm/versions/node`
 
-/** The view the CLI prints for a line, with nothing live: `idle` and `empty` SAY what the line is (the band never reads the text). */
+/**
+ * The view CLI 0.13.1 prints for a line, with nothing live: `idle` and `empty` SAY what the line is (the band never
+ * reads the text); it states its `lang` and a saved pin (`pick`). A test about an older CLI's view says so with
+ * `lang: undefined` (the key then left out), one about no pin with `pick: null`.
+ */
 export const view = (line: string, over: Record<string, unknown> = {}) =>
   JSON.stringify({
     line,
@@ -22,8 +26,10 @@ export const view = (line: string, over: Record<string, unknown> = {}) =>
     live: { items: [], total: 0, shown: 0, truncated: false, complete: true },
     current: false,
     next: null,
-    pick: null,
+    // A 0.13.1 view: the saved pin (the person pinned a team), the CLI's resolved language.
+    pick: { id: 'espn:364', code: 'LIV', name: 'Liverpool' },
     competition: { slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'saved' },
+    lang: 'en',
     degraded: false,
     source: 'espn',
     updatedAt: null,

@@ -534,7 +534,7 @@ describe('the match pane under a language (C3, C7)', () => {
       current: true,
       staleAfter: NOWISH,
       live: { items: [{ id: ID, line: "Arsenal 2–1 Chelsea (50')", score: { home: 2, away: 1 }, pinned: true, picked: true }], total: 1, shown: 1, truncated: false, complete: true },
-      ...(lang ? said(lang) : {}),
+      ...(lang ? said(lang) : { lang: undefined }),
     })
   const ROWS = ['Arsenal 2–1 Chelsea', '  Premier League', "  Sat 15:00  50'"]
   const answer = (slug = 'eng.1') =>
@@ -608,7 +608,7 @@ describe('the match pane under a language (C3, C7)', () => {
     view(LINE, {
       current: false,
       live: { items: [{ id: ID, line: "Arsenal 2–1 Chelsea (50')", score: { home: 2, away: 1 }, pinned: true, picked: true }], total: 1, shown: 1, truncated: false, complete: true },
-      ...(lang ? said(lang) : {}),
+      ...(lang ? said(lang) : { lang: undefined }),
     })
   const HEADLESS = { start: { surface: null, isInteractive: false }, surfaces: [] } as const
 
