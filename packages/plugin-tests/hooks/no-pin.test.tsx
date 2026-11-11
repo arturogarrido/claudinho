@@ -3,11 +3,11 @@ import { ARAUJO, drawnRows, finishedRecord, liveRecord, momentLine, momentView, 
 
 /**
  * No team pinned (plugin 0.7.0), under `toasts: pinned` (the default), with the view stating `pick: null` (no saved
- * pin and no `CLAUDINHO_TEAM`) and no `pickUnreadable`: the session's FIRST score change of a live record toasts as
- * itself (the first match in the view's order), with its celebration, then one toast says how to pin, for 10 seconds
- * (`Pin your team to get only its goals: claudinho follow <alias> --team <name>`, the alias from the view); then no goal
- * toast and no celebration for the rest of the session, while the band's bold score keeps changing. Never under `all`
- * or `off`; with a pin, nothing changes.
+ * pin and no `CLAUDINHO_TEAM`) and no `pickUnreadable`: the session's first live goal from a record that names its
+ * sides toasts as itself (the first match in the view's order), with its celebration, then one toast says how to pin,
+ * for 10 seconds (`Pin your team to get only its goals: claudinho follow <alias> --team <name>`, the alias from the
+ * view). No other moment is said, before it or after, until the view states a pick; the band's bold score keeps
+ * changing. Never under `all` or `off`; with a pin, nothing changes.
  */
 const HEAD = '▐▛███▜▌'
 const HINT = 'Pin your team to get only its goals: claudinho follow europa-league --team <name>'
@@ -108,12 +108,37 @@ describe('no pin, toasts: pinned', () => {
     expect(toasts).toEqual([])
   })
 
-  test('a record with no `names` (CLI 0.11.2\'s shape): its goal is the taste, said as its own line', async ($, on) => {
+  // The taste is the first live goal from a record that names its sides: a record with no `names` (CLI 0.11.2's
+  // shape, a session the update toast already reached) is never it.
+  const legacy = (score: [number, number], over: Record<string, unknown> = {}) =>
+    rec(score, { names: undefined, lastGoal: undefined, line: `LASK Linz ${score[0]}–${score[1]} Liverpool (23')`, ...over })
+
+  test('a record with no `names` (CLI 0.11.2\'s shape): its single goal is not the taste, and is not said', async ($, on) => {
     const toasts = toastsWithTimeout(on)
-    const old = (score: [number, number]) => rec(score, { names: undefined, lastGoal: undefined, line: `LASK Linz ${score[0]}–${score[1]} Liverpool (23')` })
-    const w = await world($, on, [momentView([old([0, 0])], [], NONE), momentView([old([0, 1])], [], NONE)])
+    const w = await world($, on, [momentView([legacy([0, 0])], [], NONE), momentView([legacy([0, 1])], [], NONE)])
     await next(w)
-    expect(toasts.map((t) => t.text)).toEqual(["⚽ LASK Linz 0–1 Liverpool (23')", HINT])
+    expect(toasts).toEqual([])
+  })
+
+  test('a record with no `names` jumping two goals is not the taste; the next single goal from a record WITH names is', async ($, on) => {
+    const toasts = toastsWithTimeout(on)
+    const w = await world($, on, [momentView([legacy([0, 0])], [], NONE), momentView([legacy([0, 2])], [], NONE), momentView([rec([0, 2])], [], NONE), momentView([rec([1, 2], { lastGoal: SECOND, minute: 63 })], [], NONE)])
+    await next(w)
+    await next(w)
+    expect(toasts).toEqual([])
+    await next(w)
+    expect(toasts.map((t) => t.text)).toEqual(["⚽ GOAL! LASK Linz · Robert Ljubicic 63' · LASK Linz 1–2 Liverpool", HINT])
+  })
+
+  test('a record with no `names` whose shootout tally rises is not the taste; the next single goal from a record WITH names is', async ($, on) => {
+    const toasts = toastsWithTimeout(on)
+    const pens = (shootout: [number, number]) => legacy([1, 1], { shootout: { home: shootout[0], away: shootout[1] }, minute: 120 })
+    const w = await world($, on, [momentView([pens([2, 2])], [], NONE), momentView([pens([3, 2])], [], NONE), momentView([rec([1, 1])], [], NONE), momentView([rec([1, 2], { lastGoal: { ...ARAUJO, minute: 88 }, minute: 88 })], [], NONE)])
+    await next(w)
+    await next(w)
+    expect(toasts).toEqual([])
+    await next(w)
+    expect(toasts.map((t) => t.text)).toEqual(["⚽ GOAL! Liverpool · Ronald Araújo 88' · LASK Linz 1–2 Liverpool", HINT])
   })
 
   test('an experimental competition (no alias): the hint names its slug', async ($, on) => {
