@@ -101,6 +101,21 @@ describe('no pin, toasts: pinned', () => {
     expect(toasts.map((t) => t.text)).toEqual([GOAL_TOAST, HINT])
   })
 
+  test('a goal first seen at full time (the match left the live list with its tally up) is not the taste', async ($, on) => {
+    const toasts = toastsWithTimeout(on)
+    const w = await world($, on, [before, momentView([], [finishedRecord([0, 1], { ...NO_PIN })], NONE)])
+    await next(w)
+    expect(toasts).toEqual([])
+  })
+
+  test('a record with no `names` (CLI 0.11.2\'s shape): its goal is the taste, said as its own line', async ($, on) => {
+    const toasts = toastsWithTimeout(on)
+    const old = (score: [number, number]) => rec(score, { names: undefined, lastGoal: undefined, line: `LASK Linz ${score[0]}–${score[1]} Liverpool (23')` })
+    const w = await world($, on, [momentView([old([0, 0])], [], NONE), momentView([old([0, 1])], [], NONE)])
+    await next(w)
+    expect(toasts.map((t) => t.text)).toEqual(["⚽ LASK Linz 0–1 Liverpool (23')", HINT])
+  })
+
   test('an experimental competition (no alias): the hint names its slug', async ($, on) => {
     const toasts = toastsWithTimeout(on)
     const comp = { competition: { slug: 'fifa.friendly', name: 'Friendlies', chosenBy: 'saved', experimental: true } }

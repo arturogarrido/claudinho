@@ -2,10 +2,10 @@ import { describe, expect, test } from 'claude-code/testing'
 import { COMPLETE, FIRST_RUN, drawnRows, view, world } from './world'
 
 /**
- * The band: `claudinho ambient --json --columns <the band's columns>` every 15 s, the object's `line` shown as the
- * CLI fitted it. Hidden: the first-run line and `⚽ —`; shown: a score, a countdown, the complete line. The two
- * idle lines are read every five minutes; a failed run, a missing binary, a non-object or a headless session show
- * nothing and block nothing.
+ * The band: `claudinho ambient --json --columns <the band's columns>`, at the pace each answer sets (cadence.test.tsx:
+ * 15 s while live, a minute after a failed run, five minutes far from kickoff and on the two idle lines), the object's
+ * `line` shown as the CLI fitted it. Hidden: the first-run line and `⚽ —`; shown: a score, a countdown, the complete
+ * line. A failed run, a missing binary, a non-object or a headless session show nothing and block nothing.
  */
 describe('what the band runs', () => {
   test("the CLI once at the start, ambient --json fitted to the band's columns, with an empty stdin", async ($, on) => {
