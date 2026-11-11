@@ -54,7 +54,7 @@ describe('what is read back from the file is believed only within bounds', () =>
   it('no slice: no schedule, discovery never attempted, nothing in play, no probe', () => {
     for (const raw of [undefined, null, 'x', 7, []]) {
       const v = scheduleView(raw, NOW);
-      expect(v, String(raw)).toEqual({ index: undefined, attemptAgeMs: Infinity, attemptedAt: undefined, updatedAt: undefined, complete: false, failures: 0, inPlayUntil: undefined, probe: false, season: undefined });
+      expect(v, String(raw)).toEqual({ index: undefined, indexIntact: false, attemptAgeMs: Infinity, attemptedAt: undefined, updatedAt: undefined, complete: false, failures: 0, inPlayUntil: undefined, probe: false, season: undefined });
     }
   });
 

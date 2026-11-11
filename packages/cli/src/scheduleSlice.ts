@@ -65,10 +65,9 @@ export interface ScheduleView {
   index: ScheduleEntry[] | undefined;
   /**
    * The index holds every stored record: a list, each record sealed, no id
-   * repeated, none past the horizon. False for a slice with no index; absent
-   * (not intact either) when there is no slice at all.
+   * repeated, none past the horizon. False when there is no index.
    */
-  indexIntact?: boolean;
+  indexIntact: boolean;
   /** Age of the latest discovery ATTEMPT (Infinity: never, or a stamp that cannot be trusted). */
   attemptAgeMs: number;
   /** That attempt's stamp, re-emitted in one form; absent when it cannot be trusted. */
@@ -89,6 +88,7 @@ export interface ScheduleView {
 
 const NO_SCHEDULE: ScheduleView = {
   index: undefined,
+  indexIntact: false,
   attemptAgeMs: Number.POSITIVE_INFINITY,
   attemptedAt: undefined,
   updatedAt: undefined,

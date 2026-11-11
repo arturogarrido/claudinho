@@ -137,8 +137,8 @@ In a break between match days, an empty `today` names the next day with a match,
   See them: claudinho today 2026-11-21
 ```
 
-When nothing is scheduled in the next 14 days, it says so. `--json` carries `nextDay`,
-`nextKickoff` or `horizon`.
+When nothing is scheduled in the next 14 days, it says so. While a match may be in play, `live` adds
+nothing. `--json` may carry `nextDay`, `nextKickoff` or `horizon`.
 
 ### One match
 
