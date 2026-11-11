@@ -272,7 +272,7 @@ yesterday to 14 days ahead, so run it with a current id (`claudinho today --json
 match's `id`).
 
 A card has no color codes, so it pastes cleanly anywhere, and always carries the non-affiliation
-sentence. `--copy` uses `pbcopy` on macOS, `clip` on Windows, and elsewhere the first of `wl-copy`,
+sentence. `--copy` uses `pbcopy` on macOS, Windows' own `clip.exe` (by its path under the system folder) on Windows, and elsewhere the first of `wl-copy`,
 `xclip` and `xsel` that works. When none works, the card is still printed: copy it from the terminal.
 
 | Flag | Description |

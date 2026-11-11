@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date:** 2026-10-22
+**Effective date:** 2026-11-11
 
 Claudinho is an independent, open-source project: a CLI, a Claude Code / Cursor
 statusline, a score-aware hook, an MCP server, and a Claude Code plugin that show live
@@ -37,9 +37,14 @@ sports-data services:
 
 Claudinho itself adds **no accounts, authentication, profile, or prompt data** to these
 requests: they are anonymous reads of public endpoints (a date and competition for scores;
-a public event slug for market data). As with any HTTP request, though, the service you
-connect to still receives the standard request metadata your device sends, such as your **IP
-address and HTTP headers**; Claudinho cannot avoid this and adds nothing beyond it. Your use
+a public event slug for market data). Each request carries two headers Claudinho sets, and
+neither says anything about you: `Accept: application/json`, and a `User-Agent` naming the
+product and its repository. To ESPN that is `claudinho/<version>
+(+https://github.com/arturogarrido/claudinho)`, where `<version>` is the version of the
+Claudinho package making the request; to Polymarket it is the fixed `claudinho/0.0
+(+https://github.com/arturogarrido/claudinho)`. As with any HTTP request, the service you
+connect to also receives the standard request metadata your device sends, such as your **IP
+address**; Claudinho cannot avoid this and adds nothing beyond these two headers. Your use
 of those third-party services is governed by their own privacy policies:
 
 - ESPN (a division of The Walt Disney Company): <https://privacy.thewaltdisneycompany.com/en/current-privacy-policy/>
@@ -57,7 +62,9 @@ The behavior differs by component:
   live/upcoming scores and fixtures), `backoff.json` (a single timestamp: until when the data
   provider asked not to be contacted), `attempt.json` (a timestamp and a count that pace the
   background refresher while no readable cache exists), `market-signals.json` (cached market
-  reads), and `runs.json` (a local counter for the star-reminder nudge). The first three are kept
+  reads), `runs.json` (a local counter for the star-reminder nudge), and `refresh.lock` (present
+while a background refresh runs, or left by one that was stopped mid-run: the refresher's process
+id, a timestamp and a random token, one file for every competition). The first three are kept
   per competition: named bare for the World Cup, as here, and with the source and competition for
   another (`state.espn.eng.1.json`, `backoff.espn.eng.1.json`, `attempt.espn.eng.1.json`). These
   files contain no personal data, stay on your device, are never uploaded, and you can delete them
