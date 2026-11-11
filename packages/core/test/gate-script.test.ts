@@ -712,6 +712,17 @@ describe.skipIf(process.platform === 'win32')('the tripwire: every gating step o
     expect(unclassified.map((s) => `${s.job}: ${s.text.split('\n').pop()}`)).toEqual(['os-matrix: pnpm run extra-check']);
   });
 
+  it('the concurrency block cancels a superseded run on a pull_request event only, so a run on a merge commit to main always completes', () => {
+    // A second merge to main once cancelled the run on the first merge commit, whose CI could then never be read.
+    const block = /^concurrency:\n((?: {2}.*\n)+)/m.exec(yaml)?.[1] ?? '';
+    expect(block, 'one top-level concurrency block').not.toBe('');
+    const expr = (inner: string) => `$${'{{'} ${inner} }}`; // assembled, so the fixture is not itself a template placeholder
+    expect(block).toContain(`  group: ci-${expr('github.workflow')}-${expr('github.ref')}\n`);
+    expect(block).toContain(`  cancel-in-progress: ${expr("github.event_name == 'pull_request'")}\n`);
+    // No other cancel-in-progress (a job-level one) can override it.
+    expect(yaml.match(/cancel-in-progress:/g)?.length).toBe(1);
+  });
+
   it('the os-matrix exclusions name the runners the matrix has (Windows and macOS), not three', () => {
     for (const e of EXCLUDED) expect(e.reason).not.toMatch(/three operating systems/);
   });
