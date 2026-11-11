@@ -243,3 +243,125 @@ describe('the refusal: the value echoed as a label, the suggestion, then the ali
     expect(long).not.toContain('Did you mean');
   });
 });
+
+/**
+ * Round 1 of the review (#231): the work bound comes BEFORE any work, an
+ * invisible character is refused and never repaired into a name, every key a
+ * lookup accepts is one the load-time guard checked, and the suggestion bound
+ * is pinned at its edge.
+ */
+describe('the work is bounded before it starts', () => {
+  /** Every string a String method or a RegExp is asked about while `run` runs, by length. */
+  function lengthsSeen(run: () => void): number[] {
+    const seen: number[] = [];
+    const restores: Array<() => void> = [];
+    const onString = (name: 'includes' | 'normalize' | 'toLowerCase' | 'replace' | 'startsWith' | 'split' | 'indexOf' | 'trim') => {
+      const proto = String.prototype as unknown as Record<string, (...a: unknown[]) => unknown>;
+      const orig = proto[name] as (...a: unknown[]) => unknown;
+      proto[name] = function (this: unknown, ...a: unknown[]) {
+        seen.push(String(this).length);
+        return orig.apply(this, a);
+      };
+      restores.push(() => {
+        proto[name] = orig;
+      });
+    };
+    for (const n of ['includes', 'normalize', 'toLowerCase', 'replace', 'startsWith', 'split', 'indexOf', 'trim'] as const) onString(n);
+    const rx = RegExp.prototype as unknown as Record<string, (...a: unknown[]) => unknown>;
+    for (const name of ['test', 'exec'] as const) {
+      const orig = rx[name] as (...a: unknown[]) => unknown;
+      rx[name] = function (this: unknown, ...a: unknown[]) {
+        seen.push(String(a[0] ?? '').length);
+        return orig.apply(this, a);
+      };
+      restores.push(() => {
+        rx[name] = orig;
+      });
+    }
+    try {
+      run();
+    } finally {
+      for (const r of restores.reverse()) r();
+    }
+    return seen;
+  }
+
+  for (const [label, value] of [
+    ['100,000 units with no dot', 'x'.repeat(100_000)],
+    ['a name repeated far past the bound', 'premier league'.repeat(10_000)],
+    ['dots far past the bound', 'a.b'.repeat(40_000)],
+    ['65 units', `${'a'.repeat(60)}.bcde`],
+  ] as const) {
+    it(`${label}: no string longer than 64 units is searched, normalized or matched`, () => {
+      const seen = lengthsSeen(() => {
+        expect(competitionValue(value)).toBeUndefined();
+        expect(suggestCompetitions(value)).toEqual([]);
+        expect(resolveCompetition(value).kind).toBe('refused');
+      });
+      expect(Math.max(0, ...seen), label).toBeLessThanOrEqual(64);
+    });
+  }
+
+  it('the refusal of such a value echoes a bounded, sanitized label, never the raw value', () => {
+    for (const v of ['x'.repeat(100_000), `epl\u0007‮${'y'.repeat(100_000)}`, `\u001b[31m${'z'.repeat(5_000)}`]) {
+      const msg = selectionRefusal(resolveCompetition(v), 'en') ?? '';
+      const first = msg.split('\n')[0] ?? '';
+      expect(first.length).toBeLessThan(80);
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what the test refuses.
+      expect(first).not.toMatch(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/);
+      expect(msg.length).toBeLessThan(600);
+    }
+  });
+});
+
+describe('an invisible character is refused, never repaired into a name', () => {
+  it('refused, and nothing suggested: default-ignorable marks, variation selectors, joiners, zero-width space', () => {
+    for (const v of ['epl͏', 'epl️', 'epl᠋', 'epl\u{e0100}', 'epl‍', 'epl​', 'e͏pl', 'premier͏', 'premier league️', 'Copa Am͏érica']) {
+      expect(slugOf(v), JSON.stringify(v)).toBeUndefined();
+      expect(suggestCompetitions(v), JSON.stringify(v)).toEqual([]);
+    }
+  });
+
+  it('and what must survive: an accent precomposed or decomposed, upper case, spaces, hyphens', () => {
+    expect(slugOf('Copa América')).toBe('conmebol.america');
+    expect(slugOf('Copa América')).toBe('conmebol.america');
+    expect(slugOf('LA LIGA')).toBe('esp.1');
+    expect(slugOf('premier-league')).toBe('eng.1');
+    expect(slugOf('Premier  League')).toBe('eng.1');
+  });
+});
+
+describe('every key a lookup accepts is one the load-time guard checked', () => {
+  const ROW: CompetitionEntry = {
+    slug: 'fra.1', alias: 'ligue-1', name: 'Ligue 1', teams: 'club', kind: 'league', standings: 'league',
+    bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1,
+  };
+  it('two rows with the same 65-unit alias are refused at load', () => {
+    const long = 'a'.repeat(65);
+    expect(() => deriveTables([{ ...ROW, alias: long }, { ...ROW, slug: 'fra.2', name: 'Ligue 2', alias: long }])).toThrow();
+  });
+
+  it('an alias outside its grammar, or a name with no usable key, is refused at load, naming it', () => {
+    for (const alias of ['a'.repeat(65), 'Ligue-1', 'ligue.1', 'ligue--1', '-ligue', 'ligue-', 'ligue 1', '']) {
+      expect(() => deriveTables([...SUPPORTED, { ...ROW, alias }]), JSON.stringify(alias)).toThrow();
+    }
+    for (const name of ['Ligue\t1', 'x'.repeat(70), '​']) {
+      expect(() => deriveTables([...SUPPORTED, { ...ROW, name }]), JSON.stringify(name)).toThrow();
+      expect(() => deriveTables([...SUPPORTED, { ...ROW, otherNames: [name] }]), JSON.stringify(name)).toThrow();
+    }
+    expect(() => deriveTables([...SUPPORTED, ROW])).not.toThrow();
+  });
+});
+
+describe('the suggestion bound, at its edge', () => {
+  const LONG: CompetitionEntry = {
+    slug: 'xyz.1', alias: 'long-cup', name: 'Long Cup', otherNames: ['A Very Long Competition Name Beyond Thirty Two Chars'],
+    teams: 'club', kind: 'cup', standings: 'none', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1,
+  };
+  const key = 'averylongcompetitionnamebeyondthirtytwochars';
+  it('32 normalized characters are looked at; 33 are not', () => {
+    expect(suggestCompetitions(key.slice(0, 32), [...SUPPORTED, LONG])).toEqual(['long-cup']);
+    expect(suggestCompetitions(key.slice(0, 33), [...SUPPORTED, LONG])).toEqual([]);
+    expect(suggestCompetitions(key.slice(0, 40), [...SUPPORTED, LONG])).toEqual([]);
+  });
+});

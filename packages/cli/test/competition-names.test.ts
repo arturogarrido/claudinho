@@ -181,3 +181,25 @@ describe('no competition key is a word the CLI already means', () => {
     for (const n of [...names, 'off', 'list']) expect(competitionValue(n), n).toBeUndefined();
   });
 });
+
+describe('round 1 of the review (#231)', () => {
+  it('the wrap follows a narrow stream: at 12 columns, no line wider than 12 but a single word that is', async () => {
+    const { wrapLines } = await import('../src/wrap');
+    const lines = wrapLines('Unknown competition "premier". Did you mean premier-league?\nAliases: world-cup, euro.', 12);
+    expect(lines.length).toBeGreaterThan(4);
+    for (const l of lines) if (l.length > 12) expect(l.includes(' '), l).toBe(false);
+    expect(lines).toContain('Unknown');
+    const indented = wrapLines('Did you mean premier-league?', 12, '  ');
+    for (const l of indented) if (l.length > 12) expect(l.trimStart().includes(' '), l).toBe(false);
+  });
+
+  it('a 100,000-unit value or one with control and format characters: the CLI error echoes a bounded, sanitized label', async () => {
+    for (const v of ['x'.repeat(100_000), `epl\u0007‮${'y'.repeat(50_000)}`]) {
+      const msg = await refusalOf(() => cmdFollow(v, {}, ctxOf()));
+      expect(msg.length).toBeLessThan(700);
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what the test refuses.
+      expect(msg).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/);
+      expect(existsSync(configFile)).toBe(false);
+    }
+  });
+});

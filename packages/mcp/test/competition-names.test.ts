@@ -93,3 +93,28 @@ describe('what an agent reads about it', () => {
     }
   });
 });
+
+describe('round 1 of the review (#231)', () => {
+  it('a 100,000-unit value or one with control and format characters: the tool error echoes a bounded, sanitized label', async () => {
+    for (const v of ['x'.repeat(100_000), `epl\u0007‮${'y'.repeat(50_000)}`]) {
+      let msg = '';
+      try {
+        await toolGetToday({ competition: v });
+      } catch (err) {
+        msg = (err as Error).message;
+      }
+      expect(msg.startsWith('Unknown competition "')).toBe(true);
+      expect(msg.length).toBeLessThan(600);
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what the test refuses.
+      expect(msg).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/);
+    }
+  });
+
+  it('the list_competitions description says the other tools take an alias, a name or a short form', async () => {
+    await withClient(async (client) => {
+      const { tools } = await client.listTools();
+      const d = tools.find((t) => t.name === 'list_competitions')?.description ?? '';
+      expect(d).toContain('the alias, name or short form every other tool\'s competition argument takes');
+    });
+  });
+});
