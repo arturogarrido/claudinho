@@ -43,3 +43,21 @@ overrides:
 allowBuilds:
   esbuild: false
 verifyDepsBeforeRun: false
+
+# The dependency age policy, in minutes: 10080 is 7 days. pnpm refuses to
+# resolve a version younger than that and, on `pnpm install --frozen-lockfile`,
+# a lockfile entry younger than that (ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION).
+# The lockfile is verified against this policy with registry metadata, as it
+# already was under pnpm's built-in default of one day.
+#
+# A security fix that needs a younger version is adopted by adding that exact
+# version (`name@1.2.3`, never a bare name: a name exempts every future
+# version) to a `minimumReleaseAgeExclude` list in the same PR, with the
+# advisory and the date in a comment. Remove the entry once the version is 7
+# days old.
+#
+# Dependabot's cooldown in .github/dependabot.yml matches it
+# (packages/core/test/dependency-policy.test.ts pins both). The rule does not
+# cover pnpm's own version (`packageManager`): Corepack switched to a 6-day-old
+# pnpm with this set.
+minimumReleaseAge: 10080

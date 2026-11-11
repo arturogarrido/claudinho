@@ -16,6 +16,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # A new version is proposed only after it has been published for 7 days,
+    # matching pnpm's minimumReleaseAge in pnpm-workspace.yaml: Dependabot's
+    # wait must be at least pnpm's, or a version update it opens fails CI's
+    # install. The cooldown never delays a security update.
+    cooldown:
+      default-days: 7
     # Group the noisy minor/patch bumps; majors still come as individual PRs so
     # they get a deliberate review.
     groups:
@@ -62,3 +68,6 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # The same 7-day cooldown as npm above (security updates are not delayed).
+    cooldown:
+      default-days: 7
