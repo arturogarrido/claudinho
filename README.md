@@ -141,6 +141,7 @@ command with `--competition` (`claudinho --competition champions-league next Ars
 npm i -g @claudinho/cli
 claudinho follow champions-league --team Arsenal
 claudinho today
+claudinho today sat             # Saturday's matches (also tomorrow, yesterday, +3)
 claudinho next                 # your pinned team's next match, with a countdown
 claudinho table
 claudinho match <id>           # one match, with its goals and cards

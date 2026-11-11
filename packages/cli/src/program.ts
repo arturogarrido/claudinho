@@ -1,0 +1,355 @@
+import { DISCLAIMER as CORE_DISCLAIMER, FAN_PROJECT } from '@claudinho/core';
+import { Command, Help } from 'commander';
+import { resolveConfig, type RawGlobalOpts } from './config';
+import { readCursorPayloadBounded } from './cursorPayload';
+import { rootHelp } from './help';
+import { makeT } from './i18n';
+import { positiveInteger } from './options';
+import { TAGLINE } from './tagline';
+import {
+  cmdAmbient,
+  cmdHook,
+  cmdInitClaude,
+  cmdInitCursor,
+  cmdInitCursorStatusline,
+  cmdInitHook,
+  cmdInitPlugin,
+  cmdInitStatusline,
+  cmdLive,
+  cmdMarkets,
+  cmdMatch,
+  cmdNext,
+  cmdPrompt,
+  cmdRefresh,
+  cmdShare,
+  cmdTable,
+  cmdTeam,
+  cmdBracket,
+  cmdFollow,
+  cmdStar,
+  cmdToday,
+  cmdVibe,
+  InputError,
+} from './commands';
+
+// Injected from package.json at build time (tsup `define`); falls back when run
+// unbuilt (e.g. tests). Single source of truth: packages/cli/package.json.
+const VERSION = process.env.CLAUDINHO_VERSION ?? '0.0.0-dev';
+// The help's disclaimer line: the fan line, then core's one sentence (imported, never spelled here).
+const DISCLAIMER = `Claudinho is an ${FAN_PROJECT.toLowerCase()}. ${CORE_DISCLAIMER}`;
+
+function ctxFrom(cmd: Command) {
+  // Global opts live on the root program. Walk all the way up — a nested
+  // subcommand (e.g. `init cursor`) has its group command (`init`) as parent,
+  // not the root, so a single `.parent` would read the wrong opts.
+  let root: Command = cmd;
+  while (root.parent) root = root.parent;
+  const opts = root.opts<RawGlobalOpts>();
+  const cfg = resolveConfig(opts);
+  return { cfg, t: makeT(cfg.lang) };
+}
+
+export function fail(err: unknown): never {
+  // InputError is a clean, user-facing validation message (no prefix noise).
+  const prefix = err instanceof InputError ? '' : 'claudinho: ';
+  process.stderr.write(`${prefix}${(err as Error).message}\n`);
+  process.exit(1);
+}
+
+/**
+ * The `claudinho` program: every command and option, defined once. `index.ts`
+ * parses the process's arguments with it; `test/help.test.ts` reads its
+ * commands and options to hold the grouped help to them.
+ */
+export function buildProgram(): Command {
+  const program = new Command();
+
+  program
+    .name('claudinho')
+    .description(`${TAGLINE}\n${DISCLAIMER}`)
+    .version(VERSION, '-v, --version')
+    .option('--lang <code>', 'language: en, es, pt, fr')
+    .option('--tz <zone>', 'IANA timezone, e.g. America/Mexico_City')
+    .option('--json', 'output JSON (for scripting)')
+    .option('--no-color', 'disable ANSI colors')
+    .option(
+      '-c, --competition <alias|slug>',
+      'the competition: an alias such as premier-league, or an ESPN slug such as eng.1 (else $CLAUDINHO_COMPETITION, else the one saved with `claudinho follow`)',
+    )
+    .option('--source <name>', 'live data provider (advanced)')
+    .option('--flavor <level>', 'commentary flair: off, subtle, full (default: full)')
+    .option('--no-markets', 'hide prediction-market signals (informational only)');
+
+  // The root's help is grouped (`help.ts`); a command's own help stays commander's.
+  program.configureHelp({
+    formatHelp: (cmd, helper) =>
+      cmd === program ? rootHelp(helper.commandUsage(cmd), [TAGLINE, DISCLAIMER]) : Help.prototype.formatHelp.call(helper, cmd, helper),
+  });
+  program.addHelpText('after', '\n#VibingLaVidaLoca ⚽');
+
+  program
+    .command('today')
+    .description("show a day's fixtures (default: today)")
+    .argument('[date]', 'a day: YYYY-MM-DD, today, tomorrow, yesterday, a weekday (sat) or +N (default: today)')
+    .action(async (date, _opts, cmd) => {
+      try {
+        await cmdToday(date, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('live')
+    .description('show matches in play right now')
+    .action(async (_opts, cmd) => {
+      try {
+        await cmdLive(ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('next')
+    .description("show a team's next fixture")
+    .argument('[team]', 'team name or code, e.g. Mexico or MEX (default: $CLAUDINHO_TEAM, else the team pinned with `follow --team`)')
+    .action(async (team, _opts, cmd) => {
+      try {
+        await cmdNext(team, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('follow')
+    .description('choose the competition every surface follows (saved); `follow` shows it, `follow off` forgets it')
+    .argument('[competition]', 'an alias such as premier-league, an ESPN slug such as eng.1, or "off"')
+    .option('--team <name>', "pin a team of that competition (the default for `next`, first on the statusline)")
+    .option('--list', 'list the supported competitions, the one followed marked')
+    .action(async (competition, opts, cmd) => {
+      try {
+        await cmdFollow(competition, opts, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('team')
+    .description('resolve a World Cup nation name or code to its FIFA code, flag, and group (the World Cup roster)')
+    .argument('<query>', 'team name or 3-letter code, e.g. Mexico, MEX, "DR Congo"')
+    .action((query, _opts, cmd) => {
+      try {
+        cmdTeam(query, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('table')
+    .description('show standings (default: every table)')
+    .argument('[key]', 'a table: a group letter (A), or a key such as A1, A-B or LEAGUE')
+    .action(async (group, _opts, cmd) => {
+      try {
+        await cmdTable(group, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('bracket')
+    .description('show the knockout bracket (default: all rounds)')
+    .argument('[stage]', 'filter by stage: R32, R16, QF, SF, 3P, F')
+    .option('--tree', 'ASCII tree view (falls back to list when terminal is narrow)')
+    .action(async (stage, opts, cmd) => {
+      try {
+        await cmdBracket(stage, opts, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('match')
+    .description('show a single match by id')
+    .argument('<id>', 'match id')
+    .action(async (id, _opts, cmd) => {
+      try {
+        await cmdMatch(id, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('markets')
+    .description('show prediction-market signals (read-only, informational only)')
+    .argument('[target]', 'a day (YYYY-MM-DD, today, tomorrow, yesterday, a weekday such as sat, +N), a match id, or "next"')
+    .argument('[team]', 'team name or code when target is "next", e.g. Mexico or MEX (default: $CLAUDINHO_TEAM, else the pinned team)')
+    .action(async (target, team, _opts, cmd) => {
+      try {
+        await cmdMarkets(target, team, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('share')
+    .description('print a shareable, copy-pasteable match snippet (#VibingLaVidaLoca)')
+    .argument('[target]', '"today" (default), "live", a day (YYYY-MM-DD, tomorrow, yesterday, a weekday such as sat, +N), a match id, "next", "table", or "bracket"')
+    .argument(
+      '[team]',
+      'team name or code for "next" (default: $CLAUDINHO_TEAM, else the pinned team), table key for "table" (A, A1, A-B, LEAGUE), or stage for "bracket"',
+    )
+    .option('--style <style>', 'snippet style: social (default) or compact')
+    .option('--copy', 'also copy the snippet to the clipboard (best-effort)')
+    .option('--no-hashtag', 'omit the #VibingLaVidaLoca tag')
+    .option('--no-install-line', 'omit the install/run cue')
+    .action(async (target, team, opts, cmd) => {
+      try {
+        await cmdShare(target, team, opts, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('prompt')
+    .description('print a status line (Claude Code / Cursor CLI statusline, tmux, Starship, …)')
+    .action(async (_opts, cmd) => {
+      // Drain stdin with a bounded wait BEFORE the sync render: Claude Code and
+      // Cursor pipe a payload and close; a writerless open pipe must not hang the
+      // statusline (readFileSync(0) blocks forever there — PR #77).
+      const cursor = await readCursorPayloadBounded();
+      cmdPrompt(ctxFrom(cmd), { cursor });
+    });
+
+  program
+    .command('ambient')
+    .description('print the statusline and hook as one JSON object (for a program: the Claude Code plugin)')
+    .option('--columns <n>', 'fit the line to this many display columns (a positive integer)', positiveInteger)
+    .action((opts: { columns?: number }, cmd) => {
+      // No stdin read (unlike `prompt`): a program runs it with nothing to say.
+      cmdAmbient(ctxFrom(cmd), { columns: opts.columns });
+    });
+
+  // One-step setup aliases. `init cursor` / `init claude` compose the granular
+  // init-* commands into a single command per agent (statusline + hook + MCP).
+  const init = program
+    .command('init')
+    .description('one-step setup for your agent: `init cursor` or `init claude`; `init plugin` for the Claude Code plugin');
+
+  init
+    .command('cursor')
+    .description('set up claudinho for the Cursor CLI (statusline + MCP config)')
+    .option('--print', 'print the config snippets for manual install instead of writing them')
+    .action((opts, cmd) => {
+      try {
+        cmdInitCursor(opts, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  init
+    .command('claude')
+    .description('set up claudinho for Claude Code (statusline + hook + MCP)')
+    .option('--print', 'print the config snippets for manual install instead of writing them')
+    .action((opts, cmd) => {
+      try {
+        cmdInitClaude(opts, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  init
+    .command('plugin')
+    .description('remove the statusline and hook that init claude wrote, for the Claude Code plugin')
+    .action((_opts, cmd) => {
+      try {
+        cmdInitPlugin(ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('init-statusline', { hidden: true })
+    .description('configure the Claude Code statusline to use claudinho')
+    .option('--print', 'print the settings snippet instead of writing it')
+    .option('--command <cmd>', 'command to run (default: claudinho prompt)')
+    .action((opts, cmd) => {
+      try {
+        cmdInitStatusline(opts, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('init-cursor-statusline', { hidden: true })
+    .description('configure the Cursor CLI statusline to use claudinho')
+    .option('--print', 'print the settings snippet instead of writing it')
+    .option('--command <cmd>', 'command to run (default: claudinho prompt)')
+    .action((opts, cmd) => {
+      try {
+        cmdInitCursorStatusline(opts, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('hook')
+    .description('print live-score context for a Claude Code UserPromptSubmit hook (silent off-match)')
+    .action((_opts, cmd) => {
+      cmdHook(ctxFrom(cmd));
+    });
+
+  program
+    .command('init-hook', { hidden: true })
+    .description('wire the live-score hook into Claude Code (UserPromptSubmit)')
+    .option('--print', 'print the settings snippet instead of writing it')
+    .option('--command <cmd>', 'command to run (default: claudinho hook)')
+    .action((opts, cmd) => {
+      try {
+        cmdInitHook(opts, ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+
+  program
+    .command('vibe')
+    .description('print a matchday-coder one-liner (#VibingLaVidaLoca)')
+    .action((_opts, cmd) => {
+      cmdVibe(ctxFrom(cmd));
+    });
+
+  program
+    .command('star')
+    .description('how to support Claudinho: star the repo ⭐')
+    .action((_opts, cmd) => {
+      cmdStar(ctxFrom(cmd));
+    });
+
+  // Internal: cold-path cache refresher, spawned detached by `prompt`.
+  const refreshCmd = new Command('_refresh')
+    .description('(internal) refresh the statusline cache')
+    .action(async (_opts, cmd) => {
+      try {
+        await cmdRefresh(ctxFrom(cmd));
+      } catch (e) {
+        fail(e);
+      }
+    });
+  program.addCommand(refreshCmd, { hidden: true });
+
+  return program;
+}

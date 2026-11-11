@@ -2,6 +2,7 @@ import pc from 'picocolors';
 import {
   displayWidth,
   formatKickoff,
+  kickoffLabel,
   isLive,
   liveSourceLabel,
   matchFlair,
@@ -196,7 +197,11 @@ export function flairOpts(cfg: CliConfig): FlairOpts {
  * ({@link awayColumn}), measured by the caller over the rows it shows (the
  * away default, 0, pads nothing). `flair` is the row's flair slot when the
  * caller chose it for a list (core `matchFlairs`: the cries, and no phrase
- * twice in one list); without it the line's own (`matchFlair`).
+ * twice in one list); without it the line's own (`matchFlair`). `farDate`,
+ * given by a view of ONE match (`next`), carries the request's clock: a
+ * scheduled kickoff 7 or more calendar days away then says its date (core
+ * `kickoffLabel`). A dated list never gives it (its header names the day), and
+ * without it no clock is read.
  */
 export function matchLine(
   m: Match,
@@ -208,6 +213,7 @@ export function matchLine(
   midWidth = MID_COLUMN,
   awayWidth = 0,
   flair: Flair = matchFlair(m, flairOpts(cfg)),
+  farDate?: { readonly now: Date },
 ): string {
   const home = homeCell(m, flags);
   const away = awayCell(m, flags);
@@ -228,7 +234,9 @@ export function matchLine(
   let right = '';
   if (m.status === 'SCHEDULED') {
     right = c.dim(
-      `${formatKickoff(m.kickoff, { tz: cfg.tz, locale: cfg.lang })}`,
+      farDate
+        ? kickoffLabel(m.kickoff, { tz: cfg.tz, locale: cfg.lang, now: farDate.now })
+        : formatKickoff(m.kickoff, { tz: cfg.tz, locale: cfg.lang }),
     );
   } else {
     right = statusToken(m, t, c);
