@@ -27,7 +27,28 @@ No API key, no signup, no account.
 In Claude Code, paste this prompt. Claude asks which competition and team you follow, installs the
 CLI, follows your choice, checks that it works, and hands you the one line you type yourself:
 
-> Set up Claudinho, the live football plugin for Claude Code. If you cannot run commands on my computer, say so and stop. Run only the commands named here, and nothing else. Before you run anything, ask me which competition to follow (for example the Premier League, LALIGA, Liga MX, the Champions League or the World Cup) and which team to pin, if any, and wait for my answers. Then run `node --version`: if it is older than 22, stop and tell me to install Node.js 22 or later. Install the CLI with `npm i -g @claudinho/cli`, then run `claudinho follow --list` to find the alias of my competition. Run `claudinho follow <alias>`, or `claudinho follow <alias> --team <my team>` if I named one; if it cannot pin the team, show me what it printed and ask me again. Run `claudinho init plugin`: it removes Claudinho's own statusline and prompt hook from Claude Code's settings if an earlier setup wrote them, and changes nothing otherwise. Check the setup with `claudinho next` if I pinned a team, else `claudinho today`, and show me what it printed. You cannot install a plugin yourself, so as the last step tell me to type `/plugin install claudinho --marketplace arturogarrido/claudinho` at the prompt of Claude Code in a terminal (the desktop app cannot run it), answer `y` to add the marketplace, and press Enter for the user scope. Then tell me how to undo all of it: `claude plugin uninstall claudinho@claudinho`, `claudinho follow off`, then `npm rm -g @claudinho/cli`, and delete the cache folder that https://github.com/arturogarrido/claudinho/tree/main/packages/cli#where-it-is-saved names.
+```text
+Set up Claudinho, the live football plugin for Claude Code. If you cannot run commands on
+my computer, say so and stop. Run only the commands named here, and nothing else. Before
+you run anything, ask me which competition to follow (for example the Premier League,
+LALIGA, Liga MX, the Champions League or the World Cup) and which team to pin, if any, and
+wait for my answers. Then run `node --version`: if it is older than 22, stop and tell me
+to install Node.js 22 or later. Install the CLI with `npm i -g @claudinho/cli`, then run
+`claudinho follow --list` to find the alias of my competition. Run
+`claudinho follow <alias>`, or `claudinho follow <alias> --team <my team>` if I named one;
+if it cannot pin the team, show me what it printed and ask me again. Run
+`claudinho init plugin`: it removes Claudinho's own statusline and prompt hook from Claude
+Code's settings if an earlier setup wrote them, and changes nothing otherwise. Check the
+setup with `claudinho next` if I pinned a team, else `claudinho today`, and show me what
+it printed. You cannot install a plugin yourself, so as the last step tell me to type
+`/plugin install claudinho --marketplace arturogarrido/claudinho` at the prompt of Claude
+Code in a terminal (the desktop app cannot run it), answer `y` to add the marketplace, and
+press Enter for the user scope. Then tell me how to undo all of it:
+`claude plugin uninstall claudinho@claudinho`, `claudinho follow off`, then
+`npm rm -g @claudinho/cli`, and tell me that the saved choice and the cache folders are
+listed under "Where it is saved" in the CLI's README:
+https://github.com/arturogarrido/claudinho/tree/main/packages/cli#where-it-is-saved
+```
 
 On default permission settings Claude asks you to approve each command. The plugin's install line
 is a slash command, which only you can type, so that step stays yours. The same steps by hand:
