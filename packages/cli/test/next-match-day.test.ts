@@ -11,11 +11,12 @@
  * never writes the slice.
  */
 import { existsSync, readFileSync, rmSync } from 'node:fs';
-import { EspnAdapter, type ProviderAdapter, selectedCompetition } from '@claudinho/core';
+import { EspnAdapter, getScheduleAhead, type ProviderAdapter, selectedCompetition } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CACHE_VERSION, cacheDir, cachePath, readBackoffNote, readState, writeBackoffNote, writeState } from '../src/cache';
 import { cmdLive, cmdToday } from '../src/commands';
 import { type CliConfig, resolveConfig } from '../src/config';
+import { applyDiscovery, scheduleGateOpen, scheduleView } from '../src/scheduleSlice';
 import { makeT } from '../src/i18n';
 import { described } from './config-of';
 
@@ -39,7 +40,7 @@ function event(e: Ev) {
     : { name: 'STATUS_SCHEDULED', state: 'pre' };
   return { id: e.id, date: e.date, season: { slug: 'regular-season' }, status: { type: e.broken ? { name: 'STATUS_NEW', state: 'limbo' } : type, displayClock: s === 'in' ? "55'" : undefined, period: s === 'in' ? 2 : 0 }, competitions: [{ competitors: [side('359', 'ARS', 'Arsenal', 'home'), side('363', 'CHE', 'Chelsea', 'away')] }] };
 }
-interface FeedOpts { season?: Season; fail?: (dates: string) => Response | undefined; competition?: string }
+interface FeedOpts { season?: Season; fail?: (dates: string) => Response | undefined; competition?: string; now?: Date; month?: Ev[] }
 function feed(events: Ev[], opts: FeedOpts = {}) {
   const urls: string[] = [];
   const fetchImpl = (async (input: unknown) => {
@@ -50,9 +51,12 @@ function feed(events: Ev[], opts: FeedOpts = {}) {
     if (failure) return failure;
     if (asked.includes('-')) return json({ code: 400 }, 400);
     const inBucket = (e: Ev) => (asked.length === 8 ? easternDay(e.date) === asked : asked.length === 6 ? easternDay(e.date).startsWith(asked) : false);
-    return json({ leagues: [{ season: opts.season ?? S2026 }], events: events.filter(inBucket).map(event) });
+    // A month asked can be served other records than the day reads (a status that moved between the two reads).
+    const served = asked.length === 6 && opts.month ? opts.month : events;
+    return json({ leagues: [{ season: opts.season ?? S2026 }], events: served.filter(inBucket).map(event) });
   }) as unknown as typeof fetch;
-  return { adapter: new EspnAdapter({ competition: opts.competition ?? 'eng.1', fetchImpl, now: () => NOW.getTime() }) as ProviderAdapter, urls };
+  const at = (opts.now ?? NOW).getTime();
+  return { adapter: new EspnAdapter({ competition: opts.competition ?? 'eng.1', fetchImpl, now: () => at }) as ProviderAdapter, urls };
 }
 const months = (urls: string[]) => urls.filter((u) => (new URL(u).searchParams.get('dates') ?? '').length === 6);
 
@@ -405,5 +409,205 @@ describe('live: the next kickoff, never a match now', () => {
         else expect(text()).not.toMatch(POINTER_WORDS);
       }
     }
+  });
+});
+
+/**
+ * Round 1 on B2. Each case below was a reader's finding:
+ *   - next is not now: the schedule ahead holding a match in play, or a
+ *     fixture that is on inside its live window, says nothing extra (the
+ *     window is the refresher's gate, pinned here against `scheduleGateOpen`);
+ *   - the slice covers only what the refresher kept (it drops fixtures more
+ *     than 6 hours old): a day it cannot vouch for is one fresh read, so the
+ *     answer is the same warm or cold;
+ *   - a slice whose index lost an entry when read back (malformed, a repeated
+ *     id, one past the horizon) is not whole: one fresh read;
+ *   - a backoff another process wrote after this command started stops the
+ *     extra read;
+ *   - the TTL alone (same provider day) makes a slice stale.
+ */
+describe('round 1 on B2', () => {
+  const MIN = 60_000;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const ctxAt = (adapter: ProviderAdapter, now: Date, over: Partial<CliConfig> = {}) => ({ ...ctxOf(adapter, over), now });
+  function seedSlice(schedule: Record<string, unknown>, now = NOW) {
+    writeState({
+      version: CACHE_VERSION,
+      updatedAt: iso(now.getTime() - 5 * MIN),
+      live: [],
+      degraded: false,
+      source: 'espn',
+      competition: 'eng.1',
+      schedule: { fixtures: [], failures: 0, complete: true, ...schedule },
+    }, now.getTime());
+  }
+  const fresh = (now = NOW) => ({ updatedAt: iso(now.getTime() - 10 * MIN), attemptedAt: iso(now.getTime() - 10 * MIN) });
+  /** Writes the note inside the day's read: another process's throttle, recorded after this command's adapter was armed. */
+  function noteDuringTheDayRead(adapter: ProviderAdapter) {
+    const read = adapter.fetchWindow?.bind(adapter) as NonNullable<ProviderAdapter['fetchWindow']>;
+    adapter.fetchWindow = async (...args: Parameters<NonNullable<ProviderAdapter['fetchWindow']>>) => {
+      const got = await read(...args);
+      writeBackoffNote('espn', 'eng.1', NOW.getTime() + 5 * MIN, NOW.getTime());
+      return got;
+    };
+  }
+
+  describe('live: next is not now', () => {
+    it('the month read holds the match in progress (a request crossing kickoff): no pointer, text and --json', async () => {
+      const soon = iso(NOW.getTime() + 3_000);
+      for (const asJson of [false, true]) {
+        writes = [];
+        const { adapter, urls } = feed([...BREAK, { id: '5', date: soon }], { month: [...BREAK, { id: '5', date: soon, status: 'in' }] });
+        await cmdLive(ctxOf(adapter, { json: asJson }));
+        expect(months(urls)).toHaveLength(1);
+        if (asJson) for (const k of POINTER_KEYS) expect(parsed(), k).not.toHaveProperty(k);
+        else {
+          expect(text()).toContain('No matches in play right now.');
+          expect(text()).not.toMatch(POINTER_WORDS);
+        }
+      }
+    });
+
+    it('a fixture kicked off and still scheduled, inside its window: no pointer; past its window: the next kickoff', async () => {
+      const inside = feed([...BREAK, { id: '5', date: iso(NOW.getTime() - 2 * MIN) }]);
+      await cmdLive(ctxOf(inside.adapter));
+      expect(text()).not.toMatch(POINTER_WORDS);
+      writes = [];
+      const past = feed([...BREAK, { id: '5', date: iso(NOW.getTime() - 141 * MIN) }]);
+      await cmdLive(ctxOf(past.adapter));
+      expect(text()).toContain('Next kickoff: Sat 2026-11-21 04:30, in 10d6h.');
+    });
+
+    it('from the slice, the pointer is withheld exactly when the refresher\'s gate is open (one rule)', async () => {
+      const LATER = { id: '21', kickoff: '2026-11-21T12:30:00.000Z', on: true };
+      const cases: Array<[string, Record<string, unknown>]> = [];
+      for (const m of [-200, -141, -140, -139, -1, 0, 1]) {
+        cases.push([`on, kickoff ${m} min`, { index: [{ id: '5', kickoff: iso(NOW.getTime() + m * MIN), on: true }, LATER] }]);
+      }
+      cases.push(['not on, kickoff -2 min', { index: [{ id: '5', kickoff: iso(NOW.getTime() - 2 * MIN), on: false }, LATER] }]);
+      cases.push(['a match seen in play, held', { index: [LATER], inPlayUntil: iso(NOW.getTime() + 30 * MIN) }]);
+      for (const [label, slice] of cases) {
+        rmSync(cacheDir(), { recursive: true, force: true });
+        writes = [];
+        seedSlice({ ...fresh(), ...slice });
+        const view = scheduleView(readState('espn', 'eng.1')?.schedule, NOW.getTime());
+        const gateOpen = scheduleGateOpen(view, NOW.getTime(), { probe: false });
+        const { adapter, urls } = feed(BREAK);
+        await cmdLive(ctxOf(adapter));
+        expect(months(urls), label).toHaveLength(0);
+        expect(/Next kickoff/.test(text()), `${label}: gate ${gateOpen}\n${text()}`).toBe(!gateOpen);
+      }
+    });
+  });
+
+  describe('the slice covers what the refresher kept', () => {
+    // Two fixtures on Tue Nov 10 in Los Angeles; the refresher, writing at 05:30Z, keeps only the later one.
+    const TUE: Ev[] = [
+      { id: '41', date: '2026-11-10T20:00:00Z' },
+      { id: '42', date: '2026-11-11T03:00:00Z' },
+    ];
+    async function seedFromRefresher() {
+      const writeAt = new Date(NOW.getTime() - 10 * MIN);
+      const { adapter } = feed(TUE, { now: writeAt });
+      const answer = await getScheduleAhead(adapter, writeAt);
+      const next = applyDiscovery({ index: undefined, fixtures: [], season: undefined }, answer, writeAt.getTime());
+      if (!next) throw new Error('expected a discovery');
+      expect(next.index.map((e) => e.id)).toEqual(['42']);
+      seedSlice({ ...next, updatedAt: iso(writeAt.getTime()), attemptedAt: iso(writeAt.getTime()) });
+    }
+
+    it('an empty past day whose next day the slice no longer holds whole: one fresh read, the same answer as cold', async () => {
+      const cold = feed(TUE);
+      await cmdToday('2026-11-09', ctxOf(cold.adapter));
+      const coldText = text();
+      expect(coldText).toContain('Next match day: Tue 2026-11-10, 2 matches.');
+      rmSync(cacheDir(), { recursive: true, force: true });
+      writes = [];
+      await seedFromRefresher();
+      const warm = feed(TUE);
+      await cmdToday('2026-11-09', ctxOf(warm.adapter));
+      expect(months(warm.urls)).toHaveLength(1);
+      expect(text()).toBe(coldText);
+    });
+
+    it('that fresh read stops at a backoff another process wrote meanwhile', async () => {
+      await seedFromRefresher();
+      const { adapter, urls } = feed(TUE);
+      noteDuringTheDayRead(adapter);
+      await cmdToday('2026-11-09', ctxOf(adapter));
+      expect(months(urls)).toHaveLength(0);
+      expect(text()).not.toMatch(POINTER_WORDS);
+    });
+
+    it('live, from the same slice (a kickoff ahead needs nothing the refresher dropped): no extra request', async () => {
+      await seedFromRefresher();
+      const { adapter, urls } = feed(TUE);
+      await cmdLive(ctxOf(adapter));
+      expect(months(urls)).toHaveLength(0);
+      // Fixture 42 kicked off 160 minutes ago, past its window: nothing on ahead.
+      expect(text()).toContain('Nothing scheduled in the next 14 days.');
+    });
+  });
+
+  describe('a slice index that lost an entry when read back is not whole', () => {
+    const GOOD = [
+      { id: '21', kickoff: '2026-11-21T12:30:00.000Z', on: true },
+      { id: '22', kickoff: '2026-11-21T15:00:00.000Z', on: true },
+    ];
+    for (const [label, index] of [
+      ['a malformed record', [{ id: '20', kickoff: 'NOT A DATE', on: true }, ...GOOD]],
+      ['a repeated id', [...GOOD, { id: '22', kickoff: '2026-11-20T15:00:00.000Z', on: true }]],
+      ['an entry past the horizon', [...GOOD, { id: '90', kickoff: '2027-03-01T15:00:00.000Z', on: true }]],
+    ] as const) {
+      it(`${label}: one fresh read, its answer`, async () => {
+        seedSlice({ ...fresh(), index });
+        const { adapter, urls } = feed(BREAK);
+        await cmdToday(undefined, ctxOf(adapter));
+        expect(months(urls)).toHaveLength(1);
+        expect(text()).toContain('Next match day: Sat 2026-11-21, 4 matches.');
+      });
+    }
+
+    it('scheduleView says it, and nothing else of the view changes', () => {
+      const now = NOW.getTime();
+      const whole = scheduleView({ index: GOOD, ...fresh(), failures: 0, complete: true }, now);
+      expect(whole.indexIntact).toBe(true);
+      for (const index of [
+        [{ id: '20', kickoff: 'NOT A DATE', on: true }, ...GOOD],
+        [...GOOD, { id: '22', kickoff: '2026-11-20T15:00:00.000Z', on: true }],
+        [...GOOD, { id: '90', kickoff: '2027-03-01T15:00:00.000Z', on: true }],
+      ]) {
+        const view = scheduleView({ index, ...fresh(), failures: 0, complete: true }, now);
+        expect(view.indexIntact).toBe(false);
+        expect(view.complete).toBe(true);
+      }
+      expect(scheduleView({ ...fresh(), complete: true }, now).indexIntact).toBe(false);
+    });
+  });
+
+  it('a backoff another process wrote after this command started: the extra read is not made', async () => {
+    for (const run of [cmdToday.bind(null, undefined), cmdLive]) {
+      rmSync(cacheDir(), { recursive: true, force: true });
+      writes = [];
+      const { adapter, urls } = feed(BREAK);
+      noteDuringTheDayRead(adapter);
+      await run(ctxOf(adapter));
+      expect(months(urls)).toHaveLength(0);
+      expect(text()).toMatch(/No matches (scheduled for this date|in play right now)\./);
+      expect(text()).not.toMatch(POINTER_WORDS);
+    }
+  });
+
+  it('a slice stale by the TTL alone (written 61 minutes earlier, the same provider day): one fresh read', async () => {
+    const now = new Date('2026-11-11T20:00:00.000Z');
+    seedSlice({
+      index: [{ id: '21', kickoff: '2026-11-21T12:30:00.000Z', on: true }],
+      updatedAt: '2026-11-11T18:59:00.000Z',
+      attemptedAt: '2026-11-11T18:59:00.000Z',
+    }, now);
+    const { adapter, urls } = feed(BREAK, { now });
+    await cmdToday(undefined, ctxAt(adapter, now));
+    expect(months(urls)).toHaveLength(1);
+    expect(text()).toContain('Next match day: Sat 2026-11-21, 4 matches.');
   });
 });

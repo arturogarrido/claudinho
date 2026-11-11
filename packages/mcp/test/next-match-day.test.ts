@@ -34,7 +34,7 @@ function event(e: Ev) {
     : { name: 'STATUS_SCHEDULED', state: 'pre' };
   return { id: e.id, date: e.date, season: { slug: 'regular-season' }, status: { type: e.broken ? { name: 'STATUS_NEW', state: 'limbo' } : type, displayClock: s === 'in' ? "55'" : undefined, period: s === 'in' ? 2 : 0 }, competitions: [{ competitors: [side('359', 'ARS', 'Arsenal', 'home'), side('363', 'CHE', 'Chelsea', 'away')] }] };
 }
-interface FeedOpts { season?: Season; fail?: (dates: string) => Response | undefined; competition?: string }
+interface FeedOpts { season?: Season; fail?: (dates: string) => Response | undefined; competition?: string; month?: Ev[] }
 function feed(events: Ev[], opts: FeedOpts = {}) {
   const urls: string[] = [];
   const fetchImpl = (async (input: unknown) => {
@@ -45,7 +45,8 @@ function feed(events: Ev[], opts: FeedOpts = {}) {
     if (failure) return failure;
     if (asked.includes('-')) return json({ code: 400 }, 400);
     const inBucket = (e: Ev) => (asked.length === 8 ? easternDay(e.date) === asked : asked.length === 6 ? easternDay(e.date).startsWith(asked) : false);
-    return json({ leagues: [{ season: opts.season ?? S2026 }], events: events.filter(inBucket).map(event) });
+    const served = asked.length === 6 && opts.month ? opts.month : events;
+    return json({ leagues: [{ season: opts.season ?? S2026 }], events: served.filter(inBucket).map(event) });
   }) as unknown as typeof fetch;
   return { adapter: new EspnAdapter({ competition: opts.competition ?? 'eng.1', fetchImpl, now: () => NOW.getTime() }) as ProviderAdapter, urls };
 }
@@ -178,12 +179,40 @@ describe('what an agent reads about it', () => {
     await client.connect(clientT);
     try {
       const { tools } = await client.listTools();
-      expect(tools.find((t) => t.name === 'get_today')?.description ?? '').toContain('nextDay');
-      expect(tools.find((t) => t.name === 'get_live')?.description ?? '').toContain('nextKickoff');
+      const todayDesc = tools.find((t) => t.name === 'get_today')?.description ?? '';
+      const liveDesc = tools.find((t) => t.name === 'get_live')?.description ?? '';
+      expect(todayDesc).toContain('nextDay');
+      expect(liveDesc).toContain('nextKickoff');
+      // Not every empty answer carries one (a day other than today, a schedule not read whole, a cooldown).
+      for (const d of [todayDesc, liveDesc]) {
+        expect(d).toContain('may carry');
+        expect(d).not.toMatch(/\bcarries (nextDay|nextKickoff)/);
+      }
     } finally {
       await client.close();
       await server.close();
     }
     expect(INSTRUCTIONS).toContain('never a match in play now');
+  });
+});
+
+describe('round 1 on B2: next is not now, on MCP', () => {
+  const iso = (ms: number) => new Date(ms).toISOString();
+  it('the month read holds the match in progress (a request crossing kickoff): no pointer in text or data', async () => {
+    const soon = iso(NOW.getTime() + 3_000);
+    const { adapter, urls } = feed([...BREAK, { id: '5', date: soon }], { month: [...BREAK, { id: '5', date: soon, status: 'in' }] });
+    const r = (await live(adapter)) as unknown as Res;
+    expect(months(urls)).toHaveLength(1);
+    expect(r.data.matches).toEqual([]);
+    expect(r.text).not.toMatch(POINTER_WORDS);
+    for (const k of POINTER_KEYS) expect(r.data, k).not.toHaveProperty(k);
+    strict('get_live', r.data);
+  });
+
+  it('a fixture kicked off and still scheduled, inside its window: no pointer; past it: the next kickoff', async () => {
+    const inside = (await live(feed([...BREAK, { id: '5', date: iso(NOW.getTime() - 2 * 60_000) }]).adapter)) as unknown as Res;
+    for (const k of POINTER_KEYS) expect(inside.data, k).not.toHaveProperty(k);
+    const past = (await live(feed([...BREAK, { id: '5', date: iso(NOW.getTime() - 141 * 60_000) }]).adapter)) as unknown as Res;
+    expect(past.data.nextKickoff).toBe('2026-11-21T12:30:00.000Z');
   });
 });

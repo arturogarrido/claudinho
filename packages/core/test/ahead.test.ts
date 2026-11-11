@@ -150,7 +150,7 @@ describe('dayPointer: the next local day with a fixture that is on', () => {
 
 describe('livePointer: the next kickoff AHEAD, never a match now', () => {
   it('the earliest fixture that is on with a kickoff after now', async () => {
-    const ahead = await aheadOf([...BREAK, { id: '5', date: '2026-11-11T05:00:00Z' }]); // scheduled, kickoff passed: not ahead
+    const ahead = await aheadOf(BREAK);
     expect(livePointer(ahead, NOW)).toEqual({ nextKickoff: '2026-11-21T12:30:00.000Z' });
   });
 
@@ -262,5 +262,85 @@ describe('the sentences: the answer\'s own text, four languages', () => {
     expect(pointerExtras({ nextKickoff: '2026-11-21T12:30:00.000Z' })).toEqual({ nextKickoff: '2026-11-21T12:30:00.000Z' });
     expect(pointerExtras({ horizon: { days: 14 } })).toEqual({ horizon: { days: 14 } });
     expect(pointerExtras(undefined)).toEqual({});
+  });
+});
+
+/**
+ * Round 1 on B2: "next is not now". When the schedule ahead itself holds a
+ * match in play, or a fixture that is on inside its live window (kicked off,
+ * still marked scheduled), the live list and the schedule disagree about now:
+ * an empty `live` says nothing extra (no next kickoff, no horizon). The window
+ * is the refresher's own rule (`LIVE_WINDOW_MS` from kickoff, whatever the
+ * stage), not a copy: the CLI's slice test pins the two against each other.
+ */
+describe('livePointer: nothing extra while the schedule ahead may hold a match now', () => {
+  const MIN = 60_000;
+  const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs).toISOString();
+  const read = (entries: ScheduleEntry[], inPlay = false): AheadRead => ({
+    entries,
+    from: '2026-11-10T05:00:00.000Z',
+    to: '2026-11-26T05:00:00.000Z',
+    inPlay,
+  });
+  const LATER: ScheduleEntry = { id: '21', kickoff: '2026-11-21T12:30:00.000Z', on: true };
+
+  it('the read holds a match in play (a request crossing kickoff): no pointer', () => {
+    expect(livePointer(read([{ id: '5', kickoff: at(3_000), on: true }, LATER], true), NOW)).toBeUndefined();
+  });
+
+  it('readAhead says so: a month response holding the match in progress', async () => {
+    const { adapter } = feed([...BREAK, { id: '5', date: at(-30 * MIN), status: 'in' }]);
+    const got = await readAhead(adapter, NOW);
+    expect(got?.inPlay).toBe(true);
+    expect(got && livePointer(got, NOW)).toBeUndefined();
+    const calm = await readAhead(feed(BREAK).adapter, NOW);
+    expect(calm?.inPlay).toBe(false);
+  });
+
+  it('a fixture that is on, kicked off and still scheduled, inside its window: no pointer, even with a later one', () => {
+    expect(livePointer(read([{ id: '5', kickoff: at(-2 * MIN), on: true }, LATER]), NOW)).toBeUndefined();
+    expect(livePointer(read([{ id: '5', kickoff: at(-139 * MIN), on: true }, LATER]), NOW)).toBeUndefined();
+  });
+
+  it('a kickoff exactly at now is a match now, never the next one', () => {
+    expect(livePointer(read([{ id: '5', kickoff: at(0), on: true }, LATER]), NOW)).toBeUndefined();
+  });
+
+  it('one past its window, or one that is not on, does not stand in the way', () => {
+    expect(livePointer(read([{ id: '5', kickoff: at(-141 * MIN), on: true }, LATER]), NOW)).toEqual({ nextKickoff: LATER.kickoff });
+    expect(livePointer(read([{ id: '5', kickoff: at(-2 * MIN), on: false }, LATER]), NOW)).toEqual({ nextKickoff: LATER.kickoff });
+    expect(livePointer(read([{ id: '5', kickoff: at(-141 * MIN), on: true }]), NOW)).toEqual({ horizon: { days: 14 } });
+  });
+});
+
+describe('round 1 on B2: the gaps the mutants found', () => {
+  it('the count leaves out a fixture that is not on, on the day it names', () => {
+    const ahead: AheadRead = {
+      entries: [
+        { id: '21', kickoff: '2026-11-21T12:30:00.000Z', on: true },
+        { id: '22', kickoff: '2026-11-21T15:00:00.000Z', on: false },
+      ],
+      from: '2026-11-10T05:00:00.000Z',
+      to: '2026-11-26T05:00:00.000Z',
+      inPlay: false,
+    };
+    expect(dayPointer(ahead, '2026-11-10', '2026-11-10', LA, NOW)).toEqual({ nextDay: { date: '2026-11-21', count: 1 } });
+  });
+
+  it('readAhead asks nothing under the adapter\'s cooldown, by its own guard (an adapter that would answer)', async () => {
+    const { adapter } = feed(BREAK);
+    let asked = 0;
+    const plain: ProviderAdapter = {
+      ...adapter,
+      competition: adapter.competition,
+      bucketDay: adapter.bucketDay?.bind(adapter),
+      cooldownUntil: NOW.getTime() + 60_000,
+      fetchWindow: async (...args: Parameters<NonNullable<ProviderAdapter['fetchWindow']>>) => {
+        asked++;
+        return (adapter.fetchWindow as NonNullable<ProviderAdapter['fetchWindow']>).call(adapter, ...args);
+      },
+    } as ProviderAdapter;
+    expect(await readAhead(plain, NOW)).toBeUndefined();
+    expect(asked).toBe(0);
   });
 });
