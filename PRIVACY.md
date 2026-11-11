@@ -62,9 +62,10 @@ The behavior differs by component:
   live/upcoming scores and fixtures), `backoff.json` (a single timestamp: until when the data
   provider asked not to be contacted), `attempt.json` (a timestamp and a count that pace the
   background refresher while no readable cache exists), `market-signals.json` (cached market
-  reads), `runs.json` (a local counter for the star-reminder nudge), and `refresh.lock` (present
-while a background refresh runs, or left by one that was stopped mid-run: the refresher's process
-id, a timestamp and a random token, one file for every competition). The first three are kept
+  reads), `runs.json` (a local counter for the star-reminder nudge), and `refresh.lock` (one file
+  shared by every competition, present while a background refresh runs or while a command records
+  that the data provider asked not to be contacted, and left behind if that process is stopped
+  mid-run: the holder's process id, a timestamp and a random token). The first three are kept
   per competition: named bare for the World Cup, as here, and with the source and competition for
   another (`state.espn.eng.1.json`, `backoff.espn.eng.1.json`, `attempt.espn.eng.1.json`). These
   files contain no personal data, stay on your device, are never uploaded, and you can delete them
