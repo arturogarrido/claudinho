@@ -143,6 +143,14 @@ export function entryInLiveWindow(entry: ScheduleEntry, now: number): boolean {
 }
 
 /**
+ * How long after its kickoff a record read in play is still believed in play:
+ * a record past it is a stale "in play" the provider never closed. The
+ * refresher's hold (the CLI's schedule slice) and the next kickoff
+ * (`readAhead`, `livePointer`) both use it.
+ */
+export const IN_PLAY_HOLD_MS = 6 * 60 * 60_000;
+
+/**
  * Extra allowance for knockout matches, which can go to extra time (+30') and a
  * penalty shootout, running to ~kickoff + 190 min — well past LIVE_WINDOW_MS.
  * Without it the statusline refresher stops polling at kickoff+140min and the

@@ -20,6 +20,7 @@
 import {
   byKickoff,
   entryInLiveWindow,
+  IN_PLAY_HOLD_MS,
   isLive,
   MAX_SCHEDULE_INDEX,
   type Match,
@@ -37,8 +38,8 @@ import { type ScheduleSlice, stampAgeMs, validStamp } from './cache';
 export const SCHEDULE_DISPLAY_MAX = 64;
 /** A fixture is RELEVANT from six hours before now: the match in play is exactly what must not be lost. */
 export const RELEVANT_BACK_MS = 6 * 60 * 60_000;
-/** A match seen in play keeps the gate open until its kickoff plus this, at most. */
-export const IN_PLAY_HOLD_MS = 6 * 60 * 60_000;
+/** A match seen in play keeps the gate open until its kickoff plus this, at most (core's one constant). */
+export { IN_PLAY_HOLD_MS };
 /** After a discovery that succeeded: the next one. */
 export const DISCOVERY_TTL_MS = 60 * 60_000;
 /** After the n-th consecutive failure: this × 2^(n−1), at most `DISCOVERY_TTL_MS`. */
@@ -152,6 +153,16 @@ export function scheduleView(raw: unknown, now: number): ScheduleView {
  * 5 minutes × 2^(n−1) (at most 60) after the n-th consecutive failure, and now
  * when none was ever attempted (an age of Infinity is past every wait).
  */
+/**
+ * What a publisher carries when it republishes the slice from a view: the
+ * index as believed, whole only while the stored one was whole AND read back
+ * intact. A slice whose stored index lost an entry when read back stays not
+ * whole until a whole discovery replaces it.
+ */
+export function carriedIndex(view: ScheduleView): { index: ScheduleEntry[] | undefined; complete: boolean } {
+  return { index: view.index, complete: view.complete && view.indexIntact };
+}
+
 export function discoveryDue(view: ScheduleView): boolean {
   const wait =
     view.failures > 0

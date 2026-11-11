@@ -67,6 +67,7 @@ export {
   isTournamentWindowOver,
   LIVE_WINDOW_MS,
   entryInLiveWindow,
+  IN_PLAY_HOLD_MS,
   KNOCKOUT_EXTRA_TIME_MS,
   liveWindowMsFor,
   isKnockoutStage,

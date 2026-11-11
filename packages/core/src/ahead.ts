@@ -32,7 +32,7 @@ import type { ProviderAdapter } from './adapters/types';
 import { bundleApplies } from './competition';
 import { getScheduleAhead, scheduleSpan } from './live';
 import { isLive } from './normalize';
-import { entryInLiveWindow } from './schedule';
+import { entryInLiveWindow, IN_PLAY_HOLD_MS } from './schedule';
 import type { ReadAccount } from './share/cards';
 import { SCHEDULE_AHEAD_DAYS } from './span';
 import { localDate, shiftUtcDate } from './time';
@@ -138,7 +138,9 @@ export function aheadFromEntries(
  * The schedule ahead, read WHOLE, or nothing. No request at all while the
  * adapter's cooldown is in effect at the request's clock; nothing when the read
  * failed (a throttle included) or was not whole (a fixture it did not read may
- * be the next one). It says whether it holds a match in play (`isLive`).
+ * be the next one). It says whether it holds a match in play (`isLive`,
+ * within IN_PLAY_HOLD_MS of its kickoff: a record whose kickoff does not parse
+ * does not count).
  */
 export async function readAhead(adapter: ProviderAdapter, now: Date): Promise<AheadRead | undefined> {
   const cooldown = adapter.cooldownUntil;
@@ -146,7 +148,9 @@ export async function readAhead(adapter: ProviderAdapter, now: Date): Promise<Ah
   const read = await getScheduleAhead(adapter, now);
   if (read.degraded !== false || read.complete !== true) return undefined;
   const entries = read.fixtures.map(scheduleEntryOf).filter((e): e is ScheduleEntry => e !== undefined);
-  return aheadFromEntries(entries, adapter, now, { inPlay: read.fixtures.some((m) => isLive(m.status)) });
+  const at = now.getTime();
+  const inPlay = read.fixtures.some((m) => isLive(m.status) && at < Date.parse(m.kickoff) + IN_PLAY_HOLD_MS);
+  return aheadFromEntries(entries, adapter, now, { inPlay });
 }
 
 /**
@@ -234,8 +238,8 @@ export function dayPointer(
 /**
  * The earliest fixture that is on with a kickoff strictly after `now` (the
  * request's clock); else the horizon. Never a match now: nothing at all
- * (undefined) while the read holds a match in play or a fixture inside its
- * live window (`entryInLiveWindow`, the refresher's gate's rule).
+ * (undefined) while the read holds a match in play (within IN_PLAY_HOLD_MS
+ * of its kickoff) or a fixture inside its live window (`entryInLiveWindow`, the refresher's gate's rule).
  */
 export function livePointer(ahead: AheadRead, now: Date): KickoffPointer | undefined {
   const at = now.getTime();

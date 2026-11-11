@@ -49,6 +49,7 @@ import {
 } from './cache';
 import {
   applyDiscovery,
+  carriedIndex,
   discoveryDue,
   raiseInPlay,
   scheduleGateOpen,
@@ -825,11 +826,11 @@ async function refreshOffBundle(c: {
     let season: SeasonInfo | undefined = sealSeason(base?.season);
     // The schedule slice AS IT IS BELIEVED (`scheduleView`): what is carried
     // and written back is what was read through the rules, never the raw file.
-    let index = view.index;
+    // A republish is whole only while the stored index read back intact (`carriedIndex`).
+    let { index, complete } = carriedIndex(view);
     // Sealed with the competition's written team kind, like every cached match.
     let display: Match[] = [...sealFixtures(base?.schedule?.fixtures, teamKind(competition)).items];
     let scheduleSeason = view.season;
-    let complete = view.complete;
     let scheduleUpdatedAt = view.updatedAt;
     let attemptedAt = view.attemptedAt;
     let failures = view.failures;
