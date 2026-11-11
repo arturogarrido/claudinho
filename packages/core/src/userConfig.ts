@@ -171,9 +171,9 @@ export function readUserConfig(path: string): UserConfigRead {
 }
 
 /**
- * The slug a saved competition value names (`competitionValue`: an alias maps
- * through the table, a slug is itself, a raw slug is itself), or undefined for
- * a value the resolver's grammar refuses.
+ * The slug a saved competition value names (`competitionValue`: an alias, its
+ * name or a short form maps through the table, a slug is itself, a raw slug is
+ * itself), or undefined for a value the resolver's grammar refuses.
  */
 export function savedSlug(value: string): string | undefined {
   const named = competitionValue(value);

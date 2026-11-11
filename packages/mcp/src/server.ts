@@ -107,8 +107,9 @@ export const tzArg = z
   .refine((v) => isValidTimeZone(v), 'an IANA time zone, e.g. America/Mexico_City');
 
 /**
- * The competition a call is for: an alias or a slug, resolved by the server's
- * edge (`selectionOf`), which refuses anything else with the aliases. A plain
+ * The competition a call is for: an alias, its name or a short form, or a
+ * slug, resolved by the server's edge (`selectionOf`), which refuses anything
+ * else with the nearest alias when one is near and the aliases. A plain
  * string here, so the refusal is the edge's (it names the aliases), not a
  * schema message.
  */
@@ -1039,7 +1040,7 @@ export function buildServer(): McpServer {
     {
       title: 'Supported competitions',
       description:
-        "The competitions Claudinho answers for, one per row: the alias every other tool's competition argument takes, the name, the teams (nation or club), the kind (league or cup), and what each surface is (scores, next, standings, bracket, markets: offered, not-offered-yet, or not-applicable), plus current: the competition this request is for. Offline: reads the supported table, never the network. Whether an edition is in season is not listed here; the reads say so (betweenEditions).",
+        "The competitions Claudinho answers for, one per row: the alias, name or short form every other tool's competition argument takes, the name, the teams (nation or club), the kind (league or cup), and what each surface is (scores, next, standings, bracket, markets: offered, not-offered-yet, or not-applicable), plus current: the competition this request is for. Offline: reads the supported table, never the network. Whether an edition is in season is not listed here; the reads say so (betweenEditions).",
       // `lang` localizes the Current line (the names are not localized) and a refusal.
       inputSchema: { competition: competitionArg.optional(), lang: langArg },
       // Read-only AND offline — the supported table ships with the server.

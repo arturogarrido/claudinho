@@ -37,7 +37,11 @@ export type Capability = 'offered' | 'not-offered-yet' | 'not-applicable';
 export interface CompetitionEntry {
   /** The provider's slug (`eng.1`): what a request asks for. */
   readonly slug: string;
-  /** What a person types (`premier-league`): lower case, digits and hyphens, never a dot. */
+  /**
+   * What a person types (`premier-league`): lower-case letters and digits in
+   * words joined by single hyphens (`^[a-z0-9]+(-[a-z0-9]+)*$`), never a dot,
+   * at most 64 units (`deriveTables` refuses any other at load).
+   */
   readonly alias: string;
   /** What a surface names it (`Premier League`): the provider's name, shortened where it says the country. */
   readonly name: string;
@@ -141,6 +145,14 @@ export const SUPPORTED: readonly CompetitionEntry[] = Object.freeze(
 
 /** A short form's grammar: 2 to 6 lower-case letters or digits. */
 const SHORT_FORM = /^[a-z0-9]{2,6}$/;
+/** An alias's grammar: lower-case letters and digits in words joined by single hyphens. */
+const ALIAS = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+/**
+ * A character nobody sees (`Default_Ignorable_Code_Point`: a combining
+ * grapheme joiner, a variation selector, a joiner, a zero-width space): a
+ * value holding one is refused, never repaired into a name.
+ */
+const INVISIBLE = /\p{Default_Ignorable_Code_Point}/u;
 /** A usable name key, once normalized: letters and digits, nothing else. */
 const NAME_KEY = /^[a-z0-9]+$/;
 /** The longest value matched as a name, in UTF-16 units: bounded before any work. */
@@ -152,17 +164,22 @@ const MAX_SUGGESTIONS = 2;
 
 /**
  * A typed name as the grammar compares it: decomposed (`NFD`) and stripped of
- * its combining marks (`América` is `America`), lower-cased, and with the
- * U+0020 space, the hyphen and the underscore removed (`Premier League`,
- * `premier-league` and `premier_league` are `premierleague`). Nothing else is
- * removed: a tab, a no-break space, a zero-width or a control character stays,
- * and the result is then not a usable key. Undefined for a value that is not
- * a usable key (anything but `^[a-z0-9]+$` after this), or one longer than
- * {@link MAX_NAME_UNITS} before it (bounded before the work).
+ * its combining marks (`América`, precomposed or decomposed, is `America`),
+ * lower-cased, and with the U+0020 space, the hyphen and the underscore
+ * removed (`Premier League`, `premier-league` and `premier_league` are
+ * `premierleague`). Undefined, with no work done, for a value longer than
+ * {@link MAX_NAME_UNITS}; undefined, before any mark is stripped, for a value
+ * holding a default-ignorable character (a combining grapheme joiner, a
+ * variation selector, a zero-width joiner or space: some of them are marks,
+ * and stripping them would repair an invisible character into a name); and
+ * undefined for anything but `^[a-z0-9]+$` after the rest (a tab, a no-break
+ * space or a control character stays, and the result is not a usable key).
  */
 function nameKey(value: string): string | undefined {
   if (value.length > MAX_NAME_UNITS) return undefined;
-  const key = value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[ _-]/g, '');
+  const decomposed = value.normalize('NFD');
+  if (INVISIBLE.test(decomposed)) return undefined;
+  const key = decomposed.replace(/\p{M}/gu, '').toLowerCase().replace(/[ _-]/g, '');
   return NAME_KEY.test(key) ? key : undefined;
 }
 
@@ -256,17 +273,29 @@ export interface DerivedTables {
  * same question as `bundleApplies(slug)` with no season, asked of the leaf's
  * own constant), so a wrong row never reaches a user.
  *
- * So are a short form outside its grammar (2 to 6 lower-case letters or
- * digits) and a name key two rows share (an alias, a name, an other name or a
- * short form, compared as {@link competitionValue} compares them: `Premier
- * League`, `premier_league` and `premierleague` are one key), naming it: a
- * value a person types names one row or none.
+ * So are, naming it, every key a lookup accepts that this guard could not
+ * check: an alias outside its grammar (lower-case letters and digits in words
+ * joined by single hyphens, at most 64 units), a name or an other name with no
+ * usable key ({@link nameKey}: longer than 64 units, an invisible or a
+ * control character, anything but letters, digits, spaces, hyphens and
+ * underscores once accents are stripped), a short form outside its grammar
+ * (2 to 6 lower-case letters or digits), and a name key two rows share (an
+ * alias, a name, an other name or a short form, compared as
+ * {@link competitionValue} compares them: `Premier League`, `premier_league`
+ * and `premierleague` are one key): a value a person types names one row or
+ * none.
  */
 export function deriveTables(entries: readonly CompetitionEntry[]): DerivedTables {
   const owner = new Map<string, string>();
   for (const e of entries) {
     if (e.bracket === 'offered' && e.slug !== BUNDLED_SLUG) {
       throw new Error(`${e.slug} offers a bracket the bundle does not describe: only the bundled competition ships a topology`);
+    }
+    if (e.alias.length > MAX_NAME_UNITS || !ALIAS.test(e.alias)) {
+      throw new Error(`${e.slug}'s alias "${e.alias.slice(0, MAX_NAME_UNITS)}" is not lower-case words joined by single hyphens, at most ${MAX_NAME_UNITS} units`);
+    }
+    for (const n of [e.name, ...(e.otherNames ?? [])]) {
+      if (nameKey(n) === undefined) throw new Error(`${e.slug}'s name "${n.slice(0, MAX_NAME_UNITS)}" has no usable key`);
     }
     for (const s of e.shortForms ?? []) {
       if (!SHORT_FORM.test(s)) throw new Error(`${e.slug}'s short form "${s}" is not 2 to 6 lower-case letters or digits`);
@@ -320,12 +349,16 @@ const MAX_SLUG_UNITS = 64;
  *   - for a value WITHOUT a dot, the row one of whose names it is: its alias,
  *     its name, an other name or a short form, compared as {@link nameKey}
  *     compares them (case, accents, spaces, hyphens and underscores ignored:
- *     `Premier League`, `PREMIER-LEAGUE`, `epl`); a value longer than 64
- *     units is not looked at. A prefix is not a name (`premier` is refused,
- *     and {@link suggestCompetitions} then names the alias);
+ *     `Premier League`, `PREMIER-LEAGUE`, `epl`; a value holding an
+ *     invisible character is refused, never repaired). A prefix is not a name
+ *     (`premier` is refused, and {@link suggestCompetitions} then names the
+ *     alias);
  *   - for a value with a dot, `raw` when it is a well-formed slug the table
  *     does not hold (experimental), and nothing else (`ENG.1` is refused);
  *   - undefined for anything else (`foo`, a tab, an empty string).
+ * A value longer than 64 units (the slug bound and the name bound alike) is
+ * refused FIRST, before any search, normalization or match: the work is
+ * bounded before it starts, whatever the value holds.
  * Every lookup is a search of the rows, never a key of an object
  * (`constructor` is refused). The resolver (`competition.ts`) and the config
  * file's reader (`userConfig.ts`) ask this one question, so the file can never
@@ -336,6 +369,7 @@ export function competitionValue(
   table: readonly CompetitionEntry[] = SUPPORTED,
 ): { row: CompetitionEntry } | { raw: string } | undefined {
   if (typeof value !== 'string' || value === '') return undefined;
+  if (value.length > MAX_SLUG_UNITS || value.length > MAX_NAME_UNITS) return undefined;
   const row = table.find((e) => e.alias === value) ?? entryOf(value, table);
   if (row) return { row };
   if (value.includes('.')) {
@@ -350,11 +384,11 @@ export function competitionValue(
 /**
  * The aliases a refused value is nearest to: at most two, nearest first, the
  * same answer every time. By these steps:
- *   0. nothing for a value that resolves ({@link competitionValue}: an exact
+ *   0. nothing for a value longer than 64 units (refused before any other
+ *      work), a value that resolves ({@link competitionValue}: an exact
  *      match is not a near miss), a value with a dot (the slug grammar
  *      suggests nothing), or one whose normalized form ({@link nameKey}) is not
- *      letters and digits or is longer than 32 (the input is bounded before
- *      any work);
+ *      letters and digits or is longer than 32;
  *   1. with 3 characters or more: the rows one of whose whole keys (alias,
  *      name, other name, short form) STARTS with it (`premier`, `copa`);
  *   2. with 3 characters or more: the rows where a LATER word of the alias or
@@ -369,7 +403,8 @@ export function competitionValue(
  * go by the table's order; each row once; at most two.
  */
 export function suggestCompetitions(value: string, table: readonly CompetitionEntry[] = SUPPORTED): string[] {
-  if (typeof value !== 'string' || value.includes('.') || competitionValue(value, table) !== undefined) return [];
+  if (typeof value !== 'string' || value.length > MAX_NAME_UNITS) return [];
+  if (value.includes('.') || competitionValue(value, table) !== undefined) return [];
   const key = nameKey(value);
   if (key === undefined || key.length > MAX_SUGGEST_KEY) return [];
   const picked: CompetitionEntry[] = [];

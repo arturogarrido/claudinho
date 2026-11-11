@@ -28,10 +28,12 @@ export function wrap(text: string, width: number): string[] {
  * A message of several lines, each wrapped on its own (its line breaks kept),
  * to a stream's width: `columns` when the stream states one, else
  * {@link DEFAULT_WIDTH}; `indent` is put before every line and counted in the
- * width. The lines, without a final line break.
+ * width, which is floored at 1 and no higher, so a narrow stream gets narrow
+ * lines (a word wider than it still stands alone on its line). The lines,
+ * without a final line break.
  */
 export function wrapLines(text: string, columns: number | undefined, indent = ''): string[] {
-  const width = Math.max(20, (columns !== undefined && columns > 0 ? columns : DEFAULT_WIDTH) - displayWidth(indent));
+  const width = Math.max(1, (columns !== undefined && columns > 0 ? columns : DEFAULT_WIDTH) - displayWidth(indent));
   return text.split('\n').flatMap((line) => {
     const wrapped = wrap(line, width);
     return (wrapped.length > 0 ? wrapped : ['']).map((l) => `${indent}${l}`);
