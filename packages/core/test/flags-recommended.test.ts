@@ -17,10 +17,11 @@
  * RESOLVED, not a placeholder), and the neutral 🏳️ (no nation at all: a bundle
  * placeholder, "Round of 32 1 Winner").
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isPlaceholderSide } from '../src/bracket/placeholders';
+import * as flags from '../src/flags';
 import { flagEmoji, nationToFlag } from '../src/flags';
 import { parseCachedMatch, parseEspnEvent, productFlag, sealTeam } from '../src/trust';
 
@@ -34,9 +35,10 @@ const ENGLAND = String.fromCodePoint(0x1f3f4, 0xe0067, 0xe0062, 0xe0065, 0xe006e
 const SCOTLAND = String.fromCodePoint(0x1f3f4, 0xe0067, 0xe0062, 0xe0073, 0xe0063, 0xe0074, 0xe007f);
 const WALES = String.fromCodePoint(0x1f3f4, 0xe0067, 0xe0062, 0xe0077, 0xe006c, 0xe0073, 0xe007f);
 
-/** Every name and every 3-letter code the flags table spells, read from its source. */
-function tableEntries(): { names: string[]; codes: string[] } {
-  const src = readFileSync(join(__dirname, '..', 'src', 'flags.ts'), 'utf8');
+const FLAGS_SRC = join(__dirname, '..', 'src', 'flags.ts');
+
+/** Every name and every 3-letter code a flags table spells, read from its source text. */
+function tableEntries(src: string): { names: string[]; codes: string[] } {
   const names = [...src.matchAll(/\['([^']+)', '[A-Z]{2}(?:-[A-Z]{2,3})?'\]/g)].map((m) => m[1] as string);
   const codes = [...src.matchAll(/\b([A-Z]{3}): '/g)].map((m) => m[1] as string);
   return { names, codes };
@@ -61,27 +63,76 @@ function intlNames(): string[] {
   return out;
 }
 
-/** A flag is acceptable when it is recommended, absent (a nation with none) or the neutral placeholder. */
-function acceptable(flag: string | undefined): boolean {
-  return flag === undefined || flag === NEUTRAL || RECOMMENDED.test(flag);
+/** What the guard needs of a flags module: its lookup and its written list of nations with no recommended flag. */
+type FlagsModule = {
+  nationToFlag: (q: string) => string | undefined;
+  FLAGLESS_NATIONS: ReadonlyArray<{ readonly name: string; readonly code: string }>;
+};
+
+const recommended = (f: string | undefined): boolean => typeof f === 'string' && RECOMMENDED.test(f);
+const shown = (f: string | undefined): string =>
+  f === undefined ? 'none' : f === NEUTRAL ? 'neutral' : [...f].map((c) => c.codePointAt(0)?.toString(16)).join(' ');
+
+/**
+ * The guard. WHO may get which answer, since `undefined` is a legal one:
+ *   - a name or code the table spells is a nation: a recommended flag, or none
+ *     ONLY when the written flagless list names it (never the placeholder);
+ *   - an Intl region name: a recommended flag, or the placeholder (no nation),
+ *     never none (Intl knows no flagless nation of ours);
+ *   - every entry of the flagless list: none.
+ * Returns the violations as `<name> -> <answer>`.
+ */
+function violations(src: string, mod: FlagsModule): string[] {
+  const { names, codes } = tableEntries(src);
+  const flagless = new Set(mod.FLAGLESS_NATIONS.flatMap((f) => [f.name, f.code]));
+  const bad: string[] = [];
+  for (const n of [...names, ...codes]) {
+    const f = mod.nationToFlag(n);
+    const ok = flagless.has(n) ? f === undefined : recommended(f);
+    if (!ok) bad.push(`${n} -> ${shown(f)}`);
+  }
+  for (const n of intlNames()) {
+    const f = mod.nationToFlag(n);
+    if (!(f === NEUTRAL || recommended(f))) bad.push(`${n} -> ${shown(f)}`);
+  }
+  for (const n of flagless) {
+    const f = mod.nationToFlag(n);
+    if (f !== undefined) bad.push(`${n} -> ${shown(f)}`);
+  }
+  return bad;
 }
 
 describe('every flag the product emits is one Unicode recommends', () => {
-  it('the guard is wired up: the table and Intl both have entries to check', () => {
-    const { names, codes } = tableEntries();
+  it('the guard is wired up: the table, Intl and the flagless list all have entries to check', () => {
+    const { names, codes } = tableEntries(readFileSync(FLAGS_SRC, 'utf8'));
     expect(names.length).toBeGreaterThan(100);
     expect(codes.length).toBeGreaterThan(50);
     expect(intlNames().length).toBeGreaterThan(200);
+    expect(flags.FLAGLESS_NATIONS).toEqual([{ name: 'Northern Ireland', code: 'NIR' }]);
   });
 
-  it('every name, alias and code in the table, and every Intl region name, yields a recommended flag, none, or the neutral one', () => {
-    const { names, codes } = tableEntries();
-    const bad: string[] = [];
-    for (const n of [...names, ...codes, ...intlNames()]) {
-      const f = productFlag(n);
-      if (!acceptable(f)) bad.push(`${n} -> ${[...(f ?? '')].map((c) => c.codePointAt(0)?.toString(16)).join(' ')}`);
+  it('every name and code in the table is a nation with a recommended flag (none only for the written flagless list); every Intl name a recommended flag or no nation', () => {
+    expect(violations(readFileSync(FLAGS_SRC, 'utf8'), flags)).toEqual([]);
+  });
+
+  it('productFlag is that lookup, on every name the guard reads', () => {
+    const { names, codes } = tableEntries(readFileSync(FLAGS_SRC, 'utf8'));
+    for (const n of [...names, ...codes, ...intlNames(), 'Northern Ireland', 'NIR']) expect(productFlag(n), n).toBe(flags.nationToFlag(n));
+  });
+
+  it('the guard FAILS on a copy of the table with a row whose code is no real region (Kosovo XK -> XQ)', async () => {
+    const src = readFileSync(FLAGS_SRC, 'utf8');
+    const typo = src.replace("['Kosovo', 'XK']", "['Kosovo', 'XQ']");
+    expect(typo).not.toBe(src);
+    // The copy is written inside the package so the test runner transforms it; flags.ts imports nothing.
+    const path = join(__dirname, `.flags-copy-${process.pid}-${Date.now()}.ts`);
+    writeFileSync(path, typo);
+    try {
+      const copy = (await import(path)) as FlagsModule;
+      expect(violations(typo, copy)).toContain('Kosovo -> none');
+    } finally {
+      rmSync(path, { force: true });
     }
-    expect(bad).toEqual([]);
   });
 
   it('flagEmoji never emits a sequence Unicode does not recommend, for any 2-letter code or GB subdivision', () => {

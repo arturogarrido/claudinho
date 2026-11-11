@@ -74,12 +74,14 @@ describe('Northern Ireland renders by name in the MCP tools', () => {
     expect(((match.data as Rec).match as Rec).away).toEqual(NIR_RECORD);
   });
 
-  it('get_share_snippet (date, live, match) in both styles: the card by name or code, no flag shape', async () => {
+  it('get_share_snippet (date, live, match): the social card by name, the compact one by code, no flag shape', async () => {
     for (const style of ['social', 'compact'] as const) {
       for (const [args, state] of [[{ date: '2026-11-17' }, 'pre'], [{ live: true }, 'in'], [{ matchId: '401800001' }, 'in']] as const) {
         const r = await toolGetShareSnippet({ ...args, style, competition: 'uefa.nations', adapter: feed(state), marketProvider: new FakeMarketProvider(), now: NOW });
         const label = `${JSON.stringify(args)} ${style}`;
-        expect(r.text, label).toMatch(/Northern Ireland|NIR/);
+        // The social card names the teams; the compact one prints every team by its code, Northern Ireland as NIR.
+        expect(r.text, label).toContain(style === 'social' ? 'Northern Ireland' : '🇭🇺 HUN');
+        if (style === 'compact') expect(r.text, label).toMatch(/\bNIR\b/);
         clean(r.text, label);
         clean((r.data as Rec).snippet as string, `${label} snippet`);
         for (const m of ((r.data as Rec).matches as Rec[]) ?? []) expect(m.away, label).toEqual(NIR_RECORD);

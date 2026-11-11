@@ -117,13 +117,17 @@ describe('Northern Ireland renders by name on the CLI\'s interactive surfaces', 
     clean(t, 'live');
   });
 
-  it('`share <date>` and `share live`: the card by names, no flag shape for Northern Ireland', async () => {
+  it('`share <date>` and `share live`: the social card by names, the compact one by codes, no flag shape for Northern Ireland', async () => {
     for (const [target, state] of [['2026-11-17', 'pre'], ['live', 'in']] as const) {
-      writes = [];
-      await cmdShare(target, undefined, {}, ctx(feed(state)));
-      const t = text();
-      expect(t, target).toMatch(/Northern Ireland|NIR/);
-      clean(t, `share ${target}`);
+      for (const style of ['social', 'compact'] as const) {
+        writes = [];
+        await cmdShare(target, undefined, { style }, ctx(feed(state)));
+        const t = text();
+        const label = `share ${target} --style ${style}`;
+        expect(t, label).toContain(style === 'social' ? '🇭🇺 Hungary' : '🇭🇺 HUN');
+        expect(t, label).toMatch(style === 'social' ? /Northern Ireland/ : /\bNIR\b/);
+        clean(t, label);
+      }
     }
   });
 });
