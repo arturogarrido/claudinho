@@ -10,7 +10,8 @@ name: Publish
 #          "Re-run failed jobs" (`gh run rerun <id> --failed`) on the same tag, and
 #          every publishing step skips what is already published.
 #
-# Four jobs, so the npm credential never sits beside a dependency:
+# Four jobs, so the npm credential never sits beside the repository's code or
+# its dependencies:
 #   build        contents: read. Checks the commit and the tag, installs, builds,
 #                tests, lints, packs the three tarballs, and uploads them with
 #                packages/mcp/server.json as one artifact. Every dependency
@@ -22,11 +23,16 @@ name: Publish
 #   mcp-registry id-token: write, outside the environment. No checkout: publishes
 #                server.json from the artifact.
 #
+# The invariant of the two jobs that hold `id-token: write`: nothing the build
+# job produced can change WHERE they authenticate or publish, or run code in
+# them; it can only be the bytes that are published. (A compromised build-time
+# dependency can still alter those bytes: the split does not close that.)
+#
 # Auth: npm trusted publishing (OIDC) — NO token. `id-token: write` lets npm mint
 #   a short-lived, package-scoped credential from the job's OIDC token, so there
 #   is no NPM_TOKEN secret to manage or rotate. A trusted publisher is configured
-#   on npmjs for each package (repo + workflow `publish.yml`, and the environment
-#   `release` once AGENTS.md "Releasing", "One-time setup", is done).
+#   on npmjs for each package: repo, workflow `publish.yml` and, from the
+#   release-day checklist in AGENTS.md "Releasing" on, the environment `release`.
 #   See https://docs.npmjs.com/trusted-publishers.
 #
 # Prerequisites:
@@ -151,12 +157,17 @@ jobs:
         run: |
           set -euo pipefail
           V=${GITHUB_REF_NAME#v}
-          sha256sum "claudinho-core-$V.tgz" "claudinho-cli-$V.tgz" "claudinho-mcp-$V.tgz" server.json > SHA256SUMS
-          cat SHA256SUMS
-          { echo '### Release files (sha256)'; echo; echo '```'; cat SHA256SUMS; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          { echo 'sums<<SHA256SUMS_END'; cat SHA256SUMS; echo 'SHA256SUMS_END'; } >> "$GITHUB_OUTPUT"
+          SUMS_FILE="$RUNNER_TEMP/SHA256SUMS" # outside the uploaded directory: the artifact is the four files
+          sha256sum "claudinho-core-$V.tgz" "claudinho-cli-$V.tgz" "claudinho-mcp-$V.tgz" server.json > "$SUMS_FILE"
+          cat "$SUMS_FILE"
+          { echo '### Release files (sha256)'; echo; echo '```'; cat "$SUMS_FILE"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo 'sums<<SHA256SUMS_END'; cat "$SUMS_FILE"; echo 'SHA256SUMS_END'; } >> "$GITHUB_OUTPUT"
 
-      # `overwrite: true`: a "Re-run all jobs" uploads the same name again.
+      # `overwrite: true`: a "Re-run all jobs" uploads the same name again. No
+      # `include-hidden-files`: a dotfile (a `.npmrc`) never leaves this job,
+      # and the jobs that download the artifact refuse any file not in the sums.
+      # Kept 7 days: a publish approved later, or a job re-run alone after that,
+      # fails at the download, and "Re-run all jobs" rebuilds.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-files
@@ -165,10 +176,12 @@ jobs:
           overwrite: true
           retention-days: 7
 
-  # The only job npm trusts once each package's trusted publisher names the
-  # `release` environment: its protection rules (tags `v*` only, a required
-  # reviewer) gate every publish. It checks out nothing and installs nothing:
-  # no file of the repository and no dependency runs beside the credential.
+  # Runs in the `release` environment: its protection rules (tags `v*` only, a
+  # required reviewer) gate every publish. Once each package's trusted
+  # publisher on npm names that environment (and none is left without it, the
+  # release-day checklist in AGENTS.md "Releasing"), it is the only job npm
+  # accepts. It checks out nothing and installs nothing: the programs it runs
+  # are setup-node's Node and npm, tar and sha256sum, on the artifact's bytes.
   publish:
     needs: build
     runs-on: ubuntu-latest
@@ -211,39 +224,58 @@ jobs:
           V=${GITHUB_REF_NAME#v}
           want=$(printf '%s\n' "claudinho-core-$V.tgz" "claudinho-cli-$V.tgz" "claudinho-mcp-$V.tgz" server.json | sort)
           got=$(printf '%s\n' "$SUMS" | sed -nE 's/^[0-9a-f]{64}  ([^ ]+)$/\1/p' | sort)
-          lines=$(printf '%s\n' "$SUMS" | grep -c . || true)
+          lines=$(printf '%s\n' "$SUMS" | grep -c '[^[:space:]]' || true)
           if [ "$got" != "$want" ] || [ "$lines" != 4 ]; then
             echo "::error::the build job's sums do not list the three tarballs and server.json, one well-formed line each:"
             printf '%s\n' "$SUMS"; exit 1
+          fi
+          # Nothing else in the artifact: no dotfile, no script, nothing npm or a later step could read.
+          shopt -s dotglob nullglob
+          have=$(printf '%s\n' * | sort)
+          if [ "$have" != "$want" ]; then
+            echo "::error::the artifact holds files the build job's sums do not list:"
+            printf '%s\n' "$have"; exit 1
           fi
           printf '%s\n' "$SUMS" | sha256sum -c -
 
       # Core first (cli and mcp bundle it and list it as a dev dependency), then
       # cli and mcp. Each tarball's own manifest must name the package and the
-      # tag's version. A version npm already serves is skipped, so "Re-run failed
-      # jobs" after a partial publish is safe; a view that fails or answers
-      # anything else is not a skip (npm then refuses a duplicate itself). The
-      # first failure stops the loop: cli and mcp never go out without core.
-      # npm signs the provenance attestation with this job's OIDC token: it
-      # names this run of publish.yml at the tag's commit, the run that built
-      # the tarball. No propagation wait here: the Registry job waits for npm.
+      # tag's version, and carry `publishConfig` exactly `{"access":"public"}`:
+      # npm applies any config key a manifest's publishConfig holds (npm 11's
+      # lib/commands/publish.js), so a registry or a proxy written there by the
+      # build would steer the OIDC exchange. npm runs in an empty directory this
+      # step makes, never the artifact's (no project .npmrc or package.json of
+      # the build's), with the registry on the command line (a CLI flag wins over
+      # publishConfig) and `--ignore-scripts` (npm 11 runs no lifecycle script
+      # for a tarball; the flag says so). A version npm already serves is skipped,
+      # so "Re-run failed jobs" after a partial publish is safe; a view that
+      # fails or answers anything else is not a skip (npm then refuses a
+      # duplicate itself). The first failure stops the loop: cli and mcp never
+      # go out without core. npm signs the provenance attestation with this
+      # job's OIDC token: it names this run of publish.yml at the tag's commit,
+      # the run that built the tarball. No propagation wait here: the Registry
+      # job waits for npm.
       - name: Publish to npm with provenance
-        working-directory: release
         run: |
           set -euo pipefail
           V=${GITHUB_REF_NAME#v}
+          REGISTRY=https://registry.npmjs.org/
+          FILES="$GITHUB_WORKSPACE/release"
+          WORK=$(mktemp -d "$RUNNER_TEMP/npm-XXXXXX")
+          cd "$WORK"
           for p in core cli mcp; do
             name="@claudinho/$p"
-            tgz="claudinho-$p-$V.tgz"
-            got=$(tar -xzOf "$tgz" package/package.json | node -e 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => { const m = JSON.parse(s); console.log(`${m.name}@${m.version}`); })')
+            base="claudinho-$p-$V.tgz"
+            tgz="$FILES/$base"
+            got=$(tar -xzOf "$tgz" package/package.json | node -e 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => { const m = JSON.parse(s); const pc = JSON.stringify(m.publishConfig ?? null); console.log(pc === "{\"access\":\"public\"}" ? `${m.name}@${m.version}` : `${m.name}@${m.version} with publishConfig ${pc}`); })')
             if [ "$got" != "$name@$V" ]; then
-              echo "::error::$tgz holds $got, not $name@$V"; exit 1
+              echo "::error::$base holds $got, not $name@$V with publishConfig {\"access\":\"public\"}"; exit 1
             fi
-            if [ "$(npm view "$name@$V" version 2>/dev/null || true)" = "$V" ]; then
+            if [ "$(npm view "$name@$V" version --registry "$REGISTRY" --fetch-timeout=20000 --fetch-retries=1 2>/dev/null || true)" = "$V" ]; then
               echo "$name@$V is already on npm; skipping"
               continue
             fi
-            npm publish "./$tgz" --provenance --access public
+            npm publish "$tgz" --provenance --access public --ignore-scripts --registry "$REGISTRY"
             echo "published $name@$V"
           done
 
@@ -323,10 +355,17 @@ jobs:
           V=${GITHUB_REF_NAME#v}
           want=$(printf '%s\n' "claudinho-core-$V.tgz" "claudinho-cli-$V.tgz" "claudinho-mcp-$V.tgz" server.json | sort)
           got=$(printf '%s\n' "$SUMS" | sed -nE 's/^[0-9a-f]{64}  ([^ ]+)$/\1/p' | sort)
-          lines=$(printf '%s\n' "$SUMS" | grep -c . || true)
+          lines=$(printf '%s\n' "$SUMS" | grep -c '[^[:space:]]' || true)
           if [ "$got" != "$want" ] || [ "$lines" != 4 ]; then
             echo "::error::the build job's sums do not list the three tarballs and server.json, one well-formed line each:"
             printf '%s\n' "$SUMS"; exit 1
+          fi
+          # Nothing else in the artifact: no dotfile, no script, nothing npm or a later step could read.
+          shopt -s dotglob nullglob
+          have=$(printf '%s\n' * | sort)
+          if [ "$have" != "$want" ]; then
+            echo "::error::the artifact holds files the build job's sums do not list:"
+            printf '%s\n' "$have"; exit 1
           fi
           printf '%s\n' "$SUMS" | sha256sum -c -
 
