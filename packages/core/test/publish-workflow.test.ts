@@ -14,7 +14,7 @@
  * `::error::` past the deadline.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -609,6 +609,17 @@ const RUNS_REPO_CODE = [
   /^\s*(container|services):/m,
 ];
 const ARTIFACT = /name: (release-files)\s*$/m;
+/**
+ * What a job holding `id-token: write` may not run besides the list above: an interpreter or a shell given a file
+ * (the artifact is written by the build job, adversary one), `source`, or a `./` path other than the sha256-verified
+ * `./mcp-publisher`. `node` runs only inline (`node -e`, `node -p`).
+ */
+const RUNS_A_FILE = [
+  /(^|[\s;&|(`$])(bash|sh|zsh|dash|python3?|perl|ruby|tsx|ts-node|deno|bun)\s/m,
+  /(^|[\s;&|(`$])(source|\.)\s+\S/m,
+  /\bnode\b(?!-version|@| -[ep] )/,
+  /(^|[\s;&|(`$])\.\/(?!mcp-publisher\b)\S/m,
+];
 
 describe('publish.yml, the split: the npm credential never meets the repository or a dependency', () => {
   it('has the four jobs, in the order they run', () => {
@@ -636,12 +647,21 @@ describe('publish.yml, the split: the npm credential never meets the repository 
     for (const name of holders) {
       const text = code(jobs.get(name) as string);
       for (const re of RUNS_REPO_CODE) expect(text, `${name}: ${re}`).not.toMatch(re);
+      for (const re of RUNS_A_FILE) expect(text, `${name}: ${re}`).not.toMatch(re);
     }
     // The only `uses:` in those jobs are the artifact download and, in publish, setup-node.
     for (const name of holders) {
       const uses = code(jobs.get(name) as string).match(/uses: [^\s@]+@/g) ?? [];
       for (const u of uses) expect(['uses: actions/download-artifact@', 'uses: actions/setup-node@'], `${name}: ${u}`).toContain(u);
     }
+  });
+
+  it('the publish job sets no npm configuration of its own and writes nothing for later steps to inherit', () => {
+    // npm reads `npm_config_*` and `NPM_CONFIG_*` from the environment; a step writing GITHUB_ENV or GITHUB_PATH
+    // changes what every later step runs with. setup-node writes its own .npmrc and NPM_CONFIG_USERCONFIG, which do
+    // not appear in this file.
+    expect(code(publishJob)).not.toMatch(/npm_config_/i);
+    expect(code(publishJob)).not.toMatch(/\bGITHUB_(ENV|PATH)\b/);
   });
 
   it('only the publish job names an environment, and it is `release`', () => {
@@ -690,6 +710,10 @@ describe('publish.yml, the build job packs what the publish job publishes', () =
     expect(pack).toMatch(/for p in core cli mcp; do/);
     expect(pack).toMatch(/pnpm --filter "@claudinho\/\$p" pack --pack-destination "\$OUT"/);
     expect(pack).toMatch(/cp packages\/mcp\/server\.json "\$OUT\/server\.json"/);
+    expect(pack).toMatch(/^\s+OUT="\$RUNNER_TEMP\/release"$/m);
+    for (const name of ['- name: Refuse a workspace range in a packed manifest', '- name: Record the sha256 of the release files']) {
+      expect(stepIn(buildJob, name), name).toMatch(/^\s+working-directory: \$\{\{ runner\.temp \}\}\/release$/m);
+    }
   });
 
   it('uploads the release files as one artifact that fails when empty and replaces itself on a re-run, and exposes the sums', () => {
@@ -697,6 +721,9 @@ describe('publish.yml, the build job packs what the publish job publishes', () =
     expect(upload).toMatch(ARTIFACT);
     expect(upload).toMatch(/if-no-files-found: error/);
     expect(upload).toMatch(/overwrite: true/);
+    expect(upload).toMatch(/^\s+path: \$\{\{ runner\.temp \}\}\/release\/$/m);
+    // A dotfile written by the build job (a `.npmrc`) never reaches a job that runs npm: upload-artifact's default.
+    expect(upload).not.toMatch(/include-hidden-files/);
     expect(code(buildJob)).toMatch(/^ {4}outputs:\n {6}sums: \$\{\{ steps\.sums\.outputs\.sums \}\}$/m);
     expect(stepIn(buildJob, '- name: Record the sha256 of the release files')).toMatch(/^\s+id: sums$/m);
   });
@@ -723,7 +750,11 @@ describe('publish.yml, the publish job: no checkout, no install, the release env
     expect(loop).toMatch(/for p in core cli mcp; do/);
     expect(loop.indexOf('npm view')).toBeGreaterThan(0);
     expect(loop.indexOf('npm view')).toBeLessThan(loop.indexOf('npm publish'));
-    expect(loop).toMatch(/npm publish "\.\/\$tgz" --provenance --access public/);
+    expect(loop).toMatch(/npm publish "\$tgz" --provenance --access public --ignore-scripts --registry "\$REGISTRY"/);
+    expect(loop).toMatch(/npm view "\$name@\$V" version --registry "\$REGISTRY" --fetch-timeout=\d+ --fetch-retries=\d/);
+    expect(loop).toMatch(/^REGISTRY=https:\/\/registry\.npmjs\.org\/$/m);
+    // npm runs in a directory the step made, never in the artifact's: no project .npmrc or package.json of the build's.
+    expect(stepIn(publishJob, '- name: Publish to npm with provenance')).not.toMatch(/working-directory:/);
   });
 });
 
@@ -754,10 +785,14 @@ describe('publish.yml, the release and Registry jobs', () => {
       const dl = stepsOf(j)[0] ?? '';
       expect(dl).toMatch(/path: release\s*$/m);
     }
-    for (const name of ["- name: Verify the release files against the build job's sums", '- name: Publish to npm with provenance']) {
-      expect(stepIn(publishJob, name)).toMatch(/working-directory: release\s*$/m);
+    for (const j of [publishJob, registryJob]) {
+      const sums = stepIn(j, "- name: Verify the release files against the build job's sums");
+      expect(sums).toMatch(/working-directory: release\s*$/m);
+      expect(sums).toMatch(/^\s+SUMS: \$\{\{ needs\.build\.outputs\.sums \}\}$/m);
     }
-    expect(stepIn(registryJob, "- name: Verify the release files against the build job's sums")).toMatch(/working-directory: release\s*$/m);
+    expect(runBlock(stepIn(publishJob, '- name: Publish to npm with provenance'), 'the publish step')).toMatch(
+      /FILES="\$GITHUB_WORKSPACE\/release"/,
+    );
   });
 });
 
@@ -769,11 +804,14 @@ function tarball(dir: string, file: string, manifest: object): void {
   execFileSync('tar', ['-czf', join(dir, file), '-C', src, 'package']);
 }
 const V3 = '1.2.3';
-/** A release directory as the build job leaves it: the three tarballs at `V3` and server.json. */
+const RELEASE_FILES = [`claudinho-core-${V3}.tgz`, `claudinho-cli-${V3}.tgz`, `claudinho-mcp-${V3}.tgz`, 'server.json'];
+const manifestOf = (p: string) => ({ name: `@claudinho/${p}`, version: V3, publishConfig: { access: 'public' } });
+/** A release directory as a download step leaves it, `<workspace>/release`: the three tarballs at `V3` and server.json. */
 function releaseDir(manifests: Partial<Record<'core' | 'cli' | 'mcp', object>> = {}): string {
-  const dir = mkdtempSync(join(tmpdir(), 'release-'));
+  const dir = join(mkdtempSync(join(tmpdir(), 'workspace-')), 'release');
+  mkdirSync(dir);
   for (const p of ['core', 'cli', 'mcp'] as const) {
-    tarball(dir, `claudinho-${p}-${V3}.tgz`, manifests[p] ?? { name: `@claudinho/${p}`, version: V3 });
+    tarball(dir, `claudinho-${p}-${V3}.tgz`, manifests[p] ?? manifestOf(p));
   }
   writeFileSync(join(dir, 'server.json'), JSON.stringify({ version: V3 }));
   return dir;
@@ -830,15 +868,18 @@ describe.skipIf(process.platform === 'win32')('the release-file steps, run offli
 
   it("the build job's sums, recorded and then checked, pass; a changed, missing, unlisted or doubled file fails", () => {
     const dir = releaseDir();
-    const out = join(dir, 'out');
+    const temp = mkdtempSync(join(tmpdir(), 'runner-temp-'));
+    const out = join(temp, 'out');
     writeFileSync(out, '');
-    const rec = runIn(dir, RECORD_STEP, { GITHUB_OUTPUT: out, GITHUB_STEP_SUMMARY: join(dir, 'summary') }, SUM_TOOLS);
+    const rec = runIn(dir, RECORD_STEP, { GITHUB_OUTPUT: out, GITHUB_STEP_SUMMARY: join(temp, 'summary'), RUNNER_TEMP: temp }, SUM_TOOLS);
     expect(rec.status, rec.out).toBe(0);
     const m = /^sums<<(\w+)\n([\s\S]*?)\n\1$/m.exec(readFileSync(out, 'utf8'));
     expect(m, readFileSync(out, 'utf8')).toBeTruthy();
     const sums = (m as RegExpExecArray)[2] as string;
     expect(sums.split('\n')).toHaveLength(4);
-    expect(readFileSync(join(dir, 'summary'), 'utf8')).toContain(sums);
+    expect(readFileSync(join(temp, 'summary'), 'utf8')).toContain(sums);
+    // The record step writes nothing into the directory it uploads: the artifact is the four files.
+    expect(readdirSync(dir).sort()).toEqual([...RELEASE_FILES].sort());
     const check = (s: string, cwd = dir) => runIn(cwd, SUMS_STEP, { SUMS: s }, SUM_TOOLS);
     expect(check(sums).status, check(sums).out).toBe(0);
     // A changed file.
@@ -846,17 +887,34 @@ describe.skipIf(process.platform === 'win32')('the release-file steps, run offli
     expect(check(sums, other).status).not.toBe(0);
     // A line removed, a line doubled, a malformed line, an empty list.
     const lines = sums.split('\n');
-    for (const bad of [lines.slice(1).join('\n'), [...lines, lines[0]].join('\n'), [...lines.slice(1), `xyz  ${lines[0]?.split('  ')[1]}`].join('\n'), '']) {
+    for (const bad of [
+      lines.slice(1).join('\n'),
+      [...lines, lines[0]].join('\n'),
+      [...lines.slice(1), `xyz  ${lines[0]?.split('  ')[1]}`].join('\n'),
+      '',
+      // The four good lines and a malformed fifth: `sha256sum -c` alone ignores the fifth.
+      [...lines, 'not-a-sum-line'].join('\n'),
+    ]) {
       const r = check(bad);
       expect(r.status, `${bad}\n${r.out}`).not.toBe(0);
+    }
+    // A file the sums do not list, a dotfile among them, is refused: npm never meets a `.npmrc` of the build's.
+    for (const extra of ['.npmrc', 'prepare.sh']) {
+      const more = releaseDir();
+      writeFileSync(join(more, extra), 'registry=http://attacker.example/\n');
+      const r = check(sums, more);
+      expect(r.status, `${extra}: ${r.out}`).not.toBe(0);
+      expect(r.out).toMatch(/::error::/);
     }
   });
 
   it('refuses a packed manifest that still carries a `workspace:` range, and a missing tarball', () => {
     expect(runIn(releaseDir(), WS_STEP, {}, ['tar', 'grep', 'gzip']).status).toBe(0);
-    const ws = runIn(releaseDir({ mcp: { name: '@claudinho/mcp', version: V3, devDependencies: { '@claudinho/core': 'workspace:*' } } }), WS_STEP, {}, ['tar', 'grep', 'gzip']);
-    expect(ws.status, ws.out).not.toBe(0);
-    expect(ws.out).toMatch(/::error::claudinho-mcp-1\.2\.3\.tgz/);
+    for (const range of ['workspace:*', 'workspace:^', 'workspace:~', 'workspace:1.2.3']) {
+      const ws = runIn(releaseDir({ mcp: { ...manifestOf('mcp'), devDependencies: { '@claudinho/core': range } } }), WS_STEP, {}, ['tar', 'grep', 'gzip']);
+      expect(ws.status, `${range}: ${ws.out}`).not.toBe(0);
+      expect(ws.out).toMatch(/::error::claudinho-mcp-1\.2\.3\.tgz/);
+    }
     const dir = releaseDir();
     rmSync(join(dir, `claudinho-cli-${V3}.tgz`));
     expect(runIn(dir, WS_STEP, {}, ['tar', 'grep', 'gzip']).status).not.toBe(0);
@@ -868,6 +926,8 @@ describe.skipIf(process.platform === 'win32')('the release-file steps, run offli
    */
   const NPM = `#!/bin/bash
 echo "$*" >> "$LOG"
+# Where npm runs, and how many entries that directory holds when it does.
+echo "$PWD $(ls -A | wc -l | tr -d ' ')" >> "$WHERE"
 if [ "$1" = view ]; then
   name=\${2%@*}; v=\${2##*@}
   case " $ON_NPM " in *" $name "*) echo "$v"; exit 0;; esac
@@ -880,19 +940,60 @@ if [ "$1" = publish ]; then
 fi
 exit 2
 `;
+  const REG = 'https://registry.npmjs.org/';
+  let files = '';
+  /** Runs the publish step from the workspace that holds `dir` (`<workspace>/release`), as the job does. */
   function publish(dir: string, env: Record<string, string> = {}) {
-    const log = join(dir, 'npm.log');
+    const logs = mkdtempSync(join(tmpdir(), 'npm-log-'));
+    const temp = mkdtempSync(join(tmpdir(), 'runner-temp-'));
+    const log = join(logs, 'npm.log');
+    const where = join(logs, 'where.log');
     writeFileSync(log, '');
-    const r = runIn(dir, PUBLISH_STEP, { LOG: log, ON_NPM: '', FAIL_ON: '', VIEW_SAYS: '', ...env }, ['tar', 'node', 'gzip'], { npm: NPM });
-    return { ...r, calls: readFileSync(log, 'utf8').split('\n').filter(Boolean) };
+    writeFileSync(where, '');
+    files = dir;
+    const workspace = join(dir, '..');
+    const r = runIn(
+      workspace,
+      PUBLISH_STEP,
+      { LOG: log, WHERE: where, ON_NPM: '', FAIL_ON: '', VIEW_SAYS: '', GITHUB_WORKSPACE: workspace, RUNNER_TEMP: temp, ...env },
+      ['tar', 'node', 'gzip', 'mktemp', 'ls', 'wc', 'tr'],
+      { npm: NPM },
+    );
+    const lines = (f: string) => readFileSync(f, 'utf8').split('\n').filter(Boolean);
+    return { ...r, calls: lines(log), where: lines(where), temp };
   }
-  const PUB = (p: string) => `publish ./claudinho-${p}-${V3}.tgz --provenance --access public`;
-  const VIEW = (p: string) => `view @claudinho/${p}@${V3} version`;
+  const PUB = (p: string) => `publish ${files}/claudinho-${p}-${V3}.tgz --provenance --access public --ignore-scripts --registry ${REG}`;
+  const VIEW = (p: string) => `view @claudinho/${p}@${V3} version --registry ${REG} --fetch-timeout=20000 --fetch-retries=1`;
 
   it('publishes core, then cli, then mcp when npm has none of them', () => {
     const r = publish(releaseDir());
     expect(r.status, r.out).toBe(0);
     expect(r.calls).toEqual([VIEW('core'), PUB('core'), VIEW('cli'), PUB('cli'), VIEW('mcp'), PUB('mcp')]);
+  });
+
+  it('runs npm in an empty directory of its own under RUNNER_TEMP, never in the artifact directory', () => {
+    const r = publish(releaseDir());
+    expect(r.where).toHaveLength(6);
+    for (const w of r.where) {
+      const [dir, entries] = w.split(' ');
+      expect(dir?.startsWith(r.temp), w).toBe(true);
+      expect(entries, w).toBe('0');
+    }
+  });
+
+  it("refuses a tarball whose publishConfig is anything but {\"access\":\"public\"}, before npm reads it", () => {
+    for (const publishConfig of [
+      { access: 'public', registry: 'http://registry.npmjs.org/' },
+      { access: 'public', proxy: 'http://attacker.example:8080' },
+      { access: 'public', provenance: false },
+      { access: 'restricted' },
+      undefined,
+    ]) {
+      const r = publish(releaseDir({ cli: { name: '@claudinho/cli', version: V3, publishConfig } }));
+      expect(r.status, `${JSON.stringify(publishConfig)}: ${r.out}`).not.toBe(0);
+      expect(r.out).toMatch(/::error::claudinho-cli-1\.2\.3\.tgz holds /);
+      expect(r.calls).toEqual([VIEW('core'), PUB('core')]);
+    }
   });
 
   it('skips a version npm already serves, so a re-run after a partial publish is safe', () => {
@@ -916,9 +1017,9 @@ exit 2
 
   it('refuses a tarball whose manifest is not the package and version the tag names, before asking npm about it', () => {
     for (const manifest of [
-      { name: '@claudinho/cli', version: '1.2.4' },
-      { name: '@claudinho/core', version: V3 },
-      { name: 'claudinho-cli', version: V3 },
+      { ...manifestOf('cli'), version: '1.2.4' },
+      { ...manifestOf('core') },
+      { ...manifestOf('cli'), name: 'claudinho-cli' },
     ]) {
       const r = publish(releaseDir({ cli: manifest }));
       expect(r.status, r.out).not.toBe(0);
