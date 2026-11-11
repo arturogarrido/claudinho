@@ -26,3 +26,6 @@ The `offline:` line above, run by `packages/core/test/verify-cli.test.ts`.
 - A knockout slot shows real nations from the live overlay, never the bundle's placeholder (replay; AGENTS.md
   "Knockout/team-facing surfaces MUST live-resolve").
 - The horizon is the answer's own sentence, not a verdict (replay).
+- The kickoff is said once, on the match line: its weekday and time within 6 calendar days (in the viewer's zone),
+  its date too from 7 days on; the line below is the stage and the countdown (pinned by
+  `packages/cli/test/relative-day.test.ts` and `packages/core/test/day-arg.test.ts`, on pinned clocks).

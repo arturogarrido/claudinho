@@ -8,6 +8,7 @@ import {
   countdownPhrase,
   FAN_PROJECT,
   formatKickoff,
+  kickoffLabel,
   joinSegments,
   matchFlair,
   matchFlairs,
@@ -64,6 +65,12 @@ export interface FmtOpts {
    * tools' query, not the cry's tiebreak.
    */
   pin?: RallyPin;
+  /**
+   * A view of ONE match (`get_match`, `get_next_fixture`): a scheduled kickoff
+   * 7 or more calendar days away, ahead or back, says its date (core `kickoffLabel`, from
+   * `now`). A list leaves it unset: its rows keep the weekday and the time.
+   */
+  farDate?: true;
 }
 
 /** The flair options of these format options (core's flair rules take them). */
@@ -88,7 +95,10 @@ export function matchLine(m: Match, opts: FmtOpts, flair: Flair = matchFlair(m, 
   const stage = stageLabelI18n(lang, m);
   let tail: string;
   if (m.status === 'SCHEDULED') {
-    tail = `${formatKickoff(m.kickoff, opts)} (${countdownPhrase(lang, m.kickoff, opts.now)})`;
+    const kickoff = opts.farDate
+      ? kickoffLabel(m.kickoff, { tz: opts.tz, locale: opts.locale, now: opts.now })
+      : formatKickoff(m.kickoff, opts);
+    tail = `${kickoff} (${countdownPhrase(lang, m.kickoff, opts.now)})`;
   } else if (m.status === 'LIVE') {
     tail = m.minute ? `${t(lang, 'status.live')} ${m.minute}'` : t(lang, 'status.live');
   } else {

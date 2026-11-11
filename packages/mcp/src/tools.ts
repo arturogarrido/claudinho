@@ -893,7 +893,8 @@ async function matchAnswer(
   // attribution and its "informational only" caveat, so it comes before the
   // timeline, the optional detail a cut may drop.
   const text = [
-    matchLine(match, opts),
+    // One match: a far kickoff says its date.
+    matchLine(match, { ...opts, farDate: true }),
     ...(marketSignal ? marketBlock(marketSignal, match) : []),
     ...timelineRows(match, { lang: args.lang, flags: true }),
   ].join('\n');
@@ -1238,7 +1239,7 @@ async function nextAnswer(
   return {
     // `source` in data mirrors the text's "Live data: …" attribution (parity
     // with CLI `next --json`); null for a static group fixture (no live source).
-    ...disclaimed(qualified(`${heading}\n${matchLine(fixture, opts)}`, next, args.lang), source, args.lang),
+    ...disclaimed(qualified(`${heading}\n${matchLine(fixture, { ...opts, farDate: true })}`, next, args.lang), source, args.lang),
     data: { ...about, fixture, degraded, source: source ?? null, ...verdictExtras(next) },
   };
 }

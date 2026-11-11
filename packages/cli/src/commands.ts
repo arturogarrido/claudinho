@@ -7,6 +7,10 @@ import {
   isTournamentWindowOver,
   formatDate,
   formatKickoff,
+  kickoffLabel,
+  parseDayArg,
+  resolveDayArg,
+  weekdayShort,
   formatShareSnippet,
   formatShareTable,
   formatShareBracket,
@@ -43,7 +47,6 @@ import {
   isFinished,
   isLive,
   isReliableMarketSignal,
-  isValidDate,
   isValidTimeZone,
   localDate,
   lookupTeam,
@@ -389,7 +392,10 @@ export class InputError extends Error {}
  *    request or cache read; on `--json` the valid object
  *    `{ competition: null, noCompetition: true }` goes to stdout first. A
  *    command that needs no competition (`team`) passes `{ competition: false }`.
- *  - an explicit date that isn't strict YYYY-MM-DD → throw InputError.
+ *  - an explicit day that the day grammar does not read (core `parseDayArg`:
+ *    YYYY-MM-DD, today, tomorrow, yesterday, a weekday, +N) → throw
+ *    InputError. Only the grammar is asked here: which day it names needs the
+ *    request's clock ({@link askedDay}).
  */
 function precheck(
   cfg: CliConfig,
@@ -424,9 +430,23 @@ function precheck(
       t('err.source', { source: cfg.source, sources: KNOWN_SOURCES.join(', ') }),
     );
   }
-  if (date !== undefined && !isValidDate(date)) {
+  if (date !== undefined && !parseDayArg(date)) {
     throw new InputError(t('err.date', { date }));
   }
+}
+
+/**
+ * The calendar day a day-taking command (`today`, `share <date>`, `markets
+ * <date>`) asks for, and today's, both in the viewer's zone at the request's
+ * clock: the argument through core's one grammar (`parseDayArg`, already asked
+ * by {@link precheck} before any request), today when there is none.
+ */
+function askedDay(arg: string | undefined, now: Date, tz: string | undefined, t: Translator): { date: string; today: string } {
+  const today = localDate(now.toISOString(), tz);
+  if (arg === undefined) return { date: today, today };
+  const parsed = parseDayArg(arg);
+  if (!parsed) throw new InputError(t('err.date', { date: arg }));
+  return { date: resolveDayArg(parsed, now, tz), today };
 }
 
 /**
@@ -660,7 +680,8 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   const adapter = adapterFor(ctx);
   // The request's one clock: the default date and the market gate read it.
   const now = requestClock(adapter, ctx.now);
-  const targetDate = date ?? localDate(now.toISOString(), cfg.tz);
+  // The day asked (a date, a day word or +N), counted in the viewer's zone.
+  const { date: targetDate, today } = askedDay(date, now, cfg.tz, t);
   // The viewer's zone, the one the day is filed by below: the read judges
   // "nothing on this date" in it too.
   const day = await getMatchesForDate(adapter, targetDate, resolveTz(cfg.tz));
@@ -689,10 +710,11 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
 
   const c = painterFor(cfg);
   const flags = flagsEnabled();
-  // "Today's matches" only when no explicit date was given; otherwise "Matches".
-  const title = date === undefined ? t('today.title') : t('today.on');
+  // "Today's matches" when the day is today in the viewer's zone, whatever was
+  // typed; otherwise "Matches". The day by its weekday and its date.
+  const title = targetDate === today ? t('today.title') : t('today.on');
   out();
-  out(header(`${title} · ${targetDate}`, c));
+  out(header(`${title} · ${weekdayShort(targetDate, cfg.lang)} ${targetDate}`, c));
   modeOut(cfg, c);
   out();
   if (todays.length === 0) {
@@ -857,21 +879,31 @@ export async function cmdNext(team: string | undefined, ctx: Ctx): Promise<void>
     return;
   }
   for (const q of qualifiers) out(c.dim('  ' + q));
-  // One row: its columns are measured on it, like a list's.
-  out(matchLine(fixture, cfg, t, c, flags, homeColumn([fixture], flags), midColumn([fixture]), awayColumn([fixture], flags)));
+  // One row: its columns are measured on it, like a list's. One match, so a
+  // far kickoff says its date (core `kickoffLabel`, from the request's clock).
+  out(
+    matchLine(fixture, cfg, t, c, flags, homeColumn([fixture], flags), midColumn([fixture]), awayColumn([fixture], flags), undefined, {
+      now,
+    }),
+  );
   // Localized (stageLabelI18n, like cmdBracket) — EN-only stageLabel here made
   // `next MEX --lang es` render "Round of 32" beside otherwise-Spanish copy.
   // A stage with nothing to say (an OTHER with no words) is no segment at all.
   const stage = fixture.stage !== 'GROUP' ? stageLabelI18n(cfg.lang, fixture) : '';
   // A match in play (off the bundle, `next` answers with it) has no countdown.
+  // A scheduled one says its kickoff once, on the match line above: here the
+  // stage and the countdown.
   const when = formatKickoff(fixture.kickoff, { tz: cfg.tz, locale: cfg.lang });
+  const countdown = countdownPhrase(cfg.lang, fixture.kickoff, now);
   out(
     '  ' +
       c.dim(
         joinSegments(
           isLive(fixture.status)
             ? [stage, when]
-            : [stage, when, countdownPhrase(cfg.lang, fixture.kickoff, now)],
+            : fixture.status === 'SCHEDULED'
+              ? [stage, countdown]
+              : [stage, when, countdown],
         ),
       ),
   );
@@ -1492,7 +1524,7 @@ export async function cmdMatch(id: string, ctx: Ctx): Promise<void> {
 
   // The answer as rows of parts, built ONCE: the text paints them, `--json`
   // carries them (`rows`) and their plain join (`lines`).
-  const answer = matchAnswerRows(found, id, market, cfg, t);
+  const answer = matchAnswerRows(found, id, market, cfg, t, now);
 
   if (cfg.json) {
     // The body only (the leading blank, the footer and the star nudge left
@@ -1582,6 +1614,7 @@ function matchAnswerRows(
   market: { signal: MarketSignal | undefined; complete: boolean },
   cfg: CliConfig,
   t: Translator,
+  now: Date,
 ): { rows: MatchRow[]; attribution: string; disclaimer: string } {
   const { match, degraded, source: liveSource } = found;
   const rows: MatchRow[] = [];
@@ -1631,7 +1664,8 @@ function matchAnswerRows(
   // The status (strong) and the kickoff behind its localized word; a match
   // not started has no status word, so the kickoff part alone.
   const word = statusWord(match, t);
-  const kickoff: MatchPart = { text: `${t('match.kickoff')} ${formatKickoff(match.kickoff, { tz: cfg.tz, locale: cfg.lang })}`, style: 'dim' };
+  // One match: a far kickoff says its date (core `kickoffLabel`, from the request's clock).
+  const kickoff: MatchPart = { text: `${t('match.kickoff')} ${kickoffLabel(match.kickoff, { tz: cfg.tz, locale: cfg.lang, now })}`, style: 'dim' };
   if (word) row('status', { text: '  ' }, { text: word, style: 'strong' }, { text: ' · ', style: 'dim' }, kickoff);
   else row('status', { text: '  ' }, kickoff);
   // The flair slot's one rule (core `matchFlair`): a team's rally cry
@@ -1786,8 +1820,8 @@ export async function cmdMarkets(
     return;
   }
 
-  // markets <id>  (anything that isn't a date or the "today" keyword)
-  if (target && target !== 'today' && !isValidDate(target)) {
+  // markets <id>  (anything the day grammar does not read)
+  if (target && !parseDayArg(target)) {
     precheck(cfg, t);
     // The market's scope is asked BEFORE any match lookup: off it nothing is
     // read for this competition, so no request is made to find the match.
@@ -1868,7 +1902,7 @@ export async function cmdMarkets(
   // The request's clock (the one given, else the adapter's read clock), read
   // once: the default date and the relevance.
   const now = requestClock(adapter, ctx.now);
-  const date = explicitDate ?? localDate(now.toISOString(), cfg.tz);
+  const { date } = askedDay(explicitDate, now, cfg.tz, t);
   const day = await getMatchesForDate(adapter, date, resolveTz(cfg.tz));
   const todays = fixturesByDate(date, day.matches, cfg.tz);
   const relevant = todays.filter((m) => marketRelevant(m, now));
@@ -2186,8 +2220,8 @@ export async function cmdShare(
     return;
   }
 
-  // share <id>  (anything that isn't a date or the "today" keyword)
-  if (target && target !== 'today' && !isValidDate(target)) {
+  // share <id>  (anything the day grammar does not read)
+  if (target && !parseDayArg(target)) {
     precheck(cfg, t);
     // ±1-day window fetch (see cmdMatch): the provider's scoreboard day can
     // differ from the fixture's UTC date.
@@ -2208,7 +2242,7 @@ export async function cmdShare(
   // The request's clock (the one given, else the adapter's read clock), read
   // once: the default date and the market gate.
   const now = requestClock(adapter, ctx.now);
-  const date = explicitDate ?? localDate(now.toISOString(), cfg.tz);
+  const { date } = askedDay(explicitDate, now, cfg.tz, t);
   const day = await getMatchesForDate(adapter, date, resolveTz(cfg.tz));
   const { matches: all, degraded, source } = day;
   const todays = fixturesByDate(date, all, cfg.tz);
@@ -2218,6 +2252,8 @@ export async function cmdShare(
     dateShareCard(
       {
         date,
+        // A typed day (any form) is explicit: the card's run cue then names its
+        // date, so a recipient on another day replays THIS day, as MCP's does.
         explicit: explicitDate !== undefined,
         matches: todays,
         degraded,

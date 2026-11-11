@@ -3,7 +3,7 @@
  * Pure Intl; no dependencies. Safe in Node and Workers.
  */
 import { t } from './i18n';
-import { isValidTimeZone } from './validate';
+import { isValidDate, isValidTimeZone } from './validate';
 
 function envTz(): string | undefined {
   if (typeof process !== 'undefined' && process.env && process.env.CLAUDINHO_TZ) {
@@ -184,4 +184,100 @@ export function shiftUtcDate(dateISO: string, days: number): string {
   return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days))
     .toISOString()
     .slice(0, 10);
+}
+
+/** The weekday words a day argument takes, by `Date#getUTCDay` index (Sunday 0): the short and the full English name. */
+const WEEKDAYS: ReadonlyArray<readonly [string, string]> = [
+  ['sun', 'sunday'],
+  ['mon', 'monday'],
+  ['tue', 'tuesday'],
+  ['wed', 'wednesday'],
+  ['thu', 'thursday'],
+  ['fri', 'friday'],
+  ['sat', 'saturday'],
+];
+
+/** The largest `+N` a day argument takes. */
+export const MAX_DAY_OFFSET = 99;
+
+/**
+ * Every word a day argument reads (besides an ISO date and `+N`), lowercase: what
+ * a command's other targets (a team, `live`, `next`) must never be, or a word
+ * would mean two things.
+ */
+export const DAY_WORDS: readonly string[] = ['today', 'tomorrow', 'yesterday', ...WEEKDAYS.flat()];
+
+/**
+ * What a day argument says, before any clock is read: a calendar date, a count
+ * of days from today, or the next such weekday (today included).
+ */
+export type DayArg = { readonly iso: string } | { readonly offset: number } | { readonly weekday: number };
+
+/**
+ * The ONE grammar of a day argument (`today [date]`, `share <date>`, `markets
+ * <date>`): `YYYY-MM-DD` (a real date), `today`, `tomorrow`, `yesterday`, a
+ * weekday (`sat`, `saturday`), or `+N` (N from 0 to {@link MAX_DAY_OFFSET}).
+ * The words are English in every language, matched whatever their case, one
+ * trailing dot allowed. No clock is read: what the day IS needs the request's
+ * clock and the viewer's zone ({@link resolveDayArg}). Anything else is
+ * undefined (`-1` included: past days are `yesterday` or a date).
+ */
+export function parseDayArg(input: string): DayArg | undefined {
+  if (isValidDate(input)) return { iso: input };
+  const plus = /^\+(\d{1,2})$/.exec(input);
+  if (plus) return { offset: Number(plus[1]) };
+  const word = input.toLowerCase().replace(/\.$/, '');
+  if (word === 'today') return { offset: 0 };
+  if (word === 'tomorrow') return { offset: 1 };
+  if (word === 'yesterday') return { offset: -1 };
+  const weekday = WEEKDAYS.findIndex((names) => names.includes(word));
+  return weekday >= 0 ? { weekday } : undefined;
+}
+
+/**
+ * The calendar day (`YYYY-MM-DD`) a day argument names, counted from today in
+ * the viewer's zone at the REQUEST's clock (`now` and `tz`, both required: the
+ * wall clock is never read here). The count is calendar arithmetic on that
+ * date, so a daylight-saving change never moves a day (24 hours after 00:30 on
+ * a 25-hour day is still the same day; tomorrow is not).
+ */
+export function resolveDayArg(arg: DayArg, now: Date, tz: string | undefined): string {
+  if ('iso' in arg) return arg.iso;
+  const today = localDate(now.toISOString(), tz);
+  if ('offset' in arg) return shiftUtcDate(today, arg.offset);
+  const current = new Date(`${today}T12:00:00Z`).getUTCDay();
+  return shiftUtcDate(today, (arg.weekday - current + 7) % 7);
+}
+
+/** The short weekday of a calendar day (`YYYY-MM-DD`) in the reader's language: "Sat", "sáb", "sáb.", "sam.". */
+export function weekdayShort(dateISO: string, locale?: string): string {
+  const when = parsedDate(`${dateISO.slice(0, 10)}T12:00:00Z`);
+  if (!when) return UNKNOWN_TIME;
+  return new Intl.DateTimeFormat(safeLocale(locale), { weekday: 'short', timeZone: 'UTC' }).format(when);
+}
+
+/** Calendar days from today to a kickoff's day, both in the viewer's zone at the request's clock. */
+export function calendarDaysUntil(iso: string, now: Date, tz: string | undefined): number | undefined {
+  const day = localDate(iso, tz);
+  if (!day) return undefined;
+  const today = localDate(now.toISOString(), tz);
+  return Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+}
+
+/** From this many calendar days away, ahead or back, a kickoff shows its date: at 7, its weekday alone would also name today. */
+export const FAR_KICKOFF_DAYS = 7;
+
+/**
+ * A kickoff as one view of ONE match says it: its weekday and time ("Sat
+ * 09:30") within six calendar days, ahead or back, and its weekday, date and
+ * time ("Sat, Nov 21, 09:30") from {@link FAR_KICKOFF_DAYS} on in either
+ * direction (a match played three weeks ago is as ambiguous by its weekday as
+ * one three weeks ahead), the days counted in the viewer's zone from the
+ * request's clock (`now`, required). A dated list does not ask it: its header
+ * names the day.
+ */
+export function kickoffLabel(iso: string, opts: { tz?: string; locale?: string; now: Date }): string {
+  const days = calendarDaysUntil(iso, opts.now, opts.tz);
+  const far = days !== undefined && Math.abs(days) >= FAR_KICKOFF_DAYS;
+  return formatKickoff(iso, { tz: opts.tz, locale: opts.locale, date: far });
 }
