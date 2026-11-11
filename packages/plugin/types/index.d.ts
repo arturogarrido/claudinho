@@ -1,6 +1,10 @@
 /**
  * The contract of the claudinho plugin: what it keeps in the session (`$.state`), each value under
- * `PluginState.claudinho`. Everything is read from `claudinho ambient --json`, the installed CLI's view of its
+ * `PluginState.claudinho`. (The CLI's own contract number, the `api` that `claudinho ambient --json` prints first, is
+ * compared with the plugin's `CLI_API_FLOOR`, 1: a number raised only when the CLI changes its objects so an older
+ * plugin would misread them, never a version; a view with none, CLI 0.12.0 to 0.13.1, is read as before. A view's
+ * `syncing`, an added key, says the line is the syncing line: the band's pace reads it, and with no such key a
+ * countdown more than an hour out whose view is not current waits a minute at most.) Everything is read from `claudinho ambient --json`, the installed CLI's view of its
  * local cache, and the match pane's rows from `claudinho match <id> --json`; the plugin never fetches (the CLI does). A view is readable when it carries its `live` list and says what its line
  * is, `idle` and `empty` as two booleans (`@claudinho/cli` 0.11.2 or later); anything else (the first-run object, the
  * fallback object, a view from an older CLI) is no view: hidden, never current, the baseline kept.
@@ -16,10 +20,11 @@
 export type ClaudinhoBand = { text: string; parts?: Array<{ text: string; style?: 'strong' }> } | null
 
 /**
- * The band's pace: when the last run started (the clock's milliseconds) and whether the CLI said its answer was idle
- * (the first-run object, nothing chosen; or a view whose `idle` is true, the edition over), which is read once per
- * five minutes instead of every fire. `ranAt` is read only while `idle` is true; `{ ranAt: 0, idle: false }` is what a
- * clear leaves (a run that found no surface that draws the band, or the last such surface detached).
+ * The band's last run: when it started (the clock's milliseconds) and whether the CLI said its answer was idle (the
+ * first-run object, nothing chosen; or a view whose `idle` is true, the edition over). The pace itself is the module's
+ * one armed timer, sized from each run's answer (plugin 0.7.0); this record is a guard: a run the timer did not force
+ * is not made within five minutes of an idle one. `ranAt` is read only while `idle` is true; `{ ranAt: 0, idle: false }`
+ * is what a clear leaves (a run that found no surface that draws the band, or the last such surface detached).
  */
 export type ClaudinhoPace = { ranAt: number; idle: boolean }
 

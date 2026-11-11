@@ -228,8 +228,8 @@ for this marketplace. A new version then installs after a session starts, and lo
 session you start or after `/reload-plugins`.
 To remove it: `claude plugin uninstall claudinho@claudinho`.
 
-The plugin needs `@claudinho/cli` 0.12.0 or later; with an older CLI it works in part, as the plugin README
-[says](https://github.com/arturogarrido/claudinho/tree/main/packages/plugin#with-cli-0112).
+The plugin needs `@claudinho/cli` 0.12.0 or later; with no CLI or an older one it says what to run, as the plugin
+README [says](https://github.com/arturogarrido/claudinho/tree/main/packages/plugin#which-cli-it-needs).
 
 ### Claude Code without the plugin
 

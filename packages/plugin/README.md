@@ -29,7 +29,8 @@ The plugin reads everything from the `claudinho` CLI installed on your machine a
 
 You need the CLI (Node.js 22 or later) and a competition to follow. Node.js 22 is the oldest line it
 runs on, not a security level: run a patched release of the Node 22 or 24 line. Everything on this page
-needs `@claudinho/cli` 0.12.0 or later; [With CLI 0.11.2](#with-cli-0112) says what an older CLI gives.
+needs `@claudinho/cli` 0.12.0 or later ([Which CLI it needs](#which-cli-it-needs)). Installed before the CLI, or
+beside one too old, the plugin says so once per session in a toast, with the command to run.
 
 ```bash
 npm i -g @claudinho/cli
@@ -67,7 +68,7 @@ Change them in `/config`.
 
 | Option | Values | Default |
 |---|---|---|
-| `toasts` | `pinned`: your pinned team's match; `all`: every live match of the competition you follow; `off`: none | `pinned` (with no team pinned, no toasts) |
+| `toasts` | `pinned`: your pinned team's match; `all`: every live match of the competition you follow; `off`: none | `pinned` (with no team pinned: the session's first goal, then one hint on how to pin, then none) |
 | `celebrate` | `on`: the celebration plays on your team's goal and on its win or draw, and under `toasts: all` on any goal in a match that is not your team's; `off`: it never plays. The toasts are the same either way | `on` |
 | `context` | `on`: while a match is live, the score goes beside each prompt you send, for Claude; `off`: nothing goes with your prompts | `on` |
 | `language` | `auto`: the language your environment asks for (below); `en`, `es`, `pt` or `fr`: that language, whatever the environment says | `auto` |
@@ -133,14 +134,19 @@ sentence under it, or one plain sentence when there is nothing to show.
 - **The match pane** docks beside the transcript in the fullscreen layout from 110 columns, and sits
   above the prompt in a narrower terminal. In the desktop app it opens as a side panel.
 
-## With CLI 0.11.2
+## Which CLI it needs
 
-Everything on this page needs `@claudinho/cli` 0.12.0 or later. With 0.11.2 the plugin works in
-part: a toast is `⚽` and the hook's own English line for any score change
-(`⚽ Arsenal 2–1 Chelsea (67')`), the celebration is a ball and a growing "GOAL!", the band's line is
-plain and English, the match pane says `Nothing to show: the CLI's answer is not one this plugin reads.`,
-and no full time is said. The `language` option changes none of it. With a CLI older than 0.11.2 the
-band shows nothing and nothing toasts. Update the CLI to see the rest.
+`@claudinho/cli` 0.12.0 or later, the newest for everything on this page. With no CLI on the `PATH` the plugin runs,
+a toast says `To see scores, install the CLI: npm i -g @claudinho/cli`, once per session. With CLI 0.11.2, it says
+`This plugin needs a newer CLI: npm i -g @claudinho/cli@latest`, and still shows the band and, with a team pinned,
+toasts its score changes in the CLI's own English line (with no team pinned, 0.11.2 toasts nothing). `/claudinho` answers the same sentence each time you ask. A CLI older than 0.11.2 has no
+`ambient` command: the band stays empty and `/claudinho` answers `The CLI gave no answer.` A newer CLI states the
+number of the contract it prints (`api`; not a version), and the plugin compares it with the lowest it reads.
+
+A CLI before 0.14.0 does not say when the band's line is `live · syncing…`. With one, the plugin checks every minute,
+not every five, on a countdown more than an hour out whose reading is not current (the sign-off and the "no
+competition followed" line keep five minutes): up to 60 runs an hour off-match
+(240 before this plugin version), and 12 an hour once the CLI is 0.14.0 or later.
 
 ## Details
 
@@ -150,9 +156,10 @@ The plugin runs `claudinho` from the `PATH` Claude Code started with. When that 
 it (an app can start Claude Code with a minimal `PATH`), the plugin also looks where the usual
 installers put global commands: nvm's recent Node versions, `~/.volta/bin`, `~/.local/share/pnpm`,
 `~/Library/pnpm`, `~/.bun/bin`, `~/.npm-global/bin`, `~/.local/bin`, `/opt/homebrew/bin`,
-`/usr/local/bin`, `/usr/bin` and `/bin`. A CLI installed anywhere else leaves the band empty, and
-`/claudinho` answers `The CLI gave no answer.` On Windows the plugin uses Claude Code's own `PATH`
-only.
+`/usr/local/bin`, `/usr/bin` and `/bin`. When a run cannot start and none of those folders holds `claudinho`,
+a toast says once per session `To see scores, install the CLI: npm i -g @claudinho/cli`, and `/claudinho` answers
+the same. A CLI that is there but took too long or failed gets `The CLI gave no answer.` On Windows the plugin uses
+Claude Code's own `PATH` only, and never says the CLI is missing.
 
 ### The language
 
@@ -170,8 +177,21 @@ until `/claudinho match` opens it again.
 
 ### How the band reads
 
-The band runs `claudinho ambient --json` every 15 seconds (every five minutes on the World Cup's
-sign-off line and while no competition is followed), which also keeps the CLI's local cache fresh.
+The band runs `claudinho ambient --json` at a pace set by what the last run said, which also keeps the CLI's local
+cache fresh:
+
+| The last run said | The next run |
+|---|---|
+| A match live, the line `live · syncing…`, or a match that finished in the last ten minutes | 15 seconds |
+| The next kickoff 2 minutes away or less, or passed and not live yet | 15 seconds |
+| The next kickoff within the hour | every minute, then 15 seconds from 2 minutes before |
+| The next kickoff more than an hour away | every 5 minutes, then every minute from an hour before (with a CLI before 0.14.0 and a reading that is not current, every minute) |
+| Nothing known, or no answer (no CLI, a timeout) | every minute |
+| No competition followed, or the World Cup's sign-off | every 5 minutes |
+
+The next fixture is your pinned team's when it has one: with your team's match days away, another match of the
+competition reaches the band up to five minutes after it kicks off. A goal in that gap may go unsaid: the first
+reading of a match says nothing (see [When a toast is raised](#when-a-toast-is-raised)).
 That command answers from the cache and never waits on the network; when the cache is due for a
 refresh it starts the CLI's background refresh, as the statusline does. While no competition is
 followed it reads no cache and starts nothing: its line is `⚽ claudinho follow`. The CLI fits the line to the band's width and marks
@@ -184,6 +204,13 @@ A toast compares two readings the CLI vouches for: not stale, not degraded, and 
 The first reading of a match says nothing, and neither does a change of competition. When one change could read two
 ways, the first that holds is said: `Score updated`, then `Penalties`, then the goal, then `Goals`. Every toast
 follows the `toasts` option.
+
+**With no team pinned** (and no `CLAUDINHO_TEAM`), `toasts: pinned` says the session's first goal in a live match whose
+reading names its teams (CLI 0.12.0 or later) as `all` would, with its celebration, then one toast for ten seconds:
+`Pin your team to get only its goals: claudinho follow <alias> --team <name>`, with the competition you follow. A
+correction, a shootout update or two goals between readings is not that first goal, and is not said. After it, no
+toast and no celebration until you pin a team (the next reading follows the pin); the band's score still changes, in
+bold.
 
 **Full time is said only by a current reading.** The CLI lists a finished match for ten minutes after the reading that
 saw it end, and stops polling once the day's last match is over, so a session with no current reading in the minutes
@@ -203,10 +230,14 @@ match listed live again, or not listed at all drops it (a goal celebration queue
 When there is nothing to show, `/claudinho` answers one of these sentences, chosen from what the CLI
 answered:
 
-- `The CLI gave no answer.` The CLI could not be found or run, took longer than two seconds, failed,
-  or printed something that is not its answer.
+- `To see scores, install the CLI: npm i -g @claudinho/cli` The CLI could not be started, and none of the folders
+  the plugin runs it from holds it.
+- `This plugin needs a newer CLI: npm i -g @claudinho/cli@latest` The CLI answered in a form older than 0.12.0.
+- `The CLI gave no answer.` The CLI is there but took longer than two seconds, failed, or printed something that is
+  not its answer.
 - `No competition followed yet.` Run `claudinho follow <alias>`.
-- `Nothing to show: the CLI's answer is not one this plugin reads.` Usually a CLI older than the plugin.
+- `Nothing to show: the CLI's answer is not one this plugin reads.` The CLI was set to a competition it does not
+  know (`CLAUDINHO_COMPETITION`), or failed while answering.
 - `Nothing to show right now: no live match and no next fixture known.`
 - `The edition you follow is over.`
 
@@ -252,7 +283,7 @@ The plugin runs one program, `claudinho`: the CLI you installed. It runs it in t
 
 | When | The command |
 |---|---|
-| The band, every 15 seconds while a terminal or desktop window is attached (less often on an idle line, see [How the band reads](#how-the-band-reads)) | `claudinho ambient --json --columns <N> --lang <xx>` |
+| The band, every 15 seconds to every 5 minutes while a terminal or desktop window is attached (see [How the band reads](#how-the-band-reads)) | `claudinho ambient --json --columns <N> --lang <xx>` |
 | `/claudinho` and `/claudinho match`, when you type them | `claudinho ambient --json --lang <xx>` |
 | The match pane, after `/claudinho match` | `claudinho match <id> --json`, then `--competition <slug>` and `--lang <xx>` when they apply |
 
@@ -284,8 +315,9 @@ session.
   `CLAUDINHO_LANG` and `LANG`.
 - **Folders:** off Windows, with `HOME` set to an absolute path, it lists `~/.nvm/versions/node` (its first 256
   entries) and checks up to eight of the newest version folders for `bin/claudinho`, once per plugin load. That
-  finds a CLI nvm installed when Claude Code started with a bare `PATH`. It reads no file's contents and writes no
-  file.
+  finds a CLI nvm installed when Claude Code started with a bare `PATH`. When a run of the CLI cannot start, it
+  checks each folder of the `PATH` it handed that run for `claudinho` (once per session for the band, and at each
+  `/claudinho` that fails), to say whether the CLI is installed. It reads no file's contents and writes no file.
 - **The session:** which windows are attached. Without one the band runs nothing; `/claudinho` still runs the CLI
   when you type it.
 

@@ -12,7 +12,11 @@ export const HOME = '/Users/fan'
 export const BARE_PATH = '/usr/bin:/bin'
 export const NVM = `${HOME}/.nvm/versions/node`
 
-/** The view the CLI prints for a line, with nothing live: `idle` and `empty` SAY what the line is (the band never reads the text). */
+/**
+ * The view CLI 0.13.1 prints for a line, with nothing live: `idle` and `empty` SAY what the line is (the band never
+ * reads the text); it states its `lang` and a saved pin (`pick`). A test about an older CLI's view says so with
+ * `lang: undefined` (the key then left out), one about no pin with `pick: null`.
+ */
 export const view = (line: string, over: Record<string, unknown> = {}) =>
   JSON.stringify({
     line,
@@ -22,8 +26,10 @@ export const view = (line: string, over: Record<string, unknown> = {}) =>
     live: { items: [], total: 0, shown: 0, truncated: false, complete: true },
     current: false,
     next: null,
-    pick: null,
+    // A 0.13.1 view: the saved pin (the person pinned a team), the CLI's resolved language.
+    pick: { id: 'espn:364', code: 'LIV', name: 'Liverpool' },
     competition: { slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'saved' },
+    lang: 'en',
     degraded: false,
     source: 'espn',
     updatedAt: null,
@@ -164,10 +170,13 @@ export const world = async (
   const envs: Array<Record<string, string> | undefined> = []
   const timeouts: Array<number | undefined> = []
   const releases: Array<() => void> = []
+  /** The clock's time when each run began, in the order the runs began (every run: ambient and match). */
+  const runTimes: number[] = []
   let ambientRuns = 0
   let matchRunCount = 0
   on('process.run', async (_$, e) => {
     argvs.push([...e.argv])
+    runTimes.push(clock.now())
     stdins.push(e.init?.stdin)
     envs.push(e.init?.env ? { ...e.init.env } : undefined)
     timeouts.push(e.init?.timeoutMs)
@@ -255,7 +264,7 @@ export const world = async (
   }
   /** The `match` runs so far (their argv). */
   const matchRuns = () => argvs.filter((a) => a[1] === 'match')
-  return { clock, argvs, stdins, envs, timeouts, invalidates, turnStart, turnEnd, envReads, lists, probes, registrations, command, mount, attach, detach, release, releaseListing, denyRoster, rosterReads, opens, closes, mountPane, matchRuns }
+  return { clock, argvs, runTimes, stdins, envs, timeouts, invalidates, turnStart, turnEnd, envReads, lists, probes, registrations, command, mount, attach, detach, release, releaseListing, denyRoster, rosterReads, opens, closes, mountPane, matchRuns }
 }
 
 /** The first-run object the CLI prints with no competition chosen: no view, the one line, its own key. */
@@ -359,6 +368,15 @@ export const momentView = (items: Array<Record<string, unknown>>, finished: Arra
   })
 /** Ronald Araújo's goal for Liverpool at 22', proven by the CLI (`lastGoal`). */
 export const ARAUJO = { type: 'GOAL', minute: 22, side: 'away', teamCode: 'LIV', player: 'Ronald Araújo' } as const
+/** The toasts the plugin raised with how long each stays (`timeoutMs`, undefined: the engine's default). */
+export const toastsWithTimeout = (on: Parameters<Parameters<typeof test>[1]>[1]) => {
+  const raised: Array<{ text: string; timeoutMs: number | undefined }> = []
+  on('ui.toast', (_$, e) => {
+    raised.push({ text: e.text, timeoutMs: e.timeoutMs })
+    return { value: undefined }
+  })
+  return raised
+}
 /** The toasts the plugin raised, as the engine's bottom receives them. */
 export const toastTexts = (on: Parameters<Parameters<typeof test>[1]>[1]) => {
   const texts: string[] = []

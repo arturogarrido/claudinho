@@ -2,10 +2,10 @@ import { describe, expect, test } from 'claude-code/testing'
 import { COMPLETE, FIRST_RUN, drawnRows, view, world } from './world'
 
 /**
- * The band: `claudinho ambient --json --columns <the band's columns>` every 15 s, the object's `line` shown as the
- * CLI fitted it. Hidden: the first-run line and `⚽ —`; shown: a score, a countdown, the complete line. The two
- * idle lines are read every five minutes; a failed run, a missing binary, a non-object or a headless session show
- * nothing and block nothing.
+ * The band: `claudinho ambient --json --columns <the band's columns>`, at the pace each answer sets (cadence.test.tsx:
+ * 15 s while live, a minute after a failed run, five minutes far from kickoff and on the two idle lines), the object's
+ * `line` shown as the CLI fitted it. Hidden: the first-run line and `⚽ —`; shown: a score, a countdown, the complete
+ * line. A failed run, a missing binary, a non-object or a headless session show nothing and block nothing.
  */
 describe('what the band runs', () => {
   test("the CLI once at the start, ambient --json fitted to the band's columns, with an empty stdin", async ($, on) => {
@@ -72,10 +72,10 @@ describe('what the band shows', () => {
     expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
   })
 
-  test('shows nothing when the binary cannot run, and runs again at the next fire', async ($, on) => {
+  test('shows nothing when the binary cannot run, and runs again at the next fire (a minute after a failed run)', async ($, on) => {
     const { argvs, clock, mount } = await world($, on, [new Error('spawn claudinho ENOENT'), view("⚽ ARS 2–1 CHE 50'")])
     expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
-    await clock.advance(15_000)
+    await clock.advance(60_000)
     expect(argvs).toHaveLength(2)
     expect(await (await mount()).findAll({ type: 'Text', text: "⚽ ARS 2–1 CHE 50'" })).toHaveLength(1)
   })

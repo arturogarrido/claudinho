@@ -63,9 +63,26 @@ describe('the plugin folder', () => {
     expect(String(toasts?.description)).toMatch(/no pin|without a pin|nothing/i);
   });
 
-  it('the manifest is the reader\'s-language release, 0.6.0', () => {
+  it('the manifest is the first-run release, 0.7.0', () => {
     const m = json('packages/plugin/.claude-plugin/plugin.json');
-    expect(m.version).toBe('0.6.0');
+    expect(m.version).toBe('0.7.0');
+  });
+
+  it('the toasts option says what a session with no pin gets: its first goal, then one hint on how to pin', () => {
+    const m = json('packages/plugin/.claude-plugin/plugin.json') as { userConfig?: Record<string, { description?: unknown }> };
+    const d = String(m.userConfig?.toasts?.description);
+    expect(d).toMatch(/first goal/i);
+    expect(d).toMatch(/hint/i);
+    expect(d).not.toMatch(/pinned toasts nothing/);
+  });
+
+  it('the marketplace listing: the manifest and the marketplace entry carry one description, the disclaimer its last sentence', () => {
+    const DESCRIPTION =
+      'Your Claude Code celebrates when your team scores: a toast with the scorer, a short celebration with the Claude mascot, and the score above your prompt. Follow a competition and pin your team with the claudinho CLI on your machine, then open any match\'s goals and cards with /claudinho match. Live data: ESPN. Not affiliated with FIFA, any confederation, league or club, or Anthropic.';
+    const m = json('packages/plugin/.claude-plugin/plugin.json');
+    const market = json('.claude-plugin/marketplace.json') as { plugins?: Array<{ description?: unknown }> };
+    expect(m.description).toBe(DESCRIPTION);
+    expect(market.plugins?.[0]?.description).toBe(DESCRIPTION);
   });
 
   it('the language option: auto, en, es, pt or fr, auto by default, beside the other three', () => {

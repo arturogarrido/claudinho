@@ -371,10 +371,12 @@ whatever the cache holds.
 
 | Field | What it holds |
 |---|---|
+| `api` | the number of this contract, `1`, first in every object the command prints (the view, the first-run object, the refused one). It is raised only when a change would make an older reader misread the object, never for a field added; it is not the CLI's version |
 | `line` | the line `claudinho prompt` prints, but in the CLI's language (`--lang`; `prompt` itself stays English), fitted to `--columns N` with its `+N` count kept. Its `+more`, the World Cup's sign-off and `⚽ —` stay English, and the countdown's units (`2d4h`, `17m`) are the same in every language |
 | `lineParts` | the same line in parts, each shown score marked `strong`; their texts joined equal `line` |
 | `idle` | `true` on the end-of-edition line, however narrow the fit |
 | `empty` | `true` when nothing is known |
+| `syncing` | `true` on the `live · syncing…` line (a match in its window, no whole live read): poll at the live pace, whatever `next` names. An added field: `api` stays `1` |
 | `context` | the hook's block, or `null` |
 | `live` | the live matches, each with `picked`, `pinned`, `pinnedSide` (`home`, `away` or `null`: your saved team's side, never `CLAUDINHO_TEAM`'s), `names` (the two names the hook's line uses), `lastGoal` (the last goal, only when the provider's goals add up to the score, none listed twice, the credited side having scored; else `null`) and `line` (the hook's own line for it) |
 | `finished` | the matches the refresher saw in play and then read at full time, each for 10 minutes from that read, while the snapshot's last live read was whole; each with `pinnedSide`, `names` and a `line` ending `(FT)` |
@@ -385,8 +387,8 @@ whatever the cache holds.
 | `degraded`, `source`, `updatedAt`, `staleAfter` | where the data came from, when, and when its live scores stop being shown |
 | `disclaimer`, `attribution` | the non-affiliation sentence, and the provider's (`Live data: ESPN`; `null` with no snapshot, on the end-of-edition line and when nothing is known) |
 
-Read `idle` and `empty`, never the text of `line`, to decide what the line is. With nothing chosen
-it prints `{ "competition": null, "noCompetition": true }` and the first-run line.
+Read `idle`, `empty` and `syncing`, never the text of `line`, to decide what the line is. With nothing chosen
+it prints `{ "api": 1, "competition": null, "noCompetition": true }` and the first-run line.
 
 ## How it works
 
