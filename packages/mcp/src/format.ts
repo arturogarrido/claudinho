@@ -67,7 +67,7 @@ export interface FmtOpts {
   pin?: RallyPin;
   /**
    * A view of ONE match (`get_match`, `get_next_fixture`): a scheduled kickoff
-   * 7 or more calendar days away says its date (core `kickoffLabel`, from
+   * 7 or more calendar days away, ahead or back, says its date (core `kickoffLabel`, from
    * `now`). A list leaves it unset: its rows keep the weekday and the time.
    */
   farDate?: true;

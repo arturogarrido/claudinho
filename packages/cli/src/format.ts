@@ -199,7 +199,7 @@ export function flairOpts(cfg: CliConfig): FlairOpts {
  * caller chose it for a list (core `matchFlairs`: the cries, and no phrase
  * twice in one list); without it the line's own (`matchFlair`). `farDate`,
  * given by a view of ONE match (`next`), carries the request's clock: a
- * scheduled kickoff 7 or more calendar days away then says its date (core
+ * scheduled kickoff 7 or more calendar days away, ahead or back, then says its date (core
  * `kickoffLabel`). A dated list never gives it (its header names the day), and
  * without it no clock is read.
  */

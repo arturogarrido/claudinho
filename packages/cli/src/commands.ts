@@ -2242,7 +2242,7 @@ export async function cmdShare(
   // The request's clock (the one given, else the adapter's read clock), read
   // once: the default date and the market gate.
   const now = requestClock(adapter, ctx.now);
-  const { date, today } = askedDay(explicitDate, now, cfg.tz, t);
+  const { date } = askedDay(explicitDate, now, cfg.tz, t);
   const day = await getMatchesForDate(adapter, date, resolveTz(cfg.tz));
   const { matches: all, degraded, source } = day;
   const todays = fixturesByDate(date, all, cfg.tz);
@@ -2252,8 +2252,9 @@ export async function cmdShare(
     dateShareCard(
       {
         date,
-        // "Today's matches" on the card when the day is today, as `today` says it.
-        explicit: date !== today,
+        // A typed day (any form) is explicit: the card's run cue then names its
+        // date, so a recipient on another day replays THIS day, as MCP's does.
+        explicit: explicitDate !== undefined,
         matches: todays,
         degraded,
         source,

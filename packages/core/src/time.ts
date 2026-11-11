@@ -264,18 +264,20 @@ export function calendarDaysUntil(iso: string, now: Date, tz: string | undefined
   return Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
 }
 
-/** From this many calendar days away a kickoff shows its date: at 7, its weekday alone would also name today. */
+/** From this many calendar days away, ahead or back, a kickoff shows its date: at 7, its weekday alone would also name today. */
 export const FAR_KICKOFF_DAYS = 7;
 
 /**
  * A kickoff as one view of ONE match says it: its weekday and time ("Sat
- * 09:30") within six calendar days, and its weekday, date and time ("Sat, Nov
- * 21, 09:30") from {@link FAR_KICKOFF_DAYS} on, the days counted in the
- * viewer's zone from the request's clock (`now`, required). A dated list does
- * not ask it: its header names the day.
+ * 09:30") within six calendar days, ahead or back, and its weekday, date and
+ * time ("Sat, Nov 21, 09:30") from {@link FAR_KICKOFF_DAYS} on in either
+ * direction (a match played three weeks ago is as ambiguous by its weekday as
+ * one three weeks ahead), the days counted in the viewer's zone from the
+ * request's clock (`now`, required). A dated list does not ask it: its header
+ * names the day.
  */
 export function kickoffLabel(iso: string, opts: { tz?: string; locale?: string; now: Date }): string {
   const days = calendarDaysUntil(iso, opts.now, opts.tz);
-  const far = days !== undefined && days >= FAR_KICKOFF_DAYS;
+  const far = days !== undefined && Math.abs(days) >= FAR_KICKOFF_DAYS;
   return formatKickoff(iso, { tz: opts.tz, locale: opts.locale, date: far });
 }
