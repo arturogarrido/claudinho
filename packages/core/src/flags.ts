@@ -5,6 +5,18 @@
  * Region codes are ISO 3166-1 alpha-2 (e.g. "MX"), with three special
  * subdivision codes for the home nations ("GB-SCT", "GB-ENG", "GB-WLS")
  * which use emoji tag sequences rather than regional-indicator pairs.
+ *
+ * Only a flag Unicode RECOMMENDS for general interchange (an RGI flag
+ * sequence) is ever emitted: any other sequence is drawn as a plain black flag
+ * (a tag sequence such as Northern Ireland's `gbnir`) or as two boxed letters
+ * (a withdrawn or reserved code such as `RH`, `ZZ`). A nation lookup has three
+ * answers, kept apart:
+ *   - a recommended flag: a nation that has one;
+ *   - `undefined`: a NATION whose flag Unicode does not recommend (Northern
+ *     Ireland). It carries no flag and is rendered by its name, like a club;
+ *     it is resolved, not a placeholder;
+ *   - the neutral 🏳️: no nation at all (a bundle placeholder, "Round of 32 1
+ *     Winner").
  */
 
 const REGIONAL_INDICATOR_A = 0x1f1e6;
@@ -12,6 +24,14 @@ const TAG_BASE = 0xe0000;
 const TAG_CANCEL = 0xe007f;
 const BLACK_FLAG = 0x1f3f4;
 const NEUTRAL = '🏳️';
+
+/**
+ * Unicode's own definition of a flag it recommends: a regional-indicator pair
+ * it lists, or one of the tag sequences it lists (England, Scotland, Wales).
+ */
+// The constructor, not a literal: the compiler targets ES2022 and refuses a `v` literal (TS1501); the runtime (Node >= 22) has the flag.
+// biome-ignore lint/complexity/useRegexLiterals: a `v` literal does not compile under the ES2022 target.
+const RECOMMENDED = new RegExp('^(?:\\p{RGI_Emoji_Flag_Sequence}|\\p{RGI_Emoji_Tag_Sequence})$', 'v');
 
 /** Normalize a free-text nation name/code for map lookups. */
 function norm(s: string): string {
@@ -28,24 +48,33 @@ function subdivisionFlag(lettersOnly: string): string {
   return String.fromCodePoint(BLACK_FLAG, ...tags, TAG_CANCEL);
 }
 
-/**
- * Convert a region code to an emoji flag.
- * - "MX" -> 🇲🇽
- * - "GB-SCT" -> 🏴 (Scotland subdivision flag)
- * Returns the neutral flag for anything unrecognized.
- */
-export function flagEmoji(region: string): string {
+/** The sequence a region code spells, recommended or not (`undefined` when it spells none). */
+function candidateFlag(region: string): string | undefined {
   const r = region.trim();
   if (r.includes('-')) {
     const letters = r.toLowerCase().replace(/-/g, '');
     return subdivisionFlag(letters);
   }
   const cc = r.toUpperCase();
-  if (!/^[A-Z]{2}$/.test(cc)) return NEUTRAL;
+  if (!/^[A-Z]{2}$/.test(cc)) return undefined;
   return String.fromCodePoint(
     REGIONAL_INDICATOR_A + (cc.charCodeAt(0) - 65),
     REGIONAL_INDICATOR_A + (cc.charCodeAt(1) - 65),
   );
+}
+
+/**
+ * Convert a region code to an emoji flag.
+ * - "MX" -> 🇲🇽
+ * - "GB-SCT" -> 🏴 (Scotland subdivision flag)
+ * Returns the neutral flag for anything that is not a flag Unicode recommends:
+ * an unrecognized string, a code it does not list ("ZZ", the withdrawn "RH"),
+ * or a subdivision it does not recommend ("GB-NIR"). This is the single exit,
+ * so no table row can make it emit any other sequence.
+ */
+export function flagEmoji(region: string): string {
+  const flag = candidateFlag(region);
+  return flag !== undefined && RECOMMENDED.test(flag) ? flag : NEUTRAL;
 }
 
 // Readable nation -> region-code table. Broad enough to cover the full 48-team
@@ -79,7 +108,7 @@ const NATIONS: ReadonlyArray<readonly [string, string]> = [
   ['United Arab Emirates', 'AE'], ['Oman', 'OM'], ['Bahrain', 'BH'],
   ['China', 'CN'], ['Indonesia', 'ID'], ['Thailand', 'TH'],
   ['Vietnam', 'VN'], ['India', 'IN'], ['Russia', 'RU'],
-  ['Finland', 'FI'], ['Ireland', 'IE'], ['Northern Ireland', 'GB-NIR'],
+  ['Finland', 'FI'], ['Ireland', 'IE'],
   ['Iceland', 'IS'], ['Albania', 'AL'], ['Georgia', 'GE'],
   ['North Macedonia', 'MK'], ['Montenegro', 'ME'], ['Kosovo', 'XK'],
 ];
@@ -144,14 +173,35 @@ const BY_CODE: Record<string, string> = Object.assign(Object.create(null), {
 });
 
 /**
+ * Nations whose flag Unicode does not recommend, by normalized name and by
+ * 3-letter code. Northern Ireland's would be the subdivision tag sequence
+ * `gbnir`, which is not RGI (Unicode recommends only England, Scotland and
+ * Wales among subdivisions): every platform draws it as a plain black flag, a
+ * placeholder's shape. Such a nation carries no flag at all and is rendered by
+ * its name, like a club.
+ */
+const FLAGLESS_NAMES: ReadonlySet<string> = new Set(['Northern Ireland'].map(norm));
+const FLAGLESS_CODES: ReadonlySet<string> = new Set(['NIR']);
+
+/**
  * Resolve a flag emoji from a nation name or code.
  * Tries the name table first (ESPN reliably provides display names),
  * then the 3-letter code table, then a programmatic Intl reverse-lookup.
- * Falls back to the neutral flag.
+ * Three answers:
+ *   - the region's flag, when it is one Unicode recommends;
+ *   - `undefined` for a NATION whose flag Unicode does not recommend (the
+ *     written flagless list, or a region found whose flag is not recommended):
+ *     no flag, rendered by its name;
+ *   - the neutral 🏳️ when no region is found: no nation at all.
  */
-export function nationToFlag(nameOrCode: string | undefined | null): string {
+export function nationToFlag(nameOrCode: string | undefined | null): string | undefined {
+  if (nameOrCode && (FLAGLESS_NAMES.has(norm(nameOrCode)) || FLAGLESS_CODES.has(nameOrCode.trim().toUpperCase()))) {
+    return undefined;
+  }
   const region = nationToRegion(nameOrCode);
-  return region ? flagEmoji(region) : NEUTRAL;
+  if (!region) return NEUTRAL;
+  const flag = flagEmoji(region);
+  return flag === NEUTRAL ? undefined : flag;
 }
 
 /**
@@ -176,7 +226,10 @@ function intlNameMap(): Record<string, string> {
           name = undefined;
         }
         // Intl returns the code itself for unassigned regions — skip those.
-        if (name && name !== code) {
+        // Skip too a code with no recommended flag: a withdrawn code (RH, YD,
+        // NH, BU) would otherwise claim a name before its current one (A..Z
+        // order), and a non-nation (EZ, ZZ, QO, XA, XB) is no region at all.
+        if (name && name !== code && flagEmoji(code) !== NEUTRAL) {
           const key = norm(name);
           if (!(key in map)) map[key] = code;
         }
@@ -192,6 +245,8 @@ function intlNameMap(): Record<string, string> {
 /**
  * Resolve a region code (alpha-2 / subdivision) from a nation name or code.
  * Order: curated name table → 3-letter code table → Intl reverse-lookup.
+ * It names the region of a FLAG: a nation whose flag Unicode does not
+ * recommend (Northern Ireland) has none here, `undefined`, like no nation.
  */
 export function nationToRegion(nameOrCode: string | undefined | null): string | undefined {
   if (!nameOrCode) return undefined;

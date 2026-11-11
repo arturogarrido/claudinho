@@ -128,7 +128,9 @@ export function teamCode(raw: unknown, fallbackName: string): string {
  *
  * `kind` is the competition's written fact (`TEAM_KIND`), stated by the caller,
  * never inferred: a `nation` gets its flag GENERATED from its name (the neutral
- * 🏳️ when the name is no nation: a bundle placeholder); a `club` gets NO flag
+ * 🏳️ when the name is no nation: a bundle placeholder; NO flag key when the
+ * nation's flag is one Unicode does not recommend, Northern Ireland, which is
+ * then rendered by its name like a club, resolved); a `club` gets NO flag
  * key at all (not `''`, not 🏳️), so nothing is printed in its place, and a club
  * named like a region (`Monaco`) is not flagged by its name. A flag in the raw
  * value is never read, whatever the kind.
@@ -142,7 +144,10 @@ export function sealTeam(raw: unknown, kind: TeamKind): Team | undefined {
   const id = opaqueId(t.id, TEAM_ID);
   // Assigned in the order `Team` declares its fields (it is serialized as is).
   const out: Team = { code, name };
-  if (kind === 'nation') out.flag = productFlag(name);
+  if (kind === 'nation') {
+    const flag = productFlag(name);
+    if (typeof flag === 'string' && flag) out.flag = flag;
+  }
   if (id) out.id = id;
   return out;
 }
