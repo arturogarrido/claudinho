@@ -3,8 +3,8 @@
  * `PluginState.claudinho`. (The CLI's own contract number, the `api` that `claudinho ambient --json` prints first, is
  * compared with the plugin's `CLI_API_FLOOR`, 1: a number raised only when the CLI changes its objects so an older
  * plugin would misread them, never a version; a view with none, CLI 0.12.0 to 0.13.1, is read as before. A view's
- * `syncing`, an added key, says the line is the syncing line: the band's pace reads it, and with no such key a view
- * that is not current waits a minute at most.) Everything is read from `claudinho ambient --json`, the installed CLI's view of its
+ * `syncing`, an added key, says the line is the syncing line: the band's pace reads it, and with no such key a
+ * countdown more than an hour out whose view is not current waits a minute at most.) Everything is read from `claudinho ambient --json`, the installed CLI's view of its
  * local cache, and the match pane's rows from `claudinho match <id> --json`; the plugin never fetches (the CLI does). A view is readable when it carries its `live` list and says what its line
  * is, `idle` and `empty` as two booleans (`@claudinho/cli` 0.11.2 or later); anything else (the first-run object, the
  * fallback object, a view from an older CLI) is no view: hidden, never current, the baseline kept.

@@ -32,8 +32,8 @@ import type {
  * verbatim. No binary, a timeout, a cut or an answer that is not the object: the band shows nothing (the command says
  * so in one fixed sentence), never a blocked turn. Every run is also what triggers the CLI's refresher. Each band run
  * arms the next one, at a wait read from its answer's fields (`delayAfter`): 15 s while a match is live or just
- * finished, from 2 minutes before the next kickoff and on the syncing line (`syncing`, CLI 0.14.0; an older CLI's view
- * that is not current waits a minute at most); a minute inside the hour before it, after a
+ * finished, from 2 minutes before the next kickoff and on the syncing line (`syncing`, CLI 0.14.0; with an older CLI,
+ * a countdown more than an hour out whose view is not current waits a minute at most); a minute inside the hour before it, after a
  * failed run and on nothing known; 5 minutes further out, on the sign-off and with nothing chosen. One run is armed at a
  * time, and the next is armed however a run ends. Best effort throughout: a toast says a score change this
  * module observed between two current views, never every goal. The band draws the CLI's `lineParts` (CLI 0.12.0), each
@@ -72,9 +72,9 @@ import type {
  * is neither a view, the first-run object nor the fallback object. A 0.11.2 keeps its band and its toasts.
  *
  * No team pinned (plugin 0.7.0): under `toasts: pinned`, a current view stating `pick: null` and no `pickUnreadable`
- * says the session's first GOAL of a live record as `all` would (the first match in the view's order whose moment
- * plays a celebration), then one 10-second toast says how to pin (`pinHint`); every other moment, before it or after,
- * is not said, until the view states a pick.
+ * says the session's first live goal from a record that names its sides as `all` would (the first match in the
+ * view's order whose moment has a `goal` play), then one 10-second toast says how to pin (`pinHint`); every other
+ * moment, before it or after, is not said, until the view states a pick.
  *
  * `/claudinho` is registered at every start, headless included, and answers by itself: one `claudinho ambient --json`
  * run on the band's PATH, read by the band's own reading of the answer (`readAnswer`), replied as the view's line or
@@ -1783,10 +1783,11 @@ const waitUntil = (boundary: number, pace: number): number => Math.max(LIVE_MS, 
 /**
  * The wait before the band's next run, from this run's reading (its fields, never the line's text) and the clock when
  * it began: no answer, a minute; the first-run object or the sign-off, 5 minutes; an object that is no view, or a view
- * that says nothing is known, a minute; a match listed live or finished (its full-time window), 15 s; no next fixture
- * (the syncing line), 15 s; a next fixture whose kickoff cannot be read, a minute; else by the time to its kickoff: 15 s
- * from 2 minutes before it (a due kickoff included), a minute inside the hour, 5 minutes further out, each cut at the
- * next boundary and never below 15 s.
+ * that says nothing is known, a minute; a match listed live or finished (its full-time window), 15 s; the syncing line
+ * (`syncing: true`, whatever `next` names), 15 s; no next fixture, 15 s; a next fixture whose kickoff cannot be read, a
+ * minute; else by the time to its kickoff: 15 s from 2 minutes before it (a due kickoff included), a minute inside the
+ * hour, 5 minutes further out (a minute when the view states no `syncing` and is not current), each cut at the next
+ * boundary and never below 15 s.
  */
 function delayAfter(reading: Reading, now: number): number {
   if (!reading.answered) return MINUTE_MS
@@ -1964,12 +1965,11 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean,
     // its celebration), then one hint on how to pin; after it, as `pinned` with no pin: nothing.
     let hint: string | null = null
     if (option === 'pinned' && view.pick === null && view.pickUnreadable === undefined && !tasteSaid) {
-      // The taste is a GOAL: a live record's moment that plays a celebration (one side up by exactly 1); a correction,
-      // a shootout update or a jump of two goals is not it, and is not said.
+      // The taste is the first live goal from a record that names its sides: a moment with a `goal` play (one side up
+      // by exactly 1). A correction, a shootout update, a jump of two goals, or any moment of a record with no `names`
+      // (CLI 0.11.2's, a session the update toast reached) is not it, and is not said.
       const liveIds = new Set(itemsOf(view).map((m) => m.id))
-      const first = momentsFor(view, prev, 'all').find(
-        (m) => liveIds.has(m.id) && m.plays.some((p) => p.kind === 'goal' || p.kind === 'banner'),
-      )
+      const first = momentsFor(view, prev, 'all').find((m) => liveIds.has(m.id) && m.plays.some((p) => p.kind === 'goal'))
       if (first !== undefined) {
         tasteSaid = true
         moments = [first]

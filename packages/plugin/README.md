@@ -144,7 +144,8 @@ the CLI's own English line. `/claudinho` answers the same sentence each time you
 number of the contract it prints (`api`; not a version), and the plugin compares it with the lowest it reads.
 
 A CLI before 0.14.0 does not say when the band's line is `live · syncing…`. With one, the plugin checks every minute,
-not every five, whenever no match is listed live and the reading is not current: up to 60 runs an hour off-match
+not every five, on a countdown more than an hour out whose reading is not current (the sign-off and the "no
+competition followed" line keep five minutes): up to 60 runs an hour off-match
 (240 before this plugin version), and 12 an hour once the CLI is 0.14.0 or later.
 
 ## Details
@@ -204,8 +205,8 @@ The first reading of a match says nothing, and neither does a change of competit
 ways, the first that holds is said: `Score updated`, then `Penalties`, then the goal, then `Goals`. Every toast
 follows the `toasts` option.
 
-**With no team pinned** (and no `CLAUDINHO_TEAM`), `toasts: pinned` says the session's first goal in a live match as
-`all` would, with its celebration, then one toast for ten seconds:
+**With no team pinned** (and no `CLAUDINHO_TEAM`), `toasts: pinned` says the session's first goal in a live match whose
+reading names its teams (CLI 0.12.0 or later) as `all` would, with its celebration, then one toast for ten seconds:
 `Pin your team to get only its goals: claudinho follow <alias> --team <name>`, with the competition you follow. A
 correction, a shootout update or two goals between readings is not that first goal, and is not said. After it, no
 toast and no celebration until you pin a team (the next reading follows the pin); the band's score still changes, in
