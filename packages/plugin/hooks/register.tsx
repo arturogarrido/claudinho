@@ -68,8 +68,10 @@ import type {
  * toast says what to run when the CLI is missing or too old, and `/claudinho` answers the same sentence each time.
  * Missing: the run was rejected, the PATH it was handed is the whole lookup (nvm's listing answered), and every folder
  * of it (absolute, at most 64) answers that it holds no `claudinho` (the band probes once per session, the command at
- * each rejected run; on Windows no PATH is handed and nothing is claimed). Too old (`tooOld`): an `api` below `CLI_API_FLOOR`, a view stating no `lang`, or an object that
- * is neither a view, the first-run object nor the fallback object. A 0.11.2 keeps its band and its toasts.
+ * each rejected run; on Windows no PATH is handed and nothing is claimed). Too old (`tooOld`): an `api` below
+ * `CLI_API_FLOOR`, a view stating no `lang`, or an object that is neither a view, the first-run object nor the fallback
+ * object. A 0.11.2 keeps its band, and its toasts for a pinned team; with no pin it toasts nothing (its records name no
+ * sides, so none is the no-pin taste).
  *
  * No team pinned (plugin 0.7.0): under `toasts: pinned`, a current view stating `pick: null` and no `pickUnreadable`
  * says the session's first live goal from a record that names its sides as `all` would (the first match in the
@@ -160,7 +162,8 @@ const pane = atom({ plugin: 'claudinho', key: 'pane' } as const, null as Claudin
 /**
  * The band's pace (`delayAfter`): 15 s from 2 minutes before a kickoff, while a match is listed live or finished, and
  * on the syncing line; a minute inside the hour before a kickoff, after a run that gave no answer, on nothing known and
- * on an answer that is no view; 5 minutes further out, on the sign-off and with nothing chosen.
+ * on an answer that is no view; 5 minutes further out (a minute when the view states no `syncing` and is not current),
+ * on the sign-off and with nothing chosen.
  */
 const LIVE_MS = 15_000
 const MINUTE_MS = 60_000
@@ -1961,8 +1964,9 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean,
     const prev = await read($, baseline)
     let moments = momentsFor(view, prev, option)
     // No team pinned (`toasts: pinned`, the view stating no pick and a readable `CLAUDINHO_TEAM` or none): the
-    // session's first score change of a live record is said as under `all` (the first match in the view's order, with
-    // its celebration), then one hint on how to pin; after it, as `pinned` with no pin: nothing.
+    // session's first live goal from a record that names its sides is said as under `all` (the first match in the
+    // view's order, with its celebration), then one hint on how to pin; every other moment, as `pinned` with no pin:
+    // nothing.
     let hint: string | null = null
     if (option === 'pinned' && view.pick === null && view.pickUnreadable === undefined && !tasteSaid) {
       // The taste is the first live goal from a record that names its sides: a moment with a `goal` play (one side up

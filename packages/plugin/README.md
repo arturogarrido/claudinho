@@ -138,8 +138,8 @@ sentence under it, or one plain sentence when there is nothing to show.
 
 `@claudinho/cli` 0.12.0 or later, the newest for everything on this page. With no CLI on the `PATH` the plugin runs,
 a toast says `To see scores, install the CLI: npm i -g @claudinho/cli`, once per session. With CLI 0.11.2, it says
-`This plugin needs a newer CLI: npm i -g @claudinho/cli@latest`, and still shows the band and toasts a score change in
-the CLI's own English line. `/claudinho` answers the same sentence each time you ask. A CLI older than 0.11.2 has no
+`This plugin needs a newer CLI: npm i -g @claudinho/cli@latest`, and still shows the band and, with a team pinned,
+toasts its score changes in the CLI's own English line (with no team pinned, 0.11.2 toasts nothing). `/claudinho` answers the same sentence each time you ask. A CLI older than 0.11.2 has no
 `ambient` command: the band stays empty and `/claudinho` answers `The CLI gave no answer.` A newer CLI states the
 number of the contract it prints (`api`; not a version), and the plugin compares it with the lowest it reads.
 
@@ -185,7 +185,7 @@ cache fresh:
 | A match live, the line `live · syncing…`, or a match that finished in the last ten minutes | 15 seconds |
 | The next kickoff 2 minutes away or less, or passed and not live yet | 15 seconds |
 | The next kickoff within the hour | every minute, then 15 seconds from 2 minutes before |
-| The next kickoff more than an hour away | every 5 minutes, then every minute from an hour before |
+| The next kickoff more than an hour away | every 5 minutes, then every minute from an hour before (with a CLI before 0.14.0 and a reading that is not current, every minute) |
 | Nothing known, or no answer (no CLI, a timeout) | every minute |
 | No competition followed, or the World Cup's sign-off | every 5 minutes |
 
