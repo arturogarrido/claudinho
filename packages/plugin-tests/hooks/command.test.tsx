@@ -16,6 +16,11 @@ const FIRST = 'No competition followed yet.'
 const EMPTY = 'Nothing to show right now: no live match and no next fixture known.'
 const NO_VIEW = "Nothing to show: the CLI's answer is not one this plugin reads."
 const FAILED = 'The CLI gave no answer.'
+/** Plugin 0.7.0: a rejected run whose handed PATH holds no CLI, and an answer from a CLI older than the plugin reads. */
+const NO_CLI = 'To see scores, install the CLI: npm i -g @claudinho/cli'
+const TOO_OLD = 'This plugin needs a newer CLI: npm i -g @claudinho/cli@latest'
+/** A CLI on the PATH (the run that rejects then timed out, it did not miss the CLI). */
+const CLI_THERE = { bins: ['/usr/local/bin/claudinho'] }
 /** The disclaimer the CLI puts on every selected competition's view (the test world's `view()` carries it). */
 const D = 'Not affiliated with FIFA, any confederation, league or club, or Anthropic.'
 /** The provider's attribution the CLI puts beside the disclaimer on the same views (the test world's `view()` carries it). */
@@ -121,10 +126,16 @@ describe('what it answers, one cell per shape the CLI prints and per way the run
     })
   }
 
-  for (const [why, answer] of [["the CLI's fallback object (a refused value, a throw)", '{"line":"⚽ —","empty":true}'], ["an older CLI's line-only object", '{"line":"⚽ —"}'], ['a line-only object with a score-like line', `{"line":"${LINE}"}`], ['a view from a CLI older than idle and empty', OLDER_VIEW]] as const) {
-    test(`an answer that is no view: the no-view sentence: ${why}`, async ($, on) => {
+  test("an answer that is no view: the no-view sentence: the CLI's fallback object (a refused value, a throw)", async ($, on) => {
+    const { command } = await world($, on, [view(LINE), '{"line":"⚽ —","empty":true}'])
+    expect((await command()).text).toBe(NO_VIEW)
+  })
+
+  // Plugin 0.7.0: any other object that is no view comes from a CLI older than the plugin reads.
+  for (const [why, answer] of [["an older CLI's line-only object", '{"line":"⚽ —"}'], ['a line-only object with a score-like line', `{"line":"${LINE}"}`], ['a view from a CLI older than idle and empty', OLDER_VIEW]] as const) {
+    test(`an answer that is no view: the update sentence: ${why}`, async ($, on) => {
       const { command } = await world($, on, [view(LINE), answer])
-      expect((await command()).text).toBe(NO_VIEW)
+      expect((await command()).text).toBe(TOO_OLD)
     })
   }
 
@@ -138,10 +149,15 @@ describe('what it answers, one cell per shape the CLI prints and per way the run
     ['an object with no line', '{"current":false}'],
   ] as const) {
     test(`a failed run: one plain sentence, no error text: ${why}`, async ($, on) => {
-      const { command } = await world($, on, [view(LINE), answer])
+      const { command } = await world($, on, [view(LINE), answer], CLI_THERE)
       expect((await command()).text).toBe(FAILED)
     })
   }
+
+  test('a failed run with no CLI on the PATH it was handed: the install sentence (plugin 0.7.0)', async ($, on) => {
+    const { command } = await world($, on, [view(LINE), new Error('ENOENT: Executable not found in $PATH: claudinho')])
+    expect((await command()).text).toBe(NO_CLI)
+  })
 })
 
 describe('the attribution and the disclaimer', () => {
@@ -177,12 +193,12 @@ describe('the attribution and the disclaimer', () => {
   test('an answer that is no view carries neither, whatever fields it holds', async ($, on) => {
     const older = JSON.stringify({ ...JSON.parse(OLDER_VIEW), attribution: A, disclaimer: D })
     const { command } = await world($, on, [view(LINE), older])
-    expect((await command()).text).toBe(NO_VIEW)
+    expect((await command()).text).toBe(TOO_OLD)
   })
 
   for (const [why, answer, sentence] of [['the first-run object', FIRST_RUN, FIRST], ["the CLI's fallback object", '{"line":"⚽ —","empty":true}', NO_VIEW], ['a failed run', new Error('timeout'), FAILED]] as const) {
     test(`a reply made from no view carries none: ${why}`, async ($, on) => {
-      const { command } = await world($, on, [view(LINE), answer])
+      const { command } = await world($, on, [view(LINE), answer], CLI_THERE)
       expect((await command()).text).toBe(sentence)
     })
   }
@@ -198,10 +214,11 @@ describe('what a view is: each clause decides alone', () => {
     ['`idle` and `empty`, no live list', { ...base, idle: false, empty: false }],
     ['`idle` and `empty`, a live object with no items array', { ...base, live: { total: 0 }, idle: false, empty: false }],
   ] as const) {
+    // Plugin 0.7.0: such an object comes from a CLI older than the plugin reads, and the reply says so.
     test(`no view: ${why}: the command says so and the band shows nothing`, async ($, on) => {
       const { command, mount } = await world($, on, [JSON.stringify(obj), JSON.stringify(obj)])
       expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
-      expect((await command()).text).toBe(NO_VIEW)
+      expect((await command()).text).toBe(TOO_OLD)
     })
   }
 })
@@ -233,7 +250,7 @@ describe('the command leaves the band alone', () => {
   })
 
   test('a failed command run does not clear a shown band', async ($, on) => {
-    const { command, mount } = await world($, on, [view(LINE), new Error('timeout')])
+    const { command, mount } = await world($, on, [view(LINE), new Error('timeout')], CLI_THERE)
     expect((await command()).text).toBe(FAILED)
     expect((await (await mount()).findAll({ type: 'Text' })).map((t) => t.text)).toEqual([LINE])
   })

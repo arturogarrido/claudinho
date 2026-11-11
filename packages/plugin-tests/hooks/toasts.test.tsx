@@ -95,7 +95,8 @@ describe('silence', () => {
     const older = (score: [number, number]) => JSON.stringify({ line: "⚽ ARS 2–1 CHE 60'", context: null, live: { items: [match('1', score)], total: 1, shown: 1, truncated: false, complete: true }, current: true, next: null, pick: null, competition: { slug: 'eng.1' }, degraded: false, source: 'espn', updatedAt: '2026-10-10T15:00:00.000Z', staleAfter: '2026-10-10T15:05:00.000Z' })
     const { clock } = await world($, on, [older([1, 0]), older([2, 0])])
     await clock.advance(15_000)
-    expect(texts).toEqual([])
+    // No score toast; plugin 0.7.0 says once that the CLI is too old (the object is no view).
+    expect(texts).toEqual(['This plugin needs a newer CLI: npm i -g @claudinho/cli@latest'])
   })
 
   test('the first observation of an id, and an unchanged score', async ($, on) => {
@@ -154,9 +155,11 @@ describe('silence', () => {
 
   test('a failed run leaves the baseline: the next current view toasts against it', async ($, on) => {
     const texts = toasted(on)
-    const { clock } = await world($, on, [live([match('1', [1, 0])]), new Error('timeout'), live([match('1', [2, 0])])])
+    // The CLI is on the PATH: the run timed out (plugin 0.7.0 says "no CLI" only when no folder holds it).
+    const { clock } = await world($, on, [live([match('1', [1, 0])]), new Error('timeout'), live([match('1', [2, 0])])], { bins: ['/usr/local/bin/claudinho'] })
     await clock.advance(15_000)
-    await clock.advance(15_000)
+    // The run after a failed one comes a minute later.
+    await clock.advance(60_000)
     expect(texts).toEqual(["⚽ Arsenal 2–0 Chelsea (60')"])
   })
 })

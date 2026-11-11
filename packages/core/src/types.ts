@@ -16,9 +16,11 @@ export interface Team {
   /**
    * Emoji flag (e.g. "🇲🇽"), GENERATED from a NATION's name (`sealTeam`); the
    * neutral 🏳️ for a nation competition's side that is no nation yet (a
-   * bundle placeholder). A club has none: the key is ABSENT, never `''` and
-   * never 🏳️, and nothing is printed in its place. Which teams are nations is
-   * a written fact of the competition (`TEAM_KIND`).
+   * bundle placeholder). A side with no flag is a club or a nation whose flag
+   * Unicode does not recommend (Northern Ireland): the key is ABSENT, never
+   * `''` and never 🏳️, nothing is printed in its place, and both are resolved
+   * and printed by name (by code in the ambient tokens). Which teams are
+   * nations is a written fact of the competition (`TEAM_KIND`).
    */
   flag?: string;
   /**

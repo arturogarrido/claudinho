@@ -151,19 +151,19 @@ describe('ambient --json: lang and words on a selected view', () => {
   it('`lang` and `words` follow `competition` in the key order, on an empty cache too', () => {
     const keys = Object.keys(ambient('fr'));
     expect(keys.slice(keys.indexOf('competition'), keys.indexOf('competition') + 3)).toEqual(['competition', 'lang', 'words']);
-    expect(keys).toEqual(['line', 'lineParts', 'idle', 'empty', 'context', 'live', 'finished', 'current', 'next', 'pick', 'competition', 'lang', 'words', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer', 'attribution']);
+    expect(keys).toEqual(['api', 'line', 'lineParts', 'idle', 'empty', 'syncing', 'context', 'live', 'finished', 'current', 'next', 'pick', 'competition', 'lang', 'words', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer', 'attribution']);
   });
 
   it('the first-run object (nothing chosen) carries neither, in any language', () => {
     writes = [];
     cmdAmbient({ ...ctx('es'), cfg: cfg({ lang: 'es', selection: { kind: 'none' }, competition: '' }) });
-    expect(printed()).toEqual({ competition: null, noCompetition: true, line: '⚽ claudinho follow' });
+    expect(printed()).toEqual({ api: 1, competition: null, noCompetition: true, line: '⚽ claudinho follow' });
   });
 
   it('the `{ line, empty }` fallback (a refused value) carries neither, in any language', () => {
     writes = [];
     cmdAmbient({ ...ctx('es'), cfg: cfg({ lang: 'es', selection: { kind: 'refused', value: 'nope', aliases: ['premier-league'], chosenBy: 'env' }, competition: '' }) });
-    expect(printed()).toEqual({ line: NOTHING_KNOWN_LINE, empty: true });
+    expect(printed()).toEqual({ api: 1, line: NOTHING_KNOWN_LINE, empty: true });
   });
 });
 
@@ -346,11 +346,11 @@ describe.skipIf(!existsSync(DIST))('ambient --json: `lang` as the CLI resolves i
 
   it('the first-run object under a Spanish LANG: neither key', () => {
     const v = run({ LANG: 'es_MX.UTF-8' });
-    expect(v).toEqual({ competition: null, noCompetition: true, line: '⚽ claudinho follow' });
+    expect(v).toEqual({ api: 1, competition: null, noCompetition: true, line: '⚽ claudinho follow' });
   });
 
   it('the `{ line, empty }` fallback under a Spanish LANG: neither key', () => {
     const v = run({ LANG: 'es_MX.UTF-8', CLAUDINHO_COMPETITION: 'not a competition' });
-    expect(v).toEqual({ line: NOTHING_KNOWN_LINE, empty: true });
+    expect(v).toEqual({ api: 1, line: NOTHING_KNOWN_LINE, empty: true });
   });
 });

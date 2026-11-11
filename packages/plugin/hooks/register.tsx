@@ -30,8 +30,12 @@ import type {
  * bounded, and reads the fields of the one JSON object it prints, never its text: what the line IS (`idle`, `empty`,
  * the first run's `noCompetition`), whether its list is `current`, and the hook's own line on each record, said
  * verbatim. No binary, a timeout, a cut or an answer that is not the object: the band shows nothing (the command says
- * so in one fixed sentence), never a blocked turn. Every run is also what triggers the CLI's refresher, so the band
- * runs at the live pace on every line but the idle ones. Best effort throughout: a toast says a score change this
+ * so in one fixed sentence), never a blocked turn. Every run is also what triggers the CLI's refresher. Each band run
+ * arms the next one, at a wait read from its answer's fields (`delayAfter`): 15 s while a match is live or just
+ * finished, from 2 minutes before the next kickoff and on the syncing line (`syncing`, CLI 0.14.0; with an older CLI,
+ * a countdown more than an hour out whose view is not current waits a minute at most); a minute inside the hour before it, after a
+ * failed run and on nothing known; 5 minutes further out, on the sign-off and with nothing chosen. One run is armed at a
+ * time, and the next is armed however a run ends. Best effort throughout: a toast says a score change this
  * module observed between two current views, never every goal. The band draws the CLI's `lineParts` (CLI 0.12.0), each
  * `strong` part bold, only when their texts join to the line; else the plain line.
  *
@@ -52,13 +56,27 @@ import type {
  * a start with no surface while the roster holds the desktop). A run that finds none attached (`claude -p`, the SDK, a
  * phone or an editor alone), or cannot read the roster, starts no process and clears the band. A roster read refused at
  * the start is unknown, so the pace starts and each run asks again: a read denied for good costs one read per 15
- * seconds and no process. Each run is handed a PATH: the host's own, then the folders npm, Homebrew, nvm, Volta, pnpm
- * and Bun put global commands in, so a session started with a bare PATH still finds the CLI and its `node` (on
+ * seconds and no process (with no band surface the next run is 15 seconds on). Each run is handed a PATH: the host's
+ * own, then the folders npm, Homebrew, nvm, Volta, pnpm and Bun put global commands in, so a session started with a bare PATH still finds the CLI and its `node` (on
  * Windows nothing is handed). nvm's part is looked up once per load; while that lookup has not answered, each run waits
  * at most a second for it and uses the PATH without nvm's folders, and the first run that finds it answered keeps the
  * PATH with them. A band drawn beneath ours in the hook chain (a plugin registered after ours, or the engine's own)
  * stays, under our line: we never drop it.
  * A run's answer is drawn only if no clear (a window leaving, or a run finding none) happened since the run began its spawn.
+ *
+ * The first run (plugin 0.7.0): once per session (reset by every `session.start`, a reload included), one 10-second
+ * toast says what to run when the CLI is missing or too old, and `/claudinho` answers the same sentence each time.
+ * Missing: the run was rejected, the PATH it was handed is the whole lookup (nvm's listing answered), and every folder
+ * of it (absolute, at most 64) answers that it holds no `claudinho` (the band probes once per session, the command at
+ * each rejected run; on Windows no PATH is handed and nothing is claimed). Too old (`tooOld`): an `api` below
+ * `CLI_API_FLOOR`, a view stating no `lang`, or an object that is neither a view, the first-run object nor the fallback
+ * object. A 0.11.2 keeps its band, and its toasts for a pinned team; with no pin it toasts nothing (its records name no
+ * sides, so none is the no-pin taste).
+ *
+ * No team pinned (plugin 0.7.0): under `toasts: pinned`, a current view stating `pick: null` and no `pickUnreadable`
+ * says the session's first live goal from a record that names its sides as `all` would (the first match in the
+ * view's order whose moment has a `goal` play), then one 10-second toast says how to pin (`pinHint`); every other
+ * moment, before it or after, is not said, until the view states a pick.
  *
  * `/claudinho` is registered at every start, headless included, and answers by itself: one `claudinho ambient --json`
  * run on the band's PATH, read by the band's own reading of the answer (`readAnswer`), replied as the view's line or
@@ -141,8 +159,18 @@ const celebration = atom({ plugin: 'claudinho', key: 'celebration' } as const, n
 const paneGen = atom({ plugin: 'claudinho', key: 'paneGen' } as const, 0 as number)
 const pane = atom({ plugin: 'claudinho', key: 'pane' } as const, null as ClaudinhoPane)
 
+/**
+ * The band's pace (`delayAfter`): 15 s from 2 minutes before a kickoff, while a match is listed live or finished, and
+ * on the syncing line; a minute inside the hour before a kickoff, after a run that gave no answer, on nothing known and
+ * on an answer that is no view; 5 minutes further out (a minute when the view states no `syncing` and is not current),
+ * on the sign-off and with nothing chosen.
+ */
 const LIVE_MS = 15_000
+const MINUTE_MS = 60_000
 const IDLE_MS = 300_000
+/** The two boundaries a countdown's pace changes at: 2 minutes and 1 hour before the kickoff. */
+const SOON_MS = 120_000
+const HOUR_MS = 3_600_000
 const RUN_TIMEOUT_MS = 2_000
 /** The command's one line in the typeahead and `/help`: facts only. */
 const COMMAND_DESCRIPTION = 'The live score or the next fixture of the competition you follow, now'
@@ -152,6 +180,24 @@ const REPLY_FIRST_RUN = 'No competition followed yet.'
 const REPLY_NO_VIEW = "Nothing to show: the CLI's answer is not one this plugin reads."
 const REPLY_EMPTY = 'Nothing to show right now: no live match and no next fixture known.'
 const REPLY_IDLE = 'The edition you follow is over.'
+/**
+ * The two first-run sentences (plugin 0.7.0): no CLI on the PATH a run is handed, or a CLI older than this plugin reads.
+ * Raised once per session as a toast by the band, and the `/claudinho` reply every time.
+ */
+const REPLY_NO_CLI = 'To see scores, install the CLI: npm i -g @claudinho/cli'
+const REPLY_TOO_OLD = 'This plugin needs a newer CLI: npm i -g @claudinho/cli@latest'
+/**
+ * The lowest `api` (the contract number `claudinho ambient --json` prints first, core's `AMBIENT_API`) this plugin
+ * reads. It is not a version: it is raised only when the CLI changes its objects so an older plugin would misread them.
+ * A view with no `api` (CLI 0.12.0 to 0.13.1) is read as before.
+ */
+const CLI_API_FLOOR = 1
+/** The folders of a handed PATH probed for the CLI, at most; more, and no "no CLI" claim is made. */
+const PATH_FOLDERS_MAX = 64
+/** How long the first-run toast and the pin hint stay. */
+const HINT_TOAST_MS = 10_000
+/** A competition's alias or slug as the pin hint names it (the CLI's grammar for both, bounded). */
+const COMPETITION_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/
 /** The prompt context is attached only from a run younger than two periods. */
 const CONTEXT_MAX_AGE_MS = 2 * LIVE_MS
 /** The band's width before any draw. */
@@ -268,10 +314,20 @@ let columns = DEFAULT_COLUMNS
 let clears = 0
 /** At most one run in flight: the guard is taken before the first await. */
 let busy = false
+/** The band's one armed run: every run ends by arming the next (`arm`), cancelling the one armed before. */
+let nextRun: Timer | null = null
+/**
+ * Once per session (reset by every `session.start`: a new session, or a reload): the first-run toast was raised (no
+ * CLI, or one too old: one toast whichever comes first), the band's rejected run probed the PATH, and the no-pin taste
+ * (the first goal and the pin hint) was said.
+ */
+let firstRunSaid = false
+let bandProbed = false
+let tasteSaid = false
 /** A forced run asked while a run was in flight: made as soon as that run ends (cleared when it starts). */
 let forcedPending = false
 /**
- * The pace (the forced first run, then every 15 seconds) is started once per module load, by whichever comes first of
+ * The pace (the forced first run, then each run arming the next) is started once per module load, by whichever comes first of
  * a start or an attach of a band surface. A reload makes a fresh module and drops the previous one's timers.
  */
 let paced = false
@@ -500,14 +556,33 @@ async function nvmLookup($: EngineInterface, home: string): Promise<string[]> {
   return [...bins.filter((_, i) => holds[i]), ...bins.filter((_, i) => !holds[i])]
 }
 
-/** Whether `<bin>/claudinho` exists; a probe that rejects is "not there". Never rejects. */
-async function holdsCli($: EngineInterface, bin: string): Promise<boolean> {
+/** Whether `<bin>/claudinho` exists: true or false as the probe answered, null when it rejected. Never rejects. */
+async function probeCli($: EngineInterface, bin: string): Promise<boolean | null> {
   try {
     const found = await $.fs.exists(`${bin}/claudinho`)
     return found === true
   } catch {
-    return false
+    return null
   }
+}
+
+/** Whether `<bin>/claudinho` exists; a probe that rejects is "not there". Never rejects. */
+async function holdsCli($: EngineInterface, bin: string): Promise<boolean> {
+  return (await probeCli($, bin)) === true
+}
+
+/**
+ * Whether the PATH a run was handed shows there is no CLI: a PATH handed (none on Windows), of at most 64 folders, every
+ * one absolute, each probed for `claudinho` (the probe nvm's lookup makes) and every probe answering no. A probe that
+ * rejects, a relative folder, too many folders or no PATH: no claim. The handed PATH is the whole lookup (the host's
+ * folders, nvm's, the global-bin ones), so no folder a run searches goes unprobed. Never rejects.
+ */
+async function noCliOnPath($: EngineInterface, env: { PATH: string } | undefined): Promise<boolean> {
+  if (env === undefined) return false
+  const folders = env.PATH.split(':')
+  if (folders.length === 0 || folders.length > PATH_FOLDERS_MAX || folders.some((f) => !f.startsWith('/'))) return false
+  const found = await Promise.all(folders.map((f) => probeCli($, f)))
+  return found.every((x) => x === false)
 }
 
 /** nvm's lookup, its answer kept for the module load once it has settled. Never rejects. */
@@ -629,7 +704,8 @@ function markLocalizes(reading: Reading): void {
  * What `claudinho ambient --json` prints, as far as this module reads it: a selected competition's VIEW (an object
  * with a `live` object holding an `items` array that says what its line is, `idle` and `empty` as two booleans), or
  * a shape that is no view: the first-run object (no competition chosen: `noCompetition`, the one line), the fallback
- * object (a refused value or a failure: the line and `empty`; an older CLI's `{ line }` has the same shape), and a
+ * object (a refused value or a failure: the line and `empty: true`; an older CLI's `{ line }` lacks `empty`, which
+ * `tooOld` reads as a CLI too old), and a
  * view from a CLI older than `idle` and `empty` (a live list and neither).
  */
 type View = {
@@ -641,7 +717,15 @@ type View = {
   live?: { items?: unknown }
   next?: unknown
   current?: unknown
-  competition?: { slug?: unknown } | null
+  competition?: { slug?: unknown; alias?: unknown } | null
+  /** The contract's number (CLI 0.14.0 on: core's `AMBIENT_API`); an older CLI states none. */
+  api?: unknown
+  /** CLI 0.14.0: whether the line is the syncing line, said by the CLI's own rule (an older CLI states none). */
+  syncing?: unknown
+  /** The ambient preference (`CLAUDINHO_TEAM`'s code, else the saved pin), `null` for none. */
+  pick?: unknown
+  /** Present when `CLAUDINHO_TEAM` is set to a value the CLI cannot read (`pick` is then null). */
+  pickUnreadable?: unknown
   staleAfter?: unknown
   disclaimer?: unknown
   attribution?: unknown
@@ -700,7 +784,7 @@ type RunResult = ProcessRunResult
  */
 type Reading =
   | { answered: false }
-  | { answered: true; view: View; firstRun: boolean; isView: boolean; idle: boolean; hidden: boolean }
+  | { answered: true; view: View; firstRun: boolean; isView: boolean; idle: boolean; hidden: boolean; tooOld: boolean }
 
 /** The one reading of a run's result (undefined: the run rejected). */
 function readAnswer(r: RunResult | undefined): Reading {
@@ -716,7 +800,19 @@ function readAnswer(r: RunResult | undefined): Reading {
     typeof view.empty === 'boolean'
   const idle = firstRun || (isView && view.idle === true)
   const hidden = !isView || view.empty === true || view.line.trim() === ''
-  return { answered: true, view, firstRun, isView, idle, hidden }
+  return { answered: true, view, firstRun, isView, idle, hidden, tooOld: tooOld(view, firstRun, isView) }
+}
+
+/**
+ * Whether an answer says the CLI is older than this plugin reads: an `api` that is an integer below the floor; or,
+ * apart from the first-run object, a view that states no `lang` among the four codes (older than 0.12.0), or an object
+ * that is no view and not the fallback object (`empty: true`: a refused value or a failure): an older CLI's `{ line }`,
+ * or a view from before `idle` and `empty`. An `api` that is missing, or no integer, says nothing.
+ */
+function tooOld(view: View, firstRun: boolean, isView: boolean): boolean {
+  if (typeof view.api === 'number' && Number.isInteger(view.api) && view.api < CLI_API_FLOOR) return true
+  if (firstRun) return false
+  return isView ? !isLang(view.lang) : view.empty !== true
 }
 
 /** The reply's body for a view: nothing known, the edition over, else its line. */
@@ -727,17 +823,26 @@ const viewReply = (view: View, r: { hidden: boolean; idle: boolean }): string =>
 const relayed = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v : null)
 
 /**
- * The command's reply to a reading: the first that holds of a failed run, the first run, no view (each its sentence
- * alone), nothing known, the edition over; else the line. A reply made from a view ends with the view's attribution,
+ * The command's reply to a reading: the first that holds of a failed run, a CLI too old, the first run, no view (each
+ * its sentence alone), nothing known, the edition over; else the line. (A failed run whose PATH holds no CLI is the
+ * command's to say, after its probes.) A reply made from a view ends with the view's attribution,
  * then its disclaimer (the CLI's own footer order), each after a blank line and each only when usable.
  */
 function replyTo(reading: Reading): string {
   if (!reading.answered) return REPLY_FAILED
+  // A CLI too old: the sentence, and when its answer is a view the plugin reads (0.11.2), that view's footer.
+  if (reading.tooOld) return reading.isView ? withFooter(REPLY_TOO_OLD, reading.view) : REPLY_TOO_OLD
   if (reading.firstRun) return REPLY_FIRST_RUN
   if (!reading.isView) return REPLY_NO_VIEW
-  const text = viewReply(reading.view, reading)
-  // The CLI's own sentences, relayed (core's copy and core's one constant), never spelled here.
-  const footer = [relayed(reading.view.attribution), relayed(reading.view.disclaimer)].filter((s) => s !== null)
+  return withFooter(viewReply(reading.view, reading), reading.view)
+}
+
+/**
+ * A reply made from a view: its text, then the view's attribution, then its disclaimer, each after a blank line and
+ * each only when usable. The CLI's own sentences, relayed (core's copy and core's one constant), never spelled here.
+ */
+function withFooter(text: string, view: View): string {
+  const footer = [relayed(view.attribution), relayed(view.disclaimer)].filter((s) => s !== null)
   return [text, ...footer].join('\n\n')
 }
 
@@ -1675,6 +1780,60 @@ async function closePane($: EngineInterface): Promise<void> {
   await update($, pane, () => null)
 }
 
+/** A wait cut at a phase's boundary: at most the phase's pace, never below 15 s. */
+const waitUntil = (boundary: number, pace: number): number => Math.max(LIVE_MS, Math.min(pace, boundary))
+
+/**
+ * The wait before the band's next run, from this run's reading (its fields, never the line's text) and the clock when
+ * it began: no answer, a minute; the first-run object or the sign-off, 5 minutes; an object that is no view, or a view
+ * that says nothing is known, a minute; a match listed live or finished (its full-time window), 15 s; the syncing line
+ * (`syncing: true`, whatever `next` names), 15 s; no next fixture, 15 s; a next fixture whose kickoff cannot be read, a
+ * minute; else by the time to its kickoff: 15 s from 2 minutes before it (a due kickoff included), a minute inside the
+ * hour, 5 minutes further out (a minute when the view states no `syncing` and is not current), each cut at the next
+ * boundary and never below 15 s.
+ */
+function delayAfter(reading: Reading, now: number): number {
+  if (!reading.answered) return MINUTE_MS
+  if (reading.idle) return IDLE_MS
+  if (!reading.isView) return MINUTE_MS
+  const { view } = reading
+  if (view.empty === true) return MINUTE_MS
+  const live = isObject(view.live) && Array.isArray(view.live.items) ? view.live.items : []
+  const finished = Array.isArray(view.finished) ? view.finished : []
+  if (live.length > 0 || finished.length > 0) return LIVE_MS
+  // The syncing line, said by the view (CLI 0.14.0 on); its `next` may be a later fixture, never its pace.
+  if (view.syncing === true) return LIVE_MS
+  if (view.next === null || view.next === undefined) return LIVE_MS
+  const kickoff = isObject(view.next) && typeof view.next.kickoff === 'string' ? Date.parse(view.next.kickoff) : Number.NaN
+  if (!Number.isFinite(kickoff)) return MINUTE_MS
+  const d = kickoff - now
+  if (d <= SOON_MS) return LIVE_MS
+  if (d <= HOUR_MS) return waitUntil(d - SOON_MS, MINUTE_MS)
+  // A CLI that states no `syncing` (0.12.0 to 0.13.1) may be syncing behind a countdown: a view that is not current
+  // waits a minute at most.
+  const unsure = typeof view.syncing !== 'boolean' && view.current !== true
+  return waitUntil(d - HOUR_MS, unsure ? MINUTE_MS : IDLE_MS)
+}
+
+/** The band's next run armed `ms` from now, the one armed before cancelled: one armed run at a time. */
+function arm($: EngineInterface, option: ToastsOption, ms: number): void {
+  nextRun?.cancel()
+  nextRun = $.clock.after(ms, () => {
+    nextRun = null
+    void tick($, option, false)
+  })
+}
+
+/**
+ * The pin hint (no team pinned): the view's competition by its alias, else its slug (an experimental one has no
+ * alias), each only when it reads as one; else the placeholder.
+ */
+function pinHint(view: View): string {
+  const c = isObject(view.competition) ? view.competition : {}
+  const name = [c.alias, c.slug].find((v): v is string => typeof v === 'string' && COMPETITION_NAME.test(v)) ?? '<alias>'
+  return `Pin your team to get only its goals: claudinho follow ${name} --team <name>`
+}
+
 /**
  * One run of the CLI, bounded; at most one in flight; paced by the last line unless `force`. A forced run asked while
  * one is in flight is kept (once) and made as soon as that run ends. No rejection escapes: a timer's callback calls it.
@@ -1685,39 +1844,65 @@ async function tick($: EngineInterface, option: ToastsOption, force: boolean): P
     return
   }
   busy = true
+  // A run that failed in the engine's calls is paced as a run that gave no answer.
+  let wait = MINUTE_MS
+  let started: number | null = null
   try {
-    await bandRun($, option, force)
+    started = await $.clock.now()
+    wait = await bandRun($, option, force, started)
   } catch {
-    // A run that failed in the engine's calls: nothing more to do until the next fire.
+    // Nothing more to do until the next run, armed below whatever happened.
   } finally {
     busy = false
+    // The next run is always armed (a forced run asked meanwhile arms it when it ends), so the pace cannot stop.
     if (forcedPending) {
       forcedPending = false
       void tick($, option, true)
+    } else {
+      void armAfter($, option, started, wait)
     }
   }
 }
 
-/** One band run of the CLI and what follows from its answer: the band, the toasts, the celebration, the context. */
-async function bandRun($: EngineInterface, option: ToastsOption, force: boolean): Promise<void> {
+/**
+ * The next run armed `wait` after this run began (`started`; unknown: after it ended), so a run's own length (its
+ * spawn's bound, nvm's wait) does not stretch the pace. Never rejects.
+ */
+async function armAfter($: EngineInterface, option: ToastsOption, started: number | null, wait: number): Promise<void> {
+  let elapsed = 0
+  try {
+    if (started !== null) elapsed = Math.max(0, (await $.clock.now()) - started)
+  } catch {
+    // The clock could not be read: the full wait from now.
+  }
+  arm($, option, Math.max(0, wait - elapsed))
+}
+
+/**
+ * One band run of the CLI and what follows from its answer: the band, the toasts, the celebration, the context.
+ * Resolves the wait before the next run (`delayAfter`; 15 s with no band surface: the roster is asked, no process).
+ */
+async function bandRun($: EngineInterface, option: ToastsOption, force: boolean, now: number): Promise<number> {
   // (1) No surface that draws the band (none yet, the last one detached, or the roster cannot be read): no process,
   // the band cleared, so a band surface attaching again never shows an old line, and the pace reset, so the next run
   // the roster allows is not held by an idle gap; the baseline and the context are left.
   if (!(await mayRun($))) {
     await clear($)
-    return
+    return LIVE_MS
   }
-  // (2) On a non-idle line the timer is the only pace; the age check is the idle gap's alone.
-  const now = await $.clock.now()
+  // (2) The timer is the pace; the age check is the idle gap's alone, a guard: a run the timer starts is never
+  // inside it (an idle run arms its next 5 minutes on).
   const last = await read($, pace)
-  if (!force && last.idle && now - last.ranAt < IDLE_MS) return
+  if (!force && last.idle && now - last.ranAt < IDLE_MS) return IDLE_MS - (now - last.ranAt)
   // (3) The PATH, bounded, and the language the band's run is always handed.
   const env = await runEnv($)
+  // The PATH is the whole lookup only once nvm's listing answered (`runEnv` keeps it then): a claim of "no CLI" needs it.
+  const wholeEnv = runEnvKept !== null
   const lang = await runLang($)
   // (4) The roster again, the last await before the spawn: the surface may have left while the PATH was looked up.
   if (!(await mayRun($))) {
     await clear($)
-    return
+    return LIVE_MS
   }
   // (5) The spawn.
   const c = clears
@@ -1734,10 +1919,25 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean)
   const reading = readAnswer(result)
   markLocalizes(reading)
   if (!reading.answered) {
-    // A failed run: nothing shown, the baseline and the context left, the next run at the next fire.
+    // A failed run: nothing shown, the baseline and the context left, the next run in a minute.
     if (clears === c) await update($, pace, () => ({ ranAt: now, idle: false }))
     await update($, band, (cur) => (clears === c ? null : cur))
-    return
+    // A rejected run (not one that exited) handed the whole lookup's PATH: that PATH probed once per session; a CLI on
+    // none of its folders is said once, as a toast. A PATH without nvm's folders yet (its listing slower than its
+    // wait) claims nothing and spends no probe.
+    if (result === undefined && wholeEnv && !firstRunSaid && !bandProbed) {
+      bandProbed = true
+      if (await noCliOnPath($, env)) {
+        firstRunSaid = true
+        $.ui.toast(REPLY_NO_CLI, { timeoutMs: HINT_TOAST_MS })
+      }
+    }
+    return delayAfter(reading, now)
+  }
+  // A CLI older than this plugin reads: said once per session; its band and toasts go on as far as it reads.
+  if (reading.tooOld && !firstRunSaid) {
+    firstRunSaid = true
+    $.ui.toast(REPLY_TOO_OLD, { timeoutMs: HINT_TOAST_MS })
   }
   // The reading's facts (`readAnswer`): an object that is no view is hidden, never current (the context cleared, the
   // baseline kept, nothing toasted); an idle answer is read slowly.
@@ -1762,8 +1962,26 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean)
   // The two shapes that are no view are no current view either: each clears the context and keeps the baseline.
   if (isView && view.current === true) {
     const prev = await read($, baseline)
-    const moments = momentsFor(view, prev, option)
+    let moments = momentsFor(view, prev, option)
+    // No team pinned (`toasts: pinned`, the view stating no pick and a readable `CLAUDINHO_TEAM` or none): the
+    // session's first live goal from a record that names its sides is said as under `all` (the first match in the
+    // view's order, with its celebration), then one hint on how to pin; every other moment, as `pinned` with no pin:
+    // nothing.
+    let hint: string | null = null
+    if (option === 'pinned' && view.pick === null && view.pickUnreadable === undefined && !tasteSaid) {
+      // The taste is the first live goal from a record that names its sides: a moment with a `goal` play (one side up
+      // by exactly 1). A correction, a shootout update, a jump of two goals, or any moment of a record with no `names`
+      // (CLI 0.11.2's, a session the update toast reached) is not it, and is not said.
+      const liveIds = new Set(itemsOf(view).map((m) => m.id))
+      const first = momentsFor(view, prev, 'all').find((m) => liveIds.has(m.id) && m.plays.some((p) => p.kind === 'goal'))
+      if (first !== undefined) {
+        tasteSaid = true
+        moments = [first]
+        hint = pinHint(view)
+      }
+    }
     for (const m of moments) for (const text of m.texts) $.ui.toast(text)
+    if (hint !== null) $.ui.toast(hint, { timeoutMs: HINT_TOAST_MS })
     const played = celebrateOn ? moments.filter((m) => m.plays.length > 0) : []
     // What this view says of the celebration's match (its competition was asked above): its score differing from the
     // one the goal was decided on drops it (playing or waiting). The null stops the redraws too; a goal this run
@@ -1828,20 +2046,18 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean)
     // while the match stays in the list.
     await update($, lastContext, () => null)
   }
+  return delayAfter(reading, now)
 }
 
 /**
- * Starts the pace once per module load: the first run right after the hook resolves (never inside it), then every 15
- * seconds. Returns whether it started it now.
+ * Starts the pace once per module load: the first run right after the hook resolves (never inside it); every run then
+ * arms the next (`delayAfter`). Returns whether it started it now.
  */
 function ensurePace($: EngineInterface, option: ToastsOption): boolean {
   if (paced) return false
   paced = true
   $.clock.after(0, () => {
     void tick($, option, true)
-  })
-  $.clock.every(LIVE_MS, () => {
-    void tick($, option, false)
   })
   return true
 }
@@ -1858,6 +2074,10 @@ export const register: Register = (on, options) => {
   languageOption = isLang(options.language) ? options.language : 'auto'
 
   on('session.start', async ($, e, next) => {
+    // A new session (or a reload): the first-run toast, the band's PATH probe and the no-pin taste may be said again.
+    firstRunSaid = false
+    bandProbed = false
+    tasteSaid = false
     // `/claudinho` in every session, headless included: the person types it. A registration refused leaves the start
     // as it was.
     try {
@@ -2070,6 +2290,7 @@ export const register: Register = (on, options) => {
     // typed after it is read for one word alone: `match` opens the pane; anything else is ignored. Neither call
     // rejects out of here: `runEnv` never rejects, and the spawn's rejection is a failed run.
     const env = await runEnv($)
+    const wholeEnv = runEnvKept !== null
     const lang = await runLang($)
     let result: RunResult | undefined
     try {
@@ -2098,6 +2319,9 @@ export const register: Register = (on, options) => {
         return { text: `${viewReply(reading.view, reading)}${PANE_OPEN_NOTE}` }
       }
     }
+    // A rejected run whose handed PATH, the whole lookup, holds no CLI says what to install (no view: no footer to
+    // relay); any other answer as the band reads it.
+    if (result === undefined && wholeEnv && (await noCliOnPath($, env))) return { text: REPLY_NO_CLI }
     return { text: replyTo(reading) }
   })
 

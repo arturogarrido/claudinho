@@ -102,9 +102,10 @@ export function padVisible(s: string, width: number): string {
  * A team's text with its flag beside it, or the text alone: the one rule every
  * renderer applies where a flag goes. The flag prints only when it is a
  * non-empty string, with its one adjoining space (`🇲🇽 Mexico` on the home side,
- * `Mexico 🇲🇽` on the away side); a side with no flag (a club, by the
- * competition's written kind) prints its text alone. Nothing is put in the
- * flag's place: no placeholder, no double space, no code.
+ * `Mexico 🇲🇽` on the away side); a side with no flag (a club, or a nation
+ * whose flag Unicode does not recommend, Northern Ireland; both resolved and
+ * printed by name, by code in the ambient tokens) prints its text alone.
+ * Nothing is put in the flag's place: no placeholder, no double space, no code.
  */
 export function withFlag(text: string, flag: string | undefined, side: 'home' | 'away'): string {
   if (typeof flag !== 'string' || flag === '') return text;

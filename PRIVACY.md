@@ -90,7 +90,8 @@ request** and **writes no file**:
   versions nvm installed (`~/.nvm/versions/node`), checks some of them for `bin/claudinho`, and
   runs the CLI with a `PATH` that adds the folders where the usual installers put global
   commands (listed under "Finding the CLI" in the
-  [plugin README](packages/plugin/README.md#finding-the-cli)). With the `language` option on
+  [plugin README](packages/plugin/README.md#finding-the-cli)). When the CLI cannot be started, it
+  checks each folder of that `PATH` for `claudinho`, to say whether the CLI is installed. With the `language` option on
   `auto`, it reads `CLAUDINHO_LANG` and `LANG` to choose its language. Apart from the CLI's
   answer, that is all it reads from your machine.
 - With the `context` option on (the default), while a match is live, it adds a short note with

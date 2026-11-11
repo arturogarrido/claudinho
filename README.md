@@ -228,8 +228,8 @@ for this marketplace. A new version then installs after a session starts, and lo
 session you start or after `/reload-plugins`.
 To remove it: `claude plugin uninstall claudinho@claudinho`.
 
-The plugin needs `@claudinho/cli` 0.12.0 or later; with an older CLI it works in part, as the plugin README
-[says](https://github.com/arturogarrido/claudinho/tree/main/packages/plugin#with-cli-0112).
+The plugin needs `@claudinho/cli` 0.12.0 or later; with no CLI or an older one it says what to run, as the plugin
+README [says](https://github.com/arturogarrido/claudinho/tree/main/packages/plugin#which-cli-it-needs).
 
 ### Claude Code without the plugin
 
@@ -304,7 +304,7 @@ The tools, the prompts and their fields: the [MCP README](https://github.com/art
   commentary on each match line (`¡GOOOOL!`) and a team's own rally cry when it has one (Mexico's
   "¿Y si sí?", Pumas' "¡Goya!", Arsenal's "COYG!"). A postponed or cancelled match gets neither.
   `--flavor off` turns it off.
-- **Clubs and nations**: a nation shows with its flag, a club by its name. No crests, kits or photos.
+- **Clubs and nations**: a nation shows with its flag and a club by its name; a nation whose flag no platform draws (Northern Ireland) shows by its name too. No crests, kits or photos.
 - **Shareable cards**: `claudinho share next --copy` puts a plain-text card for the group chat on
   your clipboard.
 - **Prediction-market odds**: for World Cup matches, a "who's favored" line from Polymarket's public
