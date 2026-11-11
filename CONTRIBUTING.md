@@ -1,8 +1,8 @@
 # Contributing to Claudinho ⚽
 
 Thanks for being here. Claudinho is an independent, open-source fan project that puts live
-football in your dev environment for the competition you follow, through a CLI, a statusline,
-a score-aware hook and an MCP server. Issues, fixes, and ideas are all welcome.
+football in your dev environment for the competition you follow, through a Claude Code plugin,
+an MCP server, a CLI, a statusline and a score-aware hook. Issues, fixes, and ideas are all welcome.
 
 **The fastest way to help: [⭐ star the repo](https://github.com/arturogarrido/claudinho).**
 It's a solo, $0 project, and stars are the signal that it's worth maintaining.
@@ -11,9 +11,9 @@ It's a solo, $0 project, and stars are the signal that it's worth maintaining.
 
 - **Report a bug**: a wrong score, a rendering glitch, a timezone/locale issue. Include
   the command you ran, your `--tz`/`--lang`, and what you saw vs. expected.
-- **Suggest an idea**: open an issue before a large PR so we can align on scope.
-- **Pick up a [`good first issue`](https://github.com/arturogarrido/claudinho/labels/good%20first%20issue)**:
-  small, well-scoped starting points (new locale strings, a docs fix, a small surface tweak).
+- **Suggest an idea**: open an issue that says what you would like and why.
+- **Propose a change**: a small fix (a typo, a wrong link) can go straight to a pull request; for
+  anything larger, open an issue first so we agree on the scope before you write code.
 
 ## Dev loop
 
@@ -67,24 +67,31 @@ node packages/cli/dist/index.js today --tz America/Mexico_City --lang es
 ## Adding a competition
 
 The supported competitions are ONE table, `SUPPORTED` in
-[`packages/core/src/supported.ts`](packages/core/src/supported.ts). Adding one is:
+[`packages/core/src/supported.ts`](packages/core/src/supported.ts), and every written fact of a
+competition derives from it. The steps, in their order, are in
+[`AGENTS.md`](AGENTS.md#conventions) (the "Conventions" bullet "The supported set is ONE table",
+its list "Adding a competition is, in this order"). In short:
 
-1. **One row**: its ESPN slug, an alias (lower case, digits and hyphens, no dot), its
-   name, the teams it fields (`nation` or `club`), its kind (`league` or `cup`), a
-   league's season name where it has one, its standings shape (`league`, `groups` or
-   `none`), what `bracket` and `markets` are for it (`offered`, `not-offered-yet`,
-   `not-applicable`; a row may offer a bracket only for the bundled competition,
-   whose knockout topology ships with the clients: the derivation refuses any
-   other), and how often it has an edition. Every other written fact
-   (the teams' and competitions' kinds, the season names, the standings shapes, the
-   competitions with no bracket, the market sidecar's scope, the canary's list and
-   cadences) derives from the table; nothing else in the source changes.
-2. **Its fixtures**: test fixtures measured on the real feed for its scoreboard and
-   standings (the parsers' tests, and the canary's), so its shape is checked, not
-   assumed.
-3. **The README matrix**: `pnpm -r build && pnpm gen:readme-matrix` rewrites the
-   capability table in the root README and the CLI's README from the table; a test
-   fails when a committed block differs.
+1. **The row**: its ESPN slug, an alias (lower case, digits and hyphens, no dot), its name, the
+   teams it fields (`nation` or `club`), its kind (`league` or `cup`), a league's season name where
+   it has one, its standings shape (`league`, `groups` or `none`), what `bracket` and `markets` are
+   for it (`offered`, `not-offered-yet`, `not-applicable`; a row may offer a bracket only for the
+   bundled competition, whose knockout topology ships with the clients: the derivation refuses any
+   other), and how often it has an edition.
+2. **The facts the tests spell per row**: its slug, alias, name and derived shape in
+   `supported.test.ts`; its kind in `competition-kind.test.ts`; its standings shape in
+   `standings-tables.test.ts`, and for a league a standings payload recorded from the real feed
+   under `packages/core/test/fixtures/standings/<slug>.json`; its slug in `espn-canary.test.ts`'s
+   watched list (and its league-shape list, when its standings shape is `league`). All four are under
+   `packages/core/test/`.
+3. **The counted copies**: the framing's "and N more" and the "N competitions" counts that
+   `public-copy.test.ts` names, the root `package.json` (`root-package-copy.test.ts`), and the
+   MCP Registry card in `packages/mcp/server.json` (`disclaimer.test.ts`).
+4. **The keywords**: its alias in `packages/cli/package.json`, `packages/mcp/package.json`,
+   `packages/core/package.json` and `.cursor-plugin/plugin.json`.
+5. **The README matrix**: `pnpm -r build && pnpm gen:readme-matrix` rewrites the capability table
+   in the root README and the CLI's README from the table; a test fails when a committed block
+   differs.
 
 ## Comparing MCP tool contracts
 
