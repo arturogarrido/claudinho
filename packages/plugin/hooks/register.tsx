@@ -32,7 +32,8 @@ import type {
  * verbatim. No binary, a timeout, a cut or an answer that is not the object: the band shows nothing (the command says
  * so in one fixed sentence), never a blocked turn. Every run is also what triggers the CLI's refresher. Each band run
  * arms the next one, at a wait read from its answer's fields (`delayAfter`): 15 s while a match is live or just
- * finished, from 2 minutes before the next kickoff and on the syncing line; a minute inside the hour before it, after a
+ * finished, from 2 minutes before the next kickoff and on the syncing line (`syncing`, CLI 0.14.0; an older CLI's view
+ * that is not current waits a minute at most); a minute inside the hour before it, after a
  * failed run and on nothing known; 5 minutes further out, on the sign-off and with nothing chosen. One run is armed at a
  * time, and the next is armed however a run ends. Best effort throughout: a toast says a score change this
  * module observed between two current views, never every goal. The band draws the CLI's `lineParts` (CLI 0.12.0), each
@@ -65,14 +66,15 @@ import type {
  *
  * The first run (plugin 0.7.0): once per session (reset by every `session.start`, a reload included), one 10-second
  * toast says what to run when the CLI is missing or too old, and `/claudinho` answers the same sentence each time.
- * Missing: the run was rejected and every folder of the PATH it was handed (absolute, at most 64) answers that it holds
- * no `claudinho` (the band probes once per session, the command at each rejected run; on Windows no PATH is handed and
- * nothing is claimed). Too old (`tooOld`): an `api` below `CLI_API_FLOOR`, a view stating no `lang`, or an object that
+ * Missing: the run was rejected, the PATH it was handed is the whole lookup (nvm's listing answered), and every folder
+ * of it (absolute, at most 64) answers that it holds no `claudinho` (the band probes once per session, the command at
+ * each rejected run; on Windows no PATH is handed and nothing is claimed). Too old (`tooOld`): an `api` below `CLI_API_FLOOR`, a view stating no `lang`, or an object that
  * is neither a view, the first-run object nor the fallback object. A 0.11.2 keeps its band and its toasts.
  *
  * No team pinned (plugin 0.7.0): under `toasts: pinned`, a current view stating `pick: null` and no `pickUnreadable`
- * says the session's first score change of a live record as `all` would (the first match in the view's order, with
- * its celebration), then one 10-second toast says how to pin (`pinHint`); after it nothing toasts or plays.
+ * says the session's first GOAL of a live record as `all` would (the first match in the view's order whose moment
+ * plays a celebration), then one 10-second toast says how to pin (`pinHint`); every other moment, before it or after,
+ * is not said, until the view states a pick.
  *
  * `/claudinho` is registered at every start, headless included, and answers by itself: one `claudinho ambient --json`
  * run on the band's PATH, read by the band's own reading of the answer (`readAnswer`), replied as the view's line or
@@ -699,7 +701,8 @@ function markLocalizes(reading: Reading): void {
  * What `claudinho ambient --json` prints, as far as this module reads it: a selected competition's VIEW (an object
  * with a `live` object holding an `items` array that says what its line is, `idle` and `empty` as two booleans), or
  * a shape that is no view: the first-run object (no competition chosen: `noCompetition`, the one line), the fallback
- * object (a refused value or a failure: the line and `empty`; an older CLI's `{ line }` has the same shape), and a
+ * object (a refused value or a failure: the line and `empty: true`; an older CLI's `{ line }` lacks `empty`, which
+ * `tooOld` reads as a CLI too old), and a
  * view from a CLI older than `idle` and `empty` (a live list and neither).
  */
 type View = {
@@ -714,6 +717,8 @@ type View = {
   competition?: { slug?: unknown; alias?: unknown } | null
   /** The contract's number (CLI 0.14.0 on: core's `AMBIENT_API`); an older CLI states none. */
   api?: unknown
+  /** CLI 0.14.0: whether the line is the syncing line, said by the CLI's own rule (an older CLI states none). */
+  syncing?: unknown
   /** The ambient preference (`CLAUDINHO_TEAM`'s code, else the saved pin), `null` for none. */
   pick?: unknown
   /** Present when `CLAUDINHO_TEAM` is set to a value the CLI cannot read (`pick` is then null). */
@@ -822,12 +827,19 @@ const relayed = (v: unknown): string | null => (typeof v === 'string' && v.trim(
  */
 function replyTo(reading: Reading): string {
   if (!reading.answered) return REPLY_FAILED
-  if (reading.tooOld) return REPLY_TOO_OLD
+  // A CLI too old: the sentence, and when its answer is a view the plugin reads (0.11.2), that view's footer.
+  if (reading.tooOld) return reading.isView ? withFooter(REPLY_TOO_OLD, reading.view) : REPLY_TOO_OLD
   if (reading.firstRun) return REPLY_FIRST_RUN
   if (!reading.isView) return REPLY_NO_VIEW
-  const text = viewReply(reading.view, reading)
-  // The CLI's own sentences, relayed (core's copy and core's one constant), never spelled here.
-  const footer = [relayed(reading.view.attribution), relayed(reading.view.disclaimer)].filter((s) => s !== null)
+  return withFooter(viewReply(reading.view, reading), reading.view)
+}
+
+/**
+ * A reply made from a view: its text, then the view's attribution, then its disclaimer, each after a blank line and
+ * each only when usable. The CLI's own sentences, relayed (core's copy and core's one constant), never spelled here.
+ */
+function withFooter(text: string, view: View): string {
+  const footer = [relayed(view.attribution), relayed(view.disclaimer)].filter((s) => s !== null)
   return [text, ...footer].join('\n\n')
 }
 
@@ -1785,13 +1797,18 @@ function delayAfter(reading: Reading, now: number): number {
   const live = isObject(view.live) && Array.isArray(view.live.items) ? view.live.items : []
   const finished = Array.isArray(view.finished) ? view.finished : []
   if (live.length > 0 || finished.length > 0) return LIVE_MS
+  // The syncing line, said by the view (CLI 0.14.0 on); its `next` may be a later fixture, never its pace.
+  if (view.syncing === true) return LIVE_MS
   if (view.next === null || view.next === undefined) return LIVE_MS
   const kickoff = isObject(view.next) && typeof view.next.kickoff === 'string' ? Date.parse(view.next.kickoff) : Number.NaN
   if (!Number.isFinite(kickoff)) return MINUTE_MS
   const d = kickoff - now
   if (d <= SOON_MS) return LIVE_MS
   if (d <= HOUR_MS) return waitUntil(d - SOON_MS, MINUTE_MS)
-  return waitUntil(d - HOUR_MS, IDLE_MS)
+  // A CLI that states no `syncing` (0.12.0 to 0.13.1) may be syncing behind a countdown: a view that is not current
+  // waits a minute at most.
+  const unsure = typeof view.syncing !== 'boolean' && view.current !== true
+  return waitUntil(d - HOUR_MS, unsure ? MINUTE_MS : IDLE_MS)
 }
 
 /** The band's next run armed `ms` from now, the one armed before cancelled: one armed run at a time. */
@@ -1875,6 +1892,8 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean,
   if (!force && last.idle && now - last.ranAt < IDLE_MS) return IDLE_MS - (now - last.ranAt)
   // (3) The PATH, bounded, and the language the band's run is always handed.
   const env = await runEnv($)
+  // The PATH is the whole lookup only once nvm's listing answered (`runEnv` keeps it then): a claim of "no CLI" needs it.
+  const wholeEnv = runEnvKept !== null
   const lang = await runLang($)
   // (4) The roster again, the last await before the spawn: the surface may have left while the PATH was looked up.
   if (!(await mayRun($))) {
@@ -1899,9 +1918,10 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean,
     // A failed run: nothing shown, the baseline and the context left, the next run in a minute.
     if (clears === c) await update($, pace, () => ({ ranAt: now, idle: false }))
     await update($, band, (cur) => (clears === c ? null : cur))
-    // A rejected run (not one that exited): the PATH it was handed probed once per session; a CLI on none of its
-    // folders is said once, as a toast.
-    if (result === undefined && !firstRunSaid && !bandProbed) {
+    // A rejected run (not one that exited) handed the whole lookup's PATH: that PATH probed once per session; a CLI on
+    // none of its folders is said once, as a toast. A PATH without nvm's folders yet (its listing slower than its
+    // wait) claims nothing and spends no probe.
+    if (result === undefined && wholeEnv && !firstRunSaid && !bandProbed) {
       bandProbed = true
       if (await noCliOnPath($, env)) {
         firstRunSaid = true
@@ -1944,8 +1964,12 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean,
     // its celebration), then one hint on how to pin; after it, as `pinned` with no pin: nothing.
     let hint: string | null = null
     if (option === 'pinned' && view.pick === null && view.pickUnreadable === undefined && !tasteSaid) {
+      // The taste is a GOAL: a live record's moment that plays a celebration (one side up by exactly 1); a correction,
+      // a shootout update or a jump of two goals is not it, and is not said.
       const liveIds = new Set(itemsOf(view).map((m) => m.id))
-      const first = momentsFor(view, prev, 'all').find((m) => liveIds.has(m.id))
+      const first = momentsFor(view, prev, 'all').find(
+        (m) => liveIds.has(m.id) && m.plays.some((p) => p.kind === 'goal' || p.kind === 'banner'),
+      )
       if (first !== undefined) {
         tasteSaid = true
         moments = [first]
@@ -2262,6 +2286,7 @@ export const register: Register = (on, options) => {
     // typed after it is read for one word alone: `match` opens the pane; anything else is ignored. Neither call
     // rejects out of here: `runEnv` never rejects, and the spawn's rejection is a failed run.
     const env = await runEnv($)
+    const wholeEnv = runEnvKept !== null
     const lang = await runLang($)
     let result: RunResult | undefined
     try {
@@ -2290,8 +2315,9 @@ export const register: Register = (on, options) => {
         return { text: `${viewReply(reading.view, reading)}${PANE_OPEN_NOTE}` }
       }
     }
-    // A rejected run whose handed PATH holds no CLI says what to install; any other answer as the band reads it.
-    if (result === undefined && (await noCliOnPath($, env))) return { text: REPLY_NO_CLI }
+    // A rejected run whose handed PATH, the whole lookup, holds no CLI says what to install (no view: no footer to
+    // relay); any other answer as the band reads it.
+    if (result === undefined && wholeEnv && (await noCliOnPath($, env))) return { text: REPLY_NO_CLI }
     return { text: replyTo(reading) }
   })
 

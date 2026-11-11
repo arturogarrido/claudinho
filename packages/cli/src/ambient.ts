@@ -201,6 +201,7 @@ export function ambientView(state: CacheState | undefined, opts: AmbientOpts = {
     lineParts: prompt.parts,
     idle: prompt.unfitted === TOURNAMENT_COMPLETE_LINE,
     empty: prompt.unfitted === NOTHING_KNOWN_LINE,
+    syncing,
     context: context === '' ? null : context,
     live: { items, total: list.total, shown: list.shown, truncated: list.truncated, complete: list.complete },
     finished,

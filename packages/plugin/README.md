@@ -137,10 +137,15 @@ sentence under it, or one plain sentence when there is nothing to show.
 ## Which CLI it needs
 
 `@claudinho/cli` 0.12.0 or later, the newest for everything on this page. With no CLI on the `PATH` the plugin runs,
-a toast says `To see scores, install the CLI: npm i -g @claudinho/cli`, once per session. With a CLI older than
-0.12.0, it says `This plugin needs a newer CLI: npm i -g @claudinho/cli@latest`; a 0.11.2 still shows the band and
-toasts a score change in its own English line. `/claudinho` answers the same sentence each time you ask. A newer CLI
-states the version of what it prints (`api`), and the plugin compares it with the lowest it reads.
+a toast says `To see scores, install the CLI: npm i -g @claudinho/cli`, once per session. With CLI 0.11.2, it says
+`This plugin needs a newer CLI: npm i -g @claudinho/cli@latest`, and still shows the band and toasts a score change in
+the CLI's own English line. `/claudinho` answers the same sentence each time you ask. A CLI older than 0.11.2 has no
+`ambient` command: the band stays empty and `/claudinho` answers `The CLI gave no answer.` A newer CLI states the
+number of the contract it prints (`api`; not a version), and the plugin compares it with the lowest it reads.
+
+A CLI before 0.14.0 does not say when the band's line is `live · syncing…`. With one, the plugin checks every minute,
+not every five, whenever no match is listed live and the reading is not current: up to 60 runs an hour off-match
+(240 before this plugin version), and 12 an hour once the CLI is 0.14.0 or later.
 
 ## Details
 
@@ -176,7 +181,7 @@ cache fresh:
 
 | The last run said | The next run |
 |---|---|
-| A match live, or one that finished in the last ten minutes | 15 seconds |
+| A match live, the line `live · syncing…`, or a match that finished in the last ten minutes | 15 seconds |
 | The next kickoff 2 minutes away or less, or passed and not live yet | 15 seconds |
 | The next kickoff within the hour | every minute, then 15 seconds from 2 minutes before |
 | The next kickoff more than an hour away | every 5 minutes, then every minute from an hour before |
@@ -184,7 +189,8 @@ cache fresh:
 | No competition followed, or the World Cup's sign-off | every 5 minutes |
 
 The next fixture is your pinned team's when it has one: with your team's match days away, another match of the
-competition reaches the band up to five minutes after it kicks off, and a goal in that gap is said late, never lost.
+competition reaches the band up to five minutes after it kicks off. A goal in that gap may go unsaid: the first
+reading of a match says nothing (see [When a toast is raised](#when-a-toast-is-raised)).
 That command answers from the cache and never waits on the network; when the cache is due for a
 refresh it starts the CLI's background refresh, as the statusline does. While no competition is
 followed it reads no cache and starts nothing: its line is `⚽ claudinho follow`. The CLI fits the line to the band's width and marks
@@ -198,10 +204,12 @@ The first reading of a match says nothing, and neither does a change of competit
 ways, the first that holds is said: `Score updated`, then `Penalties`, then the goal, then `Goals`. Every toast
 follows the `toasts` option.
 
-**With no team pinned** (and no `CLAUDINHO_TEAM`), `toasts: pinned` says the session's first score change of a live
-match as `all` would, with its celebration, then one toast for ten seconds:
-`Pin your team to get only its goals: claudinho follow <alias> --team <name>`, with the competition you follow. After
-that it raises no toast and plays no celebration for the rest of the session; the band's score still changes, in bold.
+**With no team pinned** (and no `CLAUDINHO_TEAM`), `toasts: pinned` says the session's first goal in a live match as
+`all` would, with its celebration, then one toast for ten seconds:
+`Pin your team to get only its goals: claudinho follow <alias> --team <name>`, with the competition you follow. A
+correction, a shootout update or two goals between readings is not that first goal, and is not said. After it, no
+toast and no celebration until you pin a team (the next reading follows the pin); the band's score still changes, in
+bold.
 
 **Full time is said only by a current reading.** The CLI lists a finished match for ten minutes after the reading that
 saw it end, and stops polling once the day's last match is over, so a session with no current reading in the minutes

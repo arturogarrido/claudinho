@@ -145,6 +145,13 @@ export interface AmbientView {
    * never from the text.
    */
   readonly empty: boolean;
+  /**
+   * The line is the syncing line (`live · syncing…`): a fixture is inside its window and no live match was read
+   * whole. Said by the line's own rule (`syncingWindow`), never read from the text; `next` is decided apart from it,
+   * so a syncing view can carry a later fixture there. A program polls at the live pace while this is true. An added
+   * key: `api` stays 1; a CLI before it states none.
+   */
+  readonly syncing: boolean;
   /** The hook's block, as `claudinho hook` prints it while a match is live; `null` when it prints nothing. */
   readonly context: string | null;
   /**

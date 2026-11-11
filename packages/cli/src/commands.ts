@@ -1303,6 +1303,7 @@ export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): 
       lineParts: read.lineParts,
       idle: read.idle,
       empty: read.empty,
+      syncing: read.syncing,
       context: read.context,
       live: read.live,
       finished: read.finished,
