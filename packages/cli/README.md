@@ -128,6 +128,18 @@ World Cup. A club shows by its name (by its code
 on the statusline: `ARS 2–1 CHE 50'`), with no flag, and `next` and `match` say the stage:
 "League", "Play-offs", or the provider's own words for a round Claudinho does not know.
 
+In a break between match days, an empty `today` names the next day with a match, and an empty
+`live` names the next kickoff and its countdown:
+
+```text
+  No matches scheduled for this date.
+  Next match day: Sat 2026-11-21, 4 matches.
+  See them: claudinho today 2026-11-21
+```
+
+When nothing is scheduled in the next 14 days, it says so. `--json` carries `nextDay`,
+`nextKickoff` or `horizon`.
+
 ### One match
 
 `match <id>` lists the goals and cards the provider sent for a match in play or finished, one row

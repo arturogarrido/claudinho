@@ -100,6 +100,18 @@ import {
   type AmbientView,
   type CompetitionKey,
   DISCLAIMER,
+  aheadFromEntries,
+  dayPointer,
+  livePointer,
+  nextDayLines,
+  nextDayReachable,
+  nextKickoffLines,
+  pointerExtras,
+  pointerWanted,
+  readAhead,
+  scheduleSpan,
+  todayCommand,
+  type AheadRead,
 } from '@claudinho/core';
 import Table from 'cli-table3';
 import { type CliConfig, edgeSelection, readSavedChoice } from './config';
@@ -146,6 +158,7 @@ import type {
   ShareStyle,
 } from '@claudinho/core';
 import { readCurrentState } from './cache';
+import { DISCOVERY_TTL_MS, scheduleView } from './scheduleSlice';
 import { ambientView } from './ambient';
 import {
   type AmbientPick,
@@ -698,6 +711,49 @@ function promptLineEnv(): { compact: boolean; max: number | undefined } {
   return { compact, max };
 }
 
+/**
+ * The schedule ahead an empty `today` or `live` points from (core
+ * `ahead.ts`), asked only once the gate (`pointerWanted`) said so. The cache's
+ * schedule slice when it is fresh: an index believed, from an answer that was
+ * whole, written within the discovery TTL of the request's clock and on the
+ * request's provider day (so it was read over the same span); then no request
+ * at all. Else one read of the schedule ahead through the command's adapter
+ * (a throttle it meets is persisted like any other read's; under a cooldown
+ * it asks nothing). The slice is READ here, never written: it is the
+ * refresher's.
+ */
+async function aheadFor(adapter: ProviderAdapter, cfg: CliConfig, now: Date): Promise<AheadRead | undefined> {
+  const slice = readCurrentState(cfg.source, cfg.competition)?.schedule;
+  if (slice !== undefined) {
+    const nowMs = now.getTime();
+    const view = scheduleView(slice, nowMs);
+    const at = view.updatedAt !== undefined ? Date.parse(view.updatedAt) : Number.NaN;
+    const age = nowMs - at;
+    if (
+      view.index !== undefined &&
+      view.complete &&
+      age >= 0 &&
+      age < DISCOVERY_TTL_MS &&
+      scheduleSpan(adapter, new Date(at)).start === scheduleSpan(adapter, now).start
+    ) {
+      return aheadFromEntries(view.index, adapter, new Date(at));
+    }
+  }
+  return readAhead(adapter, now);
+}
+
+/**
+ * The command a pointer line names (core `todayCommand`): the day when it is
+ * not today's, and the flags that chose this answer (`--competition` when the
+ * flag chose it, `--tz` when the flag gave a valid zone), so it answers alike.
+ */
+function pointerCommand(cfg: CliConfig, date: string | undefined): string {
+  const sel = cfg.selection;
+  const competition = sel.kind === 'selected' && sel.chosenBy === 'flag' ? (sel.alias ?? sel.slug) : undefined;
+  const tz = cfg.tzFromFlag && cfg.tz && isValidTimeZone(cfg.tz) ? cfg.tz : undefined;
+  return todayCommand({ ...(date ? { date } : {}), ...(competition ? { competition } : {}), ...(tz ? { tz } : {}) });
+}
+
 /** `claudinho today [date]` */
 export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void> {
   const { cfg, t } = ctx;
@@ -712,6 +768,14 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   const day = await getMatchesForDate(adapter, targetDate, resolveTz(cfg.tz));
   const { matches, degraded, source } = day;
   const todays = fixturesByDate(targetDate, matches, cfg.tz);
+  // An empty day that a whole read answered, off the bundle and with no
+  // verdict standing: the next match day (or the horizon), from the schedule
+  // ahead. The gate is asked before the read, and so is whether the span
+  // could name anything after this day (a day far before it costs nothing).
+  const zone = resolveTz(cfg.tz);
+  const wanted = pointerWanted(day, cfg.competition, todays.length === 0) && nextDayReachable(adapter, targetDate, zone, now);
+  const ahead = wanted ? await aheadFor(adapter, cfg, now) : undefined;
+  const pointer = ahead ? dayPointer(ahead, targetDate, today, zone, now) : undefined;
   const market = await reliableMarketSignals(ctx, todays, now);
 
   // `--json` keeps the overlay's provider in `source` and states the verdict;
@@ -727,6 +791,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
       matches: todays,
       marketComplete: market.complete,
       marketSignals: Object.fromEntries(market.signals),
+      ...pointerExtras(pointer),
       ...verdictExtras(day),
       ...competitionKey(cfg),
     });
@@ -755,6 +820,10 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
             t('today.none')),
       ),
     );
+    if (pointer) {
+      const command = 'nextDay' in pointer ? pointerCommand(cfg, pointer.nextDay.date === today ? undefined : pointer.nextDay.date) : undefined;
+      for (const line of nextDayLines(pointer, { lang: cfg.lang, ...(command ? { command } : {}) })) out(c.dim('  ' + line));
+    }
   } else {
     // The home, middle and away columns, measured once over the rows shown;
     // the flairs chosen once over them too, in print order (core
@@ -797,9 +866,13 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
   const now = requestClock(adapter, ctx.now);
   const live = await getLiveMatches(adapter, now);
   const { matches, degraded, source } = live;
+  // Nothing in play, by a whole read off the bundle with no verdict standing:
+  // the next kickoff AHEAD (never a match now), or the horizon.
+  const ahead = pointerWanted(live, cfg.competition, matches.length === 0) ? await aheadFor(adapter, cfg, now) : undefined;
+  const pointer = ahead ? livePointer(ahead, now) : undefined;
 
   if (cfg.json) {
-    emitJson({ degraded, source: source ?? null, matches, ...verdictExtras(live), ...competitionKey(cfg) });
+    emitJson({ degraded, source: source ?? null, matches, ...pointerExtras(pointer), ...verdictExtras(live), ...competitionKey(cfg) });
     return;
   }
 
@@ -817,6 +890,16 @@ export async function cmdLive(ctx: Ctx): Promise<void> {
     // A verdict (between editions) stands instead of the empty note; a read
     // that was not whole says none in play was READ, not that none is.
     out(c.dim('  ' + (verdictNotice(live, cfg.lang) ?? liveNoneRead(live, cfg.lang) ?? t('live.none'))));
+    if (pointer) {
+      const zone = resolveTz(cfg.tz);
+      let command: string | undefined;
+      if ('nextKickoff' in pointer) {
+        const day = localDate(pointer.nextKickoff, zone);
+        command = pointerCommand(cfg, day === localDate(now.toISOString(), zone) ? undefined : day);
+      }
+      const lines = nextKickoffLines(pointer, { lang: cfg.lang, tz: zone, now, ...(command ? { command } : {}) });
+      for (const line of lines) out(c.dim('  ' + line));
+    }
   } else {
     // The home, middle and away columns, measured once over the rows shown;
     // the flairs chosen once over them too, in print order (core

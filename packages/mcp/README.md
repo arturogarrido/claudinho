@@ -126,7 +126,10 @@ exists. In particular, a missing next match does not mean a team is out.
 
 **Club competitions.** `get_next_fixture` and `get_match` search from yesterday to 14 days ahead:
 an empty answer carrying `horizon` or `window` is about that span. Several teams matching one name
-come back as `candidates`. Between two seasons, `get_today`, `get_live`, `get_next_fixture` and
+come back as `candidates`. An empty `get_today` carries `nextDay` (the next local day with a
+fixture, and its `count` when known), an empty `get_live` carries `nextKickoff` (the next kickoff
+ahead, never a match in play), and either carries `horizon` when none falls in the next 14 days.
+Between two seasons, `get_today`, `get_live`, `get_next_fixture` and
 `get_match` carry `betweenEditions`. `get_bracket` answers `inapplicable` for a league season with no
 knockout tie (the Premier League, LALIGA), and `unsupported` for every other competition but the
 World Cup. A club has no `flag`. A match's `stage` is `REGULAR` for a league's season, `LEAGUE` for

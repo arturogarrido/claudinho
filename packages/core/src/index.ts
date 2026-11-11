@@ -225,10 +225,17 @@ export {
   matchWindowSentence,
   nextHorizonSentence,
   nextNoneReadSentence,
+  nextDayLines,
+  nextKickoffLines,
   nextShareCard,
   tableShareCard,
+  todayCommand,
   unservedSentence,
 } from './share/cards';
+// The next match day an empty today or live points at: the answer's own text
+// and plain fields (`nextDay`, `nextKickoff`, `horizon`), never a verdict.
+export { aheadFromEntries, dayPointer, livePointer, nextDayReachable, pointerExtras, pointerWanted, readAhead } from './ahead';
+export type { AheadHorizon, AheadPointer, AheadRead, DayPointer, KickoffPointer, PointerExtras } from './ahead';
 export type {
   BracketShareCard,
   DayAttribution,

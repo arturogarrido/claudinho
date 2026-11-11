@@ -298,6 +298,8 @@ The tools, the prompts and their fields: the [MCP README](https://github.com/art
 
 - **Scores, fixtures, standings**: `today`, `live`, `next`, `table`, `match <id>` with its goals and
   cards, and `bracket` for the World Cup. Kickoff times and days are in your timezone (`--tz`).
+  In a league's break, an empty `today` names the next match day (`Next match day: Sat
+  2026-11-21, 4 matches.`), and an empty `live` names the next kickoff.
 - **Four languages**: English, Spanish, Portuguese and French (`--lang`), with a line of
   commentary on each match line (`¡GOOOOL!`) and a team's own rally cry when it has one (Mexico's
   "¿Y si sí?", Pumas' "¡Goya!", Arsenal's "COYG!"). A postponed or cancelled match gets neither.

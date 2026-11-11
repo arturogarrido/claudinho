@@ -16,6 +16,13 @@ import {
 export interface CliConfig {
   lang: string;
   tz: string | undefined;
+  /**
+   * True when `--tz` gave the zone (not `CLAUDINHO_TZ`): a command a surface
+   * prints for the reader to run (the next match day's `claudinho today ...`)
+   * repeats the flag, so it answers in the same zone. Optional so a config
+   * built by hand may omit it.
+   */
+  tzFromFlag?: boolean;
   json: boolean;
   color: boolean;
   source: string;
@@ -142,6 +149,7 @@ export function resolveConfig(opts: RawGlobalOpts, saved = readSavedChoice()): C
   return {
     lang: pickLang(opts.lang),
     tz: opts.tz ?? process.env.CLAUDINHO_TZ ?? undefined,
+    ...(opts.tz !== undefined && opts.tz !== '' ? { tzFromFlag: true } : {}),
     json: opts.json ?? false,
     color: pickColor(opts.color),
     source: opts.source ?? process.env.CLAUDINHO_SOURCE ?? 'espn',
