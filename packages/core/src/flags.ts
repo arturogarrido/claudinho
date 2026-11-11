@@ -173,15 +173,21 @@ const BY_CODE: Record<string, string> = Object.assign(Object.create(null), {
 });
 
 /**
- * Nations whose flag Unicode does not recommend, by normalized name and by
- * 3-letter code. Northern Ireland's would be the subdivision tag sequence
- * `gbnir`, which is not RGI (Unicode recommends only England, Scotland and
- * Wales among subdivisions): every platform draws it as a plain black flag, a
- * placeholder's shape. Such a nation carries no flag at all and is rendered by
- * its name, like a club.
+ * The written list of nations whose flag Unicode does not recommend. Northern
+ * Ireland's would be the subdivision tag sequence `gbnir`, which is not RGI
+ * (Unicode recommends only England, Scotland and Wales among subdivisions):
+ * every platform draws it as a plain black flag, a placeholder's shape. Such a
+ * nation carries no flag at all and is rendered by its name, like a club. A
+ * second nation joins only by an edit to this list; the flag guards read it, so
+ * no other table name or code may answer no flag.
  */
-const FLAGLESS_NAMES: ReadonlySet<string> = new Set(['Northern Ireland'].map(norm));
-const FLAGLESS_CODES: ReadonlySet<string> = new Set(['NIR']);
+export const FLAGLESS_NATIONS: ReadonlyArray<{ readonly name: string; readonly code: string }> = Object.freeze([
+  Object.freeze({ name: 'Northern Ireland', code: 'NIR' }),
+]);
+
+/** The written list's lookups: by normalized name and by upper-cased 3-letter code. */
+const FLAGLESS_NAMES: ReadonlySet<string> = new Set(FLAGLESS_NATIONS.map((n) => norm(n.name)));
+const FLAGLESS_CODES: ReadonlySet<string> = new Set(FLAGLESS_NATIONS.map((n) => n.code.toUpperCase()));
 
 /**
  * Resolve a flag emoji from a nation name or code.
