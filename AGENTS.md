@@ -151,6 +151,63 @@ Releases ship via `.github/workflows/publish.yml` on a `v*` tag, using npm **tru
 publishing** (OIDC) — **no `NPM_TOKEN`**. A trusted publisher is configured on npm for all
 three packages (`@claudinho/core` · `cli` · `mcp`), all published **with provenance**.
 
+The workflow has four jobs, so the npm credential never shares a job with the repository's code or
+its dependencies. `build` (`contents: read`) checks the commit and the tag, installs, builds,
+typechecks, tests, lints, packs the three tarballs (`pnpm pack`, which rewrites `workspace:` ranges)
+and uploads them with `packages/mcp/server.json` as one artifact, their sha256 in its summary and its
+output. `publish` (`id-token: write`, in the GitHub environment `release`) checks out nothing and
+installs nothing: it downloads the artifact, refuses any file `build`'s sums do not list or do not
+match, passes each tarball through a shape filter (the layout `pnpm pack` writes and nothing else),
+reads its manifest with the same call `npm publish` makes, from the pacote inside the npm that
+publishes (so what it checks is what npm reads), refuses a manifest that is not the tag's package
+and version with `publishConfig` exactly `{"access":"public"}`, and runs `npm publish <tarball>
+--provenance --ignore-scripts` with the registry, global and scoped, on the command line, from an
+empty directory of its own, for core, then cli, then mcp
+(Node 24: trusted publishing needs npm 11.5.1 or later, newer than Node 22's). `release`
+(`contents: write`) creates the GitHub Release. `mcp-registry` (`id-token: write`, outside the
+environment) publishes `server.json` from the artifact. The invariant of the two jobs that hold the
+credential: nothing `build` produced can change where they authenticate or publish, or run code in
+them; it can only be the bytes that are published.
+
+**Release-day checklist for npm and the `release` environment** (the maintainer's steps; numbered
+"checklist step N" to keep them apart from the release steps below):
+
+1. Once, and BEFORE checklist step 2: GitHub, repository Settings → Environments → `release` (New environment the first time;
+   the existing one if a run already created it). Under "Deployment branches and tags", choose
+   "Selected branches and tags" and add the tag rule `v*` (no branch). Under "Required reviewers",
+   add yourself; leave "Prevent self-review" off (you push the tag, so with it on nobody could
+   approve). Save the rules.
+2. For each of `@claudinho/core`, `@claudinho/cli` and `@claudinho/mcp`, no more than 2 days before
+   the tag: npmjs.com, the package's Settings → Trusted publishing. Delete the publisher that names
+   no environment, then add a GitHub Actions publisher: owner `arturogarrido`, repository
+   `claudinho`, workflow `publish.yml`, environment `release`, and under "Allowed actions" tick
+   direct `npm publish` (a publisher created after Sep 3, 2026 allows `npm stage publish` alone
+   unless you do). npm's documentation: "A newly created trusted publisher configuration must
+   complete its first successful publish within 2 days." A publisher not used within 2 days
+   expires ("it expires and can no longer be used or edited"): delete it and add it again before
+   tagging. Once a release has validated them, this step is done; it is not repeated per release.
+3. Tag the release (release step 3 below), approve the `publish` job when GitHub asks, and watch the
+   four jobs.
+
+With the environment-less publisher gone there is no fallback: only a job in the `release`
+environment can publish, and a failure publishes nothing. A `publish` job refused on authentication
+is fixed on npm (the publisher's owner, repository, workflow file, environment, or its allowed
+action), then "Re-run failed jobs"; recreating a publisher takes a few minutes.
+
+Checklist step 1 comes first. If a tag is pushed before its rules are saved, GitHub's documentation
+says "Running a workflow that references an environment that does not exist will create an
+environment with the referenced name", so the `publish` job runs in an unprotected `release` and
+nothing asks for approval:
+
+- With checklist step 2 already done, the publisher that names `release` accepts that run, and it
+  publishes on its first try without anyone's approval; nothing fails, so there is nothing to
+  re-run. Save the environment's rules (checklist step 1) at once, before the next tag.
+- With the environment-less publisher still on npm, whether npm accepts a token naming an
+  environment against a publisher naming none is not documented. If it publishes, the same holds.
+  If it fails on authentication, FIRST save the rules on the `release` environment GitHub created
+  (checklist step 1, on the existing environment), THEN do checklist step 2, and only then "Re-run
+  failed jobs": a re-run before the rules are saved runs without approval.
+
 To cut a release:
 
 1. Bump the version in the **three** `package.json` files (`packages/{cli,mcp,core}/package.json`).
@@ -182,17 +239,22 @@ To cut a release:
    tagged: check that `gh pr view <n> --json state` says `MERGED`, then run the block again. When
    `git tag` or the push fails, stop: this step never deletes or moves a tag on `origin`; read the
    tags as "When the tag step stops at `git tag` or the push" below says, and do only what its case
-   says. The workflow runs on a `v*` tag push alone (it has no manual trigger). It first fails on a
-   commit `main` does not contain (a tag on the branch's commit publishes nothing), then gates (build,
-   typecheck, test, lint, and a `refs/tags/v*` ref whose version every package carries), then
-   `pnpm -r publish --provenance` ships all three via OIDC (versions already on npm are skipped)
-   and auto-creates the GitHub Release
-   (`gh release create --generate-notes`); a second job, `mcp-registry`, then publishes the tag's
-   record to the official MCP Registry.
+   says. The workflow runs on a `v*` tag push alone (it has no manual trigger). Its `build` job first
+   fails on a commit `main` does not contain (a tag on the branch's commit publishes nothing), then on
+   a ref that is not a `refs/tags/v*` tag whose version every package carries, then gates (build,
+   typecheck, test, lint) and packs. The `publish` job then waits for the maintainer's approval (the
+   `release` environment), and ships all three via OIDC with `npm publish` of each tarball (versions
+   already on npm are skipped; the first failure stops it, so cli and mcp never go out without core);
+   the `release` job creates the GitHub Release (`gh release create --generate-notes`); the
+   `mcp-registry` job then publishes the tag's record to the official MCP Registry.
    A failed run is retried on the same tag with "Re-run failed jobs" (`gh run rerun <id> --failed`):
-   `pnpm -r publish` skips a version npm already has, the Release step skips a Release that exists,
-   and `mcp-registry` skips a version the Registry has.
-4. Once both jobs are green, update the maintainer's own machine and read each version back. None of
+   a re-run job reads the artifact `build` uploaded and checks it against `build`'s sums (a check
+   that fails stops the job; "Re-run all jobs" then rebuilds), the `publish` job asks for approval
+   again and skips a version npm already has, the Release step skips a Release that exists, and
+   `mcp-registry` skips a version the Registry has. The artifact is kept 7 days: a `publish`
+   approved later than that, or a job re-run alone after it, fails at the download, and "Re-run all
+   jobs" rebuilds (and asks for approval again).
+4. Once all four jobs are green, update the maintainer's own machine and read each version back. None of
    it updates by default: an npm global install never updates itself, and Claude Code leaves plugin
    auto-update off by default for a third-party marketplace such as this one.
    - The CLI: `command -v claudinho` names the copy that runs. For npm's (the usual case),
@@ -234,8 +296,8 @@ anything else. When `gh` or `git ls-remote` fails, nothing is decided: read agai
 Then the tag on `origin` decides first:
 
 - **`origin` has the tag on the merge commit:** the release is tagged, and the step ends here;
-  nothing is pushed or run again. The publish workflow runs on that tag (step 4 waits for its two
-  jobs). A local tag elsewhere would stop a later `git tag`: `git tag -d vX.Y.Z` removes it.
+  nothing is pushed or run again. The publish workflow runs on that tag (release step 4 waits for its
+  four jobs). A local tag elsewhere would stop a later `git tag`: `git tag -d vX.Y.Z` removes it.
 - **`origin` has the tag elsewhere** (an earlier bare `git tag` was pushed): stop; the step ends
   here. Moving a pushed tag is the maintainer's decision, never an agent's: the tag is public, and
   the workflow may already have published from it (a commit on `main` passes its check).
@@ -261,7 +323,8 @@ first case. Each of those actions is taken once: when the reads land in the same
 it, stop and hand them to the maintainer.
 
 **The MCP Registry record publishes automatically on every tag.** The `mcp-registry` job in
-`publish.yml` runs after the npm publish succeeded, waits until npm serves the version (`npm view`
+`publish.yml` runs after the npm publish and the Release succeeded, reads `server.json` from the
+`build` job's artifact (it checks out nothing), waits until npm serves the version (`npm view`
 to an 8-minute deadline, every probe bounded at 20 seconds, so the step ends by about 8m40s and the
 publisher's retries are spent on Registry errors), authenticates with GitHub Actions OIDC
 (`mcp-publisher login github-oidc` — no token, no device flow; the Registry JWT lives five minutes,
@@ -295,6 +358,21 @@ Oct 31, 2026. Nothing builds or publishes one any more; `scripts/check-pack.mjs`
   publisher for later releases.
 - Account 2FA set to "Authorization and writes" forces an OTP that CI can't supply; trusted
   publishing (OIDC) sidesteps it entirely.
+- The credential and the dependencies never share a job (a security review, Nov 10, 2026): when one
+  job installed and ran every dev dependency while holding `id-token: write`, a compromised
+  dependency arriving in a merged bump could have published any version of the three packages with
+  valid provenance. `packages/core/test/publish-workflow.test.ts` refuses a job that holds
+  `id-token: write` and checks out the repository, installs anything, or runs a file. The artifact
+  is data to those jobs, never configuration: npm applies any config key a manifest's
+  `publishConfig` holds, so the publish job refuses a `publishConfig` other than
+  `{"access":"public"}`, passes the registry on the command line, and runs npm outside the artifact's
+  directory. The manifest it checks is read by npm's own reader (`pacote.manifest`, the call `npm
+  publish` makes for a tarball), after a filter that refuses any archive `pnpm pack` does not write:
+  a second reader of the same bytes was bypassed twice in review (a config key, then a second
+  `package.json` the first reader never saw). A compromised build-time dependency can still alter
+  the tarball `build` makes; the split does not close that.
+- Node 22's bundled npm (10.x) is too old for trusted publishing (11.5.1 or later); the `publish`
+  job runs Node 24 and refuses an older npm rather than installing one beside the credential.
 
 ## Commit attribution (all agents)
 
