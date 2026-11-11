@@ -6,7 +6,7 @@
  * day, so a day counted from either the wall clock or the adapter's clock is
  * red here.
  */
-import { EspnAdapter, FakeMarketProvider, type ProviderAdapter } from '@claudinho/core';
+import { allFixtures, EspnAdapter, FakeMarketProvider, type Match, type ProviderAdapter } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdMarkets, cmdMatch, cmdNext, cmdShare, cmdToday, InputError } from '../src/commands';
 import type { CliConfig } from '../src/config';
@@ -22,20 +22,31 @@ const LA = 'America/Los_Angeles';
 const eastern = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
 const easternDay = (iso: string) => eastern.format(new Date(iso)).replace(/-/g, '');
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
-type Ev = { id: string; date: string; home: [string, string, string] };
+type Ev = { id: string; date: string; home: [string, string, string]; final?: boolean };
 
 const WED: Ev = { id: '501', date: '2026-11-11T20:00:00Z', home: ['364', 'LIV', 'Liverpool'] }; // Wed 12:00 LA
 const SAT: Ev = { id: '502', date: '2026-11-14T15:00:00Z', home: ['363', 'CHE', 'Chelsea'] }; // Sat Nov 14, 07:00 LA
 const FAR: Ev = { id: '503', date: '2026-11-21T17:30:00Z', home: ['361', 'NEW', 'Newcastle United'] }; // Sat Nov 21, 09:30 LA
+/** Tue Nov 17, 15:00 LA (7 calendar days); Tue Nov 17, 23:00 UTC (6 calendar days from Wed Nov 11). */
+const ZONED: Ev = { id: '504', date: '2026-11-17T23:00:00Z', home: ['362', 'TOT', 'Tottenham Hotspur'] };
+/** Played: Tue Nov 3, 12:00 LA, 7 calendar days back. */
+const WEEK_AGO: Ev = { id: '505', date: '2026-11-03T20:00:00Z', home: ['367', 'BRE', 'Brentford'], final: true };
 
 let fetches = 0;
+/** An adapter that reaches nothing: every read fails, as offline. */
+function offline(): ProviderAdapter {
+  const fail = async (): Promise<never> => {
+    throw new Error('offline');
+  };
+  return { name: 'espn', competition: 'fifa.world', capabilities: { push: false, latencyHintSec: 0 }, fetchByDate: fail, fetchLive: fail, fetchWindow: fail };
+}
 function feed(events: Ev[]): ProviderAdapter {
   const side = (homeAway: string, id: string, abbreviation: string, displayName: string) => ({ homeAway, score: '0', team: { id, abbreviation, displayName } });
   const event = (e: Ev) => ({
     id: e.id,
     date: e.date,
     season: { slug: 'regular-season' },
-    status: { type: { name: 'STATUS_SCHEDULED', state: 'pre' } },
+    status: e.final ? { type: { name: 'STATUS_FULL_TIME', state: 'post', completed: true } } : { type: { name: 'STATUS_SCHEDULED', state: 'pre' } },
     competitions: [{ competitors: [side('home', ...e.home), side('away', '359', 'ARS', 'Arsenal')] }],
   });
   const fetchImpl = (async (input: unknown) => {
@@ -165,13 +176,28 @@ describe('share and markets take the same day forms', () => {
     expect(JSON.stringify(body)).not.toContain('Liverpool');
   });
 
-  it("share tomorrow is not today's card; share tue (today) is", async () => {
+  it("share tomorrow is not today's card", async () => {
     await cmdShare('tomorrow', undefined, { hashtag: false, installLine: false }, ctx(feed([WED])));
     expect(text()).toContain('Liverpool');
     expect(text()).not.toContain("Today's matches");
+  });
+
+  it.each(['2026-11-10', 'tue', '+0'])(
+    'share %s (a typed day that is today): the run cue keeps the date, so the card replays on another day',
+    async (arg) => {
+      await cmdShare(arg, undefined, { hashtag: false }, ctx(feed([WED])));
+      expect(text()).toContain('Try it: npx @claudinho/cli --competition premier-league today 2026-11-10');
+      expect(text()).toContain('Matches · Nov 10');
+    },
+  );
+
+  it("share with no day, or the word today: today's card and the plain cue", async () => {
+    await cmdShare(undefined, undefined, { hashtag: false }, ctx(feed([WED])));
+    expect(text()).toContain("Today's matches · Nov 10");
+    expect(text()).toMatch(/Try it: npx @claudinho\/cli --competition premier-league today\n/);
     writes = [];
-    await cmdShare('tue', undefined, { hashtag: false, installLine: false }, ctx(feed([WED])));
-    expect(text()).toContain("Today's matches");
+    await cmdShare('today', undefined, { hashtag: false }, ctx(feed([WED])));
+    expect(text()).toMatch(/Try it: npx @claudinho\/cli --competition premier-league today\n/);
   });
 
   it('share with a word the grammar does not read is still a match id (the id branch), never a refusal', async () => {
@@ -214,6 +240,40 @@ describe('a single match more than 6 days away says its date, once', () => {
     writes = [];
     await cmdMatch('503', ctx(feed([FAR]), { json: true }));
     expect((emitted().lines as string[]).join('\n')).toContain('Kickoff Sat, Nov 21, 09:30');
+  });
+
+  it("next: the days are counted in the viewer's zone (7 in Los Angeles, 6 in UTC, for the same instants)", async () => {
+    await cmdNext('Arsenal', ctx(feed([ZONED])));
+    expect(lines().find((l) => l.includes('Tottenham'))).toContain('Tue, Nov 17, 15:00');
+    writes = [];
+    await cmdNext('Arsenal', ctx(feed([ZONED]), { tz: 'UTC' }));
+    const row = lines().find((l) => l.includes('Tottenham'));
+    expect(row).toContain('Tue 23:00');
+    expect(row).not.toContain('Nov 17');
+  });
+
+  it('match <id> (the World Cup, whose past matches it finds): 7 calendar days back says the date; 6 days back, the weekday and time', async () => {
+    // The opening match, read from the bundle (the provider is unreachable here: the bundled record is shown).
+    const opener = allFixtures()[0] as Match;
+    const kickoff = new Date(opener.kickoff);
+    const daysAfter = (n: number) => new Date(kickoff.getTime() + n * 86_400_000);
+    const wc = (now: Date) => ({ ...ctx(offline(), { competition: 'fifa.world', tz: 'UTC' }), now });
+    const label = new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }).format(kickoff);
+    const short = new Intl.DateTimeFormat('en', { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }).format(kickoff);
+    await cmdMatch(opener.id, wc(daysAfter(7)));
+    expect(text()).toContain(`Kickoff ${label}`);
+    writes = [];
+    await cmdMatch(opener.id, wc(daysAfter(6)));
+    expect(text()).toContain(`Kickoff ${short}`);
+    expect(text()).not.toContain(label);
+  });
+
+  it("today <date>: a past day's rows keep the weekday and time", async () => {
+    await cmdToday('2026-11-03', ctx(feed([WEEK_AGO])));
+    expect(lines()).toContain('Matches · Tue 2026-11-03');
+    const row = lines().find((l) => l.includes('Brentford'));
+    expect(row).toBeDefined();
+    expect(row).not.toContain('Nov 3');
   });
 
   it('match <id>: a near kickoff keeps the weekday and time', async () => {

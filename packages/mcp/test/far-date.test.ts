@@ -4,7 +4,7 @@
  * request's clock; a day's list (`get_today`) keeps its rows' weekday and time
  * (its header names the day). Text only: no structured key changes.
  */
-import type { Match, ProviderAdapter } from '@claudinho/core';
+import { allFixtures, type Match, type ProviderAdapter } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import { toolGetMatch, toolGetNextFixture, toolGetToday } from '../src/tools';
 
@@ -61,6 +61,24 @@ describe('a single match far away says its date', () => {
   it('get_match: the date', async () => {
     const r = await toolGetMatch({ ...base, id: FAR.id, adapter: adapter([FAR]), lang: 'en' });
     expect(r.text).toContain('Sat, Nov 21, 09:30 (in 10d11h)');
+  });
+
+  it('get_match (the World Cup, whose past matches it finds): 7 calendar days back says the date; 6 days back, the weekday and time', async () => {
+    // The opening match from the bundle, the provider unreachable: the bundled record, still scheduled, is the line.
+    const opener = allFixtures()[0] as Match;
+    const kickoff = new Date(opener.kickoff);
+    const fail = async (): Promise<never> => {
+      throw new Error('offline');
+    };
+    const offline: ProviderAdapter = { name: 'espn', competition: 'fifa.world', capabilities: { push: false, latencyHintSec: 0 }, fetchByDate: fail, fetchLive: fail, fetchWindow: fail };
+    const at = (days: number) => new Date(kickoff.getTime() + days * 86_400_000);
+    const label = new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }).format(kickoff);
+    const short = new Intl.DateTimeFormat('en', { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }).format(kickoff);
+    const call = (now: Date) => toolGetMatch({ id: opener.id, competition: 'fifa.world', adapter: offline, now, tz: 'UTC', lang: 'en', flavor: 'off' });
+    expect((await call(at(7))).text).toContain(label);
+    const six = (await call(at(6))).text;
+    expect(six).toContain(short);
+    expect(six).not.toContain(label);
   });
 
   it("get_today: a day's list keeps the weekday and the time", async () => {

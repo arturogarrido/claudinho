@@ -141,6 +141,15 @@ describe("resolveDayArg: the day named, counted in the viewer's zone from the re
     expect(day('sun', fallBack, LA)).toBe('2026-11-01');
   });
 
+  it('the eve of a 23-hour day (Los Angeles, Mar 7, 2026, 23:30 PST): tomorrow and +1 are Mar 8, never 24 hours later', () => {
+    // 24 hours after 23:30 PST on Mar 7 is 00:30 PDT on Mar 9: the 23-hour day in between is skipped.
+    const eve = new Date('2026-03-08T07:30:00.000Z');
+    expect(day('today', eve, LA)).toBe('2026-03-07');
+    expect(day('tomorrow', eve, LA)).toBe('2026-03-08');
+    expect(day('+1', eve, LA)).toBe('2026-03-08');
+    expect(day('+2', eve, LA)).toBe('2026-03-09');
+  });
+
   it('a 23-hour day (Los Angeles, Mar 8, 2026): tomorrow from 23:30 PDT is Mar 9, and from 00:30 PST it is Mar 9 too', () => {
     expect(day('tomorrow', new Date('2026-03-09T06:30:00.000Z'), LA)).toBe('2026-03-09'); // Mar 8 23:30 PDT
     expect(day('+1', new Date('2026-03-08T08:30:00.000Z'), LA)).toBe('2026-03-09'); // Mar 8 00:30 PST
@@ -198,9 +207,28 @@ describe('kickoffLabel: a single match says its date from 7 calendar days away',
     expect(kickoffLabel(far, { tz: LA, locale: 'fr', now: NOW })).toBe('sam. 21 nov., 09:30');
   });
 
-  it('today and the past: the weekday and the time', () => {
+  it('counts the days in the viewer\'s zone: 7 days in Los Angeles is 6 in UTC for the same instants', () => {
+    // Tue Nov 17, 15:00 PST; Tue Nov 17, 23:00 UTC. Today is Tue Nov 10 in Los Angeles, Wed Nov 11 in UTC.
+    const kickoff = '2026-11-17T23:00:00.000Z';
+    expect(calendarDaysUntil(kickoff, NOW, LA)).toBe(7);
+    expect(calendarDaysUntil(kickoff, NOW, 'UTC')).toBe(6);
+    expect(kickoffLabel(kickoff, { tz: LA, locale: 'en', now: NOW })).toBe('Tue, Nov 17, 15:00');
+    expect(kickoffLabel(kickoff, { tz: 'UTC', locale: 'en', now: NOW })).toBe('Tue 23:00');
+  });
+
+  it('today and the past within 6 days: the weekday and the time', () => {
     expect(kickoffLabel('2026-11-11T07:50:00.000Z', { tz: LA, locale: 'en', now: NOW })).toBe('Tue 23:50');
-    expect(kickoffLabel('2026-11-01T17:00:00.000Z', { tz: LA, locale: 'en', now: NOW })).toBe('Sun 09:00');
+    // Wed Nov 4, 12:00 PST: 6 calendar days back.
+    expect(calendarDaysUntil('2026-11-04T20:00:00.000Z', NOW, LA)).toBe(-6);
+    expect(kickoffLabel('2026-11-04T20:00:00.000Z', { tz: LA, locale: 'en', now: NOW })).toBe('Wed 12:00');
+  });
+
+  it('7 or more calendar days back: the date too (a past match is as ambiguous as a far one)', () => {
+    // Tue Nov 3, 12:00 PST: 7 calendar days back, the same weekday as today.
+    expect(calendarDaysUntil('2026-11-03T20:00:00.000Z', NOW, LA)).toBe(-7);
+    expect(kickoffLabel('2026-11-03T20:00:00.000Z', { tz: LA, locale: 'en', now: NOW })).toBe('Tue, Nov 3, 12:00');
+    expect(kickoffLabel('2026-11-01T17:00:00.000Z', { tz: LA, locale: 'en', now: NOW })).toBe('Sun, Nov 1, 09:00');
+    expect(kickoffLabel('2026-11-01T17:00:00.000Z', { tz: LA, locale: 'es', now: NOW })).toBe('dom, 1 nov, 09:00');
   });
 
   it('an unreadable kickoff says the unknown time, never a guessed one', () => {
