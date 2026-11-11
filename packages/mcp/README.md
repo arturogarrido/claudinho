@@ -105,10 +105,12 @@ per call with `flavor`.
 ## Details for agent builders
 
 **Choosing the competition.** A request's competition is its `competition` argument, else the
-server's `CLAUDINHO_COMPETITION`, else the choice `claudinho follow <alias>` saved. An unknown value
-is a tool error that lists the aliases. With none of the three, every competition-answering tool
-answers `noCompetition: true` and `competition: null` beside its empty shape, with a sentence saying
-what to do; `list_competitions` answers `current: null`.
+server's `CLAUDINHO_COMPETITION`, else the choice `claudinho follow <alias>` saved. The value is an
+alias, the competition's name (`Premier League`), a short form (`epl`) or an ESPN slug. An unknown
+value is a tool error that suggests the nearest alias when there is one and lists the aliases. With
+none of the three, every competition-answering tool answers `noCompetition: true` and
+`competition: null` beside its empty shape, with a sentence saying what to do; `list_competitions`
+answers `current: null`.
 
 **What every answer carries.** Human-readable text and structured content, validated against each
 tool's declared `outputSchema`. The text starts with the competition it is for (a share card says it

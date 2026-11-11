@@ -1,9 +1,10 @@
 /**
  * The supported set, as ONE table: the sixteen competitions the product
  * answers for, one row each, and every written fact about a competition that
- * the rest of the code reads (its teams' kind, its own kind, a league's season
- * name, its standings shape, what `bracket` and the market sidecar offer, how
- * often it has an edition). Every other table derives from this one
+ * the rest of the code reads (the names a person may type for it, its teams'
+ * kind, its own kind, a league's season name, its standings shape, what
+ * `bracket` and the market sidecar offer, how often it has an edition). Every
+ * other table derives from this one
  * ({@link deriveTables}): `TEAM_KIND`, `COMPETITION_KIND`, `SEASON_SLUG`,
  * `STANDINGS_SHAPE` (`kinds.ts`), `NO_BRACKET` (`competition.ts`),
  * `MARKET_COMPETITIONS` (`markets/provider.ts`); `bracketCapability`, the
@@ -40,6 +41,19 @@ export interface CompetitionEntry {
   readonly alias: string;
   /** What a surface names it (`Premier League`): the provider's name, shortened where it says the country. */
   readonly name: string;
+  /**
+   * Other names a person may type for it (`English Premier League`): human
+   * names, matched as a name is (see {@link competitionValue}); absent where
+   * there is none. Never printed: a surface names it by `name`.
+   */
+  readonly otherNames?: readonly string[];
+  /**
+   * The short forms a person may type for it (`epl`, `pl`): 2 to 6 lower-case
+   * letters or digits (`deriveTables` refuses any other at load), matched as a
+   * name is; absent where there is none. `follow --list` prints them beside
+   * the name.
+   */
+  readonly shortForms?: readonly string[];
   /** The teams it fields. */
   readonly teams: TeamKind;
   /** A league (its season is the regular stage) or a cup (rounds and phases). */
@@ -97,29 +111,100 @@ export const BUNDLED_SLUG = 'fifa.world';
  * the league phase). A competition joins "not applicable" by a written fact.
  * `markets`: offered on the World Cup alone: the sidecar derives its event
  * slugs from the World Cup series only.
+ * `otherNames` and `shortForms`: what a person may type besides the alias and
+ * the name (`English Premier League`, `epl`), each owned by ONE row
+ * (`deriveTables` refuses a key two rows share) and none a word a command
+ * argument already means (`off`, a command's name, a day word such as `sat`).
  */
 export const SUPPORTED: readonly CompetitionEntry[] = Object.freeze(
   (
     [
-      { slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', teams: 'nation', kind: 'cup', standings: 'groups', bracket: 'offered', markets: 'offered', cadenceYears: 4 },
-      { slug: 'uefa.euro', alias: 'euro', name: 'EURO', teams: 'nation', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 4 },
+      { slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', otherNames: ['FIFA World Cup'], shortForms: ['wc'], teams: 'nation', kind: 'cup', standings: 'groups', bracket: 'offered', markets: 'offered', cadenceYears: 4 },
+      { slug: 'uefa.euro', alias: 'euro', name: 'EURO', otherNames: ['European Championship'], shortForms: ['euros'], teams: 'nation', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 4 },
       { slug: 'conmebol.america', alias: 'copa-america', name: 'Copa América', teams: 'nation', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 4 },
-      { slug: 'uefa.nations', alias: 'nations-league', name: 'UEFA Nations League', teams: 'nation', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 2 },
-      { slug: 'concacaf.nations.league', alias: 'concacaf-nations-league', name: 'Concacaf Nations League', teams: 'nation', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 2 },
-      { slug: 'concacaf.gold', alias: 'gold-cup', name: 'Gold Cup', teams: 'nation', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 2 },
-      { slug: 'eng.1', alias: 'premier-league', name: 'Premier League', teams: 'club', kind: 'league', seasonSlug: 'english-premier-league', standings: 'league', bracket: 'not-applicable', markets: 'not-offered-yet', cadenceYears: 1 },
+      { slug: 'uefa.nations', alias: 'nations-league', name: 'UEFA Nations League', shortForms: ['unl'], teams: 'nation', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 2 },
+      { slug: 'concacaf.nations.league', alias: 'concacaf-nations-league', name: 'Concacaf Nations League', shortForms: ['cnl'], teams: 'nation', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 2 },
+      { slug: 'concacaf.gold', alias: 'gold-cup', name: 'Gold Cup', otherNames: ['Concacaf Gold Cup'], shortForms: ['gold'], teams: 'nation', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 2 },
+      { slug: 'eng.1', alias: 'premier-league', name: 'Premier League', otherNames: ['English Premier League'], shortForms: ['epl', 'pl'], teams: 'club', kind: 'league', seasonSlug: 'english-premier-league', standings: 'league', bracket: 'not-applicable', markets: 'not-offered-yet', cadenceYears: 1 },
       { slug: 'esp.1', alias: 'laliga', name: 'LALIGA', teams: 'club', kind: 'league', seasonSlug: 'laliga', standings: 'league', bracket: 'not-applicable', markets: 'not-offered-yet', cadenceYears: 1 },
       { slug: 'ita.1', alias: 'serie-a', name: 'Serie A', teams: 'club', kind: 'league', seasonSlug: 'italian-serie-a', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
-      { slug: 'ger.1', alias: 'bundesliga', name: 'Bundesliga', teams: 'club', kind: 'league', seasonSlug: 'german-bundesliga', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
-      { slug: 'mex.1', alias: 'liga-mx', name: 'Liga MX', teams: 'club', kind: 'league', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
-      { slug: 'uru.1', alias: 'liga-auf', name: 'Liga AUF Uruguaya', teams: 'club', kind: 'league', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
-      { slug: 'uefa.champions', alias: 'champions-league', name: 'Champions League', teams: 'club', kind: 'cup', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
-      { slug: 'conmebol.libertadores', alias: 'libertadores', name: 'Libertadores', teams: 'club', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
-      { slug: 'concacaf.champions', alias: 'concacaf-champions-cup', name: 'Concacaf Champions Cup', teams: 'club', kind: 'cup', standings: 'none', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
-      { slug: 'fifa.cwc', alias: 'club-world-cup', name: 'Club World Cup', teams: 'club', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 4 },
+      { slug: 'ger.1', alias: 'bundesliga', name: 'Bundesliga', shortForms: ['buli'], teams: 'club', kind: 'league', seasonSlug: 'german-bundesliga', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
+      { slug: 'mex.1', alias: 'liga-mx', name: 'Liga MX', shortForms: ['lmx'], teams: 'club', kind: 'league', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
+      { slug: 'uru.1', alias: 'liga-auf', name: 'Liga AUF Uruguaya', shortForms: ['auf'], teams: 'club', kind: 'league', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
+      { slug: 'uefa.champions', alias: 'champions-league', name: 'Champions League', otherNames: ['UEFA Champions League'], shortForms: ['ucl', 'cl'], teams: 'club', kind: 'cup', standings: 'league', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
+      { slug: 'conmebol.libertadores', alias: 'libertadores', name: 'Libertadores', otherNames: ['Copa Libertadores', 'CONMEBOL Libertadores'], teams: 'club', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
+      { slug: 'concacaf.champions', alias: 'concacaf-champions-cup', name: 'Concacaf Champions Cup', shortForms: ['ccc'], teams: 'club', kind: 'cup', standings: 'none', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 1 },
+      { slug: 'fifa.cwc', alias: 'club-world-cup', name: 'Club World Cup', otherNames: ['FIFA Club World Cup'], shortForms: ['cwc'], teams: 'club', kind: 'cup', standings: 'groups', bracket: 'not-offered-yet', markets: 'not-offered-yet', cadenceYears: 4 },
     ] satisfies CompetitionEntry[]
   ).map((e) => Object.freeze(e)),
 );
+
+/** A short form's grammar: 2 to 6 lower-case letters or digits. */
+const SHORT_FORM = /^[a-z0-9]{2,6}$/;
+/** A usable name key, once normalized: letters and digits, nothing else. */
+const NAME_KEY = /^[a-z0-9]+$/;
+/** The longest value matched as a name, in UTF-16 units: bounded before any work. */
+const MAX_NAME_UNITS = 64;
+/** The longest normalized value a suggestion is looked for. */
+const MAX_SUGGEST_KEY = 32;
+/** The most aliases a refusal suggests. */
+const MAX_SUGGESTIONS = 2;
+
+/**
+ * A typed name as the grammar compares it: decomposed (`NFD`) and stripped of
+ * its combining marks (`América` is `America`), lower-cased, and with the
+ * U+0020 space, the hyphen and the underscore removed (`Premier League`,
+ * `premier-league` and `premier_league` are `premierleague`). Nothing else is
+ * removed: a tab, a no-break space, a zero-width or a control character stays,
+ * and the result is then not a usable key. Undefined for a value that is not
+ * a usable key (anything but `^[a-z0-9]+$` after this), or one longer than
+ * {@link MAX_NAME_UNITS} before it (bounded before the work).
+ */
+function nameKey(value: string): string | undefined {
+  if (value.length > MAX_NAME_UNITS) return undefined;
+  const key = value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[ _-]/g, '');
+  return NAME_KEY.test(key) ? key : undefined;
+}
+
+/** A row's usable name keys: its alias, name, other names and short forms, normalized. */
+function nameKeys(e: CompetitionEntry): string[] {
+  const keys: string[] = [];
+  for (const v of [e.alias, e.name, ...(e.otherNames ?? []), ...(e.shortForms ?? [])]) {
+    const k = nameKey(v);
+    if (k !== undefined) keys.push(k);
+  }
+  return keys;
+}
+
+/**
+ * The LATER words of some of a row's names, each as a key from that word to
+ * the end (`Liga AUF Uruguaya`: `aufuruguaya`, `uruguaya`): words split on a
+ * space, a hyphen or an underscore.
+ */
+function laterWordKeys(names: readonly string[]): string[] {
+  const keys: string[] = [];
+  for (const v of names) {
+    const words = v.split(/[ _-]+/).filter(Boolean);
+    for (let i = 1; i < words.length; i++) {
+      const k = nameKey(words.slice(i).join(' '));
+      if (k !== undefined) keys.push(k);
+    }
+  }
+  return keys;
+}
+
+/** The Levenshtein distance between two short keys (both bounded by the caller). */
+function editDistance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min((prev[j] ?? 0) + 1, (cur[j - 1] ?? 0) + 1, (prev[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length] ?? 0;
+}
 
 /** A lookup table keyed by slug: no prototype, frozen, so a key is only ever a row's. */
 function record<V>(pairs: Iterable<readonly [string, V]>): Readonly<Record<string, V>> {
@@ -170,11 +255,26 @@ export interface DerivedTables {
  * topology the clients ship, and only the bundled competition has one (the
  * same question as `bundleApplies(slug)` with no season, asked of the leaf's
  * own constant), so a wrong row never reaches a user.
+ *
+ * So are a short form outside its grammar (2 to 6 lower-case letters or
+ * digits) and a name key two rows share (an alias, a name, an other name or a
+ * short form, compared as {@link competitionValue} compares them: `Premier
+ * League`, `premier_league` and `premierleague` are one key), naming it: a
+ * value a person types names one row or none.
  */
 export function deriveTables(entries: readonly CompetitionEntry[]): DerivedTables {
+  const owner = new Map<string, string>();
   for (const e of entries) {
     if (e.bracket === 'offered' && e.slug !== BUNDLED_SLUG) {
       throw new Error(`${e.slug} offers a bracket the bundle does not describe: only the bundled competition ships a topology`);
+    }
+    for (const s of e.shortForms ?? []) {
+      if (!SHORT_FORM.test(s)) throw new Error(`${e.slug}'s short form "${s}" is not 2 to 6 lower-case letters or digits`);
+    }
+    for (const key of new Set(nameKeys(e))) {
+      const other = owner.get(key);
+      if (other !== undefined) throw new Error(`the name key "${key}" belongs to both ${other} and ${e.slug}`);
+      owner.set(key, e.slug);
     }
   }
   return Object.freeze({
@@ -214,12 +314,22 @@ const MAX_SLUG_UNITS = 64;
 
 /**
  * What ONE value names, by the grammar every source of a selection shares
- * (a flag, the environment, the saved choice): the row whose alias or slug it
- * is; `raw` for a well-formed slug the table does not hold (experimental);
- * undefined for anything else (`foo`, `ENG.1`, a space, an empty string). The
- * resolver (`competition.ts`) and the config file's reader (`userConfig.ts`)
- * ask this one question, so the file can never hold a value the resolver
- * would refuse.
+ * (a flag, the environment, the saved choice, a tool's `competition`
+ * argument), in this order:
+ *   - the row whose alias or slug it is, exactly;
+ *   - for a value WITHOUT a dot, the row one of whose names it is: its alias,
+ *     its name, an other name or a short form, compared as {@link nameKey}
+ *     compares them (case, accents, spaces, hyphens and underscores ignored:
+ *     `Premier League`, `PREMIER-LEAGUE`, `epl`); a value longer than 64
+ *     units is not looked at. A prefix is not a name (`premier` is refused,
+ *     and {@link suggestCompetitions} then names the alias);
+ *   - for a value with a dot, `raw` when it is a well-formed slug the table
+ *     does not hold (experimental), and nothing else (`ENG.1` is refused);
+ *   - undefined for anything else (`foo`, a tab, an empty string).
+ * Every lookup is a search of the rows, never a key of an object
+ * (`constructor` is refused). The resolver (`competition.ts`) and the config
+ * file's reader (`userConfig.ts`) ask this one question, so the file can never
+ * hold a value the resolver would refuse.
  */
 export function competitionValue(
   value: unknown,
@@ -228,8 +338,60 @@ export function competitionValue(
   if (typeof value !== 'string' || value === '') return undefined;
   const row = table.find((e) => e.alias === value) ?? entryOf(value, table);
   if (row) return { row };
-  if (value.length <= MAX_SLUG_UNITS && RAW_SLUG.test(value)) return { raw: value };
-  return undefined;
+  if (value.includes('.')) {
+    return value.length <= MAX_SLUG_UNITS && RAW_SLUG.test(value) ? { raw: value } : undefined;
+  }
+  const key = nameKey(value);
+  if (key === undefined) return undefined;
+  const named = table.find((e) => nameKeys(e).includes(key));
+  return named ? { row: named } : undefined;
+}
+
+/**
+ * The aliases a refused value is nearest to: at most two, nearest first, the
+ * same answer every time. By these steps:
+ *   0. nothing for a value that resolves ({@link competitionValue}: an exact
+ *      match is not a near miss), a value with a dot (the slug grammar
+ *      suggests nothing), or one whose normalized form ({@link nameKey}) is not
+ *      letters and digits or is longer than 32 (the input is bounded before
+ *      any work);
+ *   1. with 3 characters or more: the rows one of whose whole keys (alias,
+ *      name, other name, short form) STARTS with it (`premier`, `copa`);
+ *   2. with 3 characters or more: the rows where a LATER word of the alias or
+ *      the name starts with it (the key from that word to the end: `cup` is
+ *      `world-cup`'s, `uruguay` is `Liga AUF Uruguaya`'s), then the rows where
+ *      a later word of an other name does (an other name is the farther one:
+ *      `champions` is `concacaf-champions-cup` before `European
+ *      Championship`);
+ *   3. with 5 characters or more: the rows with a whole key within 2 edits
+ *      (Levenshtein: `bundesliag`), nearest first.
+ * Step 1's rows come first, then step 2's, then step 3's; within a step, ties
+ * go by the table's order; each row once; at most two.
+ */
+export function suggestCompetitions(value: string, table: readonly CompetitionEntry[] = SUPPORTED): string[] {
+  if (typeof value !== 'string' || value.includes('.') || competitionValue(value, table) !== undefined) return [];
+  const key = nameKey(value);
+  if (key === undefined || key.length > MAX_SUGGEST_KEY) return [];
+  const picked: CompetitionEntry[] = [];
+  const take = (rows: Iterable<CompetitionEntry>) => {
+    for (const e of rows) {
+      if (picked.length >= MAX_SUGGESTIONS) return;
+      if (!picked.includes(e)) picked.push(e);
+    }
+  };
+  if (key.length >= 3) {
+    take(table.filter((e) => nameKeys(e).some((k) => k.startsWith(key))));
+    take(table.filter((e) => laterWordKeys([e.alias, e.name]).some((k) => k.startsWith(key))));
+    take(table.filter((e) => laterWordKeys(e.otherNames ?? []).some((k) => k.startsWith(key))));
+  }
+  if (key.length >= 5) {
+    const near = table
+      .map((e, i) => ({ e, i, d: Math.min(...nameKeys(e).map((k) => editDistance(key, k))) }))
+      .filter((x) => x.d <= 2)
+      .sort((a, b) => a.d - b.d || a.i - b.i);
+    take(near.map((x) => x.e));
+  }
+  return picked.map((e) => e.alias);
 }
 
 /** What each surface is for a competition. */

@@ -69,7 +69,7 @@ export interface RawGlobalOpts {
   json?: boolean;
   color?: boolean;
   source?: string;
-  /** `--competition <alias|slug>`: an explicit competition (wins over `CLAUDINHO_COMPETITION`). */
+  /** `--competition <alias|slug>` (or a name or short form): an explicit competition (wins over `CLAUDINHO_COMPETITION`). */
   competition?: string;
   flavor?: string;
   /** false when --no-markets is passed (commander negatable option). */
