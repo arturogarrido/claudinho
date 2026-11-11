@@ -163,26 +163,70 @@ jobs:
           if-no-files-found: warn
 
   audit:
+    # A required check, so it always reports under this name (no job-level
+    # `if:`). On a pull request it audits only when the dependency tree or this
+    # workflow changes (pnpm-lock.yaml, pnpm-workspace.yaml, any package.json,
+    # ci.yml), read from GitHub's merge commit against its first parent; any
+    # failure to read that difference audits. Every other event, a push to main
+    # included, always audits. A third-party advisory published against an
+    # unchanged tree is left to Dependabot's alerts, not to an unrelated PR.
     name: audit (shipped deps)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The merge commit and its first parent (the base branch's tip).
+          fetch-depth: 2
+      - name: Decide whether the dependency tree changed
+        id: changed
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          audit=false
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            audit=true
+            echo "Event '$EVENT_NAME' is not a pull request: auditing."
+          elif ! files=$(git -c core.quotePath=false diff --name-only HEAD^1 HEAD 2>&1); then
+            audit=true
+            echo "Could not read the pull request's changed files, so auditing: $files"
+          else
+            while IFS= read -r f; do
+              case "$f" in
+                pnpm-lock.yaml | pnpm-workspace.yaml | .github/workflows/ci.yml | package.json | */package.json)
+                  audit=true
+                  echo "Changed: $f (decides the dependency tree): auditing."
+                  ;;
+                \"*)
+                  audit=true
+                  echo "Changed: $f (a quoted path, not read exactly): auditing."
+                  ;;
+              esac
+            done <<< "$files"
+            if [ "$audit" = false ]; then
+              echo "Audit skipped: no file that decides the dependency tree changed."
+            fi
+          fi
+          echo "audit=$audit" >> "$GITHUB_OUTPUT"
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
           check-latest: true # the newest patch of the line, not the runner's cached one
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - name: Install
+        if: steps.changed.outputs.audit == 'true'
+        run: pnpm install --frozen-lockfile
 
       # Gate the build only on vulnerabilities in *shipped* (production) deps —
       # dev-toolchain CVEs are caught by Dependabot but shouldn't block CI.
       - name: Audit production dependencies
+        if: steps.changed.outputs.audit == 'true'
         run: pnpm audit --prod
 
       # Surface dev-toolchain advisories for visibility, without failing.
       - name: Audit all dependencies (non-blocking)
+        if: steps.changed.outputs.audit == 'true'
         run: pnpm audit || true
 
   # The Claude Code plugin (packages/plugin, no package.json and no dependencies): its manifest, the root marketplace
