@@ -303,12 +303,12 @@ describe('the work is bounded before it starts', () => {
   }
 
   it('the refusal of such a value echoes a bounded, sanitized label, never the raw value', () => {
-    for (const v of ['x'.repeat(100_000), `epl\u0007‮${'y'.repeat(100_000)}`, `\u001b[31m${'z'.repeat(5_000)}`]) {
+    for (const v of ['x'.repeat(100_000), `epl\u0007\u202e${'y'.repeat(100_000)}`, `\u001b[31m${'z'.repeat(5_000)}`]) {
       const msg = selectionRefusal(resolveCompetition(v), 'en') ?? '';
       const first = msg.split('\n')[0] ?? '';
       expect(first.length).toBeLessThan(80);
       // biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what the test refuses.
-      expect(first).not.toMatch(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/);
+      expect(first).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/);
       expect(msg.length).toBeLessThan(600);
     }
   });
@@ -316,7 +316,7 @@ describe('the work is bounded before it starts', () => {
 
 describe('an invisible character is refused, never repaired into a name', () => {
   it('refused, and nothing suggested: default-ignorable marks, variation selectors, joiners, zero-width space', () => {
-    for (const v of ['epl͏', 'epl️', 'epl᠋', 'epl\u{e0100}', 'epl‍', 'epl​', 'e͏pl', 'premier͏', 'premier league️', 'Copa Am͏érica']) {
+    for (const v of ['epl\u034f', 'epl\ufe0f', 'epl\u180b', 'epl\u{e0100}', 'epl\u200d', 'epl\u200b', 'e\u034fpl', 'premier\u034f', 'premier league\ufe0f', 'Copa Am\u034férica']) {
       expect(slugOf(v), JSON.stringify(v)).toBeUndefined();
       expect(suggestCompetitions(v), JSON.stringify(v)).toEqual([]);
     }
@@ -345,7 +345,7 @@ describe('every key a lookup accepts is one the load-time guard checked', () => 
     for (const alias of ['a'.repeat(65), 'Ligue-1', 'ligue.1', 'ligue--1', '-ligue', 'ligue-', 'ligue 1', '']) {
       expect(() => deriveTables([...SUPPORTED, { ...ROW, alias }]), JSON.stringify(alias)).toThrow();
     }
-    for (const name of ['Ligue\t1', 'x'.repeat(70), '​']) {
+    for (const name of ['Ligue\t1', 'x'.repeat(70), '\u200b']) {
       expect(() => deriveTables([...SUPPORTED, { ...ROW, name }]), JSON.stringify(name)).toThrow();
       expect(() => deriveTables([...SUPPORTED, { ...ROW, otherNames: [name] }]), JSON.stringify(name)).toThrow();
     }

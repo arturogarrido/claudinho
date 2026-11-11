@@ -96,7 +96,7 @@ describe('what an agent reads about it', () => {
 
 describe('round 1 of the review (#231)', () => {
   it('a 100,000-unit value or one with control and format characters: the tool error echoes a bounded, sanitized label', async () => {
-    for (const v of ['x'.repeat(100_000), `epl\u0007‮${'y'.repeat(50_000)}`]) {
+    for (const v of ['x'.repeat(100_000), `epl\u0007\u202e${'y'.repeat(50_000)}`]) {
       let msg = '';
       try {
         await toolGetToday({ competition: v });
@@ -106,7 +106,7 @@ describe('round 1 of the review (#231)', () => {
       expect(msg.startsWith('Unknown competition "')).toBe(true);
       expect(msg.length).toBeLessThan(600);
       // biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what the test refuses.
-      expect(msg).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/);
+      expect(msg).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/);
     }
   });
 
