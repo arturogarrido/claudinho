@@ -104,8 +104,8 @@ describe('claudinho ambient --json', () => {
     expect(v.pick).toBeNull();
     expect(v.competition).toEqual({ slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'saved' });
     expect(v).toMatchObject({ current: true, degraded: false, source: 'espn', updatedAt: NOW.toISOString(), disclaimer: DISCLAIMER, attribution: 'Live data: ESPN' });
-    expect(Object.keys(v)).toEqual(['api', 'line', 'lineParts', 'idle', 'empty', 'context', 'live', 'finished', 'current', 'next', 'pick', 'competition', 'lang', 'words', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer', 'attribution']);
-    expect(v).toMatchObject({ idle: false, empty: false });
+    expect(Object.keys(v)).toEqual(['api', 'line', 'lineParts', 'idle', 'empty', 'syncing', 'context', 'live', 'finished', 'current', 'next', 'pick', 'competition', 'lang', 'words', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer', 'attribution']);
+    expect(v).toMatchObject({ idle: false, empty: false, syncing: false });
     expect(items[0]?.line).toBe("Arsenal 2–1 Chelsea (50')"); // the hook's own line for the record
     expect(v.staleAfter).toBe(new Date(NOW.getTime() + DISPLAY_STALE_MS).toISOString());
     expect(vi.mocked(spawn)).not.toHaveBeenCalled();
@@ -401,6 +401,9 @@ describe('claudinho ambient --json', () => {
     expect(v.line).toBe('⚽ BOU vs BRE live · syncing…');
     // `next` is the fixture the line names: kicked off 30 minutes ago, still SCHEDULED, so still due.
     expect(v).toMatchObject({ next: { id: '9' }, empty: false, idle: false, attribution: 'Live data: ESPN' });
+    // The view SAYS the line is syncing (the line's own rule, never its text): a program paces by it.
+    expect(v.syncing).toBe(true);
+    expect(v.current).toBe(false);
     expect((v.live as { total: number }).total).toBe(0);
   });
 

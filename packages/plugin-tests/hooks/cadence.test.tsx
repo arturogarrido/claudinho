@@ -12,9 +12,13 @@ import { COMPLETE, FIRST_RUN, NOW, liveRecord, finishedRecord, momentView, view,
  */
 const MIN = 60_000
 const at = (ms: number) => new Date(NOW + ms).toISOString()
-/** A countdown view: the next fixture's kickoff `ms` after the clock's start (the first run's clock). */
+/**
+ * A countdown view as a CLI that states `syncing` prints it (`syncing: false`): the next fixture's kickoff `ms` after
+ * the clock's start (the first run's clock).
+ */
 const countdown = (ms: number, over: Record<string, unknown> = {}) =>
-  view('⚽ ARS vs LEE in 7h13m', { next: { id: '9', kickoff: at(ms), status: 'SCHEDULED' }, ...over })
+  view('⚽ ARS vs LEE in 7h13m', { next: { id: '9', kickoff: at(ms), status: 'SCHEDULED' }, syncing: false, ...over })
+const FAR = 5 * 24 * 60 * MIN
 
 type W = Awaited<ReturnType<typeof world>>
 
@@ -83,6 +87,28 @@ describe('the pace by phase', () => {
   test('the syncing line (not empty, not idle, nothing live, no next fixture): every 15 s', async ($, on) => {
     const w = await world($, on, [view('⚽ live · syncing…')])
     await nextRunAfter(w, 15_000)
+  })
+
+  test('the syncing line with a later fixture on the countdown (`syncing: true`, minute 45 of a match): every 15 s', async ($, on) => {
+    const w = await world($, on, [countdown(FAR, { line: '⚽ ARS vs CHE live · syncing…', syncing: true })])
+    await nextRunAfter(w, 15_000)
+    await nextRunAfter(w, 15_000)
+  })
+
+  test('a CLI that states no `syncing` (0.12.0 to 0.13.1): nothing live and the view not current, a far kickoff waits a minute at most', async ($, on) => {
+    const w = await world($, on, [countdown(FAR, { syncing: undefined, current: false })])
+    await nextRunAfter(w, MIN)
+    await nextRunAfter(w, MIN)
+  })
+
+  test('a CLI that states no `syncing`, a current view: a far kickoff keeps its 5 minutes', async ($, on) => {
+    const w = await world($, on, [countdown(FAR, { syncing: undefined, current: true })])
+    await nextRunAfter(w, 5 * MIN)
+  })
+
+  test('a CLI that states no `syncing`, not current, the kickoff within the hour: a minute, as before', async ($, on) => {
+    const w = await world($, on, [countdown(30 * MIN, { syncing: undefined, current: false })])
+    await nextRunAfter(w, MIN)
   })
 
   test('nothing known (`empty`): every minute', async ($, on) => {

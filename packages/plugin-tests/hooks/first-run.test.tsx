@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { FIRST_RUN, HOME, momentView, liveRecord, toastsWithTimeout, view, world } from './world'
+import { FIRST_RUN, HOME, NVM, momentView, liveRecord, toastsWithTimeout, view, world } from './world'
 
 /**
  * No CLI, or one too old (plugin 0.7.0). One toast per session, 10 seconds, says what to run; `/claudinho` says the
@@ -14,6 +14,8 @@ const LINE = "⚽ ARS 2–1 CHE 50'"
 const NO_CLI = 'To see scores, install the CLI: npm i -g @claudinho/cli'
 const TOO_OLD = 'This plugin needs a newer CLI: npm i -g @claudinho/cli@latest'
 const FAILED = 'The CLI gave no answer.'
+/** A view's footer, as the world's `view()` carries it: the attribution, then the disclaimer, each a paragraph. */
+const FOOTER = '\n\nLive data: ESPN\n\nNot affiliated with FIFA, any confederation, league or club, or Anthropic.'
 const NO_VIEW = "Nothing to show: the CLI's answer is not one this plugin reads."
 const MIN = 60_000
 const ENOENT = () => new Error('$.process.run(claudinho) failed to start: ENOENT: Executable not found in $PATH: "claudinho"')
@@ -85,6 +87,38 @@ describe('the probe', () => {
     const w = await world($, on, [ENOENT()], { env: { PATH: many, HOME } })
     expect(toasts).toEqual([])
     expect((await w.command()).text).toBe(FAILED)
+  })
+})
+
+describe('a lookup that is not whole: no claim', () => {
+  test('nvm\'s listing slower than its wait, the CLI under nvm alone: the first run misses it and says nothing; the next finds it', async ($, on) => {
+    const toasts = toastsWithTimeout(on)
+    const w = await world($, on, [ENOENT(), view(LINE)], { nvm: 'hold', bins: [`${NVM}/v22.17.0/bin/claudinho`] })
+    await w.clock.advance(1_100)
+    expect(w.argvs).toHaveLength(1)
+    expect(toasts).toEqual([])
+    await w.releaseListing()
+    await w.clock.advance(MIN)
+    expect(toasts).toEqual([])
+    expect(await (await w.mount()).findAll({ type: 'Text', text: LINE })).toHaveLength(1)
+  })
+
+  test('the probe is not spent on a partial lookup: the first whole lookup with no CLI anywhere says it', async ($, on) => {
+    const toasts = toastsWithTimeout(on)
+    const w = await world($, on, [ENOENT()], { nvm: 'hold' })
+    await w.clock.advance(1_100)
+    expect(toasts).toEqual([])
+    expect(w.probes.filter((p) => p === '/usr/bin/claudinho')).toEqual([])
+    await w.releaseListing()
+    await w.clock.advance(MIN)
+    expect(toasts.map((t) => t.text)).toEqual([NO_CLI])
+  })
+
+  test('/claudinho during a partial lookup: today\'s reply, no claim', async ($, on) => {
+    const w = await world($, on, [ENOENT()], { nvm: 'hold', start: { surface: null, isInteractive: false }, surfaces: [] })
+    const reply = w.command()
+    await w.clock.advance(1_100)
+    expect((await reply).text).toBe(FAILED)
   })
 })
 
@@ -161,9 +195,14 @@ describe('a CLI too old', () => {
     expect(toasts.map((t) => t.text)).toEqual([TOO_OLD])
   })
 
-  test('/claudinho says the update sentence every time', async ($, on) => {
+  test('/claudinho says the update sentence every time, with the readable view\'s attribution and disclaimer', async ($, on) => {
     const w = await world($, on, [V0112])
-    expect((await w.command()).text).toBe(TOO_OLD)
+    expect((await w.command()).text).toBe(`${TOO_OLD}${FOOTER}`)
+    expect((await w.command()).text).toBe(`${TOO_OLD}${FOOTER}`)
+  })
+
+  test('/claudinho on an object that is no view: the update sentence alone (no view, no footer to relay)', async ($, on) => {
+    const w = await world($, on, [JSON.stringify({ line: LINE, attribution: 'Live data: ESPN', disclaimer: 'x' })])
     expect((await w.command()).text).toBe(TOO_OLD)
   })
 

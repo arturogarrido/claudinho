@@ -70,12 +70,24 @@ describe('no pin, toasts: pinned', () => {
     expect(toasts.map((t) => t.text)).toEqual([GOAL_TOAST, HINT])
   })
 
-  test('the first score change of the session is the taste whatever its kind (a correction)', async ($, on) => {
+  test('a correction is not the taste and is not said; the next goal is the taste', async ($, on) => {
     const toasts = toastsWithTimeout(on)
     const w = await world($, on, [goal1, before, goal1])
     await next(w)
+    expect(toasts).toEqual([])
     await next(w)
-    expect(toasts.map((t) => t.text)).toEqual(['Score updated · LASK Linz 0–0 Liverpool', HINT])
+    expect(toasts.map((t) => t.text)).toEqual([GOAL_TOAST, HINT])
+  })
+
+  test('a jump of two goals is not the taste and is not said; the next single goal is', async ($, on) => {
+    const toasts = toastsWithTimeout(on)
+    const two = momentView([rec([0, 2])], [], NONE)
+    const third = momentView([rec([1, 2], { lastGoal: SECOND, minute: 63 })], [], NONE)
+    const w = await world($, on, [before, two, third])
+    await next(w)
+    expect(toasts).toEqual([])
+    await next(w)
+    expect(toasts.map((t) => t.text)).toEqual(["⚽ GOAL! LASK Linz · Robert Ljubicic 63' · LASK Linz 1–2 Liverpool", HINT])
   })
 
   test('a full time is never the taste: nothing toasts, and the next live goal is the taste', async ($, on) => {
@@ -112,7 +124,7 @@ describe('no pin, toasts: pinned', () => {
     await $.session.start({ cwd: '/tmp/claudinho-test', surface: 'terminal', isInteractive: true })
     await next(w)
     await next(w)
-    expect(toasts.map((t) => t.text)).toEqual([GOAL_TOAST, HINT, 'Score updated · LASK Linz 0–0 Liverpool', HINT])
+    expect(toasts.map((t) => t.text)).toEqual([GOAL_TOAST, HINT, GOAL_TOAST, HINT])
   })
 })
 

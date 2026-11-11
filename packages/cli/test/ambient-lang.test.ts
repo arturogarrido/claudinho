@@ -151,7 +151,7 @@ describe('ambient --json: lang and words on a selected view', () => {
   it('`lang` and `words` follow `competition` in the key order, on an empty cache too', () => {
     const keys = Object.keys(ambient('fr'));
     expect(keys.slice(keys.indexOf('competition'), keys.indexOf('competition') + 3)).toEqual(['competition', 'lang', 'words']);
-    expect(keys).toEqual(['api', 'line', 'lineParts', 'idle', 'empty', 'context', 'live', 'finished', 'current', 'next', 'pick', 'competition', 'lang', 'words', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer', 'attribution']);
+    expect(keys).toEqual(['api', 'line', 'lineParts', 'idle', 'empty', 'syncing', 'context', 'live', 'finished', 'current', 'next', 'pick', 'competition', 'lang', 'words', 'degraded', 'source', 'updatedAt', 'staleAfter', 'disclaimer', 'attribution']);
   });
 
   it('the first-run object (nothing chosen) carries neither, in any language', () => {
