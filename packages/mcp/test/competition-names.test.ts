@@ -114,7 +114,7 @@ describe('round 1 of the review (#231)', () => {
     await withClient(async (client) => {
       const { tools } = await client.listTools();
       const d = tools.find((t) => t.name === 'list_competitions')?.description ?? '';
-      expect(d).toContain('the alias, name or short form every other tool\'s competition argument takes');
+      expect(d).toContain('the alias every other tool\'s competition argument takes (it also takes the name or a short form)');
     });
   });
 });

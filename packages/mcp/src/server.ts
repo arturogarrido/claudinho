@@ -1040,7 +1040,7 @@ export function buildServer(): McpServer {
     {
       title: 'Supported competitions',
       description:
-        "The competitions Claudinho answers for, one per row: the alias, name or short form every other tool's competition argument takes, the name, the teams (nation or club), the kind (league or cup), and what each surface is (scores, next, standings, bracket, markets: offered, not-offered-yet, or not-applicable), plus current: the competition this request is for. Offline: reads the supported table, never the network. Whether an edition is in season is not listed here; the reads say so (betweenEditions).",
+        "The competitions Claudinho answers for, one per row: the alias every other tool's competition argument takes (it also takes the name or a short form), the name, the teams (nation or club), the kind (league or cup), and what each surface is (scores, next, standings, bracket, markets: offered, not-offered-yet, or not-applicable), plus current: the competition this request is for. Offline: reads the supported table, never the network. Whether an edition is in season is not listed here; the reads say so (betweenEditions).",
       // `lang` localizes the Current line (the names are not localized) and a refusal.
       inputSchema: { competition: competitionArg.optional(), lang: langArg },
       // Read-only AND offline — the supported table ships with the server.

@@ -73,7 +73,7 @@ Every tool is read-only, and two of them never touch the network.
 | `get_share_snippet` | a plain-text card for a match, a team's next match, a table, the bracket (`bracket: true`, with an optional `knockoutStage`), a date or live; hand it to the user as it is |
 | `get_market_signal` | World Cup prediction-market odds for a match (`matchId`), a team's current or next match (`team`, a 3-letter code such as `MEX`), or a date; informational only |
 | `get_team` | a World Cup nation's name or code to its FIFA code, flag and group (offline) |
-| `list_competitions` | the supported competitions, the alias, name and short forms each takes and what each offers, and the one in effect (offline) |
+| `list_competitions` | the supported competitions, the alias each takes (its name or a short form works too) and what each offers, and the one in effect (offline) |
 
 Every tool but `get_team` takes an optional `competition` (an alias such as `champions-league`, its name or a short form such as `ucl`, or an ESPN slug such as `uefa.champions`), and
 most take `tz`, `lang` (`en`, `es`, `pt`, `fr`) and `flavor` (`off`, `subtle`, `full`).
