@@ -11,7 +11,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type Command } from 'commander';
+import type { Command } from 'commander';
 import { competitionValue, SUPPORTED } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdFollow, cmdLive, InputError } from '../src/commands';

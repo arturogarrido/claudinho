@@ -140,7 +140,7 @@ describe('competitionValue: one grammar for every source', () => {
 
   it('refuses a prefix, a near miss, a nation\'s name, a league the table does not hold, and anything outside the characters a name is made of', () => {
     for (const v of ['premier', 'champions', 'nations', 'liga', 'copa', 'uruguay', 'bundesliag', 'mls', 'foo', 'constructor', 'toString', '__proto__',
-      'premier\tleague', 'premier league', 'premier​league', 'pre\u0007mier', 'epl‮', '', 'x'.repeat(200), 'premier league'.repeat(10)]) {
+      'premier\tleague', 'premier\u00a0league', 'premier\u200bleague', 'pre\u0007mier', 'epl\u202e', '', 'x'.repeat(200), 'premier league'.repeat(10)]) {
       expect(slugOf(v), JSON.stringify(v)).toBeUndefined();
     }
   });
@@ -180,7 +180,7 @@ describe('suggestCompetitions: at most two aliases, nearest first, by three writ
     ['x'.repeat(200), []],
     ['premier'.repeat(30), []],
     ['pre\u0007mier', []],
-    ['premier​', []],
+    ['premier\u200b', []],
     ['constructor', []],
   ];
   for (const [input, want] of TABLE) {
@@ -231,10 +231,11 @@ describe('the refusal: the value echoed as a label, the suggestion, then the ali
   });
 
   it('the typed value goes through the human-label rule before it is echoed: bounded, no control or format character', () => {
-    for (const v of ['pre\u0007mier', 'epl‮', 'a\u001b[31mred', 'x​y', 'line\nbreak']) {
+    for (const v of ['pre\u0007mier', 'epl\u202e', 'a\u001b[31mred', 'x\u200by', 'line\nbreak']) {
       const msg = refusal(v, 'en') ?? '';
       const first = msg.split('\n')[0] ?? '';
-      expect(first, JSON.stringify(v)).not.toMatch(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/);
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what the test refuses.
+      expect(first, JSON.stringify(v)).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/);
     }
     const long = refusal('x'.repeat(200), 'en') ?? '';
     const first = long.split('\n')[0] ?? '';

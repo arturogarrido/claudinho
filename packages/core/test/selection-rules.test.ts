@@ -60,7 +60,7 @@ describe('the resolver', () => {
 describe('the derived views have no prototype', () => {
   it('a row named like the prototype key is an own key of every view', () => {
     // A league row (it offers no bracket: only the bundled competition may).
-    const proto = { ...(SUPPORTED.find((e) => e.slug === 'eng.1') as CompetitionEntry), slug: '__proto__', alias: 'proto' };
+    const proto = { ...(SUPPORTED.find((e) => e.slug === 'eng.1') as CompetitionEntry), slug: '__proto__', alias: 'proto', name: 'Proto', otherNames: [], shortForms: [] };
     const views = deriveTables([...SUPPORTED, proto]);
     expect(Object.hasOwn(views.teamKind, '__proto__')).toBe(true);
     expect(Object.hasOwn(views.standingsShape, '__proto__')).toBe(true);
