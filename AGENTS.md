@@ -157,9 +157,12 @@ typechecks, tests, lints, packs the three tarballs (`pnpm pack`, which rewrites 
 and uploads them with `packages/mcp/server.json` as one artifact, their sha256 in its summary and its
 output. `publish` (`id-token: write`, in the GitHub environment `release`) checks out nothing and
 installs nothing: it downloads the artifact, refuses any file `build`'s sums do not list or do not
-match, refuses a tarball whose manifest is not the tag's package and version with `publishConfig`
-exactly `{"access":"public"}`, and runs `npm publish <tarball> --provenance --ignore-scripts` with
-the registry on the command line, from an empty directory of its own, for core, then cli, then mcp
+match, passes each tarball through a shape filter (the layout `pnpm pack` writes and nothing else),
+reads its manifest with the same call `npm publish` makes, from the pacote inside the npm that
+publishes (so what it checks is what npm reads), refuses a manifest that is not the tag's package
+and version with `publishConfig` exactly `{"access":"public"}`, and runs `npm publish <tarball>
+--provenance --ignore-scripts` with the registry, global and scoped, on the command line, from an
+empty directory of its own, for core, then cli, then mcp
 (Node 24: trusted publishing needs npm 11.5.1 or later, newer than Node 22's). `release`
 (`contents: write`) creates the GitHub Release. `mcp-registry` (`id-token: write`, outside the
 environment) publishes `server.json` from the artifact. The invariant of the two jobs that hold the
@@ -169,7 +172,7 @@ them; it can only be the bytes that are published.
 **Release-day checklist for npm and the `release` environment** (the maintainer's steps; numbered
 "checklist step N" to keep them apart from the release steps below):
 
-1. Once: GitHub, repository Settings → Environments → `release` (New environment the first time;
+1. Once, and BEFORE checklist step 2: GitHub, repository Settings → Environments → `release` (New environment the first time;
    the existing one if a run already created it). Under "Deployment branches and tags", choose
    "Selected branches and tags" and add the tag rule `v*` (no branch). Under "Required reviewers",
    add yourself; leave "Prevent self-review" off (you push the tag, so with it on nobody could
@@ -191,14 +194,19 @@ environment can publish, and a failure publishes nothing. A `publish` job refuse
 is fixed on npm (the publisher's owner, repository, workflow file, environment, or its allowed
 action), then "Re-run failed jobs"; recreating a publisher takes a few minutes.
 
-If a tag is pushed before checklist step 1: GitHub's documentation says "Running a workflow that
-references an environment that does not exist will create an environment with the referenced name",
-so the `publish` job runs in an unprotected `release` and nothing asks for approval. If npm still
-has the environment-less publisher, that job may publish (whether npm accepts a token naming an
-environment against a publisher naming none is not documented). If it fails on authentication,
-FIRST add the rules to the `release` environment GitHub created (checklist step 1, on the existing
-environment, saved), THEN do checklist step 2, and only then "Re-run failed jobs": a re-run before
-the rules are saved runs without approval.
+Checklist step 1 comes first. If a tag is pushed before its rules are saved, GitHub's documentation
+says "Running a workflow that references an environment that does not exist will create an
+environment with the referenced name", so the `publish` job runs in an unprotected `release` and
+nothing asks for approval:
+
+- With checklist step 2 already done, the publisher that names `release` accepts that run, and it
+  publishes on its first try without anyone's approval; nothing fails, so there is nothing to
+  re-run. Save the environment's rules (checklist step 1) at once, before the next tag.
+- With the environment-less publisher still on npm, whether npm accepts a token naming an
+  environment against a publisher naming none is not documented. If it publishes, the same holds.
+  If it fails on authentication, FIRST save the rules on the `release` environment GitHub created
+  (checklist step 1, on the existing environment), THEN do checklist step 2, and only then "Re-run
+  failed jobs": a re-run before the rules are saved runs without approval.
 
 To cut a release:
 
@@ -358,8 +366,11 @@ Oct 31, 2026. Nothing builds or publishes one any more; `scripts/check-pack.mjs`
   is data to those jobs, never configuration: npm applies any config key a manifest's
   `publishConfig` holds, so the publish job refuses a `publishConfig` other than
   `{"access":"public"}`, passes the registry on the command line, and runs npm outside the artifact's
-  directory. A compromised build-time dependency can still alter the tarball `build` makes; the
-  split does not close that.
+  directory. The manifest it checks is read by npm's own reader (`pacote.manifest`, the call `npm
+  publish` makes for a tarball), after a filter that refuses any archive `pnpm pack` does not write:
+  a second reader of the same bytes was bypassed twice in review (a config key, then a second
+  `package.json` the first reader never saw). A compromised build-time dependency can still alter
+  the tarball `build` makes; the split does not close that.
 - Node 22's bundled npm (10.x) is too old for trusted publishing (11.5.1 or later); the `publish`
   job runs Node 24 and refuses an older npm rather than installing one beside the credential.
 

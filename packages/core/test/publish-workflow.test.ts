@@ -808,7 +808,7 @@ describe('publish.yml, the release and Registry jobs', () => {
 });
 
 /** A tar member as the test writes it: a path, a body, and the header fields a hostile archive would bend. */
-type Member = { path: string; body?: string; type?: string; linkname?: string; size?: Buffer; badSum?: boolean };
+type Member = { path: string; body?: string; type?: string; linkname?: string; size?: Buffer; magic?: string; badSum?: boolean };
 /**
  * A POSIX ustar archive written byte by byte, as `pnpm pack` writes one (regular files, the `ustar\0` `00` magic, no
  * directory entries, 1024 zero bytes at the end), so a case can bend one field and nothing else: the host's `tar`
@@ -834,7 +834,7 @@ function tarBytes(members: Member[]): Buffer {
     h.write('00000000000 ', 136, 'latin1');
     h.write(m.type ?? '0', 156, 'latin1');
     if (m.linkname) h.write(m.linkname, 157, 100, 'latin1');
-    h.write('ustar\u000000', 257, 'latin1');
+    h.write(m.magic ?? 'ustar\u000000', 257, 'latin1');
     h.write(prefix, 345, 155, 'latin1');
     h.fill(0x20, 148, 156);
     let sum = 0;
@@ -896,7 +896,8 @@ function runIn(
   return { status: r.status, out: `${r.stdout}${r.stderr}`, dir };
 }
 
-describe.skipIf(process.platform === 'win32')('the release-file steps, run offline', () => {
+// Each publish case runs node and the real pacote a few times: minutes on a slow runner are not a failure.
+describe.skipIf(process.platform === 'win32')('the release-file steps, run offline', { timeout: 60000 }, () => {
   // A step this file cannot find is an empty script here, and each test below fails on it rather than the file.
   const block = (step: string) => (step.includes('run: |') ? runBlock(step, 'a step') : '');
   const NPM_STEP = block(stepIn(publishJob, '- name: Require npm 11.5.1 or later'));
@@ -1070,6 +1071,14 @@ exit 2
       'a symbolic link': [[...base, { path: 'package/link', type: '2', linkname: '/etc/passwd' }]],
       'a hard link': [[...base, { path: 'package/hard', type: '1', linkname: 'package/package.json' }]],
       'a directory member': [[{ path: 'package/dist/', type: '5' }, ...base]],
+      // Each case below is caught by one rule alone (the cases above may trip several).
+      'a directory member named without a slash': [[{ path: 'package/dist', type: '5' }, ...base]],
+      'a symbolic link with no link name': [[...base, { path: 'package/link', type: '2' }]],
+      'GNU tar magic': [[{ ...(base[0] as Member), magic: 'ustar  \u0000' }, base[1] as Member]],
+      'a size field with a stray character': [[{ ...(base[0] as Member), size: Buffer.from(`${Buffer.byteLength((base[0] as Member).body ?? '').toString(8).padStart(10, '0')}x `, 'latin1') }, base[1] as Member]],
+      'a second gzip member of the same bytes': [base, (g) => Buffer.concat([g, g])],
+      'a gzip trailer that does not match': [base, (g) => Buffer.concat([g.subarray(0, g.length - 4), Buffer.from([1, 2, 3, 4])])],
+      'a regular file carrying a link name': [[...base, { path: 'package/x.js', linkname: '/etc/passwd' }]],
       'a pax header': [[{ path: 'PaxHeader/package.json', type: 'x', body: '30 path=alternate/package.json\n' }, ...base]],
       'a GNU long name': [[{ path: '././@LongLink', type: 'L', body: 'alternate/package.json' }, ...base]],
       'a .. segment': [[...base, { path: 'package/../package.json', body: '{}' }]],
@@ -1085,7 +1094,7 @@ exit 2
     for (const [why, [members, wrap]] of Object.entries(cases)) {
       const r = publish(putCli(releaseDir(), members, wrap));
       expect(r.status, `${why}: ${r.out}`).not.toBe(0);
-      expect(r.out, why).toMatch(/::error::claudinho-cli-1\.2\.3\.tgz is not a tarball of the shape pnpm packs/);
+      expect(r.out, why).toMatch(/::error::claudinho-cli-1\.2\.3\.tgz is not a tarball of the shape the build packs/);
       expect(r.calls, why).toEqual([VIEW('core'), PUB('core')]);
     }
     // Trailing bytes inside the tar, after its end blocks.
@@ -1128,7 +1137,7 @@ exit 2
       { npm: join(home, 'bin', 'npm-cli.js') },
     );
     expect(r.status, r.out).not.toBe(0);
-    expect(r.out).toMatch(/::error::/);
+    expect(r.out).toMatch(/::error::cannot resolve the pacote of the npm that publishes/);
     expect(readFileSync(log, 'utf8')).toBe('');
   });
 

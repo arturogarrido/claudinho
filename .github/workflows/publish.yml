@@ -26,7 +26,10 @@ name: Publish
 # The invariant of the two jobs that hold `id-token: write`: nothing the build
 # job produced can change WHERE they authenticate or publish, or run code in
 # them; it can only be the bytes that are published. (A compromised build-time
-# dependency can still alter those bytes: the split does not close that.)
+# dependency can still alter those bytes: the split does not close that.) The
+# publish job reads each tarball's manifest with the same function `npm publish`
+# calls for a tarball, on the same file, so what its guard reads is what npm
+# reads, by construction.
 #
 # Auth: npm trusted publishing (OIDC) — NO token. `id-token: write` lets npm mint
 #   a short-lived, package-scoped credential from the job's OIDC token, so there
@@ -120,8 +123,10 @@ jobs:
       - run: pnpm lint
 
       # `pnpm pack` writes the tarball `pnpm publish` used to send: it rewrites
-      # `workspace:` ranges to the real version and applies publishConfig. The
-      # next step refuses a manifest that still carries one.
+      # `workspace:` ranges to the real version, and the packed manifest keeps
+      # its `publishConfig` (`{"access":"public"}`, which the publish job
+      # requires). The next step refuses a manifest that still carries a
+      # `workspace:` range.
       - name: Pack the three packages
         run: |
           set -euo pipefail
@@ -133,6 +138,9 @@ jobs:
           cp packages/mcp/server.json "$OUT/server.json"
           ls -l "$OUT"
 
+      # Guards accidents, not attacks: this job is the one the publish job
+      # defends against (a compromised dependency runs here), so the checks
+      # that decide are the publish job's, on what this job uploads.
       - name: Refuse a workspace range in a packed manifest
         working-directory: ${{ runner.temp }}/release
         run: |
@@ -239,22 +247,35 @@ jobs:
           printf '%s\n' "$SUMS" | sha256sum -c -
 
       # Core first (cli and mcp bundle it and list it as a dev dependency), then
-      # cli and mcp. Each tarball's own manifest must name the package and the
-      # tag's version, and carry `publishConfig` exactly `{"access":"public"}`:
-      # npm applies any config key a manifest's publishConfig holds (npm 11's
-      # lib/commands/publish.js), so a registry or a proxy written there by the
-      # build would steer the OIDC exchange. npm runs in an empty directory this
-      # step makes, never the artifact's (no project .npmrc or package.json of
-      # the build's), with the registry on the command line (a CLI flag wins over
-      # publishConfig) and `--ignore-scripts` (npm 11 runs no lifecycle script
-      # for a tarball; the flag says so). A version npm already serves is skipped,
-      # so "Re-run failed jobs" after a partial publish is safe; a view that
-      # fails or answers anything else is not a skip (npm then refuses a
-      # duplicate itself). The first failure stops the loop: cli and mcp never
-      # go out without core. npm signs the provenance attestation with this
-      # job's OIDC token: it names this run of publish.yml at the tag's commit,
-      # the run that built the tarball. No propagation wait here: the Registry
-      # job waits for npm.
+      # cli and mcp. The build job wrote every byte of these tarballs, so each
+      # passes two checks before any npm command touches it:
+      #   1. A shape filter (SHAPE): one plain gzip member and nothing after it,
+      #      a POSIX ustar archive of regular files only, every path `package/`
+      #      plus plain segments, no path twice (case-insensitively), exactly one
+      #      `package/package.json`, valid header checksums, octal sizes, zeros
+      #      after the end blocks. It keeps archives pnpm does not write away
+      #      from npm's reader; it is not the check that decides.
+      #   2. The decisive check (MANIFEST): the manifest read by the SAME call
+      #      `npm publish` makes for a tarball (npm 11 lib/commands/publish.js:
+      #      `pacote.manifest(spec, { ...opts, fullMetadata: true,
+      #      fullReadJson: true })`), from the pacote inside the npm that
+      #      publishes, resolved from that npm's own install directory (never the
+      #      artifact or the working directory; unresolvable fails closed). What
+      #      this guard reads is what npm reads, by construction. It must name
+      #      the package, the tag's version and `publishConfig` exactly
+      #      `{"access":"public"}` (npm applies any config key a publishConfig
+      #      holds, so a registry or a proxy there would steer the OIDC exchange).
+      # npm then runs in an empty directory this step makes (no project .npmrc
+      # or package.json of the build's), with the registry, global and scoped,
+      # on the command line (a CLI flag wins over publishConfig) and
+      # `--ignore-scripts` (npm 11 runs no lifecycle script for a tarball; the
+      # flag says so). A version npm already serves is skipped, so "Re-run
+      # failed jobs" after a partial publish is safe; a view that fails or
+      # answers anything else is not a skip (npm then refuses a duplicate
+      # itself). The first failure stops the loop: cli and mcp never go out
+      # without core. npm signs the provenance attestation with this job's OIDC
+      # token: it names this run of publish.yml at the tag's commit, the run that
+      # built the tarball. No propagation wait here: the Registry job waits.
       - name: Publish to npm with provenance
         run: |
           set -euo pipefail
@@ -262,20 +283,74 @@ jobs:
           REGISTRY=https://registry.npmjs.org/
           FILES="$GITHUB_WORKSPACE/release"
           WORK=$(mktemp -d "$RUNNER_TEMP/npm-XXXXXX")
+          CACHE=$(mktemp -d "$RUNNER_TEMP/pacote-XXXXXX")
           cd "$WORK"
+          NPM_DIR=$(cd "$(dirname "$(readlink -f "$(command -v npm)")")/.." && pwd -P)
+          if [ ! -f "$NPM_DIR/node_modules/pacote/package.json" ] || [ ! -f "$NPM_DIR/node_modules/npm-package-arg/package.json" ] \
+            || [ "$(node -p 'require(process.argv[1]).version' "$NPM_DIR/package.json")" != "$(npm --version)" ]; then
+            echo "::error::cannot resolve the pacote of the npm that publishes (from $NPM_DIR)"; exit 1
+          fi
+          SHAPE='
+          const zlib = require("zlib"), fs = require("fs");
+          const fail = (why) => { console.error(why); process.exit(1); };
+          const gz = fs.readFileSync(process.argv[1]);
+          if (gz.length < 18 || gz[0] !== 0x1f || gz[1] !== 0x8b || gz[2] !== 8 || gz[3] !== 0) fail("not one plain gzip member");
+          const inflated = zlib.inflateRawSync(gz.subarray(10), { info: true });
+          const tar = inflated.buffer;
+          if (10 + inflated.engine.bytesWritten + 8 !== gz.length) fail("bytes after the gzip member");
+          if (gz.readUInt32LE(gz.length - 8) !== zlib.crc32(tar) || gz.readUInt32LE(gz.length - 4) !== tar.length % 2 ** 32) fail("gzip trailer");
+          if (tar.length % 512 !== 0) fail("tar length");
+          const str = (b) => { const z = b.indexOf(0); return b.subarray(0, z < 0 ? b.length : z).toString("latin1"); };
+          const SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
+          const seen = new Set();
+          let at = 0;
+          for (;;) {
+            if (at + 512 > tar.length) fail("no end of archive");
+            const h = tar.subarray(at, at + 512);
+            if (h.every((x) => x === 0)) break;
+            let sum = 0;
+            for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 32 : h[i];
+            const chk = str(h.subarray(148, 156)).trim();
+            if (!/^[0-7]{1,7}$/.test(chk) || parseInt(chk, 8) !== sum) fail("header checksum");
+            if (h.subarray(257, 265).toString("latin1") !== "ustar\u000000") fail("not POSIX ustar");
+            if (h[156] !== 0x30 && h[156] !== 0) fail("not a regular file");
+            if (str(h.subarray(157, 257)) !== "") fail("a link name");
+            const sz = str(h.subarray(124, 136)).trim();
+            if (!/^[0-7]{1,11}$/.test(sz)) fail("size field");
+            const prefix = str(h.subarray(345, 500));
+            const path = (prefix ? prefix + "/" : "") + str(h.subarray(0, 100));
+            const segments = path.split("/");
+            if (segments[0] !== "package" || segments.length < 2 || !segments.slice(1).every((s) => SEGMENT.test(s))) fail("path " + JSON.stringify(path));
+            if (seen.has(path.toLowerCase())) fail("path twice " + JSON.stringify(path));
+            seen.add(path.toLowerCase());
+            at += 512 + Math.ceil(parseInt(sz, 8) / 512) * 512;
+          }
+          if (!seen.has("package/package.json")) fail("no package/package.json");
+          if (tar.length - at < 1024 || !tar.subarray(at).every((x) => x === 0)) fail("end of archive");
+          '
+          MANIFEST='
+          const [npmDir, tgz, cache] = process.argv.slice(1);
+          const pacote = require(npmDir + "/node_modules/pacote");
+          const npa = require(npmDir + "/node_modules/npm-package-arg");
+          pacote.manifest(npa(tgz), { cache, fullMetadata: true, fullReadJson: true }).then((m) => {
+            const pc = JSON.stringify(m.publishConfig ?? null);
+            console.log(pc === "{\"access\":\"public\"}" ? `${m.name}@${m.version}` : `${m.name}@${m.version} with publishConfig ${pc}`);
+          }, (e) => { console.error(e.message); process.exit(1); });
+          '
           for p in core cli mcp; do
             name="@claudinho/$p"
             base="claudinho-$p-$V.tgz"
             tgz="$FILES/$base"
-            got=$(tar -xzOf "$tgz" package/package.json | node -e 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => { const m = JSON.parse(s); const pc = JSON.stringify(m.publishConfig ?? null); console.log(pc === "{\"access\":\"public\"}" ? `${m.name}@${m.version}` : `${m.name}@${m.version} with publishConfig ${pc}`); })')
+            node -e "$SHAPE" "$tgz" || { echo "::error::$base is not a tarball of the shape the build packs"; exit 1; }
+            got=$(node -e "$MANIFEST" "$NPM_DIR" "$tgz" "$CACHE") || { echo "::error::npm's reader could not read $base"; exit 1; }
             if [ "$got" != "$name@$V" ]; then
               echo "::error::$base holds $got, not $name@$V with publishConfig {\"access\":\"public\"}"; exit 1
             fi
-            if [ "$(npm view "$name@$V" version --registry "$REGISTRY" --fetch-timeout=20000 --fetch-retries=1 2>/dev/null || true)" = "$V" ]; then
+            if [ "$(npm view "$name@$V" version --registry "$REGISTRY" "--@claudinho:registry=$REGISTRY" --fetch-timeout=20000 --fetch-retries=1 2>/dev/null || true)" = "$V" ]; then
               echo "$name@$V is already on npm; skipping"
               continue
             fi
-            npm publish "$tgz" --provenance --access public --ignore-scripts --registry "$REGISTRY"
+            npm publish "$tgz" --provenance --access public --ignore-scripts --registry "$REGISTRY" "--@claudinho:registry=$REGISTRY"
             echo "published $name@$V"
           done
 
