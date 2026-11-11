@@ -14,10 +14,11 @@
  * `::error::` past the deadline.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 
 // Line endings made LF at the read: a Windows checkout gives the workflow CRLF, and every anchor below is a whole line.
@@ -609,6 +610,7 @@ const RUNS_REPO_CODE = [
   /^\s*(container|services):/m,
 ];
 const ARTIFACT = /name: (release-files)\s*$/m;
+const SHAPE_RUN = /^\s*node -e "\$SHAPE" "\$tgz"/m;
 /**
  * What a job holding `id-token: write` may not run besides the list above: an interpreter or a shell given a file
  * (the artifact is written by the build job, adversary one), `source`, or a `./` path other than the sha256-verified
@@ -750,8 +752,17 @@ describe('publish.yml, the publish job: no checkout, no install, the release env
     expect(loop).toMatch(/for p in core cli mcp; do/);
     expect(loop.indexOf('npm view')).toBeGreaterThan(0);
     expect(loop.indexOf('npm view')).toBeLessThan(loop.indexOf('npm publish'));
-    expect(loop).toMatch(/npm publish "\$tgz" --provenance --access public --ignore-scripts --registry "\$REGISTRY"/);
-    expect(loop).toMatch(/npm view "\$name@\$V" version --registry "\$REGISTRY" --fetch-timeout=\d+ --fetch-retries=\d/);
+    expect(loop).toMatch(/npm publish "\$tgz" --provenance --access public --ignore-scripts --registry "\$REGISTRY" "--@claudinho:registry=\$REGISTRY"/);
+    expect(loop).toMatch(/npm view "\$name@\$V" version --registry "\$REGISTRY" "--@claudinho:registry=\$REGISTRY" --fetch-timeout=\d+ --fetch-retries=\d/);
+    // The decisive check is npm's own reader: the same call `npm publish` makes for a tarball (npm 11
+    // lib/commands/publish.js, `pacote.manifest(spec, { ...opts, fullMetadata: true, fullReadJson: true })`), from the
+    // pacote inside the npm that publishes; the shape filter runs first; both before any npm command.
+    expect(loop).toMatch(/NPM_DIR=\$\(cd "\$\(dirname "\$\(readlink -f "\$\(command -v npm\)"\)"\)\/\.\." && pwd -P\)/);
+    expect(loop).toMatch(/pacote\.manifest\(npa\(tgz\), \{ cache, fullMetadata: true, fullReadJson: true \}\)/);
+    const at = (re: RegExp) => loop.search(re);
+    expect(at(SHAPE_RUN)).toBeGreaterThan(0);
+    expect(at(SHAPE_RUN)).toBeLessThan(at(/got=\$\(node -e "\$MANIFEST"/));
+    expect(at(/got=\$\(node -e "\$MANIFEST"/)).toBeLessThan(loop.indexOf('npm view'));
     expect(loop).toMatch(/^REGISTRY=https:\/\/registry\.npmjs\.org\/$/m);
     // npm runs in a directory the step made, never in the artifact's: no project .npmrc or package.json of the build's.
     expect(stepIn(publishJob, '- name: Publish to npm with provenance')).not.toMatch(/working-directory:/);
@@ -796,12 +807,52 @@ describe('publish.yml, the release and Registry jobs', () => {
   });
 });
 
-/** Writes `package/package.json` holding `manifest` into `<dir>/<file>` as a gzip tarball, as `pnpm pack` lays one out. */
-function tarball(dir: string, file: string, manifest: object): void {
-  const src = mkdtempSync(join(tmpdir(), 'pkg-'));
-  mkdirSync(join(src, 'package'));
-  writeFileSync(join(src, 'package', 'package.json'), JSON.stringify(manifest));
-  execFileSync('tar', ['-czf', join(dir, file), '-C', src, 'package']);
+/** A tar member as the test writes it: a path, a body, and the header fields a hostile archive would bend. */
+type Member = { path: string; body?: string; type?: string; linkname?: string; size?: Buffer; badSum?: boolean };
+/**
+ * A POSIX ustar archive written byte by byte, as `pnpm pack` writes one (regular files, the `ustar\0` `00` magic, no
+ * directory entries, 1024 zero bytes at the end), so a case can bend one field and nothing else: the host's `tar`
+ * would add directory entries and its own headers.
+ */
+function tarBytes(members: Member[]): Buffer {
+  const out: Buffer[] = [];
+  for (const m of members) {
+    const body = Buffer.from(m.body ?? '');
+    const h = Buffer.alloc(512);
+    let name = m.path;
+    let prefix = '';
+    if (Buffer.byteLength(name) > 100) {
+      const at = name.lastIndexOf('/');
+      prefix = name.slice(0, at);
+      name = name.slice(at + 1);
+    }
+    h.write(name, 0, 100, 'latin1');
+    h.write('000644 \0', 100, 'latin1');
+    h.write('000000 \0', 108, 'latin1');
+    h.write('000000 \0', 116, 'latin1');
+    (m.size ?? Buffer.from(`${body.length.toString(8).padStart(11, '0')} `, 'latin1')).copy(h, 124);
+    h.write('00000000000 ', 136, 'latin1');
+    h.write(m.type ?? '0', 156, 'latin1');
+    if (m.linkname) h.write(m.linkname, 157, 100, 'latin1');
+    h.write('ustar\u000000', 257, 'latin1');
+    h.write(prefix, 345, 155, 'latin1');
+    h.fill(0x20, 148, 156);
+    let sum = 0;
+    for (const x of h) sum += x;
+    h.write(`${(sum + (m.badSum ? 1 : 0)).toString(8).padStart(6, '0')} \0`, 148, 'latin1');
+    out.push(h, body, Buffer.alloc((512 - (body.length % 512)) % 512));
+  }
+  out.push(Buffer.alloc(1024));
+  return Buffer.concat(out);
+}
+/** The members `pnpm pack` writes for a package: its manifest and its build. */
+const pnpmMembers = (manifest: object): Member[] => [
+  { path: 'package/package.json', body: JSON.stringify(manifest) },
+  { path: 'package/dist/index.js', body: 'export {};\n' },
+];
+/** Writes the gzip tarball of `members` into `<dir>/<file>`. */
+function tarball(dir: string, file: string, members: Member[]): void {
+  writeFileSync(join(dir, file), gzipSync(tarBytes(members)));
 }
 const V3 = '1.2.3';
 const RELEASE_FILES = [`claudinho-core-${V3}.tgz`, `claudinho-cli-${V3}.tgz`, `claudinho-mcp-${V3}.tgz`, 'server.json'];
@@ -811,13 +862,20 @@ function releaseDir(manifests: Partial<Record<'core' | 'cli' | 'mcp', object>> =
   const dir = join(mkdtempSync(join(tmpdir(), 'workspace-')), 'release');
   mkdirSync(dir);
   for (const p of ['core', 'cli', 'mcp'] as const) {
-    tarball(dir, `claudinho-${p}-${V3}.tgz`, manifests[p] ?? manifestOf(p));
+    tarball(dir, `claudinho-${p}-${V3}.tgz`, pnpmMembers(manifests[p] ?? manifestOf(p)));
   }
   writeFileSync(join(dir, 'server.json'), JSON.stringify({ version: V3 }));
   return dir;
 }
 /** Runs a step's run block under `bash -e` in `cwd`, with `bin` (stubs) then the named host tools on PATH. */
-function runIn(cwd: string, script: string, env: Record<string, string>, tools: string[], stubs: Record<string, string> = {}) {
+function runIn(
+  cwd: string,
+  script: string,
+  env: Record<string, string>,
+  tools: string[],
+  stubs: Record<string, string> = {},
+  links: Record<string, string> = {},
+) {
   const dir = mkdtempSync(join(tmpdir(), 'step-'));
   const bin = join(dir, 'bin');
   mkdirSync(bin);
@@ -825,6 +883,7 @@ function runIn(cwd: string, script: string, env: Record<string, string>, tools: 
     writeFileSync(join(bin, name), body);
     chmodSync(join(bin, name), 0o755);
   }
+  for (const [name, target] of Object.entries(links)) symlinkSync(target, join(bin, name));
   const host = join(dir, 'tools');
   mkdirSync(host);
   for (const name of tools) symlinkSync(hostTool(name), join(host, name));
@@ -922,9 +981,12 @@ describe.skipIf(process.platform === 'win32')('the release-file steps, run offli
 
   /**
    * A stub npm: `view` answers the version for each name in $ON_NPM (and fails otherwise, as npm 11 does with
-   * E404), `publish` logs its arguments and fails for the name in $FAIL_ON; every call is logged to $LOG.
+   * E404), `publish` logs its arguments and fails for the name in $FAIL_ON; every call but `--version` is logged to
+   * $LOG. It is installed as setup-node installs npm (`bin/npm` a link to `<npm>/bin/npm-cli.js`), in a directory
+   * whose `node_modules` is the host npm's own, so the step's decisive check runs the REAL pacote.
    */
   const NPM = `#!/bin/bash
+[ "$1" = --version ] && { echo 11.19.1; exit 0; }
 echo "$*" >> "$LOG"
 # Where npm runs, and how many entries that directory holds when it does.
 echo "$PWD $(ls -A | wc -l | tr -d ' ')" >> "$WHERE"
@@ -941,9 +1003,20 @@ fi
 exit 2
 `;
   const REG = 'https://registry.npmjs.org/';
+  const HOST_NPM = realpathSync(join(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm'));
+  /** An npm install directory holding the stub as its CLI, the host npm's modules (pacote) and a version. */
+  function npmHome(): string {
+    const home = mkdtempSync(join(tmpdir(), 'npm-home-'));
+    mkdirSync(join(home, 'bin'));
+    writeFileSync(join(home, 'bin', 'npm-cli.js'), NPM);
+    chmodSync(join(home, 'bin', 'npm-cli.js'), 0o755);
+    writeFileSync(join(home, 'package.json'), JSON.stringify({ name: 'npm', version: '11.19.1' }));
+    symlinkSync(join(HOST_NPM, 'node_modules'), join(home, 'node_modules'));
+    return home;
+  }
   let files = '';
   /** Runs the publish step from the workspace that holds `dir` (`<workspace>/release`), as the job does. */
-  function publish(dir: string, env: Record<string, string> = {}) {
+  function publish(dir: string, env: Record<string, string> = {}, script = PUBLISH_STEP) {
     const logs = mkdtempSync(join(tmpdir(), 'npm-log-'));
     const temp = mkdtempSync(join(tmpdir(), 'runner-temp-'));
     const log = join(logs, 'npm.log');
@@ -954,16 +1027,114 @@ exit 2
     const workspace = join(dir, '..');
     const r = runIn(
       workspace,
-      PUBLISH_STEP,
+      script,
       { LOG: log, WHERE: where, ON_NPM: '', FAIL_ON: '', VIEW_SAYS: '', GITHUB_WORKSPACE: workspace, RUNNER_TEMP: temp, ...env },
-      ['tar', 'node', 'gzip', 'mktemp', 'ls', 'wc', 'tr'],
-      { npm: NPM },
+      ['node', 'mktemp', 'ls', 'wc', 'tr', 'readlink', 'dirname'],
+      {},
+      { npm: join(npmHome(), 'bin', 'npm-cli.js') },
     );
     const lines = (f: string) => readFileSync(f, 'utf8').split('\n').filter(Boolean);
     return { ...r, calls: lines(log), where: lines(where), temp };
   }
-  const PUB = (p: string) => `publish ${files}/claudinho-${p}-${V3}.tgz --provenance --access public --ignore-scripts --registry ${REG}`;
-  const VIEW = (p: string) => `view @claudinho/${p}@${V3} version --registry ${REG} --fetch-timeout=20000 --fetch-retries=1`;
+  const FLAGS = `--registry ${REG} --@claudinho:registry=${REG}`;
+  const PUB = (p: string) => `publish ${files}/claudinho-${p}-${V3}.tgz --provenance --access public --ignore-scripts ${FLAGS}`;
+  const VIEW = (p: string) => `view @claudinho/${p}@${V3} version ${FLAGS} --fetch-timeout=20000 --fetch-retries=1`;
+  /** Puts a tarball of `members`, gzipped (then passed through `wrap`), in the cli slot of `dir`. */
+  function putCli(dir: string, members: Member[], wrap: (gz: Buffer) => Buffer = (gz) => gz): string {
+    writeFileSync(join(dir, `claudinho-cli-${V3}.tgz`), wrap(gzipSync(tarBytes(members))));
+    return dir;
+  }
+  // The readers' round-2 archives: a second manifest after `package/`, which npm's reader (pacote strips the first
+  // path component) takes in place of the first. One steers the registry and the proxy, one the version.
+  const HIDDEN_REGISTRY = [
+    ...pnpmMembers(manifestOf('cli')),
+    {
+      path: 'alternate/package.json',
+      body: JSON.stringify({
+        ...manifestOf('cli'),
+        publishConfig: { access: 'public', '@claudinho:registry': 'http://registry.npmjs.org/', proxy: 'http://attacker.example:8080' },
+      }),
+    },
+  ];
+  const HIDDEN_VERSION = [...pnpmMembers(manifestOf('cli')), { path: 'zzz/package.json', body: JSON.stringify({ ...manifestOf('cli'), version: '99.9.9' }) }];
+  const SHAPE_LINE = /^\s*node -e "\$SHAPE" "\$tgz".*$/m;
+
+  it('the shape filter refuses every archive pnpm does not write, before npm reads it', { timeout: 120000 }, () => {
+    const gz = (members: Member[]) => gzipSync(tarBytes(members));
+    const base = pnpmMembers(manifestOf('cli'));
+    const cases: Record<string, [Member[], ((g: Buffer) => Buffer)?]> = {
+      'a second manifest steering the registry and the proxy': [HIDDEN_REGISTRY],
+      'a second manifest steering the version': [HIDDEN_VERSION],
+      'package/package.json twice': [[...base, base[0] as Member]],
+      'one path twice, by case': [[...base, { path: 'package/Dist/index.js', body: '' }]],
+      'a symbolic link': [[...base, { path: 'package/link', type: '2', linkname: '/etc/passwd' }]],
+      'a hard link': [[...base, { path: 'package/hard', type: '1', linkname: 'package/package.json' }]],
+      'a directory member': [[{ path: 'package/dist/', type: '5' }, ...base]],
+      'a pax header': [[{ path: 'PaxHeader/package.json', type: 'x', body: '30 path=alternate/package.json\n' }, ...base]],
+      'a GNU long name': [[{ path: '././@LongLink', type: 'L', body: 'alternate/package.json' }, ...base]],
+      'a .. segment': [[...base, { path: 'package/../package.json', body: '{}' }]],
+      'an absolute path': [[...base, { path: '/package/package.json', body: '{}' }]],
+      'a .npmrc': [[...base, { path: 'package/.npmrc', body: 'registry=http://attacker.example/' }]],
+      'no manifest': [[{ path: 'package/dist/index.js', body: '' }]],
+      'a bad header checksum': [[{ ...(base[0] as Member), badSum: true }, base[1] as Member]],
+      'a base-256 size field': [[{ ...(base[0] as Member), size: Buffer.concat([Buffer.from([0x80]), Buffer.alloc(11)]) }, base[1] as Member]],
+      'bytes after the gzip member': [base, (g) => Buffer.concat([g, Buffer.from('garbage')])],
+      'a second gzip member': [base, (g) => Buffer.concat([g, gz(HIDDEN_VERSION)])],
+      'a gzip header with flags': [base, (g) => Buffer.concat([g.subarray(0, 3), Buffer.from([0x08]), g.subarray(4)])],
+    };
+    for (const [why, [members, wrap]] of Object.entries(cases)) {
+      const r = publish(putCli(releaseDir(), members, wrap));
+      expect(r.status, `${why}: ${r.out}`).not.toBe(0);
+      expect(r.out, why).toMatch(/::error::claudinho-cli-1\.2\.3\.tgz is not a tarball of the shape pnpm packs/);
+      expect(r.calls, why).toEqual([VIEW('core'), PUB('core')]);
+    }
+    // Trailing bytes inside the tar, after its end blocks.
+    const tail = Buffer.concat([tarBytes(base), Buffer.alloc(512, 0x41)]);
+    const r = publish(putCli(releaseDir(), [], () => gzipSync(tail)));
+    expect(r.status, r.out).not.toBe(0);
+    expect(r.calls).toEqual([VIEW('core'), PUB('core')]);
+  });
+
+  it("with the shape filter bypassed, npm's own reader still refuses the round-2 archives: the class is closed, not the case", { timeout: 60000 }, () => {
+    const step = PUBLISH_STEP.replace(SHAPE_LINE, '            :');
+    expect(step, 'the filter line').not.toBe(PUBLISH_STEP);
+    for (const [why, members, holds] of [
+      ['the hidden registry and proxy', HIDDEN_REGISTRY, /holds @claudinho\/cli@1\.2\.3 with publishConfig .*attacker/],
+      ['the hidden version', HIDDEN_VERSION, /holds @claudinho\/cli@99\.9\.9/],
+    ] as const) {
+      const r = publish(putCli(releaseDir(), [...members]), {}, step);
+      expect(r.status, `${why}: ${r.out}`).not.toBe(0);
+      expect(r.out, why).toMatch(holds);
+      expect(r.calls, why).toEqual([VIEW('core'), PUB('core')]);
+    }
+  });
+
+  it('fails closed when the pacote of the npm that publishes cannot be resolved', { timeout: 60000 }, () => {
+    const dir = releaseDir();
+    const home = mkdtempSync(join(tmpdir(), 'npm-home-'));
+    mkdirSync(join(home, 'bin'));
+    writeFileSync(join(home, 'bin', 'npm-cli.js'), NPM);
+    chmodSync(join(home, 'bin', 'npm-cli.js'), 0o755);
+    writeFileSync(join(home, 'package.json'), JSON.stringify({ name: 'npm', version: '11.19.1' }));
+    const logs = mkdtempSync(join(tmpdir(), 'npm-log-'));
+    const log = join(logs, 'npm.log');
+    writeFileSync(log, '');
+    const r = runIn(
+      join(dir, '..'),
+      PUBLISH_STEP,
+      { LOG: log, WHERE: join(logs, 'where'), ON_NPM: '', FAIL_ON: '', VIEW_SAYS: '', GITHUB_WORKSPACE: join(dir, '..'), RUNNER_TEMP: mkdtempSync(join(tmpdir(), 'runner-temp-')) },
+      ['node', 'mktemp', 'ls', 'wc', 'tr', 'readlink', 'dirname'],
+      {},
+      { npm: join(home, 'bin', 'npm-cli.js') },
+    );
+    expect(r.status, r.out).not.toBe(0);
+    expect(r.out).toMatch(/::error::/);
+    expect(readFileSync(log, 'utf8')).toBe('');
+  });
+
+  it('the real pnpm layout passes both checks (the default release directory above), and the host npm is where the test says', () => {
+    expect(existsSync(join(HOST_NPM, 'node_modules', 'pacote', 'package.json')), HOST_NPM).toBe(true);
+  });
 
   it('publishes core, then cli, then mcp when npm has none of them', () => {
     const r = publish(releaseDir());
