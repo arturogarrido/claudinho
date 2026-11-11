@@ -306,7 +306,7 @@ describe('livePointer: nothing extra while the schedule ahead may hold a match n
     expect(livePointer(read([{ id: '5', kickoff: at(0), on: true }, LATER]), NOW)).toBeUndefined();
   });
 
-  it('one past its window, or one that is not on, does not stand in the way', () => {
+  it('one past its window, or one that is not on, does not withhold the pointer', () => {
     expect(livePointer(read([{ id: '5', kickoff: at(-141 * MIN), on: true }, LATER]), NOW)).toEqual({ nextKickoff: LATER.kickoff });
     expect(livePointer(read([{ id: '5', kickoff: at(-2 * MIN), on: false }, LATER]), NOW)).toEqual({ nextKickoff: LATER.kickoff });
     expect(livePointer(read([{ id: '5', kickoff: at(-141 * MIN), on: true }]), NOW)).toEqual({ horizon: { days: 14 } });
