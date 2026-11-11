@@ -359,10 +359,12 @@ Co-Authored-By: Claude Code (Opus 5.5) <noreply@anthropic.com>
   twice, stop and ask whether that kind is in scope before writing another fix.
 - **Review follows risk: every PR has a tier.** The PR description states the tier beside the threat
   model. A PR that spans tiers takes the highest. The maintainer may raise or lower a tier.
-- **T0**: prose and agent instructions only ("Validation scope", first bullet); a dependency bump whose
-  lockfile delta moves no shipped (runtime) dependency; a CI-action pin; text that is never public. The
-  coordinator reads CI per job on the head and reads the whole diff. There is no reader round and no
-  runner round. Prose that states a legal, privacy or security claim (`SECURITY.md`, `PRIVACY.md`, the
+- **T0**: prose and agent instructions only ("Validation scope", first bullet); a test that reads only
+  the guides' text (a structure guard such as `packages/core/test/claudinho-mode.test.ts`), changed
+  together with that text; a dependency bump whose lockfile delta moves no shipped (runtime) dependency;
+  a CI-action pin; text that is never public. Any other test change is T1 or higher. The coordinator
+  reads CI per job on the head and reads the whole diff. There is no reader round and no runner round.
+  Prose that states a legal, privacy or security claim (`SECURITY.md`, `PRIVACY.md`, the
   disclaimer, "Hard constraints") is T1, not T0.
 - **T1**: product behaviour (code, tests, executable configuration, package contents) outside the T2
   areas, and a runtime dependency bump. The readers and the runner read it in one round. After the

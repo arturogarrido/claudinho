@@ -39,8 +39,10 @@ behavior also change (AGENTS.md "Validation scope"); then the feature or bug-fix
    then the push line to read CI per job on that head. Every later push is the push line.
 8. The review its tier requires (AGENTS.md "Reviewing PRs"; the PR body states the tier). Prose alone is T0: the
    coordinator reads the whole diff and CI per job on the head, with no reader or runner round, and HOLDS that SHA.
-   Prose that states a legal, privacy or security claim, or a change that also touches a test or executable
-   configuration, is T1 or higher: the rounds (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
+   A structure guard that reads only the guides' text (`packages/core/test/claudinho-mode.test.ts`), changed with
+   that text, stays T0. Prose that states a legal, privacy or security claim, or a change that also touches any
+   other test or executable configuration, is T1 or higher: the rounds
+   (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
    `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`) as the tier asks, at most 3, and HOLD the SHA
    they confirmed.
 9. The merge, when authorized: read `gh pr view <n> --json headRefOid`; when it differs from the held SHA, REFUSE

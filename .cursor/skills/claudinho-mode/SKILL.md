@@ -11,10 +11,10 @@ list with the playbook's steps, in the playbook's order, before the first edit; 
 current until the reply. A playbook orders the rules of AGENTS.md and quotes the commands as they are run (the gate
 line, the push line); AGENTS.md stays the canonical guide, and where a playbook or a guide disagrees with it AGENTS.md
 wins. Every playbook ends with the same reply shape: a status ends Running, Blocked on you or Done, and a run ends with
-a numbered "What I need from you". A pull request's review follows its tier (T0, T1 or T2, at most 3 rounds:
-AGENTS.md "Reviewing PRs"), stated in its description beside the threat model. The playbooks live once, under `.claude/skills/claudinho-mode/playbooks/`; this
-file is mirrored byte-equal at `.cursor/skills/claudinho-mode/SKILL.md`, and both name a playbook and a guide by its
-repository-root path.
+a numbered "What I need from you". A pull request's review follows its tier (T0, T1 or T2, at most 3 rounds: AGENTS.md
+"Reviewing PRs"), stated in its description beside the threat model. The playbooks live once, under
+`.claude/skills/claudinho-mode/playbooks/`; this file is mirrored byte-equal at
+`.cursor/skills/claudinho-mode/SKILL.md`, and both name a playbook and a guide by its repository-root path.
 
 | Task kind | Playbook | Load first |
 |---|---|---|
