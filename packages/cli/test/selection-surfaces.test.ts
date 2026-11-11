@@ -100,7 +100,7 @@ describe('the edge: resolveConfig', () => {
   });
 
   it('the global option exists on the program', () => {
-    const src = readFileSync(fileURLToPath(new URL('../src/index.ts', import.meta.url)), 'utf8');
+    const src = readFileSync(fileURLToPath(new URL('../src/program.ts', import.meta.url)), 'utf8');
     expect(src).toMatch(/--competition <[a-z|]+>/);
   });
 });
@@ -129,7 +129,8 @@ describe('the mode line', () => {
   it('after the header, on text: the name and the source', async () => {
     await cmdToday('2026-10-04', ctxOf(cfgOf({ competition: 'premier-league' })));
     const l = lines();
-    const header = l.findIndex((x) => /Matches/.test(x));
+    // The day asked is the request clock's own day: "Today's matches".
+    const header = l.findIndex((x) => x === "Today's matches · Sun 2026-10-04");
     expect(header).toBeGreaterThan(-1);
     expect(l[header + 1]?.trim()).toBe('Premier League · from the command line');
     expect(errs.join('')).not.toMatch(/different competition than the bundled/);

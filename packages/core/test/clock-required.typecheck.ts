@@ -6,7 +6,7 @@
  * is itself the error.
  */
 import { marketRelevant } from '../src/markets/normalize';
-import { countdown, countdownPhrase } from '../src/time';
+import { countdown, countdownPhrase, kickoffLabel, resolveDayArg } from '../src/time';
 import type { Match } from '../src/types';
 
 export function refused(): void {
@@ -14,6 +14,10 @@ export function refused(): void {
   countdown('2026-10-10T11:30:00.000Z');
   // @ts-expect-error the clock is required: a countdown phrase without one would read the wall clock
   countdownPhrase('en', '2026-10-10T11:30:00.000Z');
+  // @ts-expect-error the clock is required: a kickoff's far date without one would count days from the wall clock
+  kickoffLabel('2026-10-10T11:30:00.000Z', { tz: 'UTC', locale: 'en' });
+  // @ts-expect-error the clock is required: a relative day without one would be counted from the wall clock
+  resolveDayArg({ offset: 1 }, undefined, 'UTC');
 }
 
 export function refusedGate(m: Match): boolean {
