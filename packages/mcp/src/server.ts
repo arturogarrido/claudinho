@@ -14,12 +14,10 @@ import { types as utilTypes } from 'node:util';
 // deliberate, MCP-affecting migration, not a dependency bump.
 import { z } from 'zod/v3';
 import {
-  allFixtures,
   asFlavorLevel,
   BUNDLE_COMPETITION,
   competitionLabel,
   fixturesByDate,
-  groups,
   humanLabel,
   isHumanLabel,
   isLang,
@@ -1208,14 +1206,4 @@ export function buildServer(): McpServer {
   myTeam.argsSchema = Object.assign(z.preprocess(blankTeamIsNone, z.object(myTeamArgs)), { shape: myTeamArgs });
 
   return server;
-}
-
-/** Count of bundled fixtures — a cheap startup sanity check. */
-export function fixtureCount(): number {
-  return allFixtures().length;
-}
-
-/** Distinct group letters (sanity/diagnostics). */
-export function groupLetters(): string[] {
-  return groups();
 }

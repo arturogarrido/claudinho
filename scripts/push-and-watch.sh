@@ -5,8 +5,9 @@
 # Why this exists: a watch command that returns "success" proves nothing about
 # the commit just pushed. `gh run watch` on a queued run returns at once; a run
 # listed first may be another SHA's, or another workflow's on the same SHA; and
-# a second push cancels the run in flight for the first (ci.yml cancels a
-# superseded run on the same ref), which once hid a Windows-only failure. This
+# a second push to a pull request's branch cancels the run in flight for the
+# first (ci.yml cancels a superseded run on a pull request's ref; each push to
+# main is a group of its own), which once hid a Windows-only failure. This
 # script judges the CI workflow's NEWEST run for the FULL local SHA and prints
 # every job's conclusion and times.
 #
@@ -39,7 +40,8 @@
 #      for the branch (`gh run list -R
 #      HOST/OWNER/NAME --workflow ci.yml`); a gh failure refuses, and so does a
 #      run not yet completed for ANOTHER SHA (the push would cancel it: wait for
-#      it, or cancel it yourself);
+#      it, or cancel it yourself), on every branch but main, which is never
+#      pushed and whose runs are never cancelled;
 #   4. the push: the remote SHA is the first field of the one line of `git
 #      ls-remote origin refs/heads/<branch>` whose ref is exactly
 #      `refs/heads/<branch>` (ls-remote matches a pattern by its tail, so a tag or
@@ -491,13 +493,16 @@ if is_main; then
   read_remote_sha "; nothing pushed"
   [ "$remote_sha" = "$local_sha" ] || refuse_main
 fi
-# A run not yet completed for another SHA would be cancelled by the push.
+# A run not yet completed for another SHA would be cancelled by the push (a
+# pull request's runs share one concurrency group per ref). main is never
+# pushed here, and each push to main has a group of its own (ci.yml), so an
+# earlier merge's run still in progress is no reason to refuse watching it.
 list_runs
 rc=$?
 [ $rc -eq 0 ] || probe_failed "gh run list" $rc "nothing pushed"
 while IFS="$US" read -r id sha event status conclusion; do
   [ -n "$id" ] || continue
-  if [ "$status" != "completed" ] && [ "$sha" != "$local_sha" ]; then
+  if [ "$status" != "completed" ] && [ "$sha" != "$local_sha" ] && ! is_main; then
     refuse "run $id for $sha is $status: a push now would cancel it; wait for it or cancel it yourself; nothing pushed"
   fi
 done <"$WORK/runs"

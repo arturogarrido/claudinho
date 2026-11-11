@@ -5,10 +5,14 @@ on:
     branches: [main]
   pull_request:
 
-# Cancel superseded runs on the same ref to save minutes.
+# A pull request's runs share one group per ref, and a new push cancels the
+# run still in flight to save minutes. A push to main gets a group of its own
+# (its SHA): a group holds one running and one pending run and a newly queued
+# run cancels and replaces the pending one, so in a shared group a merge
+# commit's run still pending would be cancelled by the next merge's.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

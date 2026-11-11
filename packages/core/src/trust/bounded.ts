@@ -63,8 +63,3 @@ export function takeBounded<T>(value: unknown, max: number): T[] {
   if (!Array.isArray(value)) return [];
   return value.length > max ? (value.slice(0, max) as T[]) : (value as T[]);
 }
-
-/** Map a BoundedList's items while preserving its counts. */
-export function mapBounded<T, U>(list: BoundedList<T>, fn: (item: T) => U): BoundedList<U> {
-  return { ...list, items: list.items.map(fn) };
-}

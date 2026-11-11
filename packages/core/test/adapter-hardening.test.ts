@@ -6,7 +6,8 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_COOLDOWN_MS, EspnAdapter, ProviderError } from '../src/adapters/espn';
-import { getStandings, knockoutWindow } from '../src/live';
+import { getStandings, knockoutWindow, knockoutWindowOf } from '../src/live';
+import type { Match } from '../src/types';
 
 type FetchImpl = typeof fetch;
 
@@ -314,5 +315,25 @@ describe('knockout window derives from the bundle (F5 ARCH-6)', () => {
     // Deriving from the bundled schedule must land on exactly the same span —
     // this pin proves the seam change is behavior-identical for this bundle.
     expect(knockoutWindow()).toEqual({ start: '20260628', end: '20260719' });
+  });
+
+  // The bundle is stored in kickoff order, so the parity pin cannot tell a span from "first and last": the rule
+  // itself is pinned on fixtures given out of order.
+  const fx = (stage: string, kickoff: string) => ({ stage, kickoff }) as unknown as Match;
+  it('spans the earliest to the latest knockout day, whatever the order, as YYYYMMDD strings', () => {
+    const fixtures = [
+      fx('QF', '2026-07-10T19:00:00Z'),
+      fx('R32', '2026-06-29T16:00:00Z'),
+      fx('F', '2026-07-19T19:00:00Z'),
+      fx('GROUP', '2026-06-11T19:00:00Z'), // a group match earlier than every knockout day: not in the window
+      fx('R16', '2026-07-04T16:00:00Z'),
+    ];
+    expect(knockoutWindowOf(fixtures)).toEqual({ start: '20260629', end: '20260719' });
+  });
+  it('a duplicate day, a single day and no knockout day', () => {
+    expect(knockoutWindowOf([fx('SF', '2026-07-14T19:00:00Z'), fx('R16', '2026-07-05T16:00:00Z'), fx('SF', '2026-07-14T23:00:00Z')])).toEqual({ start: '20260705', end: '20260714' });
+    expect(knockoutWindowOf([fx('F', '2026-07-19T19:00:00Z')])).toEqual({ start: '20260719', end: '20260719' });
+    expect(knockoutWindowOf([fx('GROUP', '2026-06-11T19:00:00Z')])).toBeNull();
+    expect(knockoutWindowOf([])).toBeNull();
   });
 });

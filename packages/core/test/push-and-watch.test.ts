@@ -284,6 +284,23 @@ describe.skipIf(process.platform === 'win32')('scripts/push-and-watch.sh, run of
     expect(r.out).not.toMatch(/pull request/i);
   });
 
+  it('`main` at its remote is watched while an OLDER main SHA\'s run is still in progress: nothing is pushed, so nothing is cancelled', () => {
+    // ci.yml gives each push to main its own concurrency group: an earlier merge's run keeps running beside the
+    // latest one. A push to a pull request's branch still cancels, and stays refused (the ANOTHER SHA case below).
+    const sb = sandbox();
+    seed(sb, {
+      'remote-sha': LOCAL,
+      'runs.1.tsv': RUN('22', LOCAL, 'completed', 'success', 'push') + RUN('21', OTHER, 'in_progress', '', 'push'),
+      'jobs-22.tsv': JOBS_OK,
+    });
+    const r = runBranch(sb, 'main', []);
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toMatch(/already at/);
+    expect(r.out).toContain('run 22');
+    expect(r.out).not.toMatch(/would cancel/);
+    expect(pushed(sb)).toBe(false);
+  });
+
   it('`main` at its remote at the first read, moved by the second (a merge meanwhile), is refused at the push: never pushed', () => {
     const sb = sandbox();
     seed(sb, { 'remote-sha': LOCAL, 'remote-sha-after-first': OTHER, 'runs.1.tsv': '' });
