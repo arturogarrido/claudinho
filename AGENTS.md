@@ -151,6 +151,39 @@ Releases ship via `.github/workflows/publish.yml` on a `v*` tag, using npm **tru
 publishing** (OIDC) — **no `NPM_TOKEN`**. A trusted publisher is configured on npm for all
 three packages (`@claudinho/core` · `cli` · `mcp`), all published **with provenance**.
 
+The workflow has four jobs, so the npm credential never shares a job with a dependency. `build`
+(`contents: read`) checks the commit and the tag, installs, builds, typechecks, tests, lints, packs
+the three tarballs (`pnpm pack`, which rewrites `workspace:` ranges) and uploads them with
+`packages/mcp/server.json` as one artifact, their sha256 in its summary. `publish` (`id-token:
+write`, in the GitHub environment `release`) checks out nothing and installs nothing: it downloads
+the artifact, checks it against `build`'s sums, and runs `npm publish <tarball> --provenance` for
+core, then cli, then mcp (Node 24: trusted publishing needs npm 11.5.1 or later, newer than Node
+22's). `release` (`contents: write`) creates the GitHub Release. `mcp-registry` (`id-token:
+write`, outside the environment) publishes `server.json` from the artifact.
+
+**One-time setup, before the first tag under the four-job workflow** (the maintainer's steps):
+
+1. GitHub, repository Settings → Environments → New environment, named `release`. Under
+   "Deployment branches and tags", choose "Selected branches and tags" and add the tag rule `v*`
+   (no branch). Under "Required reviewers", add yourself; leave "Prevent self-review" off (you
+   push the tag, so with it on nobody could approve).
+2. npm, for each of `@claudinho/core`, `@claudinho/cli` and `@claudinho/mcp`: the package's
+   Settings → Trusted publishing → add a SECOND GitHub Actions trusted publisher: owner
+   `arturogarrido`, repository `claudinho`, workflow `publish.yml`, environment `release`. Keep
+   the existing one (no environment) for now. npm allows up to 10 per package.
+3. Tag the next release as step 3 below says, and approve the `publish` job when GitHub asks.
+4. Only after that release has published all three packages: on npm, delete the trusted publisher
+   with no environment from each package. Until then, any job of `publish.yml` could still mint an
+   npm token; from then on, only a job in the `release` environment can, and the environment's
+   rules (tags `v*`, your approval) gate it.
+
+If steps 1 and 2 are not done before that tag: GitHub's documentation says "Running a workflow that
+references an environment that does not exist will create an environment with the referenced name",
+so the `publish` job runs in an unprotected `release` and nothing asks for approval. Whether npm
+accepts that job's token while no trusted publisher names the environment is not documented (the
+token's `sub` claim then reads `repo:arturogarrido/claudinho:environment:release`). If the `publish`
+job fails on authentication, do step 2, then "Re-run failed jobs". Do step 1 at once in either case.
+
 To cut a release:
 
 1. Bump the version in the **three** `package.json` files (`packages/{cli,mcp,core}/package.json`).
@@ -182,17 +215,20 @@ To cut a release:
    tagged: check that `gh pr view <n> --json state` says `MERGED`, then run the block again. When
    `git tag` or the push fails, stop: this step never deletes or moves a tag on `origin`; read the
    tags as "When the tag step stops at `git tag` or the push" below says, and do only what its case
-   says. The workflow runs on a `v*` tag push alone (it has no manual trigger). It first fails on a
-   commit `main` does not contain (a tag on the branch's commit publishes nothing), then gates (build,
-   typecheck, test, lint, and a `refs/tags/v*` ref whose version every package carries), then
-   `pnpm -r publish --provenance` ships all three via OIDC (versions already on npm are skipped)
-   and auto-creates the GitHub Release
-   (`gh release create --generate-notes`); a second job, `mcp-registry`, then publishes the tag's
-   record to the official MCP Registry.
+   says. The workflow runs on a `v*` tag push alone (it has no manual trigger). Its `build` job first
+   fails on a commit `main` does not contain (a tag on the branch's commit publishes nothing), then on
+   a ref that is not a `refs/tags/v*` tag whose version every package carries, then gates (build,
+   typecheck, test, lint) and packs. The `publish` job then waits for the maintainer's approval (the
+   `release` environment), and ships all three via OIDC with `npm publish` of each tarball (versions
+   already on npm are skipped; the first failure stops it, so cli and mcp never go out without core);
+   the `release` job creates the GitHub Release (`gh release create --generate-notes`); the
+   `mcp-registry` job then publishes the tag's record to the official MCP Registry.
    A failed run is retried on the same tag with "Re-run failed jobs" (`gh run rerun <id> --failed`):
-   `pnpm -r publish` skips a version npm already has, the Release step skips a Release that exists,
-   and `mcp-registry` skips a version the Registry has.
-4. Once both jobs are green, update the maintainer's own machine and read each version back. None of
+   a re-run job reads the artifact `build` uploaded and checks it against `build`'s sums (a check
+   that fails stops the job; "Re-run all jobs" then rebuilds), the `publish` job asks for approval
+   again and skips a version npm already has, the Release step skips a Release that exists, and
+   `mcp-registry` skips a version the Registry has.
+4. Once all four jobs are green, update the maintainer's own machine and read each version back. None of
    it updates by default: an npm global install never updates itself, and Claude Code leaves plugin
    auto-update off by default for a third-party marketplace such as this one.
    - The CLI: `command -v claudinho` names the copy that runs. For npm's (the usual case),
@@ -261,7 +297,8 @@ first case. Each of those actions is taken once: when the reads land in the same
 it, stop and hand them to the maintainer.
 
 **The MCP Registry record publishes automatically on every tag.** The `mcp-registry` job in
-`publish.yml` runs after the npm publish succeeded, waits until npm serves the version (`npm view`
+`publish.yml` runs after the npm publish and the Release succeeded, reads `server.json` from the
+`build` job's artifact (it checks out nothing), waits until npm serves the version (`npm view`
 to an 8-minute deadline, every probe bounded at 20 seconds, so the step ends by about 8m40s and the
 publisher's retries are spent on Registry errors), authenticates with GitHub Actions OIDC
 (`mcp-publisher login github-oidc` — no token, no device flow; the Registry JWT lives five minutes,
@@ -295,6 +332,14 @@ Oct 31, 2026. Nothing builds or publishes one any more; `scripts/check-pack.mjs`
   publisher for later releases.
 - Account 2FA set to "Authorization and writes" forces an OTP that CI can't supply; trusted
   publishing (OIDC) sidesteps it entirely.
+- The credential and the dependencies never share a job (a security review, Nov 10, 2026): when one
+  job installed and ran every dev dependency while holding `id-token: write`, a compromised
+  dependency arriving in a merged bump could have published any version of the three packages with
+  valid provenance. `packages/core/test/publish-workflow.test.ts` refuses a job that holds
+  `id-token: write` and checks out the repository or installs anything. A compromised build-time
+  dependency can still alter the tarball `build` makes; the split does not close that.
+- Node 22's bundled npm (10.x) is too old for trusted publishing (11.5.1 or later); the `publish`
+  job runs Node 24 and refuses an older npm rather than installing one beside the credential.
 
 ## Commit attribution (all agents)
 

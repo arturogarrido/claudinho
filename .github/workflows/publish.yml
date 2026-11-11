@@ -1,7 +1,8 @@
 name: Publish
 
 # Publishes @claudinho/{core,cli,mcp} to npm with provenance, then creates the
-# matching GitHub Release (so the repo's "Latest release" tracks npm).
+# matching GitHub Release (so the repo's "Latest release" tracks npm), then the
+# MCP Registry record.
 #
 # Trigger: push a version tag on the release PR's merge commit on main, never on
 #          the release branch's own commit (AGENTS.md "Releasing" step 3 gives the
@@ -9,37 +10,59 @@ name: Publish
 #          "Re-run failed jobs" (`gh run rerun <id> --failed`) on the same tag, and
 #          every publishing step skips what is already published.
 #
-# Auth: npm trusted publishing (OIDC) — NO token. The `id-token: write`
-#   permission below lets npm mint a short-lived, workflow-scoped credential, so
-#   there's no NPM_TOKEN secret to manage or rotate. A trusted publisher must be
-#   configured on npmjs for each package (repo + workflow `publish.yml`).
+# Four jobs, so the npm credential never sits beside a dependency:
+#   build        contents: read. Checks the commit and the tag, installs, builds,
+#                tests, lints, packs the three tarballs, and uploads them with
+#                packages/mcp/server.json as one artifact. Every dependency
+#                (vitest, tsup/esbuild, Biome, tsc) runs here and only here.
+#   publish      id-token: write, in the `release` environment. No checkout, no
+#                install: downloads the artifact, checks it against the build
+#                job's sums, and runs `npm publish` on each tarball.
+#   release      contents: write. Creates the GitHub Release; no checkout.
+#   mcp-registry id-token: write, outside the environment. No checkout: publishes
+#                server.json from the artifact.
+#
+# Auth: npm trusted publishing (OIDC) — NO token. `id-token: write` lets npm mint
+#   a short-lived, package-scoped credential from the job's OIDC token, so there
+#   is no NPM_TOKEN secret to manage or rotate. A trusted publisher is configured
+#   on npmjs for each package (repo + workflow `publish.yml`, and the environment
+#   `release` once AGENTS.md "Releasing", "One-time setup", is done).
 #   See https://docs.npmjs.com/trusted-publishers.
 #
 # Prerequisites:
 #   - The repository must be PUBLIC — trusted publishing and provenance both
-#     require a publicly verifiable source; pnpm refuses provenance for a
-#     private package.
+#     require a publicly verifiable source.
+#   - The GitHub environment `release` exists with its protection rules (tags
+#     `v*` only, a required reviewer). A run that names an environment that does
+#     not exist creates it with no protection rules.
 
 on:
   push:
     tags: ["v*"]
 
-permissions:
-  contents: write # create the GitHub Release for the tag (the "Latest" marker)
-  id-token: write # OIDC token used to sign the npm provenance attestation
+# No job inherits a permission: each job below states the least it needs.
+permissions: {}
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      sums: ${{ steps.sums.outputs.sums }}
     steps:
-      # SHA-pinned (not tag-pinned): this job holds `id-token: write` — the npm
-      # trusted-publishing credential for all three packages — so a re-pointed
-      # action tag must not be able to execute here. Dependabot updates SHA pins.
+      # SHA-pinned (not tag-pinned), like every action in this workflow: a
+      # re-pointed tag must not run here, where the release files are made.
+      # Dependabot updates SHA pins. The checkout keeps no credential in
+      # .git/config: nothing after it pushes.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       # Publish only a commit `main` contains: a tag on the release branch's own
-      # commit fails here, before anything is installed with the credential in
-      # the job. The checkout is shallow (the commit alone), so the fetch walks
+      # commit fails here, before anything is installed and before any job that
+      # publishes starts (every one needs this job). The checkout is shallow (the commit alone), so the fetch walks
       # main back until it meets this commit; a commit main does not contain is
       # never met, and the check fails. The ref is named in full: a run on a
       # branch NAMED `origin/main` (no trigger starts one; the check does not
@@ -61,16 +84,6 @@ jobs:
           node-version: 22
           check-latest: true # the newest patch of the line, not the runner's cached one
           cache: pnpm
-          registry-url: https://registry.npmjs.org # target the public registry (OIDC supplies auth)
-
-      - run: pnpm install --frozen-lockfile
-
-      # Don't ship a broken release — build first (cli/mcp resolve @claudinho/core
-      # from its dist), then the same gates CI runs.
-      - run: pnpm -r build
-      - run: pnpm -r typecheck
-      - run: pnpm -r test
-      - run: pnpm lint
 
       # On every run: refuse any ref that is not a `v*` tag (a branch NAMED
       # v1.2.3 would pass the version comparison below), then refuse to publish
@@ -91,19 +104,165 @@ jobs:
           done
           echo "all package versions match $TAG"
 
-      # Publish core → cli → mcp. pnpm orders by workspace deps, rewrites
-      # workspace:* to the real version, and skips versions already on npm.
-      # --provenance attaches a signed build attestation (needs id-token: write).
-      - name: Publish to npm with provenance
-        run: pnpm -r publish --provenance --access public --no-git-checks
+      - run: pnpm install --frozen-lockfile
 
-      # Create the GitHub Release for this tag so the repo's "Latest release"
-      # tracks npm (this used to be a manual step and silently lapsed after
-      # v0.5.0). Idempotent — skips if the release already exists (re-runs);
-      # --generate-notes lists the merged PRs since the previous release.
+      # Don't ship a broken release — build first (cli/mcp resolve @claudinho/core
+      # from its dist), then the same gates CI runs.
+      - run: pnpm -r build
+      - run: pnpm -r typecheck
+      - run: pnpm -r test
+      - run: pnpm lint
+
+      # `pnpm pack` writes the tarball `pnpm publish` used to send: it rewrites
+      # `workspace:` ranges to the real version and applies publishConfig. The
+      # next step refuses a manifest that still carries one.
+      - name: Pack the three packages
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/release"
+          mkdir -p "$OUT"
+          for p in core cli mcp; do
+            pnpm --filter "@claudinho/$p" pack --pack-destination "$OUT"
+          done
+          cp packages/mcp/server.json "$OUT/server.json"
+          ls -l "$OUT"
+
+      - name: Refuse a workspace range in a packed manifest
+        working-directory: ${{ runner.temp }}/release
+        run: |
+          set -euo pipefail
+          V=${GITHUB_REF_NAME#v}
+          for p in core cli mcp; do
+            tgz="claudinho-$p-$V.tgz"
+            manifest=$(tar -xzOf "$tgz" package/package.json)
+            if printf '%s' "$manifest" | grep -q 'workspace:'; then
+              echo "::error::$tgz carries a workspace: range in its package.json"; exit 1
+            fi
+          done
+          echo "no workspace: range in the three packed manifests"
+
+      # The sums go to the job summary (for the maintainer) and to the job's
+      # output, which the publish and Registry jobs check the downloaded files
+      # against. That guards the transfer and a stale artifact retained from an
+      # earlier attempt of the run; it cannot guard against this job itself.
+      - name: Record the sha256 of the release files
+        id: sums
+        working-directory: ${{ runner.temp }}/release
+        run: |
+          set -euo pipefail
+          V=${GITHUB_REF_NAME#v}
+          sha256sum "claudinho-core-$V.tgz" "claudinho-cli-$V.tgz" "claudinho-mcp-$V.tgz" server.json > SHA256SUMS
+          cat SHA256SUMS
+          { echo '### Release files (sha256)'; echo; echo '```'; cat SHA256SUMS; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo 'sums<<SHA256SUMS_END'; cat SHA256SUMS; echo 'SHA256SUMS_END'; } >> "$GITHUB_OUTPUT"
+
+      # `overwrite: true`: a "Re-run all jobs" uploads the same name again.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-files
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+  # The only job npm trusts once each package's trusted publisher names the
+  # `release` environment: its protection rules (tags `v*` only, a required
+  # reviewer) gate every publish. It checks out nothing and installs nothing:
+  # no file of the repository and no dependency runs beside the credential.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      id-token: write # exchanged by npm for a publish token, and signs the provenance attestation
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: release-files
+          path: release
+
+      # Node 24, for its bundled npm: trusted publishing needs npm 11.5.1 or
+      # later (Node 22's bundled npm is 10.x). Installing a newer npm here would
+      # be a registry install beside the credential, so the step below refuses
+      # an older npm instead. `registry-url` writes the .npmrc npm's own
+      # trusted-publishing example uses; no cache (there is no lockfile here).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          check-latest: true
+          registry-url: https://registry.npmjs.org
+
+      - name: Require npm 11.5.1 or later
+        run: |
+          v=$(npm --version)
+          if node -e 'const [a, b, c] = process.argv[1].split(/[.-]/).map(Number); process.exit(a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1))) ? 0 : 1)' "$v"; then
+            echo "npm $v"
+          else
+            echo "::error::npm $v is older than 11.5.1, the first npm with trusted publishing"; exit 1
+          fi
+
+      - name: Verify the release files against the build job's sums
+        working-directory: release
+        env:
+          SUMS: ${{ needs.build.outputs.sums }}
+        run: |
+          set -euo pipefail
+          V=${GITHUB_REF_NAME#v}
+          want=$(printf '%s\n' "claudinho-core-$V.tgz" "claudinho-cli-$V.tgz" "claudinho-mcp-$V.tgz" server.json | sort)
+          got=$(printf '%s\n' "$SUMS" | sed -nE 's/^[0-9a-f]{64}  ([^ ]+)$/\1/p' | sort)
+          lines=$(printf '%s\n' "$SUMS" | grep -c . || true)
+          if [ "$got" != "$want" ] || [ "$lines" != 4 ]; then
+            echo "::error::the build job's sums do not list the three tarballs and server.json, one well-formed line each:"
+            printf '%s\n' "$SUMS"; exit 1
+          fi
+          printf '%s\n' "$SUMS" | sha256sum -c -
+
+      # Core first (cli and mcp bundle it and list it as a dev dependency), then
+      # cli and mcp. Each tarball's own manifest must name the package and the
+      # tag's version. A version npm already serves is skipped, so "Re-run failed
+      # jobs" after a partial publish is safe; a view that fails or answers
+      # anything else is not a skip (npm then refuses a duplicate itself). The
+      # first failure stops the loop: cli and mcp never go out without core.
+      # npm signs the provenance attestation with this job's OIDC token: it
+      # names this run of publish.yml at the tag's commit, the run that built
+      # the tarball. No propagation wait here: the Registry job waits for npm.
+      - name: Publish to npm with provenance
+        working-directory: release
+        run: |
+          set -euo pipefail
+          V=${GITHUB_REF_NAME#v}
+          for p in core cli mcp; do
+            name="@claudinho/$p"
+            tgz="claudinho-$p-$V.tgz"
+            got=$(tar -xzOf "$tgz" package/package.json | node -e 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => { const m = JSON.parse(s); console.log(`${m.name}@${m.version}`); })')
+            if [ "$got" != "$name@$V" ]; then
+              echo "::error::$tgz holds $got, not $name@$V"; exit 1
+            fi
+            if [ "$(npm view "$name@$V" version 2>/dev/null || true)" = "$V" ]; then
+              echo "$name@$V is already on npm; skipping"
+              continue
+            fi
+            npm publish "./$tgz" --provenance --access public
+            echo "published $name@$V"
+          done
+
+  # Create the GitHub Release for this tag so the repo's "Latest release"
+  # tracks npm (this used to be a manual step and silently lapsed after
+  # v0.5.0). Idempotent — skips if the release already exists (re-runs);
+  # --generate-notes lists the merged PRs since the previous release. No
+  # checkout: GH_REPO names the repository.
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # create the GitHub Release for the tag (the "Latest" marker)
+    steps:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "release $GITHUB_REF_NAME already exists — skipping"
@@ -119,21 +278,25 @@ jobs:
   # five minutes by design, which is why a token minted on a laptop had lapsed
   # before every release.
   #
-  # A separate job, not a step: `needs: publish` means it runs only after npm
-  # and the GitHub Release succeeded, and a Registry outage becomes its own red
-  # job — never a failed npm publish. Re-run it alone with
+  # A separate job, not a step: it needs `release`, which needs `publish`, so it
+  # runs only after npm and the GitHub Release succeeded, and a Registry outage
+  # becomes its own red job — never a failed npm publish. It needs `build` too,
+  # for the sums. It checks out nothing: server.json comes from the build
+  # job's artifact, checked against those sums. It stays OUT of the `release`
+  # environment: its OIDC token carries no environment claim, so once npm's
+  # trusted publishers name that environment, this job's token cannot publish
+  # to npm. Re-run it alone with
   # `gh run rerun <id> --failed`; the pre-check below keeps that idempotent
   # (Registry versions are immutable and a duplicate publish is a hard 400).
   # Every release publishes a record: server.json is bumped on every release
   # anyway (a vitest guard pins it to package.json), and the Registry's npm pin
   # must never lag npm. `isLatest` flips by semver, so ordering is safe.
   mcp-registry:
-    needs: publish
+    needs: [build, release]
     runs-on: ubuntu-latest
     # The npm wait (an 8-min deadline, about 8m40s at most) and the publisher's retries (~4 min) in sequence.
     timeout-minutes: 20
     permissions:
-      contents: read
       id-token: write # exchanged by `mcp-publisher login github-oidc`
     env:
       # A Go release binary, not an action, so it cannot be SHA-pinned like the
@@ -143,13 +306,32 @@ jobs:
       MCP_PUBLISHER_VERSION: 1.8.1
       MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc # mcp-publisher_linux_amd64.tar.gz
       REGISTRY_URL: https://registry.modelcontextprotocol.io
-      SERVER_JSON: packages/mcp/server.json
+      SERVER_JSON: release/server.json
       SERVER_NAME: io.github.arturogarrido/claudinho
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: release-files
+          path: release
 
-      # The publish job's vitest guard already pins server.json to package.json
-      # and the tag gate pins package.json to the tag; this makes the failure
+      - name: Verify the release files against the build job's sums
+        working-directory: release
+        env:
+          SUMS: ${{ needs.build.outputs.sums }}
+        run: |
+          set -euo pipefail
+          V=${GITHUB_REF_NAME#v}
+          want=$(printf '%s\n' "claudinho-core-$V.tgz" "claudinho-cli-$V.tgz" "claudinho-mcp-$V.tgz" server.json | sort)
+          got=$(printf '%s\n' "$SUMS" | sed -nE 's/^[0-9a-f]{64}  ([^ ]+)$/\1/p' | sort)
+          lines=$(printf '%s\n' "$SUMS" | grep -c . || true)
+          if [ "$got" != "$want" ] || [ "$lines" != 4 ]; then
+            echo "::error::the build job's sums do not list the three tarballs and server.json, one well-formed line each:"
+            printf '%s\n' "$SUMS"; exit 1
+          fi
+          printf '%s\n' "$SUMS" | sha256sum -c -
+
+      # The build job's vitest guard already pins server.json to package.json
+      # and its tag gate pins package.json to the tag; this makes the failure
       # message specific if either ever changes.
       - name: Verify server.json matches the tag
         run: |

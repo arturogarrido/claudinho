@@ -48,11 +48,15 @@ maintainer's: never a tag or a publish by an agent.
    fails, stop: this step never deletes or moves a tag on `origin`; read the tags as AGENTS.md "Releasing" gives it
    under "When the tag step stops at `git tag` or the push" (three reads, then one case of five), and do only what
    its case says. `publish.yml` runs on a `v*` tag push alone; it first fails on a commit `main` does not contain (a
-   tag on the branch's head publishes nothing), then gates on build, typecheck, test, lint and a `refs/tags/v*` ref
-   whose version every package carries. A failed run is retried on the same tag with `gh run rerun <id> --failed`.
-   Then watch the publish workflow on the tag (`.github/workflows/publish.yml`): its two jobs, `publish` and
-   `mcp-registry`, the run found with `gh run list --workflow publish.yml` and read per job with
-   `gh run view <id> --json jobs`; the npm versions, the GitHub Release and the Registry record checked afterwards.
+   tag on the branch's head publishes nothing), then on a `refs/tags/v*` ref whose version every package does not
+   carry, then gates on build, typecheck, test and lint, all in its `build` job. A failed run is retried on the same
+   tag with `gh run rerun <id> --failed`. Then watch the publish workflow on the tag
+   (`.github/workflows/publish.yml`): its four jobs, `build`, `publish` (it waits for the maintainer's approval in
+   the `release` environment), `release` and `mcp-registry`, the run found with
+   `gh run list --workflow publish.yml` and read per job with `gh run view <id> --json jobs`; the npm versions with
+   their provenance, the GitHub Release and the Registry record checked afterwards. The environment and npm's
+   trusted publishers are set once, before the first tag under the four-job workflow: AGENTS.md "Releasing",
+   "One-time setup".
 10. The maintainer's machine on the new version: AGENTS.md "Releasing" step 4, as written there (the CLI with the
     installer that owns the `claudinho` that runs, the plugin with its read-back on `main`'s version and a reload,
     the MCP server's installed copies if any), each installed version read back with the command step 4 names. None
