@@ -236,6 +236,18 @@ describe('today: every other state prints what it printed before, and makes no e
   });
 });
 
+describe('a day the schedule ahead cannot reach: no extra read', () => {
+  it('a shown day whose next day starts before or after the span: no month request, no pointer', async () => {
+    for (const day of ['2026-11-02', '2026-11-26', '2026-12-20']) {
+      writes = [];
+      const { adapter, urls } = feed([]);
+      await cmdToday(day, ctxOf(adapter));
+      expect(months(urls), day).toHaveLength(0);
+      expect(text()).not.toMatch(POINTER_WORDS);
+    }
+  });
+});
+
 describe('the cost: the cache\'s slice when fresh and whole, else one read; never under a cooldown', () => {
   const iso = (ms: number) => new Date(ms).toISOString();
   const MIN = 60_000;
