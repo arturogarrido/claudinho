@@ -55,7 +55,7 @@ const VOICE =
     ? ''
     : `\nVoice: when relaying scores, narrate with lively, regionally-appropriate football-commentary energy in the user's language. Each match line may end with a short exclamation ("— ¡GOOOOL!"): use it as a tone cue. Keep every fact exact; never invent details and never impersonate or name a real commentator.`;
 
-export const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and standings for one football competition per request, chosen by the tool call's competition argument (an alias such as premier-league, or an ESPN slug such as eng.1), else the server's CLAUDINHO_COMPETITION, else the user's saved choice (set with claudinho follow <alias>). With none of the three, every competition-answering tool answers noCompetition with a sentence saying what to do: pass competition, or ask the user to run claudinho follow <alias>. list_competitions lists the supported competitions, their aliases and what each offers, offline. Every tool's text but get_team's, get_share_snippet's and list_competitions' starts with the competition it is for, and its structured data carries it as competition (get_share_snippet's card names it in its title; list_competitions says it last, as Current, and in data.current; get_team is the World Cup's roster). An unknown competition is a tool error that lists the aliases.
+export const INSTRUCTIONS = `Claudinho serves live scores, fixtures, and standings for one football competition per request, chosen by the tool call's competition argument (an alias such as premier-league, its name (Premier League) or a short form (epl), or an ESPN slug such as eng.1), else the server's CLAUDINHO_COMPETITION, else the user's saved choice (set with claudinho follow <alias>). With none of the three, every competition-answering tool answers noCompetition with a sentence saying what to do: pass competition, or ask the user to run claudinho follow <alias>. list_competitions lists the supported competitions, their aliases and what each offers, offline. Every tool's text but get_team's, get_share_snippet's and list_competitions' starts with the competition it is for, and its structured data carries it as competition (get_share_snippet's card names it in its title; list_competitions says it last, as Current, and in data.current; get_team is the World Cup's roster). An unknown competition is a tool error that suggests the nearest alias when there is one and lists the aliases.
 get_next_fixture and get_share_snippet take a team as a name or a code: a club's ("Arsenal", "ARS") in a club competition, a nation's ("Mexico", "MEX") in the World Cup. get_next_fixture with no team answers for the server's CLAUDINHO_TEAM, else for the team the user pinned (claudinho follow <alias> --team <name>) when the request is for that team's competition. Several teams matching one name come back as candidates; ask which one, never pick. get_market_signal takes a nation's 3-letter code (market signals are read for the World Cup alone). get_team resolves a nation's name to its code in the World Cup roster, offline; it knows no clubs.
 Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team, get_standings for standings tables, and get_bracket for the knockout tree (a league season with no knockout tie answers inapplicable).
 Off the World Cup, get_next_fixture and get_match search from yesterday to 14 days ahead: an empty answer carrying horizon or window is about that span, not about the team or the match. betweenEditions means the competition's edition has ended and the next has not started.
@@ -107,15 +107,16 @@ export const tzArg = z
   .refine((v) => isValidTimeZone(v), 'an IANA time zone, e.g. America/Mexico_City');
 
 /**
- * The competition a call is for: an alias or a slug, resolved by the server's
- * edge (`selectionOf`), which refuses anything else with the aliases. A plain
+ * The competition a call is for: an alias, its name or a short form, or a
+ * slug, resolved by the server's edge (`selectionOf`), which refuses anything
+ * else with the nearest alias when one is near and the aliases. A plain
  * string here, so the refusal is the edge's (it names the aliases), not a
  * schema message.
  */
 const competitionArg = z
   .string()
   .describe(
-    "The competition: an alias such as premier-league, or an ESPN slug such as eng.1 (list_competitions lists the aliases). Without it: the server's CLAUDINHO_COMPETITION, else the user's saved choice (claudinho follow); with none, the answer is noCompetition",
+    "The competition: an alias such as premier-league, its name (Premier League) or a short form (epl), or an ESPN slug such as eng.1 (list_competitions lists the aliases). Without it: the server's CLAUDINHO_COMPETITION, else the user's saved choice (claudinho follow); with none, the answer is noCompetition",
   );
 
 /** The reader's language, optional: every competition-answering tool and `list_competitions` take it. */
@@ -1039,7 +1040,7 @@ export function buildServer(): McpServer {
     {
       title: 'Supported competitions',
       description:
-        "The competitions Claudinho answers for, one per row: the alias every other tool's competition argument takes, the name, the teams (nation or club), the kind (league or cup), and what each surface is (scores, next, standings, bracket, markets: offered, not-offered-yet, or not-applicable), plus current: the competition this request is for. Offline: reads the supported table, never the network. Whether an edition is in season is not listed here; the reads say so (betweenEditions).",
+        "The competitions Claudinho answers for, one per row: the alias every other tool's competition argument takes (it also takes the name or a short form), the name, the teams (nation or club), the kind (league or cup), and what each surface is (scores, next, standings, bracket, markets: offered, not-offered-yet, or not-applicable), plus current: the competition this request is for. Offline: reads the supported table, never the network. Whether an edition is in season is not listed here; the reads say so (betweenEditions).",
       // `lang` localizes the Current line (the names are not localized) and a refusal.
       inputSchema: { competition: competitionArg.optional(), lang: langArg },
       // Read-only AND offline — the supported table ships with the server.

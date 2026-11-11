@@ -156,11 +156,12 @@ Nothing is followed until you choose. Three sources can choose, and the first on
 2. `CLAUDINHO_COMPETITION`, while it is set (the statusline, the hook and `ambient --json` follow it too);
 3. the choice `claudinho follow <alias>` saved.
 
-Each takes an alias from the table, or an ESPN slug such as `eng.1`. Any other lower-case dotted
-ESPN slug works too, labelled experimental. An unknown value is refused with the list. With none of
-the three, a command that answers for a competition says so and exits 1 (`--json` prints
-`{ "competition": null, "noCompetition": true }`), the statusline reads `⚽ claudinho follow`, and
-the hook stays silent.
+Each takes an alias from the table, its name or a short form (`claudinho follow epl`,
+`-c "Premier League"`), or an ESPN slug such as `eng.1`. Any other lower-case dotted ESPN slug works
+too, labelled experimental. An unknown value is refused with the nearest alias, when there is one,
+and the list. With none of the three, a command that answers for a competition says so and exits 1
+(`--json` prints `{ "competition": null, "noCompetition": true }`), the statusline reads
+`⚽ claudinho follow`, and the hook stays silent.
 
 `today`, `live`, `next`, `match`, `table`, `bracket` and `markets` name their competition near the
 top (`Premier League · from the command line`), and in `--json` as `competition`. A share card names

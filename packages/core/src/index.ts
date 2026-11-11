@@ -345,6 +345,7 @@ export {
   deriveTables,
   entryOf,
   listCompetitions,
+  suggestCompetitions,
   SUPPORTED,
 } from './supported';
 export type {

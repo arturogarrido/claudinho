@@ -90,13 +90,13 @@ Off-match, the prompt hook adds nothing to what the model reads.
 
 ## Competitions
 
-Nothing is followed until you choose one. `claudinho follow <alias>` saves your choice, and the
-commands, the statusline, the plugin and the MCP server follow it. Three things stay the World
-Cup's whatever you follow: `claudinho team` and the MCP tool `get_team` read its nations, and the MCP
-resource `fixtures://{date}` is its bundled schedule. `claudinho team` is refused when
-`--competition` or `CLAUDINHO_COMPETITION` chooses another competition. `claudinho follow --list` lists
-every alias with what it offers, `claudinho follow` shows your choice, and `claudinho follow off`
-forgets it.
+Nothing is followed until you choose one. `claudinho follow <alias>` saves your choice (a name or a
+short form works too: `claudinho follow epl`), and the commands, the statusline, the plugin and the
+MCP server follow it. Three things stay the World Cup's whatever you follow: `claudinho team` and
+the MCP tool `get_team` read its nations, and the MCP resource `fixtures://{date}` is its bundled
+schedule. `claudinho team` is refused when `--competition` or `CLAUDINHO_COMPETITION` chooses
+another competition. `claudinho follow --list` lists every alias with what it offers,
+`claudinho follow` shows your choice, and `claudinho follow off` forgets it.
 
 <!-- competitions:start -->
 | Alias | Competition | Teams | Scores | Next | Standings | Bracket | Markets |

@@ -111,7 +111,7 @@ describe('every competition-answering tool takes `competition`, says it first, a
   it('an unknown value is a tool error naming the aliases, and no request', async () => {
     let fetched = 0;
     const counting: ProviderAdapter = { ...adapterFor('eng.1'), async fetchByDate() { fetched++; return [fixture]; }, async fetchWindow() { fetched++; return [fixture]; } };
-    for (const bad of ['foo', 'ENG.1', 'premier league']) {
+    for (const bad of ['foo', 'ENG.1', 'premier']) {
       await expect(toolGetToday({ date: '2026-10-04', competition: bad, adapter: counting, now: NOW }), bad).rejects.toThrow(/premier-league/);
     }
     expect(fetched).toBe(0);

@@ -42,7 +42,7 @@
           "name": "CLAUDINHO_MARKETS"
         },
         {
-          "description": "The competition the server answers for, by alias or ESPN slug, e.g. premier-league or eng.1 (optional; a tool call's competition argument wins, else the choice saved with claudinho follow)",
+          "description": "The competition the server answers for, by alias, name, short form or ESPN slug, e.g. premier-league, epl or eng.1 (optional; a tool call's competition argument wins, else the choice saved with claudinho follow)",
           "isRequired": false,
           "format": "string",
           "name": "CLAUDINHO_COMPETITION"

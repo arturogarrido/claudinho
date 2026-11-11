@@ -60,12 +60,15 @@ import {
   nextFixtureForPin,
   selectedCompetition,
   selectionExtras,
+  competitionValue,
   selectionRefusal,
   selectionVerdict,
   capabilitiesOf,
+  entryOf,
   listCompetitions,
   SUPPORTED,
   type CompetitionSelection,
+  type SelectedCompetition,
   type NextFixtureResult,
   type Pin,
   pinUnder,
@@ -171,6 +174,7 @@ import {
 } from './install';
 import { withPersistedBackoff } from './providerBackoff';
 import { writeFileAtomic } from './paths';
+import { wrapLines } from './wrap';
 import { rmSync } from 'node:fs';
 
 /**
@@ -383,6 +387,26 @@ function competitionKey(cfg: CliConfig): ReturnType<typeof selectionExtras> {
 export class InputError extends Error {}
 
 /**
+ * A selection's refusal (core `selectionRefusal`) as the CLI prints it, as
+ * lines: a refused value's lines (the value and the nearest aliases, then the
+ * aliases) each wrapped at the stream's width (`columns`, else 80), broken at
+ * spaces so an alias is never split, with `indent` before every line. Nothing
+ * chosen is its one sentence as it is, never broken inside the commands it
+ * names. Empty for a competition.
+ */
+function refusalLines(selection: CompetitionSelection, lang: string, columns: number | undefined, indent = ''): string[] {
+  const said = selectionRefusal(selection, lang);
+  if (said === undefined) return [];
+  return selection.kind === 'refused' ? wrapLines(said, columns, indent) : [`${indent}${said}`];
+}
+
+/** A selection's refusal as the input error the CLI raises: printed on stderr, so wrapped at its width. */
+function refusalError(selection: CompetitionSelection, lang: string): InputError | undefined {
+  const lines = refusalLines(selection, lang, process.stderr.columns);
+  return lines.length > 0 ? new InputError(lines.join('\n')) : undefined;
+}
+
+/**
  * Validate shared inputs before a command runs:
  *  - an explicit `--tz` that's invalid → warn to stderr (non-fatal; core falls
  *    back to the system zone anyway).
@@ -410,18 +434,19 @@ function precheck(
   if (cfg.tz && !isValidTimeZone(cfg.tz)) {
     process.stderr.write(t('warn.tz', { tz: cfg.tz }) + '\n');
   }
-  // A value that is neither an alias nor a slug (from `--competition` or
-  // CLAUDINHO_COMPETITION) is refused with the aliases, before any request:
+  // A value core's grammar names no competition by (from `--competition` or
+  // CLAUDINHO_COMPETITION) is refused with the nearest aliases and the list,
+  // wrapped at stderr's width, before any request:
   // an unknown value is never a request. (What a valid one selects is said on
   // stdout, by the mode line; nothing is warned on stderr.) Nothing chosen is
   // the first run: the sentence says `claudinho follow`.
-  const refusal = selectionRefusal(cfg.selection, cfg.lang);
+  const refusal = refusalError(cfg.selection, cfg.lang);
   if (refusal !== undefined && (cfg.selection.kind !== 'none' || competition)) {
     // The structured twin of the sentence: what `--json` reads, through core.
     if (cfg.json && cfg.selection.kind === 'none') {
       emitJson({ ...selectionExtras(cfg.selection), ...verdictExtras(selectionVerdict(cfg.selection)) });
     }
-    throw new InputError(refusal);
+    throw refusal;
   }
   // An unknown --source/CLAUDINHO_SOURCE used to silently run ESPN — the flag
   // lied. Fail loud with the valid list (core makeAdapter also throws, as
@@ -1428,7 +1453,7 @@ export function cmdInitCursorStatusline(
 function printInitChoose(cfg: CliConfig): void {
   if (cfg.selection.kind !== 'none') return;
   out('');
-  out(selectionRefusal(cfg.selection, cfg.lang) ?? '');
+  for (const line of refusalLines(cfg.selection, cfg.lang, process.stdout.columns)) out(line);
 }
 
 /**
@@ -2454,14 +2479,14 @@ export async function cmdFollow(
   const value = target ?? (saved.read.kind === 'read' ? saved.read.config.competition : undefined);
   if (value === undefined) throw new InputError(t('follow.teamUsage'));
   const choice = savedSelection(value);
-  if (choice.kind !== 'selected') throw new InputError(selectionRefusal(choice, cfg.lang) ?? t('follow.usage'));
+  if (choice.kind !== 'selected') throw refusalError(choice, cfg.lang) ?? new InputError(t('follow.usage'));
   const pin = opts.team !== undefined ? await pinFor(ctx, choice.slug, opts.team) : undefined;
   const file: UserConfig = pin ? { version: 1, competition: choice.slug, team: pin } : { version: 1, competition: choice.slug };
   // Written whole or not at all, never through a link, readable by its owner
   // alone (0600 on every write, an existing file's wider mode not kept).
   writeFileAtomic(saved.path, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600, enforceMode: true, followSymlinks: false });
   // What the NEXT command follows: the environment while it is set, else the file just written.
-  followReport(ctx, 'write', { effect: nextSelection({ kind: 'read', config: file }), saved: file, path: saved.path });
+  followReport(ctx, 'write', { effect: nextSelection({ kind: 'read', config: file }), saved: file, path: saved.path, ...(target !== undefined ? { typed: target } : {}) });
 }
 
 /**
@@ -2473,6 +2498,21 @@ export async function cmdFollow(
  */
 function nextSelection(read: UserConfigRead): CompetitionSelection {
   return edgeSelection({}, read);
+}
+
+/**
+ * The headline's competition after a write: the mode line, with the alias in
+ * parentheses after the name (`Premier League (premier-league)`) when the
+ * person typed the row by anything but its alias (`epl`, `Premier League`,
+ * `eng.1`), so they learn it; the mode line alone for the alias itself, a raw
+ * slug, or a competition the write did not decide (the environment's).
+ */
+function followingLine(effect: SelectedCompetition, typed: string | undefined, lang: string): string {
+  const line = modeLine(effect, lang);
+  if (typed === undefined || effect.alias === undefined || typed === effect.alias) return line;
+  const named = competitionValue(typed);
+  if (!named || !('row' in named) || named.row.slug !== effect.slug) return line;
+  return `${effect.name} (${effect.alias})${line.slice(effect.name.length)}`;
 }
 
 /** What `follow` reports, in every form (alone, after a write, after `off`). */
@@ -2490,6 +2530,12 @@ interface FollowFacts {
   readonly path: string;
   /** After `off`: whether there was a file to remove. */
   readonly removed?: boolean;
+  /**
+   * After a write: the competition as the person typed it. When it names the
+   * reported competition's row by anything but its alias (a name, a short
+   * form, the slug), the headline names the alias once, so they learn it.
+   */
+  readonly typed?: string;
 }
 
 /**
@@ -2631,13 +2677,18 @@ function followReport(ctx: Ctx, mode: 'show' | 'write' | 'off', facts: FollowFac
   const next = nextSelection(saved ? { kind: 'read', config: saved } : NO_SAVED);
   const pinNext = saved?.team !== undefined && pinUnder(next.kind === 'selected' ? next.slug : undefined, saved) !== undefined;
   out();
-  if (effect.kind === 'selected') out(`  ${t('follow.following', { competition: modeLine(effect, cfg.lang) })}`);
-  else out(`  ${selectionRefusal(effect, cfg.lang)}`);
-  // Each refusal that is not the headline, on its own line: this command's
-  // flag (on a write, `off`), then the environment's (under a flag that ran,
-  // or a refused one, or a write the environment's refusal does not decide).
-  if (flagRefused && effect !== flagRefused) out(c.dim(`  ${selectionRefusal(flagRefused, cfg.lang)}`));
-  if (envRefused && !(effect.kind === 'refused' && effect.chosenBy === 'env')) out(c.dim(`  ${selectionRefusal(envRefused, cfg.lang)}`));
+  if (effect.kind === 'selected') out(`  ${t('follow.following', { competition: followingLine(effect, facts.typed, cfg.lang) })}`);
+  else for (const line of refusalLines(effect, cfg.lang, process.stdout.columns, '  ')) out(line);
+  // Each refusal that is not the headline, on its own lines (each indented
+  // alike): this command's flag (on a write, `off`), then the environment's
+  // (under a flag that ran, or a refused one, or a write the environment's
+  // refusal does not decide).
+  if (flagRefused && effect !== flagRefused) {
+    for (const line of refusalLines(flagRefused, cfg.lang, process.stdout.columns, '  ')) out(c.dim(line));
+  }
+  if (envRefused && !(effect.kind === 'refused' && effect.chosenBy === 'env')) {
+    for (const line of refusalLines(envRefused, cfg.lang, process.stdout.columns, '  ')) out(c.dim(line));
+  }
   if (saved?.team && pinned) out(`  ${t('follow.team', { team: pinLabel(saved.team) })}`);
   // The saved choice, when something else is reported (an override, or a refused value).
   if (saved && !(effect.kind === 'selected' && effect.chosenBy === 'saved')) {
@@ -2791,7 +2842,10 @@ function followList(ctx: Ctx, path: string): void {
     if (na.length) parts.push(t('follow.list.na', { list: na.join(', ') }));
     const mark = e.slug === current ? '›' : ' ';
     const teams = t(e.teams === 'nation' ? 'follow.list.nations' : 'follow.list.clubs');
-    out(`  ${mark} ${e.alias.padEnd(width)} · ${e.name} · ${teams} · ${c.dim(parts.join('; '))}`);
+    // The short forms a person may type, beside the name (`Premier League (epl, pl)`); nothing for a row with none.
+    const short = entryOf(e.slug)?.shortForms ?? [];
+    const name = short.length > 0 ? `${e.name} (${short.join(', ')})` : e.name;
+    out(`  ${mark} ${e.alias.padEnd(width)} · ${name} · ${teams} · ${c.dim(parts.join('; '))}`);
   }
   out();
 }

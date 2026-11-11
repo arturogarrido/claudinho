@@ -338,8 +338,8 @@ const perRequestChoice = new WeakMap<object, RequestChoice>();
  * ONCE per request (the file read once with it): the answer is remembered
  * against the request's args, so every helper a tool calls gets the same
  * selection, and the same pin, however many times it asks. A value that is
- * neither an alias nor a slug is a TOOL ERROR naming the value and the
- * aliases, thrown here, before any adapter is built or any request made. The
+ * not an alias, its name or a short form, or a slug is a TOOL ERROR naming the
+ * value, the nearest alias when one is near, and the aliases, thrown here, before any adapter is built or any request made. The
  * selection and the pin are the request's, never a shared adapter's; an
  * adapter injected for a test must serve it (see {@link resolveAdapter}).
  */

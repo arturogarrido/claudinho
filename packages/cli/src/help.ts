@@ -1,4 +1,5 @@
 import { displayWidth } from '@claudinho/core';
+import { wrap } from './wrap';
 
 /**
  * `claudinho --help`, grouped by what a person came to do (commander 12 has no
@@ -57,7 +58,7 @@ export const HELP_GROUPS: ReadonlyArray<{ readonly title: string; readonly rows:
 
 /** The global options, in the order they print. */
 export const HELP_OPTIONS: readonly HelpRow[] = [
-  ['-c, --competition <alias|slug>', 'the competition for this command only'],
+  ['-c, --competition <alias|slug>', 'the competition for this command only (its name or a short form such as epl works too)'],
   ['--lang <code>', 'en, es, pt or fr'],
   ['--tz <zone>', 'IANA timezone, e.g. America/Mexico_City'],
   ['--json', 'JSON output, for scripts'],
@@ -75,21 +76,6 @@ export const HELP_EXAMPLES: readonly HelpRow[] = [
   ['claudinho next', "your team's next match"],
   ['claudinho today sat', "Saturday's matches"],
 ];
-
-/** Words of `text` in lines of at most `width` display columns. */
-function wrap(text: string, width: number): string[] {
-  const lines: string[] = [];
-  let line = '';
-  for (const word of text.split(/\s+/).filter(Boolean)) {
-    const next = line ? `${line} ${word}` : word;
-    if (line && displayWidth(next) > width) {
-      lines.push(line);
-      line = word;
-    } else line = next;
-  }
-  if (line) lines.push(line);
-  return lines;
-}
 
 /** One row: the term in its column, the description wrapped beside it (on the next line when the term is wider). */
 function rowLines([term, description]: HelpRow, column = DESC_COLUMN): string[] {

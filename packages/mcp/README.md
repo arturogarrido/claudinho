@@ -73,9 +73,9 @@ Every tool is read-only, and two of them never touch the network.
 | `get_share_snippet` | a plain-text card for a match, a team's next match, a table, the bracket (`bracket: true`, with an optional `knockoutStage`), a date or live; hand it to the user as it is |
 | `get_market_signal` | World Cup prediction-market odds for a match (`matchId`), a team's current or next match (`team`, a 3-letter code such as `MEX`), or a date; informational only |
 | `get_team` | a World Cup nation's name or code to its FIFA code, flag and group (offline) |
-| `list_competitions` | the supported competitions, the alias each takes and what each offers, and the one in effect (offline) |
+| `list_competitions` | the supported competitions, the alias each takes (its name or a short form works too) and what each offers, and the one in effect (offline) |
 
-Every tool but `get_team` takes an optional `competition` (an alias such as `champions-league`), and
+Every tool but `get_team` takes an optional `competition` (an alias such as `champions-league`, its name or a short form such as `ucl`, or an ESPN slug such as `uefa.champions`), and
 most take `tz`, `lang` (`en`, `es`, `pt`, `fr`) and `flavor` (`off`, `subtle`, `full`).
 A call with no `lang`, or an empty one, takes the server's `CLAUDINHO_LANG` when it is exactly `en`,
 `es`, `pt` or `fr`, else answers in English. `get_team` takes no `lang`, and the resources answer in
@@ -105,10 +105,12 @@ per call with `flavor`.
 ## Details for agent builders
 
 **Choosing the competition.** A request's competition is its `competition` argument, else the
-server's `CLAUDINHO_COMPETITION`, else the choice `claudinho follow <alias>` saved. An unknown value
-is a tool error that lists the aliases. With none of the three, every competition-answering tool
-answers `noCompetition: true` and `competition: null` beside its empty shape, with a sentence saying
-what to do; `list_competitions` answers `current: null`.
+server's `CLAUDINHO_COMPETITION`, else the choice `claudinho follow <alias>` saved. The value is an
+alias, the competition's name (`Premier League`), a short form (`epl`) or an ESPN slug. An unknown
+value is a tool error that suggests the nearest alias when there is one and lists the aliases. With
+none of the three, every competition-answering tool answers `noCompetition: true` and
+`competition: null` beside its empty shape, with a sentence saying what to do; `list_competitions`
+answers `current: null`.
 
 **What every answer carries.** Human-readable text and structured content, validated against each
 tool's declared `outputSchema`. The text starts with the competition it is for (a share card says it

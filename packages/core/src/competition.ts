@@ -1,6 +1,6 @@
 import { DEFAULT_COMPETITION } from './adapters/espn';
 import { t } from './i18n';
-import { type CompetitionEntry, SUPPORTED, SUPPORTED_TABLES, competitionValue, entryOf } from './supported';
+import { type CompetitionEntry, SUPPORTED, SUPPORTED_TABLES, competitionValue, entryOf, suggestCompetitions } from './supported';
 import { humanLabel } from './trust/roles';
 import type { VerdictSource } from './verdict';
 
@@ -49,8 +49,10 @@ export interface SelectedCompetition {
 }
 
 /**
- * What the edge resolved: a competition; a value that is neither an alias nor
- * a slug, REFUSED with the aliases (an unknown value is never a request); or
+ * What the edge resolved: a competition; a value the grammar names no
+ * competition by (`competitionValue`: not an alias, a slug, a name or a short
+ * form), REFUSED with the nearest aliases and the list of them (an unknown
+ * value is never a request); or
  * `none`: nothing was chosen (no flag, no environment, no saved choice). The
  * finished World Cup is not a default anyone falls into without choosing.
  */
@@ -60,6 +62,13 @@ export type CompetitionSelection =
       readonly kind: 'refused';
       readonly value: string;
       readonly aliases: string[];
+      /**
+       * The aliases nearest the refused value, at most two, nearest first
+       * (`suggestCompetitions`); empty when none is near. Optional in the
+       * type so a selection built by hand still is one; the resolver always
+       * sets it.
+       */
+      readonly suggestions?: readonly string[];
       /** The source that gave the refused value (a flag or the environment: the file's reader refuses its own). */
       readonly chosenBy: ChosenBy;
     }
@@ -79,10 +88,12 @@ export function selectedCompetition(slug: string, chosenBy: ChosenBy): SelectedC
     : { kind: 'selected', slug, name: slug, chosenBy, experimental: true };
 }
 
-/** One value, from one source: an alias, a slug in the table, a raw slug, or refused. */
+/** One value, from one source: an alias, a slug, a name or a short form in the table, a raw slug, or refused. */
 function selectionFor(value: string, chosenBy: ChosenBy): CompetitionSelection {
   const named = competitionValue(value);
-  if (named === undefined) return { kind: 'refused', value, aliases: SUPPORTED.map((e) => e.alias), chosenBy };
+  if (named === undefined) {
+    return { kind: 'refused', value, aliases: SUPPORTED.map((e) => e.alias), suggestions: suggestCompetitions(value), chosenBy };
+  }
   return selectedCompetition('row' in named ? named.row.slug : named.raw, chosenBy);
 }
 
@@ -97,11 +108,14 @@ function selectionFor(value: string, chosenBy: ChosenBy): CompetitionSelection {
  * with something else). With no source present, `none`: nothing is chosen,
  * and every competition-answering surface says so instead of answering.
  *
- * Each value is an alias (`premier-league`), a slug in the table (`eng.1`), or
- * a raw ESPN slug the table does not hold (`fifa.friendly`, `esp.copa_del_rey`:
- * lower-case segments of letters, digits and underscores joined by dots, 64
- * units at most; experimental);
- * anything else (`foo`, `ENG.1`, a space) is refused with the aliases.
+ * Each value is an alias (`premier-league`), a slug in the table (`eng.1`), a
+ * row's name, other name or short form (`Premier League`, `epl`: case,
+ * accents, spaces, hyphens and underscores ignored, for a value without a
+ * dot), or a raw ESPN slug the table does not hold (`fifa.friendly`,
+ * `esp.copa_del_rey`: lower-case segments of letters, digits and underscores
+ * joined by dots, 64 units at most; experimental), by core's one grammar
+ * (`competitionValue`); anything else (`foo`, `premier`, `ENG.1`, a tab) is
+ * refused with the nearest aliases and the list of them.
  *
  * Core reads NO environment and no file: the edges pass them. It is called
  * where a request ENTERS (the CLI's option resolution, the MCP server's
@@ -190,8 +204,9 @@ const NOTHING: VerdictSource = Object.freeze({});
 
 /**
  * Why a selection is not a competition, in the reader's language; undefined
- * for a competition. A refused value names the value (bounded) and the
- * aliases; nothing chosen is the CLI's sentence (`claudinho follow <alias>`,
+ * for a competition. A refused value is two lines: the value (bounded, as a
+ * human label) followed by the nearest aliases when there are any (`Did you
+ * mean premier-league?`, two joined by `or`), then the aliases; nothing chosen is the CLI's sentence (`claudinho follow <alias>`,
  * `follow --list`): MCP answers nothing chosen with the `noCompetition`
  * verdict's own sentence (`verdictNotice`), never this one. The CLI raises it
  * as an input error, MCP a refused value as a tool error, before any request.
@@ -200,7 +215,14 @@ export function selectionRefusal(selection: CompetitionSelection, lang?: string)
   if (selection.kind === 'selected') return undefined;
   if (selection.kind === 'refused') {
     const aliases = SUPPORTED.map((e) => e.alias).join(', ');
-    return t(lang, 'selection.refused', { value: humanLabel(selection.value, 40), aliases });
+    const near = selection.suggestions ?? [];
+    const [first, second] = near;
+    const suggested =
+      first === undefined
+        ? ''
+        : ` ${t(lang, 'selection.suggest', { aliases: second === undefined ? first : t(lang, 'selection.or', { a: first, b: second }) })}`;
+    const head = `${t(lang, 'selection.refused', { value: humanLabel(selection.value, 40) })}${suggested}`;
+    return `${head}\n${t(lang, 'selection.list', { aliases })}`;
   }
   return t(lang, 'selection.none', { n: String(SUPPORTED.length) });
 }

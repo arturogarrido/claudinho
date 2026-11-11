@@ -74,7 +74,7 @@ export function buildProgram(): Command {
     .option('--no-color', 'disable ANSI colors')
     .option(
       '-c, --competition <alias|slug>',
-      'the competition: an alias such as premier-league, or an ESPN slug such as eng.1 (else $CLAUDINHO_COMPETITION, else the one saved with `claudinho follow`)',
+      'the competition: an alias such as premier-league, its name ("Premier League") or a short form (epl), or an ESPN slug such as eng.1 (else $CLAUDINHO_COMPETITION, else the one saved with `claudinho follow`)',
     )
     .option('--source <name>', 'live data provider (advanced)')
     .option('--flavor <level>', 'commentary flair: off, subtle, full (default: full)')
@@ -125,7 +125,7 @@ export function buildProgram(): Command {
   program
     .command('follow')
     .description('choose the competition every surface follows (saved); `follow` shows it, `follow off` forgets it')
-    .argument('[competition]', 'an alias such as premier-league, an ESPN slug such as eng.1, or "off"')
+    .argument('[competition]', 'an alias such as premier-league, its name or a short form (epl), an ESPN slug such as eng.1, or "off"')
     .option('--team <name>', "pin a team of that competition (the default for `next`, first on the statusline)")
     .option('--list', 'list the supported competitions, the one followed marked')
     .action(async (competition, opts, cmd) => {
