@@ -1004,7 +1004,8 @@ fi
 exit 2
 `;
   const REG = 'https://registry.npmjs.org/';
-  const HOST_NPM = realpathSync(join(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm'));
+  // Resolved when a test runs, never while vitest collects this (Windows-skipped) block: Windows lays npm out elsewhere.
+  const hostNpm = () => realpathSync(join(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm'));
   /** An npm install directory holding the stub as its CLI, the host npm's modules (pacote) and a version. */
   function npmHome(): string {
     const home = mkdtempSync(join(tmpdir(), 'npm-home-'));
@@ -1012,7 +1013,7 @@ exit 2
     writeFileSync(join(home, 'bin', 'npm-cli.js'), NPM);
     chmodSync(join(home, 'bin', 'npm-cli.js'), 0o755);
     writeFileSync(join(home, 'package.json'), JSON.stringify({ name: 'npm', version: '11.19.1' }));
-    symlinkSync(join(HOST_NPM, 'node_modules'), join(home, 'node_modules'));
+    symlinkSync(join(hostNpm(), 'node_modules'), join(home, 'node_modules'));
     return home;
   }
   let files = '';
@@ -1142,7 +1143,7 @@ exit 2
   });
 
   it('the real pnpm layout passes both checks (the default release directory above), and the host npm is where the test says', () => {
-    expect(existsSync(join(HOST_NPM, 'node_modules', 'pacote', 'package.json')), HOST_NPM).toBe(true);
+    expect(existsSync(join(hostNpm(), 'node_modules', 'pacote', 'package.json')), hostNpm()).toBe(true);
   });
 
   it('publishes core, then cli, then mcp when npm has none of them', () => {
