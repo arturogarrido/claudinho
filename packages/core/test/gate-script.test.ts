@@ -712,12 +712,15 @@ describe.skipIf(process.platform === 'win32')('the tripwire: every gating step o
     expect(unclassified.map((s) => `${s.job}: ${s.text.split('\n').pop()}`)).toEqual(['os-matrix: pnpm run extra-check']);
   });
 
-  it('the concurrency block cancels a superseded run on a pull_request event only, so a run on a merge commit to main always completes', () => {
+  it('the concurrency block cancels a superseded run on a pull_request event only, and gives each push to main its own group', () => {
     // A second merge to main once cancelled the run on the first merge commit, whose CI could then never be read.
+    // cancel-in-progress: false alone is not enough: a group holds one running and one PENDING run, and a newly
+    // queued run cancels and replaces the pending one, so a third merge would lose the second's run. A push is
+    // therefore grouped by its SHA (nothing ever queues behind it), a pull request by its ref.
     const block = /^concurrency:\n((?: {2}.*\n)+)/m.exec(yaml)?.[1] ?? '';
     expect(block, 'one top-level concurrency block').not.toBe('');
     const expr = (inner: string) => `$${'{{'} ${inner} }}`; // assembled, so the fixture is not itself a template placeholder
-    expect(block).toContain(`  group: ci-${expr('github.workflow')}-${expr('github.ref')}\n`);
+    expect(block).toContain(`  group: ci-${expr('github.workflow')}-${expr("github.event_name == 'pull_request' && github.ref || github.sha")}\n`);
     expect(block).toContain(`  cancel-in-progress: ${expr("github.event_name == 'pull_request'")}\n`);
     // No other cancel-in-progress (a job-level one) can override it.
     expect(yaml.match(/cancel-in-progress:/g)?.length).toBe(1);
