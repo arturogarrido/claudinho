@@ -436,8 +436,13 @@ export async function getStandings(
  */
 let knockoutWindowMemo: { start: string; end: string } | null | undefined;
 export function knockoutWindow(): { start: string; end: string } | null {
-  if (knockoutWindowMemo !== undefined) return knockoutWindowMemo;
-  const days = allFixtures()
+  if (knockoutWindowMemo === undefined) knockoutWindowMemo = knockoutWindowOf(allFixtures());
+  return knockoutWindowMemo;
+}
+
+/** The rule behind `knockoutWindow`, over the fixtures given: the earliest to the latest knockout UTC day. */
+export function knockoutWindowOf(fixtures: readonly Match[]): { start: string; end: string } | null {
+  const days = fixtures
     .filter((m) => isKnockoutStage(m.stage))
     .map((m) => m.kickoff.slice(0, 10).replace(/-/g, ''))
     .filter((d) => d.length === 8);
@@ -445,8 +450,7 @@ export function knockoutWindow(): { start: string; end: string } | null {
   const sorted = [...days].sort();
   const start = sorted[0];
   const end = sorted[sorted.length - 1];
-  knockoutWindowMemo = start !== undefined && end !== undefined ? { start, end } : null;
-  return knockoutWindowMemo;
+  return start !== undefined && end !== undefined ? { start, end } : null;
 }
 
 /**

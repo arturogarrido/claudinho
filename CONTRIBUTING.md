@@ -22,7 +22,7 @@ pnpm install
 pnpm -r build        # build every package
 pnpm -r test         # vitest across packages (pnpm -F @claudinho/core test for one)
 pnpm -r typecheck
-pnpm lint            # Biome (lint-only; keep style consistent with surrounding code)
+pnpm lint            # Biome (lint-only; a warning fails it; keep style consistent with surrounding code)
 ```
 
 Try your change end-to-end before opening a PR:
