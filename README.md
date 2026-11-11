@@ -4,21 +4,34 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@claudinho/cli"><img src="https://img.shields.io/npm/v/@claudinho/cli?label=%40claudinho%2Fcli&color=cb3837" alt="npm: @claudinho/cli"></a>
-  <a href="https://www.npmjs.com/package/@claudinho/cli"><img src="https://img.shields.io/npm/dm/@claudinho/cli?label=downloads&color=cb3837" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license: MIT"></a>
   <a href="https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml"><img src="https://github.com/arturogarrido/claudinho/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
-**Live football scores, fixtures and standings in your terminal and beside your coding agent, for the competition you follow: the World Cup, the Premier League, LALIGA, the Champions League and 12 more.**
-Liga MX, Serie A, the Bundesliga, the Libertadores and the rest are in [the table below](#competitions).
+<p align="center">
+  <img src=".github/assets/plugin.gif" alt="Claude Code with the plugin during Real Betis v Barcelona on Oct 17, 2026: beside a coding answer, a toast and the mascot say GOAL! Barcelona, Rodri 41', the band shows the score in bold, and the match pane lists the goals and cards" width="800">
+</p>
+
+<p align="center"><strong>Your Claude Code celebrates when your team scores.</strong></p>
+
+Claudinho puts live football beside your coding agent. The Claude Code plugin shows the score above
+your prompt, says your team's goals in a toast, celebrates them with the Claude mascot and opens a
+match pane with the goals and cards. The MCP server lets any agent answer "how is my team doing?" mid-task, and
+the CLI and statusline bring the same scores to your terminal. It follows the competition you
+choose: the World Cup, the Premier League, LALIGA, the Champions League and 12 more (Liga MX, Serie A,
+the Bundesliga, the Libertadores and the rest are in [the table below](#competitions)).
 No API key, no signup, no account.
 
-<p align="center">
-  <img src=".github/assets/hero.png" alt="claudinho live during the Champions League on Oct 14, 2026: seven matches in play around the 27th minute, each with its score, minute and a line of commentary or a rally cry" width="800">
-</p>
-<!-- HERO: a real capture, `claudinho live` with the Champions League followed, during the
-     Oct 14, 2026 19:00 UTC batch. Not a recording: the command's real output at that moment,
-     rendered to a PNG. -->
+## Set it up in one step
+
+In Claude Code, paste this prompt. Claude asks which competition and team you follow, installs the
+CLI, follows your choice, checks that it works, and hands you the one line you type yourself:
+
+> Set up Claudinho, the live football plugin for Claude Code. If you cannot run commands on my computer, say so and stop. Run only the commands named here, and nothing else. Before you run anything, ask me which competition to follow (for example the Premier League, LALIGA, Liga MX, the Champions League or the World Cup) and which team to pin, if any, and wait for my answers. Then run `node --version`: if it is older than 22, stop and tell me to install Node.js 22 or later. Install the CLI with `npm i -g @claudinho/cli`, then run `claudinho follow --list` to find the alias of my competition. Run `claudinho follow <alias>`, or `claudinho follow <alias> --team <my team>` if I named one; if it cannot pin the team, show me what it printed and ask me again. Run `claudinho init plugin`: it removes Claudinho's own statusline and prompt hook from Claude Code's settings if an earlier setup wrote them, and changes nothing otherwise. Check the setup with `claudinho next` if I pinned a team, else `claudinho today`, and show me what it printed. You cannot install a plugin yourself, so as the last step tell me to type `/plugin install claudinho --marketplace arturogarrido/claudinho` at the prompt of Claude Code in a terminal (the desktop app cannot run it), answer `y` to add the marketplace, and press Enter for the user scope. Then tell me how to undo all of it: `claude plugin uninstall claudinho@claudinho`, `claudinho follow off`, then `npm rm -g @claudinho/cli`, and delete the cache folder that https://github.com/arturogarrido/claudinho/tree/main/packages/cli#where-it-is-saved names.
+
+On default permission settings Claude asks you to approve each command. The plugin's install line
+is a slash command, which only you can type, so that step stays yours. The same steps by hand:
+[Claude Code plugin](#claude-code-plugin).
 
 ## Try it
 
@@ -112,6 +125,13 @@ claudinho table
 claudinho match <id>           # one match, with its goals and cards
 ```
 
+<p align="center">
+  <img src=".github/assets/hero.png" alt="claudinho live during the Champions League on Oct 14, 2026: seven matches in play around the 27th minute, each with its score, minute and a line of commentary or a rally cry" width="800">
+</p>
+<!-- LIVE: a real capture, `claudinho live` with the Champions League followed, during the
+     Oct 14, 2026 19:00 UTC batch. Not a recording: the command's real output at that moment,
+     rendered to a PNG. -->
+
 <!-- DEMO: verbatim `claudinho --tz UTC match 401915415` (a finished Champions League match, Oct 14,
      2026), the Champions League followed with Liverpool pinned, colour off. Never hand-edit. -->
 ```text
@@ -152,11 +172,9 @@ toast says what happened (`⚽ GOAL! Liverpool · Ronald Araújo 22' · LASK Lin
 Claude mascot celebrates in the band for a few seconds. With the `toasts` option set to `all`, it also celebrates any
 goal in a match that is not your team's. `/claudinho match` opens a pane with the goals and cards.
 The band, the toasts, the celebration and the pane speak English, Spanish, Portuguese or French (the plugin's
-`language` option). A few fixed words stay English; the plugin README lists them.
+`language` option). A few fixed words stay English; the plugin README lists them. The capture at the top of this
+page is the plugin in a real session.
 
-<p align="center">
-  <img src=".github/assets/plugin.gif" alt="Claude Code with the plugin during Real Betis v Barcelona on Oct 17, 2026: beside a coding answer, a toast and the mascot say GOAL! Barcelona, Rodri 41', the band shows the score in bold, and the match pane lists the goals and cards" width="800">
-</p>
 <p align="center">
   <img src=".github/assets/pane.png" alt="The match pane in Claude Code: Brentford 1–2 Liverpool, its goals and cards with each player" width="640">
 </p>
@@ -188,12 +206,8 @@ for this marketplace. A new version then installs after a session starts, and lo
 session you start or after `/reload-plugins`.
 To remove it: `claude plugin uninstall claudinho@claudinho`.
 
-**The CLI it needs.** Everything above needs `@claudinho/cli` 0.12.0 or later. With 0.11.2 the
-plugin works in part: a toast is `⚽` and the hook's own English line for any score change, the
-celebration is a ball and a growing "GOAL!", the band's line is plain and English, the match pane
-says `Nothing to show: the CLI's answer is not one this plugin reads.`, and no full time is said. The
-`language` option changes none of it. With a CLI older than 0.11.2 the band shows nothing and
-nothing toasts.
+The plugin needs `@claudinho/cli` 0.12.0 or later; with an older CLI it works in part, as the plugin README
+[says](https://github.com/arturogarrido/claudinho/tree/main/packages/plugin#with-cli-0112).
 
 ### Claude Code without the plugin
 
@@ -318,9 +332,8 @@ Listed in the
 [awesome-mcp-servers](https://github.com/punkpeye/awesome-mcp-servers#-sports).
 The full record: [PUBLIC_FOOTPRINT.md](PUBLIC_FOOTPRINT.md).
 
-Smithery stopped accepting updates on October 17, 2026 and ends its accounts, API and CLI on October 31, so
-Claudinho no longer publishes a Claude Desktop bundle (`.mcpb`) there. A bundle installed from Smithery stays at the
-version it was installed with (0.11.1 or older) and gets no newer one: switch to `npx -y @claudinho/mcp` or the
+Claudinho stopped publishing a Claude Desktop bundle (`.mcpb`) to Smithery when Smithery stopped taking updates
+in October 2026: a bundle installed from there stays at 0.11.1 or older, so switch to `npx -y @claudinho/mcp` or the
 Claude Code plugin.
 
 ## Why star?
@@ -328,7 +341,7 @@ Claude Code plugin.
 Claudinho is a one-person fan project with no budget. If it earns a place in your terminal, a
 [star](https://github.com/arturogarrido/claudinho) helps other developers find it and puts new
 releases in your feed. Want to help build it? [CONTRIBUTING.md](CONTRIBUTING.md) has the layout, the
-dev loop and good first issues.
+dev loop and how to propose a change.
 
 ## Security
 
