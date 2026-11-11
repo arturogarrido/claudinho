@@ -1338,7 +1338,7 @@ type MatchRead = Omit<NonNullable<ClaudinhoPane>, 'gen' | 'slug' | 'id' | 'refre
  */
 function readMatch(r: RunResult | undefined): MatchRead {
   const failed: MatchRead = { kind: 'failed', lines: [], status: null, kickoff: null, final: false }
-  if (!r || r.exitCode !== 0 || r.isStdoutTruncated === true) return failed
+  if (r?.exitCode !== 0 || r.isStdoutTruncated === true) return failed
   let value: unknown
   try {
     value = JSON.parse(r.stdout.trim())

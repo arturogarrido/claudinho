@@ -11,7 +11,7 @@ const row = (code: string, name: string, flag: string, w: number, d: number, l: 
   won: w,
   drawn: d,
   lost: l,
-  goalsFor: gd >= 0 ? gd : 0,
+  goalsFor: Math.max(gd, 0),
   goalsAgainst: gd < 0 ? -gd : 0,
   goalDiff: gd,
   points: w * 3 + d,

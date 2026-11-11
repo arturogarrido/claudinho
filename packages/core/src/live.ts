@@ -441,12 +441,11 @@ export function knockoutWindow(): { start: string; end: string } | null {
     .filter((m) => isKnockoutStage(m.stage))
     .map((m) => m.kickoff.slice(0, 10).replace(/-/g, ''))
     .filter((d) => d.length === 8);
-  knockoutWindowMemo = days.length
-    ? {
-        start: days.reduce((a, b) => (a < b ? a : b)),
-        end: days.reduce((a, b) => (a > b ? a : b)),
-      }
-    : null;
+  // YYYYMMDD strings: the default sort orders them as dates (Math.min/max would turn them into numbers).
+  const sorted = [...days].sort();
+  const start = sorted[0];
+  const end = sorted[sorted.length - 1];
+  knockoutWindowMemo = start !== undefined && end !== undefined ? { start, end } : null;
   return knockoutWindowMemo;
 }
 

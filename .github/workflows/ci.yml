@@ -5,10 +5,12 @@ on:
     branches: [main]
   pull_request:
 
-# Cancel superseded runs on the same ref to save minutes.
+# On a pull request, a new push cancels the run still in flight for the same
+# ref to save minutes. A push to main is never cancelled: each merge commit's
+# run completes, so CI on every commit main holds can be read.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
