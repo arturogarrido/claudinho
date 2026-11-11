@@ -14,6 +14,7 @@ const fixture = (id: string, kickoff: string): Match => ({
   id,
   stage: 'REGULAR',
   kickoff,
+  venue: 'St James Park',
   home: { code: 'NEW', name: 'Newcastle United', id: 'espn:361' },
   away: { code: 'ARS', name: 'Arsenal', id: 'espn:359' },
   status: 'SCHEDULED',
