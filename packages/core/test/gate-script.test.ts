@@ -579,7 +579,7 @@ const AUDIT_DECISION = [
   'if [ "$EVENT_NAME" != "pull_request" ]; then',
   '  audit=true',
   '  echo "Event \'$EVENT_NAME\' is not a pull request: auditing."',
-  'elif ! files=$(git -c core.quotePath=false diff --name-only HEAD^1 HEAD 2>&1); then',
+  'elif ! files=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD 2>&1); then',
   '  audit=true',
   '  echo "Could not read the pull request\'s changed files, so auditing: $files"',
   'else',
