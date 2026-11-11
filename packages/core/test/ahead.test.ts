@@ -16,6 +16,7 @@ import {
   aheadFromEntries,
   dayPointer,
   EspnAdapter,
+  IN_PLAY_HOLD_MS,
   livePointer,
   nextDayLines,
   nextKickoffLines,
@@ -342,5 +343,27 @@ describe('round 1 on B2: the gaps the mutants found', () => {
     } as ProviderAdapter;
     expect(await readAhead(plain, NOW)).toBeUndefined();
     expect(asked).toBe(0);
+  });
+});
+
+describe('round 2 on B2: a month record counts as in play only while its hold lasts', () => {
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
+  const at = (ms: number) => new Date(NOW.getTime() + ms).toISOString();
+
+  it('the hold is six hours, one constant in core', () => {
+    expect(IN_PLAY_HOLD_MS).toBe(6 * HOUR);
+  });
+
+  it('a record still in progress one minute inside the hold: in play, no pointer', async () => {
+    const got = await readAhead(feed([...BREAK, { id: '5', date: at(-6 * HOUR + MIN), status: 'in' }]).adapter, NOW);
+    expect(got?.inPlay).toBe(true);
+    expect(got && livePointer(got, NOW)).toBeUndefined();
+  });
+
+  it('a record still in progress one minute past the hold: not in play, the next kickoff', async () => {
+    const got = await readAhead(feed([...BREAK, { id: '5', date: at(-6 * HOUR - MIN), status: 'in' }]).adapter, NOW);
+    expect(got?.inPlay).toBe(false);
+    expect(got && livePointer(got, NOW)).toEqual({ nextKickoff: '2026-11-21T12:30:00.000Z' });
   });
 });

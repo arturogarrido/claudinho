@@ -15,6 +15,7 @@ import { EspnAdapter, getScheduleAhead, type ProviderAdapter, selectedCompetitio
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CACHE_VERSION, cacheDir, cachePath, readBackoffNote, readState, writeBackoffNote, writeState } from '../src/cache';
 import { cmdLive, cmdToday } from '../src/commands';
+import { runRefresh } from '../src/refresh';
 import { type CliConfig, resolveConfig } from '../src/config';
 import { applyDiscovery, scheduleGateOpen, scheduleView } from '../src/scheduleSlice';
 import { makeT } from '../src/i18n';
@@ -56,7 +57,7 @@ function feed(events: Ev[], opts: FeedOpts = {}) {
     return json({ leagues: [{ season: opts.season ?? S2026 }], events: served.filter(inBucket).map(event) });
   }) as unknown as typeof fetch;
   const at = (opts.now ?? NOW).getTime();
-  return { adapter: new EspnAdapter({ competition: opts.competition ?? 'eng.1', fetchImpl, now: () => at }) as ProviderAdapter, urls };
+  return { adapter: new EspnAdapter({ competition: opts.competition ?? 'eng.1', fetchImpl, now: () => at }) as ProviderAdapter, urls, fetchImpl };
 }
 const months = (urls: string[]) => urls.filter((u) => (new URL(u).searchParams.get('dates') ?? '').length === 6);
 
@@ -609,5 +610,89 @@ describe('round 1 on B2', () => {
     await cmdToday(undefined, ctxAt(adapter, now));
     expect(months(urls)).toHaveLength(1);
     expect(text()).toContain('Next match day: Sat 2026-11-21, 4 matches.');
+  });
+  describe('round 2 on B2: a slice that lost an entry stays not whole when it is republished', () => {
+    const HOUR = 60 * MIN;
+    const DAMAGED = [
+      { id: '21', kickoff: '2026-11-21T12:30:00.000Z', on: 'true' },
+      { id: '24', kickoff: '2026-11-22T05:00:00.000Z', on: true },
+    ];
+    /** One refresher cycle at `now` over the same feed (the refresher builds its own adapter on the global fetch). */
+    async function cycle(events: Ev[], now: Date) {
+      const { fetchImpl, urls } = feed(events, { now });
+      vi.stubGlobal('fetch', fetchImpl);
+      try {
+        await runRefresh({ source: 'espn', competition: 'eng.1', now, jitterMs: 0 });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+      return urls;
+    }
+
+    it('a refresher cycle without discovery publishes it not whole; the next today reads fresh and names the right day', async () => {
+      seedSlice({ ...fresh(), index: DAMAGED, inPlayUntil: iso(NOW.getTime() + HOUR) });
+      expect(scheduleView(readState('espn', 'eng.1')?.schedule, NOW.getTime()).indexIntact).toBe(false);
+      const refresher = await cycle(BREAK, NOW);
+      expect(months(refresher)).toHaveLength(0); // discovery was not due
+      expect(refresher.length).toBeGreaterThan(0); // the live read ran, and the cycle published
+      expect(readState('espn', 'eng.1')?.schedule?.complete).toBe(false);
+      const { adapter, urls } = feed(BREAK);
+      await cmdToday(undefined, ctxOf(adapter));
+      expect(months(urls)).toHaveLength(1);
+      expect(text()).toContain('Next match day: Sat 2026-11-21, 4 matches.');
+    });
+
+    it('a whole discovery makes it whole again, and the next today answers from the slice', async () => {
+      seedSlice({ ...fresh(), index: DAMAGED, inPlayUntil: iso(NOW.getTime() + HOUR) });
+      await cycle(BREAK, NOW);
+      const later = new Date(NOW.getTime() + 61 * MIN); // the discovery hour has passed
+      const refresher = await cycle(BREAK, later);
+      expect(months(refresher)).toHaveLength(1);
+      const view = scheduleView(readState('espn', 'eng.1')?.schedule, later.getTime());
+      expect(view.complete && view.indexIntact).toBe(true);
+      const { adapter, urls } = feed(BREAK, { now: later });
+      await cmdToday(undefined, ctxAt(adapter, later));
+      expect(months(urls)).toHaveLength(0);
+      expect(text()).toContain('Next match day: Sat 2026-11-21, 4 matches.');
+    });
+
+    it("a command's backoff publish carries the stored slice as it was read, the lost entry included", async () => {
+      seedSlice({ ...fresh(), index: DAMAGED });
+      const { adapter } = feed(BREAK, { fail: (d) => (d.length === 8 ? json({ code: 429 }, 429) : undefined) });
+      await cmdToday(undefined, ctxOf(adapter)).catch(() => undefined);
+      const stored = readState('espn', 'eng.1');
+      expect(stored?.backoffUntil).toBeDefined();
+      expect(stored?.schedule?.index).toEqual(DAMAGED);
+      expect(scheduleView(stored?.schedule, NOW.getTime()).indexIntact).toBe(false);
+    });
+  });
+
+  describe('round 2 on B2: live, a month record past its hold, warm and cold alike', () => {
+    const now = new Date('2026-11-11T09:20:00.000Z'); // kicked off 6 h 10 min earlier
+    const DAYS: Ev[] = [...BREAK, { id: '30', date: '2026-11-11T03:10:00Z' }];
+    const MONTH: Ev[] = [...BREAK, { id: '30', date: '2026-11-11T03:10:00Z', status: 'in' }];
+    const LINE = 'Next kickoff: Sat 2026-11-21 04:30';
+
+    it('cold: one read, the next kickoff', async () => {
+      const { adapter, urls } = feed(DAYS, { now, month: MONTH });
+      await cmdLive(ctxAt(adapter, now));
+      expect(months(urls)).toHaveLength(1);
+      expect(text()).toContain(LINE);
+    });
+
+    it('warm: from the slice, the same line', async () => {
+      seedSlice({
+        index: [
+          { id: '30', kickoff: '2026-11-11T03:10:00.000Z', on: true },
+          { id: '21', kickoff: '2026-11-21T12:30:00.000Z', on: true },
+        ],
+        updatedAt: '2026-11-11T09:00:00.000Z',
+        attemptedAt: '2026-11-11T09:00:00.000Z',
+      }, now);
+      const { adapter, urls } = feed(DAYS, { now, month: MONTH });
+      await cmdLive(ctxAt(adapter, now));
+      expect(months(urls)).toHaveLength(0);
+      expect(text()).toContain(LINE);
+    });
   });
 });

@@ -11,8 +11,10 @@
 import type { Match, ScheduleAheadResult, ScheduleEntry } from '@claudinho/core';
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { IN_PLAY_HOLD_MS as CORE_IN_PLAY_HOLD_MS } from '@claudinho/core';
 import {
   applyDiscovery,
+  carriedIndex,
   DISCOVERY_RETRY_MS,
   DISCOVERY_TTL_MS,
   discoveryDue,
@@ -392,5 +394,30 @@ describe('one reader', () => {
       }
     }
     expect(direct).toEqual([]);
+  });
+});
+
+describe('round 2 on B2: what a republished slice carries', () => {
+  const GOOD = [
+    { id: '21', kickoff: '2026-10-21T12:30:00.000Z', on: true },
+    { id: '22', kickoff: '2026-10-22T15:00:00.000Z', on: true },
+  ];
+  const stamped = { updatedAt: new Date(NOW - 10 * MIN).toISOString(), attemptedAt: new Date(NOW - 10 * MIN).toISOString(), failures: 0 };
+
+  it('carriedIndex keeps a whole slice whole, and makes a slice that lost an entry not whole', () => {
+    const whole = carriedIndex(scheduleView({ ...stamped, index: GOOD, complete: true }, NOW));
+    expect(whole).toEqual({ index: GOOD, complete: true });
+    const lost = carriedIndex(scheduleView({ ...stamped, index: [{ id: '20', kickoff: 'NOT A DATE', on: true }, ...GOOD], complete: true }, NOW));
+    expect(lost).toEqual({ index: GOOD, complete: false });
+    const partial = carriedIndex(scheduleView({ ...stamped, index: GOOD, complete: false }, NOW));
+    expect(partial).toEqual({ index: GOOD, complete: false });
+    expect(carriedIndex(scheduleView(undefined, NOW))).toEqual({ index: undefined, complete: false });
+  });
+
+  it('the in-play hold is ONE constant: core\'s, re-exported here', () => {
+    expect(CORE_IN_PLAY_HOLD_MS).toBe(6 * HOUR);
+    expect(IN_PLAY_HOLD_MS).toBe(CORE_IN_PLAY_HOLD_MS);
+    const source = readFileSync(new URL('../src/scheduleSlice.ts', import.meta.url), 'utf8');
+    expect(source).not.toMatch(/IN_PLAY_HOLD_MS\s*=/);
   });
 });

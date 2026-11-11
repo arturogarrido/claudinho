@@ -34,7 +34,7 @@ function event(e: Ev) {
     : { name: 'STATUS_SCHEDULED', state: 'pre' };
   return { id: e.id, date: e.date, season: { slug: 'regular-season' }, status: { type: e.broken ? { name: 'STATUS_NEW', state: 'limbo' } : type, displayClock: s === 'in' ? "55'" : undefined, period: s === 'in' ? 2 : 0 }, competitions: [{ competitors: [side('359', 'ARS', 'Arsenal', 'home'), side('363', 'CHE', 'Chelsea', 'away')] }] };
 }
-interface FeedOpts { season?: Season; fail?: (dates: string) => Response | undefined; competition?: string; month?: Ev[] }
+interface FeedOpts { season?: Season; fail?: (dates: string) => Response | undefined; competition?: string; month?: Ev[]; now?: Date }
 function feed(events: Ev[], opts: FeedOpts = {}) {
   const urls: string[] = [];
   const fetchImpl = (async (input: unknown) => {
@@ -48,7 +48,7 @@ function feed(events: Ev[], opts: FeedOpts = {}) {
     const served = asked.length === 6 && opts.month ? opts.month : events;
     return json({ leagues: [{ season: opts.season ?? S2026 }], events: served.filter(inBucket).map(event) });
   }) as unknown as typeof fetch;
-  return { adapter: new EspnAdapter({ competition: opts.competition ?? 'eng.1', fetchImpl, now: () => NOW.getTime() }) as ProviderAdapter, urls };
+  return { adapter: new EspnAdapter({ competition: opts.competition ?? 'eng.1', fetchImpl, now: () => (opts.now ?? NOW).getTime() }) as ProviderAdapter, urls };
 }
 const months = (urls: string[]) => urls.filter((u) => (new URL(u).searchParams.get('dates') ?? '').length === 6);
 const BREAK: Ev[] = [
@@ -214,5 +214,20 @@ describe('round 1 on B2: next is not now, on MCP', () => {
     for (const k of POINTER_KEYS) expect(inside.data, k).not.toHaveProperty(k);
     const past = (await live(feed([...BREAK, { id: '5', date: iso(NOW.getTime() - 141 * 60_000) }]).adapter)) as unknown as Res;
     expect(past.data.nextKickoff).toBe('2026-11-21T12:30:00.000Z');
+  });
+});
+
+describe('round 2 on B2: live, a month record past its hold, on MCP as on the CLI', () => {
+  it('kicked off 6 h 10 min earlier and still in progress on the month scoreboard: the next kickoff', async () => {
+    const now = new Date('2026-11-11T09:20:00.000Z');
+    const { adapter, urls } = feed([...BREAK, { id: '30', date: '2026-11-11T03:10:00Z' }], {
+      now,
+      month: [...BREAK, { id: '30', date: '2026-11-11T03:10:00Z', status: 'in' }],
+    });
+    const r = (await live(adapter, { now })) as unknown as Res;
+    expect(months(urls)).toHaveLength(1);
+    expect(r.data.matches).toEqual([]);
+    expect(r.data.nextKickoff).toBe('2026-11-21T12:30:00.000Z');
+    strict('get_live', r.data);
   });
 });
