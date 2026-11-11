@@ -14,7 +14,7 @@ alwaysApply: true
 
 ## Commit attribution
 
-Every commit produced with an AI agent: follow **`AGENTS.md` § Commit attribution** — trailer names the agent **and** model in use (e.g. `Co-Authored-By: Cursor (Composer 2.5) <cursoragent@cursor.com>`).
+Every commit produced with an AI agent: follow **`AGENTS.md` § Commit attribution** — trailer names the agent **and** model in use, in its one spelling: the key `Co-Authored-By`, the model's short name with no vendor prefix, one line per agent (e.g. `Co-Authored-By: Cursor (Composer 2.5) <cursoragent@cursor.com>`).
 
 ## Public vs private docs
 

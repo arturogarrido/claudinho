@@ -22,10 +22,11 @@ maintainer's: never a tag or a publish by an agent.
    `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>` (the body ends with the
    trailers of the agents whose commits the branch carries and the generated-with line the coding client asks for);
    then the push line below, which pushes nothing (the remote already has the head) and reads CI per job on it.
-7. Before the merge is recommended: the review rounds on the release head
-   (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
-   `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`) and the review ledger's merge check passing,
-   with the confirmed SHA held.
+7. Before the merge is recommended: the review its tier requires (AGENTS.md "Reviewing PRs"). A release PR is T1
+   (its version bumps change package contents), and T2 when it also changes `.github/workflows/publish.yml` or the
+   tag step. The rounds (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
+   `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`) as the tier asks, at most 3, and the review
+   ledger's merge check passing, with the confirmed SHA held.
 8. The merge is the maintainer's: `gh pr view <n> --json headRefOid` read against the held SHA (a different head
    goes back to the confirmation round), then `gh pr merge <n> --squash --match-head-commit <held sha>`.
 9. The tag is the maintainer's, on the commit step 8's squash made on `main`, never on the release branch's head

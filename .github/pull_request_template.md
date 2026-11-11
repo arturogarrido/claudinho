@@ -12,6 +12,8 @@ no PR yet, draft this description locally. For other changes, state the intended
 
 - Acceptance:
 - Out of scope:
+- Tier: <!-- T0, T1 or T2, as AGENTS.md → "Reviewing PRs" defines them; a PR that spans tiers takes the highest -->
+- Threat model: <!-- the default one in AGENTS.md → "Reviewing PRs", or what this PR widens -->
 
 ## Test plan
 

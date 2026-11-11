@@ -33,9 +33,10 @@ bug-fix playbook holds; a feature adds a plan gate, acceptance criteria and ever
     `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>` (the body as Evidence says),
     then the push line, which pushes nothing (the remote already has the head) and reads CI per job on it. Every
     later push is the push line.
-11. The review rounds (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
-    `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`): every reader confirms every head, nothing
-    pending, P3 included. HOLD the SHA the readers confirmed.
+11. The review its tier requires (AGENTS.md "Reviewing PRs"; a feature is T1, or T2 in a T2 area): the rounds
+    (`.claude/skills/claudinho-mode/playbooks/review-round.md`, then
+    `.claude/skills/claudinho-mode/playbooks/confirmation-round.md`) as the tier asks, at most 3; a confirmation
+    leaves nothing pending, P3 included. HOLD the SHA they confirmed.
 12. The merge, when authorized: read `gh pr view <n> --json headRefOid`; when it differs from the held SHA, REFUSE
     the merge (a push after the confirmation is an unreviewed head: it goes back to the confirmation round); else
     `gh pr merge <n> --squash --match-head-commit <held sha>`. Then CI per job on the merge commit, and the reply.
