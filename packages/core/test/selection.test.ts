@@ -1,6 +1,7 @@
 /**
  * The selection, resolved once at the edge from three sources, by alias or
- * slug (0.11 · 2.5a, D2). Core reads no environment: the edge hands the three
+ * slug (0.11 · 2.5a, D2), and since part B by a name or a short form too
+ * (`competition-names.test.ts`). Core reads no environment: the edge hands the three
  * values in. An alias resolves to its row's slug; a slug in the table to
  * itself; a raw slug written nowhere is experimental; anything else is
  * refused with the alias list, never a request. With nothing chosen there is
@@ -39,7 +40,7 @@ describe('resolveCompetition(explicit, env, saved)', () => {
 
   it('anything else is refused with the aliases, never a request', () => {
     // Values valid at the END and garbage at the start pin the start anchor: a slug is interpolated into the request path unencoded.
-    for (const bad of ['foo', 'ENG.1', 'eng.1 ', ' eng.1', 'Eng.1', '../x.y', 'foo/../eng.1', 'a b', 'a b.c', 'premier league', 'PREMIER-LEAGUE', '.eng', 'eng.', 'eng..1', 'x'.repeat(65), `${'a'.repeat(60)}.bcde`, 'constructor', 'é.1']) {
+    for (const bad of ['foo', 'ENG.1', 'eng.1 ', ' eng.1', 'Eng.1', '../x.y', 'foo/../eng.1', 'a b', 'a b.c', 'premier', '.eng', 'eng.', 'eng..1', 'x'.repeat(65), `${'a'.repeat(60)}.bcde`, 'constructor', 'é.1']) {
       const r = resolveCompetition(bad);
       expect(r.kind, bad).toBe('refused');
       if (r.kind === 'refused') {
