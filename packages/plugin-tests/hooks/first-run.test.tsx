@@ -206,7 +206,9 @@ describe('a CLI that works: nothing said', () => {
 
   test('an `api` that is no integer is not read: no toast', async ($, on) => {
     const toasts = toastsWithTimeout(on)
-    await world($, on, [view(LINE, { api: '0' }), view(LINE, { api: 0.5 })])
+    const w = await world($, on, [view(LINE, { api: '0' }), view(LINE, { api: 0.5 })])
+    await w.clock.advance(15_000)
+    expect(w.argvs).toHaveLength(2)
     expect(toasts).toEqual([])
   })
 

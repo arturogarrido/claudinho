@@ -117,13 +117,20 @@ describe('the pace by phase', () => {
     await nextRunAfter(w, MIN)
   })
 
-  test('the sign-off (`idle`): every 5 minutes', async ($, on) => {
+  // No timer fires before the 5 minutes either: the roster is not asked between the two runs.
+  test('the sign-off (`idle`): every 5 minutes, nothing in between', async ($, on) => {
     const w = await world($, on, [view(COMPLETE, { idle: true })])
+    const reads = w.rosterReads()
+    await w.clock.set((w.runTimes[0] as number) + 5 * MIN - 1)
+    expect(w.rosterReads()).toBe(reads)
     await nextRunAfter(w, 5 * MIN)
   })
 
-  test('the first-run object (nothing chosen): every 5 minutes', async ($, on) => {
+  test('the first-run object (nothing chosen): every 5 minutes, nothing in between', async ($, on) => {
     const w = await world($, on, [FIRST_RUN])
+    const reads = w.rosterReads()
+    await w.clock.set((w.runTimes[0] as number) + 5 * MIN - 1)
+    expect(w.rosterReads()).toBe(reads)
     await nextRunAfter(w, 5 * MIN)
   })
 
