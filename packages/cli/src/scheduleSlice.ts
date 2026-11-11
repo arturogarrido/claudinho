@@ -148,12 +148,6 @@ export function scheduleView(raw: unknown, now: number): ScheduleView {
 }
 
 /**
- * Whether a discovery is due. Anchored on the latest ATTEMPT in every case, so
- * no answer can make discovery due again at once: 60 minutes after a success,
- * 5 minutes × 2^(n−1) (at most 60) after the n-th consecutive failure, and now
- * when none was ever attempted (an age of Infinity is past every wait).
- */
-/**
  * What a publisher carries when it republishes the slice from a view: the
  * index as believed, whole only while the stored one was whole AND read back
  * intact. A slice whose stored index lost an entry when read back stays not
@@ -163,6 +157,12 @@ export function carriedIndex(view: ScheduleView): { index: ScheduleEntry[] | und
   return { index: view.index, complete: view.complete && view.indexIntact };
 }
 
+/**
+ * Whether a discovery is due. Anchored on the latest ATTEMPT in every case, so
+ * no answer can make discovery due again at once: 60 minutes after a success,
+ * 5 minutes × 2^(n−1) (at most 60) after the n-th consecutive failure, and now
+ * when none was ever attempted (an age of Infinity is past every wait).
+ */
 export function discoveryDue(view: ScheduleView): boolean {
   const wait =
     view.failures > 0
