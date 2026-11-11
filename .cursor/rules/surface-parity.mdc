@@ -21,6 +21,8 @@ none. A second: the `ambient --json` line and the plugin's moments (its toasts a
 CLI's language (`lang`), while the statusline and the hook stay English; MCP is unchanged by this exception (it
 localizes by its own `lang` argument, which the server's `CLAUDINHO_LANG` fills, when it is exactly `en`, `es`, `pt` or
 `fr`, for a call that passes none or an empty one).
+A third: the next-match-day pointer (`nextDay`, `nextKickoff`, `horizon` on an empty `today` or `live`) is CLI and MCP
+only; a share card does not carry it (a card is about the day it names).
 
 ## Knockout surfaces live-resolve — never read the skeleton (the #1 recurring bug)
 

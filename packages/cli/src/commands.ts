@@ -101,6 +101,7 @@ import {
   type CompetitionKey,
   DISCLAIMER,
   aheadFromEntries,
+  dayCovered,
   dayPointer,
   livePointer,
   nextDayLines,
@@ -157,8 +158,8 @@ import type {
   ShareBracketOptions,
   ShareStyle,
 } from '@claudinho/core';
-import { readCurrentState } from './cache';
-import { DISCOVERY_TTL_MS, scheduleView } from './scheduleSlice';
+import { backoffInEffect, readCurrentState } from './cache';
+import { DISCOVERY_TTL_MS, RELEVANT_BACK_MS, scheduleView } from './scheduleSlice';
 import { ambientView } from './ambient';
 import {
   type AmbientPick,
@@ -714,31 +715,50 @@ function promptLineEnv(): { compact: boolean; max: number | undefined } {
 /**
  * The schedule ahead an empty `today` or `live` points from (core
  * `ahead.ts`), asked only once the gate (`pointerWanted`) said so. The cache's
- * schedule slice when it is fresh: an index believed, from an answer that was
+ * schedule slice when it is fresh: an index believed and intact (no stored
+ * record left out when read back, `indexIntact`), from an answer that was
  * whole, written within the discovery TTL of the request's clock and on the
  * request's provider day (so it was read over the same span); then no request
- * at all. Else one read of the schedule ahead through the command's adapter
- * (a throttle it meets is persisted like any other read's; under a cooldown
- * it asks nothing). The slice is READ here, never written: it is the
- * refresher's.
+ * at all. The slice covers only what the refresher kept (it drops fixtures
+ * more than `RELEVANT_BACK_MS` before its write): that is the read's `from`,
+ * and a pointer that needs earlier (`covers`, for a day: core `dayCovered`) is
+ * not answered from it. Else one read of the schedule ahead through the
+ * command's adapter, never while a backoff is in effect (`backoffInEffect`:
+ * one another process wrote after this command armed its adapter included;
+ * nothing is written); a throttle it meets is persisted like any other read's,
+ * and under the adapter's cooldown it asks nothing. The slice is READ here,
+ * never written: it is the refresher's.
  */
-async function aheadFor(adapter: ProviderAdapter, cfg: CliConfig, now: Date): Promise<AheadRead | undefined> {
-  const slice = readCurrentState(cfg.source, cfg.competition)?.schedule;
+async function aheadFor(
+  adapter: ProviderAdapter,
+  cfg: CliConfig,
+  now: Date,
+  covers?: (ahead: AheadRead) => boolean,
+): Promise<AheadRead | undefined> {
+  const nowMs = now.getTime();
+  const state = readCurrentState(cfg.source, cfg.competition);
+  const slice = state?.schedule;
   if (slice !== undefined) {
-    const nowMs = now.getTime();
     const view = scheduleView(slice, nowMs);
     const at = view.updatedAt !== undefined ? Date.parse(view.updatedAt) : Number.NaN;
     const age = nowMs - at;
     if (
       view.index !== undefined &&
+      view.indexIntact &&
       view.complete &&
       age >= 0 &&
       age < DISCOVERY_TTL_MS &&
       scheduleSpan(adapter, new Date(at)).start === scheduleSpan(adapter, now).start
     ) {
-      return aheadFromEntries(view.index, adapter, new Date(at));
+      // A match seen in play still held is the slice's "in play" (the refresher's gate reads it alike).
+      const ahead = aheadFromEntries(view.index, adapter, new Date(at), {
+        inPlay: view.inPlayUntil !== undefined,
+        floor: at - RELEVANT_BACK_MS,
+      });
+      if (covers === undefined || covers(ahead)) return ahead;
     }
   }
+  if (backoffInEffect(state, cfg.source, cfg.competition, nowMs) !== undefined) return undefined;
   return readAhead(adapter, now);
 }
 
@@ -774,7 +794,7 @@ export async function cmdToday(date: string | undefined, ctx: Ctx): Promise<void
   // could name anything after this day (a day far before it costs nothing).
   const zone = resolveTz(cfg.tz);
   const wanted = pointerWanted(day, cfg.competition, todays.length === 0) && nextDayReachable(adapter, targetDate, zone, now);
-  const ahead = wanted ? await aheadFor(adapter, cfg, now) : undefined;
+  const ahead = wanted ? await aheadFor(adapter, cfg, now, (a) => dayCovered(a, targetDate, zone)) : undefined;
   const pointer = ahead ? dayPointer(ahead, targetDate, today, zone, now) : undefined;
   const market = await reliableMarketSignals(ctx, todays, now);
 

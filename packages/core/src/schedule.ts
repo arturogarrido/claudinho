@@ -10,6 +10,7 @@ import { slotRefToTeam } from './bracket/placeholders';
 import type { Match, Stage } from './types';
 import { byKickoff } from './normalize';
 import { localDate } from './time';
+import type { ScheduleEntry } from './trust/schedule';
 
 const SCHEDULE = scheduleData as unknown as Match[];
 
@@ -128,6 +129,18 @@ export function nextFixtureForTeam(
  * min (90' + half-time + stoppage).
  */
 export const LIVE_WINDOW_MS = 140 * 60_000;
+
+/**
+ * Whether a schedule entry is inside its live window at `now` (epoch ms): a
+ * fixture that is on, from its kickoff for `LIVE_WINDOW_MS`, whatever its
+ * stage (off the bundle a stage cannot be trusted to mean "no extra time"; the
+ * refresher's continuation covers the overrun). THE rule: the refresher's gate
+ * (the CLI's `scheduleGateOpen`) and the next kickoff (`livePointer`) ask it.
+ */
+export function entryInLiveWindow(entry: ScheduleEntry, now: number): boolean {
+  const kickoff = Date.parse(entry.kickoff);
+  return entry.on && kickoff <= now && now < kickoff + LIVE_WINDOW_MS;
+}
 
 /**
  * Extra allowance for knockout matches, which can go to extra time (+30') and a

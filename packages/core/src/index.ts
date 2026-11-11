@@ -66,6 +66,7 @@ export {
   fixturesInLiveWindow,
   isTournamentWindowOver,
   LIVE_WINDOW_MS,
+  entryInLiveWindow,
   KNOCKOUT_EXTRA_TIME_MS,
   liveWindowMsFor,
   isKnockoutStage,
@@ -234,7 +235,7 @@ export {
 } from './share/cards';
 // The next match day an empty today or live points at: the answer's own text
 // and plain fields (`nextDay`, `nextKickoff`, `horizon`), never a verdict.
-export { aheadFromEntries, dayPointer, livePointer, nextDayReachable, pointerExtras, pointerWanted, readAhead } from './ahead';
+export { aheadFromEntries, dayCovered, dayPointer, livePointer, nextDayReachable, pointerExtras, pointerWanted, readAhead } from './ahead';
 export type { AheadHorizon, AheadPointer, AheadRead, DayPointer, KickoffPointer, PointerExtras } from './ahead';
 export type {
   BracketShareCard,
@@ -311,6 +312,8 @@ export {
   hasLiveWindow,
   MAX_SCHEDULE_INDEX,
   parseCachedScheduleIndex,
+  readCachedScheduleIndex,
+  type CachedScheduleIndex,
   scheduleEntryOf,
   sealScheduleEntry,
 } from './trust';

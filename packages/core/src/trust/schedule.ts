@@ -55,13 +55,21 @@ export function scheduleEntryOf(m: Match): ScheduleEntry | undefined {
   });
 }
 
+/** A stored index as read back: its entries, and whether every stored record became one. */
+export interface CachedScheduleIndex {
+  readonly entries: ScheduleEntry[];
+  /** True when no record was dropped (none unsealable, no id repeated). */
+  readonly whole: boolean;
+}
+
 /**
- * A stored index, read back. Not a list, or longer than the bound: no schedule
- * at all (decided before a record is looked at; never read as a prefix). A
- * record that cannot be sealed does not count; an id held twice counts once,
- * the first. In kickoff order.
+ * A stored index, read back, with whether it lost anything: not a list, or
+ * longer than the bound, is no schedule at all (decided before a record is
+ * looked at; never read as a prefix). A record that cannot be sealed does not
+ * count; an id held twice counts once, the first; either makes it not whole.
+ * In kickoff order.
  */
-export function parseCachedScheduleIndex(raw: unknown): ScheduleEntry[] | undefined {
+export function readCachedScheduleIndex(raw: unknown): CachedScheduleIndex | undefined {
   if (!Array.isArray(raw) || raw.length > MAX_SCHEDULE_INDEX) return undefined;
   const seen = new Set<string>();
   const out: ScheduleEntry[] = [];
@@ -71,5 +79,15 @@ export function parseCachedScheduleIndex(raw: unknown): ScheduleEntry[] | undefi
     seen.add(entry.id);
     out.push(entry);
   }
-  return out.sort((a, b) => a.kickoff.localeCompare(b.kickoff));
+  return { entries: out.sort((a, b) => a.kickoff.localeCompare(b.kickoff)), whole: out.length === raw.length };
+}
+
+/**
+ * A stored index, read back: the entries of {@link readCachedScheduleIndex}.
+ * Not a list, or longer than the bound: no schedule at all. A record that
+ * cannot be sealed does not count; an id held twice counts once, the first.
+ * In kickoff order.
+ */
+export function parseCachedScheduleIndex(raw: unknown): ScheduleEntry[] | undefined {
+  return readCachedScheduleIndex(raw)?.entries;
 }
