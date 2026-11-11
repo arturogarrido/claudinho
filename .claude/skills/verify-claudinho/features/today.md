@@ -8,7 +8,8 @@ and the day's verdicts (nothing chosen, between editions, a read that was not wh
 
 ## How a user reaches it
 
-`claudinho today [YYYY-MM-DD]` after `claudinho follow <alias>` (or with `--competition <alias>`, or
+`claudinho today [day]` (a day: `YYYY-MM-DD`, `today`, `tomorrow`, `yesterday`, a weekday such as `sat`, or `+N`,
+counted in the viewer's zone) after `claudinho follow <alias>` (or with `--competition <alias>`, or
 `CLAUDINHO_COMPETITION`); `--json` for the structured twin; `--tz` for the viewer's zone.
 
 ## How to drive it
@@ -19,6 +20,8 @@ and the day's verdicts (nothing chosen, between editions, a read that was not wh
   proves: exit 0; stdout contains "No matches scheduled for this date."; stdout contains "Live scores unavailable — showing the bundled schedule."; twin.degraded = true; twin.source = null; twin.matches = []
 - offline: `run --offline --twin -- today 2026-10-07`
   proves: exit 1; stderr contains "No competition chosen"; stdout is empty; twin.noCompetition = true; twin.competition = null; fetches = []
+- offline: `run --offline --follow premier-league -- today someday`
+  proves: exit 1; stderr contains "Invalid date someday. Use YYYY-MM-DD, today, tomorrow, yesterday, a weekday (sat) or +N."; stdout is empty; fetches = []
 - replay: a day with fixtures and their scores; a partial read ("may be incomplete"); between editions (the next PR).
 
 ## What proves it
@@ -28,6 +31,9 @@ recorded feed must prove and are not asserted yet.
 
 ## The gotchas paid for
 
+- A day word is counted from the request's clock in the viewer's zone, never 24 hours on (a 25-hour day keeps
+  tomorrow tomorrow); an unreadable one is refused before any request (offline: the refusal proven above; the
+  counting by `packages/core/test/day-arg.test.ts` and `packages/cli/test/relative-day.test.ts`, on pinned clocks).
 - Nothing chosen is a verdict, never a default: the "No competition chosen" sentence, exit 1, `noCompetition: true`
   (offline: proven above).
 - Off the bundled competition a failed day says the provider could not be reached and confirms no fixture; on the

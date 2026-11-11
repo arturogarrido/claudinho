@@ -5,7 +5,25 @@ export { flagEmoji, nationToFlag, nationToRegion } from './flags';
 export { t, normalizeLang, isLang, LANGS, stageLabelI18n, momentWords } from './i18n';
 export type { MomentWords } from './i18n';
 export type { Lang } from './i18n';
-export { resolveTz, formatKickoff, formatDate, formatTime, countdown, countdownPhrase, COUNTDOWN_NOW, localDate } from './time';
+export {
+  resolveTz,
+  formatKickoff,
+  formatDate,
+  formatTime,
+  countdown,
+  countdownPhrase,
+  COUNTDOWN_NOW,
+  localDate,
+  parseDayArg,
+  resolveDayArg,
+  weekdayShort,
+  calendarDaysUntil,
+  kickoffLabel,
+  DAY_WORDS,
+  MAX_DAY_OFFSET,
+  FAR_KICKOFF_DAYS,
+} from './time';
+export type { DayArg } from './time';
 export type { FormatOpts } from './time';
 export { isValidTimeZone, isValidDate } from './validate';
 export { displayWidth, padVisible, truncateVisible, withFlag } from './text';

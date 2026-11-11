@@ -27,10 +27,10 @@ npx @claudinho/cli follow champions-league
 npx @claudinho/cli today --lang es --tz America/Mexico_City
 ```
 
-<!-- DEMO: verbatim `claudinho --tz UTC today` with the Champions League followed, on Oct 14, 2026
-     after the day's games, colour off. Never hand-edit. -->
+<!-- DEMO: verbatim `claudinho --tz UTC today 2026-10-14` with the Champions League followed, captured
+     Nov 10, 2026, colour off. Never hand-edit. -->
 ```text
-Today's matches · 2026-10-14
+Matches · Wed 2026-10-14
   Champions League
 
   Feyenoord Rotterdam    3–2  Como                  FT   the scoreboard has spoken!
@@ -47,8 +47,8 @@ Live data: ESPN
 Not affiliated with FIFA, any confederation, league or club, or Anthropic.
 ```
 
-This is a capture from Oct 14, 2026. `claudinho --tz UTC today 2026-10-14` shows that day's results
-again.
+Oct 14, 2026's results, asked by their date. With no date `today` shows today's matches, and
+`claudinho today tomorrow`, `today sat` or `today +3` show another day's.
 
 ## Competitions
 
@@ -81,14 +81,14 @@ The 16 competitions Claudinho follows, by the alias `follow` and `--competition`
 
 ```bash
 claudinho follow [ALIAS]    # choose the competition you follow (saved); --team <name> pins your team; --list; off
-claudinho today [date]      # a day's fixtures in your timezone (default: today), live scores inline
+claudinho today [DATE]      # a day's fixtures in your timezone (default: today), live scores inline; DATE is YYYY-MM-DD, tomorrow, yesterday, a weekday (sat) or +N
 claudinho live              # matches in play right now
 claudinho next [TEAM]       # a team's next match and a countdown; TEAM is a name or a code (Arsenal, ARS, Mexico, MEX); default: CLAUDINHO_TEAM, else your pin
 claudinho table [KEY]       # standings (default: every table); KEY is a group letter, or A1, A-B, LEAGUE
 claudinho match <id>        # one match, with its goals and cards
 claudinho bracket [STAGE]   # the knockout bracket, World Cup only (R32, R16, QF, SF, 3P, F); --tree for an ASCII tree
-claudinho share [target]    # a plain-text card to paste: today | live | <date> | <id> | next [TEAM] | table [KEY] | bracket [STAGE]
-claudinho markets [target]  # World Cup prediction-market odds: today | <date> | <id> | next [TEAM]
+claudinho share [target]    # a plain-text card to paste: today | live | <DATE> | <id> | next [TEAM] | table [KEY] | bracket [STAGE]
+claudinho markets [target]  # World Cup prediction-market odds: today | <DATE> | <id> | next [TEAM]
 claudinho team <query>      # a World Cup nation's name or code to its FIFA code, flag and group (team "DR Congo")
 claudinho prompt            # one compact status line (for a statusline, tmux or Starship)
 claudinho init claude       # Claude Code: statusline + score-aware hook, then the MCP line to run
@@ -108,6 +108,7 @@ claudinho star              # how to support the project
 ```bash
 claudinho follow premier-league --team Arsenal   # follow a league and pin a team
 claudinho next                                   # Arsenal's next match, with a countdown
+claudinho today sat                              # Saturday's matches (also tomorrow, yesterday, +3)
 claudinho today --tz America/Mexico_City --lang es
 claudinho --competition liga-mx table            # another competition, for one command
 claudinho live --json | jq '.matches[].status'

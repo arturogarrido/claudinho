@@ -513,7 +513,7 @@ describe.skipIf(process.platform === 'win32')('scripts/verify.mjs, the control C
     const { r, res } = verify(['run', '--json', '--out', out(), '--offline', '--follow', 'world-cup', '--env', 'CLAUDINHO_LANG=es', '--twin', '--', 'today', '2026-06-11']);
     expect(r.status, String(res?.error)).toBe(0);
     expect(res?.phases?.follow?.stdout ?? '').toContain('Siguiendo: World Cup');
-    expect(res?.phases?.main?.stdout ?? '').toContain('Matches · 2026-06-11');
+    expect(res?.phases?.main?.stdout ?? '').toContain('Matches · Thu 2026-06-11');
     expect(res?.phases?.main?.stdout ?? '').not.toContain('Partidos');
     expect(JSON.parse(res?.phases?.twin?.stdout ?? '{}')).toMatchObject({ date: '2026-06-11' });
     expect(res?.phases?.twin?.stdout ?? '').not.toContain('Partidos');
@@ -1014,8 +1014,8 @@ function check(clause: string, res: Result | null): void {
 
 describe.skipIf(process.platform === 'win32')('the map\'s tripwire: every offline line of every feature file drives and proves', () => {
   const lines = offlineLines(FEATURES);
-  it('reads fifteen lines, at least one per feature file, each naming a command --help lists', () => {
-    expect(lines.length, 'the map grows by a deliberate change of this number').toBe(15);
+  it('reads sixteen lines, at least one per feature file, each naming a command --help lists', () => {
+    expect(lines.length, 'the map grows by a deliberate change of this number').toBe(16);
     for (const f of ['live.md', 'next.md', 'statusline.md', 'table.md', 'today.md']) expect(lines.some((l) => l.file === f), `${f} drives something`).toBe(true);
     const help = spawnSync(process.execPath, [VERIFY, '--help'], { encoding: 'utf8', env: testEnv() }).stdout;
     for (const l of lines) expect(help, `${l.file}: ${l.command}`).toMatch(new RegExp(`^\\s*${(l.command.split(' ')[0] as string)}\\b`, 'm'));
