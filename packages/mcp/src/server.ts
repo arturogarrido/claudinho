@@ -324,6 +324,10 @@ const nextDayOut = z
 const dayHorizonOut = z
   .object({ days: z.number().int().positive() })
   .describe('Off the World Cup, on an empty day read whole: no fixture that is on falls in this many provider days ahead');
+/** The live read's horizon: the same plain field, said of an empty live list. */
+const liveHorizonOut = z
+  .object({ days: z.number().int().positive() })
+  .describe('Off the World Cup, when nothing is in play by a whole read: no fixture that is on kicks off in this many provider days ahead');
 const todayOut = {
   date: z.string(),
   degraded: z.boolean(),
@@ -357,7 +361,7 @@ const liveOut = {
     .string()
     .optional()
     .describe('Off the World Cup, when nothing is in play by a whole read: the next kickoff AHEAD (an ISO instant), never a match in play now'),
-  horizon: dayHorizonOut.optional(),
+  horizon: liveHorizonOut.optional(),
   ...verdictOut,
   ...partialOut,
   ...selectionOut,
