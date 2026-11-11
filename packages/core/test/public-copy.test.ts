@@ -136,11 +136,12 @@ describe('every en dash stays (a score, a range, an alt text)', () => {
   // match demo and the plugin's toasts and pane came in), the CLI README 7 → 13 (the Champions League today and
   // share demos), the MCP README 1 → 0 (the old demo's alt left), and the plugin README joins at 12 (its toasts).
   // Oct 17, 2026, the 0.12.0 port: the plugin README 12 → 13 (the Spanish toast's score in its `language` section).
+  // Nov 10, 2026, plugin 0.7.0: the plugin README 13 → 12 (the "With CLI 0.11.2" section left, with its example score).
   const BEFORE: Record<string, number> = {
     'README.md': 4,
     'packages/cli/README.md': 13,
     'packages/mcp/README.md': 0,
-    'packages/plugin/README.md': 13,
+    'packages/plugin/README.md': 12,
     'packages/core/README.md': 0,
     'CONTRIBUTING.md': 0,
     'PRIVACY.md': 0,

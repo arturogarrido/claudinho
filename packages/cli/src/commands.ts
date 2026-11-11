@@ -91,6 +91,7 @@ import {
   timelineParts,
   withFlag,
   type Stage,
+  AMBIENT_API,
   type AmbientView,
   type CompetitionKey,
   DISCLAIMER,
@@ -1239,10 +1240,10 @@ export function cmdHook({ cfg, now }: Ctx): void {
 }
 
 /**
- * What `ambient` prints when it can say nothing else (a refused value, a failure): the statusline's empty line and
- * `empty`, the view's own word for it, as an object with no view.
+ * What `ambient` prints when it can say nothing else (a refused value, a failure): the contract's number, the
+ * statusline's empty line and `empty`, the view's own word for it, as an object with no view.
  */
-const AMBIENT_EMPTY = JSON.stringify({ line: NOTHING_KNOWN_LINE, empty: true });
+const AMBIENT_EMPTY = JSON.stringify({ api: AMBIENT_API, line: NOTHING_KNOWN_LINE, empty: true });
 
 /**
  * `claudinho ambient --json` — the statusline and the hook as ONE JSON object
@@ -1264,6 +1265,7 @@ export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): 
       // The selection's structured twin (core's), and the first-run line.
       out(
         JSON.stringify({
+          api: AMBIENT_API,
           ...selectionExtras(cfg.selection),
           ...verdictExtras(selectionVerdict(cfg.selection)),
           line: FIRST_RUN_LINE,
@@ -1296,6 +1298,7 @@ export function cmdAmbient({ cfg, now }: Ctx, opts: { columns?: number } = {}): 
     });
     const pick = preference.pick;
     const view: AmbientView = {
+      api: AMBIENT_API,
       line: read.line,
       lineParts: read.lineParts,
       idle: read.idle,

@@ -72,6 +72,22 @@ describe('no CLI', () => {
   })
 })
 
+describe('the probe', () => {
+  test('the band probes the PATH once per session: a CLI there that keeps timing out is probed at its first failed run alone', async ($, on) => {
+    const w = await world($, on, [new Error('timeout')], { bins: ['/usr/local/bin/claudinho'] })
+    await w.clock.advance(5 * MIN)
+    expect(w.probes.filter((p) => p === '/usr/bin/claudinho')).toHaveLength(1)
+  })
+
+  test('more than 64 folders on the PATH: no claim', async ($, on) => {
+    const toasts = toastsWithTimeout(on)
+    const many = Array.from({ length: 70 }, (_, i) => `/opt/f${i}`).join(':')
+    const w = await world($, on, [ENOENT()], { env: { PATH: many, HOME } })
+    expect(toasts).toEqual([])
+    expect((await w.command()).text).toBe(FAILED)
+  })
+})
+
 describe('a CLI that is there but gave no answer: no claim', () => {
   test('a run rejected (a timeout) while a PATH folder holds `claudinho`: no toast, today\'s reply', async ($, on) => {
     const toasts = toastsWithTimeout(on)
@@ -155,6 +171,14 @@ describe('a CLI too old', () => {
     const toasts = toastsWithTimeout(on)
     const w = await world($, on, [V0112])
     await w.clock.advance(5 * MIN)
+    expect(toasts.map((t) => t.text)).toEqual([TOO_OLD])
+  })
+
+  test('one first-run toast per session, whichever cause comes first: an old one, then no CLI', async ($, on) => {
+    const toasts = toastsWithTimeout(on)
+    const w = await world($, on, [V0112, ENOENT()])
+    await w.clock.advance(MIN)
+    expect(w.argvs.length).toBeGreaterThan(1)
     expect(toasts.map((t) => t.text)).toEqual([TOO_OLD])
   })
 

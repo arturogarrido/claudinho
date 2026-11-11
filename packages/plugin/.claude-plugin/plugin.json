@@ -1,7 +1,7 @@
 {
   "name": "claudinho",
-  "version": "0.6.0",
-  "description": "Live football in Claude Code for the competition you follow: the score or the countdown above the prompt (the same line on demand with /claudinho), a toast that says what happened (a goal and its scorer, full time and the result), a goal celebration with the Claude mascot, the live score beside your prompt for the model, all from the installed claudinho CLI's local cache, and a match pane with the match you follow, its goals and cards (/claudinho match, read by the CLI). Live data: ESPN. Not affiliated with FIFA, any confederation, league or club, or Anthropic.",
+  "version": "0.7.0",
+  "description": "Your Claude Code celebrates when your team scores: a toast with the scorer, a short celebration with the Claude mascot, and the score above your prompt. Follow a competition and pin your team with the claudinho CLI on your machine, then open any match's goals and cards with /claudinho match. Live data: ESPN. Not affiliated with FIFA, any confederation, league or club, or Anthropic.",
   "author": {
     "name": "Arturo Garrido"
   },
@@ -14,7 +14,7 @@
       "title": "Score toasts",
       "options": ["pinned", "all", "off"],
       "default": "pinned",
-      "description": "Which goals, score changes and full times raise a toast: pinned, your pinned team's match (claudinho follow <alias> --team <name>); with no pin saved, pinned toasts nothing. all, every live match of the competition you follow; off, none."
+      "description": "Which goals, score changes and full times raise a toast: pinned, your pinned team's match (claudinho follow <alias> --team <name>); with no pin saved, the session's first goal, then one hint on how to pin, then no goal toasts. all, every live match of the competition you follow; off, none."
     },
     "celebrate": {
       "type": "string",

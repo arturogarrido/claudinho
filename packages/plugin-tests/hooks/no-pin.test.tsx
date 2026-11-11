@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { ARAUJO, drawnRows, liveRecord, momentLine, momentView, toastsWithTimeout, world } from './world'
+import { ARAUJO, drawnRows, finishedRecord, liveRecord, momentLine, momentView, toastsWithTimeout, world } from './world'
 
 /**
  * No team pinned (plugin 0.7.0), under `toasts: pinned` (the default), with the view stating `pick: null` (no saved
@@ -76,6 +76,17 @@ describe('no pin, toasts: pinned', () => {
     await next(w)
     await next(w)
     expect(toasts.map((t) => t.text)).toEqual(['Score updated · LASK Linz 0–0 Liverpool', HINT])
+  })
+
+  test('a full time is never the taste: nothing toasts, and the next live goal is the taste', async ($, on) => {
+    const toasts = toastsWithTimeout(on)
+    const ft = (score: [number, number]) => finishedRecord(score, { ...NO_PIN })
+    const w = await world($, on, [before, momentView([], [ft([0, 0])], NONE), before, goal1])
+    await next(w)
+    expect(toasts).toEqual([])
+    await next(w)
+    await next(w)
+    expect(toasts.map((t) => t.text)).toEqual([GOAL_TOAST, HINT])
   })
 
   test('an experimental competition (no alias): the hint names its slug', async ($, on) => {

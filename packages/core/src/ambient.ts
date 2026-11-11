@@ -96,8 +96,19 @@ export type AmbientMatch = Match & {
   readonly lastGoal: MatchEvent | null;
 };
 
+/**
+ * The number of the contract `claudinho ambient --json` prints, first in every object it prints (the view, the
+ * first-run object, the fallback object): a program reading it compares it with the lowest number it reads (the
+ * Claude Code plugin's floor). It is NOT the CLI's version: it moves only when a change would make an older reader
+ * misread an object (a key removed or renamed, a meaning changed); a key added moves nothing. A CLI before it prints
+ * no `api`.
+ */
+export const AMBIENT_API = 1;
+
 /** The ambient view of a selected competition, its keys in this order. */
 export interface AmbientView {
+  /** The contract's number, {@link AMBIENT_API}. */
+  readonly api: number;
   /**
    * The statusline's line rendered in `lang` (the same reader and the same
    * options as `claudinho prompt`, which prints it in English), fitted to

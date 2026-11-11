@@ -292,7 +292,8 @@ describe('re-reading it while open', () => {
     const kickoff = new Date(NOW + 60 * 60_000).toISOString()
     const w = await world($, on, [upcoming(kickoff), upcoming(kickoff), live(0, 0)], { matchAnswers: [scheduled(kickoff), answer()] })
     await w.command('match')
-    await w.clock.advance(15_000)
+    // A kickoff within the hour: the band's next run a minute on.
+    await w.clock.advance(60_000)
     expect(w.matchRuns()).toHaveLength(2)
   })
 
@@ -301,7 +302,8 @@ describe('re-reading it while open', () => {
     const listedNoScore = view(LINE, { current: true, staleAfter: STALE_AFTER, live: { items: [{ id: ID, line: 'Arsenal vs Chelsea' }], total: 1, shown: 1, truncated: false, complete: true } })
     const w = await world($, on, [upcoming(kickoff), upcoming(kickoff), listedNoScore], { matchAnswers: [scheduled(kickoff), answer()] })
     await w.command('match')
-    await w.clock.advance(15_000)
+    // A kickoff within the hour: the band's next run a minute on.
+    await w.clock.advance(60_000)
     expect(w.matchRuns()).toHaveLength(2)
   })
 

@@ -142,6 +142,17 @@ describe('one timer at a time', () => {
     expect(w.runTimes.map((t) => t - (w.runTimes[0] as number))).toEqual(Array.from({ length: 11 }, (_, i) => i * MIN))
   })
 
+  test('a run whose state write is refused (it throws) still arms the next run, a minute on, and one only', async ($, on) => {
+    const at = { deny: false }
+    on('state.set', (_$, e, next) => (at.deny && e.key === 'band' ? { deny: 'state write refused' } : next(e)))
+    const w = await world($, on, [view('⚽ live · syncing…')])
+    at.deny = true
+    await nextRunAfter(w, 15_000)
+    at.deny = false
+    await nextRunAfter(w, MIN)
+    await nextRunAfter(w, 15_000)
+  })
+
   test('a toast the host refuses does not stop the pace', async ($, on) => {
     on('ui.toast', () => ({ deny: 'toasts refused' }))
     const w = await world($, on, [momentView([liveRecord([0, 0])]), momentView([liveRecord([0, 1])]), momentView([liveRecord([0, 1])])])
@@ -178,4 +189,3 @@ describe('one timer at a time', () => {
     expect(w.argvs).toHaveLength(1)
   })
 })
-

@@ -277,7 +277,8 @@ describe('a cleared band comes back', () => {
   test('an idle line cleared by a refused roster read is shown again at the next fire the roster answers (the idle gap does not hold it)', async ($, on) => {
     const { argvs, clock, denyRoster, mount } = await world($, on, [view(COMPLETE, { idle: true })])
     denyRoster(true)
-    await clock.advance(15_000)
+    // The idle line's next run comes 5 minutes on.
+    await clock.advance(300_000)
     expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
     denyRoster(false)
     await clock.advance(15_000)

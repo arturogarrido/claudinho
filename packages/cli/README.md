@@ -370,6 +370,7 @@ whatever the cache holds.
 
 | Field | What it holds |
 |---|---|
+| `api` | the number of this contract, `1`, first in every object the command prints (the view, the first-run object, the refused one). It is raised only when a change would make an older reader misread the object, never for a field added; it is not the CLI's version |
 | `line` | the line `claudinho prompt` prints, but in the CLI's language (`--lang`; `prompt` itself stays English), fitted to `--columns N` with its `+N` count kept. Its `+more`, the World Cup's sign-off and `⚽ —` stay English, and the countdown's units (`2d4h`, `17m`) are the same in every language |
 | `lineParts` | the same line in parts, each shown score marked `strong`; their texts joined equal `line` |
 | `idle` | `true` on the end-of-edition line, however narrow the fit |

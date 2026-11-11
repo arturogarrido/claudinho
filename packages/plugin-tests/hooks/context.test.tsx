@@ -62,7 +62,8 @@ describe('what a prompt carries', () => {
     await clock.advance(15_000)
     let r = await submit($)
     expect(r.context).toEqual([CONTEXT])
-    await clock.advance(15_000)
+    // The run after a failed one comes a minute later.
+    await clock.advance(60_000)
     r = await submit($)
     expect(r.context).toEqual(['later'])
   })

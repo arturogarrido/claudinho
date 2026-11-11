@@ -72,10 +72,10 @@ describe('what the band shows', () => {
     expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
   })
 
-  test('shows nothing when the binary cannot run, and runs again at the next fire', async ($, on) => {
+  test('shows nothing when the binary cannot run, and runs again at the next fire (a minute after a failed run)', async ($, on) => {
     const { argvs, clock, mount } = await world($, on, [new Error('spawn claudinho ENOENT'), view("⚽ ARS 2–1 CHE 50'")])
     expect(await (await mount()).findAll({ type: 'Text' })).toHaveLength(0)
-    await clock.advance(15_000)
+    await clock.advance(60_000)
     expect(argvs).toHaveLength(2)
     expect(await (await mount()).findAll({ type: 'Text', text: "⚽ ARS 2–1 CHE 50'" })).toHaveLength(1)
   })

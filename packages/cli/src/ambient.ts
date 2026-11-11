@@ -40,7 +40,7 @@ export interface AmbientOpts extends PromptOpts {
  * The ambient view as the cache gives it: the command adds the selection, the language and its words, the
  * disclaimer, the attribution and the pick.
  */
-export type AmbientRead = Omit<AmbientView, 'competition' | 'lang' | 'words' | 'disclaimer' | 'attribution' | 'pick' | 'pickUnreadable'>;
+export type AmbientRead = Omit<AmbientView, 'api' | 'competition' | 'lang' | 'words' | 'disclaimer' | 'attribution' | 'pick' | 'pickUnreadable'>;
 
 /** The side of a record the saved pin names (core's `isPinnedSide`, home first), or `null`. */
 function pinnedSideOf(m: Match, pin: Pin | undefined): 'home' | 'away' | null {
