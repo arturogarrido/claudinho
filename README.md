@@ -302,7 +302,7 @@ The tools, the prompts and their fields: the [MCP README](https://github.com/art
   commentary on each match line (`¡GOOOOL!`) and a team's own rally cry when it has one (Mexico's
   "¿Y si sí?", Pumas' "¡Goya!", Arsenal's "COYG!"). A postponed or cancelled match gets neither.
   `--flavor off` turns it off.
-- **Clubs and nations**: a nation shows with its flag, a club by its name. No crests, kits or photos.
+- **Clubs and nations**: a nation shows with its flag and a club by its name; a nation whose flag no platform draws (Northern Ireland) shows by its name too. No crests, kits or photos.
 - **Shareable cards**: `claudinho share next --copy` puts a plain-text card for the group chat on
   your clipboard.
 - **Prediction-market odds**: for World Cup matches, a "who's favored" line from Polymarket's public

@@ -26,6 +26,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { allTeams, flagEmoji } from '../src/index';
+import { FLAGLESS_NATIONS } from '../src/flags';
 import { displayWidth } from '../src/text';
 import { humanLabel, productFlag } from '../src/trust';
 
@@ -91,7 +92,13 @@ describe('every nation the recorded nations feeds name has a flag (0.11 · 2.2: 
   };
 
   it.each(recorded)('%s', (competition) => {
-    const missing = names(competition).filter((n) => productFlag(n) === '🏳️');
+    // A nation with no recommended flag answers none, and only the written flagless list may (Northern Ireland);
+    // any other name answering none, or the placeholder, is a nation that lost its flag.
+    const flagless = new Set(FLAGLESS_NATIONS.map((f) => f.name));
+    const missing = names(competition).filter((n) => {
+      const flag = productFlag(n);
+      return flag === undefined ? !flagless.has(n) : flag === '🏳️';
+    });
     expect(missing).toEqual([]);
   });
 

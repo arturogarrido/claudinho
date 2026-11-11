@@ -312,8 +312,12 @@ export function canonicalTimestamp(value: unknown): string | undefined {
  * exception. The three P1s that each rode the old emoji exemption (TAG
  * sequences, variation selectors, ZWJ chains) are not defended against — they
  * have nowhere to enter.
+ *
+ * Three answers: a flag Unicode recommends; `undefined`, a NATION whose flag
+ * Unicode does not recommend (Northern Ireland: it carries no flag and is
+ * rendered by its name); the neutral 🏳️, no nation at all (a placeholder).
  */
-export function productFlag(nameOrCode: string | undefined): string {
+export function productFlag(nameOrCode: string | undefined): string | undefined {
   return nationToFlag(nameOrCode);
 }
 
