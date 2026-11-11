@@ -741,6 +741,14 @@ describe.skipIf(process.platform === 'win32')('the tripwire: every gating step o
     expect(unclassified.map((s) => `${s.job}: ${s.text.split('\n').pop()}`)).toEqual(['os-matrix: pnpm run extra-check']);
   });
 
+  it("a command added inside the audit job's decision step is unclassified too", () => {
+    const marker = '          echo "audit=$audit" >> "$GITHUB_OUTPUT"\n';
+    expect(yaml).toContain(marker);
+    const edited = yaml.replace(marker, `${marker}          pnpm run extra-check\n`);
+    const { unclassified } = classify(workflowSteps(edited), gateList());
+    expect(unclassified.map((s) => `${s.job}: ${s.text.split('\n').pop()}`)).toEqual(['audit: pnpm run extra-check']);
+  });
+
   it('the concurrency block cancels a superseded run on a pull_request event only, and gives each push to main its own group', () => {
     // A second merge to main once cancelled the run on the first merge commit, whose CI could then never be read.
     // cancel-in-progress: false alone is not enough: a group holds one running and one PENDING run, and a newly

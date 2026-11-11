@@ -99,7 +99,7 @@ describe.skipIf(process.platform === 'win32')('ci.yml, the audit decision, run',
    * A pull request's checkout: a base commit, the branch's commit changing `changed`, and GitHub's merge commit
    * checked out (first parent the base tip). `mainMoves` changes files on the base after the branch was cut.
    */
-  function prRepo(changed: string[], mainMoves: string[] = []): string {
+  function prRepo(changed: string[], mainMoves: string[] = [], renames: [string, string][] = []): string {
     const root = mkdtempSync(join(tmpdir(), 'ci-audit-'));
     git(root, 'init', '-q', '-b', 'main');
     for (const f of BASE) write(root, f, `${f}\n`);
@@ -107,6 +107,10 @@ describe.skipIf(process.platform === 'win32')('ci.yml, the audit decision, run',
     git(root, 'commit', '-q', '-m', 'base');
     git(root, 'checkout', '-q', '-b', 'pr');
     for (const f of changed) write(root, f, `${f} changed\n`);
+    for (const [from, to] of renames) {
+      mkdirSync(dirname(join(root, to)), { recursive: true });
+      git(root, 'mv', from, to);
+    }
     git(root, 'add', '-A');
     git(root, 'commit', '-q', '--allow-empty', '-m', 'pr');
     git(root, 'checkout', '-q', 'main');
@@ -134,6 +138,20 @@ describe.skipIf(process.platform === 'win32')('ci.yml, the audit decision, run',
   for (const file of ['pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'packages/cli/package.json', 'packages/new/package.json', '.github/workflows/ci.yml'])
     it(`a pull request that changes ${file} audits`, () => {
       const r = decideIn(prRepo([file, 'README.md']), 'pull_request');
+      expect(r.status, r.out).toBe(0);
+      expect(r.audit, r.out).toBe('true');
+    });
+
+  // A rename is a change to both of its paths. Git's rename detection lists the destination alone, so a watched
+  // file renamed away would otherwise skip the audit.
+  for (const [from, to] of [
+    ['pnpm-lock.yaml', 'pnpm-lock.yaml.old'],
+    ['packages/cli/package.json', 'packages/cli/package.json.bak'],
+    ['.github/workflows/ci.yml', '.github/workflows/checks.yml'],
+    ['pnpm-workspace.yaml', 'docs-workspace.yaml'],
+  ] as const)
+    it(`a pull request that renames ${from} away audits`, () => {
+      const r = decideIn(prRepo([], [], [[from, to]]), 'pull_request');
       expect(r.status, r.out).toBe(0);
       expect(r.audit, r.out).toBe('true');
     });
