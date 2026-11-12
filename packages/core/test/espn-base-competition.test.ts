@@ -5,8 +5,9 @@ import { EspnAdapter } from '../src/adapters/espn';
  * The competition an adapter built from a bare `baseUrl` states: the base's last path segment once its query and
  * fragment are cut, or `custom` when that is not a flat slug. The cut used to be one regular expression whose work
  * grew with the square of the input's length on a base holding many `#` before a line terminator (CodeQL
- * `js/polynomial-redos`). These cases pin what the cut answers, the odd inputs included, so a linear rewrite is held
- * to the same answers. A line terminator is written escaped: the old cut never crossed one.
+ * `js/polynomial-redos`). These cases pin what the cut answers on the shapes below, the odd inputs included. They are
+ * examples, not a proof that two cuts agree on every string. Every case is green on the old expression too. A line
+ * terminator, and every other invisible character, is written escaped: the old cut never crossed a terminator.
  */
 const HOST = 'https://example.test/apis/site/v2/sports/soccer';
 const competitionOf = (baseUrl: string): string => new EspnAdapter({ baseUrl }).competition;
@@ -59,6 +60,36 @@ describe('the competition of a bare base URL', () => {
     [`${HOST}/a\nb/eng.1?x`, 'eng.1'],
     [`${HOST}/a\nb/eng.1`, 'eng.1'],
   ])('a line terminator after a `?` or `#` keeps that one from cutting: %j', (base, want) => {
+    expect(competitionOf(base)).toBe(want);
+  });
+
+  it.each([
+    // two terminators: the LAST one decides which `?` or `#` may cut
+    [`${HOST}/x\n?a\n/eng.1`, 'eng.1'],
+    [`${HOST}/x\n/eng.1?y\n/esp.1`, 'esp.1'],
+    [`${HOST}/x\r?a\u2028/eng.1#z`, 'eng.1'],
+  ])('with two line terminators the last one decides: %j', (base, want) => {
+    expect(competitionOf(base)).toBe(want);
+  });
+
+  it.each([
+    // not line terminators to `.`: NEL, a vertical tab, a form feed, a tab, a no-break space
+    [`${HOST}/eng.1?a\u0085b`, 'eng.1'],
+    [`${HOST}/eng.1?a\vb`, 'eng.1'],
+    [`${HOST}/eng.1#a\fb`, 'eng.1'],
+    [`${HOST}/eng.1?a\tb`, 'eng.1'],
+    [`${HOST}/eng.1#a\u00a0b`, 'eng.1'],
+  ])('a character that only looks like a line terminator does not stop the cut: %j', (base, want) => {
+    expect(competitionOf(base)).toBe(want);
+  });
+
+  it.each([
+    // the cutting character is the first one searched, with a path after it
+    ['?a/eng.1', 'custom'],
+    ['#/eng.1', 'custom'],
+    [`${HOST}/x\n#/eng.1`, 'custom'],
+    [`${HOST}/x\u2029?/eng.1`, 'custom'],
+  ])('a `?` or `#` at the very start of what is searched still cuts: %j', (base, want) => {
     expect(competitionOf(base)).toBe(want);
   });
 

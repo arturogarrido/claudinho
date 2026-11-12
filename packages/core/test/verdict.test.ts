@@ -537,7 +537,7 @@ describe('one definition of each rule the two surfaces used to copy', () => {
       expect(codeHits('mcp', written), key).toEqual(['mcp/src/server.ts']);
     }
     for (const i18nKey of ['competition.noBracket', 'team.unknown', 'edition.between', 'roster.incomplete']) {
-      const written = new RegExp(`['"\`]${i18nKey.replace('.', '\\.')}['"\`]`);
+      const written = new RegExp(`['"\`]${i18nKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`]`);
       expect(hits('cli', written), i18nKey).toEqual([]);
       expect(hits('mcp', written), i18nKey).toEqual([]);
     }
@@ -601,7 +601,7 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     expect(codeHits('cli', /\bnoCompetition\s*:/)).toEqual([]);
     expect(codeHits('mcp', /\bnoCompetition\s*:/)).toEqual(['mcp/src/server.ts']);
     for (const i18nKey of ['competition.none', 'selection.none']) {
-      const written = new RegExp(`['"\`]${i18nKey.replace('.', '\\.')}['"\`]`);
+      const written = new RegExp(`['"\`]${i18nKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`]`);
       expect(hits('cli', written), i18nKey).toEqual([]);
       expect(hits('mcp', written), i18nKey).toEqual([]);
     }
