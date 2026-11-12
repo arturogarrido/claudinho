@@ -51,11 +51,11 @@ describe('the competition of a bare base URL', () => {
     [`${HOST}/eng.1?a\nb`, 'custom'],
     [`${HOST}/eng.1?a\n`, 'custom'],
     [`${HOST}/eng.1?a\nb#c`, 'custom'],
-    [`${HOST}/eng.1?a b`, 'custom'],
+    [`${HOST}/eng.1?a\u2028b`, 'custom'],
     [`${HOST}/eng.1#a\rb`, 'custom'],
     [`${HOST}/x?a\n/eng.1#c`, 'eng.1'],
     [`${HOST}/x?a\r/eng.1#c`, 'eng.1'],
-    [`${HOST}/x#a /eng.1?c#d`, 'eng.1'],
+    [`${HOST}/x#a\u2029/eng.1?c#d`, 'eng.1'],
     [`${HOST}/a\nb/eng.1?x`, 'eng.1'],
     [`${HOST}/a\nb/eng.1`, 'eng.1'],
   ])('a line terminator after a `?` or `#` keeps that one from cutting: %j', (base, want) => {
