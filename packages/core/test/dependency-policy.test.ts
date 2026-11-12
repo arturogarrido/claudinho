@@ -50,7 +50,8 @@ const ENTRY_FORMS = '"    directory: …", "    schedule:", "    open-pull-reque
 
 /**
  * dependabot.yml's update entries (each ecosystem's name) and every line the allowlists do not read, then every
- * entry whose cooldown does not hold every update it may propose to at least `days`.
+ * entry whose cooldown does not hold every update it may propose to at least `days`. A key set twice, in an entry
+ * or in its cooldown, fails.
  */
 function dependabotPolicy(text: string, days: number): { ecosystems: string[]; problems: string[] } {
   const problems: string[] = [];
@@ -113,6 +114,7 @@ function dependabotPolicy(text: string, days: number): { ecosystems: string[]; p
       problems.push(unread('a cooldown', l, '"      default-days: 7", "      semver-patch-days: 7"; an include or exclude list takes dependencies out of the wait'));
       continue;
     }
+    if (entry.cooldown?.has(m[1] as string)) problems.push(`${entry.name}: cooldown.${m[1]} is set twice: "${l.trim()}"`);
     entry.cooldown?.set(m[1] as string, Number(m[2]));
   }
   for (const e of entries) {
@@ -306,6 +308,12 @@ describe('the policy readers: the plain forms are read, any other form fails', (
       'a flow entry': 'version: 2\nupdates:\n  - { package-ecosystem: npm, cooldown: { default-days: 1 } }\n',
       'an unknown top-level key': dep(COOL, 'npm', 'registries:\n  npm: {}\n'),
       'a second document': dep(COOL, 'npm', '---\nversion: 2\n'),
+      'an unknown top-level key with a plain value': dep(COOL, 'npm', 'enable-beta-ecosystems: true\n'),
+      'an indented root': dep(COOL).replace(/^/gm, '  '),
+      'an indented line before "updates:"': `version: 2\n  registries: {}\n${dep(COOL).slice('version: 2\n'.length)}`,
+      'a block scalar for the cooldown': dep('    cooldown: |\n      default-days: 7\n'),
+      'a days key set twice, the shorter first (a loader keeping the last would read 7)': dep('    cooldown:\n      default-days: 1\n      default-days: 7\n'),
+      'a days key set twice, both long enough': dep(`${COOL}      default-days: 7\n`),
     };
     for (const [why, text] of Object.entries(refused)) expect(dependabotPolicy(text, 7).problems, why).not.toEqual([]);
     expect(dependabotPolicy(dep(`${COOL}    "cool\\u0064own":\n      default-days: 1\n`), 7).problems[0]).toMatch(
