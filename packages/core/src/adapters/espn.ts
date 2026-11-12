@@ -82,10 +82,23 @@ export function competitionBase(slug: string): string {
  * The competition a bare base URL serves: its last path segment, which is what
  * {@link competitionBase} put there. Only for an adapter constructed from a
  * `baseUrl` alone (tests, a custom host); anything that is not a flat slug
- * reads as `custom`, which is never the bundled competition.
+ * reads as `custom`, which is never the bundled competition. The query and
+ * fragment are cut by plain scans, not by the one expression `/[?#].*$/` they
+ * were cut by, because its work grew with the square of the length on a base
+ * holding many `?` or `#` before a line terminator (a code scanning alert); the
+ * scans give its answers: the cut starts at the first `?` or `#` that no line
+ * terminator follows, and there is no cut when each one has a terminator after it.
  */
 function competitionOfBase(baseUrl: string): string {
-  const last = baseUrl.replace(/[?#].*$/, '').split('/').filter(Boolean).pop() ?? '';
+  const lineEnd = Math.max(
+    baseUrl.lastIndexOf('\n'),
+    baseUrl.lastIndexOf('\r'),
+    baseUrl.lastIndexOf('\u2028'),
+    baseUrl.lastIndexOf('\u2029'),
+  );
+  const cut = baseUrl.slice(lineEnd + 1).search(/[?#]/);
+  const kept = cut < 0 ? baseUrl : baseUrl.slice(0, lineEnd + 1 + cut);
+  const last = kept.split('/').filter(Boolean).pop() ?? '';
   return /^[a-zA-Z0-9._-]{1,64}$/.test(last) ? last : 'custom';
 }
 
