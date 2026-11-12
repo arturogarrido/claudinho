@@ -42,9 +42,11 @@ neither says anything about you: `Accept: application/json`, and a `User-Agent` 
 product and its repository. To ESPN that is `claudinho/<version>
 (+https://github.com/arturogarrido/claudinho)`, where `<version>` is the version of the
 Claudinho package making the request; to Polymarket it is the fixed `claudinho/0.0
-(+https://github.com/arturogarrido/claudinho)`. As with any HTTP request, the service you
-connect to also receives the standard request metadata your device sends, such as your **IP
-address**; Claudinho cannot avoid this and adds nothing beyond these two headers. Your use
+(+https://github.com/arturogarrido/claudinho)`. Claudinho sets only these two headers. The
+Node.js runtime that sends the request adds its standard ones, such as `host`,
+`connection: keep-alive`, `accept-language: *`, `sec-fetch-mode: cors` and
+`accept-encoding: gzip, deflate`. As with any HTTP request, the service you connect to also sees
+your **IP address**; Claudinho cannot avoid this. Your use
 of those third-party services is governed by their own privacy policies:
 
 - ESPN (a division of The Walt Disney Company): <https://privacy.thewaltdisneycompany.com/en/current-privacy-policy/>

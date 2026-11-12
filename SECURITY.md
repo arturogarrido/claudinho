@@ -59,8 +59,9 @@ only field by field (a value that fails its grammar is no saved choice, never a 
 | `site.api.espn.com` | live scores, fixtures, standings | attributed in output as `Live data: ESPN` |
 | `gamma-api.polymarket.com` | read-only prediction-market signals | opt-out via `CLAUDINHO_MARKETS=off`; host allow-listed in code |
 
-Requests are anonymous GETs, with no account and no credentials. Their headers are `Accept` and a
-product `User-Agent`: `claudinho/<version> (+https://github.com/arturogarrido/claudinho)` to ESPN,
+Requests are anonymous GETs, with no account and no credentials. Claudinho sets two headers,
+`Accept` and a product `User-Agent` (the Node.js runtime adds its standard ones, such as `host`,
+`accept-language` and `accept-encoding`): `claudinho/<version> (+https://github.com/arturogarrido/claudinho)` to ESPN,
 the version being the requesting package's, and the fixed `claudinho/0.0 (+…)` to Polymarket. They
 do carry the parameters a
 lookup needs: the requested date, and the competition slug (from `--competition`,
