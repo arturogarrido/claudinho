@@ -41,7 +41,7 @@ describe('no written fact of a supported competition outside the table', () => {
       if (allowed.has(rel)) continue;
       const text = code(readFileSync(file, 'utf8'));
       for (const { slug } of SUPPORTED) {
-        if (new RegExp(`['"\`]${slug.replace(/\./g, '\\.')}['"\`]`).test(text)) found.push(`${rel}: ${slug}`);
+        if (new RegExp(`['"\`]${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`]`).test(text)) found.push(`${rel}: ${slug}`);
       }
     }
     expect(found).toEqual([]);
