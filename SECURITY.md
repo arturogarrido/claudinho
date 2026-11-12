@@ -40,8 +40,14 @@ on nothing.
 runtime. Beyond its own `CLAUDINHO_*` options it reads only environment used for display and
 paths: `LANG`, `NO_COLOR`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `APPDATA` and `LOCALAPPDATA`
 (the config and cache directories on Windows), `TERM_PROGRAM` (terminal detection, for the
-flag-emoji fallback), and the home directory via `os.homedir()` (`HOME` / `USERPROFILE`). It
-reads one file of its own as input: the config file, `config.json` in the config directory,
+flag-emoji fallback), the home directory via `os.homedir()` (`HOME` / `USERPROFILE`), and, on
+Windows, `SystemRoot` (to name the clipboard helper by its path; see **Subprocesses**). The CLI's
+dependencies read a few more, for colour, each depending on the terminal and on what else is set:
+picocolors reads `NO_COLOR`, `FORCE_COLOR`, `TERM` and `CI` (and the `--color` and `--no-color`
+arguments), and when `claudinho table` draws in colour, cli-table3 loads `@colors/colors`, which
+reads `FORCE_COLOR`, `CI` (then `TRAVIS`, `CIRCLECI`, `APPVEYOR`, `GITLAB_CI` and `CI_NAME`),
+`TEAMCITY_VERSION`, `TERM`, `TERM_PROGRAM` (then `TERM_PROGRAM_VERSION`) and `COLORTERM`. The MCP
+SDK modules the server loads, and zod, read none of their own. It reads one file of its own as input: the config file, `config.json` in the config directory,
 which holds the competition and team chosen with `claudinho follow`; it is read through the
 same bounded, non-blocking reader as the cache, never through a symbolic link, and believed
 only field by field (a value that fails its grammar is no saved choice, never a guess).
@@ -53,7 +59,11 @@ only field by field (a value that fails its grammar is no saved choice, never a 
 | `site.api.espn.com` | live scores, fixtures, standings | attributed in output as `Live data: ESPN` |
 | `gamma-api.polymarket.com` | read-only prediction-market signals | opt-out via `CLAUDINHO_MARKETS=off`; host allow-listed in code |
 
-Requests are anonymous GETs, with no account and no credentials. They do carry the parameters a
+Requests are anonymous GETs, with no account and no credentials. Claudinho sets two headers,
+`Accept` and a product `User-Agent` (the Node.js runtime adds its standard ones, such as `host`,
+`accept-language` and `accept-encoding`): `claudinho/<version> (+https://github.com/arturogarrido/claudinho)` to ESPN,
+the version being the requesting package's, and the fixed `claudinho/0.0 (+…)` to Polymarket. They
+do carry the parameters a
 lookup needs: the requested date, and the competition slug (from `--competition`,
 `CLAUDINHO_COMPETITION`, an MCP tool's `competition` argument, or the saved choice in
 `config.json`, which selects the ESPN competition path; an alias resolves to its slug offline, and a value that is neither an alias
@@ -187,10 +197,13 @@ reverted.
 **Subprocesses.** Three kinds, each started from an argument array; Claudinho writes no shell
 command line. (1) The statusline spawns a detached background refresher via
 `spawn(process.execPath, [entry, '_refresh', '--source', source])` (`packages/cli/src/refresh.ts`),
-never with `shell: true`. (2) `share --copy` runs a platform clipboard helper (`pbcopy`, `clip`,
-`wl-copy`, `xclip` or `xsel`) through `spawnSync` with a fixed argument array, never with
-`shell: true`, resolved through `PATH`, with the snippet passed on stdin rather than as an
-argument. (3) The Claude Code plugin (`packages/plugin/hooks/register.tsx`) runs the installed
+never with `shell: true`. (2) `share --copy` runs a platform clipboard helper through `spawnSync` with a fixed
+argument array, never with `shell: true`, with the snippet passed on stdin rather than as an
+argument. On Windows it is `clip.exe` named by its absolute path under the system root
+(`%SystemRoot%\System32\clip.exe`, with `C:\Windows` when `SystemRoot` is not an absolute drive
+path), because Windows looks for a bare command name in the current folder before `PATH`, where a
+planted `clip.exe` would run; elsewhere it is `pbcopy`, `wl-copy`, `xclip` or `xsel`, resolved
+through `PATH`. (3) The Claude Code plugin (`packages/plugin/hooks/register.tsx`) runs the installed
 CLI through Claude Code's process API (`$.process.run`) at three sites: `claudinho ambient --json`
 for the band and for the `/claudinho` command, and `claudinho match <id> --json` for the match
 pane. Each run is handed an argument array of fixed words and values taken from the CLI's own
@@ -201,8 +214,8 @@ host's `PATH`, then folders under `HOME` it may add (nvm's version folders, and 
 global-bin folders of Volta, pnpm, Bun, npm and `~/.local/bin`), then `/opt/homebrew/bin`,
 `/usr/local/bin`, `/usr/bin` and `/bin`; when it is, the plugin hands none, and the host's
 environment applies. `PATH`-resolved execution is worth knowing about: on a machine whose `PATH`, home folder or
-one of the folders above an attacker already controls, `claudinho` or a clipboard helper's name could resolve to
-their binary, though such an attacker can generally run code anyway.
+one of the folders above an attacker already controls, `claudinho` or a clipboard helper's name (outside Windows)
+could resolve to their binary, though such an attacker can generally run code anyway.
 
 ### Things genuinely worth reporting
 
@@ -265,6 +278,16 @@ All three packages publish from CI with **npm provenance** via OIDC trusted publ
 is no long-lived npm token. GitHub Actions are pinned to full commit SHAs (not tags), including
 in the workflow that holds the publishing credential. Dependency updates and security alerts run
 through Dependabot.
+
+A new version of a dependency is adopted only once it has been published for seven days.
+Dependabot waits that long before it proposes a version update (`cooldown` in
+`.github/dependabot.yml`), and pnpm refuses to resolve, or to install from the lockfile, a version
+younger than that (`minimumReleaseAge` in `pnpm-workspace.yaml`). Dependabot does not delay a
+security update; one that needs a version younger than seven days is adopted by naming that exact
+version in `minimumReleaseAgeExclude`, in the change that adopts it. The rule does not cover the
+version of pnpm itself, which `packageManager` pins. CI audits the shipped dependencies
+(`pnpm audit --prod`) on every push to `main`, and on a pull request that changes the lockfile,
+the workspace file, a `package.json` or the CI workflow.
 
 ---
 

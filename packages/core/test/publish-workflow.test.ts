@@ -1091,6 +1091,8 @@ exit 2
       'bytes after the gzip member': [base, (g) => Buffer.concat([g, Buffer.from('garbage')])],
       'a second gzip member': [base, (g) => Buffer.concat([g, gz(HIDDEN_VERSION)])],
       'a gzip header with flags': [base, (g) => Buffer.concat([g.subarray(0, 3), Buffer.from([0x08]), g.subarray(4)])],
+      // Zero bytes after the end blocks that do not fill a block: every other rule passes it (the tail is zeros).
+      'a tar whose length is not a multiple of 512': [base, () => gzipSync(Buffer.concat([tarBytes(base), Buffer.alloc(100)]))],
     };
     for (const [why, [members, wrap]] of Object.entries(cases)) {
       const r = publish(putCli(releaseDir(), members, wrap));

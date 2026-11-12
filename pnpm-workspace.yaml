@@ -3,9 +3,9 @@ packages:
   - "services/*"
   - "apps/*"
 
-# Force vulnerable transitive dependencies up to patched versions.
-# - vite/esbuild: dev tooling (GHSA path-traversal in vite; esbuild dev-server
-#   request leak). vitest 4 otherwise reuses the older vite 5 / esbuild 0.21.
+# No overrides. Nov 11, 2026: the vite and esbuild overrides were removed.
+# Without them `pnpm audit` reports no known vulnerabilities, both on the kept
+# lockfile and on a fresh resolution. They had been added for vitest 4.
 #
 # NO override for the @modelcontextprotocol/sdk HTTP stack (hono,
 # @hono/node-server, fast-uri via ajv, body-parser and qs via express),
@@ -30,9 +30,6 @@ packages:
 # fast-uri 3.1.2. Refreshing them requires an explicit `pnpm update`.
 # A transitive one is refreshed by name, alone: `pnpm update -r --depth Infinity
 # qs` (GHSA-6pq8-jhm2-2vcw, Oct 2026) moved only qs, its two copies made one.
-overrides:
-  vite: "^6.4.2"
-  esbuild: ">=0.28.1"
 
 # esbuild (via tsup + vitest) ships its native binary through the
 # @esbuild/<platform> optional dependency, so its own postinstall (node
@@ -43,3 +40,21 @@ overrides:
 allowBuilds:
   esbuild: false
 verifyDepsBeforeRun: false
+
+# The dependency age policy, in minutes: 10080 is 7 days. pnpm refuses to
+# resolve a version younger than that and, on `pnpm install --frozen-lockfile`,
+# a lockfile entry younger than that (ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION).
+# The lockfile is verified against this policy with registry metadata, as it
+# already was under pnpm's built-in default of one day.
+#
+# A security fix that needs a younger version is adopted by adding that exact
+# version (`name@1.2.3`, never a bare name: a name exempts every future
+# version) to a `minimumReleaseAgeExclude` list in the same PR, with the
+# advisory and the date in a comment. Remove the entry once the version is 7
+# days old.
+#
+# Dependabot's cooldown in .github/dependabot.yml matches it
+# (packages/core/test/dependency-policy.test.ts pins both). The rule does not
+# cover pnpm's own version (`packageManager`): Corepack switched to a 6-day-old
+# pnpm with this set.
+minimumReleaseAge: 10080

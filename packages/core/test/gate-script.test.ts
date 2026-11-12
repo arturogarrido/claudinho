@@ -573,6 +573,34 @@ const OS_MATRIX_CLI_BLOCK = [
 ].join('\n');
 const STDIO_SMOKE_FILE = 'node packages/mcp/scripts/stdio-smoke.mjs';
 const AUDIT_ALL = 'pnpm audit || true';
+/** The audit job's decision step: it reads the pull request's changed files and gates nothing itself (its tests: ci-audit.test.ts). */
+const AUDIT_DECISION = [
+  'audit=false',
+  'if [ "$EVENT_NAME" != "pull_request" ]; then',
+  '  audit=true',
+  '  echo "Event \'$EVENT_NAME\' is not a pull request: auditing."',
+  'elif ! files=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD 2>&1); then',
+  '  audit=true',
+  '  echo "Could not read the pull request\'s changed files, so auditing: $files"',
+  'else',
+  '  while IFS= read -r f; do',
+  '    case "$f" in',
+  '      pnpm-lock.yaml | pnpm-workspace.yaml | .github/workflows/ci.yml | package.json | */package.json)',
+  '        audit=true',
+  '        echo "Changed: $f (decides the dependency tree): auditing."',
+  '        ;;',
+  '      \\"*)',
+  '        audit=true',
+  '        echo "Changed: $f (a quoted path, not read exactly): auditing."',
+  '        ;;',
+  '    esac',
+  '  done <<< "$files"',
+  '  if [ "$audit" = false ]; then',
+  '    echo "Audit skipped: no file that decides the dependency tree changed."',
+  '  fi',
+  'fi',
+  'echo "audit=$audit" >> "$GITHUB_OUTPUT"',
+].join('\n');
 
 /** The plugin job's two steps: the pinned Claude Code CLI, and its own validate and test, which the gate cannot run. */
 export const PLUGIN_INSTALL = 'npm install -g @anthropic-ai/claude-code@2.1.310';
@@ -587,6 +615,7 @@ const EXCLUDED: Array<{ match: (s: Step) => boolean; reason: string }> = [
   { match: (s) => s.kind === 'run' && s.job === 'os-matrix' && s.text === OS_MATRIX_CLI_BLOCK, reason: 'the offline CLI smoke on the Windows and macOS runners' },
   { match: (s) => s.kind === 'run' && s.job === 'os-matrix' && s.text === STDIO_SMOKE_FILE, reason: 'the same stdio smoke file on the Windows and macOS runners' },
   { match: (s) => s.kind === 'run' && s.text === AUDIT_ALL, reason: 'non-blocking by its own `|| true`' },
+  { match: (s) => s.kind === 'run' && s.job === 'audit' && s.text === AUDIT_DECISION, reason: "the audit job's decision step: it reads the pull request's changed files and decides whether the install and the audits run; it checks nothing itself" },
   { match: (s) => s.kind === 'uses' && /^(actions\/checkout|pnpm\/action-setup|actions\/setup-node|actions\/upload-artifact)@/.test(s.text), reason: 'a setup or upload action, not a check' },
 ];
 /** A command the gate runs through another spelling of the same file. */
@@ -710,6 +739,14 @@ describe.skipIf(process.platform === 'win32')('the tripwire: every gating step o
     const edited = yaml.replace(marker, marker.replace('      - name: Statusline', '          pnpm run extra-check\n      - name: Statusline'));
     const { unclassified } = classify(workflowSteps(edited), gateList());
     expect(unclassified.map((s) => `${s.job}: ${s.text.split('\n').pop()}`)).toEqual(['os-matrix: pnpm run extra-check']);
+  });
+
+  it("a command added inside the audit job's decision step is unclassified too", () => {
+    const marker = '          echo "audit=$audit" >> "$GITHUB_OUTPUT"\n';
+    expect(yaml).toContain(marker);
+    const edited = yaml.replace(marker, `${marker}          pnpm run extra-check\n`);
+    const { unclassified } = classify(workflowSteps(edited), gateList());
+    expect(unclassified.map((s) => `${s.job}: ${s.text.split('\n').pop()}`)).toEqual(['audit: pnpm run extra-check']);
   });
 
   it('the concurrency block cancels a superseded run on a pull_request event only, and gives each push to main its own group', () => {
