@@ -14,8 +14,8 @@
 
 <p align="center"><strong>Your Claude Code celebrates when your team scores.</strong></p>
 
-Claudinho puts live football beside your coding agent. The Claude Code plugin shows the score above
-your prompt, says your team's goals in a toast, celebrates them with the Claude mascot and opens a
+Claudinho puts live football beside your coding agent. The Claude Code plugin (a Claude Code mod)
+shows the score above your prompt, says your team's goals in a toast, celebrates them with the Claude mascot and opens a
 match pane with the goals and cards. The MCP server lets any agent answer "how is my team doing?" mid-task, and
 the CLI and statusline bring the same scores to your terminal. It follows the competition you
 choose: the World Cup, the Premier League, LALIGA, the Champions League and 12 more (Liga MX, Serie A,
