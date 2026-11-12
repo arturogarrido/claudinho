@@ -94,6 +94,14 @@ import {
   timelineRows,
   type VerdictSource,
   withFlag,
+  dayPointer,
+  livePointer,
+  nextDayLines,
+  nextDayReachable,
+  nextKickoffLines,
+  pointerExtras,
+  pointerWanted,
+  readAhead,
 } from '@claudinho/core';
 import {
   boundedRecords,
@@ -757,7 +765,16 @@ async function todayAnswer(
     dateUnreached(day, date, args.lang) ??
     dateNoneRead(day, date, args.lang) ??
     t(args.lang, 'today.none');
-  const text = `${headingLine(args.lang, t(args.lang, 'today.onDate', { date }))}\n${matchRows(todays, empty, opts)}`;
+  // An empty day that a whole read answered, off the bundle and with no
+  // verdict standing: the next match day (or the horizon), from the schedule
+  // ahead, read only once the gate said so (never under a cooldown). Body
+  // text right after the empty sentence, with no shell command in it.
+  const zone = resolveTz(args.tz);
+  const wanted = pointerWanted(day, adapter.competition, todays.length === 0) && nextDayReachable(adapter, date, zone, now);
+  const ahead = wanted ? await readAhead(adapter, now) : undefined;
+  const pointer = ahead ? dayPointer(ahead, date, localDate(now.toISOString(), zone), zone, now) : undefined;
+  const emptyBody = pointer ? [empty, ...nextDayLines(pointer, { lang: args.lang })].join('\n') : empty;
+  const text = `${headingLine(args.lang, t(args.lang, 'today.onDate', { date }))}\n${matchRows(todays, emptyBody, opts)}`;
   // Degraded ⇒ the live overlay failed: on the bundle these are static fixtures
   // with no live scores; off it there is no schedule to show.
   const degradedLine = degraded ? `(${t(args.lang, day.skeleton ? 'feed.degraded' : 'live.degraded')})` : undefined;
@@ -797,6 +814,7 @@ async function todayAnswer(
       // Capped in step with `matches`: a signal keyed to a match that is no
       // longer in the payload is dead weight in model context.
       ...(market.data ? { marketSignals: capSignals(market.data, shownToday.items) } : {}),
+      ...pointerExtras(pointer),
       ...verdictExtras(day),
     },
   };
@@ -813,6 +831,12 @@ async function liveAnswer(args: CommonOpts): Promise<ToolResult> {
   const live = await getLiveMatches(adapter, now);
   const { matches, degraded, source } = live;
   const opts = fmtOpts(args, adapter.competition, now);
+  // Nothing in play, by a whole read off the bundle with no verdict standing:
+  // the next kickoff AHEAD (never a match now), or the horizon, read only once
+  // the gate said so; body text after the empty sentence, no shell command.
+  const ahead = pointerWanted(live, adapter.competition, matches.length === 0) ? await readAhead(adapter, now) : undefined;
+  const pointer = ahead ? livePointer(ahead, now) : undefined;
+  const pointerText = pointer ? nextKickoffLines(pointer, { lang: args.lang, tz: resolveTz(args.tz), now }) : [];
   // Degraded ⇒ the live feed failed, NOT "nothing is on". Distinguish them so the
   // agent doesn't tell the user no matches are live when the provider is unreachable.
   // A verdict (between editions) stands instead of the empty line; a read that
@@ -820,7 +844,7 @@ async function liveAnswer(args: CommonOpts): Promise<ToolResult> {
   // first (kept by a cut).
   const text = degraded
     ? t(args.lang, 'live.degraded')
-    : `${headingLine(args.lang, t(args.lang, 'live.title'))}\n${matchRows(matches, verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? t(args.lang, 'live.none'), opts)}`;
+    : `${headingLine(args.lang, t(args.lang, 'live.title'))}\n${matchRows(matches, [verdictNotice(live, args.lang) ?? liveNoneRead(live, args.lang) ?? t(args.lang, 'live.none'), ...pointerText].join('\n'), opts)}`;
   const shownLive = boundedRecords(matches);
   return {
     // Every row a live list shows was served: a cut keeps its attribution
@@ -832,6 +856,7 @@ async function liveAnswer(args: CommonOpts): Promise<ToolResult> {
       count: shownLive.total,
       truncated: shownLive.truncated,
       matches: shownLive.items,
+      ...pointerExtras(pointer),
       ...verdictExtras(live),
     },
   };

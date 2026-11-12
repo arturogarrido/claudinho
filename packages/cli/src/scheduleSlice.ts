@@ -19,11 +19,12 @@
  */
 import {
   byKickoff,
+  entryInLiveWindow,
+  IN_PLAY_HOLD_MS,
   isLive,
-  LIVE_WINDOW_MS,
   MAX_SCHEDULE_INDEX,
   type Match,
-  parseCachedScheduleIndex,
+  readCachedScheduleIndex,
   SCHEDULE_AHEAD_DAYS,
   type ScheduleAheadResult,
   type ScheduleEntry,
@@ -37,8 +38,8 @@ import { type ScheduleSlice, stampAgeMs, validStamp } from './cache';
 export const SCHEDULE_DISPLAY_MAX = 64;
 /** A fixture is RELEVANT from six hours before now: the match in play is exactly what must not be lost. */
 export const RELEVANT_BACK_MS = 6 * 60 * 60_000;
-/** A match seen in play keeps the gate open until its kickoff plus this, at most. */
-export const IN_PLAY_HOLD_MS = 6 * 60 * 60_000;
+/** A match seen in play keeps the gate open until its kickoff plus this, at most (core's one constant). */
+export { IN_PLAY_HOLD_MS };
 /** After a discovery that succeeded: the next one. */
 export const DISCOVERY_TTL_MS = 60 * 60_000;
 /** After the n-th consecutive failure: this × 2^(n−1), at most `DISCOVERY_TTL_MS`. */
@@ -63,6 +64,11 @@ function withinHorizon(entry: ScheduleEntry, now: number): boolean {
 export interface ScheduleView {
   /** Every fixture the schedule knows, in kickoff order; `undefined` when there is no schedule. */
   index: ScheduleEntry[] | undefined;
+  /**
+   * The index holds every stored record: a list, each record sealed, no id
+   * repeated, none past the horizon. False when there is no index.
+   */
+  indexIntact: boolean;
   /** Age of the latest discovery ATTEMPT (Infinity: never, or a stamp that cannot be trusted). */
   attemptAgeMs: number;
   /** That attempt's stamp, re-emitted in one form; absent when it cannot be trusted. */
@@ -83,6 +89,7 @@ export interface ScheduleView {
 
 const NO_SCHEDULE: ScheduleView = {
   index: undefined,
+  indexIntact: false,
   attemptAgeMs: Number.POSITIVE_INFINITY,
   attemptedAt: undefined,
   updatedAt: undefined,
@@ -104,9 +111,9 @@ function trustedStamp(value: unknown, now: number): string | undefined {
  * Read a stored slice (its display records are not read here: they are sealed
  * by the one reader of cached fixtures, where they are shown). Each field is
  * believed on its own terms, so one bad field never takes the others with it:
- *   - the index is whole or absent (`parseCachedScheduleIndex`), and an entry
+ *   - the index is whole or absent (`readCachedScheduleIndex`), and an entry
  *     further ahead than discovery reads (`SCHEDULE_HORIZON_MS`) is not
- *     believed;
+ *     believed; `indexIntact` says no stored record was left out;
  *   - the stamps go through `stampAgeMs` (one in the future is "never": a bad
  *     `attemptedAt` makes discovery due, not silent for years), and they are
  *     read even when the index is not believed, so a poisoned index is paced
@@ -124,8 +131,11 @@ export function scheduleView(raw: unknown, now: number): ScheduleView {
     typeof s.failures === 'number' && Number.isInteger(s.failures) && s.failures >= 0
       ? Math.min(s.failures, MAX_FAILURES)
       : 0;
+  const stored = readCachedScheduleIndex(s.index);
+  const index = stored?.entries.filter((entry) => withinHorizon(entry, now));
   return {
-    index: parseCachedScheduleIndex(s.index)?.filter((entry) => withinHorizon(entry, now)),
+    index,
+    indexIntact: stored?.whole === true && index?.length === stored.entries.length,
     attemptAgeMs: stampAgeMs(typeof s.attemptedAt === 'string' ? s.attemptedAt : undefined, now),
     attemptedAt: trustedStamp(s.attemptedAt, now),
     updatedAt: trustedStamp(s.updatedAt, now),
@@ -135,6 +145,16 @@ export function scheduleView(raw: unknown, now: number): ScheduleView {
     probe: s.probe === true,
     season: sealSeason(s.season),
   };
+}
+
+/**
+ * What a publisher carries when it republishes the slice from a view: the
+ * index as believed, whole only while the stored one was whole AND read back
+ * intact. A slice whose stored index lost an entry when read back stays not
+ * whole until a whole discovery replaces it.
+ */
+export function carriedIndex(view: ScheduleView): { index: ScheduleEntry[] | undefined; complete: boolean } {
+  return { index: view.index, complete: view.complete && view.indexIntact };
 }
 
 /**
@@ -151,12 +171,6 @@ export function discoveryDue(view: ScheduleView): boolean {
   return view.attemptAgeMs >= wait;
 }
 
-/** A fixture's live window: from its kickoff for `LIVE_WINDOW_MS`, whatever its stage (off the bundle a stage cannot be trusted to mean "no extra time"; the continuation covers the overrun). */
-function inWindow(entry: ScheduleEntry, now: number): boolean {
-  const kickoff = Date.parse(entry.kickoff);
-  return entry.on && kickoff <= now && now < kickoff + LIVE_WINDOW_MS;
-}
-
 /**
  * The live gate off the bundle: open only when a match can be in play. A
  * fixture that is on is inside its window, or a match seen in play has not
@@ -167,7 +181,8 @@ function inWindow(entry: ScheduleEntry, now: number): boolean {
 export function scheduleGateOpen(view: ScheduleView, now: number, opts: { probe: boolean }): boolean {
   if (opts.probe && view.probe) return true;
   if (view.inPlayUntil !== undefined && now < view.inPlayUntil) return true;
-  return (view.index ?? []).some((entry) => inWindow(entry, now));
+  // A fixture's live window is core's one rule (`entryInLiveWindow`), which the next kickoff asks too.
+  return (view.index ?? []).some((entry) => entryInLiveWindow(entry, now));
 }
 
 /**

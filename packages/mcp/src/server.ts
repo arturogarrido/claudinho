@@ -60,6 +60,7 @@ get_next_fixture and get_share_snippet take a team as a name or a code: a club's
 Use get_live during matches, get_today for a day's schedule, get_next_fixture for a specific team, get_standings for standings tables, and get_bracket for the knockout tree (a league season with no knockout tie answers inapplicable).
 Off the World Cup, get_next_fixture and get_match search from yesterday to 14 days ahead: an empty answer carrying horizon or window is about that span, not about the team or the match. betweenEditions means the competition's edition has ended and the next has not started.
 Never infer that a fixture is happening now from get_next_fixture or a team's next card: relay the returned competition, the fixture, its date and its state, and call it in play only when the returned state says so; an empty answer keeps its horizon or verdict, never an invented fixture.
+An empty get_today or get_live may carry nextDay or nextKickoff: the next day with a fixture, or the next kickoff ahead, never a match in play now; horizon says none falls in the next 14 days.
 get_standings with no group returns every table. One table is selected by its key, which every table's title shows in parentheses unless it is a plain group letter: A to L for lettered groups, A1 for a numbered group, A-B for group B of league A, LEAGUE for a league's single table.
 Use get_market_signal for read-only prediction-market signals (a match, a team's current-or-next fixture, or a date). Market data is informational only: relay the percentages factually and never frame it as betting or trading advice.
 Use get_share_snippet to produce a ready-to-paste match card (for a match, a team's next fixture, a date, or live matches), and hand the user the returned snippet text verbatim.${VOICE}
@@ -311,6 +312,22 @@ const servedOut = z
   .describe(
     "The shown fixtures whose record the provider's window held; a shown fixture not among them is the bundled schedule's row, its live state unconfirmed",
   );
+/**
+ * The next match day an empty get_today or get_live points at: plain fields of
+ * the answer (core `pointerExtras`), never verdicts.
+ */
+const nextDayOut = z
+  .object({ date: z.string(), count: z.number().int().positive().optional() })
+  .describe(
+    "Off the World Cup, on an empty day read whole: the next local day (YYYY-MM-DD, in tz) with a fixture that is on, and count, how many, when that whole day lies in the 14 days read",
+  );
+const dayHorizonOut = z
+  .object({ days: z.number().int().positive() })
+  .describe('Off the World Cup, on an empty day read whole: no fixture that is on falls in this many provider days ahead');
+/** The live read's horizon: the same plain field, said of an empty live list. */
+const liveHorizonOut = z
+  .object({ days: z.number().int().positive() })
+  .describe('Off the World Cup, when nothing is in play by a whole read: no fixture that is on kicks off in this many provider days ahead');
 const todayOut = {
   date: z.string(),
   degraded: z.boolean(),
@@ -327,6 +344,8 @@ const todayOut = {
     .boolean()
     .optional()
     .describe('False when optional market enrichment did not check every relevant fixture'),
+  nextDay: nextDayOut.optional(),
+  horizon: dayHorizonOut.optional(),
   ...verdictOut,
   ...partialOut,
   ...selectionOut,
@@ -338,6 +357,11 @@ const liveOut = {
   count: z.number(),
   truncated: z.boolean(),
   matches: z.array(matchOut),
+  nextKickoff: z
+    .string()
+    .optional()
+    .describe('Off the World Cup, when nothing is in play by a whole read: the next kickoff AHEAD (an ISO instant), never a match in play now'),
+  horizon: liveHorizonOut.optional(),
   ...verdictOut,
   ...partialOut,
   ...selectionOut,
@@ -864,7 +888,7 @@ export function buildServer(): McpServer {
     {
       title: "Today's matches",
       description:
-        "All fixtures for a date (default: today), with live score and minute overlaid on any match in play. Optional prediction-market enrichment carries marketComplete; false means the read was incomplete, not that no signal exists. Off the World Cup, betweenEditions means the competition's edition ended before that date. partial means the provider sent records that could not be used: on the World Cup a fixture may then show from the bundled schedule without its live state (the text counts them, and names no provider when none shown was served), and where no bundled schedule was merged, an empty day means no fixture could be read for it, not that none is scheduled. Use this for a whole day's card; for only in-play matches use get_live, for one team's match use get_next_fixture, for a single match's detail use get_match. Kickoffs render in tz; lang localizes the title, dates, status and stage words, the empty and outage sentences, attribution, and commentary (en/es/pt/fr); flavor sets commentary tone.",
+        "All fixtures for a date (default: today), with live score and minute overlaid on any match in play. Optional prediction-market enrichment carries marketComplete; false means the read was incomplete, not that no signal exists. Off the World Cup, betweenEditions means the competition's edition ended before that date. partial means the provider sent records that could not be used: on the World Cup a fixture may then show from the bundled schedule without its live state (the text counts them, and names no provider when none shown was served), and where no bundled schedule was merged, an empty day means no fixture could be read for it, not that none is scheduled. Off the World Cup an empty day read whole may carry nextDay (the next local day with a fixture that is on, with count when known) or horizon (none in the next 14 days), when the schedule ahead was read whole. Use this for a whole day's card; for only in-play matches use get_live, for one team's match use get_next_fixture, for a single match's detail use get_match. Kickoffs render in tz; lang localizes the title, dates, status and stage words, the empty and outage sentences, attribution, and commentary (en/es/pt/fr); flavor sets commentary tone.",
       inputSchema: {
         date: dateArg.optional().describe('Date as YYYY-MM-DD (default: today)'),
         ...commonArgs,
@@ -881,7 +905,7 @@ export function buildServer(): McpServer {
     {
       title: 'Live matches',
       description:
-        'Only matches in play right now, each with current score and minute; an empty list means nothing is in play only when the read was whole (neither partial nor degraded says otherwise). Off the World Cup, betweenEditions means the competition\'s edition has ended and the next has not started. partial means the provider sent records that could not be used: an empty list then means no match in play could be read, not that none is. Use during matches for in-play state; for a full day\'s schedule including upcoming and finished, use get_today. tz/lang/flavor affect formatting only.',
+        'Only matches in play right now, each with current score and minute; an empty list means nothing is in play only when the read was whole (neither partial nor degraded says otherwise). Off the World Cup, betweenEditions means the competition\'s edition has ended and the next has not started. partial means the provider sent records that could not be used: an empty list then means no match in play could be read, not that none is. Off the World Cup an empty list read whole may carry nextKickoff (the next kickoff ahead, never a match in play) or horizon (none in the next 14 days), when the schedule ahead was read whole and holds no match that may be in play now. Use during matches for in-play state; for a full day\'s schedule including upcoming and finished, use get_today. tz/lang/flavor affect formatting only.',
       inputSchema: { ...commonArgs },
       annotations: { readOnlyHint: true, openWorldHint: true },
       outputSchema: liveOut,

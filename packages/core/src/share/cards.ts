@@ -32,7 +32,15 @@
  * such a read is decided over the fixtures a surface displays
  * ({@link dayAttribution}: the "Live data" line, and the sentence counting
  * the bundled rows the read did not serve).
+ *
+ * And an empty `today` or `live` off the bundle that a whole read answered
+ * points ahead (core `ahead.ts` decides; the sentences are here):
+ * {@link nextDayLines} (the next match day, its count, the command that shows
+ * it) and {@link nextKickoffLines} (the next kickoff ahead and its countdown),
+ * or the horizon when nothing is on in the span read; the command is
+ * {@link todayCommand}. The answer's own text, never a verdict.
  */
+import type { DayPointer, KickoffPointer } from '../ahead';
 import type { ShareBracketInput } from '../bracket/format';
 import type { BracketResult } from '../bracket/types';
 import { t } from '../i18n';
@@ -40,7 +48,7 @@ import { EARLIER_RECORD_NOTE, type LiveResult, type MatchByIdResult, type NextFi
 import { marketsNoneReadNote } from '../markets/format';
 import type { MarketSignal } from '../markets/types';
 import { type GroupStandings, type TableData, tableData } from '../standings';
-import { formatDate } from '../time';
+import { countdownPhrase, formatDate, formatTime, localDate, weekdayShort } from '../time';
 import { competitionLabel, entryOf } from '../supported';
 import { isTeam } from '../trust/match';
 import type { Match, Team } from '../types';
@@ -146,6 +154,67 @@ export function dateNoneReadSentence(date: string, lang?: string): string {
  */
 export function dateUnreachedSentence(date: string, lang?: string): string {
   return t(lang, 'today.unreached', { date });
+}
+
+/**
+ * The command that shows a day: `claudinho today`, then the date when it is
+ * not today's, then the flags that chose what this answer was for (the
+ * competition when the flag chose it, the zone when the flag gave it), so
+ * running it answers for the same competition, in the same zone.
+ */
+export function todayCommand(opts: { date?: string; competition?: string; tz?: string }): string {
+  return [
+    'claudinho today',
+    ...(opts.date ? [opts.date] : []),
+    ...(opts.competition ? ['--competition', opts.competition] : []),
+    ...(opts.tz ? ['--tz', opts.tz] : []),
+  ].join(' ');
+}
+
+/** A calendar day as the pointer sentences say it: the reader's short weekday, then the date. */
+function pointerDay(date: string, lang: string | undefined): string {
+  return `${weekdayShort(date, lang)} ${date}`;
+}
+
+/**
+ * An empty day's pointer (core `dayPointer`) as sentences, in the reader's
+ * language: the next match day with its count ("Next match day: Sat
+ * 2026-11-21, 4 matches.") or without one, then, when a command is given (the
+ * CLI; a tool's text sends no one to a shell), the line that shows it; or the
+ * horizon ("Nothing scheduled in the next 14 days."). The answer's own text,
+ * never a verdict.
+ */
+export function nextDayLines(p: DayPointer, opts: { lang?: string; command?: string }): string[] {
+  const { lang, command } = opts;
+  if (!('nextDay' in p)) return [t(lang, 'ahead.horizon', { days: String(p.horizon.days) })];
+  const { date, count } = p.nextDay;
+  const day = pointerDay(date, lang);
+  const first =
+    count === undefined
+      ? t(lang, 'ahead.nextDay.date', { day })
+      : t(lang, count === 1 ? 'ahead.nextDay.one' : 'ahead.nextDay.other', { day, n: String(count) });
+  if (command === undefined) return [first];
+  const see = count === undefined ? 'ahead.see.day' : count === 1 ? 'ahead.see.one' : 'ahead.see.other';
+  return [first, t(lang, see, { command })];
+}
+
+/**
+ * An empty live list's pointer (core `livePointer`) as sentences: the next
+ * kickoff AHEAD in the viewer's zone (`tz`), its 24-hour time and the
+ * countdown at the request's clock (`now`, required) ("Next kickoff: Sat
+ * 2026-11-21 04:30, in 10d6h."), then the line that shows that day when a
+ * command is given; or the horizon. Never a match now.
+ */
+export function nextKickoffLines(
+  p: KickoffPointer,
+  opts: { lang?: string; tz: string | undefined; now: Date; command?: string },
+): string[] {
+  const { lang, tz, now, command } = opts;
+  if (!('nextKickoff' in p)) return [t(lang, 'ahead.horizon', { days: String(p.horizon.days) })];
+  const kickoff = p.nextKickoff;
+  const when = `${pointerDay(localDate(kickoff, tz), lang)} ${formatTime(kickoff, { tz })}`;
+  const first = t(lang, 'ahead.nextKickoff', { when, in: countdownPhrase(lang, kickoff, now) });
+  return command === undefined ? [first] : [first, t(lang, 'ahead.see.day', { command })];
 }
 
 /**
