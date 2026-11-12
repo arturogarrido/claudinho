@@ -43,6 +43,9 @@ describe('the competition of a bare base URL', () => {
     [`${HOST}/eng.1%2F`, 'custom'],
     [`${HOST}/${'a'.repeat(65)}`, 'custom'],
     [`${HOST}/eng.1/!`, 'custom'],
+    // only `?` and `#` cut: another separator stays in the last segment
+    [`${HOST}/eng.1&a=1`, 'custom'],
+    [`${HOST}/eng.1;a`, 'custom'],
   ])('anything that is not a flat slug is custom: %j', (base, want) => {
     expect(competitionOf(base)).toBe(want);
   });
@@ -68,6 +71,10 @@ describe('the competition of a bare base URL', () => {
     [`${HOST}/x\n?a\n/eng.1`, 'eng.1'],
     [`${HOST}/x\n/eng.1?y\n/esp.1`, 'esp.1'],
     [`${HOST}/x\r?a\u2028/eng.1#z`, 'eng.1'],
+    // each kind of terminator twice: the last of that kind decides
+    [`${HOST}/x\r?a\r/eng.1`, 'eng.1'],
+    [`${HOST}/x\u2028?a\u2028/eng.1`, 'eng.1'],
+    [`${HOST}/x\u2029#a\u2029/eng.1`, 'eng.1'],
   ])('with two line terminators the last one decides: %j', (base, want) => {
     expect(competitionOf(base)).toBe(want);
   });
