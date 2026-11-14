@@ -6,3 +6,8 @@
 # file ever finished, and the CI job ran to its time limit). Node itself runs
 # either form. This takes the difference away.
 scripts/** text eol=lf
+
+# The engine's color builder ships in the plugin as the engine wrote it: its header states the sha256 of its body,
+# and a test checks it, so its bytes are the same on every platform.
+packages/plugin/hooks/make-colors.js text eol=lf
+packages/plugin/hooks/make-colors.d.ts text eol=lf

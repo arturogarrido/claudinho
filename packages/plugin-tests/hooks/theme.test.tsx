@@ -23,7 +23,7 @@ const WORLD_CUP = { competition: { slug: 'fifa.world', alias: 'world-cup', name:
 const SAID_OFF = 'The team look is off. Turn it on in /config (Team look).'
 const SAID_NOT_DRAWN = 'The team look shows in the Claude desktop and mobile apps; nothing draws it in this session.'
 const SAID_CLEARED = 'Team look off for this session. /claudinho theme on sets it again.'
-const SAID_PITCH_CODE = (code: string) => `Team look: pitch green (${code} is a code, which does not identify a club: pin the team with claudinho follow).`
+const SAID_PITCH_CODE = (code: string) => `Team look: pitch green (CLAUDINHO_TEAM gives a code, ${code}, and a code alone does not say which team: unset it to use your pinned team).`
 const SAID_PITCH_UNREADABLE = 'Team look: pitch green (the team in CLAUDINHO_TEAM could not be read).'
 /** A reply made from a view carries the view's attribution and disclaimer, each a paragraph, as every `/claudinho` reply does. */
 const withD = (s: string) => `${s}\n\nLive data: ESPN\n\nNot affiliated with FIFA, any confederation, league or club, or Anthropic.`
@@ -375,6 +375,31 @@ describe('/claudinho theme: what the first round of review found', () => {
     themes(on)
     const { command } = await world($, on, [view(LINE, { pick: { code: 'ARS' } })], DESKTOP)
     expect((await command('theme')).text).toBe(withD(SAID_PITCH_CODE('ARS')))
+  })
+
+  test('the same sentence under a nations competition (it names no club), and a World Cup pin with a name and an unknown code is a team with no colors known', ON, async ($, on) => {
+    themes(on)
+    const nations = { competition: { slug: 'uefa.nations', alias: 'nations-league', name: 'UEFA Nations League', chosenBy: 'saved' } }
+    const { command } = await world($, on, [view(LINE, { ...nations, pick: { code: 'NOR' } }), view(LINE, { ...nations, pick: { code: 'NOR' } }), view(LINE, { ...WORLD_CUP, pick: { code: 'XYZ', name: 'Nowhere' } })], DESKTOP)
+    expect((await command('theme')).text).toBe(withD(SAID_PITCH_CODE('NOR')))
+    expect((await command('theme')).text).toBe(withD(saidPitchFor('Nowhere')))
+  })
+
+  test('a set the engine answers not drawn still stands in the session (it draws when an app attaches): theme off clears it', ON, async ($, on) => {
+    const { clears } = themes(on, 'not-drawn')
+    const { command } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    await command('theme off')
+    expect(clears).toHaveLength(1)
+  })
+
+  test('after a reload the engine holds no look of ours until the next reading sets one: theme off typed first clears nothing', ON, async ($, on) => {
+    const { sets, clears } = themes(on)
+    const { command } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    expect(sets).toHaveLength(1)
+    await $.session.start({ cwd: START.cwd, surface: 'desktop', isInteractive: true })
+    await command('theme off')
+    expect(clears).toEqual([])
+    expect(sets).toHaveLength(1)
   })
 
   test('CLAUDINHO_TEAM could not be read (pickUnreadable): the reply does not say no team is pinned', ON, async ($, on) => {

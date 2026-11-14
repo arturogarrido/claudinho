@@ -289,7 +289,7 @@ const REPLY_LOOK_UNREADABLE = 'Team look: pitch green (the team in CLAUDINHO_TEA
 const REPLY_LOOK_NO_PIN = 'Team look: pitch green (no team pinned).'
 const replyLookTeam = (name: string): string => `Team look: ${name}.`
 const replyLookCode = (code: string): string =>
-  `Team look: pitch green (${code} is a code, which does not identify a club: pin the team with claudinho follow).`
+  `Team look: pitch green (CLAUDINHO_TEAM gives a code, ${code}, and a code alone does not say which team: unset it to use your pinned team).`
 const replyLookPitch = (name: string): string => `Team look: pitch green (no colors known for ${name}).`
 /** The statuses `match --json` states; a final one ends the re-reads. */
 const STATUSES = ['SCHEDULED', 'LIVE', 'HT', 'FT', 'POSTPONED', 'CANCELLED'] as const
@@ -2020,7 +2020,8 @@ type LookAsk = 'show' | 'off' | 'on'
 /**
  * Why the look a view asks for is what it is: the team's name with its colors; else pitch green, and why, in this
  * order: no pick because `CLAUDINHO_TEAM` could not be read; no pick (or one that names nothing); a code with no id
- * (`CLAUDINHO_TEAM`'s, which identifies no club); no colors known for the team.
+ * and no name (`CLAUDINHO_TEAM`'s: a code alone does not say which team, in any competition but the World Cup, whose
+ * nations it does name); no colors known for the team.
  */
 function lookReason(view: View): string {
   const pick = view.pick
@@ -2028,7 +2029,7 @@ function lookReason(view: View): string {
   const name = pickName(pick)
   if (pick === null || name === undefined) return REPLY_LOOK_NO_PIN
   if (lookWanted(view).colors !== undefined) return replyLookTeam(name)
-  if (isObject(pick) && !Object.hasOwn(pick, 'id') && typeof pick.code === 'string' && pick.code.trim() !== '') {
+  if (isObject(pick) && !Object.hasOwn(pick, 'id') && typeof pick.name !== 'string' && typeof pick.code === 'string' && pick.code.trim() !== '') {
     return replyLookCode(pick.code)
   }
   return replyLookPitch(name)

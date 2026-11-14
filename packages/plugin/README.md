@@ -131,9 +131,10 @@ sentence under it, or one plain sentence when there is nothing to show.
 With `teamTheme: on`, the Claude desktop and mobile apps take your team's colors: the app's colors in light and dark
 mode, and a still wash at the left and right edges: the main color on the left and, for a team with two colors
 (Pumas' blue and gold, Brazil's green and yellow), the second on the right; a team whose main color is white, black
-or gray is washed in its second color on both edges. Your team is the one the CLI picks for you: your saved pin (a
-club by its id), or `CLAUDINHO_TEAM` when it is set. `CLAUDINHO_TEAM` names a team by its code, which identifies a
-World Cup nation and not a club, so a club named that way gets pitch green. With no team pinned, or a team whose
+or gray is washed in its second color on both edges when it has one, and in that gray when it has none. Your team is
+the one the CLI picks for you: your saved pin, or `CLAUDINHO_TEAM` when it is set. `CLAUDINHO_TEAM` gives a team's
+code, and a code alone says which team only for a World Cup nation: in any other competition a team named that way
+gets pitch green until you unset the variable and use your pinned team. With no team pinned, or a team whose
 colors the plugin does not know, the look is pitch green too. It shows in the desktop and mobile apps on Claude Code
 2.1.324 or later, and nowhere else: the terminal and VS Code draw nothing. The look is set from the plugin's readings
 (the band's, or a `/claudinho` you type) while a desktop or mobile app is attached, once per team, and again only when
