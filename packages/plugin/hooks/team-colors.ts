@@ -6,12 +6,12 @@
 export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> = {
   // fifa.world
   'espn:624': ['006233', 'd21034'], // Algeria
-  'espn:202': ['74acdf', 'f6b40e'], // Argentina
+  'espn:202': ['74acdf', 'ffffff'], // Argentina
   'espn:628': ['ffcd00', '00843d'], // Australia
   'espn:474': ['ed2939'], // Austria
   'espn:459': ['e30613', 'fdda24'], // Belgium
   'espn:452': ['002f6c', 'fecb00'], // Bosnia-Herzegovina
-  'espn:205': ['fedf00', '009c3b'], // Brazil
+  'espn:205': ['009c3b', 'fedf00'], // Brazil
   'espn:206': ['d80621'], // Canada
   'espn:2597': ['003893', 'cf2027'], // Cape Verde
   'espn:208': ['fcd116', '003893'], // Colombia
@@ -78,7 +78,7 @@ export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> =
   'espn:96': ['0761af'], // Alavés
   'espn:93': ['ee2523'], // Athletic Club
   'espn:1068': ['cb3524', '272e61'], // Atlético Madrid
-  'espn:83': ['a50044', '004d98'], // Barcelona
+  'espn:83': ['004d98', 'a50044'], // Barcelona
   'espn:85': ['6cace4', '004996'], // Celta Vigo
   'espn:90': ['3366cc'], // Deportivo
   'espn:3751': ['288a00', '4b2b67'], // Elche

@@ -317,9 +317,30 @@ describe('the table and the look, as data', () => {
     expect(Object.keys(backdrop)).toEqual(['gradient'])
     const stops = (backdrop.gradient?.stops ?? []).map((s) => (typeof s === 'string' ? s : (s as { color: string }).color))
     expect(stops.length).toBeGreaterThanOrEqual(2)
-    expect(stops.filter((c) => !/^(surface-[0-3]|bg-accent)$/.test(c))).toEqual([])
+    expect(stops.filter((c) => !/^(surface-[0-3]|bg-accent|bg-pro)$/.test(c))).toEqual([])
     expect(stops).toContain('bg-accent')
     expect(stops).toContain('surface-0')
+  })
+
+  /** The wash's two edges: the first and the last stop's palette name. */
+  const edges = (id: string) => {
+    const backdrop = buildLook('X', TEAM_COLORS[id]).look.backdrop as { gradient: { stops: Array<{ color: string }> } }
+    return [backdrop.gradient.stops[0]?.color, backdrop.gradient.stops.at(-1)?.color]
+  }
+
+  test('two colors: the main one washes the left edge and the second the right (Pumas blue and gold, Brazil green and yellow, Argentina blue and white, Barcelona blue and red)', async () => {
+    expect(TEAM_COLORS['espn:233']).toEqual(['002b5c', 'd4a017'])
+    expect(TEAM_COLORS['espn:205']).toEqual(['009c3b', 'fedf00'])
+    expect(TEAM_COLORS['espn:202']).toEqual(['74acdf', 'ffffff'])
+    expect(TEAM_COLORS['espn:83']).toEqual(['004d98', 'a50044'])
+    for (const id of ['espn:233', 'espn:205', 'espn:202', 'espn:83']) expect(edges(id), id).toEqual(['bg-accent', 'bg-pro'])
+  })
+
+  test('one color: both edges in it; a near-gray main color takes the second as its one color (Newcastle)', async () => {
+    expect(TEAM_COLORS['espn:364']).toHaveLength(1)
+    expect(edges('espn:364')).toEqual(['bg-accent', 'bg-accent'])
+    expect(TEAM_COLORS['espn:361']).toEqual(['2d2d2d', '41b6e6'])
+    expect(edges('espn:361')).toEqual(['bg-accent', 'bg-accent'])
   })
 
   test('two teams of different colors get different colors; the name does not change the colors', async () => {
