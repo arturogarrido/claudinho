@@ -1,6 +1,6 @@
 {
   "name": "claudinho",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Your Claude Code celebrates when your team scores: a toast with the scorer, a short celebration with the Claude mascot, and the score above your prompt. Follow a competition and pin your team with the claudinho CLI on your machine, then open any match's goals and cards with /claudinho match. Live data: ESPN. Not affiliated with FIFA, any confederation, league or club, or Anthropic.",
   "author": {
     "name": "Arturo Garrido"
@@ -36,6 +36,13 @@
       "options": ["auto", "en", "es", "pt", "fr"],
       "default": "auto",
       "description": "The language of the band, the toasts, the goal celebration and the match pane: en, es, pt or fr; auto follows CLAUDINHO_LANG, then LANG (es_MX.UTF-8 is es), else English. The terminal statusline and the live score for Claude stay English."
+    },
+    "teamTheme": {
+      "type": "string",
+      "title": "Team look",
+      "options": ["off", "on"],
+      "default": "off",
+      "description": "On tints the Claude desktop and mobile apps in your pinned team's colors (pitch green with no pin, or for a team whose colors are not known). It replaces the session's theme: another theme you set is not restored, and /claudinho theme off clears it. The terminal and editors draw nothing."
     }
   }
 }

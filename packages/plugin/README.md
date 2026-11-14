@@ -72,6 +72,7 @@ Change them in `/config`.
 | `celebrate` | `on`: the celebration plays on your team's goal and on its win or draw, and under `toasts: all` on any goal in a match that is not your team's; `off`: it never plays. The toasts are the same either way | `on` |
 | `context` | `on`: while a match is live, the score goes beside each prompt you send, for Claude; `off`: nothing goes with your prompts | `on` |
 | `language` | `auto`: the language your environment asks for (below); `en`, `es`, `pt` or `fr`: that language, whatever the environment says | `auto` |
+| `teamTheme` | `on`: the Claude desktop and mobile apps take your team's colors for the session, replacing the theme it had ([The team look](#the-team-look)); `off`: the plugin never sets or clears the session's theme | `off` |
 
 Changing an option reloads the plugin. The band and every later toast follow the new value at once.
 An open match pane stays as it was drawn and stops reading: run `/claudinho match` again to update it.
@@ -124,6 +125,24 @@ Off-match it adds nothing. The `context` option turns it off.
 
 **`/claudinho`** prints the band's line now, with the data provider's name and the non-affiliation
 sentence under it, or one plain sentence when there is nothing to show.
+
+### The team look
+
+With `teamTheme: on`, the Claude desktop and mobile apps take your team's colors: the app's colors in light and dark
+mode, and a still wash of the team's color at the left and right edges. Your team is the one the CLI picks for you
+(your pin, or `CLAUDINHO_TEAM`); with no team pinned, or a team whose colors the plugin does not know, the look is pitch
+green. It shows in the desktop and mobile apps on Claude Code 2.1.324 or later, and nowhere else: the terminal and VS
+Code draw nothing. The look is set from the plugin's readings (the band's, or a `/claudinho` you type) while a desktop
+or mobile app is attached, once per team, and again only when your team changes.
+
+It is off by default because a session holds one theme: turning it on replaces the theme the session had, and the
+plugin does not bring that theme back. It is colors only: no crest, kit or logo is ever drawn.
+
+- `/claudinho theme` says which look is set, or why none shows.
+- `/claudinho theme off` clears the look for the rest of the session.
+- `/claudinho theme on` sets it again.
+
+Turning the option off leaves a look already set until the session ends; run `/claudinho theme off` first to clear it.
 
 ## Where it works
 
@@ -274,8 +293,8 @@ and changes nothing the band shows. A `/claudinho` typed while Claude is working
 
 ## What the plugin runs, reads and sends
 
-Everything the plugin's code (`hooks/register.tsx`) does beyond drawing the band, the toasts and the pane is listed
-here.
+Everything the plugin's code (`hooks/register.tsx`, and `hooks/team-look.ts` for the team look) does beyond drawing
+the band, the toasts and the pane is listed here.
 
 ### The program it runs
 
@@ -319,7 +338,7 @@ session.
   checks each folder of the `PATH` it handed that run for `claudinho` (once per session for the band, and at each
   `/claudinho` that fails), to say whether the CLI is installed. It reads no file's contents and writes no file.
 - **The session:** which windows are attached. Without one the band runs nothing; `/claudinho` still runs the CLI
-  when you type it.
+  when you type it. With `teamTheme: on`, also whether a desktop or mobile app is attached, for the team look.
 
 ### Your prompts and your commands
 
@@ -331,11 +350,20 @@ session.
   prompt. The hook does not read your prompt's text, change it, keep it or send it anywhere, and it starts no
   program. With `context: off` it adds nothing.
 - **`/claudinho`** (the `command.run` hook): the hook answers the command the plugin registers, `/claudinho`, and no
-  other. It reads the text you typed after `/claudinho` for the word `match` alone. It runs the CLI as listed above,
-  answers with text (the band's line, or a sentence when there is nothing to show), and opens the pane for `match`.
+  other. It reads the text you typed after `/claudinho` for `match`, `theme`, `theme off` and `theme on` alone. It
+  runs the CLI as listed above, answers with text (the band's line, or a sentence when there is nothing to show),
+  opens the pane for `match`, and sets or clears the team look for the `theme` phrases.
 - **Its other hooks** (a session starting, a window attaching or leaving, a turn starting or ending, the band and the
   pane drawing, the pane closing) pace the band's runs, hold the celebration while Claude works, and draw what the
   CLI answered. They read and send nothing beyond what this section lists.
+
+### The session's theme
+
+With `teamTheme: on`, the plugin sets the session's theme (`$.theme.set`) to the team look, once per look while a
+desktop or mobile app is attached, and clears it (`$.theme.clear`) when you type `/claudinho theme off`. Nothing else
+is new: the look is built inside the plugin from the colors it ships (`hooks/team-colors.ts`) with Claude Code's own
+color builder (`hooks/make-colors.js`), with no other run of the CLI, no file read and no network request. With
+`teamTheme: off` it calls neither.
 
 ## Data and disclaimer
 

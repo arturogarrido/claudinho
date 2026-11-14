@@ -3,7 +3,7 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/packages/core/src/data", "!**/dist"]
+    "includes": ["**", "!**/packages/core/src/data", "!**/dist", "!**/packages/plugin/hooks/make-colors.js"]
   },
   "linter": {
     "enabled": true,
