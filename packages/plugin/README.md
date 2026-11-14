@@ -129,7 +129,8 @@ sentence under it, or one plain sentence when there is nothing to show.
 ### The team look
 
 With `teamTheme: on`, the Claude desktop and mobile apps take your team's colors: the app's colors in light and dark
-mode, and a still wash of the team's color at the left and right edges. Your team is the one the CLI picks for you
+mode, and a still wash at the left and right edges: the team's main color on the left and, for a team with two
+colors (Pumas' blue and gold, Brazil's green and yellow), its second color on the right. Your team is the one the CLI picks for you
 (your pin, or `CLAUDINHO_TEAM`); with no team pinned, or a team whose colors the plugin does not know, the look is pitch
 green. It shows in the desktop and mobile apps on Claude Code 2.1.324 or later, and nowhere else: the terminal and VS
 Code draw nothing. The look is set from the plugin's readings (the band's, or a `/claudinho` you type) while a desktop

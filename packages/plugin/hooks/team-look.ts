@@ -9,7 +9,8 @@ import { NATION_IDS, TEAM_COLORS } from './team-colors'
  * A look is the argument of the engine's theme set: `colors`, the whole theme `makeColors` builds for both modes from the
  * team's main color (the accent) and its second one (the `pro` role), its grays tinted toward the main color's hue
  * (toward the second's, and barely, when the main color is a near-gray); and `backdrop`, a still gradient of two palette
- * names (`bg-accent` at the edges, `surface-0` between), so it follows light and dark. Plain colors only: no scene, no
+ * names (`bg-accent` at the left edge, `surface-0` between, and at the right edge `bg-pro` for a team with a second
+ * color, else `bg-accent`), so it follows light and dark. Plain colors only: no scene, no
  * image, no crest, kit or logo. A team with no colors known, or colors that are not six hex digits, gets pitch green.
  */
 
@@ -140,10 +141,11 @@ function definition(label: string, main: string, second: string | undefined) {
 }
 
 /**
- * A look of these colors: the theme, and the still wash (the accent's background at the edges, the page between),
- * whose stops are palette names, so it follows light and dark.
+ * A look of these colors: the theme, and the still wash (the accent's background at the left edge, the page between,
+ * and at the right edge the second color's background when the theme has one as its `pro` role, else the accent's
+ * again), whose stops are palette names, so it follows light and dark.
  */
-function lookOf(colors: ThemeSetArgs['colors']): ThemeSetArgs {
+function lookOf(colors: ThemeSetArgs['colors'], hasSecond: boolean): ThemeSetArgs {
   return {
     colors,
     backdrop: {
@@ -153,7 +155,7 @@ function lookOf(colors: ThemeSetArgs['colors']): ThemeSetArgs {
           { at: 0, color: 'bg-accent' },
           { at: 0.16, color: 'surface-0' },
           { at: 0.84, color: 'surface-0' },
-          { at: 1, color: 'bg-accent' },
+          { at: 1, color: hasSecond ? 'bg-pro' : 'bg-accent' },
         ],
       },
     },
@@ -163,7 +165,7 @@ function lookOf(colors: ThemeSetArgs['colors']): ThemeSetArgs {
 /** Pitch green's look: a constant definition, so it builds the same every time. */
 function pitch(): { look: ThemeSetArgs; problems: string[] } {
   const { theme, problems } = makeColors(definition(PITCH_LABEL, PITCH_GREEN, undefined))
-  return { look: lookOf(theme), problems }
+  return { look: lookOf(theme, false), problems }
 }
 
 /**
@@ -179,8 +181,9 @@ export function buildLook(
   if (team === undefined) return pitch()
   const label = typeof name === 'string' && name !== '' ? labelOf(name) : PITCH_LABEL
   try {
-    const { theme, problems } = makeColors(definition(label, team[0], team[1]))
-    return { look: lookOf(theme), problems }
+    const made = definition(label, team[0], team[1])
+    const { theme, problems } = makeColors(made)
+    return { look: lookOf(theme, Object.hasOwn(made.roles, 'pro')), problems }
   } catch {
     return pitch()
   }
