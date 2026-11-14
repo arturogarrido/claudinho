@@ -229,4 +229,3 @@ export const NATION_IDS: Readonly<Record<string, string>> = {
   USA: 'espn:660',
   UZB: 'espn:2570',
 }
-

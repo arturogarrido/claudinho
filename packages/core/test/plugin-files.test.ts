@@ -96,7 +96,9 @@ describe('the plugin folder', () => {
       const src = read(f);
       expect(src, f).not.toMatch(/\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\brequire\s*\(|\bimport\s*\(|\bglobalThis\b/);
       expect(src, f).not.toMatch(/(?<![.\w$])process\??\.[A-Za-z_]/);
-      expect(src, f).not.toMatch(/\$\s*\??\.\s*[A-Za-z_]/);
+      // The engine's file names `$.theme.set` in one of its own messages (a string); ours name no `$` at all.
+      if (f !== 'make-colors.js') expect(src, f).not.toMatch(/\$\s*\??\.\s*[A-Za-z_]/);
+      else expect(src.match(/\$\s*\??\.\s*[A-Za-z_][\w.]*/g) ?? [], f).toEqual(['$.theme.set']);
     }
     const look = read('team-look.ts');
     const froms = [...look.matchAll(/^import\s+(?:type\s+)?\{[^}]*\}\s+from\s+'([^']+)'/gm)].map((m) => m[1]);
