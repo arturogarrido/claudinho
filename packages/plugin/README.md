@@ -129,21 +129,25 @@ sentence under it, or one plain sentence when there is nothing to show.
 ### The team look
 
 With `teamTheme: on`, the Claude desktop and mobile apps take your team's colors: the app's colors in light and dark
-mode, and a still wash at the left and right edges: the team's main color on the left and, for a team with two
-colors (Pumas' blue and gold, Brazil's green and yellow), its second color on the right. Your team is the one the CLI picks for you
-(your pin, or `CLAUDINHO_TEAM`); with no team pinned, or a team whose colors the plugin does not know, the look is pitch
-green. It shows in the desktop and mobile apps on Claude Code 2.1.324 or later, and nowhere else: the terminal and VS
-Code draw nothing. The look is set from the plugin's readings (the band's, or a `/claudinho` you type) while a desktop
-or mobile app is attached, once per team, and again only when your team changes.
+mode, and a still wash at the left and right edges: the main color on the left and, for a team with two colors
+(Pumas' blue and gold, Brazil's green and yellow), the second on the right; a team whose main color is white, black
+or gray is washed in its second color on both edges. Your team is the one the CLI picks for you: your saved pin (a
+club by its id), or `CLAUDINHO_TEAM` when it is set. `CLAUDINHO_TEAM` names a team by its code, which identifies a
+World Cup nation and not a club, so a club named that way gets pitch green. With no team pinned, or a team whose
+colors the plugin does not know, the look is pitch green too. It shows in the desktop and mobile apps on Claude Code
+2.1.324 or later, and nowhere else: the terminal and VS Code draw nothing. The look is set from the plugin's readings
+(the band's, or a `/claudinho` you type) while a desktop or mobile app is attached, once per team, and again only when
+your team changes or the plugin reloads (Claude Code drops the look then). With only the mobile app attached the band does not run, so a `/claudinho` you type sets it.
 
 It is off by default because a session holds one theme: turning it on replaces the theme the session had, and the
 plugin does not bring that theme back. It is colors only: no crest, kit or logo is ever drawn.
 
 - `/claudinho theme` says which look is set, or why none shows.
-- `/claudinho theme off` clears the look for the rest of the session.
+- `/claudinho theme off` turns the look off for the rest of the session, across plugin reloads. It clears the
+  session's theme only when the plugin had set one.
 - `/claudinho theme on` sets it again.
 
-Turning the option off leaves a look already set until the session ends; run `/claudinho theme off` first to clear it.
+Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops the look the plugin had set.
 
 ## Where it works
 
@@ -191,7 +195,8 @@ CLI: the plugin passes `--lang` with the chosen code to the CLI runs of the band
 pane's runs once the CLI has said it speaks that language. Names, scores and minutes are never translated.
 
 Some things stay English in every language: the terminal statusline (`claudinho prompt`), the hook, the live score
-beside your prompt for Claude, the band's `+more`, the World Cup's sign-off line and `⚽ —`. The countdown's units
+beside your prompt for Claude, the band's `+more`, the World Cup's sign-off line, `⚽ —`, and the replies to
+`/claudinho theme`, `/claudinho theme off` and `/claudinho theme on`. The countdown's units
 (`2d4h`, `17m`) are the same in every language. An open match pane keeps its rows in the language it read them in
 until `/claudinho match` opens it again.
 
@@ -361,10 +366,11 @@ session.
 ### The session's theme
 
 With `teamTheme: on`, the plugin sets the session's theme (`$.theme.set`) to the team look, once per look while a
-desktop or mobile app is attached, and clears it (`$.theme.clear`) when you type `/claudinho theme off`. Nothing else
-is new: the look is built inside the plugin from the colors it ships (`hooks/team-colors.ts`) with Claude Code's own
-color builder (`hooks/make-colors.js`), with no other run of the CLI, no file read and no network request. With
-`teamTheme: off` it calls neither.
+desktop or mobile app is attached, and clears it (`$.theme.clear`) when you type `/claudinho theme off` and the look
+it set still stands. It keeps whether you turned the look off in the state Claude Code holds for the session, so the
+off holds across a reload. Nothing else is new: the look is built inside the plugin from the colors it ships
+(`hooks/team-colors.ts`) with Claude Code's own color builder (`hooks/make-colors.js`), with no other run of the CLI,
+no file read and no network request. With `teamTheme: off` it calls neither.
 
 ## Data and disclaimer
 

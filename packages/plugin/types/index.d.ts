@@ -173,6 +173,14 @@ export type ClaudinhoPane = {
   final: boolean
 } | null
 
+/**
+ * The team look turned off for the session (plugin 0.8.0): `true` from `/claudinho theme off` until `/claudinho theme
+ * on`, `false` before either. Kept in the session's state so it holds across a reload of the plugin (a `/config` change
+ * or `/reload-plugins` starts the module again); no `session.start` resets it. While it is `true` no reading sets a
+ * look. Its two writers are those two phrases, under `teamTheme: on` alone; a read that fails is taken as `true`.
+ */
+export type ClaudinhoLookOff = boolean
+
 declare module 'claude-code' {
   interface PluginState {
     claudinho: {
@@ -183,6 +191,7 @@ declare module 'claude-code' {
       celebration: ClaudinhoCelebration
       paneGen: ClaudinhoPaneGen
       pane: ClaudinhoPane
+      lookOff: ClaudinhoLookOff
     }
   }
 }

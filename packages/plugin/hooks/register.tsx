@@ -7,6 +7,7 @@ import type {
   ClaudinhoCelebration,
   ClaudinhoContext,
   ClaudinhoGoal,
+  ClaudinhoLookOff,
   ClaudinhoOutcome,
   ClaudinhoPace,
   ClaudinhoPane,
@@ -83,13 +84,14 @@ import { buildLook, colorsForPick } from './team-look'
  * run on the band's PATH, read by the band's own reading of the answer (`readAnswer`), replied as the view's line or
  * one fixed sentence chosen by what the answer says. With no `--columns` the CLI fits the line to its own ceiling,
  * 200 display columns, never to the window: past it the CLI keeps its `+N` count of the other matches, or ends an
- * over-wide segment with `…`; the transcript row wraps what it draws. A reply made from a view (its line, or the idle
- * or empty sentence) ends with the view's own provider attribution and then its disclaimer, each after a blank line,
- * relayed from its `attribution` and `disclaimer` fields (each only when usable), never spelled here; a reply made
- * from no view is its sentence alone. Its run is its own: whatever the roster says,
- * it takes no part in the band's guard or pace, reads and writes no `$.state` value, raises no toast and clears
- * nothing; it shares only the kept PATH and nvm's lookup (`/claudinho match` writes the pane's two values alone, below;
- * under `teamTheme: on` its view may set the team look, below).
+ * over-wide segment with `…`; the transcript row wraps what it draws. A reply made from a view (its line, the idle
+ * or empty sentence, or a team look phrase's sentence) ends with the view's own provider attribution and then its
+ * disclaimer, each after a blank line, relayed from its `attribution` and `disclaimer` fields (each only when usable),
+ * never spelled here; a reply made from no view is its sentence alone. Its run is its own: whatever the roster says,
+ * it takes no part in the band's guard or pace, raises no toast and clears no band; of the band's values it shares only
+ * the kept PATH and nvm's lookup. `/claudinho match` writes the pane's two values alone (below). Under `teamTheme: on`
+ * it shares the module's memory of the team look with the band: its view may set the look, `theme off` and `theme on`
+ * write the session's `lookOff`, and `theme off` may clear the session's theme (below).
  * The text typed after the command is only compared, surrounding spaces aside: `match` opens the match pane; `theme`,
  * `theme off` and `theme on` are the team look's (below); any other text is ignored.
  *
@@ -154,14 +156,19 @@ import { buildLook, colorsForPick } from './team-look'
  *
  * The team look (plugin 0.8.0), opt-in (`teamTheme: on`; anything else is off, and then the module never calls
  * `$.theme.set` or `$.theme.clear`): a session holds one theme, and a set replaces the one the person had. After a run
- * (the band's or the command's) whose answer is a view, while the person has not cleared it this session and the
- * roster holds the desktop or the mobile app (the two that draw a look), the look of the view's `pick` in its
- * competition (`team-look.ts`: the team's colors for both modes and a still wash at the edges, pitch green for no pin
- * or no colors known) is set once per look: a look already tried this session is never set again, whatever the set
- * answered (a refusal, `isDrawn: false`, or a build with no theme API: nothing toasts, nothing retries per tick, and the
- * band, the toasts, the pane and the command go on as before). `/claudinho theme` says what is set, `/claudinho theme
- * off` clears it once for the rest of the session (no later view sets one), `/claudinho theme on` lifts that and sets
- * the look of the command's own view. Every `session.start` forgets the session's look.
+ * (the band's or the command's: a mobile-only session runs no band, so there only a typed `/claudinho` sets it) whose
+ * answer is a view, while the person has not turned it off this session and the roster holds the desktop or the
+ * mobile app (the two that draw a look), the look of the view's `pick` in its competition (`team-look.ts`: the team's
+ * colors for both modes and a still wash at the edges, pitch green for no pin or no colors known) is set once per look
+ * (its key: the team's name and colors, or pitch green for any team with none, so two clubs of one color are two looks
+ * and two teams with no colors one): a look already tried is never set again, whatever the set answered (a refusal,
+ * `isDrawn: false`, or a build with no theme API: nothing toasts, nothing retries per tick, and the band, the toasts,
+ * the pane and the command go on as before). `/claudinho theme` says what is set (the roster read again at the reply),
+ * or pitch green and why; `/claudinho theme off` turns the look off for the session (the session's `lookOff`, which
+ * holds across a reload: no later view sets one) and clears the session's theme only when a look this plugin set
+ * stands (a set the engine did not refuse, drawn or not; else the theme may be the person's own); `/claudinho theme
+ * on` lifts the off and sets the look of the command's own view. Every `session.start` forgets the module's memory of
+ * the look (a reload's engine dropped the look the old module set), so the next reading sets it again, unless it is off.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -171,6 +178,7 @@ const lastContext = atom({ plugin: 'claudinho', key: 'context' } as const, null 
 const celebration = atom({ plugin: 'claudinho', key: 'celebration' } as const, null as ClaudinhoCelebration)
 const paneGen = atom({ plugin: 'claudinho', key: 'paneGen' } as const, 0 as number)
 const pane = atom({ plugin: 'claudinho', key: 'pane' } as const, null as ClaudinhoPane)
+const lookOff = atom({ plugin: 'claudinho', key: 'lookOff' } as const, false as ClaudinhoLookOff)
 
 /**
  * The band's pace (`delayAfter`): 15 s from 2 minutes before a kickoff, while a match is listed live or finished, and
@@ -276,9 +284,12 @@ const THEME_ON_WORDS = 'theme on'
 /** The team look's replies. */
 const REPLY_LOOK_OFF = 'The team look is off. Turn it on in /config (Team look).'
 const REPLY_LOOK_NOT_DRAWN = 'The team look shows in the Claude desktop and mobile apps; nothing draws it in this session.'
-const REPLY_LOOK_CLEARED = 'Team look cleared for this session. /claudinho theme on sets it again.'
+const REPLY_LOOK_CLEARED = 'Team look off for this session. /claudinho theme on sets it again.'
+const REPLY_LOOK_UNREADABLE = 'Team look: pitch green (the team in CLAUDINHO_TEAM could not be read).'
 const REPLY_LOOK_NO_PIN = 'Team look: pitch green (no team pinned).'
 const replyLookTeam = (name: string): string => `Team look: ${name}.`
+const replyLookCode = (code: string): string =>
+  `Team look: pitch green (${code} is a code, which does not identify a club: pin the team with claudinho follow).`
 const replyLookPitch = (name: string): string => `Team look: pitch green (no colors known for ${name}).`
 /** The statuses `match --json` states; a final one ends the re-reads. */
 const STATUSES = ['SCHEDULED', 'LIVE', 'HT', 'FT', 'POSTPONED', 'CANCELLED'] as const
@@ -383,15 +394,19 @@ let contextOn = true
 /** Whether the team look is on (`teamTheme` is exactly `on`), set at load. */
 let teamThemeOn = false
 /**
- * The session's team look (each `session.start` forgets it): the key of the last look tried (`lookWanted`; null: none
- * since the start or the last clear), whether the last set answered `isDrawn: true`, whether the person cleared the
- * look (`/claudinho theme off`, lifted by `/claudinho theme on`), and the sets made, so a set's answer is kept only
- * when no later set or clear began after it.
+ * The module's memory of the session's team look (each `session.start` forgets it: a reload's engine drops the look
+ * the old module set): the key of the last look tried (`lookWanted`; null: none since the start or the last
+ * `/claudinho theme off`), whether the last set answered `isDrawn: true`, whether a look this plugin set stands (a set
+ * the engine did not refuse, drawn or not, since the start or the last clear), the sets and offs made (`lookSets`: a
+ * set's `isDrawn` is kept only when none began after it), and the clears and starts made (`lookGen`: a set's answer
+ * marks a look standing only when neither began after it). Whether the person turned the look off is the session's,
+ * in `$.state` (`lookOff`): it holds across a reload.
  */
 let lookKey: string | null = null
 let lookDrawn = false
-let lookCleared = false
+let lookStands = false
 let lookSets = 0
+let lookGen = 0
 /** A main-loop turn is running: set by `turn.start`, cleared by a `turn.complete` with no `agentId`. */
 let holdTurn = false
 /**
@@ -1910,78 +1925,134 @@ function lookWanted(view: View): { key: string; name: string | undefined; colors
 }
 
 /**
- * The team look set from a run's reading, once per look: under `teamTheme: on`, a view, no clear this session, a look
- * not tried since the start or the last clear, and the desktop or mobile app in the roster. The key is taken before the
- * set, so whatever the set answers (a refusal, `isDrawn: false`, no theme API on an older build) the same look is never
- * tried again; its answer is kept only when no set or clear began after it. Never rejects, never toasts.
+ * Whether the person turned the look off this session (`lookOff`, `$.state`); a read that fails is yes, so no look is
+ * set that the person may have turned off. Never rejects.
+ */
+async function lookIsOff($: EngineInterface): Promise<boolean> {
+  try {
+    return (await read($, lookOff)) === true
+  } catch {
+    return true
+  }
+}
+
+/** The person's off, or its lifting, written to `$.state` for the session; a write that fails changes nothing. Never rejects. */
+async function writeLookOff($: EngineInterface, off: boolean): Promise<void> {
+  try {
+    await update($, lookOff, () => off)
+  } catch {
+    // The state could not be written: nothing more to do.
+  }
+}
+
+/**
+ * The look this plugin set, cleared (`$.theme.clear`): from here no look of ours stands, unless the engine refuses the
+ * clear (then ours may still stand, and a later off asks again). Never rejects.
+ */
+async function clearOurLook($: EngineInterface): Promise<void> {
+  lookStands = false
+  lookGen += 1
+  const gen = lookGen
+  try {
+    await $.theme.clear()
+  } catch {
+    // Refused, or no theme API: the look of ours may still stand.
+    if (gen === lookGen) lookStands = true
+  }
+}
+
+/**
+ * The team look set from a run's reading, once per look: under `teamTheme: on`, a view, the look not turned off this
+ * session, a look not tried since the start or the last off, and the desktop or mobile app in the roster. The key is
+ * taken before the set, so whatever the set answers (a refusal, `isDrawn: false`, no theme API on an older build) the
+ * same look is never tried again; its `isDrawn` is kept only when no set or off began after it. A set the engine did
+ * not refuse stands (drawn or not) when no clear or start began after it; one the person turned off while it was in
+ * flight, with no look of ours then standing to clear, is cleared now. Never rejects, never toasts.
  */
 async function applyLook($: EngineInterface, reading: Reading): Promise<void> {
   try {
-    if (!teamThemeOn || lookCleared || !reading.answered || !reading.isView) return
+    if (!teamThemeOn || !reading.answered || !reading.isView) return
     const want = lookWanted(reading.view)
     if (want.key === lookKey) return
+    if (await lookIsOff($)) return
     if (!(await lookDrawable($))) return
-    // The latest point before the set: a clear, or another run's set of the same look, since the roster was asked.
-    if (lookCleared || want.key === lookKey) return
+    // The latest point before the set: an off, or another run's set of the same look, since the roster was asked.
+    if ((await lookIsOff($)) || want.key === lookKey) return
     lookKey = want.key
     lookSets += 1
     const mine = lookSets
+    const gen = lookGen
+    let set = false
     let drawn = false
     try {
       const answer: unknown = await $.theme.set(buildLook(want.name, want.colors).look)
+      set = true
       drawn = isObject(answer) && answer.isDrawn === true
     } catch {
-      // Refused, or a build whose engine has no theme API (before Claude Code 2.1.319): nothing drawn.
+      // Refused, or a build whose engine has no theme API (before Claude Code 2.1.319): nothing set, nothing drawn.
     }
     if (mine === lookSets) lookDrawn = drawn
+    if (set && gen === lookGen) {
+      lookStands = true
+      if (await lookIsOff($)) await clearOurLook($)
+    }
   } catch {
     // The engine's calls failed: no look this run.
   }
 }
 
 /**
- * `/claudinho theme off`: the session's look cleared once (`$.theme.clear`, only when not already cleared), and no
- * later view sets one until `/claudinho theme on`. A clear refused, or no theme API, still stops the sets. Never
- * rejects.
+ * `/claudinho theme off`: the off recorded for the session (`lookOff`, kept across a reload), so no later view sets a
+ * look until `/claudinho theme on`; the session's theme is cleared only when a look this plugin set stands (the theme
+ * may otherwise be the person's own). A clear refused, or no theme API, keeps the off. Never rejects.
  */
-async function clearLook($: EngineInterface): Promise<void> {
-  if (lookCleared) return
-  lookCleared = true
+async function turnLookOff($: EngineInterface): Promise<void> {
+  await writeLookOff($, true)
   lookKey = null
   lookDrawn = false
   lookSets += 1
-  try {
-    await $.theme.clear()
-  } catch {
-    // Refused, or no theme API: nothing more to do.
-  }
+  if (lookStands) await clearOurLook($)
 }
 
 /** What the team look's three phrases ask. */
 type LookAsk = 'show' | 'off' | 'on'
 
 /**
+ * Why the look a view asks for is what it is: the team's name with its colors; else pitch green, and why, in this
+ * order: no pick because `CLAUDINHO_TEAM` could not be read; no pick (or one that names nothing); a code with no id
+ * (`CLAUDINHO_TEAM`'s, which identifies no club); no colors known for the team.
+ */
+function lookReason(view: View): string {
+  const pick = view.pick
+  if (pick === null && view.pickUnreadable === true) return REPLY_LOOK_UNREADABLE
+  const name = pickName(pick)
+  if (pick === null || name === undefined) return REPLY_LOOK_NO_PIN
+  if (lookWanted(view).colors !== undefined) return replyLookTeam(name)
+  if (isObject(pick) && !Object.hasOwn(pick, 'id') && typeof pick.code === 'string' && pick.code.trim() !== '') {
+    return replyLookCode(pick.code)
+  }
+  return replyLookPitch(name)
+}
+
+/**
  * The command's reply to one of the team look's phrases, after its own run: the option off, the one sentence (no
- * theme call); `off`, the clear and its sentence; `on`, the clear lifted; then, for `on` and `show`, the look of the
- * command's own view set as the band sets it, and the report: cleared this session; a reading that is no view, null
- * (the command's existing reply); nothing draws it here (no desktop or mobile app, or the last set did not answer
- * drawn); else the team, or pitch green and why. Never rejects.
+ * theme call); `off`, the off and its sentence; `on`, the off lifted; then, for `on` and `show`, the look of the
+ * command's own view set as the band sets it, and the report: off this session; a reading that is no view, null (the
+ * command's existing reply); nothing draws it here (no desktop or mobile app in the roster read now, or the last set
+ * did not answer drawn); else the team, or pitch green and why. The caller adds a view's footer. Never rejects.
  */
 async function lookCommand($: EngineInterface, ask: LookAsk, reading: Reading): Promise<string | null> {
   if (!teamThemeOn) return REPLY_LOOK_OFF
   if (ask === 'off') {
-    await clearLook($)
+    await turnLookOff($)
     return REPLY_LOOK_CLEARED
   }
-  if (ask === 'on') lookCleared = false
+  if (ask === 'on') await writeLookOff($, false)
   await applyLook($, reading)
-  if (lookCleared) return REPLY_LOOK_CLEARED
+  if (await lookIsOff($)) return REPLY_LOOK_CLEARED
   if (!reading.answered || !reading.isView) return null
   if (!lookDrawn || !(await lookDrawable($))) return REPLY_LOOK_NOT_DRAWN
-  const want = lookWanted(reading.view)
-  const name = pickName(reading.view.pick)
-  if (name === undefined) return REPLY_LOOK_NO_PIN
-  return want.colors === undefined ? replyLookPitch(name) : replyLookTeam(name)
+  return lookReason(reading.view)
 }
 
 /** The command's reply when nothing else answered: what to install (a rejected run, no CLI on its whole PATH), else the reading's. */
@@ -2241,14 +2312,16 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     // A new session (or a reload): the first-run toast, the band's PATH probe and the no-pin taste may be said again,
-    // and the session's team look is forgotten (a set from before answers into nothing).
+    // and the module's memory of the team look is forgotten (a reload's engine dropped the look the old module set; a
+    // set from before answers into nothing). The person's off is the session's (`lookOff`) and is not reset here.
     firstRunSaid = false
     bandProbed = false
     tasteSaid = false
     lookKey = null
     lookDrawn = false
-    lookCleared = false
+    lookStands = false
     lookSets += 1
+    lookGen += 1
     // `/claudinho` in every session, headless included: the person types it. A registration refused leaves the start
     // as it was.
     try {
@@ -2478,7 +2551,8 @@ export const register: Register = (on, options) => {
     const reading = readAnswer(result)
     // A view stating its `lang` marks the CLI as localizing before any match run (headless too: no band run there).
     markLocalizes(reading)
-    // The team look's three phrases: their own replies (a reading that is no view keeps the reply below).
+    // The team look's three phrases: their own replies, a reply made from a view ending with its footer as every
+    // reply does (a reading that is no view keeps the reply it had: the plain one below, or the phrase's sentence alone).
     const ask: LookAsk | null =
       typed === THEME_WORD ? 'show'
       : typed === THEME_OFF_WORDS ? 'off'
@@ -2486,7 +2560,8 @@ export const register: Register = (on, options) => {
       : null
     if (ask !== null) {
       const said = await lookCommand($, ask, reading)
-      return { text: said ?? (await plainReply($, reading, result === undefined, env, wholeEnv)) }
+      if (said === null) return { text: await plainReply($, reading, result === undefined, env, wholeEnv) }
+      return { text: reading.answered && reading.isView ? withFooter(said, reading.view) : said }
     }
     // Any other run's view may set the team look, as the band's does (nothing under the option off).
     await applyLook($, reading)
