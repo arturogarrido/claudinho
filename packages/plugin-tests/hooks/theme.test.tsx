@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { NATION_IDS, TEAM_COLORS } from './team-colors'
 import { buildLook, colorsForPick } from './team-look'
-import { FIRST_RUN, view, world } from './world'
+import { FIRST_RUN, START, view, world } from './world'
 
 /**
  * The team look (plugin 0.8.0): with `teamTheme: on`, in a session a desktop or mobile app is attached to, the plugin
@@ -22,23 +22,30 @@ const WORLD_CUP = { competition: { slug: 'fifa.world', alias: 'world-cup', name:
 
 const SAID_OFF = 'The team look is off. Turn it on in /config (Team look).'
 const SAID_NOT_DRAWN = 'The team look shows in the Claude desktop and mobile apps; nothing draws it in this session.'
-const SAID_CLEARED = 'Team look cleared for this session. /claudinho theme on sets it again.'
+const SAID_CLEARED = 'Team look off for this session. /claudinho theme on sets it again.'
+const SAID_PITCH_CODE = (code: string) => `Team look: pitch green (${code} is a code, which does not identify a club: pin the team with claudinho follow).`
+const SAID_PITCH_UNREADABLE = 'Team look: pitch green (the team in CLAUDINHO_TEAM could not be read).'
+/** A reply made from a view carries the view's attribution and disclaimer, each a paragraph, as every `/claudinho` reply does. */
+const withD = (s: string) => `${s}\n\nLive data: ESPN\n\nNot affiliated with FIFA, any confederation, league or club, or Anthropic.`
+const ATLAS = { pick: { id: 'espn:216', code: 'ATS', name: 'Atlas' } }
+const NECAXA = { pick: { id: 'espn:229', code: 'NCX', name: 'Necaxa' } }
 const saidTeam = (name: string) => `Team look: ${name}.`
 const SAID_PITCH_NO_PIN = 'Team look: pitch green (no team pinned).'
 const saidPitchFor = (name: string) => `Team look: pitch green (no colors known for ${name}).`
 
 type On = Parameters<Parameters<typeof test>[1]>[1]
 /** The engine beneath the plugin: every theme the plugin sets and every clear, as the engine receives them. */
-const themes = (on: On, answer: 'drawn' | 'not-drawn' | 'deny' = 'drawn') => {
+const themes = (on: On, answer: 'drawn' | 'not-drawn' | 'deny' | 'deny-clear' = 'drawn') => {
   const sets: unknown[] = []
   const clears: number[] = []
   on('theme.set', (_$, e) => {
     sets.push(JSON.parse(JSON.stringify(e)))
     if (answer === 'deny') return { deny: 'theme.set denied' }
-    return { value: answer === 'drawn' ? { isDrawn: true, requestId: 'theme' } : { isDrawn: false, reason: 'no client draws themes' } }
+    return { value: answer === 'not-drawn' ? { isDrawn: false, reason: 'no client draws themes' } : { isDrawn: true, requestId: 'theme' } }
   })
   on('theme.clear', () => {
     clears.push(1)
+    if (answer === 'deny-clear') return { deny: 'theme.clear denied' }
     return { value: { isDrawn: false, reason: 'cleared' } }
   })
   return { sets, clears }
@@ -192,9 +199,9 @@ describe('/claudinho theme', () => {
   test('the option off: it says so and how to turn it on, and names no theme', async ($, on) => {
     const { sets, clears } = themes(on)
     const { command } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
-    expect((await command('theme')).text).toBe(SAID_OFF)
-    expect((await command('theme on')).text).toBe(SAID_OFF)
-    expect((await command('theme off')).text).toBe(SAID_OFF)
+    expect((await command('theme')).text).toBe(withD(SAID_OFF))
+    expect((await command('theme on')).text).toBe(withD(SAID_OFF))
+    expect((await command('theme off')).text).toBe(withD(SAID_OFF))
     expect(sets).toEqual([])
     expect(clears).toEqual([])
   })
@@ -202,45 +209,45 @@ describe('/claudinho theme', () => {
   test('on, a pinned team with colors: it names the team', ON, async ($, on) => {
     const { sets } = themes(on)
     const { command } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
-    expect((await command('theme')).text).toBe(saidTeam('Arsenal'))
-    expect((await command(' theme ')).text).toBe(saidTeam('Arsenal'))
+    expect((await command('theme')).text).toBe(withD(saidTeam('Arsenal')))
+    expect((await command(' theme ')).text).toBe(withD(saidTeam('Arsenal')))
     expect(sets).toHaveLength(1)
   })
 
   test('on, no pin: pitch green and why', ON, async ($, on) => {
     themes(on)
     const { command } = await world($, on, [view(LINE, NO_PIN)], DESKTOP)
-    expect((await command('theme')).text).toBe(SAID_PITCH_NO_PIN)
+    expect((await command('theme')).text).toBe(withD(SAID_PITCH_NO_PIN))
   })
 
   test('on, a team with no colors known: pitch green and the team\'s name', ON, async ($, on) => {
     themes(on)
     const { command } = await world($, on, [view(LINE, { pick: { id: 'espn:99999999', code: 'XYZ', name: 'Nowhere FC' } })], DESKTOP)
-    expect((await command('theme')).text).toBe(saidPitchFor('Nowhere FC'))
+    expect((await command('theme')).text).toBe(withD(saidPitchFor('Nowhere FC')))
   })
 
   test('on, in a terminal session: it says where the look shows', ON, async ($, on) => {
     const { sets } = themes(on)
     const { command } = await world($, on, [view(LINE, ARSENAL)])
-    expect((await command('theme')).text).toBe(SAID_NOT_DRAWN)
+    expect((await command('theme')).text).toBe(withD(SAID_NOT_DRAWN))
     expect(sets).toEqual([])
   })
 
   test('on, the engine answers not drawn: the same sentence', ON, async ($, on) => {
     themes(on, 'not-drawn')
     const { command } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
-    expect((await command('theme')).text).toBe(SAID_NOT_DRAWN)
+    expect((await command('theme')).text).toBe(withD(SAID_NOT_DRAWN))
   })
 
   test('theme off: one clear, and no view sets a look again this session, a new pin included', ON, async ($, on) => {
     const { sets, clears } = themes(on)
     const { clock, command } = await world($, on, [view(LINE, ARSENAL), view(LINE, ARSENAL), view(LINE, LIVERPOOL)], DESKTOP)
-    expect((await command('theme off')).text).toBe(SAID_CLEARED)
+    expect((await command('theme off')).text).toBe(withD(SAID_CLEARED))
     expect(clears).toHaveLength(1)
     await clock.advance(300_000)
     await clock.advance(300_000)
     expect(sets).toHaveLength(1)
-    expect((await command('theme')).text).toBe(SAID_CLEARED)
+    expect((await command('theme')).text).toBe(withD(SAID_CLEARED))
   })
 
   test('theme off twice: one clear', ON, async ($, on) => {
@@ -255,7 +262,7 @@ describe('/claudinho theme', () => {
     const { sets } = themes(on)
     const { command } = await world($, on, [view(LINE, ARSENAL), view(LINE, ARSENAL), view(LINE, LIVERPOOL)], DESKTOP)
     await command('theme off')
-    expect((await command('theme on')).text).toBe(saidTeam('Liverpool'))
+    expect((await command('theme on')).text).toBe(withD(saidTeam('Liverpool')))
     expect(sets).toHaveLength(2)
     expect(sets[1]).toEqual(lookOf('Liverpool', 'espn:364'))
   })
@@ -263,7 +270,7 @@ describe('/claudinho theme', () => {
   test('theme on while a look stands: nothing is set again', ON, async ($, on) => {
     const { sets } = themes(on)
     const { command } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
-    expect((await command('theme on')).text).toBe(saidTeam('Arsenal'))
+    expect((await command('theme on')).text).toBe(withD(saidTeam('Arsenal')))
     expect(sets).toHaveLength(1)
   })
 
@@ -273,6 +280,114 @@ describe('/claudinho theme', () => {
     const plain = (await command()).text
     expect((await command('themes')).text).toBe(plain)
     expect((await command('theme  off')).text).toBe(plain)
+  })
+})
+
+describe('/claudinho theme: what the first round of review found', () => {
+  test('theme off survives a reload (an option changed in /config starts the session again): no reading sets the look until theme on', ON, async ($, on) => {
+    const { sets, clears } = themes(on)
+    const { clock, command } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    await command('theme off')
+    await $.session.start({ cwd: START.cwd, surface: 'desktop', isInteractive: true })
+    await clock.advance(1)
+    await clock.advance(300_000)
+    expect(sets).toHaveLength(1)
+    expect((await command('theme')).text).toBe(withD(SAID_CLEARED))
+    expect(clears).toHaveLength(1)
+    expect((await command('theme on')).text).toBe(withD(saidTeam('Arsenal')))
+    expect(sets).toHaveLength(2)
+  })
+
+  test('a reload with nothing turned off: the engine dropped the look with the old module, and the next reading sets it again', ON, async ($, on) => {
+    const { sets } = themes(on)
+    const { clock } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    await $.session.start({ cwd: START.cwd, surface: 'desktop', isInteractive: true })
+    await clock.advance(1)
+    await clock.advance(300_000)
+    expect(sets).toHaveLength(2)
+    expect(sets[1]).toEqual(sets[0])
+  })
+
+  test('theme off in a session where this plugin set no look never clears the session\'s theme (it may be the person\'s own): a terminal session', ON, async ($, on) => {
+    const { sets, clears } = themes(on)
+    const { command, attach } = await world($, on, [view(LINE, ARSENAL)])
+    expect((await command('theme off')).text).toBe(withD(SAID_CLEARED))
+    expect(clears).toEqual([])
+    await attach('desktop', 'd1')
+    expect(sets).toEqual([])
+  })
+
+  test('the same where the set was refused: nothing of ours stands, nothing is cleared', ON, async ($, on) => {
+    const { clears } = themes(on, 'deny')
+    const { command } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    await command('theme off')
+    expect(clears).toEqual([])
+  })
+
+  test('a set the command makes is refused: the reply says nothing draws it, and nothing throws', ON, async ($, on) => {
+    const { sets } = themes(on, 'deny')
+    const { command } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    await command('theme off')
+    expect((await command('theme on')).text).toBe(withD(SAID_NOT_DRAWN))
+    expect(sets).toHaveLength(2)
+  })
+
+  test('the engine refuses the clear: the reply is the same, and no later reading sets a look', ON, async ($, on) => {
+    const { sets, clears } = themes(on, 'deny-clear')
+    const { clock, command } = await world($, on, [view(LINE, ARSENAL), view(LINE, ARSENAL), view(LINE, LIVERPOOL)], DESKTOP)
+    expect((await command('theme off')).text).toBe(withD(SAID_CLEARED))
+    expect(clears).toHaveLength(1)
+    await clock.advance(300_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('only the mobile app attached: the band does not run, and a typed /claudinho sets the look', ON, async ($, on) => {
+    const { sets } = themes(on)
+    const { command } = await world($, on, [view(LINE, ARSENAL)], { start: { surface: 'mobile', isInteractive: true } })
+    expect(sets).toEqual([])
+    await command()
+    expect(sets).toEqual([lookOf('Arsenal', 'espn:359')])
+  })
+
+  test('the desktop app left: /claudinho theme says nothing draws it', ON, async ($, on) => {
+    themes(on)
+    const { command, detach } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    await detach('desktop')
+    expect((await command('theme')).text).toBe(withD(SAID_NOT_DRAWN))
+  })
+
+  test('two teams of the same color: the look is set again, under the new team\'s name', ON, async ($, on) => {
+    const { sets } = themes(on)
+    const { clock } = await world($, on, [view(LINE, ATLAS), view(LINE, NECAXA)], DESKTOP)
+    await clock.advance(300_000)
+    expect(sets).toHaveLength(2)
+    expect((sets[1] as { colors: { label: string } }).colors.label).toBe('Claudinho: Necaxa')
+  })
+
+  test('two teams with no colors known, one after the other: pitch green is set once', ON, async ($, on) => {
+    const { sets } = themes(on)
+    const { clock } = await world($, on, [view(LINE, { pick: { id: 'espn:99999998', code: 'AAA', name: 'A' } }), view(LINE, { pick: { id: 'espn:99999999', code: 'BBB', name: 'B' } })], DESKTOP)
+    await clock.advance(300_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('CLAUDINHO_TEAM names a club by its code: pitch green, and the reply says why and what to do', ON, async ($, on) => {
+    themes(on)
+    const { command } = await world($, on, [view(LINE, { pick: { code: 'ARS' } })], DESKTOP)
+    expect((await command('theme')).text).toBe(withD(SAID_PITCH_CODE('ARS')))
+  })
+
+  test('CLAUDINHO_TEAM could not be read (pickUnreadable): the reply does not say no team is pinned', ON, async ($, on) => {
+    themes(on)
+    const { command } = await world($, on, [view(LINE, { pick: null, pickUnreadable: true })], DESKTOP)
+    expect((await command('theme')).text).toBe(withD(SAID_PITCH_UNREADABLE))
+  })
+
+  test('a reply made from no view (the first-run object) carries no footer, as the plain reply carries none', ON, async ($, on) => {
+    themes(on)
+    const { command } = await world($, on, [FIRST_RUN], DESKTOP)
+    const plain = (await command()).text
+    expect((await command('theme')).text).toBe(plain)
   })
 })
 

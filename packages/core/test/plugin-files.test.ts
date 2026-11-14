@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 /**
  * The Claude Code plugin's files: a hooks module and its manifest under `packages/plugin/` (no package.json: it is
  * not a workspace package and ships through no registry), listed by the root marketplace file. What the plugin
@@ -107,6 +108,10 @@ describe('the plugin folder', () => {
     expect(read('team-colors.ts')).not.toMatch(/^\s*import\b/m);
     // The engine's builder, copied as the engine ships it: its own header says so, and its body hash is the engine's.
     expect(read('make-colors.js')).toMatch(/^\/\/ make-colors\.js: copy this file into your mod's hooks folder, and leave it as it is\.\n/);
+    const engine = read('make-colors.js');
+    const stated = /^\/\/ body-sha256: ([0-9a-f]{64})$/m.exec(engine)?.[1];
+    expect(stated, 'the body hash the engine wrote in the header').toBeDefined();
+    expect(createHash('sha256').update(engine.split('\n').slice(4).join('\n')).digest('hex')).toBe(stated);
   });
 
   it('the toasts option says what a session with no pin gets: its first goal, then one hint on how to pin', () => {
