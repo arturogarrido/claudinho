@@ -33,7 +33,11 @@ describe('the plugin folder', () => {
       '.claude-plugin/plugin.json',
       'README.md',
       'hooks/hooks.json',
+      'hooks/make-colors.d.ts',
+      'hooks/make-colors.js',
       'hooks/register.tsx',
+      'hooks/team-colors.ts',
+      'hooks/team-look.ts',
       'types/index.d.ts',
     ]);
     const kit = tracked('packages/plugin-tests');
@@ -63,9 +67,44 @@ describe('the plugin folder', () => {
     expect(String(toasts?.description)).toMatch(/no pin|without a pin|nothing/i);
   });
 
-  it('the manifest is the first-run release, 0.7.0', () => {
+  it('the manifest is the team-look release, 0.8.0', () => {
     const m = json('packages/plugin/.claude-plugin/plugin.json');
-    expect(m.version).toBe('0.7.0');
+    expect(m.version).toBe('0.8.0');
+  });
+
+  it('the teamTheme option: off or on, OFF by default (a session holds one theme, and ours would replace the person\'s), and its description says where it shows and what it replaces', () => {
+    const m = json('packages/plugin/.claude-plugin/plugin.json') as { userConfig?: Record<string, { type?: unknown; options?: unknown; default?: unknown; description?: unknown }> };
+    const teamTheme = m.userConfig?.teamTheme;
+    expect(teamTheme, 'userConfig.teamTheme').toBeDefined();
+    expect(teamTheme?.type).toBe('string');
+    expect(teamTheme?.options).toEqual(['off', 'on']);
+    expect(teamTheme?.default).toBe('off');
+    expect(String(teamTheme?.description)).toMatch(/desktop/i);
+    expect(String(teamTheme?.description)).toMatch(/mobile/i);
+    expect(String(teamTheme?.description)).toMatch(/replaces/i);
+  });
+
+  it('the plugin README names the teamTheme option, where it shows and that it replaces the session\'s theme', () => {
+    const readme = readFileSync(join(ROOT, 'packages/plugin/README.md'), 'utf8');
+    expect(readme).toMatch(/`teamTheme`/);
+    expect(readme).toMatch(/\/claudinho theme/);
+  });
+
+  it('the team look\'s own modules are pure: no host, no network, no file; colors are six hex digits', () => {
+    const read = (f: string) => readFileSync(join(ROOT, 'packages/plugin/hooks', f), 'utf8');
+    for (const f of ['team-look.ts', 'team-colors.ts', 'make-colors.js']) {
+      const src = read(f);
+      expect(src, f).not.toMatch(/\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\brequire\s*\(|\bimport\s*\(|\bglobalThis\b/);
+      expect(src, f).not.toMatch(/(?<![.\w$])process\??\.[A-Za-z_]/);
+      expect(src, f).not.toMatch(/\$\s*\??\.\s*[A-Za-z_]/);
+    }
+    const look = read('team-look.ts');
+    const froms = [...look.matchAll(/^import\s+(?:type\s+)?\{[^}]*\}\s+from\s+'([^']+)'/gm)].map((m) => m[1]);
+    expect(froms.length).toBe((look.match(/^\s*import\b/gm) ?? []).length);
+    expect(froms.filter((f) => f !== 'claude-code' && f !== './make-colors.js' && f !== './team-colors')).toEqual([]);
+    expect(read('team-colors.ts')).not.toMatch(/^\s*import\b/m);
+    // The engine's builder, copied as the engine ships it: its own header says so, and its body hash is the engine's.
+    expect(read('make-colors.js')).toMatch(/^\/\/ make-colors\.js: copy this file into your mod's hooks folder, and leave it as it is\.\n/);
   });
 
   it('the toasts option says what a session with no pin gets: its first goal, then one hint on how to pin', () => {
@@ -174,8 +213,8 @@ describe('the plugin directory listing', () => {
     // `$.state` is named in comments alone: the state goes through the host's `read` and `update`.
     const MEMBERS = new Set([
       'clock.after', 'clock.every', 'clock.now', 'clock.sleep', 'command.register', 'env.get', 'fs.exists', 'fs.list',
-      'process.run', 'session.surfaces', 'state.', 'state.get', 'state.set', 'ui.invalidate', 'ui.open', 'ui.resolve',
-      'ui.toast',
+      'process.run', 'session.surfaces', 'state.', 'state.get', 'state.set', 'theme.clear', 'theme.set', 'ui.invalidate',
+      'ui.open', 'ui.resolve', 'ui.toast',
     ]);
     const named = [...src.matchAll(new RegExp(String.raw`\$${DOT}([A-Za-z_]+)(?:${DOT}([A-Za-z_]+))?`, 'g'))];
     expect(named.length).toBeGreaterThan(0);
@@ -193,9 +232,9 @@ describe('the plugin directory listing', () => {
     expect(src).not.toMatch(/(?<![.\w$])process\??\.[A-Za-z_]/);
     const imports = [...src.matchAll(/^import\s+(type\s+)?\{([^}]*)\}\s+from\s+'([^']+)'/gm)];
     expect(imports.length).toBe((src.match(/^\s*import\b/gm) ?? []).length);
-    expect(imports.filter((m) => m[3] !== 'claude-code' && m[3] !== '../types').map((m) => m[3])).toEqual([]);
+    expect(imports.filter((m) => m[3] !== 'claude-code' && m[3] !== '../types' && m[3] !== './team-look').map((m) => m[3])).toEqual([]);
     const values = imports.filter((m) => !m[1]).flatMap((m) => (m[2] ?? '').split(',').map((v) => v.trim()));
-    expect(values.filter((v) => v !== '').sort()).toEqual(['atom', 'read', 'update']);
+    expect(values.filter((v) => v !== '').sort()).toEqual(['atom', 'buildLook', 'colorsForPick', 'read', 'update']);
     const argv = String.raw`\s*\[\s*(['"][^'"]*['"])\s*,\s*(['"][^'"]*['"])`;
     const runs = [...src.matchAll(new RegExp(String.raw`\$${DOT}process${DOT}run${OPEN}${argv}`, 'g'))];
     expect(runs.length).toBe((src.match(new RegExp(String.raw`\$${DOT}process${DOT}run\b`, 'g')) ?? []).length);
@@ -221,13 +260,20 @@ describe('the plugin directory listing', () => {
     expect(src.match(/update\(\s*\$\s*,\s*lastContext\b/g) ?? []).toHaveLength(2);
     expect(src).toContain("context: typeof view.context === 'string' && view.context !== '' ? view.context : null,");
     expect(src).toContain('await update($, lastContext, () => null)');
-    // The typed text: compared with `match`, nothing else.
+    // The typed text: read once, trimmed, and compared with `match` and the four team-look phrases; nothing else.
     const command = handlerOf(src, 'command.run');
-    const commandRest = command
-      .replace('async ($, e) =>', '')
-      .replace("typeof e.args === 'string' && e.args.trim() === PANE_WORD", '');
+    const TYPED = "const typed = typeof e.args === 'string' ? e.args.trim() : ''";
+    expect(command).toContain(TYPED);
+    const commandRest = command.replace('async ($, e) =>', '').replace(TYPED, '');
     expect(commandRest).not.toMatch(/\be\b/);
     expect(src).toContain("const PANE_WORD = 'match'");
+    expect(src).toContain("const THEME_WORD = 'theme'");
+    expect(src).toContain("const THEME_OFF_WORDS = 'theme off'");
+    expect(src).toContain("const THEME_ON_WORDS = 'theme on'");
+    // `typed` is only ever compared, never printed, stored or handed on.
+    const uses = [...command.matchAll(/\btyped\b[^\n]*/g)].map((m) => m[0]).filter((u) => !u.startsWith("typed = typeof e.args"));
+    expect(uses.length).toBeGreaterThan(0);
+    expect(uses.filter((u) => !/^typed === (PANE_WORD|THEME_WORD|THEME_OFF_WORDS|THEME_ON_WORDS)\b/.test(u))).toEqual([]);
   });
 
   it('every environment variable the hooks module reads is named in PRIVACY.md', () => {
