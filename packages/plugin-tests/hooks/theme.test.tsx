@@ -469,6 +469,11 @@ describe('the table and the look, as data', () => {
     }
   })
 
+  test('no entry holds a value the provider uses as a placeholder (its default pairs are black with c60000, and a color with 792dcd)', async () => {
+    const held = Object.entries(TEAM_COLORS).filter(([, colors]) => colors.some((c) => c === 'c60000' || c === '792dcd'))
+    expect(held).toEqual([])
+  })
+
   test('the 48 World Cup nations, each by its code, each with colors', async () => {
     const codes = Object.keys(NATION_IDS)
     expect(codes).toHaveLength(48)

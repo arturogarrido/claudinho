@@ -269,7 +269,7 @@ export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> =
   'espn:9903': ['006847', 'ffffff'], // Racing (Montevideo)
   // conmebol.libertadores
   'espn:19425': ['ff0000'], // Always Ready
-  'espn:3': ['0060f0'], // Argentinos Juniors
+  'espn:3': ['e30613', 'ffffff'], // Argentinos Juniors
   'espn:4815': ['e30613', 'ffffff'], // Atlético Junior
   'espn:9967': ['0093ec'], // Bahia
   'espn:2686': ['ffdd00', '000000'], // Barcelona SC
