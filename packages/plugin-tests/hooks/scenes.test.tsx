@@ -249,6 +249,21 @@ describe('the pixel corner: the board shows two codes and never a score', () => 
     expect(/@media \(prefers-reduced-motion:reduce\)\{[^@]*animation:none!important/.test(at('goal'))).toBe(true)
   })
 
+  test('Reduce motion names every class the goal animates: none is left moving', async () => {
+    const css = (/<style>([^<]*)<\/style>/.exec(pixelSvg({ ...ARS, state: 'goal', home: 'ARS', away: 'LEE', stamp: 1 })) ?? [])[1] as string
+    const cut = css.indexOf('@media (prefers-reduced-motion:reduce){')
+    expect(cut).toBeGreaterThan(0)
+    const rules = css.slice(0, cut).replace(/@keyframes [a-z0-9-]+\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '')
+    const animated = new Set<string>()
+    for (const rule of rules.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!/animation\s*:/.test(rule[2] as string)) continue
+      for (const c of (rule[1] as string).matchAll(/\.([a-z][a-z0-9-]*)/g)) animated.add(c[1] as string)
+    }
+    expect(animated.size).toBeGreaterThan(3)
+    const reduced = css.slice(cut)
+    for (const c of animated) expect(new RegExp(`\\.${c}(?![a-z0-9-])`).test(reduced), c).toBe(true)
+  })
+
   test('a goal\'s source carries its stamp, so two goals are two sources (an unchanged source is not drawn again)', async () => {
     const goal = (stamp: number) => pixelSvg({ ...ARS, state: 'goal', home: 'ARS', away: 'LEE', stamp })
     expect(goal(1)).not.toBe(goal(2))
@@ -746,6 +761,71 @@ describe('the pixel corner: the edges the first cases did not reach', () => {
     expect(await drawn($, sceneOf(sets[1]), 'mobile')).toBe(pixelSvg({ ...LIV, state: 'idle' }))
     for (let i = 0; i < 40; i += 1) await clock.advance(15_000)
     expect(sets).toHaveLength(2)
+  })
+})
+
+describe('the pixel corner: its memory has one owner and one way to be forgotten', () => {
+  const STALE_ARS = momentView([], [], { current: false, ...ARSENAL, ...NEXT_ARS })
+  const LASK_PICK = { pick: { id: 'espn:1886', code: 'LAS', name: 'LASK Linz' } }
+
+  test('live, another team on a view that is not current, then the first team again inside five minutes: idle (the change forgot the match)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { command } = await world($, on, [live([0, 0]), STALE_ARS, STALE], DESKTOP)
+    await command()
+    expect(sets).toHaveLength(2)
+    await command()
+    expect(sets).toHaveLength(3)
+    expect(await drawn($, sceneOf(sets[2]))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+  })
+
+  test('live, theme off, then theme on with a view that is not current: idle (the off forgot the match)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { command } = await world($, on, [live([0, 0]), STALE], DESKTOP)
+    await command('theme off')
+    await command('theme on')
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+  })
+
+  test('a goal, theme off and on inside its six seconds: live, the goal is not played again', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, command } = await world($, on, [live([0, 0]), live([0, 1])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    await command('theme off')
+    await command('theme on')
+    expect(sets).toHaveLength(3)
+    expect(await drawn($, sceneOf(sets[2]))).toBe(pixelSvg({ ...LIV, state: 'live', home: 'LAS', away: 'LIV' }))
+  })
+
+  test('a goal, then the other side of the same match is picked inside the six seconds: its stadium is live, never the opponent\'s goal in its colors', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, command } = await world($, on, [live([0, 0]), live([0, 1]), live([0, 1], {}, LASK_PICK)], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    await command()
+    expect(sets).toHaveLength(3)
+    const source = (await drawn($, sceneOf(sets[2]))) as string
+    expect(Number.isNaN(stampOf(source))).toBe(true)
+    expect(source).toContain('class="px-crowd"')
+  })
+
+  test('live, then answers that are no view (an older CLI\'s object) past the hold: the stadium empties', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([0, 0]), JSON.stringify({ api: 1, line: 'x' })], DESKTOP)
+    for (let i = 0; i < 60; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+  })
+
+  test('a session with only the phone: the command never starts a live stadium nothing would end (idle, the next fixture\'s codes)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, command } = await world($, on, [live([0, 0], {}, NEXT_ARS)], { start: { surface: 'mobile', isInteractive: true } })
+    await command()
+    expect(sets).toHaveLength(1)
+    expect(await drawn($, sceneOf(sets[0]), 'mobile')).toBe(pixelSvg({ ...LIV, state: 'idle', home: 'ARS', away: 'LEE' }))
+    for (let i = 0; i < 44; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
   })
 })
 
