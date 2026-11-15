@@ -8,10 +8,13 @@ import { NATION_IDS, TEAM_COLORS } from './team-colors'
  *
  * A look is the argument of the engine's theme set: `colors`, the whole theme `makeColors` builds for both modes from the
  * team's main color (the accent) and its second one (the `pro` role), its grays tinted toward the main color's hue
- * (toward the second's, and barely, when the main color is a near-gray); and `backdrop`, a still gradient of two palette
- * names (`bg-accent` at the left edge, `surface-0` between, and at the right edge `bg-pro` for a team with a second
- * color, else `bg-accent`), so it follows light and dark. Plain colors only: no scene, no
- * image, no crest, kit or logo. A team with no colors known, or colors that are not six hex digits, gets pitch green.
+ * (toward the second's, and barely, when the main color is a near-gray); and `backdrop`, a scene named for the team's
+ * two colors (`band-<main>-<second>`, the main color twice for a team with one), with the app's frosted glass over it.
+ * The hooks module draws that scene (`bandSvg`): a band across the top of the app, the main color on its left half and
+ * the second on its right, each a band color (`bandColor`: the team's own value, a dark one lifted, a near-gray shown as
+ * a light or mid gray), fading out downward. The band's colors are raw values: they do not follow light and dark.
+ * Plain colors and plain gradients of them only: no image file, no crest, kit or logo. A team with no colors known, or
+ * colors that are not six hex digits, gets pitch green.
  */
 
 /** A team's colors: a main one and, for some, a second one, six hex digits each (no `#`). */
@@ -28,6 +31,21 @@ const PITCH_LABEL = `${LABEL_PREFIX}pitch`
 const WORLD_CUP = 'fifa.world'
 /** Below this HSL saturation the main color is a near-gray (white, black, silver), and tints nothing. */
 const NEUTRAL_SATURATION = 0.12
+/** The frosted glass the app lays over the band. */
+const GLASS = { blur: 28, opacity: 0.5 } as const
+/** A band scene's name: `band-`, then the main color and the second, six lowercase hex digits each. */
+const BAND_SCENE = /^band-([0-9a-f]{6})-([0-9a-f]{6})$/
+const BAND_SCENE_LENGTH = 'band-'.length + 6 + 1 + 6
+/** A band color: a near-gray lighter than this is shown as the light gray, else as the mid gray. */
+const LIGHT_GRAY_ABOVE = 0.7
+const LIGHT_GRAY = '#f2f4f7'
+const MID_GRAY = '#8a8f98'
+/**
+ * A band color: a color darker than this HSL lightness is lifted to `LIFTED_LIGHTNESS` at its own hue and saturation, so
+ * it reads on a dark page; one at or above it is the team's own (Barcelona's garnet, `a50044`, at 0.324, stays as it is).
+ */
+const DARK_BELOW = 0.32
+const LIFTED_LIGHTNESS = 0.4
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
@@ -49,8 +67,8 @@ export function colorsForPick(pick: unknown, slug: unknown): TeamColors | undefi
   return typeof id === 'string' && Object.hasOwn(TEAM_COLORS, id) ? TEAM_COLORS[id] : undefined
 }
 
-/** A color's hue (degrees) and HSL saturation. */
-function hueAndSaturation(hex: string): [number, number] {
+/** A color's hue (degrees), HSL saturation and HSL lightness. */
+function hslOf(hex: string): [number, number, number] {
   const n = Number.parseInt(hex, 16)
   const r = (n >> 16) / 255
   const g = ((n >> 8) & 255) / 255
@@ -59,10 +77,10 @@ function hueAndSaturation(hex: string): [number, number] {
   const min = Math.min(r, g, b)
   const l = (max + min) / 2
   const d = max - min
-  if (d === 0) return [0, 0]
+  if (d === 0) return [0, 0, l]
   const s = d / (1 - Math.abs(2 * l - 1))
   const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4
-  return [h * 60, s]
+  return [h * 60, s, l]
 }
 
 /** `hsl(h, s, l)` as `#rrggbb`. */
@@ -102,9 +120,9 @@ function labelOf(name: string): string {
  * (measured: every table entry and pitch green pass the desktop app's contrast check with them).
  */
 function definition(label: string, main: string, second: string | undefined) {
-  const [ph, ps] = hueAndSaturation(main)
+  const [ph, ps] = hslOf(main)
   const neutral = ps < NEUTRAL_SATURATION
-  const h = neutral && second !== undefined ? hueAndSaturation(second)[0] : ph
+  const h = neutral && second !== undefined ? hslOf(second)[0] : ph
   const k = neutral ? 0.12 : 1
   return {
     label,
@@ -141,37 +159,29 @@ function definition(label: string, main: string, second: string | undefined) {
 }
 
 /**
- * A look of these colors: the theme, and the still wash (the accent's background at the left edge, the page between,
- * and at the right edge the second color's background when the theme has one as its `pro` role, else the accent's
- * again), whose stops are palette names, so it follows light and dark.
+ * A look of these colors: the theme, and the band's scene, named for the team's main color and its second one (the main
+ * color again for a team with one), six lowercase hex digits each, so a new pair is a new name and the app draws the
+ * band again; the app's frosted glass over it.
  */
-function lookOf(colors: ThemeSetArgs['colors'], hasSecond: boolean): ThemeSetArgs {
+function lookOf(colors: ThemeSetArgs['colors'], main: string, second: string | undefined): ThemeSetArgs {
   return {
     colors,
-    backdrop: {
-      gradient: {
-        angle: 90,
-        stops: [
-          { at: 0, color: 'bg-accent' },
-          { at: 0.16, color: 'surface-0' },
-          { at: 0.84, color: 'surface-0' },
-          { at: 1, color: hasSecond ? 'bg-pro' : 'bg-accent' },
-        ],
-      },
-    },
+    backdrop: { scene: `band-${main}-${second ?? main}`, glass: { ...GLASS } },
   }
 }
 
 /** Pitch green's look: a constant definition, so it builds the same every time. */
 function pitch(): { look: ThemeSetArgs; problems: string[] } {
   const { theme, problems } = makeColors(definition(PITCH_LABEL, PITCH_GREEN, undefined))
-  return { look: lookOf(theme, false), problems }
+  return { look: lookOf(theme, PITCH_GREEN, undefined), problems }
 }
 
 /**
- * The look for a team: its colors (usable ones, else pitch green) and the still wash; the label `Claudinho: <name>`
+ * The look for a team: its colors (usable ones, else pitch green) and the band's scene; the label `Claudinho: <name>`
  * for a team's colors and a name, else `Claudinho: pitch`. `problems` are what `makeColors` says of the colors (a line
  * starting "Desktop won't paint" is one the desktop app would refuse). A build that throws falls back to pitch green.
+ * The band shows the main color on the left and the second on the right whatever they are, a near-gray main color
+ * included (the theme's roles are another matter: `definition`).
  */
 export function buildLook(
   name: string | undefined,
@@ -181,10 +191,44 @@ export function buildLook(
   if (team === undefined) return pitch()
   const label = typeof name === 'string' && name !== '' ? labelOf(name) : PITCH_LABEL
   try {
-    const made = definition(label, team[0], team[1])
-    const { theme, problems } = makeColors(made)
-    return { look: lookOf(theme, Object.hasOwn(made.roles, 'pro')), problems }
+    const { theme, problems } = makeColors(definition(label, team[0], team[1]))
+    return { look: lookOf(theme, team[0], team[1]), problems }
   } catch {
     return pitch()
   }
+}
+
+/**
+ * A band color, `#rrggbb`, from a team color of six hex digits (no `#`), by its HSL: a near-gray (saturation below 0.12)
+ * is the light gray when its lightness is above 0.7, else the mid gray (it has no hue to lift); a color darker than
+ * `DARK_BELOW` is lifted to a lightness of 0.4 at its own hue and saturation, so it reads on a dark page; any other is
+ * the team's own value, lower-cased.
+ */
+export function bandColor(hex: string): string {
+  const [h, s, l] = hslOf(hex)
+  if (s < NEUTRAL_SATURATION) return l > LIGHT_GRAY_ABOVE ? LIGHT_GRAY : MID_GRAY
+  if (l < DARK_BELOW) return hslHex(h, s, LIFTED_LIGHTNESS)
+  return `#${hex.toLowerCase()}`
+}
+
+/**
+ * The band's drawing for a scene name, or none: a name that is exactly `band-<main>-<second>` (six lowercase hex digits
+ * each, nothing before or after) is an SVG of a band across the top, the main color's band color on the left half and
+ * the second's on the right, fading out by a third of the height; anything else (another name, another plugin's shape,
+ * a value that is no string) is none. The drawing is made from the two colors alone: no text of the name is copied into
+ * it, and it holds no script, no link and nothing that loads.
+ */
+export function bandSvg(scene: unknown): string | undefined {
+  if (typeof scene !== 'string' || scene.length !== BAND_SCENE_LENGTH) return undefined
+  const m = BAND_SCENE.exec(scene)
+  if (m === null) return undefined
+  const a = bandColor(m[1] as string)
+  const b = bandColor(m[2] as string)
+  return (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="none"><defs>' +
+    `<linearGradient id="t" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${a}"/><stop offset=".5" stop-color="${a}"/><stop offset=".5" stop-color="${b}"/><stop offset="1" stop-color="${b}"/></linearGradient>` +
+    '<linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".12" stop-color="#fff" stop-opacity=".45"/><stop offset=".32" stop-color="#fff" stop-opacity="0"/></linearGradient>' +
+    '<mask id="m"><rect width="1600" height="1000" fill="url(#f)"/></mask></defs>' +
+    '<rect width="1600" height="1000" fill="url(#t)" mask="url(#m)"/></svg>'
+  )
 }

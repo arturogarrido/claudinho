@@ -129,13 +129,15 @@ sentence under it, or one plain sentence when there is nothing to show.
 ### The team look
 
 With `teamTheme: on`, the Claude desktop and mobile apps take your team's colors: the app's colors in light and dark
-mode, and a still wash at the left and right edges: the main color on the left and, for a team with two colors
-(Pumas' blue and gold, Brazil's green and yellow), the second on the right; a team whose main color is white, black
-or gray is washed in its second color on both edges when it has one, and in that gray when it has none. Your team is
-the one the CLI picks for you: your saved pin, or `CLAUDINHO_TEAM` when it is set. `CLAUDINHO_TEAM` gives a team's
-code, and a code alone says which team only for a World Cup nation: in any other competition a team named that way
-gets pitch green until you unset the variable and use your pinned team. With no team pinned, or a team whose
-colors the plugin does not know, the look is pitch green too. It shows in the desktop and mobile apps on Claude Code
+mode, and a band of color across the top of the app, seen through the app's panels: the main color on its left half
+and, for a team with two colors (Pumas' blue and gold, Brazil's green and yellow), the second on its right; a team with
+one color has it on both halves. A dark color is lifted so it reads on a dark page, and a white, black or gray team
+color is shown as a light or mid gray. Apart from that, the band's colors are the team's own values, and they stay the
+same in light and dark mode, while the app's colors change with the mode. Your team is the one the CLI picks for you:
+your saved pin, or `CLAUDINHO_TEAM` when it is set. `CLAUDINHO_TEAM` gives a team's code, and a code alone says which
+team only for a World Cup nation: in any other competition a team named that way gets pitch green until you unset the
+variable and use your pinned team (`claudinho follow <competition> --team <name>` pins one). With no team pinned, or
+a team whose colors the plugin does not know, the look is pitch green too. It shows in the desktop and mobile apps on Claude Code
 2.1.324 or later, and nowhere else: the terminal and VS Code draw nothing. The look is set from the plugin's readings
 (the band's, or a `/claudinho` you type) while a desktop or mobile app is attached, once per team, and again only when
 your team changes or the plugin reloads (Claude Code drops the look then). With only the mobile app attached the band does not run, so a `/claudinho` you type sets it.
@@ -360,9 +362,10 @@ session.
   other. It reads the text you typed after `/claudinho` for `match`, `theme`, `theme off` and `theme on` alone. It
   runs the CLI as listed above, answers with text (the band's line, or a sentence when there is nothing to show),
   opens the pane for `match`, and sets or clears the team look for the `theme` phrases.
-- **Its other hooks** (a session starting, a window attaching or leaving, a turn starting or ending, the band and the
-  pane drawing, the pane closing) pace the band's runs, hold the celebration while Claude works, and draw what the
-  CLI answered. They read and send nothing beyond what this section lists.
+- **Its other hooks** (a session starting, a window attaching or leaving, a turn starting or ending, the band, the
+  pane and the team look's band of color drawing, the pane closing) pace the band's runs, hold the celebration while
+  Claude works, and draw what the CLI answered and the team look. They read and send nothing beyond what this section
+  lists.
 
 ### The session's theme
 
@@ -371,7 +374,8 @@ desktop or mobile app is attached, and clears it (`$.theme.clear`) when you type
 it set still stands. It keeps whether you turned the look off in the state Claude Code holds for the session, so the
 off holds across a reload. Nothing else is new: the look is built inside the plugin from the colors it ships
 (`hooks/team-colors.ts`) with Claude Code's own color builder (`hooks/make-colors.js`), with no other run of the CLI,
-no file read and no network request. With `teamTheme: off` it calls neither.
+no file read and no network request. The band of color across the top is drawn by the plugin from the two colors the
+look names, as a picture that runs nothing and loads nothing. With `teamTheme: off` it calls neither and draws no band.
 
 ## Data and disclaimer
 

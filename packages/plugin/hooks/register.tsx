@@ -16,7 +16,7 @@ import type {
   ClaudinhoPlay,
   ClaudinhoTally,
 } from '../types'
-import { buildLook, colorsForPick } from './team-look'
+import { bandSvg, buildLook, colorsForPick } from './team-look'
 
 /**
  * The claudinho plugin: the live score or the countdown above the prompt (the band), a toast when a score changes,
@@ -159,7 +159,7 @@ import { buildLook, colorsForPick } from './team-look'
  * (the band's or the command's: a mobile-only session runs no band, so there only a typed `/claudinho` sets it) whose
  * answer is a view, while the person has not turned it off this session and the roster holds the desktop or the
  * mobile app (the two that draw a look), the look of the view's `pick` in its competition (`team-look.ts`: the team's
- * colors for both modes and a still wash at the edges, pitch green for no pin or no colors known) is set once per look
+ * colors for both modes and a scene named for its two colors, pitch green for no pin or no colors known) is set once per look
  * (its key: the team's name and colors, or pitch green for any team with none, so two clubs of one color are two looks
  * and two teams with no colors one): a look already tried is never set again, whatever the set answered (a refusal,
  * `isDrawn: false`, or a build with no theme API: nothing toasts, nothing retries per tick, and the band, the toasts,
@@ -169,6 +169,10 @@ import { buildLook, colorsForPick } from './team-look'
  * stands (a set the engine did not refuse, drawn or not; else the theme may be the person's own); `/claudinho theme
  * on` lifts the off and sets the look of the command's own view. Every `session.start` forgets the module's memory of
  * the look (a reload's engine dropped the look the old module set), so the next reading sets it again, unless it is off.
+ * The look's scene is drawn by the `Backdrop` hook: under `teamTheme: on`, on the desktop or mobile app, for a scene of
+ * this plugin's whose name is a band's (`bandSvg`), one `Svg` of the band across the top (the main color's half on the
+ * left, the second's on the right), made from the two colors in the name alone; anything else is left to what is
+ * beneath (`next`). A new pair of colors is a new scene name, so the app draws the band again.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -286,11 +290,14 @@ const REPLY_LOOK_OFF = 'The team look is off. Turn it on in /config (Team look).
 const REPLY_LOOK_NOT_DRAWN = 'The team look shows in the Claude desktop and mobile apps; nothing draws it in this session.'
 const REPLY_LOOK_CLEARED = 'Team look off for this session. /claudinho theme on sets it again.'
 const REPLY_LOOK_UNREADABLE = 'Team look: pitch green (the team in CLAUDINHO_TEAM could not be read).'
-const REPLY_LOOK_NO_PIN = 'Team look: pitch green (no team pinned).'
+const REPLY_LOOK_NO_PIN = 'Team look: pitch green (no team pinned: claudinho follow <competition> --team <name> pins one).'
 const replyLookTeam = (name: string): string => `Team look: ${name}.`
 const replyLookCode = (code: string): string =>
-  `Team look: pitch green (CLAUDINHO_TEAM gives a code, ${code}, and a code alone does not say which team: unset it to use your pinned team).`
+  `Team look: pitch green (CLAUDINHO_TEAM gives a code, ${code}, and a code alone does not say which team: unset it to use your pinned team, or pin one with claudinho follow <competition> --team <name>).`
 const replyLookPitch = (name: string): string => `Team look: pitch green (no colors known for ${name}).`
+/** The plugin whose scenes the `Backdrop` hook draws (the manifest's name), and the band's description. */
+const PLUGIN_NAME = 'claudinho'
+const BAND_ALT = "A band in your team's colors"
 /** The statuses `match --json` states; a final one ends the re-reads. */
 const STATUSES = ['SCHEDULED', 'LIVE', 'HT', 'FT', 'POSTPONED', 'CANCELLED'] as const
 const FINAL_STATUSES: readonly string[] = ['FT', 'POSTPONED', 'CANCELLED']
@@ -2657,6 +2664,18 @@ export const register: Register = (on, options) => {
         )}
       </Box>
     )
+  })
+
+  on('ui.render', { component: 'Backdrop' }, ($, e, next) => {
+    // The team look's band: under `teamTheme: on`, on the two apps that draw a look, for a scene of ours whose name is
+    // a band's, one Svg made from the two colors the name carries. Anything else (the option off, another surface,
+    // another plugin's scene, a name that is no band's) is left to what is beneath. The surface is compared here, not
+    // through `drawsLook`, so the elements `$.ui.resolve` gives are the two apps' (the ones that hold `Svg`).
+    if (!teamThemeOn || (e.surface !== 'desktop' && e.surface !== 'mobile') || e.props.plugin !== PLUGIN_NAME) return next(e)
+    const source = bandSvg(e.props.scene)
+    if (source === undefined) return next(e)
+    const { Svg } = $.ui.resolve(e)
+    return <Svg source={source} alt={BAND_ALT} />
   })
 
   on('prompt.submit', async ($, e, next) => {
