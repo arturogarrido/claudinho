@@ -1,6 +1,7 @@
 // Team colors for the team look: a main color and, for some, a second one, six hex digits each.
 // Generated from the provider's recorded team lists (Nov 14, 2026), the maintainer's list of national teams and
-// clubs, and hand-written corrections where the provider's kit colors mislead. Plain color values only: no crest, kit or logo.
+// clubs, and hand-written corrections where the provider's kit colors mislead; a color the provider uses as a
+// placeholder is not a team's color, and a team with no other is left out. Plain color values only: no crest, kit or logo.
 
 /** By the provider's team id (`espn:359`). */
 export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> = {
@@ -107,11 +108,10 @@ export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> =
   'espn:2637': ['00267f', 'ffc726'], // Barbados
   'espn:2641': ['d90f19', '171696'], // Belize
   'espn:2643': ['c8102e', '0033a0'], // Bermuda
-  'espn:19314': ['c60000'], // Bonaire
   'espn:2644': ['0033a0', 'c8102e'], // British Virgin Islands
   'espn:2646': ['ff0000', '0033a0'], // Cayman Islands
   'espn:2647': ['002a8f', 'cf142b'], // Cuba
-  'espn:13582': ['32ad42', 'c60000'], // Dominica
+  'espn:13582': ['32ad42'], // Dominica
   'espn:2649': ['002d62', 'ce1127'], // Dominican Republic
   'espn:2650': ['0f47af', 'ffffff'], // El Salvador
   'espn:10532': ['d20300', '0033a0'], // French Guiana
@@ -123,12 +123,11 @@ export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> =
   'espn:2728': ['0537e4'], // Martinique
   'espn:2655': ['012169', 'c8102e'], // Montserrat
   'espn:2658': ['0067c6', 'ffffff'], // Nicaragua
-  'espn:11766': ['0537e4', 'c60000'], // Puerto Rico
-  'espn:18243': ['c60000'], // Sint Maarten
+  'espn:11766': ['0537e4'], // Puerto Rico
   'espn:2662': ['228b22'], // St. Kitts and Nevis
   'espn:2661': ['0077c8', 'ffd100'], // St. Lucia
   'espn:10596': ['0033a0'], // St. Martin
-  'espn:13584': ['32ad42', 'c60000'], // St. Vincent and the Grenadines
+  'espn:13584': ['32ad42'], // St. Vincent and the Grenadines
   'espn:2664': ['377e3f', 'b40a2d'], // Suriname
   'espn:2627': ['da1a35', '000000'], // Trinidad and Tobago
   'espn:2665': ['000080', 'ffd700'], // Turks and Caicos Islands
@@ -254,9 +253,7 @@ export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> =
   'espn:2250': ['008057', 'ffffff'], // Sporting CP
   'espn:510': ['000080'], // Viking FK
   // uru.1
-  'espn:21403': ['c60000'], // Albion FC
   'espn:9999': ['e30613', '006633'], // Boston River
-  'espn:131688': ['c60000'], // Central Español Fútbol Club
   'espn:5490': ['87ceeb', 'ffffff'], // Cerro
   'espn:9902': ['003399', 'ffffff'], // Cerro Largo
   'espn:4817': ['ffffff', '000000'], // Danubio
@@ -272,9 +269,9 @@ export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> =
   'espn:9903': ['006847', 'ffffff'], // Racing (Montevideo)
   // conmebol.libertadores
   'espn:19425': ['ff0000'], // Always Ready
-  'espn:3': ['c60000', '0060f0'], // Argentinos Juniors
+  'espn:3': ['0060f0'], // Argentinos Juniors
   'espn:4815': ['e30613', 'ffffff'], // Atlético Junior
-  'espn:9967': ['c60000', '0093ec'], // Bahia
+  'espn:9967': ['0093ec'], // Bahia
   'espn:2686': ['ffdd00', '000000'], // Barcelona SC
   'espn:5': ['003b7a', 'f3b229'], // Boca Juniors
   'espn:2681': ['5eb6e4', 'ffffff'], // Bolívar
@@ -284,14 +281,12 @@ export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> =
   'espn:8186': ['fbe805'], // Coquimbo Unido
   'espn:874': ['ffffff', '000000'], // Corinthians
   'espn:2022': ['003399', 'ffffff'], // Cruzeiro
-  'espn:11995': ['c60000'], // Cusco FC
   'espn:5489': ['5b0528'], // Deportes Tolima
-  'espn:17090': ['fc4401', 'c60000'], // Deportivo La Guaira
+  'espn:17090': ['fc4401'], // Deportivo La Guaira
   'espn:4818': ['f8dd00'], // Deportivo Táchira
   'espn:8': ['e30613', 'ffffff'], // Estudiantes de La Plata
   'espn:819': ['c52613', '000000'], // Flamengo
   'espn:3445': ['870a28', '00613c'], // Fluminense
-  'espn:7385': ['c60000'], // Guaraní
   'espn:4134': ['023396'], // Huachipato
   'espn:2690': ['d70000'], // Independiente Medellín
   'espn:9744': ['000061'], // Independiente Rivadavia
@@ -301,20 +296,15 @@ export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> =
   'espn:2670': ['000000', 'ffffff'], // Libertad
   'espn:4816': ['ffffff', '002b5c'], // Liga de Quito
   'espn:9169': ['fedc00', '417505'], // Mirassol
-  'espn:10311': ['c60000'], // Nacional Potosí
   'espn:6072': ['517ab7'], // O'Higgins
   'espn:2029': ['006437', 'ffffff'], // Palmeiras
-  'espn:17': ['ffff00', '792dcd'], // Rosario Central
+  'espn:17': ['ffff00'], // Rosario Central
   'espn:2673': ['5eb6e4', 'ffffff'], // Sporting Cristal
-  'espn:10094': ['c60000'], // UCV FC
   'espn:885': ['0a4f8d'], // Universidad Católica
   'espn:2685': ['f5f0dc', '800000'], // Universitario
   // concacaf.champions
   'espn:2057': ['e30613', '000000'], // Alajuelense
-  'espn:131584': ['c60000'], // Atlético Ottawa
-  'espn:131585': ['c60000'], // Defense Force FC
   'espn:18267': ['f05323', '263b80'], // FC Cincinnati
-  'espn:20026': ['c60000'], // Forge FC
   'espn:20232': ['f7b5cd', '231f20'], // Inter Miami CF
   'espn:187': ['ffffff', '00245d'], // LA Galaxy
   'espn:18966': ['000000', 'c39e6d'], // LAFC
@@ -323,20 +313,17 @@ export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> =
   'espn:10739': ['e0d0a6'], // Philadelphia Union
   'espn:22529': ['f89e1a'], // San Diego FC
   'espn:9726': ['5d9741', '005595'], // Seattle Sounders FC
-  'espn:21522': ['c60000'], // Sporting San Miguelito
-  'espn:131586': ['c60000'], // Universidad O&M
-  'espn:131583': ['c60000'], // Vancouver FC
   'espn:9727': ['00245e', '9dc2ea'], // Vancouver Whitecaps
   // fifa.cwc
   'espn:10207': ['da121a', 'ffffff'], // Al Ahly
   'espn:7128': ['4b286d', 'ffffff'], // Al Ain
   'espn:929': ['0033a0', 'ffffff'], // Al Hilal
   'espn:7279': ['002b5c', 'ffffff'], // Auckland City
-  'espn:1929': ['ca281d'], // Benfica
+  'espn:1929': ['e30613', 'ffffff'], // Benfica
   'espn:8377': ['e30613', 'ffcc00'], // Esperance Sportive de Tunis
   'espn:7084': ['ffcc00', '006847'], // Mamelodi Sundowns
-  'espn:2790': ['d82c3a', '052a87'], // RB Salzburg
-  'espn:16': ['c60000', '792dcd'], // River Plate
+  'espn:2790': ['ffffff', 'dd0741'], // RB Salzburg
+  'espn:16': ['ffffff', 'e21a22'], // River Plate
   'espn:7120': ['004b93', 'fdb913'], // Ulsan HD
   'espn:3385': ['e60012', 'ffffff'], // Urawa Red Diamonds
   'espn:8625': ['e30613', 'ffffff'], // Wydad AC
