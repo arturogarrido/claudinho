@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { NATION_IDS, TEAM_COLORS } from './team-colors'
-import { buildLook, colorsForPick } from './team-look'
+import { bandColor, bandSvg, buildLook, colorsForPick } from './team-look'
 import { FIRST_RUN, START, view, world } from './world'
 
 /**
@@ -23,14 +23,14 @@ const WORLD_CUP = { competition: { slug: 'fifa.world', alias: 'world-cup', name:
 const SAID_OFF = 'The team look is off. Turn it on in /config (Team look).'
 const SAID_NOT_DRAWN = 'The team look shows in the Claude desktop and mobile apps; nothing draws it in this session.'
 const SAID_CLEARED = 'Team look off for this session. /claudinho theme on sets it again.'
-const SAID_PITCH_CODE = (code: string) => `Team look: pitch green (CLAUDINHO_TEAM gives a code, ${code}, and a code alone does not say which team: unset it to use your pinned team).`
+const SAID_PITCH_CODE = (code: string) => `Team look: pitch green (CLAUDINHO_TEAM gives a code, ${code}, and a code alone does not say which team: unset it to use your pinned team, or pin one with claudinho follow <competition> --team <name>).`
 const SAID_PITCH_UNREADABLE = 'Team look: pitch green (the team in CLAUDINHO_TEAM could not be read).'
 /** A reply made from a view carries the view's attribution and disclaimer, each a paragraph, as every `/claudinho` reply does. */
 const withD = (s: string) => `${s}\n\nLive data: ESPN\n\nNot affiliated with FIFA, any confederation, league or club, or Anthropic.`
 const ATLAS = { pick: { id: 'espn:216', code: 'ATS', name: 'Atlas' } }
 const NECAXA = { pick: { id: 'espn:229', code: 'NCX', name: 'Necaxa' } }
 const saidTeam = (name: string) => `Team look: ${name}.`
-const SAID_PITCH_NO_PIN = 'Team look: pitch green (no team pinned).'
+const SAID_PITCH_NO_PIN = 'Team look: pitch green (no team pinned: claudinho follow <competition> --team <name> pins one).'
 const saidPitchFor = (name: string) => `Team look: pitch green (no colors known for ${name}).`
 
 type On = Parameters<Parameters<typeof test>[1]>[1]
@@ -416,6 +416,43 @@ describe('/claudinho theme: what the first round of review found', () => {
   })
 })
 
+describe('the band behind the conversation', () => {
+  const backdrop = ($: Parameters<Parameters<typeof test>[1]>[0], scene: string, plugin = 'claudinho', surface: 'desktop' | 'mobile' = 'desktop') =>
+    $.ui.mount({ plugin, surface, component: 'Backdrop', props: { scene, plugin, glass: { blur: 28, opacity: 0.5 } }, viewport: { columns: 100, rows: 30 } } as Parameters<typeof $.ui.mount>[0])
+
+  test('our scene is drawn as one Svg, its source the band of the colors the scene names, with a description', ON, async ($, on) => {
+    themes(on)
+    await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    for (const surface of ['desktop', 'mobile'] as const) {
+      const svgs = await (await backdrop($, 'band-002b5c-c2a25a', 'claudinho', surface)).findAll({ type: 'Svg' })
+      expect(svgs).toHaveLength(1)
+      expect(svgs[0]?.props.source).toBe(bandSvg('band-002b5c-c2a25a'))
+      expect(String(svgs[0]?.props.alt).trim()).not.toBe('')
+    }
+  })
+
+  test('a new team is a new scene name, so the app draws the band again (the same name would keep the old drawing)', ON, async ($, on) => {
+    const { sets } = themes(on)
+    const { clock } = await world($, on, [view(LINE, ARSENAL), view(LINE, LIVERPOOL)], DESKTOP)
+    await clock.advance(300_000)
+    const scenes = sets.map((s) => (s as { backdrop: { scene: string } }).backdrop.scene)
+    expect(scenes).toEqual(['band-e20520-003399', 'band-d11317-d11317'])
+  })
+
+  test('another plugin\'s scene, and a scene of ours that names no band, are left to what is beneath', ON, async ($, on) => {
+    themes(on)
+    await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    expect(await (await backdrop($, 'band-002b5c-c2a25a', 'someone-else')).findAll({ type: 'Svg' })).toHaveLength(0)
+    expect(await (await backdrop($, 'lagoon')).findAll({ type: 'Svg' })).toHaveLength(0)
+  })
+
+  test('the option off: our hook draws nothing, even for a band\'s name', async ($, on) => {
+    themes(on)
+    await world($, on, [view(LINE, ARSENAL)], DESKTOP)
+    expect(await (await backdrop($, 'band-002b5c-c2a25a')).findAll({ type: 'Svg' })).toHaveLength(0)
+  })
+})
+
 describe('the table and the look, as data', () => {
   const HEX = /^[0-9a-f]{6}$/
   /** The colors a look paints with, apart from its label. */
@@ -450,37 +487,55 @@ describe('the table and the look, as data', () => {
     expect(refused).toEqual([])
   })
 
-  test('a look is colors and a still gradient whose stops are palette names (it follows light and dark): no scene, no image, no raw color', async () => {
-    const { look } = buildLook('Arsenal', TEAM_COLORS['espn:359'])
+  test('a look is colors and a scene: a band named for the team\'s two colors, frosted glass over it; no image, no still ground', async () => {
+    const { look } = buildLook('Pumas UNAM', TEAM_COLORS['espn:233'])
     expect(Object.keys(look).sort()).toEqual(['backdrop', 'colors'])
-    const backdrop = look.backdrop as { gradient?: { stops?: unknown[] } }
-    expect(Object.keys(backdrop)).toEqual(['gradient'])
-    const stops = (backdrop.gradient?.stops ?? []).map((s) => (typeof s === 'string' ? s : (s as { color: string }).color))
-    expect(stops.length).toBeGreaterThanOrEqual(2)
-    expect(stops.filter((c) => !/^(surface-[0-3]|bg-accent|bg-pro)$/.test(c))).toEqual([])
-    expect(stops).toContain('bg-accent')
-    expect(stops).toContain('surface-0')
+    expect(look.backdrop).toEqual({ scene: 'band-002b5c-c2a25a', glass: { blur: 28, opacity: 0.5 } })
+    // One color: it is both halves. No colors known: pitch green.
+    expect((buildLook('Liverpool', TEAM_COLORS['espn:364']).look.backdrop as { scene: string }).scene).toBe('band-d11317-d11317')
+    expect((buildLook(undefined, undefined).look.backdrop as { scene: string }).scene).toBe('band-1f7a3d-1f7a3d')
+    // A near-gray main color keeps its place on the left: the band shows the team's two colors as they are.
+    expect((buildLook('Newcastle United', TEAM_COLORS['espn:361']).look.backdrop as { scene: string }).scene).toBe('band-2d2d2d-41b6e6')
   })
 
-  /** The wash's two edges: the first and the last stop's palette name. */
-  const edges = (id: string) => {
-    const backdrop = buildLook('X', TEAM_COLORS[id]).look.backdrop as { gradient: { stops: Array<{ color: string }> } }
-    return [backdrop.gradient.stops[0]?.color, backdrop.gradient.stops.at(-1)?.color]
-  }
-
-  test('two colors: the main one washes the left edge and the second the right (Pumas blue and gold, Brazil green and yellow, Argentina blue and white, Barcelona blue and red)', async () => {
-    expect(TEAM_COLORS['espn:233']).toEqual(['002b5c', 'd4a017'])
+  test('the pairs Arturo named: Pumas blue and gold, Brazil green and yellow, Argentina blue and white, Barcelona blue and red', async () => {
+    expect(TEAM_COLORS['espn:233']).toEqual(['002b5c', 'c2a25a'])
     expect(TEAM_COLORS['espn:205']).toEqual(['009c3b', 'fedf00'])
     expect(TEAM_COLORS['espn:202']).toEqual(['74acdf', 'ffffff'])
     expect(TEAM_COLORS['espn:83']).toEqual(['004d98', 'a50044'])
-    for (const id of ['espn:233', 'espn:205', 'espn:202', 'espn:83']) expect(edges(id), id).toEqual(['bg-accent', 'bg-pro'])
   })
 
-  test('one color: both edges in it; a near-gray main color takes the second as its one color (Newcastle)', async () => {
-    expect(TEAM_COLORS['espn:364']).toHaveLength(1)
-    expect(edges('espn:364')).toEqual(['bg-accent', 'bg-accent'])
-    expect(TEAM_COLORS['espn:361']).toEqual(['2d2d2d', '41b6e6'])
-    expect(edges('espn:361')).toEqual(['bg-accent', 'bg-accent'])
+  test('a band color is the team\'s own, except a dark one, lifted to read on a dark page at its own hue, and a gray, which has no hue to lift', async () => {
+    expect(bandColor('c2a25a')).toBe('#c2a25a')
+    expect(bandColor('fedf00')).toBe('#fedf00')
+    expect(bandColor('a50044')).toBe('#a50044')
+    expect(bandColor('ffffff')).toBe('#f2f4f7')
+    expect(bandColor('2d2d2d')).toBe('#8a8f98')
+    const navy = bandColor('002b5c')
+    expect(navy).toMatch(/^#[0-9a-f]{6}$/)
+    expect(navy).not.toBe('#002b5c')
+    const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(navy.slice(i, i + 2), 16)) as [number, number, number]
+    expect(b).toBeGreaterThan(r)
+    expect(b).toBeGreaterThan(g)
+    expect(Math.max(r, g, b) + Math.min(r, g, b)).toBeGreaterThanOrEqual(250)
+  })
+
+  test('the band\'s drawing is made from the scene\'s name alone: left half the main color, right half the second, nothing that loads or runs', async () => {
+    const svg = bandSvg('band-002b5c-c2a25a') as string
+    expect(svg.startsWith('<svg ')).toBe(true)
+    expect(svg).toContain('viewBox=')
+    expect(svg).toContain('preserveAspectRatio="none"')
+    expect(svg.length).toBeLessThan(4000)
+    expect(svg.indexOf(bandColor('002b5c'))).toBeGreaterThan(-1)
+    expect(svg.indexOf('#c2a25a')).toBeGreaterThan(svg.indexOf(bandColor('002b5c')))
+    expect(svg).not.toMatch(/<script|href|url\(\s*['"]?(?!#)|@import|<image|<foreignObject|javascript:/i)
+    expect(bandSvg('band-d11317-d11317')).not.toBe(svg)
+  })
+
+  test('a scene name that is not a band\'s is no drawing: another shape, a color that is not six lowercase hex digits, a value that is no string', async () => {
+    for (const scene of ['band', 'band-002b5c', 'band-002b5c-c2a25a-ffffff', 'band-002B5C-c2a25a', 'band-zzzzzz-c2a25a', 'top-002b5c-c2a25a', ' band-002b5c-c2a25a', 'band-002b5c-c2a25a\n', '', null, undefined, 7, {}, ['band-002b5c-c2a25a']]) {
+      expect(bandSvg(scene), JSON.stringify(scene)).toBeUndefined()
+    }
   })
 
   test('two teams of different colors get different colors; the name does not change the colors', async () => {

@@ -148,7 +148,7 @@ export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> =
   'espn:229': ['ef0107'], // Necaxa
   'espn:234': ['001c58', '02b0d0'], // Pachuca
   'espn:231': ['0032a8'], // Puebla
-  'espn:233': ['002b5c', 'd4a017'], // Pumas UNAM
+  'espn:233': ['002b5c', 'c2a25a'], // Pumas UNAM
   'espn:222': ['1a4fa0'], // Querétaro
   'espn:225': ['15926d'], // Santos
   'espn:232': ['fdb913', '005daa'], // Tigres UANL
