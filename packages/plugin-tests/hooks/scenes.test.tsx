@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { TEAM_COLORS } from './team-colors'
-import { buildLook } from './team-look'
+import { FLAGS_APPROVED, NO_FLAG } from './flag-colors.approved'
+import { FLAG_COLORS, TEAM_COLORS } from './team-colors'
+import { buildLook, flagForPick } from './team-look'
 import { boardCode, pitchSvg, pixelSvg, scarfName } from './team-scenes'
 import { START, liveRecord, momentView, view, world } from './world'
 
@@ -397,9 +398,9 @@ describe('the pixel corner: its state follows the pinned team\'s match', () => {
     expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
   })
 
-  test('the same state on later views: never set again; the score changing for the other side: nothing', PIXEL, async ($, on) => {
+  test('the same state on later views: never set again', PIXEL, async ($, on) => {
     const { sets } = engine(on)
-    const { clock, command } = await world($, on, [live([0, 0]), live([0, 0]), live([1, 0])], DESKTOP)
+    const { clock, command } = await world($, on, [live([0, 0]), live([0, 0]), live([0, 0])], DESKTOP)
     await clock.advance(15_000)
     await command()
     await clock.advance(15_000)
@@ -972,5 +973,343 @@ describe('sets the engine refuses, names, the off and a reload', () => {
     engine(on)
     const { command } = await world($, on, [view(LINE, ARSENAL)], DESKTOP)
     expect((await command('theme')).text.startsWith('Team look: Arsenal.')).toBe(true)
+  })
+})
+
+// ── 0.10.0: the flag scarf, and a goal by either side ───────────────────────────────────────────────────────────
+
+/**
+ * Plugin 0.10.0. The standing fan's scarf is the pick's flag (two or three plain stripes, in the flag's order) when
+ * the pick is a national team with a row in `FLAG_COLORS`; a club, and a nation with no row, keep the kit's scarf.
+ * A goal by the pick is drawn with five fireworks; a goal by the other side of the pick's match is drawn too: the ball
+ * flies, the board blinks, two fireworks burst in the other team's colors, and the fans stand still.
+ */
+const IT_FLAG = ['009246', 'ffffff', 'ce2b37'] as const
+const ITA = { main: '0066cc', second: 'ffffff' } as const
+const BEL_SIDE = { code: 'BEL', name: 'Belgium', id: 'espn:459' } as const
+const ITA_SIDE = { code: 'ITA', name: 'Italy', id: 'espn:162' } as const
+const BEL_OTHER = { by: 'other', otherMain: 'e30613', otherSecond: '000000' } as const
+const ITALY = { pick: { ...ITA_SIDE } }
+const NATIONS = { home: 'BEL', away: 'ITA', scarf: IT_FLAG } as const
+/** Belgium v Italy live at `score`, the pick Italy (away), in a competition of nations. */
+const nations = (score: [number, number], over: Record<string, unknown> = {}, viewOver: Record<string, unknown> = {}) =>
+  live(score, { home: { ...BEL_SIDE }, away: { ...ITA_SIDE }, names: { home: 'Belgium', away: 'Italy' }, ...over }, { ...ITALY, competition: { slug: 'uefa.nations', alias: 'nations-league', name: 'UEFA Nations League', chosenBy: 'saved' }, ...viewOver })
+const fnv = (s: string) => {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h.toString(16)
+}
+const crowdOf = (svg: string) => (/<g class="px-crowd">(.*)<\/g>\n/s.exec(svg) ?? [])[1] ?? ''
+/** The fireworks of a drawing: one entry per burst, the fills its rings carry. */
+const bursts = (svg: string) => [...svg.matchAll(/<g class="px-fx"[^>]*>(.*?)<\/g>/gs)].map((m) => [...new Set([...(m[1] as string).matchAll(/fill="(#[0-9a-f]{6})"/g)].map((f) => f[1] as string))])
+const cssOf = (svg: string) => (/<style>([^<]*)<\/style>/.exec(svg) ?? [])[1] as string
+const animates = (css: string, cls: string) => new RegExp(`\\.${cls}(?![a-z0-9-])[^{}]*\\{[^{}]*animation\\s*:(?!none)`).test(css.slice(0, css.indexOf('@media')))
+
+describe('the flag colors: a table pinned whole', () => {
+  test('FLAG_COLORS equals the approved table, row for row', async () => {
+    expect(JSON.parse(JSON.stringify(FLAG_COLORS))).toEqual(JSON.parse(JSON.stringify(FLAGS_APPROVED)))
+    expect(Object.keys(FLAG_COLORS).length).toBe(118)
+  })
+
+  test('every row is a national team with a color row, two or three colors of six lower-case hex digits', async () => {
+    for (const [id, flag] of Object.entries(FLAG_COLORS)) {
+      expect(Object.hasOwn(TEAM_COLORS, id), id).toBe(true)
+      expect(flag.length === 2 || flag.length === 3, id).toBe(true)
+      for (const c of flag) expect(/^[0-9a-f]{6}$/.test(c as string), `${id} ${c}`).toBe(true)
+    }
+  })
+
+  test('no club has a flag, and the nations written down as flagless have none (Northern Ireland among them)', async () => {
+    for (const id of ['espn:359', 'espn:364', 'espn:233', 'espn:86', 'espn:83']) expect(Object.hasOwn(FLAG_COLORS, id), id).toBe(false)
+    expect(Object.keys(NO_FLAG)).toContain('espn:586')
+    for (const id of Object.keys(NO_FLAG)) {
+      expect(Object.hasOwn(TEAM_COLORS, id), id).toBe(true)
+      expect(Object.hasOwn(FLAG_COLORS, id), id).toBe(false)
+    }
+  })
+
+  test('flagForPick: an id decides; a pick with no id is a World Cup nation by its code; anything else has none', async () => {
+    expect(flagForPick({ id: 'espn:162', code: 'ITA' }, 'uefa.nations')).toEqual([...IT_FLAG])
+    expect(flagForPick({ id: 'espn:162', code: 'ITA' }, 'eng.1')).toEqual([...IT_FLAG])
+    expect(flagForPick({ code: 'BEL', name: 'Belgium' }, 'fifa.world')).toEqual(['000000', 'fdda24', 'ef3340'])
+    expect(flagForPick({ code: 'BEL', name: 'Belgium' }, 'uefa.nations')).toBeUndefined()
+    // An id that is present decides, known or not: a club coded like a nation gets no flag.
+    expect(flagForPick({ id: 'espn:99999999', code: 'BEL' }, 'fifa.world')).toBeUndefined()
+    expect(flagForPick({ id: 'espn:359', code: 'ARS' }, 'eng.1')).toBeUndefined()
+    expect(flagForPick({ id: 'espn:586', code: 'NIR' }, 'uefa.nations')).toBeUndefined()
+    for (const v of [null, undefined, 'espn:162', 7, [], { id: 162 }, { id: 'constructor' }, { id: '__proto__' }]) expect(flagForPick(v, 'fifa.world')).toBeUndefined()
+  })
+})
+
+describe('the pixel corner: the scarf in the flag\'s colors', () => {
+  const at = (state: 'live' | 'idle' | 'goal', scarf?: unknown) => pixelSvg({ ...ITA, state, home: 'BEL', away: 'ITA', stamp: 1, ...(scarf === undefined ? {} : { scarf: scarf as string[] }) })
+
+  test('with no scarf, live and idle are 0.9.0\'s drawings, byte for byte', async () => {
+    expect(fnv(pixelSvg({ ...ARS, state: 'live', home: 'ARS', away: 'LEE' }))).toBe('9d70849b')
+    expect(fnv(pixelSvg({ ...ARS, state: 'idle', home: 'ARS', away: 'LEE' }))).toBe('c567e19c')
+  })
+
+  test('three colors: three stripes in the crowd, in the flag\'s order, and nowhere else', async () => {
+    const crowd = crowdOf(at('live', IT_FLAG))
+    const g = crowd.indexOf('fill="#009246"')
+    const r = crowd.indexOf('fill="#ce2b37"')
+    expect(g).toBeGreaterThan(-1)
+    expect(r).toBeGreaterThan(g)
+    // Each stripe is drawn once: one fan holds the scarf.
+    expect(crowd.split('fill="#009246"').length - 1).toBe(1)
+    expect(crowd.split('fill="#ce2b37"').length - 1).toBe(1)
+    expect(at('live', IT_FLAG).replace(crowd, '')).not.toMatch(/#009246|#ce2b37/)
+    // The shirts stay the team's.
+    expect(crowd).toContain('fill="#0066cc"')
+  })
+
+  test('two colors: two stripes, in order', async () => {
+    const crowd = crowdOf(at('live', ['0057b7', 'ffd700']))
+    expect(crowd.indexOf('fill="#0057b7"')).toBeGreaterThan(-1)
+    expect(crowd.indexOf('fill="#ffd700"')).toBeGreaterThan(crowd.indexOf('fill="#0057b7"'))
+  })
+
+  test('upper-case hex is lower-cased; the stripes are plain rects', async () => {
+    expect(at('live', ['009246', 'FFFFFF', 'CE2B37'])).toBe(at('live', IT_FLAG))
+    expect(wellFormed(at('live', IT_FLAG))).toBeNull()
+    expect(refused(at('live', IT_FLAG))).toEqual([])
+    expect(wellFormed(at('goal', IT_FLAG))).toBeNull()
+    expect(refused(at('goal', IT_FLAG))).toEqual([])
+  })
+
+  test('a scarf that is not two or three colors of six hex digits is no scarf: the kit\'s scarf, never the value given', async () => {
+    const bad: unknown[] = [[], ['009246'], ['009246', 'ffffff', 'ce2b37', '000000'], ['009246', 'red'], ['009246', '"/><script>'], ['009246', 7], 'ce2b37', null, { 0: '009246', 1: 'ffffff', length: 2 }, ['#009246', '#ffffff']]
+    for (const v of bad) expect(at('live', v), JSON.stringify(v)).toBe(at('live'))
+  })
+
+  test('the scarf is drawn at a goal too, and never in an empty stadium', async () => {
+    expect(crowdOf(at('goal', IT_FLAG))).toContain('fill="#009246"')
+    expect(at('idle', IT_FLAG)).toBe(at('idle'))
+  })
+})
+
+describe('the pixel corner: a goal by either side, as a drawing', () => {
+  const own = pixelSvg({ ...ITA, state: 'goal', home: 'BEL', away: 'ITA', stamp: 1 })
+  const other = (over: Record<string, unknown> = BEL_OTHER) => pixelSvg({ ...ITA, state: 'goal', home: 'BEL', away: 'ITA', stamp: 1, ...over } as Parameters<typeof pixelSvg>[0])
+
+  test('the pick\'s goal: five fireworks, in the pick\'s colors and the spark', async () => {
+    expect(bursts(own)).toHaveLength(5)
+    for (const fills of bursts(own)) for (const f of fills) expect(['#0066cc', '#ffffff', '#ffe08a']).toContain(f)
+    expect(bursts(own).flat()).toContain('#0066cc')
+  })
+
+  test('the other side\'s goal: two fireworks, both of its colors in them and none of the pick\'s', async () => {
+    expect(bursts(other())).toHaveLength(2)
+    const fills = bursts(other()).flat()
+    expect(fills).toContain('#e30613')
+    expect(fills).toContain('#000000')
+    for (const f of fills) expect(['#e30613', '#000000']).toContain(f)
+  })
+
+  test('the other side with one color: that color alone; with none known, or a value that is no color: the spark and white', async () => {
+    expect([...new Set(bursts(other({ by: 'other', otherMain: 'e30613' })).flat())]).toEqual(['#e30613'])
+    for (const over of [{ by: 'other' }, { by: 'other', otherMain: 'red' }, { by: 'other', otherMain: '"/><script>', otherSecond: 7 }, { by: 'other', otherSecond: 'e30613' }]) {
+      const svg = other(over)
+      expect(bursts(svg)).toHaveLength(2)
+      expect([...new Set(bursts(svg).flat())].sort(), JSON.stringify(over)).toEqual(['#ffe08a', '#ffffff'])
+      expect(wellFormed(svg)).toBeNull()
+      expect(refused(svg)).toEqual([])
+    }
+  })
+
+  test('the other side\'s goal moves the ball, the board and the fireworks, and no fan', async () => {
+    const css = cssOf(other())
+    for (const c of ['px-fly', 'px-led', 'px-r1', 'px-r2', 'px-r3', 'px-r4']) expect(animates(css, c), c).toBe(true)
+    for (const c of ['px-hop', 'px-hop2', 'px-arm']) expect(animates(css, c), c).toBe(false)
+    // The pick's goal moves them all.
+    for (const c of ['px-fly', 'px-led', 'px-r1', 'px-hop', 'px-hop2', 'px-arm']) expect(animates(cssOf(own), c), c).toBe(true)
+    // The crowd is there, standing.
+    expect(other()).toContain('class="px-crowd"')
+    expect(other()).toContain('class="px-ball"')
+  })
+
+  test('Reduce motion covers the other side\'s goal too: every class it animates is turned off', async () => {
+    const css = cssOf(other())
+    const cut = css.indexOf('@media (prefers-reduced-motion:reduce){')
+    expect(cut).toBeGreaterThan(0)
+    const off = (/\{([^{}]*)\{animation:none!important\}/.exec(css.slice(cut)) ?? [])[1] as string
+    for (const c of ['px-fly', 'px-led', 'px-r1', 'px-r2', 'px-r3', 'px-r4']) expect(new RegExp(`\\.${c}(?![a-z0-9-])`).test(off), c).toBe(true)
+  })
+
+  test('the two goals are two drawings, each with its stamp; `by` is read at a goal alone', async () => {
+    expect(other()).not.toBe(own)
+    expect(stampOf(other())).toBe(1)
+    expect(wellFormed(other())).toBeNull()
+    expect(refused(other())).toEqual([])
+    expect(wellFormed(own)).toBeNull()
+    expect(refused(own)).toEqual([])
+    expect(pixelSvg({ ...ITA, state: 'live', home: 'BEL', away: 'ITA', ...BEL_OTHER } as Parameters<typeof pixelSvg>[0])).toBe(pixelSvg({ ...ITA, state: 'live', home: 'BEL', away: 'ITA' }))
+    // Anything but 'other' is the pick's goal.
+    for (const by of ['pick', 'OTHER', '', 1, null]) expect(other({ by, otherMain: 'e30613' })).toBe(own)
+  })
+})
+
+describe('the pixel corner: the flag scarf and both sides\' goals, as the hooks set them', () => {
+  test('a national team with a flag row: the live stadium carries its scarf', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    await world($, on, [nations([0, 0])], DESKTOP)
+    expect(sets).toHaveLength(1)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'live' }))
+  })
+
+  test('a club keeps the kit\'s scarf (Liverpool: no flag row)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    await world($, on, [live([0, 0])], DESKTOP)
+    expect(crowdOf((await drawn($, sceneOf(sets[0]))) as string)).toBe(crowdOf(pixelSvg({ ...LIV, state: 'live', home: 'LAS', away: 'LIV' })))
+  })
+
+  test('a nation written down as flagless keeps the kit\'s scarf (Northern Ireland)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const NIR = { code: 'NIR', name: 'Northern Ireland', id: 'espn:586' }
+    await world($, on, [nations([0, 0], { away: NIR }, { pick: NIR })], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ main: '006847', second: 'ffffff', state: 'live', home: 'BEL', away: 'NIR' }))
+  })
+
+  test('the pick scores: its goal with its scarf and five fireworks, then live', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [nations([0, 0]), nations([0, 1])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    const goal = (await drawn($, sceneOf(sets[1]))) as string
+    expect(goal).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'goal', stamp: stampOf(goal) }))
+    expect(bursts(goal)).toHaveLength(5)
+  })
+
+  test('the other side scores: one goal set, its two fireworks in its colors, then live again at the next reading', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [nations([0, 0]), nations([1, 0])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    const goal = (await drawn($, sceneOf(sets[1]))) as string
+    expect(stampOf(goal)).toBeGreaterThan(0)
+    expect(goal).toBe(pixelSvg({ ...ITA, ...NATIONS, ...BEL_OTHER, state: 'goal', stamp: stampOf(goal) } as Parameters<typeof pixelSvg>[0]))
+    expect(bursts(goal).flat()).toContain('#e30613')
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(3)
+    expect(await drawn($, sceneOf(sets[2]))).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'live' }))
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(3)
+  })
+
+  test('the other side has no color row (LASK): its goal in the spark and white', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([0, 0]), live([1, 0])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    const goal = (await drawn($, sceneOf(sets[1]))) as string
+    expect(goal).toBe(pixelSvg({ ...LIV, state: 'goal', home: 'LAS', away: 'LIV', stamp: stampOf(goal), by: 'other' } as Parameters<typeof pixelSvg>[0]))
+    expect([...new Set(bursts(goal).flat())].sort()).toEqual(['#ffe08a', '#ffffff'])
+  })
+
+  test('the pick at home: the away side\'s goal is the other side\'s', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const home = (score: [number, number]) => nations(score, { home: { ...ITA_SIDE }, away: { ...BEL_SIDE }, pinnedSide: 'home' })
+    const { clock } = await world($, on, [home([0, 0]), home([0, 1])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    const goal = (await drawn($, sceneOf(sets[1]))) as string
+    expect(goal).toBe(pixelSvg({ ...ITA, ...BEL_OTHER, state: 'goal', home: 'ITA', away: 'BEL', scarf: IT_FLAG, stamp: stampOf(goal) } as Parameters<typeof pixelSvg>[0]))
+  })
+
+  test('both sides score between two readings: the pick\'s goal', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [nations([0, 0]), nations([1, 1])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    const goal = (await drawn($, sceneOf(sets[1]))) as string
+    expect(goal).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'goal', stamp: stampOf(goal) }))
+  })
+
+  test('the other side\'s tally rises while the pick\'s falls (a correction, not a goal): no goal set', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [nations([0, 1]), nations([1, 0])], DESKTOP)
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('celebrate off: no goal moment for the other side either', { options: { ...PIXEL.options, celebrate: 'off' } }, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [nations([0, 0]), nations([1, 0])], DESKTOP)
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('a side that carries the pick\'s code under another id: neither side is the pick, so no goal of either kind', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const twin = (score: [number, number]) => nations(score, { away: { code: 'ITA', name: 'Italia Club', id: 'espn:99999999' } })
+    const { clock } = await world($, on, [twin([0, 0]), twin([1, 0]), twin([1, 1])], DESKTOP)
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    for (const s of sets) expect(stampOf((await drawn($, sceneOf(s))) as string) > 0).toBe(false)
+  })
+
+  test('another match\'s goal is nobody\'s here, whichever side scores', { options: { ...PIXEL.options, toasts: 'all' } }, async ($, on) => {
+    const { sets } = engine(on)
+    const elsewhere = (score: [number, number]) => liveRecord(score, { id: '999', picked: false, pinned: false, pinnedSide: undefined })
+    const both = (score: [number, number]) => momentView([liveRecord([0, 0]), elsewhere(score)])
+    const { clock } = await world($, on, [both([0, 0]), both([1, 0]), both([1, 1])], DESKTOP)
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('the other side\'s goal, then readings inside its six seconds (the command, a failed run): never set again, never the pick\'s goal', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, command } = await world($, on, [nations([0, 0]), nations([1, 0]), new Error('spawn claudinho ENOENT')], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    await command()
+    await clock.advance(GOAL_MS - 2_000)
+    await command('theme')
+    expect(sets).toHaveLength(2)
+  })
+
+  test('the other side\'s goal, every set refused: twenty ticks make at most three attempts', PIXEL, async ($, on) => {
+    const { sets } = engine(on, () => true)
+    const { clock } = await world($, on, [nations([0, 0]), nations([1, 0])], DESKTOP)
+    for (let i = 0; i < 20; i += 1) await clock.advance(15_000)
+    expect(sets.length).toBeGreaterThanOrEqual(2)
+    expect(sets.length).toBeLessThanOrEqual(3)
+  })
+
+  test('two goals, one by each side: two goal sets under two stamps, the second the pick\'s', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [nations([0, 0]), nations([1, 0]), nations([1, 1])], DESKTOP)
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(3)
+    const first = (await drawn($, sceneOf(sets[1]))) as string
+    const second = (await drawn($, sceneOf(sets[2]))) as string
+    expect(first).toBe(pixelSvg({ ...ITA, ...NATIONS, ...BEL_OTHER, state: 'goal', stamp: stampOf(first) } as Parameters<typeof pixelSvg>[0]))
+    expect(second).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'goal', stamp: stampOf(second) }))
+    expect(stampOf(second)).toBeGreaterThan(stampOf(first))
+  })
+
+  test('the scarf survives a CLI that fails: the stadium that stays live keeps it, and the one that empties is idle', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [nations([0, 0]), nations([0, 1]), new Error('spawn claudinho ENOENT')], DESKTOP)
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(3)
+    expect(await drawn($, sceneOf(sets[2]))).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'live' }))
+    for (let i = 0; i < 44; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(4)
+    expect(await drawn($, sceneOf(sets[3]))).toBe(pixelSvg({ ...ITA, state: 'idle' }))
+  })
+
+  test('the pitch is unchanged for a national team: no flag stripe in it', PITCH, async ($, on) => {
+    const { sets } = engine(on)
+    await world($, on, [nations([0, 0])], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pitchSvg({ ...ITA, name: 'Italy' }))
   })
 })
