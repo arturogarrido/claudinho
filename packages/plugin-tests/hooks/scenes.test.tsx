@@ -260,8 +260,9 @@ describe('the pixel corner: the board shows two codes and never a score', () => 
       for (const c of (rule[1] as string).matchAll(/\.([a-z][a-z0-9-]*)/g)) animated.add(c[1] as string)
     }
     expect(animated.size).toBeGreaterThan(3)
-    const reduced = css.slice(cut)
-    for (const c of animated) expect(new RegExp(`\\.${c}(?![a-z0-9-])`).test(reduced), c).toBe(true)
+    // The rule that turns animation off, by its own selector list (a class named only in another rule does not count).
+    const off = (/\{([^{}]*)\{animation:none!important\}/.exec(css.slice(cut)) ?? [])[1] as string
+    for (const c of animated) expect(new RegExp(`\\.${c}(?![a-z0-9-])`).test(off), c).toBe(true)
   })
 
   test('a goal\'s source carries its stamp, so two goals are two sources (an unchanged source is not drawn again)', async () => {
@@ -816,6 +817,26 @@ describe('the pixel corner: its memory has one owner and one way to be forgotten
     for (let i = 0; i < 60; i += 1) await clock.advance(15_000)
     expect(sets).toHaveLength(2)
     expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+  })
+
+  // While the look is off nothing is remembered: what a reading saw then is not brought back by theme on.
+  test('a current live view read while off, then theme on with a stale view: idle', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, command } = await world($, on, [live([0, 0]), live([0, 0]), live([0, 0]), STALE], DESKTOP)
+    await command('theme off')
+    await clock.advance(15_000)
+    await command('theme on')
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+  })
+  test('a goal read while off, then theme on inside its six seconds: live, no goal played', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, command } = await world($, on, [live([0, 0]), live([0, 0]), live([0, 1]), live([0, 1])], DESKTOP)
+    await command('theme off')
+    await clock.advance(15_000)
+    await command('theme on')
+    expect(sets).toHaveLength(2)
+    expect(Number.isNaN(stampOf((await drawn($, sceneOf(sets[1]))) as string))).toBe(true)
   })
 
   test('a session with only the phone: the command never starts a live stadium nothing would end (idle, the next fixture\'s codes)', PIXEL, async ($, on) => {
