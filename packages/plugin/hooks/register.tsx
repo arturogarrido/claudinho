@@ -293,7 +293,7 @@ const REPLY_LOOK_UNREADABLE = 'Team look: pitch green (the team in CLAUDINHO_TEA
 const REPLY_LOOK_NO_PIN = 'Team look: pitch green (no team pinned: claudinho follow <competition> --team <name> pins one).'
 const replyLookTeam = (name: string): string => `Team look: ${name}.`
 const replyLookCode = (code: string): string =>
-  `Team look: pitch green (CLAUDINHO_TEAM gives a code, ${code}, and a code alone does not say which team: unset it to use your pinned team, or pin one with claudinho follow <competition> --team <name>).`
+  `Team look: pitch green (CLAUDINHO_TEAM gives a code, ${code}, and a code alone does not say which team: unset it to use your pinned team (claudinho follow <competition> --team <name> pins one)).`
 const replyLookPitch = (name: string): string => `Team look: pitch green (no colors known for ${name}).`
 /** The plugin whose scenes the `Backdrop` hook draws (the manifest's name), and the band's description. */
 const PLUGIN_NAME = 'claudinho'

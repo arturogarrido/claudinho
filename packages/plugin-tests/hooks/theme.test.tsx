@@ -5,7 +5,8 @@ import { FIRST_RUN, START, view, world } from './world'
 
 /**
  * The team look (plugin 0.8.0): with `teamTheme: on`, in a session a desktop or mobile app is attached to, the plugin
- * sets ONE theme from the pinned team (the view's `pick`): colors for both modes and a still wash at the edges. Off is
+ * sets ONE theme from the pinned team (the view's `pick`): colors for both modes and a band across the top in the
+ * team's two colors. Off is
  * the default, and then the plugin never names the session's theme: a session holds one theme, and a set replaces the
  * one the person had. The look is set when its team changes, never once per tick. `/claudinho theme` says what is set;
  * `/claudinho theme off` clears it for the session and `/claudinho theme on` sets it again.
@@ -23,7 +24,7 @@ const WORLD_CUP = { competition: { slug: 'fifa.world', alias: 'world-cup', name:
 const SAID_OFF = 'The team look is off. Turn it on in /config (Team look).'
 const SAID_NOT_DRAWN = 'The team look shows in the Claude desktop and mobile apps; nothing draws it in this session.'
 const SAID_CLEARED = 'Team look off for this session. /claudinho theme on sets it again.'
-const SAID_PITCH_CODE = (code: string) => `Team look: pitch green (CLAUDINHO_TEAM gives a code, ${code}, and a code alone does not say which team: unset it to use your pinned team, or pin one with claudinho follow <competition> --team <name>).`
+const SAID_PITCH_CODE = (code: string) => `Team look: pitch green (CLAUDINHO_TEAM gives a code, ${code}, and a code alone does not say which team: unset it to use your pinned team (claudinho follow <competition> --team <name> pins one)).`
 const SAID_PITCH_UNREADABLE = 'Team look: pitch green (the team in CLAUDINHO_TEAM could not be read).'
 /** A reply made from a view carries the view's attribution and disclaimer, each a paragraph, as every `/claudinho` reply does. */
 const withD = (s: string) => `${s}\n\nLive data: ESPN\n\nNot affiliated with FIFA, any confederation, league or club, or Anthropic.`
@@ -77,7 +78,7 @@ describe('off, the default', () => {
 })
 
 describe('on: the look is the pinned team\'s', () => {
-  test('one set after the first view: the pinned club\'s colors and the edge wash, as buildLook makes them', ON, async ($, on) => {
+  test('one set after the first view: the pinned club\'s colors and its band, as buildLook makes them', ON, async ($, on) => {
     const { sets } = themes(on)
     await world($, on, [view(LINE, ARSENAL)], DESKTOP)
     expect(sets).toHaveLength(1)
