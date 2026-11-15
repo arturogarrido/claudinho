@@ -91,7 +91,7 @@ describe('the plugin folder', () => {
     expect(readme).toMatch(/\/claudinho theme/);
   });
 
-  it('the team look\'s own modules are pure: no host, no network, no file; colors are six hex digits', () => {
+  it('the team look\'s own modules are pure: no host, no network, no file; the engine\'s builder is the engine\'s bytes', () => {
     const read = (f: string) => readFileSync(join(ROOT, 'packages/plugin/hooks', f), 'utf8');
     for (const f of ['team-look.ts', 'team-colors.ts', 'make-colors.js']) {
       const src = read(f);
@@ -206,11 +206,11 @@ describe('the plugin directory listing', () => {
    * What PRIVACY.md says the plugin does: no network request, no file written, no conversation read, only the
    * installed `claudinho` CLI run. A vocabulary check over the one module the manifest runs, in which the host is
    * always `$` (every hook's first parameter, every binding typed `EngineInterface`): every member of `$` it names is
-   * one the policy accounts for; `$` is never indexed or assigned; the module imports nothing but types and the host's
-   * three state helpers; every run is `claudinho ambient` or `claudinho match`; the filesystem is read twice, nvm's
+   * one the policy accounts for; `$` is never indexed or assigned; the module imports nothing but types, the host's
+   * three state helpers and the team look's three pure functions; every run is `claudinho ambient` or `claudinho match`; the filesystem is read twice, nvm's
    * version folder listed and `<version>/bin/claudinho` probed; the prompt handler uses its event only to pass it on
    * and to add the note, written from the CLI's `context` unchanged; the command handler reads the typed text only
-   * to compare it with `match`. It is a tripwire over the shapes the module has, not a proof: a use of the host or of
+   * to compare it with `match` and the three team-look phrases. It is a tripwire over the shapes the module has, not a proof: a use of the host or of
    * an event this grammar does not name (a name built at run time, `$` handed to code outside the module, another
    * syntax for the same access) is outside it. The validator's `calls:` line is the full inventory, but it fails on
    * none.
@@ -267,7 +267,7 @@ describe('the plugin directory listing', () => {
     expect(src.match(/update\(\s*\$\s*,\s*lastContext\b/g) ?? []).toHaveLength(2);
     expect(src).toContain("context: typeof view.context === 'string' && view.context !== '' ? view.context : null,");
     expect(src).toContain('await update($, lastContext, () => null)');
-    // The typed text: read once, trimmed, and compared with `match` and the four team-look phrases; nothing else.
+    // The typed text: read once, trimmed, and compared with `match` and the three team-look phrases; nothing else.
     const command = handlerOf(src, 'command.run');
     const TYPED = "const typed = typeof e.args === 'string' ? e.args.trim() : ''";
     expect(command).toContain(TYPED);
