@@ -242,6 +242,8 @@ describe('the pixel corner: the board shows two codes and never a score', () => 
     expect(at('goal')).toContain('class="px-ball"')
     expect(at('goal')).toMatch(/@keyframes [a-z-]+\{/)
     expect(at('goal')).toContain('@media (prefers-reduced-motion:reduce){')
+    // Reduce motion turns every animation off, whatever else the rule holds.
+    expect(/@media \(prefers-reduced-motion:reduce\)\{[^@]*animation:none!important/.test(at('goal'))).toBe(true)
   })
 
   test('a goal\'s source carries its stamp, so two goals are two sources (an unchanged source is not drawn again)', async () => {
@@ -476,7 +478,7 @@ describe('the pixel corner: a goal for the pinned side', () => {
   const noGoal: Array<[string, Record<string, unknown>, Array<[number, number]>, Record<string, unknown>]> = [
     ['a goal against', {}, [[0, 0], [1, 0]], {}],
     ['a goal ruled out (the tally falls)', {}, [[0, 1], [0, 0]], {}],
-    ['a record that names no pinned side', {}, [[0, 0], [0, 1]], { pinnedSide: undefined }],
+    ['a match where neither side is the team the view picks', {}, [[0, 0], [0, 1]], { away: { code: 'XXX', name: 'Other', id: 'espn:1' } }],
     ['celebrate off', { celebrate: 'off' }, [[0, 0], [0, 1]], {}],
   ]
   for (const [label, options, scores, over] of noGoal) {
@@ -528,6 +530,85 @@ describe('the pixel corner: a goal for the pinned side', () => {
     const { clock } = await world($, on, [live([0, 0], over, { pick: null }), live([0, 1], over, { pick: null })], DESKTOP)
     await clock.advance(15_000)
     expect(sets).toHaveLength(1)
+  })
+})
+
+describe('the pixel corner: whose match it is, and what it remembers', () => {
+  const ARSENAL_NEXT = { ...ARSENAL, ...NEXT_ARS }
+
+  test('the team is the one the view picks (CLAUDINHO_TEAM over the saved pin): its record is the picked one, its side found by its id', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    // The saved pin is another team: the record is picked, not pinned, and names no pinned side.
+    const over = { pinned: false, pinnedSide: undefined, picked: true }
+    const { clock } = await world($, on, [live([0, 0], over), live([0, 1], over)], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...LIV, state: 'live', home: 'LAS', away: 'LIV' }))
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    expect(stampOf((await drawn($, sceneOf(sets[1]))) as string)).toBeGreaterThan(0)
+  })
+
+  test('the saved pin\'s match while the view picks another team: not this stadium\'s match (idle, no goal)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const over = { pinned: true, pinnedSide: 'away', picked: false }
+    const { clock } = await world($, on, [live([0, 0], over, ARSENAL), live([0, 1], over, ARSENAL)], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...ARS, state: 'idle' }))
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('a pick with no id (a World Cup nation): its side is found by its code', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const wc = { competition: { slug: 'fifa.world', alias: 'world-cup', name: 'World Cup', chosenBy: 'saved' }, pick: { code: 'MEX', name: 'Mexico' } }
+    const sides = { home: { code: 'MEX', name: 'Mexico' }, away: { code: 'BRA', name: 'Brazil' }, names: { home: 'Mexico', away: 'Brazil' }, pinnedSide: undefined }
+    const { clock } = await world($, on, [live([0, 0], sides, wc), live([1, 0], sides, wc)], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    expect(stampOf((await drawn($, sceneOf(sets[1]))) as string)).toBeGreaterThan(0)
+  })
+
+  test('live, then the pick changes on a view that is not current: the new team\'s stadium is idle, never the old match in new colors', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([0, 0]), view(LINE, ARSENAL_NEXT)], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...ARS, state: 'idle', home: 'ARS', away: 'LEE' }))
+  })
+
+  test('live, then another competition on a view that is not current: idle', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([0, 0]), view(LINE)], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+  })
+
+  test('live, then the CLI fails for more than five minutes: the stadium empties (the hold ends without a readable view)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([0, 0]), new Error('spawn claudinho ENOENT')], DESKTOP)
+    for (let i = 0; i < 44; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+  })
+
+  test('live, then the CLI fails for under five minutes: the stadium stays as it is', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([0, 0]), new Error('spawn claudinho ENOENT')], DESKTOP)
+    for (let i = 0; i < 8; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('a new session forgets the match: a first view that is not current is idle, and a goal from before is not played again', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const stale = momentView([liveRecord([0, 1])], [], { current: false })
+    const { clock } = await world($, on, [live([0, 0]), live([0, 1]), stale], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    await $.session.start({ cwd: START.cwd, surface: 'desktop', isInteractive: true })
+    await clock.advance(1)
+    await clock.advance(15_000)
+    const last = (await drawn($, sceneOf(sets[sets.length - 1]))) as string
+    expect(sets.length).toBeGreaterThan(2)
+    expect(last).toBe(pixelSvg({ ...LIV, state: 'idle' }))
   })
 })
 
