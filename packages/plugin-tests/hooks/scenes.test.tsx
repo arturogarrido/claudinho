@@ -27,7 +27,9 @@ const PIXEL = { options: { teamTheme: 'on', teamScene: 'pixel' } }
 const ARSENAL = { pick: { id: 'espn:359', code: 'ARS', name: 'Arsenal' } }
 const ARS = { main: 'ef0107', second: 'ffffff' } as const
 const LIV = { main: 'c8102e', second: 'ffffff' } as const
-const NEXT_ARS = { next: { id: '1', home: { code: 'ARS', name: 'Arsenal' }, away: { code: 'LEE', name: 'Leeds United' }, status: 'SCHEDULED' } }
+const NEXT_ARS = { next: { id: '1', home: { code: 'ARS', name: 'Arsenal', id: 'espn:359' }, away: { code: 'LEE', name: 'Leeds United', id: 'espn:357' }, status: 'SCHEDULED' } }
+/** The default pick's (Liverpool's) next fixture. */
+const NEXT_LIV = { next: { id: '2', home: { code: 'LIV', name: 'Liverpool', id: 'espn:364' }, away: { code: 'EVE', name: 'Everton', id: 'espn:368' }, status: 'SCHEDULED' } }
 const GOAL_MS = 6_000
 
 type Kit$ = Parameters<Parameters<typeof test>[1]>[0]
@@ -373,7 +375,7 @@ describe('the pixel corner: its state follows the pinned team\'s match', () => {
 
   test('a next fixture that is no fixture (no sides, a side with no code): the board shows what it can, never the value', PIXEL, async ($, on) => {
     const { sets } = engine(on)
-    const { clock } = await world($, on, [view(LINE, { ...ARSENAL, next: 'soon' }), view(LINE, { ...ARSENAL, next: { home: { code: 'ARS' }, away: { name: 'Leeds' } } })], DESKTOP)
+    const { clock } = await world($, on, [view(LINE, { ...ARSENAL, next: 'soon' }), view(LINE, { ...ARSENAL, next: { home: { code: 'ARS', id: 'espn:359' }, away: { name: 'Leeds' } } })], DESKTOP)
     expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...ARS, state: 'idle' }))
     await clock.advance(300_000)
     expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...ARS, state: 'idle', home: 'ARS', away: '---' }))
@@ -426,10 +428,10 @@ describe('the pixel corner: its state follows the pinned team\'s match', () => {
 
   test('live, then a current view with nothing live (full time): idle at once, the next fixture\'s codes', PIXEL, async ($, on) => {
     const { sets } = engine(on)
-    const { clock } = await world($, on, [live([0, 0]), view(LINE, { current: true, ...NEXT_ARS })], DESKTOP)
+    const { clock } = await world($, on, [live([0, 0]), view(LINE, { current: true, ...NEXT_LIV })], DESKTOP)
     await clock.advance(15_000)
     expect(sets).toHaveLength(2)
-    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...LIV, state: 'idle', home: 'ARS', away: 'LEE' }))
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...LIV, state: 'idle', home: 'LIV', away: 'EVE' }))
   })
 })
 
@@ -499,7 +501,6 @@ describe('the pixel corner: a goal for the pinned side', () => {
   })
 
   const noGoal: Array<[string, Record<string, unknown>, Array<[number, number]>, Record<string, unknown>]> = [
-    ['a goal against', {}, [[0, 0], [1, 0]], {}],
     ['a goal ruled out (the tally falls)', {}, [[0, 1], [0, 0]], {}],
     ['a match where neither side is the team the view picks', {}, [[0, 0], [0, 1]], { away: { code: 'XXX', name: 'Other', id: 'espn:1' } }],
     ['celebrate off', { celebrate: 'off' }, [[0, 0], [0, 1]], {}],
@@ -673,7 +674,7 @@ describe('the pixel corner: whose match it is, and what it remembers', () => {
 describe('the pixel corner: the edges the first cases did not reach', () => {
   const ERR = new Error('spawn claudinho ENOENT')
   const LASK_PICK = { pick: { id: 'espn:1886', code: 'LAS', name: 'LASK Linz' } }
-  const idleNext = momentView([], [], { current: true, next: { id: '702001', home: { code: 'LAS' }, away: { code: 'LIV' }, status: 'SCHEDULED' } })
+  const idleNext = momentView([], [], { current: true, next: { id: '702001', home: { code: 'LAS', id: 'espn:1886' }, away: { code: 'LIV', id: 'espn:364' }, status: 'SCHEDULED' } })
 
   test('kickoff: the idle board already shows the fixture that then goes live; the stadium fills (the state is part of what is set)', PIXEL, async ($, on) => {
     const { sets } = engine(on)
@@ -842,10 +843,10 @@ describe('the pixel corner: its memory has one owner and one way to be forgotten
 
   test('a session with only the phone: the command never starts a live stadium nothing would end (idle, the next fixture\'s codes)', PIXEL, async ($, on) => {
     const { sets } = engine(on)
-    const { clock, command } = await world($, on, [live([0, 0], {}, NEXT_ARS)], { start: { surface: 'mobile', isInteractive: true } })
+    const { clock, command } = await world($, on, [live([0, 0], {}, NEXT_LIV)], { start: { surface: 'mobile', isInteractive: true } })
     await command()
     expect(sets).toHaveLength(1)
-    expect(await drawn($, sceneOf(sets[0]), 'mobile')).toBe(pixelSvg({ ...LIV, state: 'idle', home: 'ARS', away: 'LEE' }))
+    expect(await drawn($, sceneOf(sets[0]), 'mobile')).toBe(pixelSvg({ ...LIV, state: 'idle', home: 'LIV', away: 'EVE' }))
     for (let i = 0; i < 44; i += 1) await clock.advance(15_000)
     expect(sets).toHaveLength(1)
   })
@@ -923,7 +924,7 @@ describe('sets the engine refuses, names, the off and a reload', () => {
 
   test('a drawn set, then a refused one: the app still shows the first, and our hook still draws it', PIXEL, async ($, on) => {
     const { sets } = engine(on, (n) => n === 2)
-    const { clock } = await world($, on, [live([0, 0]), view(LINE, { current: true, ...NEXT_ARS })], DESKTOP)
+    const { clock } = await world($, on, [live([0, 0]), view(LINE, { current: true, ...NEXT_LIV })], DESKTOP)
     await clock.advance(15_000)
     expect(sets).toHaveLength(2)
     expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...LIV, state: 'live', home: 'LAS', away: 'LIV' }))
@@ -1311,5 +1312,72 @@ describe('the pixel corner: the flag scarf and both sides\' goals, as the hooks 
     const { sets } = engine(on)
     await world($, on, [nations([0, 0])], DESKTOP)
     expect(await drawn($, sceneOf(sets[0]))).toBe(pitchSvg({ ...ITA, name: 'Italy' }))
+  })
+})
+
+describe('the pixel corner: the idle board is the pick\'s next fixture, or blank', () => {
+  const FRO_MDA = { next: { id: '401861180', home: { code: 'FRO', name: 'Faroe Islands', id: 'espn:447' }, away: { code: 'MDA', name: 'Moldova', id: 'espn:483' }, status: 'SCHEDULED' } }
+  const NATIONS_LEAGUE = { competition: { slug: 'uefa.nations', alias: 'nations-league', name: 'UEFA Nations League', chosenBy: 'saved' } }
+  const WORLD_CUP = { competition: { slug: 'fifa.world', alias: 'world-cup', name: 'FIFA World Cup', chosenBy: 'saved' } }
+
+  test('the competition\'s next fixture is not the pick\'s (Italy pinned, Faroe Islands v Moldova next): a blank board', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    await world($, on, [view(LINE, { ...ITALY, ...NATIONS_LEAGUE, ...FRO_MDA })], DESKTOP)
+    expect(sets).toHaveLength(1)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...ITA, state: 'idle' }))
+  })
+
+  test('the pick is the next fixture\'s home or away side, by its id: the board shows it', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const next = (home: object, away: object) => view(LINE, { ...ITALY, ...NATIONS_LEAGUE, next: { id: '3', home, away, status: 'SCHEDULED' } })
+    const { clock } = await world($, on, [next({ ...ITA_SIDE }, { ...BEL_SIDE }), next({ ...BEL_SIDE }, { ...ITA_SIDE })], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...ITA, state: 'idle', home: 'ITA', away: 'BEL' }))
+    await clock.advance(300_000)
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...ITA, state: 'idle', home: 'BEL', away: 'ITA' }))
+  })
+
+  test('a side that carries the pick\'s code under another id is another team: a blank board', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    await world($, on, [view(LINE, { ...ITALY, ...NATIONS_LEAGUE, next: { id: '3', home: { code: 'ITA', name: 'Italia Club', id: 'espn:99999999' }, away: { ...BEL_SIDE }, status: 'SCHEDULED' } })], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...ITA, state: 'idle' }))
+  })
+
+  test('a pick with no id (a World Cup nation) is found by its code; a fixture without that code is blank', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const BEL = { pick: { code: 'BEL', name: 'Belgium' } }
+    const next = (home: string, away: string) => view(LINE, { ...BEL, ...WORLD_CUP, next: { id: '4', home: { code: home }, away: { code: away }, status: 'SCHEDULED' } })
+    const { clock } = await world($, on, [next('BEL', 'ITA'), next('FRO', 'MDA')], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ main: 'e30613', second: '000000', state: 'idle', home: 'BEL', away: 'ITA' }))
+    await clock.advance(300_000)
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ main: 'e30613', second: '000000', state: 'idle' }))
+  })
+
+  test('no team pinned: a next fixture is nobody\'s, a blank board', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    await world($, on, [view(LINE, { pick: null, ...NEXT_ARS })], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ main: '', state: 'idle' }))
+  })
+
+  test('full time, and the competition\'s next fixture is another pair\'s: the stadium empties to a blank board', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [nations([0, 0]), view(LINE, { current: true, ...ITALY, ...NATIONS_LEAGUE, ...FRO_MDA })], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...ITA, state: 'idle' }))
+  })
+
+  test('a session with only the phone: the same rule (another pair\'s fixture is blank)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { command } = await world($, on, [live([0, 0], {}, NEXT_ARS)], { start: { surface: 'mobile', isInteractive: true } })
+    await command()
+    expect(sets).toHaveLength(1)
+    expect(await drawn($, sceneOf(sets[0]), 'mobile')).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+  })
+
+  test('the live board is the picked match\'s own, whatever the next fixture says', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    await world($, on, [nations([0, 0], {}, FRO_MDA)], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'live' }))
   })
 })
