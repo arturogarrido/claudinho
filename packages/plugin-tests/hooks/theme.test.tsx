@@ -517,7 +517,11 @@ describe('the table and the look, as data', () => {
     const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(navy.slice(i, i + 2), 16)) as [number, number, number]
     expect(b).toBeGreaterThan(r)
     expect(b).toBeGreaterThan(g)
-    expect(Math.max(r, g, b) + Math.min(r, g, b)).toBeGreaterThanOrEqual(250)
+    // Lifted to a lightness of 0.4: readable on a dark page, still a dark blue.
+    expect(Math.max(r, g, b) + Math.min(r, g, b)).toBeGreaterThanOrEqual(200)
+    expect(Math.max(r, g, b) + Math.min(r, g, b)).toBeLessThanOrEqual(208)
+    // A color already at that lightness or above is not touched.
+    expect(bandColor('3a64a3')).toBe('#3a64a3')
   })
 
   test('the band\'s drawing is made from the scene\'s name alone: left half the main color, right half the second, nothing that loads or runs', async () => {
