@@ -198,14 +198,16 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  *   with a surface that draws the band in the roster (there the band's pace runs, and its readings end them): a band
  *   run's reading has one, and a command's asks the roster once; with none (a session with only the mobile app) a
  *   reading is idle, its `next` fixture's codes, and starts and refreshes nothing. What the corner remembers (the hold,
- *   the goal, the last pixel scene tried) is ONE record of one scope, the competition and the pick's identity, and is
- *   forgotten one way (`forgetPixel`): by any reading whose view is of another scope (current or not, the band's or
- *   the command's), by `/claudinho theme off` and by every `session.start`; while the look is off nothing is written to
- *   it, and after `/claudinho theme on` the first current view starts it again. A reading that is no view, and a band
- *   run with no band surface, count as a view that is not current of the record's scope, with no next fixture, while
- *   the scene last tried is the corner live or in a goal: so the hold runs out with no view, and nothing is set where
- *   nothing was. No timer: the first reading after the 6 seconds sets `live`. The key adds the state, the two codes and
- *   the stamp: each state is set once, and a refused set is not retried per tick.
+ *   the goal, the look its scope last asked a scene in) is ONE record of one scope, the competition and the pick's
+ *   identity, and is forgotten one way (`forgetPixel`): by any reading whose view is of another scope (current or not,
+ *   the band's or the command's), by `/claudinho theme off` and by every `session.start`; while the look is off nothing
+ *   is written to it, and after `/claudinho theme on` the first current view starts it again. The look is noted
+ *   whatever the set then does (the scene already the look last tried, no app attached to draw it now, or the set
+ *   made). A reading that is no view, and a band run with no band surface, count as a view that is not current of the
+ *   record's scope, with no next fixture, in the record's look, while the scene last tried (of any scope: an app still
+ *   shows it after a pick's change) is the corner live or in a goal: so the hold runs out with no view, and nothing is
+ *   set where nothing was. No timer: the first reading after the 6 seconds sets `live`. The key adds the state, the two
+ *   codes and the stamp: each state is set once, and a refused set is not retried per tick.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -448,13 +450,16 @@ let teamThemeOn = false
 /**
  * The module's memory of the session's team look (each `session.start` forgets it: a reload's engine drops the look
  * the old module set): the key of the last look tried (`lookWanted`; null: none since the start or the last
- * `/claudinho theme off`), whether the last set answered `isDrawn: true`, whether a look this plugin set stands (a set
- * the engine did not refuse, drawn or not, since the start or the last clear), the sets and offs made (`lookSets`: a
- * set's `isDrawn` is kept only when none began after it), and the clears and starts made (`lookGen`: a set's answer
- * marks a look standing only when neither began after it). Whether the person turned the look off is the session's,
- * in `$.state` (`lookOff`): it holds across a reload.
+ * `/claudinho theme off`), whether that look is the pixel corner live or in a goal (`lookLive`: what an app may still
+ * show, whatever the set answered, until a set of another scene is tried; it outlives the pixel corner's memory, which
+ * a pick's change forgets while the app still shows the stadium), whether the last set answered `isDrawn: true`,
+ * whether a look this plugin set stands (a set the engine did not refuse, drawn or not, since the start or the last
+ * clear), the sets and offs made (`lookSets`: a set's `isDrawn` is kept only when none began after it), and the clears
+ * and starts made (`lookGen`: a set's answer marks a look standing only when neither began after it). Whether the
+ * person turned the look off is the session's, in `$.state` (`lookOff`): it holds across a reload.
  */
 let lookKey: string | null = null
+let lookLive = false
 let lookDrawn = false
 let lookStands = false
 let lookSets = 0
@@ -476,26 +481,27 @@ let sceneSerial = 0
  * resets a part of it. Its scope is the competition (`slugOf`) and the pick's identity (`teamOf`; null: no pick) it
  * belongs to; none before any reading. What it holds: the hold, the last CURRENT reading that showed the picked team's
  * match live (when, by the clock; the match's id and the board's two codes; null once a current reading shows it no
- * more); the goal being shown (until when, its stamp, its match); and the last pixel scene tried (its key, the look it
- * was made for, whether it was live or goal), which a reading that is no view reads (`lookWithoutView`). Two writers
- * fill it, both into the record a reading took before its first await, so a write after a forget lands in a record
- * nobody reads: a reading's board (`pixelBoard`: the hold and the goal) and a set (`setLook`: the scene tried). No
- * timer is armed: each reading asks it. The last stamp given (`max(previous + 1, the clock's milliseconds)`, so a
- * reload's stamps are new too) is the module's, outside the record: a stamp is never given twice.
+ * more); the goal being shown (until when, its stamp, its match); and the look its scope last asked a scene in (`look`:
+ * noted by every set asked for, whether the engine is then called, the look already being that scene, or no app being
+ * attached to draw it), the colors a reading that is no view draws its scene in (`lookWithoutView`). Two writers fill
+ * it, both into the record a reading took before its first await, so a write after a forget lands in a record nobody
+ * reads: a reading's board (`pixelBoard`: the hold and the goal) and a set asked for (`setLook`: the look). No timer
+ * is armed: each reading asks it. The last stamp given (`max(previous + 1, the clock's milliseconds)`, so a reload's
+ * stamps are new too) is the module's, outside the record: a stamp is never given twice.
  */
 type PixelScope = { slug: string; team: string | null }
 type PixelMemory = {
   scope: PixelScope | null
   hold: { at: number; id: string; home: string; away: string } | null
   goal: { until: number; stamp: number; id: string } | null
-  tried: { key: string; want: LookWant; live: boolean } | null
+  look: LookWant | null
 }
-let pixel: PixelMemory = { scope: null, hold: null, goal: null, tried: null }
+let pixel: PixelMemory = { scope: null, hold: null, goal: null, look: null }
 let goalStamp = 0
 
 /** The pixel corner's memory forgotten: an empty record, of `scope` (none: no scope). Returns it. */
 function forgetPixel(scope: PixelScope | null = null): PixelMemory {
-  pixel = { scope, hold: null, goal: null, tried: null }
+  pixel = { scope, hold: null, goal: null, look: null }
   return pixel
 }
 
@@ -2288,19 +2294,21 @@ async function applyLook($: EngineInterface, reading: Reading, band?: { scored: 
  * does not read; the band's or the command's), and a band run with no band surface to run for (the band surface
  * detached while the band's pace runs), count as a view that is not current of the memory's scope, with no next
  * fixture: inside the hold nothing changes but a goal past its end, which is live again; after it, the stadium idle
- * with an empty board. It starts nothing and writes nothing to the memory but the scene tried (`setLook`). Only while
- * the last pixel scene tried is our corner live or in a goal (so after a start, an off, or in a session where nothing
- * was set, nothing is set), keyed and checked as any look (`setLook`), and only over that look (a set made since wins).
- * Never rejects.
+ * with an empty board, in the look the memory's scope last asked for (`look`). It starts nothing and writes nothing to
+ * the memory but that look (`setLook`). Only while the look last tried is our corner live or in a goal (`lookLive`, of
+ * any scope: so after a start, an off, or in a session where nothing was set, nothing is set; and a stadium an app
+ * still shows is ended after a pick's change too), keyed and checked as any look (`setLook`), and only over that look
+ * (a set made since wins). Never rejects.
  */
 async function lookWithoutView($: EngineInterface): Promise<void> {
   try {
     const mem = pixel
-    const last = mem.tried
-    if (!teamThemeOn || teamScene !== 'pixel' || last === null || !last.live || lookKey !== last.key) return
+    const look = mem.look
+    const over = lookKey
+    if (!teamThemeOn || teamScene !== 'pixel' || !lookLive || over === null || look === null) return
     const now = await $.clock.now()
     const board = boardFor(mem, now, undefined)
-    await setLook($, last.want, pixelScene(last.want, board, mem), now, last.key)
+    await setLook($, look, pixelScene(look, board, mem), now, over)
   } catch {
     // The engine's calls failed: no look this run.
   }
@@ -2314,19 +2322,36 @@ async function lookWithoutView($: EngineInterface): Promise<void> {
  * A set the engine did not refuse stands (drawn or not) when no clear or start began after it; one the person turned
  * off while it was in flight, with no look of ours then standing to clear, is cleared now. A scene is kept for the
  * `Backdrop` hook before the set and dropped when it is refused. A pixel scene is set only while the memory it was
- * made from is the pixel corner's (none forgot it since), and is the memory's scene tried (the memory's second writer).
+ * made from is the pixel corner's (none forgot it since). Whatever is decided about the engine's call, a pixel scene
+ * notes its look in that memory (the memory's second writer), unless the look is off, a set made since won (`over`)
+ * or the memory was forgotten: when the scene is already the look last tried, when no app is attached to draw it, and
+ * before a set. Whether the look last tried is our corner live or in a goal (`lookLive`) is written with its key.
  * May reject (its callers catch).
  */
 async function setLook($: EngineInterface, want: LookWant, scene: SceneWant | null, now: number, over?: string): Promise<void> {
   const key = scene === null ? want.key : scene.key
   const forgotten = (): boolean => scene?.pixel !== undefined && scene.pixel.mem !== pixel
-  if (key === lookKey || (over !== undefined && lookKey !== over)) return
+  const overtaken = (): boolean => over !== undefined && lookKey !== over
+  // The look the pixel memory's scope asked for, noted before any return but the off's, an overtaking set's or a forget's.
+  const note = (): void => {
+    if (scene?.pixel !== undefined && !forgotten() && !overtaken()) scene.pixel.mem.look = want
+  }
+  if (overtaken()) return
+  if (key === lookKey) {
+    note()
+    return
+  }
   if (await lookIsOff($)) return
-  if (!(await lookDrawable($))) return
+  if (!(await lookDrawable($))) {
+    note()
+    return
+  }
   // The latest point before the set: an off, another run's set, or the pixel memory forgotten, since the roster was asked.
-  if ((await lookIsOff($)) || key === lookKey || (over !== undefined && lookKey !== over) || forgotten()) return
+  if ((await lookIsOff($)) || overtaken() || forgotten()) return
+  note()
+  if (key === lookKey) return
   lookKey = key
-  if (scene?.pixel !== undefined) scene.pixel.mem.tried = { key, want, live: scene.pixel.live }
+  lookLive = scene?.pixel?.live === true
   lookSets += 1
   const mine = lookSets
   const gen = lookGen
@@ -2364,6 +2389,7 @@ async function setLook($: EngineInterface, want: LookWant, scene: SceneWant | nu
 async function turnLookOff($: EngineInterface): Promise<void> {
   await writeLookOff($, true)
   lookKey = null
+  lookLive = false
   forgetPixel()
   lookDrawn = false
   lookSets += 1
@@ -2689,6 +2715,7 @@ export const register: Register = (on, options) => {
     bandProbed = false
     tasteSaid = false
     lookKey = null
+    lookLive = false
     lookDrawn = false
     lookStands = false
     lookSets += 1
