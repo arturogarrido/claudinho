@@ -1,6 +1,6 @@
 // Team colors for the team look: a main color and, for some, a second one, six hex digits each.
-// Generated from the provider's recorded team lists (Nov 14, 2026), the maintainer's list of national teams, and
-// hand-written corrections where the provider's kit colors mislead. Plain color values only: no crest, kit or logo.
+// Generated from the provider's recorded team lists (Nov 14, 2026), the maintainer's list of national teams and
+// clubs, and hand-written corrections where the provider's kit colors mislead. Plain color values only: no crest, kit or logo.
 
 /** By the provider's team id (`espn:359`). */
 export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> = {
@@ -44,11 +44,11 @@ export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> =
   'espn:580': ['002b5c', 'ffffff'], // Scotland
   'espn:654': ['ffffff', '00853f'], // Senegal
   'espn:467': ['ffb81c', '007749'], // South Africa
-  'espn:451': ['cd2e3a', '0047a0'], // South Korea
+  'espn:451': ['cd2e3a', '000000'], // South Korea
   'espn:164': ['aa151b', 'f1bf00'], // Spain
   'espn:466': ['fecc02', '006aa7'], // Sweden
   'espn:475': ['da291c', 'ffffff'], // Switzerland
-  'espn:659': ['e70013'], // Tunisia
+  'espn:659': ['e70013', 'ffffff'], // Tunisia
   'espn:465': ['e30a17', 'ffffff'], // Türkiye
   'espn:660': ['ffffff', '002868'], // United States
   'espn:212': ['5eb6e4', '000000'], // Uruguay
@@ -134,128 +134,212 @@ export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> =
   'espn:2665': ['000080', 'ffd700'], // Turks and Caicos Islands
   'espn:2645': ['0033a0'], // US Virgin Islands
   // eng.1
-  'espn:349': ['da291c', '2d2d2d'], // AFC Bournemouth
-  'espn:359': ['e20520', '003399'], // Arsenal
-  'espn:362': ['660e36'], // Aston Villa
-  'espn:337': ['e30613'], // Brentford
-  'espn:331': ['0057b8'], // Brighton & Hove Albion
-  'espn:363': ['034694', 'dba111'], // Chelsea
+  'espn:349': ['da291c', '000000'], // AFC Bournemouth
+  'espn:359': ['ef0107', 'ffffff'], // Arsenal
+  'espn:362': ['670e36', '95bfe5'], // Aston Villa
+  'espn:337': ['e30613', 'ffffff'], // Brentford
+  'espn:331': ['0057b8', 'ffffff'], // Brighton & Hove Albion
+  'espn:363': ['034694', 'ffffff'], // Chelsea
   'espn:388': ['87cced'], // Coventry City
   'espn:384': ['1b458f', 'c4122e'], // Crystal Palace
-  'espn:368': ['003399'], // Everton
-  'espn:370': ['2d2d2d', 'cc0000'], // Fulham
+  'espn:368': ['003399', 'ffffff'], // Everton
+  'espn:370': ['ffffff', '000000'], // Fulham
   'espn:306': ['f5a12d'], // Hull City
-  'espn:373': ['3a64a3'], // Ipswich Town
-  'espn:357': ['1d428a', 'ffcd00'], // Leeds United
-  'espn:364': ['d11317'], // Liverpool
-  'espn:382': ['6cabdd', '1c2c5b'], // Manchester City
-  'espn:360': ['da020e', '4169e1'], // Manchester United
-  'espn:361': ['2d2d2d', '41b6e6'], // Newcastle United
-  'espn:393': ['c8102e', '1b3624'], // Nottingham Forest
-  'espn:366': ['eb172b'], // Sunderland
-  'espn:367': ['132257'], // Tottenham Hotspur
+  'espn:373': ['0044a9', 'ffffff'], // Ipswich Town
+  'espn:357': ['ffffff', 'ffcd00'], // Leeds United
+  'espn:364': ['c8102e', 'ffffff'], // Liverpool
+  'espn:382': ['6cabdd', 'ffffff'], // Manchester City
+  'espn:360': ['da291c', 'ffffff'], // Manchester United
+  'espn:361': ['241f20', 'ffffff'], // Newcastle United
+  'espn:393': ['dd0000', 'ffffff'], // Nottingham Forest
+  'espn:366': ['eb172b', 'ffffff'], // Sunderland
+  'espn:367': ['ffffff', '132257'], // Tottenham Hotspur
   // esp.1
-  'espn:96': ['0761af'], // Alavés
-  'espn:93': ['ee2523'], // Athletic Club
-  'espn:1068': ['cb3524', '272e61'], // Atlético Madrid
+  'espn:96': ['00529f', 'ffffff'], // Alavés
+  'espn:93': ['ee2523', 'ffffff'], // Athletic Club
+  'espn:1068': ['cb3524', 'ffffff'], // Atlético Madrid
   'espn:83': ['004d98', 'a50044'], // Barcelona
-  'espn:85': ['6cace4', '004996'], // Celta Vigo
+  'espn:85': ['8ac3ee', 'ffffff'], // Celta Vigo
   'espn:90': ['3366cc'], // Deportivo
-  'espn:3751': ['288a00', '4b2b67'], // Elche
-  'espn:88': ['3366cc', 'c8142f'], // Espanyol
-  'espn:2922': ['005999'], // Getafe
-  'espn:1538': ['c8142f'], // Levante
+  'espn:3751': ['ffffff', '006633'], // Elche
+  'espn:88': ['007fc8', 'ffffff'], // Espanyol
+  'espn:2922': ['005999', 'ffffff'], // Getafe
+  'espn:1538': ['004d98', 'a50044'], // Levante
   'espn:99': ['b9e8f0', 'd19ca4'], // Málaga
-  'espn:97': ['cd0000'], // Osasuna
+  'espn:97': ['d91a21', '0a346f'], // Osasuna
   'espn:87': ['3b8c2a'], // Racing Santander
-  'espn:101': ['e53027'], // Rayo Vallecano
-  'espn:244': ['0bb363'], // Real Betis
-  'espn:86': ['1e3a8a', 'febe10'], // Real Madrid
-  'espn:89': ['0067b1'], // Real Sociedad
-  'espn:243': ['d81022'], // Sevilla
-  'espn:94': ['ff6f00'], // Valencia
-  'espn:102': ['fbe10f', '005187'], // Villarreal
+  'espn:101': ['ffffff', 'e53027'], // Rayo Vallecano
+  'espn:244': ['0bb363', 'ffffff'], // Real Betis
+  'espn:86': ['ffffff', 'febe10'], // Real Madrid
+  'espn:89': ['0067b1', 'ffffff'], // Real Sociedad
+  'espn:243': ['ffffff', 'd4021d'], // Sevilla
+  'espn:94': ['ffffff', '000000'], // Valencia
+  'espn:102': ['ffe667', '005187'], // Villarreal
   // ita.1
-  'espn:103': ['fb090b'], // AC Milan
+  'espn:103': ['fb090b', '000000'], // AC Milan
   'espn:104': ['8e1f2f', 'f0bc42'], // AS Roma
-  'espn:105': ['1e71b8'], // Atalanta
-  'espn:107': ['a21c26', '1a2f48'], // Bologna
-  'espn:2925': ['a21c26', '002350'], // Cagliari
-  'espn:2572': ['4169e1'], // Como
-  'espn:109': ['482e92'], // Fiorentina
+  'espn:105': ['1e71b8', '000000'], // Atalanta
+  'espn:107': ['1a2f48', 'a21c26'], // Bologna
+  'espn:2925': ['a50034', '002350'], // Cagliari
+  'espn:2572': ['005ca9', 'ffffff'], // Como
+  'espn:109': ['482e92', 'ffffff'], // Fiorentina
   'espn:4057': ['facf08'], // Frosinone
-  'espn:3263': ['a21c26', '08305d'], // Genoa
-  'espn:110': ['010e80'], // Internazionale
-  'espn:111': ['2d2d2d', 'c9a227'], // Juventus
-  'espn:112': ['87d8f7'], // Lazio
-  'espn:113': ['fced0b', '08305d'], // Lecce
-  'espn:4007': ['c8142f'], // Monza
-  'espn:114': ['12a0d7'], // Napoli
-  'espn:115': ['ffdd30', '1b4094'], // Parma
+  'espn:3263': ['ad1919', '002b49'], // Genoa
+  'espn:110': ['010e80', '000000'], // Internazionale
+  'espn:111': ['000000', 'ffffff'], // Juventus
+  'espn:112': ['87d8f7', 'ffffff'], // Lazio
+  'espn:113': ['ffed00', 'e30613'], // Lecce
+  'espn:4007': ['e30613', 'ffffff'], // Monza
+  'espn:114': ['12a0d7', 'ffffff'], // Napoli
+  'espn:115': ['ffffff', '000000'], // Parma
   'espn:3997': ['0fa653'], // Sassuolo
-  'espn:239': ['9f0000'], // Torino
-  'espn:118': ['2d2d2d'], // Udinese
-  'espn:17530': ['fa4616', '00843d'], // Venezia
+  'espn:239': ['8a1e03', 'ffffff'], // Torino
+  'espn:118': ['000000', 'ffffff'], // Udinese
+  'espn:17530': ['000000', 'ff6600'], // Venezia
   // ger.1
-  'espn:598': ['da0308'], // 1. FC Union Berlin
-  'espn:131': ['e32221'], // Bayer Leverkusen
-  'espn:132': ['dc052d', '0066b2'], // Bayern Munich
-  'espn:124': ['fde100'], // Borussia Dortmund
-  'espn:268': ['1e9f4e'], // Borussia Mönchengladbach
-  'espn:125': ['e1000f'], // Eintracht Frankfurt
-  'espn:3841': ['ba3733', '46714d'], // FC Augsburg
-  'espn:122': ['ed1c24'], // FC Cologne
-  'espn:127': ['0a3f86'], // Hamburg SV
-  'espn:2950': ['da0308', '000055'], // Mainz
-  'espn:11420': ['dd0741', '001f47'], // RB Leipzig
-  'espn:126': ['da0308'], // SC Freiburg
+  'espn:598': ['eb1923', 'ffffff'], // 1. FC Union Berlin
+  'espn:131': ['e32221', '000000'], // Bayer Leverkusen
+  'espn:132': ['dc052d', 'ffffff'], // Bayern Munich
+  'espn:124': ['fde100', '000000'], // Borussia Dortmund
+  'espn:268': ['ffffff', '000000'], // Borussia Mönchengladbach
+  'espn:125': ['e1000f', '000000'], // Eintracht Frankfurt
+  'espn:3841': ['ffffff', 'ba3733'], // FC Augsburg
+  'espn:122': ['ffffff', 'ed1c24'], // FC Cologne
+  'espn:127': ['ffffff', '005ca9'], // Hamburg SV
+  'espn:2950': ['c3141e', 'ffffff'], // Mainz
+  'espn:11420': ['ffffff', 'dd0741'], // RB Leipzig
+  'espn:126': ['000000', 'e2001a'], // SC Freiburg
   'espn:3307': ['0000dd'], // SC Paderborn 07
   'espn:10388': ['2d2d2d'], // SV Elversberg
   'espn:133': ['004d9d'], // Schalke 04
-  'espn:7911': ['003399', '000055'], // TSG Hoffenheim
-  'espn:134': ['e32219'], // VfB Stuttgart
-  'espn:137': ['1d9053'], // Werder Bremen
+  'espn:7911': ['1961b5', 'ffffff'], // TSG Hoffenheim
+  'espn:134': ['ffffff', 'e32219'], // VfB Stuttgart
+  'espn:137': ['1d9053', 'ffffff'], // Werder Bremen
   // mex.1
-  'espn:227': ['ffe600', '0c2340'], // América
+  'espn:227': ['fcee21', '00285e'], // América
   'espn:226': ['022789'], // Atlante
-  'espn:216': ['ef0107'], // Atlas
-  'espn:15720': ['ef0107', 'dfa829'], // Atlético de San Luis
-  'espn:218': ['0047ab'], // Cruz Azul
-  'espn:17851': ['5fb832'], // FC Juárez
-  'espn:219': ['cd1f2d', '0c2340'], // Guadalajara
-  'espn:228': ['008000', 'fff61b'], // León
-  'espn:220': ['0c2340'], // Monterrey
-  'espn:229': ['ef0107'], // Necaxa
-  'espn:234': ['001c58', '02b0d0'], // Pachuca
-  'espn:231': ['0032a8'], // Puebla
-  'espn:233': ['002b5c', 'c2a25a'], // Pumas UNAM
-  'espn:222': ['1a4fa0'], // Querétaro
-  'espn:225': ['15926d'], // Santos
-  'espn:232': ['fdb913', '005daa'], // Tigres UANL
-  'espn:10125': ['ef0107'], // Tijuana
-  'espn:223': ['d5001c'], // Toluca
+  'espn:216': ['e30613', '000000'], // Atlas
+  'espn:15720': ['d3122a', 'ffffff'], // Atlético de San Luis
+  'espn:218': ['00529b', 'ffffff'], // Cruz Azul
+  'espn:17851': ['78be20', '000000'], // FC Juárez
+  'espn:219': ['ce1126', 'ffffff'], // Guadalajara
+  'espn:228': ['006847', 'ffffff'], // León
+  'espn:220': ['0a2240', 'ffffff'], // Monterrey
+  'espn:229': ['e30613', 'ffffff'], // Necaxa
+  'espn:234': ['002b5c', 'ffffff'], // Pachuca
+  'espn:231': ['ffffff', '004b93'], // Puebla
+  'espn:233': ['002b49', 'c2a25a'], // Pumas UNAM
+  'espn:222': ['004b93', '000000'], // Querétaro
+  'espn:225': ['007a33', 'ffffff'], // Santos
+  'espn:232': ['fdb913', '003b70'], // Tigres UANL
+  'espn:10125': ['e30613', '000000'], // Tijuana
+  'espn:223': ['c8102e', 'ffffff'], // Toluca
   // uefa.champions
   'espn:887': ['ffd200'], // AEK Athens
   'espn:2980': ['fcee33'], // Bodo/Glimt
-  'espn:570': ['0081ff'], // Club Brugge
-  'espn:437': ['00428c'], // FC Porto
+  'espn:570': ['005ca9', '000000'], // Club Brugge
+  'espn:437': ['00428c', 'ffffff'], // FC Porto
   'espn:436': ['ffed00', '00205b'], // Fenerbahce
-  'espn:142': ['ef2f24'], // Feyenoord Rotterdam
-  'espn:432': ['aa0031'], // Galatasaray
+  'espn:142': ['e30613', 'ffffff'], // Feyenoord Rotterdam
+  'espn:432': ['a90432', 'fdb912'], // Galatasaray
   'espn:4411': ['2d2d2d'], // LASK Linz
   'espn:175': ['e91514', '004c37'], // Lens
-  'espn:166': ['c2051b'], // Lille
-  'espn:148': ['ef2f24'], // PSV Eindhoven
+  'espn:166': ['e01e13', '242e5c'], // Lille
+  'espn:148': ['ed1c24', 'ffffff'], // PSV Eindhoven
   'espn:160': ['004170', 'da291c'], // Paris Saint-Germain
   'espn:21922': ['2d2d2d'], // Sabah FK
-  'espn:493': ['ff5900'], // Shakhtar Donetsk
-  'espn:494': ['dc1f26', '81c0ff'], // Slavia Prague
+  'espn:493': ['f26522', '000000'], // Shakhtar Donetsk
+  'espn:494': ['e30613', 'ffffff'], // Slavia Prague
   'espn:521': ['81c0ff'], // Slovan Bratislava
-  'espn:2250': ['008057'], // Sporting CP
+  'espn:2250': ['008057', 'ffffff'], // Sporting CP
   'espn:510': ['000080'], // Viking FK
   // uru.1
-  'espn:2684': ['0a3d91', 'd1202f'], // Nacional
-  'espn:2683': ['fcd116'], // Peñarol
+  'espn:21403': ['c60000'], // Albion FC
+  'espn:9999': ['e30613', '006633'], // Boston River
+  'espn:131688': ['c60000'], // Central Español Fútbol Club
+  'espn:5490': ['87ceeb', 'ffffff'], // Cerro
+  'espn:9902': ['003399', 'ffffff'], // Cerro Largo
+  'espn:4817': ['ffffff', '000000'], // Danubio
+  'espn:1007': ['5e2a84', 'ffffff'], // Defensor Sporting
+  'espn:10000': ['e30613', '006633'], // Deportivo Maldonado
+  'espn:8416': ['003399', 'ffffff'], // Juventud
+  'espn:5492': ['000000', '003399'], // Liverpool
+  'espn:19002': ['6cabdd', 'ffffff'], // Montevideo City Torque
+  'espn:5501': ['000000', 'ffffff'], // Montevideo Wanderers
+  'espn:2684': ['ffffff', '003399'], // Nacional
+  'espn:2683': ['fdb913', '000000'], // Peñarol
+  'espn:6866': ['e30613', 'fdb913'], // Progreso
+  'espn:9903': ['006847', 'ffffff'], // Racing (Montevideo)
+  // conmebol.libertadores
+  'espn:19425': ['ff0000'], // Always Ready
+  'espn:3': ['c60000', '0060f0'], // Argentinos Juniors
+  'espn:4815': ['e30613', 'ffffff'], // Atlético Junior
+  'espn:9967': ['c60000', '0093ec'], // Bahia
+  'espn:2686': ['ffdd00', '000000'], // Barcelona SC
+  'espn:5': ['003b7a', 'f3b229'], // Boca Juniors
+  'espn:2681': ['5eb6e4', 'ffffff'], // Bolívar
+  'espn:6086': ['000000', 'ffffff'], // Botafogo
+  'espn:6037': ['000169', '753000'], // Carabobo
+  'espn:2671': ['002d72', 'ce1126'], // Cerro Porteño
+  'espn:8186': ['fbe805'], // Coquimbo Unido
+  'espn:874': ['ffffff', '000000'], // Corinthians
+  'espn:2022': ['003399', 'ffffff'], // Cruzeiro
+  'espn:11995': ['c60000'], // Cusco FC
+  'espn:5489': ['5b0528'], // Deportes Tolima
+  'espn:17090': ['fc4401', 'c60000'], // Deportivo La Guaira
+  'espn:4818': ['f8dd00'], // Deportivo Táchira
+  'espn:8': ['e30613', 'ffffff'], // Estudiantes de La Plata
+  'espn:819': ['c52613', '000000'], // Flamengo
+  'espn:3445': ['870a28', '00613c'], // Fluminense
+  'espn:7385': ['c60000'], // Guaraní
+  'espn:4134': ['023396'], // Huachipato
+  'espn:2690': ['d70000'], // Independiente Medellín
+  'espn:9744': ['000061'], // Independiente Rivadavia
+  'espn:5488': ['e33439'], // Independiente Santa Fe
+  'espn:17086': ['000000', '005ca9'], // Independiente del Valle
+  'espn:12': ['9f0000'], // Lanús
+  'espn:2670': ['000000', 'ffffff'], // Libertad
+  'espn:4816': ['ffffff', '002b5c'], // Liga de Quito
+  'espn:9169': ['fedc00', '417505'], // Mirassol
+  'espn:10311': ['c60000'], // Nacional Potosí
+  'espn:6072': ['517ab7'], // O'Higgins
+  'espn:2029': ['006437', 'ffffff'], // Palmeiras
+  'espn:17': ['ffff00', '792dcd'], // Rosario Central
+  'espn:2673': ['5eb6e4', 'ffffff'], // Sporting Cristal
+  'espn:10094': ['c60000'], // UCV FC
+  'espn:885': ['0a4f8d'], // Universidad Católica
+  'espn:2685': ['f5f0dc', '800000'], // Universitario
+  // concacaf.champions
+  'espn:2057': ['e30613', '000000'], // Alajuelense
+  'espn:131584': ['c60000'], // Atlético Ottawa
+  'espn:131585': ['c60000'], // Defense Force FC
+  'espn:18267': ['f05323', '263b80'], // FC Cincinnati
+  'espn:20026': ['c60000'], // Forge FC
+  'espn:20232': ['f7b5cd', '231f20'], // Inter Miami CF
+  'espn:187': ['ffffff', '00245d'], // LA Galaxy
+  'espn:18966': ['000000', 'c39e6d'], // LAFC
+  'espn:131587': ['ece83a', '003087'], // Mount Pleasant FA
+  'espn:18986': ['ece83a', '1f1646'], // Nashville SC
+  'espn:10739': ['e0d0a6'], // Philadelphia Union
+  'espn:22529': ['f89e1a'], // San Diego FC
+  'espn:9726': ['5d9741', '005595'], // Seattle Sounders FC
+  'espn:21522': ['c60000'], // Sporting San Miguelito
+  'espn:131586': ['c60000'], // Universidad O&M
+  'espn:131583': ['c60000'], // Vancouver FC
+  'espn:9727': ['00245e', '9dc2ea'], // Vancouver Whitecaps
+  // fifa.cwc
+  'espn:10207': ['da121a', 'ffffff'], // Al Ahly
+  'espn:7128': ['4b286d', 'ffffff'], // Al Ain
+  'espn:929': ['0033a0', 'ffffff'], // Al Hilal
+  'espn:7279': ['002b5c', 'ffffff'], // Auckland City
+  'espn:1929': ['ca281d'], // Benfica
+  'espn:8377': ['e30613', 'ffcc00'], // Esperance Sportive de Tunis
+  'espn:7084': ['ffcc00', '006847'], // Mamelodi Sundowns
+  'espn:2790': ['d82c3a', '052a87'], // RB Salzburg
+  'espn:16': ['c60000', '792dcd'], // River Plate
+  'espn:7120': ['004b93', 'fdb913'], // Ulsan HD
+  'espn:3385': ['e60012', 'ffffff'], // Urawa Red Diamonds
+  'espn:8625': ['e30613', 'ffffff'], // Wydad AC
 }
 
 /** The World Cup's nations by their code, for a pin that carries no id (the bundled roster's). */
