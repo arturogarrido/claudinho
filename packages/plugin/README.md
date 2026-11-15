@@ -163,10 +163,15 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
   its two colors at the top right with your team's name on it (no name with pitch green). It does not move.
 - `pixel`: a pixel-art stadium corner at the bottom right in your team's colors: terraces, a goal and a scoreboard that
   shows the two teams' codes (`PUM - MTY`), never the score. Your team, for the stadium, is the team the band follows:
-  `CLAUDINHO_TEAM` when it is set, else your pinned team. It has three states:
+  `CLAUDINHO_TEAM` when it is set, else your pinned team. It goes live, and plays a goal, only in a session with the
+  terminal or the desktop app attached, where the band runs: with the phone alone, a `/claudinho` you type shows the
+  empty stadium with your next fixture's codes (a live stadium left there when the desktop app detaches empties five
+  minutes after the last fresh reading, or at once at a `/claudinho` you type). It has three states:
   - **live**, while your team's match is in play: fans on the terraces and a ball by the goal. A reading the CLI
-    cannot vouch for, or no answer from the CLI, keeps it live, in the same competition and for the same team; the
-    stadium empties five minutes after the last fresh reading that showed the match live.
+    cannot vouch for, or no answer from the CLI, keeps it live; the stadium empties five minutes after the last fresh
+    reading that showed the match live. `/claudinho theme off`, a new session, or a change of your team or of the
+    competition forgets the match: the stadium is live again only from the next fresh reading that shows it, and a
+    goal it had seen is not played again.
   - **idle**, the rest of the time: an empty stadium, the scoreboard dimmed with your next fixture's codes (blank when
     none is known).
   - **goal**, when the plugin sees your team score between two readings: the ball flies into the top corner and back,

@@ -93,13 +93,13 @@ const BALL =
 /**
  * The goal's motion: 1.5 s still, then the ball's flight (4 s), the fans' hops (six of half a second), the raised arms,
  * the board's blink and the four rings of each firework one after another; with reduced motion, none of it and the
- * board lit.
+ * board lit: the reduced-motion rule names every class that carries an animation.
  */
 const GOAL_CSS =
   '.px-fly{animation:px-shot 4s linear 1.5s 1 both}.px-hop{animation:px-hop .5s ease-in-out 2.0s 6 both}.px-hop2{animation:px-hop .5s ease-in-out 2.25s 6 both}' +
   '.px-arm{animation:px-show 3.5s linear 1.9s 1 both}.px-led{animation:px-led .5s linear 2.0s 6 both}' +
   '.px-r1{animation:px-show .7s linear 2.0s 1 both}.px-r2{animation:px-show .7s linear 2.3s 1 both}.px-r3{animation:px-show .7s linear 2.6s 1 both}.px-r4{animation:px-show .7s linear 2.9s 1 both}' +
-  `@media (prefers-reduced-motion:reduce){.px-fly,.px-hop,.px-hop2,.px-arm,.px-led,.px-ring{animation:none!important}.px-led{fill:${LED_HI}}}`
+  `@media (prefers-reduced-motion:reduce){.px-fly,.px-hop,.px-hop2,.px-arm,.px-led,.px-r1,.px-r2,.px-r3,.px-r4{animation:none!important}.px-led{fill:${LED_HI}}}`
 const GOAL_KEYFRAMES = [
   '@keyframes px-shot{0%{transform:translate(0px,0px)}10%{transform:translate(152px,-256px)}88%{transform:translate(152px,-256px)}100%{transform:translate(0px,0px)}}',
   '@keyframes px-hop{0%{transform:translate(0px,0px)}50%{transform:translate(0px,-16px)}100%{transform:translate(0px,0px)}}',
