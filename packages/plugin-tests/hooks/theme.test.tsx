@@ -424,9 +424,9 @@ describe('the band behind the conversation', () => {
     themes(on)
     await world($, on, [view(LINE, ARSENAL)], DESKTOP)
     for (const surface of ['desktop', 'mobile'] as const) {
-      const svgs = await (await backdrop($, 'band-002b49-c2a25a', 'claudinho', surface)).findAll({ type: 'Svg' })
+      const svgs = await (await backdrop($, 'band-002b49-b59410', 'claudinho', surface)).findAll({ type: 'Svg' })
       expect(svgs).toHaveLength(1)
-      expect(svgs[0]?.props.source).toBe(bandSvg('band-002b49-c2a25a'))
+      expect(svgs[0]?.props.source).toBe(bandSvg('band-002b49-b59410'))
       expect(String(svgs[0]?.props.alt).trim()).not.toBe('')
     }
   })
@@ -442,14 +442,14 @@ describe('the band behind the conversation', () => {
   test('another plugin\'s scene, and a scene of ours that names no band, are left to what is beneath', ON, async ($, on) => {
     themes(on)
     await world($, on, [view(LINE, ARSENAL)], DESKTOP)
-    expect(await (await backdrop($, 'band-002b49-c2a25a', 'someone-else')).findAll({ type: 'Svg' })).toHaveLength(0)
+    expect(await (await backdrop($, 'band-002b49-b59410', 'someone-else')).findAll({ type: 'Svg' })).toHaveLength(0)
     expect(await (await backdrop($, 'lagoon')).findAll({ type: 'Svg' })).toHaveLength(0)
   })
 
   test('the option off: our hook draws nothing, even for a band\'s name', async ($, on) => {
     themes(on)
     await world($, on, [view(LINE, ARSENAL)], DESKTOP)
-    expect(await (await backdrop($, 'band-002b49-c2a25a')).findAll({ type: 'Svg' })).toHaveLength(0)
+    expect(await (await backdrop($, 'band-002b49-b59410')).findAll({ type: 'Svg' })).toHaveLength(0)
   })
 })
 
@@ -490,7 +490,7 @@ describe('the table and the look, as data', () => {
   test('a look is colors and a scene: a band named for the team\'s two colors, frosted glass over it; no image, no still ground', async () => {
     const { look } = buildLook('Pumas UNAM', TEAM_COLORS['espn:233'])
     expect(Object.keys(look).sort()).toEqual(['backdrop', 'colors'])
-    expect(look.backdrop).toEqual({ scene: 'band-002b49-c2a25a', glass: { blur: 28, opacity: 0.5 } })
+    expect(look.backdrop).toEqual({ scene: 'band-002b49-b59410', glass: { blur: 28, opacity: 0.5 } })
     // One color: it is both halves. No colors known: pitch green.
     expect((buildLook('Armenia', TEAM_COLORS['espn:579']).look.backdrop as { scene: string }).scene).toBe('band-de2400-de2400')
     expect((buildLook(undefined, undefined).look.backdrop as { scene: string }).scene).toBe('band-1f7a3d-1f7a3d')
@@ -499,7 +499,7 @@ describe('the table and the look, as data', () => {
   })
 
   test('the pairs the maintainer named: Pumas blue and gold, Brazil yellow and green, Argentina blue and white, Barcelona blue and red', async () => {
-    expect(TEAM_COLORS['espn:233']).toEqual(['002b49', 'c2a25a'])
+    expect(TEAM_COLORS['espn:233']).toEqual(['002b49', 'b59410'])
     expect(TEAM_COLORS['espn:205']).toEqual(['ffdf00', '009c3b'])
     expect(TEAM_COLORS['espn:202']).toEqual(['75aadb', 'ffffff'])
     expect(TEAM_COLORS['espn:83']).toEqual(['004d98', 'a50044'])
@@ -525,19 +525,19 @@ describe('the table and the look, as data', () => {
   })
 
   test('the band\'s drawing is made from the scene\'s name alone: left half the main color, right half the second, nothing that loads or runs', async () => {
-    const svg = bandSvg('band-002b49-c2a25a') as string
+    const svg = bandSvg('band-002b49-b59410') as string
     expect(svg.startsWith('<svg ')).toBe(true)
     expect(svg).toContain('viewBox=')
     expect(svg).toContain('preserveAspectRatio="none"')
     expect(svg.length).toBeLessThan(4000)
     expect(svg.indexOf(bandColor('002b49'))).toBeGreaterThan(-1)
-    expect(svg.indexOf('#c2a25a')).toBeGreaterThan(svg.indexOf(bandColor('002b49')))
+    expect(svg.indexOf('#b59410')).toBeGreaterThan(svg.indexOf(bandColor('002b49')))
     expect(svg).not.toMatch(/<script|href|url\(\s*['"]?(?!#)|@import|<image|<foreignObject|javascript:/i)
     expect(bandSvg('band-de2400-de2400')).not.toBe(svg)
   })
 
   test('a scene name that is not a band\'s is no drawing: another shape, a color that is not six lowercase hex digits, a value that is no string', async () => {
-    for (const scene of ['band', 'band-002b5c', 'band-002b49-c2a25a-ffffff', 'band-002B49-c2a25a', 'band-zzzzzz-c2a25a', 'top-002b5c-c2a25a', ' band-002b49-c2a25a', 'band-002b49-c2a25a\n', '', null, undefined, 7, {}, ['band-002b49-c2a25a']]) {
+    for (const scene of ['band', 'band-002b5c', 'band-002b49-b59410-ffffff', 'band-002B49-b59410', 'band-zzzzzz-b59410', 'top-002b49-b59410', ' band-002b49-b59410', 'band-002b49-b59410\n', '', null, undefined, 7, {}, ['band-002b49-b59410']]) {
       expect(bandSvg(scene), JSON.stringify(scene)).toBeUndefined()
     }
   })
