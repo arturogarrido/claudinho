@@ -850,6 +850,67 @@ describe('the pixel corner: its memory has one owner and one way to be forgotten
   })
 })
 
+describe('the pixel corner: a live stadium is always noted, so it always ends', () => {
+  const ERR = new Error('spawn claudinho ENOENT')
+  const HOME = { id: 'espn:90000001', code: 'AAA', name: 'Alpha' }
+  const AWAY = { id: 'espn:90000002', code: 'BBB', name: 'Beta' }
+  const sides = { home: { ...HOME }, away: { ...AWAY }, names: { home: 'Alpha', away: 'Beta' } }
+  const LASK_PICK = { pick: { id: 'espn:1886', code: 'LAS', name: 'LASK Linz' } }
+  const isIdle = (source: string | undefined) => typeof source === 'string' && !source.includes('px-crowd')
+
+  test('two teams with no colors known, the pick moved to the other side mid-match (the same drawing): one set, and the stadium still empties when the CLI fails', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([0, 0], sides, { pick: HOME }), live([0, 0], sides, { pick: AWAY }), ERR], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+    for (let i = 0; i < 44; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ main: '1f7a3d', state: 'idle' }))
+  })
+
+  test('the pick changes while only the terminal is attached, the app comes back and the CLI fails: the stadium the app still shows empties', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, attach, detach } = await world($, on, [live([0, 0]), live([0, 0]), live([0, 0], {}, LASK_PICK), ERR])
+    await attach('desktop', 'd1')
+    expect(sets).toHaveLength(1)
+    await detach('d1')
+    for (let i = 0; i < 3; i += 1) await clock.advance(15_000)
+    await attach('desktop', 'd2')
+    for (let i = 0; i < 44; i += 1) await clock.advance(15_000)
+    expect(sets.length).toBeGreaterThan(1)
+    expect(isIdle(await drawn($, sceneOf(sets[sets.length - 1])))).toBe(true)
+  })
+
+  test('theme off, a reading while off, then a goal while off, then theme on: live, the goal read while off is not played', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, command } = await world($, on, [live([0, 0]), live([0, 0]), live([0, 0]), live([0, 1]), live([0, 1])], DESKTOP)
+    await command('theme off')
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    await command('theme on')
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...LIV, state: 'live', home: 'LAS', away: 'LIV' }))
+  })
+
+  test('the desktop app detaches during a match and the phone stays: a /claudinho typed inside the hold empties the stadium at once', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { command, detach } = await world($, on, [live([0, 0])], { ...DESKTOP, surfaces: ['desktop', 'mobile'] })
+    await detach('desktop')
+    await command()
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]), 'mobile')).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+  })
+
+  test('a phone-only /claudinho during the match remembers nothing: the desktop app attaching on a view that is not current is idle', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, command, attach } = await world($, on, [live([0, 0]), STALE], { start: { surface: 'mobile', isInteractive: true } })
+    await command()
+    await attach('desktop', 'd1')
+    for (let i = 0; i < 4; i += 1) await clock.advance(15_000)
+    for (const s of sets) expect(isIdle(await drawn($, sceneOf(s), 'mobile'))).toBe(true)
+  })
+})
+
 describe('sets the engine refuses, names, the off and a reload', () => {
   test('a refused set is not tried again per tick: every set refused, a goal and twenty ticks make at most three attempts', PIXEL, async ($, on) => {
     const { sets } = engine(on, () => true)
