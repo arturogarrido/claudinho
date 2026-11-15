@@ -159,8 +159,8 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
 `teamScene` chooses what the team look draws behind the conversation. It needs `teamTheme: on`.
 
 - `band` (the default): the band of color across the top, above.
-- `pitch`: faded pitch lines across the app in your team's main color, and a small scarf in its two colors at the top
-  right with your team's name on it (no name with pitch green). It does not move.
+- `pitch`: faded white pitch lines across the app over soft stripes of your team's main color, and a small scarf in
+  its two colors at the top right with your team's name on it (no name with pitch green). It does not move.
 - `pixel`: a pixel-art stadium corner at the bottom right in your team's colors: terraces, a goal and a scoreboard that
   shows the two teams' codes (`PUM - MTY`), never the score. Your team, for the stadium, is the team the band follows:
   `CLAUDINHO_TEAM` when it is set, else your pinned team. It has three states:

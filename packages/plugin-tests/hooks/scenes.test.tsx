@@ -241,6 +241,9 @@ describe('the pixel corner: the board shows two codes and never a score', () => 
     expect(at('goal')).toContain('class="px-crowd"')
     expect(at('goal')).toContain('class="px-ball"')
     expect(at('goal')).toMatch(/@keyframes [a-z-]+\{/)
+    // The idle board is dimmed; the live one is not.
+    expect(/<g class="px-led"[^>]*opacity="\.38"/.test(at('idle'))).toBe(true)
+    expect(/<g class="px-led"[^>]*opacity=/.test(at('live'))).toBe(false)
     expect(at('goal')).toContain('@media (prefers-reduced-motion:reduce){')
     // Reduce motion turns every animation off, whatever else the rule holds.
     expect(/@media \(prefers-reduced-motion:reduce\)\{[^@]*animation:none!important/.test(at('goal'))).toBe(true)
@@ -647,6 +650,102 @@ describe('the pixel corner: whose match it is, and what it remembers', () => {
     const last = (await drawn($, sceneOf(sets[sets.length - 1]))) as string
     expect(sets.length).toBeGreaterThan(2)
     expect(last).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+  })
+})
+
+describe('the pixel corner: the edges the first cases did not reach', () => {
+  const ERR = new Error('spawn claudinho ENOENT')
+  const LASK_PICK = { pick: { id: 'espn:1886', code: 'LAS', name: 'LASK Linz' } }
+  const idleNext = momentView([], [], { current: true, next: { id: '702001', home: { code: 'LAS' }, away: { code: 'LIV' }, status: 'SCHEDULED' } })
+
+  test('kickoff: the idle board already shows the fixture that then goes live; the stadium fills (the state is part of what is set)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [idleNext, live([0, 0])], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...LIV, state: 'idle', home: 'LAS', away: 'LIV' }))
+    for (let i = 0; i < 20 && sets.length < 2; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...LIV, state: 'live', home: 'LAS', away: 'LIV' }))
+  })
+
+  test('the hold is five minutes: still live at 4 min 45 s of failures, empty by 5 min 30 s', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([0, 0]), ERR], DESKTOP)
+    for (let i = 0; i < 19; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+    for (let i = 0; i < 3; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+  })
+
+  test('the picked team at home: its goal is a goal; its tally rising while the other side\'s falls is not', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([1, 1], {}, LASK_PICK), live([2, 1], {}, LASK_PICK), live([2, 1], {}, LASK_PICK), live([3, 0], {}, LASK_PICK)], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    expect(stampOf((await drawn($, sceneOf(sets[1]))) as string)).toBeGreaterThan(0)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(3)
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(3)
+  })
+
+  test('a side that carries the pick\'s code under another id is another team: its goal is not the pick\'s', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const sides = { home: { code: 'LIV', name: 'Liverpool Montevideo', id: 'espn:999' }, away: { code: 'XXX', name: 'Other', id: 'espn:1' } }
+    const { clock } = await world($, on, [live([0, 0], sides), live([1, 0], sides)], DESKTOP)
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('a goal belongs to its match: another match of the pick, read inside the six seconds, is live, not a goal', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, command } = await world($, on, [live([0, 0]), live([0, 1]), live([0, 1], { id: '702002' })], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    await command()
+    expect(sets).toHaveLength(3)
+    expect(await drawn($, sceneOf(sets[2]))).toBe(pixelSvg({ ...LIV, state: 'live', home: 'LAS', away: 'LIV' }))
+  })
+
+  test('an idle stadium and a CLI that then fails: nothing more is set (only a live stadium has a hold to end)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [idleNext, ERR], DESKTOP)
+    for (let i = 0; i < 44; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('live, a new session, then the CLI fails past the hold: nothing is set (the new session set no stadium)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([0, 0]), ERR], DESKTOP)
+    await $.session.start({ cwd: START.cwd, surface: 'desktop', isInteractive: true })
+    for (let i = 0; i < 44; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('a goal, a new session, then the same match inside the six seconds: live, the goal is not played again', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, command } = await world($, on, [live([0, 0]), live([0, 1])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    await $.session.start({ cwd: START.cwd, surface: 'desktop', isInteractive: true })
+    await clock.advance(1)
+    await command()
+    expect(sets.length).toBeGreaterThan(2)
+    for (const s of sets.slice(2)) expect(Number.isNaN(stampOf((await drawn($, sceneOf(s))) ?? ''))).toBe(true)
+  })
+
+  test('the desktop app detaches and the phone stays: with no surface for the band no CLI runs, and the stadium still empties after the hold', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, detach } = await world($, on, [live([0, 0])], { ...DESKTOP, surfaces: ['desktop', 'mobile'] })
+    await detach('desktop')
+    for (let i = 0; i < 19; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+    for (let i = 0; i < 4; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    expect(await drawn($, sceneOf(sets[1]), 'mobile')).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+    for (let i = 0; i < 40; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
   })
 })
 
