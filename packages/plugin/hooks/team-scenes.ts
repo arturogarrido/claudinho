@@ -1,7 +1,7 @@
 /**
- * The team look's scenes (plugin 0.9.0), as data: the two drawings `teamScene` chooses besides the band, each an SVG
- * source made from its arguments alone. Pure: no host, no clock, no network, no file, and no import. The hooks module
- * decides which scene is set and when; this module only draws it.
+ * The team look's scenes (plugin 0.9.0, changed in 0.10.0), as data: the two drawings `teamScene` chooses besides the
+ * band, each an SVG source made from its arguments alone. Pure: no host, no clock, no network, no file, and no import.
+ * The hooks module decides which scene is set and when; this module only draws it.
  *
  * - `pitchSvg`: faded pitch lines across the app in the team's main color, and a small scarf hanging at the top right,
  *   in the two colors, with the team's name on it (`scarfName`; no name, no text). It never moves.

@@ -192,12 +192,12 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  *   such; the board its two codes; no pick, no record); a view that is not current never starts live, but keeps the
  *   last live board for 5 minutes after the last current view that showed it (the match's id is not asked); a current
  *   view with no such record is idle at once. `idle` otherwise, the board the view's `next` fixture's codes only when
- *   the pick is one of its two sides (by the pick's id, else its code; plugin 0.10.0), else an empty board (no `next`,
+ *   the pick is one of its two sides (core's pin rule, `pickedSide`; plugin 0.10.0), else an empty board (no `next`,
  *   no pick, or another pair's fixture: the competition's next match is not the team's). `goal` for 6 seconds, in
  *   place of `live`, after a band run whose CURRENT view shows a side of that record scoring against the toasts'
  *   baseline (read before the run replaces it; neither side down; `celebrate: off` never), whatever `toasts` says,
- *   and only while the record live is that goal's match: the pick's goal when the pick's side (by the pick's id, else
- *   its code; none found: no goal of either kind) rose, also when both did; the other side's when only the other side
+ *   and only while the record live is that goal's match: the pick's goal when the pick's side (`pickedSide`, the same
+ *   rule; none found: no goal of either kind) rose, also when both did; the other side's when only the other side
  *   rose (plugin 0.10.0: drawn with its two fireworks in that team's colors, `colorsForPick` of the side, the fans
  *   standing still); each goal its own stamp in the drawing, so the app draws it.
  *   The standing fan's scarf is the pick's flag (plugin 0.10.0: `flagForPick`, carried with the look's colors) when
@@ -2076,14 +2076,24 @@ function pickedRecord(view: View): Item | undefined {
 }
 
 /**
- * The pick's side of a record or a fixture: the side whose `id` is the pick's id when the pick has one, else the side
- * whose `code` is the pick's code; null when neither side is, or both are, or there is no pick.
+ * The pick's side of a record or a fixture, by core's pin rule (`isPinnedSide`, the rule the CLI chose the view's
+ * `next` and marked the record `picked` by): the pick's id, code and name read with `filled`. A pick with no id: the
+ * side whose `code` is the pick's code. A pick with an id: a side that carries an `id` (its value is not `undefined`)
+ * by that id alone, equal to the pick's (a value that is present and is no id, `''`, `null` or a number, is another
+ * team, never a match by code and name); a side that carries none by the pick's code AND name, both filled, equal to
+ * the side's. Null when neither side is, or both are, or the pick is no object.
  */
 function pickedSide(m: { home?: unknown; away?: unknown }, pick: unknown): Side | null {
   if (!isObject(pick)) return null
   const id = filled(pick.id)
   const code = filled(pick.code)
-  const is = (t: unknown): boolean => isObject(t) && (id !== null ? t.id === id : code !== null && t.code === code)
+  const name = filled(pick.name)
+  const is = (t: unknown): boolean => {
+    if (!isObject(t)) return false
+    if (id === null) return code !== null && t.code === code
+    if (t.id !== undefined) return t.id === id
+    return code !== null && name !== null && t.code === code && t.name === name
+  }
   const home = is(m.home)
   const away = is(m.away)
   return home === away ? null : home ? 'home' : 'away'
@@ -2186,9 +2196,10 @@ function boardFor(mem: PixelMemory, now: number, view: View | null): Board {
 
 /**
  * The idle board, the one rule for it: the view's `next` fixture's codes (`boardCode`: three dashes for a side with
- * none) when `next` is an object and the view's pick is one of its two sides (`pickedSide`: by the pick's id when it
- * has one, else its code); else a blank board: no view (a reading that is no view), a `next` that is no object, no
- * pick, or a fixture the pick is not in, or both of whose sides match it.
+ * none) when `next` is an object and the view's pick is one of its two sides (`pickedSide`, core's pin rule: a side
+ * with an id by the pick's id, one with none by the pick's code and name, every side by its code for a pick with no
+ * id); else a blank board: no view (a reading that is no view), a `next` that is no object, no pick, or a fixture the
+ * pick is not in, or both of whose sides match it.
  */
 function idleBoard(view: View | null): Board {
   const next = view?.next

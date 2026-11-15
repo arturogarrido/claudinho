@@ -162,7 +162,8 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
 - `pitch`: faded white pitch lines across the app over soft stripes of your team's main color, and a small scarf in
   its two colors at the top right with your team's name on it (no name with pitch green). It does not move.
 - `pixel`: a pixel-art stadium corner at the bottom right in your team's colors: terraces, a goal and a scoreboard that
-  shows the two teams' codes (`PUM - MTY`), never the score. Your team, for the stadium, is the team the band follows:
+  shows the two codes of your team's match or of its next fixture (`PUM - MTY`), never the score, and is blank when the
+  next fixture is not your team's or none is known. Your team, for the stadium, is the team the band follows:
   `CLAUDINHO_TEAM` when it is set, else your pinned team. It goes live, and plays a goal, only in a session with the
   terminal or the desktop app attached, where the band runs: with the phone alone, a `/claudinho` you type shows the
   idle stadium below (a live stadium left there when the desktop app detaches empties five
@@ -179,9 +180,9 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
     none is known.
   - **goal**, when the plugin sees a goal in your team's match between two readings. A goal for your team: the ball
     flies into the top corner and back, the fans jump, the scoreboard blinks and five fireworks burst in your team's
-    colors. A goal for the other team: the ball flies and the scoreboard blinks too, two fireworks burst in the other
-    team's colors, and your fans stand still. Each goal plays once, then the stadium is live again at the first
-    reading after its six seconds. It follows `celebrate`: with `celebrate: off` there is no goal moment for either
+    two colors and a gold spark. A goal for the other team: the ball flies and the scoreboard blinks too, two fireworks
+    burst in the other team's colors, and your fans stand still. Each goal plays once, then the stadium is live again
+    at the first reading after its six seconds. It follows `celebrate`: with `celebrate: off` there is no goal moment for either
     team. With Reduce motion on in your system, nothing moves and the scoreboard stays lit.
 
 The scenes are drawn for a dark page: on a light one they are faint. Like the band, they show in the desktop and
