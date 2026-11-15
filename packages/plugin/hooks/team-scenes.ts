@@ -10,8 +10,8 @@
  *   glyph table, never as text, and never a score. Its states: `live` (four fans in the team's colors, one holding up a
  *   scarf, and a ball by the goal), `idle` (an empty stadium: no fans and no ball, the board dimmed) and `goal` (the
  *   live corner moving once: after 1.5 s the ball flies into the top corner and back over 4 s and the board blinks; a
- *   goal by the team, the fans hop and raise their arms and five fireworks burst in the two colors; a goal by the other
- *   side of the match (plugin 0.10.0), the fans stand still and two fireworks burst in the other team's colors; a
+ *   goal by the team, the fans hop and raise their arms and five fireworks burst in the two colors and a gold spark; a goal by the other
+ *   side of the match (plugin 0.10.0), the fans stand still and two fireworks burst in the other team's colors (gold and white when none is known); a
  *   reader that asks for reduced motion gets the corner still, the board lit). The scarf (plugin 0.10.0) is a national
  *   team's flag, two or three plain stripes in the flag's order, when one is given; else the team's two colors. A
  *   goal's source ends with `<desc>goal N</desc>`, its stamp: the app does not draw a source it already drew again, so

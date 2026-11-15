@@ -181,7 +181,8 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
   - **goal**, when the plugin sees a goal in your team's match between two readings. A goal for your team: the ball
     flies into the top corner and back, the fans jump, the scoreboard blinks and five fireworks burst in your team's
     two colors and a gold spark. A goal for the other team: the ball flies and the scoreboard blinks too, two fireworks
-    burst in the other team's colors, and your fans stand still. Each goal plays once, then the stadium is live again
+    burst in the other team's colors (gold and white when the plugin has no colors for that team), and your fans
+    stand still. Each goal plays once, then the stadium is live again
     at the first reading after its six seconds. It follows `celebrate`: with `celebrate: off` there is no goal moment for either
     team. With Reduce motion on in your system, nothing moves and the scoreboard stays lit.
 
