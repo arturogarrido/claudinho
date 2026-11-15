@@ -39,6 +39,7 @@ describe('the plugin folder', () => {
       'hooks/register.tsx',
       'hooks/team-colors.ts',
       'hooks/team-look.ts',
+      'hooks/team-scenes.ts',
       'types/index.d.ts',
     ]);
     const kit = tracked('packages/plugin-tests');
@@ -68,9 +69,9 @@ describe('the plugin folder', () => {
     expect(String(toasts?.description)).toMatch(/no pin|without a pin|nothing/i);
   });
 
-  it('the manifest is the team-look release, 0.8.0', () => {
+  it('the manifest is the scenes release, 0.9.0', () => {
     const m = json('packages/plugin/.claude-plugin/plugin.json');
-    expect(m.version).toBe('0.8.0');
+    expect(m.version).toBe('0.9.0');
   });
 
   it('the teamTheme option: off or on, OFF by default (a session holds one theme, and ours would replace the person\'s), and its description says where it shows and what it replaces', () => {
@@ -93,7 +94,7 @@ describe('the plugin folder', () => {
 
   it('the team look\'s own modules are pure: no host, no network, no file; the engine\'s builder is the engine\'s bytes', () => {
     const read = (f: string) => readFileSync(join(ROOT, 'packages/plugin/hooks', f), 'utf8');
-    for (const f of ['team-look.ts', 'team-colors.ts', 'make-colors.js']) {
+    for (const f of ['team-look.ts', 'team-scenes.ts', 'team-colors.ts', 'make-colors.js']) {
       const src = read(f);
       expect(src, f).not.toMatch(/\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\brequire\s*\(|\bimport\s*\(|\bglobalThis\b/);
       expect(src, f).not.toMatch(/(?<![.\w$])process\??\.[A-Za-z_]/);
@@ -106,6 +107,8 @@ describe('the plugin folder', () => {
     expect(froms.length).toBe((look.match(/^\s*import\b/gm) ?? []).length);
     expect(froms.filter((f) => f !== 'claude-code' && f !== './make-colors.js' && f !== './team-colors')).toEqual([]);
     expect(read('team-colors.ts')).not.toMatch(/^\s*import\b/m);
+    // The scenes are drawn from their arguments alone: the module imports nothing.
+    expect(read('team-scenes.ts')).not.toMatch(/^\s*import\b/m);
     // The engine's builder, copied as the engine ships it: its own header says so, and its body hash is the engine's.
     expect(read('make-colors.js')).toMatch(/^\/\/ make-colors\.js: copy this file into your mod's hooks folder, and leave it as it is\.\n/);
     const engine = read('make-colors.js');
