@@ -130,7 +130,7 @@ sentence under it, or one plain sentence when there is nothing to show.
 
 With `teamTheme: on`, the Claude desktop and mobile apps take your team's colors: the app's colors in light and dark
 mode, and a band of color across the top of the app, seen through the app's panels: the main color on its left half
-and, for a team with two colors (Pumas' blue and gold, Brazil's green and yellow), the second on its right; a team with
+and, for a team with two colors (Pumas' blue and gold, Brazil's yellow and green), the second on its right; a team with
 one color has it on both halves. A dark color is lifted so it reads on a dark page, and a white, black or gray team
 color is shown as a light or mid gray. Apart from that, the band's colors are the team's own values, and they stay the
 same in light and dark mode, while the app's colors change with the mode. Your team is the one the CLI picks for you:

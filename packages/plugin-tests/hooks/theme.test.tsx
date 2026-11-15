@@ -498,10 +498,10 @@ describe('the table and the look, as data', () => {
     expect((buildLook('Newcastle United', TEAM_COLORS['espn:361']).look.backdrop as { scene: string }).scene).toBe('band-2d2d2d-41b6e6')
   })
 
-  test('the pairs Arturo named: Pumas blue and gold, Brazil green and yellow, Argentina blue and white, Barcelona blue and red', async () => {
+  test('the pairs the maintainer named: Pumas blue and gold, Brazil yellow and green, Argentina blue and white, Barcelona blue and red', async () => {
     expect(TEAM_COLORS['espn:233']).toEqual(['002b5c', 'c2a25a'])
-    expect(TEAM_COLORS['espn:205']).toEqual(['009c3b', 'fedf00'])
-    expect(TEAM_COLORS['espn:202']).toEqual(['74acdf', 'ffffff'])
+    expect(TEAM_COLORS['espn:205']).toEqual(['ffdf00', '009c3b'])
+    expect(TEAM_COLORS['espn:202']).toEqual(['75aadb', 'ffffff'])
     expect(TEAM_COLORS['espn:83']).toEqual(['004d98', 'a50044'])
   })
 

@@ -1,58 +1,138 @@
 // Team colors for the team look: a main color and, for some, a second one, six hex digits each.
-// Generated from the provider's recorded team lists (Nov 14, 2026) with hand-written corrections where its
-// kit colors mislead. Plain color values only: no crest, kit or logo.
+// Generated from the provider's recorded team lists (Nov 14, 2026), the maintainer's list of national teams, and
+// hand-written corrections where the provider's kit colors mislead. Plain color values only: no crest, kit or logo.
 
 /** By the provider's team id (`espn:359`). */
 export const TEAM_COLORS: Readonly<Record<string, readonly [string, string?]>> = {
   // fifa.world
-  'espn:624': ['006233', 'd21034'], // Algeria
-  'espn:202': ['74acdf', 'ffffff'], // Argentina
+  'espn:624': ['ffffff', '006233'], // Algeria
+  'espn:202': ['75aadb', 'ffffff'], // Argentina
   'espn:628': ['ffcd00', '00843d'], // Australia
-  'espn:474': ['ed2939'], // Austria
-  'espn:459': ['e30613', 'fdda24'], // Belgium
-  'espn:452': ['002f6c', 'fecb00'], // Bosnia-Herzegovina
-  'espn:205': ['009c3b', 'fedf00'], // Brazil
-  'espn:206': ['d80621'], // Canada
+  'espn:474': ['ed2939', 'ffffff'], // Austria
+  'espn:459': ['e30613', '000000'], // Belgium
+  'espn:452': ['002395', 'fecb00'], // Bosnia-Herzegovina
+  'espn:205': ['ffdf00', '009c3b'], // Brazil
+  'espn:206': ['c5281c', 'ffffff'], // Canada
   'espn:2597': ['003893', 'cf2027'], // Cape Verde
   'espn:208': ['fcd116', '003893'], // Colombia
   'espn:2850': ['007fff', 'ce1021'], // Congo DR
-  'espn:477': ['ff0000', '171796'], // Croatia
+  'espn:477': ['ff0000', 'ffffff'], // Croatia
   'espn:11678': ['002b7f', 'f9e814'], // Curaçao
   'espn:450': ['d7141a', '11457e'], // Czechia
   'espn:209': ['ffdd00', '034ea2'], // Ecuador
-  'espn:2620': ['ce1126', 'c09300'], // Egypt
-  'espn:448': ['cf142b', '00247d'], // England
-  'espn:478': ['002395', 'ed2939'], // France
-  'espn:481': ['dd0000', 'ffce00'], // Germany
-  'espn:4469': ['ce1126', 'fcd116'], // Ghana
+  'espn:2620': ['ce1126', 'ffffff'], // Egypt
+  'espn:448': ['ffffff', '000040'], // England
+  'espn:478': ['002395', 'ffffff'], // France
+  'espn:481': ['ffffff', '000000'], // Germany
+  'espn:4469': ['ffffff', '000000'], // Ghana
   'espn:2654': ['00209f', 'd21034'], // Haiti
-  'espn:469': ['239f40', 'da0000'], // Iran
+  'espn:469': ['ffffff', 'da0000'], // Iran
   'espn:4375': ['007a3d', 'ce1126'], // Iraq
-  'espn:4789': ['ff8200', '009e60'], // Ivory Coast
-  'espn:627': ['0b1f8f', 'bc002d'], // Japan
+  'espn:4789': ['f77f00', 'ffffff'], // Ivory Coast
+  'espn:627': ['000555', 'ffffff'], // Japan
   'espn:2917': ['ce1126', '007a3d'], // Jordan
-  'espn:203': ['006847', 'ce1126'], // Mexico
+  'espn:203': ['006847', 'ffffff'], // Mexico
   'espn:2869': ['c1272d', '006233'], // Morocco
-  'espn:449': ['f36c21', '21468b'], // Netherlands
-  'espn:2666': ['00247d', 'cc142b'], // New Zealand
+  'espn:449': ['f36c21', 'ffffff'], // Netherlands
+  'espn:2666': ['ffffff', '000000'], // New Zealand
   'espn:464': ['ba0c2f', '00205b'], // Norway
-  'espn:2659': ['da121a', '072357'], // Panama
-  'espn:210': ['d52b1e', '0038a8'], // Paraguay
-  'espn:482': ['da291c', '046a38'], // Portugal
-  'espn:4398': ['8a1538'], // Qatar
-  'espn:655': ['006c35'], // Saudi Arabia
-  'espn:580': ['005eb8'], // Scotland
-  'espn:654': ['00853f', 'fdef42'], // Senegal
+  'espn:2659': ['da121a', 'ffffff'], // Panama
+  'espn:210': ['d52b1e', 'ffffff'], // Paraguay
+  'espn:482': ['e42518', '006600'], // Portugal
+  'espn:4398': ['8d1b3d', 'ffffff'], // Qatar
+  'espn:655': ['006c35', 'ffffff'], // Saudi Arabia
+  'espn:580': ['002b5c', 'ffffff'], // Scotland
+  'espn:654': ['ffffff', '00853f'], // Senegal
   'espn:467': ['ffb81c', '007749'], // South Africa
   'espn:451': ['cd2e3a', '0047a0'], // South Korea
-  'espn:164': ['c60b1e', 'ffc400'], // Spain
-  'espn:466': ['fecb00', '006aa7'], // Sweden
-  'espn:475': ['da291c'], // Switzerland
+  'espn:164': ['aa151b', 'f1bf00'], // Spain
+  'espn:466': ['fecc02', '006aa7'], // Sweden
+  'espn:475': ['da291c', 'ffffff'], // Switzerland
   'espn:659': ['e70013'], // Tunisia
-  'espn:465': ['e30a17'], // Türkiye
-  'espn:660': ['0a3161', 'b31942'], // United States
-  'espn:212': ['5cbfeb', '0038a8'], // Uruguay
+  'espn:465': ['e30a17', 'ffffff'], // Türkiye
+  'espn:660': ['ffffff', '002868'], // United States
+  'espn:212': ['5eb6e4', '000000'], // Uruguay
   'espn:2570': ['0099b5', '1eb53a'], // Uzbekistan
+  // uefa.nations
+  'espn:585': ['e41e20', '000000'], // Albania
+  'espn:587': ['e70000', '0000cd'], // Andorra
+  'espn:579': ['de2400'], // Armenia
+  'espn:581': ['2d4ab0'], // Azerbaijan
+  'espn:583': ['e70000'], // Belarus
+  'espn:462': ['ffffff', '00966e'], // Bulgaria
+  'espn:445': ['195ccd'], // Cyprus
+  'espn:479': ['c8102e', 'ffffff'], // Denmark
+  'espn:444': ['195ccd'], // Estonia
+  'espn:447': ['195ccd'], // Faroe Islands
+  'espn:458': ['ffffff', '003580'], // Finland
+  'espn:584': ['ffffff', 'ff0000'], // Georgia
+  'espn:16721': ['de2918'], // Gibraltar
+  'espn:455': ['0d5eaf', 'ffffff'], // Greece
+  'espn:480': ['ce2939', '477050'], // Hungary
+  'espn:470': ['02529c', 'dc1e35'], // Iceland
+  'espn:461': ['0038b8', 'ffffff'], // Israel
+  'espn:162': ['0066cc', 'ffffff'], // Italy
+  'espn:2619': ['00abc2', 'ffec2d'], // Kazakhstan
+  'espn:18272': ['0000cd', 'ffec00'], // Kosovo
+  'espn:456': ['992242'], // Latvia
+  'espn:589': ['0000cd', 'e70000'], // Liechtenstein
+  'espn:460': ['ffe400', 'de2918'], // Lithuania
+  'espn:582': ['e70000'], // Luxembourg
+  'espn:453': ['de2400'], // Malta
+  'espn:483': ['0046ae', 'ffd200'], // Moldova
+  'espn:6775': ['e70000'], // Montenegro
+  'espn:463': ['d20000', 'ffe600'], // North Macedonia
+  'espn:586': ['006847', 'ffffff'], // Northern Ireland
+  'espn:471': ['ffffff', 'dc143c'], // Poland
+  'espn:476': ['169b62', 'ffffff'], // Republic of Ireland
+  'espn:473': ['fcd116', '002b7f'], // Romania
+  'espn:588': ['00bfff'], // San Marino
+  'espn:6757': ['c6363c', 'ffffff'], // Serbia
+  'espn:468': ['0b4ea2', 'ee1c25'], // Slovakia
+  'espn:472': ['ffffff', '005ce6'], // Slovenia
+  'espn:457': ['ffd700', '0057b7'], // Ukraine
+  'espn:578': ['d30731', 'ffffff'], // Wales
+  // conmebol.america
+  'espn:204': ['007934', 'ffffff'], // Bolivia
+  'espn:207': ['d52b1e', '0039a6'], // Chile
+  'espn:214': ['ce1126', '002b7f'], // Costa Rica
+  'espn:1038': ['fed100', '009b3a'], // Jamaica
+  'espn:211': ['ffffff', 'd91023'], // Peru
+  'espn:213': ['722f37', 'ffffff'], // Venezuela
+  // concacaf.nations.league
+  'espn:8942': ['012169', 'ff9900'], // Anguilla
+  'espn:2638': ['c8102e'], // Antigua and Barbuda
+  'espn:2642': ['418fde', 'fbe122'], // Aruba
+  'espn:2640': ['00a9ce', 'fdda25'], // Bahamas
+  'espn:2637': ['00267f', 'ffc726'], // Barbados
+  'espn:2641': ['d90f19', '171696'], // Belize
+  'espn:2643': ['c8102e', '0033a0'], // Bermuda
+  'espn:19314': ['c60000'], // Bonaire
+  'espn:2644': ['0033a0', 'c8102e'], // British Virgin Islands
+  'espn:2646': ['ff0000', '0033a0'], // Cayman Islands
+  'espn:2647': ['002a8f', 'cf142b'], // Cuba
+  'espn:13582': ['32ad42', 'c60000'], // Dominica
+  'espn:2649': ['002d62', 'ce1127'], // Dominican Republic
+  'espn:2650': ['0f47af', 'ffffff'], // El Salvador
+  'espn:10532': ['d20300', '0033a0'], // French Guiana
+  'espn:2651': ['ef3340', '009739'], // Grenada
+  'espn:7657': ['509e2f', 'fff200'], // Guadeloupe
+  'espn:2652': ['ffffff', '4997d0'], // Guatemala
+  'espn:2653': ['fff200', '22b14c'], // Guyana
+  'espn:215': ['ffffff', '0073cf'], // Honduras
+  'espn:2728': ['0537e4'], // Martinique
+  'espn:2655': ['012169', 'c8102e'], // Montserrat
+  'espn:2658': ['0067c6', 'ffffff'], // Nicaragua
+  'espn:11766': ['0537e4', 'c60000'], // Puerto Rico
+  'espn:18243': ['c60000'], // Sint Maarten
+  'espn:2662': ['228b22'], // St. Kitts and Nevis
+  'espn:2661': ['0077c8', 'ffd100'], // St. Lucia
+  'espn:10596': ['0033a0'], // St. Martin
+  'espn:13584': ['32ad42', 'c60000'], // St. Vincent and the Grenadines
+  'espn:2664': ['377e3f', 'b40a2d'], // Suriname
+  'espn:2627': ['da1a35', '000000'], // Trinidad and Tobago
+  'espn:2665': ['000080', 'ffd700'], // Turks and Caicos Islands
+  'espn:2645': ['0033a0'], // US Virgin Islands
   // eng.1
   'espn:349': ['da291c', '2d2d2d'], // AFC Bournemouth
   'espn:359': ['e20520', '003399'], // Arsenal
