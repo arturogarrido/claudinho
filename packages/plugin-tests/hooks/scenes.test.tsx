@@ -1085,6 +1085,7 @@ describe('the pixel corner: the scarf in the flag\'s colors', () => {
   })
 
   test('a scarf that is not two or three colors of six hex digits is no scarf: the kit\'s scarf, never the value given', async () => {
+    // biome-ignore lint/suspicious/noSparseArray: a hole is the case (`every` and `map` skip one, `undefined` is not a hole).
     const bad: unknown[] = [[], ['009246'], ['009246', 'ffffff', 'ce2b37', '000000'], ['009246', 'red'], ['009246', '"/><script>'], ['009246', 7], [, '009246', 'ce2b37'], ['009246', , 'ce2b37'], 'ce2b37', null, { 0: '009246', 1: 'ffffff', length: 2 }, ['#009246', '#ffffff']]
     for (const v of bad) expect(at('live', v), JSON.stringify(v)).toBe(at('live'))
   })
