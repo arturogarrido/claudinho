@@ -332,6 +332,9 @@ describe('teamScene: which drawing the look carries', () => {
   })
 })
 
+/** A view of the moments' competition that is not current and lists nothing live: a refresh that failed. */
+const STALE = momentView([], [], { current: false })
+
 describe('the pixel corner: its state follows the pinned team\'s match', () => {
   test('nothing live, a next fixture: idle, the next fixture\'s codes', PIXEL, async ($, on) => {
     const { sets } = engine(on)
@@ -386,7 +389,7 @@ describe('the pixel corner: its state follows the pinned team\'s match', () => {
 
   test('live, then one view that is not current (a failed refresh): the stadium stays live', PIXEL, async ($, on) => {
     const { sets } = engine(on)
-    const { clock } = await world($, on, [live([0, 0]), view(LINE), live([0, 0])], DESKTOP)
+    const { clock } = await world($, on, [live([0, 0]), STALE, live([0, 0])], DESKTOP)
     await clock.advance(15_000)
     await clock.advance(15_000)
     await clock.advance(15_000)
@@ -395,7 +398,7 @@ describe('the pixel corner: its state follows the pinned team\'s match', () => {
 
   test('live, then views that are not current for more than five minutes: idle', PIXEL, async ($, on) => {
     const { sets } = engine(on)
-    const { clock } = await world($, on, [live([0, 0]), view(LINE)], DESKTOP)
+    const { clock } = await world($, on, [live([0, 0]), STALE], DESKTOP)
     for (let i = 0; i < 4; i += 1) await clock.advance(300_000)
     expect(sets).toHaveLength(2)
     expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
@@ -566,15 +569,15 @@ describe('the pixel corner: whose match it is, and what it remembers', () => {
     expect(stampOf((await drawn($, sceneOf(sets[1]))) as string)).toBeGreaterThan(0)
   })
 
-  test('live, then the pick changes on a view that is not current: the new team\'s stadium is idle, never the old match in new colors', PIXEL, async ($, on) => {
+  test('live, then the pick changes in the same competition on a view that is not current: the new team\'s stadium is idle, never the old match in new colors', PIXEL, async ($, on) => {
     const { sets } = engine(on)
-    const { clock } = await world($, on, [live([0, 0]), view(LINE, ARSENAL_NEXT)], DESKTOP)
+    const { clock } = await world($, on, [live([0, 0]), momentView([], [], { current: false, ...ARSENAL_NEXT })], DESKTOP)
     await clock.advance(15_000)
     expect(sets).toHaveLength(2)
     expect(await drawn($, sceneOf(sets[1]))).toBe(pixelSvg({ ...ARS, state: 'idle', home: 'ARS', away: 'LEE' }))
   })
 
-  test('live, then another competition on a view that is not current: idle', PIXEL, async ($, on) => {
+  test('live, then another competition with the same pick on a view that is not current: idle', PIXEL, async ($, on) => {
     const { sets } = engine(on)
     const { clock } = await world($, on, [live([0, 0]), view(LINE)], DESKTOP)
     await clock.advance(15_000)
@@ -595,6 +598,41 @@ describe('the pixel corner: whose match it is, and what it remembers', () => {
     const { clock } = await world($, on, [live([0, 0]), new Error('spawn claudinho ENOENT')], DESKTOP)
     for (let i = 0; i < 8; i += 1) await clock.advance(15_000)
     expect(sets).toHaveLength(1)
+  })
+
+  test('a goal, then the CLI fails: the goal ends at the next reading (live while the hold lasts), then the stadium empties', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([0, 0]), live([0, 1]), new Error('spawn claudinho ENOENT')], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(3)
+    expect(await drawn($, sceneOf(sets[2]))).toBe(pixelSvg({ ...LIV, state: 'live', home: 'LAS', away: 'LIV' }))
+    for (let i = 0; i < 44; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(4)
+    expect(await drawn($, sceneOf(sets[3]))).toBe(pixelSvg({ ...LIV, state: 'idle' }))
+  })
+
+  test('a session whose CLI never answers sets nothing, as in 0.8.0', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [new Error('spawn claudinho ENOENT')], DESKTOP)
+    for (let i = 0; i < 44; i += 1) await clock.advance(15_000)
+    expect(sets).toEqual([])
+  })
+
+  test('live, theme off, then the CLI fails past the hold: nothing is set (the look is off)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, command } = await world($, on, [live([0, 0]), live([0, 0]), new Error('spawn claudinho ENOENT')], DESKTOP)
+    await command('theme off')
+    for (let i = 0; i < 44; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('live, then every set is refused while the CLI fails: the stadium\'s emptying is tried once, not per tick', PIXEL, async ($, on) => {
+    const { sets } = engine(on, (n) => n > 1)
+    const { clock } = await world($, on, [live([0, 0]), new Error('spawn claudinho ENOENT')], DESKTOP)
+    for (let i = 0; i < 60; i += 1) await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
   })
 
   test('a new session forgets the match: a first view that is not current is idle, and a goal from before is not played again', PIXEL, async ($, on) => {
