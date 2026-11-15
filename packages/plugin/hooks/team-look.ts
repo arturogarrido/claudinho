@@ -1,9 +1,10 @@
 import type { ThemeSetArgs } from 'claude-code'
 import { makeColors } from './make-colors.js'
-import { NATION_IDS, TEAM_COLORS } from './team-colors'
+import { FLAG_COLORS, NATION_IDS, TEAM_COLORS } from './team-colors'
 
 /**
- * The team look (plugin 0.8.0), as data: which colors a pick has, and the look made from them. Pure: no host, no
+ * The team look (plugin 0.8.0), as data: which colors a pick has (and, plugin 0.10.0, which flag a national team has,
+ * `flagForPick`, for the stadium's scarf), and the look made from them. Pure: no host, no
  * network, no file. The hooks module decides when a look is set; this module only builds it.
  *
  * A look is the argument of the engine's theme set: `colors`, the whole theme `makeColors` builds for both modes from the
@@ -65,6 +66,27 @@ export function colorsForPick(pick: unknown, slug: unknown): TeamColors | undefi
   if (typeof code !== 'string' || !Object.hasOwn(NATION_IDS, code)) return undefined
   const id = NATION_IDS[code]
   return typeof id === 'string' && Object.hasOwn(TEAM_COLORS, id) ? TEAM_COLORS[id] : undefined
+}
+
+/** A national team's flag colors (`FLAG_COLORS`): two or three, six hex digits each, in the flag's order. */
+export type FlagColors = readonly [string, string, string?]
+
+/**
+ * The flag of a pick in a competition, by the same rule as `colorsForPick`, own properties alone: a pick whose `id` is
+ * a string, that id's flag, or none (an id present decides, known or not: a club has none); a pick with no `id` key
+ * under the World Cup, the flag of the nation of its `code`, exact case. Anything else: none.
+ */
+export function flagForPick(pick: unknown, slug: unknown): FlagColors | undefined {
+  if (!isRecord(pick)) return undefined
+  if (Object.hasOwn(pick, 'id')) {
+    const id = pick.id
+    return typeof id === 'string' && Object.hasOwn(FLAG_COLORS, id) ? FLAG_COLORS[id] : undefined
+  }
+  if (slug !== WORLD_CUP) return undefined
+  const code = pick.code
+  if (typeof code !== 'string' || !Object.hasOwn(NATION_IDS, code)) return undefined
+  const id = NATION_IDS[code]
+  return typeof id === 'string' && Object.hasOwn(FLAG_COLORS, id) ? FLAG_COLORS[id] : undefined
 }
 
 /** A color's hue (degrees), HSL saturation and HSL lightness. */

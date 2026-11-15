@@ -167,17 +167,21 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
   terminal or the desktop app attached, where the band runs: with the phone alone, a `/claudinho` you type shows the
   empty stadium with your next fixture's codes (a live stadium left there when the desktop app detaches empties five
   minutes after the last fresh reading, or at once at a `/claudinho` you type). It has three states:
-  - **live**, while your team's match is in play: fans on the terraces and a ball by the goal. A reading the CLI
+  - **live**, while your team's match is in play: fans on the terraces and a ball by the goal. One fan holds up a
+    scarf: for a national team, in its flag's colors as two or three plain stripes; a club, and the few national teams
+    the plugin has no flag for, keep the scarf in the team's two colors. A reading the CLI
     cannot vouch for, or no answer from the CLI, keeps it live; the stadium empties five minutes after the last fresh
     reading that showed the match live. `/claudinho theme off`, a new session, or a change of your team or of the
     competition forgets the match: the stadium is live again only from the next fresh reading that shows it, and a
     goal it had seen is not played again.
   - **idle**, the rest of the time: an empty stadium, the scoreboard dimmed with your next fixture's codes (blank when
     none is known).
-  - **goal**, when the plugin sees your team score between two readings: the ball flies into the top corner and back,
-    the fans jump, the scoreboard blinks and fireworks burst, once per goal, then live again at the first reading
-    after its six seconds. It follows `celebrate`: with `celebrate: off` there is no goal moment. With Reduce motion on
-    in your system, nothing moves and the scoreboard stays lit.
+  - **goal**, when the plugin sees a goal in your team's match between two readings. A goal for your team: the ball
+    flies into the top corner and back, the fans jump, the scoreboard blinks and five fireworks burst in your team's
+    colors. A goal for the other team: the ball flies and the scoreboard blinks too, two fireworks burst in the other
+    team's colors, and your fans stand still. Each goal plays once, then the stadium is live again at the first
+    reading after its six seconds. It follows `celebrate`: with `celebrate: off` there is no goal moment for either
+    team. With Reduce motion on in your system, nothing moves and the scoreboard stays lit.
 
 The scenes are drawn for a dark page: on a light one they are faint. Like the band, they show in the desktop and
 mobile apps only. Changing the scene in `/config` reloads the plugin, and the next reading sets the new one.
@@ -407,8 +411,9 @@ off holds across a reload. Nothing else is new: the look is built inside the plu
 no file read and no network request. The band of color across the top is drawn by the plugin from the two colors the
 look names, as a picture that runs nothing and loads nothing. The pitch and the pixel corner (`teamScene`) are drawn
 the same way by `hooks/team-scenes.ts`, from those colors; the pitch's scarf adds your team's name and the pixel
-corner's scoreboard the teams' codes, both from the CLI's answer the plugin already read. With `teamTheme: off` it
-calls neither and draws nothing.
+corner's scoreboard the teams' codes, both from the CLI's answer the plugin already read. The pixel corner's scarf,
+for a national team, takes its flag's colors from the same file, and the other team's goal its colors from it too.
+With `teamTheme: off` it calls neither and draws nothing.
 
 ## Data and disclaimer
 
