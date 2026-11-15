@@ -69,7 +69,8 @@ const live = (score: [number, number], over: Record<string, unknown> = {}, viewO
 
 /** Every tag closed in order, every attribute quoted, no bare `&`, no control character, no lone surrogate. */
 const wellFormed = (svg: string): string | null => {
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(svg)) return 'a control character'
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the control characters are what the checker refuses.
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\ufffe\uffff]/.test(svg)) return 'a control character'
   for (let i = 0; i < svg.length; i += 1) {
     const c = svg.charCodeAt(i)
     if (c >= 0xd800 && c <= 0xdbff) {
@@ -171,6 +172,8 @@ describe('the pitch: the scarf carries the team\'s name, as text the drawing can
     expect(scarfName('a'.repeat(30))).toBe('A'.repeat(18))
     expect([...scarfName(`${'a'.repeat(17)}😀😀`)]).toEqual([...'A'.repeat(17), '😀'])
     expect(scarfName('a\u0000b\u001fc\ud800d')).toBe('ABCD')
+    // What XML cannot hold, and the other controls: dropped too.
+    expect(scarfName('a\u007fb\u0085c\u009fd\ufffee\ufffff')).toBe('ABCDEF')
     expect(scarfName('  Arsenal  ')).toBe('ARSENAL')
     expect(scarfName('A&B')).toBe('A&B')
     for (const v of [undefined, null, 7, '', '   ', {}, ['x']]) expect(scarfName(v)).toBe('')
@@ -185,6 +188,7 @@ describe('the pitch: the scarf carries the team\'s name, as text the drawing can
     expect(cut).toContain(`${'A'.repeat(17)}&amp;<`)
     expect(wellFormed(cut)).toBe(null)
     expect(wellFormed(pitchSvg({ ...ARS, name: 'a\u0000\ud800b' }))).toBe(null)
+    expect(wellFormed(pitchSvg({ ...ARS, name: 'a\ufffe\uffff\u0085b' }))).toBe(null)
   })
 
   test('no name: the scarf carries no text', async () => {
@@ -300,10 +304,10 @@ describe('teamScene: which drawing the look carries', () => {
   test('pitch: the same team on later views is never set again; a new pin is a new set under a new name', PITCH, async ($, on) => {
     const { sets } = engine(on)
     const { clock, command } = await world($, on, [view(LINE, ARSENAL), view(LINE, ARSENAL), view(LINE, ARSENAL), view(LINE)], DESKTOP)
-    await clock.advance(300_000)
+    await clock.advance(15_000)
     await command()
     expect(sets).toHaveLength(1)
-    await clock.advance(300_000)
+    await clock.advance(15_000)
     expect(sets).toHaveLength(2)
     expect(sceneOf(sets[1])).not.toBe(sceneOf(sets[0]))
     expect(await drawn($, sceneOf(sets[1]))).toBe(pitchSvg({ ...LIV, name: 'Liverpool' }))
@@ -317,7 +321,7 @@ describe('teamScene: which drawing the look carries', () => {
     expect(sets).toHaveLength(1)
   })
 
-  test('our hook draws only the scene this plugin last set: another plugin\'s, an unknown name and an old band name of another scene are left beneath', PITCH, async ($, on) => {
+  test('our hook draws only the scene this plugin last set: another plugin\'s and an unknown name are left beneath', PITCH, async ($, on) => {
     const { sets } = engine(on)
     await world($, on, [view(LINE, ARSENAL)], DESKTOP)
     expect(await drawn($, sceneOf(sets[0]), 'desktop', 'someone-else')).toBe(undefined)
@@ -494,6 +498,23 @@ describe('the pixel corner: a goal for the pinned side', () => {
     expect(sets).toHaveLength(1)
   })
 
+  test('the tally rises for the pinned side while the other side\'s falls (a correction, not a goal): no goal set', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [live([1, 0]), live([0, 1])], DESKTOP)
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('the same match id under another competition is another match: no goal set', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const other = { competition: { slug: 'eng.1', alias: 'premier-league', name: 'Premier League', chosenBy: 'saved' } }
+    const { clock } = await world($, on, [live([0, 0]), live([0, 1], {}, other)], DESKTOP)
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+  })
+
   test('the first view of a session already holds a score: no goal (nothing to compare with)', PIXEL, async ($, on) => {
     const { sets } = engine(on)
     await world($, on, [live([0, 3])], DESKTOP)
@@ -526,6 +547,18 @@ describe('sets the engine refuses, names, the off and a reload', () => {
     expect(sets).toHaveLength(2)
     expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...LIV, state: 'live', home: 'LAS', away: 'LIV' }))
     expect(await drawn($, sceneOf(sets[1]))).toBe(undefined)
+  })
+
+  test('theme off where the engine refuses the clear: our look still stands, and our hook still draws it', PIXEL, async ($, on) => {
+    const sets: SetArgs[] = []
+    on('theme.set', (_$, e) => {
+      sets.push(JSON.parse(JSON.stringify(e)) as SetArgs)
+      return { value: { isDrawn: true, requestId: 'theme' } }
+    })
+    on('theme.clear', () => ({ deny: 'theme.clear denied' }))
+    const { command } = await world($, on, [live([0, 0])], DESKTOP)
+    await command('theme off')
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...LIV, state: 'live', home: 'LAS', away: 'LIV' }))
   })
 
   test('every set has a name no earlier set had, across a reload too', PIXEL, async ($, on) => {

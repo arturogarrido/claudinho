@@ -210,7 +210,7 @@ describe('the plugin directory listing', () => {
    * installed `claudinho` CLI run. A vocabulary check over the one module the manifest runs, in which the host is
    * always `$` (every hook's first parameter, every binding typed `EngineInterface`): every member of `$` it names is
    * one the policy accounts for; `$` is never indexed or assigned; the module imports nothing but types, the host's
-   * three state helpers and the team look's three pure functions; every run is `claudinho ambient` or `claudinho match`; the filesystem is read twice, nvm's
+   * three state helpers and the team look's three pure functions and the scenes' three; every run is `claudinho ambient` or `claudinho match`; the filesystem is read twice, nvm's
    * version folder listed and `<version>/bin/claudinho` probed; the prompt handler uses its event only to pass it on
    * and to add the note, written from the CLI's `context` unchanged; the command handler reads the typed text only
    * to compare it with `match` and the three team-look phrases. It is a tripwire over the shapes the module has, not a proof: a use of the host or of
@@ -242,9 +242,9 @@ describe('the plugin directory listing', () => {
     expect(src).not.toMatch(/(?<![.\w$])process\??\.[A-Za-z_]/);
     const imports = [...src.matchAll(/^import\s+(type\s+)?\{([^}]*)\}\s+from\s+'([^']+)'/gm)];
     expect(imports.length).toBe((src.match(/^\s*import\b/gm) ?? []).length);
-    expect(imports.filter((m) => m[3] !== 'claude-code' && m[3] !== '../types' && m[3] !== './team-look').map((m) => m[3])).toEqual([]);
+    expect(imports.filter((m) => m[3] !== 'claude-code' && m[3] !== '../types' && m[3] !== './team-look' && m[3] !== './team-scenes').map((m) => m[3])).toEqual([]);
     const values = imports.filter((m) => !m[1]).flatMap((m) => (m[2] ?? '').split(',').map((v) => v.trim()));
-    expect(values.filter((v) => v !== '').sort()).toEqual(['atom', 'bandSvg', 'buildLook', 'colorsForPick', 'read', 'update']);
+    expect(values.filter((v) => v !== '').sort()).toEqual(['atom', 'bandSvg', 'boardCode', 'buildLook', 'colorsForPick', 'pitchSvg', 'pixelSvg', 'read', 'update']);
     const argv = String.raw`\s*\[\s*(['"][^'"]*['"])\s*,\s*(['"][^'"]*['"])`;
     const runs = [...src.matchAll(new RegExp(String.raw`\$${DOT}process${DOT}run${OPEN}${argv}`, 'g'))];
     expect(runs.length).toBe((src.match(new RegExp(String.raw`\$${DOT}process${DOT}run\b`, 'g')) ?? []).length);
