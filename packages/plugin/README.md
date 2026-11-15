@@ -165,7 +165,7 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
   shows the two teams' codes (`PUM - MTY`), never the score. Your team, for the stadium, is the team the band follows:
   `CLAUDINHO_TEAM` when it is set, else your pinned team. It goes live, and plays a goal, only in a session with the
   terminal or the desktop app attached, where the band runs: with the phone alone, a `/claudinho` you type shows the
-  empty stadium with your next fixture's codes (a live stadium left there when the desktop app detaches empties five
+  idle stadium below (a live stadium left there when the desktop app detaches empties five
   minutes after the last fresh reading, or at once at a `/claudinho` you type). It has three states:
   - **live**, while your team's match is in play: fans on the terraces and a ball by the goal. One fan holds up a
     scarf: for a national team, in its flag's colors as two or three plain stripes; a club, and the few national teams
@@ -174,8 +174,9 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
     reading that showed the match live. `/claudinho theme off`, a new session, or a change of your team or of the
     competition forgets the match: the stadium is live again only from the next fresh reading that shows it, and a
     goal it had seen is not played again.
-  - **idle**, the rest of the time: an empty stadium, the scoreboard dimmed with your next fixture's codes (blank when
-    none is known).
+  - **idle**, the rest of the time: an empty stadium, the scoreboard dimmed with the codes of your team's next fixture.
+    The scoreboard is blank when the CLI's next fixture is not your team's (another match of the competition) or when
+    none is known.
   - **goal**, when the plugin sees a goal in your team's match between two readings. A goal for your team: the ball
     flies into the top corner and back, the fans jump, the scoreboard blinks and five fireworks burst in your team's
     colors. A goal for the other team: the ball flies and the scoreboard blinks too, two fireworks burst in the other

@@ -382,7 +382,7 @@ export function pixelSvg(a: {
         [1400, 200, O2, O1],
       ]
     : state === 'goal'
-      ? [...three, [1300, 150, B, SPARK], [1540, 150, A, B]]
+      ? [...three, [1300, 150, B, SPARK], [1528, 150, A, B]]
       : three
   const fireworks = bursts
     .map(([x, y, c1, c2]) => `<g class="px-fx" transform="translate(${x} ${y})">${ring(16, c1, 1)}${ring(32, c2, 2)}${ring(48, c1, 3)}${ring(64, c2, 4)}</g>`)
