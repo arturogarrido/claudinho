@@ -18,7 +18,7 @@ export const FLAGS_APPROVED: Readonly<Record<string, readonly string[]>> = {
   'espn:2850': ['007fff', 'f7d618', 'ce1021'], // Congo DR
   'espn:477': ['ff0000', 'ffffff', '171796'], // Croatia
   'espn:11678': ['002b7f', 'f9e814'], // Curaçao
-  'espn:450': ['11457e', 'ffffff', 'd7141a'], // Czechia
+  'espn:450': ['ffffff', 'd7141a', '11457e'], // Czechia
   'espn:209': ['ffdd00', '034ea2', 'ed1c24'], // Ecuador
   'espn:2620': ['ce1126', 'ffffff', '000000'], // Egypt
   'espn:448': ['ffffff', 'ce1124', 'ffffff'], // England
@@ -91,7 +91,7 @@ export const FLAGS_APPROVED: Readonly<Record<string, readonly string[]>> = {
   'espn:457': ['0057b7', 'ffd700'], // Ukraine
   'espn:578': ['ffffff', '00b140', 'c8102e'], // Wales
   'espn:204': ['d52b1e', 'f9e300', '007934'], // Bolivia
-  'espn:207': ['0039a6', 'ffffff', 'd52b1e'], // Chile
+  'espn:207': ['ffffff', 'd52b1e', '0039a6'], // Chile
   'espn:214': ['002b7f', 'ffffff', 'ce1126'], // Costa Rica
   'espn:1038': ['009b3a', 'fed100', '000000'], // Jamaica
   'espn:211': ['d91023', 'ffffff', 'd91023'], // Peru

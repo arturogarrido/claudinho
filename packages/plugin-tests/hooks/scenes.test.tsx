@@ -6,12 +6,15 @@ import { boardCode, pitchSvg, pixelSvg, scarfName } from './team-scenes'
 import { START, liveRecord, momentView, view, world } from './world'
 
 /**
- * The team look's scenes (plugin 0.9.0): under `teamTheme: on`, `teamScene` chooses what is drawn behind the
- * conversation in the desktop and mobile apps: `band` (the default, 0.8.0's band, unchanged), `pitch` (faded pitch
- * lines and a small scarf with the team's name) or `pixel` (a stadium corner: terraces, fans, a goal, and a scoreboard
- * with the two teams' codes, never a score). The pixel corner has three states: `live` (the pinned team's match is in
- * play, by a current view), `idle` (an empty stadium, the next fixture's codes) and `goal` (the pinned side scored:
- * once per goal, for six seconds, then `live` again at the next reading).
+ * The team look's scenes (plugin 0.9.0, changed in 0.10.0): under `teamTheme: on`, `teamScene` chooses what is drawn
+ * behind the conversation in the desktop and mobile apps: `band` (the default, 0.8.0's band, unchanged), `pitch` (faded
+ * pitch lines and a small scarf with the team's name) or `pixel` (a stadium corner: terraces, fans, a goal, and a
+ * scoreboard with the two teams' codes, never a score). The pixel corner has three states: `live` (the picked team's
+ * match is in play, by a current view), `idle` (an empty stadium; the board shows the next fixture's codes only when
+ * the picked team is one of its sides, else it is blank) and `goal` (either side of the picked team's match scored:
+ * once per goal, for six seconds, then `live` again at the next reading; the pick's goal and the other side's are two
+ * drawings). Since 0.10.0 a national team's fan holds a scarf in its flag's colors. The cases from "0.10.0" down state
+ * those three changes.
  *
  * What the engine does with a scene, measured in the desktop app (anthropics/claude-code#109770, #110150), and so
  * what these cases refuse: `shape-rendering` and any `@media` rule but reduced motion freeze every animation; a
@@ -1082,7 +1085,7 @@ describe('the pixel corner: the scarf in the flag\'s colors', () => {
   })
 
   test('a scarf that is not two or three colors of six hex digits is no scarf: the kit\'s scarf, never the value given', async () => {
-    const bad: unknown[] = [[], ['009246'], ['009246', 'ffffff', 'ce2b37', '000000'], ['009246', 'red'], ['009246', '"/><script>'], ['009246', 7], 'ce2b37', null, { 0: '009246', 1: 'ffffff', length: 2 }, ['#009246', '#ffffff']]
+    const bad: unknown[] = [[], ['009246'], ['009246', 'ffffff', 'ce2b37', '000000'], ['009246', 'red'], ['009246', '"/><script>'], ['009246', 7], [, '009246', 'ce2b37'], ['009246', , 'ce2b37'], 'ce2b37', null, { 0: '009246', 1: 'ffffff', length: 2 }, ['#009246', '#ffffff']]
     for (const v of bad) expect(at('live', v), JSON.stringify(v)).toBe(at('live'))
   })
 
@@ -1379,5 +1382,96 @@ describe('the pixel corner: the idle board is the pick\'s next fixture, or blank
     const { sets } = engine(on)
     await world($, on, [nations([0, 0], {}, FRO_MDA)], DESKTOP)
     expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'live' }))
+  })
+})
+
+describe('the pixel corner: which side is the pick\'s, the band\'s own rule', () => {
+  // Core's rule for the pin (`isPinnedSide`), which chose the view's `next` and marked the record `picked`: a pick with
+  // no id by its code; a pick with an id by equal ids when the side carries an id, and by the same code AND the same
+  // name when the side carries none. An id that is present decides, whatever it is.
+  const NATIONS_LEAGUE = { competition: { slug: 'uefa.nations', alias: 'nations-league', name: 'UEFA Nations League', chosenBy: 'saved' } }
+  const nextOf = (home: unknown, away: unknown, pick: unknown = ITALY.pick) => view(LINE, { pick, ...NATIONS_LEAGUE, next: { id: '3', home, away, status: 'SCHEDULED' } })
+  const BLANK = pixelSvg({ ...ITA, state: 'idle' })
+
+  test('a side the feed sent without an id, with the pick\'s code and name: the pick\'s side (the board shows the fixture)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    await world($, on, [nextOf({ code: 'ITA', name: 'Italy' }, { ...BEL_SIDE })], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...ITA, state: 'idle', home: 'ITA', away: 'BEL' }))
+  })
+
+  test('a side without an id that shares only the code, or only the name: another team (blank)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [nextOf({ code: 'ITA', name: 'Italia Club' }, { ...BEL_SIDE }), nextOf({ ...BEL_SIDE }, { code: 'ITL', name: 'Italy' }), nextOf({ code: 'ITA' }, { ...BEL_SIDE })], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(BLANK)
+    await clock.advance(300_000)
+    await clock.advance(300_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('a side that carries another id is another team, whatever its code and name say (blank)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    await world($, on, [nextOf({ code: 'ITA', name: 'Italy', id: 'espn:99999999' }, { ...BEL_SIDE })], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(BLANK)
+  })
+
+  test('an id that is present and is no id (empty, null, a number) still decides: another team (blank)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, ['', null, 162].map((id) => nextOf({ code: 'ITA', name: 'Italy', id }, { ...BEL_SIDE })), DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(BLANK)
+    await clock.advance(300_000)
+    await clock.advance(300_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('a pick that has an id and neither code nor name never matches a side with no id (an empty side is nobody)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    await world($, on, [nextOf({}, { ...BEL_SIDE }, { id: 'espn:162' })], DESKTOP)
+    const idle = (await drawn($, sceneOf(sets[0]))) as string
+    expect(ledRects(idle)).toBe(0)
+    expect(idle).not.toContain('px-crowd')
+  })
+
+  test('both sides are the pick\'s (one by its id, one by its code and name): neither is (blank)', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    await world($, on, [nextOf({ code: 'ITA', name: 'Italy' }, { ...ITA_SIDE })], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(BLANK)
+  })
+
+  test('a live record whose pick side has no id: the pick\'s goal plays', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const bare = (score: [number, number]) => nations(score, { away: { code: 'ITA', name: 'Italy' } })
+    const { clock } = await world($, on, [bare([0, 0]), bare([0, 1])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    const goal = (await drawn($, sceneOf(sets[1]))) as string
+    expect(goal).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'goal', stamp: stampOf(goal) }))
+  })
+
+  test('a live record whose pick side has no id: the other side\'s goal plays', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const bare = (score: [number, number]) => nations(score, { away: { code: 'ITA', name: 'Italy' } })
+    const { clock } = await world($, on, [bare([0, 0]), bare([1, 0])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    const goal = (await drawn($, sceneOf(sets[1]))) as string
+    expect(goal).toBe(pixelSvg({ ...ITA, ...NATIONS, ...BEL_OTHER, state: 'goal', stamp: stampOf(goal) } as Parameters<typeof pixelSvg>[0]))
+  })
+
+  test('a live record whose away side carries another id under the pick\'s code and name: no goal of either kind', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const twin = (score: [number, number]) => nations(score, { away: { code: 'ITA', name: 'Italy', id: 'espn:99999999' } })
+    const { clock } = await world($, on, [twin([0, 0]), twin([1, 0]), twin([1, 1])], DESKTOP)
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
+  })
+
+  test('a live record with the pick on both sides (one by id, one by code and name): no goal of either kind', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const both = (score: [number, number]) => nations(score, { home: { code: 'ITA', name: 'Italy' } })
+    const { clock } = await world($, on, [both([0, 0]), both([1, 0]), both([1, 1])], DESKTOP)
+    await clock.advance(15_000)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(1)
   })
 })
