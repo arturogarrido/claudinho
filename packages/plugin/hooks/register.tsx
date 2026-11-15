@@ -17,6 +17,7 @@ import type {
   ClaudinhoTally,
 } from '../types'
 import { bandSvg, buildLook, colorsForPick } from './team-look'
+import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
 
 /**
  * The claudinho plugin: the live score or the countdown above the prompt (the band), a toast when a score changes,
@@ -173,6 +174,40 @@ import { bandSvg, buildLook, colorsForPick } from './team-look'
  * this plugin's whose name is a band's (`bandSvg`), one `Svg` of the band across the top (the main color's half on the
  * left, the second's on the right), made from the two colors in the name alone; anything else is left to what is
  * beneath (`next`). A new pair of colors is a new scene name, so the app draws the band again.
+ *
+ * The scenes (plugin 0.9.0): `teamScene` chooses what the look draws, `band` (the default, and anything that is not
+ * exactly `pitch` or `pixel`: everything above, unchanged), `pitch` or `pixel` (`team-scenes.ts`). For those two the set
+ * carries the look's colors and a scene named `<kind>-<the clock's milliseconds in base 36>-<a serial that only grows>`,
+ * so no two sets share a name (an old name can keep an old drawing in the app); the module keeps the last three names
+ * with their drawings, keeps each before its set (the app may ask for it during the set) and drops it when the set is
+ * refused, and the `Backdrop` hook draws a kept name's drawing (a name it no longer keeps is left beneath); a clear of
+ * ours (`/claudinho theme off`) drops them all, unless the engine refuses it. The look's key adds the scene's kind, so
+ * a look is still set once:
+ * - `pitch`: faded pitch lines and a small scarf with the team's name (the look's name; none for pitch green). It has
+ *   no states.
+ * - `pixel`: a stadium corner whose scoreboard shows two teams' codes, never a score, in a state decided at every
+ *   reading (the band's or the command's) by the clock. Its team is the view's `pick` (`CLAUDINHO_TEAM`'s over the
+ *   saved pin), never the saved pin as such: `live` when a CURRENT view lists a live record marked `picked` (the first
+ *   such; the board its two codes; no pick, no record); a view that is not current never starts live, but keeps the
+ *   last live board for 5 minutes after the last current view that showed it (the match's id is not asked); a current
+ *   view with no such record is idle at once. `idle` otherwise, the board the view's `next` fixture's codes (none: an
+ *   empty board). `goal` for 6 seconds, in place of `live`, after a band run whose CURRENT view shows the pick's side
+ *   of that record (by the pick's id, else its code; none: no goal) scoring against the toasts' baseline (read before
+ *   the run replaces it; neither side down; `celebrate: off` never), whatever `toasts` says, and only while the record
+ *   live is that goal's match; each goal its own stamp in the drawing, so the app draws it. Live and goal start only
+ *   with a surface that draws the band in the roster (there the band's pace runs, and its readings end them): a band
+ *   run's reading has one, and a command's asks the roster once; with none (a session with only the mobile app) a
+ *   reading is idle, its `next` fixture's codes, and starts and refreshes nothing. What the corner remembers (the hold,
+ *   the goal, the look its scope last asked a scene in) is ONE record of one scope, the competition and the pick's
+ *   identity, and is forgotten one way (`forgetPixel`): by any reading whose view is of another scope (current or not,
+ *   the band's or the command's), by `/claudinho theme off` and by every `session.start`; while the look is off nothing
+ *   is written to it, and after `/claudinho theme on` the first current view starts it again. The look is noted
+ *   whatever the set then does (the scene already the look last tried, no app attached to draw it now, or the set
+ *   made). A reading that is no view, and a band run with no band surface, count as a view that is not current of the
+ *   record's scope, with no next fixture, in the record's look, while the scene last tried (of any scope: an app still
+ *   shows it after a pick's change) is the corner live or in a goal: so the hold runs out with no view, and nothing is
+ *   set where nothing was. No timer: the first reading after the 6 seconds sets `live`. The key adds the state, the two
+ *   codes and the stamp: each state is set once, and a refused set is not retried per tick.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -298,6 +333,18 @@ const replyLookPitch = (name: string): string => `Team look: pitch green (no col
 /** The plugin whose scenes the `Backdrop` hook draws (the manifest's name), and the band's description. */
 const PLUGIN_NAME = 'claudinho'
 const BAND_ALT = "A band in your team's colors"
+/**
+ * The team look's two scenes besides the band (plugin 0.9.0, the `teamScene` option): their descriptions, the glass
+ * the app lays over them, how many set scenes the `Backdrop` hook keeps, how long a goal shows in the pixel corner, and
+ * how long the corner stays live through readings that are not current.
+ */
+type SceneKind = 'pitch' | 'pixel'
+const PITCH_ALT = "Faded pitch lines and a scarf in your team's colors"
+const PIXEL_ALT = "A pixel-art stadium corner in your team's colors"
+const SCENE_GLASS = { blur: 20, opacity: 0.5 } as const
+const SCENES_KEPT = 3
+const GOAL_SCENE_MS = 6_000
+const LIVE_HOLD_MS = 300_000
 /** The statuses `match --json` states; a final one ends the re-reads. */
 const STATUSES = ['SCHEDULED', 'LIVE', 'HT', 'FT', 'POSTPONED', 'CANCELLED'] as const
 const FINAL_STATUSES: readonly string[] = ['FT', 'POSTPONED', 'CANCELLED']
@@ -403,17 +450,71 @@ let teamThemeOn = false
 /**
  * The module's memory of the session's team look (each `session.start` forgets it: a reload's engine drops the look
  * the old module set): the key of the last look tried (`lookWanted`; null: none since the start or the last
- * `/claudinho theme off`), whether the last set answered `isDrawn: true`, whether a look this plugin set stands (a set
- * the engine did not refuse, drawn or not, since the start or the last clear), the sets and offs made (`lookSets`: a
- * set's `isDrawn` is kept only when none began after it), and the clears and starts made (`lookGen`: a set's answer
- * marks a look standing only when neither began after it). Whether the person turned the look off is the session's,
- * in `$.state` (`lookOff`): it holds across a reload.
+ * `/claudinho theme off`), whether that look is the pixel corner live or in a goal (`lookLive`: what an app may still
+ * show, whatever the set answered, until a set of another scene is tried; it outlives the pixel corner's memory, which
+ * a pick's change forgets while the app still shows the stadium), whether the last set answered `isDrawn: true`,
+ * whether a look this plugin set stands (a set the engine did not refuse, drawn or not, since the start or the last
+ * clear), the sets and offs made (`lookSets`: a set's `isDrawn` is kept only when none began after it), and the clears
+ * and starts made (`lookGen`: a set's answer marks a look standing only when neither began after it). Whether the
+ * person turned the look off is the session's, in `$.state` (`lookOff`): it holds across a reload.
  */
 let lookKey: string | null = null
+let lookLive = false
 let lookDrawn = false
 let lookStands = false
 let lookSets = 0
 let lookGen = 0
+/** The `teamScene` option: `pitch` or `pixel`; null for the band (anything else), set at load. */
+let teamScene: SceneKind | null = null
+/**
+ * The scenes this module set, newest last, at most `SCENES_KEPT`: each scene's name and the drawing the `Backdrop`
+ * hook answers for it. An entry is kept before its set (the engine may ask for the drawing during it) and dropped when
+ * the set is refused; a clear of ours empties the list, unless the engine refuses it. `sceneSerial` only grows: with
+ * the clock's milliseconds it makes every scene's name one no earlier set had.
+ */
+type SceneEntry = { name: string; source: string; alt: string }
+let scenes: SceneEntry[] = []
+let sceneSerial = 0
+/**
+ * The pixel corner's memory, ONE record (`pixel`), forgotten one way (`forgetPixel`, which replaces it): by a reading
+ * whose view is of another scope (`pixelFor`), by `/claudinho theme off` and by every `session.start`; nothing else
+ * resets a part of it. Its scope is the competition (`slugOf`) and the pick's identity (`teamOf`; null: no pick) it
+ * belongs to; none before any reading. What it holds: the hold, the last CURRENT reading that showed the picked team's
+ * match live (when, by the clock; the match's id and the board's two codes; null once a current reading shows it no
+ * more); the goal being shown (until when, its stamp, its match); and the look its scope last asked a scene in (`look`:
+ * noted by every set asked for, whether the engine is then called, the look already being that scene, or no app being
+ * attached to draw it), the colors a reading that is no view draws its scene in (`lookWithoutView`). Two writers fill
+ * it, both into the record a reading took before its first await, so a write after a forget lands in a record nobody
+ * reads: a reading's board (`pixelBoard`: the hold and the goal) and a set asked for (`setLook`: the look). No timer
+ * is armed: each reading asks it. The last stamp given (`max(previous + 1, the clock's milliseconds)`, so a reload's
+ * stamps are new too) is the module's, outside the record: a stamp is never given twice.
+ */
+type PixelScope = { slug: string; team: string | null }
+type PixelMemory = {
+  scope: PixelScope | null
+  hold: { at: number; id: string; home: string; away: string } | null
+  goal: { until: number; stamp: number; id: string } | null
+  look: LookWant | null
+}
+let pixel: PixelMemory = { scope: null, hold: null, goal: null, look: null }
+let goalStamp = 0
+
+/** The pixel corner's memory forgotten: an empty record, of `scope` (none: no scope). Returns it. */
+function forgetPixel(scope: PixelScope | null = null): PixelMemory {
+  pixel = { scope, hold: null, goal: null, look: null }
+  return pixel
+}
+
+/**
+ * The pixel corner's memory for a reading's view: the record when it is of the view's scope (its competition and its
+ * pick's identity); else the record forgotten, and an empty one of the view's scope begun.
+ */
+function pixelFor(view: View): PixelMemory {
+  const slug = slugOf(view)
+  const team = teamOf(view.pick)
+  const s = pixel.scope
+  return s !== null && s.slug === slug && s.team === team ? pixel : forgetPixel({ slug, team })
+}
 /** A main-loop turn is running: set by `turn.start`, cleared by a `turn.complete` with no `agentId`. */
 let holdTurn = false
 /**
@@ -803,6 +904,8 @@ type Item = {
   score?: unknown
   shootout?: unknown
   pinned?: unknown
+  /** The view's `pick`'s record (`CLAUDINHO_TEAM`'s over the saved pin): the pixel corner's. */
+  picked?: unknown
   minute?: unknown
   home?: unknown
   away?: unknown
@@ -1916,12 +2019,14 @@ function pickName(pick: unknown): string | undefined {
   return undefined
 }
 
+type LookWant = { key: string; name: string | undefined; colors: ReturnType<typeof colorsForPick> }
+
 /**
  * The team look a view asks for: the pick's name and colors in the view's competition (`colorsForPick`; a pick that
  * names nothing has none), and its key, the two the look is made of (the name only with colors: with none the look is
  * pitch green, whoever the pick is).
  */
-function lookWanted(view: View): { key: string; name: string | undefined; colors: ReturnType<typeof colorsForPick> } {
+function lookWanted(view: View): LookWant {
   const name = pickName(view.pick)
   const colors = name === undefined ? undefined : colorsForPick(view.pick, slugOf(view))
   return {
@@ -1929,6 +2034,178 @@ function lookWanted(view: View): { key: string; name: string | undefined; colors
     name: colors === undefined ? undefined : name,
     colors,
   }
+}
+
+/** A string with something in it, or null. */
+const filled = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
+
+/**
+ * The pick's identity, the pixel corner's team: `id:` and its id when it has one, else `code:` and its code; null for no
+ * pick (`null`) or one that names neither.
+ */
+function teamOf(pick: unknown): string | null {
+  if (!isObject(pick)) return null
+  const id = filled(pick.id)
+  if (id !== null) return `id:${id}`
+  const code = filled(pick.code)
+  return code === null ? null : `code:${code}`
+}
+
+/** The pixel corner's record: the view's first live record marked `picked` (the pick's), none when there is no team. */
+function pickedRecord(view: View): Item | undefined {
+  if (teamOf(view.pick) === null) return undefined
+  return itemsOf(view).find((m) => m.picked === true)
+}
+
+/**
+ * The pick's side of a record: the side whose `id` is the pick's id when the pick has one, else the side whose `code`
+ * is the pick's code; null when neither side is, or both are.
+ */
+function pickedSide(m: Item, pick: unknown): Side | null {
+  if (!isObject(pick)) return null
+  const id = filled(pick.id)
+  const code = filled(pick.code)
+  const is = (t: unknown): boolean => isObject(t) && (id !== null ? t.id === id : code !== null && t.code === code)
+  const home = is(m.home)
+  const away = is(m.away)
+  return home === away ? null : home ? 'home' : 'away'
+}
+
+/**
+ * The match a CURRENT view shows the picked team scoring in, against the toasts' baseline (`prev`, read before the run
+ * replaces it), or null: the picked record (`pickedRecord`), the pick's side found in it (`pickedSide`), its match held
+ * by the baseline under the same competition, its score on that side higher than the baseline's and neither side's
+ * lower (a correction is no goal). No side, no baseline entry for the match, or no score on either side of the
+ * comparison: no goal. The shootout tally is not read: a penalty in a shootout is not this moment.
+ */
+function pickedGoal(view: View, prev: ClaudinhoBaseline): string | null {
+  if (!prev || prev.slug !== slugOf(view)) return null
+  const m = pickedRecord(view)
+  if (m === undefined) return null
+  const side = pickedSide(m, view.pick)
+  const score = tally(m.score)
+  const was = prev.items.find((t) => t.id === m.id)?.score
+  if (side === null || !score || !was) return null
+  return score[side] > was[side] && score.home >= was.home && score.away >= was.away ? m.id : null
+}
+
+type Board = { state: 'live' | 'idle' | 'goal'; home: string; away: string; stamp: number }
+
+/** A goal a band run saw for the pick (`pickedGoal`): its match, and the clock when that run began. */
+type Scored = { id: string; at: number }
+
+/** What a reading with a view brings the pixel corner: the memory of its scope, a band surface or none, a goal seen. */
+type PixelReading = { mem: PixelMemory; banded: boolean; scored: Scored | null }
+
+/**
+ * The pixel corner's state for a reading at `now`, and its board's two codes (`boardCode`: three dashes for a side
+ * with none); one of the memory's two writers, writing into `mem`, the record of the view's scope (`pixelFor`). Live
+ * and goal need a surface that draws the band (`banded`: there the band's pace runs, and its readings end them); with
+ * none the board is idle, the view's `next` fixture's codes, and nothing is started or refreshed. A CURRENT view
+ * decides the hold: the picked record (`pickedRecord`) is live (its sides' codes, remembered with `now` and the match),
+ * written only with a band surface; none is idle at once (the hold and its goal dropped), with a band surface or not.
+ * A goal the band run saw (`scored`) is written with the hold of its match, under a stamp no goal had. A view that is
+ * not current writes nothing; it is answered by `boardFor`.
+ */
+function pixelBoard(px: PixelReading, view: View, now: number): Board {
+  const { mem, banded, scored } = px
+  if (view.current === true) {
+    const m = pickedRecord(view)
+    if (m === undefined) {
+      mem.hold = null
+      mem.goal = null
+    } else if (banded) {
+      mem.hold = { at: now, id: m.id, home: boardCode(codeOf(m.home)), away: boardCode(codeOf(m.away)) }
+      if (scored !== null && scored.id === m.id) {
+        goalStamp = Math.max(goalStamp + 1, clockMs(scored.at))
+        mem.goal = { until: scored.at + GOAL_SCENE_MS, stamp: goalStamp, id: m.id }
+      }
+    }
+  }
+  return banded ? boardFor(mem, now, view.next) : idleBoard(view.next)
+}
+
+/**
+ * The board of a memory at `now`: the hold's live board while its last current reading is less than `LIVE_HOLD_MS`
+ * old (the match id is not asked: a view that is not current often lists nothing; the memory is of one competition and
+ * one pick); `goal` in place of live, with its stamp, while the goal shown is the held match's and before its end.
+ * Else idle (`idleBoard`).
+ */
+function boardFor(mem: PixelMemory, now: number, next: unknown): Board {
+  const held = mem.hold
+  if (held !== null && now - held.at < LIVE_HOLD_MS) {
+    const g = mem.goal
+    const goal = g !== null && g.id === held.id && now < g.until
+    return { state: goal ? 'goal' : 'live', home: held.home, away: held.away, stamp: goal ? g.stamp : 0 }
+  }
+  return idleBoard(next)
+}
+
+/** The idle board: the `next` fixture's codes when `next` is an object, else an empty board. */
+function idleBoard(next: unknown): Board {
+  const n: Record<string, unknown> = isObject(next) ? next : {}
+  return { state: 'idle', home: boardCode(codeOf(n.home)), away: boardCode(codeOf(n.away)), stamp: 0 }
+}
+
+type SceneWant = {
+  kind: SceneKind
+  key: string
+  alt: string
+  draw: () => string
+  /** The pixel corner's: the memory it was made from, and whether it is live (or goal). */
+  pixel?: { mem: PixelMemory; live: boolean }
+}
+
+/** The colors a scene is drawn in: the look's two (none: pitch green). */
+function sceneColors(want: LookWant): { main: string; second?: string } {
+  const second = want.colors?.[1]
+  return { main: want.colors?.[0] ?? '', ...(second !== undefined ? { second } : {}) }
+}
+
+/** The pixel corner's scene for a board: its key (the look's key, the kind, the state, the two codes, the stamp). */
+function pixelScene(want: LookWant, board: Board, mem: PixelMemory): SceneWant {
+  const colors = sceneColors(want)
+  return {
+    kind: 'pixel',
+    key: JSON.stringify(['pixel', want.key, board.state, board.home, board.away, board.stamp]),
+    alt: PIXEL_ALT,
+    draw: () => pixelSvg({ ...colors, ...board }),
+    pixel: { mem, live: board.state !== 'idle' },
+  }
+}
+
+/**
+ * The scene a reading asks for under `teamScene` (none for the band): its kind, its key (the look's key, `lookWanted`,
+ * and the scene's kind; the pixel corner's also its state, its two codes and its goal stamp, so each state is set once)
+ * and its drawing, from the look's colors (none: pitch green) and, for the pitch's scarf, the look's name. The pixel
+ * corner's is made from what the reading brings it (`px`; none: no pixel scene).
+ */
+function sceneWanted(view: View, want: LookWant, now: number, px: PixelReading | null): SceneWant | null {
+  if (teamScene === null) return null
+  if (teamScene === 'pitch') {
+    const colors = sceneColors(want)
+    return { kind: 'pitch', key: JSON.stringify(['pitch', want.key]), alt: PITCH_ALT, draw: () => pitchSvg({ ...colors, name: want.name }) }
+  }
+  return px === null ? null : pixelScene(want, pixelBoard(px, view, now), px.mem)
+}
+
+/** The clock's milliseconds as a positive safe integer, or 0. */
+const clockMs = (now: number): number => (Number.isFinite(now) && now > 0 && now <= Number.MAX_SAFE_INTEGER ? Math.floor(now) : 0)
+
+/** A scene's name: its kind, the clock's milliseconds in base 36 and the module's serial (`<kind>-<ms>-<n>`). */
+function sceneName(kind: SceneKind, now: number): string {
+  sceneSerial += 1
+  return `${kind}-${clockMs(now).toString(36)}-${sceneSerial}`
+}
+
+/** A scene kept for the `Backdrop` hook, newest last, the oldest dropped past `SCENES_KEPT`. */
+function keepScene(entry: SceneEntry): void {
+  scenes = [...scenes.filter((s) => s.name !== entry.name), entry].slice(-SCENES_KEPT)
+}
+
+/** A scene whose set the engine refused, no longer drawn. */
+function dropScene(name: string): void {
+  scenes = scenes.filter((s) => s.name !== name)
 }
 
 /**
@@ -1954,68 +2231,166 @@ async function writeLookOff($: EngineInterface, off: boolean): Promise<void> {
 
 /**
  * The look this plugin set, cleared (`$.theme.clear`): from here no look of ours stands, unless the engine refuses the
- * clear (then ours may still stand, and a later off asks again). Never rejects.
+ * clear (then ours may still stand, and a later off asks again). The scenes kept for the `Backdrop` hook are dropped
+ * when the clear is not refused; a refused one keeps them (ours may still be drawn), unless a clear or start began
+ * after it. Never rejects.
  */
 async function clearOurLook($: EngineInterface): Promise<void> {
+  const kept = scenes
+  scenes = []
   lookStands = false
   lookGen += 1
   const gen = lookGen
   try {
     await $.theme.clear()
   } catch {
-    // Refused, or no theme API: the look of ours may still stand.
-    if (gen === lookGen) lookStands = true
+    // Refused, or no theme API: the look of ours may still stand, and its scenes with it (a scene kept meanwhile,
+    // newer, stays last).
+    if (gen === lookGen) {
+      lookStands = true
+      scenes = [...kept.filter((k) => !scenes.some((s) => s.name === k.name)), ...scenes].slice(-SCENES_KEPT)
+    }
   }
 }
 
 /**
  * The team look set from a run's reading, once per look: under `teamTheme: on`, a view, the look not turned off this
- * session, a look not tried since the start or the last off, and the desktop or mobile app in the roster. The key is
- * taken before the set, so whatever the set answers (a refusal, `isDrawn: false`, no theme API on an older build) the
- * same look is never tried again; its `isDrawn` is kept only when no set or off began after it. A set the engine did
- * not refuse stands (drawn or not) when no clear or start began after it; one the person turned off while it was in
- * flight, with no look of ours then standing to clear, is cleared now. Never rejects, never toasts.
+ * session, a look not tried since the start or the last off, and the desktop or mobile app in the roster (`setLook`). A
+ * reading that is no view (a failed run, the first-run object, an answer the plugin does not read) sets nothing, but
+ * for the pixel corner's hold (`lookWithoutView`). Never rejects, never toasts.
+ *
+ * Under `teamScene: pitch` or `pixel` (`sceneWanted`), the look's key is the scene's, the set carries the look's colors
+ * and the scene under a name no earlier set had; the clock is read once, first, for the pixel corner's state and the
+ * name.
+ *
+ * Under `teamScene: pixel`, the reading first takes the memory of its view's scope (`pixelFor`: another scope's is
+ * forgotten, whether the view is current or not), then writes nothing while the look is off this session, and nothing
+ * when the memory was forgotten during its awaits (an off, a start, a reading of another scope: it sets nothing). A
+ * band run (`band`, with the goal it saw) had a surface that draws the band (its roster was asked before its spawn);
+ * any other reading (the command's) asks the roster once, here (`mayRun`).
  */
-async function applyLook($: EngineInterface, reading: Reading): Promise<void> {
+async function applyLook($: EngineInterface, reading: Reading, band?: { scored: Scored | null }): Promise<void> {
   try {
-    if (!teamThemeOn || !reading.answered || !reading.isView) return
+    if (!teamThemeOn) return
+    if (!reading.answered || !reading.isView) {
+      await lookWithoutView($)
+      return
+    }
+    const mem = teamScene === 'pixel' ? pixelFor(reading.view) : null
+    if (mem !== null && (await lookIsOff($))) return
+    const now = teamScene === null ? 0 : await $.clock.now()
+    const banded = mem === null ? false : band !== undefined ? true : await mayRun($)
+    if (mem !== null && mem !== pixel) return
     const want = lookWanted(reading.view)
-    if (want.key === lookKey) return
-    if (await lookIsOff($)) return
-    if (!(await lookDrawable($))) return
-    // The latest point before the set: an off, or another run's set of the same look, since the roster was asked.
-    if ((await lookIsOff($)) || want.key === lookKey) return
-    lookKey = want.key
-    lookSets += 1
-    const mine = lookSets
-    const gen = lookGen
-    let set = false
-    let drawn = false
-    try {
-      const answer: unknown = await $.theme.set(buildLook(want.name, want.colors).look)
-      set = true
-      drawn = isObject(answer) && answer.isDrawn === true
-    } catch {
-      // Refused, or a build whose engine has no theme API (before Claude Code 2.1.319): nothing set, nothing drawn.
-    }
-    if (mine === lookSets) lookDrawn = drawn
-    if (set && gen === lookGen) {
-      lookStands = true
-      if (await lookIsOff($)) await clearOurLook($)
-    }
+    const px = mem === null ? null : { mem, banded, scored: band?.scored ?? null }
+    await setLook($, want, sceneWanted(reading.view, want, now, px), now)
   } catch {
     // The engine's calls failed: no look this run.
   }
 }
 
 /**
+ * The pixel corner without a view: a reading that is no view (a failed run, the first-run object, an answer the plugin
+ * does not read; the band's or the command's), and a band run with no band surface to run for (the band surface
+ * detached while the band's pace runs), count as a view that is not current of the memory's scope, with no next
+ * fixture: inside the hold nothing changes but a goal past its end, which is live again; after it, the stadium idle
+ * with an empty board, in the look the memory's scope last asked for (`look`). It starts nothing and writes nothing to
+ * the memory but that look (`setLook`). Only while the look last tried is our corner live or in a goal (`lookLive`, of
+ * any scope: so after a start, an off, or in a session where nothing was set, nothing is set; and a stadium an app
+ * still shows is ended after a pick's change too), keyed and checked as any look (`setLook`), and only over that look
+ * (a set made since wins). Never rejects.
+ */
+async function lookWithoutView($: EngineInterface): Promise<void> {
+  try {
+    const mem = pixel
+    const look = mem.look
+    const over = lookKey
+    if (!teamThemeOn || teamScene !== 'pixel' || !lookLive || over === null || look === null) return
+    const now = await $.clock.now()
+    const board = boardFor(mem, now, undefined)
+    await setLook($, look, pixelScene(look, board, mem), now, over)
+  } catch {
+    // The engine's calls failed: no look this run.
+  }
+}
+
+/**
+ * A look set once: its key (the scene's, else the look's) is taken before the set, so whatever the set answers (a
+ * refusal, `isDrawn: false`, no theme API on an older build) the same look is never tried again; not when it is the
+ * look last tried, when the person turned the look off this session, with no desktop or mobile app in the roster, or
+ * (`over`) when the look last tried is no longer that one. Its `isDrawn` is kept only when no set or off began after it.
+ * A set the engine did not refuse stands (drawn or not) when no clear or start began after it; one the person turned
+ * off while it was in flight, with no look of ours then standing to clear, is cleared now. A scene is kept for the
+ * `Backdrop` hook before the set and dropped when it is refused. A pixel scene is set only while the memory it was
+ * made from is the pixel corner's (none forgot it since). Whatever is decided about the engine's call, a pixel scene
+ * notes its look in that memory (the memory's second writer), unless the look is off, a set made since won (`over`)
+ * or the memory was forgotten: when the scene is already the look last tried, when no app is attached to draw it, and
+ * before a set. Whether the look last tried is our corner live or in a goal (`lookLive`) is written with its key.
+ * May reject (its callers catch).
+ */
+async function setLook($: EngineInterface, want: LookWant, scene: SceneWant | null, now: number, over?: string): Promise<void> {
+  const key = scene === null ? want.key : scene.key
+  const forgotten = (): boolean => scene?.pixel !== undefined && scene.pixel.mem !== pixel
+  const overtaken = (): boolean => over !== undefined && lookKey !== over
+  // The look the pixel memory's scope asked for, noted before any return but the off's, an overtaking set's or a forget's.
+  const note = (): void => {
+    if (scene?.pixel !== undefined && !forgotten() && !overtaken()) scene.pixel.mem.look = want
+  }
+  if (overtaken()) return
+  if (key === lookKey) {
+    note()
+    return
+  }
+  if (await lookIsOff($)) return
+  if (!(await lookDrawable($))) {
+    note()
+    return
+  }
+  // The latest point before the set: an off, another run's set, or the pixel memory forgotten, since the roster was asked.
+  if ((await lookIsOff($)) || overtaken() || forgotten()) return
+  note()
+  if (key === lookKey) return
+  lookKey = key
+  lookLive = scene?.pixel?.live === true
+  lookSets += 1
+  const mine = lookSets
+  const gen = lookGen
+  let set = false
+  let drawn = false
+  let entry: SceneEntry | null = null
+  try {
+    const look = buildLook(want.name, want.colors).look
+    if (scene !== null) {
+      entry = { name: sceneName(scene.kind, now), source: scene.draw(), alt: scene.alt }
+      keepScene(entry)
+    }
+    const answer: unknown = await $.theme.set(
+      entry === null ? look : { colors: look.colors, backdrop: { scene: entry.name, glass: { ...SCENE_GLASS } } },
+    )
+    set = true
+    drawn = isObject(answer) && answer.isDrawn === true
+  } catch {
+    // Refused, or a build whose engine has no theme API (before Claude Code 2.1.319): nothing set, nothing drawn.
+    if (entry !== null) dropScene(entry.name)
+  }
+  if (mine === lookSets) lookDrawn = drawn
+  if (set && gen === lookGen) {
+    lookStands = true
+    if (await lookIsOff($)) await clearOurLook($)
+  }
+}
+
+/**
  * `/claudinho theme off`: the off recorded for the session (`lookOff`, kept across a reload), so no later view sets a
  * look until `/claudinho theme on`; the session's theme is cleared only when a look this plugin set stands (the theme
- * may otherwise be the person's own). A clear refused, or no theme API, keeps the off. Never rejects.
+ * may otherwise be the person's own). A clear refused, or no theme API, keeps the off. The pixel corner's memory is
+ * forgotten after the off is written, so a reading that began before it writes into a record nobody reads. Never rejects.
  */
 async function turnLookOff($: EngineInterface): Promise<void> {
   await writeLookOff($, true)
   lookKey = null
+  lookLive = false
+  forgetPixel()
   lookDrawn = false
   lookSets += 1
   if (lookStands) await clearOurLook($)
@@ -2126,9 +2501,11 @@ async function armAfter($: EngineInterface, option: ToastsOption, started: numbe
 async function bandRun($: EngineInterface, option: ToastsOption, force: boolean, now: number): Promise<number> {
   // (1) No surface that draws the band (none yet, the last one detached, or the roster cannot be read): no process,
   // the band cleared, so a band surface attaching again never shows an old line, and the pace reset, so the next run
-  // the roster allows is not held by an idle gap; the baseline and the context are left.
+  // the roster allows is not held by an idle gap; the baseline and the context are left. The pixel corner's hold still
+  // runs out (`lookWithoutView`): a session with only the mobile app runs no band, and draws the look.
   if (!(await mayRun($))) {
     await clear($)
+    await lookWithoutView($)
     return LIVE_MS
   }
   // (2) The timer is the pace; the age check is the idle gap's alone, a guard: a run the timer starts is never
@@ -2143,6 +2520,7 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean,
   // (4) The roster again, the last await before the spawn: the surface may have left while the PATH was looked up.
   if (!(await mayRun($))) {
     await clear($)
+    await lookWithoutView($)
     return LIVE_MS
   }
   // (5) The spawn.
@@ -2173,6 +2551,8 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean,
         $.ui.toast(REPLY_NO_CLI, { timeoutMs: HINT_TOAST_MS })
       }
     }
+    // The pixel corner's hold runs out without a view too.
+    await lookWithoutView($)
     return delayAfter(reading, now)
   }
   // A CLI older than this plugin reads: said once per session; its band and toasts go on as far as it reads.
@@ -2200,9 +2580,15 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean,
     }
   }
 
+  // The pixel corner's goal moment, the picked team's (`pickedGoal`), decided against the baseline the toasts compare
+  // with (replaced below), whatever the `toasts` option says; written to the pixel memory, with the hold, by the look
+  // set at the end of this run (`applyLook`), which writes nothing while the look is off.
+  let scored: Scored | null = null
   // The two shapes that are no view are no current view either: each clears the context and keeps the baseline.
   if (isView && view.current === true) {
     const prev = await read($, baseline)
+    const goalId = teamThemeOn && teamScene === 'pixel' && celebrateOn ? pickedGoal(view, prev) : null
+    if (goalId !== null) scored = { id: goalId, at: now }
     let moments = momentsFor(view, prev, option)
     // No team pinned (`toasts: pinned`, the view stating no pick and a readable `CLAUDINHO_TEAM` or none): the
     // session's first live goal from a record that names its sides is said as under `all` (the first match in the
@@ -2287,8 +2673,9 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean,
     // while the match stays in the list.
     await update($, lastContext, () => null)
   }
-  // The team look, last: the band, the toasts and the context are already done, and it never rejects.
-  await applyLook($, reading)
+  // The team look, last: the band, the toasts and the context are already done, and it never rejects. A band run's
+  // reading had a surface that draws the band (the roster asked before the spawn).
+  await applyLook($, reading, { scored })
   return delayAfter(reading, now)
 }
 
@@ -2317,6 +2704,8 @@ export const register: Register = (on, options) => {
   languageOption = isLang(options.language) ? options.language : 'auto'
   // Only the string `on` turns the team look on.
   teamThemeOn = options.teamTheme === 'on'
+  // Exactly `pitch` or `pixel` is that scene; anything else (`band`, unset, unknown) is the band.
+  teamScene = options.teamScene === 'pitch' || options.teamScene === 'pixel' ? options.teamScene : null
 
   on('session.start', async ($, e, next) => {
     // A new session (or a reload): the first-run toast, the band's PATH probe and the no-pin taste may be said again,
@@ -2326,10 +2715,13 @@ export const register: Register = (on, options) => {
     bandProbed = false
     tasteSaid = false
     lookKey = null
+    lookLive = false
     lookDrawn = false
     lookStands = false
     lookSets += 1
     lookGen += 1
+    // The pixel corner's memory: a match seen before the start is not this session's.
+    forgetPixel()
     // `/claudinho` in every session, headless included: the person types it. A registration refused leaves the start
     // as it was.
     try {
@@ -2667,15 +3059,17 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Backdrop' }, ($, e, next) => {
-    // The team look's band: under `teamTheme: on`, on the two apps that draw a look, for a scene of ours whose name is
-    // a band's, one Svg made from the two colors the name carries. Anything else (the option off, another surface,
-    // another plugin's scene, a name that is no band's) is left to what is beneath. The surface is compared here, not
-    // through `drawsLook`, so the elements `$.ui.resolve` gives are the two apps' (the ones that hold `Svg`).
+    // The team look's scene: under `teamTheme: on`, on the two apps that draw a look, for a scene of ours, one Svg: a
+    // pitch or pixel scene this module set and still keeps, its drawing; else a name that is a band's, the band made
+    // from the two colors the name carries. Anything else (the option off, another surface, another plugin's scene, a
+    // name of ours no longer kept, a name that is no band's) is left to what is beneath. The surface is compared here,
+    // not through `drawsLook`, so the elements `$.ui.resolve` gives are the two apps' (the ones that hold `Svg`).
     if (!teamThemeOn || (e.surface !== 'desktop' && e.surface !== 'mobile') || e.props.plugin !== PLUGIN_NAME) return next(e)
-    const source = bandSvg(e.props.scene)
+    const kept = scenes.find((s) => s.name === e.props.scene)
+    const source = kept?.source ?? bandSvg(e.props.scene)
     if (source === undefined) return next(e)
     const { Svg } = $.ui.resolve(e)
-    return <Svg source={source} alt={BAND_ALT} />
+    return <Svg source={source} alt={kept?.alt ?? BAND_ALT} />
   })
 
   on('prompt.submit', async ($, e, next) => {

@@ -73,6 +73,7 @@ Change them in `/config`.
 | `context` | `on`: while a match is live, the score goes beside each prompt you send, for Claude; `off`: nothing goes with your prompts | `on` |
 | `language` | `auto`: the language your environment asks for (below); `en`, `es`, `pt` or `fr`: that language, whatever the environment says | `auto` |
 | `teamTheme` | `on`: the Claude desktop and mobile apps take your team's colors for the session, replacing the theme it had ([The team look](#the-team-look)); `off`: the plugin never sets or clears the session's theme | `off` |
+| `teamScene` | What the team look draws, with `teamTheme: on` ([The scenes](#the-scenes)): `band`, a band of your team's colors across the top; `pitch`, faded pitch lines and a small scarf with your team's name; `pixel`, a pixel-art stadium corner with a scoreboard | `band` |
 
 Changing an option reloads the plugin. The band and every later toast follow the new value at once.
 An open match pane stays as it was drawn and stops reading: run `/claudinho match` again to update it.
@@ -140,10 +141,11 @@ variable and use your pinned team (`claudinho follow <competition> --team <name>
 a team whose colors the plugin does not know, the look is pitch green too. It shows in the desktop and mobile apps on Claude Code
 2.1.324 or later, and nowhere else: the terminal and VS Code draw nothing. The look is set from the plugin's readings
 (the band's, or a `/claudinho` you type) while a desktop or mobile app is attached, once per team, and again only when
-your team changes or the plugin reloads (Claude Code drops the look then). With only the mobile app attached the band does not run, so a `/claudinho` you type sets it.
+your team changes or the plugin reloads (Claude Code drops the look then); with `teamScene: pixel`, also when the
+stadium's state or its scoreboard changes ([The scenes](#the-scenes)). With only the mobile app attached the band does not run, so a `/claudinho` you type sets it.
 
 It is off by default because a session holds one theme: turning it on replaces the theme the session had, and the
-plugin does not bring that theme back. It is colors only: no crest, kit or logo is ever drawn.
+plugin does not bring that theme back. The band is colors only, and no scene ever draws a crest or a logo.
 
 - `/claudinho theme` says which look is set, or why none shows.
 - `/claudinho theme off` turns the look off for the rest of the session, across plugin reloads. It clears the
@@ -151,6 +153,34 @@ plugin does not bring that theme back. It is colors only: no crest, kit or logo 
 - `/claudinho theme on` sets it again.
 
 Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops the look the plugin had set.
+
+#### The scenes
+
+`teamScene` chooses what the team look draws behind the conversation. It needs `teamTheme: on`.
+
+- `band` (the default): the band of color across the top, above.
+- `pitch`: faded white pitch lines across the app over soft stripes of your team's main color, and a small scarf in
+  its two colors at the top right with your team's name on it (no name with pitch green). It does not move.
+- `pixel`: a pixel-art stadium corner at the bottom right in your team's colors: terraces, a goal and a scoreboard that
+  shows the two teams' codes (`PUM - MTY`), never the score. Your team, for the stadium, is the team the band follows:
+  `CLAUDINHO_TEAM` when it is set, else your pinned team. It goes live, and plays a goal, only in a session with the
+  terminal or the desktop app attached, where the band runs: with the phone alone, a `/claudinho` you type shows the
+  empty stadium with your next fixture's codes (a live stadium left there when the desktop app detaches empties five
+  minutes after the last fresh reading, or at once at a `/claudinho` you type). It has three states:
+  - **live**, while your team's match is in play: fans on the terraces and a ball by the goal. A reading the CLI
+    cannot vouch for, or no answer from the CLI, keeps it live; the stadium empties five minutes after the last fresh
+    reading that showed the match live. `/claudinho theme off`, a new session, or a change of your team or of the
+    competition forgets the match: the stadium is live again only from the next fresh reading that shows it, and a
+    goal it had seen is not played again.
+  - **idle**, the rest of the time: an empty stadium, the scoreboard dimmed with your next fixture's codes (blank when
+    none is known).
+  - **goal**, when the plugin sees your team score between two readings: the ball flies into the top corner and back,
+    the fans jump, the scoreboard blinks and fireworks burst, once per goal, then live again at the first reading
+    after its six seconds. It follows `celebrate`: with `celebrate: off` there is no goal moment. With Reduce motion on
+    in your system, nothing moves and the scoreboard stays lit.
+
+The scenes are drawn for a dark page: on a light one they are faint. Like the band, they show in the desktop and
+mobile apps only. Changing the scene in `/config` reloads the plugin, and the next reading sets the new one.
 
 ## Where it works
 
@@ -302,7 +332,7 @@ and changes nothing the band shows. A `/claudinho` typed while Claude is working
 
 ## What the plugin runs, reads and sends
 
-Everything the plugin's code (`hooks/register.tsx`, and `hooks/team-look.ts` for the team look) does beyond drawing
+Everything the plugin's code (`hooks/register.tsx`, and `hooks/team-look.ts` and `hooks/team-scenes.ts` for the team look) does beyond drawing
 the band, the toasts and the pane is listed here.
 
 ### The program it runs
@@ -363,7 +393,7 @@ session.
   runs the CLI as listed above, answers with text (the band's line, or a sentence when there is nothing to show),
   opens the pane for `match`, and sets or clears the team look for the `theme` phrases.
 - **Its other hooks** (a session starting, a window attaching or leaving, a turn starting or ending, the band, the
-  pane and the team look's band of color drawing, the pane closing) pace the band's runs, hold the celebration while
+  pane and the team look's band or scene drawing, the pane closing) pace the band's runs, hold the celebration while
   Claude works, and draw what the CLI answered and the team look. They read and send nothing beyond what this section
   lists.
 
@@ -375,7 +405,10 @@ it set still stands. It keeps whether you turned the look off in the state Claud
 off holds across a reload. Nothing else is new: the look is built inside the plugin from the colors it ships
 (`hooks/team-colors.ts`) with Claude Code's own color builder (`hooks/make-colors.js`), with no other run of the CLI,
 no file read and no network request. The band of color across the top is drawn by the plugin from the two colors the
-look names, as a picture that runs nothing and loads nothing. With `teamTheme: off` it calls neither and draws no band.
+look names, as a picture that runs nothing and loads nothing. The pitch and the pixel corner (`teamScene`) are drawn
+the same way by `hooks/team-scenes.ts`, from those colors; the pitch's scarf adds your team's name and the pixel
+corner's scoreboard the teams' codes, both from the CLI's answer the plugin already read. With `teamTheme: off` it
+calls neither and draws nothing.
 
 ## Data and disclaimer
 

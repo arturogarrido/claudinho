@@ -336,7 +336,8 @@ offline. Every other competition's schedule, and every live score, comes from th
 from it says `Live data: ESPN`), market odds from Polymarket's public data. Rate limits are respected.
 
 **Why no crests, kits or player photos?** Claudinho shows facts and emoji flags only (and, in the
-plugin's celebration, Anthropic's Claude mascot). A flag is a nation's, so a club shows by its name.
+plugin's celebration, Anthropic's Claude mascot; in the plugin's opt-in team look, your team's colors, name and code,
+and scenes drawn from plain shapes, never a crest or a logo). A flag is a nation's, so a club shows by its name.
 
 **Flags show as boxed letters (`CH`, `BA`)?** Some terminals (Warp, some Windows terminals) cannot
 draw flag emoji. Claudinho detects Warp and drops the flags: the statusline and `bracket` show
