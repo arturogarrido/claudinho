@@ -110,10 +110,16 @@ request** and **writes no file**:
   can put the team you picked first. Claude Code sends that note to the model with your prompt.
   With `context` off, or when its last reading showed no match live, nothing is added. The plugin
   neither reads nor keeps the prompts you send; of what you type, it reads only the text after
-  `/claudinho`, for the word `match`.
+  `/claudinho`, for `match` and the team look's `theme`, `theme off` and `theme on`.
+- With the `teamTheme` option on (it is off by default), it sets the session's theme in the Claude
+  desktop and mobile apps to your team's colors, once per team, and clears the theme it set when
+  you type `/claudinho theme off`. The colors come from a table inside the plugin: apart from which apps
+  are attached to the session, this reads nothing more and sends nothing anywhere. With
+  `teamTheme` off it never sets or clears a theme.
 - Between runs it keeps its last readings (public match data) in the state Claude Code holds for
-  the session, and writes no file of its own. Its options (`toasts`, `celebrate`, `context`,
-  `language`) are kept by Claude Code in its own settings (`~/.claude/settings.json` for a
+  the session, and, with `teamTheme` on, whether you turned the team look off with
+  `/claudinho theme off`; it writes no file of its own. Its options (`toasts`, `celebrate`, `context`,
+  `language`, `teamTheme`) are kept by Claude Code in its own settings (`~/.claude/settings.json` for a
   user-scope install), where `/config` changes them.
 
 ## Configuration changes (`init`)

@@ -284,6 +284,9 @@ const rowsOf = (n: unknown): string[] => {
   if (typeof n === 'string') return [n]
   if (n === null || typeof n !== 'object') return []
   const d = n as Described
+  // Claude Code 2.1.325 describes a `next(e)` set inside a Box as its own node (`{ type: 'engine', ref }`), the
+  // drawing beneath listed beside ours: it is not a row of this drawing.
+  if (d.type === 'engine') return []
   if (d.type === 'Text') return [textOf(d)]
   if (d.type === 'Box') {
     if (d.props?.display === 'none') return []
