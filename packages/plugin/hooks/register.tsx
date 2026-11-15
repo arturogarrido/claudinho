@@ -181,7 +181,8 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  * so no two sets share a name (an old name can keep an old drawing in the app); the module keeps the last three names
  * with their drawings, keeps each before its set (the app may ask for it during the set) and drops it when the set is
  * refused, and the `Backdrop` hook draws a kept name's drawing (a name it no longer keeps is left beneath); a clear of
- * ours (`/claudinho theme off`) drops them all. The look's key adds the scene's kind, so a look is still set once:
+ * ours (`/claudinho theme off`) drops them all, unless the engine refuses it. The look's key adds the scene's kind, so
+ * a look is still set once:
  * - `pitch`: faded pitch lines and a small scarf with the team's name (the look's name; none for pitch green). It has
  *   no states.
  * - `pixel`: a stadium corner whose scoreboard shows two teams' codes, never a score, in a state decided at every
@@ -451,8 +452,8 @@ let teamScene: SceneKind | null = null
 /**
  * The scenes this module set, newest last, at most `SCENES_KEPT`: each scene's name and the drawing the `Backdrop`
  * hook answers for it. An entry is kept before its set (the engine may ask for the drawing during it) and dropped when
- * the set is refused; a clear of ours empties the list. `sceneSerial` only grows: with the clock's milliseconds it
- * makes every scene's name one no earlier set had.
+ * the set is refused; a clear of ours empties the list, unless the engine refuses it. `sceneSerial` only grows: with
+ * the clock's milliseconds it makes every scene's name one no earlier set had.
  */
 type SceneEntry = { name: string; source: string; alt: string }
 let scenes: SceneEntry[] = []
@@ -2086,10 +2087,12 @@ async function writeLookOff($: EngineInterface, off: boolean): Promise<void> {
 
 /**
  * The look this plugin set, cleared (`$.theme.clear`): from here no look of ours stands, unless the engine refuses the
- * clear (then ours may still stand, and a later off asks again). The scenes kept for the `Backdrop` hook are dropped.
- * Never rejects.
+ * clear (then ours may still stand, and a later off asks again). The scenes kept for the `Backdrop` hook are dropped
+ * when the clear is not refused; a refused one keeps them (ours may still be drawn), unless a clear or start began
+ * after it. Never rejects.
  */
 async function clearOurLook($: EngineInterface): Promise<void> {
+  const kept = scenes
   scenes = []
   lookStands = false
   lookGen += 1
@@ -2097,8 +2100,12 @@ async function clearOurLook($: EngineInterface): Promise<void> {
   try {
     await $.theme.clear()
   } catch {
-    // Refused, or no theme API: the look of ours may still stand.
-    if (gen === lookGen) lookStands = true
+    // Refused, or no theme API: the look of ours may still stand, and its scenes with it (a scene kept meanwhile,
+    // newer, stays last).
+    if (gen === lookGen) {
+      lookStands = true
+      scenes = [...kept.filter((k) => !scenes.some((s) => s.name === k.name)), ...scenes].slice(-SCENES_KEPT)
+    }
   }
 }
 

@@ -130,16 +130,16 @@ function luminance(hex: string): number {
 }
 
 /**
- * The name the scarf carries: a string with its control characters (U+0000 to U+001F, U+007F) and lone surrogates
- * removed, trimmed, upper-cased and cut at 18 code points; anything else, or nothing left, is ''. Not escaped: the
- * drawing escapes it once.
+ * The name the scarf carries: a string with its control characters (U+0000 to U+001F, U+007F to U+009F), lone
+ * surrogates and the two noncharacters XML cannot hold (U+FFFE, U+FFFF) removed, trimmed, upper-cased and cut at 18
+ * code points; anything else, or nothing left, is ''. Not escaped: the drawing escapes it once.
  */
 export function scarfName(name: unknown): string {
   if (typeof name !== 'string') return ''
   const kept = [...name]
     .filter((ch) => {
       const c = ch.codePointAt(0) as number
-      return !(c <= 0x1f || c === 0x7f || (c >= 0xd800 && c <= 0xdfff))
+      return !(c <= 0x1f || (c >= 0x7f && c <= 0x9f) || (c >= 0xd800 && c <= 0xdfff) || c === 0xfffe || c === 0xffff)
     })
     .join('')
   return [...kept.trim().toUpperCase()].slice(0, SCARF_MAX).join('')
@@ -319,7 +319,6 @@ export function pixelSvg(a: {
     ...(state === 'goal' ? [GOAL_CSS, GOAL_KEYFRAMES] : []),
     '</style>',
     '<svg x="60%" y="0" width="40%" height="100%" viewBox="1232 40 368 960" preserveAspectRatio="xMaxYMax meet">',
-    `<defs><pattern id="px-net" width="16" height="16" patternUnits="userSpaceOnUse"><path d="M0 0h8v8H0zM8 8h8v8H8z" fill="${INK}"/></pattern></defs>`,
     terraces,
     scoreboard,
     `${R(1248, 848, 512, 312, ` fill="${A}" opacity="${go[0]}"`)}${R(1248, 896, 512, 24, ` fill="${B}" opacity="${go[1]}"`)}${R(1248, 848, 512, 8, ` fill="${INK}" opacity=".5"`)}`,
