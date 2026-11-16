@@ -168,7 +168,7 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
   not your team's or none is known. With `teamScenePlace: left` the stadium stands at the bottom left instead,
   mirrored, the goal against the left edge, for when a side panel covers the right of the app (Claude Code does not
   tell the plugin where its panels are, so this is your choice); the scoreboard and a flag scarf still read left to
-  right. Your team, for the stadium, is the team the band follows:
+  right. While it is open, the app's session list covers the stadium at the left, and its session panel covers it at the right: choose the side whose panel you keep closed. Your team, for the stadium, is the team the band follows:
   `CLAUDINHO_TEAM` when it is set, else your pinned team. It goes live, and plays a goal, only in a session with the
   terminal or the desktop app attached, where the band runs: with the phone alone, a `/claudinho` you type shows the
   idle stadium below (a live stadium left there when the desktop app detaches empties five
