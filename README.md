@@ -22,6 +22,21 @@ choose: the World Cup, the Premier League, LALIGA, the Champions League and 12 m
 the Bundesliga, the Libertadores and the rest are in [the table below](#competitions)).
 No API key, no signup, no account.
 
+## New: your team's look
+
+<p align="center">
+  <img src=".github/assets/team-look.gif" alt="An illustration of a Claude Code session with the plugin's pixel-art stadium at the bottom right during Spain v Argentina: the ball flies into the net, the scoreboard flashes GOOOAL and Spain's red and yellow, fireworks go off, the fans jump, a toast says GOAL! Spain, Ferran Torres 106', and the score above the prompt changes to 1-0." width="800">
+</p>
+
+The plugin can now dress the Claude desktop and mobile apps in your team's colors and draw a scene behind your
+session: a band of color, a pitch with your team's scarf, or a pixel-art stadium. The stadium's fans show up when
+your team's match is live. A goal sets off fireworks, and the scoreboard flashes `GOOOAL` and the scoring team's
+colors (for your national team, its flag's colors). It is off until you turn it on: set `teamTheme` to `on` and
+`teamScene` to `pixel` in the plugin's options. The details are in
+[The team look](packages/plugin/README.md#the-team-look).
+
+The clip is an illustration: the plugin's own drawing over a mock session, with the goal of the 2026 World Cup final.
+
 ## Set it up in one step
 
 In Claude Code, paste this prompt. Claude asks which competition and team you follow, installs the
