@@ -14,7 +14,8 @@ import { START, liveRecord, momentView, view, world } from './world'
  * the picked team is one of its sides, else it is blank) and `goal` (either side of the picked team's match scored:
  * once per goal, for six seconds, then `live` again at the next reading; the pick's goal and the other side's are two
  * drawings). Since 0.10.0 a national team's fan holds a scarf in its flag's colors. The cases from "0.10.0" down state
- * those three changes.
+ * those three changes. Since 0.11.0 the field is green for every team, with a goal area's two lines, and at a goal the
+ * board alternates the word GOOOAL and the scoring team's colors, still never a score: the cases from "0.11.0" down.
  *
  * What the engine does with a scene, measured in the desktop app (anthropics/claude-code#109770, #110150), and so
  * what these cases refuse: `shape-rendering` and any `@media` rule but reduced motion freeze every animation; a
@@ -998,14 +999,6 @@ const NATIONS = { home: 'BEL', away: 'ITA', scarf: IT_FLAG } as const
 /** Belgium v Italy live at `score`, the pick Italy (away), in a competition of nations. */
 const nations = (score: [number, number], over: Record<string, unknown> = {}, viewOver: Record<string, unknown> = {}) =>
   live(score, { home: { ...BEL_SIDE }, away: { ...ITA_SIDE }, names: { home: 'Belgium', away: 'Italy' }, ...over }, { ...ITALY, competition: { slug: 'uefa.nations', alias: 'nations-league', name: 'UEFA Nations League', chosenBy: 'saved' }, ...viewOver })
-const fnv = (s: string) => {
-  let h = 0x811c9dc5
-  for (let i = 0; i < s.length; i += 1) {
-    h ^= s.charCodeAt(i)
-    h = Math.imul(h, 0x01000193) >>> 0
-  }
-  return h.toString(16)
-}
 const crowdOf = (svg: string) => (/<g class="px-crowd">(.*)<\/g>\n/s.exec(svg) ?? [])[1] ?? ''
 /** The fireworks of a drawing: one entry per burst, the fills its rings carry. */
 const bursts = (svg: string) => [...svg.matchAll(/<g class="px-fx"[^>]*>(.*?)<\/g>/gs)].map((m) => [...new Set([...(m[1] as string).matchAll(/fill="(#[0-9a-f]{6})"/g)].map((f) => f[1] as string))])
@@ -1050,11 +1043,6 @@ describe('the flag colors: a table pinned whole', () => {
 
 describe('the pixel corner: the scarf in the flag\'s colors', () => {
   const at = (state: 'live' | 'idle' | 'goal', scarf?: unknown) => pixelSvg({ ...ITA, state, home: 'BEL', away: 'ITA', stamp: 1, ...(scarf === undefined ? {} : { scarf: scarf as string[] }) })
-
-  test('with no scarf, live and idle are 0.9.0\'s drawings, byte for byte', async () => {
-    expect(fnv(pixelSvg({ ...ARS, state: 'live', home: 'ARS', away: 'LEE' }))).toBe('9d70849b')
-    expect(fnv(pixelSvg({ ...ARS, state: 'idle', home: 'ARS', away: 'LEE' }))).toBe('c567e19c')
-  })
 
   test('three colors: three stripes in the crowd, in the flag\'s order, and nowhere else', async () => {
     const crowd = crowdOf(at('live', IT_FLAG))
@@ -1525,5 +1513,185 @@ describe('the pixel corner: which side is the pick\'s, the band\'s own rule', ()
     expect(sets).toHaveLength(3)
     const second = (await drawn($, sceneOf(sets[2]))) as string
     expect(second).toBe(pixelSvg({ ...ITA, state: 'goal', home: 'ITA', away: 'ITA', scarf: IT_FLAG, stamp: stampOf(second) }))
+  })
+})
+
+// ── Plugin 0.11.0: a green field with a goal area, and a board that says GOOOAL ────────────────────────────────
+
+/** The inside of the one group of class `cls` (a group of rects: no group inside it). */
+const groupOf = (svg: string, cls: string) => (new RegExp(`<g class="${cls}"[^>]*>(.*?)</g>`, 's').exec(svg) ?? [])[1] ?? ''
+const rectsOf = (g: string) => [...g.matchAll(/<rect x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)"(?: fill="(#[0-9a-f]{6})")?[^>]*\/>/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]), w: Number(m[3]), h: Number(m[4]), fill: m[5] }))
+/** A keyframes rule as its frames, by percent, and the opacity it gives at `at` percent (linear between frames). */
+const opacityAt = (css: string, name: string, at: number): number => {
+  const body = (new RegExp(`@keyframes ${name}\\{((?:[^{}]*\\{[^{}]*\\})*)\\}`).exec(css) ?? [])[1]
+  if (body === undefined) return Number.NaN
+  const frames: Array<[number, number]> = []
+  for (const f of body.matchAll(/([0-9.%,\s]+)\{opacity:([0-9.]+)\}/g)) for (const pc of (f[1] as string).split(',')) frames.push([Number(pc.trim().replace('%', '')), Number(f[2])])
+  frames.sort((x, y) => x[0] - y[0])
+  let lo = frames[0] as [number, number]
+  let hi = frames[frames.length - 1] as [number, number]
+  for (const f of frames) {
+    if (f[0] <= at) lo = f
+    if (f[0] >= at) {
+      hi = f
+      break
+    }
+  }
+  return hi[0] === lo[0] ? lo[1] : lo[1] + ((hi[1] - lo[1]) * (at - lo[0])) / (hi[0] - lo[0])
+}
+const MEX = { main: '006847', second: 'ffffff' } as const
+const FIELD =
+  '<rect x="1248" y="848" width="512" height="312" fill="#1f7a3d" opacity=".52"/><rect x="1248" y="896" width="512" height="24" fill="#3fae63" opacity=".24"/><rect x="1248" y="848" width="512" height="8" fill="#f4f6f2" opacity=".5"/>'
+const LINES = '<g class="px-lines" fill="#f4f6f2" opacity=".42"><rect x="1384" y="856" width="8" height="88"/><rect x="1384" y="944" width="376" height="8"/></g>'
+
+describe('the pixel corner: the field is green, with a goal area', () => {
+  const teams: Array<[string, { main: string; second?: string }]> = [
+    ['a red team', ARS],
+    ['a green team', MEX],
+    ['a bright team', { main: 'ffdf00', second: '009c3b' }],
+    ['a team with no colors known', { main: 'nope' }],
+  ]
+  for (const [label, team] of teams)
+    for (const state of ['live', 'idle', 'goal'] as const)
+      test(`${label}, ${state}: the same green field and the same two lines, in no team's color`, async () => {
+        const svg = pixelSvg({ ...team, state, home: 'AAA', away: 'BBB', stamp: 1 })
+        expect(groupOf(svg, 'px-field')).toBe(FIELD)
+        expect(svg).toContain(LINES)
+        expect(svg.split('class="px-field"').length - 1).toBe(1)
+        expect(svg.split('class="px-lines"').length - 1).toBe(1)
+        // The lines are drawn after the field, so over it.
+        expect(svg.indexOf('class="px-lines"')).toBeGreaterThan(svg.indexOf('class="px-field"'))
+        expect(wellFormed(svg)).toBeNull()
+        expect(refused(svg)).toEqual([])
+      })
+
+  test('no rect the height of the field is in a team color any more', async () => {
+    for (const state of ['live', 'idle', 'goal'] as const) expect(pixelSvg({ ...ARS, state, stamp: 1 })).not.toMatch(/height="312" fill="#ef0107"/)
+  })
+
+  test('the terraces keep the thin stripe in the team\'s second color', async () => {
+    expect(pixelSvg({ main: '0a0b0c', second: '0d0e0f', state: 'idle' })).toContain('fill="#0d0e0f" opacity=".28"')
+  })
+})
+
+describe('the pixel corner: at a goal the board says GOOOAL and flashes the scoring team\'s colors', () => {
+  const own = (over: Record<string, unknown> = {}) => pixelSvg({ ...ITA, state: 'goal', home: 'BEL', away: 'ITA', stamp: 1, ...over } as Parameters<typeof pixelSvg>[0])
+  const others = (over: Record<string, unknown> = BEL_OTHER) => own(over)
+  const stripes = (svg: string) => rectsOf(groupOf(svg, 'px-flash'))
+  const fills = (svg: string) => stripes(svg).map((r) => r.fill)
+  const lit = (home: string, away: string) => rectsOf(groupOf(pixelSvg({ ...ITA, state: 'live', home, away }), 'px-led')).length
+
+  test('live and idle carry none of it: no word, no flash, the codes not wrapped', async () => {
+    for (const state of ['live', 'idle'] as const) {
+      const svg = pixelSvg({ ...ITA, state, home: 'BEL', away: 'ITA', scarf: IT_FLAG })
+      for (const cls of ['px-codes', 'px-word', 'px-flash']) expect(svg, `${state} ${cls}`).not.toContain(cls)
+    }
+  })
+
+  test('a goal by either side: the codes wrapped once, one word, one flash', async () => {
+    for (const svg of [own(), own({ scarf: IT_FLAG }), others()]) {
+      expect(svg).toMatch(/<g class="px-codes"><g class="px-led"[^>]*>.*?<\/g><\/g>/s)
+      for (const cls of ['px-codes', 'px-word', 'px-flash']) expect(svg.split(`<g class="${cls}"`).length - 1, cls).toBe(1)
+      expect(wellFormed(svg)).toBeNull()
+      expect(refused(svg)).toEqual([])
+    }
+  })
+
+  test('the word is GOOOAL in the board\'s own lit squares, centered on the board, in the bright LED color', async () => {
+    const svg = own()
+    expect(svg).toContain('<g class="px-word" fill="#fff3c4">')
+    const word = rectsOf(groupOf(svg, 'px-word'))
+    // GOO - OAL on a live board is the word's six glyphs and one dash; a dash is what A - A holds beyond two As.
+    const a = lit('AA', 'A') - lit('A', 'A')
+    const dash = lit('A', 'A') - 2 * a
+    expect(dash).toBeGreaterThan(0)
+    expect(word).toHaveLength(lit('GOO', 'OAL') - dash)
+    // Six glyphs of 5 squares, 6 apart, 4 px each: 140 wide, centered in the 264 of the board; seven rows from y 482.
+    expect(Math.min(...word.map((r) => r.x))).toBe(1382)
+    expect(Math.max(...word.map((r) => r.x + r.w))).toBe(1522)
+    expect(Math.min(...word.map((r) => r.y))).toBe(482)
+    expect(Math.max(...word.map((r) => r.y + r.h))).toBe(510)
+    for (const r of word) expect(r.h).toBe(4)
+    // Never a digit: the word is the same whatever the codes.
+    expect(groupOf(own({ home: 'A1', away: '22' }), 'px-word')).toBe(groupOf(svg, 'px-word'))
+  })
+
+  test('the flash fills the board\'s face inside its frame, in equal vertical stripes with whole edges', async () => {
+    for (const svg of [own({ scarf: IT_FLAG }), own({ scarf: ['0057b7', 'ffd700'] }), own({ main: '0a0b0c', second: '0a0b0c' }), others()]) {
+      const r = stripes(svg)
+      expect(r.length).toBeGreaterThan(0)
+      expect(r[0]?.x).toBe(1328)
+      for (const [i, s] of r.entries()) {
+        expect(s.y).toBe(464)
+        expect(s.h).toBe(64)
+        expect(s.x).toBe(1328 + Math.floor((i * 248) / r.length))
+        if (i > 0) expect(s.x).toBe((r[i - 1]?.x ?? 0) + (r[i - 1]?.w ?? 0))
+      }
+      expect(r.reduce((n, s) => n + s.w, 0)).toBe(248)
+    }
+  })
+
+  test('the pick\'s goal: its flag when it has one, in the flag\'s order; else main, second, main; one stripe for one color', async () => {
+    expect(fills(own({ scarf: IT_FLAG }))).toEqual(['#009246', '#ffffff', '#ce2b37'])
+    expect(fills(own({ scarf: ['0057B7', 'FFD700'] }))).toEqual(['#0057b7', '#ffd700'])
+    expect(fills(own())).toEqual(['#0066cc', '#ffffff', '#0066cc'])
+    expect(fills(own({ main: '0a0b0c', second: '0a0b0c' }))).toEqual(['#0a0b0c'])
+    expect(fills(own({ main: '0a0b0c', second: undefined }))).toEqual(['#0a0b0c'])
+    expect(fills(own({ main: 'nope' }))).toEqual(['#1f7a3d'])
+  })
+
+  test('a scarf that is no flag is no flag on the board either: the team\'s colors, never the value given', async () => {
+    // biome-ignore lint/suspicious/noSparseArray: a hole is the case.
+    for (const v of [[], ['009246'], ['009246', 'ffffff', 'ce2b37', '000000'], ['009246', '"/><script>'], [, '009246', 'ce2b37'], 'ce2b37', null, 7]) {
+      const svg = own({ scarf: v })
+      expect(fills(svg), JSON.stringify(v)).toEqual(['#0066cc', '#ffffff', '#0066cc'])
+      expect(svg).not.toContain('script')
+    }
+  })
+
+  test('the other side\'s goal: its main, second, main; one stripe for one color; the spark and white for none known; never the pick\'s flag', async () => {
+    expect(fills(others())).toEqual(['#e30613', '#000000', '#e30613'])
+    expect(fills(others({ ...BEL_OTHER, scarf: IT_FLAG }))).toEqual(['#e30613', '#000000', '#e30613'])
+    expect(fills(others({ by: 'other', otherMain: 'e30613' }))).toEqual(['#e30613'])
+    for (const over of [{ by: 'other' }, { by: 'other', otherMain: 'red' }, { by: 'other', otherMain: '"/><script>', otherSecond: 7 }, { by: 'other', otherSecond: 'e30613' }]) {
+      expect(fills(others(over)), JSON.stringify(over)).toEqual(['#ffe08a', '#ffffff', '#ffe08a'])
+      expect(others(over)).not.toContain('script')
+    }
+  })
+
+  test('both goals move the three: the codes go, the word and the flash take turns, and nothing shows before the ball lands or stays after', async () => {
+    for (const css of [cssOf(own()), cssOf(others())]) {
+      for (const c of ['px-codes', 'px-word', 'px-flash']) expect(animates(css, c), c).toBe(true)
+      // Hidden until their turn: a static rule, so a still drawing shows the codes alone.
+      const still = css.slice(0, css.indexOf('@media')).replace(/@keyframes [a-z0-9-]+\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '')
+      for (const c of ['px-word', 'px-flash']) expect(new RegExp(`\\.${c}(?![a-z0-9-])[^{}]*\\{opacity:0\\}`).test(still), c).toBe(true)
+      // Each starts 1.9 s after the goal (the ball reaches the net then): the codes for 2.7 s, the two for 0.9 s three times.
+      expect(css).toMatch(/\.px-codes\{animation:px-codes 2\.7s linear 1\.9s 1 both\}/)
+      expect(css).toMatch(/\.px-word\{animation:px-word \.9s linear 1\.9s 3 both\}/)
+      expect(css).toMatch(/\.px-flash\{animation:px-flash \.9s linear 1\.9s 3 both\}/)
+      // The edge frames are what `both` holds before the start and after the end.
+      for (const at of [0, 100]) {
+        expect(opacityAt(css, 'px-codes', at), `codes ${at}`).toBe(1)
+        expect(opacityAt(css, 'px-word', at), `word ${at}`).toBe(0)
+        expect(opacityAt(css, 'px-flash', at), `flash ${at}`).toBe(0)
+      }
+      // The codes are gone for the whole of the word's and the flash's turns: hidden at every whole percent between.
+      for (let at = 1; at <= 99; at += 1) expect(opacityAt(css, 'px-codes', at), `codes ${at}`).toBe(0)
+      // A turn each: the word in the first half, the flash in the second, never both.
+      expect(opacityAt(css, 'px-word', 25)).toBe(1)
+      expect(opacityAt(css, 'px-flash', 25)).toBe(0)
+      expect(opacityAt(css, 'px-word', 75)).toBe(0)
+      expect(opacityAt(css, 'px-flash', 75)).toBe(1)
+      for (let at = 0; at <= 100; at += 1) expect(opacityAt(css, 'px-word', at) + opacityAt(css, 'px-flash', at), `at ${at}`).toBeLessThanOrEqual(1)
+      // Nothing the app has not been seen to run.
+      expect(css).not.toMatch(/steps\(|forwards|cubic-bezier/)
+    }
+  })
+
+  test('Reduce motion names the three for both goals: the board shows its codes, lit', async () => {
+    for (const css of [cssOf(own()), cssOf(others())]) {
+      const off = (/\{([^{}]*)\{animation:none!important\}/.exec(css.slice(css.indexOf('@media (prefers-reduced-motion:reduce){'))) ?? [])[1] as string
+      for (const c of ['px-codes', 'px-word', 'px-flash']) expect(new RegExp(`\\.${c}(?![a-z0-9-])`).test(off), c).toBe(true)
+    }
   })
 })

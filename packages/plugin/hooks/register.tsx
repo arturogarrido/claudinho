@@ -186,8 +186,10 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  * a look is still set once:
  * - `pitch`: faded pitch lines and a small scarf with the team's name (the look's name; none for pitch green). It has
  *   no states.
- * - `pixel`: a stadium corner whose scoreboard shows two teams' codes, never a score, in a state decided at every
- *   reading (the band's or the command's) by the clock. Its team is the view's `pick` (`CLAUDINHO_TEAM`'s over the
+ * - `pixel`: a stadium corner whose scoreboard shows two codes, and at a goal a word and the scoring team's colors;
+ *   never a score. Its state is decided at every reading (the band's or the command's) by the clock (plugin 0.11.0
+ *   changed the drawing alone: a green field for every team, the word and the colors at a goal). Its team is the
+ *   view's `pick` (`CLAUDINHO_TEAM`'s over the
  *   saved pin), never the saved pin as such: `live` when a CURRENT view lists a live record marked `picked` (the first
  *   such; the board its two codes; no pick, no record); a view that is not current never starts live, but keeps the
  *   last live board for 5 minutes after the last current view that showed it (the match's id is not asked); a current
@@ -348,7 +350,7 @@ const BAND_ALT = "A band in your team's colors"
  */
 type SceneKind = 'pitch' | 'pixel'
 const PITCH_ALT = "Faded pitch lines and a scarf in your team's colors"
-const PIXEL_ALT = "A pixel-art stadium corner in your team's colors"
+const PIXEL_ALT = 'A pixel-art stadium corner'
 const SCENE_GLASS = { blur: 20, opacity: 0.5 } as const
 const SCENES_KEPT = 3
 const GOAL_SCENE_MS = 6_000
