@@ -1,18 +1,22 @@
 /**
- * The team look's scenes (plugin 0.9.0, changed in 0.10.0), as data: the two drawings `teamScene` chooses besides the
- * band, each an SVG source made from its arguments alone. Pure: no host, no clock, no network, no file, and no import.
- * The hooks module decides which scene is set and when; this module only draws it.
+ * The team look's scenes (plugin 0.9.0, changed in 0.10.0 and 0.11.0), as data: the two drawings `teamScene` chooses
+ * besides the band, each an SVG source made from its arguments alone. Pure: no host, no clock, no network, no file, and
+ * no import. The hooks module decides which scene is set and when; this module only draws it.
  *
  * - `pitchSvg`: faded pitch lines across the app in the team's main color, and a small scarf hanging at the top right,
  *   in the two colors, with the team's name on it (`scarfName`; no name, no text). It never moves.
  * - `pixelSvg`: a pixel-art stadium corner at the bottom right: three rows of terraces, a scoreboard, a goal and its
- *   net, a patch of pitch. The scoreboard shows the two teams' codes (`boardCode`), drawn as lit squares from a 5x7
- *   glyph table, never as text, and never a score. Its states: `live` (four fans in the team's colors, one holding up a
- *   scarf, and a ball by the goal), `idle` (an empty stadium: no fans and no ball, the board dimmed) and `goal` (the
- *   live corner moving once: after 1.5 s the ball flies into the top corner and back over 4 s and the board blinks; a
- *   goal by the team, the fans hop and raise their arms and five fireworks burst in the two colors and a gold spark; a goal by the other
- *   side of the match (plugin 0.10.0), the fans stand still and two fireworks burst in the other team's colors (gold and white when none is known); a
- *   reader that asks for reduced motion gets the corner still, the board lit). The scarf (plugin 0.10.0) is a national
+ *   net, a patch of pitch (plugin 0.11.0: green for every team, with a goal area's two lines). The scoreboard shows two
+ *   codes, and at a goal a word and the scoring team's colors; never a score: the two teams' codes (`boardCode`) and
+ *   the word, drawn as lit squares from a 5x7 glyph table, never as text, and the colors as plain stripes. Its states:
+ *   `live` (four fans in the team's colors, one holding up a scarf, and a ball by the goal), `idle` (an empty stadium:
+ *   no fans and no ball, the board dimmed) and `goal` (the live corner moving once: after 1.5 s the ball flies into the
+ *   top corner and back over 4 s; from 1.9 s, as the ball reaches the net, the board's codes give way for 2.7 s to the
+ *   word GOOOAL and the scoring team's colors, taking turns (plugin 0.11.0), and the board blinks once the codes are
+ *   back; a goal by the team, the fans hop and raise their arms and five fireworks burst in the two colors and a gold
+ *   spark; a goal by the other side of the match (plugin 0.10.0), the fans stand still and two fireworks burst in the
+ *   other team's colors (gold and white when none is known); a reader that asks for reduced motion gets the corner
+ *   still, the board lit with its codes). The scarf (plugin 0.10.0) is a national
  *   team's flag, two or three plain stripes in the flag's order, when one is given; else the team's two colors. A
  *   goal's source ends with `<desc>goal N</desc>`, its stamp: the app does not draw a source it already drew again, so
  *   each goal is its own source.
@@ -49,6 +53,11 @@ const SKIN = '#c6b99e'
 const HAIR = '#111a28'
 const SPARK = '#ffe08a'
 const WHITE = '#ffffff'
+/** The field's grass and its mowing stripe (plugin 0.11.0): the same for every team, never a team's color. */
+const GRASS = '#1f7a3d'
+const MOWN = '#3fae63'
+/** What the board says at a goal (plugin 0.11.0), in its own glyphs. */
+const GOAL_WORD = 'GOOOAL'
 
 /** A 5x7 pixel alphabet for the scoreboard: each glyph seven rows of five, `1` lit. */
 const FONT: Readonly<Record<string, string>> = {
@@ -96,11 +105,26 @@ const FONT: Readonly<Record<string, string>> = {
 const BALL =
   '<g transform="scale(.55)"><g fill="#e4e5d7" opacity=".83"> <rect x="16" width="48" height="80"/> <rect y="16" width="80" height="48"/> </g> <g fill="#8395a5" opacity=".65"> <rect x="64" y="24" width="16" height="40"/> <rect x="48" y="64" width="16" height="16"/> <rect x="16" y="72" width="32" height="8"/> </g> <g fill="#162233" opacity=".9"> <rect x="24" y="24" width="32" height="24"/> <rect x="32" y="48" width="16" height="8"/> <rect x="16" width="16" height="16"/> <rect x="64" y="16" width="16" height="16"/> <rect y="48" width="16" height="16"/> <rect x="48" y="64" width="16" height="16"/> </g> <rect x="8" y="16" width="16" height="8" fill="#fff8df" opacity=".7"/></g>'
 
-/** The ball's flight, 1.5 s after the goal, over 4 s; the board's blink; the four rings of each firework in turn. */
+/**
+ * The ball's flight, 1.5 s after the goal, over 4 s; the board's blink, from 2.0 s to 5.0 s (since plugin 0.11.0 the
+ * codes it blinks are hidden from 1.9 s to 4.6 s inside `.px-codes`, so the blink is seen only after the codes return);
+ * the four rings of each firework in turn.
+ */
 const FLY_CSS = '.px-fly{animation:px-shot 4s linear 1.5s 1 both}'
 const LED_CSS = '.px-led{animation:px-led .5s linear 2.0s 6 both}'
 const RINGS_CSS =
   '.px-r1{animation:px-show .7s linear 2.0s 1 both}.px-r2{animation:px-show .7s linear 2.3s 1 both}.px-r3{animation:px-show .7s linear 2.6s 1 both}.px-r4{animation:px-show .7s linear 2.9s 1 both}'
+/**
+ * The board at a goal, either side's (plugin 0.11.0): from 1.9 s, as the ball reaches the net, the codes are hidden for
+ * 2.7 s while the word and the flash take turns, three times 0.9 s, the word in the first half of each and the flash in
+ * the second, never both. Outside their turns the two are hidden by a static rule, so a still drawing (reduced motion)
+ * shows the codes alone. Opacity only, linear, `both`: each keyframes' first and last frames are what `both` holds
+ * before the start and after the end (the codes lit, the word and the flash hidden), and a cut is two adjacent frames.
+ */
+const BOARD_CSS =
+  '.px-word,.px-flash{opacity:0}.px-codes{animation:px-codes 2.7s linear 1.9s 1 both}.px-word{animation:px-word .9s linear 1.9s 3 both}.px-flash{animation:px-flash .9s linear 1.9s 3 both}'
+/** The classes the board's goal animation moves, for the reduced-motion rule. */
+const BOARD_CLASSES = '.px-codes,.px-word,.px-flash'
 /** Reduced motion: every class in `classes` (each one that carries an animation) still, and the board lit. */
 const stillFor = (classes: string): string => `@media (prefers-reduced-motion:reduce){${classes}{animation:none!important}.px-led{fill:${LED_HI}}}`
 const SHOT_KEYFRAMES =
@@ -108,25 +132,33 @@ const SHOT_KEYFRAMES =
 const HOP_KEYFRAMES = '@keyframes px-hop{0%{transform:translate(0px,0px)}50%{transform:translate(0px,-16px)}100%{transform:translate(0px,0px)}}'
 const SHOW_KEYFRAMES = '@keyframes px-show{0%{opacity:0}8%{opacity:1}85%{opacity:1}100%{opacity:0}}'
 const LED_KEYFRAMES = `@keyframes px-led{0%,100%{fill:${LED}}50%{fill:${LED_HI}}}`
+const BOARD_KEYFRAMES = [
+  '@keyframes px-codes{0%{opacity:1}1%{opacity:0}99%{opacity:0}100%{opacity:1}}',
+  '@keyframes px-word{0%{opacity:0}1%{opacity:1}49%{opacity:1}50%{opacity:0}100%{opacity:0}}',
+  '@keyframes px-flash{0%{opacity:0}50%{opacity:0}51%{opacity:1}99%{opacity:1}100%{opacity:0}}',
+].join('\n')
 
 /**
  * The team's goal's motion: 1.5 s still, then the ball's flight (4 s), the fans' hops (six of half a second), the
- * raised arms, the board's blink and the four rings of each firework one after another; with reduced motion, none of it
- * and the board lit: the reduced-motion rule names every class that carries an animation.
+ * raised arms, the board's word and flash (plugin 0.11.0) and its blink, and the four rings of each firework one after
+ * another; with reduced motion, none of it and the board lit: the reduced-motion rule names every class that carries an
+ * animation.
  */
 const GOAL_CSS =
   `${FLY_CSS}.px-hop{animation:px-hop .5s ease-in-out 2.0s 6 both}.px-hop2{animation:px-hop .5s ease-in-out 2.25s 6 both}` +
   `.px-arm{animation:px-show 3.5s linear 1.9s 1 both}${LED_CSS}` +
   RINGS_CSS +
-  stillFor('.px-fly,.px-hop,.px-hop2,.px-arm,.px-led,.px-r1,.px-r2,.px-r3,.px-r4')
-const GOAL_KEYFRAMES = [SHOT_KEYFRAMES, HOP_KEYFRAMES, SHOW_KEYFRAMES, LED_KEYFRAMES].join('\n')
+  BOARD_CSS +
+  stillFor(`.px-fly,.px-hop,.px-hop2,.px-arm,.px-led,${BOARD_CLASSES},.px-r1,.px-r2,.px-r3,.px-r4`)
+const GOAL_KEYFRAMES = [SHOT_KEYFRAMES, HOP_KEYFRAMES, SHOW_KEYFRAMES, LED_KEYFRAMES, BOARD_KEYFRAMES].join('\n')
 /**
- * The other side's goal's motion (plugin 0.10.0): the same flight, blink and rings at the same times, and no rule for
- * the fans (`.px-hop`, `.px-hop2`, `.px-arm`): they stand, their arms hidden; with reduced motion, none of it and the
- * board lit, the rule naming every class that carries an animation here.
+ * The other side's goal's motion (plugin 0.10.0): the same flight, board (plugin 0.11.0: the word and that team's
+ * colors) and rings at the same times, and no rule for the fans (`.px-hop`, `.px-hop2`, `.px-arm`): they stand, their
+ * arms hidden; with reduced motion, none of it and the board lit, the rule naming every class that carries an
+ * animation here.
  */
-const OTHER_GOAL_CSS = FLY_CSS + LED_CSS + RINGS_CSS + stillFor('.px-fly,.px-led,.px-r1,.px-r2,.px-r3,.px-r4')
-const OTHER_GOAL_KEYFRAMES = [SHOT_KEYFRAMES, SHOW_KEYFRAMES, LED_KEYFRAMES].join('\n')
+const OTHER_GOAL_CSS = FLY_CSS + LED_CSS + RINGS_CSS + BOARD_CSS + stillFor(`.px-fly,.px-led,${BOARD_CLASSES},.px-r1,.px-r2,.px-r3,.px-r4`)
+const OTHER_GOAL_KEYFRAMES = [SHOT_KEYFRAMES, SHOW_KEYFRAMES, LED_KEYFRAMES, BOARD_KEYFRAMES].join('\n')
 
 /** One rectangle. */
 const R = (x: number, y: number, w: number, h: number, extra = ''): string =>
@@ -294,6 +326,15 @@ function fan(x: number, y: number, A: string, B: string, stand: boolean, alt: bo
   )
 }
 
+/**
+ * The board's flash (plugin 0.11.0): the box at (x, y), `w` by `h`, in equal vertical stripes, one per color in order,
+ * each edge a whole number (`floor(i * w / n)`), so the stripes meet and fill the box.
+ */
+function stripes(colors: string[], x: number, y: number, w: number, h: number): string {
+  const n = colors.length
+  return colors.map((c, i) => R(x + Math.floor((i * w) / n), y, Math.floor(((i + 1) * w) / n) - Math.floor((i * w) / n), h, ` fill="${c}"`)).join('')
+}
+
 /** A firework: its center (x, y) and its two ring colors, the first for its first and third rings. */
 type Burst = [number, number, string, string]
 
@@ -322,10 +363,21 @@ function ring(r: number, color: string, k: number): string {
  *
  * Plugin 0.10.0: `scarf`, a flag (`flagOf`: two or three colors of six hex digits, lower-cased when drawn; anything else
  * is as if absent), is the standing fan's scarf, live and at a goal (an empty stadium has no fan); with none, live and
- * idle are 0.9.0's drawings, byte for byte. At a goal, `by` says whose: exactly `'other'` is the other side's (the fans
- * stand, two fireworks in `otherMain` and `otherSecond`, `otherColorsOf`: one color for all their rings, the spark and
- * white for none known); anything else is the team's (the fans hop and raise their arms, five fireworks in the team's
- * two colors and the spark). Out of a goal `by`, `otherMain` and `otherSecond` are not read.
+ * idle were 0.9.0's drawings, byte for byte, until 0.11.0 changed the field. At a goal, `by` says whose: exactly
+ * `'other'` is the other side's (the fans stand, two fireworks in `otherMain` and `otherSecond`, `otherColorsOf`: one
+ * color for all their rings, the spark and white for none known); anything else is the team's (the fans hop and raise
+ * their arms, five fireworks in the team's two colors and the spark). Out of a goal `by`, `otherMain` and
+ * `otherSecond` are not read.
+ *
+ * Plugin 0.11.0: the field is the same in every state for every team, no team color in it: `px-field`, the grass
+ * (`GRASS`), its mowing stripe (`MOWN`) and the goal line, then `px-lines`, a goal area's two lines (one out from the
+ * goal line, one parallel to it; the ball rests left of them). The board shows two codes, and at a goal a word and the
+ * scoring team's colors; never a score. At a goal, either side's, the codes' group is wrapped in `px-codes`, and two
+ * groups follow it: `px-word`, `GOAL_WORD` in the board's glyphs and bright color, centered like the codes, and
+ * `px-flash`, the board's face inside its frame in equal vertical stripes with whole edges, one per color: for the
+ * team's goal its flag when one is given, else its main, second and main colors; for the other side's goal its main,
+ * second and main by `otherColorsOf` (the spark and white for none known), never the team's flag; one stripe when the
+ * two colors are one. Live and idle boards are unchanged.
  */
 export function pixelSvg(a: {
   main: string
@@ -349,7 +401,6 @@ export function pixelSvg(a: {
   const boardWidth = board.length * 24 - 4
   const [sx, sy, sw, sh] = [1320, 456, 264, 80]
   const dim = state === 'idle' ? ' opacity=".38"' : ''
-  const go = luminance(A) > 0.4 ? ['0.1', '0.040'] : ['0.2', '0.080']
   const terraces = [
     [1248, 760],
     [1296, 664],
@@ -357,12 +408,30 @@ export function pixelSvg(a: {
   ]
     .map(([x, y]) => R(x as number, y as number, 512, 96, ` fill="${STEP}" opacity=".5"`) + R(x as number, y as number, 512, 8, ` fill="${EDGE}" opacity=".45"`) + R(x as number, (y as number) + 8, 512, 8, ` fill="${B}" opacity=".28"`))
     .join('')
+  const { a: O1, b: O2 } = otherColorsOf(a.otherMain, a.otherSecond)
+  const codes = `<g class="px-led" fill="${LED}"${dim}>${glyphs(board, sx + Math.floor((sw - boardWidth) / 2), sy + 26, 4)}</g>`
+  // At a goal (plugin 0.11.0): the codes wrapped so they can give way, the word, and the flash in the scoring team's
+  // colors over the face inside the frame: the other side's main, second and main; the team's flag, else its main,
+  // second and main; one stripe for one color.
+  const wordWidth = GOAL_WORD.length * 24 - 4
+  const flashColors = other ? (O1 === O2 ? [O1] : [O1, O2, O1]) : (flag ?? (A === B ? [A] : [A, B, A]))
+  const led =
+    state === 'goal'
+      ? `<g class="px-codes">${codes}</g>` +
+        `<g class="px-word" fill="${LED_HI}">${glyphs(GOAL_WORD, sx + Math.floor((sw - wordWidth) / 2), sy + 26, 4)}</g>` +
+        `<g class="px-flash">${stripes(flashColors, sx + 8, sy + 8, sw - 16, sh - 16)}</g>`
+      : codes
   const scoreboard =
     R(sx + 24, sy + sh, 8, 568 - sy - sh, ` fill="${LEGS}"`) +
     R(sx + sw - 32, sy + sh, 8, 568 - sy - sh, ` fill="${LEGS}"`) +
     R(sx, sy, sw, sh, ` fill="${FACE}"`) +
     `<path d="M${sx} ${sy}h${sw}v${sh}h-${sw}zM${sx + 8} ${sy + 8}v${sh - 16}h${sw - 16}v-${sh - 16}z" fill="${EDGE}" fill-rule="evenodd" opacity=".7"/>` +
-    `<g class="px-led" fill="${LED}"${dim}>${glyphs(board, sx + Math.floor((sw - boardWidth) / 2), sy + 26, 4)}</g>`
+    led
+  // The field, the same for every team and state (plugin 0.11.0): the grass, its mowing stripe and the goal line, then
+  // the goal area's two lines over them.
+  const field =
+    `<g class="px-field">${R(1248, 848, 512, 312, ` fill="${GRASS}" opacity=".52"`)}${R(1248, 896, 512, 24, ` fill="${MOWN}" opacity=".24"`)}${R(1248, 848, 512, 8, ` fill="${INK}" opacity=".5"`)}</g>` +
+    `<g class="px-lines" fill="${INK}" opacity=".42">${R(1384, 856, 8, 88)}${R(1384, 944, 376, 8)}</g>`
   const net =
     `<g fill="${INK}" opacity=".26">` +
     Array.from({ length: 9 }, (_, i) => R(1472 + i * 32, 640, 4, 208)).join('') +
@@ -375,7 +444,6 @@ export function pixelSvg(a: {
     [1512, 312, B, A],
     [1448, 136, SPARK, B],
   ]
-  const { a: O1, b: O2 } = otherColorsOf(a.otherMain, a.otherSecond)
   const bursts: Burst[] = other
     ? [
         [1512, 312, O1, O2],
@@ -405,7 +473,7 @@ export function pixelSvg(a: {
     '<svg x="60%" y="0" width="40%" height="100%" viewBox="1232 40 368 960" preserveAspectRatio="xMaxYMax meet">',
     terraces,
     scoreboard,
-    `${R(1248, 848, 512, 312, ` fill="${A}" opacity="${go[0]}"`)}${R(1248, 896, 512, 24, ` fill="${B}" opacity="${go[1]}"`)}${R(1248, 848, 512, 8, ` fill="${INK}" opacity=".5"`)}`,
+    field,
     net,
     `<path d="M1432 632h328v8h-320v208h-8z" fill="${INK}" opacity=".85"/>`,
     ...played,
