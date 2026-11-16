@@ -49,7 +49,7 @@
       "title": "Team look scene",
       "options": ["band", "pitch", "pixel"],
       "default": "band",
-      "description": "What the team look draws behind the conversation; needs Team look on. band: a band of your team's colors across the top. pitch: faded pitch lines and a small scarf with your team's name. pixel: a pixel-art stadium corner whose scoreboard shows the two codes of your team's match or next fixture (blank when neither is known), with fans while your team plays (a national team's fan holds a scarf in its flag's colors) and a short goal moment when either team scores (none with Goal celebration off). Drawn for a dark page; desktop and mobile apps only."
+      "description": "What the team look draws behind the conversation; needs Team look on. band: a band of your team's colors across the top. pitch: faded pitch lines and a small scarf with your team's name. pixel: a pixel-art stadium corner whose scoreboard shows the two codes of your team's match or next fixture (blank when neither is known), with fans while your team plays (a national team's fan holds a scarf in its flag's colors) and a short goal moment when either team scores, the scoreboard flashing GOOOAL and the scoring team's colors (none with Goal celebration off). Drawn for a dark page; desktop and mobile apps only."
     }
   }
 }

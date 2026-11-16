@@ -161,9 +161,10 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
 - `band` (the default): the band of color across the top, above.
 - `pitch`: faded white pitch lines across the app over soft stripes of your team's main color, and a small scarf in
   its two colors at the top right with your team's name on it (no name with pitch green). It does not move.
-- `pixel`: a pixel-art stadium corner at the bottom right in your team's colors: terraces, a goal and a scoreboard that
-  shows the two codes of your team's match or of its next fixture (`PUM - MTY`), never the score, and is blank when the
-  next fixture is not your team's or none is known. Your team, for the stadium, is the team the band follows:
+- `pixel`: a pixel-art stadium corner at the bottom right: terraces with a stripe in your team's second color, fans
+  in your team's colors, a goal on a green field with the goal area's lines, and a scoreboard that shows the two codes
+  of your team's match or of its next fixture (`PUM - MTY`), never the score, and is blank when the next fixture is
+  not your team's or none is known. Your team, for the stadium, is the team the band follows:
   `CLAUDINHO_TEAM` when it is set, else your pinned team. It goes live, and plays a goal, only in a session with the
   terminal or the desktop app attached, where the band runs: with the phone alone, a `/claudinho` you type shows the
   idle stadium below (a live stadium left there when the desktop app detaches empties five
@@ -179,12 +180,14 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
     The scoreboard is blank when the CLI's next fixture is not your team's (another match of the competition) or when
     none is known.
   - **goal**, when the plugin sees a goal in your team's match between two readings. A goal for your team: the ball
-    flies into the top corner and back, the fans jump, the scoreboard blinks and five fireworks burst in your team's
-    two colors and a gold spark. A goal for the other team: the ball flies and the scoreboard blinks too, two fireworks
-    burst in the other team's colors (gold and white when the plugin has no colors for that team), and your fans
-    stand still. Each goal plays once, then the stadium is live again
+    flies into the top corner and back, the fans jump, five fireworks burst in your team's two colors and a gold
+    spark, and the scoreboard alternates the word `GOOOAL` (in English in every language) with your team's colors
+    three times: a national team's flag colors as plain stripes, else your team's two colors. A goal for the other
+    team: the ball flies, the scoreboard alternates `GOOOAL` with the other team's two colors, two fireworks burst in
+    those colors (gold and white, on the scoreboard too, when the plugin has no colors for that team), and your fans
+    stand still. The scoreboard then shows the two codes again. Each goal plays once, then the stadium is live again
     at the first reading after its six seconds. It follows `celebrate`: with `celebrate: off` there is no goal moment for either
-    team. With Reduce motion on in your system, nothing moves and the scoreboard stays lit.
+    team. With Reduce motion on in your system, nothing moves and the scoreboard stays lit with the two codes.
 
 The scenes are drawn for a dark page: on a light one they are faint. Like the band, they show in the desktop and
 mobile apps only. Changing the scene in `/config` reloads the plugin, and the next reading sets the new one.
