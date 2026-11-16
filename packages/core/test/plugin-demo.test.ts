@@ -229,7 +229,7 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo.sh, run', () 
   });
 
   it('hands the validator the folder as an absolute path, so a name that starts with a dash is not its option', () => {
-    // A stand-in `claude` first on PATH: it records its arguments and refuses one that starts with a dash, as the CLI does.
+    // A fake `claude` first on PATH: it records its arguments and refuses one that starts with a dash, as the CLI does.
     const bin = mkdtempSync(join(tmpdir(), 'plugin-demo-bin-'));
     const seen = join(bin, 'seen.txt');
     writeFileSync(join(bin, 'claude'), `#!/bin/sh\nprintf '%s\\n' "$@" > '${seen}'\ncase "$3" in -*) echo "error: unknown option" >&2; exit 1 ;; esac\nexit 0\n`, { mode: 0o755 });
