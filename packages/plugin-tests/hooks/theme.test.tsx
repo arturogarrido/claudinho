@@ -487,9 +487,12 @@ describe('the table and the look, as data', () => {
   // slow host (each look builds a full palette). The slices cover the table by construction; pitch green rides last.
   const LOOKS = [...Object.entries(TEAM_COLORS), ['pitch', undefined] as const]
   const LOOKS_PER_CASE = 40
+  const asked: [number, number][] = []
   for (let from = 0; from < LOOKS.length; from += LOOKS_PER_CASE) {
     const to = Math.min(from + LOOKS_PER_CASE, LOOKS.length)
-    test(`the desktop app paints every look, entries ${from + 1} to ${to} of ${LOOKS.length}: no entry, and not pitch green, is refused for contrast`, async () => {
+    asked.push([from, to])
+    const what = to === LOOKS.length ? 'no entry, and not pitch green, is refused for contrast' : 'no entry is refused for contrast'
+    test(`the desktop app paints every look, entries ${from + 1} to ${to} of ${LOOKS.length}: ${what}`, async () => {
       const refused: string[] = []
       for (const [id, colors] of LOOKS.slice(from, to)) {
         const { problems } = buildLook(id, colors)
@@ -499,6 +502,14 @@ describe('the table and the look, as data', () => {
       expect(refused).toEqual([])
     })
   }
+
+  test('the cases above ask the whole table: their ranges run end to end from the first entry to the last, which is pitch green', async () => {
+    expect(LOOKS).toHaveLength(Object.keys(TEAM_COLORS).length + 1)
+    expect(LOOKS[LOOKS.length - 1]).toEqual(['pitch', undefined])
+    expect(asked[0]?.[0]).toBe(0)
+    expect(asked[asked.length - 1]?.[1]).toBe(LOOKS.length)
+    for (let i = 1; i < asked.length; i++) expect(asked[i]?.[0], `case ${i + 1}`).toBe(asked[i - 1]?.[1])
+  })
 
   test('a look is colors and a scene: a band named for the team\'s two colors, frosted glass over it; no image, no still ground', async () => {
     const { look } = buildLook('Pumas UNAM', TEAM_COLORS['espn:233'])
