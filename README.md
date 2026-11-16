@@ -30,9 +30,10 @@ No API key, no signup, no account.
 
 The plugin can now dress the Claude desktop and mobile apps in your team's colors and draw a scene behind your
 session: a band of color, a pitch with your team's scarf, or a pixel-art stadium. The stadium's fans show up when
-your team's match is live. A goal sets off fireworks, and the scoreboard flashes `GOOOAL` and the scoring team's
-colors (for your national team, its flag's colors). It is off until you turn it on: set `teamTheme` to `on` and
-`teamScene` to `pixel` in the plugin's options. The details are in
+your team's match is live. A goal sets off fireworks, and the scoreboard flashes the goal word in your language
+(`GOOOAL`, `GOOOL` in Spanish and Portuguese, `BUUUT` in French) and the scoring team's colors (for your national
+team, its flag's colors). It is off until you turn it on: set `teamTheme` to `on` and `teamScene` to `pixel` in the
+plugin's options (`teamScenePlace: left` puts the stadium at the bottom left). The details are in
 [The team look](packages/plugin/README.md#the-team-look).
 
 The clip is an illustration: the plugin's own drawing over a mock session, with the goal of the 2026 World Cup final.
