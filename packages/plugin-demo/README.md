@@ -23,6 +23,9 @@ Claude Code with `--plugin-dir <folder>`, or name the folder in `CLAUDE_CODE_PLU
 | `/demo live` | the stadium with its fans |
 | `/demo goal` | the team's goal: six seconds, then live again |
 | `/demo other` | the other team's goal |
+| `/demo left` | the stadium at the bottom left, mirrored (the plugin's `teamScenePlace: left`), from then on; shows it live |
+| `/demo right` | the stadium at the bottom right again (the default); shows it live |
+| `/demo en` (or `es`, `pt`, `fr`) | the goal's word on the scoreboard from then on: `GOAL!` (GOOOAL), `¡GOL!` and `GOL!` (GOOOL), `BUT !` (BUUUT); `/demo goal` shows it |
 | `/demo off` | clears the look |
 
 If the real plugin's team look is on in that session, type `/claudinho theme off` first: a session holds one look.

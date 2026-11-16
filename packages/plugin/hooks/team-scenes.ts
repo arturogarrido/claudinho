@@ -1,25 +1,28 @@
 /**
- * The team look's scenes (plugin 0.9.0, changed in 0.10.0 and 0.11.0), as data: the two drawings `teamScene` chooses
- * besides the band, each an SVG source made from its arguments alone. Pure: no host, no clock, no network, no file, and
- * no import. The hooks module decides which scene is set and when; this module only draws it.
+ * The team look's scenes (plugin 0.9.0, changed in 0.10.0, 0.11.0 and 0.12.0), as data: the two drawings `teamScene`
+ * chooses besides the band, each an SVG source made from its arguments alone. Pure: no host, no clock, no network, no
+ * file, and no import. The hooks module decides which scene is set and when; this module only draws it.
  *
  * - `pitchSvg`: faded pitch lines across the app in the team's main color, and a small scarf hanging at the top right,
  *   in the two colors, with the team's name on it (`scarfName`; no name, no text). It never moves.
- * - `pixelSvg`: a pixel-art stadium corner at the bottom right: three rows of terraces, a scoreboard, a goal and its
- *   net, a patch of pitch (plugin 0.11.0: green for every team, with a goal area's two lines). The scoreboard shows two
- *   codes, and at a goal a word and the scoring team's colors; never a score: the two teams' codes (`boardCode`) and
- *   the word, drawn as lit squares from a 5x7 glyph table, never as text, and the colors as plain stripes. Its states:
- *   `live` (four fans in the team's colors, one holding up a scarf, and a ball by the goal), `idle` (an empty stadium:
- *   no fans and no ball, the board dimmed) and `goal` (the live corner moving once: after 1.5 s the ball flies into the
- *   top corner and back over 4 s; from 1.9 s, as the ball reaches the net, the board's codes give way for 2.7 s to the
- *   word GOOOAL and the scoring team's colors, taking turns (plugin 0.11.0), and the board blinks once the codes are
- *   back; a goal by the team, the fans hop and raise their arms and five fireworks burst in the two colors and a gold
- *   spark; a goal by the other side of the match (plugin 0.10.0), the fans stand still and two fireworks burst in the
- *   other team's colors (gold and white when none is known); a reader that asks for reduced motion gets the corner
- *   still, the board lit with its codes). The scarf (plugin 0.10.0) is a national
- *   team's flag, two or three plain stripes in the flag's order, when one is given; else the team's two colors. A
- *   goal's source ends with `<desc>goal N</desc>`, its stamp: the app does not draw a source it already drew again, so
- *   each goal is its own source.
+ * - `pixelSvg`: a pixel-art stadium corner at the bottom right, or (plugin 0.12.0, `place: 'left'`) at the bottom left,
+ *   mirrored: three rows of terraces, a scoreboard, a goal and its net, a patch of pitch (plugin 0.11.0: green for
+ *   every team, with a goal area's two lines). The scoreboard shows two codes, and at a goal a word and the scoring
+ *   team's colors; never a score: the two teams' codes (`boardCode`) and the word, drawn as lit squares from a 5x7
+ *   glyph table, never as text, and the colors as plain stripes. Its states: `live` (four fans in the team's colors,
+ *   one holding up a scarf, and a ball by the goal), `idle` (an empty stadium: no fans and no ball, the board dimmed)
+ *   and `goal` (the live corner moving once: after 1.5 s the ball flies into the top corner and back over 4 s; from
+ *   1.9 s, as the ball reaches the net, the board's codes give way for 2.7 s to the goal's word and the scoring team's
+ *   colors, taking turns (plugin 0.11.0; the word is the reader's language's since 0.12.0, `boardWord`: GOOOAL,
+ *   GOOOL, BUUUT), and the board blinks once the codes are back; a goal by the team, the fans hop and raise their arms
+ *   and five fireworks burst in the two colors and a gold spark; a goal by the other side of the match (plugin
+ *   0.10.0), the fans stand still and two fireworks burst in the other team's colors (gold and white when none is
+ *   known); a reader that asks for reduced motion gets the corner still, the board lit with its codes). The scarf
+ *   (plugin 0.10.0) is a national team's flag, two or three plain stripes in the flag's order, when one is given; else
+ *   the team's two colors. At the left the whole corner is turned over once, and what must read left to right (the
+ *   board's codes, word and flash, and a flag scarf's stripes) is turned back about its own middle. A goal's source
+ *   ends with `<desc>goal N</desc>`, its stamp: the app does not draw a source it already drew again, so each goal is
+ *   its own source.
  *
  * Both are drawn for a dark page: on a light one they are faint. A color that is not six hex digits is never written
  * into a drawing: the main color then is pitch green, for both; a second color that is not six hex digits is the main
@@ -56,8 +59,12 @@ const WHITE = '#ffffff'
 /** The field's grass and its mowing stripe (plugin 0.11.0): the same for every team, never a team's color. */
 const GRASS = '#1f7a3d'
 const MOWN = '#3fae63'
-/** What the board says at a goal (plugin 0.11.0), in its own glyphs. */
+/** What the board says at a goal (plugin 0.11.0), in its own glyphs; since 0.12.0 the word given none or no word. */
 const GOAL_WORD = 'GOOOAL'
+/** A board word's letters, at most (plugin 0.12.0): eight glyphs with the vowel tripled, and the board holds nine. */
+const WORD_MAX = 6
+/** The vowels a board word triples the first of. */
+const VOWEL = /[AEIOU]/
 
 /** A 5x7 pixel alphabet for the scoreboard: each glyph seven rows of five, `1` lit. */
 const FONT: Readonly<Record<string, string>> = {
@@ -233,6 +240,21 @@ export function boardCode(code: unknown): string {
 }
 
 /**
+ * The goal's word as the scoreboard draws it (plugin 0.12.0), from a language's goal word (`GOAL!`, `¡GOL!`, `GOL!`,
+ * `BUT !`): a string decomposed (NFD, so an accent is a mark of its own), upper-cased, and only its letters `A` to `Z`
+ * kept; one to six of them: the first vowel (`A`, `E`, `I`, `O`, `U`) written three times (`GOOOAL`, `GOOOL`,
+ * `BUUUT`), and with no vowel the letters as they are. Anything else (not a string, no letter, more than six) is
+ * `GOOOAL`. Every letter it returns is a glyph of the board's.
+ */
+export function boardWord(word: unknown): string {
+  if (typeof word !== 'string') return GOAL_WORD
+  const letters = word.normalize('NFD').toUpperCase().replace(/[^A-Z]/g, '')
+  if (letters.length < 1 || letters.length > WORD_MAX) return GOAL_WORD
+  const i = letters.search(VOWEL)
+  return i < 0 ? letters : `${letters.slice(0, i)}${(letters[i] as string).repeat(3)}${letters.slice(i + 1)}`
+}
+
+/**
  * The pitch: faded pitch lines and stripes in the main color across the app (stronger at the two ends, faint in the
  * middle where the conversation is), and at the top right a small scarf in the two colors, its fringe at the bottom,
  * with the team's name along it in one `<text>` (the name escaped; no name, no text).
@@ -298,21 +320,25 @@ function glyphs(s: string, x: number, y: number, p: number): string {
 
 /**
  * The scarf a standing fan holds up: a flag's stripes (`flagOf`) in its order, three of 24 from x = -20 or two of 32
- * from x = -16, each drawn once; with no flag, a bar in the main color with its two ends in the second.
+ * from x = -16, each drawn once; with no flag, a bar in the main color with its two ends in the second. In a corner
+ * turned over (`turned`, plugin 0.12.0) a flag's stripes are turned back about their middle (x = 16, so the group is
+ * `translate(32 0) scale(-1 1)`) in one `px-scarf` group, so the flag reads in its order; the two-color bar is the same
+ * either way round and is not wrapped.
  */
-function scarfBar(A: string, B: string, flag: string[] | null): string {
+function scarfBar(A: string, B: string, flag: string[] | null, turned: boolean): string {
   if (flag === null) return R(-16, -16, 64, 8, ` fill="${A}"`) + R(-16, -16, 8, 8, ` fill="${B}"`) + R(40, -16, 8, 8, ` fill="${B}"`)
   const [x0, w] = flag.length === 3 ? [-20, 24] : [-16, 32]
-  return flag.map((c, i) => R(x0 + i * w, -16, w, 8, ` fill="${c}"`)).join('')
+  const stripes = flag.map((c, i) => R(x0 + i * w, -16, w, 8, ` fill="${c}"`)).join('')
+  return turned ? `<g class="px-scarf" transform="translate(${2 * x0 + flag.length * w} 0) scale(-1 1)">${stripes}</g>` : stripes
 }
 
 /**
  * A fan on the terraces at (x, y), in the team's colors: standing with a scarf held up (`scarfBar`: the flag when one is
- * given), or with arms that show at a goal.
+ * given, turned back in a corner turned over), or with arms that show at a goal.
  */
-function fan(x: number, y: number, A: string, B: string, stand: boolean, alt: boolean, flag: string[] | null = null): string {
+function fan(x: number, y: number, A: string, B: string, stand: boolean, alt: boolean, flag: string[] | null = null, turned = false): string {
   const arms = stand
-    ? R(-8, -8, 8, 24, ` fill="${SKIN}"`) + R(32, -8, 8, 24, ` fill="${SKIN}"`) + scarfBar(A, B, flag)
+    ? R(-8, -8, 8, 24, ` fill="${SKIN}"`) + R(32, -8, 8, 24, ` fill="${SKIN}"`) + scarfBar(A, B, flag, turned)
     : R(-8, -8, 8, 24, ` class="px-arm" fill="${SKIN}"`) + R(32, -8, 8, 24, ` class="px-arm" fill="${SKIN}"`)
   return (
     `<g transform="translate(${x} ${y})"><g class="${alt ? 'px-hop2' : 'px-hop'}">${arms}` +
@@ -378,6 +404,17 @@ function ring(r: number, color: string, k: number): string {
  * team's goal its flag when one is given, else its main, second and main colors; for the other side's goal its main,
  * second and main by `otherColorsOf` (the spark and white for none known), never the team's flag; one stripe when the
  * two colors are one. Live and idle boards are unchanged.
+ *
+ * Plugin 0.12.0: `word`, read at a goal alone (either side's), is the language's goal word, drawn as `boardWord` makes
+ * it (`¡GOL!` is GOOOL, `BUT !` BUUUT; none, `GOAL!` or a value that is no word: GOOOAL) and centered for its own
+ * length. `place`: exactly `'left'` draws the corner at the bottom left (the inner `<svg>` at x 0, anchored
+ * `xMinYMax`, the same viewBox and width), all of its content in one group turned over about the viewBox's middle
+ * (`translate(2832 0) scale(-1 1)`: x goes to 2832 - x), so the goal is against the left edge and the ball flies to
+ * it; what must read left to right is turned back about its own middle by a group of its own: the board's content
+ * (the codes, and at a goal the word and the flash) in `px-board` (`translate(2904 0) scale(-1 1)`, the board's
+ * middle being x 1452) and a flag scarf's stripes in `px-scarf` (`scarfBar`). The CSS is the same at both places: no
+ * animation is on those groups' transforms. Anything else is the right-hand drawing, which has neither group. With no
+ * word (or `GOAL!`) and no place every drawing is 0.11.0's, byte for byte.
  */
 export function pixelSvg(a: {
   main: string
@@ -390,10 +427,13 @@ export function pixelSvg(a: {
   by?: unknown
   otherMain?: unknown
   otherSecond?: unknown
+  word?: unknown
+  place?: unknown
 }): string {
   const { a: A, b: B } = colorsOf(a.main, a.second)
   const state = a.state === 'live' || a.state === 'goal' ? a.state : 'idle'
   const other = state === 'goal' && a.by === 'other'
+  const left = a.place === 'left'
   const flag = flagOf(a.scarf)
   const home = boardCode(a.home)
   const away = boardCode(a.away)
@@ -410,15 +450,17 @@ export function pixelSvg(a: {
     .join('')
   const { a: O1, b: O2 } = otherColorsOf(a.otherMain, a.otherSecond)
   const codes = `<g class="px-led" fill="${LED}"${dim}>${glyphs(board, sx + Math.floor((sw - boardWidth) / 2), sy + 26, 4)}</g>`
-  // At a goal (plugin 0.11.0): the codes wrapped so they can give way, the word, and the flash in the scoring team's
-  // colors over the face inside the frame: the other side's main, second and main; the team's flag, else its main,
-  // second and main; one stripe for one color.
-  const wordWidth = GOAL_WORD.length * 24 - 4
+  // At a goal (plugin 0.11.0): the codes wrapped so they can give way, the word (plugin 0.12.0: the language's, by
+  // `boardWord`, centered for its own length), and the flash in the scoring team's colors over the face inside the
+  // frame: the other side's main, second and main; the team's flag, else its main, second and main; one stripe for one
+  // color.
+  const word = state === 'goal' ? boardWord(a.word) : GOAL_WORD
+  const wordWidth = word.length * 24 - 4
   const flashColors = other ? (O1 === O2 ? [O1] : [O1, O2, O1]) : (flag ?? (A === B ? [A] : [A, B, A]))
   const led =
     state === 'goal'
       ? `<g class="px-codes">${codes}</g>` +
-        `<g class="px-word" fill="${LED_HI}">${glyphs(GOAL_WORD, sx + Math.floor((sw - wordWidth) / 2), sy + 26, 4)}</g>` +
+        `<g class="px-word" fill="${LED_HI}">${glyphs(word, sx + Math.floor((sw - wordWidth) / 2), sy + 26, 4)}</g>` +
         `<g class="px-flash">${stripes(flashColors, sx + 8, sy + 8, sw - 16, sh - 16)}</g>`
       : codes
   const scoreboard =
@@ -426,7 +468,9 @@ export function pixelSvg(a: {
     R(sx + sw - 32, sy + sh, 8, 568 - sy - sh, ` fill="${LEGS}"`) +
     R(sx, sy, sw, sh, ` fill="${FACE}"`) +
     `<path d="M${sx} ${sy}h${sw}v${sh}h-${sw}zM${sx + 8} ${sy + 8}v${sh - 16}h${sw - 16}v-${sh - 16}z" fill="${EDGE}" fill-rule="evenodd" opacity=".7"/>` +
-    led
+    // At the left (plugin 0.12.0) the board's content is turned back about the board's middle (x 1452), so it reads
+    // left to right inside the corner turned over; the legs, the face and the frame are the same either way round.
+    (left ? `<g class="px-board" transform="translate(${2 * (sx + sw / 2)} 0) scale(-1 1)">${led}</g>` : led)
   // The field, the same for every team and state (plugin 0.11.0): the grass, its mowing stripe and the goal line, then
   // the goal area's two lines over them.
   const field =
@@ -459,25 +503,28 @@ export function pixelSvg(a: {
     state === 'idle'
       ? []
       : [
-          `<g class="px-crowd">${fan(1280, 696, A, B, true, false, flag)}${fan(1376, 696, A, B, false, true)}${fan(1328, 600, A, B, false, false)}${fan(1408, 600, A, B, false, true)}</g>`,
+          `<g class="px-crowd">${fan(1280, 696, A, B, true, false, flag, left)}${fan(1376, 696, A, B, false, true)}${fan(1328, 600, A, B, false, false)}${fan(1408, 600, A, B, false, true)}</g>`,
           R(1296, 940, 40, 6, ' class="px-shadow" fill="#000" opacity=".3"'),
           `<g class="px-ball" transform="translate(1292 896)"><g class="px-fly">${BALL}</g></g>`,
         ]
   const stamp = typeof a.stamp === 'number' && Number.isSafeInteger(a.stamp) && a.stamp > 0 ? a.stamp : 0
+  const corner = [terraces, scoreboard, field, net, `<path d="M1432 632h328v8h-320v208h-8z" fill="${INK}" opacity=".85"/>`, ...played, fireworks]
   return [
     '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">',
     '<style>',
     '.px-arm,.px-ring{opacity:0}',
     ...(state === 'goal' ? (other ? [OTHER_GOAL_CSS, OTHER_GOAL_KEYFRAMES] : [GOAL_CSS, GOAL_KEYFRAMES]) : []),
     '</style>',
-    '<svg x="60%" y="0" width="40%" height="100%" viewBox="1232 40 368 960" preserveAspectRatio="xMaxYMax meet">',
-    terraces,
-    scoreboard,
-    field,
-    net,
-    `<path d="M1432 632h328v8h-320v208h-8z" fill="${INK}" opacity=".85"/>`,
-    ...played,
-    fireworks,
+    // At the left (plugin 0.12.0): anchored at the bottom left, and the whole corner turned over once about the
+    // viewBox's middle (x 1232 to 1600: x goes to 2832 - x), so the goal is against the left edge.
+    ...(left
+      ? [
+          '<svg x="0" y="0" width="40%" height="100%" viewBox="1232 40 368 960" preserveAspectRatio="xMinYMax meet">',
+          `<g transform="translate(${2 * (1232 + 368 / 2)} 0) scale(-1 1)">`,
+          ...corner,
+          '</g>',
+        ]
+      : ['<svg x="60%" y="0" width="40%" height="100%" viewBox="1232 40 368 960" preserveAspectRatio="xMaxYMax meet">', ...corner]),
     `</svg>${state === 'goal' ? `<desc>goal ${stamp}</desc>` : ''}</svg>`,
   ].join('\n')
 }

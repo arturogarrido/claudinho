@@ -74,6 +74,7 @@ Change them in `/config`.
 | `language` | `auto`: the language your environment asks for (below); `en`, `es`, `pt` or `fr`: that language, whatever the environment says | `auto` |
 | `teamTheme` | `on`: the Claude desktop and mobile apps take your team's colors for the session, replacing the theme it had ([The team look](#the-team-look)); `off`: the plugin never sets or clears the session's theme | `off` |
 | `teamScene` | What the team look draws, with `teamTheme: on` ([The scenes](#the-scenes)): `band`, a band of your team's colors across the top; `pitch`, faded pitch lines and a small scarf with your team's name; `pixel`, a pixel-art stadium corner with a scoreboard | `band` |
+| `teamScenePlace` | Where the pixel stadium stands, with `teamScene: pixel` alone: `right`, at the bottom right; `left`, at the bottom left, mirrored, for when a side panel covers the right of the app | `right` |
 
 Changing an option reloads the plugin. The band and every later toast follow the new value at once.
 An open match pane stays as it was drawn and stops reading: run `/claudinho match` again to update it.
@@ -164,7 +165,10 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
 - `pixel`: a pixel-art stadium corner at the bottom right: terraces with a stripe in your team's second color, fans
   in your team's colors, a goal on a green field with the goal area's lines, and a scoreboard that shows the two codes
   of your team's match or of its next fixture (`PUM - MTY`), never the score, and is blank when the next fixture is
-  not your team's or none is known. Your team, for the stadium, is the team the band follows:
+  not your team's or none is known. With `teamScenePlace: left` the stadium stands at the bottom left instead,
+  mirrored, the goal against the left edge, for when a side panel covers the right of the app (Claude Code does not
+  tell the plugin where its panels are, so this is your choice); the scoreboard and a flag scarf still read left to
+  right. Your team, for the stadium, is the team the band follows:
   `CLAUDINHO_TEAM` when it is set, else your pinned team. It goes live, and plays a goal, only in a session with the
   terminal or the desktop app attached, where the band runs: with the phone alone, a `/claudinho` you type shows the
   idle stadium below (a live stadium left there when the desktop app detaches empties five
@@ -181,9 +185,10 @@ Turning `teamTheme` off in `/config` reloads the plugin, and Claude Code drops t
     none is known.
   - **goal**, when the plugin sees a goal in your team's match between two readings. A goal for your team: the ball
     flies into the top corner and back, the fans jump, five fireworks burst in your team's two colors and a gold
-    spark, and the scoreboard alternates the word `GOOOAL` (in English in every language) with your team's colors
-    three times: a national team's flag colors as plain stripes, else your team's two colors. A goal for the other
-    team: the ball flies, the scoreboard alternates `GOOOAL` with the other team's two colors, two fireworks burst in
+    spark, and the scoreboard alternates the goal word in the plugin's language (`GOOOAL`; `GOOOL` in Spanish and
+    Portuguese, `BUUUT` in French) with your team's colors three times: a national team's flag colors as plain
+    stripes, else your team's two colors. A goal for the other team: the ball flies, the scoreboard alternates the
+    same word with the other team's two colors, two fireworks burst in
     those colors (gold and white, on the scoreboard too, when the plugin has no colors for that team), and your fans
     stand still. The scoreboard then shows the two codes again. Each goal plays once, then the stadium is live again
     at the first reading after its six seconds. It follows `celebrate`: with `celebrate: off` there is no goal moment for either
@@ -418,7 +423,8 @@ no file read and no network request. The band of color across the top is drawn b
 look names, as a picture that runs nothing and loads nothing. The pitch and the pixel corner (`teamScene`) are drawn
 the same way by `hooks/team-scenes.ts`, from those colors and a few fixed ones (the pixel corner's field is the same
 green for every team); the pitch's scarf adds your team's name and the pixel corner's scoreboard the teams' codes,
-both from the CLI's answer the plugin already read, and at a goal the fixed word `GOOOAL`. The pixel corner's scarf,
+both from the CLI's answer the plugin already read, and at a goal the goal word of that answer's language (`GOOOAL`
+when it names none). The pixel corner's scarf,
 for a national team, takes its flag's colors from the same file; so do the scoreboard's stripes at your national
 team's goal, and the other team's goal takes that team's colors from it too.
 With `teamTheme: off` it calls neither and draws nothing.
