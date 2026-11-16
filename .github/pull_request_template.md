@@ -24,6 +24,7 @@ record actual results and any blocked checks. A skipped check is not a pass. -->
 - [ ] Code/dependency/executable-config changes: `pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint` all green locally (same order as CI — build first), plus relevant smoke/pack checks
 - [ ] New/changed behavior covered by meaningful tests, including failure modes
 - [ ] User-facing behavior: `pnpm release:qa` run after build and output inspected
+- [ ] A change to what the Claude Code plugin draws: **Seen in the app** through `bash scripts/plugin-demo.sh` (name the states seen and the app's version), or say why not
 
 ### Data-heavy / bracket / schedule PRs
 
