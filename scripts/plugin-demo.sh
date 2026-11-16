@@ -7,14 +7,18 @@
 # beside its module, so the demo shows exactly what packages/plugin draws now.
 #
 #   bash scripts/plugin-demo.sh            assembles into a new temporary folder and prints it
-#   bash scripts/plugin-demo.sh <folder>   assembles into <folder> (created if missing; refused, before anything is
-#                                          written, if it is a link or holds a link or any entry that is not this
-#                                          demo's; the types the app lays beside a loaded mod are left alone)
+#   bash scripts/plugin-demo.sh <folder>   makes <folder> and assembles into it; <folder> must not exist yet
+#
+# The script only ever writes into a folder it has just made. A name that is taken (a folder, a file, a link, an
+# earlier copy of this demo) is refused, whatever it holds: nothing of yours is ever replaced, and there is nothing
+# to check about what a folder holds. Its parent must exist.
 #
 # Then load the folder in a session of the desktop app (the drawings show in the desktop and mobile apps only):
 # start Claude Code with `--plugin-dir <folder>`, or name the folder in CLAUDE_CODE_PLUGIN_DIRS, and type `/demo`.
-# After a change to the plugin's drawing, run this again into the same folder and reload the plugins.
+# After a change to the plugin's drawing, run this again (a new folder each time) and load that folder.
 set -euo pipefail
+# A shell that exports CDPATH makes `cd` look there first and print where it went: every `cd` below means the name given.
+unset CDPATH
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 demo="$root/packages/plugin-demo"
@@ -28,18 +32,10 @@ for f in "${copies[@]}"; do
 done
 
 refuse() { echo "plugin-demo: $1" >&2; exit 1; }
-# Whether <folder>/<entry> is one this script writes, or one the app writes beside a loaded mod.
-ours() {
-  case "$1" in
-    ./.claude-plugin | ./.claude-plugin/plugin.json | ./hooks | ./hooks/hooks.json | ./hooks/register.tsx | ./tsconfig.json) return 0 ;;
-  esac
-  for f in "${copies[@]}"; do [ "$1" = "./hooks/$f" ] && return 0; done
-  return 1
-}
 
 if [ $# -ge 1 ]; then
   dest=$1
-  # The name as its last entry: a trailing slash or /. would make the checks below follow a link instead of seeing it.
+  # The name as its last entry: with a trailing slash or /. a mkdir follows a link that leads nowhere and makes its target.
   while :; do
     case "$dest" in
       */.) dest=${dest%/.} ;;
@@ -48,45 +44,20 @@ if [ $# -ge 1 ]; then
     esac
   done
   [ -n "$dest" ] || refuse "the folder's name is empty"
-  # A relative name is made ./name once, here: no command below can then read it as an option, as `-` (the previous
-  # directory, to cd), or look for it along CDPATH.
+  # A relative name is made ./name: no command below reads it as an option, or as `-` (the previous directory, to cd).
   case "$dest" in
     /*) ;;
     *) dest=./$dest ;;
   esac
-  if [ -e "$dest" ] || [ -L "$dest" ]; then
-    # A link is never written through: a folder linked into the checkout would have its files replaced.
-    [ ! -L "$dest" ] || refuse "$dest is a link; choose a folder"
-    [ -d "$dest" ] || refuse "$dest is not a folder"
-    [ ! -L "$dest/.claude-plugin/types" ] || refuse "$dest/.claude-plugin/types is a link; choose an empty folder"
-    # Every entry is this demo's (the types the app lays under .claude-plugin/types are its own and are not read),
-    # and none is a link. One that is not stops the run before anything is written.
-    strange=$(cd -- "$dest" && find . -mindepth 1 -path ./.claude-plugin/types -prune -o -print0 | while IFS= read -r -d '' e; do
-      if [ -L "$e" ]; then
-        printf '%s (a link)\n' "$e"
-      elif ! ours "$e"; then
-        printf '%s\n' "$e"
-      elif [ "$e" = ./.claude-plugin ] || [ "$e" = ./hooks ]; then
-        [ -d "$e" ] || printf '%s (not a folder)\n' "$e"
-      elif [ ! -f "$e" ]; then
-        printf '%s (not a plain file)\n' "$e"
-      elif [ -n "$(find "$e" -maxdepth 0 -links +1)" ]; then
-        # A second name for the same file somewhere else: writing here would write there.
-        printf '%s (a hard link)\n' "$e"
-      fi
-    done)
-    # The first one is named (the whole list is read first: a reader that stops early would end the pipe with an error).
-    [ -z "$strange" ] || refuse "$dest holds something that is not this demo: ${strange%%$'\n'*}; choose an empty folder"
-    if [ -n "$(ls -A -- "$dest")" ]; then
-      grep -q -e '"name": "claudinho-demo"' -- "$dest/.claude-plugin/plugin.json" 2>/dev/null ||
-        refuse "$dest holds something that is not this demo; choose an empty folder"
-    fi
-  fi
+  # The folder is made here, by a mkdir that makes one folder and no parent: it fails on any name that is taken (a
+  # link to a folder too) and on a path through a folder that does not exist.
+  mkdir -- "$dest" 2>/dev/null || refuse "$1 is taken or cannot be made: name a folder that does not exist yet, in a folder that does"
 else
   dest="$(mktemp -d)/claudinho-demo"
+  mkdir -- "$dest"
 fi
 
-mkdir -p -- "$dest/.claude-plugin" "$dest/hooks"
+mkdir -- "$dest/.claude-plugin" "$dest/hooks"
 cp -- "$demo/.claude-plugin/plugin.json" "$dest/.claude-plugin/plugin.json"
 cp -- "$demo/hooks/hooks.json" "$demo/hooks/register.tsx" "$dest/hooks/"
 for f in "${copies[@]}"; do cp -- "$hooks/$f" "$dest/hooks/$f"; done

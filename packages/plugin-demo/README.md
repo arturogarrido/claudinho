@@ -26,8 +26,8 @@ Claude Code with `--plugin-dir <folder>`, or name the folder in `CLAUDE_CODE_PLU
 | `/demo off` | clears the look |
 
 If the real plugin's team look is on in that session, type `/claudinho theme off` first: a session holds one look.
-After you change the plugin's drawing, run the script again into the same folder
-(`bash scripts/plugin-demo.sh <folder>`) and reload the plugins.
+After you change the plugin's drawing, run the script again and load the folder it prints: it makes a new folder each
+time, and never writes into one that exists (`bash scripts/plugin-demo.sh <folder>` wants a name that is not taken).
 
 ## What it does not show
 

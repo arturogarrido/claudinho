@@ -77,13 +77,14 @@ describe('the plugin demo (development only)', () => {
     for (const fn of ['pitchSvg', 'pixelSvg', 'bandSvg', 'buildLook']) expect(src, fn).not.toMatch(new RegExp(`(function|const|let|var)\\s+${fn}\\b`));
   });
 
-  it('the script reads the plugin from this checkout and holds no command that removes (what it refuses is run below)', () => {
+  it('the script reads the plugin from this checkout, holds no command that removes, and never makes a parent folder (what it refuses is run below)', () => {
     const sh = read('scripts/plugin-demo.sh');
     expect(sh).toContain('packages/plugin/hooks');
     expect(sh).toContain('packages/plugin-demo');
     expect(sh).not.toMatch(/\brm\b|-delete\b|\bunlink\b|\brmdir\b|\bmv\b|>\s*"?\$dest/);
     expect(sh).toMatch(/claudinho-demo/);
     expect(sh).toMatch(/set -euo pipefail/);
+    expect(sh).not.toMatch(/mkdir\s+(-\w*p|--parents)/);
   });
 
   it('the guides name it: the command, the rule that a drawing change is seen in the app, and the PR\'s check', () => {
@@ -106,137 +107,133 @@ describe('the plugin demo (development only)', () => {
   });
 });
 
-// The script itself, run into temporary folders. It never asks `claude` here (PLUGIN_DEMO_NO_VALIDATE), so the cases
-// need only bash and cp; a Windows checkout has no such shell on every runner, and the script is a development tool
+// The script itself, run into temporary folders. Most cases never ask `claude` (PLUGIN_DEMO_NO_VALIDATE), so they need
+// only bash, mkdir and cp; a Windows checkout has no such shell on every runner, and the script is a development tool
 // for the machine that has the desktop app.
 describe.skipIf(process.platform === 'win32')('scripts/plugin-demo.sh, run', () => {
-  const run = (...args: string[]) => spawnSync('bash', [join(ROOT, 'scripts/plugin-demo.sh'), ...args], { encoding: 'utf8', env: { ...process.env, PLUGIN_DEMO_NO_VALIDATE: '1' } });
-  const fresh = () => join(mkdtempSync(join(tmpdir(), 'plugin-demo-')), 'out');
-  const assembled = () => {
-    const dest = fresh();
-    expect(run(dest).status).toBe(0);
-    return dest;
-  };
+  const SCRIPT = join(ROOT, 'scripts/plugin-demo.sh');
+  const ENV: NodeJS.ProcessEnv = { ...process.env, PLUGIN_DEMO_NO_VALIDATE: '1' };
+  const at = (cwd: string, name: string, env: NodeJS.ProcessEnv = ENV) => spawnSync('bash', [SCRIPT, name], { cwd, encoding: 'utf8', timeout: 20_000, env });
+  const run = (...args: string[]) => spawnSync('bash', [SCRIPT, ...args], { encoding: 'utf8', timeout: 20_000, env: ENV });
+  const scratch = () => mkdtempSync(join(tmpdir(), 'plugin-demo-'));
+  /** Every entry under `dir`, as relative paths, sorted: what a refusal must leave as it was. */
+  const listing = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true })
+      .flatMap((e) => (e.isDirectory() ? [e.name, ...listing(join(dir, e.name)).map((n) => `${e.name}/${n}`)] : [e.name]))
+      .sort();
 
-  it('assembles the demo: its own files, and each copied module byte-equal to the plugin\'s', () => {
-    const dest = fresh();
+  it('makes the folder and assembles the demo: its own files, and each copied module byte-equal to the plugin\'s', () => {
+    const dest = join(scratch(), 'out');
     const r = run(dest);
     expect(r.status).toBe(0);
-    expect(r.stdout.trim().endsWith('/out')).toBe(true);
-    expect(readdirSync(join(dest, 'hooks')).sort()).toEqual(['hooks.json', 'register.tsx', ...copies()].sort());
-    expect(readdirSync(join(dest, '.claude-plugin'))).toEqual(['plugin.json']);
+    expect(r.stdout.trim()).toBe(dest);
+    expect(listing(dest)).toEqual(['.claude-plugin', '.claude-plugin/plugin.json', 'hooks', 'hooks/hooks.json', 'hooks/register.tsx', ...copies().map((f) => `hooks/${f}`)].sort());
     for (const f of copies()) expect(readFileSync(join(dest, 'hooks', f), 'utf8'), f).toBe(read(join('packages/plugin/hooks', f)));
     expect(readFileSync(join(dest, 'hooks/register.tsx'), 'utf8')).toBe(read('packages/plugin-demo/hooks/register.tsx'));
+    expect(readFileSync(join(dest, '.claude-plugin/plugin.json'), 'utf8')).toBe(read('packages/plugin-demo/.claude-plugin/plugin.json'));
   });
 
-  it('refuses an empty name, and prints the folder as an absolute path whatever way it was named', () => {
-    const r = run('');
-    expect(r.status).toBe(1);
-    for (const only of ['/', '//', '/.']) expect(run(only).status, only).toBe(1);
-    expect(r.stderr).toContain('empty');
-    const base = mkdtempSync(join(tmpdir(), 'plugin-demo-'));
-    const rel = spawnSync('bash', [join(ROOT, 'scripts/plugin-demo.sh'), 'rel/out'], { cwd: base, encoding: 'utf8', env: { ...process.env, PLUGIN_DEMO_NO_VALIDATE: '1' } });
-    expect(rel.status).toBe(0);
-    expect(rel.stdout.trim().startsWith('/')).toBe(true);
-    expect(rel.stdout.trim().endsWith('/rel/out')).toBe(true);
-    expect(existsSync(join(base, 'rel/out/hooks/register.tsx'))).toBe(true);
+  it('with no argument, assembles into a new folder each time and prints it', () => {
+    const a = run();
+    const b = run();
+    expect(a.status).toBe(0);
+    expect(b.status).toBe(0);
+    expect(a.stdout.trim()).not.toBe(b.stdout.trim());
+    for (const r of [a, b]) expect(existsSync(join(r.stdout.trim(), 'hooks/register.tsx'))).toBe(true);
   });
 
-  it('with no argument, assembles into a new folder and prints it', () => {
-    const r = run();
-    expect(r.status).toBe(0);
-    expect(existsSync(join(r.stdout.trim(), 'hooks/register.tsx'))).toBe(true);
-  });
-
-  it('accepts its own earlier output, and the types the app lays beside a loaded mod, and writes the demo again', () => {
-    const dest = assembled();
-    mkdirSync(join(dest, '.claude-plugin/types/claude-code'), { recursive: true });
-    writeFileSync(join(dest, '.claude-plugin/types/claude-code/index.d.ts'), 'export {}\n');
-    writeFileSync(join(dest, 'tsconfig.json'), '{}\n');
-    writeFileSync(join(dest, 'hooks/register.tsx'), 'stale\n');
-    expect(run(dest).status).toBe(0);
-    expect(readFileSync(join(dest, 'hooks/register.tsx'), 'utf8')).toBe(read('packages/plugin-demo/hooks/register.tsx'));
-    expect(readFileSync(join(dest, '.claude-plugin/types/claude-code/index.d.ts'), 'utf8')).toBe('export {}\n');
-  });
-
-  it('refuses a folder that holds anything else, before it writes: an earlier demo with one more file keeps its files as they were', () => {
-    for (const extra of ['notes.txt', 'hooks/notes.txt', '.claude-plugin/other.json', 'hooks/register.ts']) {
-      const dest = assembled();
-      writeFileSync(join(dest, extra), 'mine\n');
-      writeFileSync(join(dest, 'hooks/register.tsx'), 'mine too\n');
-      const r = run(dest);
-      expect(r.status, extra).toBe(1);
-      expect(r.stderr, extra).toContain('not this demo');
-      expect(readFileSync(join(dest, 'hooks/register.tsx'), 'utf8'), extra).toBe('mine too\n');
-      expect(readFileSync(join(dest, extra), 'utf8'), extra).toBe('mine\n');
-    }
-  });
-
-  it('refuses an entry that is the demo\'s by name and something else by kind: a second name for an outside file, a folder where a file goes, a pipe', () => {
-    // A hard link: the same file under another name, outside the folder. Writing the entry would write that file.
-    const a = assembled();
-    const outside = join(mkdtempSync(join(tmpdir(), 'plugin-demo-outside-')), 'kept.tsx');
-    writeFileSync(outside, 'outside\n');
-    execFileSync('mv', [join(a, 'hooks/register.tsx'), join(a, 'hooks-register-was')]);
-    execFileSync('ln', [outside, join(a, 'hooks/register.tsx')]);
-    execFileSync('mv', [join(a, 'hooks-register-was'), join(mkdtempSync(join(tmpdir(), 'plugin-demo-')), 'was')]);
-    expect(run(a).status).toBe(1);
-    expect(readFileSync(outside, 'utf8')).toBe('outside\n');
-    // A folder named as one of the copied modules.
-    const b = assembled();
-    execFileSync('mv', [join(b, 'hooks/team-look.ts'), join(mkdtempSync(join(tmpdir(), 'plugin-demo-')), 'was')]);
-    mkdirSync(join(b, 'hooks/team-look.ts'));
-    expect(run(b).status).toBe(1);
-    expect(readdirSync(join(b, 'hooks/team-look.ts'))).toEqual([]);
-    // A pipe where the module goes: refused at once, never opened (a copy into it would wait for ever).
-    const c = assembled();
-    execFileSync('mv', [join(c, 'hooks/register.tsx'), join(mkdtempSync(join(tmpdir(), 'plugin-demo-')), 'was')]);
-    execFileSync('mkfifo', [join(c, 'hooks/register.tsx')]);
-    const r = spawnSync('bash', [join(ROOT, 'scripts/plugin-demo.sh'), c], { encoding: 'utf8', timeout: 20_000, env: { ...process.env, PLUGIN_DEMO_NO_VALIDATE: '1' } });
-    expect(r.status).toBe(1);
-  });
-
-  it('a folder whose name starts with a dash, or is a dash, is a name, never an option: new, empty, and its own earlier output', () => {
-    const at = (cwd: string, name: string) => spawnSync('bash', [join(ROOT, 'scripts/plugin-demo.sh'), name], { cwd, encoding: 'utf8', timeout: 20_000, env: { ...process.env, PLUGIN_DEMO_NO_VALIDATE: '1', OLDPWD: tmpdir() } });
-    for (const name of ['-P', '-', '--', '-n', '-rf']) {
-      // A folder that does not exist yet, then the same folder again (its own output).
-      const base = mkdtempSync(join(tmpdir(), 'plugin-demo-'));
-      for (const turn of ['new', 'again']) {
-        const r = at(base, name);
-        expect(r.status, `${name} ${turn}`).toBe(0);
-        expect(r.stdout.trim().endsWith(`/${name}`), `${name} ${turn}`).toBe(true);
-        expect(r.stdout.trim().startsWith('/'), `${name} ${turn}`).toBe(true);
+  it('refuses every name that is taken, whatever it holds, and leaves it as it was', () => {
+    const base = scratch();
+    // An empty folder; an earlier demo with a file of the reader's changed; a folder of something else; a file.
+    mkdirSync(join(base, 'empty'));
+    expect(run(join(base, 'demo')).status).toBe(0);
+    writeFileSync(join(base, 'demo/hooks/register.tsx'), 'mine\n');
+    mkdirSync(join(base, 'other/hooks'), { recursive: true });
+    writeFileSync(join(base, 'other/hooks/register.tsx'), 'theirs\n');
+    writeFileSync(join(base, 'file'), 'x\n');
+    // A link to each of the folders, and a link to nothing.
+    symlinkSync(join(base, 'empty'), join(base, 'to-empty'));
+    symlinkSync(join(base, 'demo'), join(base, 'to-demo'));
+    symlinkSync(join(base, 'other'), join(base, 'to-other'));
+    symlinkSync(join(base, 'nowhere'), join(base, 'dangling'));
+    const before = listing(base);
+    for (const name of ['empty', 'demo', 'other', 'file', 'to-empty', 'to-demo', 'to-other', 'dangling'])
+      for (const spelling of [name, `${name}/`, `${name}/.`, `${name}//`, `./${name}`, `x/../${name}`, `${name}/../${name}`]) {
+        // The absolute form is built as text: path.join would tidy away the very spelling under test.
+        for (const r of [at(base, spelling), run(`${base}/${spelling}`)]) {
+          expect(r.status, spelling).toBe(1);
+          expect(r.stdout, spelling).toBe('');
+          expect(r.stderr, spelling).toContain('plugin-demo:');
+        }
       }
-      expect(existsSync(join(base, name, 'hooks/register.tsx')), name).toBe(true);
+    expect(listing(base)).toEqual(before);
+    expect(readFileSync(join(base, 'demo/hooks/register.tsx'), 'utf8')).toBe('mine\n');
+    expect(readFileSync(join(base, 'other/hooks/register.tsx'), 'utf8')).toBe('theirs\n');
+    expect(readFileSync(join(base, 'file'), 'utf8')).toBe('x\n');
+  });
+
+  it('makes one folder and no parent: a name through a folder that does not exist is refused, and nothing is made', () => {
+    const base = scratch();
+    for (const name of ['a/b', 'x/..', 'x/../y', 'a/b/c', './a/./b']) {
+      expect(at(base, name).status, name).toBe(1);
+      expect(run(`${base}/${name}`).status, name).toBe(1);
+    }
+    expect(listing(base)).toEqual([]);
+    // The working folder itself, its parent, and the root are taken.
+    for (const name of ['.', '..', './', '/', '//', '/.']) expect(at(base, name).status, name).toBe(1);
+    expect(listing(base)).toEqual([]);
+    expect(run('').status).toBe(1);
+  });
+
+  it('prints the folder as an absolute path, whatever way it was named', () => {
+    const base = scratch();
+    mkdirSync(join(base, 'sub'));
+    for (const [name, end] of [['out', '/out'], ['./rel', '/rel'], ['sub/in', '/sub/in'], ['trail/', '/trail'], ['with space', '/with space'], ['ñandú', '/ñandú'], ['...', '/...']] as const) {
+      const r = at(base, name);
+      expect(r.status, name).toBe(0);
+      expect(r.stdout.trim().startsWith('/'), name).toBe(true);
+      expect(r.stdout.trim().endsWith(end), name).toBe(true);
+      expect(existsSync(join(r.stdout.trim(), 'hooks/register.tsx')), name).toBe(true);
+    }
+  });
+
+  it('a name that starts with a dash, or is a dash, is a name: made under the working folder, then taken', () => {
+    for (const name of ['-P', '-', '--', '-n', '-rf', '--help']) {
+      const base = scratch();
+      const env = { ...ENV, OLDPWD: tmpdir() };
+      const first = at(base, name, env);
+      expect(first.status, name).toBe(0);
+      expect(first.stdout.trim().endsWith(`/${name}`), name).toBe(true);
       expect(readdirSync(base), name).toEqual([name]);
-      // A folder that exists and is empty.
-      const other = mkdtempSync(join(tmpdir(), 'plugin-demo-'));
-      mkdirSync(join(other, name));
-      expect(at(other, name).status, `${name} empty`).toBe(0);
-      expect(existsSync(join(other, name, 'hooks/register.tsx')), `${name} empty`).toBe(true);
+      expect(existsSync(join(base, name, 'hooks/register.tsx')), name).toBe(true);
+      expect(at(base, name, env).status, `${name} again`).toBe(1);
     }
   });
 
-  it('an entry whose name holds a line break is read whole: one that only begins like the demo\'s is refused', () => {
-    for (const stray of ['hooks/hooks.json\n', 'tsconfig.json\n', 'hooks/team-look.ts\nx']) {
-      const dest = assembled();
-      writeFileSync(join(dest, stray), 'mine\n');
-      writeFileSync(join(dest, 'hooks/register.tsx'), 'mine too\n');
-      const r = run(dest);
-      expect(r.status, JSON.stringify(stray)).toBe(1);
-      expect(readFileSync(join(dest, 'hooks/register.tsx'), 'utf8'), JSON.stringify(stray)).toBe('mine too\n');
-    }
+  it('an exported CDPATH changes nothing: the script called by its relative name, and a relative folder', () => {
+    const base = scratch();
+    mkdirSync(join(base, 'elsewhere/scripts'), { recursive: true });
+    const env = { ...ENV, CDPATH: `${ROOT}:${join(base, 'elsewhere')}` };
+    const dest = join(base, 'here');
+    const r = spawnSync('bash', ['scripts/plugin-demo.sh', dest], { cwd: ROOT, encoding: 'utf8', timeout: 20_000, env });
+    expect(r.stderr).not.toContain('no demo at');
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toBe(dest);
+    // A relative folder is made under the working folder, never under a folder along CDPATH.
+    expect(at(base, 'out', env).status).toBe(0);
+    expect(existsSync(join(base, 'out/hooks/register.tsx'))).toBe(true);
+    expect(listing(join(base, 'elsewhere'))).toEqual(['scripts']);
   });
 
-  it('hands the validator the folder as an absolute path, so a name that starts with a dash is not its option', () => {
+  it('hands the validator the folder as an absolute path, and fails when the validator does', () => {
     // A fake `claude` first on PATH: it records its arguments and refuses one that starts with a dash, as the CLI does.
-    const bin = mkdtempSync(join(tmpdir(), 'plugin-demo-bin-'));
+    const bin = scratch();
     const seen = join(bin, 'seen.txt');
-    writeFileSync(join(bin, 'claude'), `#!/bin/sh\nprintf '%s\\n' "$@" > '${seen}'\ncase "$3" in -*) echo "error: unknown option" >&2; exit 1 ;; esac\nexit 0\n`, { mode: 0o755 });
-    const base = mkdtempSync(join(tmpdir(), 'plugin-demo-'));
+    writeFileSync(join(bin, 'claude'), `#!/bin/sh\nprintf '%s\\n' "$@" > '${seen}'\ncase "$3" in -*) echo "error: unknown option" >&2; exit 1 ;; esac\n[ -z "$FAKE_REFUSES" ] || exit 1\nexit 0\n`, { mode: 0o755 });
     const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` };
     delete env.PLUGIN_DEMO_NO_VALIDATE;
-    const r = spawnSync('bash', [join(ROOT, 'scripts/plugin-demo.sh'), '-P'], { cwd: base, encoding: 'utf8', timeout: 20_000, env });
+    const base = scratch();
+    const r = at(base, '-P', env);
     expect(r.stderr).toContain('validated');
     expect(r.status).toBe(0);
     const args = readFileSync(seen, 'utf8').trim().split('\n');
@@ -244,58 +241,10 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo.sh, run', () 
     expect(args[2]?.startsWith('/')).toBe(true);
     expect(args[2]?.endsWith('/-P')).toBe(true);
     expect(r.stdout.trim()).toBe(args[2]);
-  });
-
-  it('refuses a folder that is not a demo at all, and a file', () => {
-    const other = mkdtempSync(join(tmpdir(), 'plugin-demo-'));
-    mkdirSync(join(other, '.claude-plugin'));
-    writeFileSync(join(other, '.claude-plugin/plugin.json'), '{ "name": "something-else" }\n');
-    expect(run(other).status).toBe(1);
-    expect(existsSync(join(other, 'hooks'))).toBe(false);
-    const file = join(mkdtempSync(join(tmpdir(), 'plugin-demo-')), 'a-file');
-    writeFileSync(file, 'x\n');
-    expect(run(file).status).toBe(1);
-    expect(readFileSync(file, 'utf8')).toBe('x\n');
-  });
-
-  it('never writes through a link: a linked folder, a linked hooks folder, a linked file, linked types', () => {
-    const target = mkdtempSync(join(tmpdir(), 'plugin-demo-target-'));
-    writeFileSync(join(target, 'register.tsx'), 'the real one\n');
-    // The folder itself is a link.
-    const link = join(mkdtempSync(join(tmpdir(), 'plugin-demo-')), 'link');
-    symlinkSync(target, link);
-    expect(run(link).status).toBe(1);
-    // A link to an earlier demo, named with a trailing slash or /. (a shell follows such a name): refused the same.
-    const earlier = assembled();
-    const named = join(mkdtempSync(join(tmpdir(), 'plugin-demo-')), 'named');
-    symlinkSync(earlier, named);
-    writeFileSync(join(earlier, 'hooks/register.tsx'), 'as it was\n');
-    for (const spelling of [named, `${named}/`, `${named}/.`, `${named}//`, `${named}/./`]) {
-      expect(run(spelling).status, spelling).toBe(1);
-      expect(readFileSync(join(earlier, 'hooks/register.tsx'), 'utf8'), spelling).toBe('as it was\n');
-    }
-    // A link to an EMPTY folder: nothing in it to refuse, so only the rule about the folder itself stops it.
-    const empty = mkdtempSync(join(tmpdir(), 'plugin-demo-empty-'));
-    const toEmpty = join(mkdtempSync(join(tmpdir(), 'plugin-demo-')), 'to-empty');
-    symlinkSync(empty, toEmpty);
-    expect(run(toEmpty).status).toBe(1);
-    expect(readdirSync(empty)).toEqual([]);
-    // An earlier demo whose hooks folder is a link to another folder (the checkout's plugin, say).
-    const a = assembled();
-    const moved = join(a, 'hooks-was');
-    execFileSync('mv', [join(a, 'hooks'), moved]);
-    symlinkSync(target, join(a, 'hooks'));
-    expect(run(a).status).toBe(1);
-    // An earlier demo one of whose files is a link.
-    const b = assembled();
-    execFileSync('mv', [join(b, 'hooks/register.tsx'), join(b, 'hooks/team-look.ts')]);
-    symlinkSync(join(target, 'register.tsx'), join(b, 'hooks/register.tsx'));
-    expect(run(b).status).toBe(1);
-    // The app's types folder replaced by a link.
-    const c = assembled();
-    symlinkSync(target, join(c, '.claude-plugin/types'));
-    expect(run(c).status).toBe(1);
-    expect(readFileSync(join(target, 'register.tsx'), 'utf8')).toBe('the real one\n');
-    expect(readdirSync(target)).toEqual(['register.tsx']);
+    // A demo the validator refuses is an error, and no folder is printed.
+    const bad = at(base, 'refused', { ...env, FAKE_REFUSES: '1' });
+    expect(bad.status).toBe(1);
+    expect(bad.stdout).toBe('');
+    expect(bad.stderr).toContain('does not validate');
   });
 });
