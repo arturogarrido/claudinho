@@ -2205,8 +2205,10 @@ function boardFor(mem: PixelMemory, now: number, view: View | null): Board {
  * The idle board, the one rule for it: the view's `next` fixture's codes (`boardCode`: three dashes for a side with
  * none) when `next` is an object and the view's pick is one of its two sides (`pickedSide`, core's pin rule: a side
  * with an id by the pick's id, one with none by the pick's code and name, every side by its code for a pick with no
- * id); else a blank board: no view (a reading that is no view), a `next` that is no object, no pick, or a fixture the
- * pick is not in, or both of whose sides match it.
+ * id); else a blank board: no view (a reading that is no view), a `next` that is no object, no pick, a fixture the
+ * pick is not in, or one `pickedSide` names no side of: for a pick with no id, both sides carry its code; for a pick
+ * with an id, both sides match by id, or neither does and both match by their labels (one side matching by id is the
+ * pick's, whatever the other's labels).
  */
 function idleBoard(view: View | null): Board {
   const next = view?.next
