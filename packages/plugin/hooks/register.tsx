@@ -2078,25 +2078,32 @@ function pickedRecord(view: View): Item | undefined {
 /**
  * The pick's side of a record or a fixture, by core's pin rule (`isPinnedSide`, the rule the CLI chose the view's
  * `next` and marked the record `picked` by): the pick's id, code and name read with `filled`. A pick with no id: the
- * side whose `code` is the pick's code. A pick with an id: a side that carries an `id` (its value is not `undefined`)
- * by that id alone, equal to the pick's (a value that is present and is no id, `''`, `null` or a number, is another
- * team, never a match by code and name); a side that carries none by the pick's code AND name, both filled, equal to
- * the side's. Null when neither side is, or both are, or the pick is no object.
+ * side whose `code` is the pick's code; neither or both: no side. A pick with an id: a side matches BY ID when it
+ * carries an `id` (its value is not `undefined`) equal to the pick's (a value that is present and is no id, `''`,
+ * `null` or a number, is another team, never a match by code and name), and BY LABELS when it carries none and the
+ * pick's code AND name, both filled, equal the side's. Exactly one side by id: that side, whatever the other side's
+ * labels say (the provider's id is the team's identity); both by id: no side (core refuses such a fixture); none by
+ * id: the one side by labels, none or both: no side. Null too when the pick is no object. One stated difference from
+ * the CLI's `pinnedSideOf`, which asks home first: when the side matching by labels is at home and the side matching
+ * by id away, this answers the id side, so the stadium follows the id side.
  */
 function pickedSide(m: { home?: unknown; away?: unknown }, pick: unknown): Side | null {
   if (!isObject(pick)) return null
   const id = filled(pick.id)
   const code = filled(pick.code)
   const name = filled(pick.name)
-  const is = (t: unknown): boolean => {
-    if (!isObject(t)) return false
-    if (id === null) return code !== null && t.code === code
-    if (t.id !== undefined) return t.id === id
-    return code !== null && name !== null && t.code === code && t.name === name
+  const one = (home: boolean, away: boolean): Side | null => (home === away ? null : home ? 'home' : 'away')
+  if (id === null) {
+    const byCode = (t: unknown): boolean => isObject(t) && code !== null && t.code === code
+    return one(byCode(m.home), byCode(m.away))
   }
-  const home = is(m.home)
-  const away = is(m.away)
-  return home === away ? null : home ? 'home' : 'away'
+  const byId = (t: unknown): boolean => isObject(t) && t.id === id
+  const byLabels = (t: unknown): boolean =>
+    isObject(t) && t.id === undefined && code !== null && name !== null && t.code === code && t.name === name
+  const homeById = byId(m.home)
+  const awayById = byId(m.away)
+  if (homeById || awayById) return one(homeById, awayById)
+  return one(byLabels(m.home), byLabels(m.away))
 }
 
 /** Whose goal the pixel corner shows: the pick's, or the other side's of the pick's match (plugin 0.10.0). */
