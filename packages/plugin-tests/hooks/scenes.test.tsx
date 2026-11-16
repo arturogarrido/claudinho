@@ -1559,7 +1559,7 @@ describe('the pixel corner: the field is green, with a goal area', () => {
         expect(svg).toContain(LINES)
         expect(svg.split('class="px-field"').length - 1).toBe(1)
         expect(svg.split('class="px-lines"').length - 1).toBe(1)
-        // The lines are drawn over the field, and before the net.
+        // The lines are drawn after the field, so over it.
         expect(svg.indexOf('class="px-lines"')).toBeGreaterThan(svg.indexOf('class="px-field"'))
         expect(wellFormed(svg)).toBeNull()
         expect(refused(svg)).toEqual([])
@@ -1675,7 +1675,8 @@ describe('the pixel corner: at a goal the board says GOOOAL and flashes the scor
         expect(opacityAt(css, 'px-word', at), `word ${at}`).toBe(0)
         expect(opacityAt(css, 'px-flash', at), `flash ${at}`).toBe(0)
       }
-      expect(opacityAt(css, 'px-codes', 50)).toBe(0)
+      // The codes are gone for the whole of the word's and the flash's turns: hidden at every whole percent between.
+      for (let at = 1; at <= 99; at += 1) expect(opacityAt(css, 'px-codes', at), `codes ${at}`).toBe(0)
       // A turn each: the word in the first half, the flash in the second, never both.
       expect(opacityAt(css, 'px-word', 25)).toBe(1)
       expect(opacityAt(css, 'px-flash', 25)).toBe(0)

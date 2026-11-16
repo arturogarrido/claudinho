@@ -416,9 +416,11 @@ off holds across a reload. Nothing else is new: the look is built inside the plu
 (`hooks/team-colors.ts`) with Claude Code's own color builder (`hooks/make-colors.js`), with no other run of the CLI,
 no file read and no network request. The band of color across the top is drawn by the plugin from the two colors the
 look names, as a picture that runs nothing and loads nothing. The pitch and the pixel corner (`teamScene`) are drawn
-the same way by `hooks/team-scenes.ts`, from those colors; the pitch's scarf adds your team's name and the pixel
-corner's scoreboard the teams' codes, both from the CLI's answer the plugin already read. The pixel corner's scarf,
-for a national team, takes its flag's colors from the same file, and the other team's goal its colors from it too.
+the same way by `hooks/team-scenes.ts`, from those colors and a few fixed ones (the pixel corner's field is the same
+green for every team); the pitch's scarf adds your team's name and the pixel corner's scoreboard the teams' codes,
+both from the CLI's answer the plugin already read, and at a goal the fixed word `GOOOAL`. The pixel corner's scarf,
+for a national team, takes its flag's colors from the same file; so do the scoreboard's stripes at your national
+team's goal, and the other team's goal takes that team's colors from it too.
 With `teamTheme: off` it calls neither and draws nothing.
 
 ## Data and disclaimer

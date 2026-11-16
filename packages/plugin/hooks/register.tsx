@@ -350,7 +350,7 @@ const BAND_ALT = "A band in your team's colors"
  */
 type SceneKind = 'pitch' | 'pixel'
 const PITCH_ALT = "Faded pitch lines and a scarf in your team's colors"
-const PIXEL_ALT = "A pixel-art stadium corner in your team's colors"
+const PIXEL_ALT = 'A pixel-art stadium corner'
 const SCENE_GLASS = { blur: 20, opacity: 0.5 } as const
 const SCENES_KEPT = 3
 const GOAL_SCENE_MS = 6_000
