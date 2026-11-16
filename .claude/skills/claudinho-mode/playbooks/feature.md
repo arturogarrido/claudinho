@@ -27,6 +27,8 @@ bug-fix playbook holds; a feature adds a plan gate, acceptance criteria and ever
 7. Run the gate below and read it step by step.
 8. A user-facing change (AGENTS.md "Validation scope"): `pnpm release:qa` after a build, read whole; a SKIP is not a
    pass, and a skipped live-feed check is not verified behavior.
+   A change to what the Claude Code plugin draws: `bash scripts/plugin-demo.sh`, the demo loaded in the desktop app,
+   every touched state looked at, and the line "Seen in the app" in the PR's checks (or why not).
 9. An MCP contract change (AGENTS.md "Validation scope"): `pnpm -F @claudinho/mcp smoke:stdio` and the base/head
    `tools/list` comparison of CONTRIBUTING.md "Comparing MCP tool contracts", compared by bytes.
 10. The first push and the pull request, as the Push section says: `git push -u origin <branch>`, then
