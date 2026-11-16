@@ -185,6 +185,25 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo.sh, run', () 
     expect(run('').status).toBe(1);
   });
 
+  it('refuses a name that holds a .. (through a linked folder, the folder made and the folder printed would differ)', () => {
+    const base = scratch();
+    const far = scratch();
+    mkdirSync(join(far, 'sub'));
+    mkdirSync(join(base, 'real'));
+    symlinkSync(join(far, 'sub'), join(base, 'link'));
+    expect(at(base, 'demo').status).toBe(0);
+    const before = [listing(base), listing(far)];
+    for (const name of ['link/../demo', 'link/../new', 'real/../new', '../new', 'real/..', `${base}/link/../new`, `${base}/real/../new`]) {
+      const r = name.startsWith('/') ? run(name) : at(base, name);
+      expect(r.status, name).toBe(1);
+      expect(r.stdout, name).toBe('');
+      expect(r.stderr, name).toContain('..');
+    }
+    expect([listing(base), listing(far)]).toEqual(before);
+    // Dots that are part of a name are a name.
+    for (const name of ['..x', 'x..', 'a..b']) expect(at(base, name).status, name).toBe(0);
+  });
+
   it('prints the folder as an absolute path, whatever way it was named', () => {
     const base = scratch();
     mkdirSync(join(base, 'sub'));

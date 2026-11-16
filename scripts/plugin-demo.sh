@@ -44,6 +44,10 @@ if [ $# -ge 1 ]; then
     esac
   done
   [ -n "$dest" ] || refuse "the folder's name is empty"
+  # No .. in the name: through a linked folder, the folder a mkdir makes for a/../b is not the one `cd a/../b` reaches.
+  case "/$dest/" in
+    */../*) refuse "$1 holds a ..: name the folder directly" ;;
+  esac
   # A relative name is made ./name: no command below reads it as an option, or as `-` (the previous directory, to cd).
   case "$dest" in
     /*) ;;
