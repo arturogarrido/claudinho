@@ -39,6 +39,14 @@ ours() {
 
 if [ $# -ge 1 ]; then
   dest=$1
+  # The name as its last entry: a trailing slash or /. would make the checks below follow a link instead of seeing it.
+  while :; do
+    case "$dest" in
+      */.) dest=${dest%/.} ;;
+      */) dest=${dest%/} ;;
+      *) break ;;
+    esac
+  done
   [ -n "$dest" ] || refuse "the folder's name is empty"
   if [ -e "$dest" ] || [ -L "$dest" ]; then
     # A link is never written through: a folder linked into the checkout would have its files replaced.
@@ -47,13 +55,24 @@ if [ $# -ge 1 ]; then
     [ ! -L "$dest/.claude-plugin/types" ] || refuse "$dest/.claude-plugin/types is a link; choose an empty folder"
     # Every entry is this demo's (the types the app lays under .claude-plugin/types are its own and are not read),
     # and none is a link. One that is not stops the run before anything is written.
-    strange=$(cd "$dest" && find . -mindepth 1 -path ./.claude-plugin/types -prune -o -print | while IFS= read -r e; do
-      if [ -L "$e" ]; then echo "$e (a link)"; elif ! ours "$e"; then echo "$e"; fi
+    strange=$(cd -- "$dest" && find . -mindepth 1 -path ./.claude-plugin/types -prune -o -print0 | while IFS= read -r -d '' e; do
+      if [ -L "$e" ]; then
+        printf '%s (a link)\n' "$e"
+      elif ! ours "$e"; then
+        printf '%s\n' "$e"
+      elif [ "$e" = ./.claude-plugin ] || [ "$e" = ./hooks ]; then
+        [ -d "$e" ] || printf '%s (not a folder)\n' "$e"
+      elif [ ! -f "$e" ]; then
+        printf '%s (not a plain file)\n' "$e"
+      elif [ -n "$(find "$e" -maxdepth 0 -links +1)" ]; then
+        # A second name for the same file somewhere else: writing here would write there.
+        printf '%s (a hard link)\n' "$e"
+      fi
     done)
     # The first one is named (the whole list is read first: a reader that stops early would end the pipe with an error).
     [ -z "$strange" ] || refuse "$dest holds something that is not this demo: ${strange%%$'\n'*}; choose an empty folder"
-    if [ -n "$(ls -A "$dest")" ]; then
-      grep -q '"name": "claudinho-demo"' "$dest/.claude-plugin/plugin.json" 2>/dev/null ||
+    if [ -n "$(ls -A -- "$dest")" ]; then
+      grep -q -e '"name": "claudinho-demo"' -- "$dest/.claude-plugin/plugin.json" 2>/dev/null ||
         refuse "$dest holds something that is not this demo; choose an empty folder"
     fi
   fi
@@ -61,10 +80,10 @@ else
   dest="$(mktemp -d)/claudinho-demo"
 fi
 
-mkdir -p "$dest/.claude-plugin" "$dest/hooks"
-cp "$demo/.claude-plugin/plugin.json" "$dest/.claude-plugin/plugin.json"
-cp "$demo/hooks/hooks.json" "$demo/hooks/register.tsx" "$dest/hooks/"
-for f in "${copies[@]}"; do cp "$hooks/$f" "$dest/hooks/$f"; done
+mkdir -p -- "$dest/.claude-plugin" "$dest/hooks"
+cp -- "$demo/.claude-plugin/plugin.json" "$dest/.claude-plugin/plugin.json"
+cp -- "$demo/hooks/hooks.json" "$demo/hooks/register.tsx" "$dest/hooks/"
+for f in "${copies[@]}"; do cp -- "$hooks/$f" "$dest/hooks/$f"; done
 
 version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$root/packages/plugin/.claude-plugin/plugin.json" | head -1)
 if [ -n "${PLUGIN_DEMO_NO_VALIDATE:-}" ]; then
@@ -77,4 +96,4 @@ else
 fi
 echo "plugin-demo: the drawings of plugin $version, from $(cd "$root" && git rev-parse --short HEAD 2>/dev/null || echo 'this checkout'), assembled in:" >&2
 # The folder as an absolute path: the line a person hands to --plugin-dir from any directory.
-(cd "$dest" && pwd)
+(cd -- "$dest" && pwd)

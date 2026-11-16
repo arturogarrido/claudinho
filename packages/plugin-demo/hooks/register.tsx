@@ -69,7 +69,10 @@ export const register: Register = (on) => {
 
   on('command.run', { command: 'demo' }, async ($, e) => {
     const word = e.args.trim().toLowerCase()
-    run += 1
+    // Only a command that sets or clears a drawing takes over from a goal that is waiting: a typo, or `/demo` alone,
+    // answers with the list and leaves the goal to finish.
+    const sets = word === 'off' || word === 'band' || word === 'pitch' || word === 'idle' || word === 'live' || word === 'goal' || word === 'other' || Object.hasOwn(TEAMS, word)
+    if (sets) run += 1
     const mine = run
     const show = async (what: What): Promise<string> => {
       serial += 1
