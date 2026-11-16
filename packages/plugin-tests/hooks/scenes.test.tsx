@@ -1463,11 +1463,18 @@ describe('the pixel corner: which side is the pick\'s, the band\'s own rule', ()
     expect(sets).toHaveLength(2)
   })
 
-  test('a pick whose id is present and is no id is a pick with no id: found by its code', PIXEL, async ($, on) => {
+  for (const id of [null, '', 162]) {
+    test(`a pick whose id is present and is no id (${JSON.stringify(id)}) is a pick with no id: found by its code`, PIXEL, async ($, on) => {
+      const { sets } = engine(on)
+      await world($, on, [nextOf({ ...ITA_SIDE }, { ...BEL_SIDE }, { id, code: 'ITA', name: 'Italy' })], DESKTOP)
+      expect(ledRects((await drawn($, sceneOf(sets[0]))) as string)).toBeGreaterThan(40)
+    })
+  }
+
+  test('both sides carry the pick\'s id (a fixture core refuses): nobody\'s (blank)', PIXEL, async ($, on) => {
     const { sets } = engine(on)
-    await world($, on, [nextOf({ ...ITA_SIDE }, { ...BEL_SIDE }, { id: null, code: 'ITA', name: 'Italy' })], DESKTOP)
-    const idle = (await drawn($, sceneOf(sets[0]))) as string
-    expect(ledRects(idle)).toBeGreaterThan(40)
+    await world($, on, [nextOf({ ...ITA_SIDE }, { id: 'espn:162', code: 'ITX', name: 'Italia' })], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(BLANK)
   })
 
   test('a pick with only an id never matches a side whose code and name are no strings', PIXEL, async ($, on) => {
