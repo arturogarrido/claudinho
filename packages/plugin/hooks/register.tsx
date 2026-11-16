@@ -188,8 +188,12 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  *   no states.
  * - `pixel`: a stadium corner whose scoreboard shows two codes, and at a goal a word and the scoring team's colors;
  *   never a score. Its state is decided at every reading (the band's or the command's) by the clock (plugin 0.11.0
- *   changed the drawing alone: a green field for every team, the word and the colors at a goal). Its team is the
- *   view's `pick` (`CLAUDINHO_TEAM`'s over the
+ *   changed the drawing alone: a green field for every team, the word and the colors at a goal). It stands at the
+ *   bottom right, or with `teamScenePlace: left` (plugin 0.12.0; exactly that value, anything else is the right) at the
+ *   bottom left, mirrored, for a reader whose side panel covers the right; every pixel drawing is handed the place. The
+ *   goal's word (plugin 0.12.0) is the goal word of the view's words as the toasts read them (`wordsOf`: read whole,
+ *   else English), drawn by `boardWord` (GOOOAL, GOOOL, BUUUT), kept with the goal in the memory from the reading that
+ *   saw it. Its team is the view's `pick` (`CLAUDINHO_TEAM`'s over the
  *   saved pin), never the saved pin as such: `live` when a CURRENT view lists a live record marked `picked` (the first
  *   such; the board its two codes; no pick, no record); a view that is not current never starts live, but keeps the
  *   last live board for 5 minutes after the last current view that showed it (the match's id is not asked); a current
@@ -216,8 +220,8 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  *   record's scope, with no next fixture, in the record's look, while the scene last tried (of any scope: an app still
  *   shows it after a pick's change) is the corner live or in a goal: so the hold runs out with no view, and nothing is
  *   set where nothing was. No timer: the first reading after the 6 seconds sets `live`. The key adds the state, the two
- *   codes, the stamp, whose goal it is with the other team's colors, and the flag: each state is set once, and a
- *   refused set is not retried per tick.
+ *   codes, the stamp, whose goal it is with the other team's colors, the flag, the goal's word and the place: each
+ *   state is set once, and a refused set is not retried per tick.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -349,6 +353,8 @@ const BAND_ALT = "A band in your team's colors"
  * how long the corner stays live through readings that are not current.
  */
 type SceneKind = 'pitch' | 'pixel'
+/** Where the pixel corner stands (plugin 0.12.0, the `teamScenePlace` option): the bottom right or the bottom left. */
+type ScenePlace = 'right' | 'left'
 const PITCH_ALT = "Faded pitch lines and a scarf in your team's colors"
 const PIXEL_ALT = 'A pixel-art stadium corner'
 const SCENE_GLASS = { blur: 20, opacity: 0.5 } as const
@@ -477,6 +483,11 @@ let lookGen = 0
 /** The `teamScene` option: `pitch` or `pixel`; null for the band (anything else), set at load. */
 let teamScene: SceneKind | null = null
 /**
+ * The `teamScenePlace` option (plugin 0.12.0): where the pixel corner stands, `left` (exactly that value) or `right`
+ * (the default, and anything else), set at load. The pitch has no place.
+ */
+let scenePlace: ScenePlace = 'right'
+/**
  * The scenes this module set, newest last, at most `SCENES_KEPT`: each scene's name and the drawing the `Backdrop`
  * hook answers for it. An entry is kept before its set (the engine may ask for the drawing during it) and dropped when
  * the set is refused; a clear of ours empties the list, unless the engine refuses it. `sceneSerial` only grows: with
@@ -491,8 +502,10 @@ let sceneSerial = 0
  * resets a part of it. Its scope is the competition (`slugOf`) and the pick's identity (`teamOf`; null: no pick) it
  * belongs to; none before any reading. What it holds: the hold, the last CURRENT reading that showed the picked team's
  * match live (when, by the clock; the match's id and the board's two codes; null once a current reading shows it no
- * more); the goal being shown (until when, its stamp, its match, whose goal it is, `by`, and for the other side's, that
- * team's colors when known); and the look its scope last asked a scene in (`look`: noted by every set asked for,
+ * more); the goal being shown (until when, its stamp, its match, whose goal it is, `by`, the word its board says, the
+ * goal word of the reading that saw it (plugin 0.12.0: so a later reading in another language inside its six seconds
+ * asks for the same scene), and for the other side's, that team's colors when known); and the look its scope last asked
+ * a scene in (`look`: noted by every set asked for,
  * whether the engine is then called, the look already being that scene, or no app being attached to draw it), the
  * colors and the flag a reading that is no view draws its scene in (`lookWithoutView`). Two writers fill
  * it, both into the record a reading took before its first await, so a write after a forget lands in a record nobody
@@ -504,7 +517,7 @@ type PixelScope = { slug: string; team: string | null }
 type PixelMemory = {
   scope: PixelScope | null
   hold: { at: number; id: string; home: string; away: string } | null
-  goal: { until: number; stamp: number; id: string; by: GoalBy; other?: TeamColors } | null
+  goal: { until: number; stamp: number; id: string; by: GoalBy; word: string; other?: TeamColors } | null
   look: LookWant | null
 }
 let pixel: PixelMemory = { scope: null, hold: null, goal: null, look: null }
@@ -2140,11 +2153,18 @@ function pickedGoal(view: View, prev: ClaudinhoBaseline): PickedGoal | null {
   return { id: m.id, by: 'other', ...(other !== undefined ? { other } : {}) }
 }
 
-/** The pixel corner's board: its state, two codes, a goal's stamp (else 0), and a goal's kind and the other team's colors. */
-type Board = { state: 'live' | 'idle' | 'goal'; home: string; away: string; stamp: number; by?: GoalBy; other?: TeamColors }
+/**
+ * The pixel corner's board: its state, two codes, a goal's stamp (else 0), and a goal's kind, its word (plugin 0.12.0)
+ * and the other team's colors.
+ */
+type Board = { state: 'live' | 'idle' | 'goal'; home: string; away: string; stamp: number; by?: GoalBy; word?: string; other?: TeamColors }
 
-/** A goal a band run saw in the pick's match (`pickedGoal`): its match, whose, the other team's colors, and the clock when that run began. */
-type Scored = PickedGoal & { at: number }
+/**
+ * A goal a band run saw in the pick's match (`pickedGoal`): its match, whose, the other team's colors, the clock when
+ * that run began, and (plugin 0.12.0) the goal word of that run's view as the toasts read it (`wordsOf`: the view's
+ * words read whole, else the English words), which the board says.
+ */
+type Scored = PickedGoal & { at: number; word: string }
 
 /** What a reading with a view brings the pixel corner: the memory of its scope, a band surface or none, a goal seen. */
 type PixelReading = { mem: PixelMemory; banded: boolean; scored: Scored | null }
@@ -2157,8 +2177,8 @@ type PixelReading = { mem: PixelMemory; banded: boolean; scored: Scored | null }
  * CURRENT view decides the hold: the picked record (`pickedRecord`) is live (its sides' codes, remembered with `now`
  * and the match), written only with a band surface; none is idle at once (the hold and its goal dropped), with a band
  * surface or not. A goal the band run saw (`scored`, either side's) is written with the hold of its match, under a
- * stamp no goal had, with whose it is and the other team's colors. A view that is not current writes nothing; it is
- * answered by `boardFor`.
+ * stamp no goal had, with whose it is, its word (the run's view's) and the other team's colors. A view that is not
+ * current writes nothing; it is answered by `boardFor`.
  */
 function pixelBoard(px: PixelReading, view: View, now: number): Board {
   const { mem, banded, scored } = px
@@ -2176,6 +2196,7 @@ function pixelBoard(px: PixelReading, view: View, now: number): Board {
           stamp: goalStamp,
           id: m.id,
           by: scored.by,
+          word: scored.word,
           ...(scored.other !== undefined ? { other: scored.other } : {}),
         }
       }
@@ -2187,16 +2208,25 @@ function pixelBoard(px: PixelReading, view: View, now: number): Board {
 /**
  * The board of a memory at `now`: the hold's live board while its last current reading is less than `LIVE_HOLD_MS`
  * old (the match id is not asked: a view that is not current often lists nothing; the memory is of one competition and
- * one pick); `goal` in place of live, with its stamp, whose goal it is and the other team's colors, all from the
- * memory, while the goal shown is the held match's and before its end (so a reading inside its six seconds, a command
- * or a run that is no view, asks for the same scene). Else idle (`idleBoard`, of the reading's view; none: blank).
+ * one pick); `goal` in place of live, with its stamp, whose goal it is, its word and the other team's colors, all from
+ * the memory, while the goal shown is the held match's and before its end (so a reading inside its six seconds, a
+ * command or a run that is no view, in any language, asks for the same scene). Else idle (`idleBoard`, of the
+ * reading's view; none: blank).
  */
 function boardFor(mem: PixelMemory, now: number, view: View | null): Board {
   const held = mem.hold
   if (held !== null && now - held.at < LIVE_HOLD_MS) {
     const g = mem.goal
     if (g !== null && g.id === held.id && now < g.until) {
-      return { state: 'goal', home: held.home, away: held.away, stamp: g.stamp, by: g.by, ...(g.other !== undefined ? { other: g.other } : {}) }
+      return {
+        state: 'goal',
+        home: held.home,
+        away: held.away,
+        stamp: g.stamp,
+        by: g.by,
+        word: g.word,
+        ...(g.other !== undefined ? { other: g.other } : {}),
+      }
     }
     return { state: 'live', home: held.home, away: held.away, stamp: 0 }
   }
@@ -2235,17 +2265,21 @@ function sceneColors(want: LookWant): { main: string; second?: string } {
 
 /**
  * The pixel corner's scene for a board: its key (the look's key, the kind, the state, the two codes, the stamp, whose
- * goal it is with the other team's colors, and the look's flag) and its drawing: the look's colors, the board, the
- * flag as the scarf, and at the other side's goal its kind and that team's colors.
+ * goal it is with the other team's colors, the look's flag, and since plugin 0.12.0 the goal's word and the corner's
+ * place, so two languages or two places are never one scene) and its drawing: the look's colors, the board, the flag as
+ * the scarf, at a goal its word, at the other side's goal its kind and that team's colors, and the place
+ * (`teamScenePlace`).
  */
 function pixelScene(want: LookWant, board: Board, mem: PixelMemory): SceneWant {
   const colors = sceneColors(want)
   const by = board.by ?? null
   const other = board.other ?? null
   const flag = want.flag ?? null
+  const word = board.word ?? null
+  const place = scenePlace
   return {
     kind: 'pixel',
-    key: JSON.stringify(['pixel', want.key, board.state, board.home, board.away, board.stamp, by, other, flag]),
+    key: JSON.stringify(['pixel', want.key, board.state, board.home, board.away, board.stamp, by, other, flag, word, place]),
     alt: PIXEL_ALT,
     draw: () =>
       pixelSvg({
@@ -2257,6 +2291,8 @@ function pixelScene(want: LookWant, board: Board, mem: PixelMemory): SceneWant {
         ...(flag !== null ? { scarf: flag } : {}),
         ...(by !== null ? { by } : {}),
         ...(other !== null ? { otherMain: other[0], otherSecond: other[1] } : {}),
+        ...(word !== null ? { word } : {}),
+        place,
       }),
     pixel: { mem, live: board.state !== 'idle' },
   }
@@ -2265,7 +2301,7 @@ function pixelScene(want: LookWant, board: Board, mem: PixelMemory): SceneWant {
 /**
  * The scene a reading asks for under `teamScene` (none for the band): its kind, its key (the look's key, `lookWanted`,
  * and the scene's kind; the pixel corner's also its state, its two codes, its goal stamp, whose goal it is with the
- * other team's colors, and the look's flag, so each state is set once)
+ * other team's colors, the look's flag, the goal's word and the corner's place, so each state is set once)
  * and its drawing, from the look's colors (none: pitch green) and, for the pitch's scarf, the look's name. The pixel
  * corner's is made from what the reading brings it (`px`; none: no pixel scene), its scarf the look's flag.
  */
@@ -2678,7 +2714,8 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean,
   if (isView && view.current === true) {
     const prev = await read($, baseline)
     const seen = teamThemeOn && teamScene === 'pixel' && celebrateOn ? pickedGoal(view, prev) : null
-    if (seen !== null) scored = { ...seen, at: now }
+    // The board's word (plugin 0.12.0): this view's goal word as the toasts read it, kept with the goal.
+    if (seen !== null) scored = { ...seen, at: now, word: wordsOf(view).goal }
     let moments = momentsFor(view, prev, option)
     // No team pinned (`toasts: pinned`, the view stating no pick and a readable `CLAUDINHO_TEAM` or none): the
     // session's first live goal from a record that names its sides is said as under `all` (the first match in the
@@ -2796,6 +2833,8 @@ export const register: Register = (on, options) => {
   teamThemeOn = options.teamTheme === 'on'
   // Exactly `pitch` or `pixel` is that scene; anything else (`band`, unset, unknown) is the band.
   teamScene = options.teamScene === 'pitch' || options.teamScene === 'pixel' ? options.teamScene : null
+  // Only the string `left` puts the pixel corner at the bottom left; anything else (`right`, unset, unknown) is the right.
+  scenePlace = options.teamScenePlace === 'left' ? 'left' : 'right'
 
   on('session.start', async ($, e, next) => {
     // A new session (or a reload): the first-run toast, the band's PATH probe and the no-pin taste may be said again,

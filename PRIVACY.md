@@ -121,7 +121,7 @@ request** and **writes no file**:
 - Between runs it keeps its last readings (public match data) in the state Claude Code holds for
   the session, and, with `teamTheme` on, whether you turned the team look off with
   `/claudinho theme off`; it writes no file of its own. Its options (`toasts`, `celebrate`, `context`,
-  `language`, `teamTheme`, `teamScene`) are kept by Claude Code in its own settings (`~/.claude/settings.json` for a
+  `language`, `teamTheme`, `teamScene`, `teamScenePlace`) are kept by Claude Code in its own settings (`~/.claude/settings.json` for a
   user-scope install), where `/config` changes them.
 
 ## Configuration changes (`init`)

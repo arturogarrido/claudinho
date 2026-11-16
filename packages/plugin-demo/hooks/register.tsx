@@ -18,6 +18,9 @@ import { pitchSvg, pixelSvg } from './team-scenes'
  *   /demo live       the stadium with its fans
  *   /demo goal       the team's goal: six seconds, a toast as the ball lands, then live again
  *   /demo other      the other team's goal, the same way
+ *   /demo left       the stadium at the bottom left (the plugin's teamScenePlace: left) for every later drawing
+ *   /demo right      the stadium at the bottom right again (the default)
+ *   /demo en         the goal's word on the board in English (GOAL!: GOOOAL); es (¡GOL!), pt (GOL!): GOOOL; fr (BUT !): BUUUT
  *   /demo off        clears the look
  *
  * What it does not show: the plugin's own path from a real goal (its readings, its memory, its toast's text).
@@ -27,6 +30,9 @@ const PLUGIN = 'claudinho-demo'
 const GLASS = { blur: 20, opacity: 0.5 } as const
 const GOAL_MS = 6_000
 const BALL_LANDS_MS = 1_900
+/** The goal word of each of the CLI's four languages (core's `moment.goal`), as the plugin hands it to the board. */
+const WORDS: Record<string, string> = { en: 'GOAL!', es: '¡GOL!', pt: 'GOL!', fr: 'BUT !' }
+type Place = 'right' | 'left'
 
 type Team = { id: string; name: string; home: string; away: string; otherId: string }
 const TEAMS: Record<string, Team> = {
@@ -43,6 +49,8 @@ let team: Team = TEAMS.spain as Team
 let serial = 0
 /** The command being answered: a goal that waits checks it is still the latest before it toasts or sets live again. */
 let run = 0
+let place: Place = 'right'
+let lang = 'en'
 const scenes: Array<{ name: string; source: string }> = []
 
 const draw = (what: What): string => {
@@ -58,20 +66,25 @@ const draw = (what: What): string => {
     stamp: serial,
     scarf: FLAG_COLORS[team.id],
     ...(what === 'other' ? { by: 'other', otherMain: other?.[0], otherSecond: other?.[1] } : {}),
+    word: WORDS[lang],
+    place,
   })
 }
 
 export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'demo', description: `Claudinho's drawings, for a look in the app: ${Object.keys(TEAMS).join(', ')}, band, pitch, idle, live, goal, other, off` })
+    await $.command.register({
+      name: 'demo',
+      description: `Claudinho's drawings, for a look in the app: ${Object.keys(TEAMS).join(', ')}, band, pitch, idle, live, goal, other, left, right, ${Object.keys(WORDS).join(', ')}, off`,
+    })
     return next(e)
   })
 
   on('command.run', { command: 'demo' }, async ($, e) => {
     const word = e.args.trim().toLowerCase()
     // Only a command that sets or clears a drawing takes over from a goal that is waiting: a typo, or `/demo` alone,
-    // answers with the list and leaves the goal to finish.
-    const sets = word === 'off' || word === 'band' || word === 'pitch' || word === 'idle' || word === 'live' || word === 'goal' || word === 'other' || Object.hasOwn(TEAMS, word)
+    // answers with the list and leaves the goal to finish; so does a language, which draws nothing.
+    const sets = word === 'off' || word === 'band' || word === 'pitch' || word === 'idle' || word === 'live' || word === 'goal' || word === 'other' || word === 'left' || word === 'right' || Object.hasOwn(TEAMS, word)
     if (sets) run += 1
     const mine = run
     const show = async (what: What): Promise<string> => {
@@ -108,6 +121,14 @@ export const register: Register = (on) => {
       team = TEAMS[word] as Team
       return { text: `${team.name}, live: ${await show('live')}` }
     }
+    if (word === 'left' || word === 'right') {
+      place = word
+      return { text: `The stadium at the bottom ${place} from the next drawing; the live stadium now: ${await show('live')}` }
+    }
+    if (Object.hasOwn(WORDS, word)) {
+      lang = word
+      return { text: `The goal's word: ${WORDS[lang]} (/demo goal or /demo other to see it)` }
+    }
     if (word === 'pitch' || word === 'idle' || word === 'live') return { text: `${team.name}, ${word}: ${await show(word)}` }
     if (word === 'goal' || word === 'other') {
       const answer = await show(word)
@@ -120,7 +141,7 @@ export const register: Register = (on) => {
       await show('live')
       return { text: `${team.name}, ${word}: ${answer}, then live` }
     }
-    return { text: `Try: /demo ${Object.keys(TEAMS).join(' | ')} | band | pitch | idle | live | goal | other | off` }
+    return { text: `Try: /demo ${Object.keys(TEAMS).join(' | ')} | band | pitch | idle | live | goal | other | left | right | ${Object.keys(WORDS).join(' | ')} | off` }
   })
 
   on('ui.render', { component: 'Backdrop' }, ($, e, next) => {
