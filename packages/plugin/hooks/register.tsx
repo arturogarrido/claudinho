@@ -16,7 +16,8 @@ import type {
   ClaudinhoPlay,
   ClaudinhoTally,
 } from '../types'
-import { bandSvg, buildLook, colorsForPick } from './team-look'
+import { bandSvg, buildLook, colorsForPick, flagForPick } from './team-look'
+import type { TeamColors } from './team-look'
 import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
 
 /**
@@ -190,14 +191,20 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  *   saved pin), never the saved pin as such: `live` when a CURRENT view lists a live record marked `picked` (the first
  *   such; the board its two codes; no pick, no record); a view that is not current never starts live, but keeps the
  *   last live board for 5 minutes after the last current view that showed it (the match's id is not asked); a current
- *   view with no such record is idle at once. `idle` otherwise, the board the view's `next` fixture's codes (none: an
- *   empty board). `goal` for 6 seconds, in place of `live`, after a band run whose CURRENT view shows the pick's side
- *   of that record (by the pick's id, else its code; none: no goal) scoring against the toasts' baseline (read before
- *   the run replaces it; neither side down; `celebrate: off` never), whatever `toasts` says, and only while the record
- *   live is that goal's match; each goal its own stamp in the drawing, so the app draws it. Live and goal start only
+ *   view with no such record is idle at once. `idle` otherwise, the board the view's `next` fixture's codes only when
+ *   the pick is one of its two sides (core's pin rule, `pickedSide`; plugin 0.10.0), else an empty board (no `next`,
+ *   no pick, or another pair's fixture: the competition's next match is not the team's). `goal` for 6 seconds, in
+ *   place of `live`, after a band run whose CURRENT view shows a side of that record scoring against the toasts'
+ *   baseline (read before the run replaces it; neither side down; `celebrate: off` never), whatever `toasts` says,
+ *   and only while the record live is that goal's match: the pick's goal when the pick's side (`pickedSide`, the same
+ *   rule; none found: no goal of either kind) rose, also when both did; the other side's when only the other side
+ *   rose (plugin 0.10.0: drawn with its two fireworks in that team's colors, `colorsForPick` of the side, the fans
+ *   standing still); each goal its own stamp in the drawing, so the app draws it.
+ *   The standing fan's scarf is the pick's flag (plugin 0.10.0: `flagForPick`, carried with the look's colors) when
+ *   the pick is a national team with one, else the team's two colors. Live and goal start only
  *   with a surface that draws the band in the roster (there the band's pace runs, and its readings end them): a band
  *   run's reading has one, and a command's asks the roster once; with none (a session with only the mobile app) a
- *   reading is idle, its `next` fixture's codes, and starts and refreshes nothing. What the corner remembers (the hold,
+ *   reading is idle, its board by the same rule, and starts and refreshes nothing. What the corner remembers (the hold,
  *   the goal, the look its scope last asked a scene in) is ONE record of one scope, the competition and the pick's
  *   identity, and is forgotten one way (`forgetPixel`): by any reading whose view is of another scope (current or not,
  *   the band's or the command's), by `/claudinho theme off` and by every `session.start`; while the look is off nothing
@@ -207,7 +214,8 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  *   record's scope, with no next fixture, in the record's look, while the scene last tried (of any scope: an app still
  *   shows it after a pick's change) is the corner live or in a goal: so the hold runs out with no view, and nothing is
  *   set where nothing was. No timer: the first reading after the 6 seconds sets `live`. The key adds the state, the two
- *   codes and the stamp: each state is set once, and a refused set is not retried per tick.
+ *   codes, the stamp, whose goal it is with the other team's colors, and the flag: each state is set once, and a
+ *   refused set is not retried per tick.
  */
 
 const band = atom({ plugin: 'claudinho', key: 'band' } as const, null as ClaudinhoBand)
@@ -481,9 +489,10 @@ let sceneSerial = 0
  * resets a part of it. Its scope is the competition (`slugOf`) and the pick's identity (`teamOf`; null: no pick) it
  * belongs to; none before any reading. What it holds: the hold, the last CURRENT reading that showed the picked team's
  * match live (when, by the clock; the match's id and the board's two codes; null once a current reading shows it no
- * more); the goal being shown (until when, its stamp, its match); and the look its scope last asked a scene in (`look`:
- * noted by every set asked for, whether the engine is then called, the look already being that scene, or no app being
- * attached to draw it), the colors a reading that is no view draws its scene in (`lookWithoutView`). Two writers fill
+ * more); the goal being shown (until when, its stamp, its match, whose goal it is, `by`, and for the other side's, that
+ * team's colors when known); and the look its scope last asked a scene in (`look`: noted by every set asked for,
+ * whether the engine is then called, the look already being that scene, or no app being attached to draw it), the
+ * colors and the flag a reading that is no view draws its scene in (`lookWithoutView`). Two writers fill
  * it, both into the record a reading took before its first await, so a write after a forget lands in a record nobody
  * reads: a reading's board (`pixelBoard`: the hold and the goal) and a set asked for (`setLook`: the look). No timer
  * is armed: each reading asks it. The last stamp given (`max(previous + 1, the clock's milliseconds)`, so a reload's
@@ -493,7 +502,7 @@ type PixelScope = { slug: string; team: string | null }
 type PixelMemory = {
   scope: PixelScope | null
   hold: { at: number; id: string; home: string; away: string } | null
-  goal: { until: number; stamp: number; id: string } | null
+  goal: { until: number; stamp: number; id: string; by: GoalBy; other?: TeamColors } | null
   look: LookWant | null
 }
 let pixel: PixelMemory = { scope: null, hold: null, goal: null, look: null }
@@ -2019,12 +2028,20 @@ function pickName(pick: unknown): string | undefined {
   return undefined
 }
 
-type LookWant = { key: string; name: string | undefined; colors: ReturnType<typeof colorsForPick> }
+type LookWant = {
+  key: string
+  name: string | undefined
+  colors: ReturnType<typeof colorsForPick>
+  /** Plugin 0.10.0: the pick's flag (`flagForPick`), the pixel corner's scarf; none for a club or a team with no colors. */
+  flag: ReturnType<typeof flagForPick>
+}
 
 /**
  * The team look a view asks for: the pick's name and colors in the view's competition (`colorsForPick`; a pick that
  * names nothing has none), and its key, the two the look is made of (the name only with colors: with none the look is
- * pitch green, whoever the pick is).
+ * pitch green, whoever the pick is). With the colors, the pick's flag (`flagForPick`, by the same rule), which only
+ * the pixel corner draws (its scarf) and so only the pixel corner's key adds (`pixelScene`): the band's and the pitch's
+ * looks are what they were.
  */
 function lookWanted(view: View): LookWant {
   const name = pickName(view.pick)
@@ -2033,6 +2050,7 @@ function lookWanted(view: View): LookWant {
     key: JSON.stringify(colors === undefined ? null : [name, colors]),
     name: colors === undefined ? undefined : name,
     colors,
+    flag: colors === undefined ? undefined : flagForPick(view.pick, slugOf(view)),
   }
 }
 
@@ -2058,27 +2076,53 @@ function pickedRecord(view: View): Item | undefined {
 }
 
 /**
- * The pick's side of a record: the side whose `id` is the pick's id when the pick has one, else the side whose `code`
- * is the pick's code; null when neither side is, or both are.
+ * The pick's side of a record or a fixture, by core's pin rule (`isPinnedSide`, the rule the CLI chose the view's
+ * `next` and marked the record `picked` by): the pick's id, code and name read with `filled`. A pick with no id: the
+ * side whose `code` is the pick's code; neither or both: no side. A pick with an id: a side matches BY ID when it
+ * carries an `id` (its value is not `undefined`) equal to the pick's (a value that is present and is no id, `''`,
+ * `null` or a number, is another team, never a match by code and name), and BY LABELS when it carries none and the
+ * pick's code AND name, both filled, equal the side's. Exactly one side by id: that side, whatever the other side's
+ * labels say (the provider's id is the team's identity); both by id: no side (core refuses such a fixture); none by
+ * id: the one side by labels, none or both: no side. Null too when the pick is no object. One stated difference from
+ * the CLI's `pinnedSideOf`, which asks home first: when the side matching by labels is at home and the side matching
+ * by id away, this answers the id side, so the stadium follows the id side.
  */
-function pickedSide(m: Item, pick: unknown): Side | null {
+function pickedSide(m: { home?: unknown; away?: unknown }, pick: unknown): Side | null {
   if (!isObject(pick)) return null
   const id = filled(pick.id)
   const code = filled(pick.code)
-  const is = (t: unknown): boolean => isObject(t) && (id !== null ? t.id === id : code !== null && t.code === code)
-  const home = is(m.home)
-  const away = is(m.away)
-  return home === away ? null : home ? 'home' : 'away'
+  const name = filled(pick.name)
+  const one = (home: boolean, away: boolean): Side | null => (home === away ? null : home ? 'home' : 'away')
+  if (id === null) {
+    const byCode = (t: unknown): boolean => isObject(t) && code !== null && t.code === code
+    return one(byCode(m.home), byCode(m.away))
+  }
+  const byId = (t: unknown): boolean => isObject(t) && t.id === id
+  const byLabels = (t: unknown): boolean =>
+    isObject(t) && t.id === undefined && code !== null && name !== null && t.code === code && t.name === name
+  const homeById = byId(m.home)
+  const awayById = byId(m.away)
+  if (homeById || awayById) return one(homeById, awayById)
+  return one(byLabels(m.home), byLabels(m.away))
 }
 
+/** Whose goal the pixel corner shows: the pick's, or the other side's of the pick's match (plugin 0.10.0). */
+type GoalBy = 'pick' | 'other'
+
+/** A goal in the pick's match: its match, whose it is, and for the other side's, that team's colors when known. */
+type PickedGoal = { id: string; by: GoalBy; other?: TeamColors }
+
 /**
- * The match a CURRENT view shows the picked team scoring in, against the toasts' baseline (`prev`, read before the run
+ * The goal a CURRENT view shows in the picked team's match, against the toasts' baseline (`prev`, read before the run
  * replaces it), or null: the picked record (`pickedRecord`), the pick's side found in it (`pickedSide`), its match held
- * by the baseline under the same competition, its score on that side higher than the baseline's and neither side's
- * lower (a correction is no goal). No side, no baseline entry for the match, or no score on either side of the
- * comparison: no goal. The shootout tally is not read: a penalty in a shootout is not this moment.
+ * by the baseline under the same competition, and neither side's score lower than the baseline's (a correction is no
+ * goal). Then the pick's goal when the pick's side is higher (also when both sides are); else the other side's when
+ * that side is higher (the pick's unchanged), with that team's colors (`colorsForPick` of the record's other side, in
+ * the view's competition; none known: none); else none. No side, no baseline entry for the match, or no score on
+ * either side of the comparison: no goal of either kind. The shootout tally is not read: a penalty in a shootout is not
+ * this moment.
  */
-function pickedGoal(view: View, prev: ClaudinhoBaseline): string | null {
+function pickedGoal(view: View, prev: ClaudinhoBaseline): PickedGoal | null {
   if (!prev || prev.slug !== slugOf(view)) return null
   const m = pickedRecord(view)
   if (m === undefined) return null
@@ -2086,13 +2130,19 @@ function pickedGoal(view: View, prev: ClaudinhoBaseline): string | null {
   const score = tally(m.score)
   const was = prev.items.find((t) => t.id === m.id)?.score
   if (side === null || !score || !was) return null
-  return score[side] > was[side] && score.home >= was.home && score.away >= was.away ? m.id : null
+  if (score.home < was.home || score.away < was.away) return null
+  if (score[side] > was[side]) return { id: m.id, by: 'pick' }
+  const them: Side = side === 'home' ? 'away' : 'home'
+  if (score[them] <= was[them]) return null
+  const other = colorsForPick(m[them], slugOf(view))
+  return { id: m.id, by: 'other', ...(other !== undefined ? { other } : {}) }
 }
 
-type Board = { state: 'live' | 'idle' | 'goal'; home: string; away: string; stamp: number }
+/** The pixel corner's board: its state, two codes, a goal's stamp (else 0), and a goal's kind and the other team's colors. */
+type Board = { state: 'live' | 'idle' | 'goal'; home: string; away: string; stamp: number; by?: GoalBy; other?: TeamColors }
 
-/** A goal a band run saw for the pick (`pickedGoal`): its match, and the clock when that run began. */
-type Scored = { id: string; at: number }
+/** A goal a band run saw in the pick's match (`pickedGoal`): its match, whose, the other team's colors, and the clock when that run began. */
+type Scored = PickedGoal & { at: number }
 
 /** What a reading with a view brings the pixel corner: the memory of its scope, a band surface or none, a goal seen. */
 type PixelReading = { mem: PixelMemory; banded: boolean; scored: Scored | null }
@@ -2101,11 +2151,12 @@ type PixelReading = { mem: PixelMemory; banded: boolean; scored: Scored | null }
  * The pixel corner's state for a reading at `now`, and its board's two codes (`boardCode`: three dashes for a side
  * with none); one of the memory's two writers, writing into `mem`, the record of the view's scope (`pixelFor`). Live
  * and goal need a surface that draws the band (`banded`: there the band's pace runs, and its readings end them); with
- * none the board is idle, the view's `next` fixture's codes, and nothing is started or refreshed. A CURRENT view
- * decides the hold: the picked record (`pickedRecord`) is live (its sides' codes, remembered with `now` and the match),
- * written only with a band surface; none is idle at once (the hold and its goal dropped), with a band surface or not.
- * A goal the band run saw (`scored`) is written with the hold of its match, under a stamp no goal had. A view that is
- * not current writes nothing; it is answered by `boardFor`.
+ * none the board is idle (`idleBoard`: the pick's next fixture, else blank), and nothing is started or refreshed. A
+ * CURRENT view decides the hold: the picked record (`pickedRecord`) is live (its sides' codes, remembered with `now`
+ * and the match), written only with a band surface; none is idle at once (the hold and its goal dropped), with a band
+ * surface or not. A goal the band run saw (`scored`, either side's) is written with the hold of its match, under a
+ * stamp no goal had, with whose it is and the other team's colors. A view that is not current writes nothing; it is
+ * answered by `boardFor`.
  */
 function pixelBoard(px: PixelReading, view: View, now: number): Board {
   const { mem, banded, scored } = px
@@ -2118,32 +2169,48 @@ function pixelBoard(px: PixelReading, view: View, now: number): Board {
       mem.hold = { at: now, id: m.id, home: boardCode(codeOf(m.home)), away: boardCode(codeOf(m.away)) }
       if (scored !== null && scored.id === m.id) {
         goalStamp = Math.max(goalStamp + 1, clockMs(scored.at))
-        mem.goal = { until: scored.at + GOAL_SCENE_MS, stamp: goalStamp, id: m.id }
+        mem.goal = {
+          until: scored.at + GOAL_SCENE_MS,
+          stamp: goalStamp,
+          id: m.id,
+          by: scored.by,
+          ...(scored.other !== undefined ? { other: scored.other } : {}),
+        }
       }
     }
   }
-  return banded ? boardFor(mem, now, view.next) : idleBoard(view.next)
+  return banded ? boardFor(mem, now, view) : idleBoard(view)
 }
 
 /**
  * The board of a memory at `now`: the hold's live board while its last current reading is less than `LIVE_HOLD_MS`
  * old (the match id is not asked: a view that is not current often lists nothing; the memory is of one competition and
- * one pick); `goal` in place of live, with its stamp, while the goal shown is the held match's and before its end.
- * Else idle (`idleBoard`).
+ * one pick); `goal` in place of live, with its stamp, whose goal it is and the other team's colors, all from the
+ * memory, while the goal shown is the held match's and before its end (so a reading inside its six seconds, a command
+ * or a run that is no view, asks for the same scene). Else idle (`idleBoard`, of the reading's view; none: blank).
  */
-function boardFor(mem: PixelMemory, now: number, next: unknown): Board {
+function boardFor(mem: PixelMemory, now: number, view: View | null): Board {
   const held = mem.hold
   if (held !== null && now - held.at < LIVE_HOLD_MS) {
     const g = mem.goal
-    const goal = g !== null && g.id === held.id && now < g.until
-    return { state: goal ? 'goal' : 'live', home: held.home, away: held.away, stamp: goal ? g.stamp : 0 }
+    if (g !== null && g.id === held.id && now < g.until) {
+      return { state: 'goal', home: held.home, away: held.away, stamp: g.stamp, by: g.by, ...(g.other !== undefined ? { other: g.other } : {}) }
+    }
+    return { state: 'live', home: held.home, away: held.away, stamp: 0 }
   }
-  return idleBoard(next)
+  return idleBoard(view)
 }
 
-/** The idle board: the `next` fixture's codes when `next` is an object, else an empty board. */
-function idleBoard(next: unknown): Board {
-  const n: Record<string, unknown> = isObject(next) ? next : {}
+/**
+ * The idle board, the one rule for it: the view's `next` fixture's codes (`boardCode`: three dashes for a side with
+ * none) when `next` is an object and the view's pick is one of its two sides (`pickedSide`, core's pin rule: a side
+ * with an id by the pick's id, one with none by the pick's code and name, every side by its code for a pick with no
+ * id); else a blank board: no view (a reading that is no view), a `next` that is no object, no pick, or a fixture the
+ * pick is not in, or both of whose sides match it.
+ */
+function idleBoard(view: View | null): Board {
+  const next = view?.next
+  const n: Record<string, unknown> = isObject(next) && pickedSide(next, view?.pick) !== null ? next : {}
   return { state: 'idle', home: boardCode(codeOf(n.home)), away: boardCode(codeOf(n.away)), stamp: 0 }
 }
 
@@ -2162,23 +2229,41 @@ function sceneColors(want: LookWant): { main: string; second?: string } {
   return { main: want.colors?.[0] ?? '', ...(second !== undefined ? { second } : {}) }
 }
 
-/** The pixel corner's scene for a board: its key (the look's key, the kind, the state, the two codes, the stamp). */
+/**
+ * The pixel corner's scene for a board: its key (the look's key, the kind, the state, the two codes, the stamp, whose
+ * goal it is with the other team's colors, and the look's flag) and its drawing: the look's colors, the board, the
+ * flag as the scarf, and at the other side's goal its kind and that team's colors.
+ */
 function pixelScene(want: LookWant, board: Board, mem: PixelMemory): SceneWant {
   const colors = sceneColors(want)
+  const by = board.by ?? null
+  const other = board.other ?? null
+  const flag = want.flag ?? null
   return {
     kind: 'pixel',
-    key: JSON.stringify(['pixel', want.key, board.state, board.home, board.away, board.stamp]),
+    key: JSON.stringify(['pixel', want.key, board.state, board.home, board.away, board.stamp, by, other, flag]),
     alt: PIXEL_ALT,
-    draw: () => pixelSvg({ ...colors, ...board }),
+    draw: () =>
+      pixelSvg({
+        ...colors,
+        state: board.state,
+        home: board.home,
+        away: board.away,
+        stamp: board.stamp,
+        ...(flag !== null ? { scarf: flag } : {}),
+        ...(by !== null ? { by } : {}),
+        ...(other !== null ? { otherMain: other[0], otherSecond: other[1] } : {}),
+      }),
     pixel: { mem, live: board.state !== 'idle' },
   }
 }
 
 /**
  * The scene a reading asks for under `teamScene` (none for the band): its kind, its key (the look's key, `lookWanted`,
- * and the scene's kind; the pixel corner's also its state, its two codes and its goal stamp, so each state is set once)
+ * and the scene's kind; the pixel corner's also its state, its two codes, its goal stamp, whose goal it is with the
+ * other team's colors, and the look's flag, so each state is set once)
  * and its drawing, from the look's colors (none: pitch green) and, for the pitch's scarf, the look's name. The pixel
- * corner's is made from what the reading brings it (`px`; none: no pixel scene).
+ * corner's is made from what the reading brings it (`px`; none: no pixel scene), its scarf the look's flag.
  */
 function sceneWanted(view: View, want: LookWant, now: number, px: PixelReading | null): SceneWant | null {
   if (teamScene === null) return null
@@ -2307,7 +2392,7 @@ async function lookWithoutView($: EngineInterface): Promise<void> {
     const over = lookKey
     if (!teamThemeOn || teamScene !== 'pixel' || !lookLive || over === null || look === null) return
     const now = await $.clock.now()
-    const board = boardFor(mem, now, undefined)
+    const board = boardFor(mem, now, null)
     await setLook($, look, pixelScene(look, board, mem), now, over)
   } catch {
     // The engine's calls failed: no look this run.
@@ -2580,15 +2665,16 @@ async function bandRun($: EngineInterface, option: ToastsOption, force: boolean,
     }
   }
 
-  // The pixel corner's goal moment, the picked team's (`pickedGoal`), decided against the baseline the toasts compare
-  // with (replaced below), whatever the `toasts` option says; written to the pixel memory, with the hold, by the look
-  // set at the end of this run (`applyLook`), which writes nothing while the look is off.
+  // The pixel corner's goal moment, a goal by either side of the picked team's match (`pickedGoal`), decided against
+  // the baseline the toasts compare with (replaced below), whatever the `toasts` option says; written to the pixel
+  // memory, with the hold, by the look set at the end of this run (`applyLook`), which writes nothing while the look
+  // is off.
   let scored: Scored | null = null
   // The two shapes that are no view are no current view either: each clears the context and keeps the baseline.
   if (isView && view.current === true) {
     const prev = await read($, baseline)
-    const goalId = teamThemeOn && teamScene === 'pixel' && celebrateOn ? pickedGoal(view, prev) : null
-    if (goalId !== null) scored = { id: goalId, at: now }
+    const seen = teamThemeOn && teamScene === 'pixel' && celebrateOn ? pickedGoal(view, prev) : null
+    if (seen !== null) scored = { ...seen, at: now }
     let moments = momentsFor(view, prev, option)
     // No team pinned (`toasts: pinned`, the view stating no pick and a readable `CLAUDINHO_TEAM` or none): the
     // session's first live goal from a record that names its sides is said as under `all` (the first match in the

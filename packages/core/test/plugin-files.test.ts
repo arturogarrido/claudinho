@@ -69,9 +69,9 @@ describe('the plugin folder', () => {
     expect(String(toasts?.description)).toMatch(/no pin|without a pin|nothing/i);
   });
 
-  it('the manifest is the scenes release, 0.9.0', () => {
+  it('the manifest is the flag scarf and either side\'s goal release, 0.10.0', () => {
     const m = json('packages/plugin/.claude-plugin/plugin.json');
-    expect(m.version).toBe('0.9.0');
+    expect(m.version).toBe('0.10.0');
   });
 
   it('the teamTheme option: off or on, OFF by default (a session holds one theme, and ours would replace the person\'s), and its description says where it shows and what it replaces', () => {
@@ -210,7 +210,7 @@ describe('the plugin directory listing', () => {
    * installed `claudinho` CLI run. A vocabulary check over the one module the manifest runs, in which the host is
    * always `$` (every hook's first parameter, every binding typed `EngineInterface`): every member of `$` it names is
    * one the policy accounts for; `$` is never indexed or assigned; the module imports nothing but types, the host's
-   * three state helpers and the team look's three pure functions and the scenes' three; every run is `claudinho ambient` or `claudinho match`; the filesystem is read twice, nvm's
+   * three state helpers and the team look's four pure functions and the scenes' three; every run is `claudinho ambient` or `claudinho match`; the filesystem is read twice, nvm's
    * version folder listed and `<version>/bin/claudinho` probed; the prompt handler uses its event only to pass it on
    * and to add the note, written from the CLI's `context` unchanged; the command handler reads the typed text only
    * to compare it with `match` and the three team-look phrases. It is a tripwire over the shapes the module has, not a proof: a use of the host or of
@@ -244,7 +244,7 @@ describe('the plugin directory listing', () => {
     expect(imports.length).toBe((src.match(/^\s*import\b/gm) ?? []).length);
     expect(imports.filter((m) => m[3] !== 'claude-code' && m[3] !== '../types' && m[3] !== './team-look' && m[3] !== './team-scenes').map((m) => m[3])).toEqual([]);
     const values = imports.filter((m) => !m[1]).flatMap((m) => (m[2] ?? '').split(',').map((v) => v.trim()));
-    expect(values.filter((v) => v !== '').sort()).toEqual(['atom', 'bandSvg', 'boardCode', 'buildLook', 'colorsForPick', 'pitchSvg', 'pixelSvg', 'read', 'update']);
+    expect(values.filter((v) => v !== '').sort()).toEqual(['atom', 'bandSvg', 'boardCode', 'buildLook', 'colorsForPick', 'flagForPick', 'pitchSvg', 'pixelSvg', 'read', 'update']);
     const argv = String.raw`\s*\[\s*(['"][^'"]*['"])\s*,\s*(['"][^'"]*['"])`;
     const runs = [...src.matchAll(new RegExp(String.raw`\$${DOT}process${DOT}run${OPEN}${argv}`, 'g'))];
     expect(runs.length).toBe((src.match(new RegExp(String.raw`\$${DOT}process${DOT}run\b`, 'g')) ?? []).length);

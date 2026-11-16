@@ -114,10 +114,10 @@ request** and **writes no file**:
 - With the `teamTheme` option on (it is off by default), it sets the session's theme in the Claude
   desktop and mobile apps to your team's colors, once per team (with the `teamScene` option on
   `pixel`, again when its stadium's state or scoreboard changes: your team's match starting or
-  ending, a goal for your team, another next fixture), and clears the theme it set when you type
-  `/claudinho theme off`. The colors come from a table inside the plugin: apart from which apps
-  are attached to the session, this reads nothing more and sends nothing anywhere. With
-  `teamTheme` off it never sets or clears a theme.
+  ending, a goal by either side of your team's match, another next fixture), and clears the
+  theme it set when you type `/claudinho theme off`. The colors come from a table inside the
+  plugin: apart from which apps are attached to the session, this reads nothing more and sends
+  nothing anywhere. With `teamTheme` off it never sets or clears a theme.
 - Between runs it keeps its last readings (public match data) in the state Claude Code holds for
   the session, and, with `teamTheme` on, whether you turned the team look off with
   `/claudinho theme off`; it writes no file of its own. Its options (`toasts`, `celebrate`, `context`,

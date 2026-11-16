@@ -1,25 +1,30 @@
 /**
- * The team look's scenes (plugin 0.9.0), as data: the two drawings `teamScene` chooses besides the band, each an SVG
- * source made from its arguments alone. Pure: no host, no clock, no network, no file, and no import. The hooks module
- * decides which scene is set and when; this module only draws it.
+ * The team look's scenes (plugin 0.9.0, changed in 0.10.0), as data: the two drawings `teamScene` chooses besides the
+ * band, each an SVG source made from its arguments alone. Pure: no host, no clock, no network, no file, and no import.
+ * The hooks module decides which scene is set and when; this module only draws it.
  *
  * - `pitchSvg`: faded pitch lines across the app in the team's main color, and a small scarf hanging at the top right,
  *   in the two colors, with the team's name on it (`scarfName`; no name, no text). It never moves.
  * - `pixelSvg`: a pixel-art stadium corner at the bottom right: three rows of terraces, a scoreboard, a goal and its
  *   net, a patch of pitch. The scoreboard shows the two teams' codes (`boardCode`), drawn as lit squares from a 5x7
- *   glyph table, never as text, and never a score. Its states: `live` (four fans in the team's colors, and a ball by
- *   the goal), `idle` (an empty stadium: no fans and no ball, the board dimmed) and `goal` (the live corner moving once:
- *   after 1.5 s the ball flies into the top corner and back over 4 s, the fans hop, raise their arms, the board blinks
- *   and fireworks burst in the two colors; a reader that asks for reduced motion gets the corner still, the board lit).
- *   A goal's source ends with `<desc>goal N</desc>`, its stamp: the app does not draw a source it already drew again,
- *   so each goal is its own source.
+ *   glyph table, never as text, and never a score. Its states: `live` (four fans in the team's colors, one holding up a
+ *   scarf, and a ball by the goal), `idle` (an empty stadium: no fans and no ball, the board dimmed) and `goal` (the
+ *   live corner moving once: after 1.5 s the ball flies into the top corner and back over 4 s and the board blinks; a
+ *   goal by the team, the fans hop and raise their arms and five fireworks burst in the two colors and a gold spark; a goal by the other
+ *   side of the match (plugin 0.10.0), the fans stand still and two fireworks burst in the other team's colors (gold and white when none is known); a
+ *   reader that asks for reduced motion gets the corner still, the board lit). The scarf (plugin 0.10.0) is a national
+ *   team's flag, two or three plain stripes in the flag's order, when one is given; else the team's two colors. A
+ *   goal's source ends with `<desc>goal N</desc>`, its stamp: the app does not draw a source it already drew again, so
+ *   each goal is its own source.
  *
  * Both are drawn for a dark page: on a light one they are faint. A color that is not six hex digits is never written
  * into a drawing: the main color then is pitch green, for both; a second color that is not six hex digits is the main
- * one. What the desktop app's engine does with a scene, measured, is what these drawings avoid: no `shape-rendering`
- * and no `@media` rule but reduced motion (either freezes every animation in it), no script, link, image, `use` or
- * `href`, no animation element, no `url()` but a reference to the drawing's own ids, and well under the engine's limit
- * of 131,072 characters. A scene has no crest, logo or photo: colors, lines and squares.
+ * one; a flag that is not two or three colors of six hex digits is no flag; the other team's main color that is not
+ * six hex digits is the spark and white. What the desktop app's engine does with a scene, measured, is what these
+ * drawings avoid: no `shape-rendering` and no `@media` rule but reduced motion (either freezes every animation in it),
+ * no script, link, image, `use` or `href`, no animation element, no `url()` but a reference to the drawing's own ids,
+ * and well under the engine's limit of 131,072 characters. A scene has no crest, emblem, logo or photo: colors, lines
+ * and squares.
  */
 
 /** The look of a team with no colors known: pitch green. */
@@ -43,6 +48,7 @@ const LEGS = '#3a4c63'
 const SKIN = '#c6b99e'
 const HAIR = '#111a28'
 const SPARK = '#ffe08a'
+const WHITE = '#ffffff'
 
 /** A 5x7 pixel alphabet for the scoreboard: each glyph seven rows of five, `1` lit. */
 const FONT: Readonly<Record<string, string>> = {
@@ -90,22 +96,37 @@ const FONT: Readonly<Record<string, string>> = {
 const BALL =
   '<g transform="scale(.55)"><g fill="#e4e5d7" opacity=".83"> <rect x="16" width="48" height="80"/> <rect y="16" width="80" height="48"/> </g> <g fill="#8395a5" opacity=".65"> <rect x="64" y="24" width="16" height="40"/> <rect x="48" y="64" width="16" height="16"/> <rect x="16" y="72" width="32" height="8"/> </g> <g fill="#162233" opacity=".9"> <rect x="24" y="24" width="32" height="24"/> <rect x="32" y="48" width="16" height="8"/> <rect x="16" width="16" height="16"/> <rect x="64" y="16" width="16" height="16"/> <rect y="48" width="16" height="16"/> <rect x="48" y="64" width="16" height="16"/> </g> <rect x="8" y="16" width="16" height="8" fill="#fff8df" opacity=".7"/></g>'
 
+/** The ball's flight, 1.5 s after the goal, over 4 s; the board's blink; the four rings of each firework in turn. */
+const FLY_CSS = '.px-fly{animation:px-shot 4s linear 1.5s 1 both}'
+const LED_CSS = '.px-led{animation:px-led .5s linear 2.0s 6 both}'
+const RINGS_CSS =
+  '.px-r1{animation:px-show .7s linear 2.0s 1 both}.px-r2{animation:px-show .7s linear 2.3s 1 both}.px-r3{animation:px-show .7s linear 2.6s 1 both}.px-r4{animation:px-show .7s linear 2.9s 1 both}'
+/** Reduced motion: every class in `classes` (each one that carries an animation) still, and the board lit. */
+const stillFor = (classes: string): string => `@media (prefers-reduced-motion:reduce){${classes}{animation:none!important}.px-led{fill:${LED_HI}}}`
+const SHOT_KEYFRAMES =
+  '@keyframes px-shot{0%{transform:translate(0px,0px)}10%{transform:translate(152px,-256px)}88%{transform:translate(152px,-256px)}100%{transform:translate(0px,0px)}}'
+const HOP_KEYFRAMES = '@keyframes px-hop{0%{transform:translate(0px,0px)}50%{transform:translate(0px,-16px)}100%{transform:translate(0px,0px)}}'
+const SHOW_KEYFRAMES = '@keyframes px-show{0%{opacity:0}8%{opacity:1}85%{opacity:1}100%{opacity:0}}'
+const LED_KEYFRAMES = `@keyframes px-led{0%,100%{fill:${LED}}50%{fill:${LED_HI}}}`
+
 /**
- * The goal's motion: 1.5 s still, then the ball's flight (4 s), the fans' hops (six of half a second), the raised arms,
- * the board's blink and the four rings of each firework one after another; with reduced motion, none of it and the
- * board lit: the reduced-motion rule names every class that carries an animation.
+ * The team's goal's motion: 1.5 s still, then the ball's flight (4 s), the fans' hops (six of half a second), the
+ * raised arms, the board's blink and the four rings of each firework one after another; with reduced motion, none of it
+ * and the board lit: the reduced-motion rule names every class that carries an animation.
  */
 const GOAL_CSS =
-  '.px-fly{animation:px-shot 4s linear 1.5s 1 both}.px-hop{animation:px-hop .5s ease-in-out 2.0s 6 both}.px-hop2{animation:px-hop .5s ease-in-out 2.25s 6 both}' +
-  '.px-arm{animation:px-show 3.5s linear 1.9s 1 both}.px-led{animation:px-led .5s linear 2.0s 6 both}' +
-  '.px-r1{animation:px-show .7s linear 2.0s 1 both}.px-r2{animation:px-show .7s linear 2.3s 1 both}.px-r3{animation:px-show .7s linear 2.6s 1 both}.px-r4{animation:px-show .7s linear 2.9s 1 both}' +
-  `@media (prefers-reduced-motion:reduce){.px-fly,.px-hop,.px-hop2,.px-arm,.px-led,.px-r1,.px-r2,.px-r3,.px-r4{animation:none!important}.px-led{fill:${LED_HI}}}`
-const GOAL_KEYFRAMES = [
-  '@keyframes px-shot{0%{transform:translate(0px,0px)}10%{transform:translate(152px,-256px)}88%{transform:translate(152px,-256px)}100%{transform:translate(0px,0px)}}',
-  '@keyframes px-hop{0%{transform:translate(0px,0px)}50%{transform:translate(0px,-16px)}100%{transform:translate(0px,0px)}}',
-  '@keyframes px-show{0%{opacity:0}8%{opacity:1}85%{opacity:1}100%{opacity:0}}',
-  `@keyframes px-led{0%,100%{fill:${LED}}50%{fill:${LED_HI}}}`,
-].join('\n')
+  `${FLY_CSS}.px-hop{animation:px-hop .5s ease-in-out 2.0s 6 both}.px-hop2{animation:px-hop .5s ease-in-out 2.25s 6 both}` +
+  `.px-arm{animation:px-show 3.5s linear 1.9s 1 both}${LED_CSS}` +
+  RINGS_CSS +
+  stillFor('.px-fly,.px-hop,.px-hop2,.px-arm,.px-led,.px-r1,.px-r2,.px-r3,.px-r4')
+const GOAL_KEYFRAMES = [SHOT_KEYFRAMES, HOP_KEYFRAMES, SHOW_KEYFRAMES, LED_KEYFRAMES].join('\n')
+/**
+ * The other side's goal's motion (plugin 0.10.0): the same flight, blink and rings at the same times, and no rule for
+ * the fans (`.px-hop`, `.px-hop2`, `.px-arm`): they stand, their arms hidden; with reduced motion, none of it and the
+ * board lit, the rule naming every class that carries an animation here.
+ */
+const OTHER_GOAL_CSS = FLY_CSS + LED_CSS + RINGS_CSS + stillFor('.px-fly,.px-led,.px-r1,.px-r2,.px-r3,.px-r4')
+const OTHER_GOAL_KEYFRAMES = [SHOT_KEYFRAMES, SHOW_KEYFRAMES, LED_KEYFRAMES].join('\n')
 
 /** One rectangle. */
 const R = (x: number, y: number, w: number, h: number, extra = ''): string =>
@@ -120,6 +141,30 @@ function colorsOf(main: unknown, second: unknown): { a: string; b: string } {
   if (typeof main !== 'string' || !HEX.test(main)) return { a: `#${PITCH_GREEN}`, b: `#${PITCH_GREEN}` }
   const a = `#${main.toLowerCase()}`
   return { a, b: typeof second === 'string' && HEX.test(second) ? `#${second.toLowerCase()}` : a }
+}
+
+/**
+ * The other team's two firework colors, `#rrggbb` lower-cased: a usable main color and a usable second one (else the
+ * main for both); a main color that is not six hex digits (none known) is the spark and white, whatever the second is.
+ */
+function otherColorsOf(main: unknown, second: unknown): { a: string; b: string } {
+  if (typeof main !== 'string' || !HEX.test(main)) return { a: SPARK, b: WHITE }
+  return colorsOf(main, second)
+}
+
+/**
+ * A flag for the scarf, `#rrggbb` lower-cased: an array of two or three strings of six hex digits each, read by index
+ * (a hole is no color); anything else is none.
+ */
+function flagOf(scarf: unknown): string[] | null {
+  if (!Array.isArray(scarf) || (scarf.length !== 2 && scarf.length !== 3)) return null
+  const out: string[] = []
+  for (let i = 0; i < scarf.length; i += 1) {
+    const c: unknown = scarf[i]
+    if (typeof c !== 'string' || !HEX.test(c)) return null
+    out.push(`#${c.toLowerCase()}`)
+  }
+  return out
 }
 
 /** A color's relative luminance (sRGB), from `#rrggbb`: how bright it reads, 0 to 1. */
@@ -219,10 +264,23 @@ function glyphs(s: string, x: number, y: number, p: number): string {
   return out
 }
 
-/** A fan on the terraces at (x, y), in the team's colors: standing with a scarf held up, or with arms that show at a goal. */
-function fan(x: number, y: number, A: string, B: string, stand: boolean, alt: boolean): string {
+/**
+ * The scarf a standing fan holds up: a flag's stripes (`flagOf`) in its order, three of 24 from x = -20 or two of 32
+ * from x = -16, each drawn once; with no flag, a bar in the main color with its two ends in the second.
+ */
+function scarfBar(A: string, B: string, flag: string[] | null): string {
+  if (flag === null) return R(-16, -16, 64, 8, ` fill="${A}"`) + R(-16, -16, 8, 8, ` fill="${B}"`) + R(40, -16, 8, 8, ` fill="${B}"`)
+  const [x0, w] = flag.length === 3 ? [-20, 24] : [-16, 32]
+  return flag.map((c, i) => R(x0 + i * w, -16, w, 8, ` fill="${c}"`)).join('')
+}
+
+/**
+ * A fan on the terraces at (x, y), in the team's colors: standing with a scarf held up (`scarfBar`: the flag when one is
+ * given), or with arms that show at a goal.
+ */
+function fan(x: number, y: number, A: string, B: string, stand: boolean, alt: boolean, flag: string[] | null = null): string {
   const arms = stand
-    ? R(-8, -8, 8, 24, ` fill="${SKIN}"`) + R(32, -8, 8, 24, ` fill="${SKIN}"`) + R(-16, -16, 64, 8, ` fill="${A}"`) + R(-16, -16, 8, 8, ` fill="${B}"`) + R(40, -16, 8, 8, ` fill="${B}"`)
+    ? R(-8, -8, 8, 24, ` fill="${SKIN}"`) + R(32, -8, 8, 24, ` fill="${SKIN}"`) + scarfBar(A, B, flag)
     : R(-8, -8, 8, 24, ` class="px-arm" fill="${SKIN}"`) + R(32, -8, 8, 24, ` class="px-arm" fill="${SKIN}"`)
   return (
     `<g transform="translate(${x} ${y})"><g class="${alt ? 'px-hop2' : 'px-hop'}">${arms}` +
@@ -235,6 +293,9 @@ function fan(x: number, y: number, A: string, B: string, stand: boolean, alt: bo
     '</g></g>'
   )
 }
+
+/** A firework: its center (x, y) and its two ring colors, the first for its first and third rings. */
+type Burst = [number, number, string, string]
 
 /** One ring of a firework: eight squares at radius `r` around its center, shown in turn `k` of four. */
 function ring(r: number, color: string, k: number): string {
@@ -258,6 +319,13 @@ function ring(r: number, color: string, k: number): string {
  * The pixel corner in a state: `live`, `idle` or `goal` (anything else is idle). The board shows `home - away`, each
  * by `boardCode`, centered: with neither side usable it is empty, with one the other shows three dashes. `stamp` is a
  * goal's (a positive integer, else 0), written into its `<desc>`; live and idle carry none, and neither moves.
+ *
+ * Plugin 0.10.0: `scarf`, a flag (`flagOf`: two or three colors of six hex digits, lower-cased when drawn; anything else
+ * is as if absent), is the standing fan's scarf, live and at a goal (an empty stadium has no fan); with none, live and
+ * idle are 0.9.0's drawings, byte for byte. At a goal, `by` says whose: exactly `'other'` is the other side's (the fans
+ * stand, two fireworks in `otherMain` and `otherSecond`, `otherColorsOf`: one color for all their rings, the spark and
+ * white for none known); anything else is the team's (the fans hop and raise their arms, five fireworks in the team's
+ * two colors and the spark). Out of a goal `by`, `otherMain` and `otherSecond` are not read.
  */
 export function pixelSvg(a: {
   main: string
@@ -266,9 +334,15 @@ export function pixelSvg(a: {
   home?: unknown
   away?: unknown
   stamp?: unknown
+  scarf?: unknown
+  by?: unknown
+  otherMain?: unknown
+  otherSecond?: unknown
 }): string {
   const { a: A, b: B } = colorsOf(a.main, a.second)
   const state = a.state === 'live' || a.state === 'goal' ? a.state : 'idle'
+  const other = state === 'goal' && a.by === 'other'
+  const flag = flagOf(a.scarf)
   const home = boardCode(a.home)
   const away = boardCode(a.away)
   const board = home === NO_CODE && away === NO_CODE ? '' : `${home} - ${away}`
@@ -294,20 +368,30 @@ export function pixelSvg(a: {
     Array.from({ length: 9 }, (_, i) => R(1472 + i * 32, 640, 4, 208)).join('') +
     Array.from({ length: 6 }, (_, i) => R(1440, 668 + i * 32, 320, 4)).join('') +
     '</g>'
-  const fireworks = (
-    [
-      [1376, 240, A, SPARK],
-      [1512, 312, B, A],
-      [1448, 136, SPARK, B],
-    ] as Array<[number, number, string, string]>
-  )
+  // Each firework: its center and its two ring colors, alternating. Live and idle carry the three of 0.9.0 (hidden: a
+  // ring shows only in a goal's motion); the team's goal adds two (five), the other side's goal is two in its colors.
+  const three: Burst[] = [
+    [1376, 240, A, SPARK],
+    [1512, 312, B, A],
+    [1448, 136, SPARK, B],
+  ]
+  const { a: O1, b: O2 } = otherColorsOf(a.otherMain, a.otherSecond)
+  const bursts: Burst[] = other
+    ? [
+        [1512, 312, O1, O2],
+        [1400, 200, O2, O1],
+      ]
+    : state === 'goal'
+      ? [...three, [1300, 150, B, SPARK], [1528, 150, A, B]]
+      : three
+  const fireworks = bursts
     .map(([x, y, c1, c2]) => `<g class="px-fx" transform="translate(${x} ${y})">${ring(16, c1, 1)}${ring(32, c2, 2)}${ring(48, c1, 3)}${ring(64, c2, 4)}</g>`)
     .join('')
   const played =
     state === 'idle'
       ? []
       : [
-          `<g class="px-crowd">${fan(1280, 696, A, B, true, false)}${fan(1376, 696, A, B, false, true)}${fan(1328, 600, A, B, false, false)}${fan(1408, 600, A, B, false, true)}</g>`,
+          `<g class="px-crowd">${fan(1280, 696, A, B, true, false, flag)}${fan(1376, 696, A, B, false, true)}${fan(1328, 600, A, B, false, false)}${fan(1408, 600, A, B, false, true)}</g>`,
           R(1296, 940, 40, 6, ' class="px-shadow" fill="#000" opacity=".3"'),
           `<g class="px-ball" transform="translate(1292 896)"><g class="px-fly">${BALL}</g></g>`,
         ]
@@ -316,7 +400,7 @@ export function pixelSvg(a: {
     '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">',
     '<style>',
     '.px-arm,.px-ring{opacity:0}',
-    ...(state === 'goal' ? [GOAL_CSS, GOAL_KEYFRAMES] : []),
+    ...(state === 'goal' ? (other ? [OTHER_GOAL_CSS, OTHER_GOAL_KEYFRAMES] : [GOAL_CSS, GOAL_KEYFRAMES]) : []),
     '</style>',
     '<svg x="60%" y="0" width="40%" height="100%" viewBox="1232 40 368 960" preserveAspectRatio="xMaxYMax meet">',
     terraces,

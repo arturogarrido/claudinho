@@ -1,6 +1,6 @@
 {
   "name": "claudinho",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Your Claude Code celebrates when your team scores: a toast with the scorer, a short celebration with the Claude mascot, and the score above your prompt. Follow a competition and pin your team with the claudinho CLI on your machine, then open any match's goals and cards with /claudinho match. Live data: ESPN. Not affiliated with FIFA, any confederation, league or club, or Anthropic.",
   "author": {
     "name": "Arturo Garrido"
@@ -49,7 +49,7 @@
       "title": "Team look scene",
       "options": ["band", "pitch", "pixel"],
       "default": "band",
-      "description": "What the team look draws behind the conversation; needs Team look on. band: a band of your team's colors across the top. pitch: faded pitch lines and a small scarf with your team's name. pixel: a pixel-art stadium corner whose scoreboard shows the two teams' codes, with fans while your team plays and a short goal moment when it scores. Drawn for a dark page; desktop and mobile apps only."
+      "description": "What the team look draws behind the conversation; needs Team look on. band: a band of your team's colors across the top. pitch: faded pitch lines and a small scarf with your team's name. pixel: a pixel-art stadium corner whose scoreboard shows the two codes of your team's match or next fixture (blank when neither is known), with fans while your team plays (a national team's fan holds a scarf in its flag's colors) and a short goal moment when either team scores (none with Goal celebration off). Drawn for a dark page; desktop and mobile apps only."
     }
   }
 }
