@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import { FLAGS_APPROVED, NO_FLAG } from './flag-colors.approved'
 import { FLAG_COLORS, TEAM_COLORS } from './team-colors'
 import { buildLook, flagForPick } from './team-look'
-import { boardCode, pitchSvg, pixelSvg, scarfName } from './team-scenes'
+import { boardCode, boardWord, pitchSvg, pixelSvg, scarfName } from './team-scenes'
 import { START, liveRecord, momentView, view, world } from './world'
 
 /**
@@ -16,6 +16,8 @@ import { START, liveRecord, momentView, view, world } from './world'
  * drawings). Since 0.10.0 a national team's fan holds a scarf in its flag's colors. The cases from "0.10.0" down state
  * those three changes. Since 0.11.0 the field is green for every team, with a goal area's two lines, and at a goal the
  * board alternates the word GOOOAL and the scoring team's colors, still never a score: the cases from "0.11.0" down.
+ * Since 0.12.0 the board's word is the reader's language's (GOOOL, BUUUT), and `teamScenePlace: left` draws the
+ * stadium at the bottom left, mirrored, its board and its flag scarf turned back: the cases from "0.12.0" down.
  *
  * What the engine does with a scene, measured in the desktop app (anthropics/claude-code#109770, #110150), and so
  * what these cases refuse: `shape-rendering` and any `@media` rule but reduced motion freeze every animation; a
@@ -1693,5 +1695,224 @@ describe('the pixel corner: at a goal the board says GOOOAL and flashes the scor
       const off = (/\{([^{}]*)\{animation:none!important\}/.exec(css.slice(css.indexOf('@media (prefers-reduced-motion:reduce){'))) ?? [])[1] as string
       for (const c of ['px-codes', 'px-word', 'px-flash']) expect(new RegExp(`\\.${c}(?![a-z0-9-])`).test(off), c).toBe(true)
     }
+  })
+})
+
+// ── Plugin 0.12.0: the board's word in the reader's language, and the stadium at the left ──────────────────────
+
+const fp = (text: string) => {
+  let h = 0x811c9dc5
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h.toString(16)
+}
+const ES_WORDS = { goal: '¡GOL!', ownGoal: 'Gol en contra', ownGoalDetail: 'gol en contra', goalFor: 'Gol de {team}', goals: 'Goles', scoreUpdated: 'Marcador corregido', penalties: 'Penales', fullTime: 'Final', win: 'Gana {team}', draw: 'Empate' }
+const SPANISH = { lang: 'es', words: ES_WORDS }
+type Px = Parameters<typeof pixelSvg>[0]
+const px = (over: Record<string, unknown>) => pixelSvg({ ...ITA, home: 'BEL', away: 'ITA', ...over } as Px)
+const wordRects = (svg: string) => rectsOf(groupOf(svg, 'px-word'))
+
+describe('0.12.0: with no word and no place, every drawing is 0.11.0\'s, byte for byte', () => {
+  const cases: Array<[string, Record<string, unknown>, string]> = [
+    ['idle', { state: 'idle' }, 'e8dc06e7'],
+    ['idle, a flag given', { state: 'idle', scarf: IT_FLAG }, 'e8dc06e7'],
+    ['live', { state: 'live' }, '7ad4380d'],
+    ['live, the flag scarf', { state: 'live', scarf: IT_FLAG }, '71d8a9c1'],
+    ['the pick\'s goal', { state: 'goal', stamp: 1 }, 'affb8a78'],
+    ['the pick\'s goal, the flag', { state: 'goal', stamp: 1, scarf: IT_FLAG }, 'f50b3e9b'],
+    ['the other side\'s goal', { state: 'goal', stamp: 1, ...BEL_OTHER }, 'e38a2ff3'],
+    ['the other side\'s goal, the flag', { state: 'goal', stamp: 1, scarf: IT_FLAG, ...BEL_OTHER }, 'b42334bf'],
+  ]
+  for (const [label, over, want] of cases)
+    test(label, async () => {
+      expect(fp(px(over))).toBe(want)
+      // The English word and the right-hand place are the same drawing as none given.
+      expect(px({ ...over, word: 'GOAL!', place: 'right' })).toBe(px(over))
+    })
+})
+
+describe('0.12.0: the board\'s word', () => {
+  test('boardWord: the letters of the language\'s goal word, the first vowel three times', async () => {
+    expect(boardWord('GOAL!')).toBe('GOOOAL')
+    expect(boardWord('¡GOL!')).toBe('GOOOL')
+    expect(boardWord('GOL!')).toBe('GOOOL')
+    expect(boardWord('BUT !')).toBe('BUUUT')
+    expect(boardWord('gol')).toBe('GOOOL')
+    expect(boardWord('TOR!')).toBe('TOOOR')
+    expect(boardWord('GÓL')).toBe('GOOOL')
+    expect(boardWord('gól')).toBe('GOOOL')
+    // No vowel: the letters as they are. Six letters is the most: eight glyphs with the vowel tripled, the board holds nine.
+    expect(boardWord('XYZ')).toBe('XYZ')
+    expect(boardWord('ABCDEF')).toBe('AAABCDEF')
+    expect(boardWord('  g-o_a.l  ')).toBe('GOOOAL')
+  })
+
+  test('boardWord: anything that is no word of one to six letters is GOOOAL, never the value given', async () => {
+    for (const v of [undefined, null, 7, true, [], {}, ['GOL'], { toString: () => 'GOL' }, '', '   ', '!!!', '123', 'ABCDEFG', 'GOOOOOOOOL', '¡¡¡']) expect(boardWord(v), JSON.stringify(v)).toBe('GOOOAL')
+    expect(boardWord('"/><script>')).toBe('SCRIIIPT')
+    expect(boardWord('"/><scripts>')).toBe('GOOOAL')
+    for (const v of ['GOAL!', '¡GOL!', 'BUT !', '"/><script>', 'x'.repeat(5000)]) expect(boardWord(v)).toMatch(/^[A-Z]{1,8}$/)
+  })
+
+  test('the goal\'s word is drawn in the board\'s glyphs, centered for its own length, for both goals', async () => {
+    for (const [given, word] of [['¡GOL!', 'GOOOL'], ['BUT !', 'BUUUT'], ['GOAL!', 'GOOOAL'], ['XYZ', 'XYZ'], ['ABCDEF', 'AAABCDEF']] as const) {
+      const width = word.length * 24 - 4
+      const x0 = 1320 + Math.floor((264 - width) / 2)
+      for (const svg of [px({ state: 'goal', stamp: 1, word: given }), px({ state: 'goal', stamp: 1, word: given, ...BEL_OTHER })]) {
+        const r = wordRects(svg)
+        expect(r.length, word).toBeGreaterThan(0)
+        // Every glyph of these words has a lit square in its first and its last column, so the extents are the word's.
+        if (word !== 'XYZ') expect(Math.max(...r.map((q) => q.x + q.w)) - Math.min(...r.map((q) => q.x)), word).toBeLessThanOrEqual(width)
+        for (const q of r) {
+          expect(q.x, word).toBeGreaterThanOrEqual(x0)
+          expect(q.x + q.w, word).toBeLessThanOrEqual(x0 + width)
+          expect(q.y).toBeGreaterThanOrEqual(482)
+          expect(q.y + q.h).toBeLessThanOrEqual(510)
+        }
+        expect(wellFormed(svg)).toBeNull()
+        expect(refused(svg)).toEqual([])
+      }
+    }
+    // Two languages are two drawings; the same word in another spelling is one.
+    expect(px({ state: 'goal', stamp: 1, word: '¡GOL!' })).not.toBe(px({ state: 'goal', stamp: 1 }))
+    expect(px({ state: 'goal', stamp: 1, word: '¡GOL!' })).toBe(px({ state: 'goal', stamp: 1, word: 'GOL!' }))
+    expect(groupOf(px({ state: 'goal', stamp: 1, word: 'BUT !' }), 'px-word')).not.toBe(groupOf(px({ state: 'goal', stamp: 1, word: '¡GOL!' }), 'px-word'))
+  })
+
+  test('a word is read at a goal alone, and a value that is no word draws GOOOAL', async () => {
+    for (const state of ['live', 'idle'] as const) expect(px({ state, word: '¡GOL!' })).toBe(px({ state }))
+    for (const v of [7, null, '', 'ABCDEFG', {}]) expect(px({ state: 'goal', stamp: 1, word: v }), JSON.stringify(v)).toBe(px({ state: 'goal', stamp: 1 }))
+    expect(px({ state: 'goal', stamp: 1, word: '"/><script>' })).not.toContain('script')
+  })
+
+  test('the hooks: a goal read in Spanish is drawn with GOOOL', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [nations([0, 0], {}, SPANISH), nations([0, 1], {}, SPANISH)], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    const goal = (await drawn($, sceneOf(sets[1]))) as string
+    expect(goal).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'goal', stamp: stampOf(goal), word: '¡GOL!' } as Px))
+    expect(groupOf(goal, 'px-word')).toBe(groupOf(px({ state: 'goal', stamp: 1, word: 'GOL' }), 'px-word'))
+    // Not the English word's squares: the comparison above is not one drawing against itself.
+    expect(groupOf(goal, 'px-word')).not.toBe(groupOf(px({ state: 'goal', stamp: 1 }), 'px-word'))
+  })
+
+  test('the hooks: a view with no words (an older CLI) draws GOOOAL, as 0.11.0', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [nations([0, 0]), nations([0, 1])], DESKTOP)
+    await clock.advance(15_000)
+    const goal = (await drawn($, sceneOf(sets[1]))) as string
+    expect(goal).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'goal', stamp: stampOf(goal) } as Px))
+  })
+
+  test('the hooks: the other side\'s goal carries the word too', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [nations([0, 0], {}, SPANISH), nations([1, 0], {}, SPANISH)], DESKTOP)
+    await clock.advance(15_000)
+    const goal = (await drawn($, sceneOf(sets[1]))) as string
+    expect(groupOf(goal, 'px-word')).toBe(groupOf(px({ state: 'goal', stamp: 1, word: 'GOL' }), 'px-word'))
+    expect(groupOf(goal, 'px-word')).not.toBe(groupOf(px({ state: 'goal', stamp: 1 }), 'px-word'))
+  })
+
+  test('the hooks: a goal keeps the word it was seen with: a reading in another language inside its six seconds sets nothing', PIXEL, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock, command } = await world($, on, [nations([0, 0], {}, SPANISH), nations([0, 1], {}, SPANISH), nations([0, 1])], DESKTOP)
+    await clock.advance(15_000)
+    expect(sets).toHaveLength(2)
+    await command()
+    await clock.advance(GOAL_MS - 2_000)
+    expect(sets).toHaveLength(2)
+    expect(groupOf((await drawn($, sceneOf(sets[1]))) as string, 'px-word')).toBe(groupOf(px({ state: 'goal', stamp: 1, word: 'GOL' }), 'px-word'))
+    expect(groupOf((await drawn($, sceneOf(sets[1]))) as string, 'px-word')).not.toBe(groupOf(px({ state: 'goal', stamp: 1 }), 'px-word'))
+  })
+})
+
+describe('0.12.0: the stadium at the left', () => {
+  const LEFT = { options: { ...PIXEL.options, teamScenePlace: 'left' } }
+  const groupTag = (svg: string, cls: string) => (new RegExp(`<g class="${cls}"[^>]*>`).exec(svg) ?? [''])[0]
+  const states: Array<[string, Record<string, unknown>]> = [
+    ['idle', { state: 'idle' }],
+    ['live', { state: 'live' }],
+    ['live, the flag scarf', { state: 'live', scarf: IT_FLAG }],
+    ['the pick\'s goal, the flag', { state: 'goal', stamp: 1, scarf: IT_FLAG, word: '¡GOL!' }],
+    ['the other side\'s goal', { state: 'goal', stamp: 1, ...BEL_OTHER }],
+  ]
+
+  test('only the exact value left is the left: anything else is the right-hand drawing', async () => {
+    for (const [, over] of states) for (const v of ['right', 'LEFT', ' left', '', 1, null, true, ['left'], {}]) expect(px({ ...over, place: v }), JSON.stringify(v)).toBe(px(over))
+    for (const [label, over] of states) expect(px({ ...over, place: 'left' }), label).not.toBe(px(over))
+  })
+
+  for (const [label, over] of states)
+    test(`${label}: anchored at the bottom left, mirrored once, the board turned back`, async () => {
+      const svg = px({ ...over, place: 'left' })
+      const right = px(over)
+      expect(svg).toContain('<svg x="0" y="0" width="40%" height="100%" viewBox="1232 40 368 960" preserveAspectRatio="xMinYMax meet">')
+      expect(svg).not.toContain('xMaxYMax')
+      // One mirror about the viewBox's middle (x to 2832 - x), holding the whole stadium.
+      expect(svg.split('transform="translate(2832 0) scale(-1 1)"').length - 1).toBe(1)
+      expect(svg).toMatch(/preserveAspectRatio="xMinYMax meet">\s*<g transform="translate\(2832 0\) scale\(-1 1\)">/)
+      expect(svg).toMatch(/<\/g>\s*<\/svg>(<desc>goal \d+<\/desc>)?<\/svg>$/)
+      // The board's content turned back about the board's middle (x 1452), in one group of its own.
+      expect(svg.split('<g class="px-board"').length - 1).toBe(1)
+      expect(groupTag(svg, 'px-board')).toBe('<g class="px-board" transform="translate(2904 0) scale(-1 1)">')
+      const board = svg.slice(svg.indexOf('<g class="px-board"'))
+      expect(board.indexOf('class="px-led"')).toBeGreaterThan(-1)
+      if (over.state === 'goal') {
+        const inBoard = svg.slice(svg.indexOf('<g class="px-board"'), svg.indexOf('class="px-flash"'))
+        for (const cls of ['px-codes', 'px-word']) expect(inBoard, cls).toContain(`class="${cls}"`)
+      }
+      // The right-hand drawing has neither group.
+      for (const cls of ['px-board', 'px-scarf']) expect(right, cls).not.toContain(cls)
+      expect(right).not.toContain('translate(2832 0)')
+      // The same shapes, the same motion: nothing but the placing differs.
+      expect(groupOf(svg, 'px-field')).toBe(groupOf(right, 'px-field'))
+      expect(groupOf(svg, 'px-led')).toBe(groupOf(right, 'px-led'))
+      expect(cssOf(svg)).toBe(cssOf(right))
+      expect(wellFormed(svg)).toBeNull()
+      expect(refused(svg)).toEqual([])
+    })
+
+  test('the flag scarf is turned back about its own middle, so the flag reads in its order; the kit\'s scarf is not', async () => {
+    for (const flag of [IT_FLAG, ['0057b7', 'ffd700']]) {
+      const svg = px({ state: 'live', scarf: flag, place: 'left' })
+      expect(svg.split('<g class="px-scarf"').length - 1).toBe(1)
+      const inner = groupOf(svg, 'px-scarf')
+      const stripes = [...inner.matchAll(/<rect x="(-?\d+)" y="(-?\d+)" width="(\d+)" height="(\d+)" fill="(#[0-9a-f]{6})"\/>/g)].map((m) => ({ x: Number(m[1]), w: Number(m[3]), fill: m[5] }))
+      expect(stripes.map((r) => r.fill)).toEqual(flag.map((c) => `#${c}`))
+      const middle = (Math.min(...stripes.map((r) => r.x)) + Math.max(...stripes.map((r) => r.x + r.w))) / 2
+      expect(groupTag(svg, 'px-scarf')).toBe(`<g class="px-scarf" transform="translate(${2 * middle} 0) scale(-1 1)">`)
+      // The stripes themselves are the right-hand drawing's.
+      expect(crowdOf(px({ state: 'live', scarf: flag }))).toContain(inner)
+    }
+    expect(px({ state: 'live', place: 'left' })).not.toContain('px-scarf')
+    expect(px({ state: 'idle', scarf: IT_FLAG, place: 'left' })).not.toContain('px-scarf')
+  })
+
+  test('the hooks: teamScenePlace left draws every state at the left; with no option, at the right', LEFT, async ($, on) => {
+    const { sets } = engine(on)
+    const { clock } = await world($, on, [nations([0, 0]), nations([0, 1])], DESKTOP)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'live', place: 'left' } as Px))
+    expect(await drawn($, sceneOf(sets[0]))).toContain('translate(2832 0) scale(-1 1)')
+    await clock.advance(15_000)
+    const goal = (await drawn($, sceneOf(sets[1]))) as string
+    expect(goal).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'goal', stamp: stampOf(goal), place: 'left' } as Px))
+    expect(goal).toContain('<g class="px-board" transform="translate(2904 0) scale(-1 1)">')
+  })
+
+  for (const value of ['right', 'LEFT', 'middle', ''])
+    test(`the hooks: teamScenePlace ${JSON.stringify(value)} is the right`, { options: { ...PIXEL.options, teamScenePlace: value } }, async ($, on) => {
+      const { sets } = engine(on)
+      await world($, on, [nations([0, 0])], DESKTOP)
+      expect(await drawn($, sceneOf(sets[0]))).toBe(pixelSvg({ ...ITA, ...NATIONS, state: 'live' } as Px))
+    })
+
+  test('the hooks: the pitch has no place: left changes nothing there', { options: { teamTheme: 'on', teamScene: 'pitch', teamScenePlace: 'left' } }, async ($, on) => {
+    const { sets } = engine(on)
+    await world($, on, [live([0, 0])], DESKTOP)
+    expect(sets).toHaveLength(1)
+    expect(await drawn($, sceneOf(sets[0]))).toBe(pitchSvg({ ...LIV, name: 'Liverpool' }))
   })
 })
