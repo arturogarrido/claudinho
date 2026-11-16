@@ -48,6 +48,12 @@ if [ $# -ge 1 ]; then
     esac
   done
   [ -n "$dest" ] || refuse "the folder's name is empty"
+  # A relative name is made ./name once, here: no command below can then read it as an option, as `-` (the previous
+  # directory, to cd), or look for it along CDPATH.
+  case "$dest" in
+    /*) ;;
+    *) dest=./$dest ;;
+  esac
   if [ -e "$dest" ] || [ -L "$dest" ]; then
     # A link is never written through: a folder linked into the checkout would have its files replaced.
     [ ! -L "$dest" ] || refuse "$dest is a link; choose a folder"
@@ -89,7 +95,8 @@ version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$root/packages/plugin/.cl
 if [ -n "${PLUGIN_DEMO_NO_VALIDATE:-}" ]; then
   echo "plugin-demo: not validated (PLUGIN_DEMO_NO_VALIDATE is set)" >&2
 elif command -v claude >/dev/null 2>&1; then
-  claude plugin validate "$dest" >/dev/null || { echo "plugin-demo: the assembled demo does not validate (claude plugin validate $dest)" >&2; exit 1; }
+  # The folder as an absolute path: a name that starts with a dash is never read by claude as an option.
+  claude plugin validate "$(cd -- "$dest" && pwd)" >/dev/null || { echo "plugin-demo: the assembled demo does not validate (claude plugin validate $dest)" >&2; exit 1; }
   echo "plugin-demo: validated" >&2
 else
   echo "plugin-demo: claude is not on PATH, so the demo was not validated" >&2

@@ -196,14 +196,54 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo.sh, run', () 
     expect(r.status).toBe(1);
   });
 
-  it('a folder whose name starts with a dash is a name, never an option', () => {
+  it('a folder whose name starts with a dash, or is a dash, is a name, never an option: new, empty, and its own earlier output', () => {
+    const at = (cwd: string, name: string) => spawnSync('bash', [join(ROOT, 'scripts/plugin-demo.sh'), name], { cwd, encoding: 'utf8', timeout: 20_000, env: { ...process.env, PLUGIN_DEMO_NO_VALIDATE: '1', OLDPWD: tmpdir() } });
+    for (const name of ['-P', '-', '--', '-n', '-rf']) {
+      // A folder that does not exist yet, then the same folder again (its own output).
+      const base = mkdtempSync(join(tmpdir(), 'plugin-demo-'));
+      for (const turn of ['new', 'again']) {
+        const r = at(base, name);
+        expect(r.status, `${name} ${turn}`).toBe(0);
+        expect(r.stdout.trim().endsWith(`/${name}`), `${name} ${turn}`).toBe(true);
+        expect(r.stdout.trim().startsWith('/'), `${name} ${turn}`).toBe(true);
+      }
+      expect(existsSync(join(base, name, 'hooks/register.tsx')), name).toBe(true);
+      expect(readdirSync(base), name).toEqual([name]);
+      // A folder that exists and is empty.
+      const other = mkdtempSync(join(tmpdir(), 'plugin-demo-'));
+      mkdirSync(join(other, name));
+      expect(at(other, name).status, `${name} empty`).toBe(0);
+      expect(existsSync(join(other, name, 'hooks/register.tsx')), `${name} empty`).toBe(true);
+    }
+  });
+
+  it('an entry whose name holds a line break is read whole: one that only begins like the demo\'s is refused', () => {
+    for (const stray of ['hooks/hooks.json\n', 'tsconfig.json\n', 'hooks/team-look.ts\nx']) {
+      const dest = assembled();
+      writeFileSync(join(dest, stray), 'mine\n');
+      writeFileSync(join(dest, 'hooks/register.tsx'), 'mine too\n');
+      const r = run(dest);
+      expect(r.status, JSON.stringify(stray)).toBe(1);
+      expect(readFileSync(join(dest, 'hooks/register.tsx'), 'utf8'), JSON.stringify(stray)).toBe('mine too\n');
+    }
+  });
+
+  it('hands the validator the folder as an absolute path, so a name that starts with a dash is not its option', () => {
+    // A stand-in `claude` first on PATH: it records its arguments and refuses one that starts with a dash, as the CLI does.
+    const bin = mkdtempSync(join(tmpdir(), 'plugin-demo-bin-'));
+    const seen = join(bin, 'seen.txt');
+    writeFileSync(join(bin, 'claude'), `#!/bin/sh\nprintf '%s\\n' "$@" > '${seen}'\ncase "$3" in -*) echo "error: unknown option" >&2; exit 1 ;; esac\nexit 0\n`, { mode: 0o755 });
     const base = mkdtempSync(join(tmpdir(), 'plugin-demo-'));
-    const first = spawnSync('bash', [join(ROOT, 'scripts/plugin-demo.sh'), '-P'], { cwd: base, encoding: 'utf8', timeout: 20_000, env: { ...process.env, PLUGIN_DEMO_NO_VALIDATE: '1' } });
-    expect(first.status).toBe(0);
-    expect(existsSync(join(base, '-P/hooks/register.tsx'))).toBe(true);
-    const again = spawnSync('bash', [join(ROOT, 'scripts/plugin-demo.sh'), '-P'], { cwd: base, encoding: 'utf8', timeout: 20_000, env: { ...process.env, PLUGIN_DEMO_NO_VALIDATE: '1' } });
-    expect(again.status).toBe(0);
-    expect(again.stdout.trim().endsWith('/-P')).toBe(true);
+    const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` };
+    delete env.PLUGIN_DEMO_NO_VALIDATE;
+    const r = spawnSync('bash', [join(ROOT, 'scripts/plugin-demo.sh'), '-P'], { cwd: base, encoding: 'utf8', timeout: 20_000, env });
+    expect(r.stderr).toContain('validated');
+    expect(r.status).toBe(0);
+    const args = readFileSync(seen, 'utf8').trim().split('\n');
+    expect(args.slice(0, 2)).toEqual(['plugin', 'validate']);
+    expect(args[2]?.startsWith('/')).toBe(true);
+    expect(args[2]?.endsWith('/-P')).toBe(true);
+    expect(r.stdout.trim()).toBe(args[2]);
   });
 
   it('refuses a folder that is not a demo at all, and a file', () => {
