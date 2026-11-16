@@ -483,15 +483,22 @@ describe('the table and the look, as data', () => {
     }
   })
 
-  test('the desktop app paints every look: no entry, and not pitch green, is refused for contrast', async () => {
-    const refused: string[] = []
-    for (const [id, colors] of [...Object.entries(TEAM_COLORS), ['pitch', undefined] as const]) {
-      const { problems } = buildLook(id, colors)
-      const line = problems.find((p) => p.startsWith("Desktop won't paint"))
-      if (line !== undefined) refused.push(`${id}: ${line}`)
-    }
-    expect(refused).toEqual([])
-  })
+  // Every entry is asked, forty to a case: one case over the whole table ran close to the kit's limit per case on a
+  // slow host (each look builds a full palette). The slices cover the table by construction; pitch green rides last.
+  const LOOKS = [...Object.entries(TEAM_COLORS), ['pitch', undefined] as const]
+  const LOOKS_PER_CASE = 40
+  for (let from = 0; from < LOOKS.length; from += LOOKS_PER_CASE) {
+    const to = Math.min(from + LOOKS_PER_CASE, LOOKS.length)
+    test(`the desktop app paints every look, entries ${from + 1} to ${to} of ${LOOKS.length}: no entry, and not pitch green, is refused for contrast`, async () => {
+      const refused: string[] = []
+      for (const [id, colors] of LOOKS.slice(from, to)) {
+        const { problems } = buildLook(id, colors)
+        const line = problems.find((p) => p.startsWith("Desktop won't paint"))
+        if (line !== undefined) refused.push(`${id}: ${line}`)
+      }
+      expect(refused).toEqual([])
+    })
+  }
 
   test('a look is colors and a scene: a band named for the team\'s two colors, frosted glass over it; no image, no still ground', async () => {
     const { look } = buildLook('Pumas UNAM', TEAM_COLORS['espn:233'])
