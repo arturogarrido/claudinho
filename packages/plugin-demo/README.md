@@ -17,6 +17,7 @@ Claude Code with `--plugin-dir <folder>`, or name the folder in `CLAUDE_CODE_PLU
 | Command | What it shows |
 |---|---|
 | `/demo spain` (or `mexico`, `italy`, `argentina`, `pumas`, `arsenal`) | that team's stadium, live |
+| `/demo band` | the band of the team's two colors across the top (the default scene) |
 | `/demo pitch` | the pitch scene |
 | `/demo idle` | the stadium, empty |
 | `/demo live` | the stadium with its fans |

@@ -7,8 +7,9 @@
 # beside its module, so the demo shows exactly what packages/plugin draws now.
 #
 #   bash scripts/plugin-demo.sh            assembles into a new temporary folder and prints it
-#   bash scripts/plugin-demo.sh <folder>   assembles into <folder> (created if missing; refused if it holds
-#                                          anything that is not an earlier copy of this demo)
+#   bash scripts/plugin-demo.sh <folder>   assembles into <folder> (created if missing; refused, before anything is
+#                                          written, if it is a link or holds a link or any entry that is not this
+#                                          demo's; the types the app lays beside a loaded mod are left alone)
 #
 # Then load the folder in a session of the desktop app (the drawings show in the desktop and mobile apps only):
 # start Claude Code with `--plugin-dir <folder>`, or name the folder in CLAUDE_CODE_PLUGIN_DIRS, and type `/demo`.
@@ -26,13 +27,34 @@ for f in "${copies[@]}"; do
   [ -f "$hooks/$f" ] || { echo "plugin-demo: the plugin has no hooks/$f" >&2; exit 1; }
 done
 
+refuse() { echo "plugin-demo: $1" >&2; exit 1; }
+# Whether <folder>/<entry> is one this script writes, or one the app writes beside a loaded mod.
+ours() {
+  case "$1" in
+    ./.claude-plugin | ./.claude-plugin/plugin.json | ./hooks | ./hooks/hooks.json | ./hooks/register.tsx | ./tsconfig.json) return 0 ;;
+  esac
+  for f in "${copies[@]}"; do [ "$1" = "./hooks/$f" ] && return 0; done
+  return 1
+}
+
 if [ $# -ge 1 ]; then
   dest=$1
-  if [ -e "$dest" ]; then
-    [ -d "$dest" ] || { echo "plugin-demo: $dest is not a folder" >&2; exit 1; }
+  [ -n "$dest" ] || refuse "the folder's name is empty"
+  if [ -e "$dest" ] || [ -L "$dest" ]; then
+    # A link is never written through: a folder linked into the checkout would have its files replaced.
+    [ ! -L "$dest" ] || refuse "$dest is a link; choose a folder"
+    [ -d "$dest" ] || refuse "$dest is not a folder"
+    [ ! -L "$dest/.claude-plugin/types" ] || refuse "$dest/.claude-plugin/types is a link; choose an empty folder"
+    # Every entry is this demo's (the types the app lays under .claude-plugin/types are its own and are not read),
+    # and none is a link. One that is not stops the run before anything is written.
+    strange=$(cd "$dest" && find . -mindepth 1 -path ./.claude-plugin/types -prune -o -print | while IFS= read -r e; do
+      if [ -L "$e" ]; then echo "$e (a link)"; elif ! ours "$e"; then echo "$e"; fi
+    done)
+    # The first one is named (the whole list is read first: a reader that stops early would end the pipe with an error).
+    [ -z "$strange" ] || refuse "$dest holds something that is not this demo: ${strange%%$'\n'*}; choose an empty folder"
     if [ -n "$(ls -A "$dest")" ]; then
       grep -q '"name": "claudinho-demo"' "$dest/.claude-plugin/plugin.json" 2>/dev/null ||
-        { echo "plugin-demo: $dest holds something that is not this demo; choose an empty folder" >&2; exit 1; }
+        refuse "$dest holds something that is not this demo; choose an empty folder"
     fi
   fi
 else
@@ -45,11 +67,14 @@ cp "$demo/hooks/hooks.json" "$demo/hooks/register.tsx" "$dest/hooks/"
 for f in "${copies[@]}"; do cp "$hooks/$f" "$dest/hooks/$f"; done
 
 version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$root/packages/plugin/.claude-plugin/plugin.json" | head -1)
-if command -v claude >/dev/null 2>&1; then
+if [ -n "${PLUGIN_DEMO_NO_VALIDATE:-}" ]; then
+  echo "plugin-demo: not validated (PLUGIN_DEMO_NO_VALIDATE is set)" >&2
+elif command -v claude >/dev/null 2>&1; then
   claude plugin validate "$dest" >/dev/null || { echo "plugin-demo: the assembled demo does not validate (claude plugin validate $dest)" >&2; exit 1; }
   echo "plugin-demo: validated" >&2
 else
   echo "plugin-demo: claude is not on PATH, so the demo was not validated" >&2
 fi
 echo "plugin-demo: the drawings of plugin $version, from $(cd "$root" && git rev-parse --short HEAD 2>/dev/null || echo 'this checkout'), assembled in:" >&2
-echo "$dest"
+# The folder as an absolute path: the line a person hands to --plugin-dir from any directory.
+(cd "$dest" && pwd)
