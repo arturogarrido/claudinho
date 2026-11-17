@@ -84,7 +84,8 @@ is the [`AGENTS.md`](AGENTS.md#conventions) "Conventions" bullet "The supported 
    `standings-tables.test.ts`, and for a league a standings payload recorded from the real feed
    under `packages/core/test/fixtures/standings/<slug>.json`; its slug in `espn-canary.test.ts`'s
    watched list (and its league-shape list, when its standings shape is `league`). All five are under
-   `packages/core/test/`. A test that uses the new slug as an unlisted competition needs another slug.
+   `packages/core/test/`. A test that uses the new slug as an unlisted competition needs another unlisted slug, and one that
+   uses its alias, name or short form as a refused value needs another refused name.
 3. **The counted copies**: the framing's "and N more" and the "N competitions" counts that
    `public-copy.test.ts` names, the root `package.json` (`root-package-copy.test.ts`), and the
    MCP Registry card in `packages/mcp/server.json` (`disclaimer.test.ts`).
