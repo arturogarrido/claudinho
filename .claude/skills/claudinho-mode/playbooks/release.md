@@ -51,7 +51,8 @@ maintainer's: never a tag or a publish by an agent.
    tag on the branch's head publishes nothing), then on a ref that is not a `refs/tags/v*` tag, then on a version
    tag that is not every package's version, all before the install, then gates on build, typecheck, test and lint,
    all in its `build` job. A failed run is retried on the same
-   tag with `gh run rerun <id> --failed`. Then watch the publish workflow on the tag
+   tag with `gh run rerun <id> --failed`; once the build's artifact is gone (it is kept 7 days) only a re-run of
+   all jobs rebuilds it. Then watch the publish workflow on the tag
    (`.github/workflows/publish.yml`): its four jobs, `build`, `publish` (it waits for the maintainer's approval in
    the `release` environment), `release` and `mcp-registry`, the run found with
    `gh run list --workflow publish.yml` and read per job with `gh run view <id> --json jobs`; the npm versions with

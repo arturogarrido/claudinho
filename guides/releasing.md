@@ -41,7 +41,7 @@ them; it can only be the bytes that are published.
    add yourself; leave "Prevent self-review" off (you push the tag, so with it on nobody could
    approve). Save the rules.
 2. For each of `@claudinho/core`, `@claudinho/cli` and `@claudinho/mcp`, no more than 2 days before
-   the tag: npmjs.com, the package's Settings → Trusted publishing. Delete the publisher that names
+   its first successful publish (the tag and your approval of `publish` both fall inside them): npmjs.com, the package's Settings → Trusted publishing. Delete the publisher that names
    no environment, then add a GitHub Actions publisher: owner `arturogarrido`, repository
    `claudinho`, workflow `publish.yml`, environment `release`, and under "Allowed actions" tick
    direct `npm publish` (a publisher created after Sep 3, 2026 allows `npm stage publish` alone
@@ -53,7 +53,9 @@ them; it can only be the bytes that are published.
    four jobs.
 
 With the environment-less publisher gone there is no fallback: only a job in the `release`
-environment can publish, and a failure publishes nothing. A `publish` job refused on authentication
+environment can publish. The job publishes the three packages one at a time (core, then cli, then
+mcp) with no rollback: a failure on one leaves the earlier ones on npm and the later ones
+unpublished, and the re-run skips a version npm already has. A `publish` job refused on authentication
 is fixed on npm (the publisher's owner, repository, workflow file, environment, or its allowed
 action), then "Re-run failed jobs"; recreating a publisher takes a few minutes.
 
@@ -196,7 +198,9 @@ which is why one minted on a laptop always lapsed between releases), publishes
 (records are immutable; a duplicate is a hard 400), so a re-run is safe. `server.json` is bumped on
 every release regardless (the vitest guard pins it to `package.json`), so nothing about the Registry is
 manual any more. If the job ever fails (Registry outage), re-run it alone with
-`gh run rerun <id> --failed`, or fall back to the manual path from the repo root: `mcp-publisher login
+`gh run rerun <id> --failed`, or fall back to the manual path from the repo root of a checkout of THE FAILED TAG (`git checkout
+vX.Y.Z`: the record on `main` may already name a later version, and the job's own check, the
+record's name, version and npm pin against the tag, is yours to make by hand): `mcp-publisher login
 github` (device flow), then `mcp-publisher publish packages/mcp/server.json` — pass the path, since
 `mcp-publisher` defaults to `./server.json` in the cwd and ours isn't at the root. The `mcp-publisher`
 binary is pinned by version + sha256 in the workflow; bump both together from the Registry's releases.

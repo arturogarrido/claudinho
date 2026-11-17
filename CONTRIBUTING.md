@@ -79,11 +79,12 @@ is the [`AGENTS.md`](AGENTS.md#conventions) "Conventions" bullet "The supported 
    bundled competition, whose knockout topology ships with the clients: the derivation refuses any
    other), and how often it has an edition.
 2. **The facts the tests spell per row**: its slug, alias, name and derived shape in
-   `supported.test.ts`; its kind in `competition-kind.test.ts`; its standings shape in
+   `supported.test.ts`; its short forms and other names in `competition-names.test.ts` (a row with
+   none still gets its entry); its kind in `competition-kind.test.ts`; its standings shape in
    `standings-tables.test.ts`, and for a league a standings payload recorded from the real feed
    under `packages/core/test/fixtures/standings/<slug>.json`; its slug in `espn-canary.test.ts`'s
-   watched list (and its league-shape list, when its standings shape is `league`). All four are under
-   `packages/core/test/`.
+   watched list (and its league-shape list, when its standings shape is `league`). All five are under
+   `packages/core/test/`. A test that uses the new slug as an unlisted competition needs another slug.
 3. **The counted copies**: the framing's "and N more" and the "N competitions" counts that
    `public-copy.test.ts` names, the root `package.json` (`root-package-copy.test.ts`), and the
    MCP Registry card in `packages/mcp/server.json` (`disclaimer.test.ts`).
