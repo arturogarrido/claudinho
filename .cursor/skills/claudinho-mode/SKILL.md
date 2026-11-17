@@ -46,9 +46,9 @@ bullet does. An area below names its bullet by the bullet's lead; a guide is nam
 | Composed windows and seasons | "A window is composed of the requests the provider accepts" | `guides/conventions/off-bundle-reads.md` |
 | The lock, the throttle note, the attempt record | "A refresher decides under the lock, and a throttle always has somewhere to be written" | the bullet alone |
 | Discovery and the live gate | "Off the bundled competition the refresher discovers, then polls only when a match can be in play" | `guides/conventions/refresher.md` |
-| The supported table | "The supported set is ONE table, and every written fact of a competition derives from it" | the bullet alone |
+| The supported table | "The supported set is ONE table, and every written fact of a competition derives from it" | the bullet; the steps to add a competition are in `.claude/skills/claudinho-mode/playbooks/feature.md` |
 | The competition selection, the saved choice, the pin | "The competition is decided ONCE, at the edge, and then travels as a value" | `guides/conventions/selection.md` |
-| Stages | "The stage comes from a written grammar over the WHOLE season slug, with the competition's written kind" | the bullet alone |
+| Stages | "The stage comes from a written grammar over the WHOLE season slug, with the competition's written kind" | `guides/conventions/stage-and-teams.md` |
 | Team identity, flags and clubs | "A team's identity is the provider's id; its code is a label" | the bullet alone |
 | The bracket's pairings | "The live fixture's pairing wins over the static topology's winner-refs" | `guides/conventions/bundle-and-bracket.md` |
 | Knockout and team-facing surfaces | "Knockout/team-facing surfaces MUST live-resolve" | `guides/conventions/bundle-and-bracket.md` |

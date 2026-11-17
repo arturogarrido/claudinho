@@ -4,7 +4,8 @@ The narration behind AGENTS.md "Releasing": what each job of the publish workflo
 release-day checklist for npm and the `release` environment, the release steps with what each one checks, the tag
 step's failure cases, the MCP Registry record and the lessons. AGENTS.md keeps the steps in short form and stays the
 canonical guide; where the two disagree, AGENTS.md wins. Read this file before a release and before changing
-`.github/workflows/publish.yml`. Moved here from AGENTS.md unchanged, but for this paragraph and the note below.
+`.github/workflows/publish.yml`. Moved here from AGENTS.md unchanged, but for this paragraph, the note below, and a cross-reference that now names
+AGENTS.md.
 
 The `.mcpb` bundle is retired (0.13.0): nothing builds or publishes one, and `scripts/check-pack.mjs` refuses a
 `.mcpb` inside a package. Adding or changing an MCP tool is in AGENTS.md "Releasing".
@@ -79,7 +80,7 @@ To cut a release:
    Registry record carries its own; a vitest guard (`packages/mcp/test/server.test.ts`) fails if it drifts.
 2. `pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm lint` (CI re-runs these). **For any
    user-facing change, also run `pnpm release:qa`** and eyeball every surface against the live feed
-   before tagging (see "Release readiness").
+   before tagging (see AGENTS.md "Release readiness").
 3. Commit, open the release PR and squash-merge it. Then tag the commit the merge made on `main`,
    never the release branch's own commit: the squash is a NEW commit, absent from a local clone until
    a fetch, and a bare `git tag vX.Y.Z` tags `HEAD`, which in the release worktree is the branch's
