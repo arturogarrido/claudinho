@@ -24,7 +24,7 @@ a numbered "What I need from you". A pull request's review follows its tier (T0,
 | A confirmation round: the readers' read of a head after a fix | `.claude/skills/claudinho-mode/playbooks/confirmation-round.md` | "Reviewing PRs", "Rules and their enforcers"; the guides the first round loaded |
 | Prose and agent instructions only | `.claude/skills/claudinho-mode/playbooks/docs-only.md` | "Validation scope" (its private-document boundary check), "Hard constraints", "Don't"; the guide whose text the change edits |
 | A dependency bump, a Dependabot PR or an advisory | `.claude/skills/claudinho-mode/playbooks/dependency-bump.md` | "Validation scope", "Commands"; `guides/conventions/trust-boundary.md` for a provider or parsing dependency |
-| A release: the version bump, the gate, the tag's watch | `.claude/skills/claudinho-mode/playbooks/release.md` | "Releasing", "Release readiness", "Release cadence"; `guides/conventions/bundle-and-bracket.md` (the bundle and the bracket tripwires) |
+| A release: the version bump, the gate, the tag's watch | `.claude/skills/claudinho-mode/playbooks/release.md` | "Releasing", "Release readiness", "Release cadence"; `guides/releasing.md`; `guides/conventions/bundle-and-bracket.md` (the bundle and the bracket tripwires) |
 | Triage of an outside contributor's or a bot's PR (a Dependabot PR: the dependency row) | `.claude/skills/claudinho-mode/playbooks/review-round.md` | "Reviewing PRs" (its tier first), "Pre-PR self-review", "Hard constraints"; the guide of every area the patch touches |
 | A read-only audit or investigation of the project (not a PR review) | `.claude/skills/claudinho-mode/playbooks/audit.md` | "Working agreement", "Rules and their enforcers"; the guide of every area the question reads |
 | Public copy and growth work: a post, a reply, a listing, a README pitch | `.claude/skills/claudinho-mode/playbooks/copy.md` | "What this is", "Hard constraints", "Don't" |
@@ -46,9 +46,9 @@ bullet does. An area below names its bullet by the bullet's lead; a guide is nam
 | Composed windows and seasons | "A window is composed of the requests the provider accepts" | `guides/conventions/off-bundle-reads.md` |
 | The lock, the throttle note, the attempt record | "A refresher decides under the lock, and a throttle always has somewhere to be written" | the bullet alone |
 | Discovery and the live gate | "Off the bundled competition the refresher discovers, then polls only when a match can be in play" | `guides/conventions/refresher.md` |
-| The supported table | "The supported set is ONE table, and every written fact of a competition derives from it" | the bullet alone |
+| The supported table | "The supported set is ONE table, and every written fact of a competition derives from it" | the bullet; the steps to add a competition are in `.claude/skills/claudinho-mode/playbooks/feature.md` |
 | The competition selection, the saved choice, the pin | "The competition is decided ONCE, at the edge, and then travels as a value" | `guides/conventions/selection.md` |
-| Stages | "The stage comes from a written grammar over the WHOLE season slug, with the competition's written kind" | the bullet alone |
+| Stages | "The stage comes from a written grammar over the WHOLE season slug, with the competition's written kind" | `guides/conventions/stage-and-teams.md` |
 | Team identity, flags and clubs | "A team's identity is the provider's id; its code is a label" | the bullet alone |
 | The bracket's pairings | "The live fixture's pairing wins over the static topology's winner-refs" | `guides/conventions/bundle-and-bracket.md` |
 | Knockout and team-facing surfaces | "Knockout/team-facing surfaces MUST live-resolve" | `guides/conventions/bundle-and-bracket.md` |

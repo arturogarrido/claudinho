@@ -64,6 +64,13 @@ push, before the next round. The FIRST push is a plain `git push -u origin <bran
 on main alone: before the pull request there is no run, and the watch would poll for one until its deadline), then
 `gh pr create --base main --head <branch> --title "<subject>" --body-file <file>`, then this line.
 
+## Adding a competition
+
+The supported set is ONE table (AGENTS.md "Conventions", the bullet "The supported set is ONE table"). Adding a
+competition is, in this order (moved from that bullet unchanged):
+
+the row; the written facts beside it in the tests that spell a fact per row (`supported.test.ts`: its slug, alias and name tables and its derived-shape expectation; `competition-names.test.ts`: its per-slug short-form and other-name tables; `competition-kind.test.ts`: its kind lists; `standings-tables.test.ts`: its shape object and, for a league, its recorded standings payload under `packages/core/test/fixtures/standings/<slug>.json` with a row in the per-league case; `espn-canary.test.ts`: its watched-slug and league-shape lists); the counted copies the public-copy guards name (`packages/core/test/public-copy.test.ts`: the framing's "and N more", the "N competitions" counts; `root-package-copy.test.ts`: the root `package.json`; `disclaimer.test.ts`: the Registry card's verbatim sentence in `packages/mcp/server.json`); its alias in the four keyword lists (`packages/{cli,mcp,core}/package.json`, `.cursor-plugin/plugin.json`); then, after a build, `pnpm gen:readme-matrix`. Every other test that counts the table reads `SUPPORTED.length`, so nothing else changes (`supported.test.ts` runs every derivation on a table with a row past its end).
+
 ## Evidence
 
 - The red tests' commit; the coder's commit with the trailer

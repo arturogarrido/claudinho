@@ -45,7 +45,7 @@ maintainer's: never a tag or a publish by an agent.
    force it there. Each command runs only when the one before it succeeded. When the chain stops before `git tag`
    (the fetch or `gh` failed, the PR is not merged, or `main` does not hold its merge commit), nothing is tagged:
    check that `gh pr view <n> --json state` says `MERGED`, then run the block again. When `git tag` or the push
-   fails, stop: this step never deletes or moves a tag on `origin`; read the tags as AGENTS.md "Releasing" gives it
+   fails, stop: this step never deletes or moves a tag on `origin`; read the tags as `guides/releasing.md` gives it
    under "When the tag step stops at `git tag` or the push" (three reads, then one case of five), and do only what
    its case says. `publish.yml` runs on a `v*` tag push alone; it first fails on a commit `main` does not contain (a
    tag on the branch's head publishes nothing), then on a ref that is not a `refs/tags/v*` tag, then on a version
@@ -56,9 +56,9 @@ maintainer's: never a tag or a publish by an agent.
    the `release` environment), `release` and `mcp-registry`, the run found with
    `gh run list --workflow publish.yml` and read per job with `gh run view <id> --json jobs`; the npm versions with
    their provenance, the GitHub Release and the Registry record checked afterwards. The `release` environment and npm's
-   trusted publishers are set as AGENTS.md "Releasing" gives them, in its release-day checklist, before the first
+   trusted publishers are set as `guides/releasing.md` gives them, in its release-day checklist, before the first
    tag under the four-job workflow.
-10. The maintainer's machine on the new version: AGENTS.md "Releasing" step 4, as written there (the CLI with the
+10. The maintainer's machine on the new version: `guides/releasing.md` step 4, as written there (the CLI with the
     installer that owns the `claudinho` that runs, the plugin with its read-back on `main`'s version and a reload,
     the MCP server's installed copies if any), each installed version read back with the command step 4 names. None
     of it updates by default.
