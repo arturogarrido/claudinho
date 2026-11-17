@@ -44,7 +44,7 @@ bullet does. An area below names its bullet by the bullet's lead; a guide is nam
 | A verdict, a qualifier, a cut text | "A verdict becomes output in ONE place" | `guides/conventions/verdicts.md` |
 | `next`, `match <id>` and `bracket` off the bundle | "Off the bundled competition, `next`, `match <id>` and `bracket` answer from the competition itself" | `guides/conventions/off-bundle-reads.md` |
 | Composed windows and seasons | "A window is composed of the requests the provider accepts" | `guides/conventions/off-bundle-reads.md` |
-| The lock, the throttle note, the attempt record | "A refresher decides under the lock, and a throttle always has somewhere to be written" | the bullet alone |
+| The lock, the throttle note, the attempt record | "A refresher decides under the lock, and a throttle always has somewhere to be written" | `guides/conventions/refresher.md` |
 | Discovery and the live gate | "Off the bundled competition the refresher discovers, then polls only when a match can be in play" | `guides/conventions/refresher.md` |
 | The supported table | "The supported set is ONE table, and every written fact of a competition derives from it" | the bullet; the steps to add a competition are in `.claude/skills/claudinho-mode/playbooks/feature.md` |
 | The competition selection, the saved choice, the pin | "The competition is decided ONCE, at the edge, and then travels as a value" | `guides/conventions/selection.md` |
