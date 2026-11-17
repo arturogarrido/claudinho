@@ -60,9 +60,10 @@ them; it can only be the bytes that are published.
 
 With the environment-less publisher gone there is no fallback: only a job in the `release`
 environment can publish. The job publishes the three packages one at a time (core, then cli, then
-mcp) with no rollback: a failure on one leaves on npm whatever this run published before it
-(nothing, when it is core); this run did not publish that package and did not attempt the ones after
-it, which says nothing of what an earlier attempt of the same tag already put on npm. A re-run skips a package only when
+mcp) with no rollback: a failure on one stops the loop, so this run did not attempt the
+packages after it. The failure does not say what is on npm: what this run published before it stays
+there, the failing package itself may have been accepted (a response lost after npm took it), and an
+earlier attempt of the same tag may have published any of them. `npm view` says what is on npm. A re-run skips a package only when
 `npm view <name>@<version> version` prints that version. For a version that IS on npm but that the
 lookup did not print (an error; npm not yet serving a version published moments ago), the job tries
 to publish it, npm refuses the duplicate and the job stops there: re-run it once npm serves the
@@ -219,12 +220,12 @@ every release regardless (the vitest guard pins it to `package.json`), so nothin
 manual any more. If the job ever fails (Registry outage), re-run it alone with
 `gh run rerun <id> --failed` (inside the artifact's 7 days: release step 3 above has what a later re-run
 needs). The manual path is the fallback, and a record is immutable once
-published, so it is taken in this order, in one shell (bash or zsh), with `V` the version without its
-`v` and `RUN` the failed run's id:
+published, so it is taken in this order, in one shell (bash or zsh), after setting `V` to the version without its `v` and `RUN` to the failed run's id (from
+`gh run list --workflow publish.yml`); the block has no comments, so it pastes into an interactive zsh:
 
 ```bash
-V=0.0.0          # the version, without its v
-RUN=0000000000   # the failed run's id (gh run list --workflow publish.yml)
+V=0.0.0
+RUN=0000000000
 URL=https://registry.modelcontextprotocol.io/v0/servers/io.github.arturogarrido%2Fclaudinho/versions/$V
 CHECK='.server.version==$v and (.server.packages[] | select(.identifier=="@claudinho/mcp") | .version)==$v and ._meta["io.modelcontextprotocol.registry/official"].status=="active"'
 ```
@@ -247,15 +248,15 @@ CHECK='.server.version==$v and (.server.packages[] | select(.identifier=="@claud
    then the version twice (the record's, and its npm pin); anything else: stop.
 
    ```bash
-   jq -r '.name, .version, (.packages[] | select(.identifier=="@claudinho/mcp") | .version)' "$f"
+   jq -r '.name, .version, (.packages[] | select(.registryType=="npm" and .identifier=="@claudinho/mcp") | .version)' "$f"
    ```
 4. npm must already serve `@claudinho/mcp` at that version (the Registry fetches it). Then log in
-   (device flow) and publish that file; the path is passed because `mcp-publisher` defaults to
+   (device flow) and, only if the login succeeded, publish that file (a failed login leaves an older
+   credential in place, and the publish would use it); the path is passed because `mcp-publisher` defaults to
    `./server.json` in the cwd.
 
    ```bash
-   mcp-publisher login github
-   mcp-publisher publish "$f"
+   mcp-publisher login github && mcp-publisher publish "$f"
    ```
 5. Verify the record as the job's last step does, after a publish and after a `200` alike. It prints
    `active`; anything else (no output: a wrong pin, a status that is not `active`, a failed request)

@@ -75,7 +75,7 @@ That list is the files that spell a fact PER ROW. It is not every test a new row
 
 - a slug used as an UNLISTED competition (`usa.1` in `selection.test.ts`, `selection-rules.test.ts`, `competition-kind.test.ts` and `stage-grammar.test.ts`): it expects `experimental: true`, the kind of an unlisted competition or the stage of one, and needs another unlisted slug;
 - a name used as a REFUSED value (`mls` in `competition-names.test.ts` of core, the CLI and the MCP server): it needs another refused name;
-- a suggestion list pinned exactly (`premier` suggests `premier-league` alone, in the same three files): a new row can enter or reorder one, by `suggestCompetitions`'s steps (a whole key, alias, name, other name or short form, that starts with the input; then a later word of the alias or the name, then of an other name, that does; then a key within 2 edits; table order within a step, at most two), so a search for prefixes alone does not find every case;
+- a suggestion list pinned exactly (`premier` suggests `premier-league` alone, in the same three files): a new row can enter or reorder one. The steps, their length floors and their order are written in the header of `suggestCompetitions` (`packages/core/src/supported.ts`): read them there, because a prefix is one of three ways a row matches and a search for prefixes alone does not find every case;
 - a list of the rows of one shape or kind pinned whole (`espn-canary.test.ts` expects the competitions with no table to be `concacaf.champions` alone): a new row of that shape joins it.
 
 ## Evidence
