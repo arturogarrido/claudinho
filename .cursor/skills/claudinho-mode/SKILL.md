@@ -43,7 +43,7 @@ bullet does. An area below names its bullet by the bullet's lead; a guide is nam
 | Where standings come from | "Standings come from the provider's standings feed, NOT computed from a match window" | `guides/conventions/standings.md` |
 | A verdict, a qualifier, a cut text | "A verdict becomes output in ONE place" | `guides/conventions/verdicts.md` |
 | `next`, `match <id>` and `bracket` off the bundle | "Off the bundled competition, `next`, `match <id>` and `bracket` answer from the competition itself" | `guides/conventions/off-bundle-reads.md` |
-| Composed windows, seasons, and the record of play with what reads it (`ambient --json`, the hook, the plugin's full-time moment) | "A window is composed of the requests the provider accepts" | `guides/conventions/off-bundle-reads.md` |
+| Composed windows, seasons, and the record of play with what reads it (`ambient --json`'s `finished` and `next`, the statusline's countdown, the plugin's full-time moment; the hook reads none of it) | "A window is composed of the requests the provider accepts" | `guides/conventions/off-bundle-reads.md` |
 | The lock, the throttle note, the attempt record | "A refresher decides under the lock, and a throttle always has somewhere to be written" | `guides/conventions/refresher.md` |
 | Discovery and the live gate | "Off the bundled competition the refresher discovers, then polls only when a match can be in play" | `guides/conventions/refresher.md` |
 | The supported table | "The supported set is ONE table, and every written fact of a competition derives from it" | the bullet; the steps to add a competition are in `.claude/skills/claudinho-mode/playbooks/feature.md` |
