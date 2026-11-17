@@ -69,8 +69,8 @@ node packages/cli/dist/index.js today --tz America/Mexico_City --lang es
 The supported competitions are ONE table, `SUPPORTED` in
 [`packages/core/src/supported.ts`](packages/core/src/supported.ts), and every written fact of a
 competition derives from it. The steps, in their order, are in
-[`AGENTS.md`](AGENTS.md#conventions) (the "Conventions" bullet "The supported set is ONE table",
-its list "Adding a competition is, in this order"). In short:
+[the feature playbook](.claude/skills/claudinho-mode/playbooks/feature.md) ("Adding a competition"); the rule
+is the [`AGENTS.md`](AGENTS.md#conventions) "Conventions" bullet "The supported set is ONE table". In short:
 
 1. **The row**: its ESPN slug, an alias (lower case, digits and hyphens, no dot), its name, the
    teams it fields (`nation` or `club`), its kind (`league` or `cup`), a league's season name where
