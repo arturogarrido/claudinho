@@ -81,7 +81,8 @@ is the [`AGENTS.md`](AGENTS.md#conventions) "Conventions" bullet "The supported 
 2. **The facts the tests spell per row**: its slug, alias, name and derived shape in
    `supported.test.ts`; its short forms and other names in `competition-names.test.ts` (a row with
    none still gets its entry); its kind in `competition-kind.test.ts`; its standings shape in
-   `standings-tables.test.ts`, and for a league a standings payload recorded from the real feed
+   `standings-tables.test.ts` when it is `league` or `none`, and for a `league` shape (whatever the
+   competition's kind) a standings payload recorded from the real feed
    under `packages/core/test/fixtures/standings/<slug>.json`; its slug in `espn-canary.test.ts`'s
    watched list (and its league-shape list, when its standings shape is `league`). All five are under
    `packages/core/test/`. Other tests use a value because the table does not hold it (an unlisted slug, a refused name)

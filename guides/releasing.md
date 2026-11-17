@@ -41,8 +41,7 @@ them; it can only be the bytes that are published.
    add yourself; leave "Prevent self-review" off (you push the tag, so with it on nobody could
    approve). Save the rules.
 2. For each of `@claudinho/core`, `@claudinho/cli` and `@claudinho/mcp`, no more than 2 days before
-   that package's first successful publish through the new publisher (so the tag, your approval of `publish`
-   and the publish itself all fall inside them): npmjs.com, the package's Settings → Trusted publishing. Delete the publisher that names
+   that package's first successful publish through the new publisher: npmjs.com, the package's Settings → Trusted publishing. Delete the publisher that names
    no environment, then add a GitHub Actions publisher: owner `arturogarrido`, repository
    `claudinho`, workflow `publish.yml`, environment `release`, and under "Allowed actions" tick
    direct `npm publish` (a publisher created after Sep 3, 2026 allows `npm stage publish` alone
@@ -61,8 +60,9 @@ them; it can only be the bytes that are published.
 
 With the environment-less publisher gone there is no fallback: only a job in the `release`
 environment can publish. The job publishes the three packages one at a time (core, then cli, then
-mcp) with no rollback: a failure on one leaves the ones before it on npm (none, when it is
-core) and leaves it and the ones after it unpublished. A re-run skips a package only when
+mcp) with no rollback: a failure on one leaves on npm whatever this run published before it
+(nothing, when it is core); this run did not publish that package and did not attempt the ones after
+it, which says nothing of what an earlier attempt of the same tag already put on npm. A re-run skips a package only when
 `npm view <name>@<version> version` prints that version. For a version that IS on npm but that the
 lookup did not print (an error; npm not yet serving a version published moments ago), the job tries
 to publish it, npm refuses the duplicate and the job stops there: re-run it once npm serves the
@@ -219,22 +219,53 @@ every release regardless (the vitest guard pins it to `package.json`), so nothin
 manual any more. If the job ever fails (Registry outage), re-run it alone with
 `gh run rerun <id> --failed` (inside the artifact's 7 days: release step 3 above has what a later re-run
 needs). The manual path is the fallback, and a record is immutable once
-published, so it is taken in this order:
+published, so it is taken in this order, in one shell (bash or zsh), with `V` the version without its
+`v` and `RUN` the failed run's id:
+
+```bash
+V=0.0.0          # the version, without its v
+RUN=0000000000   # the failed run's id (gh run list --workflow publish.yml)
+URL=https://registry.modelcontextprotocol.io/v0/servers/io.github.arturogarrido%2Fclaudinho/versions/$V
+CHECK='.server.version==$v and (.server.packages[] | select(.identifier=="@claudinho/mcp") | .version)==$v and ._meta["io.modelcontextprotocol.registry/official"].status=="active"'
+```
 
 1. Ask the Registry whether it already has the version (the job can publish and then fail its own
-   read-back): `curl -s -o /dev/null -w '%{http_code}'
-   https://registry.modelcontextprotocol.io/v0/servers/io.github.arturogarrido%2Fclaudinho/versions/X.Y.Z`.
-   `200`: it is published; publish nothing, read the record and stop.
-2. Take the record from the commit the failed run ran on, never from a working tree or a local tag
-   (either can differ from what the run built): `sha=$(gh run view <id> --json headSha --jq .headSha)`,
-   then `git show "$sha:packages/mcp/server.json" > "$TMPDIR/server.json"` (fetch the commit first if
-   this clone does not hold it).
-3. Make the job's own check by hand on that file: its `name` is
-   `io.github.arturogarrido/claudinho`, and its `version` and its `@claudinho/mcp` npm pin are both
-   X.Y.Z.
-4. `mcp-publisher login github` (device flow), then `mcp-publisher publish "$TMPDIR/server.json"`
-   (pass the path: `mcp-publisher` defaults to `./server.json` in the cwd).
- The `mcp-publisher`
+   read-back): `curl -s -o /dev/null -w '%{http_code}\n' "$URL"`. On `200` publish nothing and go to
+   step 5.
+2. Take the record from the commit the failed run ran on, never from a working tree, the index or a
+   local tag (each can differ from what the run built). `${sha:?}` stops the command when the lookup
+   gave nothing: with an empty commit, `git show` would read the index.
+
+   ```bash
+   sha=$(gh run view "$RUN" --json headSha --jq .headSha)
+   f=$(mktemp -d)/server.json
+   git show "${sha:?no commit read for that run}:packages/mcp/server.json" > "$f"
+   ```
+
+   (Fetch the commit first if this clone does not hold it.)
+3. Make the job's own check by hand on that file. This prints `io.github.arturogarrido/claudinho`,
+   then the version twice (the record's, and its npm pin); anything else: stop.
+
+   ```bash
+   jq -r '.name, .version, (.packages[] | select(.identifier=="@claudinho/mcp") | .version)' "$f"
+   ```
+4. npm must already serve `@claudinho/mcp` at that version (the Registry fetches it). Then log in
+   (device flow) and publish that file; the path is passed because `mcp-publisher` defaults to
+   `./server.json` in the cwd.
+
+   ```bash
+   mcp-publisher login github
+   mcp-publisher publish "$f"
+   ```
+5. Verify the record as the job's last step does, after a publish and after a `200` alike. It prints
+   `active`; anything else (no output: a wrong pin, a status that is not `active`, a failed request)
+   is not a finished release: stop and decide with the maintainer.
+
+   ```bash
+   curl -sSf "$URL" | jq -e --arg v "$V" "$CHECK" >/dev/null && echo active
+   ```
+
+The `mcp-publisher`
 binary is pinned by version + sha256 in the workflow; bump both together from the Registry's releases.
 
 **Lessons (learned the hard way):**
