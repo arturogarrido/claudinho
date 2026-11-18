@@ -52,7 +52,9 @@ them; it can only be the bytes that are published.
    - before the tag: add it again, then tag;
    - the tag pushed and `publish` still waiting for your approval: add it again BEFORE you approve;
    - a run that failed on authentication: add it again only for a package whose version is NOT yet on
-     npm, then re-run. The re-run skips a package npm already serves, so THIS re-run does not
+     npm, then re-run. Ask npm itself, with the registry the workflow publishes to and not whatever
+     this machine's npm configuration points at: `npm view <name>@<version> version --registry https://registry.npmjs.org/ "--@claudinho:registry=https://registry.npmjs.org/"`
+     prints the version when npm serves it; an error is no answer either way. The re-run skips a package npm already serves, so THIS re-run does not
      validate a publisher recreated for such a package, and it expires unless another publish of that
      package goes through it inside its 2 days: leave that one as it is.
    Once a release has validated all three, this step is done; it is not repeated per release.
@@ -66,8 +68,8 @@ settings, not this workflow's.) The job publishes the three packages one at a ti
 mcp) with no rollback: a failure on one stops the loop, so this run did not attempt the
 packages after it. The failure does not say what is on npm: what this run published before it stays
 there, the failing package itself may have been accepted (a response lost after npm took it), and an
-earlier attempt of the same tag may have published any of them. `npm view` says what is on npm. A re-run skips a package only when
-`npm view <name>@<version> version` prints that version. For a version that IS on npm but that the
+earlier attempt of the same tag may have published any of them. `npm view` against the public registry (the command in checklist step 2) says what is on npm. A re-run skips a package only when
+its own `npm view <name>@<version> version`, asked of that registry, prints that version. For a version that IS on npm but that the
 lookup did not print (an error; npm not yet serving a version published moments ago), the job tries
 to publish it, npm refuses the duplicate and the job stops there: re-run it once npm serves the
 version. This is what "skips a version npm already has" means wherever this guide
@@ -223,9 +225,10 @@ every release regardless (the vitest guard pins it to `package.json`), so nothin
 manual any more. If the job ever fails (Registry outage), re-run it alone with
 `gh run rerun <id> --failed` (inside the artifact's 7 days: release step 3 above has what a later re-run
 needs). The manual path is the fallback, and a record is immutable once
-published, so it is taken in this order, in one shell (bash or zsh), after setting `RUN` to the failed run's id (from `gh run list --workflow publish.yml`). The
-version is READ from that run, never typed beside it, so every step below is about the release that
-failed; the block has no comments, so it pastes into an interactive zsh:
+published, so it is taken in this order, in one shell (bash or zsh), with this block first, after replacing the `0000000000` of its first line with the failed run's id
+(from `gh run list --workflow publish.yml`). The version is READ from that run, never typed beside
+it, so every step below is about the release that failed; the block has no comments, so it pastes
+into an interactive zsh:
 
 ```bash
 RUN=0000000000
