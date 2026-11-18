@@ -51,13 +51,15 @@ maintainer's: never a tag or a publish by an agent.
    tag on the branch's head publishes nothing), then on a ref that is not a `refs/tags/v*` tag, then on a version
    tag that is not every package's version, all before the install, then gates on build, typecheck, test and lint,
    all in its `build` job. A failed run is retried on the same
-   tag with `gh run rerun <id> --failed`. Then watch the publish workflow on the tag
+   tag with `gh run rerun <id> --failed`. The build's artifact is kept 7 days: after them a re-run that does not
+   include `build` fails at the download, and `gh run rerun <id>` (all jobs) rebuilds it. GitHub re-runs a run for 30
+   days after it first ran and at most 50 times; past either, stop and ask the maintainer. Then watch the publish workflow on the tag
    (`.github/workflows/publish.yml`): its four jobs, `build`, `publish` (it waits for the maintainer's approval in
    the `release` environment), `release` and `mcp-registry`, the run found with
    `gh run list --workflow publish.yml` and read per job with `gh run view <id> --json jobs`; the npm versions with
    their provenance, the GitHub Release and the Registry record checked afterwards. The `release` environment and npm's
-   trusted publishers are set as `guides/releasing.md` gives them, in its release-day checklist, before the first
-   tag under the four-job workflow.
+   trusted publishers are set as `guides/releasing.md` gives them, in its release-day checklist (first before the
+   first tag under the four-job workflow; its step 2 has the case of a publisher replaced later).
 10. The maintainer's machine on the new version: `guides/releasing.md` step 4, as written there (the CLI with the
     installer that owns the `claudinho` that runs, the plugin with its read-back on `main`'s version and a reload,
     the MCP server's installed copies if any), each installed version read back with the command step 4 names. None

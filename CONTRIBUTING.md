@@ -78,12 +78,24 @@ is the [`AGENTS.md`](AGENTS.md#conventions) "Conventions" bullet "The supported 
    for it (`offered`, `not-offered-yet`, `not-applicable`; a row may offer a bracket only for the
    bundled competition, whose knockout topology ships with the clients: the derivation refuses any
    other), and how often it has an edition.
-2. **The facts the tests spell per row**: its slug, alias, name and derived shape in
-   `supported.test.ts`; its kind in `competition-kind.test.ts`; its standings shape in
-   `standings-tables.test.ts`, and for a league a standings payload recorded from the real feed
-   under `packages/core/test/fixtures/standings/<slug>.json`; its slug in `espn-canary.test.ts`'s
-   watched list (and its league-shape list, when its standings shape is `league`). All four are under
-   `packages/core/test/`.
+2. **The facts the tests spell per row**: its slug, alias and name in `supported.test.ts`, with the derived expectations the row joins there
+   (the standings shape when it is `league` or `none`, the season-slug map when the row has a season
+   name, the no-bracket list when its bracket is `not-applicable`, the market list when its markets
+   are `offered`); its accepted values, short forms and other names in `competition-names.test.ts` (a row with
+   no short form or other name still gets its entry; omitting a row from the accepted values skips the cases
+   for its spellings); its kind in `competition-kind.test.ts` (and its season slug there, when it has one); its standings shape in
+   `standings-tables.test.ts` when it is `league` or `none`, and for every row a standings payload
+   recorded from the real feed under `packages/core/test/fixtures/standings/<slug>.json`, with its entry
+   in the list of the case that reads it there (the per-league list for a `league` shape, whatever the
+   competition's kind; the lettered-groups list for lettered groups; for another shape, numbered groups
+   or groups under a league, read that file for the case that fits, or write one). A payload is opened only by a
+   case that lists its slug: unlisted, it is never read; its slug in `espn-canary.test.ts`'s
+   watched list (and its league-shape list, when its standings shape is `league`); and, for a `nation`
+   row, its slug in `flags-generated.test.ts`'s list of nation competitions (a row left out is never
+   checked for flags, and no test fails). All six are under `packages/core/test/`. Other tests use a value because the table does not hold it (an unlisted slug, a refused name,
+   an invented row added past the table's end) or pin an output a new row joins (a suggestion list,
+   the list of competitions with no table): search
+   the tests for the new slug, alias and names first, as the playbook says, and run the whole gate after.
 3. **The counted copies**: the framing's "and N more" and the "N competitions" counts that
    `public-copy.test.ts` names, the root `package.json` (`root-package-copy.test.ts`), and the
    MCP Registry card in `packages/mcp/server.json` (`disclaimer.test.ts`).

@@ -4,8 +4,8 @@ The narration behind AGENTS.md "Releasing": what each job of the publish workflo
 release-day checklist for npm and the `release` environment, the release steps with what each one checks, the tag
 step's failure cases, the MCP Registry record and the lessons. AGENTS.md keeps the steps in short form and stays the
 canonical guide; where the two disagree, AGENTS.md wins. Read this file before a release and before changing
-`.github/workflows/publish.yml`. Moved here from AGENTS.md unchanged, but for this paragraph, the note below, and a cross-reference that now names
-AGENTS.md.
+`.github/workflows/publish.yml`. Most of it was moved here from AGENTS.md; sentences about the publisher's two days, a publish that fails part
+way, the re-run limits and the manual Registry path were corrected against the workflow afterwards.
 
 The `.mcpb` bundle is retired (0.13.0): nothing builds or publishes one, and `scripts/check-pack.mjs` refuses a
 `.mcpb` inside a package. Adding or changing an MCP tool is in AGENTS.md "Releasing".
@@ -41,19 +41,42 @@ them; it can only be the bytes that are published.
    add yourself; leave "Prevent self-review" off (you push the tag, so with it on nobody could
    approve). Save the rules.
 2. For each of `@claudinho/core`, `@claudinho/cli` and `@claudinho/mcp`, no more than 2 days before
-   the tag: npmjs.com, the package's Settings → Trusted publishing. Delete the publisher that names
+   that package's first successful publish through the new publisher: npmjs.com, the package's Settings → Trusted publishing. Delete the publisher that names
    no environment, then add a GitHub Actions publisher: owner `arturogarrido`, repository
    `claudinho`, workflow `publish.yml`, environment `release`, and under "Allowed actions" tick
    direct `npm publish` (a publisher created after Sep 3, 2026 allows `npm stage publish` alone
    unless you do). npm's documentation: "A newly created trusted publisher configuration must
    complete its first successful publish within 2 days." A publisher not used within 2 days
-   expires ("it expires and can no longer be used or edited"): delete it and add it again before
-   tagging. Once a release has validated them, this step is done; it is not repeated per release.
+   expires ("it expires and can no longer be used or edited"): delete it and add it again. A publisher
+   is a package's own, and only a successful `npm publish` of THAT package through it validates it:
+   - before the tag: add it again, then tag;
+   - the tag pushed and `publish` still waiting for your approval: add it again BEFORE you approve;
+   - a run that failed on authentication: add it again only for a package whose version is NOT yet on
+     npm, then re-run. Ask the public registry itself, the one the workflow publishes to, and not
+     this machine's npm, whose configuration or cache can answer in its place:
+     `r=$(curl -sSf https://registry.npmjs.org/@claudinho%2Fcore) && printf '%s' "$r" | jq -r '.versions | keys[]'`
+     (`cli` or `mcp` in place of `core`) prints the versions the public registry serves for that package,
+     from one request made now. The version is in the list, or it is not; a command that prints no list
+     is no answer either way. The re-run skips a package npm already serves, so THIS re-run does not
+     validate a publisher recreated for such a package, and it expires unless another publish of that
+     package goes through it inside its 2 days: leave that one as it is.
+   Once a release has validated all three, this step is done; it is not repeated per release.
 3. Tag the release (release step 3 below), approve the `publish` job when GitHub asks, and watch the
    four jobs.
 
-With the environment-less publisher gone there is no fallback: only a job in the `release`
-environment can publish, and a failure publishes nothing. A `publish` job refused on authentication
+With the environment-less publisher gone there is no fallback for trusted publishing: of this
+repository's jobs, only one in the `release` environment can publish that way. (npm's other ways to
+publish, a maintainer's own login or a token where the package's settings allow one, are npm's
+settings, not this workflow's.) The job publishes the three packages one at a time (core, then cli, then
+mcp) with no rollback: a failure on one stops the loop, so this run did not attempt the
+packages after it. The failure does not say what is on npm: what this run published before it stays
+there, the failing package itself may have been accepted (a response lost after npm took it), and an
+earlier attempt of the same tag may have published any of them. The versions list of the public registry (the command in checklist step 2) says what is on npm. A re-run skips a package only when
+its own `npm view <name>@<version> version`, asked of that registry, prints that version. For a version that IS on npm but that the
+lookup did not print (an error; npm not yet serving a version published moments ago), the job tries
+to publish it, npm refuses the duplicate and the job stops there: re-run it once npm serves the
+version. This is what "skips a version npm already has" means wherever this guide
+says it. A `publish` job refused on authentication
 is fixed on npm (the publisher's owner, repository, workflow file, environment, or its allowed
 action), then "Re-run failed jobs"; recreating a publisher takes a few minutes.
 
@@ -62,9 +85,9 @@ says "Running a workflow that references an environment that does not exist will
 environment with the referenced name", so the `publish` job runs in an unprotected `release` and
 nothing asks for approval:
 
-- With checklist step 2 already done, the publisher that names `release` accepts that run, and it
-  publishes on its first try without anyone's approval; nothing fails, so there is nothing to
-  re-run. Save the environment's rules (checklist step 1) at once, before the next tag.
+- With checklist step 2 done, packages can publish without approval. Save the environment's rules
+  now (checklist step 1), before any retry or new tag. After a failure, check each package on npm
+  as checklist step 2 says.
 - With the environment-less publisher still on npm, whether npm accepts a token naming an
   environment against a publisher naming none is not documented. If it publishes, the same holds.
   If it fails on authentication, FIRST save the rules on the `release` environment GitHub created
@@ -114,9 +137,16 @@ To cut a release:
    a re-run job reads the artifact `build` uploaded and checks it against `build`'s sums (a check
    that fails stops the job; "Re-run all jobs" then rebuilds), the `publish` job asks for approval
    again and skips a version npm already has, the Release step skips a Release that exists, and
-   `mcp-registry` skips a version the Registry has. The artifact is kept 7 days: a `publish`
-   approved later than that, or a job re-run alone after it, fails at the download, and "Re-run all
-   jobs" rebuilds (and asks for approval again).
+   `mcp-registry` skips a version its plain lookup of the Registry finds (HTTP 200). The artifact is kept 7 days, and two jobs download it,
+   `publish` and `mcp-registry` (`release` does not). After the 7 days a `publish` approved late, or a
+   re-run that does not include `build`, fails at the download ("Re-run failed jobs" re-runs the failed
+   jobs and the jobs that depend on them: when `release` is among them it can create the GitHub Release
+   before `mcp-registry` fails there). A re-run that includes `build` rebuilds the artifact: "Re-run all
+   jobs", or a re-run of the `build` job, which re-runs every job that depends on it; `publish` asks for
+   approval again. GitHub's limits (its documentation, "Re-running workflows and jobs"): a run can be
+   re-run "up to 30 days after its initial run" and "a maximum of 50 times". The workflow starts on a
+   tag push alone and a tag on `origin` is never moved, so a release that failed past either limit is the
+   maintainer's to decide, not a step to retry.
 4. Once all four jobs are green, update the maintainer's own machine and read each version back. None of
    it updates by default: an npm global install never updates itself, and Claude Code leaves plugin
    auto-update off by default for a third-party marketplace such as this one.
@@ -169,9 +199,9 @@ Then the tag on `origin` decides first:
   brings the tag back and `git tag` stops; in any other clone `git tag` succeeds and the push is
   rejected because the tag already exists on `origin`. What the maintainer reads before deciding:
   the publish run on the tag (`gh run list --workflow publish.yml --branch vX.Y.Z`), whether npm has
-  the version, for each of the three packages (`npm view @claudinho/core@X.Y.Z version`, and the
-  same for `cli` and `mcp`: each prints the version, or fails with `E404`; the workflow publishes
-  them one at a time, so one can be on npm while another is not), and the GitHub Release
+  the version, for each of the three packages (the versions list of the public registry, by the command in
+  checklist step 2, for `core`, `cli` and `mcp`: the version is in a list or it is not; the workflow
+  publishes them one at a time, so one can be on npm while another is not), and the GitHub Release
   (`gh release view vX.Y.Z`).
 - **`origin` has no tag, and the local tag is on the merge commit** (the push failed):
   `git push origin refs/tags/vX.Y.Z:refs/tags/vX.Y.Z`.
@@ -192,13 +222,72 @@ to an 8-minute deadline, every probe bounded at 20 seconds, so the step ends by 
 publisher's retries are spent on Registry errors), authenticates with GitHub Actions OIDC
 (`mcp-publisher login github-oidc` — no token, no device flow; the Registry JWT lives five minutes,
 which is why one minted on a laptop always lapsed between releases), publishes
-`packages/mcp/server.json`, and verifies the record. It skips a version the Registry already has
-(records are immutable; a duplicate is a hard 400), so a re-run is safe. `server.json` is bumped on
+`packages/mcp/server.json`, and verifies the record. It skips a version its plain lookup finds (HTTP 200; records are immutable, and a duplicate is a
+hard 400), so a re-run is safe. A version the Registry holds as deleted answers 404 to that lookup:
+the job then goes on to its publish step, which the manual path below does not. `server.json` is bumped on
 every release regardless (the vitest guard pins it to `package.json`), so nothing about the Registry is
 manual any more. If the job ever fails (Registry outage), re-run it alone with
-`gh run rerun <id> --failed`, or fall back to the manual path from the repo root: `mcp-publisher login
-github` (device flow), then `mcp-publisher publish packages/mcp/server.json` — pass the path, since
-`mcp-publisher` defaults to `./server.json` in the cwd and ours isn't at the root. The `mcp-publisher`
+`gh run rerun <id> --failed` (inside the artifact's 7 days: release step 3 above has what a later re-run
+needs). The manual path is the fallback, and a record is immutable once
+published, so it is taken in this order, in one shell (bash or zsh), with this block first, after replacing the `0000000000` of its first line with the failed run's id
+(from `gh run list --workflow publish.yml`). The version is READ from that run, never typed beside
+it, so every step below is about the release that failed; the block has no comments, so it pastes
+into an interactive zsh:
+
+```bash
+RUN=0000000000
+V=$(gh run view "$RUN" --json headBranch --jq .headBranch)
+V=${V#v}
+URL=https://registry.modelcontextprotocol.io/v0/servers/io.github.arturogarrido%2Fclaudinho/versions/${V:?no tag read for that run}
+ASK="$URL?include_deleted=true"
+CHECK='.server.version==$v and (.server.packages[] | select(.identifier=="@claudinho/mcp") | .version)==$v and ._meta["io.modelcontextprotocol.registry/official"].status=="active"'
+echo "$V"
+```
+
+It prints the version (a tag push's run names its tag as `headBranch`); go on only if that is the
+release that failed.
+
+1. Ask the Registry whether it already has the version (the job can publish and then fail its own
+   read-back): `curl -s -o /dev/null -w '%{http_code}\n' "$ASK"` (the question includes a record the Registry
+   holds as deleted, which the plain address hides behind a `404`). `200`: the Registry holds the
+   version; publish nothing and go to step 5, whose check then says whether it is `active`. `404`:
+   it holds none; go on. Any other answer says neither: ask again, and do not go on
+   until it is one of the two.
+2. Take the record from the commit the failed run ran on, never from a working tree, the index or a
+   local tag (each can differ from what the run built). `${sha:?}` stops the command when the lookup
+   gave nothing (with an empty commit, `git show` would read the index), and the file is written only
+   when its temporary directory was made.
+
+   ```bash
+   sha=$(gh run view "$RUN" --json headSha --jq .headSha)
+   d=$(mktemp -d) && f="$d/server.json" && git show "${sha:?no commit read for that run}:packages/mcp/server.json" > "$f"
+   ```
+
+   (Fetch the commit first if this clone does not hold it.)
+3. Make the job's own check by hand on that file. This prints `io.github.arturogarrido/claudinho`,
+   then the version twice (the record's, and its npm pin); anything else: stop.
+
+   ```bash
+   jq -r '.name, .version, (.packages[] | select(.registryType=="npm" and .identifier=="@claudinho/mcp") | .version)' "$f"
+   ```
+4. npm must already serve `@claudinho/mcp` at that version (the Registry fetches it). Then log in
+   (device flow) and, only if the login succeeded, publish that file (a failed login leaves an older
+   credential in place, and the publish would use it); the path is passed because `mcp-publisher` defaults to
+   `./server.json` in the cwd.
+
+   ```bash
+   mcp-publisher login github && mcp-publisher publish "$f"
+   ```
+5. Verify the record as the job's last step does, after a publish and after a `200` alike. It prints
+   `active` only when the request succeeded AND the record passes; anything else (no output: a wrong
+   pin, a status that is not `active`, a failed or cut-short request)
+   is not a finished release: stop and decide with the maintainer.
+
+   ```bash
+   r=$(curl -sSf "$URL") && printf '%s' "$r" | jq -e --arg v "$V" "$CHECK" >/dev/null && echo active
+   ```
+
+The `mcp-publisher`
 binary is pinned by version + sha256 in the workflow; bump both together from the Registry's releases.
 
 **Lessons (learned the hard way):**
