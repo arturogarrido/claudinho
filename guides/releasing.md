@@ -53,8 +53,9 @@ them; it can only be the bytes that are published.
    - the tag pushed and `publish` still waiting for your approval: add it again BEFORE you approve;
    - a run that failed on authentication: add it again only for a package whose version is NOT yet on
      npm, then re-run. Ask npm itself, with the registry the workflow publishes to and not whatever
-     this machine's npm configuration points at: `npm view <name>@<version> version --registry https://registry.npmjs.org/ "--@claudinho:registry=https://registry.npmjs.org/"`
-     prints the version when npm serves it; an error is no answer either way. The re-run skips a package npm already serves, so THIS re-run does not
+     this machine's npm configuration points at: `npm view <name> versions --json --registry https://registry.npmjs.org/ "--@claudinho:registry=https://registry.npmjs.org/"`
+     prints the list of versions npm serves for that package. The version is in the list, or it is
+     not; a command that fails printed no list and is no answer either way. The re-run skips a package npm already serves, so THIS re-run does not
      validate a publisher recreated for such a package, and it expires unless another publish of that
      package goes through it inside its 2 days: leave that one as it is.
    Once a release has validated all three, this step is done; it is not repeated per release.
@@ -68,7 +69,7 @@ settings, not this workflow's.) The job publishes the three packages one at a ti
 mcp) with no rollback: a failure on one stops the loop, so this run did not attempt the
 packages after it. The failure does not say what is on npm: what this run published before it stays
 there, the failing package itself may have been accepted (a response lost after npm took it), and an
-earlier attempt of the same tag may have published any of them. `npm view` against the public registry (the command in checklist step 2) says what is on npm. A re-run skips a package only when
+earlier attempt of the same tag may have published any of them. The versions list of the public registry (the command in checklist step 2) says what is on npm. A re-run skips a package only when
 its own `npm view <name>@<version> version`, asked of that registry, prints that version. For a version that IS on npm but that the
 lookup did not print (an error; npm not yet serving a version published moments ago), the job tries
 to publish it, npm refuses the duplicate and the job stops there: re-run it once npm serves the
@@ -196,9 +197,9 @@ Then the tag on `origin` decides first:
   brings the tag back and `git tag` stops; in any other clone `git tag` succeeds and the push is
   rejected because the tag already exists on `origin`. What the maintainer reads before deciding:
   the publish run on the tag (`gh run list --workflow publish.yml --branch vX.Y.Z`), whether npm has
-  the version, for each of the three packages (`npm view @claudinho/core@X.Y.Z version`, and the
-  same for `cli` and `mcp`: each prints the version, or fails with `E404`; the workflow publishes
-  them one at a time, so one can be on npm while another is not), and the GitHub Release
+  the version, for each of the three packages (the versions list of the public registry, by the command in
+  checklist step 2, for `core`, `cli` and `mcp`: the version is in a list or it is not; the workflow
+  publishes them one at a time, so one can be on npm while another is not), and the GitHub Release
   (`gh release view vX.Y.Z`).
 - **`origin` has no tag, and the local tag is on the merge commit** (the push failed):
   `git push origin refs/tags/vX.Y.Z:refs/tags/vX.Y.Z`.

@@ -88,8 +88,9 @@ is the [`AGENTS.md`](AGENTS.md#conventions) "Conventions" bullet "The supported 
    under `packages/core/test/fixtures/standings/<slug>.json` with its entry in that test's per-league list
    (a payload with no entry is never read, and no test fails); its slug in `espn-canary.test.ts`'s
    watched list (and its league-shape list, when its standings shape is `league`). All five are under
-   `packages/core/test/`. Other tests use a value because the table does not hold it (an unlisted slug, a refused name)
-   or pin an output a new row joins (a suggestion list, the list of competitions with no table): search
+   `packages/core/test/`. Other tests use a value because the table does not hold it (an unlisted slug, a refused name,
+   an invented row added past the table's end) or pin an output a new row joins (a suggestion list,
+   the list of competitions with no table): search
    the tests for the new slug, alias and names first, as the playbook says, and run the whole gate after.
 3. **The counted copies**: the framing's "and N more" and the "N competitions" counts that
    `public-copy.test.ts` names, the root `package.json` (`root-package-copy.test.ts`), and the
