@@ -58,8 +58,10 @@ them; it can only be the bytes that are published.
 3. Tag the release (release step 3 below), approve the `publish` job when GitHub asks, and watch the
    four jobs.
 
-With the environment-less publisher gone there is no fallback: only a job in the `release`
-environment can publish. The job publishes the three packages one at a time (core, then cli, then
+With the environment-less publisher gone there is no fallback for trusted publishing: of this
+repository's jobs, only one in the `release` environment can publish that way. (npm's other ways to
+publish, a maintainer's own login or a token where the package's settings allow one, are npm's
+settings, not this workflow's.) The job publishes the three packages one at a time (core, then cli, then
 mcp) with no rollback: a failure on one stops the loop, so this run did not attempt the
 packages after it. The failure does not say what is on npm: what this run published before it stays
 there, the failing package itself may have been accepted (a response lost after npm took it), and an
@@ -231,8 +233,9 @@ CHECK='.server.version==$v and (.server.packages[] | select(.identifier=="@claud
 ```
 
 1. Ask the Registry whether it already has the version (the job can publish and then fail its own
-   read-back): `curl -s -o /dev/null -w '%{http_code}\n' "$URL"`. On `200` publish nothing and go to
-   step 5.
+   read-back): `curl -s -o /dev/null -w '%{http_code}\n' "$URL"`. `200`: it is published; publish nothing and go
+   to step 5. `404`: it is not; go on. Any other answer says neither: ask again, and do not go on
+   until it is one of the two.
 2. Take the record from the commit the failed run ran on, never from a working tree, the index or a
    local tag (each can differ from what the run built). `${sha:?}` stops the command when the lookup
    gave nothing: with an empty commit, `git show` would read the index.
@@ -259,11 +262,12 @@ CHECK='.server.version==$v and (.server.packages[] | select(.identifier=="@claud
    mcp-publisher login github && mcp-publisher publish "$f"
    ```
 5. Verify the record as the job's last step does, after a publish and after a `200` alike. It prints
-   `active`; anything else (no output: a wrong pin, a status that is not `active`, a failed request)
+   `active` only when the request succeeded AND the record passes; anything else (no output: a wrong
+   pin, a status that is not `active`, a failed or cut-short request)
    is not a finished release: stop and decide with the maintainer.
 
    ```bash
-   curl -sSf "$URL" | jq -e --arg v "$V" "$CHECK" >/dev/null && echo active
+   r=$(curl -sSf "$URL") && printf '%s' "$r" | jq -e --arg v "$V" "$CHECK" >/dev/null && echo active
    ```
 
 The `mcp-publisher`
