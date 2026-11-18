@@ -85,9 +85,9 @@ says "Running a workflow that references an environment that does not exist will
 environment with the referenced name", so the `publish` job runs in an unprotected `release` and
 nothing asks for approval:
 
-- With checklist step 2 already done, the publisher that names `release` accepts that run, and it
-  publishes on its first try without anyone's approval; nothing fails, so there is nothing to
-  re-run. Save the environment's rules (checklist step 1) at once, before the next tag.
+- With checklist step 2 done, packages can publish without approval. Save the environment's rules
+  now (checklist step 1), before any retry or new tag. After a failure, check each package on npm
+  as checklist step 2 says.
 - With the environment-less publisher still on npm, whether npm accepts a token naming an
   environment against a publisher naming none is not documented. If it publishes, the same holds.
   If it fails on authentication, FIRST save the rules on the `release` environment GitHub created

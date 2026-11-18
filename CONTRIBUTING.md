@@ -82,14 +82,14 @@ is the [`AGENTS.md`](AGENTS.md#conventions) "Conventions" bullet "The supported 
    (the standings shape when it is `league` or `none`, the season-slug map when the row has a season
    name, the no-bracket list when its bracket is `not-applicable`, the market list when its markets
    are `offered`); its accepted values, short forms and other names in `competition-names.test.ts` (a row with
-   no short form or other name still gets its entry; a row left out of the accepted values is tested
-   for nothing there, and no test fails); its kind in `competition-kind.test.ts` (and its season slug there, when it has one); its standings shape in
+   no short form or other name still gets its entry; omitting a row from the accepted values skips the cases
+   for its spellings); its kind in `competition-kind.test.ts` (and its season slug there, when it has one); its standings shape in
    `standings-tables.test.ts` when it is `league` or `none`, and for every row a standings payload
    recorded from the real feed under `packages/core/test/fixtures/standings/<slug>.json`, with its entry
    in the list of the case that reads it there (the per-league list for a `league` shape, whatever the
    competition's kind; the lettered-groups list for lettered groups; for another shape, numbered groups
-   or groups under a league, read that file for the case that fits, or write one). A row with neither is never
-   read, and nothing fails (an entry with no payload does fail); its slug in `espn-canary.test.ts`'s
+   or groups under a league, read that file for the case that fits, or write one). A payload is opened only by a
+   case that lists its slug: unlisted, it is never read; its slug in `espn-canary.test.ts`'s
    watched list (and its league-shape list, when its standings shape is `league`); and, for a `nation`
    row, its slug in `flags-generated.test.ts`'s list of nation competitions (a row left out is never
    checked for flags, and no test fails). All six are under `packages/core/test/`. Other tests use a value because the table does not hold it (an unlisted slug, a refused name,
