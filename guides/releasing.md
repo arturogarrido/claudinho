@@ -52,11 +52,12 @@ them; it can only be the bytes that are published.
    - before the tag: add it again, then tag;
    - the tag pushed and `publish` still waiting for your approval: add it again BEFORE you approve;
    - a run that failed on authentication: add it again only for a package whose version is NOT yet on
-     npm, then re-run. Ask npm itself, with the registry the workflow publishes to and not whatever
-     this machine's npm configuration points at: `npm view <name> versions --json --prefer-online --prefer-offline=false --offline=false --registry https://registry.npmjs.org/ "--@claudinho:registry=https://registry.npmjs.org/"`
-     prints the list of versions npm serves for that package (the three cache flags make it ask npm
-     and not answer from this machine's cache, whatever its npm configuration says). The version is in the list, or it is
-     not; a command that fails printed no list and is no answer either way. The re-run skips a package npm already serves, so THIS re-run does not
+     npm, then re-run. Ask the public registry itself, the one the workflow publishes to, and not
+     this machine's npm, whose configuration or cache can answer in its place:
+     `r=$(curl -sSf https://registry.npmjs.org/@claudinho%2Fcore) && printf '%s' "$r" | jq -r '.versions | keys[]'`
+     (`cli` or `mcp` in place of `core`) prints the versions the public registry serves for that package,
+     from one request made now. The version is in the list, or it is not; a command that prints no list
+     is no answer either way. The re-run skips a package npm already serves, so THIS re-run does not
      validate a publisher recreated for such a package, and it expires unless another publish of that
      package goes through it inside its 2 days: leave that one as it is.
    Once a release has validated all three, this step is done; it is not repeated per release.
