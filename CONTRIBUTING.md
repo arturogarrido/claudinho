@@ -54,8 +54,8 @@ node packages/cli/dist/index.js today --tz America/Mexico_City --lang es
   gate with CI's smokes and guards (one verdict per step, `--commit <message-file>` committing
   only when every step is ok, or, with `--allow-offline-audit`, when the audit alone was skipped
   offline (the commit line says so and the exit stays nonzero)); it does not run
-  `pnpm release:qa`, does not fetch the live feed, and does not replace CI's Node 22 floor, Windows
-  and macOS jobs, which `scripts/push-and-watch.sh` enforces on the pushed SHA. After a push,
+  `pnpm release:qa`, does not fetch the live feed, and leaves CI's Node 22 floor, Windows and macOS
+  jobs to the push. Read all three in `scripts/push-and-watch.sh`'s SHA report. After a push,
   `scripts/push-and-watch.sh <branch>` pushes, reads the SHA back, and prints the per-job
   result of the CI run on that SHA. User-facing behavior also requires
   `pnpm release:qa` and an output review. Prose-only changes use diff, link, contract,

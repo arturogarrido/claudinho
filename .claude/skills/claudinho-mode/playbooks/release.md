@@ -14,7 +14,7 @@ maintainer's: never a tag or a publish by an agent.
    `packages/mcp/package.json`, `packages/core/package.json`) and `packages/mcp/server.json` (AGENTS.md
    "Releasing"); the guard `server.test.ts` fails on a drift.
 3. Run the gate below and read it step by step.
-4. `pnpm release:qa` after the build, read whole: every surface, both timezones, the four locales, the club pass, the
+4. `pnpm release:qa` after the build, read whole: every section, both timezones, the four locales, the club pass, the
    tripwires. A SKIP is not a pass; a feed outage is reported as one.
 5. For an MCP-affecting release: the base and head `tools/list` compared (CONTRIBUTING.md "Comparing MCP tool
    contracts").
