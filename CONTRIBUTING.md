@@ -78,9 +78,11 @@ is the [`AGENTS.md`](AGENTS.md#conventions) "Conventions" bullet "The supported 
    for it (`offered`, `not-offered-yet`, `not-applicable`; a row may offer a bracket only for the
    bundled competition, whose knockout topology ships with the clients: the derivation refuses any
    other), and how often it has an edition.
-2. **The facts the tests spell per row**: its slug, alias, name and derived shape in
-   `supported.test.ts`; its short forms and other names in `competition-names.test.ts` (a row with
-   none still gets its entry); its kind in `competition-kind.test.ts`; its standings shape in
+2. **The facts the tests spell per row**: its slug, alias and name in `supported.test.ts`, with the derived expectations the row joins there
+   (the standings shape when it is `league` or `none`, the season-slug map, the no-bracket list, the
+   market list); its accepted values, short forms and other names in `competition-names.test.ts` (a row with
+   no short form or other name still gets its entry; a row left out of the accepted values is tested
+   for nothing there, and no test fails); its kind in `competition-kind.test.ts`; its standings shape in
    `standings-tables.test.ts` when it is `league` or `none`, and for a `league` shape (whatever the
    competition's kind) a standings payload recorded from the real feed
    under `packages/core/test/fixtures/standings/<slug>.json`; its slug in `espn-canary.test.ts`'s

@@ -52,8 +52,9 @@ them; it can only be the bytes that are published.
    - before the tag: add it again, then tag;
    - the tag pushed and `publish` still waiting for your approval: add it again BEFORE you approve;
    - a run that failed on authentication: add it again only for a package whose version is NOT yet on
-     npm, then re-run. The re-run skips a package npm already serves, so a publisher recreated for such
-     a package is not used, stays unvalidated and expires: leave that one as it is.
+     npm, then re-run. The re-run skips a package npm already serves, so THIS re-run does not
+     validate a publisher recreated for such a package, and it expires unless another publish of that
+     package goes through it inside its 2 days: leave that one as it is.
    Once a release has validated all three, this step is done; it is not repeated per release.
 3. Tag the release (release step 3 below), approve the `publish` job when GitHub asks, and watch the
    four jobs.
@@ -222,15 +223,21 @@ every release regardless (the vitest guard pins it to `package.json`), so nothin
 manual any more. If the job ever fails (Registry outage), re-run it alone with
 `gh run rerun <id> --failed` (inside the artifact's 7 days: release step 3 above has what a later re-run
 needs). The manual path is the fallback, and a record is immutable once
-published, so it is taken in this order, in one shell (bash or zsh), after setting `V` to the version without its `v` and `RUN` to the failed run's id (from
-`gh run list --workflow publish.yml`); the block has no comments, so it pastes into an interactive zsh:
+published, so it is taken in this order, in one shell (bash or zsh), after setting `RUN` to the failed run's id (from `gh run list --workflow publish.yml`). The
+version is READ from that run, never typed beside it, so every step below is about the release that
+failed; the block has no comments, so it pastes into an interactive zsh:
 
 ```bash
-V=0.0.0
 RUN=0000000000
-URL=https://registry.modelcontextprotocol.io/v0/servers/io.github.arturogarrido%2Fclaudinho/versions/$V
+V=$(gh run view "$RUN" --json headBranch --jq .headBranch)
+V=${V#v}
+URL=https://registry.modelcontextprotocol.io/v0/servers/io.github.arturogarrido%2Fclaudinho/versions/${V:?no tag read for that run}
 CHECK='.server.version==$v and (.server.packages[] | select(.identifier=="@claudinho/mcp") | .version)==$v and ._meta["io.modelcontextprotocol.registry/official"].status=="active"'
+echo "$V"
 ```
+
+It prints the version (a tag push's run names its tag as `headBranch`); go on only if that is the
+release that failed.
 
 1. Ask the Registry whether it already has the version (the job can publish and then fail its own
    read-back): `curl -s -o /dev/null -w '%{http_code}\n' "$URL"`. `200`: it is published; publish nothing and go
@@ -238,12 +245,12 @@ CHECK='.server.version==$v and (.server.packages[] | select(.identifier=="@claud
    until it is one of the two.
 2. Take the record from the commit the failed run ran on, never from a working tree, the index or a
    local tag (each can differ from what the run built). `${sha:?}` stops the command when the lookup
-   gave nothing: with an empty commit, `git show` would read the index.
+   gave nothing (with an empty commit, `git show` would read the index), and the file is written only
+   when its temporary directory was made.
 
    ```bash
    sha=$(gh run view "$RUN" --json headSha --jq .headSha)
-   f=$(mktemp -d)/server.json
-   git show "${sha:?no commit read for that run}:packages/mcp/server.json" > "$f"
+   d=$(mktemp -d) && f="$d/server.json" && git show "${sha:?no commit read for that run}:packages/mcp/server.json" > "$f"
    ```
 
    (Fetch the commit first if this clone does not hold it.)
