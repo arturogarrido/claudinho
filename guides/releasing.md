@@ -53,9 +53,9 @@ them; it can only be the bytes that are published.
    - the tag pushed and `publish` still waiting for your approval: add it again BEFORE you approve;
    - a run that failed on authentication: add it again only for a package whose version is NOT yet on
      npm, then re-run. Ask npm itself, with the registry the workflow publishes to and not whatever
-     this machine's npm configuration points at: `npm view <name> versions --json --prefer-online --offline=false --registry https://registry.npmjs.org/ "--@claudinho:registry=https://registry.npmjs.org/"`
-     prints the list of versions npm serves for that package (the two cache flags make it ask npm
-     and not answer from this machine's cache). The version is in the list, or it is
+     this machine's npm configuration points at: `npm view <name> versions --json --prefer-online --prefer-offline=false --offline=false --registry https://registry.npmjs.org/ "--@claudinho:registry=https://registry.npmjs.org/"`
+     prints the list of versions npm serves for that package (the three cache flags make it ask npm
+     and not answer from this machine's cache, whatever its npm configuration says). The version is in the list, or it is
      not; a command that fails printed no list and is no answer either way. The re-run skips a package npm already serves, so THIS re-run does not
      validate a publisher recreated for such a package, and it expires unless another publish of that
      package goes through it inside its 2 days: leave that one as it is.
@@ -136,7 +136,7 @@ To cut a release:
    a re-run job reads the artifact `build` uploaded and checks it against `build`'s sums (a check
    that fails stops the job; "Re-run all jobs" then rebuilds), the `publish` job asks for approval
    again and skips a version npm already has, the Release step skips a Release that exists, and
-   `mcp-registry` skips a version the Registry has. The artifact is kept 7 days, and two jobs download it,
+   `mcp-registry` skips a version its plain lookup of the Registry finds (HTTP 200). The artifact is kept 7 days, and two jobs download it,
    `publish` and `mcp-registry` (`release` does not). After the 7 days a `publish` approved late, or a
    re-run that does not include `build`, fails at the download ("Re-run failed jobs" re-runs the failed
    jobs and the jobs that depend on them: when `release` is among them it can create the GitHub Release
@@ -221,8 +221,9 @@ to an 8-minute deadline, every probe bounded at 20 seconds, so the step ends by 
 publisher's retries are spent on Registry errors), authenticates with GitHub Actions OIDC
 (`mcp-publisher login github-oidc` — no token, no device flow; the Registry JWT lives five minutes,
 which is why one minted on a laptop always lapsed between releases), publishes
-`packages/mcp/server.json`, and verifies the record. It skips a version the Registry already has
-(records are immutable; a duplicate is a hard 400), so a re-run is safe. `server.json` is bumped on
+`packages/mcp/server.json`, and verifies the record. It skips a version its plain lookup finds (HTTP 200; records are immutable, and a duplicate is a
+hard 400), so a re-run is safe. A version the Registry holds as deleted answers 404 to that lookup:
+the job then goes on to its publish step, which the manual path below does not. `server.json` is bumped on
 every release regardless (the vitest guard pins it to `package.json`), so nothing about the Registry is
 manual any more. If the job ever fails (Registry outage), re-run it alone with
 `gh run rerun <id> --failed` (inside the artifact's 7 days: release step 3 above has what a later re-run

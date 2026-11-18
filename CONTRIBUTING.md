@@ -86,10 +86,11 @@ is the [`AGENTS.md`](AGENTS.md#conventions) "Conventions" bullet "The supported 
    `standings-tables.test.ts` when it is `league` or `none`, and for every row a standings payload
    recorded from the real feed under `packages/core/test/fixtures/standings/<slug>.json`, with its entry
    in the list of the case that reads it there (the per-league list for a `league` shape, whatever the
-   competition's kind; the lettered-groups list for lettered groups). No test requires the payload or
-   the entry: a row with neither is never read, and nothing fails; its slug in `espn-canary.test.ts`'s
-   watched list (and its league-shape list, when its standings shape is `league`). All five are under
-   `packages/core/test/`. Other tests use a value because the table does not hold it (an unlisted slug, a refused name,
+   competition's kind; the lettered-groups list for lettered groups). A row with neither is never
+   read, and nothing fails (an entry with no payload does fail); its slug in `espn-canary.test.ts`'s
+   watched list (and its league-shape list, when its standings shape is `league`); and, for a `nation`
+   row, its slug in `flags-generated.test.ts`'s list of nation competitions (a row left out is never
+   checked for flags, and no test fails). All six are under `packages/core/test/`. Other tests use a value because the table does not hold it (an unlisted slug, a refused name,
    an invented row added past the table's end) or pin an output a new row joins (a suggestion list,
    the list of competitions with no table): search
    the tests for the new slug, alias and names first, as the playbook says, and run the whole gate after.
