@@ -53,8 +53,9 @@ them; it can only be the bytes that are published.
    - the tag pushed and `publish` still waiting for your approval: add it again BEFORE you approve;
    - a run that failed on authentication: add it again only for a package whose version is NOT yet on
      npm, then re-run. Ask npm itself, with the registry the workflow publishes to and not whatever
-     this machine's npm configuration points at: `npm view <name> versions --json --registry https://registry.npmjs.org/ "--@claudinho:registry=https://registry.npmjs.org/"`
-     prints the list of versions npm serves for that package. The version is in the list, or it is
+     this machine's npm configuration points at: `npm view <name> versions --json --prefer-online --offline=false --registry https://registry.npmjs.org/ "--@claudinho:registry=https://registry.npmjs.org/"`
+     prints the list of versions npm serves for that package (the two cache flags make it ask npm
+     and not answer from this machine's cache). The version is in the list, or it is
      not; a command that fails printed no list and is no answer either way. The re-run skips a package npm already serves, so THIS re-run does not
      validate a publisher recreated for such a package, and it expires unless another publish of that
      package goes through it inside its 2 days: leave that one as it is.
@@ -236,6 +237,7 @@ RUN=0000000000
 V=$(gh run view "$RUN" --json headBranch --jq .headBranch)
 V=${V#v}
 URL=https://registry.modelcontextprotocol.io/v0/servers/io.github.arturogarrido%2Fclaudinho/versions/${V:?no tag read for that run}
+ASK="$URL?include_deleted=true"
 CHECK='.server.version==$v and (.server.packages[] | select(.identifier=="@claudinho/mcp") | .version)==$v and ._meta["io.modelcontextprotocol.registry/official"].status=="active"'
 echo "$V"
 ```
@@ -244,8 +246,10 @@ It prints the version (a tag push's run names its tag as `headBranch`); go on on
 release that failed.
 
 1. Ask the Registry whether it already has the version (the job can publish and then fail its own
-   read-back): `curl -s -o /dev/null -w '%{http_code}\n' "$URL"`. `200`: it is published; publish nothing and go
-   to step 5. `404`: it is not; go on. Any other answer says neither: ask again, and do not go on
+   read-back): `curl -s -o /dev/null -w '%{http_code}\n' "$ASK"` (the question includes a record the Registry
+   holds as deleted, which the plain address hides behind a `404`). `200`: the Registry holds the
+   version; publish nothing and go to step 5, whose check then says whether it is `active`. `404`:
+   it holds none; go on. Any other answer says neither: ask again, and do not go on
    until it is one of the two.
 2. Take the record from the commit the failed run ran on, never from a working tree, the index or a
    local tag (each can differ from what the run built). `${sha:?}` stops the command when the lookup

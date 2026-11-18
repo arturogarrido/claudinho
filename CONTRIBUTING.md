@@ -83,10 +83,11 @@ is the [`AGENTS.md`](AGENTS.md#conventions) "Conventions" bullet "The supported 
    market list); its accepted values, short forms and other names in `competition-names.test.ts` (a row with
    no short form or other name still gets its entry; a row left out of the accepted values is tested
    for nothing there, and no test fails); its kind in `competition-kind.test.ts` (and its season slug there, when it has one); its standings shape in
-   `standings-tables.test.ts` when it is `league` or `none`, and for a `league` shape (whatever the
-   competition's kind) a standings payload recorded from the real feed
-   under `packages/core/test/fixtures/standings/<slug>.json` with its entry in that test's per-league list
-   (a payload with no entry is never read, and no test fails); its slug in `espn-canary.test.ts`'s
+   `standings-tables.test.ts` when it is `league` or `none`, and for every row a standings payload
+   recorded from the real feed under `packages/core/test/fixtures/standings/<slug>.json`, with its entry
+   in the list of the case that reads it there (the per-league list for a `league` shape, whatever the
+   competition's kind; the lettered-groups list for lettered groups). No test requires the payload or
+   the entry: a row with neither is never read, and nothing fails; its slug in `espn-canary.test.ts`'s
    watched list (and its league-shape list, when its standings shape is `league`). All five are under
    `packages/core/test/`. Other tests use a value because the table does not hold it (an unlisted slug, a refused name,
    an invented row added past the table's end) or pin an output a new row joins (a suggestion list,
