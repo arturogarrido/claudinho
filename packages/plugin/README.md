@@ -107,7 +107,7 @@ side that scored. Toasts are best effort, not a promise of every goal: a goal th
 happened is said late, at the first reliable reading after it.
 
 **The celebration** plays on your team's goal (under `toasts: all`, on any goal in a match that is not your
-team's): the mascot on the left in your theme's Claude colour, its legs
+team's): the mascot on the left in your theme's Claude colour (one fixed colour in the desktop app), its legs
 stepping, the ball crossing the top row, `GOAL! Liverpool` with `GOAL!` bold and in your theme's success colour, and
 the scorer's row under it. After about three seconds the band is one line again. At full time, on your team's win or
 draw (your team's match only), the mascot plays once more for five seconds beside `Full time · Liverpool win`. A goal against, a
