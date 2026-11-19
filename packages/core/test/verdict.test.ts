@@ -545,7 +545,7 @@ describe('one definition of each rule the two surfaces used to copy', () => {
       expect(codeHits('cli', sentence), String(sentence)).toEqual([]);
       expect(codeHits('mcp', sentence), String(sentence)).toEqual([]);
     }
-    // The horizon and window sentences belong to the card builder, like the empty notes: a surface never spells them.
+    // The horizon and window sentences belong to `bodyText.ts`: a surface never spells them.
     for (const sentence of [/within the next/, /Not found between/]) {
       expect(codeHits('cli', sentence), String(sentence)).toEqual([]);
       expect(codeHits('mcp', sentence), String(sentence)).toEqual([]);

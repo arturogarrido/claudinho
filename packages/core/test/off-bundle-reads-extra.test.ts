@@ -190,7 +190,7 @@ describe('review round 1 (coder): the selection predicate, the World Cup name ar
     expect(nationArg('Narnia')).toEqual({ answer: { degraded: false, query: 'Narnia', unknownTeam: true, rosterEvidence: 'bundle' } });
   });
 
-  it('no surface spells the "none read" sentences or their keys: they come from the card builders', async () => {
+  it('no surface spells the "none read" sentences or their keys: they come from bodyText.ts', async () => {
     const { readdirSync, readFileSync, statSync } = await import('node:fs');
     const { dirname, join } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
