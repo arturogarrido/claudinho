@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Match, ProviderAdapter } from '@claudinho/core';
+import { DISCLAIMER, type Match, type ProviderAdapter } from '@claudinho/core';
 import { cmdMatch, cmdNext } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
@@ -96,6 +96,7 @@ describe('cmdNext — live-resolved knockout fixture', () => {
     expect(t).toContain('Ecuador');
     expect(t).toContain('Round of 32');
     expect(t).toContain('Live data: ESPN');
+    expect(t).toContain(DISCLAIMER); // the found-fixture branch keeps the disclaimer
   });
 
   it('fails closed on a feed outage: degraded, no invented pairing (--json)', async () => {
@@ -121,6 +122,7 @@ describe('cmdNext — live-resolved knockout fixture', () => {
     expect(t).toContain("couldn't reach the data provider");
     expect(t).not.toContain('No upcoming fixture found');
     expect(t).not.toContain('Live data:'); // no attribution on degraded
+    expect(t).toContain(DISCLAIMER); // the no-fixture branch keeps the disclaimer too
   });
 });
 

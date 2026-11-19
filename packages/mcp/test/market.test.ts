@@ -1,10 +1,13 @@
 import {
   allFixtures,
+  definitiveNone,
   FakeMarketProvider,
   type Match,
   type MarketProvider,
+  type MarketSignal,
   PolymarketProvider,
   type ProviderAdapter,
+  valid,
 } from '@claudinho/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toolGetMarketSignal, toolGetMatch, toolGetToday } from '../src/tools';
@@ -114,6 +117,18 @@ describe('toolGetMarketSignal', () => {
     expect(r.text).toMatch(/\(.+\)/); // the "(Jun 18)"-style date disambiguator
   });
 
+  it("dates the header by the fixture's calendar day in the requested timezone", async () => {
+    // 01:00Z on Jun 14 is 19:00 on Jun 13 in Mexico City (UTC-6): the header's date follows the zone.
+    const lateKickoff = allFixtures().find((m) => Date.parse(m.kickoff) === Date.parse('2026-06-14T01:00:00Z'))!;
+    expect(lateKickoff).toBeDefined();
+    const headerLine = (text: string) =>
+      text.split('\n').find((l) => l.includes(`${lateKickoff.home.name} vs ${lateKickoff.away.name}`));
+    const ask = (tz: string) =>
+      toolGetMarketSignal({ matchId: lateKickoff.id, tz, adapter: fakeAdapter, marketProvider: synth(), now: TEST_NOW });
+    expect(headerLine((await ask('UTC')).text)).toMatch(/ \(Jun 14\)$/);
+    expect(headerLine((await ask('America/Mexico_City')).text)).toMatch(/ \(Jun 13\)$/);
+  });
+
   it('lists a date of signals (default branch)', async () => {
     const date = upcomingDate();
     const r = await toolGetMarketSignal({
@@ -216,6 +231,73 @@ describe('default-on market context', () => {
       if (prev === undefined) delete process.env.CLAUDINHO_MARKETS;
       else process.env.CLAUDINHO_MARKETS = prev;
     }
+  });
+
+  describe('the reliability gate on get_today and get_match (the twin of the CLI annotation case)', () => {
+    /** A clean signal for the match, priced at `asOf` (the request's clock unless said otherwise). */
+    const signalFor = (m: Match, over: Partial<MarketSignal> = {}): MarketSignal => ({
+      matchId: m.id,
+      source: 'polymarket',
+      asOf: TEST_NOW.toISOString(),
+      fetchedAt: TEST_NOW.toISOString(),
+      outcomes: [
+        { kind: 'home', teamCode: m.home.code, label: m.home.name, probability: 0.56 },
+        { kind: 'draw', label: 'Draw', probability: 0.25 },
+        { kind: 'away', teamCode: m.away.code, label: m.away.name, probability: 0.19 },
+      ],
+      favorite: { kind: 'home', teamCode: m.home.code, probability: 0.56, strength: 'slight' },
+      stale: false,
+      ambiguous: false,
+      ...over,
+    });
+    /** A provider that answers the upcoming fixture with what `make` builds, a definitive none otherwise (no gate of its own). */
+    const fixed = (make: (m: Match) => MarketSignal): MarketProvider => ({
+      name: 'fixed',
+      findSignal: async (m) => make(m),
+      findSignals: async (matches) => ({
+        results: new Map(
+          matches.map(
+            (m) => [m.id, m.id === upcoming().id ? valid(make(m)) : definitiveNone('no signal for this fixture')] as const,
+          ),
+        ),
+        complete: true,
+      }),
+    });
+    const ask = (marketProvider: MarketProvider) =>
+      Promise.all([
+        toolGetToday({ date: upcomingDate(), tz: 'UTC', adapter: fakeAdapter, marketProvider, now: TEST_NOW }),
+        toolGetMatch({ id: upcoming().id, adapter: fakeAdapter, marketProvider, now: TEST_NOW }),
+      ]);
+    const signalsOf = (data: unknown) => (data as { marketSignals?: Record<string, unknown> }).marketSignals;
+
+    it('control: a fresh, reliable signal is shown beside its fixture', async () => {
+      const fixture = upcoming();
+      const [today, match] = await ask(fixed((m) => signalFor(m)));
+      expect(today.text).toContain(fixture.home.name);
+      expect(signalsOf(today.data)?.[fixture.id]).toBeDefined();
+      expect(match.text).toContain(fixture.home.name);
+      expect(match.text).toContain('56%');
+      expect(match.text).toContain('informational only');
+      expect((match.data as { marketSignal: unknown }).marketSignal).not.toBeNull();
+    });
+
+    it('a stale signal is not shown: flagged stale by its provider, or priced longer ago than the freshness window', async () => {
+      const fixture = upcoming();
+      const hourAgo = new Date(TEST_NOW.getTime() - 60 * 60_000).toISOString();
+      const stale = [
+        fixed((m) => signalFor(m, { stale: true })),
+        fixed((m) => signalFor(m, { asOf: hourAgo, fetchedAt: hourAgo })),
+      ];
+      for (const provider of stale) {
+        const [today, match] = await ask(provider);
+        expect(today.text).toContain(fixture.home.name);
+        expect(signalsOf(today.data)?.[fixture.id]).toBeUndefined();
+        expect(match.text).toContain(fixture.home.name);
+        expect(match.text).not.toContain('56%');
+        expect(match.text).not.toContain('informational only');
+        expect((match.data as { marketSignal: unknown }).marketSignal).toBeNull();
+      }
+    });
   });
 
   it('get_today still lists its fixtures when the market provider throws: no signals, the read said to be incomplete', async () => {

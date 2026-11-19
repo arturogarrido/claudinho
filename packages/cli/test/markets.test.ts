@@ -174,6 +174,19 @@ describe('cmdMarkets — single match', () => {
     expect(text()).not.toContain('No market signal for this match');
   });
 
+  it("dates the header by the fixture's calendar day in the configured timezone", async () => {
+    // 01:00Z on Jun 14 is 19:00 on Jun 13 in Mexico City (UTC-6): the header's date follows the zone.
+    const lateKickoff = allFixtures().find((m) => Date.parse(m.kickoff) === Date.parse('2026-06-14T01:00:00Z'))!;
+    expect(lateKickoff).toBeDefined();
+    const headerLine = () => text().split('\n').find((l) => l.includes(`${lateKickoff.home.name} vs ${lateKickoff.away.name}`));
+    await cmdMarkets(lateKickoff.id, undefined, ctx({ json: false, tz: 'UTC' }, synth()));
+    expect(headerLine()).toMatch(/ · Jun 14$/);
+
+    writes = [];
+    await cmdMarkets(lateKickoff.id, undefined, ctx({ json: false, tz: 'America/Mexico_City' }, synth()));
+    expect(headerLine()).toMatch(/ · Jun 13$/);
+  });
+
   it('suppresses the signal for a finished match (market reads are pre-match)', async () => {
     // The tournament opener is long past at this clock.
     const opener = allFixtures()[0]!;
