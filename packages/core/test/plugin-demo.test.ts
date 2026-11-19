@@ -71,7 +71,7 @@ describe('the plugin demo (development only)', () => {
 
   it('the demo plays the celebration with the plugin\'s own drawing: the row, the ball and the goal row are imported, and no mascot is written here', () => {
     const src = read('packages/plugin-demo/hooks/register.tsx');
-    const imported = (new RegExp("import \\{([^}]*)\\} from '\\./celebration'").exec(src)?.[1] ?? '').split(',').map((n) => n.trim()).filter(Boolean);
+    const imported = (/import \{([^}]*)\} from '\.\/celebration'/.exec(src)?.[1] ?? '').split(',').map((n) => n.trim()).filter(Boolean);
     expect(imported.sort()).toEqual(['celebrationBall', 'celebrationRow', 'goalRow']);
     for (const fn of ['celebrationRow', 'celebrationBall', 'goalRow']) expect(src, fn).not.toMatch(new RegExp(`(function|const|let|var)\\s+${fn}\\b`));
     expect(src).not.toMatch(/[\u2588\u2590\u258c\u259b\u259c\u259d\u2598]/);
