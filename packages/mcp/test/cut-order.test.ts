@@ -99,6 +99,10 @@ describe('get_match: the degraded line and the market notice before the match (D
     const r = await toolGetMatch({ id: '760415', adapter: feed({ fail: true }) });
     // The CLI's sentence for this state (core's `feed.degraded`, 0.11 · 2.7c).
     precedes(r.text, 'Live scores unavailable — showing the bundled schedule', 'Mexico');
+    // The bundled row is not live: degraded, no attribution in text or data, the disclaimer kept.
+    expect(r.data).toMatchObject({ degraded: true, source: null });
+    expect(r.text).not.toContain('Live data:');
+    expect(r.text).toMatch(/not affiliated/i);
   });
 
   it('the market-incomplete notice', async () => {

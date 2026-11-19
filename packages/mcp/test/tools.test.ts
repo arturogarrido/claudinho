@@ -131,6 +131,10 @@ describe('toolGetLive', () => {
     // The honesty fix: degraded must NOT read as "nothing is on".
     expect(r.text).toContain('Live scores unavailable');
     expect(r.text).not.toContain('No matches in play');
+    // No provider served it: no attribution in text or data; the disclaimer stays.
+    expect((r.data as { source: string | null }).source).toBeNull();
+    expect(r.text).not.toContain('Live data:');
+    expect(r.text).toContain(CORE_DISCLAIMER);
   });
 });
 
@@ -242,6 +246,9 @@ describe('toolGetNextFixture (live-resolved knockout)', () => {
     expect(data.degraded).toBe(true);
     expect(data.fixture).toBeNull(); // only a placeholder slot statically → null
     expect(r.text).toContain("Couldn't reach the data provider");
+    // Nothing was served: no attribution; the disclaimer stays.
+    expect(r.text).not.toContain('Live data:');
+    expect(r.text).toContain(CORE_DISCLAIMER);
   });
 
   it('handles an unknown team gracefully', async () => {
@@ -304,6 +311,21 @@ describe('toolGetStandings', () => {
     expect(r.text).toContain('Group A');
   });
 
+  it('a degraded roster says it is not live: degraded, no attribution in text or data, the roster note and the disclaimer', async () => {
+    const r = await toolGetStandings({
+      group: 'A',
+      adapter: fakeAdapter({
+        throws: true,
+        expectedStandingsGroups: groups(),
+        standingsFallbackGroups: groups(),
+      }),
+    });
+    expect(r.data).toMatchObject({ degraded: true, source: null });
+    expect(r.text).toContain('Live standings unavailable — showing the group roster.');
+    expect(r.text).not.toContain('Live data:');
+    expect(r.text).toContain(CORE_DISCLAIMER);
+  });
+
   it('reports a clean message for an unknown group (not an empty table)', async () => {
     const r = await toolGetStandings({ group: 'Z', adapter: fakeAdapter({ standings: [A_TABLE] }) });
     expect(r.text).toContain('No group "Z"');
@@ -318,6 +340,7 @@ describe('toolGetStandings', () => {
       expect(r.text).not.toContain('No group');
       expect(r.text).not.toContain('A–L');
       expect(r.text).not.toContain('Mexico');
+      expect(r.text).toContain(CORE_DISCLAIMER);
       expect(r.data).toMatchObject({ degraded: true, source: null, tables: null });
     }
 
