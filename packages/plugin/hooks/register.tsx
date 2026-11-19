@@ -132,11 +132,12 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  * min(3, maxRows - 2) rows, then goes back to its one line. For a record without `names` (CLI 0.11.2), any goal (a
  * regulation or shootout tally that rose, none that fell): 6 frames over 3 seconds, a ball crossing a row, a "GOAL"
  * banner growing, then the toast's own line. For a record with `names`, a single-goal toast for the pinned side (with
- * no `pinnedSide`, any): 3 seconds of Anthropic's Claude mascot as three rows of text art (the theme's `claude` colour,
- * its legs alternating) beside the ball crossing the top row, `GOAL!` (the goal word the toast was built with, whole on
- * every frame; bold, the theme's `success`) and the team on the middle row, the scorer and minute (or the minute) on
- * the bottom row; two rows: the words alone; one: `GOAL! <team> <minute>`; none: it waits. `Goal for`, `Goals`,
- * `Penalties` and `Score updated` play nothing. Full time for the pinned side's win or draw: the mascot beside
+ * no `pinnedSide`, any): 3 seconds of Anthropic's Claude mascot, its legs alternating (on the terminal three rows of text
+ * art in the theme's `claude` colour; in the desktop app, whose proportional face pulls text art apart, the same three
+ * rows as one `Svg` of rectangles in one fixed colour) beside the ball crossing the top row, `GOAL!` (the goal word the
+ * toast was built with, whole on every frame; bold, the theme's `success`) and the team on the middle row, the scorer
+ * and minute (or the minute) on the bottom row; two rows: the words alone; one: `GOAL! <team> <minute>`; none: it
+ * waits. `Goal for`, `Goals`, `Penalties` and `Score updated` play nothing. Full time for the pinned side's win or draw: the mascot beside
  * `Full time · <result>` (in the words it was built with) for 5 seconds, queued behind the goal of the same read (the
  * record's `queue`, played as one stretch). Its record (`celebration`: the first play, its queue, when the run decided
  * it, its competition, its match's id and that match's tallies it was decided on) is written by the run and the clear
@@ -276,7 +277,7 @@ const COMPETITION_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/
 const CONTEXT_MAX_AGE_MS = 2 * LIVE_MS
 /** The band's width before any draw. */
 const DEFAULT_COLUMNS = 80
-/** A celebration frame's length; six frames are its whole length, after which it is spent. */
+/** A celebration frame's length; six frames are a goal's whole length (full time's: `FULLTIME_MS`), then it is spent. */
 const FRAME_MS = 500
 const FRAMES = 6
 const PLAY_MS = FRAMES * FRAME_MS
@@ -289,8 +290,10 @@ const BALL_COLUMNS = 2
 /** Full time's play, for the pinned side's win or draw: 5 s on screen. */
 const FULLTIME_MS = 5_000
 /**
- * Anthropic's Claude mascot, as three rows of text art (its head, its body, its legs in two steps), drawn in the
- * theme's `claude` colour in the goal and full-time celebrations only. It stands left of the celebration's three rows.
+ * Anthropic's Claude mascot, in the goal and full-time celebrations only, left of the celebration's three rows. These
+ * three rows of text art (its head, its body, its legs in two steps) are its one shape: the terminal draws them as
+ * text in the theme's `claude` colour; the desktop app, whose proportional face pulls text art apart (a space narrower
+ * than a block glyph, a line taller than one), draws the same rows as one `Svg` of rectangles (`mascotSvg`).
  */
 const MASCOT_HEAD = ' ▐▛███▜▌'
 const MASCOT_BODY = '▝▜█████▛▘'
@@ -301,6 +304,49 @@ const MASCOT_GAP = 1
 /** The theme keys the moments are drawn in: the mascot's, and the goal word's (the pane's accent and flair too). */
 const MASCOT_COLOR = 'claude'
 const GOAL_COLOR = 'success'
+/** One quadrant of a glyph in the desktop drawing, in CSS pixels: a glyph is two quadrants across and two down. */
+const MASCOT_QUAD_WIDTH = 4
+const MASCOT_QUAD_HEIGHT = 9
+/** An image cannot read the theme's `claude` key, so the desktop drawing uses one fixed colour. */
+const MASCOT_SVG_COLOR = '#D97757'
+const MASCOT_ALT = 'Claude mascot'
+/** The quadrants each glyph of the rows lights: upper left, upper right, lower left, lower right. */
+const MASCOT_QUADRANTS: Readonly<Record<string, readonly [boolean, boolean, boolean, boolean]>> = {
+  ' ': [false, false, false, false],
+  '█': [true, true, true, true],
+  '▐': [false, true, false, true],
+  '▌': [true, false, true, false],
+  '▛': [true, true, true, false],
+  '▜': [true, true, false, true],
+  '▝': [false, true, false, false],
+  '▘': [true, false, false, false],
+}
+
+/**
+ * The mascot's three rows, its legs at `step`, as an `Svg` source for the desktop app: one rectangle per lit quadrant
+ * (a glyph not listed lights none), none merged, in the one fixed colour; nine columns by three rows, 72 by 54.
+ */
+const mascotSvg = (step: number): string => {
+  const rows: readonly string[] = [MASCOT_HEAD, MASCOT_BODY, MASCOT_LEGS[step % 2] ?? '']
+  const rects: string[] = []
+  rows.forEach((row, r) => {
+    Array.from(row).forEach((glyph, c) => {
+      const lit = Object.hasOwn(MASCOT_QUADRANTS, glyph) ? MASCOT_QUADRANTS[glyph] : undefined
+      lit?.forEach((on, q) => {
+        if (!on) return
+        const x = (c * 2 + (q % 2)) * MASCOT_QUAD_WIDTH
+        const y = (r * 2 + Math.floor(q / 2)) * MASCOT_QUAD_HEIGHT
+        rects.push(`<rect x="${x}" y="${y}" width="${MASCOT_QUAD_WIDTH}" height="${MASCOT_QUAD_HEIGHT}"/>`)
+      })
+    })
+  })
+  const width = MASCOT_COLUMNS * 2 * MASCOT_QUAD_WIDTH
+  const height = rows.length * 2 * MASCOT_QUAD_HEIGHT
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"` +
+    ` shape-rendering="crispEdges" fill="${MASCOT_SVG_COLOR}">${rects.join('')}</svg>`
+  )
+}
 /** The band's `lineParts` read, at most. */
 const LINE_PARTS_MAX = 64
 /** A pane row's parts kept, at most. */
@@ -3031,13 +3077,28 @@ export const register: Register = (on, options) => {
         top = ' '
         bottom = ' '
       }
-      return withLine([
-        <Box key="mascot">
+      // The mascot's column: in the desktop app the three rows as one Svg (text art comes apart in its proportional
+      // face; the surface is compared here so `$.ui.resolve` gives the app's elements, which hold `Svg`), else as text.
+      let mascot: RenderChildren
+      if (e.surface === 'desktop') {
+        const { Svg } = $.ui.resolve(e)
+        mascot = (
+          <Box flexDirection="column">
+            <Svg source={mascotSvg(step)} alt={MASCOT_ALT} />
+          </Box>
+        )
+      } else {
+        mascot = (
           <Box flexDirection="column">
             <Text color={MASCOT_COLOR}>{MASCOT_HEAD}</Text>
             <Text color={MASCOT_COLOR}>{MASCOT_BODY}</Text>
             <Text color={MASCOT_COLOR}>{MASCOT_LEGS[step % 2]}</Text>
           </Box>
+        )
+      }
+      return withLine([
+        <Box key="mascot">
+          {mascot}
           <Box flexDirection="column" paddingLeft={MASCOT_GAP}>
             <Text wrap="truncate-end">{top}</Text>
             {middle}
