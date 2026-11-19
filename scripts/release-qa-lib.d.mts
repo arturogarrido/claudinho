@@ -19,7 +19,7 @@ export function clubNextVerdict(
   nextJson: string,
   nextText: string,
   core: NextSentences,
-): { kind: 'ok' | 'between' | 'outage' | 'unsaid' | 'fail' | 'broken'; detail: string };
+): { kind: 'ok' | 'between' | 'outage' | 'fail' | 'broken'; detail: string };
 export function textCarriesDisclaimer(text: string, disclaimer: string): boolean;
 export function ptTableVerdict(text: string): { kind: 'ok' | 'skip' | 'fail' | 'broken'; detail: string };
 export function promptVerdict(
