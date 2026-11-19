@@ -1,9 +1,7 @@
 import { isFinished, isLive, scoreline } from '../normalize';
-import { t, stageLabelI18n } from '../i18n';
+import { t } from '../i18n';
 import { formatKickoff } from '../time';
-import { SHARE_DISCLAIMER, SHARE_HASHTAG, type ShareStyle } from '../share/format';
 import { liveSourceLabel } from '../live';
-import type { Stage } from '../types';
 import type { BracketMatchView, BracketView, ResolvedParticipant } from './types';
 
 export interface BracketFormatOpts {
@@ -119,97 +117,4 @@ export function formatBracketTree(
     }
   }
   return blocks.join('\n').trimEnd();
-}
-
-export interface ShareBracketInput {
-  /**
-   * The card's first line, as its builder states it in the reader's language
-   * (`Knockout bracket · World Cup`: the title, then the competition's name;
-   * no year, the ties carry their dates). Absent on an input built by hand,
-   * whose first line is the title in the options' locale.
-   */
-  title?: string;
-  view: BracketView;
-  source?: string;
-  installLine?: string;
-  emptyNote?: string;
-  /**
-   * A sentence that QUALIFIES the card (a verdict's, e.g. "Fixture data may
-   * be incomplete."): printed whenever it is set, after the title and BEFORE
-   * the tree, on a populated card and an empty one alike. (A verdict that
-   * REPLACES the tree is the `emptyNote`.)
-   */
-  note?: string;
-}
-
-export interface ShareBracketOptions {
-  includeHashtag?: boolean;
-  includeInstallLine?: boolean;
-  stage?: Stage;
-  locale?: string;
-  tz?: string;
-  style?: ShareStyle;
-}
-
-/** Plain-text share card for the knockout bracket. */
-export function formatShareBracket(
-  input: ShareBracketInput,
-  options: ShareBracketOptions = {},
-): string {
-  const includeHashtag = options.includeHashtag !== false;
-  const includeInstall = options.includeInstallLine !== false;
-  const locale = options.locale;
-  // The first line: the card's own (its builder names the competition, in the
-  // reader's language), else the title in the options' locale.
-  const blocks: string[] = [input.title ?? t(locale, 'bracket.shareTitle'), ''];
-  // Before the body: what qualifies the card is read before what it qualifies,
-  // and a card pasted into a tool's text is cut from the end, so nothing but
-  // the footer follows the tree. The verdict's note first, then the card's own
-  // note (the tree is structure only, or its group slots wait on standings),
-  // in both styles.
-  if (input.note) blocks.push(input.note, '');
-
-  if (input.view.stages.length === 0) {
-    blocks.push(input.emptyNote ?? t(locale, 'bracket.empty'));
-  } else {
-    if (input.view.degraded) {
-      blocks.push(`(${t(locale, 'bracket.degraded')})`, '');
-    } else if (input.view.standingsDegraded) {
-      blocks.push(`(${t(locale, 'bracket.standingsDegraded')})`, '');
-    }
-    if ((options.style ?? 'social') === 'compact') {
-      const fmtOpts = { locale, tz: options.tz };
-      const lines = input.view.stages.flatMap((stage) =>
-        stage.matches.map((mv) => formatBracketCompactLine(mv, fmtOpts)),
-      );
-      blocks.push(lines.join('\n'));
-    } else {
-      blocks.push(formatBracketList(input.view, { footer: false, locale, tz: options.tz }));
-    }
-  }
-
-  const footer: string[] = [];
-  const src = input.source ?? input.view.source;
-  if (src) footer.push(t(locale, 'live.data', { source: liveSourceLabel(src) }));
-  footer.push(
-    [includeHashtag ? SHARE_HASHTAG : '', SHARE_DISCLAIMER].filter(Boolean).join(' · '),
-  );
-  if (includeInstall && input.installLine) {
-    footer.push(t(locale, 'share.tryIt', { line: input.installLine }));
-  }
-  blocks.push('', footer.join('\n'));
-  return blocks.join('\n');
-}
-
-/** Compact one-line-per-match bracket for narrow share contexts. */
-export function formatBracketCompactLine(mv: BracketMatchView, opts: BracketFormatOpts = {}): string {
-  const flags = opts.flags !== false;
-  const home = formatParticipant(mv.home, 'home', flags, opts.locale);
-  const away = formatParticipant(mv.away, 'away', flags, opts.locale);
-  const m = mv.match;
-  const mid = isFinished(m.status) || isLive(m.status) ? scoreline(m) : 'vs';
-  const tail = m.status === 'SCHEDULED' && mv.kickoff
-    ? ` · ${formatBracketKickoff(mv.kickoff, opts)}`
-    : statusTail(m);
-  return `${stageLabelI18n(opts.locale, { stage: mv.stage })} · ${home} ${mid} ${away}${tail}`;
 }

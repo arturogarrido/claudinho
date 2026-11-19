@@ -214,9 +214,9 @@ export const DAY_WORDS: readonly string[] = ['today', 'tomorrow', 'yesterday', .
 export type DayArg = { readonly iso: string } | { readonly offset: number } | { readonly weekday: number };
 
 /**
- * The ONE grammar of a day argument (`today [date]`, `share <date>`, `markets
- * <date>`): `YYYY-MM-DD` (a real date), `today`, `tomorrow`, `yesterday`, a
- * weekday (`sat`, `saturday`), or `+N` (N from 0 to {@link MAX_DAY_OFFSET}).
+ * The ONE grammar of a day argument (`today [date]`, `markets <date>`):
+ * `YYYY-MM-DD` (a real date), `today`, `tomorrow`, `yesterday`, a weekday
+ * (`sat`, `saturday`), or `+N` (N from 0 to {@link MAX_DAY_OFFSET}).
  * The words are English in every language, matched whatever their case, one
  * trailing dot allowed. No clock is read: what the day IS needs the request's
  * clock and the viewer's zone ({@link resolveDayArg}). Anything else is

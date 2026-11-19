@@ -116,7 +116,6 @@ export {
   scheduleSpan,
   SCHEDULE_AHEAD_DAYS,
   SCHEDULE_LOOKBACK_DAYS,
-  EARLIER_RECORD_NOTE,
   getMatchById,
   requestClock,
   getStandings,
@@ -199,25 +198,8 @@ export { DISCLAIMER, FAN_PROJECT, disclaimerLine } from './disclaimer';
 export type { AmbientFinishedMatch, AmbientLinePart, AmbientMatch, AmbientNames, AmbientView } from './ambient';
 export { AMBIENT_API } from './ambient';
 
-// Shareable terminal snippets (pure text artifacts; composes Match + the market
-// copy bank). The non-affiliation disclaimer is non-optional in every snippet.
-export { formatShareSnippet, formatShareTable, SHARE_HASHTAG, SHARE_DISCLAIMER } from './share/format';
-export type {
-  ShareStyle,
-  ShareSnippetInput,
-  ShareSnippetOptions,
-  ShareTableInput,
-} from './share/format';
-// Share cards, assembled once for every surface (title, empty note, run cue,
-// attribution, and the verdict the card carries).
-export {
-  bracketShareCard,
-  dateShareCard,
-  liveShareCard,
-  matchShareCard,
-  nextShareCard,
-  tableShareCard,
-} from './share/cards';
+// The hashtag the CLI's World Cup sign-off prints.
+export { HASHTAG } from './hashtag';
 // The body's own text, built once for every surface: the empty bodies (the
 // horizon, the window, "none read", a day the provider could not be reached
 // for), the next match day's sentences, and a day's attribution.
@@ -244,14 +226,6 @@ export {
 // and plain fields (`nextDay`, `nextKickoff`, `horizon`), never a verdict.
 export { aheadFromEntries, dayCovered, dayPointer, livePointer, nextDayReachable, pointerExtras, pointerWanted, readAhead } from './ahead';
 export type { AheadHorizon, AheadPointer, AheadRead, DayPointer, KickoffPointer, PointerExtras } from './ahead';
-export type {
-  BracketShareCard,
-  MatchShareCard,
-  ShareCardContext,
-  ShareCardMarket,
-  ShareCardView,
-  TableShareCard,
-} from './share/cards';
 export type { DayAttribution, ReadAccount } from './bodyText';
 // The one place a verdict (e.g. "not available for this competition") becomes
 // a structured key and a localized sentence.
@@ -267,8 +241,6 @@ export {
   formatBracketList,
   formatBracketTree,
   formatBracketMatchLine,
-  formatBracketCompactLine,
-  formatShareBracket,
 } from './bracket/format';
 export type {
   BracketTopology,
@@ -278,7 +250,7 @@ export type {
   BracketMatchView,
 } from './bracket/types';
 export { BRACKET_STAGE_ORDER } from './bracket/types';
-export type { BracketFormatOpts, ShareBracketInput, ShareBracketOptions } from './bracket/format';
+export type { BracketFormatOpts } from './bracket/format';
 
 // The trust boundary. Only the batch vocabulary is re-exported: the parse
 // constructors are for adapters and cache readers inside core, not for

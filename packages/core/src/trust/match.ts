@@ -176,7 +176,7 @@ export function sameTeam(a: Team, b: Team): boolean {
 
 /**
  * Is this side THE team a reader asked about — for SELECTING a team's fixture
- * (`next`, the next card's label), never for the pairing question
+ * (`next`), never for the pairing question
  * {@link sameTeam} answers.
  *
  * When both carry a provider id, the ids decide, alone: a side carrying

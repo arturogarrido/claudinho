@@ -54,7 +54,7 @@ export interface TableData {
 
 /**
  * A table key as a surface accepts it as an ARGUMENT (`table`, `get_standings`,
- * `standings://`, `share table`): 1 to 12 letters, digits or `-`, in any case.
+ * `standings://`): 1 to 12 letters, digits or `-`, in any case.
  * It says what may be ASKED FOR, and is wider than what a provider's table can
  * be keyed as: an unknown key is answered "no such group", a string that is
  * not a key at all is refused before anything is fetched.
@@ -68,7 +68,7 @@ export function tableKeyArg(raw: unknown): string | undefined {
 
 /**
  * A table's title on a surface that does not localize it (MCP text, the
- * resource, a share card): `Group A` for a lettered group, and for any other
+ * resource): `Group A` for a lettered group, and for any other
  * table the provider's label followed by the key that selects it,
  * `League A, Group B (A-B)`.
  */
@@ -77,10 +77,10 @@ export function tableTitle(table: { group: string; label?: string }): string {
 }
 
 /**
- * A table's structured form: `--json`, MCP `data` and both share cards. ONE
+ * A table's structured form: `--json` and MCP `data`. ONE
  * mapping, because it carries a verdict (`partial`: rows were left out, so the
- * table confirms nothing). It was written out at four emit sites, and the two
- * share ones had already dropped `partial` once (review of #126).
+ * table confirms nothing). It was written out at four emit sites, and two of
+ * them had already dropped `partial` once (review of #126).
  */
 export function tableData(table: GroupStandings): TableData {
   return {

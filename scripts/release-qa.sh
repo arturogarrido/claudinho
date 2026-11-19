@@ -28,8 +28,8 @@
 #
 # Then a short CLUB RENDER (0.11): the Premier League, followed in a SECOND
 # config directory of its own (`claudinho follow premier-league` there), renders
-# `today`, `live`, `next Arsenal`, `table`, `table LEAGUE`, `share next Arsenal`
-# and `table LEAGUE --lang pt` (the Portuguese "Time" column), then `prompt`
+# `today`, `live`, `next Arsenal` (its text and its `--json`, in English), `table`,
+# `table LEAGUE` and `table LEAGUE --lang pt` (the Portuguese "Time" column), then `prompt`
 # against a cache seeded in a temporary XDG_CACHE_HOME by the smoke's own helper
 # (scripts/statusline-seed.mjs), stamped fresh so the statusline starts no
 # refresher; a preload (scripts/spawn-count.mjs) counts the refreshers it would
@@ -40,17 +40,19 @@
 # variable), the run is one pass of that competition and the club render is
 # skipped. Its checks count into the one final tally.
 #
-# Added work, counted per process (each command builds its own adapter; nothing
-# is shared between them), on a discovery span that touches two months:
+# Added work, counted per process (each command builds its own adapter; no read
+# carries over between them), on a discovery span that touches two months:
 # `today` 4 (a three-day window and the standings enrichment), `live` 4,
-# `next Arsenal` 3 (two months of discovery, one table), `table` 1, `table
-# LEAGUE` 1, `share next Arsenal` 3, the Portuguese table 1: 17 GETs, plus a
-# roster retry where an enrichment fails. Each request has the adapter's
-# 6-second timeout and a window waits once for its parts, so the seven
-# sequential commands (each at most two waits) bound the network wait at about
-# 90 seconds and the club render under two minutes in the worst case: an
-# ESTIMATE from those stages, not a deadline the script enforces. The seeded
-# `prompt` asks nothing.
+# `next Arsenal` twice at 3 each (two months of discovery, one table): its text
+# and its `--json`, `table` 1, `table LEAGUE` 1, the Portuguese table 1:
+# 17 GETs, plus a roster retry where an enrichment fails. A failed club verdict
+# reads the pair again (the text and the JSON are two requests, and the feed can
+# change between them): 6 more GETs. Each request has the adapter's 6-second
+# timeout and a window waits once for its parts, so the seven sequential
+# commands (each at most two waits) bound the network wait at about 90 seconds,
+# about 110 with the pair read again, and the club render under two minutes in
+# the worst case: an ESTIMATE from those stages, not a deadline the script
+# enforces. The seeded `prompt` asks nothing.
 #
 # Exit code: non-zero if a tripwire FAILS (real regression). A degraded/unreachable
 # feed downgrades tripwires to SKIP (exit 0) — a network blip must not block a release.
@@ -70,6 +72,13 @@ cli() { if [ -n "${CLI:-}" ]; then $CLI "$@"; else node "$DIST" "$@"; fi; }
 # there, and every club command reads and writes the temporary cache, never the
 # operator's (a throttle met during the run stays in that scope and goes with it).
 club() { XDG_CONFIG_HOME="$QA_CLUB_CONFIG" XDG_CACHE_HOME="$QA_CLUB_CACHE" cli "$@"; }
+# The club's `next`, its text and its JSON, read in English (the language its
+# validator asks core for; the flag wins over the operator's CLAUDINHO_LANG and
+# LANG): two requests, read by this one function, so a second read reads both.
+read_club_next() {
+  CLUB_NEXT_TEXT="$(club next Arsenal --lang en 2>/dev/null)"
+  CLUB_NEXT_JSON="$(club next Arsenal --lang en --json 2>/dev/null)"
+}
 # The competition decisions, offline-testable (see the header).
 qa() { node "$ROOT/scripts/release-qa-lib.mjs" "$@"; }
 
@@ -129,12 +138,6 @@ banner "BRACKET — timezone threading (date must land in the CALLER's zone, not
 run bracket --tz UTC
 run bracket --tz Asia/Tokyo
 
-# ── 2. Share bracket (pasteable, disclaimer non-optional) ────────────────────
-banner "SHARE BRACKET — social + compact + a locale"
-run share bracket
-run share bracket --style compact
-run share bracket --lang es
-
 # ── 3. Day / score / standings surfaces ──────────────────────────────────────
 banner "TODAY / LIVE (en + es spot-check)"
 run today
@@ -146,10 +149,6 @@ run next "$TEAM"
 run table "$GROUP"
 run table
 
-banner "SHARE — table + live"
-run share table "$GROUP"
-run share live
-
 # ── 4. Statusline (reads the local micro-cache; may be quiet off-match) ───────
 banner "STATUSLINE (prompt)"
 run prompt
@@ -158,7 +157,7 @@ run prompt
 # environment chose the competition. Decided from the same question the header
 # asks, never from the variable.
 CLUB_GATE="$(cli table Z --json 2>/dev/null | qa club)"
-CLUB_FOLLOW=""; CLUB_CARD=""; CLUB_PT=""; CLUB_PROMPT=""; CLUB_SPAWNS=""
+CLUB_FOLLOW=""; CLUB_NEXT_TEXT=""; CLUB_NEXT_JSON=""; CLUB_PT=""; CLUB_PROMPT=""; CLUB_SPAWNS=""
 if [ "$CLUB_GATE" = "run" ]; then
   QA_CLUB_CONFIG="$(mktemp -d "${TMPDIR:-/tmp}/claudinho-release-qa-club.XXXXXX")"
   QA_CLUB_CACHE="$(mktemp -d "${TMPDIR:-/tmp}/claudinho-release-qa-cache.XXXXXX")"
@@ -167,14 +166,11 @@ if [ "$CLUB_GATE" = "run" ]; then
   banner "$(qa club-header <<<"$CLUB_FOLLOW")"
   crun today
   crun live
-  crun next Arsenal
+  read_club_next
+  printf '\033[2m$ claudinho next Arsenal --lang en   (and its --json, judged below)\033[0m\n'
+  printf '%s\n\n' "$CLUB_NEXT_TEXT"
   crun table
   crun table LEAGUE
-  # In English: the card's validator asks core for its English sentences, and
-  # the flag wins over the operator's CLAUDINHO_LANG and LANG.
-  printf '\033[2m$ claudinho share next Arsenal --lang en --json   (its snippet)\033[0m\n'
-  CLUB_CARD="$(club share next Arsenal --lang en --json 2>/dev/null)"
-  qa snippet <<<"$CLUB_CARD"; echo; echo
   printf '\033[2m$ claudinho table LEAGUE --lang pt\033[0m\n'
   CLUB_PT="$(club table LEAGUE --lang pt 2>/dev/null)"
   printf '%s\n\n' "$CLUB_PT"
@@ -206,8 +202,7 @@ PASS=0; FAIL=0; SKIP=0
 BR_EN="$(cli bracket --lang en 2>/dev/null)"
 BR_UTC="$(cli bracket --lang en --tz UTC 2>/dev/null)"
 BR_TYO="$(cli bracket --lang en --tz Asia/Tokyo 2>/dev/null)"
-SB="$(cli share bracket --lang en 2>/dev/null)"
-SBC="$(cli share bracket --lang en --style compact 2>/dev/null)"
+TD_EN="$(cli today --lang en 2>/dev/null)"
 
 check() { # name ; pass-condition already evaluated into $1=ok/no
   if [ "$1" = "ok" ]; then printf '  \033[32m✓ PASS\033[0m  %s\n' "$2"; PASS=$((PASS+1))
@@ -247,18 +242,18 @@ else
       && check ok  "bracket output differs UTC vs Asia/Tokyo (tz threaded into rendering)" \
       || check no  "bracket output differs UTC vs Asia/Tokyo (tz threaded into rendering)"
   fi
-  # T3/T4: the non-affiliation disclaimer is non-optional on share cards (legal)
-  grep -qi "not affiliated with FIFA" <<<"$SB" \
-    && check ok  "share bracket carries the non-affiliation disclaimer" \
-    || check no  "share bracket carries the non-affiliation disclaimer"
-  grep -qi "not affiliated with FIFA" <<<"$SBC" \
-    && check ok  "share bracket --style compact carries the disclaimer" \
-    || check no  "share bracket --style compact carries the disclaimer"
+  # T3/T4: the non-affiliation disclaimer is non-optional on every text answer (legal)
+  grep -qi "not affiliated with FIFA" <<<"$BR_EN" \
+    && check ok  "bracket carries the non-affiliation disclaimer" \
+    || check no  "bracket carries the non-affiliation disclaimer"
+  grep -qi "not affiliated with FIFA" <<<"$TD_EN" \
+    && check ok  "today carries the non-affiliation disclaimer" \
+    || check no  "today carries the non-affiliation disclaimer"
 fi
 
 # T5 — DETERMINISTIC, feed-independent: a knockout decided on penalties renders the
-# shootout score "1(3)–1(4)". Run on a synthetic fixture through the real share
-# formatter (core `formatShareSnippet`, which every card routes through `scoreline`)
+# shootout score "1(3)–1(4)". Run on a synthetic finished tie through core's
+# bracket list (`formatBracketList`, which prints its score through `scoreline`)
 # so this regression class is proven even when the live feed degrades to SKIP above
 # — the exact gap that hid the live penalty render in one review env. (v0.8.10)
 # NOTE: this renders the LOCAL repo core formatter (what's about to ship via the
@@ -270,11 +265,17 @@ if [ -n "${CLI:-}" ]; then
   SKIP=$((SKIP+1))
 elif [ -f "$CORE_DIST" ]; then
   PENS="$(node --input-type=module -e "
-import { formatShareSnippet } from 'file://$CORE_DIST';
-const m = { id:'pk', stage:'R32', kickoff:'2026-06-30T18:00Z', venue:'X',
+import { formatBracketList } from 'file://$CORE_DIST';
+// A finished R32 tie, 1-1, decided by a penalty shootout, 3-4.
+const match = { id:'pk', stage:'R32', kickoff:'2026-06-30T18:00:00Z', venue:'X',
   home:{code:'GER',name:'Germany',flag:'🇩🇪'}, away:{code:'PAR',name:'Paraguay',flag:'🇵🇾'},
-  status:'FT', score:{home:1,away:1}, shootout:{home:3,away:4}, updatedAt:'2026-06-30T21:00Z' };
-process.stdout.write(formatShareSnippet({ title:'pens', matches:[m] }, {}));
+  status:'FT', score:{home:1,away:1}, shootout:{home:3,away:4}, updatedAt:'2026-06-30T21:00:00Z' };
+const view = { stages:[{ stage:'R32', label:'Round of 32', matches:[{
+  match, kickoff:match.kickoff,
+  home:{code:'GER',label:'Germany',flag:'🇩🇪',status:'confirmed'},
+  away:{code:'PAR',label:'Paraguay',flag:'🇵🇾',status:'confirmed'}
+}]}], degraded:false, standingsDegraded:false };
+process.stdout.write(formatBracketList(view, { locale:'en', footer:false }));
 " 2>/dev/null)"
   grep -q "1(3)–1(4)" <<<"$PENS" \
     && check ok  "penalty shootout renders 1(3)–1(4) (deterministic, feed-independent)" \
@@ -427,8 +428,10 @@ try {
 fi
 
 # C1-C4 — the club render (section 4b): what the club config followed, the
-# club card (a render, a VALID between-editions render, or an outage reported as
-# one) and its disclaimer, the Portuguese "Time" column, and the seeded prompt
+# club's `next` (a render, a VALID between-editions render, or an outage reported
+# as one: its JSON says what it answered, its text must say so; a failed verdict
+# is read once more, since the two are two requests and the feed can change
+# between them) and its disclaimer, the Portuguese "Time" column, and the seeded prompt
 # (the seeded club match rendered, no refresher started). Counted into the same
 # tally; skipped as one when the club render was.
 case "$CLUB_GATE" in
@@ -437,17 +440,24 @@ case "$CLUB_GATE" in
     [ "$V" = "ok" ] \
       && check ok  "club render: the second config directory follows the Premier League" \
       || check no  "club render: ${V#fail:}"
-    V="$(qa card <<<"$CLUB_CARD")"
+    V="$(qa next "$CLUB_NEXT_TEXT" <<<"$CLUB_NEXT_JSON")"
     case "$V" in
-      ok:*)      check ok "club render: share next Arsenal rendered (${V#ok:})" ;;
+      fail:*)
+read_club_next
+        V2="$(qa next "$CLUB_NEXT_TEXT" <<<"$CLUB_NEXT_JSON")"
+        printf '  \033[2mclub render: next Arsenal read again after %s\033[0m\n' "$V"
+        V="$V2" ;;
+    esac
+    case "$V" in
+      ok:*)      check ok "club render: next Arsenal rendered (${V#ok:})" ;;
       between:*) check ok "club render: between editions is a valid render (${V#between:})" ;;
-      outage:*)  printf '  \033[33m⚠ SKIP\033[0m  club render: outage (%s); a populated card is not proven\n' "${V#outage:}"
+      outage:*)  printf '  \033[33m⚠ SKIP\033[0m  club render: outage (%s); a populated answer is not proven\n' "${V#outage:}"
                  SKIP=$((SKIP+1)) ;;
       *)         check no "club render: ${V#*:}" ;;
     esac
-    V="$(qa card-disclaimer <<<"$CLUB_CARD")"
+    V="$(qa next-disclaimer <<<"$CLUB_NEXT_TEXT")"
     [ "$V" = "ok" ] \
-      && check ok  "club render: the club share card carries the one disclaimer" \
+      && check ok  "club render: next Arsenal carries the one disclaimer" \
       || check no  "club render: ${V#fail:}"
     V="$(qa pt-table <<<"$CLUB_PT")"
     case "$V" in
@@ -469,6 +479,6 @@ esac
 
 echo
 bold "tripwires: $PASS passed · $FAIL failed · $SKIP skipped"
-echo "NOTE: this covers CLI/share rendering. MCP arg-threading (tz/lang on get_bracket"
+echo "NOTE: this covers CLI rendering. MCP arg-threading (tz/lang on get_bracket"
 echo "et al.) is guarded by packages/mcp/test/tools.test.ts — keep that green too."
 [ "$FAIL" -eq 0 ]

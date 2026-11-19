@@ -1,6 +1,6 @@
 /**
  * The one non-affiliation sentence (0.11, ledger D5 option B). A leaf: every
- * runtime surface imports it (the share card footer, the CLI's help footer and
+ * runtime surface imports it (the CLI's help footer and
  * its English localized footer, the MCP server's footer), and the static copies
  * that cannot import it (the listing JSON files, the public Markdown) are pinned
  * to it by `test/disclaimer.test.ts`. A listing host is added by

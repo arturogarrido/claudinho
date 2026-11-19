@@ -6,8 +6,8 @@
  * carries such a verdict as a field (`unsupported`), and every surface has to
  * turn it into two things: a sentence in its text and a key in its structured
  * output. For a long time each surface did both by hand, at every emit site,
- * and the structured half was forgotten three times: `share table --json` lost
- * `partial`, `markets --json` lost `unsupported`, and the MCP tools returned
+ * and the structured half was forgotten more than once: `markets --json` lost
+ * `unsupported`, and the MCP tools returned
  * `data` for an unsupported competition identical to an empty World Cup answer.
  *
  * So there is ONE place a verdict becomes output. A surface spreads

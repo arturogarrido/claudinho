@@ -20,13 +20,11 @@ export function isLang(value: unknown): value is Lang {
 const EN = {
   'bracket.title': 'Knockout bracket',
   'bracket.stageTitle': 'Knockout · {stage}',
-  'bracket.shareTitle': 'Knockout bracket',
   'bracket.degraded':
     'Live scores unavailable — bracket structure only, no confirmed advancement.',
   'bracket.standingsDegraded':
     'Live standings unavailable — group slots stay TBD until groups finish.',
   'bracket.treeFallback': 'Terminal too narrow for tree view — showing staged list.',
-  'bracket.empty': 'No bracket matches available.',
   'bracket.projected': '(proj.)',
   'bracket.invalidStage': 'Stage must be one of: R32, R16, QF, SF, 3P, F',
   'bracket.unknownStage': 'Unknown stage "{stage}". Use R32, R16, QF, SF, 3P, or F.',
@@ -81,7 +79,6 @@ const EN = {
   'ahead.see.day': 'See that day: {command}',
   'ahead.nextKickoff': 'Next kickoff: {when}, {in}.',
   'ahead.horizon': 'Nothing scheduled in the next {days} days.',
-  'share.tryIt': 'Try it: {line}',
   // A match line's tokens and a list's titles: ONE catalog for the CLI and
   // the MCP text. `status.ht`/`status.ft` are the CLI's compact column; the
   // MCP text says the words (`status.halfTime`/`status.fullTime`).
@@ -167,13 +164,11 @@ type Dict = Record<keyof typeof EN, string>;
 const ES: Dict = {
   'bracket.title': 'Cuadro de eliminatorias',
   'bracket.stageTitle': 'Eliminatorias · {stage}',
-  'bracket.shareTitle': 'Cuadro de eliminatorias',
   'bracket.degraded':
     'Marcadores en vivo no disponibles — solo estructura del cuadro, sin avances confirmados.',
   'bracket.standingsDegraded':
     'Tabla en vivo no disponible — los cupos de grupo siguen por definir hasta que terminen los grupos.',
   'bracket.treeFallback': 'Terminal demasiado estrecha para el árbol — mostrando lista por fase.',
-  'bracket.empty': 'No hay partidos de eliminatorias disponibles.',
   'bracket.projected': '(proy.)',
   'bracket.invalidStage': 'La fase debe ser una de: R32, R16, QF, SF, 3P, F',
   'bracket.unknownStage': 'Fase desconocida "{stage}". Usa R32, R16, QF, SF, 3P o F.',
@@ -226,7 +221,6 @@ const ES: Dict = {
   'ahead.see.day': 'Para ver ese día: {command}',
   'ahead.nextKickoff': 'Próximo partido: {when}, {in}.',
   'ahead.horizon': 'Nada programado en los próximos {days} días.',
-  'share.tryIt': 'Pruébalo: {line}',
   'status.live': 'EN VIVO',
   'status.ht': 'DESC',
   'status.ft': 'FIN',
@@ -288,13 +282,11 @@ const ES: Dict = {
 const PT: Dict = {
   'bracket.title': 'Chave do mata-mata',
   'bracket.stageTitle': 'Mata-mata · {stage}',
-  'bracket.shareTitle': 'Chave do mata-mata',
   'bracket.degraded':
     'Placar ao vivo indisponível — apenas a estrutura da chave, sem avanços confirmados.',
   'bracket.standingsDegraded':
     'Classificação ao vivo indisponível — vagas de grupo seguem a definir até o fim dos grupos.',
   'bracket.treeFallback': 'Terminal estreito demais para a árvore — mostrando lista por fase.',
-  'bracket.empty': 'Nenhum jogo do mata-mata disponível.',
   'bracket.projected': '(proj.)',
   'bracket.invalidStage': 'A fase deve ser uma de: R32, R16, QF, SF, 3P, F',
   'bracket.unknownStage': 'Fase desconhecida "{stage}". Use R32, R16, QF, SF, 3P ou F.',
@@ -347,7 +339,6 @@ const PT: Dict = {
   'ahead.see.day': 'Para ver esse dia: {command}',
   'ahead.nextKickoff': 'Próximo jogo: {when}, {in}.',
   'ahead.horizon': 'Nada marcado nos próximos {days} dias.',
-  'share.tryIt': 'Experimente: {line}',
   'status.live': 'AO VIVO',
   'status.ht': 'INT',
   'status.ft': 'FIM',
@@ -409,13 +400,11 @@ const PT: Dict = {
 const FR: Dict = {
   'bracket.title': 'Tableau à élimination directe',
   'bracket.stageTitle': 'Éliminatoires · {stage}',
-  'bracket.shareTitle': 'Tableau à élimination directe',
   'bracket.degraded':
     'Scores en direct indisponibles — structure du tableau seulement, aucune qualification confirmée.',
   'bracket.standingsDegraded':
     'Classement en direct indisponible — les places de groupe restent à définir jusqu’à la fin des poules.',
   'bracket.treeFallback': 'Terminal trop étroit pour l’arbre — affichage par phase.',
-  'bracket.empty': 'Aucun match à élimination directe disponible.',
   'bracket.projected': '(proj.)',
   'bracket.invalidStage': 'La phase doit être l’une de : R32, R16, QF, SF, 3P, F',
   'bracket.unknownStage': 'Phase inconnue « {stage} ». Utilisez R32, R16, QF, SF, 3P ou F.',
@@ -468,7 +457,6 @@ const FR: Dict = {
   'ahead.see.day': 'Pour voir ce jour : {command}',
   'ahead.nextKickoff': 'Prochain coup d’envoi : {when}, {in}.',
   'ahead.horizon': 'Rien de prévu dans les {days} prochains jours.',
-  'share.tryIt': 'Essayez : {line}',
   'status.live': 'DIRECT',
   'status.ht': 'MT',
   'status.ft': 'FIN',
