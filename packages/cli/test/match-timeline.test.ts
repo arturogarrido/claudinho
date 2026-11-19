@@ -309,6 +309,13 @@ describe('match <id> on a nation competition: flags and the market block', () =>
     expect(market).toBeGreaterThan(0);
     expect(t.search(/\n {2}\d+' +(?:\u{1F7E8} )?Yellow card/u)).toBeGreaterThan(market);
   });
+  it('an id the World Cup does not hold, the provider up: "No match found", never an outage', async () => {
+    await cmdMatch('999999', wcCtx({}));
+    const t = stdout();
+    expect(t).toContain('No match found with id 999999.');
+    expect(t).not.toContain("couldn't reach");
+    expect(t).not.toContain('Live data:');
+  });
   it('the market-incomplete note stays after the timeline (an uncut text keeps its notes after the body)', async () => {
     const dead = { name: 'dead', findSignal: async () => undefined, findSignals: async () => ({ results: new Map(), complete: false }) } as unknown as MarketProvider;
     await cmdMatch('760415', wcCtx({ markets: true }, dead));

@@ -369,6 +369,8 @@ describe('club rendering — the live state (Arsenal 2–1 Chelsea, 50\')', () =
     expect(t).toContain('Arsenal');
     expect(t).toContain('Leeds United');
     noLeak(t, 'table');
+    // The team cell is the name after the border's one space: no gap where a flag would go.
+    for (const name of ['Arsenal', 'Chelsea', 'Leeds United']) expect(t, name).toContain(`│ ${name} `);
     writes = [];
     await cmdTable(undefined, clubCtx(LIVE_FEED(), { json: true }));
     const j = parsedOut();

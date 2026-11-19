@@ -155,6 +155,8 @@ describe('cmdTable — fail closed', () => {
     expect(o).not.toContain('No group found');
     expect(o).not.toContain('Group A');
     expect(o).not.toContain('Mexico');
+    // The outage names no provider, and keeps the disclaimer.
+    expect(o).not.toContain('Live data:');
     expect(o).toContain(DISCLAIMER);
 
     writes = [];
