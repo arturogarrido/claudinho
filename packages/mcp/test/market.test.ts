@@ -1,5 +1,4 @@
 import {
-import { DISCLAIMER } from '../src/format';
   allFixtures,
   definitiveNone,
   FakeMarketProvider,
@@ -11,6 +10,7 @@ import { DISCLAIMER } from '../src/format';
   valid,
 } from '@claudinho/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DISCLAIMER } from '../src/format';
 import { toolGetMarketSignal, toolGetMatch, toolGetToday } from '../src/tools';
 
 /** Offline match adapter → the date branch uses the bundled static schedule. */
