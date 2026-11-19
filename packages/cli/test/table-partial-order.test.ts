@@ -72,6 +72,8 @@ describe('table, every table: a partial line sits with its own table', () => {
     for (const [name, code] of [['Argentina', 'ARG'], ['Mexico', 'MEX'], ['Canada', 'CAN'], ['Brazil', 'BRA']] as const) expect(at(name, code), name).toBeGreaterThan(-1);
     expect(at('Argentina', 'ARG')).toBeLessThan(at('Mexico', 'MEX'));
     expect(at('Canada', 'CAN')).toBeLessThan(shown.indexOf(line));
-    expect(shown.indexOf(line)).toBeLessThan(at('Brazil', 'BRA'));
+    // Before the next table's TITLE, not only its first row: under that title it would qualify the wrong table.
+    expect(shown.indexOf('Group C')).toBeGreaterThan(-1);
+    expect(shown.indexOf(line)).toBeLessThan(shown.indexOf('Group C'));
   });
 });

@@ -177,7 +177,7 @@ describe('today (0.11 2.1d)', () => {
     expect(text()).toContain('2026-10-17');
   });
 
-  it('a FAILED read off the bundle: the empty body says the provider could not be reached (the date card’s sentence, localized), never "No matches scheduled" nor "showing the bundled schedule"; on the bundle the skeleton and its line as today', async () => {
+  it('a FAILED read off the bundle: the empty body says the provider could not be reached (localized), never "No matches scheduled" nor "showing the bundled schedule"; on the bundle the skeleton and its line as today', async () => {
     // Seen while building 2.1d: off the bundle a degraded day printed the bundle's empty answer and
     // "showing the bundled schedule", though no bundled schedule applies there. The read now says
     // whether it merged the skeleton, so the surfaces can say what an outage leaves them with.

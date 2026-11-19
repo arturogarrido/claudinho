@@ -207,6 +207,9 @@ describe('a knockout window that was not whole says so beside what it holds (0.1
   it('`next <team>` for a team whose tie was the refused record: no fixture, the sentence, no elimination', async () => {
     await cmdNext('ARG', partialCtx());
     expect(text()).toContain(SENTENCE);
+    // What qualifies the answer comes before it, on an empty answer too.
+    const body = text().slice(text().indexOf(SENTENCE) + SENTENCE.length);
+    expect(body).toMatch(/Argentina|ARG/);
     expect(text()).not.toContain(PLACEHOLDER_FLAG);
     expect(text().toLowerCase()).not.toContain('eliminated');
     writes = [];

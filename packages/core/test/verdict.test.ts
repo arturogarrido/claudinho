@@ -299,7 +299,7 @@ describe('one definition of each rule the two surfaces used to copy', () => {
     expect(typeof date).toBe('function');
     expect(typeof unserved).toBe('function');
     expect(typeof unreached).toBe('function');
-    // The outage sentence of a day with no bundled schedule: the date card's, now every date surface's.
+    // The outage sentence of a day with no bundled schedule, on every date surface.
     expect(unreached?.('2026-10-10', 'en')).toMatch(/no fixtures confirmed/);
     expect(unreached?.('2026-10-10', 'en')).toContain('2026-10-10');
     expect(unreached?.('2026-10-10', 'es')).not.toBe(unreached?.('2026-10-10', 'en'));

@@ -86,7 +86,7 @@ describe('get_next_fixture off the bundle (0.11 2.1c)', () => {
   it('the input takes a bounded label (a code or a name); the market tool keeps the code', () => {
     expect(clubArg.safeParse('Ars\u200benal').success).toBe(false); // an invisible character is not a label
     // Review round 3: a control or invisible character at either END is refused too (trimming must not hide it:
-    // the raw argument reaches the run cue and the my_team prompt).
+    // the raw argument reaches the my_team prompt).
     for (const bad of ['\nArsenal', 'Arsenal\r', '\uFEFFArsenal', 'Arsenal\uFEFF', '\tArsenal', 'Ars\n\n', '\u2028Arsenal']) {
       expect(clubArg.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
     }

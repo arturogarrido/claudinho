@@ -447,5 +447,8 @@ describe('the default-on market annotation on today and match (fail closed)', ()
     writes = [];
     await cmdToday(upcomingDate(), ctx({ json: true }, boom));
     expect(json()).toMatchObject({ marketComplete: false, marketSignals: {} });
+    writes = [];
+    await cmdMatch(upcoming().id, ctx({ json: true }, boom));
+    expect(json()).toMatchObject({ marketComplete: false });
   });
 });
