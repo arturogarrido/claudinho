@@ -50,7 +50,9 @@ describe('the plugin demo (development only)', () => {
   it('the script copies exactly the plugin modules the demo needs: what its module imports, what those import, and a .js module\'s types', () => {
     const list = copies();
     for (const f of list) expect(existsSync(join(ROOT, 'packages/plugin/hooks', f)), f).toBe(true);
-    const importsOf = (text: string) => [...text.matchAll(/from '\.\/([a-z-]+)(\.js)?'/g)].map((m) => (m[2] === '.js' ? `${m[1]}.js` : `${m[1]}.ts`));
+    // A module's file: `.js` as written, else the `.ts` or the `.tsx` the plugin holds under that name.
+    const importsOf = (text: string) =>
+      [...text.matchAll(/from '\.\/([a-z-]+)(\.js)?'/g)].map((m) => (m[2] === '.js' ? `${m[1]}.js` : existsSync(join(ROOT, 'packages/plugin/hooks', `${m[1]}.tsx`)) ? `${m[1]}.tsx` : `${m[1]}.ts`));
     const needed = new Set<string>();
     const queue = importsOf(read('packages/plugin-demo/hooks/register.tsx'));
     expect(queue.length).toBeGreaterThan(0);
@@ -64,6 +66,24 @@ describe('the plugin demo (development only)', () => {
     expect([...list].sort()).toEqual([...needed].sort());
     // The plugin's own hooks module is never among them: the demo sets scenes itself, it does not run the plugin.
     expect(list).not.toContain('register.tsx');
+    expect(list).toContain('celebration.tsx');
+  });
+
+  it('the demo plays the celebration with the plugin\'s own drawing: the row, the ball and the goal row are imported, and no mascot is written here', () => {
+    const src = read('packages/plugin-demo/hooks/register.tsx');
+    const imported = (new RegExp("import \\{([^}]*)\\} from '\\./celebration'").exec(src)?.[1] ?? '').split(',').map((n) => n.trim()).filter(Boolean);
+    expect(imported.sort()).toEqual(['celebrationBall', 'celebrationRow', 'goalRow']);
+    for (const fn of ['celebrationRow', 'celebrationBall', 'goalRow']) expect(src, fn).not.toMatch(new RegExp(`(function|const|let|var)\\s+${fn}\\b`));
+    expect(src).not.toMatch(/[\u2588\u2590\u258c\u259b\u259c\u259d\u2598]/);
+    // It is drawn where the plugin draws it, in the band above the prompt, on its two commands.
+    expect(src).toMatch(/on\(\s*'ui\.render'\s*,\s*\{\s*component:\s*'AbovePrompt'\s*\}/);
+    for (const word of ['mascot', 'fulltime']) {
+      expect(src, word).toContain(`'${word}'`);
+      expect(read('packages/plugin-demo/README.md'), word).toContain(`\`/demo ${word}\``);
+    }
+    // The command list of AGENTS.md says the demo shows it.
+    const bullet = /- `bash scripts\/plugin-demo\.sh`[^\n]*/.exec(read('AGENTS.md'))?.[0] ?? '';
+    expect(bullet).toMatch(/celebration/);
   });
 
   it('the demo draws with the plugin\'s functions: the scenes, the look and the colors are imported, never written here', () => {
