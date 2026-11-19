@@ -36,7 +36,7 @@
  *   node scripts/release-qa-lib.mjs club < json      run | skip:<why>      (the bundle pass's header JSON)
  *   node scripts/release-qa-lib.mjs club-header < json                     (the club config's `follow --json`)
  *   node scripts/release-qa-lib.mjs club-followed < json  ok | fail:<why>
- *   node scripts/release-qa-lib.mjs next <text> < json  ok | between | outage | fail | broken, :<detail>  (`next --json`, and its text)
+ *   node scripts/release-qa-lib.mjs next <text> < json  ok | between | outage | unsaid | fail | broken, :<detail>  (`next --json`, and its text)
  *   node scripts/release-qa-lib.mjs next-disclaimer < text  ok | fail:<why>
  *   node scripts/release-qa-lib.mjs pt-table < text  ok | skip | fail | broken, :<detail>
  *   node scripts/release-qa-lib.mjs prompt <spawns> < out   ok | fail | broken, :<detail>
@@ -189,16 +189,16 @@ function notTheClubAnswer(answer) {
  *   - candidates, or a replacing verdict about the club or the competition:
  *     `fail` (the club is in the table: a render that says otherwise failed);
  *   - between editions: `between` (a VALID render) when the text says the
- *     verdict's sentence, else `fail`;
+ *     verdict's sentence, else `unsaid`;
  *   - an outage: `outage` (the shell reports it as one; it proves no
  *     populated render);
- *   - a fixture: `ok` when the text names each club (its name or its code)
- *     and, on a read that was not whole, says so; else `fail`;
+ *   - a fixture: `ok` when one line of the text holds both clubs' names
+ *     and, on a read that was not whole, says so; else `unsaid`;
  *   - no fixture, a read that was not whole: `ok` when the text says the
- *     none-read sentence AND every qualifier sentence, else `fail`;
+ *     none-read sentence AND every qualifier sentence, else `unsaid`;
  *   - no fixture, a whole read: a horizon with no span (`days` not a positive
  *     whole number) is `broken`; `ok` when the text says the horizon
- *     sentence, else `fail`; an answer with neither is `broken` (`next` off
+ *     sentence, else `unsaid`; an answer with neither is `broken` (`next` off
  *     the bundle gives none).
  */
 export function clubNextVerdict(nextJson, nextText, core) {
@@ -226,29 +226,33 @@ export function clubNextVerdict(nextJson, nextText, core) {
   const says = (sentence) => typeof sentence === 'string' && sentence !== '' && text.includes(sentence);
   const saysEvery = (sentences) => sentences.length > 0 && sentences.every(says);
   if (statesBetween) {
-    if (!says(core.verdictNotice(result, 'en'))) return { kind: 'fail', detail: 'betweenEditions is not said in the text' };
+    if (!says(core.verdictNotice(result, 'en'))) return { kind: 'unsaid', detail: 'betweenEditions is not said in the text' };
     return { kind: 'between', detail: `the edition ended ${between.ended}, and the text says so` };
   }
   if (answer.degraded === true) return { kind: 'outage', detail: 'the provider could not be reached' };
   const partial = isObject(answer.partial);
   if (isObject(fixture)) {
-    const named = (side) => says(side?.name) || says(side?.code);
-    if (!named(fixture.home) || !named(fixture.away)) return { kind: 'fail', detail: 'the fixture is not in the text' };
+    // Both NAMES on one line, the fixture's row: the header names the club asked whatever the fixture, and a code is no name.
+    const names = [fixture.home?.name, fixture.away?.name];
+    const named = names.every((n) => typeof n === 'string' && n !== '');
+    if (!named || !text.split('\n').some((line) => names.every((n) => line.includes(n)))) {
+      return { kind: 'unsaid', detail: 'the fixture is not in the text' };
+    }
     if (partial) {
-      if (!saysEvery(core.verdictQualifiers(result, 'en'))) return { kind: 'fail', detail: 'the partial read is not said in the text' };
+      if (!saysEvery(core.verdictQualifiers(result, 'en'))) return { kind: 'unsaid', detail: 'the partial read is not said in the text' };
       return { kind: 'ok', detail: 'a fixture, the read was not whole and the text says so' };
     }
     return { kind: 'ok', detail: 'a fixture' };
   }
   if (partial) {
-    if (!says(core.nextNoneReadSentence(result, CLUB.team, 'en'))) return { kind: 'fail', detail: 'the none-read sentence is not said in the text' };
-    if (!saysEvery(core.verdictQualifiers(result, 'en'))) return { kind: 'fail', detail: 'the partial read is not said in the text' };
+    if (!says(core.nextNoneReadSentence(result, CLUB.team, 'en'))) return { kind: 'unsaid', detail: 'the none-read sentence is not said in the text' };
+    if (!saysEvery(core.verdictQualifiers(result, 'en'))) return { kind: 'unsaid', detail: 'the partial read is not said in the text' };
     return { kind: 'ok', detail: 'no fixture READ in the span (the read was not whole), its sentence shown' };
   }
   if (answer.horizon !== undefined) {
     const days = answer.horizon?.days;
     if (!isObject(answer.horizon) || !(Number.isInteger(days) && days > 0)) return { kind: 'broken', detail: 'horizon states no span' };
-    if (!says(core.nextHorizonSentence(result, CLUB.team, 'en'))) return { kind: 'fail', detail: 'the horizon is not said in its text' };
+    if (!says(core.nextHorizonSentence(result, CLUB.team, 'en'))) return { kind: 'unsaid', detail: 'the horizon is not said in its text' };
     return { kind: 'ok', detail: 'no fixture in the span, its sentence shown' };
   }
   return { kind: 'broken', detail: 'no fixture, no horizon and no partial verdict is not an answer next gives off the bundle' };

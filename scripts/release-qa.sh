@@ -45,14 +45,14 @@
 # `today` 4 (a three-day window and the standings enrichment), `live` 4,
 # `next Arsenal` twice at 3 each (two months of discovery, one table): its text
 # and its `--json`, `table` 1, `table LEAGUE` 1, the Portuguese table 1:
-# 17 GETs, plus a roster retry where an enrichment fails. A failed club verdict
-# reads the pair again (the text and the JSON are two requests, and the feed can
-# change between them): 6 more GETs. Each request has the adapter's 6-second
-# timeout and a window waits once for its parts, so the seven sequential
-# commands (each at most two waits) bound the network wait at about 90 seconds,
-# about 110 with the pair read again, and the club render under two minutes in
-# the worst case: an ESTIMATE from those stages, not a deadline the script
-# enforces. The seeded `prompt` asks nothing.
+# 17 GETs, plus a roster retry where an enrichment fails. When the club text does
+# not say what its JSON states, the pair is read again (the text and the JSON are
+# two requests, and the feed can change between them): 6 more GETs. Each request
+# has the adapter's 6-second timeout and a window waits once for its parts, so the
+# seven sequential commands (each at most two waits) bound the network wait at
+# about 90 seconds, about 110 with the pair read again, and the club render
+# under two minutes in the worst case: an ESTIMATE from those stages, not a
+# deadline the script enforces. The seeded `prompt` asks nothing.
 #
 # Exit code: non-zero if a tripwire FAILS (real regression). A degraded/unreachable
 # feed downgrades tripwires to SKIP (exit 0) — a network blip must not block a release.
@@ -157,7 +157,7 @@ run prompt
 # environment chose the competition. Decided from the same question the header
 # asks, never from the variable.
 CLUB_GATE="$(cli table Z --json 2>/dev/null | qa club)"
-CLUB_FOLLOW=""; CLUB_NEXT_TEXT=""; CLUB_NEXT_JSON=""; CLUB_PT=""; CLUB_PROMPT=""; CLUB_SPAWNS=""
+CLUB_FOLLOW=""; CLUB_NEXT_TEXT=""; CLUB_NEXT_JSON=""; CLUB_FIRST_TEXT=""; CLUB_READ_AGAIN=""; CLUB_PT=""; CLUB_PROMPT=""; CLUB_SPAWNS=""
 if [ "$CLUB_GATE" = "run" ]; then
   QA_CLUB_CONFIG="$(mktemp -d "${TMPDIR:-/tmp}/claudinho-release-qa-club.XXXXXX")"
   QA_CLUB_CACHE="$(mktemp -d "${TMPDIR:-/tmp}/claudinho-release-qa-cache.XXXXXX")"
@@ -167,6 +167,7 @@ if [ "$CLUB_GATE" = "run" ]; then
   crun today
   crun live
   read_club_next
+  CLUB_FIRST_TEXT="$CLUB_NEXT_TEXT"
   printf '\033[2m$ claudinho next Arsenal --lang en   (and its --json, judged below)\033[0m\n'
   printf '%s\n\n' "$CLUB_NEXT_TEXT"
   crun table
@@ -429,11 +430,12 @@ fi
 
 # C1-C4 — the club render (section 4b): what the club config followed, the
 # club's `next` (a render, a VALID between-editions render, or an outage reported
-# as one: its JSON says what it answered, its text must say so; a failed verdict
-# is read once more, since the two are two requests and the feed can change
-# between them) and its disclaimer, the Portuguese "Time" column, and the seeded prompt
-# (the seeded club match rendered, no refresher started). Counted into the same
-# tally; skipped as one when the club render was.
+# as one: its JSON says what it answered, its text must say so; the pair is read
+# once more when its text does not say what its JSON states, since the two are two
+# requests and the feed can change between them) and its disclaimer, the
+# Portuguese "Time" column, and the seeded prompt (the seeded club match rendered,
+# no refresher started). Counted into the same tally; skipped as one when the club
+# render was.
 case "$CLUB_GATE" in
   run)
     V="$(qa club-followed <<<"$CLUB_FOLLOW")"
@@ -442,11 +444,11 @@ case "$CLUB_GATE" in
       || check no  "club render: ${V#fail:}"
     V="$(qa next "$CLUB_NEXT_TEXT" <<<"$CLUB_NEXT_JSON")"
     case "$V" in
-      fail:*)
-read_club_next
-        V2="$(qa next "$CLUB_NEXT_TEXT" <<<"$CLUB_NEXT_JSON")"
+      unsaid:*)
+        read_club_next
+        CLUB_READ_AGAIN=yes
         printf '  \033[2mclub render: next Arsenal read again after %s\033[0m\n' "$V"
-        V="$V2" ;;
+        V="$(qa next "$CLUB_NEXT_TEXT" <<<"$CLUB_NEXT_JSON")" ;;
     esac
     case "$V" in
       ok:*)      check ok "club render: next Arsenal rendered (${V#ok:})" ;;
@@ -455,7 +457,12 @@ read_club_next
                  SKIP=$((SKIP+1)) ;;
       *)         check no "club render: ${V#*:}" ;;
     esac
-    V="$(qa next-disclaimer <<<"$CLUB_NEXT_TEXT")"
+    # Every text read carries it: a second read never erases the first's miss.
+    V="$(qa next-disclaimer <<<"$CLUB_FIRST_TEXT")"
+    if [ -n "$CLUB_READ_AGAIN" ]; then
+      V2="$(qa next-disclaimer <<<"$CLUB_NEXT_TEXT")"
+      [ "$V" = "ok" ] && V="$V2"
+    fi
     [ "$V" = "ok" ] \
       && check ok  "club render: next Arsenal carries the one disclaimer" \
       || check no  "club render: ${V#fail:}"
