@@ -212,43 +212,47 @@ export type {
 // attribution, and the verdict the card carries).
 export {
   bracketShareCard,
+  dateShareCard,
+  liveShareCard,
+  matchShareCard,
+  nextShareCard,
+  tableShareCard,
+} from './share/cards';
+// The body's own text, built once for every surface: the empty bodies (the
+// horizon, the window, "none read", a day the provider could not be reached
+// for), the next match day's sentences, and a day's attribution.
+export {
   dateNoneRead,
   dateNoneReadSentence,
-  dateShareCard,
   dateUnreached,
   dateUnreachedSentence,
   dayAttribution,
   liveNoneRead,
   liveNoneReadSentence,
-  liveShareCard,
   marketsNoneRead,
   marketsNoneReadSentence,
-  matchShareCard,
   matchNoneReadSentence,
   matchWindowSentence,
   nextHorizonSentence,
   nextNoneReadSentence,
   nextDayLines,
   nextKickoffLines,
-  nextShareCard,
-  tableShareCard,
   todayCommand,
   unservedSentence,
-} from './share/cards';
+} from './bodyText';
 // The next match day an empty today or live points at: the answer's own text
 // and plain fields (`nextDay`, `nextKickoff`, `horizon`), never a verdict.
 export { aheadFromEntries, dayCovered, dayPointer, livePointer, nextDayReachable, pointerExtras, pointerWanted, readAhead } from './ahead';
 export type { AheadHorizon, AheadPointer, AheadRead, DayPointer, KickoffPointer, PointerExtras } from './ahead';
 export type {
   BracketShareCard,
-  DayAttribution,
   MatchShareCard,
-  ReadAccount,
   ShareCardContext,
   ShareCardMarket,
   ShareCardView,
   TableShareCard,
 } from './share/cards';
+export type { DayAttribution, ReadAccount } from './bodyText';
 // The one place a verdict (e.g. "not available for this competition") becomes
 // a structured key and a localized sentence.
 export { servedExtras, statesPartial, verdictExtras, verdictNotice, verdictQualifiers } from './verdict';

@@ -29,11 +29,11 @@
  * floor), and {@link dayCovered} says whether a day lies inside it.
  */
 import type { ProviderAdapter } from './adapters/types';
+import type { ReadAccount } from './bodyText';
 import { bundleApplies } from './competition';
 import { getScheduleAhead, scheduleSpan } from './live';
 import { isLive } from './normalize';
 import { entryInLiveWindow, IN_PLAY_HOLD_MS } from './schedule';
-import type { ReadAccount } from './share/cards';
 import { SCHEDULE_AHEAD_DAYS } from './span';
 import { localDate, shiftUtcDate } from './time';
 import { type ScheduleEntry, scheduleEntryOf } from './trust/schedule';
