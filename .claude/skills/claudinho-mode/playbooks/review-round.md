@@ -29,7 +29,7 @@ threat model.
 4. The runner on the head (`.claude/agents/claudinho-runner.md`), in its own worktree, under one rule: when the head
    changed code, a test or executable configuration (commands, package contents, workflows, scripts), it installs,
    builds, runs the suite, `bash scripts/gate.sh` and its mutation pass, and whatever the readers could not run; when
-   the head changed prose alone (AGENTS.md "Validation scope", first bullet), it runs `git diff --check` and the
+   the head changed prose alone (AGENTS.md "Validation scope", first bullet), it runs `git diff --check origin/main` and the
    private-document boundary check, reads the diff, and runs no mutation pass (a moved rule's text is not a rule's
    code). The verifier (`.claude/agents/claudinho-verifier.md`) when a surface changed.
 5. Every verdict read from its verdict line by name (`- Verdict: <value> · inputs <12 hex>`), never from a tail, a
@@ -43,7 +43,7 @@ threat model.
 8. The fix list checked against the standing rules (AGENTS.md "Conventions", "Rules and their enforcers", "Change
    discipline") and the plan-gate questions before it goes to the coder; the coder's commit carries its trailer
    and never edits a test.
-9. Run the gate below on the fixed head (for prose alone, `git diff --check` and the private-document boundary
+9. Run the gate below on the fixed head (for prose alone, `git diff --check origin/main` and the private-document boundary
    check), push with the push line below, and read the per-job CI after every push, before the next round.
 10. Then the confirmation round (`.claude/skills/claudinho-mode/playbooks/confirmation-round.md`), as the tier
     asks it.
@@ -56,7 +56,7 @@ bash scripts/gate.sh
 
 Run on the fixed head before it is pushed, and by the runner on the head it reads, when the head changed code, a test
 or executable configuration (commands, package contents, workflows, scripts); every step's verdict read. For prose
-alone (AGENTS.md "Validation scope", first bullet) the runner and the fix run `git diff --check` and the
+alone (AGENTS.md "Validation scope", first bullet) the runner and the fix run `git diff --check origin/main` and the
 private-document boundary check instead, and the runner runs no mutation pass.
 
 ## Push

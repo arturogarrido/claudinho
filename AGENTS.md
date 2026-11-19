@@ -107,7 +107,7 @@ bundled schema. Hand-edit `biome.json` when necessary; `biome migrate` reformats
 ## Validation scope
 
 - **Prose and agent instructions only:** review the diff, check local links and stated contracts,
-  run `git diff --check`, and run the [private-document boundary check](#private-document-boundary-check)
+  run `git diff --check origin/main`, and run the [private-document boundary check](#private-document-boundary-check)
   below. No application build or live-feed QA is needed unless executable
   configuration, commands, package contents, or product behavior also change.
 - **Code, dependencies, or executable configuration:** iterate with affected tests, then run

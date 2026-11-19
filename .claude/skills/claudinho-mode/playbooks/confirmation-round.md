@@ -24,7 +24,7 @@ The head is read again after a fix. Who reads it depends on the PR's tier (AGENT
    its own worktree, under one rule: when the head changed code, a test or executable configuration (commands,
    package contents, workflows, scripts), it installs, builds, runs the suite, `bash scripts/gate.sh` and its
    mutation pass on the rules the fix touched; when the head changed prose alone (AGENTS.md "Validation scope", first
-   bullet), it runs `git diff --check` and the private-document boundary check, reads the delta, and runs no mutation
+   bullet), it runs `git diff --check origin/main` and the private-document boundary check, reads the delta, and runs no mutation
    pass (a moved rule's text is not a rule's code).
 3. T2: every reader asked again after every fix, including a reader that confirmed the previous head: a fix made
    after review is read by every reader. T1: the reader that raised each finding is asked about its fix; the runner
@@ -35,7 +35,7 @@ The head is read again after a fix. Who reads it depends on the PR's tier (AGENT
 5. A new finding opens a fix list (`.claude/skills/claudinho-mode/playbooks/review-round.md`, steps 6 to 9) and
    another confirmation round, within the cap; the round count is recorded. After round 3 the coordinator stops and
    asks the maintainer.
-6. The gate below on the head (for prose alone, `git diff --check` and the private-document boundary check), and the
+6. The gate below on the head (for prose alone, `git diff --check origin/main` and the private-document boundary check), and the
    CI run on that SHA read per job.
 7. The merge check, by role (the review ledger's): the CI run on the head SHA green per job, and that head confirmed
    as the tier asks (T2: every reader CONFIRMED on that same SHA; T1: each raising reader CONFIRMED its fix, and a
@@ -55,7 +55,7 @@ bash scripts/gate.sh
 
 Every step's verdict line read on the head the readers confirmed, when the head changed code, a test or executable
 configuration (commands, package contents, workflows, scripts); the merged tree gated again when it differs. For prose
-alone (AGENTS.md "Validation scope", first bullet), `git diff --check` and the private-document boundary check
+alone (AGENTS.md "Validation scope", first bullet), `git diff --check origin/main` and the private-document boundary check
 instead, and no mutation pass.
 
 ## Push
