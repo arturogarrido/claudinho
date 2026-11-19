@@ -10,7 +10,8 @@
  * readers'.
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -22,9 +23,11 @@ const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
  * The files git TRACKS, never the folder as it is on disk: an untracked or ignored copy (an old worktree under the
  * checkout, a build output, a scratch file) must not be what makes a gone name pass. The docs folder is private.
  */
-const ALL_FILES = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-  .split('\0')
-  .filter((f) => f !== '' && !f.startsWith('docs/'));
+const trackedFiles = (root: string): string[] =>
+  execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+    .split('\0')
+    .filter((f) => f !== '' && !f.startsWith('docs/') && existsSync(join(root, f))); // tracked AND present: a deleted file not yet staged is gone
+const ALL_FILES = trackedFiles(ROOT);
 const TRACKED = new Set(ALL_FILES);
 const DIRS = new Set<string>();
 for (const f of ALL_FILES) for (let i = f.indexOf('/'); i > 0; i = f.indexOf('/', i + 1)) DIRS.add(f.slice(0, i));
@@ -57,10 +60,9 @@ function placesOf(named: string): string[] {
   }
   // A bare file name (`kinds.ts`): every file of that name, since the sentence around it says which one.
   if (!clean.includes('/')) return exists(clean) ? [clean] : ALL_FILES.filter((f) => f.endsWith(`/${clean}`));
-  for (const base of BASES) {
-    const candidate = base === '' ? clean : `${base}/${clean}`;
-    if (exists(candidate)) return [candidate];
-  }
+  // Every base that holds it: `src/index.ts` is three files, and the first one found must not decide.
+  const based = BASES.map((base) => (base === '' ? clean : `${base}/${clean}`)).filter(exists);
+  if (based.length > 0) return based;
   // A path written from inside a source folder (`bracket/format.ts`, `share/cards.ts`): the files that end with it.
   return ALL_FILES.filter((f) => f.endsWith(`/${clean}`));
 }
@@ -90,6 +92,8 @@ const wordsOf = (file: string): Set<string> => {
   }
   return words;
 };
+/** Every word of a file, comments included: what a table row about a folder may mention. */
+const rawWordsOf = (file: string): Set<string> => new Set(read(join(ROOT, file)).match(/[A-Za-z_$][\w$]*/g) ?? []);
 const SOURCE_WORDS = new Set<string>();
 for (const f of SOURCE_FILES) for (const w of wordsOf(f)) SOURCE_WORDS.add(w);
 
@@ -106,13 +110,14 @@ function pnpmProblem(line: string): string | undefined {
   const m = /^pnpm (?:(-r) |-F (\S+) )?(?:run )?([\w:.-]+)/.exec(line);
   if (!m) return undefined;
   const script = m[3] as string;
+  // A placeholder (`@claudinho/<pkg>`), a path, a glob or a dependency selector (`...`) is pnpm's to resolve.
+  if (m[2] !== undefined && !/^@?[a-z0-9-]+(\/[a-z0-9-]+)?$/.test(m[2])) return undefined;
+  const own = m[2] === undefined ? undefined : SCRIPTS_OF.get(m[2]);
+  if (m[2] !== undefined && !own) return `no workspace package "${m[2]}"`;
   if (PNPM_OWN.has(script)) return undefined;
-  if (m[2] !== undefined) {
-    const own = SCRIPTS_OF.get(m[2]);
-    if (!own) return `no workspace package "${m[2]}"`;
-    return own.has(script) ? undefined : `no script "${script}" in ${m[2]}`;
-  }
-  if (m[1] !== undefined) return [...SCRIPTS_OF.values()].some((set) => set.has(script)) ? undefined : `no script "${script}" in any package`;
+  if (own) return own.has(script) ? undefined : `no script "${script}" in ${m[2]}`;
+  // `-r` runs in the workspace packages, not in the root.
+  if (m[1] !== undefined) return [...SCRIPTS_OF].some(([name, set]) => name !== '' && set.has(script)) ? undefined : `no script "${script}" in any workspace package`;
   return SCRIPTS_OF.get('')?.has(script) ? undefined : `no script "${script}" in the root package.json`;
 }
 
@@ -144,8 +149,8 @@ const OUTSIDE: Record<string, string> = {
 const PATH_EXT = /\.(ts|tsx|mjs|js|json|md|sh|yml|mdc)$/;
 const PATH_ROOT = /^(packages|scripts|guides|services|\.claude|\.cursor|\.github|core|cli|mcp|src|hooks|types)\//;
 const isPath = (t: string) =>
-  /^[\w.@/{},*-]+$/.test(t) && !t.startsWith('@') && !t.startsWith('/') && !/^\*?\.[a-z.]+$/.test(t) && (PATH_EXT.test(t) || PATH_ROOT.test(t) || /^\.\.?\//.test(t));
-const isIdentifier = (t: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(t) && (/[a-z][A-Z]/.test(t) || /^[A-Z][A-Z0-9]*_[A-Z0-9_]+$/.test(t) || /^[A-Z]{5,}$/.test(t));
+  /^[\w.@/{},*-]+$/.test(t) && !t.startsWith('@') && !t.startsWith('/') && !/^\.[a-z.]+$/.test(t) && (PATH_EXT.test(t) || PATH_ROOT.test(t) || /^\.\.?\//.test(t));
+const isIdentifier = (t: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(t) && (/[a-z][A-Z]/.test(t) || /^[A-Z][A-Z0-9]*_[A-Z0-9_]+$/.test(t) || /^[A-Z]{5,}$/.test(t) || /^[a-z]+(_[a-z0-9]+)+$/.test(t));
 
 /** A name given with its file: `name` (`file`...   `name` in `file`   `name` of `file` */
 const PAIR = /`([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?`(?: \(| in | of |, in )(?:core |cli |mcp |the |core's |cli's )?`([^`\n]+)`/g;
@@ -172,11 +177,15 @@ function check(text: string): Finding[] {
     if (Object.hasOwn(OUTSIDE, t)) continue;
     if (raw.includes(' ')) {
       // A command line: its pnpm script and package, and every word of it that is a path (`bash scripts/gate.sh`).
-      for (const part of raw.split(/&&|\|\||;/)) {
-        const problem = pnpmProblem(part.trim());
-        if (problem !== undefined) findings.push({ kind: 'command', name: raw, detail: problem });
+      // A line that changes folder (`cd packages/mcp && pnpm smoke:stdio`) runs its scripts somewhere this cannot know.
+      if (!/(^|\s)cd\s/.test(raw)) {
+        for (const part of raw.split(/&&|\|\||[;|]/)) {
+          const problem = pnpmProblem(part.trim());
+          if (problem !== undefined) findings.push({ kind: 'command', name: raw, detail: problem });
+        }
       }
-      for (const word of raw.split(/\s+/)) if (isPath(word) && (PATH_ROOT.test(word) || /^\.\.?\//.test(word))) path(word);
+      // The script a command RUNS and the workflow it names; an argument (a destination, a new name) is not a claim.
+      for (const m2 of raw.matchAll(/(?:^|\s)(?:bash|sh|node|--workflow)\s+(\S+)/g)) if (isPath(m2[1] as string)) path(m2[1] as string);
     } else if (isPath(t)) path(t);
     else if (isIdentifier(t) && !SOURCE_WORDS.has(t)) findings.push({ kind: 'identifier', name: t, detail: 'in no source, script, workflow or manifest (comments apart)' });
   }
@@ -192,17 +201,19 @@ function check(text: string): Finding[] {
   }
   // A table row about ONE place (`| \`packages/core/src/share\` | ... | what it holds |`): a name its last cell gives
   // without a file of its own must be in that place (PR #250: `formatShareBracket` sat in the share folder's row).
-  const paired = new Set([...text.matchAll(PAIR)].map((m) => m[1] as string));
-  for (const row of text.matchAll(/^\| `([^`\n]+)`[^|\n]*\|[^|\n]*\|([^\n]*)\|[ \t]*$/gm)) {
-    const place = row[1] as string;
-    if (!isPath(place) || Object.hasOwn(OUTSIDE, place)) continue;
-    const places = resolvePaths(place);
+  for (const row of text.matchAll(/^\| (`[^|\n]+)\|[^|\n]*\|([^\n]*)\|[ \t]*$/gm)) {
+    // The first cell's paths (a row may be about two files); a name the row itself gives a file to is that pair's.
+    const cell = [...(row[1] as string).matchAll(/`([^`\n]+)`/g)].map((m) => m[1] as string);
+    if (cell.length === 0 || !cell.every((c) => isPath(c)) || cell.some((c) => Object.hasOwn(OUTSIDE, c))) continue;
+    const places = cell.flatMap(resolvePaths);
     if (places.length === 0) continue; // reported above as a path
+    const place = cell.join(' + ');
+    const paired = new Set([...(row[2] as string).matchAll(PAIR)].map((m) => m[1] as string));
     const files = places.flatMap((p) => (DIRS.has(p) ? ALL_FILES.filter((f) => f.startsWith(`${p}/`) && SOURCE_EXT.test(f)) : [p]));
     for (const m of (row[2] as string).matchAll(/`([^`\n]+)`/g)) {
       const name = (m[1] as string).replace(/\(\)$/, '');
       if (!isIdentifier(name) || paired.has(name) || Object.hasOwn(OUTSIDE, name)) continue;
-      if (!files.some((f) => wordsOf(f).has(name))) findings.push({ kind: 'location', name, detail: `not in ${place}, the place its table row is about` });
+      if (!files.some((f) => rawWordsOf(f).has(name))) findings.push({ kind: 'location', name, detail: `not in ${place}, the place its table row is about` });
     }
   }
   return findings;
@@ -277,6 +288,49 @@ describe('the check fails on the mistakes it exists for', () => {
     expect(check('run `pnpm -F @claudinho/cli smoke:stdio`').map((f) => f.kind)).toEqual(['command']);
     // A name its file holds only in a comment is not in that file (`stageFromSlug` is defined in trust/espn.ts).
     expect(check('`stageFromSlug` (`packages/core/src/types.ts`)').map((f) => f.kind)).toEqual(['location']);
+  });
+
+  it('round 2: a name paired elsewhere in the file, the pnpm package before its command, a pipe, a bare workflow file', () => {
+    const row = '| `packages/core/src/share` | — | the card builders and `stageFromSlug` |';
+    expect(check(`\`stageFromSlug\` (\`core/src/trust/espn.ts\`) bounds it.\n${row}`).map((f) => `${f.kind}:${f.name}`)).toEqual(['location:stageFromSlug']);
+    expect(check('| `.cursor-plugin/plugin.json` + `mcp.json` (repo root) | — | wraps the server (`mcpServers`) |')).toEqual([]);
+    expect(check('`pnpm -F @claudinho/gone publish`').map((f) => f.kind)).toEqual(['command']);
+    expect(check('`pnpm -r release:qa`').map((f) => f.kind)).toEqual(['command']);
+    expect(check('`pnpm -r build | pnpm removed:script`').map((f) => f.kind)).toEqual(['command']);
+    expect(check('`gh run list --workflow publish-gone.yml`').map((f) => f.kind)).toEqual(['path']);
+    expect(check('`gh run list --workflow publish.yml`')).toEqual([]);
+    expect(check('`*.gone.tsx`').map((f) => f.kind)).toEqual(['path']);
+  });
+
+  it('only tracked files count: an untracked file in a repository is not one of its files', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'instruction-names-'));
+    try {
+      const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'ignore' });
+      git('init', '-q');
+      writeFileSync(join(dir, 'tracked.ts'), 'export const a = 1;\n');
+      writeFileSync(join(dir, 'untracked.ts'), 'export const b = 1;\n');
+      writeFileSync(join(dir, 'gone.ts'), 'export const c = 1;\n');
+      git('add', 'tracked.ts', 'gone.ts');
+      rmSync(join(dir, 'gone.ts')); // tracked, deleted, not staged
+      expect(trackedFiles(dir)).toEqual(['tracked.ts']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('true text stays green: a line that changes folder, a destination, a pnpm selector, a name a folder only mentions', () => {
+    expect(check('`cd packages/mcp && pnpm smoke:stdio`')).toEqual([]);
+    expect(check('`git worktree add ../claudinho-review HEAD` then `git mv packages/core/src/ahead.ts packages/core/src/next-day.ts`')).toEqual([]);
+    expect(check('`pnpm -F ./packages/mcp smoke:stdio`, `pnpm -F "@claudinho/*" build`, `pnpm -F @claudinho/mcp... build`')).toEqual([]);
+    expect(check('| `packages/plugin` | — | reads the contract number, core\'s `AMBIENT_API` |')).toEqual([]);
+  });
+
+  it('a snake_case name (an MCP tool), and a name whose path is several files', () => {
+    expect(check('agents call `get_next_fixtures`').map((f) => f.kind)).toEqual(['identifier']);
+    expect(check('agents call `get_next_fixture` and `get_share_snippet`')).toEqual([]);
+    // `src/index.ts` is one file per package: core's holds `selectionExtras`, and no order of folders may hide it.
+    expect(check('`selectionExtras` (`src/index.ts`)')).toEqual([]);
+    expect(check('`selectionExtrasGone` (`src/index.ts`)').map((f) => f.kind)).toEqual(['identifier', 'location']);
   });
 
   it('a path inside a command line, a brace path and a glob', () => {
