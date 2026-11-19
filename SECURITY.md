@@ -182,7 +182,7 @@ a claim we cannot make.
   the mirror image of never caching a transient error as a real negative. Test:
   `core/test/market-verdict.test.ts`
 - **Enrichment completeness reaches every surface.** Default-on market annotations, dedicated
-  market tools, and their structured output retain the batch's completeness verdict.
+  market tools and their structured output retain the batch's completeness verdict.
   A complete empty read may say "no signal"; an incomplete one carries `marketComplete:false` or
   `complete:false` and an explicit warning, including when cached results are mixed with misses. Tests:
   `cli/test/markets.test.ts`, `cli/test/today.test.ts`,

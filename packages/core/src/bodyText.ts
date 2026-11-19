@@ -7,7 +7,7 @@
  * here ({@link nextHorizonSentence}, {@link matchWindowSentence},
  * {@link nextNoneReadSentence}, {@link matchNoneReadSentence}) for every
  * surface: the CLI and the MCP tools print the same sentence, from this one
- * place, and a card carries its span as a plain field (`span`).
+ * place.
  *
  * The same holds for the live and dated reads (0.11 2.1d): an empty body after
  * a read that was not whole says nothing was READ ({@link liveNoneRead},
@@ -62,7 +62,7 @@ export function matchWindowSentence(result: MatchByIdResult, id: string, lang: s
  * The sentence for an EMPTY `next` off the bundled competition whose read was
  * not whole (`partial` stated, no fixture, not degraded): no fixture for the
  * club was READ in the span, which is not "none exists". Undefined otherwise.
- * (On the bundle the partial empty card keeps its own sentence.)
+ * (On the bundle the partial empty answer keeps its own sentence.)
  */
 export function nextNoneReadSentence(
   result: NextFixtureResult,
@@ -95,8 +95,8 @@ export function liveNoneReadSentence(lang?: string): string {
 /**
  * "No fixture was read for {date}", in the reader's language: an EMPTY day
  * after a read that was not whole and merged no bundled schedule, which is not
- * "no matches scheduled". `date` is printed as given: the card passes its
- * human label, the CLI and MCP the date they print. (When it applies:
+ * "no matches scheduled". `date` is printed as given: the CLI and MCP pass
+ * the date they print. (When it applies:
  * {@link dateNoneRead}.)
  */
 export function dateNoneReadSentence(date: string, lang?: string): string {
@@ -108,8 +108,7 @@ export function dateNoneReadSentence(date: string, lang?: string): string {
  * the reader's language: the EMPTY day of a read that FAILED and merged no
  * bundled schedule (off the bundle), where nothing but the provider knows the
  * fixtures, so an outage must not read as "no matches scheduled". `date` is
- * printed as given: the card passes its human label, the CLI and MCP the date
- * they print. (When it applies: {@link dateUnreached}.)
+ * printed as given: the CLI and MCP pass the date they print. (When it applies: {@link dateUnreached}.)
  */
 export function dateUnreachedSentence(date: string, lang?: string): string {
   return t(lang, 'today.unreached', { date });
@@ -258,7 +257,7 @@ export interface DayAttribution {
 }
 
 /**
- * The day's attribution, ONE rule for the CLI, the MCP tool and the date card,
+ * The day's attribution, ONE rule for the CLI and the MCP tool,
  * computed over the fixtures the surface finally DISPLAYS (after the date
  * filter and any bound). A whole read, a degraded one, and a read that does not
  * say what it served change nothing: the line is printed as it always was. On

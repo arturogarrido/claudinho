@@ -228,7 +228,7 @@ export function verdictExtras(result: VerdictSource): VerdictExtras {
  * window held, in the order shown (a shown fixture not among them is the
  * bundled schedule's row, its live state unconfirmed). Bounded like the rows
  * it interprets: `shown` is what the surface finally displays (the day's rows,
- * the bounded list, the card's matches, the one match), never the window's
+ * the bounded list, the one match), never the window's
  * every id, which can hold other dates. A plain field, not a verdict, carried
  * only BESIDE the `partial` verdict it interprets: empty on a whole read,
  * whose structured output keeps its shape, and when the result states none.
