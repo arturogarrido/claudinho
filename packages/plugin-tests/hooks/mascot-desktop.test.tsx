@@ -66,13 +66,13 @@ const find = (n: Node, hit: (n: Node) => boolean): Node | null => {
 }
 /**
  * The celebration's row as drawn: the Box, laid out across (never a column, never reversed), whose FIRST child is a column holding one Svg and nothing else, and whose
- * second is the column of words; its Svg's source and alt, and the words' rows. `null` when no such Box is drawn.
+ * second is the column of words (a column: three rows, never one line); its Svg's source and alt, and the words' rows. `null` when no such Box is drawn.
  */
 const celebration = (root: Node): { source: string; alt: unknown; words: string[] } | null => {
   const row = find(root, (n) => {
     const [left, right, ...rest] = kids(n)
     const inLeft = left ? kids(left) : []
-    return n.type === 'Box' && n.props?.flexDirection !== 'column' && n.props?.flexDirection !== 'column-reverse' && n.props?.flexDirection !== 'row-reverse' && rest.length === 0 && left?.type === 'Box' && right?.type === 'Box' && inLeft.length === 1 && inLeft[0]?.type === 'Svg'
+    return n.type === 'Box' && n.props?.flexDirection !== 'column' && n.props?.flexDirection !== 'column-reverse' && n.props?.flexDirection !== 'row-reverse' && rest.length === 0 && left?.type === 'Box' && right?.type === 'Box' && right.props?.flexDirection === 'column' && inLeft.length === 1 && inLeft[0]?.type === 'Svg'
   })
   if (!row) return null
   const [left, right] = kids(row)
@@ -130,7 +130,7 @@ describe('a goal for the pinned side in the desktop app, three spare rows', () =
   test('the legs alternate from frame to frame: the first frame is the first leg step, each later frame the other one', { timeoutMs: 20_000 }, async ($, on) => {
     const w = await world($, on, [before, goal, goal])
     await next(w)
-    for (let f = 0; f < 5; f++) {
+    for (let f = 0; f < 6; f++) {
       const now = (await desktop(w)).row?.source ?? ''
       // The play's first frame is the first leg step; each later frame the other one.
       expect(now).toBe(EXPECTED[f % 2])
@@ -154,25 +154,27 @@ describe('full time for the pinned side in the desktop app', () => {
     const ft = momentView([], [finishedRecord([3, 6])], { line: FT_LINE })
     const w = await world($, on, [momentView([liveRecord([3, 6], { minute: 90 })]), ft, ft])
     await next(w)
-    for (let t = 0; t < 4_500; t += 500) {
+    for (let t = 0; t < 5_000; t += 500) {
       const d = await desktop(w)
       const now = d.row?.source ?? ''
+      expect(d.svgs).toHaveLength(1)
       expect(now).toBe(EXPECTED[(t / 500) % 2])
       expect(d.row?.alt).toBe(ALT)
       expect(d.row?.words[1]).toBe('Full time · Liverpool win')
       expect(hasGlyphs(d.texts)).toBe(false)
       await w.clock.advance(500)
     }
-    await w.clock.advance(1_000)
+    await w.clock.advance(500)
     const after = await desktop(w)
     expect(after.svgs).toHaveLength(0)
-    expect(after.texts.some((x) => x.includes(FT_LINE))).toBe(true)
+    expect(after.rows.map((r) => r.trim())).toEqual([FT_LINE])
   })
 
   test('a draw: the Svg beside `Full time · Draw`', async ($, on) => {
     const w = await world($, on, [momentView([liveRecord([2, 2], { minute: 90 })]), momentView([], [finishedRecord([2, 2])], { line: FT_LINE })])
     await next(w)
     const d = await desktop(w)
+    expect(d.svgs).toHaveLength(1)
     expect(EXPECTED).toContain(d.row?.source)
     expect(d.row?.words[1]).toBe('Full time · Draw')
   })
