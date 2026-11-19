@@ -4,4 +4,4 @@ This guide holds the narration behind the `AGENTS.md` "Conventions" bullet "Stan
 
 ## Standings come from the provider's standings feed, NOT computed from a match window
 
-The bundled schedule is a resultless skeleton, and clients only fetch a ±1-day live window — so deriving a table from those matches yields a *wrong, partial* table mid-tournament (this was a real bug: groups not playing that day read all-zeros).
+The bundled schedule is a resultless skeleton, and a live match window is not the season — so deriving a table from those matches yields a *wrong, partial* table mid-tournament (this was a real bug: groups not playing that day read all-zeros).
