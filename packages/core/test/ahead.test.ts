@@ -4,7 +4,7 @@
  * (not postponed, cancelled or finished), or the next kickoff ahead, from the
  * schedule ahead read WHOLE; nothing within the span it read is the horizon
  * sentence. Built once in core (`ahead.ts`, the sentences beside the horizon
- * sentences in `share/cards.ts`): the answer's own text and plain fields,
+ * sentences in `bodyText.ts`): the answer's own text and plain fields,
  * never a verdict, never a day it cannot vouch for. Counted in the viewer's
  * zone at the request's clock (a required parameter). The read is made only
  * when the gate says the body is empty and nothing else stands, and never

@@ -553,8 +553,8 @@ describe('one definition of each rule the two surfaces used to copy', () => {
   });
 
   it('the sentences of 0.11 2.1d come from one place too: "none read" for live and a date, the unserved rows, the market empty body', async () => {
-    // Red first: the builders do not exist. They live beside the next and match ones in the card builder.
-    const cards = await import('../src/share/cards');
+    // Red first: the builders do not exist. They live beside the next and match ones in core's body-text module.
+    const cards = await import('../src/bodyText');
     const live = (cards as Record<string, unknown>).liveNoneReadSentence as ((lang?: string) => string) | undefined;
     const date = (cards as Record<string, unknown>).dateNoneReadSentence as ((date: string, lang?: string) => string) | undefined;
     const unserved = (cards as Record<string, unknown>).unservedSentence as ((n: number, lang?: string) => string) | undefined;

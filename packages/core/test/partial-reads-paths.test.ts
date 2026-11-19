@@ -14,7 +14,7 @@ import { attachFetchMeta } from '../src/adapters/meta';
 import type { ProviderAdapter } from '../src/adapters/types';
 import { marketFixtureForTeam } from '../src/live';
 import { allFixtures } from '../src/schedule';
-import { dateNoneRead, dayAttribution, liveNoneRead, marketsNoneRead, unservedSentence } from '../src/share/cards';
+import { dateNoneRead, dayAttribution, liveNoneRead, marketsNoneRead, unservedSentence } from '../src/bodyText';
 import type { Match } from '../src/types';
 
 const WC_SEASON = { year: 2026, startDate: '2026-06-11T04:00Z', endDate: '2026-12-31T04:59Z', displayName: '2026 FIFA World Cup' };
