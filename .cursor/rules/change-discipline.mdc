@@ -25,7 +25,7 @@ The short form:
    remove the call and confirm red; restore it afterward and preserve unrelated edits.
 6. **Never assert wall-clock time.** Assert the observable consequence instead.
 7. **Use AGENTS.md's validation scope and read the output.** Prose-only edits need
-   `git diff --check`, link/contract checks, and the `node --input-type=module` block in
+   `git diff --check origin/main`, link/contract checks, and the `node --input-type=module` block in
    [AGENTS.md's private-document boundary check](../../AGENTS.md#private-document-boundary-check).
    Code, dependency, and executable config
    changes need build → typecheck → test → lint plus relevant CI smoke/pack checks.

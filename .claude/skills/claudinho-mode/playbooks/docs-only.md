@@ -12,7 +12,7 @@ behavior also change (AGENTS.md "Validation scope"); then the feature or bug-fix
 1. Restate the ask in one line and name the files the change touches.
 2. Edit. A count of the supported set, the framing and the disclaimer derive from core's table and constant: the
    guards in AGENTS.md "Rules and their enforcers" name which files are pinned.
-3. `git diff --check`.
+3. `git diff --check origin/main`.
 4. The private-document boundary check, from the repository root, as AGENTS.md "Validation scope" gives it:
 
    ```bash
@@ -58,7 +58,7 @@ When the change also touches executable configuration, commands, package content
 bash scripts/gate.sh
 ```
 
-Every step's verdict read. Prose alone needs `git diff --check`, the private-document boundary check above, and the
+Every step's verdict read. Prose alone needs `git diff --check origin/main`, the private-document boundary check above, and the
 links checked; CI still runs its list on the pushed head, read per job by the push line.
 
 ## Push
@@ -74,7 +74,7 @@ pull requests and on main alone, so before the pull request there is no run to w
 
 ## Evidence
 
-- The boundary check's JSON (zero leaks, zero tracked private files), the `git diff --check` result, the links
+- The boundary check's JSON (zero leaks, zero tracked private files), the `git diff --check origin/main` result, the links
   checked.
 - The commit ends with `Co-Authored-By: <Agent> (<Model>) <agent-no-reply-email>`, the model actually in use. The PR
   body file ends with the trailers of the agents whose commits the branch carries (two when a coordinator and a

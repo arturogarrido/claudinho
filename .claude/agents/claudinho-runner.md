@@ -19,7 +19,7 @@ round); in a T1 confirmation round you are asked only about the findings you rai
   change adds or moves: revert one rule, run the test that claims to pin it, expect red, restore, and confirm the
   file is back to the head's bytes; a mutant that stays green is a finding: name the rule, the edit and the test,
   and what else makes the test hold. When the head changed prose alone (AGENTS.md "Validation scope", first
-  bullet): `git diff --check` and the private-document boundary check AGENTS.md gives, and read the diff; no
+  bullet): `git diff --check origin/main` and the private-document boundary check AGENTS.md gives, and read the diff; no
   mutation pass (a moved rule's text is not a rule's code).
 - Under the first branch of that rule alone (a head that changed code, a test or executable configuration), run
   what the readers could not: the scripts and their states, the smokes, the verify skill (`node scripts/verify.mjs`)
