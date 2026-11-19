@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBracketMatchLine, formatShareBracket } from '../src/bracket/format';
+import { formatBracketMatchLine } from '../src/bracket/format';
 import type { BracketMatchView } from '../src/bracket/types';
 import type { Match } from '../src/types';
 
@@ -31,30 +31,5 @@ describe('formatBracketMatchLine', () => {
     expect(line).toContain('Mexico 🇲🇽');
     expect(line).not.toMatch(/Czechia 🇨🇿/);
     expect(line).not.toMatch(/🇲🇽 Mexico/);
-  });
-
-  it('formatShareBracket social style honors tz for kickoff times', () => {
-    const stages = [{ stage: 'R32' as const, label: 'Round of 32', matches: [view] }];
-    const card = formatShareBracket(
-      { view: { stages, degraded: true, standingsDegraded: false } },
-      { locale: 'en', tz: 'UTC' },
-    );
-    expect(card).toContain('Sat');
-    expect(card).toMatch(/Jul/);
-    expect(card).toMatch(/4/);
-    expect(card).toContain('17:00');
-  });
-
-  it('formatShareBracket compact style uses one line per match with kickoff day', () => {
-    const stages = [{ stage: 'R32' as const, label: 'Round of 32', matches: [view] }];
-    const card = formatShareBracket(
-      { view: { stages, degraded: true, standingsDegraded: false } },
-      { style: 'compact', locale: 'en', tz: 'UTC' },
-    );
-    expect(card).toContain('Round of 32 · 🇨🇿 Czechia vs Mexico 🇲🇽');
-    expect(card).toMatch(/Jul/);
-    expect(card).toMatch(/4/);
-    expect(card).toContain('17:00');
-    expect(card.split('\n').filter((l) => l.includes('vs')).length).toBe(1);
   });
 });

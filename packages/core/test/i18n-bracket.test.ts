@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBracketList, formatShareBracket } from '../src/bracket/format';
+import { formatBracketList } from '../src/bracket/format';
 import { buildBracketView } from '../src/bracket/resolve';
 import { loadBracketTopology } from '../src/bracket/topology';
 import { allFixtures } from '../src/schedule';
@@ -22,17 +22,6 @@ describe('bracket i18n', () => {
       .flatMap((m) => [m.home, m.away])
       .find((p) => p.status === 'tbd' && /grupo [A-L]/i.test(p.label));
     expect(groupSlot?.label).toMatch(/grupo [A-L]/i);
-  });
-
-  it('localizes share bracket cards', () => {
-    const topology = loadBracketTopology();
-    const baseKo = allFixtures().filter((m) => m.stage !== 'GROUP');
-    const view = buildBracketView(topology, baseKo, [], true, true, undefined, 'pt');
-    const card = formatShareBracket({ view }, { locale: 'pt' });
-    // The title names the competition when the card has one, and no year (0.11 · 2.5a): the ties carry their dates.
-    expect(card.split('\n')[0]).toBe('Chave do mata-mata');
-    expect(card).not.toContain('· 2026');
-    expect(card).toContain('Placar ao vivo indisponível');
   });
 
   it('localizes formatBracketList footers', () => {

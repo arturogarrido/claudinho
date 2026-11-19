@@ -23,7 +23,7 @@ vi.mock('../src/cache', async (importOriginal) => {
 });
 import { spawn } from 'node:child_process';
 import { readCurrentState } from '../src/cache';
-import { cmdBracket, cmdHook, cmdLive, cmdMarkets, cmdMatch, cmdNext, cmdPrompt, cmdShare, cmdTable, cmdTeam, cmdToday, cmdVibe, InputError } from '../src/commands';
+import { cmdBracket, cmdHook, cmdLive, cmdMarkets, cmdMatch, cmdNext, cmdPrompt, cmdTable, cmdTeam, cmdToday, cmdVibe, InputError } from '../src/commands';
 import { resolveConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 
@@ -106,7 +106,6 @@ describe('the commands that answer for a competition', () => {
     ['table', (c) => cmdTable(undefined, c)],
     ['bracket', (c) => cmdBracket(undefined, {}, c)],
     ['markets', (c) => cmdMarkets(undefined, undefined, c)],
-    ['share', (c) => cmdShare('live', undefined, {}, c)],
   ];
 
   it('each prints the one sentence (exit 1: an input error) naming `claudinho follow` and `follow --list`, with no request and no cache read', async () => {
@@ -122,18 +121,11 @@ describe('the commands that answer for a competition', () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
-  it('every branch of `markets` and `share`: the sentence, no request, no cache read, no output on --json but the object', async () => {
+  it('every branch of `markets`: the sentence, no request, no cache read, no output on --json but the object', async () => {
     const branches: Array<[string, (ctx: ReturnType<typeof ctxOf>) => Promise<void>]> = [
       ['markets next', (c) => cmdMarkets('next', 'MEX', c)],
       ['markets <id>', (c) => cmdMarkets('760415', undefined, c)],
       ['markets <date>', (c) => cmdMarkets('2026-10-10', undefined, c)],
-      ['share live', (c) => cmdShare('live', undefined, {}, c)],
-      ['share table', (c) => cmdShare('table', 'A', {}, c)],
-      ['share bracket', (c) => cmdShare('bracket', undefined, {}, c)],
-      ['share next', (c) => cmdShare('next', 'MEX', {}, c)],
-      ['share <id>', (c) => cmdShare('760415', undefined, {}, c)],
-      ['share <date>', (c) => cmdShare('2026-10-10', undefined, {}, c)],
-      ['share (today)', (c) => cmdShare(undefined, undefined, {}, c)],
     ];
     for (const [name, run] of branches) {
       writes = [];

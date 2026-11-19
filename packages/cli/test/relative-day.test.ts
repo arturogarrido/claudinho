@@ -1,5 +1,5 @@
 /**
- * A day by name on the commands that take one (`today`, `share <date>`,
+ * A day by name on the commands that take one (`today`,
  * `markets <date>`), and the date a single match says when it is far
  * (`next`, `match <id>`). The request's clock is PINNED on the context (Tue Nov
  * 10, 2026, 9:40 PM in Los Angeles), and the adapter's clock is a different
@@ -8,7 +8,7 @@
  */
 import { allFixtures, EspnAdapter, FakeMarketProvider, type Match, type ProviderAdapter } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cmdMarkets, cmdMatch, cmdNext, cmdShare, cmdToday, InputError } from '../src/commands';
+import { cmdMarkets, cmdMatch, cmdNext, cmdToday, InputError } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { makeT } from '../src/i18n';
 import { described } from './config-of';
@@ -168,42 +168,7 @@ describe('an unreadable day is refused before any request, in the reader languag
   });
 });
 
-describe('share and markets take the same day forms', () => {
-  it("share sat: Saturday's card", async () => {
-    await cmdShare('sat', undefined, { hashtag: false, installLine: false }, ctx(feed([WED, SAT, FAR]), { json: true }));
-    const body = emitted();
-    expect(JSON.stringify(body)).toContain('Chelsea');
-    expect(JSON.stringify(body)).not.toContain('Liverpool');
-  });
-
-  it("share tomorrow is not today's card", async () => {
-    await cmdShare('tomorrow', undefined, { hashtag: false, installLine: false }, ctx(feed([WED])));
-    expect(text()).toContain('Liverpool');
-    expect(text()).not.toContain("Today's matches");
-  });
-
-  it.each(['2026-11-10', 'tue', '+0'])(
-    'share %s (a typed day that is today): the run cue keeps the date, so the card replays on another day',
-    async (arg) => {
-      await cmdShare(arg, undefined, { hashtag: false }, ctx(feed([WED])));
-      expect(text()).toContain('Try it: npx @claudinho/cli --competition premier-league today 2026-11-10');
-      expect(text()).toContain('Matches · Nov 10');
-    },
-  );
-
-  it("share with no day, or the word today: today's card and the plain cue", async () => {
-    await cmdShare(undefined, undefined, { hashtag: false }, ctx(feed([WED])));
-    expect(text()).toContain("Today's matches · Nov 10");
-    expect(text()).toMatch(/Try it: npx @claudinho\/cli --competition premier-league today\n/);
-    writes = [];
-    await cmdShare('today', undefined, { hashtag: false }, ctx(feed([WED])));
-    expect(text()).toMatch(/Try it: npx @claudinho\/cli --competition premier-league today\n/);
-  });
-
-  it('share with a word the grammar does not read is still a match id (the id branch), never a refusal', async () => {
-    await expect(cmdShare('someday', undefined, { hashtag: false, installLine: false }, ctx(feed([WED])))).resolves.toBeUndefined();
-  });
-
+describe('markets takes the same day forms', () => {
   it('markets +4 reads the day named (Saturday)', async () => {
     await cmdMarkets('+4', undefined, ctx(feed([WED, SAT, FAR]), { json: true }));
     expect(emitted().date).toBe('2026-11-14');

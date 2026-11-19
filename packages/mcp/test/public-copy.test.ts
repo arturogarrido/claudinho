@@ -51,8 +51,8 @@ describe("the server's copy", () => {
   it('no em-dash in the INSTRUCTIONS but the quoted voice example, and they say that "next" is not "now"', () => {
     noEmDash('INSTRUCTIONS', INSTRUCTIONS);
     expect(INSTRUCTIONS).toContain(VOICE_EXAMPLE);
-    // The MCP rule names the tool and the card an agent reads, not the CLI's command (0.11 · 2.7 round 1).
-    expect(INSTRUCTIONS).toMatch(/never infer that a fixture is happening now from get_next_fixture or a team's next card/i);
+    // The MCP rule names the tool an agent reads, not the CLI's command (0.11 · 2.7 round 1).
+    expect(INSTRUCTIONS).toMatch(/never infer that a fixture is happening now from get_next_fixture:/i);
     expect(INSTRUCTIONS).toContain('call it in play only when the returned state says so');
   });
 

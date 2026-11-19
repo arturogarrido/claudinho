@@ -1,17 +1,17 @@
 import type { ProviderAdapter } from '@claudinho/core';
-import { EspnAdapter, FakeMarketProvider } from '@claudinho/core';
+import { EspnAdapter } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v3';
 import { OUTPUT_SCHEMAS } from '../src/server';
-import { toolGetLive, toolGetMatch, toolGetShareSnippet, toolGetToday } from '../src/tools';
+import { toolGetLive, toolGetMatch, toolGetToday } from '../src/tools';
 
 /**
  * MCP half of the flagless-nation rendering (see the CLI's
  * nation-without-flag.test.ts): Northern Ireland, whose tag sequence `gbnir`
  * Unicode does not recommend (every platform draws a plain black flag), is
- * printed by its name with nothing in the flag's place, in every tool's text
- * and in the share card; its structured record carries no `flag` key; Hungary,
- * beside it, keeps its flag.
+ * printed by its name with nothing in the flag's place, in every tool's text;
+ * its structured record carries no `flag` key; Hungary, beside it, keeps its
+ * flag.
  */
 const NOW = new Date('2026-11-17T20:30:00.000Z');
 type Side = { id: string; abbr: string; name: string };
@@ -72,21 +72,5 @@ describe('Northern Ireland renders by name in the MCP tools', () => {
     expect(match.text).toContain('🇭🇺 Hungary 2–1 Northern Ireland');
     clean(match.text, 'get_match');
     expect(((match.data as Rec).match as Rec).away).toEqual(NIR_RECORD);
-  });
-
-  it('get_share_snippet (date, live, match): the social card by name, the compact one by code, no flag shape', async () => {
-    for (const style of ['social', 'compact'] as const) {
-      for (const [args, state] of [[{ date: '2026-11-17' }, 'pre'], [{ live: true }, 'in'], [{ matchId: '401800001' }, 'in']] as const) {
-        const r = await toolGetShareSnippet({ ...args, style, competition: 'uefa.nations', adapter: feed(state), marketProvider: new FakeMarketProvider(), now: NOW });
-        const label = `${JSON.stringify(args)} ${style}`;
-        // The social card names the teams; the compact one prints every team by its code, Northern Ireland as NIR.
-        expect(r.text, label).toContain(style === 'social' ? 'Northern Ireland' : '🇭🇺 HUN');
-        if (style === 'compact') expect(r.text, label).toMatch(/\bNIR\b/);
-        clean(r.text, label);
-        clean((r.data as Rec).snippet as string, `${label} snippet`);
-        for (const m of ((r.data as Rec).matches as Rec[]) ?? []) expect(m.away, label).toEqual(NIR_RECORD);
-        strict('get_share_snippet', r.data);
-      }
-    }
   });
 });

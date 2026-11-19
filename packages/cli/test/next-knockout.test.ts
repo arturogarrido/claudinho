@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Match, ProviderAdapter } from '@claudinho/core';
-import { cmdMatch, cmdNext, cmdShare } from '../src/commands';
+import { cmdMatch, cmdNext } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
@@ -120,35 +120,6 @@ describe('cmdNext — live-resolved knockout fixture', () => {
     const t = text();
     expect(t).toContain("couldn't reach the data provider");
     expect(t).not.toContain('No upcoming fixture found');
-  });
-});
-
-describe('cmdShare next — live-resolved knockout fixture', () => {
-  it('pastes the resolved tie and attributes the provider (--json)', async () => {
-    await cmdShare('next', 'MEX', {}, {
-      cfg: cfg(),
-      t: makeT('en'),
-      adapter: windowAdapter([r32MexEcu()]),
-      now: KNOCKOUT_NOW,
-      marketProvider: undefined,
-    });
-    const data = json() as { kind: string; matches: Match[]; source: string | null };
-    expect(data.kind).toBe('next');
-    expect(data.matches[0]?.away.code).toBe('ECU');
-    // Overlay resolved the tie ⇒ attribute the provider, parity with `next`.
-    expect(data.source).toBe('espn');
-  });
-
-  it('feed outage: the pasted card never reads as "no fixture" (text)', async () => {
-    await cmdShare('next', 'MEX', {}, {
-      cfg: cfg({ json: false }),
-      t: makeT('en'),
-      adapter: windowAdapter([], { throws: true }),
-      now: KNOCKOUT_NOW,
-      marketProvider: undefined,
-    });
-    const t = text();
-    expect(t).toContain("Couldn't reach the data provider");
     expect(t).not.toContain('Live data:'); // no attribution on degraded
   });
 });

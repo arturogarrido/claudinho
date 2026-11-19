@@ -1,7 +1,7 @@
 /**
  * 0.11 PR 2.1d — the partial-read verdict on the MCP server's remaining
- * tools: `get_live`, `get_today`, the bundled `get_match`, `get_market_signal`,
- * and their share cards; `data` against the declared schemas, strictly.
+ * tools: `get_live`, `get_today`, the bundled `get_match`, `get_market_signal`;
+ * `data` against the declared schemas, strictly.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -10,7 +10,7 @@ import { EspnAdapter, FakeMarketProvider, type ProviderAdapter } from '@claudinh
 import { z } from 'zod/v3';
 import { DISCLAIMER } from '../src/format';
 import { buildServer, OUTPUT_SCHEMAS, toContent } from '../src/server';
-import { toolGetLive, toolGetMarketSignal, toolGetMatch, toolGetShareSnippet, toolGetToday } from '../src/tools';
+import { toolGetLive, toolGetMarketSignal, toolGetMatch, toolGetToday } from '../src/tools';
 
 const WC_SEASON = { year: 2026, startDate: '2026-06-11T04:00Z', endDate: '2026-12-31T04:59Z', displayName: '2026 FIFA World Cup' };
 type Side = { id: string; abbr: string; name: string };
@@ -125,30 +125,10 @@ describe('get_live and get_today (0.11 2.1d)', () => {
     expect(rest.text).toContain('showing the bundled schedule');
     expect(rest.text).not.toMatch(/no fixtures confirmed/);
   });
-
-  it('the share cards: live and date carry the note and the key; the date card drops its source with the line', async () => {
-    const live = await toolGetShareSnippet({ live: true, now: NOW, adapter: feed('fifa.world', { events: [{ ...OPENER, state: 'in' }, { ...KOR_CZE, raw: REFUSED }] }) } as never);
-    expect(live.text).toContain(SENTENCE);
-    expect(live.data).toMatchObject({ partial: { omitted: 1 } });
-    strict('get_share_snippet', live.data);
-    const date = await toolGetShareSnippet({ date: '2026-06-11', tz: 'UTC', adapter: feed('fifa.world', { events: [{ ...OPENER, raw: REFUSED }, { ...KOR_CZE, state: 'in' }] }) });
-    expect(date.text).toContain(SENTENCE);
-    expect(date.text).toMatch(/1 fixture .*bundled schedule/);
-    expect(date.text).not.toContain('Live data');
-    expect(date.data).toMatchObject({ partial: { omitted: 1 }, source: null, served: [] });
-    strict('get_share_snippet', date.data);
-    // A MIXED day: the count sentence is the only thing on the card that qualifies its provider line.
-    const second: Ev = { id: '760414', date: '2026-06-11T22:00Z', home: KOR, away: CZE, state: 'in' };
-    const mixed = await toolGetShareSnippet({ date: '2026-06-11', tz: 'UTC', adapter: feed('fifa.world', { events: [{ ...OPENER, raw: REFUSED }, second] }) });
-    expect(mixed.text).toContain('Live data');
-    expect(mixed.text).toMatch(/1 fixture .*bundled schedule/);
-    expect(mixed.data).toMatchObject({ source: 'espn', served: ['760414'] });
-    strict('get_share_snippet', mixed.data);
-  });
 });
 
 describe('the bundled get_match and get_market_signal (0.11 2.1d)', () => {
-  it('get_match whose OWN record was refused: the bundle’s row named as the bundle’s (as get_today names it), the key, no provider; the card the same', async () => {
+  it('get_match whose OWN record was refused: the bundle’s row named as the bundle’s (as get_today names it), the key, no provider', async () => {
     const adapter = feed('fifa.world', { events: [{ ...OPENER, raw: REFUSED }, { ...KOR_CZE, state: 'in' }] });
     const r = await toolGetMatch({ id: '760415', adapter });
     expect(r.text).toContain(SENTENCE);
@@ -158,9 +138,6 @@ describe('the bundled get_match and get_market_signal (0.11 2.1d)', () => {
     strict('get_match', r.data);
     const sibling = await toolGetMatch({ id: '760414', adapter });
     expect(sibling.data).toMatchObject({ partial: { omitted: 1 }, source: 'espn', served: ['760414'] });
-    const card = await toolGetShareSnippet({ matchId: '760415', adapter } as never);
-    expect(card.text).toMatch(/1 fixture .*bundled schedule/);
-    strict('get_share_snippet', card.data);
   });
 
   it('a whole read carries no `served`: it rides beside `partial` only, so whole reads keep their shape', async () => {
@@ -170,8 +147,6 @@ describe('the bundled get_match and get_market_signal (0.11 2.1d)', () => {
     expect(today.data).not.toHaveProperty('partial');
     const match = await toolGetMatch({ id: '760415', adapter });
     expect(match.data).not.toHaveProperty('served');
-    const card = await toolGetShareSnippet({ date: '2026-06-11', tz: 'UTC', adapter });
-    expect(card.data).not.toHaveProperty('served');
   });
 
   it('get_match with a refused sibling: exactly one sentence, the key, attribution unchanged', async () => {
@@ -228,15 +203,6 @@ describe('the day’s attribution is decided over what the text finally shows (0
     expect(kept).toContain('(truncated)');
     expect(kept).toContain('Live data');
     expect(kept).toMatch(/not affiliated/i);
-    // The date card through the same cut.
-    const card = await toolGetShareSnippet({ date: '2026-06-11', tz: 'UTC', adapter: feed('fifa.world', { events: [{ ...OPENER, raw: REFUSED }, ...many] }) });
-    const cardCut = textOf(card);
-    expect(cardCut).toContain('(truncated)');
-    expect(cardCut).not.toContain('Live data');
-    expect(cardCut).toMatch(/not affiliated/i);
-    const wholeCard = await toolGetShareSnippet({ date: '2026-06-11', tz: 'UTC', adapter: feed('fifa.world', { events: [OPENER, ...many] }) });
-    expect(textOf(wholeCard)).toContain('(truncated)');
-    expect(textOf(wholeCard)).toContain('Live data');
   });
 
   it('a cut barely over the limit keeps nothing of the discarded footer: the prefix ends at the body’s end', () => {
@@ -273,16 +239,12 @@ describe('the day’s attribution is decided over what the text finally shows (0
     expect(cut).toContain(SENTENCE);
     expect(cut).toContain('Live data');
     expect(cut).toMatch(/not affiliated/i);
-    const card = await toolGetShareSnippet({ live: true, now: new Date('2026-06-11T23:30:00Z'), adapter: feed('fifa.world', { events: [{ ...KOR_CZE, raw: REFUSED }, ...inPlay] }) } as never);
-    expect(textOf(card as never)).toContain('(truncated)');
-    expect(textOf(card as never)).toContain('Live data');
   });
 
-  // Found in review: a share card prints its zone beside every time, verbatim, and the MCP schema took any string
-  // as `tz`; a 40,000-character "zone" pushed the card past the text cut, which then dropped the one served row
-  // and kept "Live data" beside the bundled one. The zone is an IDENTIFIER (a text role, like a team code): it
-  // is checked against its grammar at the edge, so no tool prints a zone the formatter cannot resolve, and a
-  // date card of bounded rows never reaches the character cut (the record bound is the only cut it meets).
+  // Found in review: a dated answer printed its zone beside every time, verbatim, and the MCP schema took any
+  // string as `tz`; a 40,000-character "zone" pushed the answer past the text cut, which then dropped the one
+  // served row and kept "Live data" beside the bundled one. The zone is an IDENTIFIER (a text role, like a team
+  // code): it is checked against its grammar at the edge, so no tool prints a zone the formatter cannot resolve.
   afterEach(() => vi.restoreAllMocks());
 
   it('every tool refuses a tz that is not a time zone, before any request is made', async () => {
@@ -294,7 +256,6 @@ describe('the day’s attribution is decided over what the text finally shows (0
     try {
       for (const tz of ['Not/AZone', 'X'.repeat(40_000), 'America/Mexico_City\u200b']) {
         for (const [name, extra] of [
-          ['get_share_snippet', { date: '2026-06-11' }],
           ['get_today', { date: '2026-06-11' }],
           ['get_live', {}],
         ] as const) {

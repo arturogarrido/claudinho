@@ -1,9 +1,11 @@
 import {
   allFixtures,
   DISCLAIMER,
+  definitiveNone,
   FakeMarketProvider,
   type Match,
   type MarketProvider,
+  type MarketSignal,
   PolymarketProvider,
   type ProviderAdapter,
   valid,
@@ -12,7 +14,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cmdMarkets, InputError } from '../src/commands';
+import { cmdMarkets, cmdMatch, cmdToday, InputError } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
@@ -218,7 +220,7 @@ describe('cmdMarkets — next <team>', () => {
   });
 
   it('accepts a team NAME (not just a code) via the shared resolver', async () => {
-    // `markets next` funnels through resolveTeamArg like next/share, so a nation
+    // `markets next` funnels through resolveTeamArg like `next`, so a nation
     // name resolves to its code (Holland → NED). Regression for the follow-up.
     await cmdMarkets('next', 'holland', ctx({ json: true }, synth()));
     expect((json() as { team: string }).team).toBe('NED');
@@ -311,5 +313,126 @@ describe('cmdMarkets — a competition without markets', () => {
     expect(o).not.toContain('Market signals cover the World Cup only');
     expect(o).toContain(DISCLAIMER);
     expect(consulted).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The default-on annotation (`today`, `match <id>`) shows a signal only through the strict gate, and a market read
+ * that cannot be made never costs the fixtures. Each case has an on-disk market cache of its own: a signal one case
+ * cached would otherwise be a hit in the next.
+ */
+describe('the default-on market annotation on today and match (fail closed)', () => {
+  const ORIG_XDG = process.env.XDG_CACHE_HOME;
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'claudinho-annotation-'));
+    process.env.XDG_CACHE_HOME = dir;
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    if (ORIG_XDG === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = ORIG_XDG;
+  });
+
+  /** A clean signal for the match, priced at `asOf` (the request's clock unless said otherwise). */
+  const signalFor = (m: Match, over: Partial<MarketSignal> = {}): MarketSignal => ({
+    matchId: m.id,
+    source: 'polymarket',
+    asOf: TEST_NOW.toISOString(),
+    fetchedAt: TEST_NOW.toISOString(),
+    outcomes: [
+      { kind: 'home', teamCode: m.home.code, label: m.home.name, probability: 0.56 },
+      { kind: 'draw', label: 'Draw', probability: 0.25 },
+      { kind: 'away', teamCode: m.away.code, label: m.away.name, probability: 0.19 },
+    ],
+    favorite: { kind: 'home', teamCode: m.home.code, probability: 0.56, strength: 'slight' },
+    stale: false,
+    ambiguous: false,
+    ...over,
+  });
+  /** A provider that answers every match with what `make` builds, a definitive none otherwise. */
+  const fixed = (make: (m: Match) => MarketSignal): MarketProvider => ({
+    name: 'fixed',
+    findSignal: async (m) => make(m),
+    findSignals: async (matches) => ({
+      results: new Map(matches.map((m) => [m.id, m.id === upcoming().id ? valid(make(m)) : definitiveNone('no signal for this fixture')] as const)),
+      complete: true,
+    }),
+  });
+  const runs = (provider: MarketProvider, over: Partial<CliConfig> = {}) => [
+    () => cmdToday(upcomingDate(), ctx({ json: false, ...over }, provider)),
+    () => cmdMatch(upcoming().id, ctx({ json: false, ...over }, provider)),
+  ];
+
+  it('control: a fresh, reliable signal is shown beside its fixture', async () => {
+    for (const run of runs(fixed((m) => signalFor(m)))) {
+      writes = [];
+      await run();
+      expect(text()).toContain(upcoming().home.name);
+      expect(text()).toContain('56%');
+      expect(text()).toContain('informational only');
+    }
+  });
+
+  it('a stale signal is not shown: flagged stale by its provider, or priced longer ago than the freshness window', async () => {
+    const stale = [
+      fixed((m) => signalFor(m, { stale: true })),
+      fixed((m) => signalFor(m, { asOf: new Date(TEST_NOW.getTime() - 60 * 60_000).toISOString(), fetchedAt: new Date(TEST_NOW.getTime() - 60 * 60_000).toISOString() })),
+    ];
+    for (const provider of stale) {
+      for (const run of runs(provider)) {
+        rmSync(join(dir, 'claudinho'), { recursive: true, force: true }); // no case reads the previous one's cache
+        writes = [];
+        await run();
+        expect(text()).toContain(upcoming().home.name);
+        expect(text()).not.toContain('56%');
+        expect(text()).not.toContain('informational only');
+      }
+    }
+  });
+
+  it('--no-markets: no market line, and the provider is never asked', async () => {
+    let asked = false;
+    const tripwire: MarketProvider = {
+      name: 'tripwire',
+      findSignal: async () => {
+        asked = true;
+        throw new Error('must not be asked');
+      },
+      findSignals: async () => {
+        asked = true;
+        throw new Error('must not be asked');
+      },
+    };
+    for (const run of runs(tripwire, { markets: false })) {
+      writes = [];
+      await run();
+      expect(text()).toContain(upcoming().home.name);
+      expect(text()).not.toContain('informational only');
+      expect(text()).not.toContain('Market data unavailable');
+    }
+    expect(asked).toBe(false);
+  });
+
+  it('a market provider that throws: the fixtures still show, with the market data said to be unavailable or incomplete', async () => {
+    const boom: MarketProvider = {
+      name: 'boom',
+      findSignal: async () => {
+        throw new Error('down');
+      },
+      findSignals: async () => {
+        throw new Error('down');
+      },
+    };
+    for (const run of runs(boom)) {
+      writes = [];
+      await run();
+      expect(text()).toContain(upcoming().home.name);
+      expect(text()).toContain('Market data unavailable or incomplete');
+      expect(text()).not.toContain('informational only');
+    }
+    writes = [];
+    await cmdToday(upcomingDate(), ctx({ json: true }, boom));
+    expect(json()).toMatchObject({ marketComplete: false, marketSignals: {} });
   });
 });

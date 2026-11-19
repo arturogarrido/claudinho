@@ -10,7 +10,7 @@
  */
 import { EspnAdapter, type Match, type ProviderAdapter } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
-import { toolGetMatch, toolGetNextFixture, toolGetShareSnippet, toolGetToday } from '../src/tools';
+import { toolGetMatch, toolGetNextFixture, toolGetToday } from '../src/tools';
 
 const REQUEST_CLOCK = new Date('2026-10-04T14:50:00.000Z');
 const KICKOFF = '2026-10-10T11:30:00.000Z';
@@ -66,8 +66,8 @@ describe("a tool's countdown is relative to the request's clock, not the wall cl
  * Sep 20, 2026, a day every wall clock has left behind, so a lookup or a
  * countdown that reads the wall clock answers for the wrong span on every day
  * this file runs. (The bump's fix had `get_match` default an absent clock to
- * the wall clock BEFORE the lookup, which CLI `match` and `get_share_snippet`
- * never did: a test green only on the day the two clocks agreed.)
+ * the wall clock BEFORE the lookup, which CLI `match` never did: a test green
+ * only on the day the two clocks agreed.)
  */
 const ADAPTER_CLOCK = new Date('2026-09-20T15:00:00.000Z');
 const eastern = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -105,11 +105,5 @@ describe("a request that carries no clock takes the adapter's read clock, for th
   it("get_match, not found: the window it names is the adapter clock's span", async () => {
     const r = await toolGetMatch({ id: '41', competition: 'eng.1', adapter: feed([OTHER]), lang: 'en', flavor: 'off' });
     expect(r.data).toMatchObject({ match: null, window: { from: '2026-09-19', to: '2026-10-04' } });
-  });
-
-  it("get_share_snippet by match id: the card finds the match in the adapter clock's span", async () => {
-    const r = await toolGetShareSnippet({ matchId: '41', competition: 'eng.1', adapter: feed([IN_SPAN, OTHER]), lang: 'en' });
-    expect(r.text).toContain('Liverpool');
-    expect(r.text).toContain('Arsenal');
   });
 });

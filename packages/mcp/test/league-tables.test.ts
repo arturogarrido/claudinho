@@ -1,6 +1,6 @@
 /**
- * 0.11 PR 2.3 on the MCP server: `get_standings`, `standings://` and the table
- * card of `get_share_snippet`, for every table shape, in text and `data`. Each
+ * 0.11 PR 2.3 on the MCP server: `get_standings` and `standings://`, for
+ * every table shape, in text and `data`. Each
  * case goes from a payload recorded on the real feed (Oct 2 2026) through the
  * real adapter into the tool.
  */
@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v3';
 import { DISCLAIMER } from '../src/format';
 import { buildServer, OUTPUT_SCHEMAS, toContent } from '../src/server';
-import { standingsResourceText, toolGetShareSnippet, toolGetStandings } from '../src/tools';
+import { standingsResourceText, toolGetStandings } from '../src/tools';
 
 const recorded = (slug: string): { children: Array<Record<string, unknown>> } =>
   JSON.parse(readFileSync(new URL(`../../core/test/fixtures/standings/${slug}.json`, import.meta.url), 'utf8'));
@@ -196,23 +196,6 @@ describe('standings://{key}', () => {
   });
 });
 
-describe('get_share_snippet: a table card', () => {
-  it('a league card: label and key in the title; the label in data', async () => {
-    const r = await toolGetShareSnippet({ group: 'LEAGUE', ...common('eng.1') });
-    expect(r.text).toContain('2026-27 English Premier League (LEAGUE) · standings');
-    const data = r.data as { kind: string; group: string; tables: Table[] };
-    expect(data).toMatchObject({ kind: 'table', group: 'LEAGUE' });
-    expect(data.tables[0]).toMatchObject({ group: 'LEAGUE', label: '2026-27 English Premier League' });
-    expect(() => strict('get_share_snippet', r.data)).not.toThrow();
-  });
-
-  it('a key that was not read, with tables missing: the card says unavailable', async () => {
-    const r = await toolGetShareSnippet({ group: 'C', ...common('uefa.euro', shortOf('uefa.euro')) });
-    expect(r.text).toContain('Live standings unavailable.');
-    expect((r.data as { degraded: boolean }).degraded).toBe(true);
-  });
-});
-
 describe('the contract says so', () => {
   it('the REGISTERED argument accepts a table key, and the descriptions say what one is', async () => {
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
@@ -221,7 +204,7 @@ describe('the contract says so', () => {
     await Promise.all([server.connect(serverT), client.connect(clientT)]);
     try {
       const { tools } = await client.listTools();
-      for (const name of ['get_standings', 'get_share_snippet']) {
+      for (const name of ['get_standings']) {
         const tool = tools.find((t) => t.name === name);
         const input = tool?.inputSchema as { properties?: Record<string, { pattern?: string; description?: string }> } | undefined;
         const group = input?.properties?.group;

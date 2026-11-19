@@ -1,7 +1,7 @@
 /**
  * 0.11 PR 2.1c — the MCP surfaces off the bundle: `get_next_fixture` with a club
- * name or code, `get_match`, `get_bracket`, `get_today`, `get_live`, the share
- * cards; `data` (against the declared schema, strictly) and text.
+ * name or code, `get_match`, `get_bracket`, `get_today`, `get_live`; `data`
+ * (against the declared schema, strictly) and text.
  *
  * The adapter is the real one over a fake feed; see the CLI twin for the shape.
  */
@@ -15,7 +15,6 @@ import {
   toolGetMarketSignal,
   toolGetMatch,
   toolGetNextFixture,
-  toolGetShareSnippet,
   toolGetToday,
 } from '../src/tools';
 
@@ -171,12 +170,7 @@ describe('get_match off the bundle (0.11 2.1c)', () => {
     strict('get_match', stale.data);
   });
 
-  it('the share card after a failed refresh says the provider’s earlier record, never "the bundled schedule"; an incomplete empty read says "none read" (review round 1)', async () => {
-    const stale = await toolGetShareSnippet({ matchId: '41', competition: 'eng.1', adapter: feed('eng.1', { events: [inSpan, other], fail: (d) => (d.length === 8 ? json({}, 503) : undefined) }).adapter });
-    expect(stale.text).toContain('Arsenal');
-    expect(stale.text).not.toContain('bundled schedule');
-    expect(stale.text).toContain('earlier record');
-    strict('get_share_snippet', stale.data);
+  it('an incomplete empty read says "none read" (review round 1)', async () => {
     const broken: Ev = { id: '45', date: '2026-10-14T19:00Z', home: CHE, away: LIV, raw: { status: { type: { name: 'STATUS_NEW', state: 'limbo' } } } };
     const none = await toolGetMatch({ id: '41', competition: 'eng.1', adapter: feed('eng.1', { events: [broken, other] }).adapter });
     expect(none.text).toContain('may be incomplete');
@@ -184,32 +178,6 @@ describe('get_match off the bundle (0.11 2.1c)', () => {
     const noneNext = await toolGetNextFixture({ team: 'Arsenal', now: NOW, competition: 'eng.1', adapter: feed('eng.1', { events: [broken, upcoming[1] as Ev] }).adapter });
     expect(noneNext.text).toContain('may be incomplete');
     expect(noneNext.text).not.toContain('No upcoming fixture');
-  });
-
-  it('get_share_snippet carries the resolved team and the candidates in data (review round 1)', async () => {
-    const resolved = await toolGetShareSnippet({ team: 'arsen', now: NOW, competition: 'eng.1', adapter: feed('eng.1', { events: [upcoming[1] as Ev] }).adapter });
-    expect(resolved.data).toMatchObject({ team: { id: 'espn:359', name: 'Arsenal' }, horizon: { days: 14 } });
-    strict('get_share_snippet', resolved.data);
-    const LIB = table('Group A', [CARABOBO, ALWAYS_READY]);
-    const events: Ev[] = [{ id: '20', date: '2026-10-12T22:00Z', home: ALWAYS_READY, away: { id: '7003', abbr: 'BOC', name: 'Boca Juniors' } }];
-    const season = () => ({ year: 2026, displayName: '2026 Copa Libertadores', endDate: '2026-11-30T05:00Z' });
-    const amb = await toolGetShareSnippet({ team: 'CAR', now: NOW, competition: 'conmebol.libertadores', adapter: feed('conmebol.libertadores', { events, standings: LIB, season }).adapter });
-    expect((amb.data as { candidates: Array<{ name: string }> }).candidates.map((c) => c.name).sort()).toEqual(['Always Ready', 'Carabobo']);
-    strict('get_share_snippet', amb.data);
-  });
-
-  it('on the World Cup, get_share_snippet resolves a nation name the way get_next_fixture does: an ambiguous name is the candidates and no request (review round 1)', async () => {
-    const f = feed('fifa.world');
-    const r = await toolGetShareSnippet({ team: 'South', now: new Date('2026-06-13T12:00:00Z'), adapter: f.adapter });
-    expect(r.text).toContain('South Africa');
-    expect(r.text).toContain('South Korea');
-    expect(r.text).not.toContain('SOUTH');
-    expect(f.urls).toEqual([]);
-    expect((r.data as { candidates: Array<{ code: string }> }).candidates.map((c) => c.code).sort()).toEqual(['KOR', 'RSA']);
-    strict('get_share_snippet', r.data);
-    const unknown = await toolGetShareSnippet({ team: 'Narnia', now: new Date('2026-06-13T12:00:00Z'), adapter: feed('fifa.world').adapter });
-    expect(unknown.text).not.toContain('NARNIA');
-    expect(unknown.text).toMatch(/No team/);
   });
 
   it('found, the refresh not whole: the partial sentence beside the record in text, the key in data (review round 2)', async () => {
@@ -229,21 +197,8 @@ describe('get_match off the bundle (0.11 2.1c)', () => {
     strict('get_next_fixture', r.data);
   });
 
-  it('the share cards’ run cue carries the competition off the bundle (review round 2)', async () => {
-    // 0.11 · 2.5a: the competition is the call's argument, and the cue selects it by alias.
-    const r = await toolGetShareSnippet({ team: 'Arsenal', competition: 'eng.1', now: NOW, adapter: feed('eng.1', { events: upcoming }).adapter });
-    expect(r.text).toContain('npx @claudinho/cli --competition premier-league next');
-  });
-
-  it('the handlers never carry a raw argument into a card or a prompt: the run cue holds the bounded label (review round 3)', async () => {
-    // Below the schema (a direct call), a query with a trailing newline reaches the handler; the cue must not split.
-    const r = await toolGetShareSnippet({ team: 'Ars\n\n', competition: 'eng.1', now: NOW, adapter: feed('eng.1', { events: upcoming }).adapter });
-    const cue = r.text.split('\n').find((line) => line.includes('@claudinho/cli --competition premier-league next')) ?? '';
-    expect(cue).toMatch(/next "?Ars"?$/);
-    expect(r.text).not.toContain('Ars\n\n');
-    expect(r.footer.trim().length).toBeGreaterThan(20);
-    expect(r.text.endsWith(r.footer)).toBe(true);
-    // The next tool the same: the query it names is the bounded label.
+  it('the handlers never carry a raw argument into an answer: the query get_next_fixture names is the bounded label (review round 3)', async () => {
+    // Below the schema (a direct call), a query with a trailing newline reaches the handler.
     const n = await toolGetNextFixture({ team: 'Everton\n\n', now: NOW, competition: 'eng.1', adapter: feed('eng.1', { events: upcoming }).adapter });
     expect(n.text).not.toContain('Everton\n\n');
     expect(n.text).toContain('No team called Everton');
@@ -267,9 +222,6 @@ describe('get_match off the bundle (0.11 2.1c)', () => {
     expect(r.data).toMatchObject({ unknownTeam: true, rosterEvidence: 'bundle' });
     expect(f.urls).toEqual([]);
     strict('get_next_fixture', r.data);
-    const card = await toolGetShareSnippet({ team: 'Italy', now: new Date('2026-06-13T12:00:00Z'), adapter: feed('fifa.world').adapter });
-    expect(card.text).not.toContain('14 days');
-    strict('get_share_snippet', card.data);
   });
 
   it('get_market_signal by id stays unsupported off the bundle, with no request', async () => {
@@ -281,7 +233,7 @@ describe('get_match off the bundle (0.11 2.1c)', () => {
 });
 
 describe('get_bracket off the bundle: three values (0.11 2.1c)', () => {
-  it('a league with no bracket: inapplicable in data and the sentence in text; the share card too; a cup stays unsupported', async () => {
+  it('a league with no bracket: inapplicable in data and the sentence in text; a cup stays unsupported', async () => {
     const f = feed('eng.1');
     const r = await toolGetBracket({ competition: 'eng.1', adapter: f.adapter });
     expect(r.text).toContain('no bracket');
@@ -290,10 +242,6 @@ describe('get_bracket off the bundle: three values (0.11 2.1c)', () => {
     expect((r.data as { unsupported?: unknown }).unsupported).toBeUndefined();
     expect(f.urls).toEqual([]);
     strict('get_bracket', r.data);
-    const card = await toolGetShareSnippet({ bracket: true, competition: 'esp.1', adapter: feed('esp.1').adapter });
-    expect(card.text).toContain('no bracket');
-    expect(card.data).toMatchObject({ inapplicable: true });
-    strict('get_share_snippet', card.data);
     for (const c of ['ita.1', 'ger.1', 'mex.1', 'uefa.champions']) {
       const cup = await toolGetBracket({ competition: c, adapter: feed(c).adapter });
       expect(cup.text, c).toContain(NOT_YET);
@@ -307,7 +255,7 @@ describe('between editions on MCP (0.11 2.1c)', () => {
   const finalFT: Ev = { id: '50', date: '2026-10-09T02:00Z', home: { id: '8001', abbr: 'TOL', name: 'Toluca' }, away: { id: '8002', abbr: 'LAFC', name: 'Los Angeles FC' }, state: 'post' };
   const KEY = { ended: '2026-10-08', label: '2026 Concacaf Champions Cup' };
 
-  it('get_today, get_live, get_next_fixture, get_match and the share cards say so, text and data, the schemas hold', async () => {
+  it('get_today, get_live, get_next_fixture and get_match say so, text and data, the schemas hold', async () => {
     const today = await toolGetToday({ date: '2026-10-10', competition: 'concacaf.champions', adapter: cup([finalFT]) });
     expect(today.text).toContain('Between editions');
     expect(today.text).not.toContain('Toluca');
@@ -326,12 +274,6 @@ describe('between editions on MCP (0.11 2.1c)', () => {
     expect(match.text).toContain('Between editions');
     expect(match.data).toMatchObject({ match: null, betweenEditions: KEY });
     strict('get_match', match.data);
-    for (const args of [{ live: true }, { date: '2026-10-10' }, { team: 'Toluca' }]) {
-      const card = await toolGetShareSnippet({ ...args, now: NOW, competition: 'concacaf.champions', adapter: cup([finalFT]) } as never);
-      expect(card.text, JSON.stringify(args)).toContain('Between editions');
-      expect(card.data, JSON.stringify(args)).toMatchObject({ betweenEditions: KEY });
-      strict('get_share_snippet', card.data);
-    }
   });
 
   it('a historical date and a scheduled fixture: no sentence', async () => {

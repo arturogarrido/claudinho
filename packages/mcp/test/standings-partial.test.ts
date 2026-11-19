@@ -1,8 +1,8 @@
-import { FakeMarketProvider, type GroupStandings, type Match, type ProviderAdapter, selectedCompetition } from '@claudinho/core';
+import { type GroupStandings, type Match, type ProviderAdapter, selectedCompetition } from '@claudinho/core';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod/v3';
 import { OUTPUT_SCHEMAS } from '../src/server';
-import { standingsResourceText, toolGetShareSnippet, toolGetStandings } from '../src/tools';
+import { standingsResourceText, toolGetStandings } from '../src/tools';
 
 /**
  * Audit A01 on the MCP surface: a PARTIAL table reaches structured `data`
@@ -71,19 +71,5 @@ describe('get_standings — partial standings (A01)', () => {
     expect(text.split('\n')[1]).toBe('(Partial table — 2 rows could not be read.)');
     expect(text).toContain('Partial table — 2 rows could not be read.');
     expect(text).toContain('Mexico');
-  });
-});
-
-describe('get_share_snippet{group} — partial standings (A01, review P2)', () => {
-  it('structured data keeps the partial verdict the snippet warns about', async () => {
-    const r = await toolGetShareSnippet({ group: 'A', adapter, marketProvider: new FakeMarketProvider() });
-    const data = r.data as {
-      degraded: boolean;
-      tables: Array<{ standings: Array<{ rank?: number }>; partial?: { omitted: number } }>;
-    };
-    expect(data.degraded).toBe(false);
-    expect(r.text).toMatch(/partial table/i);
-    expect(data.tables[0]?.partial).toEqual({ omitted: 2 });
-    expect(data.tables[0]?.standings.map((x) => x.rank)).toEqual([2, 3]);
   });
 });

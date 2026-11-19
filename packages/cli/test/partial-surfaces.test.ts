@@ -1,14 +1,14 @@
 /**
  * 0.11 PR 2.1d — the partial-read verdict on the CLI's remaining surfaces:
- * `live`, `today`, the bundled `match`, `markets`, and their share cards.
+ * `live`, `today`, the bundled `match` and `markets`.
  *
  * On this base these commands drop the read's verdict: a refused provider
  * record is invisible, an empty body claims absence, and a day whose shown
  * fixtures the overlay never served is still "Live data: ESPN".
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EspnAdapter, FakeMarketProvider, type ProviderAdapter } from '@claudinho/core';
-import { cmdLive, cmdMarkets, cmdMatch, cmdShare, cmdToday } from '../src/commands';
+import { DISCLAIMER, EspnAdapter, FakeMarketProvider, type ProviderAdapter } from '@claudinho/core';
+import { cmdLive, cmdMarkets, cmdMatch, cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
@@ -95,10 +95,6 @@ describe('live (0.11 2.1d)', () => {
     expect(text()).toContain(SENTENCE);
     expect(text()).not.toContain('No matches in play right now');
     expect(text()).toMatch(/read/i);
-    writes = [];
-    await cmdShare('live', undefined, {}, ctxFor(adapter));
-    expect(text()).toContain(SENTENCE);
-    expect(text()).not.toContain('No matches in play right now');
   });
 
   it('a whole read and a failed read: as today (no sentence, no key)', async () => {
@@ -140,16 +136,6 @@ describe('today (0.11 2.1d)', () => {
     writes = [];
     await cmdToday('2026-06-11', ctxFor(adapter, { json: true }));
     expect(parsed()).toMatchObject({ partial: { omitted: 1 }, source: 'espn', served: ['760414'] });
-    // The date card on a MIXED day: the count sentence beside the partial one (the only thing on the card that
-    // qualifies its provider line), and the ids the overlay held in its structured form.
-    writes = [];
-    await cmdShare('2026-06-11', undefined, {}, ctxFor(adapter));
-    expect(text()).toContain(SENTENCE);
-    expect(text()).toMatch(/1 fixture .*bundled schedule/);
-    expect(text()).toContain('Live data');
-    writes = [];
-    await cmdShare('2026-06-11', undefined, {}, ctxFor(adapter, { json: true }));
-    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, source: 'espn', served: ['760414'] });
   });
 
   it('on the bundle, the day’s only record refused (an adjacent day readable): the day is the bundle’s, no "Live data" line, --json keeps the provider', async () => {
@@ -163,14 +149,6 @@ describe('today (0.11 2.1d)', () => {
     writes = [];
     await cmdToday('2026-06-11', ctxFor(adapter, { json: true }));
     expect(parsed()).toMatchObject({ partial: { omitted: 1 }, source: 'espn' });
-    writes = [];
-    await cmdShare('2026-06-11', undefined, {}, ctxFor(adapter));
-    expect(text()).toContain(SENTENCE);
-    expect(text()).not.toContain('Live data');
-    writes = [];
-    await cmdShare('2026-06-11', undefined, {}, ctxFor(adapter, { json: true }));
-    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, served: [] }); // the shown rows the window held: none
-    expect(parsed().source).toBeNull();
   });
 
   it('a whole read with skeleton rows the overlay did not hold: unchanged (attributed, no sentence, no `served` in --json)', async () => {
@@ -181,7 +159,7 @@ describe('today (0.11 2.1d)', () => {
     expect(text()).not.toContain('bundled schedule');
     // `served` interprets the partial sentence: it rides beside `partial` only, so a whole read's structured
     // output is what it was (the parity claim).
-    for (const run of [() => cmdToday('2026-06-11', ctxFor(adapter, { json: true })), () => cmdShare('2026-06-11', undefined, {}, ctxFor(adapter, { json: true })), () => cmdMatch('760415', ctxFor(adapter, { json: true }))]) {
+    for (const run of [() => cmdToday('2026-06-11', ctxFor(adapter, { json: true })), () => cmdMatch('760415', ctxFor(adapter, { json: true }))]) {
       writes = [];
       await run();
       expect(parsed()).not.toHaveProperty('served');
@@ -197,10 +175,6 @@ describe('today (0.11 2.1d)', () => {
     expect(text()).toContain(SENTENCE);
     expect(text()).not.toContain('No matches scheduled');
     expect(text()).toContain('2026-10-17');
-    writes = [];
-    await cmdShare('2026-10-17', undefined, {}, ctxFor(adapter, {}, new Date('2026-10-17T12:00:00Z')));
-    expect(text()).toContain(SENTENCE);
-    expect(text()).not.toContain('No matches scheduled');
   });
 
   it('a FAILED read off the bundle: the empty body says the provider could not be reached (the date card’s sentence, localized), never "No matches scheduled" nor "showing the bundled schedule"; on the bundle the skeleton and its line as today', async () => {
@@ -247,7 +221,7 @@ describe('today (0.11 2.1d)', () => {
 });
 
 describe('the bundled match and the markets (0.11 2.1d)', () => {
-  it('match <id> whose OWN record was refused: the bundle’s row, the partial sentence, and the row named as the bundle’s (as `today` names it), no provider; the share card the same', async () => {
+  it('match <id> whose OWN record was refused: the bundle’s row, the partial sentence, and the row named as the bundle’s (as `today` names it), no provider', async () => {
     // Found in review: `today` said "1 fixture shown from the bundled schedule; its live state is unconfirmed"
     // for the same row that `match` showed with only the partial sentence.
     const adapter = feed('fifa.world', { events: [{ ...OPENER, raw: REFUSED }, { ...KOR_CZE, state: 'in' }] });
@@ -262,10 +236,6 @@ describe('the bundled match and the markets (0.11 2.1d)', () => {
     writes = [];
     await cmdMatch('760414', ctxFor(adapter, { json: true }));
     expect(parsed()).toMatchObject({ partial: { omitted: 1 }, served: ['760414'] });
-    writes = [];
-    await cmdShare('760415', undefined, {}, ctxFor(adapter));
-    expect(text()).toContain(SENTENCE);
-    expect(text()).toMatch(/1 fixture .*bundled schedule/);
     // A served match carries no such sentence.
     writes = [];
     await cmdMatch('760414', ctxFor(adapter));
@@ -282,9 +252,20 @@ describe('the bundled match and the markets (0.11 2.1d)', () => {
     writes = [];
     await cmdMatch('760415', ctxFor(adapter, { json: true }));
     expect(parsed()).toMatchObject({ partial: { omitted: 1 }, source: 'espn' });
+  });
+
+  it('match <id> on the bundle with the provider unreachable: the bundled row, said not to be live, with no provider named', async () => {
+    // A failed read must not print a bundled fixture as if a provider had served it: the row is the bundled
+    // schedule's, the outage line says so, and the footer names no provider.
+    const down = feed('fifa.world', { fail: true });
+    await cmdMatch('760415', ctxFor(down));
+    expect(text()).toContain('Mexico');
+    expect(text()).toContain('Live scores unavailable — showing the bundled schedule.');
+    expect(text()).not.toContain('Live data');
+    expect(text()).toContain(DISCLAIMER);
     writes = [];
-    await cmdShare('760415', undefined, {}, ctxFor(adapter));
-    expect(count(text(), 'may be incomplete')).toBe(1);
+    await cmdMatch('760415', ctxFor(down, { json: true }));
+    expect(parsed()).toMatchObject({ degraded: true, source: null, match: { id: '760415' } });
   });
 
   it('markets <id> and markets next <team>: the fixture read’s sentence beside the market body, the key in --json, separately from complete', async () => {

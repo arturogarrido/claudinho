@@ -11,7 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EspnAdapter, FakeMarketProvider, type ProviderAdapter } from '@claudinho/core';
-import { cmdMarkets, cmdShare, cmdToday } from '../src/commands';
+import { cmdMarkets, cmdToday } from '../src/commands';
 import type { CliConfig } from '../src/config';
 import { described } from './config-of';
 import { makeT } from '../src/i18n';
@@ -77,16 +77,11 @@ const text = () => writes.join('');
 const parsed = () => JSON.parse(text()) as Record<string, unknown>;
 
 describe('an empty day whose read was not whole and merged no bundled schedule (0.11 2.1d)', () => {
-  it('off the bundle: none was READ for that date, beside the sentence; the card the same; --json the key', async () => {
+  it('off the bundle: none was READ for that date, beside the sentence; --json the key', async () => {
     await cmdToday('2026-10-17', ctx(league()));
     expect(text()).toContain(SENTENCE);
     expect(text()).toContain('No fixture was read for 2026-10-17.');
     expect(text()).not.toContain('No matches scheduled');
-    writes = [];
-    await cmdShare('2026-10-17', undefined, {}, ctx(league()));
-    expect(text()).toContain(SENTENCE);
-    // The card names the date as its title does (its label); the CLI prints the ISO date of its header.
-    expect(text()).toContain('No fixture was read for Oct 17.');
     writes = [];
     await cmdToday('2026-10-17', ctx(league(), { json: true }));
     expect(parsed()).toMatchObject({ degraded: false, partial: { omitted: 1 }, source: 'espn', matches: [] });
@@ -154,25 +149,5 @@ describe('markets <date> off the markets’ scope (0.11 2.1d)', () => {
     await cmdMarkets('2026-10-17', undefined, ctx(league()));
     expect(text()).toContain('Market signals cover the World Cup only');
     expect(text()).not.toContain('may be incomplete');
-  });
-});
-
-describe('the match card: its structured twin carries `served` beside `partial` only (0.11 2.1d)', () => {
-  const OPENER_REFUSED: Ev = { id: '760415', date: '2026-06-11T19:00Z', home: MEX, away: RSA, raw: REFUSED };
-  const KOR_CZE: Ev = { id: '760414', date: '2026-06-12T02:00Z', home: KOR, away: CZE };
-  const OPENER: Ev = { id: '760415', date: '2026-06-11T19:00Z', home: MEX, away: RSA };
-  const at = new Date('2026-06-11T12:00:00Z');
-
-  it('share <id> --json: the ids the read held when it was not whole; nothing on a whole read', async () => {
-    // `served` is the card's shown fixture when the window held it: the refused opener's row is the bundle's.
-    await cmdShare('760415', undefined, {}, ctx(feed('fifa.world', WC_SEASON, [OPENER_REFUSED, KOR_CZE]), { json: true }, at));
-    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, served: [] });
-    writes = [];
-    await cmdShare('760414', undefined, {}, ctx(feed('fifa.world', WC_SEASON, [OPENER_REFUSED, KOR_CZE]), { json: true }, at));
-    expect(parsed()).toMatchObject({ partial: { omitted: 1 }, served: ['760414'] });
-    writes = [];
-    await cmdShare('760415', undefined, {}, ctx(feed('fifa.world', WC_SEASON, [OPENER, KOR_CZE]), { json: true }, at));
-    expect(parsed()).not.toHaveProperty('served');
-    expect(parsed()).not.toHaveProperty('partial');
   });
 });

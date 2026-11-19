@@ -10,7 +10,6 @@ import {
   toolGetMarketSignal,
   toolGetMatch,
   toolGetNextFixture,
-  toolGetShareSnippet,
   toolGetStandings,
   toolGetToday,
 } from '../src/tools';
@@ -93,20 +92,6 @@ describe('club surface coverage (MCP) — no World Cup leakage off the bundle', 
     expect(data.inapplicable).toBe(true);
     expect(data.source).toBeNull();
     expect(() => z.object(OUTPUT_SCHEMAS.get_bracket).strict().parse(r.data)).not.toThrow();
-  });
-
-  it('get_share_snippet for next, bracket and a World Cup id never pastes the skeleton', async () => {
-    const said = [
-      [{ team: 'ARS' }, 'roster could not be read whole'],
-      [{ bracket: true }, 'This competition has no bracket.'],
-      [{ matchId: '760415' }, 'may be incomplete'],
-    ] as const;
-    for (const [args, sentence] of said) {
-      const r = await toolGetShareSnippet({ ...args, adapter, marketProvider: new FakeMarketProvider(), now: NOW });
-      expect(r.text, JSON.stringify(args)).toContain(sentence);
-      expect(r.text, JSON.stringify(args)).not.toContain(NOTICE);
-      expect(r.text, JSON.stringify(args)).not.toMatch(WC);
-    }
   });
 });
 
@@ -221,21 +206,7 @@ describe('club rendering (MCP) — the live state', () => {
     strict('get_match', match.data);
   });
 
-  it('get_share_snippet (date, live, match) in both styles', async () => {
-    for (const style of ['social', 'compact'] as const) {
-      for (const args of [{ date: '2026-10-04' }, { live: true }, { matchId: '800000010' }]) {
-        const r = await toolGetShareSnippet({ ...args, style, adapter: LIVE_FEED(), marketProvider: new FakeMarketProvider(), now: CLUB_NOW });
-        expect(r.text, `${JSON.stringify(args)} ${style}`).toContain(style === 'social' ? 'Arsenal 2–1 Chelsea' : 'ARS 2–1 CHE');
-        noLeak(r.text, `${JSON.stringify(args)} ${style}`);
-        const d = r.data as Rec;
-        noLeak(d.snippet as string, 'snippet');
-        for (const m of (d.matches as Rec[]) ?? []) noFlagKey(m.home, 'share data');
-        strict('get_share_snippet', r.data);
-      }
-    }
-  });
-
-  it('get_standings, get_share_snippet { group } and the standings:// resource: rows by name and code, nothing in the flag\'s place', async () => {
+  it('get_standings and the standings:// resource: rows by name and code, nothing in the flag\'s place', async () => {
     const r = await toolGetStandings({ adapter: LIVE_FEED() });
     expect(r.text).toContain('Arsenal');
     noLeak(r.text, 'get_standings');
@@ -243,9 +214,6 @@ describe('club rendering (MCP) — the live state', () => {
     expect(tables[0]?.standings).toHaveLength(3);
     for (const row of tables[0]?.standings ?? []) noFlagKey(row.team, 'get_standings row');
     strict('get_standings', r.data);
-    const card = await toolGetShareSnippet({ group: 'LEAGUE', adapter: LIVE_FEED(), marketProvider: new FakeMarketProvider(), now: CLUB_NOW });
-    expect(card.text).toContain('1. ARS');
-    noLeak(card.text, 'share group');
     const resource = await standingsResourceText('LEAGUE', LIVE_FEED(), selectedCompetition('eng.1', 'saved'));
     // The resource names its competition first (0.11 · 2.5a), like a tool's text.
     expect(resource.split('\n')[0]).toBe('Premier League');
@@ -255,16 +223,11 @@ describe('club rendering (MCP) — the live state', () => {
 });
 
 describe('club rendering (MCP) — the scheduled state', () => {
-  it('get_next_fixture: the countdown, "League"; get_share_snippet { team } in both styles', async () => {
+  it('get_next_fixture: the countdown, "League"', async () => {
     const next = await toolGetNextFixture({ team: 'Arsenal', adapter: SCHEDULED_FEED(), now: CLUB_NOW });
     expect(next.text).toContain('Leeds United');
     expect(next.text).toContain('League');
     noLeak(next.text, 'get_next_fixture scheduled');
-    for (const style of ['social', 'compact'] as const) {
-      const r = await toolGetShareSnippet({ team: 'Arsenal', style, adapter: SCHEDULED_FEED(), marketProvider: new FakeMarketProvider(), now: CLUB_NOW });
-      expect(r.text, style).toContain(style === 'social' ? 'Arsenal vs Leeds United' : 'ARS vs LEE');
-      noLeak(r.text, style);
-    }
   });
 });
 
@@ -280,7 +243,7 @@ describe('club rendering (MCP) — the stage grammar reaches the tools', () => {
     noLeak(r.text, 'po');
   });
 
-  it('an unknown round: the provider\'s words in text, `stage: "OTHER"` and `stageLabel` in data, on today, match, next and the cards', async () => {
+  it('an unknown round: the provider\'s words in text, `stage: "OTHER"` and `stageLabel` in data, on today, match and next', async () => {
     const today = await toolGetToday({ date: '2026-10-10', competition: 'uefa.champions', adapter: OTHER(), now: CLUB_NOW });
     expect(today.text).toContain('Qualifying final');
     const tm = ((today.data as Rec).matches as Rec[])[0];
@@ -295,9 +258,6 @@ describe('club rendering (MCP) — the stage grammar reaches the tools', () => {
     expect(next.text).toContain('Qualifying final');
     expect(((next.data as Rec).fixture as Rec).stageLabel).toBe('Qualifying final');
     strict('get_next_fixture', next.data);
-    const card = await toolGetShareSnippet({ matchId: '800000021', competition: 'uefa.champions', adapter: OTHER(), marketProvider: new FakeMarketProvider(), now: CLUB_NOW });
-    expect(card.text).toContain('Qualifying final');
-    strict('get_share_snippet', card.data);
   });
 
   it('a record with no phase stated: no stage segment, no dangling separator, no "Group stage"; `stage: "OTHER"` without a label', async () => {
@@ -312,13 +272,10 @@ describe('club rendering (MCP) — the stage grammar reaches the tools', () => {
     const today = await toolGetToday({ date: '2026-10-10', competition: 'uefa.champions', adapter: NO_SLUG(), now: CLUB_NOW });
     expect(today.text).not.toMatch(/Group/);
     expect(today.text).not.toMatch(/·\s*·|·\s*(\n|$)/);
-    const card = await toolGetShareSnippet({ matchId: '800000022', competition: 'uefa.champions', adapter: NO_SLUG(), marketProvider: new FakeMarketProvider(), now: CLUB_NOW });
-    expect(card.text).not.toMatch(/Group/);
-    expect(card.text).not.toMatch(/·\s*(\n|$)|(^|\n)\s*·/);
   });
 
   it('the carried label is declared on the match shapes: a client is told the key exists', () => {
-    for (const tool of ['get_today', 'get_live', 'get_match', 'get_next_fixture', 'get_share_snippet'] as const) {
+    for (const tool of ['get_today', 'get_live', 'get_match', 'get_next_fixture'] as const) {
       const shape = OUTPUT_SCHEMAS[tool] as Record<string, z.ZodTypeAny>;
       const matchShape = (shape.matches ?? shape.match ?? shape.fixture) as z.ZodTypeAny;
       expect(matchShape, tool).toBeTruthy();

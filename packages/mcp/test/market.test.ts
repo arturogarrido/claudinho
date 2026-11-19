@@ -189,6 +189,55 @@ describe('default-on market context', () => {
       else process.env.CLAUDINHO_MARKETS = prev;
     }
   });
+
+  it('CLAUDINHO_MARKETS=off drops the market data a relevant fixture would carry, in data and in text', async () => {
+    // A clock before the fixture's kickoff, so the market is relevant and the switch alone decides; the case
+    // above passes no clock, and every bundled fixture is past by the wall clock whatever the switch says.
+    const fixture = upcoming();
+    const ask = () =>
+      Promise.all([
+        toolGetToday({ date: upcomingDate(), tz: 'UTC', adapter: fakeAdapter, marketProvider: synth(), now: TEST_NOW }),
+        toolGetMatch({ id: fixture.id, adapter: fakeAdapter, marketProvider: synth(), now: TEST_NOW }),
+      ]);
+    const prev = process.env.CLAUDINHO_MARKETS;
+    try {
+      delete process.env.CLAUDINHO_MARKETS;
+      const [onToday, onMatch] = await ask();
+      expect((onToday.data as { marketSignals?: Record<string, unknown> }).marketSignals?.[fixture.id]).toBeDefined();
+      expect(onMatch.text).toContain('Prediction markets');
+      expect((onMatch.data as { marketSignal: unknown }).marketSignal).not.toBeNull();
+      process.env.CLAUDINHO_MARKETS = 'off';
+      const [offToday, offMatch] = await ask();
+      expect((offToday.data as { marketSignals?: unknown }).marketSignals).toBeUndefined();
+      expect(offMatch.text).not.toContain('Prediction markets');
+      expect(offMatch.text).not.toContain('informational only');
+      expect((offMatch.data as { marketSignal: unknown }).marketSignal).toBeNull();
+    } finally {
+      if (prev === undefined) delete process.env.CLAUDINHO_MARKETS;
+      else process.env.CLAUDINHO_MARKETS = prev;
+    }
+  });
+
+  it('get_today still lists its fixtures when the market provider throws: no signals, the read said to be incomplete', async () => {
+    const boom: MarketProvider = {
+      name: 'boom',
+      findSignal: async () => {
+        throw new Error('down');
+      },
+      findSignals: async () => {
+        throw new Error('down');
+      },
+    };
+    const fixture = upcoming();
+    const r = await toolGetToday({ date: upcomingDate(), tz: 'UTC', adapter: fakeAdapter, marketProvider: boom, now: TEST_NOW });
+    const data = r.data as { count: number; matches: Match[]; marketComplete: boolean; marketSignals?: unknown };
+    expect(data.count).toBeGreaterThan(0);
+    expect(data.matches.some((m) => m.id === fixture.id)).toBe(true);
+    expect(r.text).toContain(fixture.home.name);
+    expect(data.marketSignals).toBeUndefined();
+    expect(data.marketComplete).toBe(false);
+    expect(r.text).toContain('unavailable or incomplete');
+  });
 });
 
 describe('toolGetMarketSignal — a competition without markets', () => {

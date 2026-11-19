@@ -1,9 +1,9 @@
 /**
  * 0.11 PR 2.0b — a verdict in a tool's text is in its `data` too.
  *
- * Off the bundle, `get_next_fixture`, `get_match`, `get_market_signal` and
- * `get_share_snippet` said "Not available for this competition yet" in their
- * text and returned `data` identical to a World Cup team with no fixture, or
+ * Off the bundle, `get_next_fixture`, `get_match` and `get_market_signal` said
+ * "Not available for this competition yet" in their text and returned `data`
+ * identical to a World Cup team with no fixture, or
  * to an id that does not exist. A model reads the text; an agent that reads
  * only `structuredContent` could not tell "unsupported" from "empty". The CLI's
  * `--json` has carried `unsupported: true` since 0.10.1; MCP could not without
@@ -20,7 +20,6 @@ import {
   toolGetMarketSignal,
   toolGetMatch,
   toolGetNextFixture,
-  toolGetShareSnippet,
   type ToolResult,
 } from '../src/tools';
 
@@ -57,13 +56,10 @@ const CASES: Case[] = [
   ['get_match', 'get_match', (c) => toolGetMatch({ id: '760415', ...common(c) })],
   ['get_market_signal by team', 'get_market_signal', (c) => toolGetMarketSignal({ team: 'ARS', ...common(c) })],
   ['get_market_signal by id', 'get_market_signal', (c) => toolGetMarketSignal({ matchId: '760415', ...common(c) })],
-  ['get_share_snippet next', 'get_share_snippet', (c) => toolGetShareSnippet({ team: 'ARS', ...common(c) })],
-  ['get_share_snippet match', 'get_share_snippet', (c) => toolGetShareSnippet({ matchId: '760415', ...common(c) })],
-  ['get_share_snippet bracket', 'get_share_snippet', (c) => toolGetShareSnippet({ bracket: true, ...common(c) })],
   ['get_bracket', 'get_bracket', (c) => toolGetBracket(common(c))],
 ];
 
-// Since 0.11 (2.1c) `get_next_fixture`, `get_match` and their share cards read
+// Since 0.11 (2.1c) `get_next_fixture` and `get_match` read
 // the competition's own schedule ahead off the bundle, and a league season like
 // `eng.1` says it has NO bracket (`off-bundle-surfaces.test.ts` pins those
 // answers, text and data). "Not available yet" stays on the market reads and
@@ -71,7 +67,6 @@ const CASES: Case[] = [
 const UNSUPPORTED: [label: string, competition: string][] = [
   ['get_market_signal by team', 'eng.1'],
   ['get_market_signal by id', 'eng.1'],
-  ['get_share_snippet bracket', 'ger.1'],
   ['get_bracket', 'ger.1'],
 ];
 const OFF_CASES = UNSUPPORTED.map(([label, competition]) => {
@@ -143,30 +138,6 @@ describe('found in review: a market read for a whole day, off the markets’ sco
   });
 });
 
-describe('found in review: an outage never pastes as "no matches scheduled"', () => {
-  const down = (competition: string): ProviderAdapter => ({
-    ...adapter(competition),
-    async fetchByDate(): Promise<Match[]> {
-      throw new Error('down');
-    },
-    async fetchWindow(): Promise<Match[]> {
-      throw new Error('down');
-    },
-  });
-
-  it('off the bundle nothing but the provider knows the fixtures: the card says it could not ask', async () => {
-    const r = await toolGetShareSnippet({ date: '2026-10-01', tz: 'UTC', includeMarkets: false, ...common('eng.1'), competition: 'eng.1', adapter: down('eng.1') });
-    expect((r.data as { degraded?: boolean }).degraded).toBe(true);
-    expect(r.text).toContain("Couldn't reach the data provider");
-    expect(r.text).not.toContain('No matches scheduled');
-  });
-
-  it('on the bundle the schedule is known without the provider: an empty day is an empty day', async () => {
-    const r = await toolGetShareSnippet({ date: '2026-10-01', tz: 'UTC', includeMarkets: false, ...common('fifa.world'), adapter: down('fifa.world') });
-    expect(r.text).toContain('No matches scheduled for Oct 1.');
-  });
-});
-
 describe('the contract says so', () => {
   it('every tool that can answer "not available" declares the marker in its output schema', async () => {
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
@@ -175,7 +146,7 @@ describe('the contract says so', () => {
     await Promise.all([server.connect(serverT), client.connect(clientT)]);
     try {
       const { tools } = await client.listTools();
-      for (const name of ['get_next_fixture', 'get_match', 'get_market_signal', 'get_share_snippet', 'get_bracket']) {
+      for (const name of ['get_next_fixture', 'get_match', 'get_market_signal', 'get_bracket']) {
         const schema = tools.find((t) => t.name === name)?.outputSchema as
           | { properties?: Record<string, { type?: string; const?: unknown; description?: string }> }
           | undefined;

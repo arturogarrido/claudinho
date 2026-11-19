@@ -2,7 +2,7 @@
  * 0.11 PR 2.1d — the MCP tools' partial-read verdict, beside
  * `partial-surfaces.test.ts`:
  *   - an empty day whose read was not whole and merged no bundled schedule
- *     says no fixture was READ for it (get_today and the date card), on a
+ *     says no fixture was READ for it (get_today), on a
  *     window that also holds a readable record (a window whose ONLY record is
  *     refused is refused whole by the adapter: `degraded`, not this);
  *   - get_market_signal {team} says the fixture read was not whole in its text;
@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { attachFetchMeta, EspnAdapter, FakeMarketProvider, type Match, type ProviderAdapter } from '@claudinho/core';
 import { z } from 'zod/v3';
 import { OUTPUT_SCHEMAS, toContent } from '../src/server';
-import { toolGetLive, toolGetMarketSignal, toolGetShareSnippet, toolGetToday } from '../src/tools';
+import { toolGetLive, toolGetMarketSignal, toolGetToday } from '../src/tools';
 
 const WC_SEASON = { year: 2026, startDate: '2026-06-11T04:00Z', endDate: '2026-12-31T04:59Z', displayName: '2026 FIFA World Cup' };
 const PL = { year: 2026, displayName: '2026-27 English Premier League', startDate: '2026-08-01T04:00Z', endDate: '2027-06-01T03:59Z' };
@@ -60,18 +60,13 @@ const strict = (tool: keyof typeof OUTPUT_SCHEMAS, data: unknown) => {
 const SENTENCE = 'Fixture data may be incomplete (1 provider record omitted).';
 
 describe('an empty day whose read was not whole and merged no bundled schedule (0.11 2.1d)', () => {
-  it('get_today and the date card: none was READ for that date, beside the sentence', async () => {
+  it('get_today: none was READ for that date, beside the sentence', async () => {
     const today = await toolGetToday({ date: '2026-10-17', tz: 'UTC', competition: 'eng.1', adapter: league() });
     expect(today.text).toContain(SENTENCE);
     expect(today.text).toContain('No fixture was read for 2026-10-17.');
     expect(today.text).not.toContain('No matches scheduled');
     expect(today.data).toMatchObject({ degraded: false, partial: { omitted: 1 }, source: 'espn', count: 0 });
     strict('get_today', today.data);
-    const card = await toolGetShareSnippet({ date: '2026-10-17', tz: 'UTC', competition: 'eng.1', adapter: league() });
-    expect(card.text).toContain(SENTENCE);
-    // The card names the date as its title does (its label); the tool prints the ISO date of its header.
-    expect(card.text).toContain('No fixture was read for Oct 17.');
-    strict('get_share_snippet', card.data);
   });
 
   it('the bundle’s slug stating another year: the same, and no bundled fixture shown', async () => {
@@ -111,11 +106,11 @@ describe('what a day or a live answer on a read that was not whole says, at the 
     expect(r.text).not.toContain('may be incomplete');
   });
 
-  it('the live card on a read that was not whole with nothing in play: none in play was READ', async () => {
+  it('get_live on a read that was not whole with nothing in play: none in play was READ', async () => {
     // One record refused; a scheduled one beside it keeps the window readable, and nothing is in play.
     const scheduled: Ev = { id: '760415', date: '2026-06-11T19:00Z', home: MEX, away: RSA };
     const adapter = feed('fifa.world', WC_SEASON, [{ ...KOR_CZE, raw: REFUSED }, scheduled]);
-    const r = await toolGetShareSnippet({ live: true, now: new Date('2026-06-11T20:00:00Z'), adapter } as never);
+    const r = await toolGetLive({ now: new Date('2026-06-11T20:00:00Z'), adapter } as never);
     expect(r.text).toContain(SENTENCE);
     expect(r.text).toContain('No match in play was read.');
     expect(r.text).not.toContain('No matches in play right now');
@@ -208,7 +203,7 @@ describe('a LIVE list cut on a read that was not whole keeps its attribution lin
   const rows = Array.from({ length: 41 }, (_, i) => inPlay(i));
   const textOf = (r: { text: string; footer: string; data: unknown; cutFooter?: string }) => toContent(r).content[0]?.text ?? '';
 
-  it('get_live and the live card: cut, "Live data", the disclaimer and the sentence kept; a whole read the same', async () => {
+  it('get_live: cut, "Live data", the disclaimer and the sentence kept; a whole read the same', async () => {
     const partial = await toolGetLive({ adapter: liveFeed([...rows, refused]), now: NOW } as never);
     const cut = textOf(partial);
     expect(cut).toContain('(truncated)');
@@ -219,30 +214,5 @@ describe('a LIVE list cut on a read that was not whole keeps its attribution lin
     const whole = textOf(await toolGetLive({ adapter: liveFeed(rows), now: NOW } as never));
     expect(whole).toContain('(truncated)');
     expect(whole).toContain('Live data');
-    const card = textOf(await toolGetShareSnippet({ live: true, now: NOW, adapter: liveFeed([...rows, refused]) } as never));
-    expect(card).toContain('(truncated)');
-    expect(card).toContain('Live data');
-    expect(card).toMatch(/not affiliated/i);
-    const wholeCard = textOf(await toolGetShareSnippet({ live: true, now: NOW, adapter: liveFeed(rows) } as never));
-    expect(wholeCard).toContain('(truncated)');
-    expect(wholeCard).toContain('Live data');
-  });
-});
-
-describe('the match card: its structured twin carries `served` beside `partial` only (0.11 2.1d)', () => {
-  const OPENER_REFUSED: Ev = { id: '760415', date: '2026-06-11T19:00Z', home: MEX, away: RSA, raw: REFUSED };
-  const KOR_CZE: Ev = { id: '760414', date: '2026-06-12T02:00Z', home: KOR, away: CZE };
-  const OPENER: Ev = { id: '760415', date: '2026-06-11T19:00Z', home: MEX, away: RSA };
-
-  it('get_share_snippet {matchId}: the ids the read held when it was not whole; nothing on a whole read', async () => {
-    // `served` is the card's shown fixture when the window held it: the refused opener's row is the bundle's.
-    const partial = await toolGetShareSnippet({ matchId: '760415', adapter: feed('fifa.world', WC_SEASON, [OPENER_REFUSED, KOR_CZE]) } as never);
-    expect(partial.data).toMatchObject({ partial: { omitted: 1 }, served: [] });
-    strict('get_share_snippet', partial.data);
-    const sibling = await toolGetShareSnippet({ matchId: '760414', adapter: feed('fifa.world', WC_SEASON, [OPENER_REFUSED, KOR_CZE]) } as never);
-    expect(sibling.data).toMatchObject({ partial: { omitted: 1 }, served: ['760414'] });
-    const whole = await toolGetShareSnippet({ matchId: '760415', adapter: feed('fifa.world', WC_SEASON, [OPENER, KOR_CZE]) } as never);
-    expect(whole.data).not.toHaveProperty('served');
-    expect(whole.data).not.toHaveProperty('partial');
   });
 });
