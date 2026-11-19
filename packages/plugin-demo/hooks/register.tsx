@@ -1,5 +1,6 @@
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren, Timer } from 'claude-code'
 
+import { celebrationBall, celebrationRow, goalRow } from './celebration'
 import { FLAG_COLORS, TEAM_COLORS } from './team-colors'
 import { bandSvg, buildLook } from './team-look'
 import { pitchSvg, pixelSvg } from './team-scenes'
@@ -7,9 +8,11 @@ import { pitchSvg, pixelSvg } from './team-scenes'
 /**
  * Development only. Shows the Claudinho plugin's OWN drawings in the Claude desktop app, on demand, with no match
  * needed, so a change to what the plugin draws is seen in the app before it merges. `scripts/plugin-demo.sh` puts the
- * plugin's `team-scenes.ts`, `team-look.ts` and `team-colors.ts` (and the color builder) beside this module, so what
- * this draws is what the plugin on that checkout draws. It sets a scene the way the plugin does (`$.theme.set`, the
- * same glass, one `Svg`); it runs none of the plugin's hooks, reads no score and runs no CLI.
+ * plugin's `team-scenes.ts`, `team-look.ts`, `team-colors.ts` (and the color builder) and `celebration.tsx` beside this
+ * module, so what this draws is what the plugin on that checkout draws. It sets a scene the way the plugin does
+ * (`$.theme.set`, the same glass, one `Svg`), and plays the goal and full-time celebration in the band above the prompt
+ * with the plugin's own `celebrationRow`, `celebrationBall` and `goalRow`; it runs none of the plugin's hooks, reads no
+ * score and runs no CLI.
  *
  *   /demo <team>     spain, mexico, pumas, arsenal, argentina, italy: that team's stadium, live
  *   /demo band       the band of the team's two colors across the top (the plugin's default scene)
@@ -18,12 +21,20 @@ import { pitchSvg, pixelSvg } from './team-scenes'
  *   /demo live       the stadium with its fans
  *   /demo goal       the team's goal: six seconds, a toast as the ball lands, then live again
  *   /demo other      the other team's goal, the same way
+ *   /demo mascot     the goal celebration in the band above the prompt: the Claude mascot (in the desktop app drawn
+ *                    shapes, in a terminal text art) beside the ball, the goal word and the team, and a demo scorer; 3 s
+ *   /demo fulltime   the full-time celebration there: the mascot beside `Full time · <team> win`; 5 s
  *   /demo left       the stadium at the bottom left (the plugin's teamScenePlace: left) for every later drawing
  *   /demo right      the stadium at the bottom right again (the default)
  *   /demo en         the goal's word on the board in English (GOAL!: GOOOAL); es (¡GOL!), pt (GOL!): GOOOL; fr (BUT !): BUUUT
- *   /demo off        clears the look
+ *   /demo off        clears the look, and ends a celebration that is playing
  *
- * What it does not show: the plugin's own path from a real goal (its readings, its memory, its toast's text).
+ * A celebration does not touch the look, and a scene's goal waiting to finish goes on beside it; a later `mascot`,
+ * `fulltime` or `off` replaces or ends it. Its frame is read from the clock at each draw (500 ms a frame), redrawn by a
+ * timer that runs while it plays.
+ *
+ * What it does not show: the plugin's own path from a real goal (its readings, its memory, its toast's text), and when
+ * the plugin plays a celebration (the hold while Claude works, the 60-second drop, full time queued behind a goal).
  */
 
 const PLUGIN = 'claudinho-demo'
@@ -34,16 +45,30 @@ const BALL_LANDS_MS = 1_900
 const WORDS: Record<string, string> = { en: 'GOAL!', es: '¡GOL!', pt: 'GOL!', fr: 'BUT !' }
 type Place = 'right' | 'left'
 
-type Team = { id: string; name: string; home: string; away: string; otherId: string }
+/** A demo team: its id, its name, its match's two codes, the other side's id, and its own side (whose goal the band plays). */
+type Team = { id: string; name: string; home: string; away: string; otherId: string; side: 'home' | 'away' }
 const TEAMS: Record<string, Team> = {
-  spain: { id: 'espn:164', name: 'Spain', home: 'ESP', away: 'ARG', otherId: 'espn:202' },
-  argentina: { id: 'espn:202', name: 'Argentina', home: 'ESP', away: 'ARG', otherId: 'espn:164' },
-  mexico: { id: 'espn:203', name: 'Mexico', home: 'MEX', away: 'ITA', otherId: 'espn:162' },
-  italy: { id: 'espn:162', name: 'Italy', home: 'MEX', away: 'ITA', otherId: 'espn:203' },
-  pumas: { id: 'espn:233', name: 'Pumas UNAM', home: 'PUM', away: 'MTY', otherId: 'espn:220' },
-  arsenal: { id: 'espn:359', name: 'Arsenal', home: 'ARS', away: 'PUM', otherId: 'espn:233' },
+  spain: { id: 'espn:164', name: 'Spain', home: 'ESP', away: 'ARG', otherId: 'espn:202', side: 'home' },
+  argentina: { id: 'espn:202', name: 'Argentina', home: 'ESP', away: 'ARG', otherId: 'espn:164', side: 'away' },
+  mexico: { id: 'espn:203', name: 'Mexico', home: 'MEX', away: 'ITA', otherId: 'espn:162', side: 'home' },
+  italy: { id: 'espn:162', name: 'Italy', home: 'MEX', away: 'ITA', otherId: 'espn:203', side: 'away' },
+  pumas: { id: 'espn:233', name: 'Pumas UNAM', home: 'PUM', away: 'MTY', otherId: 'espn:220', side: 'home' },
+  arsenal: { id: 'espn:359', name: 'Arsenal', home: 'ARS', away: 'PUM', otherId: 'espn:233', side: 'home' },
 }
 type What = 'pitch' | 'idle' | 'live' | 'goal' | 'other'
+
+/** A celebration frame's length, as the plugin plays it; a goal's is 6 frames (3 s), full time's 10 (5 s). */
+const FRAME_MS = 500
+const CELEBRATION_FRAMES = { mascot: 6, fulltime: 10 } as const
+/** The goal's bottom row: a demo scorer and minute, where the plugin writes the scorer the CLI named. */
+const DEMO_DETAIL = "Demo scorer 35'"
+/** The band's width when the draw states none. */
+const DEFAULT_COLUMNS = 80
+/**
+ * The celebration playing in the band: its kind, the clock's milliseconds it started at, its frames, the team and the
+ * goal word it was asked with, and its redraw timer. Replaced by the next `mascot` or `fulltime`, ended by `off`.
+ */
+type Play = { kind: keyof typeof CELEBRATION_FRAMES; from: number; frames: number; team: Team; word: string; timer: Timer | null }
 
 let team: Team = TEAMS.spain as Team
 let serial = 0
@@ -52,6 +77,42 @@ let run = 0
 let place: Place = 'right'
 let lang = 'en'
 const scenes: Array<{ name: string; source: string }> = []
+let playing: Play | null = null
+
+/** The celebration in the band ended: its timer stopped, and nothing of it drawn at the next draw. */
+function endPlay(): void {
+  playing?.timer?.cancel()
+  playing = null
+}
+
+/**
+ * A celebration started in the band: the one before it ended, a draw asked now, then one every frame while it plays.
+ * A frame's check that finds the play over (or replaced) stops this play's timer, and asks the draw that empties the
+ * band when the play was still the one drawn.
+ */
+async function startPlay($: EngineInterface, kind: Play['kind']): Promise<void> {
+  const from = await $.clock.now()
+  endPlay()
+  const play: Play = { kind, from, frames: CELEBRATION_FRAMES[kind], team, word: WORDS[lang] ?? 'GOAL!', timer: null }
+  playing = play
+  play.timer = $.clock.every(FRAME_MS, () => {
+    $.ui.invalidate('ui.render')
+    $.clock.now().then(
+      (now) => {
+        if (playing === play && now - play.from < play.frames * FRAME_MS) return
+        play.timer?.cancel()
+        if (playing === play) {
+          playing = null
+          $.ui.invalidate('ui.render')
+        }
+      },
+      () => {
+        // The clock could not be read: the timer runs on to its next frame.
+      },
+    )
+  })
+  $.ui.invalidate('ui.render')
+}
 
 const draw = (what: What): string => {
   const [main, second] = TEAM_COLORS[team.id] ?? ['1f7a3d']
@@ -75,7 +136,7 @@ export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'demo',
-      description: `Claudinho's drawings, for a look in the app: ${Object.keys(TEAMS).join(', ')}, band, pitch, idle, live, goal, other, left, right, ${Object.keys(WORDS).join(', ')}, off`,
+      description: `Claudinho's drawings, for a look in the app: ${Object.keys(TEAMS).join(', ')}, band, pitch, idle, live, goal, other, mascot, fulltime, left, right, ${Object.keys(WORDS).join(', ')}, off`,
     })
     return next(e)
   })
@@ -106,10 +167,22 @@ export const register: Register = (on) => {
     }
 
     if (word === 'off') {
-      // Forgotten first, as the plugin does: a render while the clear is on its way draws nothing of ours.
+      // Forgotten first, as the plugin does: a render while the clear is on its way draws nothing of ours. A
+      // celebration playing in the band ends with it.
       scenes.length = 0
+      if (playing !== null) {
+        endPlay()
+        $.ui.invalidate('ui.render')
+      }
       await $.theme.clear()
       return { text: 'Demo look cleared.' }
+    }
+    if (word === 'mascot' || word === 'fulltime') {
+      // The band's celebration: it touches no look, so a scene's goal waiting to finish goes on. It answers at once;
+      // the play runs on by itself.
+      await startPlay($, word)
+      const what = word === 'mascot' ? 'goal celebration' : 'full time'
+      return { text: `${team.name}, ${what}: playing in the band (${(CELEBRATION_FRAMES[word] * FRAME_MS) / 1000} s)` }
     }
     if (word === 'band') {
       // The plugin's default scene: the look as `buildLook` makes it, its band drawn from the scene's own name.
@@ -127,7 +200,7 @@ export const register: Register = (on) => {
     }
     if (Object.hasOwn(WORDS, word)) {
       lang = word
-      return { text: `The goal's word: ${WORDS[lang]} (/demo goal or /demo other to see it)` }
+      return { text: `The goal's word: ${WORDS[lang]} (/demo goal or /demo other to see it on the board, /demo mascot in the band)` }
     }
     if (word === 'pitch' || word === 'idle' || word === 'live') return { text: `${team.name}, ${word}: ${await show(word)}` }
     if (word === 'goal' || word === 'other') {
@@ -141,7 +214,51 @@ export const register: Register = (on) => {
       await show('live')
       return { text: `${team.name}, ${word}: ${answer}, then live` }
     }
-    return { text: `Try: /demo ${Object.keys(TEAMS).join(' | ')} | band | pitch | idle | live | goal | other | left | right | ${Object.keys(WORDS).join(' | ')} | off` }
+    return { text: `Try: /demo ${Object.keys(TEAMS).join(' | ')} | band | pitch | idle | live | goal | other | mascot | fulltime | left | right | ${Object.keys(WORDS).join(' | ')} | off` }
+  })
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    // The band above the prompt, where the plugin plays its celebration: the three rows, the line under them, then
+    // the band beneath. A survey holds the band, and with fewer than three spare rows it draws nothing of ours.
+    const play = playing
+    if (play === null || e.props.hasSurvey || e.props.maxRows - 2 < 3) return next(e)
+    // The frame from the clock at this draw, never from a count of draws.
+    const elapsed = (await $.clock.now()) - play.from
+    if (!(elapsed >= 0 && elapsed < play.frames * FRAME_MS)) return next(e)
+    const step = Math.floor(elapsed / FRAME_MS)
+    const width = e.props.bodyColumns
+    const columns = typeof width === 'number' && Number.isInteger(width) && width > 0 ? width : DEFAULT_COLUMNS
+    const elements = $.ui.resolve(e)
+    const { Box, Text } = elements
+    const shown = play.team
+    // The score as the band would show it: the goal is the demo team's.
+    const score = shown.side === 'home' ? '1–0' : '0–1'
+    let middle: RenderChildren
+    let top: string
+    let bottom: string
+    let line: string
+    if (play.kind === 'mascot') {
+      top = celebrationBall(step, columns)
+      middle = goalRow(elements, play.word, shown.name)
+      bottom = DEMO_DETAIL
+      line = `⚽ ${shown.home} ${score} ${shown.away} 36'  · demo`
+    } else {
+      top = ' '
+      middle = (
+        <Text key="row-1" wrap="truncate-end">
+          {`Full time · ${shown.name} win`}
+        </Text>
+      )
+      bottom = ' '
+      line = `⚽ ${shown.home} ${score} ${shown.away} FT  · demo`
+    }
+    return (
+      <Box flexDirection="column">
+        {celebrationRow(elements, e.surface, step, { top, middle, bottom })}
+        <Text wrap="truncate-end">{line}</Text>
+        {await next(e)}
+      </Box>
+    )
   })
 
   on('ui.render', { component: 'Backdrop' }, ($, e, next) => {

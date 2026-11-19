@@ -16,6 +16,7 @@ import type {
   ClaudinhoPlay,
   ClaudinhoTally,
 } from '../types'
+import { celebrationBall, celebrationRow, goalRow } from './celebration'
 import { bandSvg, buildLook, colorsForPick, flagForPick } from './team-look'
 import type { TeamColors } from './team-look'
 import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
@@ -128,7 +129,8 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  * the generation on and drops the value, the binding and the timers. The binding and the timers are this module load's:
  * after a reload the pane stays drawn from its value and is re-read again from the next `/claudinho match`.
  *
- * The goal celebration: when a run's toasts include a goal, the band plays it above its line in at most
+ * The goal celebration (its mascot, ball and goal row drawn by `./celebration`, a pure module the plugin's demo plays
+ * too): when a run's toasts include a goal, the band plays it above its line in at most
  * min(3, maxRows - 2) rows, then goes back to its one line. For a record without `names` (CLI 0.11.2), any goal (a
  * regulation or shootout tally that rose, none that fell): 6 frames over 3 seconds, a ball crossing a row, a "GOAL"
  * banner growing, then the toast's own line. For a record with `names`, a single-goal toast for the pinned side (with
@@ -277,7 +279,10 @@ const COMPETITION_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/
 const CONTEXT_MAX_AGE_MS = 2 * LIVE_MS
 /** The band's width before any draw. */
 const DEFAULT_COLUMNS = 80
-/** A celebration frame's length; six frames are a goal's whole length (full time's: `FULLTIME_MS`), then it is spent. */
+/**
+ * A celebration frame's length; six frames are a goal's whole length (full time's: `FULLTIME_MS`), then it is spent.
+ * The ball of `./celebration` crosses its row in as many frames (its own `FRAMES`).
+ */
 const FRAME_MS = 500
 const FRAMES = 6
 const PLAY_MS = FRAMES * FRAME_MS
@@ -285,68 +290,13 @@ const PLAY_MS = FRAMES * FRAME_MS
 const CELEBRATION_MAX_AGE_MS = 60_000
 /** The legacy banner (CLI 0.11.2), English: `G`, `GO`, `GOA`, `GOAL`, `GOAL!`, `GOAL!` frame by frame. */
 const BANNER = 'GOAL!'
-/** The ball's display width (an emoji takes two columns). */
-const BALL_COLUMNS = 2
 /** Full time's play, for the pinned side's win or draw: 5 s on screen. */
 const FULLTIME_MS = 5_000
 /**
- * Anthropic's Claude mascot, in the goal and full-time celebrations only, left of the celebration's three rows. These
- * three rows of text art (its head, its body, its legs in two steps) are its one shape: the terminal draws them as
- * text in the theme's `claude` colour; the desktop app, whose proportional face pulls text art apart (a space narrower
- * than a block glyph, a line taller than one), draws the same rows as one `Svg` of rectangles (`mascotSvg`).
+ * The goal word's theme key, which the pane's accent and flair are drawn in too. The celebration itself (Anthropic's
+ * Claude mascot, the ball, the goal's row) is drawn by `./celebration`, the one module the plugin's demo shares.
  */
-const MASCOT_HEAD = ' ▐▛███▜▌'
-const MASCOT_BODY = '▝▜█████▛▘'
-const MASCOT_LEGS = ['  ▘▘ ▝▝', '  ▝▝ ▘▘'] as const
-/** The mascot's widest row, and the column between it and the celebration's text. */
-const MASCOT_COLUMNS = 9
-const MASCOT_GAP = 1
-/** The theme keys the moments are drawn in: the mascot's, and the goal word's (the pane's accent and flair too). */
-const MASCOT_COLOR = 'claude'
 const GOAL_COLOR = 'success'
-/** One quadrant of a glyph in the desktop drawing, in CSS pixels: a glyph is two quadrants across and two down. */
-const MASCOT_QUAD_WIDTH = 4
-const MASCOT_QUAD_HEIGHT = 9
-/** An image cannot read the theme's `claude` key, so the desktop drawing uses one fixed colour. */
-const MASCOT_SVG_COLOR = '#D97757'
-const MASCOT_ALT = 'Claude mascot'
-/** The quadrants each glyph of the rows lights: upper left, upper right, lower left, lower right. */
-const MASCOT_QUADRANTS: Readonly<Record<string, readonly [boolean, boolean, boolean, boolean]>> = {
-  ' ': [false, false, false, false],
-  '█': [true, true, true, true],
-  '▐': [false, true, false, true],
-  '▌': [true, false, true, false],
-  '▛': [true, true, true, false],
-  '▜': [true, true, false, true],
-  '▝': [false, true, false, false],
-  '▘': [true, false, false, false],
-}
-
-/**
- * The mascot's three rows, its legs at `step`, as an `Svg` source for the desktop app: one rectangle per lit quadrant
- * (a glyph not listed lights none), none merged, in the one fixed colour; nine columns by three rows, 72 by 54.
- */
-const mascotSvg = (step: number): string => {
-  const rows: readonly string[] = [MASCOT_HEAD, MASCOT_BODY, MASCOT_LEGS[step % 2] ?? '']
-  const rects: string[] = []
-  rows.forEach((row, r) => {
-    Array.from(row).forEach((glyph, c) => {
-      const lit = Object.hasOwn(MASCOT_QUADRANTS, glyph) ? MASCOT_QUADRANTS[glyph] : undefined
-      lit?.forEach((on, q) => {
-        if (!on) return
-        const x = (c * 2 + (q % 2)) * MASCOT_QUAD_WIDTH
-        const y = (r * 2 + Math.floor(q / 2)) * MASCOT_QUAD_HEIGHT
-        rects.push(`<rect x="${x}" y="${y}" width="${MASCOT_QUAD_WIDTH}" height="${MASCOT_QUAD_HEIGHT}"/>`)
-      })
-    })
-  })
-  const width = MASCOT_COLUMNS * 2 * MASCOT_QUAD_WIDTH
-  const height = rows.length * 2 * MASCOT_QUAD_HEIGHT
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"` +
-    ` shape-rendering="crispEdges" fill="${MASCOT_SVG_COLOR}">${rects.join('')}</svg>`
-  )
-}
 /** The band's `lineParts` read, at most. */
 const LINE_PARTS_MAX = 64
 /** A pane row's parts kept, at most. */
@@ -716,18 +666,15 @@ async function resumeTicker($: EngineInterface): Promise<void> {
   }
 }
 
-/** The ball row of a frame: the ball stepping right across `cols` columns, never past them. */
-function ballRow(frame: number, cols: number): string {
-  const room = Math.max(0, cols - BALL_COLUMNS)
-  return `${' '.repeat(Math.floor((frame * room) / (FRAMES - 1)))}⚽`
-}
-
-/** The celebration's rows for a frame in `rows` rows (1 to 3): the frame table. */
+/**
+ * The legacy banner's rows for a frame in `rows` rows (1 to 3): the frame table. Its ball row is the celebration's,
+ * across all `cols` columns (no mascot beside it).
+ */
 function celebrationRows(frame: number, rows: number, text: string, cols: number): string[] {
   const last = frame === FRAMES - 1
   const banner = BANNER.slice(0, Math.min(frame + 1, BANNER.length))
-  if (rows >= 3) return last ? [ballRow(frame, cols), banner, text] : [ballRow(frame, cols), banner]
-  if (rows === 2) return [ballRow(frame, cols), last ? text : banner]
+  if (rows >= 3) return last ? [celebrationBall(frame, cols, 0), banner, text] : [celebrationBall(frame, cols, 0), banner]
+  if (rows === 2) return [celebrationBall(frame, cols, 0), last ? text : banner]
   return [last ? text : banner]
 }
 
@@ -2968,7 +2915,8 @@ export const register: Register = (on, options) => {
       stopTicker()
       return next(e)
     }
-    const { Box, Text } = $.ui.resolve(e)
+    const elements = $.ui.resolve(e)
+    const { Box, Text } = elements
     // The CLI fitted the line to the width asked, its `+N` suffix reserved; the engine's cut is the backstop. Its
     // `lineParts`, kept only when they join to the line, draw each `strong` part bold. A band beneath ours in the hook
     // chain (a plugin registered after ours, or the engine's own) stays, under our line.
@@ -3027,32 +2975,15 @@ export const register: Register = (on, options) => {
     const step = Math.floor(t / FRAME_MS)
     const frame = Math.min(FRAMES - 1, step)
     if (play.kind === 'goal' || play.kind === 'fulltime') {
-      // The goal moments (a record that carries `names`): the mascot in three rows, else the words alone.
-      // The goal word the play was built with, whole on every frame (no character reveal).
-      const goalWord =
-        play.kind === 'goal' ? (
-          <Text key="goal-word" bold color={GOAL_COLOR}>
-            {play.word}
-          </Text>
-        ) : null
+      // The goal moments (a record that carries `names`): the mascot in three rows, else the words alone, drawn by
+      // `./celebration`, the one drawing the plugin's demo plays too. The goal word is the one the play was built with,
+      // whole on every frame (no character reveal).
       let middle: RenderChildren
       let top: string
       let bottom: string
       if (play.kind === 'goal') {
-        if (rows === 1) {
-          return withLine([
-            <Text key="row-0" wrap="truncate-end">
-              {goalWord}
-              {` ${words(play.team, play.minute)}`}
-            </Text>,
-          ])
-        }
-        middle = (
-          <Text key="row-1" wrap="truncate-end">
-            {goalWord}
-            {` ${play.team}`}
-          </Text>
-        )
+        if (rows === 1) return withLine([goalRow(elements, play.word, words(play.team, play.minute), 'row-0')])
+        middle = goalRow(elements, play.word, play.team)
         if (rows === 2) {
           return withLine(
             play.detail === ''
@@ -3065,7 +2996,7 @@ export const register: Register = (on, options) => {
                 ],
           )
         }
-        top = ballRow(frame, Math.max(0, columns - MASCOT_COLUMNS - MASCOT_GAP))
+        top = celebrationBall(frame, columns)
         bottom = play.detail === '' ? ' ' : play.detail
       } else {
         middle = (
@@ -3077,35 +3008,9 @@ export const register: Register = (on, options) => {
         top = ' '
         bottom = ' '
       }
-      // The mascot's column: in the desktop app the three rows as one Svg (text art comes apart in its proportional
-      // face; the surface is compared here so `$.ui.resolve` gives the app's elements, which hold `Svg`), else as text.
-      let mascot: RenderChildren
-      if (e.surface === 'desktop') {
-        const { Svg } = $.ui.resolve(e)
-        mascot = (
-          <Box flexDirection="column">
-            <Svg source={mascotSvg(step)} alt={MASCOT_ALT} />
-          </Box>
-        )
-      } else {
-        mascot = (
-          <Box flexDirection="column">
-            <Text color={MASCOT_COLOR}>{MASCOT_HEAD}</Text>
-            <Text color={MASCOT_COLOR}>{MASCOT_BODY}</Text>
-            <Text color={MASCOT_COLOR}>{MASCOT_LEGS[step % 2]}</Text>
-          </Box>
-        )
-      }
-      return withLine([
-        <Box key="mascot">
-          {mascot}
-          <Box flexDirection="column" paddingLeft={MASCOT_GAP}>
-            <Text wrap="truncate-end">{top}</Text>
-            {middle}
-            <Text wrap="truncate-end">{bottom}</Text>
-          </Box>
-        </Box>,
-      ])
+      // The mascot's column beside the three rows: in the desktop app the three rows as one Svg (text art comes apart
+      // in its proportional face; the surface decides, and the app's table holds `Svg`), else as text.
+      return withLine([celebrationRow(elements, e.surface, step, { top, middle, bottom })])
     }
     // A record whose match carries no `names` (CLI 0.11.2): today's banner frames.
     const text = play.kind === 'banner' ? play.text : ''
