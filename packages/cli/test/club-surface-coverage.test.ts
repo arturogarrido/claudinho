@@ -149,7 +149,7 @@ describe('club surface coverage — no World Cup leakage off the bundle', () => 
     const said = [
       ['next', () => cmdNext('ARS', ctx({ json: true })), { degraded: false, source: null, rosterIncomplete: true }],
       ['match', () => cmdMatch('760415', ctx({ json: true })), { degraded: false, source: null, partial: {} }],
-      ['bracket', () => cmdBracket(undefined, {}, ctx({ json: true })), { inapplicable: true }],
+      ['bracket', () => cmdBracket(undefined, {}, ctx({ json: true })), { degraded: false, source: null, inapplicable: true }],
     ] as const;
     for (const [name, run, keys] of said) {
       writes = [];

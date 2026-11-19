@@ -1,4 +1,4 @@
-import type { Match, ProviderAdapter } from '@claudinho/core';
+import { DISCLAIMER, type Match, type ProviderAdapter } from '@claudinho/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmdLive } from '../src/commands';
 import type { CliConfig } from '../src/config';
@@ -57,6 +57,9 @@ describe('cmdLive — degraded honesty', () => {
     await cmdLive(ctx(downAdapter));
     expect(text()).toContain('Live scores unavailable');
     expect(text()).not.toContain('No matches in play');
+    // No provider served it, so none is named; the disclaimer stays.
+    expect(text()).not.toContain('Live data:');
+    expect(text()).toContain(DISCLAIMER);
   });
 
   it('says "no matches in play" when the feed is reachable but nothing is live', async () => {

@@ -201,6 +201,8 @@ describe('today (0.11 2.1d)', () => {
     expect(text()).toContain('Mexico');
     expect(text()).toContain('showing the bundled schedule');
     expect(text()).not.toMatch(/no fixtures confirmed/);
+    // The bundled rows no provider served name none.
+    expect(text()).not.toContain('Live data');
     // A rest day on the bundle, the provider unreachable: the bundle's answer (it knows the day is empty), as today.
     writes = [];
     await cmdToday('2026-06-10', ctxFor(feed('fifa.world', { fail: true }), {}, new Date('2026-06-10T12:00:00Z')));
