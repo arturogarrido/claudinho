@@ -137,8 +137,7 @@ import { boardCode, pitchSvg, pixelSvg } from './team-scenes'
  * rows as one `Svg` of rectangles in one fixed colour) beside the ball crossing the top row, `GOAL!` (the goal word the
  * toast was built with, whole on every frame; bold, the theme's `success`) and the team on the middle row, the scorer
  * and minute (or the minute) on the bottom row; two rows: the words alone; one: `GOAL! <team> <minute>`; none: it
- * waits. `Goal for`, `Goals`,
- * `Penalties` and `Score updated` play nothing. Full time for the pinned side's win or draw: the mascot beside
+ * waits. `Goal for`, `Goals`, `Penalties` and `Score updated` play nothing. Full time for the pinned side's win or draw: the mascot beside
  * `Full time · <result>` (in the words it was built with) for 5 seconds, queued behind the goal of the same read (the
  * record's `queue`, played as one stretch). Its record (`celebration`: the first play, its queue, when the run decided
  * it, its competition, its match's id and that match's tallies it was decided on) is written by the run and the clear
@@ -278,7 +277,7 @@ const COMPETITION_NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/
 const CONTEXT_MAX_AGE_MS = 2 * LIVE_MS
 /** The band's width before any draw. */
 const DEFAULT_COLUMNS = 80
-/** A celebration frame's length; six frames are its whole length, after which it is spent. */
+/** A celebration frame's length; six frames are a goal's whole length (full time's: `FULLTIME_MS`), then it is spent. */
 const FRAME_MS = 500
 const FRAMES = 6
 const PLAY_MS = FRAMES * FRAME_MS
