@@ -12,6 +12,7 @@
  *     the bound: a 41st row the read did not serve is not one the text shows.
  */
 import { describe, expect, it } from 'vitest';
+import { DISCLAIMER } from '../src/format';
 import { attachFetchMeta, EspnAdapter, FakeMarketProvider, type Match, type ProviderAdapter } from '@claudinho/core';
 import { z } from 'zod/v3';
 import { OUTPUT_SCHEMAS, toContent } from '../src/server';
@@ -208,7 +209,7 @@ describe('a LIVE list cut on a read that was not whole keeps its attribution lin
     const cut = textOf(partial);
     expect(cut).toContain('(truncated)');
     expect(cut).toContain('Live data');
-    expect(cut).toMatch(/not affiliated/i);
+    expect(cut).toContain(DISCLAIMER);
     expect(cut).toContain('Fixture data may be incomplete (1 provider record omitted).');
     expect(partial.data).toMatchObject({ source: 'espn', partial: { omitted: 1 } });
     const whole = textOf(await toolGetLive({ adapter: liveFeed(rows), now: NOW } as never));

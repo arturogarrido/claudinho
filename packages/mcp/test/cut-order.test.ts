@@ -8,6 +8,7 @@
  * tool proves the sentence survives the cut. The sentences do not change.
  */
 import { EspnAdapter, FakeMarketProvider, allFixtures, attachFetchMeta, type GroupStandings, type MarketProvider, type Match, type ProviderAdapter, type StandingRow } from '@claudinho/core';
+import { DISCLAIMER } from '../src/format';
 import { describe, expect, it } from 'vitest';
 import { toContent } from '../src/server';
 import { toolGetBracket, toolGetLive, toolGetMarketSignal, toolGetMatch, toolGetStandings, toolGetToday } from '../src/tools';
@@ -74,7 +75,7 @@ describe('get_today: every qualifying sentence before the rows (D7)', () => {
     const cut = cutText(r);
     expect(cut).toContain('(truncated)');
     expect(cut).toContain('list truncated');
-    expect(cut).toMatch(/not affiliated/i);
+    expect(cut).toContain(DISCLAIMER);
   });
 
   it('the verdict first, the unserved count next, then the rest, in that order', async () => {
@@ -102,7 +103,7 @@ describe('get_match: the degraded line and the market notice before the match (D
     // The bundled row is not live: degraded, no attribution in text or data, the disclaimer kept.
     expect(r.data).toMatchObject({ degraded: true, source: null });
     expect(r.text).not.toContain('Live data:');
-    expect(r.text).toMatch(/not affiliated/i);
+    expect(r.text).toContain(DISCLAIMER);
   });
 
   it('the market-incomplete notice', async () => {

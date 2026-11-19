@@ -1,4 +1,5 @@
 import {
+import { DISCLAIMER } from '../src/format';
   allFixtures,
   definitiveNone,
   FakeMarketProvider,
@@ -60,6 +61,7 @@ describe('toolGetMarketSignal', () => {
     const data = r.data as { matchId: string; signal: MarketData | null };
     expect(data.matchId).toBe(id);
     expect(data.signal).not.toBeNull();
+    expect(r.text).toContain(DISCLAIMER);
     expect(data.signal?.market.url).toBeNull();
     expect(data.signal?.informationalOnly).toBe(true);
     expect(data.signal?.source).toBe('fake');
@@ -177,6 +179,7 @@ describe('default-on market context', () => {
     const data = r.data as { marketSignals?: Record<string, MarketData> };
     expect(data.marketSignals).toBeDefined();
     expect(Object.values(data.marketSignals ?? {})[0]?.market.url).toBeNull();
+    expect(r.text).toContain(DISCLAIMER);
   });
 
   it('get_match appends a reliable market block', async () => {

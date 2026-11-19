@@ -8,6 +8,7 @@
  * (`fixtures://`), whose truncation line stays after its rows.
  */
 import { attachFetchMeta, EspnAdapter, type GroupStandings, type MarketProvider, type Match, type ProviderAdapter, type StandingRow } from '@claudinho/core';
+import { DISCLAIMER } from '../src/format';
 import { describe, expect, it } from 'vitest';
 import { listTruncation, MAX_LIST_MATCHES, matchList, matchRows } from '../src/format';
 import { toContent } from '../src/server';
@@ -122,7 +123,7 @@ describe('get_standings: the verdict, then the list’s truncation, before the t
     expect(cut).toContain('(truncated)');
     expect(cut).toContain('could not be read');
     expect(cut).toContain('list truncated');
-    expect(cut).toMatch(/not affiliated/i);
+    expect(cut).toContain(DISCLAIMER);
   });
 });
 

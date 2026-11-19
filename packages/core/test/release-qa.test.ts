@@ -192,7 +192,7 @@ describe('the command-line form the script calls (not only the functions)', () =
     expect(sentence).not.toBe('');
     expect(run(['next', text], json)).toBe('ok:no fixture in the span, its sentence shown');
     // The same answer whose text does not say its horizon: the built core's sentence is what is asked for.
-    expect(run(['next', text.replace(sentence, 'Nothing.')], json)).toBe('unsaid:the horizon is not said in its text');
+    expect(run(['next', text.replace(sentence, 'Nothing.')], json)).toBe('fail:the horizon is not said in its text');
     expect(run(['next', text], '')).toBe('broken:the next command answered no JSON');
     expect(run(['next-disclaimer'], text)).toBe('ok');
     expect(run(['next-disclaimer'], text.replace(DISCLAIMER, ''))).toBe('fail:the club answer does not carry the disclaimer');
@@ -341,7 +341,7 @@ describe('the club answer: what next answered, and whether its text says so', ()
   it('between editions is a VALID render when the text says so, and a failed one when it does not', () => {
     const between = { betweenEditions: { ended: '2027-05-23' } };
     expect(verdict(answer(between), text(said(between).notice))).toEqual({ kind: 'between', detail: 'the edition ended 2027-05-23, and the text says so' });
-    expect(verdict(answer(between), text('No upcoming fixture found for Arsenal.'))).toEqual({ kind: 'unsaid', detail: 'betweenEditions is not said in the text' });
+    expect(verdict(answer(between), text('No upcoming fixture found for Arsenal.'))).toEqual({ kind: 'fail', detail: 'betweenEditions is not said in the text' });
   });
 
   it('an outage is reported as one', () => {
@@ -353,14 +353,19 @@ describe('the club answer: what next answered, and whether its text says so', ()
     expect(verdict(answer(fixture), text('Arsenal vs Chelsea', 'Oct 10 · 14:00 UTC'))).toEqual({ kind: 'ok', detail: 'a fixture' });
     // Both NAMES, on one line (the row): the header names Arsenal whatever the fixture, and a code is not a name.
     for (const row of ['ARS vs CHE', 'Arsenal vs', 'vs Chelsea', 'Arsenal vs CHE']) {
-      expect(verdict(answer(fixture), text(row, 'Oct 10 · 14:00 UTC')), row).toEqual({ kind: 'unsaid', detail: 'the fixture is not in the text' });
+      expect(verdict(answer(fixture), text(row, 'Oct 10 · 14:00 UTC')), row).toEqual({ kind: 'fail', detail: 'the fixture is not in the text' });
     }
-    expect(verdict(answer(fixture), text('Arsenal', 'vs', 'Chelsea'))).toEqual({ kind: 'unsaid', detail: 'the fixture is not in the text' });
+    expect(verdict(answer(fixture), text('Arsenal', 'vs', 'Chelsea'))).toEqual({ kind: 'fail', detail: 'the fixture is not in the text' });
+    // A side the ANSWER does not name is the answer's defect, whatever the text says.
+    for (const side of [{ id: 'espn:363', code: 'CHE' }, { ...CHE, name: '' }, null]) {
+      const nameless = { fixture: { ...FIXTURE, away: side } };
+      expect(verdict(answer(nameless), text('Arsenal vs Chelsea')), JSON.stringify(side)).toEqual({ kind: 'broken', detail: 'the fixture names no club on one side' });
+    }
     const partial = { fixture: FIXTURE, partial: { omitted: 2 } };
     const qualifiers = said(partial).qualifiers;
     expect(qualifiers.length).toBeGreaterThan(0);
     expect(verdict(answer(partial), text(...qualifiers, 'Arsenal vs Chelsea'))).toEqual({ kind: 'ok', detail: 'a fixture, the read was not whole and the text says so' });
-    expect(verdict(answer(partial), text('Arsenal vs Chelsea'))).toEqual({ kind: 'unsaid', detail: 'the partial read is not said in the text' });
+    expect(verdict(answer(partial), text('Arsenal vs Chelsea'))).toEqual({ kind: 'fail', detail: 'the partial read is not said in the text' });
   });
 
   it('no fixture READ in a span that was not whole: the none-read sentence and every qualifier must be in the text', () => {
@@ -374,11 +379,11 @@ describe('the club answer: what next answered, and whether its text says so', ()
         detail: 'no fixture READ in the span (the read was not whole), its sentence shown',
       });
       expect(verdict(answer(over), text(...s.qualifiers, 'No upcoming fixture found for Arsenal.')), JSON.stringify(partial)).toEqual({
-        kind: 'unsaid',
+        kind: 'fail',
         detail: 'the none-read sentence is not said in the text',
       });
       expect(verdict(answer(over), text(s.noneRead)), JSON.stringify(partial)).toEqual({
-        kind: 'unsaid',
+        kind: 'fail',
         detail: 'the partial read is not said in the text',
       });
     }
@@ -396,15 +401,7 @@ describe('the club answer: what next answered, and whether its text says so', ()
     const s = said(horizon);
     expect(s.horizon).not.toBe('');
     expect(verdict(answer(horizon), text(s.horizon))).toEqual({ kind: 'ok', detail: 'no fixture in the span, its sentence shown' });
-    expect(verdict(answer(horizon), text('No upcoming fixture found for Arsenal.'))).toEqual({ kind: 'unsaid', detail: 'the horizon is not said in its text' });
-  });
-
-  it('only a text that does not say what the answer states is `unsaid` (two requests can disagree); what the answer states alone fails at once', () => {
-    const shown = text(said({ horizon: { days: 14 } }).horizon);
-    expect(verdict(answer({ team: 'Arsenal', unknownTeam: true }), shown).kind).toBe('fail');
-    expect(verdict(answer({ team: 'Arsenal', candidates: [ARS, CHE] }), shown).kind).toBe('fail');
-    expect(verdict(answer({ competition: { ...PL, slug: 'fifa.world' } }), shown).kind).toBe('broken');
-    expect(verdict(answer({ horizon: { days: 14 } }), text('Nothing.')).kind).toBe('unsaid');
+    expect(verdict(answer(horizon), text('No upcoming fixture found for Arsenal.'))).toEqual({ kind: 'fail', detail: 'the horizon is not said in its text' });
   });
 
   it('no fixture, no horizon and no partial verdict is broken (next off the bundle has no such answer)', () => {
@@ -450,30 +447,16 @@ describe('the club render: the script asks those decisions', () => {
     expect(code.lastIndexOf('qa prompt')).toBeLessThan(code.indexOf('bold "tripwires: $PASS passed'));
   });
 
-  it('the club answer is read in English, the language its validator asks core for, text and JSON by one function', () => {
-    const body = code.slice(code.indexOf('read_club_next() {'), code.indexOf('}', code.indexOf('read_club_next() {')));
-    expect(body).toContain('CLUB_NEXT_TEXT="$(club next Arsenal --lang en 2>/dev/null)"');
-    expect(body).toContain('CLUB_NEXT_JSON="$(club next Arsenal --lang en --json 2>/dev/null)"');
-    expect(code.split('\n').filter((l) => /club next Arsenal/.test(l))).toHaveLength(2);
-  });
-
-  it('only an `unsaid` verdict is read once more: the text and the JSON are two requests, and the feed can change between them', () => {
-    const lines = code.split('\n').map((l) => l.trim());
-    const calls = lines.flatMap((l, i) => (l === 'read_club_next' ? [i] : []));
-    expect(calls).toHaveLength(2);
-    // The second read sits in the `unsaid` branch of the first verdict; no other verdict reads again.
-    const before = lines.slice(Math.max(0, (calls[1] ?? 0) - 3), calls[1]).join('\n');
-    expect(before).toMatch(/^unsaid:\*\)/m);
-    expect(code).not.toMatch(/fail:\*\)[^\n]*\n(?:[^\n]*\n){0,3}\s*read_club_next/);
-    expect(code.slice(code.lastIndexOf('read_club_next'))).toMatch(/read again/);
-  });
-
-  it('the disclaimer is asked of every text the club answer was read as: the first, and the second when there was one', () => {
-    expect(code).toContain('CLUB_FIRST_TEXT="$CLUB_NEXT_TEXT"');
-    expect(code).toContain('qa next-disclaimer <<<"$CLUB_FIRST_TEXT"');
+  it('the club answer is read in English, the language its validator asks core for: its text once, its JSON once, and never again', () => {
+    const asked = code.split('\n').map((l) => l.trim()).filter((l) => /club next Arsenal/.test(l));
+    expect(asked).toEqual([
+      'CLUB_NEXT_TEXT="$(club next Arsenal --lang en 2>/dev/null)"',
+      'CLUB_NEXT_JSON="$(club next Arsenal --lang en --json 2>/dev/null)"',
+    ]);
+    // One read, one verdict: a second read could only replace a failure with a later answer.
+    expect(readFileSync(SCRIPT, 'utf8')).not.toMatch(/read again|read_club_next|CLUB_FIRST_TEXT/);
+    expect(code.split('\n').filter((l) => /qa next /.test(l))).toHaveLength(1);
     expect(code).toContain('qa next-disclaimer <<<"$CLUB_NEXT_TEXT"');
-    // Saved before the second read can replace it.
-    expect(code.indexOf('CLUB_FIRST_TEXT="$CLUB_NEXT_TEXT"')).toBeLessThan(code.lastIndexOf('read_club_next'));
   });
 
   it('every club command reads and writes the temporary cache, never the operator\'s (club() exports both directories)', () => {
@@ -494,7 +477,7 @@ describe('the club render: the script asks those decisions', () => {
 
   it('states the added work in its header: the GETs, the timeout and the estimate', () => {
     expect(header).toMatch(/17 GETs/);
-    expect(header).toMatch(/6 more/);
+    expect(header).not.toMatch(/6 more/);
     expect(header).toMatch(/two months/);
     expect(header).toMatch(/6-second/);
     expect(header).toMatch(/under two minutes/);

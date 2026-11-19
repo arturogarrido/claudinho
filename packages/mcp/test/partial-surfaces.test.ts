@@ -195,14 +195,14 @@ describe('the day’s attribution is decided over what the text finally shows (0
     expect(cut).toContain('(truncated)');
     expect(cut).toContain('Mexico');
     expect(cut).not.toContain('Live data');
-    expect(cut).toMatch(/not affiliated/i);
+    expect(cut).toContain(DISCLAIMER);
     expect(cut).toContain(SENTENCE);
     expect(partial.data).toMatchObject({ source: 'espn', partial: { omitted: 1 } });
     const whole = await toolGetToday({ date: '2026-06-11', tz: 'UTC', adapter: feed('fifa.world', { events: [OPENER, ...many] }) });
     const kept = textOf(whole);
     expect(kept).toContain('(truncated)');
     expect(kept).toContain('Live data');
-    expect(kept).toMatch(/not affiliated/i);
+    expect(kept).toContain(DISCLAIMER);
   });
 
   it('a cut barely over the limit keeps nothing of the discarded footer: the prefix ends at the body’s end', () => {
@@ -238,7 +238,7 @@ describe('the day’s attribution is decided over what the text finally shows (0
     expect(cut).toContain('(truncated)');
     expect(cut).toContain(SENTENCE);
     expect(cut).toContain('Live data');
-    expect(cut).toMatch(/not affiliated/i);
+    expect(cut).toContain(DISCLAIMER);
   });
 
   // Found in review: a dated answer printed its zone beside every time, verbatim, and the MCP schema took any
