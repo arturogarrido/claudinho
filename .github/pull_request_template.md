@@ -34,14 +34,14 @@ record actual results and any blocked checks. A skipped check is not a pass. -->
 - [ ] Knockout edge case: FT draw + penalties (`winnerCode`) advances winner
 - [ ] Live knockout pairing wins over disagreeing bundled feeder refs; feeder projection is used only when the target fixture is absent (`bracket-resolve.test.ts`)
 - [ ] Provider `source` set on every hybrid live path (knockout + standings)
-- [ ] Share/MCP/CLI user-visible text: attribution and degraded notices appear once
-- [ ] **Knockout surfaces live-resolve, never the skeleton:** any team-facing surface (bracket / next / share / each MCP tool) reaches the live overlay and renders real nations, not `🏳️` placeholders — covered by `packages/{cli,mcp}/test/knockout-surface-coverage.test.ts` (a NEW surface is added to that test). **Statusline** indirect-resolves via refresher → `CacheState.fixtures` (hot-path fail-closed; `statusline.test.ts` / `refresh.test.ts`). See `.cursor/rules/surface-parity.mdc`.
+- [ ] MCP/CLI user-visible text: attribution and degraded notices appear once
+- [ ] **Knockout surfaces live-resolve, never the skeleton:** any team-facing surface (bracket / next / each MCP tool) reaches the live overlay and renders real nations, not `🏳️` placeholders — covered by `packages/{cli,mcp}/test/knockout-surface-coverage.test.ts` (a NEW surface is added to that test). **Statusline** indirect-resolves via refresher → `CacheState.fixtures` (hot-path fail-closed; `statusline.test.ts` / `refresh.test.ts`). See `.cursor/rules/surface-parity.mdc`.
 - [ ] **Surface parity:** MCP tools pass `tz` / `locale` to core formatters (see `.cursor/rules/surface-parity.mdc`)
 - [ ] Adversarial cases from `.cursor/rules/bundle-bracket-pr.mdc` covered by tests where applicable
 
 ### Bracket / formatting PRs — release QA (after build)
 
-- [ ] `pnpm release:qa` — all tripwires pass (calendar month on kickoffs, tz differs UTC vs Asia/Tokyo, share disclaimer present)
+- [ ] `pnpm release:qa` — all tripwires pass (calendar month on kickoffs, tz differs UTC vs Asia/Tokyo, disclaimer present)
 - [ ] `packages/mcp/test/tools.test.ts` green for any MCP tool you touched (esp. `toolGetBracket` tz)
 
 ### Release / docs

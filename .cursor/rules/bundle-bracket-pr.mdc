@@ -20,8 +20,7 @@ Before marking a data-heavy feature merge-ready, run **`pnpm -r build && pnpm -r
 | Group fully played (round-robin complete) | Winner + runner-up `confirmed`, no `(proj.)` |
 | `toolGetBracket` `tz: UTC` vs `America/Mexico_City` | Calendar date/time differs on cross-midnight kickoff |
 | Knockout kickoffs span >1 week | Output includes month + day (not weekday-only) |
-| `formatShareBracket` social + compact | Same date format as CLI list |
-| `formatShareBracket` / `toolGetBracket` | Each disclaimer line once |
+| `toolGetBracket` | Each disclaimer line once |
 | Statusline and `ambient --json` knockout countdown (cached fixtures) | Real nations or `⚽ —`; never `🏳️` |
 | Statusline and `ambient --json` stale cache during live KO | `live · syncing…` (on `ambient --json` in the view's `lang`, `en vivo · sincronizando…`; the statusline's stays English) without `🏳️`; resolved pairing when cache has it |
 | Empty fixtures cache at phase boundary | Re-polls after short TTL (~60s), not 15min |

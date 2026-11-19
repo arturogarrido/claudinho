@@ -15,7 +15,7 @@ bug-fix playbook holds; a feature adds a plan gate, acceptance criteria and ever
    restated, the callers' examples, every state axis with its values, the owner of each decision, the next call and
    its concurrency, and two designs when a real choice exists. The readers read the packet before any code.
 3. Enumerate every surface the change reaches (AGENTS.md "Pre-PR self-review", item 2): CLI text and `--json`, MCP
-   `data` and text, the statusline and the hook, share, the READMEs; each surface's arguments (tz, locale, flags)
+   `data` and text, the statusline and the hook, the READMEs; each surface's arguments (tz, locale, flags)
    threaded. A team-facing surface joins the coverage tests named in AGENTS.md "Rules and their enforcers".
 4. The failing tests first, committed red with the count read from vitest's summary line; then the coder's one
    commit with its trailer (`.claude/agents/claudinho-coder.md`), which never edits a test.

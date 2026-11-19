@@ -40,8 +40,7 @@ on nothing.
 runtime. Beyond its own `CLAUDINHO_*` options it reads only environment used for display and
 paths: `LANG`, `NO_COLOR`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `APPDATA` and `LOCALAPPDATA`
 (the config and cache directories on Windows), `TERM_PROGRAM` (terminal detection, for the
-flag-emoji fallback), the home directory via `os.homedir()` (`HOME` / `USERPROFILE`), and, on
-Windows, `SystemRoot` (to name the clipboard helper by its path; see **Subprocesses**). The CLI's
+flag-emoji fallback), and the home directory via `os.homedir()` (`HOME` / `USERPROFILE`). The CLI's
 dependencies read a few more, for colour, each depending on the terminal and on what else is set:
 picocolors reads `NO_COLOR`, `FORCE_COLOR`, `TERM` and `CI` (and the `--color` and `--no-color`
 arguments), and when `claudinho table` draws in colour, cli-table3 loads `@colors/colors`, which
@@ -117,8 +116,7 @@ a claim we cannot make.
 - **Control _and format_ characters removed**, filtered by Unicode category rather than by
   code-point range. That covers bidi overrides and isolates, not just ANSI escapes: a single
   U+202E in a team name transposes the *displayed* score under the Unicode Bidirectional
-  Algorithm, which matters most on share cards, since those exist to be pasted into tools that
-  implement it. Test: `core/test/trust-properties.test.ts` *(property: control/format characters)*
+  Algorithm. Test: `core/test/trust-properties.test.ts` *(property: control/format characters)*
 - **No emoji is accepted from input at all.** Product glyphs (every flag) are GENERATED from
   the nation, never read from a payload or a cache file. This replaced an emoji carve-out in the
   text filter, and the carve-out is worth describing because it was the single most productive
@@ -184,26 +182,20 @@ a claim we cannot make.
   the mirror image of never caching a transient error as a real negative. Test:
   `core/test/market-verdict.test.ts`
 - **Enrichment completeness reaches every surface.** Default-on market annotations, dedicated
-  market tools, share cards, and their structured output retain the batch's completeness verdict.
+  market tools, and their structured output retain the batch's completeness verdict.
   A complete empty read may say "no signal"; an incomplete one carries `marketComplete:false` or
   `complete:false` and an explicit warning, including when cached results are mixed with misses. Tests:
-  `cli/test/markets.test.ts`, `cli/test/today.test.ts`, `cli/test/share.test.ts`,
+  `cli/test/markets.test.ts`, `cli/test/today.test.ts`,
   `mcp/test/market-completeness.test.ts`
 
 Each property names the negative control that should make it fail. A property test that has not
 been made to fail is pinning nothing, so every one of them was verified to go red with its rule
 reverted.
 
-**Subprocesses.** Three kinds, each started from an argument array; Claudinho writes no shell
+**Subprocesses.** Two kinds, each started from an argument array; Claudinho writes no shell
 command line. (1) The statusline spawns a detached background refresher via
 `spawn(process.execPath, [entry, '_refresh', '--source', source])` (`packages/cli/src/refresh.ts`),
-never with `shell: true`. (2) `share --copy` runs a platform clipboard helper through `spawnSync` with a fixed
-argument array, never with `shell: true`, with the snippet passed on stdin rather than as an
-argument. On Windows it is `clip.exe` named by its absolute path under the system root
-(`%SystemRoot%\System32\clip.exe`, with `C:\Windows` when `SystemRoot` is not an absolute drive
-path), because Windows looks for a bare command name in the current folder before `PATH`, where a
-planted `clip.exe` would run; elsewhere it is `pbcopy`, `wl-copy`, `xclip` or `xsel`, resolved
-through `PATH`. (3) The Claude Code plugin (`packages/plugin/hooks/register.tsx`) runs the installed
+never with `shell: true`. (2) The Claude Code plugin (`packages/plugin/hooks/register.tsx`) runs the installed
 CLI through Claude Code's process API (`$.process.run`) at three sites: `claudinho ambient --json`
 for the band and for the `/claudinho` command, and `claudinho match <id> --json` for the match
 pane. Each run is handed an argument array of fixed words and values taken from the CLI's own
@@ -214,13 +206,13 @@ host's `PATH`, then folders under `HOME` it may add (nvm's version folders, and 
 global-bin folders of Volta, pnpm, Bun, npm and `~/.local/bin`), then `/opt/homebrew/bin`,
 `/usr/local/bin`, `/usr/bin` and `/bin`; when it is, the plugin hands none, and the host's
 environment applies. `PATH`-resolved execution is worth knowing about: on a machine whose `PATH`, home folder or
-one of the folders above an attacker already controls, `claudinho` or a clipboard helper's name (outside Windows)
+one of the folders above an attacker already controls, `claudinho`
 could resolve to their binary, though such an attacker can generally run code anyway.
 
 ### Things genuinely worth reporting
 
-- A way to make feed or cache content escape sanitization and reach the terminal, a share
-  snippet, or the hook's context (ANSI/control-character injection, or prompt injection into
+- A way to make feed or cache content escape sanitization and reach the terminal or the hook's
+  context (ANSI/control-character injection, or prompt injection into
   an agent's context).
 - A path-traversal or arbitrary-write via `CLAUDINHO_*` environment values, the cache path, or
   the `init` config writers.

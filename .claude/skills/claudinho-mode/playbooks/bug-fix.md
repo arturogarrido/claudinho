@@ -9,7 +9,7 @@ makes it green, reviewed as its tier requires (AGENTS.md "Reviewing PRs").
    step runs in `<path>`. Then `pnpm install --frozen-lockfile` in `<path>`, before anything is built, tested or
    gated there (a worktree git just made has no `node_modules`).
 1. Restate the ask in one line: what is wrong, on which surface (CLI text or `--json`, MCP text or `data`, the
-   statusline, the hook, a share card), and what the right output is.
+   statusline, the hook), and what the right output is.
 2. Find the test that pins the behavior, or write the failing one first. Run it and read the count from vitest's
    summary line (`Tests  N failed | M passed`), never from the presence of the line; commit the red test with that
    count in the message. Look up the failure class in AGENTS.md "Rules and their enforcers" and search its siblings

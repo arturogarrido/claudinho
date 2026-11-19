@@ -57,8 +57,8 @@ node scripts/verify.mjs capture <label> --follow premier-league --json -- today 
 ```
 
 `run` refuses before any child: the install commands (`init`, `init-statusline`, `init-hook`,
-`init-cursor-statusline`, `claude`, `cursor`), `star`, `_refresh` and any `--copy` (they write the operator's
-settings or the clipboard, outside the sandbox). `--follow --team` is not offered (pinning a club reads the
+`init-cursor-statusline`, `claude`, `cursor`), `star` and `_refresh` (they write the operator's
+settings, outside the sandbox). `--follow --team` is not offered (pinning a club reads the
 provider). Every child has a deadline (`--timeout <s>`, 60 by default; the MCP session 30) and is killed and reaped
 when it passes (TERM, a grace of two seconds, KILL), its partial evidence kept. A capture's deadline reaches the whole
 process group and the descendants `ps` recorded before the first signal; when `ps` did not answer, or its snapshot
@@ -100,7 +100,7 @@ evidence directory is never removed.
 | Changed behavior | The evidence to select |
 |---|---|
 | Provider parsing or a trust boundary | the recorded payloads and hostile inputs in `packages/core/test/`, the live and cache parity (AGENTS.md "Conventions": "Every data vendor implements the `ProviderAdapter` interface" and "Text has ROLES, not one universal cleaner") |
-| A verdict or its presentation | the CLI text and `--json` twin, the MCP text and `data`, the share cards, a qualifier surviving a cut (`run --twin`, `mcp`; AGENTS.md "A verdict becomes output in ONE place") |
+| A verdict or its presentation | the CLI text and `--json` twin, the MCP text and `data`, a qualifier surviving a cut (`run --twin`, `mcp`; AGENTS.md "A verdict becomes output in ONE place") |
 | Selection, configuration, the cache | precedence (`--env CLAUDINHO_COMPETITION` against `--follow`), refused inputs, cold, stale and partial state, the next call, concurrency (`run`, `seed`, `prompt`; AGENTS.md "The competition is decided ONCE, at the edge, and then travels as a value") |
 | The statusline or the hook | the line, the spawn count, no network and no market work (`prompt`, `hook` on a seed) |
 | An MCP contract | the base and head `tools/list` (`mcp --list` on both), the stdio smoke |
