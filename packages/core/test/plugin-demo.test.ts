@@ -150,7 +150,7 @@ describe('the plugin demo (development only)', () => {
     expect(bullet).toContain('"Seen in the app"');
     expect(bullet).toMatch(/a skipped look is\s+not a pass/);
     // The rule's row in the table, and the feature playbook's step.
-    expect(agents).toMatch(/\| A plugin drawing merged without being seen in the app \| `plugin-demo\.test\.ts` \(core\), `scripts\/plugin-demo\.sh` \|/);
+    expect(agents).toMatch(/\| A plugin drawing merged without being seen in the app \| `plugin-demo\.test\.ts` \(core\), `scripts\/plugin-demo\.sh`, `scripts\/plugin-demo-test\.sh` \|/);
     const playbook = read('.claude/skills/claudinho-mode/playbooks/feature.md');
     expect(playbook).toContain('`bash scripts/plugin-demo.sh`');
     expect(playbook).toContain('"Seen in the app"');

@@ -34,6 +34,11 @@ If the real plugin's team look is on in that session, type `/claudinho theme off
 After you change the plugin's drawing, run the script again and load the folder it prints: it makes a new folder each
 time, and never writes into one that exists (`bash scripts/plugin-demo.sh <folder>` wants a name that is not taken).
 
+## Its tests
+
+`bash scripts/plugin-demo-test.sh` assembles the demo and runs its kit (`packages/plugin-demo-tests`) against it: `/demo mascot`,
+`/demo fulltime` and `/demo off`, frame by frame. CI runs it. It runs no scene command, and it is not a look in the app.
+
 ## What it does not show
 
 The plugin's own path from a real goal: its readings of the CLI, its memory of the match, the words of its toast.
