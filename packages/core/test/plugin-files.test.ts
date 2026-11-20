@@ -130,8 +130,8 @@ describe('the plugin folder', () => {
     expect(froms.length).toBe((cel.match(/^\s*import\b/gm) ?? []).length);
     expect(froms.filter((f) => f !== 'claude-code')).toEqual([]);
     // No clock, no timer, no chance, and no binding of the module that can be assigned again. A tripwire over these
-    // spellings, not a proof: a `const` object changed in place passes it, and the kit's exact trees are what catch a
-    // drawing that differs between two draws of the same frame.
+    // spellings, not a proof: a `const` object changed in place passes it, and nothing here or in the kit draws the
+    // same frame twice to compare the two.
     expect(cel).not.toMatch(/\bDate\b|\bperformance\b|\bMath\s*\.\s*random\b|\bsetTimeout\b|\bsetInterval\b|\bqueueMicrotask\b/);
     expect(cel).not.toMatch(/^(?:export\s+)?(?:let|var)\s/m);
     for (const name of ['celebrationRow', 'celebrationBall', 'goalRow', 'resultRow', 'FRAME_MS', 'GOAL_FRAMES', 'FULLTIME_MS']) expect(cel, name).toMatch(new RegExp(`^export const ${name}\\b`, 'm'));
