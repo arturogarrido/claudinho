@@ -5,9 +5,10 @@ import { describe, expect, mock, test } from 'claude-code/testing'
  * does (the demo's module beside the plugin's drawing modules from this checkout) and runs this kit against it. A
  * module the demo imports and the script does not copy fails the load, so every case here fails with it.
  *
- * Covered: `/demo mascot` and `/demo fulltime` (what each replies, what the band draws frame by frame on the terminal
- * and in the desktop app, and that the band is empty again after the play's length), a play replaced by the next one,
- * and `/demo off`. Not run here: the scene commands (a team, `band`, `pitch`, `idle`, `live`, `goal`, `other`, `left`,
+ * Covered: `/demo mascot` and `/demo fulltime` (what each replies; the WHOLE tree the band draws on the terminal, frame
+ * by frame; the desktop's Svg, its two drawings alternating; the redraws the play asks the engine for, one a frame and
+ * none after it; the band empty again after the play's length), a play replaced by the next one or started again, and
+ * `/demo off` (the play ended, the look's clear asked). Not run here: the scene commands (a team, `band`, `pitch`, `idle`, `live`, `goal`, `other`, `left`,
  * `right`), whose drawings the plugin's own kit pins (scenes.test.tsx); and what the app paints, which is a person's
  * look. The team is the demo's first, Spain, at home to Argentina; the word is English's.
  */
@@ -23,14 +24,53 @@ type On = Parameters<Parameters<typeof test>[2]>[1]
 type Engine = Parameters<Parameters<typeof test>[2]>[0]
 type Surface = 'terminal' | 'desktop'
 
-/** A session with the demo loaded: the engine's own answers stubbed, the clock in hand, a command run and a draw. */
+type Tree = { type: string; props?: Record<string, unknown>; children?: Array<Tree | string> }
+/** A node as the demo made it: its type, its props and its children; an engine node (the band beneath) by its type alone. */
+const shape = (n: unknown): Tree | string => {
+  if (typeof n === 'string') return n
+  const o = n as { type: string; props?: Record<string, unknown>; children?: unknown[] }
+  if (o.type === 'engine') return { type: 'engine' }
+  return { type: o.type, props: o.props ?? {}, children: (o.children ?? []).map(shape) }
+}
+const text = (props: Record<string, unknown>, ...children: Array<Tree | string>): Tree => ({ type: 'Text', props, children })
+const box = (props: Record<string, unknown>, ...children: Array<Tree | string>): Tree => ({ type: 'Box', props, children })
+const row = (...children: Array<Tree | string>): Tree => text({ wrap: 'truncate-end' }, ...children)
+/**
+ * The demo's part of the band on the terminal: the mascot's column and the words' column in one row (the top word
+ * beside the head, the bottom one beside the legs), the demo's line, the band beneath. The keys a mount shows are the
+ * ones on a Box (`mascot`); a Text's key is not in its props.
+ */
+const expected = (legs: string, words: [Tree, Tree, Tree], line: string): Tree =>
+  box(
+    { flexDirection: 'column' },
+    box(
+      { key: 'mascot' },
+      box({ flexDirection: 'column' }, text({ color: 'claude' }, HEAD), text({ color: 'claude' }, BODY), text({ color: 'claude' }, legs)),
+      box({ flexDirection: 'column', paddingLeft: 1 }, ...words),
+    ),
+    row(line),
+    { type: 'engine' },
+  )
+const goalWords = (spaces: number): [Tree, Tree, Tree] => [row(`${' '.repeat(spaces)}⚽`), row(text({ bold: true, color: 'success' }, 'GOAL!'), ' Spain'), row("Demo scorer 35'")]
+const FT_WORDS: [Tree, Tree, Tree] = [row(' '), row('Full time · Spain win'), row(' ')]
+/** 40 columns: the mascot's nine and one apart leave the ball 30, itself two wide. */
+const SPACES = [0, 5, 11, 16, 22, 28]
+
+/** A session with the demo loaded: the engine's own answers stubbed and counted, the clock in hand, a command run and a draw. */
 const session = async ($: Engine, on: On) => {
   const clock = mock.clock(on, { now: NOW })
+  const asked = { redraws: 0, clears: 0 }
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
   on('command.run', (_$, e) => ({ text: `engine ran /${e.command}` }))
-  on('ui.invalidate', () => ({ value: undefined }))
-  on('theme.clear', () => ({ value: undefined }))
+  on('ui.invalidate', (_$, e) => {
+    if ((e as { event?: unknown }).event === 'ui.render') asked.redraws += 1
+    return { value: undefined }
+  })
+  on('theme.clear', () => {
+    asked.clears += 1
+    return { value: undefined }
+  })
   on('ui.render', { component: 'AbovePrompt' }, ($$, e) => {
     const { Text } = $$.ui.resolve(e)
     return <Text>beneath</Text>
@@ -43,13 +83,14 @@ const session = async ($: Engine, on: On) => {
   }
   const draw = async (surface: Surface = 'terminal', props: Record<string, unknown> = {}) => {
     const m = await $.ui.mount({ plugin: 'claudinho-demo', surface, component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 5, bodyColumns: 40, ...props }, viewport: { columns: 100, rows: 30 } } as never)
-    const texts = await m.findAll({ type: 'Text' })
-    return { texts: texts.map((t) => t.text), claude: texts.filter((t) => t.props.color === 'claude').map((t) => t.text), svgs: await m.findAll({ type: 'Svg' }) }
+    const [root] = await m.findAll({})
+    const part = ((root?.children ?? []) as Array<{ part?: { plugin?: string } }>).find((c) => c?.part?.plugin === 'claudinho-demo')
+    return { tree: part === undefined ? null : shape(part), texts: (await m.findAll({ type: 'Text' })).map((t) => t.text), svgs: await m.findAll({ type: 'Svg' }) }
   }
-  return { clock, run, draw }
+  return { clock, run, draw, asked }
 }
-/** The band with no play: the band beneath alone. */
-const EMPTY = ['beneath']
+/** The band with no play: the band beneath alone, nothing of the demo. */
+const EMPTY = { tree: null, texts: ['beneath'], svgs: [] }
 
 describe('/demo mascot: the goal celebration', () => {
   test('it answers at once with the team and the play\'s length', async ($, on) => {
@@ -57,28 +98,19 @@ describe('/demo mascot: the goal celebration', () => {
     expect(await s.run('mascot')).toBe('Spain, goal celebration: playing in the band (3 s)')
   })
 
-  test('the terminal draws six frames: the mascot as text art, its legs alternating, the ball crossing its row, `GOAL! Spain`, the demo scorer, the line; then the band is empty', { timeoutMs: 20_000 }, async ($, on) => {
+  test('the terminal draws six frames, each the whole tree: the mascot in `claude`, its legs alternating; beside its head the ball crossing, then `GOAL!` bold in `success` with the team, then the demo scorer; the line; the band beneath. Then the band is empty', { timeoutMs: 20_000 }, async ($, on) => {
     const s = await session($, on)
     await s.run('mascot')
-    // 40 columns: the mascot's nine and one apart leave the ball 30, itself two wide.
-    const SPACES = [0, 5, 11, 16, 22, 28]
     for (let f = 0; f < 6; f++) {
       const d = await s.draw()
       expect(d.svgs).toHaveLength(0)
-      expect(d.claude).toEqual([HEAD, BODY, LEGS[f % 2]])
-      const ball = d.texts.filter((t) => /^ *⚽ *$/.test(t))
-      expect(ball).toHaveLength(1)
-      expect(ball[0]?.indexOf('⚽')).toBe(SPACES[f])
-      expect(d.texts).toContain('GOAL! Spain')
-      expect(d.texts).toContain("Demo scorer 35'")
-      expect(d.texts).toContain(GOAL_LINE)
-      expect(d.texts[d.texts.length - 1]).toBe('beneath')
+      expect(d.tree).toEqual(expected(LEGS[f % 2] as string, goalWords(SPACES[f] as number), GOAL_LINE))
       await s.clock.advance(500)
     }
-    expect((await s.draw()).texts).toEqual(EMPTY)
+    expect(await s.draw()).toEqual(EMPTY)
   })
 
-  test('the desktop app draws the mascot as one Svg for the six frames, no block glyph in any text; then the band is empty', { timeoutMs: 20_000 }, async ($, on) => {
+  test('the desktop app draws the mascot as one Svg for the six frames, its two drawings alternating, no block glyph in any text; then the band is empty', { timeoutMs: 20_000 }, async ($, on) => {
     const s = await session($, on)
     await s.run('mascot')
     const sources: string[] = []
@@ -91,18 +123,32 @@ describe('/demo mascot: the goal celebration', () => {
       expect(d.texts).toContain('GOAL! Spain')
       await s.clock.advance(500)
     }
-    // Two drawings, one per leg step, alternating from the first frame.
     expect(new Set(sources).size).toBe(2)
     expect(sources).toEqual([0, 1, 2, 3, 4, 5].map((f) => sources[f % 2]))
-    const after = await s.draw('desktop')
-    expect(after.svgs).toHaveLength(0)
-    expect(after.texts).toEqual(EMPTY)
+    expect(await s.draw('desktop')).toEqual(EMPTY)
   })
 
-  test('fewer than three spare rows: nothing of the demo is drawn', async ($, on) => {
+  test('it asks the engine for each frame itself: one redraw at the start, one every 500 ms, one more to empty the band, then none', { timeoutMs: 20_000 }, async ($, on) => {
     const s = await session($, on)
     await s.run('mascot')
-    expect((await s.draw('terminal', { maxRows: 4 })).texts).toEqual(EMPTY)
+    expect(s.asked.redraws).toBe(1)
+    for (let f = 1; f < 6; f++) {
+      await s.clock.advance(500)
+      expect(s.asked.redraws).toBe(1 + f)
+    }
+    // The sixth tick ends the play: the frame's redraw and the one that empties the band.
+    await s.clock.advance(500)
+    expect(s.asked.redraws).toBe(8)
+    await s.clock.advance(5_000)
+    expect(s.asked.redraws).toBe(8)
+  })
+
+  test('fewer than three spare rows, or a survey in the band: nothing of the demo is drawn', async ($, on) => {
+    const s = await session($, on)
+    await s.run('mascot')
+    for (const maxRows of [0, 1, 2, 3, 4]) expect(await s.draw('terminal', { maxRows }), String(maxRows)).toEqual(EMPTY)
+    expect(await s.draw('terminal', { hasSurvey: true })).toEqual(EMPTY)
+    expect((await s.draw('terminal', { maxRows: 5 })).tree).not.toBeNull()
   })
 })
 
@@ -112,32 +158,53 @@ describe('/demo fulltime: the full-time celebration', () => {
     expect(await s.run('fulltime')).toBe('Spain, full time: playing in the band (5 s)')
   })
 
-  test('ten frames beside `Full time · Spain win`, the legs alternating to the end, no ball; then the band is empty', { timeoutMs: 20_000 }, async ($, on) => {
+  test('ten frames, each the whole tree on the terminal (the caption plain between two blank rows, the legs alternating to the end) and one Svg in the desktop app, its two drawings alternating to the end; then the band is empty', { timeoutMs: 20_000 }, async ($, on) => {
     const s = await session($, on)
     await s.run('fulltime')
+    const sources: string[] = []
     for (let f = 0; f < 10; f++) {
-      const d = await s.draw()
-      expect(d.claude).toEqual([HEAD, BODY, LEGS[f % 2]])
-      expect(d.texts).toContain('Full time · Spain win')
-      expect(d.texts.some((t) => t.includes('⚽') && t !== FT_LINE)).toBe(false)
-      expect(d.texts).toContain(FT_LINE)
+      expect((await s.draw()).tree).toEqual(expected(LEGS[f % 2] as string, FT_WORDS, FT_LINE))
       const desktop = await s.draw('desktop')
       expect(desktop.svgs).toHaveLength(1)
+      sources.push(String(desktop.svgs[0]?.props.source))
+      expect(desktop.texts).toContain('Full time · Spain win')
       await s.clock.advance(500)
     }
-    expect((await s.draw()).texts).toEqual(EMPTY)
-    expect((await s.draw('desktop')).svgs).toHaveLength(0)
+    expect(new Set(sources).size).toBe(2)
+    expect(sources).toEqual(sources.map((_, f) => sources[f % 2]))
+    expect(await s.draw()).toEqual(EMPTY)
+    expect(await s.draw('desktop')).toEqual(EMPTY)
+  })
+
+  test('it asks for a redraw every 500 ms of its 5 s, then none', { timeoutMs: 20_000 }, async ($, on) => {
+    const s = await session($, on)
+    await s.run('fulltime')
+    for (let f = 1; f < 10; f++) {
+      await s.clock.advance(500)
+      expect(s.asked.redraws).toBe(1 + f)
+    }
+    await s.clock.advance(500)
+    expect(s.asked.redraws).toBe(12)
+    await s.clock.advance(5_000)
+    expect(s.asked.redraws).toBe(12)
   })
 })
 
-describe('a play ends or is replaced', () => {
-  test('`/demo off` ends a play at once', async ($, on) => {
+describe('a play ends, is replaced or starts again', () => {
+  test('`/demo off` ends a play at once, asks the redraw that empties the band and asks the look\'s clear', async ($, on) => {
     const s = await session($, on)
     await s.run('mascot')
     await s.clock.advance(500)
-    expect((await s.draw()).claude).toHaveLength(3)
+    expect((await s.draw()).tree).not.toBeNull()
+    const before = s.asked.redraws
+    expect(s.asked.clears).toBe(0)
     expect(await s.run('off')).toBe('Demo look cleared.')
-    expect((await s.draw()).texts).toEqual(EMPTY)
+    expect(s.asked.clears).toBe(1)
+    expect(s.asked.redraws).toBe(before + 1)
+    expect(await s.draw()).toEqual(EMPTY)
+    // Its timer is stopped: no later redraw is asked.
+    await s.clock.advance(5_000)
+    expect(s.asked.redraws).toBe(before + 1)
   })
 
   test('a second play replaces the first and runs its own whole length from its start', { timeoutMs: 20_000 }, async ($, on) => {
@@ -145,13 +212,22 @@ describe('a play ends or is replaced', () => {
     await s.run('mascot')
     await s.clock.advance(2_000)
     await s.run('fulltime')
-    const first = await s.draw()
-    expect(first.texts).toContain('Full time · Spain win')
-    expect(first.texts).not.toContain('GOAL! Spain')
-    expect(first.claude[2]).toBe(LEGS[0])
+    expect((await s.draw()).tree).toEqual(expected(LEGS[0], FT_WORDS, FT_LINE))
     await s.clock.advance(4_500)
-    expect((await s.draw()).texts).toContain('Full time · Spain win')
+    expect((await s.draw()).tree).toEqual(expected(LEGS[1], FT_WORDS, FT_LINE))
     await s.clock.advance(500)
-    expect((await s.draw()).texts).toEqual(EMPTY)
+    expect(await s.draw()).toEqual(EMPTY)
+  })
+
+  test('the same command again starts the play again from its first frame', { timeoutMs: 20_000 }, async ($, on) => {
+    const s = await session($, on)
+    await s.run('mascot')
+    await s.clock.advance(2_000)
+    expect(await s.run('mascot')).toBe('Spain, goal celebration: playing in the band (3 s)')
+    expect((await s.draw()).tree).toEqual(expected(LEGS[0], goalWords(0), GOAL_LINE))
+    await s.clock.advance(2_500)
+    expect((await s.draw()).tree).toEqual(expected(LEGS[1], goalWords(28), GOAL_LINE))
+    await s.clock.advance(500)
+    expect(await s.draw()).toEqual(EMPTY)
   })
 })

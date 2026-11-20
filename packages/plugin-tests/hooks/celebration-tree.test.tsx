@@ -2,8 +2,9 @@ import { describe, expect, test } from 'claude-code/testing'
 import { ARAUJO, finishedRecord, liveRecord, momentLine, momentView, world } from './world'
 
 /**
- * The celebration's WHOLE tree, on the terminal: every element, every prop and every key the plugin hands the engine,
- * compared with one written here. mascot.test.tsx and mascot-desktop.test.tsx read texts, a colour and the Svg's
+ * The celebration's WHOLE tree, on the terminal: every element and every prop a mount shows of what the plugin hands
+ * the engine, compared with one written here (a Box's key is among its props; a Text's key is not shown, so the rows'
+ * `row-1` and `goal-word` keys are not compared). mascot.test.tsx and mascot-desktop.test.tsx read texts, a colour and the Svg's
  * source; a row's `wrap`, the words column's padding or a `bold` on full time's caption could change under them.
  *
  * Two more rules of the drawing, which `packages/plugin/hooks/celebration.tsx` states and a source check cannot hold:
@@ -65,9 +66,15 @@ const fullTimeWorld = async ($: Parameters<typeof world>[0], on: Parameters<type
 }
 
 describe('the whole tree on the terminal', () => {
-  test('a goal, first frame: three `claude` Texts, then a column one apart of the ball, the bold `success` word with the team, the scorer; each row truncating; the line; the band beneath', async ($, on) => {
+  test('a goal, all six frames: three `claude` Texts, then a column one apart of the ball crossing, the bold `success` word with the team, the scorer; each row truncating; the line; the band beneath', { timeoutMs: 20_000 }, async ($, on) => {
     const w = await goalWorld($, on)
-    expect(await drawn(w)).toEqual(expected(LEGS[0], [row('⚽'), row(text({ bold: true, color: 'success' }, 'GOAL!'), ' Liverpool'), row("Ronald Araújo 22'")], momentLine([0, 1])))
+    // 40 columns: the mascot's nine and one apart leave the ball 30, itself two wide.
+    const SPACES = [0, 5, 11, 16, 22, 28]
+    for (let f = 0; f < 6; f++) {
+      const words: [Tree, Tree, Tree] = [row(`${' '.repeat(SPACES[f] as number)}⚽`), row(text({ bold: true, color: 'success' }, 'GOAL!'), ' Liverpool'), row("Ronald Araújo 22'")]
+      expect(await drawn(w)).toEqual(expected(LEGS[f % 2] as string, words, momentLine([0, 1])))
+      await w.clock.advance(500)
+    }
   })
 
   test('full time, first frame: the same two columns, the caption plain between two blank rows', async ($, on) => {
@@ -86,20 +93,24 @@ describe('the whole tree on the terminal', () => {
 
 describe('one frame drawn again is the same tree', () => {
   for (const surface of ['terminal', 'desktop'] as const) {
-    test(`a goal on the ${surface}: four draws of the second frame`, async ($, on) => {
+    test(`a goal on the ${surface}: every one of its six frames, drawn four times`, { timeoutMs: 20_000 }, async ($, on) => {
       const w = await goalWorld($, on)
-      await w.clock.advance(500)
-      const first = JSON.stringify(await drawn(w, surface))
-      expect(first).toContain('GOAL!')
-      for (let i = 0; i < 3; i++) expect(JSON.stringify(await drawn(w, surface))).toBe(first)
+      for (let f = 0; f < 6; f++) {
+        const first = JSON.stringify(await drawn(w, surface))
+        expect(first).toContain('GOAL!')
+        for (let i = 0; i < 3; i++) expect(JSON.stringify(await drawn(w, surface)), `frame ${f}`).toBe(first)
+        await w.clock.advance(500)
+      }
     })
 
-    test(`full time on the ${surface}: four draws of the second frame`, async ($, on) => {
+    test(`full time on the ${surface}: every one of its ten frames, drawn four times`, { timeoutMs: 20_000 }, async ($, on) => {
       const w = await fullTimeWorld($, on)
-      await w.clock.advance(500)
-      const first = JSON.stringify(await drawn(w, surface))
-      expect(first).toContain('Full time · Liverpool win')
-      for (let i = 0; i < 3; i++) expect(JSON.stringify(await drawn(w, surface))).toBe(first)
+      for (let f = 0; f < 10; f++) {
+        const first = JSON.stringify(await drawn(w, surface))
+        expect(first).toContain('Full time · Liverpool win')
+        for (let i = 0; i < 3; i++) expect(JSON.stringify(await drawn(w, surface)), `frame ${f}`).toBe(first)
+        await w.clock.advance(500)
+      }
     })
   }
 })
