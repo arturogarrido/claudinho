@@ -77,7 +77,7 @@ function resolvePaths(named: string): string[] {
 const SOURCE_EXT = /\.(ts|tsx|mjs|js|sh|yml|json)$/;
 const SOURCE_FILES = ALL_FILES.filter(
   // `pnpm-workspace.yaml` by name: the one tracked `.yaml` that is a manifest (the lockfile is not source).
-  (f) => (SOURCE_EXT.test(f) || f === 'pnpm-workspace.yaml') && !/(^|\/)(test|fixtures)\//.test(f) && !f.startsWith('packages/plugin-tests/') && !f.includes('/src/data/'),
+  (f) => (SOURCE_EXT.test(f) || f === 'pnpm-workspace.yaml') && !/(^|\/)(test|fixtures)\//.test(f) && !f.startsWith('packages/plugin-tests/') && !f.startsWith('packages/plugin-demo-tests/') && !f.includes('/src/data/'),
 );
 /** A file's code without its comments: a name that survives only in a comment is not a name the code has. */
 const uncommented = (text: string, file: string): string => {

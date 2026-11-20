@@ -87,13 +87,35 @@ describe('the plugin demo (development only)', () => {
     expect(src).toContain('resultRow(');
     // It is drawn where the plugin draws it, in the band above the prompt.
     expect(src).toMatch(/on\(\s*'ui\.render'\s*,\s*\{\s*component:\s*'AbovePrompt'\s*\}/);
-    // Its two command words reach the play: the one branch that compares both starts it. This reads the source; that
-    // a command PLAYS in the app is a person's look (the PR's "Seen in the app"), which no test here replaces.
-    expect(src).toMatch(/if \(word === 'mascot' \|\| word === 'fulltime'\) \{[^}]*?\bawait startPlay\(\$, word\)/);
+    // That its two commands PLAY is not read from the source: the demo's kit runs them (next case).
     for (const word of ['mascot', 'fulltime']) expect(read('packages/plugin-demo/README.md'), word).toContain(`\`/demo ${word}\``);
     // The command list of AGENTS.md says the demo shows it.
     const bullet = /- `bash scripts\/plugin-demo\.sh`[^\n]*/.exec(read('AGENTS.md'))?.[0] ?? '';
     expect(bullet).toMatch(/celebration/);
+  });
+
+  it('the demo has a kit that runs it: tests kept out of the demo\'s folder, run against the assembled demo by a script CI runs', () => {
+    // packages/plugin-demo-tests, laid out as the demo is: `scripts/plugin-demo-test.sh` assembles the demo with
+    // `scripts/plugin-demo.sh` and runs these against it under `claude plugin test`. They run `/demo mascot` and
+    // `/demo fulltime`; the scene commands are not run there.
+    const kit = tracked('packages/plugin-demo-tests');
+    expect(kit.filter((f) => /\.test\.tsx?$/.test(f)).length).toBeGreaterThan(0);
+    // No kit file takes the place of a file the assembled demo holds: the demo's own, or a plugin module copied in.
+    const taken = new Set([...tracked('packages/plugin-demo'), ...copies().map((f) => `hooks/${f}`)]);
+    expect(kit.filter((f) => taken.has(f))).toEqual([]);
+    const kitText = read('packages/plugin-demo-tests/hooks/demo.test.tsx');
+    for (const word of ['mascot', 'fulltime', 'off']) expect(kitText, word).toContain(`run('${word}')`);
+    // The script: it assembles through the demo's own script (never a copy list of its own), refuses a kit file that
+    // would replace an assembled one, and its status is the kit's.
+    const script = read('scripts/plugin-demo-test.sh');
+    expect(script).toMatch(/^set -euo pipefail$/m);
+    expect(script).toMatch(/plugin-demo\.sh/);
+    expect(script).not.toMatch(/\bcopies=/);
+    expect(script).toMatch(/packages\/plugin-demo-tests|plugin-demo-tests/);
+    expect(script).toMatch(/^\s*claude plugin test\b/m);
+    // CI's plugin job runs it after the plugin's own kit.
+    expect(read('.github/workflows/ci.yml')).toMatch(/bash scripts\/plugin-test\.sh\n\s+bash scripts\/plugin-demo-test\.sh\n/);
+    expect(read('AGENTS.md')).toContain('`bash scripts/plugin-demo-test.sh`');
   });
 
   it('the demo draws with the plugin\'s functions: the scenes, the look and the colors are imported, never written here', () => {
