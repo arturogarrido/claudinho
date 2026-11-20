@@ -255,14 +255,16 @@ export function clubNextVerdict(nextJson, nextText, core) {
       if (!saysEvery(core.verdictQualifiers(result, 'en'))) return { kind: 'fail', detail: 'the partial read is not said in the text' };
       return { kind: 'ok', detail: 'a fixture, the read was not whole and the text says so' };
     }
-    // Core's qualifier for a read that was not whole: uncounted, one record, or
-    // any count (built with a sentinel count, matched with digits in its place).
+    // Core's qualifier for a read that was not whole, as a line of its own: uncounted,
+    // one record, or any count (built with a sentinel count, matched with digits).
     const sentinel = 987654321;
     const escaped = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const lines = text.split('\n').map((line) => line.trim());
+    const ownLine = (sentence) => typeof sentence === 'string' && sentence !== '' && lines.includes(sentence);
     const counted = core.verdictQualifiers({ partial: { omitted: sentinel } }, 'en').map((s) => s.split(String(sentinel)));
     if (
-      [{}, { omitted: 1 }].some((p) => core.verdictQualifiers({ partial: p }, 'en').some(says)) ||
-      counted.some((parts) => parts.length === 2 && new RegExp(`${escaped(parts[0])}\\d+${escaped(parts[1])}`).test(text))
+      [{}, { omitted: 1 }].some((p) => core.verdictQualifiers({ partial: p }, 'en').some(ownLine)) ||
+      counted.some((parts) => parts.length === 2 && lines.some((line) => new RegExp(`^${escaped(parts[0])}\\d+${escaped(parts[1])}$`).test(line)))
     ) {
       return { kind: 'fail', detail: 'the text says the read was not whole and the answer does not' };
     }
