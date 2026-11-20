@@ -325,3 +325,12 @@ describe('the one count the release steps act on', () => {
     expect(jobs).toEqual(['build', 'publish', 'release', 'mcp-registry']);
   });
 });
+
+describe('what counts as source for a name', () => {
+  it('a kit of tests is never source: nothing under the plugin\'s kit or the demo\'s kit is read for names, though both are tracked', () => {
+    for (const kit of ['packages/plugin-tests/', 'packages/plugin-demo-tests/']) {
+      expect(ALL_FILES.filter((f) => f.startsWith(kit)).length, kit).toBeGreaterThan(0);
+      expect(SOURCE_FILES.filter((f) => f.startsWith(kit)), kit).toEqual([]);
+    }
+  });
+});

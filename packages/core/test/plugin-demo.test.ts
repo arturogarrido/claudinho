@@ -6,7 +6,7 @@
  * the plugin on this checkout draws.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -317,5 +317,75 @@ describe.skipIf(process.platform === 'win32')('scripts/plugin-demo.sh, run', () 
     expect(bad.status).toBe(1);
     expect(bad.stdout).toBe('');
     expect(bad.stderr).toContain('does not validate');
+  });
+});
+
+// The demo's kit runner, run in a copy of the folders it reads, with a fake `claude` on PATH that records the
+// folder it was handed and exits as told: what the script refuses, what it hands the kit, its status and its cleanup.
+// The kit's own cases run under the real `claude` in CI's plugin job, never here.
+describe.skipIf(process.platform === 'win32')('scripts/plugin-demo-test.sh, run', () => {
+  /** A root holding the two scripts, the plugin, the demo and the demo's kit; a `bin` with the fake; a log. */
+  const stage = () => {
+    const base = mkdtempSync(join(tmpdir(), 'plugin-demo-test-'));
+    const root = join(base, 'root');
+    for (const dir of ['scripts', 'packages/plugin', 'packages/plugin-demo', 'packages/plugin-demo-tests']) mkdirSync(join(root, dir), { recursive: true });
+    for (const f of ['scripts/plugin-demo.sh', 'scripts/plugin-demo-test.sh']) cpSync(join(ROOT, f), join(root, f));
+    for (const dir of ['packages/plugin', 'packages/plugin-demo', 'packages/plugin-demo-tests']) for (const f of tracked(dir)) cpSync(join(ROOT, dir, f), join(root, dir, f), { recursive: true });
+    const bin = join(base, 'bin');
+    mkdirSync(bin);
+    const log = join(base, 'claude.log');
+    // `claude plugin validate <dir>` passes; `claude plugin test <dir>` logs the folder and its files, exits $STUB_EXIT.
+    writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash\nif [ "$1 $2" = "plugin test" ]; then { echo "DIR $3"; (cd "$3" && find . ! -type d | sort); } >> "${log}"; exit "\${STUB_EXIT:-0}"; fi\nexit 0\n`);
+    chmodSync(join(bin, 'claude'), 0o755);
+    const run = (env: NodeJS.ProcessEnv = {}, path = `${bin}:/usr/bin:/bin`) => spawnSync('bash', [join(root, 'scripts/plugin-demo-test.sh')], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, PATH: path, ...env } });
+    const seen = () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []);
+    return { root, run, seen, kit: join(root, 'packages/plugin-demo-tests') };
+  };
+
+  it('hands the kit the assembled demo with the kit\'s files in it, exits as the kit does, and removes its folder', () => {
+    const s = stage();
+    const ok = s.run();
+    expect(ok.status, ok.stderr).toBe(0);
+    const lines = s.seen();
+    const dir = (lines[0] ?? '').replace(/^DIR /, '');
+    expect(lines.slice(1)).toEqual(['./.claude-plugin/plugin.json', './hooks/demo.test.tsx', './hooks/hooks.json', './hooks/register.tsx', ...copies().map((f) => `./hooks/${f}`)].sort());
+    expect(dir).not.toBe('');
+    expect(existsSync(dir)).toBe(false);
+    // A failing kit: its status is the script's, and the folder is removed all the same.
+    const failed = s.run({ STUB_EXIT: '7' });
+    expect(failed.status).toBe(7);
+    const second = (s.seen().filter((l) => l.startsWith('DIR '))[1] ?? '').replace(/^DIR /, '');
+    expect(second).not.toBe('');
+    expect(second).not.toBe(dir);
+    expect(existsSync(second)).toBe(false);
+  });
+
+  it('refuses a kit entry that would replace a file of the assembled demo, a link as much as a file, before any test runs', () => {
+    for (const make of [
+      (kit: string) => writeFileSync(join(kit, 'hooks/register.tsx'), 'export const register = () => {}\n'),
+      (kit: string) => symlinkSync(join(kit, 'hooks/demo.test.tsx'), join(kit, 'hooks/register.tsx')),
+      (kit: string) => symlinkSync('/nowhere/at/all', join(kit, 'hooks/celebration.tsx')),
+    ]) {
+      const s = stage();
+      make(s.kit);
+      const r = s.run();
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/replace/);
+      expect(s.seen()).toEqual([]);
+    }
+  });
+
+  it('refuses a kit with no test file, and a PATH with no claude, before anything runs', () => {
+    const empty = stage();
+    rmSync(join(empty.kit, 'hooks/demo.test.tsx'));
+    writeFileSync(join(empty.kit, 'hooks/helper.ts'), 'export const x = 1\n');
+    const none = empty.run();
+    expect(none.status).toBe(1);
+    expect(none.stderr).toMatch(/no test file/);
+    expect(empty.seen()).toEqual([]);
+    const s = stage();
+    const off = s.run({}, '/usr/bin:/bin');
+    expect(off.status).toBe(1);
+    expect(off.stderr).toMatch(/claude is not on PATH/);
   });
 });

@@ -51,6 +51,19 @@ const expected = (legs: string, words: [Tree, Tree, Tree], line: string): Tree =
     row(line),
     { type: 'engine' },
   )
+/** The same tree in the desktop app: the mascot's column holds the one Svg (its source is read apart, frame by frame). */
+const onDesktop = (t: Tree): Tree => {
+  const [mascotRow, ...rest] = t.children as Tree[]
+  const [, words] = (mascotRow as Tree).children as Tree[]
+  return { ...t, children: [{ ...(mascotRow as Tree), children: [box({ flexDirection: 'column' }, { type: 'Svg' }), words as Tree] }, ...rest] }
+}
+/** A drawn tree with its Svg reduced to its type, and without the `weight` the desktop's own elements add to a bold Text. */
+const svgless = (n: Tree | string | null): Tree | string | null => {
+  if (n === null || typeof n === 'string' || n.type === 'engine') return n
+  if (n.type === 'Svg') return { type: 'Svg' }
+  const { weight: _weight, ...props } = n.props ?? {}
+  return { ...n, props, children: (n.children ?? []).map((c) => svgless(c) as Tree | string) }
+}
 const goalWords = (spaces: number): [Tree, Tree, Tree] => [row(`${' '.repeat(spaces)}⚽`), row(text({ bold: true, color: 'success' }, 'GOAL!'), ' Spain'), row("Demo scorer 35'")]
 const FT_WORDS: [Tree, Tree, Tree] = [row(' '), row('Full time · Spain win'), row(' ')]
 /** 40 columns: the mascot's nine and one apart leave the ball 30, itself two wide. */
@@ -110,7 +123,7 @@ describe('/demo mascot: the goal celebration', () => {
     expect(await s.draw()).toEqual(EMPTY)
   })
 
-  test('the desktop app draws the mascot as one Svg for the six frames, its two drawings alternating, no block glyph in any text; then the band is empty', { timeoutMs: 20_000 }, async ($, on) => {
+  test('the desktop app draws six frames, each the whole tree with the mascot as one Svg, its two drawings alternating, no block glyph in any text; then the band is empty', { timeoutMs: 20_000 }, async ($, on) => {
     const s = await session($, on)
     await s.run('mascot')
     const sources: string[] = []
@@ -120,7 +133,7 @@ describe('/demo mascot: the goal celebration', () => {
       expect(d.svgs[0]?.props.alt).toBe('Claude mascot')
       sources.push(String(d.svgs[0]?.props.source))
       expect(d.texts.some((t) => GLYPHS.test(t))).toBe(false)
-      expect(d.texts).toContain('GOAL! Spain')
+      expect(svgless(d.tree)).toEqual(onDesktop(expected('', goalWords(SPACES[f] as number), GOAL_LINE)))
       await s.clock.advance(500)
     }
     expect(new Set(sources).size).toBe(2)
@@ -158,7 +171,7 @@ describe('/demo fulltime: the full-time celebration', () => {
     expect(await s.run('fulltime')).toBe('Spain, full time: playing in the band (5 s)')
   })
 
-  test('ten frames, each the whole tree on the terminal (the caption plain between two blank rows, the legs alternating to the end) and one Svg in the desktop app, its two drawings alternating to the end; then the band is empty', { timeoutMs: 20_000 }, async ($, on) => {
+  test('ten frames, each the whole tree on the terminal (the caption plain between two blank rows, the legs alternating to the end) and in the desktop app (one Svg, its two drawings alternating to the end); then the band is empty', { timeoutMs: 20_000 }, async ($, on) => {
     const s = await session($, on)
     await s.run('fulltime')
     const sources: string[] = []
@@ -167,7 +180,7 @@ describe('/demo fulltime: the full-time celebration', () => {
       const desktop = await s.draw('desktop')
       expect(desktop.svgs).toHaveLength(1)
       sources.push(String(desktop.svgs[0]?.props.source))
-      expect(desktop.texts).toContain('Full time · Spain win')
+      expect(svgless(desktop.tree)).toEqual(onDesktop(expected('', FT_WORDS, FT_LINE)))
       await s.clock.advance(500)
     }
     expect(new Set(sources).size).toBe(2)
