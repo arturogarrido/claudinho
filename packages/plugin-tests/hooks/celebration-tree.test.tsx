@@ -91,6 +91,36 @@ describe('the whole tree on the terminal', () => {
   })
 })
 
+describe('the whole tree in the desktop app', () => {
+  /** The same tree with the mascot's column holding the one Svg (its source and alt are pinned in mascot-desktop.test.tsx). */
+  const onDesktop = (t: Tree): Tree => {
+    const [mascotRow, ...rest] = t.children as Tree[]
+    const [, words] = (mascotRow as Tree).children as Tree[]
+    return { ...t, children: [{ ...(mascotRow as Tree), children: [box({ flexDirection: 'column' }, { type: 'Svg' }), words as Tree] }, ...rest] }
+  }
+  /**
+   * A drawn tree with its Svg reduced to its type, and without the `weight` the desktop's own elements add to a bold
+   * Text (the engine's, not the plugin's: the plugin states `bold`).
+   */
+  const svgless = (n: Tree | string): Tree | string => {
+    if (typeof n === 'string' || n.type === 'engine') return n
+    if (n.type === 'Svg') return { type: 'Svg' }
+    const { weight: _weight, ...props } = n.props ?? {}
+    return { ...n, props, children: (n.children ?? []).map(svgless) }
+  }
+
+  test('a goal, first frame: the words column one apart from the Svg\'s column, every row as on the terminal', async ($, on) => {
+    const w = await goalWorld($, on)
+    const words: [Tree, Tree, Tree] = [row('⚽'), row(text({ bold: true, color: 'success' }, 'GOAL!'), ' Liverpool'), row("Ronald Araújo 22'")]
+    expect(svgless(await drawn(w, 'desktop'))).toEqual(onDesktop(expected(LEGS[0], words, momentLine([0, 1]))))
+  })
+
+  test('full time, first frame: the same', async ($, on) => {
+    const w = await fullTimeWorld($, on)
+    expect(svgless(await drawn(w, 'desktop'))).toEqual(onDesktop(expected(LEGS[0], [row(' '), row('Full time · Liverpool win'), row(' ')], FT_LINE)))
+  })
+})
+
 describe('one frame drawn again is the same tree', () => {
   for (const surface of ['terminal', 'desktop'] as const) {
     test(`a goal on the ${surface}: every one of its six frames, drawn four times`, { timeoutMs: 20_000 }, async ($, on) => {

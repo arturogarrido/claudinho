@@ -105,8 +105,8 @@ describe('the plugin demo (development only)', () => {
     expect(kit.filter((f) => taken.has(f))).toEqual([]);
     const kitText = read('packages/plugin-demo-tests/hooks/demo.test.tsx');
     for (const word of ['mascot', 'fulltime', 'off']) expect(kitText, word).toContain(`run('${word}')`);
-    // The script: it assembles through the demo's own script (never a copy list of its own), refuses a kit file that
-    // would replace an assembled one, and its status is the kit's.
+    // The script: it assembles through the demo's own script (never a copy list of its own) and runs the kit. That it
+    // refuses a kit file that would replace an assembled one, and that its status is the kit's, is not read here.
     const script = read('scripts/plugin-demo-test.sh');
     expect(script).toMatch(/^set -euo pipefail$/m);
     expect(script).toMatch(/plugin-demo\.sh/);
